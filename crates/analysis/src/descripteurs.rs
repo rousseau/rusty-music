@@ -8,8 +8,14 @@
 //! `onset/specflux` et `beattracking` d'aubio. Tonalité : chroma corrélé aux
 //! profils de Krumhansl-Schmuckler, comme QM-DSP (celui de Mixxx). Les écrire
 //! plutôt que les lier évite une dépendance C et un passage sous copyleft, pour
-//! trois cents lignes — et le mixage DJ, seul usage qui exigerait une grille de
-//! battements, est hors du périmètre du module 3.
+//! trois cents lignes.
+//!
+//! **La grille de battements est dans `battements.rs`**, et elle part d'ici :
+//! même flux spectral, même autocorrélation. Ce module rend un tempo, celui-là
+//! y ajoute la phase — où les battements tombent. La note qui figurait ici
+//! disait que la grille était hors périmètre parce que seul le mixage DJ
+//! l'exigeait ; c'était faux, la greffe du module 3 en a besoin aussi pour
+//! aligner ses temps forts.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -29,12 +35,12 @@ const HOP: usize = 512;
 const N_FFT_CHROMA: usize = 8192; // chroma : 171 ms, 5,9 Hz par raie
 const HOP_CHROMA: usize = 4096;
 
-const TPS: f32 = SR as f32 / HOP as f32;
+pub(crate) const TPS: f32 = SR as f32 / HOP as f32;
 
 /// En deçà de 60 on confond le tempo avec la mesure, au-delà de 200 avec les
 /// doubles croches.
-const BPM_MIN: f32 = 60.0;
-const BPM_MAX: f32 = 200.0;
+pub(crate) const BPM_MIN: f32 = 60.0;
+pub(crate) const BPM_MAX: f32 = 200.0;
 
 /// **On teste des tempos, pas des décalages entiers.** À 93,75 trames/s, un
 /// morceau à 150 BPM a une période de 37,5 trames qu'aucun décalage entier
@@ -142,7 +148,7 @@ impl Analyseur {
             .collect()
     }
 
-    fn spectres(&self, s: &[f32]) -> Vec<Vec<f32>> {
+    pub(crate) fn spectres(&self, s: &[f32]) -> Vec<Vec<f32>> {
         Self::transformer(&self.fft, &self.hann, s, HOP)
     }
 
@@ -165,7 +171,7 @@ impl Analyseur {
 
 /// Flux spectral : de combien le spectre a grandi. Seules les hausses comptent —
 /// une note qui s'éteint n'est pas une attaque.
-fn flux(spectres: &[Vec<f32>]) -> Vec<f32> {
+pub(crate) fn flux(spectres: &[Vec<f32>]) -> Vec<f32> {
     spectres
         .windows(2)
         .map(|p| p[1].iter().zip(&p[0]).map(|(a, b)| (a - b).max(0.0)).sum())
@@ -174,7 +180,7 @@ fn flux(spectres: &[Vec<f32>]) -> Vec<f32> {
 
 /// Retire la tendance lente : sinon c'est la structure du morceau — couplet,
 /// refrain — qui domine l'autocorrélation, pas sa pulsation.
-fn centrer(env: &mut [f32]) {
+pub(crate) fn centrer(env: &mut [f32]) {
     let l = (TPS * 0.4) as usize;
     if env.len() <= l || l == 0 {
         return;
@@ -192,7 +198,7 @@ fn centrer(env: &mut [f32]) {
 
 /// Autocorrélation à décalage fractionnaire, interpolée linéairement. Produit
 /// moyen et non somme : un décalage long recouvre moins de trames.
-fn correle(env: &[f32], d: f32) -> f32 {
+pub(crate) fn correle(env: &[f32], d: f32) -> f32 {
     let n = env.len() as f32 - d - 1.0;
     if n <= 0.0 {
         return 0.0;
@@ -213,7 +219,7 @@ fn correle(env: &[f32], d: f32) -> f32 {
 
 /// Le tempo le plus vraisemblable, ou `None` si rien ne ressort — en pratique,
 /// le silence seul.
-fn tempo(env: &[f32]) -> Option<f32> {
+pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
     let decalage = |bpm: f32| 60.0 * TPS / bpm;
     let reference = correle(env, 0.0);
     if (env.len() as f32) < decalage(BPM_MIN) * 3.0 || reference <= f32::EPSILON {

@@ -2343,6 +2343,10 @@ function decrireGreffe(g) {
   if (g.octaves < 0) bouts.push(`joué à son tempo divisé par ${2 ** -g.octaves}`);
   if (g.retard_s > 0.05) bouts.push(`entrée à ${g.retard_s.toFixed(1)} s`);
   bouts.push(g.boucles > 1 ? `${g.boucles} passages` : "un passage");
+  // Le calage change ce qu'on entend, pas seulement ce qu'on a calculé : sans
+  // lui les deux matières pulsent au même tempo sans tomber sur le même temps,
+  // et il faut le rattraper à la main avec la vitesse de ce stem.
+  bouts.push(g.cale_aux_temps ? "calé sur les temps" : "calé sur la première attaque");
   return bouts.join(" · ");
 }
 

@@ -11,7 +11,7 @@ l'ordre et les raisons.
 | Cœur d'ingestion | livré — 27 044 morceaux, scan et surveillance, décodage Opus |
 | Module 1 — Lecteur | v1 livrée ; restent aléatoire/répétition et réordonnancement de la file |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie** |
-| Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe, export |
+| Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
 | Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; restent pochettes et bios |
 
 ## Les dettes connues
@@ -175,10 +175,44 @@ supposerait de démixer les 27 000 morceaux), et **la greffe est un fichier de
 plus** sous `greffes/`, jamais une réécriture — rouvrir le morceau retrouve ses
 stems séparés.
 
-**Ce qui manque, et qui s'entend** : les temps forts ne sont pas alignés. Il y
-faudrait une grille de battements, que `descripteurs.rs` ne calcule pas — il
-rend un tempo, pas une phase. C'est le même prérequis que le chantier 8, et il
-reste manquant.
+~~**Ce qui manque, et qui s'entend** : les temps forts ne sont pas alignés.~~
+**Fait le 19 août**, voir 5 ter.
+
+### 5 ter. La grille de battements — **faite le 19 août**
+
+`crates/analysis/src/battements.rs`. Classée jusqu'ici « prérequis du chantier
+8 », ce qui était un sous-titre trompeur : **elle sert deux fois.** Elle
+débloque le mixage, et elle finit la greffe, livrée la veille avec ses temps
+forts non alignés.
+
+**Deux corrections, et aucune n'était devinable avant de mesurer :**
+
+- **la latence du détecteur d'attaques**, 32 ms, dérivable — le flux spectral
+  ne voit une attaque qu'au moment où elle entre dans la part de fenêtre que la
+  précédente ne couvrait pas. Dérivée puis mesurée : −31 ms observés ;
+- **le pas de la grille de tempo**, 0,5 %. Sans conséquence pour colorer une
+  carte, rédhibitoire pour une phase : 40 ms de dérive en 16 secondes, une
+  demi-seconde sur un morceau. D'où l'affinage **conjoint** de la période et de
+  la phase — on cherche le couple qui explique le mieux les attaques, au lieu
+  de prendre la période d'un critère et la phase d'un autre.
+
+Erreur de phase : **8,5 ms au pire** contre un plancher de méthode de 7,8 ms
+(`verif_battements`). Aucune dépendance ajoutée.
+
+**La découverte non prévue, et c'est la réserve qui compte : sur une batterie,
+la phase est presque indéterminée.** Le meilleur décalage obtient 2,96 de
+netteté et le suivant — à 42 % de battement, presque le contretemps — 2,93.
+
+Cela a changé la manière de vérifier, pas seulement ce qu'on sait : remesurer
+la grille d'une greffe calée ne prouve rien, on comparerait deux tirages
+ambigus. On pose la grille de référence et l'on regarde ce qu'elle ramasse —
+**2,19 avec calage, 1,08 sans**, une phase quelconque valant 1,00. La commande
+`greffer` fait cette vérification à chaque appel.
+
+**Ce que ça laisse au chantier 8** : le prérequis est à moitié levé. Il y a une
+phase, et elle est bonne à ±8 ms ; mais l'ambiguïté d'un demi-battement rend le
+calage automatique de deux morceaux moins sûr qu'il n'y paraît, et le tempo
+reste supposé constant.
 
 ### 6. Genres MusicBrainz — **fait**
 
@@ -321,7 +355,10 @@ vocabulaire de couples — la phrase pour CLAP, un libellé court pour l'écran.
 ### 8. Mixage de deux pistes — ~1 semaine
 
 Territoire DJ : beatmatching, détection de tonalité, mixage harmonique.
-**Prérequis manquant, et confirmé manquant.** On n'a ni tempo ni tonalité, et
+**Prérequis à moitié levé le 19 août** — `battements.rs` donne la phase, à
+±8 ms, mais l'ambiguïté d'un demi-battement sur les batteries et l'hypothèse de
+tempo constant restent entières. Ce qui suit décrit l'état antérieur, et vaut
+toujours pour le tempo. On n'avait ni tempo ni tonalité, et
 l'idée d'emprunter ceux d'AudioMuse-AI a été mesurée puis écartée : leur champ
 `scale` vaut `minor` pour les 26 928 morceaux, et leur `tempo` ne prend que
 37 valeurs distinctes espacées de 6 % — une grille de classifieur, sans phase.

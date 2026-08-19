@@ -79,6 +79,7 @@ sans artefact de phase, 468 lignes et zéro dépendance transitive.
 |---|---|---|
 | regroupement | linfa, et sa BLAS système | **écrit** : k-means++, `cluster.rs`, 148 lignes |
 | tempo, tonalité | aubio (GPL), QM-DSP (GPL), tous en C | **écrit** : `descripteurs.rs`, 416 lignes |
+| grille de battements | idem, et la phase est la moitié qu'aucun n'expose seule | **écrit** : `battements.rs`, à partir du flux spectral déjà là |
 | décodage Opus | crate `opus` — libopus, exige `cmake` | **pris** : `opus-decoder`, pur Rust, sans FFI |
 | étirement temporel | Signalsmith, Rubber Band, SoundTouch — C++ | **pris** : `wsola`, pur Rust, méthode d'`atempo` |
 

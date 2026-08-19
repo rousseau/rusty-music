@@ -498,6 +498,64 @@ Deux points appris en chemin :
 premiers morceaux mesurés, aucun n'est sorti sans tempo ni sans tonalité — un
 conte lu reçoit donc un tempo qui ne veut rien dire.
 
+### La grille de battements
+
+```bash
+rusty-music battements piste.wav                          # tempo, phase, netteté
+rusty-music battements piste.wav --bpm 117.2 --phase 0.128   # éprouver une grille imposée
+```
+
+`descripteurs.rs` rend un tempo, c'est-à-dire une **période**. Deux morceaux à
+124 BPM peuvent pulser en opposition de phase ; les caler demande de savoir *où*
+tombe le premier temps. C'est ce que `crates/analysis/src/battements.rs`
+ajoute, et ça sert **deux fois** : le mixage de deux pistes l'exigeait, mais la
+greffe du module 3 aussi — elle calait les tempos sans caler les temps forts.
+
+**La méthode.** Le tempo vient de l'autocorrélation à peigne déjà écrite ; la
+phase, d'un peigne de Dirac glissé sur l'enveloppe d'attaques, comme
+`beattracking` d'aubio après son autocorrélation.
+
+**Deux corrections, et aucune n'était devinable :**
+
+| | ce qu'on a trouvé | ce qu'on fait |
+|---|---|---|
+| **latence du détecteur** | le flux spectral place une attaque `N_FFT − HOP` échantillons trop tôt — elle n'apparaît qu'en entrant dans la part de fenêtre que la précédente ne couvrait pas | une constante de 32 ms, **dérivée puis mesurée** : −31 ms observés |
+| **pas de la grille de tempo** | 240 candidats entre 60 et 200 BPM, géométriquement : **0,5 % par pas**. Sans conséquence pour colorer une carte, rédhibitoire pour une phase — 40 ms de dérive en 16 s, une demi-seconde sur un morceau | affinage **conjoint** de la période et de la phase dans une bande de ±1 % |
+
+L'affinage conjoint est le point : on cherche le couple qui explique le mieux
+les attaques, au lieu de prendre la période d'un critère et la phase d'un
+autre. L'erreur passe de −31…−67 ms à **8,5 ms au pire**, contre un plancher de
+méthode de 7,8 ms — un pas de balayage (`verif_battements`).
+
+**La réserve qui compte, et elle n'était pas prévue : sur une batterie, la
+phase est presque indéterminée.**
+
+```
+── 01 Hard as a Rock — drums.wav
+ 1.   117.2 BPM   phase 0.128 s   netteté 2.96
+ 2.   116.7 BPM   phase 0.426 s   netteté 2.93  (+42 % de battement)
+```
+
+Deux décalages presque à un demi-battement l'un de l'autre, et 0,03 de netteté
+pour les départager : la caisse claire du 2 et du 4 pèse autant que la grosse
+caisse du 1 et du 3. **Conséquence sur la manière de vérifier** — remesurer la
+grille d'une greffe calée ne prouverait rien, on comparerait deux tirages
+ambigus. On pose donc la grille de référence et l'on regarde ce qu'elle
+ramasse :
+
+| | grille du stem remplacé | meilleure trouvée à l'aveugle |
+|---|---|---|
+| greffe **calée** | **2,19** | 1,94 |
+| greffe **non calée** | **1,08** | 2,15 |
+
+La greffe non calée pulse — 2,15 pour sa propre grille — mais pas là où
+l'original pulsait : 1,08, quand une phase tirée au hasard vaut 1,00.
+
+**Ce qui reste ouvert** : le tempo est supposé constant, ce qui ne décrit ni un
+live ni un batteur qui accélère ; et l'ambiguïté d'octave de `descripteurs.rs`
+demeure — un morceau à 174 BPM est lu à 87, grille juste mais un battement sur
+deux.
+
 ### Nommer les familles — trois sources
 
 ```bash
@@ -925,11 +983,28 @@ Deux choix qui rendent le geste réversible et honnête :
   toujours depuis le stem *d'origine* : greffer sur une greffe empilerait les
   étirements.
 
-**Ce qui n'est pas fait, et qui s'entend** : les temps forts ne sont pas
-alignés. Il y faudrait une grille de battements, et `descripteurs.rs` rend un
-tempo, pas une phase. Les deux batteries pulsent au même tempo sans garantie de
-tomber sur le même temps. Caler à la main avec la vitesse par stem est le
-recours — c'est pourquoi les deux réglages sont arrivés ensemble.
+**Les temps forts se calent — depuis le 19 août.** La grille de battements
+(voir plus haut) donne la phase des deux stems, et la greffe s'en sert pour
+deux choses : le greffon **entre** sur un battement, et sa matière est **coupée
+à un compte rond de battements**. La seconde compte autant que la première —
+sans elle, une greffe qui boucle six fois se désaccorde six fois, un peu plus à
+chaque tour, puisque la matière n'a aucune raison de mesurer un compte rond.
+
+Vérifié plutôt qu'affirmé : la grille du stem remplacé obtient **2,19** sur la
+greffe calée et **1,08** sur la même greffe non calée, où une phase quelconque
+vaut 1,00. La commande le dit elle-même à chaque greffe.
+
+**Ce qui reste** : le calage vaut ce que vaut la grille, et sur une batterie la
+phase est presque indéterminée — deux décalages à un demi-battement l'un de
+l'autre peuvent être départagés par 0,03 de netteté. Le recours reste la
+vitesse par stem, mais il sert désormais à rattraper une ambiguïté, pas une
+absence de calage.
+
+**`crates/editor` ne dépend pas de `crates/analysis`**, et ce n'est pas un
+détail : ce serait tirer CLAP, ses 117 Mo de poids et la génération de code de
+son `build.rs` dans un crate qui n'a que faire d'un modèle d'empreintes. La
+grille voyage en trois nombres, et c'est l'application qui relie les deux
+modules.
 
 ### Pièges de cette chaîne
 

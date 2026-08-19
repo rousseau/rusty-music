@@ -11,6 +11,7 @@
 //! préparation du modèle qui rend cet import possible.
 
 pub mod alea;
+pub mod battements;
 pub mod chemin;
 pub mod cluster;
 pub mod decode;

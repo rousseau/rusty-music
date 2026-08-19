@@ -121,11 +121,20 @@ Ce qui manque, et dans cet ordre :
   rapport de tempo sort de ±10 % après repliement à l'octave n'est pas proposé,
   si proche soit-il. La liste dit combien ont été écartés, et pourquoi.
 
-  **Ce qui n'est pas fait, et qui s'entend** : les temps forts ne sont pas
-  alignés. `descripteurs.rs` rend un tempo, pas une phase. Les deux batteries
-  pulsent au même tempo sans garantie de tomber sur le même temps ; caler à la
-  main avec la vitesse par stem est le recours, et les deux réglages sont
-  arrivés ensemble.
+  ~~**Ce qui n'est pas fait**~~ **Les temps forts se calent, depuis le 19
+  août.** `rusty_music_analysis::battements` donne la phase des deux stems, et
+  la greffe s'en sert pour deux choses : le greffon **entre** sur un battement,
+  et sa matière est **coupée à un compte rond de battements** — sans quoi une
+  greffe qui boucle six fois se désaccorde six fois.
+
+  Le panneau le dit : « calé sur les temps » ou « calé sur la première
+  attaque », selon que la grille a pu se mesurer.
+
+  **Ce qui reste, et il faut le savoir** : sur une batterie, la phase est
+  presque indéterminée — deux décalages à un demi-battement l'un de l'autre
+  peuvent n'être départagés que par 0,03 de netteté. La vitesse par stem reste
+  donc le recours, mais pour rattraper une ambiguïté et non une absence de
+  calage.
 - **Réglages par stem** : gain fin, inversion de phase. Peu de travail, utile
   au diagnostic d'une séparation douteuse.
 

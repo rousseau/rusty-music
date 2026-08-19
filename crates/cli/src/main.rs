@@ -131,6 +131,28 @@ enum Cmd {
         /// Tempo du morceau d'où vient le greffon
         #[arg(long)]
         bpm_greffon: Option<f32>,
+        /// Ne pas caler sur les temps forts : le greffon entre à la première
+        /// attaque, comme avant que la grille de battements existe
+        #[arg(long)]
+        sans_grille: bool,
+    },
+    /// Montre la grille de battements d'un fichier : tempo, phase, netteté
+    ///
+    /// Les candidats suivants disent ce que le premier ne dit pas — sur une
+    /// batterie, le contretemps répond souvent presque aussi fort que le temps.
+    Battements {
+        /// Le fichier à examiner
+        fichier: PathBuf,
+        /// Combien de couples (tempo, phase) montrer
+        #[arg(long, default_value_t = 4)]
+        candidats: usize,
+        /// Éprouver cette grille-ci au lieu d'en chercher une : le fichier
+        /// pulse-t-il au tempo et à la phase qu'on lui impose ?
+        #[arg(long, requires = "phase")]
+        bpm: Option<f32>,
+        /// Phase imposée, en secondes
+        #[arg(long, requires = "bpm")]
+        phase: Option<f32>,
     },
     /// Mesure tempo, tonalité et énergie des morceaux placés sur la carte
     ///
@@ -243,6 +265,78 @@ fn duree(ms: Option<i64>) -> String {
         Some(ms) if ms > 0 => format!("{}:{:02}", ms / 60000, (ms / 1000) % 60),
         _ => "—".into(),
     }
+}
+
+/// Les grilles de battements des deux stems d'une greffe.
+///
+/// **C'est ici qu'on relie le module 2 au module 3**, et pas dans
+/// `crates/editor` : y faire dépendre l'éditeur de `rusty-music-analysis`
+/// tirerait CLAP, ses 117 Mo de poids et la génération de code de son
+/// `build.rs` dans un crate qui n'a que faire d'un modèle d'empreintes. La
+/// grille voyage donc en trois nombres.
+///
+/// `None` si l'un des deux ne pulse pas — la greffe retombe alors sur la
+/// première attaque, ce qu'elle faisait avant que la grille existe.
+fn grilles_de(
+    remplace: &std::path::Path,
+    greffon: &std::path::Path,
+) -> Result<Option<(rusty_music_analysis::battements::Grille, rusty_music_analysis::battements::Grille)>>
+{
+    use rusty_music_analysis::battements;
+
+    let analyseur = rusty_music_analysis::descripteurs::Analyseur::new();
+    let une = |chemin: &std::path::Path| -> Result<Option<battements::Grille>> {
+        let s = rusty_music_editor::decode::stereo(chemin)?;
+        // La grille se lit sur la somme des deux voies : une batterie panoramée
+        // à gauche ne doit pas donner une phase différente d'une centrée.
+        let mono: Vec<f32> = s
+            .gauche
+            .iter()
+            .zip(&s.droite)
+            .map(|(g, d)| (g + d) * 0.5)
+            .collect();
+        Ok(battements::grille_reechantillonnee(
+            &mono,
+            rusty_music_editor::SR,
+            &analyseur,
+        ))
+    };
+    Ok(match (une(remplace)?, une(greffon)?) {
+        (Some(a), Some(b)) => Some((a, b)),
+        _ => None,
+    })
+}
+
+/// Ce que vaut une grille imposée sur un fichier, et ce que vaudrait la
+/// meilleure. Les deux ensemble : le premier chiffre seul ne dit pas s'il est
+/// bon.
+fn eprouver(chemin: &std::path::Path, bpm: f32, phase_s: f32) -> Result<(Option<f32>, Option<f32>)> {
+    use rusty_music_analysis::battements;
+
+    let s = rusty_music_editor::decode::stereo(chemin)?;
+    let mono: Vec<f32> = s
+        .gauche
+        .iter()
+        .zip(&s.droite)
+        .map(|(g, d)| (g + d) * 0.5)
+        .collect();
+    let a = rusty_music_analysis::descripteurs::Analyseur::new();
+    let cible = rusty_music_analysis::mel::SR;
+    let rapport = rusty_music_editor::SR as f64 / cible as f64;
+    let n = (mono.len() as f64 / rapport) as usize;
+    let a48: Vec<f32> = (0..n)
+        .map(|i| {
+            let x = i as f64 * rapport;
+            let (j, t) = (x.floor() as usize, x.fract() as f32);
+            let u = mono[j.min(mono.len() - 1)];
+            let v = mono[(j + 1).min(mono.len() - 1)];
+            u * (1.0 - t) + v * t
+        })
+        .collect();
+    Ok((
+        battements::evaluer(&a48, &a, bpm, phase_s),
+        battements::grille(&a48, &a).map(|g| g.nettete),
+    ))
 }
 
 fn main() -> Result<()> {
@@ -469,19 +563,101 @@ fn main() -> Result<()> {
                 sortie.display()
             );
         }
+        Cmd::Battements {
+            fichier,
+            candidats,
+            bpm,
+            phase,
+        } => {
+            if let (Some(bpm), Some(phase)) = (bpm, phase) {
+                let (impose, meilleur) = eprouver(&fichier, bpm, phase)?;
+                match (impose, meilleur) {
+                    (Some(i), Some(m)) => println!(
+                        "grille imposée {bpm:.1} BPM à {phase:.3} s : {i:.2}\n\
+                         meilleure grille trouvée              : {m:.2}\n\
+                         phase quelconque                      : 1.00"
+                    ),
+                    _ => println!("ce fichier ne pulse pas assez pour trancher"),
+                }
+                return Ok(());
+            }
+            let s = rusty_music_editor::decode::stereo(&fichier)?;
+            let mono: Vec<f32> = s
+                .gauche
+                .iter()
+                .zip(&s.droite)
+                .map(|(g, d)| (g + d) * 0.5)
+                .collect();
+            let a = rusty_music_analysis::descripteurs::Analyseur::new();
+            let sr = rusty_music_editor::SR;
+            // Le rééchantillonnage est dans `grille_reechantillonnee` ; ici on
+            // veut les candidats, donc on le fait une fois pour toutes.
+            let cible = rusty_music_analysis::mel::SR;
+            let rapport = sr as f64 / cible as f64;
+            let n = (mono.len() as f64 / rapport) as usize;
+            let a48: Vec<f32> = (0..n)
+                .map(|i| {
+                    let x = i as f64 * rapport;
+                    let (j, t) = (x.floor() as usize, x.fract() as f32);
+                    let u = mono[j.min(mono.len() - 1)];
+                    let v = mono[(j + 1).min(mono.len() - 1)];
+                    u * (1.0 - t) + v * t
+                })
+                .collect();
+
+            let liste = rusty_music_analysis::battements::candidats(&a48, &a, candidats);
+            if liste.is_empty() {
+                println!("aucune pulsation");
+            }
+            for (i, g) in liste.iter().enumerate() {
+                let rel = if i == 0 {
+                    String::new()
+                } else {
+                    let d = (g.phase_s - liste[0].phase_s).abs();
+                    let p = liste[0].periode();
+                    format!("  ({:+.0} % de battement)", (d.min(p - d) / p) * 100.0)
+                };
+                println!(
+                    "{:>2}.  {:>6.1} BPM   phase {:.3} s   netteté {:.2}{rel}",
+                    i + 1,
+                    g.bpm,
+                    g.phase_s,
+                    g.nettete
+                );
+            }
+        }
         Cmd::Greffer {
             remplace,
             greffon,
             sortie,
             bpm_source,
             bpm_greffon,
+            sans_grille,
         } => {
             let t = Instant::now();
+            // Les tempos donnés à la main l'emportent : `--bpm-source` sert
+            // précisément à corriger une mesure qu'on juge fausse.
+            let grilles = if sans_grille {
+                None
+            } else {
+                grilles_de(&remplace, &greffon)?
+            };
+            if let Some((a, b)) = grilles {
+                println!(
+                    "grilles : {:.1} BPM à {:.3} s (netteté {:.1}) · {:.1} BPM à {:.3} s (netteté {:.1})",
+                    a.bpm, a.phase_s, a.nettete, b.bpm, b.phase_s, b.nettete
+                );
+            }
             let plan = rusty_music_editor::greffe::greffer(
                 &remplace,
                 &greffon,
-                bpm_source,
-                bpm_greffon,
+                bpm_source.or(grilles.map(|(a, _)| a.bpm)),
+                bpm_greffon.or(grilles.map(|(_, b)| b.bpm)),
+                grilles.map(|(a, b)| rusty_music_editor::greffe::Cale {
+                    phase_remplace_s: a.phase_s,
+                    phase_greffon_s: b.phase_s,
+                    periode_greffon_s: b.periode(),
+                }),
                 &sortie,
             )?;
             let octave = match plan.octaves {
@@ -489,11 +665,36 @@ fn main() -> Result<()> {
                 n if n > 0 => format!(", ×{} le tempo", 1 << n),
                 n => format!(", ÷{} le tempo", 1 << -n),
             };
+            // **La commande vérifie son propre travail.** Écrire « calé sur les
+            // temps » est une affirmation ; relire la grille de ce qu'on vient
+            // d'écrire et la comparer à celle du stem remplacé en est une
+            // preuve. C'est aussi le seul contrôle qui porte sur de la vraie
+            // musique — les tests unitaires travaillent sur des clics.
+            // **On n'y remesure pas une grille, on éprouve celle du stem
+            // remplacé.** Remesurer comparerait deux tirages ambigus : sur une
+            // batterie, plusieurs phases ramassent presque autant (voir
+            // `rusty-music battements`). La question utile est « la greffe
+            // pulse-t-elle là où l'original pulsait », et elle a une réponse.
+            if let Some((a, _)) = grilles {
+                let (impose, meilleur) = eprouver(&sortie, a.bpm, a.phase_s)?;
+                match (impose, meilleur) {
+                    (Some(i), Some(m)) => println!(
+                        "vérification : sur la greffe, la grille du stem remplacé vaut {i:.2} \
+                         (le meilleur couple vaut {m:.2}, une phase quelconque 1,00)"
+                    ),
+                    _ => println!("vérification : la greffe ne pulse pas assez pour trancher"),
+                }
+            }
             println!(
-                "étiré ×{:.3}{octave}, entrée à {:.1} s, {} passage(s) — {:.1} s de calcul\n{}",
+                "étiré ×{:.3}{octave}, entrée à {:.1} s, {} passage(s), {} — {:.1} s de calcul\n{}",
                 plan.facteur,
                 plan.retard_s,
                 plan.boucles,
+                if plan.cale_aux_temps {
+                    "calé sur les temps"
+                } else {
+                    "calé sur la première attaque"
+                },
                 t.elapsed().as_secs_f64(),
                 sortie.display()
             );

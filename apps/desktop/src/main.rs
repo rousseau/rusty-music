@@ -1288,6 +1288,41 @@ struct Greffon {
     octaves: i32,
     retard_s: f32,
     boucles: usize,
+    /// Le greffon est-il entré sur un battement ? L'interface le dit plutôt
+    /// que de laisser l'oreille le découvrir.
+    cale_aux_temps: bool,
+}
+
+/// Les grilles de battements des deux stems.
+///
+/// **C'est ici que le module 2 rejoint le module 3.** `crates/editor` ne dépend
+/// pas de `rusty-music-analysis` — ce serait tirer CLAP, ses 117 Mo de poids et
+/// la génération de code de son `build.rs` dans un crate qui n'a que faire d'un
+/// modèle d'empreintes. L'application dépend des deux, c'est donc elle qui les
+/// relie, en trois nombres.
+fn grilles_des_stems(
+    remplace: &Path,
+    greffon: &Path,
+) -> Option<(
+    rusty_music_analysis::battements::Grille,
+    rusty_music_analysis::battements::Grille,
+)> {
+    use rusty_music_analysis::battements;
+
+    let analyseur = rusty_music_analysis::descripteurs::Analyseur::new();
+    let une = |chemin: &Path| -> Option<battements::Grille> {
+        let s = rusty_music_editor::decode::stereo(chemin).ok()?;
+        // Somme des deux voies : une batterie panoramée à gauche ne doit pas
+        // rendre une phase différente d'une batterie centrée.
+        let mono: Vec<f32> = s
+            .gauche
+            .iter()
+            .zip(&s.droite)
+            .map(|(g, d)| (g + d) * 0.5)
+            .collect();
+        battements::grille_reechantillonnee(&mono, rusty_music_editor::SR, &analyseur)
+    };
+    Some((une(remplace)?, une(greffon)?))
 }
 
 /// Met à la place d'un stem celui d'un autre morceau.
@@ -1341,11 +1376,23 @@ fn stems_greffer(
         .join("greffes")
         .join(format!("{stem} — {base}.wav"));
 
+    // **Les grilles se mesurent sur les stems, les tempos viennent de la base.**
+    // Ce n'est pas une incohérence : la base a mesuré le morceau entier, ce qui
+    // est plus sûr qu'une batterie seule, et c'est ce tempo-là qui a servi à
+    // choisir le voisin. La grille n'apporte que la phase — mais elle apporte
+    // aussi son propre tempo, plus fin, dont on se sert pour l'étirement quand
+    // la base n'en a pas.
+    let grilles = grilles_des_stems(Path::new(&remplace), &greffon);
     let plan = rusty_music_editor::greffe::greffer(
         Path::new(&remplace),
         &greffon,
-        tempos.get(&id).copied(),
-        tempos.get(&voisin).copied(),
+        tempos.get(&id).copied().or(grilles.map(|(a, _)| a.bpm)),
+        tempos.get(&voisin).copied().or(grilles.map(|(_, b)| b.bpm)),
+        grilles.map(|(a, b)| rusty_music_editor::greffe::Cale {
+            phase_remplace_s: a.phase_s,
+            phase_greffon_s: b.phase_s,
+            periode_greffon_s: b.periode(),
+        }),
         &sortie,
     )
     .map_err(echec)?;
@@ -1357,6 +1404,7 @@ fn stems_greffer(
         octaves: plan.octaves,
         retard_s: plan.retard_s,
         boucles: plan.boucles,
+        cale_aux_temps: plan.cale_aux_temps,
     })
 }
 

@@ -14,13 +14,17 @@
 //! 3. **la longueur.** Le greffon est plus court ou plus long que la place à
 //!    tenir : on le répète ou on le coupe.
 //!
-//! **Ce qu'on ne fait pas, et qu'il faut savoir.** Les temps forts ne sont pas
-//! alignés. Cela demanderait une grille de battements, que `descripteurs.rs`
-//! ne calcule pas — il rend un tempo, pas une phase, et le mixage DJ, seul
-//! usage qui l'exigerait, est hors du périmètre du module 3. La conséquence
-//! s'entend : les deux batteries pulsent au même tempo, sans garantie de
-//! tomber sur le même temps. Caler à la main avec la vitesse par stem est le
-//! recours, et c'est cohérent — les deux réglages sont arrivés ensemble.
+//! **Les temps forts, eux, se calent — quand on donne la grille.** C'est le
+//! [`Cale`] optionnel. Sans lui, le greffon entre à la première attaque du stem
+//! remplacé, ce qui met les deux matières au même tempo sans garantir qu'elles
+//! tombent sur le même temps ; avec lui, le greffon entre sur un battement et
+//! sa boucle est coupée à un nombre entier de battements, de sorte que chaque
+//! répétition retombe juste.
+//!
+//! **La grille se calcule ailleurs** — `rusty_music_analysis::battements` —
+//! et arrive ici en deux nombres. L'éditeur ne dépend pas du module 2 : ce
+//! serait tirer CLAP, ses 117 Mo de poids et sa génération de code dans un
+//! crate qui n'en a que faire. C'est l'application qui relie les deux.
 
 use std::path::Path;
 
@@ -50,6 +54,26 @@ pub struct Plan {
     pub boucles: usize,
     /// Tempo effectif du greffon une fois étiré.
     pub bpm_rendu: f32,
+    /// Le greffon est-il entré sur un battement, ou sur la première attaque ?
+    /// **Rendu à l'interface plutôt que deviné** : c'est la différence entre
+    /// une greffe qui tombe juste et une qu'il faudra rattraper à la main.
+    pub cale_aux_temps: bool,
+}
+
+/// Où tombent les battements, de part et d'autre. Ce que [`greffer`] ne sait
+/// pas calculer et qu'on lui donne.
+///
+/// Les deux phases sont **dans la durée d'origine de chaque fichier** : celle
+/// du greffon est mise à l'échelle ici, après l'étirement, pour qu'un appelant
+/// n'ait pas à savoir de quel facteur on l'aura étiré.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cale {
+    /// Instant du premier battement du stem remplacé, en secondes.
+    pub phase_remplace_s: f32,
+    /// Instant du premier battement du greffon, en secondes, avant étirement.
+    pub phase_greffon_s: f32,
+    /// Période d'un battement du greffon, en secondes, avant étirement.
+    pub periode_greffon_s: f32,
 }
 
 /// Rapport d'étirement pour amener `greffon` au tempo de `source`, replié à
@@ -182,6 +206,45 @@ pub fn assembler(
     sortie
 }
 
+/// Coupe la matière pour qu'elle commence sur un battement et dure un nombre
+/// entier de battements.
+///
+/// **Les deux moitiés servent à des choses différentes.** Commencer sur un
+/// battement fait entrer le greffon au bon endroit ; durer un nombre entier de
+/// battements fait que la *répétition* retombe juste. Sans la seconde, une
+/// greffe qui boucle six fois se désaccorde six fois, un peu plus à chaque
+/// tour — c'est le défaut le plus long à entendre et le plus sûr à survenir,
+/// puisque la matière n'a aucune raison de mesurer un compte rond.
+///
+/// `phase_s` et `periode_s` sont dans la durée **déjà étirée**. Le fondu vient
+/// en plus des battements entiers : [`assembler`] avance de `n - fondu` d'une
+/// copie à l'autre, c'est donc ce pas-là qui doit tomber juste.
+///
+/// Rend la tranche et si la coupe a bien pu se faire — une matière plus courte
+/// qu'un battement est rendue telle quelle.
+pub fn decouper_aux_temps(
+    matiere: &[f32],
+    canaux: usize,
+    phase_s: f32,
+    periode_s: f32,
+    fondu: usize,
+) -> (&[f32], bool) {
+    if canaux == 0 || matiere.is_empty() || !periode_s.is_finite() || periode_s <= 0.0 {
+        return (matiere, false);
+    }
+    let periode = (periode_s * SR as f32).max(1.0);
+    let tete = ((phase_s.max(0.0) * SR as f32) as usize * canaux).min(matiere.len());
+    let reste = &matiere[tete..];
+    let trames = reste.len() / canaux;
+
+    let battements = (trames.saturating_sub(fondu) as f32 / periode).floor();
+    if battements < 1.0 {
+        return (reste, false);
+    }
+    let garde = ((battements * periode) as usize + fondu) * canaux;
+    (&reste[..garde.min(reste.len())], true)
+}
+
 /// Combien de fois la matière tient dans la place, une fois le retard pris.
 fn compter_boucles(n: usize, cible: usize, retard: usize, fondu: usize) -> usize {
     if n == 0 || cible <= retard {
@@ -202,6 +265,7 @@ pub fn greffer(
     greffon: &Path,
     bpm_source: Option<f32>,
     bpm_greffon: Option<f32>,
+    cale: Option<Cale>,
     sortie: &Path,
 ) -> Result<Plan> {
     let ancien = decode::stereo(remplace)?;
@@ -231,15 +295,43 @@ pub fn greffer(
         matiere = etirement::etirer(&matiere, CANAUX, facteur);
     }
 
-    // 2. Le départ. La matière est rognée de son silence de tête, puis
-    //    retardée de celui du stem qu'elle remplace : le greffon entre là où
-    //    l'ancien entrait, pas là où lui-même commençait.
-    let tete = premiere_attaque(&matiere, CANAUX);
-    let matiere = &matiere[tete * CANAUX..];
-    let retard = premiere_attaque(&entrelace(&ancien), CANAUX);
-
-    // 3. La longueur.
     let fondu = (SR as f32 * FONDU_S) as usize;
+
+    // 2. Le départ, et 3. la longueur — les deux ensemble, parce que la grille
+    //    de battements les décide ensemble quand on l'a.
+    let (matiere, retard, cale_aux_temps) = match cale {
+        // **Avec la grille.** Le greffon entre sur un battement, et sa matière
+        // est coupée à un nombre entier de battements : sans quoi chaque
+        // répétition de la boucle décalerait le suivant d'un reste, et la
+        // greffe se désaccorderait toute seule au fil du morceau.
+        Some(c) if c.periode_greffon_s > 0.0 => {
+            let (coupee, entiere) = decouper_aux_temps(
+                &matiere,
+                CANAUX,
+                c.phase_greffon_s * facteur,
+                c.periode_greffon_s * facteur,
+                fondu,
+            );
+            (
+                coupee.to_vec(),
+                (c.phase_remplace_s * SR as f32) as usize,
+                entiere,
+            )
+        }
+        // **Sans elle**, le repli d'hier : rogner le silence de tête du
+        // greffon, et le retarder de celui du stem qu'il remplace. Les tempos
+        // se rejoignent, les temps forts non.
+        _ => {
+            let tete = premiere_attaque(&matiere, CANAUX);
+            (
+                matiere[tete * CANAUX..].to_vec(),
+                premiere_attaque(&entrelace(&ancien), CANAUX),
+                false,
+            )
+        }
+    };
+    let matiere = matiere.as_slice();
+
     let boucles = compter_boucles(matiere.len() / CANAUX, cible, retard, fondu);
     let pose = assembler(matiere, CANAUX, cible, retard, fondu);
 
@@ -258,12 +350,14 @@ pub fn greffer(
         retard_s: retard as f32 / SR as f32,
         boucles,
         bpm_rendu: bpm_greffon.map(|b| b / facteur).unwrap_or(0.0),
+        cale_aux_temps,
     };
     tracing::info!(
         facteur = plan.facteur,
         octaves = plan.octaves,
         retard = plan.retard_s,
         boucles = plan.boucles,
+        cale = plan.cale_aux_temps,
         "greffe écrite"
     );
     Ok(plan)
@@ -409,6 +503,105 @@ mod tests {
     /// Le fondu ne doit pas dépasser la moitié d'une matière courte, sans quoi
     /// il ne resterait rien de non fondu et la boucle avancerait d'une trame à
     /// la fois.
+    /// Clics mono à une position connue, pour éprouver l'alignement.
+    fn clics(bpm: f32, secondes: f32, retard_s: f32) -> Vec<f32> {
+        let n = (SR as f32 * secondes) as usize;
+        let pas = (SR as f32 * 60.0 / bpm) as usize;
+        let mut s = vec![0.0f32; n];
+        for d in ((SR as f32 * retard_s) as usize..n).step_by(pas) {
+            for i in 0..(SR as usize / 100).min(n - d) {
+                s[d + i] = 1.0 - i as f32 / (SR as f32 / 100.0);
+            }
+        }
+        s
+    }
+
+    /// Les instants où une salve commence, en secondes.
+    fn attaques(signal: &[f32], canaux: usize) -> Vec<f32> {
+        let mut t = Vec::new();
+        let mut dedans = false;
+        for (i, trame) in signal.chunks_exact(canaux).enumerate() {
+            let fort = trame.iter().any(|v| v.abs() > 0.3);
+            if fort && !dedans {
+                t.push(i as f32 / SR as f32);
+            }
+            dedans = fort;
+        }
+        t
+    }
+
+    /// **La preuve que la boucle retombe juste**, et pas seulement qu'elle
+    /// entre juste. Une matière coupée à un compte rond de battements, répétée
+    /// pour tenir la place, doit poser toutes ses attaques sur la grille —
+    /// y compris celles des dernières répétitions, où une erreur de coupe se
+    /// serait accumulée.
+    #[test]
+    fn une_matiere_coupee_aux_temps_boucle_sur_la_grille() {
+        let bpm = 120.0;
+        let periode_s = 60.0 / bpm;
+        let fondu = (SR as f32 * FONDU_S) as usize;
+
+        // 2,1 s de clics : quatre battements et un reste, exprès. C'est le
+        // reste qui désaccorderait la boucle si on ne le coupait pas.
+        let greffon = clics(bpm, 2.1, 0.13);
+        let (coupe, entiere) = decouper_aux_temps(&greffon, 1, 0.13, periode_s, fondu);
+        assert!(entiere, "2,1 s à 120 BPM contient quatre battements");
+
+        let cible = (SR as f32 * 10.0) as usize;
+        let retard = (SR as f32 * 0.4) as usize;
+        let pose = assembler(coupe, 1, cible, retard, fondu);
+
+        let grille: Vec<f32> = attaques(&pose, 1);
+        assert!(grille.len() > 12, "trop peu d'attaques : {}", grille.len());
+        for t in &grille {
+            // Chaque attaque doit tomber sur 0,4 + k × 0,5 s.
+            let depuis = t - 0.4;
+            let ecart = (depuis / periode_s - (depuis / periode_s).round()).abs() * periode_s;
+            assert!(
+                ecart < 0.012,
+                "attaque à {t:.3} s, {:.1} ms hors grille",
+                ecart * 1000.0
+            );
+        }
+    }
+
+    /// Le contre-essai : sans la coupe, la même matière dérive. Sans lui, le
+    /// test précédent ne prouverait pas que c'est la coupe qui aligne.
+    #[test]
+    fn sans_la_coupe_la_boucle_derive() {
+        let bpm = 120.0;
+        let periode_s = 60.0 / bpm;
+        let fondu = (SR as f32 * FONDU_S) as usize;
+        let greffon = clics(bpm, 2.1, 0.13);
+        let brute = &greffon[(0.13 * SR as f32) as usize..];
+
+        let cible = (SR as f32 * 10.0) as usize;
+        let pose = assembler(brute, 1, cible, (SR as f32 * 0.4) as usize, fondu);
+
+        let pire = attaques(&pose, 1)
+            .iter()
+            .map(|t| {
+                let d = (t - 0.4) / periode_s;
+                (d - d.round()).abs() * periode_s
+            })
+            .fold(0.0f32, f32::max);
+        assert!(
+            pire > 0.05,
+            "la matière non coupée devrait dériver, pire écart {:.1} ms",
+            pire * 1000.0
+        );
+    }
+
+    /// Une matière plus courte qu'un battement se rend telle quelle plutôt que
+    /// de disparaître à la coupe.
+    #[test]
+    fn une_matiere_plus_courte_quun_temps_survit_a_la_coupe() {
+        let court = vec![0.5f32; (SR as f32 * 0.2) as usize];
+        let (rendu, entiere) = decouper_aux_temps(&court, 1, 0.0, 0.5, 100);
+        assert!(!entiere);
+        assert_eq!(rendu.len(), court.len());
+    }
+
     #[test]
     fn un_greffon_tres_court_ne_bloque_pas() {
         let bref = sinus(220.0, 0.005); // 5 ms, un quart du fondu
