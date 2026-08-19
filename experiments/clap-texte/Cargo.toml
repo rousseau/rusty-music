@@ -1,0 +1,26 @@
+# Essai : importer la tour texte de CLAP avec burn-onnx.
+#
+# Hors du workspace (voir son `exclude`) — un essai doit pouvoir échouer sans
+# rien casser d'autre. Licences : burn MIT OR Apache-2.0.
+[package]
+name = "clap-texte"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["cpu"]
+cpu = ["burn/ndarray"]
+metal = ["burn/wgpu"]
+
+[dependencies]
+burn = { version = "0.21" }
+burn-store = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+burn-onnx = "0.21"
+
+[profile.dev]
+opt-level = 1

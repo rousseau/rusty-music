@@ -1,0 +1,32 @@
+# Artéfacts de compilation — 111 Go sur cette machine.
+target/
+
+# Poids de modèles : 1,1 Go, et ils se récupèrent.
+# CLAP  : scripts/preparer-modele.sh   HTDemucs : scripts/preparer-demucs.sh
+# Les essais régénèrent les leurs (voir le README de chacun).
+models/
+experiments/*/modeles/
+
+# Bases locales : celle du dépôt est un reste de développement, celle qui
+# compte vit dans le dossier de données de l'application.
+*.db
+*.db-shm
+*.db-wal
+*.db.avant-*
+
+# Sorties de l'éditeur et de l'analyse, écrites à côté de la base.
+stems/
+
+.DS_Store
+
+# Réglages Claude Code propres à cette machine — settings.json se versionne,
+# settings.local.json non.
+.claude/settings.local.json
+
+# Schémas régénérés par Tauri à chaque build.
+apps/desktop/gen/schemas/
+
+# Sortie de `sonder.py reference` : quelques secondes à refaire, et sans usage
+# sans le modèle de 501 Mo qui l'accompagne. Le cache `genres.json` de l'essai
+# MusicBrainz, lui, se versionne — il vaut trente minutes de requêtes cadencées.
+experiments/clap-texte/reference.json

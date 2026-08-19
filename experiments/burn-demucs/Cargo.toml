@@ -1,0 +1,34 @@
+# Essai : importer HTDemucs (démixage, module 3) avec burn-onnx.
+#
+# Hors du workspace — un essai doit pouvoir échouer sans rien casser.
+# Modèle : StemSplitio/htdemucs-onnx, MIT, 316 Mo, 4 stems en un fichier.
+[package]
+name = "burn-demucs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["metal"]
+metal = ["burn/wgpu"]
+cpu = ["burn/ndarray"]
+metal-nu = ["burn/wgpu"]
+
+[dependencies]
+# `std` obligatoire : sans lui Burn bascule sur ses maths de substitution et
+# rend des nombres faux sans avertir. Leçon payée sur CLAP.
+burn = { version = "0.21", default-features = false, features = [
+    "std", "autotune", "fusion",
+] }
+# Pour isoler la panne du backend wgpu : `--no-default-features --features
+# metal-nu` retire fusion et autotune, les deux optimisations susceptibles de
+# réécrire le graphe à l'exécution.
+burn-store = "0.21"
+
+[build-dependencies]
+burn-onnx = "0.21"
+
+# 24 765 nœuds : le code généré est énorme, compiler sans optimisation serait
+# déraisonnable.
+[profile.dev]
+opt-level = 1

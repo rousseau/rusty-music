@@ -1,0 +1,125 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/cli", "crates/player", "crates/analysis", "crates/editor", "apps/desktop"]
+# `experiments/` reste hors du workspace : ce qu'on y essaie doit pouvoir ne
+# pas compiler sans empêcher `cargo build` de passer sur le reste.
+exclude = ["experiments"]
+
+# Les dépendances sont optimisées même en debug. Le décodage audio est
+# entièrement processeur : non optimisé, `symphonia` met 18 s à calculer
+# l'enveloppe d'une piste, contre 324 ms une fois optimisé.
+#
+# **`"*"` ne couvre que les dépendances, pas les membres du workspace.** Piège
+# coûteux : `rusty-music-analysis` restait en `opt-level = 0`, où `distance2`
+# n'est pas inliné et chaque soustraction passe par un appel de fermeture. Le
+# graphe des 12 plus proches voisins y demandait **524 s au lieu de 19 s** —
+# neuf minutes à saturer tous les cœurs, sans rien afficher. L'application
+# passait pour plantée.
+[profile.dev.package."*"]
+opt-level = 3
+
+# Nos trois crates de calcul numérique, à la main. Le reste (core, cli,
+# desktop) garde `opt-level = 0` : compilation rapide et traces exploitables,
+# puisqu'il n'y tourne aucune boucle chaude.
+[profile.dev.package.rusty-music-analysis]
+opt-level = 3
+
+[profile.dev.package.rusty-music-player]
+opt-level = 3
+
+[profile.dev.package.rusty-music-editor]
+opt-level = 3
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+
+# Versions épinglées au niveau du workspace : les crates les reprennent
+# avec `workspace = true`. Ajuster ici si `cargo build` remonte une
+# incompatibilité d'API (voir README, section « Premier build »).
+[workspace.dependencies]
+anyhow    = "1"
+thiserror = "2"
+rusqlite  = { version = "0.32", features = ["bundled"] }
+lofty     = "0.22"
+notify    = "8"
+walkdir   = "2"
+clap      = { version = "4", features = ["derive"] }
+tracing   = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Lecture audio (module 1). rodio décode via symphonia — le décodeur retenu
+# dans architecture.md. `default-features = false` écarte `recording`, dont on
+# n'a pas l'usage. Licences : rodio MIT/Apache-2.0, cpal Apache-2.0.
+# cpal doit rester sur la version qu'embarque rodio, sinon deux copies du crate
+# cohabitent et leurs types ne se parlent plus.
+rodio = { version = "0.22", default-features = false, features = [
+    "playback", "mp3", "mp4", "flac", "vorbis", "wav",
+] }
+cpal = "0.17"
+
+# Interface (module 1). `CLAUDE.md` : HTML/CSS/JS empaqueté avec Tauri, backend
+# Rust exposé à l'UI. Licences Apache-2.0 OR MIT.
+tauri       = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+# Sélecteur de dossier natif pour les réglages : choisir la source de la
+# bibliothèque en naviguant, plutôt qu'en saisissant un chemin.
+tauri-plugin-dialog = "2"
+# Sérialisation des données du moteur vers l'interface — `architecture.md` :
+# « le moteur expose positions, clusters, métadonnées à l'interface (JSON) ».
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Étirement temporel à hauteur préservée, pour la lecture à vitesse variable et
+# pour l'éditeur. **Vérifié avant d'écrire le nôtre** : `wsola` fait exactement
+# cela, en 468 lignes de Rust pur sans aucune dépendance transitive. La méthode
+# — recouvrement-addition par similarité de forme d'onde — est celle de
+# `atempo` chez ffmpeg et de VLC : temporelle, donc sans les artefacts de phase
+# d'un vocodeur, et conçue pour le temps réel (`push`/`pull`, `set_tempo` en
+# direct). Mesuré : hauteur inchangée à 441 Hz de 0,5× à 2×. Licence MIT.
+wsola = "0.1"
+
+# Décodage Opus, que symphonia ne sait pas faire — un album entier de la
+# bibliothèque de test restait hors de la carte. `opus-decoder` est un portage
+# **pur Rust** de libopus : ni `unsafe`, ni FFI, ni bibliothèque système, ni
+# `cmake`. Le crate `opus` officiel, lui, compile libopus depuis les sources et
+# aurait imposé cmake à quiconque construit le projet. `ogg` démultiplexe le
+# conteneur. Licences MIT/Apache-2.0 et BSD-3.
+ogg = "0.9"
+opus-decoder = "0.1"
+
+# Client HTTP pour MusicBrainz (genres des artistes et des albums). `ureq` et
+# non `reqwest` : bloquant et pur Rust, **31 crates transitifs contre 106** —
+# un fil de fond qui émet une requête par seconde n'a que faire d'un runtime
+# asynchrone, et reqwest tire tokio, hyper, h2 et tout `futures`. Arbre de
+# licences vérifié par `cargo metadata` : tout permissif (MIT / Apache-2.0 /
+# ISC / BSD), aucun GPL.
+ureq       = { version = "3.4", features = ["rustls"] }
+
+# Inférence (module 2). `CLAUDE.md` retient Burn pour le calcul : le modèle
+# ONNX est traduit en Rust natif au build par `burn-onnx`, puis exécuté par le
+# backend choisi — `wgpu` couvre Metal/Vulkan/DX12 d'un même code. Mesuré
+# contre ONNX Runtime : cosinus 1,0000000000, et 20 % plus rapide sur Metal
+# pour notre lot de cinq fenêtres. Licences MIT OR Apache-2.0.
+# **`std` est obligatoire.** Sans lui, Burn bascule sur ses implémentations
+# mathématiques de substitution : le modèle compile, tourne, et rend des
+# empreintes entièrement fausses sans le moindre avertissement. Attrapé par
+# `empreinte_reference`, jamais par le compilateur.
+#
+# On ne prend pas pour autant les défauts de Burn : ils tirent `burn-core`
+# entier, dont son support de jeux de données, et avec lui un `rusqlite` qui
+# entre en conflit avec le nôtre (`links = "sqlite3"` ne tolère qu'une copie).
+# D'où cette liste, qui reconstitue les défauts de `burn-wgpu` — `std`,
+# `autotune`, `fusion` — et rien d'autre.
+burn       = { version = "0.21", default-features = false, features = [
+    "std", "autotune", "fusion",
+] }
+burn-store = "0.21"
+burn-onnx  = "0.21"
+# Transformée de Fourier pour les spectrogrammes log-mel. MIT/Apache-2.0.
+rustfft = "6"
+# Projection 2D (t-SNE Barnes-Hut) pour la carte du module 2. Licence MIT.
+# Autonome : n'entraîne ni linfa ni une BLAS système.
+bhtsne = "0.7"

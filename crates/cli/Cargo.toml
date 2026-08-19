@@ -1,0 +1,21 @@
+[package]
+name = "rusty-music-cli"
+description = "Pilote en ligne de commande du cœur d'ingestion."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rusty-music"
+path = "src/main.rs"
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+rusty-music-player = { path = "../player" }
+rusty-music-analysis = { path = "../analysis" }
+rusty-music-editor = { path = "../editor" }
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions de la fenêtre principale. Les commandes du moteur sont définies par l'application elle-même et n'ont pas besoin d'être listées ici.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

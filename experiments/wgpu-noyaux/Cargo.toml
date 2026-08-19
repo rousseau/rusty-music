@@ -1,0 +1,27 @@
+# Isole le noyau wgpu fautif : un modèle ONNX par opérateur suspect, exécuté
+# sur les deux backends et comparé à une référence ONNX Runtime.
+#
+# Hors du workspace. Voir `docs/module3-demixage.md` pour ce qui a mené ici.
+[package]
+name = "wgpu-noyaux"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["metal"]
+metal = ["burn/wgpu"]
+cpu = ["burn/ndarray"]
+
+[dependencies]
+# `std` obligatoire : sans lui Burn bascule sur ses maths de substitution.
+burn = { version = "0.21", default-features = false, features = [
+    "std", "autotune", "fusion",
+] }
+burn-store = "0.21"
+
+[build-dependencies]
+burn-onnx = "0.21"
+
+[profile.dev]
+opt-level = 1

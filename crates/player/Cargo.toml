@@ -1,0 +1,19 @@
+[package]
+name = "rusty-music-player"
+description = "Lecture audio (module 1) : sortie, transport, file d'attente."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+# Déjà épinglé au niveau du workspace pour le module 2 : le spectrogramme
+# des stems s'en sert aussi. Pas une nouvelle dépendance, un nouvel usage.
+wsola.workspace      = true
+rustfft.workspace   = true
+rodio.workspace   = true
+cpal.workspace    = true
+thiserror.workspace = true
+serde.workspace   = true
+tracing.workspace = true

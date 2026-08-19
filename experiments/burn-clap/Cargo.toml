@@ -1,0 +1,30 @@
+# Essai : importer l'encodeur audio de CLAP avec burn-onnx.
+#
+# Hors du workspace (voir son `exclude`) — c'est un essai, il doit pouvoir
+# échouer sans rien casser d'autre. Licences : burn MIT OR Apache-2.0.
+[package]
+name = "burn-clap"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Le choix du backend est l'objet même de l'essai : `ndarray` est le CPU de
+# référence, `wgpu` passe par Metal sur ce Mac (et par Vulkan/DX12 ailleurs).
+[features]
+default = ["cpu"]
+cpu = ["burn/ndarray"]
+metal = ["burn/wgpu"]
+
+[dependencies]
+burn = { version = "0.21" }
+# Le code généré charge les poids via `burn_store` : `burn-onnx` produit les
+# `use` correspondants sans que la dépendance soit tirée pour autant.
+burn-store = "0.21"
+
+[build-dependencies]
+burn-onnx = "0.21"
+
+# Le graphe compte 8 031 nœuds : le code généré est énorme, et le compiler
+# sans optimisation prendrait un temps déraisonnable.
+[profile.dev]
+opt-level = 1

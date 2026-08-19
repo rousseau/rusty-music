@@ -1,0 +1,22 @@
+[package]
+name = "rusty-music-desktop"
+description = "Application de bureau : coquille « Atelier », module 1 (Lecteur)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+rusty-music-core = { path = "../../crates/core" }
+rusty-music-player = { path = "../../crates/player" }
+rusty-music-analysis = { path = "../../crates/analysis" }
+rusty-music-editor = { path = "../../crates/editor" }
+tauri.workspace   = true
+tauri-plugin-dialog.workspace = true
+serde.workspace   = true
+anyhow.workspace  = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

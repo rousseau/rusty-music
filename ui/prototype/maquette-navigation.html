@@ -1,0 +1,620 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — modèles de navigation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --ink:#14131A; --surface:#1D1B25; --surface-2:#252231; --line:#332F42;
+    --text:#EDE9F2; --muted:#9A94A8;
+    --c1:#E8A33D; --c2:#E3684C; --c3:#C05FA8; --c4:#7B6BD6; --c5:#3FA9C4; --c6:#5EC08A;
+    --glow:.55;
+    --display:'Bricolage Grotesque', Georgia, serif;
+    --body:'Inter Tight', system-ui, sans-serif;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --r:10px;
+  }
+  .light {
+    --ink:#E9EBEF; --surface:#FFFFFF; --surface-2:#F2F4F7; --line:#D6DAE2;
+    --text:#1A1C22; --muted:#6B7280;
+    --glow:.22;
+  }
+
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--ink); color:var(--text);
+    font-family:var(--body); font-size:14px; overflow:hidden;
+  }
+  button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+
+  /* ---------- meta : sélecteur de variante (hors produit) ---------- */
+  .meta {
+    position:fixed; inset:0 0 auto 0; height:46px; z-index:60;
+    display:flex; align-items:center; gap:14px; padding:0 14px;
+    background:#0A090E; color:#EDE9F2; border-bottom:1px solid #26232F;
+  }
+  .meta__tag {
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+    text-transform:uppercase; color:#7A7488;
+  }
+  .meta__seg { display:flex; gap:2px; background:#17151E; padding:3px; border-radius:8px; }
+  .meta__seg button {
+    padding:5px 12px; border-radius:6px; font-size:12.5px; color:#8B8598; white-space:nowrap;
+  }
+  .meta__seg button[aria-pressed="true"] { background:#2E2A3B; color:#EDE9F2; }
+  .meta__note { font-size:12px; color:#7A7488; margin-left:auto; }
+  @media (max-width:820px){ .meta__note { display:none; } }
+
+  /* ---------- coquille ---------- */
+  .app {
+    position:fixed; inset:46px 0 0 0;
+    display:grid; overflow:hidden;
+  }
+
+  /* ---------- carte ---------- */
+  .stage { position:relative; overflow:hidden; grid-area:stage; min-width:0; min-height:0; }
+  canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+
+  .tip {
+    position:absolute; pointer-events:none; opacity:0; transform:translate(-50%,-140%);
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px; white-space:nowrap; z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+  .tip b { display:block; font-weight:600; font-size:13px; }
+  .tip span { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+  /* ---------- blocs communs ---------- */
+  .panel { background:var(--surface); border:1px solid var(--line); }
+  .h {
+    font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted); margin:0 0 10px;
+  }
+  .field {
+    width:100%; padding:8px 10px; border-radius:8px; font:inherit;
+    background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+  }
+  .field::placeholder { color:var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip {
+    padding:4px 9px; border-radius:999px; font-size:12px;
+    border:1px solid var(--line); color:var(--muted);
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .chip[aria-pressed="true"] { color:var(--text); border-color:transparent; background:var(--surface-2); }
+  .chip i { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .modes { display:flex; gap:3px; background:var(--surface-2); padding:3px; border-radius:9px; }
+  .modes button { flex:1; padding:7px 4px; border-radius:6px; font-size:13px; color:var(--muted); }
+  .modes button[aria-pressed="true"] { background:var(--ink); color:var(--text); }
+
+  /* ---------- rail gauche ---------- */
+  .rail { grid-area:rail; padding:16px; display:flex; flex-direction:column; gap:20px; overflow:auto; }
+  .rail__brand { font-family:var(--display); font-size:19px; font-weight:800; letter-spacing:-.02em; }
+  .rail__brand em { font-style:normal; color:var(--c1); }
+
+  /* ---------- inspecteur droit ---------- */
+  .insp { grid-area:insp; padding:16px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
+  .cover {
+    aspect-ratio:1; border-radius:var(--r); background:
+      radial-gradient(120% 120% at 25% 15%, var(--c3), transparent 55%),
+      radial-gradient(120% 120% at 80% 80%, var(--c5), transparent 60%), var(--surface-2);
+    display:grid; place-items:center;
+  }
+  .cover span { font-family:var(--mono); font-size:10px; color:rgba(255,255,255,.75); }
+  .insp__title { font-family:var(--display); font-size:20px; font-weight:600; line-height:1.15; margin:0; }
+  .insp__artist { color:var(--muted); margin:2px 0 0; }
+  .meta-grid { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; font-size:12.5px; }
+  .meta-grid dt { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); align-self:center; }
+  .meta-grid dd { margin:0; font-family:var(--mono); }
+  .bio { font-size:12.5px; color:var(--muted); line-height:1.5; margin:0; }
+
+  /* ---------- transport ---------- */
+  .transport {
+    grid-area:trans; display:flex; align-items:center; gap:16px; padding:0 16px;
+    border-top:1px solid var(--line); background:var(--surface);
+  }
+  .transport__art {
+    width:38px; height:38px; border-radius:6px; flex:none;
+    background:linear-gradient(140deg, var(--c4), var(--c2));
+  }
+  .transport__now { min-width:0; }
+  .transport__now b { display:block; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .transport__now span { font-size:12px; color:var(--muted); }
+  .transport__play {
+    width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center;
+    background:var(--text); color:var(--ink); font-size:11px;
+  }
+  .wave { flex:1; height:26px; display:flex; align-items:center; gap:1.5px; min-width:40px; }
+  .wave i { flex:1; background:var(--line); border-radius:1px; }
+  .wave i.on { background:var(--c1); }
+  .tc { font-family:var(--mono); font-size:11.5px; color:var(--muted); flex:none; }
+
+  /* ---------- éditeur ---------- */
+  .editor { grid-area:edit; display:flex; flex-direction:column; overflow:hidden; }
+  .editor__bar {
+    display:flex; align-items:center; gap:10px; padding:9px 14px;
+    border-bottom:1px solid var(--line); flex:none;
+  }
+  .editor__bar .h { margin:0; }
+  .editor__tools { display:flex; gap:5px; margin-left:auto; flex-wrap:wrap; }
+  .tool { padding:4px 10px; border-radius:6px; border:1px solid var(--line); font-size:12px; color:var(--muted); }
+  .lanes { flex:1; overflow:auto; padding:10px 14px; display:flex; flex-direction:column; gap:7px; }
+  .lane { display:grid; grid-template-columns:104px 1fr; gap:10px; align-items:center; }
+  .lane__name { font-family:var(--mono); font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lane__clip { height:30px; border-radius:5px; display:flex; align-items:center; gap:1.5px; padding:0 5px; overflow:hidden; }
+  .lane__clip i { flex:1; background:rgba(0,0,0,.35); border-radius:1px; }
+  .drop {
+    border:1px dashed var(--line); border-radius:var(--r); padding:14px;
+    text-align:center; color:var(--muted); font-size:12.5px;
+  }
+
+  /* ---------- mini-carte (variante C) ---------- */
+  .minimap { grid-area:mini; position:relative; border-right:1px solid var(--line); overflow:hidden; }
+  .minimap__label {
+    position:absolute; left:12px; top:12px; z-index:5;
+    font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+  }
+
+  /* =======================================================
+     VARIANTE A — Immersion : carte plein cadre, panneaux flottants
+     ======================================================= */
+  .v-a .app { grid-template:"stage" 1fr / 1fr; }
+  .v-a .stage { grid-area:stage; }
+  .v-a .rail, .v-a .insp, .v-a .transport, .v-a .editor {
+    position:absolute; z-index:10; border-radius:var(--r);
+    background:color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter:blur(14px); border:1px solid var(--line);
+    box-shadow:0 14px 40px rgba(0,0,0,.4);
+  }
+  .v-a .rail { left:14px; top:14px; width:224px; max-height:calc(100% - 110px); }
+  .v-a .insp { right:14px; top:14px; width:264px; max-height:calc(100% - 110px); }
+  .v-a .transport {
+    left:50%; transform:translateX(-50%); bottom:14px;
+    width:min(620px, calc(100% - 28px)); height:58px; border-top:1px solid var(--line);
+  }
+  .v-a .editor { left:14px; right:14px; bottom:82px; height:40%; }
+  .v-a .minimap { display:none; }
+
+  /* =======================================================
+     VARIANTE B — Atelier : rails fixes, éditeur en dock
+     ======================================================= */
+  .v-b .app {
+    grid-template:
+      "rail stage insp" 1fr
+      "rail trans insp" 62px / 232px 1fr 272px;
+  }
+  .v-b.is-edit .app {
+    grid-template:
+      "rail stage insp" 1fr
+      "rail edit  insp" 38%
+      "rail trans insp" 62px / 232px 1fr 272px;
+  }
+  .v-b .rail { border-right:1px solid var(--line); background:var(--surface); }
+  .v-b .insp { border-left:1px solid var(--line); background:var(--surface); }
+  .v-b .editor { background:var(--surface); border-top:1px solid var(--line); }
+  .v-b .minimap { display:none; }
+
+  /* =======================================================
+     VARIANTE C — Établi : la carte devient réserve de matière
+     ======================================================= */
+  .v-c .app {
+    grid-template:
+      "rail stage" 1fr
+      "rail trans" 62px / 232px 1fr;
+  }
+  .v-c.is-edit .app {
+    grid-template:
+      "rail mini edit" 1fr
+      "rail trans trans" 62px / 232px 300px 1fr;
+  }
+  .v-c .rail { border-right:1px solid var(--line); background:var(--surface); }
+  .v-c .insp { display:none; }
+  .v-c .editor { background:var(--surface); border-left:1px solid var(--line); }
+  .v-c:not(.is-edit) .minimap { display:none; }
+  .v-c.is-edit .stage { display:none; }
+
+  /* visibilité par mode */
+  .app .editor { display:none; }
+  .is-edit .editor { display:flex; }
+  .is-listen .stage { opacity:.42; }
+  .v-b.is-listen .insp, .v-a.is-listen .insp { outline:1px solid var(--c1); }
+
+  @media (prefers-reduced-motion:no-preference) {
+    .tip { transition:opacity .12s ease; }
+    .stage { transition:opacity .3s ease; }
+  }
+</style>
+
+<div class="meta">
+  <span class="meta__tag">Maquette</span>
+  <div class="meta__seg" id="variants">
+    <button data-v="a" aria-pressed="true">A — Immersion</button>
+    <button data-v="b" aria-pressed="false">B — Atelier</button>
+    <button data-v="c" aria-pressed="false">C — Établi</button>
+  </div>
+  <button class="meta__seg" id="theme" style="padding:5px 12px;font-size:12.5px;">Thème clair</button>
+  <span class="meta__note">Données fictives — 680 morceaux générés</span>
+</div>
+
+<div class="app">
+
+  <!-- rail -->
+  <aside class="rail panel">
+    <div class="rail__brand">carto<em>.</em>fm</div>
+
+    <div>
+      <p class="h">Mode</p>
+      <div class="modes" id="modes">
+        <button data-m="listen" aria-pressed="false">Écoute</button>
+        <button data-m="explore" aria-pressed="true">Explorer</button>
+        <button data-m="edit" aria-pressed="false">Éditer</button>
+      </div>
+    </div>
+
+    <div>
+      <p class="h">Chercher</p>
+      <input class="field" id="q" placeholder="Artiste, titre, style…">
+    </div>
+
+    <div>
+      <p class="h">Colorer par</p>
+      <div class="modes" id="colorby" style="flex-direction:column;">
+        <button data-c="genre" aria-pressed="true">Style</button>
+        <button data-c="year" aria-pressed="false">Année</button>
+        <button data-c="bpm" aria-pressed="false">Tempo</button>
+      </div>
+    </div>
+
+    <div>
+      <p class="h">Styles</p>
+      <div class="chips" id="legend"></div>
+    </div>
+
+    <div>
+      <p class="h">Chemin</p>
+      <button class="tool" id="pathbtn" style="width:100%;padding:8px;">Tracer un chemin</button>
+      <p class="bio" id="pathstate" style="margin-top:8px;">Cliquez le morceau de départ, puis celui d'arrivée.</p>
+    </div>
+  </aside>
+
+  <!-- carte -->
+  <section class="stage">
+    <canvas id="map"></canvas>
+    <div class="tip" id="tip"><b></b><span></span></div>
+  </section>
+
+  <!-- mini-carte (variante C en édition) -->
+  <section class="minimap">
+    <span class="minimap__label">Réserve — glissez vers les pistes</span>
+    <canvas id="mini"></canvas>
+  </section>
+
+  <!-- inspecteur -->
+  <aside class="insp panel">
+    <div class="cover"><span id="coverkey">—</span></div>
+    <div>
+      <h2 class="insp__title" id="itTitle">Aucun morceau</h2>
+      <p class="insp__artist" id="itArtist">Survolez ou cliquez un point</p>
+    </div>
+    <dl class="meta-grid">
+      <dt>Style</dt><dd id="itGenre">—</dd>
+      <dt>Année</dt><dd id="itYear">—</dd>
+      <dt>Tempo</dt><dd id="itBpm">—</dd>
+      <dt>Tonalité</dt><dd id="itKey">—</dd>
+    </dl>
+    <div>
+      <p class="h">Voisins soniques</p>
+      <div id="neighbors" class="chips"></div>
+    </div>
+    <div>
+      <p class="h">À propos</p>
+      <p class="bio" id="itBio">Les biographies viendraient de MusicBrainz et Wikidata. Les critiques d'albums n'ont pas d'API libre : prévoir un lien sortant.</p>
+    </div>
+  </aside>
+
+  <!-- éditeur -->
+  <section class="editor">
+    <div class="editor__bar">
+      <p class="h">Établi</p>
+      <div class="editor__tools">
+        <button class="tool">Démixer</button>
+        <button class="tool">Tempo 124</button>
+        <button class="tool">Hauteur ±0</button>
+        <button class="tool">Aligner</button>
+      </div>
+    </div>
+    <div class="lanes" id="lanes"></div>
+  </section>
+
+  <!-- transport -->
+  <footer class="transport">
+    <button class="transport__play">▶</button>
+    <div class="transport__art"></div>
+    <div class="transport__now">
+      <b id="npTitle">Rien en lecture</b>
+      <span id="npArtist">Choisissez un point sur la carte</span>
+    </div>
+    <div class="wave" id="wave"></div>
+    <span class="tc" id="tc">00:00 / 03:41</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const app  = document.body;
+
+  /* ---------- données fictives ---------- */
+  const GENRES = [
+    { name:'Ambient',    v:'--c5', c:[.22,.28] },
+    { name:'Jazz',       v:'--c1', c:[.70,.24] },
+    { name:'Post-punk',  v:'--c2', c:[.34,.72] },
+    { name:'Électro',    v:'--c4', c:[.76,.66] },
+    { name:'Folk',       v:'--c6', c:[.50,.44] },
+    { name:'Hip-hop',    v:'--c3', c:[.18,.60] },
+  ];
+  const KEYS = ['C min','G maj','A min','D maj','F# min','E maj','B min','Eb maj'];
+  const WORDS = ['Verre','Lisière','Nord','Sillage','Halo','Bruit','Marée','Éclat','Cendre','Pluie','Fenêtre','Onde','Tunnel','Miel','Fracture'];
+  const NAMES = ['Auber','Kessel','Nour','Vantage','Lise M.','Orage','Petit Nord','Sable','Kombo','Vélin','Rade','Ivo'];
+  const rnd = (s => () => (s = s*16807 % 2147483647) / 2147483647)(42);
+  const gauss = () => (rnd()+rnd()+rnd()+rnd()-2)/2;
+
+  const tracks = [];
+  for (let i=0; i<680; i++) {
+    const g = GENRES[Math.floor(rnd()*GENRES.length)];
+    tracks.push({
+      i,
+      x: g.c[0] + gauss()*0.11,
+      y: g.c[1] + gauss()*0.11,
+      genre: g,
+      title: WORDS[Math.floor(rnd()*WORDS.length)] + ' ' + WORDS[Math.floor(rnd()*WORDS.length)].toLowerCase(),
+      artist: NAMES[Math.floor(rnd()*NAMES.length)],
+      year: 1968 + Math.floor(rnd()*57),
+      bpm: 62 + Math.floor(rnd()*108),
+      key: KEYS[Math.floor(rnd()*KEYS.length)],
+    });
+  }
+
+  /* ---------- état ---------- */
+  let variant='a', mode='explore', colorBy='genre', theme='dark';
+  let query='', hover=null, selected=null, path=[], pathPick=null, offGenres=new Set();
+
+  const css = n => getComputedStyle(root).getPropertyValue(n).trim();
+  const matches = t => {
+    if (offGenres.has(t.genre.name)) return false;
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)
+        || t.genre.name.toLowerCase().includes(q) || String(t.year).includes(q);
+  };
+  const ramp = (t, a, b) => {
+    const k = Math.max(0, Math.min(1, (t-a)/(b-a)));
+    const stops = [css('--c5'), css('--c4'), css('--c3'), css('--c2'), css('--c1')];
+    return stops[Math.min(stops.length-1, Math.floor(k*stops.length))];
+  };
+  const colorOf = t =>
+    colorBy==='genre' ? css(t.genre.v) :
+    colorBy==='year'  ? ramp(t.year, 1968, 2024) : ramp(t.bpm, 62, 170);
+
+  /* ---------- rendu carte ---------- */
+  function draw(canvas) {
+    const ctx = canvas.getContext('2d');
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (r.width < 2 || r.height < 2) return;
+    canvas.width = r.width*dpr; canvas.height = r.height*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,r.width,r.height);
+
+    const pad = 30;
+    const X = t => pad + t.x*(r.width-pad*2);
+    const Y = t => pad + t.y*(r.height-pad*2);
+
+    // îlots (héritage Islands of Music)
+    if (colorBy==='genre') {
+      ctx.globalAlpha = parseFloat(css('--glow')) * .34;
+      GENRES.forEach(g => {
+        if (offGenres.has(g.name)) return;
+        const cx = pad + g.c[0]*(r.width-pad*2), cy = pad + g.c[1]*(r.height-pad*2);
+        const rad = Math.min(r.width, r.height) * .21;
+        const grd = ctx.createRadialGradient(cx,cy,0,cx,cy,rad);
+        grd.addColorStop(0, css(g.v)); grd.addColorStop(1, 'transparent');
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(cx,cy,rad,0,7); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // points
+    tracks.forEach(t => {
+      const on = matches(t);
+      ctx.globalAlpha = on ? .92 : .13;          // filtre = estomper, jamais masquer
+      ctx.fillStyle = colorOf(t);
+      ctx.beginPath(); ctx.arc(X(t), Y(t), on ? 2.9 : 2.1, 0, 7); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // chemin
+    if (path.length > 1) {
+      ctx.strokeStyle = css('--text'); ctx.lineWidth = 1.4; ctx.setLineDash([5,4]);
+      ctx.beginPath(); path.forEach((t,i) => i ? ctx.lineTo(X(t),Y(t)) : ctx.moveTo(X(t),Y(t))); ctx.stroke();
+      ctx.setLineDash([]);
+      path.forEach((t,i) => {
+        ctx.fillStyle = css('--text');
+        ctx.beginPath(); ctx.arc(X(t),Y(t), i===0||i===path.length-1 ? 6 : 4, 0, 7); ctx.fill();
+        ctx.fillStyle = css('--ink'); ctx.font = '600 9px ' + css('--mono');
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(String(i+1), X(t), Y(t)+.5);
+      });
+    }
+
+    // sélection
+    if (selected) {
+      ctx.strokeStyle = css('--text'); ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(X(selected), Y(selected), 9, 0, 7); ctx.stroke();
+    }
+    canvas._proj = {X, Y};
+  }
+
+  const mapC = document.getElementById('map');
+  const miniC = document.getElementById('mini');
+  const render = () => { draw(mapC); if (variant==='c' && mode==='edit') draw(miniC); };
+
+  /* ---------- interactions carte ---------- */
+  function pick(canvas, ev) {
+    const r = canvas.getBoundingClientRect();
+    const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+    const p = canvas._proj; if (!p) return null;
+    let best = null, bd = 144;
+    tracks.forEach(t => {
+      if (!matches(t)) return;
+      const d = (p.X(t)-mx)**2 + (p.Y(t)-my)**2;
+      if (d < bd) { bd = d; best = t; }
+    });
+    return best;
+  }
+
+  const tip = document.getElementById('tip');
+  mapC.addEventListener('mousemove', ev => {
+    const t = pick(mapC, ev); hover = t;
+    if (t) {
+      const r = mapC.getBoundingClientRect();
+      tip.style.left = (ev.clientX - r.left) + 'px';
+      tip.style.top  = (ev.clientY - r.top) + 'px';
+      tip.style.opacity = 1;
+      tip.querySelector('b').textContent = t.title;
+      tip.querySelector('span').textContent = t.artist + ' · ' + t.year + ' · ' + t.bpm + ' BPM';
+    } else tip.style.opacity = 0;
+  });
+  mapC.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+
+  mapC.addEventListener('click', ev => {
+    const t = pick(mapC, ev); if (!t) return;
+    if (pathPick) {
+      if (!pathPick.a) { pathPick.a = t; setPathState('Départ : ' + t.title + ". Cliquez l'arrivée."); }
+      else { buildPath(pathPick.a, t); pathPick = null; }
+    }
+    select(t);
+  });
+
+  /* ---------- chemin entre deux morceaux ---------- */
+  function buildPath(a, b) {
+    const steps = 6, used = new Set([a.i, b.i]);
+    const out = [a];
+    for (let s=1; s<steps; s++) {
+      const k = s/steps, tx = a.x+(b.x-a.x)*k, ty = a.y+(b.y-a.y)*k;
+      let best=null, bd=Infinity;
+      tracks.forEach(t => {
+        if (used.has(t.i) || !matches(t)) return;
+        const d = (t.x-tx)**2 + (t.y-ty)**2;
+        if (d < bd) { bd = d; best = t; }
+      });
+      if (best) { used.add(best.i); out.push(best); }
+    }
+    out.push(b); path = out;
+    setPathState(path.length + ' morceaux, de « ' + a.title + ' » à « ' + b.title + ' ».');
+    if (mode==='edit') fillLanes();
+    render();
+  }
+  const setPathState = s => document.getElementById('pathstate').textContent = s;
+
+  document.getElementById('pathbtn').addEventListener('click', () => {
+    pathPick = {a:null}; path = [];
+    setPathState('Cliquez le morceau de départ sur la carte.');
+    render();
+  });
+
+  /* ---------- inspecteur & transport ---------- */
+  function select(t) {
+    selected = t;
+    document.getElementById('itTitle').textContent = t.title;
+    document.getElementById('itArtist').textContent = t.artist;
+    document.getElementById('itGenre').textContent = t.genre.name;
+    document.getElementById('itYear').textContent = t.year;
+    document.getElementById('itBpm').textContent = t.bpm + ' BPM';
+    document.getElementById('itKey').textContent = t.key;
+    document.getElementById('coverkey').textContent = t.key;
+    document.getElementById('npTitle').textContent = t.title;
+    document.getElementById('npArtist').textContent = t.artist + ' · ' + t.genre.name;
+
+    const near = tracks
+      .filter(o => o.i !== t.i)
+      .map(o => ({o, d:(o.x-t.x)**2 + (o.y-t.y)**2}))
+      .sort((p,q) => p.d-q.d).slice(0,4);
+    document.getElementById('neighbors').innerHTML = near
+      .map(n => '<span class="chip">' + n.o.title + '</span>').join('');
+    render();
+  }
+
+  document.getElementById('wave').innerHTML =
+    Array.from({length:64}, (_,i) =>
+      '<i class="' + (i<26 ? 'on' : '') + '" style="height:' + (18 + Math.sin(i*.7)*10 + (i%5)*3) + '%"></i>').join('');
+
+  /* ---------- éditeur ---------- */
+  function fillLanes() {
+    const el = document.getElementById('lanes');
+    const src = path.length ? path.slice(0,4) : (selected ? [selected] : []);
+    if (!src.length) {
+      el.innerHTML = '<p class="drop">Choisissez un morceau sur la carte, ou tracez un chemin : ses étapes deviennent des pistes.</p>';
+      return;
+    }
+    const stems = ['voix','batterie','basse','autres'];
+    el.innerHTML = src.map((t, i) =>
+      '<div class="lane"><span class="lane__name">' + (stems[i] || 'piste') + ' · ' + t.title + '</span>' +
+      '<div class="lane__clip" style="background:' + colorOf(t) + '">' +
+      Array.from({length:70}, (_,k) => '<i style="height:' + (16 + Math.abs(Math.sin(k*.4+i))*70) + '%"></i>').join('') +
+      '</div></div>').join('') +
+      '<p class="drop">Glissez d\'autres morceaux depuis la carte pour les superposer.</p>';
+  }
+
+  /* ---------- contrôles ---------- */
+  const press = (container, attr, cb) => {
+    container.addEventListener('click', ev => {
+      const b = ev.target.closest('button[' + attr + ']'); if (!b) return;
+      [...container.querySelectorAll('button')].forEach(x => x.setAttribute('aria-pressed', x===b));
+      cb(b.getAttribute(attr));
+    });
+  };
+
+  press(document.getElementById('variants'), 'data-v', v => {
+    variant = v; applyShell();
+  });
+  press(document.getElementById('modes'), 'data-m', m => {
+    mode = m; applyShell();
+  });
+  press(document.getElementById('colorby'), 'data-c', c => { colorBy = c; render(); });
+
+  document.getElementById('q').addEventListener('input', e => { query = e.target.value; render(); });
+
+  document.getElementById('theme').addEventListener('click', e => {
+    theme = theme==='dark' ? 'light' : 'dark';
+    app.classList.toggle('light', theme==='light');
+    e.target.textContent = theme==='dark' ? 'Thème clair' : 'Thème sombre';
+    render();
+  });
+
+  // légende styles
+  document.getElementById('legend').innerHTML = GENRES.map(g =>
+    '<button class="chip" data-g="' + g.name + '" aria-pressed="true" style="color:' + css(g.v) + '">' +
+    '<i></i>' + g.name + '</button>').join('');
+  document.getElementById('legend').addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const g = b.dataset.g, on = b.getAttribute('aria-pressed')==='true';
+    b.setAttribute('aria-pressed', String(!on));
+    on ? offGenres.add(g) : offGenres.delete(g);
+    render();
+  });
+
+  function applyShell() {
+    app.className = (theme==='light' ? 'light ' : '') + 'v-' + variant + ' is-' + mode;
+    if (mode==='edit') fillLanes();
+    requestAnimationFrame(render);
+  }
+
+  addEventListener('resize', render);
+  applyShell();
+  select(tracks[17]);
+})();
+</script>

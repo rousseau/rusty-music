@@ -1,0 +1,2006 @@
+//! Base locale SQLite : la seule source de vérité pour les trois modules.
+
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::error::Result;
+use crate::tags::TrackMeta;
+
+pub struct Library {
+    pub conn: Connection,
+}
+
+/// Résumé d'un morceau tel que servi à l'interface.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TrackRow {
+    pub id: i64,
+    pub path: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub track_no: Option<i64>,
+    pub year: Option<i64>,
+    pub duration_ms: Option<i64>,
+}
+
+/// Un artiste et son volume dans la bibliothèque.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArtistRow {
+    pub name: String,
+    /// Identifiant MusicBrainz d'artiste d'album, quand les fichiers le
+    /// portent. C'est la clé de regroupement ; `None` = regroupé sur le nom.
+    pub mbid: Option<String>,
+    pub tracks: i64,
+    pub albums: i64,
+}
+
+/// Un album et son volume. `artist` est l'artiste d'album quand il est
+/// renseigné, sinon celui de la piste — c'est ce qui tient les compilations.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AlbumRow {
+    pub name: String,
+    pub artist: Option<String>,
+    pub year: Option<i64>,
+    pub tracks: i64,
+}
+
+/// Un point de la carte.
+///
+/// Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
+/// l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
+/// d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
+/// minutage se retrouvent sans durée selon d'où l'on a cliqué.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MapPoint {
+    pub id: i64,
+    pub path: String,
+    pub x: f32,
+    pub y: f32,
+    pub cluster: i64,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub track_no: Option<i64>,
+    pub year: Option<i64>,
+    pub duration_ms: Option<i64>,
+    /// Descripteurs mesurés. Absents tant que `rusty-music descripteurs` n'est
+    /// pas passé — la carte doit savoir colorer sans eux.
+    pub bpm: Option<f32>,
+    pub energy: Option<f32>,
+}
+
+/// Une racine surveillée, telle qu'affichée dans les réglages.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootRow {
+    pub path: String,
+    pub added_at: i64,
+    pub last_scan: Option<i64>,
+    pub tracks: i64,
+}
+
+/// Colonnes projetées pour un [`TrackRow`], partagées par toutes les requêtes
+/// Un album MusicBrainz prêt à ranger : identifiant, titre tel qu'il est
+/// publié, titre normalisé pour le rapprochement, et genres avec leurs votes.
+pub type AlbumRange = (String, String, String, Vec<(String, i64)>);
+
+/// Une piste vue par le nommage des familles : sa famille, son artiste
+/// MusicBrainz, son album, et le genre inscrit dans le fichier.
+type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
+
+/// de consultation pour que l'ordre reste aligné sur [`track_from_row`].
+const TRACK_COLS: &str = "id, path, title, artist, album, track_no, year, duration_ms";
+
+/// Met à niveau une base créée par une version antérieure.
+///
+/// `CREATE TABLE IF NOT EXISTS` ne touche pas à une table existante : sans
+/// cela, une base déjà peuplée n'obtiendrait jamais les colonnes ajoutées
+/// depuis. On compare à `pragma_table_info` plutôt que de tenir un numéro de
+/// version — idempotent, et insensible aux allers-retours entre branches.
+fn migrate(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('tracks')")?;
+    let existantes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+
+    for (nom, decl) in [("mb_artist_id", "TEXT"), ("mb_album_artist_id", "TEXT")] {
+        if !existantes.contains(nom) {
+            conn.execute_batch(&format!("ALTER TABLE tracks ADD COLUMN {nom} {decl}"))?;
+        }
+    }
+
+    // Créé ici, et non dans le schéma : la colonne visée peut venir d'être
+    // ajoutée juste au-dessus.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_tracks_mb_aa ON tracks(mb_album_artist_id)",
+    )?;
+
+    // Index de recherche. `remove_diacritics 2` est ce qui fait que « bjork »
+    // trouve « Björk » — `LIKE` en est incapable sans ICU. `content='tracks'`
+    // évite de dupliquer les textes : l'index ne stocke que ses termes.
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS tracks_fts USING fts5(
+             title, artist, album,
+             content='tracks', content_rowid='id',
+             tokenize=\"unicode61 remove_diacritics 2\"
+         );
+
+         -- Table externe : c'est à nous de tenir l'index à jour.
+         CREATE TRIGGER IF NOT EXISTS tracks_fts_ai AFTER INSERT ON tracks BEGIN
+           INSERT INTO tracks_fts(rowid, title, artist, album)
+           VALUES (new.id, new.title, new.artist, new.album);
+         END;
+         CREATE TRIGGER IF NOT EXISTS tracks_fts_ad AFTER DELETE ON tracks BEGIN
+           INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
+           VALUES ('delete', old.id, old.title, old.artist, old.album);
+         END;
+         CREATE TRIGGER IF NOT EXISTS tracks_fts_au AFTER UPDATE ON tracks BEGIN
+           INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album)
+           VALUES ('delete', old.id, old.title, old.artist, old.album);
+           INSERT INTO tracks_fts(rowid, title, artist, album)
+           VALUES (new.id, new.title, new.artist, new.album);
+         END;",
+    )?;
+
+    // Base déjà peuplée dont l'index vient d'apparaître : on le remplit. Les
+    // déclencheurs suffisent ensuite.
+    //
+    // On compte dans `tracks_fts_docsize`, pas dans `tracks_fts` : sur une
+    // table à contenu externe, `COUNT(*)` est délégué à la table de contenu et
+    // renvoie donc le nombre de morceaux même quand l'index est vide. La
+    // condition serait toujours fausse et la recherche resterait muette.
+    let a_reconstruire: bool = conn.query_row(
+        "SELECT (SELECT COUNT(*) FROM tracks) > 0
+            AND (SELECT COUNT(*) FROM tracks_fts_docsize) = 0",
+        [],
+        |r| r.get(0),
+    )?;
+    if a_reconstruire {
+        conn.execute_batch("INSERT INTO tracks_fts(tracks_fts) VALUES('rebuild')")?;
+    }
+
+    Ok(())
+}
+
+/// Traduit une saisie libre en requête FTS5.
+///
+/// Chaque mot est mis entre guillemets : sans cela le texte de l'utilisateur
+/// serait interprété comme des opérateurs (`AND`, `OR`, `NEAR`, `-`, `*`) et
+/// une apostrophe suffirait à produire une erreur de syntaxe. Le dernier mot
+/// reçoit un `*` — c'est celui qu'on est en train de taper.
+fn requete_fts(q: &str) -> String {
+    let mots: Vec<String> = q
+        .split_whitespace()
+        // Un mot sans caractère alphanumérique ne donne aucun terme au
+        // tokenizer : le garder produirait une phrase vide, donc une erreur.
+        .filter(|m| m.chars().any(char::is_alphanumeric))
+        .map(|m| m.replace('"', "\"\""))
+        .collect();
+
+    let Some(dernier) = mots.len().checked_sub(1) else {
+        return String::new();
+    };
+    mots.iter()
+        .enumerate()
+        .map(|(i, m)| {
+            if i == dernier {
+                format!("\"{m}\"*")
+            } else {
+                format!("\"{m}\"")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn track_from_row(r: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
+    Ok(TrackRow {
+        id: r.get(0)?,
+        path: r.get(1)?,
+        title: r.get(2)?,
+        artist: r.get(3)?,
+        album: r.get(4)?,
+        track_no: r.get(5)?,
+        year: r.get(6)?,
+        duration_ms: r.get(7)?,
+    })
+}
+
+impl Library {
+    /// Ouvre (ou crée) la base et applique le schéma. Idempotent.
+    pub fn open(db_path: &Path) -> Result<Self> {
+        if let Some(dir) = db_path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch(include_str!("../sql/schema.sql"))?;
+        migrate(&conn)?;
+        Ok(Self { conn })
+    }
+
+    /// Base en mémoire — pratique pour les tests.
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(include_str!("../sql/schema.sql"))?;
+        migrate(&conn)?;
+        Ok(Self { conn })
+    }
+
+    pub fn add_root(&self, root: &Path) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO roots(path) VALUES (?1)",
+            params![root.to_string_lossy()],
+        )?;
+        Ok(())
+    }
+
+    /// Insère ou met à jour un morceau. Le chemin fait office de clé d'identité.
+    /// Ne touche pas à `analyzed_at` : l'analyse reste valable tant que le
+    /// fichier n'a pas changé.
+    pub fn upsert(&self, m: &TrackMeta) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO tracks
+               (path, size_bytes, mtime, title, artist, album, album_artist,
+                genre, year, track_no, duration_ms, sample_rate, channels, mb_recording_id,
+                mb_artist_id, mb_album_artist_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+             ON CONFLICT(path) DO UPDATE SET
+               size_bytes=excluded.size_bytes, mtime=excluded.mtime,
+               title=excluded.title, artist=excluded.artist, album=excluded.album,
+               album_artist=excluded.album_artist, genre=excluded.genre,
+               year=excluded.year, track_no=excluded.track_no,
+               duration_ms=excluded.duration_ms, sample_rate=excluded.sample_rate,
+               channels=excluded.channels, mb_recording_id=excluded.mb_recording_id,
+               mb_artist_id=excluded.mb_artist_id,
+               mb_album_artist_id=excluded.mb_album_artist_id",
+            params![
+                m.path.to_string_lossy(),
+                m.size_bytes,
+                m.mtime,
+                m.title,
+                m.artist,
+                m.album,
+                m.album_artist,
+                m.genre,
+                m.year,
+                m.track_no,
+                m.duration_ms,
+                m.sample_rate,
+                m.channels,
+                m.mb_recording_id,
+                m.mb_artist_id,
+                m.mb_album_artist_id
+            ],
+        )?;
+        let id = self.conn.query_row(
+            "SELECT id FROM tracks WHERE path = ?1",
+            params![m.path.to_string_lossy()],
+            |r| r.get(0),
+        )?;
+        Ok(id)
+    }
+
+    /// Vrai si le fichier est déjà en base avec la même taille et la même date
+    /// de modification — permet de sauter la relecture des tags au rescan.
+    pub fn is_unchanged(&self, path: &Path, size: i64, mtime: i64) -> Result<bool> {
+        let hit: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM tracks WHERE path = ?1 AND size_bytes = ?2 AND mtime = ?3",
+                params![path.to_string_lossy(), size, mtime],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(hit.is_some())
+    }
+
+    pub fn remove_path(&self, path: &Path) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM tracks WHERE path = ?1",
+            params![path.to_string_lossy()],
+        )?)
+    }
+
+    /// Retire les morceaux de `root` dont le fichier a disparu du disque.
+    ///
+    /// Ne supprime que sur une absence avérée (`NotFound`) : un dossier devenu
+    /// illisible ou une racine qui bronche remonte une autre erreur, et la
+    /// ligne est alors conservée. Mieux vaut une ligne en trop qu'une
+    /// bibliothèque vidée par un incident de lecture.
+    pub fn prune_missing(&self, root: &Path) -> Result<usize> {
+        let disparus: Vec<String> = self
+            .paths_under(root)?
+            .into_iter()
+            .filter(|p| {
+                matches!(
+                    std::fs::symlink_metadata(p),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound
+                )
+            })
+            .collect();
+
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut del = tx.prepare("DELETE FROM tracks WHERE path = ?1")?;
+            for p in &disparus {
+                del.execute(params![p])?;
+            }
+        }
+        tx.commit()?;
+        Ok(disparus.len())
+    }
+
+    /// Enregistre l'empreinte d'un morceau et sa place sur la carte.
+    ///
+    /// Le nom du modèle fait partie de la clé : deux jeux d'empreintes peuvent
+    /// cohabiter, ce qui permet d'en comparer deux sans tout refaire.
+    /// `analyzed_at` n'est posé qu'ici — un morceau reste « en attente » tant
+    /// que son empreinte n'est pas écrite.
+    pub fn save_features(
+        &self,
+        track_id: i64,
+        model: &str,
+        vector: &[f32],
+        x: f32,
+        y: f32,
+        cluster: i64,
+    ) -> Result<()> {
+        // f32 en petit-boutien, comme l'annonce le schéma.
+        let mut blob = Vec::with_capacity(vector.len() * 4);
+        for v in vector {
+            blob.extend_from_slice(&v.to_le_bytes());
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO features(track_id, model, dim, vector, x, y, cluster)
+             VALUES (?1,?2,?3,?4,?5,?6,?7)
+             ON CONFLICT(track_id, model) DO UPDATE SET
+               dim=excluded.dim, vector=excluded.vector,
+               x=excluded.x, y=excluded.y, cluster=excluded.cluster,
+               computed_at=strftime('%s','now')",
+            params![track_id, model, vector.len() as i64, blob, x, y, cluster],
+        )?;
+        tx.execute(
+            "UPDATE tracks SET analyzed_at = strftime('%s','now') WHERE id = ?1",
+            params![track_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Enregistre la seule empreinte, sans coordonnées.
+    ///
+    /// Sépare le coûteux du gratuit : l'empreinte demande de décoder le
+    /// fichier, la position se recalcule en quelques secondes sur toute la
+    /// bibliothèque. `analyzed_at` est posé ici — c'est ce travail-là qu'on ne
+    /// veut pas refaire après une interruption.
+    pub fn save_embedding(&self, track_id: i64, model: &str, vector: &[f32]) -> Result<()> {
+        let mut blob = Vec::with_capacity(vector.len() * 4);
+        for v in vector {
+            blob.extend_from_slice(&v.to_le_bytes());
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO features(track_id, model, dim, vector)
+             VALUES (?1,?2,?3,?4)
+             ON CONFLICT(track_id, model) DO UPDATE SET
+               dim=excluded.dim, vector=excluded.vector,
+               computed_at=strftime('%s','now')",
+            params![track_id, model, vector.len() as i64, blob],
+        )?;
+        tx.execute(
+            "UPDATE tracks SET analyzed_at = strftime('%s','now') WHERE id = ?1",
+            params![track_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Toutes les empreintes d'un modèle, pour la projection.
+    ///
+    /// Chargées d'un bloc : t-SNE place chaque point relativement aux autres,
+    /// il lui faut l'ensemble. Compter ~2 Ko par morceau, soit 55 Mo sur la
+    /// bibliothèque complète.
+    pub fn embeddings(&self, model: &str) -> Result<Vec<(i64, Vec<f32>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_id, vector FROM features WHERE model = ?1 ORDER BY track_id")?;
+        let rows = stmt
+            .query_map(params![model], |r| {
+                let id: i64 = r.get(0)?;
+                let blob: Vec<u8> = r.get(1)?;
+                let v = blob
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
+                Ok((id, v))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Les familles de la carte, nommées par leurs genres.
+    ///
+    /// **Trois sources, par ordre de précision décroissante** — l'album
+    /// MusicBrainz, puis l'artiste MusicBrainz, puis le tag du fichier. Le
+    /// détail de l'arbitrage est dans [`genres_du_morceau`], le nommage dans
+    /// [`nommer_les_familles`] : la base ne rend ici que des comptes, pour que
+    /// les deux règles se testent sans elle.
+    pub fn familles(&self, model: &str) -> Result<Vec<(i64, String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.cluster, t.mb_artist_id, t.album, t.genre
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1",
+        )?;
+        let pistes: Vec<PisteNommage> = stmt
+            .query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
+        let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
+        let albums = self.mb_albums()?;
+
+        let mut comptes: Vec<(i64, String, i64)> = Vec::new();
+        let mut cumul: HashMap<(i64, String), i64> = HashMap::new();
+        for (cluster, artiste, album, tag) in &pistes {
+            for genre in genres_du_morceau(
+                artiste.as_deref(),
+                album.as_deref(),
+                tag.as_deref(),
+                &albums,
+                &par_album,
+                &par_artiste,
+            ) {
+                *cumul.entry((*cluster, genre)).or_default() += 1;
+            }
+        }
+        for ((cluster, genre), n) in cumul {
+            comptes.push((cluster, genre, n));
+        }
+
+        // L'effectif compte tous les morceaux de la famille, y compris ceux
+        // sans genre : c'est la taille de la tache sur la carte.
+        let mut stmt = self
+            .conn
+            .prepare("SELECT cluster, COUNT(*) FROM features WHERE model = ?1 GROUP BY cluster")?;
+        let mut effectifs: Vec<(i64, i64)> = stmt
+            .query_map(params![model], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        effectifs.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+
+        Ok(nommer_les_familles(&effectifs, &comptes))
+    }
+
+    /// Les artistes les mieux représentés d'une famille. Diagnostic : c'est en
+    /// les lisant qu'on juge si l'étiquette dit vrai.
+    pub fn artistes_de_famille(&self, model: &str, cluster: i64, n: usize) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.artist FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND f.cluster = ?2 AND t.artist IS NOT NULL AND t.artist <> ''
+              GROUP BY t.artist ORDER BY COUNT(*) DESC LIMIT ?3",
+        )?;
+        let noms: Vec<String> = stmt
+            .query_map(params![model, cluster, n as i64], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(noms)
+    }
+
+    /* --------------------------------------------- descripteurs musicaux */
+
+    /// Les morceaux dont on n'a pas encore mesuré tempo, tonalité et énergie.
+    ///
+    /// Restreint à ceux qui ont déjà une empreinte : la passe des descripteurs
+    /// décode les mêmes fenêtres, et il n'y a pas de sens à mesurer un morceau
+    /// que la carte ne montre pas.
+    pub fn pending_descripteurs(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE EXISTS (SELECT 1 FROM features f
+                             WHERE f.track_id = tracks.id AND f.model = ?1)
+                AND NOT EXISTS (SELECT 1 FROM descriptors d WHERE d.track_id = tracks.id)
+              ORDER BY added_at LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![model, limit], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Enregistre les descripteurs d'un morceau.
+    ///
+    /// `bpm` et `musical_key` peuvent être absents : tout n'a pas de pulsation
+    /// ni de tonalité, et une valeur inventée colorerait la carte d'un
+    /// mensonge. La ligne est écrite quand même — c'est elle qui dit que le
+    /// morceau a été mesuré, et qu'il ne faut pas y revenir.
+    pub fn save_descripteurs(
+        &self,
+        track_id: i64,
+        bpm: Option<f32>,
+        musical_key: Option<&str>,
+        energy: f32,
+        loudness: f32,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO descriptors(track_id, bpm, musical_key, energy, loudness)
+             VALUES (?1,?2,?3,?4,?5)
+             ON CONFLICT(track_id) DO UPDATE SET
+               bpm=excluded.bpm, musical_key=excluded.musical_key,
+               energy=excluded.energy, loudness=excluded.loudness",
+            params![track_id, bpm, musical_key, energy, loudness],
+        )?;
+        Ok(())
+    }
+
+    /// Combien de morceaux placés sur la carte ont des descripteurs.
+    pub fn compter_descripteurs(&self, model: &str) -> Result<(i64, i64)> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM features WHERE model = ?1",
+            params![model],
+            |r| r.get(0),
+        )?;
+        let faits: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM descriptors d
+              JOIN features f ON f.track_id = d.track_id AND f.model = ?1",
+            params![model],
+            |r| r.get(0),
+        )?;
+        Ok((faits, total))
+    }
+
+    /// Tempo mesuré de morceaux donnés, ceux qui en ont.
+    ///
+    /// **Un morceau absent de la table rendue n'a pas de tempo** — soit qu'il
+    /// n'ait pas été mesuré, soit que rien n'y pulse. La greffe de stem s'en
+    /// sert pour écarter les candidats qu'elle ne saurait caler : sans les deux
+    /// tempos, il n'y a pas de facteur d'étirement à calculer, et en inventer
+    /// un ferait flotter la batterie greffée dès la deuxième mesure.
+    pub fn tempos(&self, ids: &[i64]) -> Result<HashMap<i64, f32>> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let trous = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT track_id, bpm FROM descriptors
+              WHERE bpm IS NOT NULL AND track_id IN ({trous})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<HashMap<i64, f32>, _>>()?)
+    }
+
+    /* ------------------------------------------------ genres MusicBrainz */
+
+    /// Les artistes qu'il reste à interroger pour un échelon donné.
+    ///
+    /// `echelon` vaut `"artist"` (les genres de l'artiste) ou `"albums"` (le
+    /// parcours de ses disques). La trace est gardée **même quand la réponse
+    /// est vide** : sans elle, les artistes sans genre — un quart d'entre eux —
+    /// seraient réinterrogés à chaque passe, à une requête par seconde.
+    ///
+    /// Les plus représentés d'abord : la couverture en morceaux monte alors
+    /// bien plus vite que la couverture en artistes, et une passe interrompue
+    /// laisse déjà un résultat exploitable.
+    pub fn mb_artistes_en_attente(&self, echelon: &str, limite: usize) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.mb_artist_id, COUNT(*) n FROM tracks t
+              WHERE t.mb_artist_id IS NOT NULL AND t.mb_artist_id <> ''
+                AND NOT EXISTS (SELECT 1 FROM mb_fetched f
+                                 WHERE f.mbid = t.mb_artist_id AND f.kind = ?1)
+              GROUP BY t.mb_artist_id ORDER BY n DESC LIMIT ?2",
+        )?;
+        let brut: Vec<String> = stmt
+            .query_map(params![echelon, limite as i64], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(brut)
+    }
+
+    /// Les genres d'un artiste, et la trace du passage.
+    ///
+    /// Les deux dans une transaction : une passe interrompue entre l'écriture
+    /// et la marque réinterrogerait l'artiste, celle-ci interrompue dans
+    /// l'autre ordre le tiendrait pour fait sans l'avoir enregistré.
+    pub fn mb_poser_genres(
+        &mut self,
+        mbid: &str,
+        echelon: &str,
+        genres: &[(String, i64)],
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for (nom, votes) in genres {
+            tx.execute(
+                "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(mbid, kind, genre) DO UPDATE SET votes = excluded.votes",
+                params![mbid, echelon, nom, votes],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO mb_fetched (mbid, kind) VALUES (?1, ?2)",
+            params![
+                mbid,
+                if echelon == "artist" {
+                    "artist"
+                } else {
+                    echelon
+                }
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les albums d'un artiste et leurs genres, en une transaction.
+    ///
+    /// `albums` porte, pour chaque disque, son identifiant, son titre, le titre
+    /// normalisé qui servira au rapprochement, et ses genres.
+    pub fn mb_poser_albums(&mut self, artiste: &str, albums: &[AlbumRange]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for (mbid, titre, norme, genres) in albums {
+            tx.execute(
+                "INSERT OR REPLACE INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![mbid, artiste, titre, norme],
+            )?;
+            for (nom, votes) in genres {
+                tx.execute(
+                    "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES (?1, 'release-group', ?2, ?3)
+                     ON CONFLICT(mbid, kind, genre) DO UPDATE SET votes = excluded.votes",
+                    params![mbid, nom, votes],
+                )?;
+            }
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO mb_fetched (mbid, kind) VALUES (?1, 'albums')",
+            params![artiste],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Genres par identifiant, du plus sûr au moins sûr.
+    ///
+    /// **Le classement compte plus que le seuil**, et l'avoir cru l'inverse a
+    /// coûté un bogue. Chez Yann Tiersen, dix genres portent une seule voix —
+    /// `modern classical`, `minimalism`, `instrumental`, tous justes, et
+    /// `amapiano`, qui ne l'est pas. Départager par ordre alphabétique mettait
+    /// `amapiano` en tête et nommait ainsi la famille de piano néoclassique.
+    ///
+    /// À votes égaux, on départage donc par **le nombre d'artistes de la
+    /// bibliothèque qui portent ce genre** : un genre que personne d'autre ne
+    /// porte est un accident de contributeur, un genre partagé par dix-sept
+    /// artistes est une catégorie. `amapiano` tombe alors dernier, et
+    /// `instrumental` remonte.
+    ///
+    /// La popularité se mesure toujours sur l'échelon artiste, même quand on
+    /// interroge les albums : c'est le plus large échantillon dont on dispose.
+    pub fn mb_genres(&self, echelon: &str, plancher: i64) -> Result<HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "WITH portee AS (
+                 SELECT genre, COUNT(DISTINCT mbid) n FROM mb_genres
+                  WHERE kind = 'artist' GROUP BY genre)
+             SELECT g.mbid, g.genre FROM mb_genres g
+               LEFT JOIN portee p ON p.genre = g.genre
+              WHERE g.kind = ?1 AND g.votes >= ?2
+              ORDER BY g.mbid, g.votes DESC, COALESCE(p.n, 0) DESC, g.genre",
+        )?;
+        let mut out: HashMap<String, Vec<String>> = HashMap::new();
+        let lignes = stmt.query_map(params![echelon, plancher], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        for l in lignes {
+            let (mbid, genre) = l?;
+            out.entry(mbid).or_default().push(genre);
+        }
+        Ok(out)
+    }
+
+    /// Les albums connus, indexés par `(artiste, titre normalisé)`.
+    ///
+    /// Nos fichiers ne portent pas d'identifiant d'album : c'est ce couple qui
+    /// fait le lien avec un release-group.
+    pub fn mb_albums(&self) -> Result<HashMap<(String, String), String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT artist_mbid, title_norm, mbid FROM mb_release_groups")?;
+        let lignes = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for l in lignes {
+            let (artiste, norme, mbid) = l?;
+            // Un même titre normalisé peut désigner deux release-groups (album
+            // et sa compilation homonyme) : le premier suffit, ils portent des
+            // genres voisins.
+            out.entry((artiste, norme)).or_insert(mbid);
+        }
+        Ok(out)
+    }
+
+    /// Combien d'artistes ont été interrogés, et combien ont rendu un genre.
+    pub fn mb_avancement(&self) -> Result<(i64, i64, i64)> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(DISTINCT mb_artist_id) FROM tracks
+              WHERE mb_artist_id IS NOT NULL AND mb_artist_id <> ''",
+            [],
+            |r| r.get(0),
+        )?;
+        let faits: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM mb_fetched WHERE kind = 'artist'",
+            [],
+            |r| r.get(0),
+        )?;
+        let avec: i64 = self.conn.query_row(
+            "SELECT COUNT(DISTINCT mbid) FROM mb_genres WHERE kind = 'artist'",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok((faits, total, avec))
+    }
+
+    /// Combien de morceaux ont un genre MusicBrainz utilisable.
+    pub fn mb_couverture(&self, model: &str, plancher: i64) -> Result<(i64, i64)> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM features WHERE model = ?1",
+            params![model],
+            |r| r.get(0),
+        )?;
+        let couverts: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND EXISTS (
+                    SELECT 1 FROM mb_genres g
+                     WHERE g.kind = 'artist' AND g.votes >= ?2
+                       AND g.mbid = t.mb_artist_id)",
+            params![model, plancher],
+            |r| r.get(0),
+        )?;
+        Ok((couverts, total))
+    }
+
+    /// Combien d'empreintes existent pour ce modèle.
+    ///
+    /// Sert à savoir si un cache d'empreintes est périmé sans les relire.
+    /// Attention à ne pas compter `map_points` à sa place : celui-ci écarte
+    /// les morceaux pas encore projetés, si bien que les deux nombres
+    /// diffèrent pendant toute la durée d'une analyse — un cache réglé
+    /// dessus se croirait périmé à chaque appel.
+    pub fn count_embeddings(&self, model: &str) -> Result<usize> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM features WHERE model = ?1",
+            params![model],
+            |r| r.get(0),
+        )?;
+        Ok(n as usize)
+    }
+
+    /// Écrit les positions et les familles d'un coup.
+    pub fn update_map(&self, model: &str, points: &[(i64, f32, f32, i64)]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "UPDATE features SET x=?3, y=?4, cluster=?5 WHERE track_id=?1 AND model=?2",
+            )?;
+            for (id, x, y, c) in points {
+                stmt.execute(params![id, model, x, y, c])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// La carte complète, prête à dessiner : positions et étiquettes.
+    ///
+    /// Une seule requête plutôt qu'un aller-retour par point — à 27 000
+    /// morceaux, l'interface les charge tous d'un coup et n'y revient qu'à la
+    /// demande de l'utilisateur.
+    pub fn map_view(&self, model: &str) -> Result<Vec<MapPoint>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.path, f.x, f.y, COALESCE(f.cluster, -1),
+                    t.title, t.artist, t.album, t.track_no, t.year, t.duration_ms,
+                    d.bpm, d.energy
+               FROM features f
+               JOIN tracks t ON t.id = f.track_id
+               LEFT JOIN descriptors d ON d.track_id = t.id
+              WHERE f.model = ?1 AND f.x IS NOT NULL
+              ORDER BY t.id",
+        )?;
+        let rows = stmt
+            .query_map(params![model], |r| {
+                Ok(MapPoint {
+                    id: r.get(0)?,
+                    path: r.get(1)?,
+                    x: r.get(2)?,
+                    y: r.get(3)?,
+                    cluster: r.get(4)?,
+                    title: r.get(5)?,
+                    artist: r.get(6)?,
+                    album: r.get(7)?,
+                    track_no: r.get(8)?,
+                    year: r.get(9)?,
+                    duration_ms: r.get(10)?,
+                    bpm: r.get(11)?,
+                    energy: r.get(12)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Positions sur la carte pour un modèle donné — ce que lira le module 2.
+    pub fn map_points(&self, model: &str) -> Result<Vec<(i64, f32, f32, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT track_id, x, y, cluster FROM features
+              WHERE model = ?1 AND x IS NOT NULL
+              ORDER BY track_id",
+        )?;
+        let rows = stmt
+            .query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn count(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0))?)
+    }
+
+    /// Morceaux sans empreinte **pour ce modèle** (module 2).
+    ///
+    /// Le critère est l'absence d'empreinte, et non le drapeau `analyzed_at` :
+    /// celui-ci ignore le modèle. Changer de représentation — un autre réseau,
+    /// un autre fenêtrage — laissait donc les morceaux déjà passés hors de la
+    /// nouvelle passe, et la carte restait amputée de moitié sans le moindre
+    /// message. `analyzed_at` garde son rôle de date, pas de verrou.
+    pub fn pending_analysis(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE NOT EXISTS (
+                    SELECT 1 FROM features f
+                     WHERE f.track_id = tracks.id AND f.model = ?1)
+              ORDER BY added_at LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![model, limit], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    // ---------------------------------------------------------------------
+    // Consultation — ce que les modules lisent. Aucun d'eux ne relit le disque.
+    // ---------------------------------------------------------------------
+
+    /// Un morceau par son identifiant.
+    pub fn track(&self, id: i64) -> Result<Option<TrackRow>> {
+        let sql = format!("SELECT {TRACK_COLS} FROM tracks WHERE id = ?1");
+        Ok(self
+            .conn
+            .query_row(&sql, params![id], track_from_row)
+            .optional()?)
+    }
+
+    /// Artistes par ordre alphabétique.
+    ///
+    /// Le regroupement se fait sur l'identifiant MusicBrainz d'artiste d'album,
+    /// avec repli sur le nom quand il manque. Sans cela, chaque « X feat. Y »
+    /// forme sa propre entrée : 3 543 artistes au lieu de ~1 000 sur la
+    /// bibliothèque de test. On ne peut pas se rabattre sur l'identifiant
+    /// d'artiste *de piste*, qui porte plusieurs valeurs sur un featuring.
+    ///
+    /// Les morceaux sans artiste sont exclus (ils restent atteignables par
+    /// album et par recherche) : la bibliothèque de test en compte 55, non
+    /// étiquetés à la source.
+    pub fn artists(&self) -> Result<Vec<ArtistRow>> {
+        let mut stmt = self.conn.prepare(
+            "WITH src AS (
+               SELECT COALESCE(album_artist, artist) AS nom,
+                      mb_album_artist_id            AS mbid,
+                      album
+                 FROM tracks
+                WHERE COALESCE(album_artist, artist) IS NOT NULL
+             ),
+             -- Tous les fichiers d'un artiste ne portent pas forcément son
+             -- identifiant MusicBrainz. Sans ce rattrapage, ses pistes
+             -- étiquetées et les autres tombent dans deux paniers et
+             -- l'artiste apparaît en double, avec des comptes partiels.
+             -- Le HAVING laisse de côté les noms qui désignent plusieurs
+             -- artistes : mieux vaut deux lignes qu'une fusion abusive.
+             resolu AS (
+               SELECT nom, MIN(mbid) AS mbid
+                 FROM src WHERE mbid IS NOT NULL
+                GROUP BY nom HAVING COUNT(DISTINCT mbid) = 1
+             )
+             SELECT MIN(src.nom),
+                    COALESCE(src.mbid, resolu.mbid),
+                    COUNT(*),
+                    COUNT(DISTINCT src.album)
+               FROM src LEFT JOIN resolu ON resolu.nom = src.nom
+             -- Le repli sur le nom doit rester distinct d'un identifiant :
+             -- COALESCE seul confondrait un nom et un MBID homonymes.
+              GROUP BY COALESCE('id:' || COALESCE(src.mbid, resolu.mbid), 'nom:' || src.nom)
+              ORDER BY MIN(src.nom) COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ArtistRow {
+                    name: r.get(0)?,
+                    mbid: r.get(1)?,
+                    tracks: r.get(2)?,
+                    albums: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Albums d'un artiste tel que [`Library::artists`] le regroupe.
+    ///
+    /// Prend l'identifiant **et** le nom, exactement comme le regroupement :
+    /// un artiste réunit ses pistes étiquetées MusicBrainz et celles qui ne le
+    /// sont pas. Filtrer sur le seul identifiant ferait disparaître les
+    /// secondes, et la ligne annoncerait plus d'albums qu'elle n'en ouvre.
+    pub fn albums_of_artist(&self, mbid: Option<&str>, name: &str) -> Result<Vec<AlbumRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*)
+               FROM tracks
+              WHERE album IS NOT NULL
+                AND ( (?1 IS NOT NULL AND mb_album_artist_id = ?1)
+                   OR (mb_album_artist_id IS NULL
+                       AND COALESCE(album_artist, artist) = ?2) )
+              GROUP BY album, COALESCE(album_artist, artist)
+              ORDER BY album COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map(params![mbid, name], |r| {
+                Ok(AlbumRow {
+                    name: r.get(0)?,
+                    artist: r.get(1)?,
+                    year: r.get(2)?,
+                    tracks: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Albums, tous ou ceux d'un artiste donné.
+    pub fn albums(&self, artist: Option<&str>) -> Result<Vec<AlbumRow>> {
+        // `artist` filtre sur l'artiste d'album comme sur celui de la piste :
+        // sinon un album entier échappe au filtre dès qu'une piste porte un
+        // invité en artiste.
+        let mut stmt = self.conn.prepare(
+            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*)
+               FROM tracks
+              WHERE album IS NOT NULL
+                AND (?1 IS NULL OR album_artist = ?1 OR artist = ?1)
+              GROUP BY album, COALESCE(album_artist, artist)
+              ORDER BY album COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map(params![artist], |r| {
+                Ok(AlbumRow {
+                    name: r.get(0)?,
+                    artist: r.get(1)?,
+                    year: r.get(2)?,
+                    tracks: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Pistes d'un album, dans l'ordre du disque.
+    pub fn tracks_of_album(&self, album: &str, artist: Option<&str>) -> Result<Vec<TrackRow>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE album = ?1
+                AND (?2 IS NULL OR album_artist = ?2 OR artist = ?2)
+              ORDER BY track_no, title COLLATE NOCASE"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![album, artist], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Recherche sur titre, artiste et album.
+    ///
+    /// Passe par l'index FTS5, dont le tokenizer replie les diacritiques :
+    /// « bjork » trouve « Björk », « kanan » trouve « Kanañ ». La recherche
+    /// porte sur des mots entiers, le dernier faisant office de préfixe pour
+    /// rester utilisable au fil de la frappe.
+    pub fn search(&self, q: &str, limit: i64) -> Result<Vec<TrackRow>> {
+        let requete = requete_fts(q);
+        if requete.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?1)
+              ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, track_no
+              LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![requete, limit], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Racines surveillées, avec le nombre de morceaux rattachés à chacune.
+    /// Sert l'écran de réglages où l'on change la source de la bibliothèque.
+    pub fn roots(&self) -> Result<Vec<RootRow>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, added_at, last_scan FROM roots ORDER BY path")?;
+        let brutes = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        brutes
+            .into_iter()
+            .map(|(path, added_at, last_scan)| {
+                Ok(RootRow {
+                    tracks: self.count_under(Path::new(&path))?,
+                    path,
+                    added_at,
+                    last_scan,
+                })
+            })
+            .collect()
+    }
+
+    /// Retire une racine **et les morceaux qui en dépendent**.
+    ///
+    /// C'est l'opération « changer de source » des réglages : sans la purge des
+    /// morceaux, la base garderait des lignes pointant vers un disque absent.
+    /// Renvoie le nombre de morceaux retirés.
+    pub fn remove_root(&self, root: &Path) -> Result<usize> {
+        let sous_racine = self.paths_under(root)?;
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut del = tx.prepare("DELETE FROM tracks WHERE path = ?1")?;
+            for p in &sous_racine {
+                del.execute(params![p])?;
+            }
+        }
+        tx.execute(
+            "DELETE FROM roots WHERE path = ?1",
+            params![root.to_string_lossy()],
+        )?;
+        tx.commit()?;
+        Ok(sous_racine.len())
+    }
+
+    /// Chemins de la base situés sous `root`.
+    ///
+    /// Le rattachement se fait par composants (`Path::starts_with`) et non par
+    /// `LIKE` : un motif SQL capterait aussi `/Musique/autre` pour la racine
+    /// `/Musique/autr_`, et les chemins contenant `%` ou `_` sont courants.
+    fn paths_under(&self, root: &Path) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT path FROM tracks")?;
+        let tous = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(tous
+            .into_iter()
+            .filter(|p| Path::new(p).starts_with(root))
+            .collect())
+    }
+
+    fn count_under(&self, root: &Path) -> Result<i64> {
+        Ok(self.paths_under(root)?.len() as i64)
+    }
+}
+
+/// Plancher de votes sur un genre MusicBrainz.
+///
+/// **Un, c'est-à-dire aucun filtre — et c'est une correction.** Le seuil avait
+/// d'abord été mis à deux, pour écarter l'`amapiano` posé par un unique
+/// contributeur sur Yann Tiersen. Mesuré, il faisait l'inverse de ce qu'on
+/// attendait : chez cet artiste, `modern classical`, `neoclassicism`,
+/// `minimalism` et `instrumental` portent eux aussi une seule voix. Le seuil
+/// ne gardait que `rock` (2 voix) et jetait les quatre justes.
+///
+/// Le coût était général : **55 % des morceaux couverts au lieu de 74 %**, et
+/// 360 artistes rendus muets, ceux dont aucune étiquette n'atteint deux voix.
+///
+/// Ce qui règle vraiment le cas `amapiano` est le classement à votes égaux,
+/// dans [`Library::mb_genres`], pas un plancher.
+const VOTES_MINIMUM: i64 = 1;
+
+/// Combien de genres retenir par entité MusicBrainz.
+///
+/// **Un seul, et c'est mesuré.** Le genre le mieux voté d'un artiste est celui
+/// sur lequel les contributeurs s'accordent ; les suivants décrivent ses
+/// marges. En retenir trois versait « rock » et « pop » dans toutes les
+/// familles, et c'est le générique qui l'emportait. Comparés sur la
+/// bibliothèque entière, un genre par artiste rend « Reggae · Afrobeat » là où
+/// trois donnaient « Reggae · Ska », et « Rock · Nu Metal » là où trois
+/// donnaient « Rock · Alternative Metal ».
+///
+/// Trouver le distinctif est le travail de [`nommer_les_familles`], pas celui
+/// de cette troncature : lui donner plus de matière générique ne l'aide pas,
+/// ça la noie.
+const GENRES_PAR_ENTITE: usize = 1;
+
+/// Les genres d'un morceau, de la source la plus précise à la plus grossière.
+///
+/// **L'album l'emporte sur l'artiste, l'artiste sur le fichier.** Chaque
+/// échelon a sa raison :
+///
+/// - l'**album** distingue deux disques d'un même artiste : un enregistrement
+///   acoustique d'un groupe électrique doit être étiqueté pour ce qu'il est.
+///   Nos fichiers ne portent pas d'identifiant d'album, le rapprochement passe
+///   donc par le titre normalisé ;
+/// - l'**artiste** couvre le plus de morceaux, et son vocabulaire est curé —
+///   `boom bap`, `nu metal`, `anti-folk` là où les fichiers disent « Rock » ;
+/// - le **tag du fichier** reste en dernier recours, et il n'est pas
+///   décoratif : les chanteurs bretons de la bibliothèque de test n'ont aucun
+///   genre chez MusicBrainz, et c'est le fichier qui sait alors de quoi il
+///   s'agit.
+///
+/// On ne mélange pas les sources pour un même morceau. Les verser ensemble
+/// ferait cohabiter « Rock » et « rock », et le genre le plus grossier
+/// redeviendrait le plus lourd — exactement ce qu'on cherche à quitter.
+fn genres_du_morceau(
+    artiste: Option<&str>,
+    album: Option<&str>,
+    tag: Option<&str>,
+    albums: &HashMap<(String, String), String>,
+    par_album: &HashMap<String, Vec<String>>,
+    par_artiste: &HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    if let (Some(artiste), Some(album)) = (artiste, album) {
+        let cle = (
+            artiste.to_string(),
+            crate::musicbrainz::normaliser_titre(album),
+        );
+        if let Some(g) = albums.get(&cle).and_then(|rg| par_album.get(rg)) {
+            if !g.is_empty() {
+                return g.iter().take(GENRES_PAR_ENTITE).cloned().collect();
+            }
+        }
+    }
+    if let Some(g) = artiste.and_then(|a| par_artiste.get(a)) {
+        if !g.is_empty() {
+            return g.iter().take(GENRES_PAR_ENTITE).cloned().collect();
+        }
+    }
+    tag.filter(|t| !t.is_empty())
+        .map(|t| vec![t.to_string()])
+        .unwrap_or_default()
+}
+
+/// Sous ce plancher, un genre décrit une poche et non une famille : son score
+/// serait tiré par le hasard de quelques morceaux. Le seuil est relatif à la
+/// taille de la famille, plus un minimum absolu pour les petites bibliothèques.
+const PLANCHER_RELATIF: f64 = 0.01;
+const PLANCHER_ABSOLU: i64 = 5;
+
+/// Nomme chaque famille par ses genres, à partir des comptes bruts.
+///
+/// `effectifs` donne `(famille, nombre de morceaux)`, du plus grand au plus
+/// petit ; `comptes` donne `(famille, genre, nombre de morceaux de ce genre)`.
+///
+/// **Ni le genre le plus fréquent, ni le plus caractéristique.** Le plus
+/// fréquent ne distingue rien : « Rock » domine six des douze familles de la
+/// bibliothèque de test. Le plus caractéristique — celui dont la part dans la
+/// famille dépasse le plus sa part dans la bibliothèque — décrit une poche
+/// marginale : il nommait « Ska Rock · Latin » une famille de 4 321 morceaux
+/// menée par Bob Marley, Femi Kuti et James Brown, sur la foi de 52 morceaux.
+///
+/// Le score retenu, `part × log₂(sur-représentation)`, exige les deux : le
+/// genre doit peser dans la famille **et** y être plus présent qu'ailleurs. La
+/// même famille devient « Reggae · Pop ».
+fn nommer_les_familles(
+    effectifs: &[(i64, i64)],
+    comptes: &[(i64, String, i64)],
+) -> Vec<(i64, String, i64)> {
+    // La population de référence, c'est l'ensemble des morceaux classés : la
+    // sur-représentation se mesure contre ce que la carte montre, pas contre
+    // une bibliothèque dont une partie n'est pas encore analysée.
+    let mut global: HashMap<&str, i64> = HashMap::new();
+    let mut total = 0i64;
+    for (_, genre, n) in comptes {
+        *global.entry(genre.as_str()).or_default() += n;
+        total += n;
+    }
+
+    let mut par_famille: HashMap<i64, Vec<(&str, i64)>> = HashMap::new();
+    for (famille, genre, n) in comptes {
+        par_famille
+            .entry(*famille)
+            .or_default()
+            .push((genre.as_str(), *n));
+    }
+
+    let mut vus: HashSet<String> = HashSet::new();
+    let mut sortie = Vec::with_capacity(effectifs.len());
+    for (rang, (famille, effectif)) in effectifs.iter().enumerate() {
+        let mut classe: Vec<(&str, f64)> = Vec::new();
+        if let Some(genres) = par_famille.get(famille) {
+            let dans_la_famille: i64 = genres.iter().map(|(_, n)| n).sum();
+            let plancher =
+                PLANCHER_ABSOLU.max((dans_la_famille as f64 * PLANCHER_RELATIF).round() as i64);
+            for (genre, n) in genres {
+                if *n < plancher || total == 0 || dans_la_famille == 0 {
+                    continue;
+                }
+                let part = *n as f64 / dans_la_famille as f64;
+                let ailleurs = global[genre] as f64 / total as f64;
+                let score = part * (part / ailleurs).log2();
+                // Un score négatif signale un genre sous-représenté : il dit
+                // ce que la famille n'est pas, ce qui ne la nomme pas.
+                if score > 0.0 {
+                    classe.push((genre, score));
+                }
+            }
+        }
+        classe.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let genres: Vec<&str> = classe.into_iter().map(|(g, _)| g).collect();
+
+        let nom = libeller(&genres, &vus).unwrap_or_else(|| format!("Famille {}", rang + 1));
+        vus.insert(empreinte_libelle(&nom));
+        sortie.push((*famille, nom, *effectif));
+    }
+    sortie
+}
+
+/// Le libellé d'une famille : son meilleur genre, précisé par le meilleur
+/// suivant qui ne le redise pas et ne donne pas un nom déjà pris.
+///
+/// Les deux règles sont chacune tirées d'un libellé qui n'apprenait rien :
+/// « Electronic · Electro », où le second mot redit le premier ; et deux
+/// familles ressorties « Metal · Rock », le rock dominant la moitié de la
+/// bibliothèque. La seconde descend alors son classement — « Metal · Grunge ».
+/// Met une majuscule aux mots entièrement minuscules d'un genre.
+///
+/// Les deux sources n'écrivent pas pareil : MusicBrainz impose le tout en
+/// minuscules (`trip hop`, `boom bap`), les tags des fichiers arrivent en
+/// capitales (`Reggae`, `Hip-Hop`). Mélangés dans une même légende, ça se voit.
+/// On ne touche qu'aux mots tout en minuscules, pour ne pas défigurer `R&B`
+/// ni `IDM`.
+fn capitaliser(genre: &str) -> String {
+    genre
+        .split_inclusive([' ', '-', '/'])
+        .map(|mot| {
+            if mot.chars().any(char::is_uppercase) {
+                return mot.to_string();
+            }
+            let mut c = mot.chars();
+            match c.next() {
+                Some(p) => p.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Forme canonique d'un libellé : ses mots, triés.
+///
+/// Sert à repérer les permutations. « Electronic · Hip Hop » et « Hip Hop ·
+/// Electronic » sont deux libellés distincts au sens des chaînes, et la même
+/// chose pour qui lit la légende.
+fn empreinte_libelle(nom: &str) -> String {
+    let mut mots: Vec<&str> = nom.split(" · ").collect();
+    mots.sort_unstable();
+    mots.join("\u{0}")
+}
+
+fn libeller(genres: &[&str], vus: &HashSet<String>) -> Option<String> {
+    let tete = capitaliser(genres.first()?);
+    let tete = tete.as_str();
+    let mut repli = None;
+    for g in &genres[1..] {
+        if se_redisent(tete, g) {
+            continue;
+        }
+        let nom = format!("{tete} · {}", capitaliser(g));
+        if !vus.contains(&empreinte_libelle(&nom)) {
+            return Some(nom);
+        }
+        // Le meilleur doublon, gardé au cas où aucune paire ne soit libre :
+        // mieux vaut un nom en double qu'un nom amputé.
+        repli.get_or_insert(nom);
+    }
+    if !vus.contains(&empreinte_libelle(tete)) {
+        return Some(tete.to_string());
+    }
+    repli.or_else(|| Some(tete.to_string()))
+}
+
+/// Deux genres se redisent-ils ?
+///
+/// Purement lexical : un mot commun, ou l'un préfixe de l'autre sur au moins
+/// cinq lettres. Ça attrape « Electro » dans « Electronic » et « Hip-Hop »
+/// dans « Rap/Hip Hop » sans confondre « Rock » et « Rockabilly ». Ça ne
+/// rapproche pas deux synonymes qui ne se ressemblent pas — « Rap » et
+/// « Hip-Hop » — ce qui demanderait un vocabulaire des genres, propre à
+/// chaque bibliothèque.
+fn se_redisent(a: &str, b: &str) -> bool {
+    let mots = |g: &str| -> Vec<String> {
+        g.split(|c: char| !c.is_alphanumeric())
+            .filter(|m| m.chars().count() >= 3)
+            .map(str::to_lowercase)
+            .collect()
+    };
+    let (ma, mb) = (mots(a), mots(b));
+    ma.iter().any(|x| {
+        mb.iter().any(|y| {
+            x == y || (x.len().min(y.len()) >= 5 && (x.starts_with(y) || y.starts_with(x)))
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L'ordre des trois sources, éprouvé cas par cas. C'est la décision du
+    /// 17 août : MusicBrainz d'abord, tag du fichier en repli.
+    #[test]
+    fn lalbum_lemporte_sur_lartiste_et_lartiste_sur_le_fichier() {
+        let artiste = "mbid-radiohead";
+        let albums = HashMap::from([
+            (
+                (artiste.to_string(), "kida".to_string()),
+                "rg-kida".to_string(),
+            ),
+            (
+                (artiste.to_string(), "okcomputer".to_string()),
+                "rg-okc".to_string(),
+            ),
+        ]);
+        let par_album = HashMap::from([
+            (
+                "rg-kida".to_string(),
+                vec!["electronic".to_string(), "art rock".to_string()],
+            ),
+            // Un release-group connu mais sans genre : il ne doit pas capturer
+            // le morceau, sinon celui-ci perdrait les genres de son artiste.
+            ("rg-okc".to_string(), Vec::new()),
+        ]);
+        let par_artiste =
+            HashMap::from([(artiste.to_string(), vec!["alternative rock".to_string()])]);
+
+        let g = |album, tag| {
+            genres_du_morceau(Some(artiste), album, tag, &albums, &par_album, &par_artiste)
+        };
+
+        // 1. l'album quand il sait — et son meilleur genre seulement : « art
+        //    rock », deuxième de la liste, ne suit pas. Voir GENRES_PAR_ENTITE.
+        assert_eq!(g(Some("Kid A"), Some("Rock")), ["electronic"]);
+        // 2. l'artiste quand l'album ne sait pas
+        assert_eq!(g(Some("OK Computer"), Some("Rock")), ["alternative rock"]);
+        // 3. l'artiste aussi quand l'album nous est inconnu
+        assert_eq!(g(Some("Amnesiac"), Some("Rock")), ["alternative rock"]);
+
+        // Le titre se rapproche malgré les mentions d'édition et la casse.
+        assert_eq!(g(Some("KID A (remaster)"), None), ["electronic"]);
+    }
+
+    /// Le repli n'est pas décoratif : les chanteurs bretons de la
+    /// bibliothèque de test n'ont aucun genre chez MusicBrainz, et le tag du
+    /// fichier est alors la seule chose qui sache de quoi il s'agit.
+    #[test]
+    fn le_tag_du_fichier_sauve_ce_que_musicbrainz_ignore() {
+        let sans_album: HashMap<(String, String), String> = HashMap::new();
+        let sans_genre: HashMap<String, Vec<String>> = HashMap::new();
+        let g = genres_du_morceau(
+            Some("mbid-inconnu"),
+            Some("Kan ha diskan"),
+            Some("Traditional"),
+            &sans_album,
+            &sans_genre,
+            &sans_genre,
+        );
+        assert_eq!(g, ["Traditional"]);
+
+        // Et un morceau que personne ne sait nommer ne rend rien plutôt
+        // qu'une étiquette inventée.
+        let rien = |tag| genres_du_morceau(None, None, tag, &sans_album, &sans_genre, &sans_genre);
+        assert!(rien(None).is_empty());
+        assert!(rien(Some("")).is_empty());
+    }
+
+    /// On ne verse pas les deux vocabulaires dans le même sac : « Rock » du
+    /// fichier et « rock » de MusicBrainz se cumuleraient, et le genre le plus
+    /// grossier redeviendrait le plus lourd.
+    #[test]
+    fn les_sources_ne_se_melangent_pas_pour_un_meme_morceau() {
+        let par_artiste = HashMap::from([("a".to_string(), vec!["boom bap".to_string()])]);
+        let sans_album: HashMap<(String, String), String> = HashMap::new();
+        let sans_genre: HashMap<String, Vec<String>> = HashMap::new();
+        let g = genres_du_morceau(
+            Some("a"),
+            None,
+            Some("Rock"),
+            &sans_album,
+            &sans_genre,
+            &par_artiste,
+        );
+        assert_eq!(g, ["boom bap"], "le tag du fichier ne doit pas s'ajouter");
+    }
+
+    /// Les deux sources n'écrivent pas pareil : MusicBrainz tout en
+    /// minuscules, les tags des fichiers en capitales. La légende doit s'en
+    /// remettre sans défigurer les sigles.
+    #[test]
+    fn la_legende_ne_melange_pas_les_casses() {
+        assert_eq!(capitaliser("trip hop"), "Trip Hop");
+        assert_eq!(capitaliser("boom bap"), "Boom Bap");
+        assert_eq!(capitaliser("nu metal"), "Nu Metal");
+        assert_eq!(capitaliser("anti-folk"), "Anti-Folk");
+        // Ceux qui portent déjà une capitale sont laissés tels quels.
+        assert_eq!(capitaliser("R&B"), "R&B");
+        assert_eq!(capitaliser("Rap/Hip Hop"), "Rap/Hip Hop");
+        assert_eq!(capitaliser("Children's"), "Children's");
+        assert_eq!(capitaliser("IDM"), "IDM");
+    }
+
+    /// Le défaut relevé sur la vraie bibliothèque : une famille de 4 321
+    /// morceaux menée par Bob Marley, Femi Kuti et James Brown se nommait
+    /// « Ska Rock · Latin » — deux genres sur-représentés mais marginaux —
+    /// tandis que le reggae, cinq fois plus présent, était ignoré.
+    #[test]
+    fn un_genre_marginal_ne_nomme_pas_une_famille() {
+        let comptes = vec![
+            (1, "Rock".into(), 556),
+            (1, "Pop".into(), 379),
+            (1, "Reggae".into(), 320),
+            (1, "Ska Rock".into(), 52),
+            (2, "Rock".into(), 3000),
+            (2, "Pop".into(), 400),
+            (2, "Reggae".into(), 5),
+            (2, "Ska Rock".into(), 6),
+        ];
+        let noms = nommer_les_familles(&[(1, 1307), (2, 3411)], &comptes);
+        let nom = &noms.iter().find(|(c, _, _)| *c == 1).unwrap().1;
+
+        // « Ska Rock » y est 3,2 fois sur-représenté — plus que la pop — et ne
+        // la nomme pourtant pas : cinquante morceaux sur treize cents.
+        // « Rock », lui, est majoritaire dans la famille sans lui être propre.
+        assert_eq!(nom, "Reggae · Pop");
+    }
+
+    /// Le rock domine six familles sur douze : deux d'entre elles sortaient
+    /// « Metal · Rock ». Une légende de douze pastilles dont deux portent le
+    /// même nom ne sert à rien.
+    #[test]
+    fn deux_familles_ne_portent_pas_le_meme_nom() {
+        let comptes = vec![
+            (1, "Metal".into(), 440),
+            (1, "Rock".into(), 687),
+            (1, "Alternative".into(), 286),
+            (2, "Metal".into(), 312),
+            (2, "Rock".into(), 598),
+            (2, "Grunge".into(), 208),
+            (3, "Jazz".into(), 300),
+        ];
+        let noms = nommer_les_familles(&[(1, 1413), (2, 1118), (3, 300)], &comptes);
+        let libelles: Vec<&str> = noms.iter().map(|(_, n, _)| n.as_str()).collect();
+        let uniques: HashSet<&str> = libelles.iter().copied().collect();
+        assert_eq!(
+            uniques.len(),
+            libelles.len(),
+            "libellés en double : {libelles:?}"
+        );
+    }
+
+    /// « Electronic · Electro » et « Hip-Hop · Rap/Hip Hop » : le second mot
+    /// redisait le premier au lieu de le préciser.
+    #[test]
+    fn un_libelle_ne_se_repete_pas() {
+        assert!(se_redisent("Electronic", "Electro"));
+        assert!(se_redisent("Hip-Hop", "Rap/Hip Hop"));
+        assert!(se_redisent("Rock", "Hard Rock"));
+        // Ces deux-là sont bien deux genres distincts.
+        assert!(!se_redisent("Rock", "Rockabilly"));
+        assert!(!se_redisent("Metal", "Grunge"));
+
+        let comptes = vec![
+            (1, "Electronic".into(), 372),
+            (1, "Electro".into(), 219),
+            (1, "Electronica".into(), 151),
+            (1, "Jazz".into(), 184),
+            (2, "Rock".into(), 2000),
+        ];
+        let noms = nommer_les_familles(&[(1, 926), (2, 2000)], &comptes);
+        assert_eq!(
+            noms.iter().find(|(c, _, _)| *c == 1).unwrap().1,
+            "Electronic · Jazz"
+        );
+    }
+
+    /// Une famille sans genre exploitable garde un nom : elle existe sur la
+    /// carte, l'utilisateur doit pouvoir la désigner.
+    #[test]
+    fn une_famille_sans_genre_garde_un_nom() {
+        let noms = nommer_les_familles(&[(7, 42)], &[]);
+        assert_eq!(noms, vec![(7, "Famille 1".to_string(), 42)]);
+    }
+
+    /// Une empreinte existe dès qu'elle est calculée ; sa place sur la carte
+    /// n'arrive qu'à la projection suivante. Les deux comptes diffèrent donc
+    /// pendant toute une analyse, et c'est le premier qui dit si un cache
+    /// d'empreintes est périmé — s'y tromper faisait recharger 55 Mo et
+    /// reconstruire le graphe des voisins à chaque requête.
+    #[test]
+    fn compter_les_empreintes_nest_pas_compter_les_points_de_la_carte() {
+        let lib = Library::open_in_memory().unwrap();
+        for i in 0..3 {
+            lib.upsert(&TrackMeta {
+                path: std::path::PathBuf::from(format!("/m/{i}.flac")),
+                ..Default::default()
+            })
+            .unwrap();
+            lib.save_embedding(i + 1, "essai", &[0.1, 0.2]).unwrap();
+        }
+
+        assert_eq!(lib.count_embeddings("essai").unwrap(), 3);
+        assert_eq!(lib.embeddings("essai").unwrap().len(), 3);
+        // Aucune projection encore : la carte est vide, les empreintes non.
+        assert_eq!(lib.map_points("essai").unwrap().len(), 0);
+
+        lib.update_map("essai", &[(1, 0.0, 0.0, 0)]).unwrap();
+        assert_eq!(lib.map_points("essai").unwrap().len(), 1);
+        assert_eq!(lib.count_embeddings("essai").unwrap(), 3);
+        assert_eq!(lib.count_embeddings("autre-modele").unwrap(), 0);
+    }
+
+    /// Élague les fichiers disparus de la racine, et rien d'autre : un morceau
+    /// encore sur le disque et un morceau d'une autre racine doivent rester.
+    #[test]
+    fn prune_missing_ne_retire_que_les_disparus_de_la_racine() {
+        let racine = std::env::temp_dir().join(format!("rusty-music-test-{}", std::process::id()));
+        std::fs::create_dir_all(&racine).unwrap();
+        let present = racine.join("present.flac");
+        std::fs::write(&present, b"").unwrap();
+
+        let lib = Library::open_in_memory().unwrap();
+        for p in [
+            present.clone(),
+            racine.join("disparu.flac"),
+            std::path::PathBuf::from("/une/autre/racine/disparu.flac"),
+        ] {
+            lib.upsert(&TrackMeta {
+                path: p,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        assert_eq!(lib.count().unwrap(), 3);
+
+        assert_eq!(lib.prune_missing(&racine).unwrap(), 1);
+        assert_eq!(lib.count().unwrap(), 2);
+
+        // Le fichier encore présent est toujours là.
+        let reste: i64 = lib
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM tracks WHERE path = ?1",
+                params![present.to_string_lossy()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(reste, 1);
+
+        std::fs::remove_dir_all(&racine).unwrap();
+    }
+
+    /// Bibliothèque miniature : deux albums d'un artiste, une compilation dont
+    /// les pistes portent des artistes différents, et un morceau sans artiste.
+    fn bibliotheque_test() -> Library {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute = |path: &str,
+                      titre: &str,
+                      artiste: Option<&str>,
+                      album: &str,
+                      album_artiste: Option<&str>,
+                      no: i64,
+                      annee: i64| {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                title: Some(titre.into()),
+                artist: artiste.map(str::to_string),
+                album: Some(album.into()),
+                album_artist: album_artiste.map(str::to_string),
+                track_no: Some(no),
+                year: Some(annee),
+                ..Default::default()
+            })
+            .unwrap();
+        };
+
+        ajoute(
+            "/m/Air/Moon/02 Sexy Boy.mp3",
+            "Sexy Boy",
+            Some("Air"),
+            "Moon Safari",
+            None,
+            2,
+            1998,
+        );
+        ajoute(
+            "/m/Air/Moon/01 La femme.mp3",
+            "La femme d'argent",
+            Some("Air"),
+            "Moon Safari",
+            None,
+            1,
+            1998,
+        );
+        ajoute(
+            "/m/Air/Talkie/01 Venus.mp3",
+            "Venus",
+            Some("Air"),
+            "Talkie Walkie",
+            None,
+            1,
+            2004,
+        );
+        // Compilation : l'artiste d'album diffère des artistes de piste.
+        ajoute(
+            "/m/Comp/Spawn/03 Satan.mp4",
+            "Satan",
+            Some("Orbital"),
+            "Spawn",
+            Some("Various"),
+            3,
+            1997,
+        );
+        ajoute(
+            "/m/Comp/Spawn/01 Trip.mp4",
+            "Trip Like I Do",
+            Some("Filter"),
+            "Spawn",
+            Some("Various"),
+            1,
+            1997,
+        );
+        // Sans artiste, comme les 55 morceaux non étiquetés de la vraie base.
+        ajoute(
+            "/m/_/Kanan/03 Bizied.mp3",
+            "Bizied",
+            None,
+            "Kanañ a ri!",
+            None,
+            3,
+            2017,
+        );
+        lib
+    }
+
+    /// Le cas qui motive tout le regroupement : trois pistes du même album,
+    /// dont deux en featuring. Les artistes de piste diffèrent, l'identifiant
+    /// d'artiste d'album est le même — une seule entrée doit sortir.
+    #[test]
+    fn artists_regroupe_les_featurings_par_identifiant_musicbrainz() {
+        let lib = Library::open_in_memory().unwrap();
+        let nerd = "3fb49f5a-fdc0-4789-9c84-22b38b3f3cb5";
+        for (path, artiste) in [
+            ("/m/nerd/01.mp3", "N.E.R.D"),
+            ("/m/nerd/02.mp3", "N.E.R.D feat. Lee Harvey"),
+            ("/m/nerd/03.mp3", "N.E.R.D feat. Vita"),
+        ] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                artist: Some(artiste.into()),
+                album: Some("In Search Of...".into()),
+                album_artist: Some("N.E.R.D".into()),
+                mb_album_artist_id: Some(nerd.into()),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+
+        let artistes = lib.artists().unwrap();
+        assert_eq!(artistes.len(), 1, "les featurings doivent fusionner");
+        assert_eq!(artistes[0].name, "N.E.R.D");
+        assert_eq!(artistes[0].mbid.as_deref(), Some(nerd));
+        assert_eq!(artistes[0].tracks, 3);
+
+        // Et l'on retrouve ses albums par identifiant.
+        let albums = lib.albums_of_artist(Some(nerd), "N.E.R.D").unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(albums[0].tracks, 3);
+    }
+
+    /// Couverture MusicBrainz partielle : certaines pistes d'un artiste
+    /// portent l'identifiant, d'autres non. Il ne doit pas pour autant
+    /// apparaître deux fois, avec des comptes d'albums qui se contredisent.
+    #[test]
+    fn artists_ne_dedouble_pas_un_artiste_partiellement_etiquete() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = "3fb49f5a-fdc0-4789-9c84-22b38b3f3cb5";
+        let poser = |path: &str, album: &str, mbid: Option<&str>| {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                artist: Some("N.E.R.D".into()),
+                album: Some(album.into()),
+                album_artist: Some("N.E.R.D".into()),
+                mb_album_artist_id: mbid.map(str::to_string),
+                ..Default::default()
+            })
+            .unwrap();
+        };
+        poser("/m/1.mp3", "In Search Of...", Some(id));
+        poser("/m/2.mp3", "Fly or Die", None); // album non étiqueté
+
+        let artistes = lib.artists().unwrap();
+        assert_eq!(artistes.len(), 1, "artiste dédoublé : {artistes:?}");
+        assert_eq!(
+            artistes[0].albums, 2,
+            "les deux albums doivent être comptés ensemble"
+        );
+        assert_eq!(artistes[0].mbid.as_deref(), Some(id));
+
+        // Et l'ouvrir doit montrer les deux albums annoncés, pas seulement
+        // celui qui porte l'identifiant.
+        let albums = lib
+            .albums_of_artist(artistes[0].mbid.as_deref(), &artistes[0].name)
+            .unwrap();
+        assert_eq!(
+            albums.len(),
+            2,
+            "la ligne annonce plus d'albums qu'elle n'en ouvre"
+        );
+    }
+
+    /// Sans identifiant, le repli se fait sur le nom — et deux artistes
+    /// distincts ne doivent pas fusionner sous prétexte qu'ils n'en ont pas.
+    #[test]
+    fn artists_repli_sur_le_nom_sans_identifiant() {
+        let lib = Library::open_in_memory().unwrap();
+        for (path, artiste) in [("/m/a/1.mp3", "Alpha"), ("/m/b/1.mp3", "Beta")] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                artist: Some(artiste.into()),
+                album: Some(format!("Album {artiste}")),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let artistes = lib.artists().unwrap();
+        assert_eq!(artistes.len(), 2);
+        assert!(artistes.iter().all(|a| a.mbid.is_none()));
+    }
+
+    #[test]
+    fn artists_compte_et_exclut_les_sans_artiste() {
+        let lib = bibliotheque_test();
+        let artistes = lib.artists().unwrap();
+        let noms: Vec<&str> = artistes.iter().map(|a| a.name.as_str()).collect();
+        // Ordre alphabétique ; le morceau sans artiste n'apparaît pas ; et les
+        // pistes de la compilation se rangent sous leur artiste d'album plutôt
+        // que d'ouvrir une entrée par invité (Orbital, Filter).
+        assert_eq!(noms, ["Air", "Various"]);
+
+        let air = &artistes[0];
+        assert_eq!(air.tracks, 3);
+        assert_eq!(air.albums, 2);
+
+        let various = &artistes[1];
+        assert_eq!(various.tracks, 2);
+        assert_eq!(various.albums, 1);
+    }
+
+    #[test]
+    fn albums_regroupe_la_compilation_sous_son_artiste_dalbum() {
+        let lib = bibliotheque_test();
+
+        let tous = lib.albums(None).unwrap();
+        let noms: Vec<&str> = tous.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(
+            noms,
+            ["Kanañ a ri!", "Moon Safari", "Spawn", "Talkie Walkie"]
+        );
+
+        // La compilation forme un seul album malgré deux artistes de piste.
+        let spawn = tous.iter().find(|a| a.name == "Spawn").unwrap();
+        assert_eq!(spawn.tracks, 2);
+        assert_eq!(spawn.artist.as_deref(), Some("Various"));
+
+        // Filtrer par artiste de piste ramène quand même la compilation.
+        let chez_orbital = lib.albums(Some("Orbital")).unwrap();
+        assert_eq!(chez_orbital.len(), 1);
+        assert_eq!(chez_orbital[0].name, "Spawn");
+
+        let chez_air = lib.albums(Some("Air")).unwrap();
+        assert_eq!(chez_air.len(), 2);
+    }
+
+    #[test]
+    fn tracks_of_album_respecte_lordre_du_disque() {
+        let lib = bibliotheque_test();
+        let pistes = lib.tracks_of_album("Moon Safari", None).unwrap();
+        let titres: Vec<&str> = pistes.iter().filter_map(|t| t.title.as_deref()).collect();
+        assert_eq!(titres, ["La femme d'argent", "Sexy Boy"]);
+        assert_eq!(pistes[0].track_no, Some(1));
+    }
+
+    #[test]
+    fn search_couvre_titre_artiste_et_album() {
+        let lib = bibliotheque_test();
+        assert_eq!(lib.search("sexy", 50).unwrap().len(), 1); // titre
+        assert_eq!(lib.search("AIR", 50).unwrap().len(), 3); // artiste, casse ignorée
+        assert_eq!(lib.search("Moon", 50).unwrap().len(), 2); // album
+        assert_eq!(lib.search("introuvable", 50).unwrap().len(), 0);
+        assert_eq!(lib.search("a", 2).unwrap().len(), 2); // la limite s'applique
+    }
+
+    /// Mise à niveau d'une base peuplée avant que l'index de recherche
+    /// n'existe. Les autres tests ne voient pas ce cas : leurs lignes sont
+    /// insérées après, donc indexées au vol par les déclencheurs.
+    #[test]
+    fn migration_indexe_une_base_deja_peuplee() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO tracks(path, title, album) VALUES ('/m/a.mp3', 'Bizied', 'Kanañ a ri!')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+        let lib = Library { conn };
+
+        assert_eq!(
+            lib.search("kanan", 10).unwrap().len(),
+            1,
+            "l'index n'a pas été reconstruit pour les lignes préexistantes"
+        );
+    }
+
+    #[test]
+    fn search_ignore_les_accents() {
+        let lib = bibliotheque_test();
+        // Le point de tout l'exercice : la bibliothèque est pleine de titres
+        // accentués, et on ne tape pas les accents en cherchant.
+        assert_eq!(lib.search("kanan", 50).unwrap().len(), 1);
+        assert_eq!(lib.search("Kanañ", 50).unwrap().len(), 1);
+        assert_eq!(lib.search("KANAN A RI", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn search_ne_laisse_pas_la_saisie_devenir_une_requete() {
+        let lib = bibliotheque_test();
+        // Ces saisies contiennent des opérateurs FTS5 ou de la ponctuation
+        // seule. Aucune ne doit remonter d'erreur de syntaxe ni tout ramener.
+        for saisie in [
+            "%",
+            "*",
+            "-",
+            "\"",
+            "AND",
+            "a OR b",
+            "NEAR(x y)",
+            "^",
+            "moon\"",
+        ] {
+            let r = lib.search(saisie, 50);
+            assert!(
+                r.is_ok(),
+                "« {saisie} » a fait échouer la recherche : {r:?}"
+            );
+        }
+        assert!(lib.search("%", 50).unwrap().is_empty());
+        assert!(lib.search("AND", 50).unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_porte_sur_des_mots_entiers() {
+        let lib = bibliotheque_test();
+        // « exy » ne trouve pas « Sexy » : on cherche des mots, pas des
+        // sous-chaînes. Seul le dernier mot vaut préfixe, pour la frappe.
+        assert!(lib.search("exy", 50).unwrap().is_empty());
+        assert_eq!(lib.search("Sex", 50).unwrap().len(), 1);
+        assert_eq!(lib.search("Sexy Boy", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn track_par_identifiant() {
+        let lib = bibliotheque_test();
+        let trouve = lib.search("Venus", 1).unwrap();
+        let id = trouve[0].id;
+        assert_eq!(
+            lib.track(id).unwrap().unwrap().title.as_deref(),
+            Some("Venus")
+        );
+        assert!(lib.track(999_999).unwrap().is_none());
+    }
+
+    #[test]
+    fn remove_root_emporte_les_morceaux_de_la_racine_seulement() {
+        let lib = bibliotheque_test();
+        lib.add_root(Path::new("/m/Air")).unwrap();
+        lib.add_root(Path::new("/m/Comp")).unwrap();
+
+        let racines = lib.roots().unwrap();
+        assert_eq!(racines.len(), 2);
+        assert_eq!(racines[0].path, "/m/Air");
+        assert_eq!(racines[0].tracks, 3);
+
+        // Changer de source : on retire l'ancienne racine et ses morceaux.
+        assert_eq!(lib.remove_root(Path::new("/m/Air")).unwrap(), 3);
+        assert_eq!(lib.count().unwrap(), 3);
+        assert_eq!(lib.roots().unwrap().len(), 1);
+        // Les autres racines sont intactes.
+        assert_eq!(lib.albums(Some("Orbital")).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn save_features_marque_le_morceau_analyse() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/a.flac".into(),
+                title: Some("A".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(lib.pending_analysis("clap", 10).unwrap().len(), 1);
+
+        lib.save_features(id, "clap", &[0.1, 0.2, 0.3], -0.5, 0.25, 2)
+            .unwrap();
+
+        // Le morceau sort de la file d'attente, et se retrouve sur la carte.
+        assert!(lib.pending_analysis("clap", 10).unwrap().is_empty());
+        // Mais il reste en attente pour tout autre modèle : c'est le point.
+        // Avec l'ancien critère (`analyzed_at`), changer de représentation
+        // laissait la moitié de la bibliothèque hors de la passe suivante.
+        assert_eq!(lib.pending_analysis("clap-9f", 10).unwrap().len(), 1);
+        let pts = lib.map_points("clap").unwrap();
+        assert_eq!(pts.len(), 1);
+        assert_eq!(pts[0].0, id);
+        assert!((pts[0].1 + 0.5).abs() < 1e-6);
+        assert_eq!(pts[0].3, 2);
+
+        // Un autre modèle cohabite sans écraser le premier.
+        lib.save_features(id, "musicnn", &[1.0], 0.0, 0.0, 0)
+            .unwrap();
+        assert_eq!(lib.map_points("clap").unwrap().len(), 1);
+        assert_eq!(lib.map_points("musicnn").unwrap().len(), 1);
+
+        // Réécrire le même couple met à jour au lieu de dupliquer.
+        lib.save_features(id, "clap", &[0.9], 0.1, 0.1, 5).unwrap();
+        let pts = lib.map_points("clap").unwrap();
+        assert_eq!(pts.len(), 1);
+        assert_eq!(pts[0].3, 5);
+    }
+
+    #[test]
+    fn upsert_is_idempotent() {
+        let lib = Library::open_in_memory().unwrap();
+        let m = TrackMeta {
+            path: "/musique/a.flac".into(),
+            title: Some("A".into()),
+            ..Default::default()
+        };
+        let first = lib.upsert(&m).unwrap();
+        let second = lib.upsert(&m).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(lib.count().unwrap(), 1);
+    }
+}

@@ -1,0 +1,29 @@
+[package]
+name = "rusty-music-analysis"
+description = "Empreintes audio et projection (module 2 — Exploration)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Le backend se choisit à la compilation, comme le veut Burn. `gpu` passe par
+# wgpu (Metal ici, Vulkan ou DX12 ailleurs) ; `cpu` est le repli pour une
+# machine sans accélérateur. Compiler les deux doublerait la monomorphisation
+# d'un modèle de 4 400 lignes générées.
+[features]
+default = ["gpu"]
+gpu = ["burn/wgpu"]
+cpu = ["burn/ndarray"]
+
+[build-dependencies]
+burn-onnx.workspace = true
+
+[dependencies]
+burn.workspace      = true
+burn-store.workspace = true
+rustfft.workspace   = true
+rodio.workspace     = true
+bhtsne.workspace    = true
+rusty-music-core = { path = "../core" }
+thiserror.workspace = true
+tracing.workspace   = true

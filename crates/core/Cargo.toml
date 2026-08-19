@@ -1,0 +1,21 @@
+[package]
+name = "rusty-music-core"
+description = "Cœur d'ingestion : dossier surveillé, lecture des tags, base locale."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace    = true
+thiserror.workspace = true
+rusqlite.workspace  = true
+lofty.workspace     = true
+notify.workspace    = true
+walkdir.workspace   = true
+tracing.workspace   = true
+serde.workspace     = true
+serde_json.workspace = true
+ureq.workspace      = true
+ogg.workspace       = true
+opus-decoder.workspace = true

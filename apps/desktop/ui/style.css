@@ -1,0 +1,621 @@
+/* Direction 1a « Relief » — encre chaude sur papier.
+   Titres en serif, données en monospace, densité aérée, filets d'un pixel.
+   Les deux thèmes sont dessinés, pas dérivés l'un de l'autre. */
+
+:root {
+  --bg:      #14120E;
+  --panel:   #1B1813;
+  --panel2:  #221E17;
+  --line:    #2E2921;
+  --txt:     #EDE8DC;
+  --mut:     #9A9284;
+  --accent:  #C07C4A;
+  --serif:   Newsreader, Georgia, "Times New Roman", serif;
+  --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  /* Rampe séquentielle, teinte unique, clarté monotone — pour les variables
+     continues (année). Une rampe n'oppose pas des identités : elle échappe au
+     plafond de trois teintes qui s'applique aux couleurs catégorielles sur un
+     nuage de points. Sur fond sombre elle va du terne au vif. */
+  --rampe: #3A2A18, #5C4022, #85592B, #AE7139, #D49A5E, #EFC38F;
+
+  /* Douze teintes pour les familles. Calculées, pas choisies : clarté et
+     chroma constants en OKLCH, teintes également réparties — l'écart
+     perceptuel est ainsi comparable d'une paire à l'autre.
+
+     Elles ne servent pas à *identifier* une famille parmi douze : le contrôle
+     de palette est formel là-dessus, au-delà de trois teintes catégorielles
+     sur un nuage dense on ne distingue plus de façon fiable. Elles servent à
+     *voir la structure* — que la carte a des régions. Pour identifier, la
+     légende et le mode « isoler » restent la voie. */
+  --familles: #EF8891, #EC9066, #D99E46, #B7AF47, #88BC6A, #4EC497,
+              #0CC3C3, #38BBE6, #73AEF8, #A39FF6, #C892E1, #E289BD;
+}
+
+:root[data-theme="clair"] {
+  --bg:     #F3EFE6;
+  --panel:  #FBF8F1;
+  --panel2: #EFEADF;
+  --line:   #DCD4C4;
+  --txt:    #241F18;
+  --mut:    #6B6355;
+  --accent: #A85F2C;
+  /* Sur fond clair, la rampe va dans l'autre sens : du pâle au dense. */
+  --rampe: #EBD9BE, #D9B486, #C08A55, #A85F2C, #7E4520, #552E14;
+  /* Mêmes teintes, assombries pour tenir sur un fond clair. */
+  --familles: #B24B58, #B05323, #9E6300, #7E7400, #4C8227, #00895D,
+              #00888A, #0080AC, #3472BE, #6B63BC, #8F56A7, #A74D83;
+}
+
+* { box-sizing: border-box; }
+
+/* L'attribut `hidden` doit gagner contre nos propres règles de disposition.
+   Une règle d'auteur — `.voile { display: grid }`, `.file { display: flex }` —
+   l'emporte sur le `[hidden] { display: none }` de la feuille du navigateur :
+   sans ce garde-fou, les panneaux restent affichés en permanence et le voile
+   plein écran avale tous les clics. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--sans);
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- gabarit Atelier ---------- */
+.atelier {
+  display: grid;
+  height: 100vh;
+  grid-template-columns: 232px 1fr 300px;
+  /* Le dock du module 3 occupe une rangée à hauteur nulle tant qu'il est
+     masqué : `ui-spec.md` veut qu'il pousse le centre vers le haut sans le
+     faire disparaître — la carte reste la réserve de matière. */
+  grid-template-rows: 1fr auto 64px;
+  grid-template-areas:
+    "rail centre inspecteur"
+    "dock dock dock"
+    "trans trans trans";
+}
+
+/* ---------- dock : les stems (module 3) ---------- */
+.dock {
+  grid-area: dock;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 12px 18px 14px;
+  max-height: 34vh;
+  overflow: auto;
+}
+.dock__tete { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.dock__tete .file__fermer { margin-left: auto; }
+.dock__pistes { display: flex; flex-direction: column; gap: 6px; }
+.dock__aide {
+  margin-left: auto; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mut); opacity: .7;
+}
+.dock__tete .file__fermer { margin-left: 12px; }
+
+/* Spectrogramme d'un stem : ce qu'il contient, pas seulement combien. */
+.stem__spectre {
+  margin-left: auto; flex: 1 1 auto; min-width: 120px;
+  height: 46px; display: block; background: var(--bg); cursor: pointer;
+}
+/* Le niveau est un vrai réglage : on le tire. */
+.stem__jauge { cursor: ew-resize; }
+.stem__jauge:hover i { filter: brightness(1.25); }
+
+/* Une piste de stem : nom, boutons solo/muet, niveau. */
+.stem {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border: 1px solid var(--line); background: var(--panel2);
+}
+.stem__nom { font-size: 12.5px; min-width: 84px; }
+.stem--muet { opacity: .4; }
+.stem--solo { border-color: var(--accent); }
+.stem__b {
+  font: inherit; font-size: 11px; cursor: pointer; padding: 3px 9px;
+  background: none; border: 1px solid var(--line); color: var(--mut);
+}
+.stem__b:hover { color: var(--txt); }
+.stem__b--actif { color: var(--accent); border-color: var(--accent); }
+.stem__jauge {
+  height: 5px; flex: 0 0 90px;
+  background: var(--line); position: relative; overflow: hidden;
+}
+.stem__jauge i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+
+/* Un stem et, replié dessous, ce qui ne concerne que lui : sa vitesse, sa
+   hauteur, et d'où le remplacer. Replié parce que la ligne porte déjà quatre
+   commandes — l'éditeur est précisément l'endroit où l'Atelier retomberait en
+   panneau d'administration (`docs/ui-spec-editeur.md`). */
+.piste { display: flex; flex-direction: column; }
+.stem__pan {
+  border: 1px solid var(--line); border-top: none;
+  background: var(--panel2); padding: 10px 12px 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.stem__pan .reglage:first-child { margin-left: 0; }
+.stem__ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stem__note {
+  font-size: 11px; color: var(--mut); line-height: 1.5; margin: 0;
+}
+/* Le badge de la ligne : neutre il ne dit rien, réglé il dit quoi. */
+.stem__b--regle { color: var(--accent); border-color: var(--accent); }
+
+/* Les morceaux d'où l'on peut tirer un stem. Même grammaire que les voisins
+   soniques de l'inspecteur : c'est la même relation, montrée ailleurs. */
+.candidats { display: flex; flex-direction: column; max-height: 168px; overflow: auto; }
+.candidat {
+  background: none; border: none; border-top: 1px solid var(--line);
+  padding: 6px 0; cursor: pointer; text-align: left; font: inherit;
+  color: var(--txt); display: flex; align-items: baseline; gap: 10px;
+}
+.candidat:hover { color: var(--accent); }
+.candidat:disabled { opacity: .45; cursor: default; }
+.candidat b { font-size: 12px; font-weight: 500; flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidat span {
+  font-family: var(--mono); font-size: 10px; color: var(--mut);
+  flex: none; font-variant-numeric: tabular-nums;
+}
+
+/* Dérive : n'apparaît que lorsque les stems n'avancent plus du même pas. */
+.derive { display: flex; align-items: center; gap: 8px; margin-left: 14px; }
+.derive b {
+  font-size: 11px; font-weight: 500; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- rail ---------- */
+.rail {
+  grid-area: rail;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px 16px;
+  overflow: auto;
+}
+.marque { display: flex; align-items: baseline; gap: 7px; margin-bottom: 26px; }
+.marque__nom {
+  font-size: 14px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.marque__ver { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--mut); }
+
+.rail__titre {
+  font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .17em; text-transform: uppercase;
+  color: var(--mut); margin: 0 0 9px;
+}
+.bloc { margin-top: 26px; }
+
+.modes { display: flex; flex-direction: column; }
+.mode {
+  text-align: left; font: inherit; font-size: 13.5px;
+  background: none; border: none; color: var(--mut);
+  border-left: 2px solid var(--line);
+  padding: 6px 0 6px 11px; cursor: pointer;
+  transition: color .2s ease, border-color .2s ease;
+}
+.mode:hover:not(:disabled) { color: var(--txt); }
+.mode--actif { color: var(--txt); border-left-color: var(--accent); }
+.mode:disabled { opacity: .38; cursor: default; }
+
+.chercher {
+  width: 100%; font: inherit; font-size: 13px;
+  background: var(--panel2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 2px;
+  padding: 7px 9px;
+}
+.chercher:focus { outline: none; border-color: var(--accent); }
+
+.sommaire { font-family: var(--mono); font-size: 11px; color: var(--mut); line-height: 1.7; }
+
+/* ---------- centre ---------- */
+/* `min-height: 0` n'est pas décoratif : la taille minimale automatique d'une
+   cellule de grille est celle de son contenu. Sans cela, le canvas de la carte
+   fait grandir la rangée « centre » au-delà de son `1fr` et pousse le
+   transport hors de l'écran. */
+.centre {
+  grid-area: centre;
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+}
+
+.fil {
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 20px 26px 14px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.fil h1 { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -.01em; margin: 0; }
+.fil__compte { font-family: var(--mono); font-size: 10.5px; color: var(--mut); margin-left: auto; }
+.fil__retour {
+  font: inherit; font-size: 12.5px; background: none; border: none;
+  color: var(--mut); cursor: pointer; padding: 0;
+}
+.fil__retour:hover { color: var(--accent); }
+
+/* La liste est virtualisée : un conteneur haut, une fenêtre de lignes. */
+.liste { flex: 1; overflow-y: auto; position: relative; outline: none; }
+.liste__socle { position: relative; width: 100%; }
+.liste__fenetre { position: absolute; left: 0; right: 0; top: 0; }
+
+.ligne {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 26px; height: 44px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.ligne:hover { background: var(--panel); }
+.ligne--joue { color: var(--accent); }
+.ligne__no { font-family: var(--mono); font-size: 11px; color: var(--mut); width: 26px; flex: none; text-align: right; }
+.ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ligne__sec { font-size: 12px; color: var(--mut); flex: none; }
+.ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+
+/* ---------- carte (mode Explorer) ---------- */
+.carte { flex: 1; position: relative; min-height: 0; }
+.carte canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.carte canvas:active { cursor: grabbing; }
+
+.carte__info {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 7px 10px; max-width: 280px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+.carte__info b {
+  display: block; font-size: 12.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.carte__info span {
+  display: block; font-size: 11.5px; color: var(--mut);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.carte__aide {
+  position: absolute; left: 26px; bottom: 16px; pointer-events: none;
+  /* Le texte change avec le mode de chemin : il lui faut de quoi passer à la
+     ligne plutôt que de déborder du cadre. */
+  max-width: calc(100% - 52px);
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--mut); opacity: .7;
+}
+
+/* Réglage du zoom : la molette d'un trackpad est trop vive pour viser. */
+.zoom { display: flex; gap: 4px; margin-top: 10px; }
+.zoom button {
+  flex: 1; font: inherit; font-size: 12px; cursor: pointer; padding: 4px 0;
+  background: none; border: 1px solid var(--line); color: var(--mut);
+}
+.zoom button:hover { color: var(--txt); border-color: var(--accent); }
+.zoom__val {
+  font-family: var(--mono); font-size: 10px; color: var(--mut);
+  align-self: center; min-width: 42px; text-align: center;
+}
+
+/* Sélecteur « colorer par » */
+.segments { display: flex; border: 1px solid var(--line); }
+.segment {
+  flex: 1; font: inherit; font-size: 12px; cursor: pointer;
+  background: none; border: none; color: var(--mut); padding: 5px 0;
+}
+.segment + .segment { border-left: 1px solid var(--line); }
+.segment:hover { color: var(--txt); }
+.segment--actif { background: var(--panel2); color: var(--accent); }
+
+/* Quatre modes de chemin ne tiennent pas côte à côte dans le rail : on les
+   empile, et la séparation passe du côté gauche au côté haut. */
+.segments--colonne { flex-direction: column; }
+.segments--colonne .segment { text-align: left; padding: 6px 9px; }
+.segments--colonne .segment + .segment {
+  border-left: none; border-top: 1px solid var(--line);
+}
+
+/* Départ et arrivée sont affichés, pas seulement mémorisés : sans cela, rien
+   ne dit ce qui est déjà choisi ni comment le corriger. */
+.bornes { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.borne {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 4px 7px; border: 1px solid var(--line); background: var(--panel2);
+}
+.borne--pose { border-color: var(--accent); }
+.borne__role {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--mut); flex: none; width: 44px;
+}
+.borne__nom {
+  font-size: 11.5px; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.borne__x {
+  font: inherit; font-size: 12px; line-height: 1; padding: 0 2px;
+  background: none; border: none; color: var(--mut); cursor: pointer; flex: none;
+}
+.borne__x:hover { color: var(--accent); }
+
+/* Le geste attendu change avec le mode : il est écrit sous les boutons plutôt
+   qu'appris. */
+.aide {
+  margin-top: 9px; font-size: 11.5px; line-height: 1.45; color: var(--mut);
+}
+.reglette {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-size: 11.5px; color: var(--mut);
+}
+.reglette input {
+  width: 58px; margin-left: auto; padding: 4px 6px;
+  font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+}
+
+/* Légende en dégradé — ce que demande `ui-spec.md` pour une variable
+   continue, là où une variable catégorielle réclame une liste. */
+.legende { margin-top: 10px; }
+.legende__barre {
+  height: 7px; border: 1px solid var(--line);
+  background: linear-gradient(to right, var(--rampe));
+}
+.legende__bornes {
+  display: flex; justify-content: space-between; margin-top: 4px;
+  font-family: var(--mono); font-size: 10px; color: var(--mut);
+}
+
+/* Familles : la couleur ne distingue qu'une famille à la fois — un nuage
+   dense ne supporte pas douze teintes, et la palette validée plafonne à
+   trois sur ce type de graphique. Isoler vaut mieux que colorier. */
+.familles { display: flex; flex-direction: column; gap: 1px; }
+.famille__pastille {
+  width: 9px; height: 9px; flex: none; border-radius: 50%;
+  align-self: center;
+}
+.famille {
+  display: flex; align-items: baseline; gap: 8px;
+  background: none; border: none; padding: 3px 0; cursor: pointer;
+  font: inherit; font-size: 12.5px; color: var(--mut); text-align: left;
+}
+.famille:hover { color: var(--txt); }
+.famille--isolee { color: var(--accent); }
+/* La famille isolée se signale par un filet, pas par une teinte : douze
+   couleurs sur un nuage dense ne se distinguent pas, le contrôle de palette
+   plafonne d'ailleurs à trois sur ce type de graphique. */
+.famille--isolee { border-left: 2px solid var(--accent); padding-left: 7px; margin-left: -9px; }
+.famille__n {
+  margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- inspecteur ---------- */
+.inspecteur {
+  grid-area: inspecteur;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 18px 18px 22px;
+  overflow: auto;
+}
+.pochette {
+  aspect-ratio: 1; width: 100%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); margin-bottom: 16px;
+  background: repeating-linear-gradient(135deg, var(--panel2) 0 7px, var(--panel) 7px 14px);
+  background-size: cover; background-position: center;
+}
+.pochette span {
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--mut);
+}
+.pochette--pleine span { display: none; }
+.insp__vide { font-size: 12.5px; color: var(--mut); }
+.inspecteur h3 { font-family: var(--serif); font-size: 25px; font-weight: 500; line-height: 1.12; margin: 0; }
+.insp__artiste { font-size: 13px; color: var(--mut); margin: 5px 0 18px; }
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
+.meta dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); align-self: center; }
+.meta dd { margin: 0; font-family: var(--mono); font-size: 12px; }
+
+/* Voisins soniques : les morceaux les plus proches dans l'espace des
+   empreintes — pas sur la carte, dont la projection déforme les distances. */
+.voisins { display: flex; flex-direction: column; }
+.voisin {
+  background: none; border: none; border-top: 1px solid var(--line);
+  padding: 7px 0; cursor: pointer; text-align: left; font: inherit;
+  color: var(--txt); min-width: 0;
+}
+.voisin:hover { color: var(--accent); }
+.voisin b {
+  display: block; font-size: 12.5px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.voisin span {
+  display: block; font-size: 11.5px; color: var(--mut);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- transport ---------- */
+.transport {
+  grid-area: trans;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.transport__play {
+  width: 34px; height: 34px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: 11px;
+}
+.transport__nav {
+  background: none; border: none; color: var(--mut);
+  font-size: 20px; cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.transport__nav:hover { color: var(--txt); }
+.transport__art {
+  width: 38px; height: 38px; border-radius: 6px; flex: none;
+  border: 1px solid var(--line);
+  background: repeating-linear-gradient(135deg, var(--panel2) 0 5px, var(--panel) 5px 10px);
+  background-size: cover; background-position: center;
+}
+.transport__now { min-width: 0; width: 210px; }
+.transport__now b {
+  display: block; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.transport__now span {
+  display: block; font-size: 12px; color: var(--mut);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Barres de progression : cliquables pour se déplacer. */
+/* Onde : chaque trait porte la crête, son <u> intérieur le noyau RMS. */
+.wave { flex: 1; height: 30px; display: flex; align-items: center; gap: 1px; min-width: 40px; cursor: pointer; }
+.wave i {
+  flex: 1; min-width: 1px; background: var(--line);
+  display: flex; align-items: center; justify-content: center;
+  transition: height .25s ease, background .12s linear;
+}
+.wave i u { display: block; width: 100%; background: var(--mut); }
+.wave i.on { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.wave i.on u { background: var(--accent); }
+
+.tc { font-family: var(--mono); font-size: 11px; color: var(--mut); flex: none; }
+.transport__file {
+  font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .12em; text-transform: uppercase;
+  background: none; color: var(--mut); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 2px;
+  padding: 5px 9px; flex: none;
+}
+.transport__file:hover, .transport__file[aria-expanded="true"] { color: var(--txt); border-color: var(--accent); }
+
+/* ---------- réglages ---------- */
+.lien {
+  background: none; border: none; padding: 0; margin-top: 12px;
+  font: inherit; font-size: 12.5px; color: var(--mut);
+  cursor: pointer; text-align: left;
+}
+.lien:hover { color: var(--accent); }
+
+.voile {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(0, 0, 0, .52);
+  display: grid; place-items: center;
+}
+.reglages {
+  width: min(620px, 88vw); max-height: 78vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 22px 24px 26px;
+}
+.reglages__tete { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
+.reglages h2 { font-family: var(--serif); font-size: 23px; font-weight: 500; margin: 0; }
+.reglages__tete .file__fermer { margin-left: auto; }
+
+.racine {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+}
+.racine__chemin { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.racine__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+
+.bouton {
+  font: inherit; font-size: 12.5px; cursor: pointer; flex: none;
+  background: var(--panel2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 2px; padding: 7px 13px;
+}
+.bouton:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.bouton:disabled { opacity: .4; cursor: default; }
+.bouton--danger:hover:not(:disabled) { border-color: #C0503A; color: #C0503A; }
+
+.ajout { margin-top: 22px; }
+.ajout__ligne { display: flex; gap: 10px; }
+.scan-etat { font-family: var(--mono); font-size: 11px; color: var(--mut); margin: 12px 0 0; min-height: 1.4em; }
+
+/* ---------- file d'attente ---------- */
+/* En superposition au-dessus de l'inspecteur : la coquille est déjà dense,
+   un quatrième volet permanent la ferait basculer côté « panneau ». */
+.file {
+  position: fixed; right: 0; bottom: 64px; top: 0;
+  width: 320px; z-index: 10;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -14px 0 34px rgba(0, 0, 0, .34);
+  display: flex; flex-direction: column;
+}
+.file__tete {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 18px 18px 12px; border-bottom: 1px solid var(--line); flex: none;
+}
+.file__tete .rail__titre { margin: 0; }
+.file__fermer {
+  background: none; border: none; color: var(--mut);
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0;
+}
+.file__fermer:hover { color: var(--txt); }
+.file__liste { flex: 1; overflow-y: auto; }
+.file__vide { padding: 18px; font-size: 12.5px; color: var(--mut); }
+
+.file__ligne {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 18px; cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.file__ligne:hover { background: var(--panel2); }
+.file__ligne--joue { color: var(--accent); }
+.file__ligne--passe { opacity: .42; }
+.file__rang { font-family: var(--mono); font-size: 10px; color: var(--mut); width: 22px; flex: none; text-align: right; }
+.file__txt { min-width: 0; flex: 1; }
+.file__txt b { display: block; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__txt span { display: block; font-size: 11.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__duree { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.vol { display: flex; align-items: center; gap: 7px; flex: none; }
+.vol span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+.vol input { width: 74px; accent-color: var(--accent); }
+
+/* Vitesse et tonalité, dans l'en-tête du dock. Deux pas-à-pas plutôt que des
+   glissières : chaque changement coûte quelques secondes de calcul, et une
+   glissière inviterait à balayer une plage entière. */
+.reglage {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 14px;
+}
+.reglage b {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mut);
+  margin-right: 4px;
+}
+.reglage button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mut);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.reglage button:hover:not(:disabled) { color: var(--txt); border-color: var(--mut); }
+.reglage button:disabled { opacity: 0.35; cursor: default; }
+.reglage span {
+  min-width: 46px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bouton d'export : dans l'en-tête du dock, plus discret qu'un bouton de rail. */
+.bouton--mince {
+  margin-left: 14px;
+  padding: 3px 10px;
+  font-size: 11px;
+}
