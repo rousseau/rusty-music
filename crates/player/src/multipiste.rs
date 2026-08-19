@@ -94,7 +94,41 @@ const UNITE: f64 = (1u64 << FRAC) as f64;
 /// Trames poussées d'un coup dans l'étireur. 4096 à 44,1 kHz, soit 93 ms :
 /// assez pour qu'il travaille, assez peu pour qu'un changement de vitesse
 /// s'entende tout de suite.
-const BLOC: usize = 4096;
+///
+/// **128, et c'est mesuré — 4096 craquait.** `remplir()` est appelé depuis le
+/// rappel audio : un appel sur quelques milliers fait tout le travail, et c'est
+/// ce pic-là qui doit tenir dans le tampon du périphérique, pas la moyenne. La
+/// moyenne allait très bien — WSOLA tient 3,2 fois le temps réel sur quatre
+/// stems —, et c'est pour cela que le défaut a survécu à la première mesure.
+///
+/// Pire salve pour quatre stems, contre les 11,6 ms d'un tampon de 512 trames
+/// (`examples/cout_bloc.rs`) :
+///
+/// | bloc | ×0,25 | ×0,5 | ×1,5 | ×4 |
+/// |---|---|---|---|---|
+/// | 4096 | 122,5 | 65,5 | 23,9 | 10,4 |
+/// | 1024 | 33,9 | 20,6 | 9,6 | 5,3 |
+/// | 256 | 10,0 | 5,2 | 5,1 | 5,1 |
+/// | **128** | **6,1** | **5,8** | **5,1** | **5,1** |
+///
+/// **Le pire cas est la vitesse la plus lente, et c'est ce qui a failli être
+/// manqué.** À ×0,25, un bloc d'entrée rend quatre fois sa durée, donc quatre
+/// fois plus de pas d'étireur à calculer d'un coup. Mesuré au seul tempo 1,5,
+/// un bloc de 512 paraissait tenir — il craque à 19,6 ms dès qu'on ralentit,
+/// c'est-à-dire précisément quand on ralentit pour écouter un détail.
+///
+/// **Le plancher n'est pas le bloc, c'est le pas de l'étireur.** `wsola` rend
+/// sa sortie par sauts de `hop_ms` — 15 ms, soit 661 trames — et n'en rend
+/// jamais moins : d'où les 5,1 ms qui ne descendent plus, quel que soit le
+/// bloc. 128 est le plus grand bloc qui reste à ce plancher sur toute la plage
+/// de l'interface (25 % à 400 %).
+///
+/// Ce qui reste à savoir : 6,1 ms sur 11,6, c'est de la marge, pas du confort.
+/// Un périphérique demandant des tampons de 256 trames redeviendrait juste. La
+/// réponse de fond serait de sortir l'étirement du rappel audio — un fil
+/// producteur et un tampon circulaire —, ce que cette mesure ne rend pas
+/// nécessaire aujourd'hui.
+const BLOC: usize = 128;
 
 /// Un stem et sa tête de lecture : matière, niveau, vitesse, position.
 ///
@@ -126,6 +160,11 @@ struct Voix {
     /// forme d'onde, la méthode d'`atempo` chez ffmpeg. Méthode temporelle,
     /// donc **la hauteur ne bouge pas** et il n'y a pas d'artefact de phase.
     etireur: wsola::TimeStretch,
+    /// Tampon d'entrée de l'étireur, **réalloué jamais**. Allouer dans le
+    /// rappel audio est ce qu'on évite en priorité : la latence d'une
+    /// allocation n'est pas bornée, et elle tombe précisément sur l'appel qui
+    /// travaille déjà le plus.
+    bloc: Vec<f32>,
     /// Ce que l'étireur a rendu et qui n'est pas encore joué, entrelacé.
     sortie: Vec<f32>,
     lus: usize,
@@ -141,7 +180,7 @@ impl Voix {
             return false;
         }
         let fin = (depart + BLOC).min(self.trames);
-        let mut bloc = Vec::with_capacity((fin - depart) * CANAUX as usize);
+        self.bloc.clear();
         for t in depart..fin {
             for c in 0..CANAUX as usize {
                 let v = self
@@ -149,15 +188,11 @@ impl Voix {
                     .get(t * CANAUX as usize + c)
                     .copied()
                     .unwrap_or(0);
-                bloc.push(v as f32 / i16::MAX as f32);
+                self.bloc.push(v as f32 / i16::MAX as f32);
             }
         }
-        self.etireur.push(&bloc);
+        self.etireur.push(&self.bloc);
         self.sortie = self.etireur.pull(usize::MAX);
-        // L'index de lecture alterne gauche puis droite : une sortie de
-        // longueur impaire inverserait les canaux pour tout ce qui suit.
-        let pair = self.sortie.len() - self.sortie.len() % CANAUX as usize;
-        self.sortie.truncate(pair);
         self.lus = 0;
         self.curseur
             .fetch_add(((fin - depart) as u64) << FRAC, Ordering::Relaxed);
@@ -338,6 +373,7 @@ impl Multipiste {
                 position: 0,
                 etireur: wsola::TimeStretch::new(SR, CANAUX)
                     .map_err(|e| Error::Etirement(format!("{e}")))?,
+                bloc: Vec::with_capacity(BLOC * CANAUX as usize),
                 sortie: Vec::new(),
                 lus: 0,
                 derniere: 1.0,
@@ -575,6 +611,7 @@ mod tests {
                 trames: fins[i],
                 position: 0,
                 etireur: wsola::TimeStretch::new(SR, CANAUX).expect("étireur de test"),
+                bloc: Vec::with_capacity(BLOC * CANAUX as usize),
                 sortie: Vec::new(),
                 lus: 0,
                 derniere: 1.0,
@@ -675,6 +712,33 @@ mod tests {
     /// plus vite qu'il ne la restitue, et **c'est là que la hauteur est
     /// préservée**. On vérifie ici le contrat de la voie, pas le détail de
     /// l'algorithme — celui-ci est éprouvé dans son propre crate.
+    /// **L'invariant qui empêche le craquement de revenir**, et il se vérifie
+    /// par arithmétique plutôt que par chronomètre — un test de durée serait
+    /// capricieux sur une machine chargée.
+    ///
+    /// `remplir()` pousse `BLOC` trames d'entrée dans l'étireur, qui en rend
+    /// `BLOC / vitesse` et travaille par pas de `hop`. Un appel qui couvre
+    /// plusieurs pas les calcule tous d'un coup, et c'est cette salve qui
+    /// dépasse l'échéance du tampon audio. À la vitesse la plus lente — le
+    /// pire cas, celui qui avait échappé à la première mesure — un bloc doit
+    /// donc tenir dans un seul pas.
+    #[test]
+    fn un_bloc_ne_couvre_jamais_plus_dun_pas_detireur() {
+        // `hop_ms` vaut 15 ms par défaut chez `wsola`, soit 661 trames à
+        // 44,1 kHz. Recalculé plutôt qu'écrit en dur : le jour où la crate
+        // change ses réglages, c'est ce test qui doit le dire.
+        let hop = (SR as f32 * 0.015) as usize;
+        // La borne basse de `Vitesse`, celle que l'interface expose à 25 %.
+        let plus_lent = 250.0 / 1000.0;
+        let rendu = (BLOC as f32 / plus_lent) as usize;
+        assert!(
+            rendu <= hop,
+            "un bloc de {BLOC} rend {rendu} trames à ×{plus_lent}, \
+             soit {:.1} pas d'étireur de {hop} — la salve dépassera le tampon",
+            rendu as f32 / hop as f32
+        );
+    }
+
     #[test]
     fn au_dela_de_cent_pour_cent_letireur_prend_le_relais() {
         // Une seconde de matière : l'étireur a besoin de plus qu'une fenêtre.

@@ -435,6 +435,71 @@ cubique de Catmull-Rom, la linéaire ternissant tout le haut du spectre.
 **La leçon est dans `CLAUDE.md`** : chercher une crate Rust *avant* d'écrire,
 pas après.
 
+### Ce que l'adoption de `wsola` a cassé ailleurs — corrigé le 19 août
+
+Deux défauts, tous deux introduits par un changement juste, et tous deux dans
+du code que ce changement ne touchait pas.
+
+#### La vitesse craquait
+
+`Voix::remplir()` pousse un bloc dans l'étireur **depuis le rappel audio**. Le
+bloc valait 4 096 trames : un appel à `next()` sur quelques milliers faisait
+tout le travail, les autres rien.
+
+**Le débit moyen allait très bien** — WSOLA tient 3,2 fois le temps réel sur
+quatre stems — et c'est pour cela que le défaut a survécu. Ce qui compte n'est
+pas la moyenne mais le pic : un appel doit rendre la main avant que le
+périphérique ait vidé son tampon, 11,6 ms pour 512 trames.
+
+Pire salve, quatre stems (`cargo run --release -p rusty-music-player --example
+cout_bloc`) :
+
+| bloc | ×0,25 | ×0,5 | ×1,5 | ×4 |
+|---|---|---|---|---|
+| 4096 | 122,5 | 65,5 | 23,9 | 10,4 |
+| 1024 | 33,9 | 20,6 | 9,6 | 5,3 |
+| 256 | 10,0 | 5,2 | 5,1 | 5,1 |
+| **128** | **6,1** | **5,8** | **5,1** | **5,1** |
+
+**Le pire cas est la vitesse la plus lente, et c'est ce qui a failli être
+manqué.** Mesuré au seul tempo 1,5 — le réflexe — un bloc de 512 semblait
+suffire ; il craque à 19,6 ms dès qu'on ralentit, c'est-à-dire précisément
+quand on ralentit pour écouter un détail. À ×0,25 un bloc rend quatre fois sa
+durée, donc quatre fois plus de pas d'étireur d'un coup.
+
+**Le plancher n'est pas le bloc, c'est le pas de l'étireur** : `wsola` rend sa
+sortie par sauts de 15 ms et n'en rend jamais moins — d'où les 5,1 ms qui ne
+descendent plus. 128 est le plus grand bloc qui reste à ce plancher sur toute
+la plage de l'interface. Un test d'arithmétique le verrouille, plutôt qu'un
+chronomètre qui serait capricieux :
+`un_bloc_ne_couvre_jamais_plus_dun_pas_detireur`.
+
+Reste à savoir : 6,1 ms sur 11,6, c'est de la marge, pas du confort. Un
+périphérique demandant des tampons de 256 trames redeviendrait juste, et la
+réponse de fond serait alors de sortir l'étirement du rappel audio.
+
+#### La hauteur bloquait l'interface
+
+La transposition tournait dans une commande `#[tauri::command(async)]`, et cela
+ne suffit pas. **`async` sert à une commande qui attend, pas à une commande qui
+calcule** : une boucle qui ne rend jamais la main monopolise un ouvrier du
+runtime, et toutes les autres commandes attendent derrière — le sondage du
+transport, l'état de lecture, le moindre clic. L'interface ne gelait pas, elle
+faisait la queue, ce qui se voit pareil.
+
+**L'enchaînement mérite d'être noté.** Le démixage avait déjà réglé cela dans
+son fil. La transposition ne l'avait pas suivi parce qu'elle était courte —
+0,84 s par stem du temps du vocodeur de phase. `wsola` l'a portée à 17,9 s,
+soit plus d'une minute pour quatre stems, **sans que ce chemin-là soit revu**.
+Un remplacement correct, mesuré et documenté a rendu inacceptable un choix qui
+ne l'était pas la veille.
+
+Corrigé sur le motif du démixage : `start_etirer` lance un fil et rend la main,
+`etirer_state` se sonde. L'avancement se compte **en stems**, pas en
+pourcentage — à vingt secondes pièce, un pourcentage global reste immobile
+assez longtemps pour qu'on le croie bloqué. Quand tout est neutre ou déjà en
+cache, aucun fil n'est lancé et le chargement reste immédiat.
+
 ### Opus — le seul format que symphonia ne décode pas
 
 Un album entier de la bibliothèque de test restait hors de la carte.

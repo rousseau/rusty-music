@@ -1849,10 +1849,10 @@ async function appliquerReglages() {
   const avant = edition.enLecture ? await invoke("stems_state") : null;
   $("dock-aide").textContent = "calcul…";
   try {
-    const traites = await invoke("stems_etirer", {
-      stems: edition.stems.map((s) => [s.nom, s.chemin]),
-      demiTons: edition.stems.map(tonaliteDe),
-    });
+    const traites = await transposerStems(
+      edition.stems.map((s) => [s.nom, s.chemin]),
+      edition.stems.map(tonaliteDe),
+    );
     await invoke("stems_play", { stems: traites });
     edition.enLecture = true;
     await appliquerVitesses();
@@ -2390,6 +2390,48 @@ async function greffer(s, candidat, liste) {
 /// Le sondage est le même que celui du bouton « Séparer » — le moteur ne rend
 /// pas de rapport intermédiaire — mais il ne touche pas au morceau ouvert :
 /// c'est le voisin qu'on sépare, pas lui.
+/// Lance la transposition et attend qu'elle finisse, en disant où elle en est.
+///
+/// **Le calcul ne bloque plus l'interface, et c'est le but de tout ceci.** Une
+/// transposition demande une vingtaine de secondes par stem depuis le passage à
+/// `wsola` ; la faire dans une commande qui ne rend pas la main mettait toutes
+/// les autres en file d'attente derrière elle — le transport, l'état de
+/// lecture, le moindre clic. Le moteur la fait maintenant dans son fil, et
+/// l'interface sonde.
+///
+/// Le premier appel rend déjà l'état : quand tout est neutre ou en cache, il
+/// arrive avec `en_cours: false` et l'on ne sonde pas du tout.
+async function transposerStems(stems, demiTons) {
+  const depart = await invoke("start_etirer", { stems, demiTons });
+  if (!depart.en_cours) {
+    if (depart.erreur) throw depart.erreur;
+    return depart.stems;
+  }
+
+  return new Promise((resolve, reject) => {
+    const t = setInterval(async () => {
+      let e;
+      try {
+        e = await invoke("etirer_state");
+      } catch (err) {
+        clearInterval(t);
+        reject(err);
+        return;
+      }
+      // Un compte de stems, pas un pourcentage : à vingt secondes pièce, un
+      // pourcentage global reste immobile assez longtemps pour qu'on le croie
+      // bloqué.
+      if (e.en_cours) {
+        $("dock-aide").textContent = `transposition ${e.faits + 1}/${e.total}…`;
+        return;
+      }
+      clearInterval(t);
+      if (e.erreur) reject(e.erreur);
+      else resolve(e.stems);
+    }, 400);
+  });
+}
+
 function attendreDemix() {
   return new Promise((resolve, reject) => {
     const t = setInterval(async () => {
@@ -2561,10 +2603,10 @@ async function lireStems() {
     // Passe par le traitement même à réglages neutres : le moteur rend alors
     // les chemins d'origine sans rien calculer, et il n'y a qu'un chemin de
     // code à suivre pour charger des stems.
-    const stems = await invoke("stems_etirer", {
-      stems: edition.stems.map((s) => [s.nom, s.chemin]),
-      demiTons: edition.stems.map(tonaliteDe),
-    });
+    const stems = await transposerStems(
+      edition.stems.map((s) => [s.nom, s.chemin]),
+      edition.stems.map(tonaliteDe),
+    );
     await invoke("stems_play", { stems });
     // Posé avant les vitesses : `appliquerVitesses` ne parle au moteur que si
     // un multipiste est chargé, et il l'est à partir d'ici.

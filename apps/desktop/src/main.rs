@@ -27,6 +27,9 @@ struct Etat {
     analyse: Mutex<EtatAnalyse>,
     enrichissement: Mutex<EtatEnrichissement>,
     demix: Mutex<EtatDemix>,
+    /// Où en est la transposition des stems. Elle tourne dans son fil : c'est
+    /// une vingtaine de secondes par stem, et l'interface doit rester servie.
+    transpose: Mutex<EtatTranspose>,
     /// Le jeu de stems en écoute, s'il y en a un. Il tient sa propre sortie
     /// audio : le lecteur du module 1 se tait pendant ce temps.
     stems: Mutex<Option<rusty_music_player::Multipiste>>,
@@ -645,11 +648,14 @@ fn racine_stems(etat: &State<Etat>) -> PathBuf {
 
 /// Vitesse de lecture des stems, appliquée immédiatement.
 ///
-/// **Rien n'est recalculé ni rechargé** : la lecture avance d'un pas
-/// fractionnaire qu'on écrit ici, et la position ne bouge pas. C'est la
-/// différence avec `stems_etirer`, qui retraite le signal et coûte des
-/// secondes. La contrepartie est que la hauteur suit la vitesse, comme sur une
-/// bande.
+/// **Rien n'est rechargé** : la vitesse est un flottant que la lecture relit à
+/// chaque trame, et la position ne bouge pas. C'est la différence avec
+/// [`start_etirer`], qui réécrit un fichier et coûte des dizaines de secondes.
+///
+/// **La hauteur ne suit pas la vitesse.** L'étireur `wsola` travaille dans la
+/// lecture elle-même — recouvrement-addition temporel, la méthode d'`atempo`.
+/// Le commentaire qui figurait ici disait le contraire ; il datait d'avant que
+/// l'étireur soit branché, quand la vitesse n'était qu'un rééchantillonnage.
 #[tauri::command(async)]
 fn stems_vitesse(etat: State<Etat>, vitesse: f32) -> Result<(), String> {
     if let Some(m) = etat.stems.lock().map_err(echec)?.as_ref() {
@@ -691,44 +697,179 @@ fn stems_vitesse_stem(etat: State<Etat>, index: usize, vitesse: f32) -> Result<(
 ///
 /// Un stem à zéro demi-ton rend son chemin d'origine : il n'y a rien à
 /// calculer, et écrire une copie identique serait 31 Mo pour rien.
-#[tauri::command(async)]
-fn stems_etirer(
-    stems: Vec<(String, String)>,
-    demi_tons: Vec<f32>,
-) -> Result<Vec<(String, String)>, String> {
-    use rusty_music_editor::{decode, etirement, wav};
-
-    let mut sortie = Vec::with_capacity(stems.len());
-    for (i, (nom, chemin)) in stems.iter().enumerate() {
-        let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
-        if demi_ton.abs() < 1e-3 {
-            sortie.push((nom.clone(), chemin.clone()));
-            continue;
-        }
-        let source = PathBuf::from(chemin);
-        let dossier = source
+/// Où va la version transposée d'un stem. `None` quand il n'y a rien à faire.
+///
+/// Séparé du calcul pour que l'on puisse répondre à « y a-t-il du travail ? »
+/// sans rien calculer — c'est ce qui permet au cas déjà en cache de rester
+/// instantané.
+fn cible_transposee(chemin: &str, demi_ton: f32) -> Option<PathBuf> {
+    if demi_ton.abs() < 1e-3 {
+        return None;
+    }
+    let source = PathBuf::from(chemin);
+    Some(
+        source
             .parent()
             .unwrap_or(Path::new("."))
             .join("traites")
-            .join(format!("t{:+03}", demi_ton as i32));
-        let cible = dossier.join(source.file_name().unwrap_or_default());
-        if !cible.exists() {
-            std::fs::create_dir_all(&dossier).map_err(echec)?;
-            let s = decode::stereo(&source).map_err(echec)?;
-            let entrelace: Vec<f32> = s
-                .gauche
-                .iter()
-                .zip(&s.droite)
-                .flat_map(|(g, d)| [*g, *d])
-                .collect();
-            let out = etirement::transposer(&entrelace, 2, demi_ton);
-            let (g, d): (Vec<f32>, Vec<f32>) = out.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
-            wav::ecrire(&cible, &g, &d, 44_100).map_err(echec)?;
-            tracing::info!(stem = %nom, demi_ton, "stem transposé");
-        }
-        sortie.push((nom.clone(), cible.display().to_string()));
+            .join(format!("t{:+03}", demi_ton as i32))
+            .join(source.file_name().unwrap_or_default()),
+    )
+}
+
+/// Transpose un stem et rend le chemin du résultat. Ne recalcule rien si le
+/// fichier est déjà là.
+fn transposer_un(chemin: &str, demi_ton: f32) -> Result<String, String> {
+    use rusty_music_editor::{decode, etirement, wav};
+
+    let Some(cible) = cible_transposee(chemin, demi_ton) else {
+        return Ok(chemin.to_string());
+    };
+    if cible.exists() {
+        return Ok(cible.display().to_string());
     }
-    Ok(sortie)
+    let dossier = cible.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dossier).map_err(echec)?;
+
+    let source = PathBuf::from(chemin);
+    let s = decode::stereo(&source).map_err(echec)?;
+    let entrelace: Vec<f32> = s
+        .gauche
+        .iter()
+        .zip(&s.droite)
+        .flat_map(|(g, d)| [*g, *d])
+        .collect();
+    let out = etirement::transposer(&entrelace, 2, demi_ton);
+    let (g, d): (Vec<f32>, Vec<f32>) = out.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+    wav::ecrire(&cible, &g, &d, 44_100).map_err(echec)?;
+    tracing::info!(chemin, demi_ton, "stem transposé");
+    Ok(cible.display().to_string())
+}
+
+/// Où en est la transposition. Sondé par l'interface, comme le démixage.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatTranspose {
+    en_cours: bool,
+    /// Stems déjà traités, et combien il y en a en tout. Un stem de quatre
+    /// minutes demande une vingtaine de secondes : un pourcentage global
+    /// laisserait croire à un blocage entre deux.
+    faits: usize,
+    total: usize,
+    /// Les chemins à jouer, une fois tout fini.
+    stems: Vec<(String, String)>,
+    erreur: Option<String>,
+}
+
+/// Lance la transposition des stems **dans son fil**.
+///
+/// **Pourquoi un fil, alors que la commande était déjà `async`.** Une commande
+/// Tauri `async` tourne sur le runtime, pas sur le fil de l'interface — mais
+/// une boucle de calcul qui ne rend jamais la main y monopolise un ouvrier du
+/// runtime. Quatre stems à une vingtaine de secondes, et **toutes les autres
+/// commandes attendent derrière** : le sondage du transport, l'état de lecture,
+/// le moindre clic. L'interface ne gelait pas, elle faisait la queue — ce qui
+/// se voit pareil.
+///
+/// `async` suffit pour une commande qui attend ; il ne suffit pas pour une
+/// commande qui calcule. Le démixage l'avait déjà réglé ainsi, la transposition
+/// ne l'avait pas suivi parce qu'elle était courte du temps du vocodeur de
+/// phase — 0,84 s par stem. `wsola` l'a portée à 17,9 s sans que ce chemin-là
+/// soit revu.
+///
+/// **Rien à calculer = rien à attendre.** Si tous les stems sont neutres ou
+/// déjà en cache, l'état est rempli sur place et aucun fil n'est lancé : le
+/// chargement d'un jeu de stems sans réglage reste immédiat.
+#[tauri::command(async)]
+fn start_etirer(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    stems: Vec<(String, String)>,
+    demi_tons: Vec<f32>,
+) -> Result<EtatTranspose, String> {
+    let a_faire = stems
+        .iter()
+        .enumerate()
+        .filter(|(i, (_, chemin))| {
+            cible_transposee(chemin, demi_tons.get(*i).copied().unwrap_or(0.0))
+                .is_some_and(|c| !c.exists())
+        })
+        .count();
+
+    if a_faire == 0 {
+        let mut sortie = Vec::with_capacity(stems.len());
+        for (i, (nom, chemin)) in stems.iter().enumerate() {
+            let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
+            sortie.push((nom.clone(), transposer_un(chemin, demi_ton)?));
+        }
+        let fini = EtatTranspose {
+            en_cours: false,
+            faits: 0,
+            total: 0,
+            stems: sortie,
+            erreur: None,
+        };
+        *etat.transpose.lock().map_err(echec)? = fini.clone();
+        return Ok(fini);
+    }
+
+    {
+        let mut t = etat.transpose.lock().map_err(echec)?;
+        if t.en_cours {
+            return Err("une transposition est déjà en cours".into());
+        }
+        *t = EtatTranspose {
+            en_cours: true,
+            faits: 0,
+            total: a_faire,
+            stems: Vec::new(),
+            erreur: None,
+        };
+    }
+
+    let depart = etat.transpose.lock().map_err(echec)?.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let mut sortie = Vec::with_capacity(stems.len());
+        let mut erreur = None;
+
+        for (i, (nom, chemin)) in stems.iter().enumerate() {
+            let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
+            // Le compteur n'avance que sur les stems réellement calculés : un
+            // stem déjà en cache passe en quelques microsecondes et le voir
+            // sauter dans la barre ne dirait rien de juste.
+            let travail = cible_transposee(chemin, demi_ton).is_some_and(|c| !c.exists());
+            match transposer_un(chemin, demi_ton) {
+                Ok(c) => sortie.push((nom.clone(), c)),
+                Err(e) => {
+                    erreur = Some(e);
+                    break;
+                }
+            }
+            if travail {
+                if let Ok(mut t) = etat.transpose.lock() {
+                    t.faits += 1;
+                }
+            }
+        }
+
+        // Le verrou est nommé plutôt que pris dans le `if let` : un temporaire
+        // en fin de portée vivrait plus longtemps que `etat`. Même précaution
+        // qu'à la fin du démixage.
+        let verrou = etat.transpose.lock();
+        if let Ok(mut t) = verrou {
+            t.en_cours = false;
+            t.stems = if erreur.is_some() { Vec::new() } else { sortie };
+            t.erreur = erreur;
+        }
+    });
+
+    Ok(depart)
+}
+
+/// Où en est la transposition lancée par [`start_etirer`].
+#[tauri::command(async)]
+fn etirer_state(etat: State<Etat>) -> Result<EtatTranspose, String> {
+    Ok(etat.transpose.lock().map_err(echec)?.clone())
 }
 
 /// La racine surveillée qui contient `dossier`, s'il y en a une.
@@ -1700,6 +1841,7 @@ fn main() {
                 analyse: Mutex::new(EtatAnalyse::default()),
                 enrichissement: Mutex::new(EtatEnrichissement::default()),
                 demix: Mutex::new(EtatDemix::default()),
+                transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 ondes: Mutex::new(Default::default()),
                 vecteurs: Mutex::new(Arc::new(Vec::new())),
@@ -1730,7 +1872,8 @@ fn main() {
             stems_vitesse,
             stems_vitesse_stem,
             stems_exporter,
-            stems_etirer,
+            start_etirer,
+            etirer_state,
             stems_cache,
             stems_cache_vider,
             stems_play,
