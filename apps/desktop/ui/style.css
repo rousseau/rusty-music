@@ -613,6 +613,53 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Le champ de valeur : **un affichage jusqu'à ce qu'on le touche.**
+   Les pas-à-pas restent la voie du réglage fin ; ceci sert à sauter d'un coup
+   à une valeur qu'on a en tête, ce qu'une quinzaine de clics ne fait pas.
+   Sans bordure au repos, pour que le dock ne se remplisse pas de cadres. */
+/* Tempo et tonalité dans le transport : une troisième ligne, plus discrète que
+   l'artiste. Elle disparaît quand il n'y a rien à dire plutôt que d'occuper la
+   place avec un tiret — le transport est déjà dense. */
+.np__mesures {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--mut);
+  opacity: .75;
+  font-variant-numeric: tabular-nums;
+}
+.np__mesures:empty { display: none; }
+
+.reglage__val {
+  min-width: 46px;
+  width: 46px;
+  text-align: center;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 0;
+}
+.reglage__val:hover {
+  border-color: var(--line);
+}
+.reglage__val:focus {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--txt);
+  background: var(--panel2);
+}
+/* Une valeur refusée se signale sans effacer ce qui a été tapé : l'utilisateur
+   doit voir ce qu'il a écrit pour le corriger. Un pointillé plutôt qu'un
+   rouge — la palette n'a pas de teinte d'alerte, et en inventer une pour un
+   champ mal saisi serait disproportionné. */
+.reglage__val--faux {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
 /* Bouton d'export : dans l'en-tête du dock, plus discret qu'un bouton de rail. */
 .bouton--mince {
   margin-left: 14px;

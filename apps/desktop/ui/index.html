@@ -189,6 +189,10 @@
           <dt>Année</dt><dd id="insp-annee">—</dd>
           <dt>Piste</dt><dd id="insp-piste">—</dd>
           <dt>Durée</dt><dd id="insp-duree">—</dd>
+          <!-- Mesurés par la passe « Descripteurs », pas lus dans les tags :
+               d'où le tiret tant qu'un morceau n'y est pas passé. -->
+          <dt>Tempo</dt><dd id="insp-bpm">—</dd>
+          <dt>Tonalité</dt><dd id="insp-tonalite">—</dd>
         </dl>
 
         <div id="bloc-voisins" hidden>
@@ -209,14 +213,16 @@
              title="Vitesse de tous les stems. Immédiat : 200 % lit deux fois plus vite, la hauteur ne bouge pas. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
           <b>vitesse</b>
           <button data-r="vitesse" data-d="-1" aria-label="Ralentir">−</button>
-          <span id="val-vitesse">100 %</span>
+          <input id="val-vitesse" class="reglage__val" inputmode="decimal"
+                 aria-label="Vitesse en pour cent" value="100 %">
           <button data-r="vitesse" data-d="1" aria-label="Accélérer">+</button>
         </div>
         <div class="reglage" role="group" aria-label="Transposition en demi-tons"
              title="Transposition de tous les stems, en demi-tons, à durée inchangée. Quelques secondes de calcul par réglage. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
           <b>hauteur</b>
           <button data-r="tonalite" data-d="-1" aria-label="Baisser d'un demi-ton">−</button>
-          <span id="val-tonalite">±0</span>
+          <input id="val-tonalite" class="reglage__val" inputmode="numeric"
+                 aria-label="Transposition en demi-tons" value="±0">
           <button data-r="tonalite" data-d="1" aria-label="Monter d'un demi-ton">+</button>
         </div>
         <!-- N'apparaît que lorsque les stems n'avancent plus du même pas.
@@ -244,6 +250,9 @@
       <div class="transport__now">
         <b id="np-titre">Rien en lecture</b>
         <span id="np-artiste">Choisissez un morceau</span>
+        <!-- Tempo et tonalité du morceau en écoute. Vide tant qu'il n'est pas
+             mesuré : la passe couvre 15 847 morceaux sur 27 044. -->
+        <span id="np-mesures" class="np__mesures"></span>
       </div>
       <div class="wave" id="wave" role="slider" aria-label="Position dans la piste" tabindex="0"></div>
       <span class="tc" id="tc">00:00 / 00:00</span>

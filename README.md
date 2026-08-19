@@ -500,6 +500,77 @@ pourcentage — à vingt secondes pièce, un pourcentage global reste immobile
 assez longtemps pour qu'on le croie bloqué. Quand tout est neutre ou déjà en
 cache, aucun fil n'est lancé et le chargement reste immédiat.
 
+#### Et la transposition restait lente — 92 s
+
+Sortir le calcul du chemin de l'interface ne l'accélère pas. Mesuré phase par
+phase sur un stem de 272 s (`cargo run --release -p rusty-music-editor
+--example cout_transposition`) :
+
+| phase | coût |
+|---|---|
+| décodage | 0,18 s |
+| **étirement + rééchantillonnage** | **22,56 s** |
+| écriture | 0,03 s |
+
+Tout est dans l'étirement, et rien d'autre ne compte. Quatre stems en file :
+92 s.
+
+**« Ne faudrait-il pas transposer le morceau plutôt que chaque stem ? »**
+L'intuition vise juste — quatre fichiers pour un seul geste, c'est quatre fois
+le travail — mais le remède coûterait le module. Un morceau transposé est **un
+fichier** : plus de solo, plus de coupure, plus de niveau par stem, et plus de
+transposition par stem, alors que baisser la basse d'une quinte sans toucher au
+reste est précisément un des gestes que la spec retient. On rendrait la
+transposition rapide en supprimant ce sur quoi elle s'applique.
+
+**Le même facteur quatre s'obtient sans rien céder** : un fil par stem. Les
+quatre transpositions ne partagent rien, la mise à l'échelle est donc presque
+parfaite — **92,0 s → 22,7 s, soit 4,0×**.
+
+Ce qui rendait cette parallélisation risquée, et qui a dû être réglé d'abord :
+`transposer` tenait **cinq tampons pleins** du signal — l'entrée, l'étiré, les
+deux canaux séparés, les deux rééchantillonnés, le réentrelacé. Quatre à la
+fois faisaient pagineur la machine, et **une machine qui pagine fige
+l'interface aussi sûrement qu'un calcul mal placé**. `reechantillonner_entrelace`
+lit au pas des canaux et écrit d'affilée : cinq tampons deviennent deux, la
+pointe mesurée passe de 1,68 à 1,47 Go, et le cache s'en trouve mieux traité.
+
+**Ce qui reste possible et n'est pas fait** : ne transposer que ce qui
+s'entend. Un stem coupé, ou tous sauf le stem en solo, n'ont pas à être
+calculés. C'est un quart à trois quarts de travail en moins selon le cas, sans
+rien céder non plus.
+
+### Régler au clavier plutôt qu'au pas-à-pas
+
+Les valeurs de vitesse et de hauteur se tapent. **Les pas-à-pas restent**, et ce
+n'est pas une hésitation : ils servent à chercher la bonne valeur en écoutant,
+le champ sert à sauter d'un coup à une valeur qu'on a déjà en tête — ce qu'une
+quinzaine de clics ne fait pas.
+
+Le champ lit toujours des **pour cent**, jamais un rapport : « 2 » est ambigu
+— deux pour cent ou deux fois ? Puisqu'il affiche « % », il lit des pour cent,
+et 2 est refusé par la borne basse plutôt qu'interprété. Une saisie hors bornes
+se marque et **garde ce qui a été tapé** : corriger suppose de voir son erreur.
+Les flèches haut et bas font un pas, Échap rend la valeur courante.
+
+### Tempo et tonalité du morceau
+
+Mesurés par la passe « Descripteurs », affichés à deux endroits qui ne suivent
+pas la même chose : l'**inspecteur** suit la sélection, le **transport** suit ce
+qu'on écoute — les deux divergent dès qu'on explore la carte sans changer de
+morceau.
+
+Notation française : « Fa mineur », pas « F min ». La base note à l'anglaise
+parce que c'est ce qu'écrivent les profils de Krumhansl-Schmuckler et tout le
+domaine ; la traduction appartient à l'affichage. **Les altérations restent des
+dièses** — la mesure ne distingue pas un fa dièse d'un sol bémol, et choisir
+l'un des deux prétendrait le contraire.
+
+**Un tiret quand ce n'est pas mesuré, jamais une valeur par défaut** : la passe
+couvre 15 847 morceaux sur 27 044, et afficher « 120 BPM » sur le reste
+donnerait une mesure qu'on n'a pas. L'ambiguïté d'octave vaut ici aussi — un
+morceau à 174 BPM peut s'afficher à 87.
+
 ### Opus — le seul format que symphonia ne décode pas
 
 Un album entier de la bibliothèque de test restait hors de la carte.

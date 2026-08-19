@@ -91,9 +91,7 @@ pub type Vitesse = Reglage<250, 4000>;
 const FRAC: u32 = 32;
 const UNITE: f64 = (1u64 << FRAC) as f64;
 
-/// Trames poussées d'un coup dans l'étireur. 4096 à 44,1 kHz, soit 93 ms :
-/// assez pour qu'il travaille, assez peu pour qu'un changement de vitesse
-/// s'entende tout de suite.
+/// Trames poussées d'un coup dans l'étireur — 2,9 ms à 44,1 kHz.
 ///
 /// **128, et c'est mesuré — 4096 craquait.** `remplir()` est appelé depuis le
 /// rappel audio : un appel sur quelques milliers fait tout le travail, et c'est

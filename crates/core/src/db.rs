@@ -52,6 +52,22 @@ pub struct AlbumRow {
 /// l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
 /// d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
 /// minutage se retrouvent sans durée selon d'où l'on a cliqué.
+/// Ce que la passe de descripteurs a mesuré d'un morceau.
+///
+/// Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
+/// sans tonalité lisible, et l'inverse.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DescripteursVus {
+    /// Battements par minute. **Ambiguïté d'octave connue** : un morceau à
+    /// 174 BPM peut être rendu à 87, la préférence du détecteur allant vers
+    /// 120 (`crates/analysis/src/descripteurs.rs`).
+    pub bpm: Option<f32>,
+    /// Notée à l'anglaise — « F min », « C maj ».
+    pub tonalite: Option<String>,
+    /// Valeur efficace, entre 0 et 1.
+    pub energie: Option<f32>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MapPoint {
     pub id: i64,
@@ -573,6 +589,31 @@ impl Library {
             Ok((r.get(0)?, r.get(1)?))
         })?;
         Ok(rows.collect::<std::result::Result<HashMap<i64, f32>, _>>()?)
+    }
+
+    /// Tempo, tonalité et énergie d'un morceau, tels que la passe les a
+    /// mesurés.
+    ///
+    /// **Rien n'est inventé quand la mesure manque.** Les champs sont
+    /// facultatifs un à un : un conte lu n'a pas de tempo qui veuille dire
+    /// quelque chose, et 15 847 morceaux sur 27 044 seulement sont mesurés à ce
+    /// jour. Une valeur par défaut serait pire que rien — elle s'afficherait
+    /// comme une mesure.
+    pub fn descripteurs(&self, id: i64) -> Result<Option<DescripteursVus>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT bpm, musical_key, energy FROM descriptors WHERE track_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |r| {
+            Ok(DescripteursVus {
+                bpm: r.get(0)?,
+                tonalite: r.get(1)?,
+                energie: r.get(2)?,
+            })
+        })?;
+        Ok(match rows.next() {
+            Some(v) => Some(v?),
+            None => None,
+        })
     }
 
     /* ------------------------------------------------ genres MusicBrainz */

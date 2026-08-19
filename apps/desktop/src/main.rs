@@ -829,26 +829,52 @@ fn start_etirer(
     let depart = etat.transpose.lock().map_err(echec)?.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+
+        // **Un fil par stem.** Mesuré sur un morceau de 272 s : 92,0 s en file
+        // contre 23,5 s en parallèle, soit 3,9× — l'étirement est le seul poste
+        // qui compte (22,8 s des 23,0 s d'un stem) et il ne partage rien.
+        //
+        // Ce qui rendait cette parallélisation dangereuse avant, et ne l'est
+        // plus : chaque transposition tenait cinq tampons pleins du signal, et
+        // quatre à la fois faisaient pagineur la machine — ce qui fige
+        // l'interface aussi sûrement qu'un calcul mal placé.
+        // `reechantillonner_entrelace` les a ramenés à deux.
+        let resultats: Vec<Result<String, String>> = std::thread::scope(|portee| {
+            let taches: Vec<_> = stems
+                .iter()
+                .enumerate()
+                .map(|(i, (_, chemin))| {
+                    let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
+                    let etat = &etat;
+                    portee.spawn(move || {
+                        // Le compteur n'avance que sur les stems réellement
+                        // calculés : un stem déjà en cache passe en quelques
+                        // microsecondes, et le voir sauter ne dirait rien de
+                        // juste.
+                        let travail =
+                            cible_transposee(chemin, demi_ton).is_some_and(|c| !c.exists());
+                        let issue = transposer_un(chemin, demi_ton);
+                        if travail && issue.is_ok() {
+                            if let Ok(mut t) = etat.transpose.lock() {
+                                t.faits += 1;
+                            }
+                        }
+                        issue
+                    })
+                })
+                .collect();
+            taches
+                .into_iter()
+                .map(|t| t.join().unwrap_or_else(|_| Err("fil interrompu".into())))
+                .collect()
+        });
+
         let mut sortie = Vec::with_capacity(stems.len());
         let mut erreur = None;
-
-        for (i, (nom, chemin)) in stems.iter().enumerate() {
-            let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
-            // Le compteur n'avance que sur les stems réellement calculés : un
-            // stem déjà en cache passe en quelques microsecondes et le voir
-            // sauter dans la barre ne dirait rien de juste.
-            let travail = cible_transposee(chemin, demi_ton).is_some_and(|c| !c.exists());
-            match transposer_un(chemin, demi_ton) {
+        for ((nom, _), issue) in stems.iter().zip(resultats) {
+            match issue {
                 Ok(c) => sortie.push((nom.clone(), c)),
-                Err(e) => {
-                    erreur = Some(e);
-                    break;
-                }
-            }
-            if travail {
-                if let Ok(mut t) = etat.transpose.lock() {
-                    t.faits += 1;
-                }
+                Err(e) => erreur = Some(e),
             }
         }
 
@@ -1646,6 +1672,19 @@ fn cover(path: String) -> Result<Option<String>, String> {
     }))
 }
 
+/// Tempo, tonalité et énergie d'un morceau — ce que la passe a mesuré.
+///
+/// **Rend `None` plutôt qu'une valeur par défaut** quand le morceau n'est pas
+/// mesuré : 15 847 des 27 044 le sont à ce jour, et afficher « 120 BPM » sur
+/// les autres serait donner une mesure qu'on n'a pas.
+#[tauri::command(async)]
+fn descripteurs(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<Option<rusty_music_core::db::DescripteursVus>, String> {
+    etat.lib.lock().map_err(echec)?.descripteurs(id).map_err(echec)
+}
+
 /// Enveloppe d'une piste : crête et RMS par tranche.
 ///
 /// Renvoie `None` tant qu'elle n'est pas prête. Le calcul décode tout le
@@ -1860,6 +1899,7 @@ fn main() {
             scan_state,
             cover,
             waveform,
+            descripteurs,
             map_view,
             map_progress,
             start_analysis,

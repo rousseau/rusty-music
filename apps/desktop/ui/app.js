@@ -208,7 +208,73 @@ async function inspecter(t) {
   el.style.backgroundImage = img ? `url("${img}")` : "";
   el.classList.toggle("pochette--pleine", Boolean(img));
 
+  montrerDescripteurs(t);
   montrerVoisins(t);
+}
+
+/// Tempo et tonalité sous le titre du transport.
+///
+/// Séparé de l'inspecteur, qui suit la **sélection** : le transport suit ce
+/// qu'on **écoute**, et les deux divergent dès qu'on explore la carte sans
+/// changer de morceau.
+async function mesuresDuTransport(t) {
+  const vise = t.path;
+  let d;
+  try {
+    d = await invoke("descripteurs", { id: t.id });
+  } catch {
+    return;
+  }
+  if (!d || enLecture !== vise) return;
+  const bouts = [];
+  if (d.bpm) bouts.push(`${Math.round(d.bpm)} BPM`);
+  const ton = tonaliteFr(d.tonalite);
+  if (ton) bouts.push(ton);
+  $("np-mesures").textContent = bouts.join(" · ");
+}
+
+/// Noms français des douze classes de hauteur.
+///
+/// **La base note à l'anglaise** — `C`, `F#`, `A` — parce que c'est ce
+/// qu'écrivent les profils de Krumhansl-Schmuckler et tout le domaine. Ici on
+/// affiche, donc on traduit. Les altérations restent des dièses : la mesure ne
+/// distingue pas un fa dièse d'un sol bémol, et choisir l'un des deux
+/// prétendrait le contraire.
+const NOTES_FR = {
+  C: "Do", "C#": "Do♯", D: "Ré", "D#": "Ré♯", E: "Mi", F: "Fa",
+  "F#": "Fa♯", G: "Sol", "G#": "Sol♯", A: "La", "A#": "La♯", B: "Si",
+};
+
+/// « F min » devient « Fa mineur ». Rend la chaîne telle quelle si elle ne se
+/// lit pas — mieux vaut afficher ce qu'on a que de le perdre.
+function tonaliteFr(t) {
+  if (!t) return null;
+  const [note, mode] = String(t).split(/\s+/);
+  const fr = NOTES_FR[note];
+  if (!fr) return t;
+  return `${fr} ${mode === "min" ? "mineur" : mode === "maj" ? "majeur" : (mode ?? "")}`.trim();
+}
+
+/// Tempo et tonalité du morceau inspecté.
+///
+/// **Un tiret quand ce n'est pas mesuré, jamais une valeur par défaut.** La
+/// passe couvre 15 847 morceaux sur 27 044 ; afficher « 120 BPM » sur le reste
+/// donnerait une mesure qu'on n'a pas.
+async function montrerDescripteurs(t) {
+  const vise = t.path;
+  $("insp-bpm").textContent = "—";
+  $("insp-tonalite").textContent = "—";
+  let d;
+  try {
+    d = await invoke("descripteurs", { id: t.id });
+  } catch {
+    return;
+  }
+  // L'inspecteur a pu changer de morceau pendant l'appel.
+  if (!d || $("insp-titre").dataset.path !== vise) return;
+  if (d.bpm) $("insp-bpm").textContent = `${Math.round(d.bpm)} BPM`;
+  const ton = tonaliteFr(d.tonalite);
+  if (ton) $("insp-tonalite").textContent = ton;
 }
 
 /// Les morceaux les plus proches à l'oreille du moteur.
@@ -517,7 +583,10 @@ async function battement() {
     const t = fileCourante.find((x) => x.path === enLecture);
     $("np-titre").textContent = t ? txt(t.title, "(sans titre)") : "Rien en lecture";
     $("np-artiste").textContent = t ? txt(t.artist, "(sans artiste)") : "Choisissez un morceau";
-    // Pochette hors du chemin critique : elle arrivera quand elle arrivera.
+    // Hors du chemin critique, comme la pochette : la ligne se remplit quand
+    // la mesure arrive, et reste vide si le morceau n'est pas mesuré.
+    $("np-mesures").textContent = "";
+    if (t) mesuresDuTransport(t);
     $("transport-art").style.backgroundImage = "";
     if (t) {
       const vise = t.path;
@@ -1784,6 +1853,13 @@ const REGLAGES = {
     min: 0.25,
     max: 4.0,
     ecrire: (v) => `${Math.round(v * 100)} %`,
+    // **Toujours des pour cent, jamais un rapport.** « 2 » est ambigu — deux
+    // pour cent ou deux fois ? Le champ affiche « % », il lit donc des pour
+    // cent, et 2 est refusé par la borne basse plutôt qu'interprété.
+    lire: (t) => {
+      const n = Number(String(t).replace("%", "").replace(",", ".").trim());
+      return Number.isFinite(n) ? n / 100 : null;
+    },
     immediat: true,
   },
   tonalite: {
@@ -1791,9 +1867,59 @@ const REGLAGES = {
     min: -12,
     max: 12,
     ecrire: (v) => (v > 0 ? `+${v}` : v === 0 ? "±0" : `${v}`),
+    // « ±0 » se relit, et « +3 » aussi : ce sont les formes que le champ écrit.
+    lire: (t) => {
+      const n = Number(String(t).replace("±", "").replace(",", ".").trim());
+      return Number.isFinite(n) ? Math.round(n) : null;
+    },
     immediat: false,
   },
 };
+
+/// Câble un champ de valeur : on tape, on valide, ça s'applique.
+///
+/// **Les pas-à-pas restent, et ce n'est pas une hésitation.** Ils servent au
+/// réglage fin — chercher la bonne valeur en écoutant. Le champ sert à l'autre
+/// geste, sauter d'un coup à une valeur qu'on a déjà en tête, ce qu'une
+/// quinzaine de clics ne fait pas.
+///
+/// Une saisie hors bornes ou illisible **n'est pas corrigée en silence** : le
+/// champ se marque et garde ce qui a été tapé, faute de quoi on ne saurait pas
+/// ce qu'on a écrit de travers. Échap ou la perte du focus rendent la valeur
+/// courante.
+function cablerChamp(champ, nom, lire, poser) {
+  const r = REGLAGES[nom];
+  const rendre = () => {
+    champ.classList.remove("reglage__val--faux");
+    champ.value = r.ecrire(lire());
+  };
+  rendre();
+
+  champ.addEventListener("focus", () => champ.select());
+  champ.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      rendre();
+      champ.blur();
+    }
+    // Les flèches font ce que font les boutons : c'est ce qu'on attend d'un
+    // champ numérique, et cela évite de sortir du clavier pour un pas.
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      poser(calerReglage(nom, lire() + r.pas * (e.key === "ArrowUp" ? 1 : -1)));
+    }
+  });
+  champ.addEventListener("change", () => {
+    const v = r.lire(champ.value);
+    if (v === null || v < r.min - 1e-9 || v > r.max + 1e-9) {
+      champ.classList.add("reglage__val--faux");
+      return;
+    }
+    champ.classList.remove("reglage__val--faux");
+    poser(calerReglage(nom, v));
+  });
+  champ.addEventListener("blur", rendre);
+  return rendre;
+}
 
 /// Cale une valeur sur les bornes et le pas de son réglage.
 ///
@@ -1826,13 +1952,51 @@ function stemEcarte(s) {
 /// ce sont des flottants que la lecture relit à chaque trame.
 async function appliquerVitesses() {
   if (!edition.enLecture) return;
+  // L'ordre compte : la vitesse d'ensemble écrit sur **tous** les stems, les
+  // écarts se reposent donc après, jamais avant.
   await invoke("stems_vitesse", { vitesse: edition.vitesse });
   for (const [i, s] of edition.stems.entries()) {
     if (s.vitesse !== null) {
       await invoke("stems_vitesse_stem", { index: i, vitesse: s.vitesse });
     }
   }
+
+  // **On relit ce que le moteur a retenu.** Il rend déjà ses vitesses dans
+  // `stems_state` et personne ne les regardait : un réglage qui n'arrivait pas
+  // — commande rejetée, indices décalés — ne se voyait qu'à l'oreille, et
+  // « ça ne marche pas » est tout ce qu'on pouvait en dire. Comparé ici, un
+  // écart se nomme.
+  try {
+    const e = await invoke("stems_state");
+    const attendu = edition.stems.map(vitesseDe);
+    const ecarts = attendu
+      .map((v, i) => [i, v, e.vitesses?.[i]])
+      .filter(([, v, lu]) => lu === undefined || Math.abs(lu - v) > 1e-3);
+    if (ecarts.length) {
+      remonter(
+        ecarts.map(([i, v, lu]) => `stem ${i} : demandé ${v}, moteur ${lu}`).join(" · "),
+        "vitesses non appliquées",
+      );
+    }
+  } catch (e) {
+    remonter(e, "relecture des vitesses");
+  }
   majDerive();
+}
+
+/// Applique un réglage, et **montre l'échec s'il y en a un**.
+///
+/// Les gestionnaires de clic n'avaient pas de garde : une commande rejetée
+/// partait dans le rapporteur global, invisible depuis l'interface, et le
+/// réglage paraissait simplement sans effet.
+async function appliquerUn(nom) {
+  try {
+    if (REGLAGES[nom].immediat) await appliquerVitesses();
+    else await appliquerReglages();
+  } catch (e) {
+    $("dock-aide").textContent = `échec du réglage « ${nom} »`;
+    remonter(e, `réglage ${nom}`);
+  }
 }
 
 /// Recalcule les stems transposés et les remet en lecture au même instant.
@@ -1879,8 +2043,28 @@ async function appliquerReglages() {
 
 function dessinerReglages() {
   for (const [nom, r] of Object.entries(REGLAGES)) {
-    $(`val-${nom}`).textContent = r.ecrire(edition[nom]);
+    const champ = $(`val-${nom}`);
+    // Ne pas écraser une saisie en cours : le sondage et les redessins
+    // passent ici plusieurs fois par seconde.
+    if (document.activeElement === champ) continue;
+    champ.classList.remove("reglage__val--faux");
+    champ.value = r.ecrire(edition[nom]);
   }
+}
+
+for (const nom of Object.keys(REGLAGES)) {
+  cablerChamp(
+    $(`val-${nom}`),
+    nom,
+    () => edition[nom],
+    async (v) => {
+      edition[nom] = v;
+      dessinerReglages();
+      if (REGLAGES[nom].immediat) await appliquerVitesses();
+      else await appliquerReglages();
+      dessinerStems();
+    },
+  );
 }
 
 dessinerReglages();
@@ -2176,14 +2360,16 @@ function panneauStem(s, badge) {
          title="Vitesse de ce stem seul. Il n'avance alors plus au même pas que les autres, et l'écart grandit tant que la lecture continue.">
       <b>vitesse</b>
       <button data-r="vitesse" data-d="-1" aria-label="Ralentir ce stem">−</button>
-      <span></span>
+      <input class="reglage__val" data-c="vitesse" inputmode="decimal"
+             aria-label="Vitesse de ce stem, en pour cent">
       <button data-r="vitesse" data-d="1" aria-label="Accélérer ce stem">+</button>
     </div>
     <div class="reglage" role="group" aria-label="Hauteur de ce stem"
          title="Transposition de ce stem seul, à durée inchangée. Quelques secondes de calcul, mises en cache.">
       <b>hauteur</b>
       <button data-r="tonalite" data-d="-1" aria-label="Baisser ce stem d'un demi-ton">−</button>
-      <span></span>
+      <input class="reglage__val" data-c="tonalite" inputmode="numeric"
+             aria-label="Transposition de ce stem, en demi-tons">
       <button data-r="tonalite" data-d="1" aria-label="Monter ce stem d'un demi-ton">+</button>
     </div>
     <button class="stem__b" data-a="ensemble">suivre l'ensemble</button>`;
@@ -2191,14 +2377,35 @@ function panneauStem(s, badge) {
 
   const groupes = ligne.querySelectorAll(".reglage");
   const ensemble = ligne.querySelector('[data-a="ensemble"]');
+  const champs = {};
   const rafraichir = () => {
-    groupes[0].querySelector("span").textContent = REGLAGES.vitesse.ecrire(vitesseDe(s));
-    groupes[1].querySelector("span").textContent = REGLAGES.tonalite.ecrire(tonaliteDe(s));
+    for (const [nom, champ] of Object.entries(champs)) {
+      if (document.activeElement === champ) continue;
+      champ.classList.remove("reglage__val--faux");
+      champ.value = REGLAGES[nom].ecrire(nom === "vitesse" ? vitesseDe(s) : tonaliteDe(s));
+    }
     ensemble.disabled = s.vitesse === null && s.tonalite === null;
     badge.textContent = etiquetteStem(s);
     badge.classList.toggle("stem__b--regle", stemEcarte(s));
     majDerive();
   };
+
+  // Les champs se câblent avant le premier rafraîchissement : c'est lui qui
+  // pose leur valeur.
+  for (const champ of ligne.querySelectorAll(".reglage__val")) {
+    const nom = champ.dataset.c;
+    champs[nom] = champ;
+    cablerChamp(
+      champ,
+      nom,
+      () => (nom === "vitesse" ? vitesseDe(s) : tonaliteDe(s)),
+      async (v) => {
+        s[nom] = v;
+        rafraichir();
+        await appliquerUn(nom);
+      },
+    );
+  }
   rafraichir();
 
   ligne.querySelectorAll(".reglage button").forEach((b) => {
@@ -2209,8 +2416,7 @@ function panneauStem(s, badge) {
       const depart = nom === "vitesse" ? vitesseDe(s) : tonaliteDe(s);
       s[nom] = calerReglage(nom, depart + REGLAGES[nom].pas * Number(b.dataset.d));
       rafraichir();
-      if (REGLAGES[nom].immediat) await appliquerVitesses();
-      else await appliquerReglages();
+      await appliquerUn(nom);
     });
   });
 

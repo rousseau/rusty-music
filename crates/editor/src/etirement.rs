@@ -22,29 +22,6 @@ use crate::decode;
 /// Fréquence de travail de l'éditeur.
 const SR: u32 = 44_100;
 
-/// Rééchantillonne d'un rapport donné, par interpolation cubique.
-///
-/// Catmull-Rom plutôt que linéaire : la linéaire est un filtre passe-bas très
-/// doux qui ternit tout le haut du spectre, et ça s'entend sur des cymbales.
-fn reechantillonner(signal: &[f32], rapport: f32) -> Vec<f32> {
-    if signal.len() < 4 || (rapport - 1.0).abs() < 1e-6 {
-        return signal.to_vec();
-    }
-    let taille = (signal.len() as f32 / rapport) as usize;
-    (0..taille)
-        .map(|i| {
-            let x = i as f32 * rapport;
-            let j = x.floor() as isize;
-            let t = x - j as f32;
-            let e = |d: isize| signal[(j + d).clamp(0, signal.len() as isize - 1) as usize];
-            let (p0, p1, p2, p3) = (e(-1), e(0), e(1), e(2));
-            p1 + 0.5
-                * t
-                * (p2 - p0
-                    + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))
-        })
-        .collect()
-}
 
 /// Étire un signal entrelacé sans changer sa hauteur.
 ///
@@ -77,27 +54,46 @@ pub fn transposer(signal: &[f32], canaux: usize, demi_tons: f32) -> Vec<f32> {
     }
     let rapport = 2f32.powf(demi_tons / 12.0);
     let etire = etirer(signal, canaux, rapport);
-    let par_canal: Vec<Vec<f32>> = separer(&etire, canaux)
-        .iter()
-        .map(|c| reechantillonner(c, rapport))
-        .collect();
-    entrelacer(&par_canal)
+    reechantillonner_entrelace(&etire, canaux, rapport)
 }
 
-/// Sépare un signal entrelacé en canaux.
-fn separer(signal: &[f32], canaux: usize) -> Vec<Vec<f32>> {
-    (0..canaux)
-        .map(|c| signal.iter().skip(c).step_by(canaux).copied().collect())
-        .collect()
-}
+/// Rééchantillonne sans jamais désentrelacer.
+///
+/// **Cinq tampons pleins sont devenus un**, et sur des stems entiers cela se
+/// compte : la version précédente séparait le signal en canaux, rééchantillonnait
+/// chacun, puis réentrelaçait — trois copies complètes en plus de l'entrée et
+/// de la sortie. Sur quatre stems de quatre minutes transposés **en parallèle**,
+/// c'était la différence entre tenir en mémoire et faire pagineur la machine,
+/// et une machine qui pagine fige l'interface aussi sûrement qu'un calcul dans
+/// le fil principal.
+///
+/// La lecture se fait au pas de `canaux`, l'écriture est séquentielle : c'est
+/// aussi meilleur pour le cache que le rassemblement-dispersion d'avant.
+fn reechantillonner_entrelace(signal: &[f32], canaux: usize, rapport: f32) -> Vec<f32> {
+    let trames = signal.len() / canaux.max(1);
+    if canaux == 0 || trames < 4 || (rapport - 1.0).abs() < 1e-6 {
+        return signal.to_vec();
+    }
+    let cible = (trames as f32 / rapport) as usize;
+    let mut out = Vec::with_capacity(cible * canaux);
+    let dernier = trames as isize - 1;
 
-/// Réentrelace des canaux de même longueur.
-fn entrelacer(canaux: &[Vec<f32>]) -> Vec<f32> {
-    let n = canaux.iter().map(Vec::len).min().unwrap_or(0);
-    let mut out = Vec::with_capacity(n * canaux.len());
-    for i in 0..n {
-        for c in canaux {
-            out.push(c[i]);
+    for i in 0..cible {
+        let x = i as f32 * rapport;
+        let j = x.floor() as isize;
+        let t = x - j as f32;
+        for c in 0..canaux {
+            // Catmull-Rom, comme avant : l'interpolation linéaire ternit tout
+            // le haut du spectre.
+            let e = |d: isize| signal[(j + d).clamp(0, dernier) as usize * canaux + c];
+            let (p0, p1, p2, p3) = (e(-1), e(0), e(1), e(2));
+            out.push(
+                p1 + 0.5
+                    * t
+                    * (p2 - p0
+                        + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3
+                            + t * (3.0 * (p1 - p2) + p3 - p0))),
+            );
         }
     }
     out
@@ -122,6 +118,16 @@ pub fn etirer_fichier(
         out = transposer(&out, 2, demi_tons);
     }
     Ok(out)
+}
+
+/// Sépare un signal entrelacé en canaux. **Réservé aux tests** depuis que la
+/// transposition rééchantillonne sans désentrelacer : c'est ce qui permet de
+/// vérifier que les deux voies restent alignées.
+#[cfg(test)]
+fn separer(signal: &[f32], canaux: usize) -> Vec<Vec<f32>> {
+    (0..canaux)
+        .map(|c| signal.iter().skip(c).step_by(canaux).copied().collect())
+        .collect()
 }
 
 #[cfg(test)]
