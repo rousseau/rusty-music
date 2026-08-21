@@ -6,6 +6,7 @@
 //! directement.
 
 pub mod db;
+pub mod density;
 pub mod enrichir;
 pub mod error;
 pub mod modeles;

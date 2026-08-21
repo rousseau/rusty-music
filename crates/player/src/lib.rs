@@ -83,6 +83,29 @@ pub(crate) fn opus_en_memoire(path: &Path) -> Result<Option<rodio::buffer::Sampl
     )))
 }
 
+/// Ouvre `track` et rend une source jouable — la lecture disque et le
+/// décodage de l'en-tête, sans toucher à l'état du lecteur.
+///
+/// Fonction libre plutôt que méthode : elle peut donc s'exécuter hors du
+/// verrou qui protège `Player`, entre [`Player::a_precharger`] et
+/// [`Player::charger_precharge`] — c'est tout l'intérêt de la séparation.
+pub fn ouvrir(track: &Path) -> Result<Box<dyn rodio::Source + Send>> {
+    if let Some(buf) = opus_en_memoire(track)? {
+        debug!(path = %track.display(), "piste Opus ouverte");
+        return Ok(Box::new(buf));
+    }
+    let file = std::fs::File::open(track).map_err(|source| Error::Open {
+        path: track.to_path_buf(),
+        source,
+    })?;
+    let decoder = Decoder::try_from(file).map_err(|source| Error::Decode {
+        path: track.to_path_buf(),
+        source,
+    })?;
+    debug!(path = %track.display(), "piste ouverte");
+    Ok(Box::new(decoder))
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Au-delà de ce temps écoulé, « précédent » reprend la piste en cours au lieu
@@ -148,14 +171,61 @@ impl Player {
         self.completer()
     }
 
+    /// Remplace la file par `tracks`, sans couper la lecture en cours si le
+    /// premier morceau ne change pas.
+    ///
+    /// Sert à la régénération d'un chemin sur la carte (curseur de bruit,
+    /// « Autre tirage ») : le départ choisi reste le même, seule la suite
+    /// change. Redémarrer à zéro à chaque ajustement du curseur coupait la
+    /// piste en cours d'écoute — désagréable, et hors de propos puisque le
+    /// départ n'a pas bougé. Ce qui est déjà confié à la sortie (`prochain`
+    /// premiers rangs) ne peut de toute façon pas être retiré de `rodio` sans
+    /// interrompre le son : on ne remplace donc que la suite pas encore
+    /// chargée. Si le premier morceau diffère — un vrai autre départ, ou rien
+    /// en cours de lecture — on retombe sur [`Self::play`], qui redémarre.
+    pub fn set_queue(&mut self, tracks: &[PathBuf]) -> Result<()> {
+        let meme_depart = matches!(
+            (self.queue.first(), tracks.first()),
+            (Some(a), Some(b)) if a == b
+        );
+        if !meme_depart || self.index().is_none() {
+            return self.play(tracks);
+        }
+        let deja_confies = self.prochain.min(tracks.len());
+        self.queue = self.queue[..deja_confies]
+            .iter()
+            .cloned()
+            .chain(tracks[deja_confies..].iter().cloned())
+            .collect();
+        Ok(())
+    }
+
     /// Complète la réserve de pistes prêtes. À appeler régulièrement — c'est
     /// ce qui remplace le chargement intégral de la file.
     ///
-    /// N'ouvre qu'un fichier par appel : le verrou du lecteur n'est jamais
-    /// retenu plus longtemps que la lecture d'un en-tête.
+    /// Enchaîne [`Self::a_precharger`], [`ouvrir`] et
+    /// [`Self::charger_precharge`] verrou tenu tout du long : pratique pour
+    /// un contexte à un seul fil (le CLI), mais **c'est cette I/O tenue sous
+    /// verrou qui bloquait le bouton lecture/pause de l'appli desktop** —
+    /// `toggle_pause` attend le même verrou que le sondage qui appelle cette
+    /// fonction toutes les 200 ms. Là où plusieurs commandes se disputent le
+    /// même verrou (`apps/desktop/src/main.rs`), appeler séparément les trois
+    /// étapes permet de ne tenir le verrou que pour les deux qui ne touchent
+    /// pas le disque.
     pub fn completer(&mut self) -> Result<()> {
-        if self.inner.len() >= PRECHARGE || self.prochain >= self.queue.len() {
+        let Some((rang, piste)) = self.a_precharger() else {
             return Ok(());
+        };
+        let source = ouvrir(&piste)?;
+        self.charger_precharge(rang, source);
+        Ok(())
+    }
+
+    /// Piste à précharger, si la réserve n'est pas pleine — ou `None`. Ne
+    /// fait aucune I/O, sûr à appeler verrou tenu.
+    pub fn a_precharger(&mut self) -> Option<(usize, PathBuf)> {
+        if self.inner.len() >= PRECHARGE || self.prochain >= self.queue.len() {
+            return None;
         }
         let rang = self.prochain;
         let piste = self.queue[rang].clone();
@@ -163,9 +233,14 @@ impl Player {
         // décoder — les fichiers Opus de la bibliothèque — bloquerait sinon la
         // file sur elle, réessayée à chaque passage.
         self.prochain += 1;
-        self.appendre(&piste)?;
+        Some((rang, piste))
+    }
+
+    /// Empile une source déjà ouverte par [`ouvrir`]. Ne fait aucune I/O, sûr
+    /// à appeler verrou tenu.
+    pub fn charger_precharge(&mut self, rang: usize, source: Box<dyn rodio::Source + Send>) {
+        self.inner.append(source);
         self.charges.push(rang);
-        Ok(())
     }
 
     /// Revient à la piste précédente.
@@ -213,26 +288,6 @@ impl Player {
         }
         // `clear()` laisse le lecteur en pause : sans ça, rien ne sortirait.
         self.inner.play();
-        Ok(())
-    }
-
-    /// Ajoute une source à la sortie sans toucher à la file.
-    fn appendre(&self, track: &Path) -> Result<()> {
-        if let Some(buf) = crate::opus_en_memoire(track)? {
-            self.inner.append(buf);
-            debug!(path = %track.display(), "piste Opus empilée");
-            return Ok(());
-        }
-        let file = std::fs::File::open(track).map_err(|source| Error::Open {
-            path: track.to_path_buf(),
-            source,
-        })?;
-        let decoder = Decoder::try_from(file).map_err(|source| Error::Decode {
-            path: track.to_path_buf(),
-            source,
-        })?;
-        self.inner.append(decoder);
-        debug!(path = %track.display(), "piste empilée");
         Ok(())
     }
 

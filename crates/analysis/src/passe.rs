@@ -171,7 +171,13 @@ pub fn empreintes(
 /// l'ensemble projeté d'un bloc — deux lots donneraient deux repères sans
 /// rapport. Heureusement l'opération est bon marché (6 s sur 27 000 points),
 /// donc rejouable après chaque lot d'empreintes.
-pub fn projeter_tout(lib: &Library, familles: usize) -> Result<Rapport, Error> {
+///
+/// `familles` prime sur [`Library::parametres_carte`] quand fourni — c'est
+/// ce que garde le `--familles` de la CLI, un réglage ponctuel plutôt qu'un
+/// changement du paramètre gardé en base. `None` (l'appli desktop) retombe
+/// sur ce que l'interface a réglé — ou les valeurs par défaut, tant que
+/// personne n'y a touché.
+pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, Error> {
     let empreintes = lib.embeddings(MODELE)?;
     let mut rapport = Rapport {
         demandes: empreintes.len(),
@@ -182,13 +188,20 @@ pub fn projeter_tout(lib: &Library, familles: usize) -> Result<Rapport, Error> {
         return Ok(rapport);
     }
 
+    let params = lib.parametres_carte()?;
+    let familles = familles.unwrap_or(params.familles);
+
     let vecteurs: Vec<Vec<f32>> = empreintes.iter().map(|(_, v)| v.clone()).collect();
-    let mut points = projeter(&vecteurs, 30.0, 1000);
+    let mut points = projeter(&vecteurs, params.perplexite, params.epoques);
     cadrer(&mut points);
 
     // Le regroupement porte sur les empreintes, pas sur la carte : t-SNE
     // déforme les distances, s'en servir décrirait le dessin, pas la musique.
-    let appartenance = kmeans(&vecteurs, familles.clamp(1, vecteurs.len()), 50);
+    let appartenance = kmeans(
+        &vecteurs,
+        familles.clamp(1, vecteurs.len()),
+        params.iterations_kmeans,
+    );
     rapport.familles = appartenance
         .iter()
         .collect::<std::collections::HashSet<_>>()
@@ -340,6 +353,13 @@ pub fn descripteurs(
                         d.tonalite.as_deref(),
                         d.energie,
                         d.sonie,
+                        d.zcr,
+                        d.centroide_moy,
+                        d.centroide_ecart,
+                        d.rolloff_moy,
+                        d.rolloff_ecart,
+                        d.flatness_moy,
+                        d.flatness_ecart,
                     ) {
                         Ok(()) => rapport.mesures += 1,
                         Err(e) => {

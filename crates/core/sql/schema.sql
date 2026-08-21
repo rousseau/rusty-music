@@ -63,13 +63,24 @@ CREATE TABLE IF NOT EXISTS descriptors (
     bpm       REAL,
     musical_key TEXT,
     energy    REAL,
-    loudness  REAL
+    loudness  REAL,
+    zcr             REAL,
+    centroid_mean   REAL,
+    centroid_std    REAL,
+    rolloff_mean    REAL,
+    rolloff_std     REAL,
+    flatness_mean   REAL,
+    flatness_std    REAL
 );
 
--- Graphe des collaborations entre artistes (MusicBrainz).
+-- Graphe des collaborations entre artistes (MusicBrainz), mode Découvrir.
 CREATE TABLE IF NOT EXISTS artist_links (
     src_mbid  TEXT NOT NULL,
     dst_mbid  TEXT NOT NULL,
+    -- Un collaborateur externe (pas dans la bibliothèque) n'a pas de ligne
+    -- dans `tracks` pour donner son nom — la réponse `artist-rels` de
+    -- MusicBrainz le fournit dans le même appel, autant le garder ici.
+    dst_name  TEXT,
     relation  TEXT NOT NULL,                 -- "collaborator", "member of", "founder"…
     PRIMARY KEY (src_mbid, dst_mbid, relation)
 );
@@ -79,6 +90,25 @@ CREATE TABLE IF NOT EXISTS roots (
     path        TEXT PRIMARY KEY,
     added_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     last_scan   INTEGER
+);
+
+-- Fichiers qu'un scan n'a pas su lire (tags illisibles, insertion en échec).
+-- Le compte existait déjà dans ScanReport.failed, mais seulement en mémoire
+-- le temps de la passe ; sans cette table le détail se perdait dans les logs.
+CREATE TABLE IF NOT EXISTS scan_failures (
+    path   TEXT PRIMARY KEY,
+    reason TEXT NOT NULL,
+    at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+-- Paramètres du calcul de la carte (projection t-SNE, clustering k-means) —
+-- clé/valeur plutôt que des colonnes : ce sont quatre nombres, pas de quoi
+-- justifier un schéma rigide. Une clé absente vaut la valeur par défaut
+-- ([`Library::parametres_carte`]) — pas de migration à écrire quand on en
+-- ajoute une.
+CREATE TABLE IF NOT EXISTS parametres_carte (
+    cle    TEXT PRIMARY KEY,
+    valeur REAL NOT NULL
 );
 
 -- Genres MusicBrainz, aspirés par identifiant.

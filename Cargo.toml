@@ -34,7 +34,7 @@ opt-level = 3
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 # Versions épinglées au niveau du workspace : les crates les reprennent
 # avec `workspace = true`. Ajuster ici si `cargo build` remonte une
@@ -123,3 +123,9 @@ rustfft = "6"
 # Projection 2D (t-SNE Barnes-Hut) pour la carte du module 2. Licence MIT.
 # Autonome : n'entraîne ni linfa ni une BLAS système.
 bhtsne = "0.7"
+
+# Champ de densité de la carte (contours par territoire de famille) : lignes
+# d'isovaleur sur une grille régulière, pas de dépendance à une BLAS. Licences
+# MIT OR Apache-2.0.
+contour   = "0.13"
+geo-types = "0.7"

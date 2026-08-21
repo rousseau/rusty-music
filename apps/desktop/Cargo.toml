@@ -16,6 +16,7 @@ rusty-music-analysis = { path = "../../crates/analysis" }
 rusty-music-editor = { path = "../../crates/editor" }
 tauri.workspace   = true
 tauri-plugin-dialog.workspace = true
+global-hotkey     = "0.8"
 serde.workspace   = true
 anyhow.workspace  = true
 tracing.workspace = true

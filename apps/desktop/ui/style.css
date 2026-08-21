@@ -14,11 +14,20 @@
   --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
 
-  /* Rampe séquentielle, teinte unique, clarté monotone — pour les variables
-     continues (année). Une rampe n'oppose pas des identités : elle échappe au
-     plafond de trois teintes qui s'applique aux couleurs catégorielles sur un
-     nuage de points. Sur fond sombre elle va du terne au vif. */
-  --rampe: #3A2A18, #5C4022, #85592B, #AE7139, #D49A5E, #EFC38F;
+  /* Rampe séquentielle pour les variables continues (année, tempo, énergie).
+     Deux essais plus sobres (teinte unique, puis un balayage de 33° dans les
+     bruns-ambre) sont restés peu lisibles à l'usage sur un nuage de petits
+     points épars — la teinte unique n'y donne tout simplement pas assez de
+     prise à l'œil, aussi bien contrastée soit-elle. Balayage bleu → sarcelle
+     → vert → jaune (façon Viridis), neuf paliers, clarté OKLCH strictement
+     croissante — l'ordre de grandeur se lit donc aussi à la clarté, pas
+     seulement à la teinte. Chaque palier est vérifié dans le gamut sRGB et
+     au-dessus de 2:1 de contraste sur le fond (le point le plus faible tient
+     2,37:1 ; les deux versions précédentes n'y tenaient que 1,36:1 et
+     2,32:1). Ni un arc-en-ciel classique (H, S, L constants avec une teinte
+     qui boucle) ni une rampe catégorielle : une seule trajectoire de teinte,
+     parcourue une fois, dans le sens de la clarté croissante. */
+  --rampe: #304e97, #2a659e, #307ba3, #3691a6, #2faaa1, #5abe8c, #92cc77, #c7d667, #fcdd61;
 
   /* Douze teintes pour les familles. Calculées, pas choisies : clarté et
      chroma constants en OKLCH, teintes également réparties — l'écart
@@ -41,8 +50,12 @@
   --txt:    #241F18;
   --mut:    #6B6355;
   --accent: #A85F2C;
-  /* Sur fond clair, la rampe va dans l'autre sens : du pâle au dense. */
-  --rampe: #EBD9BE, #D9B486, #C08A55, #A85F2C, #7E4520, #552E14;
+  /* Même trajectoire bleu → sarcelle → vert → jaune qu'en sombre, mais
+     rétamée en clarté : sur fond clair un jaune franc (haute clarté) se
+     fondrait dans le papier — plafonnée à un jaune moutarde plutôt que citron
+     pour rester lisible. Chaque palier vérifié en gamut et en contraste
+     comme en sombre ; le point le plus faible tient 3,17:1. */
+  --rampe: #14295f, #0c3a62, #134862, #185663, #0a6660, #2c7350, #547b41, #788138, #998538;
   /* Mêmes teintes, assombries pour tenir sur un fond clair. */
   --familles: #B24B58, #B05323, #9E6300, #7E7400, #4C8227, #00895D,
               #00888A, #0080AC, #3472BE, #6B63BC, #8F56A7, #A74D83;
@@ -241,10 +254,36 @@ html, body {
 }
 .fil__retour:hover { color: var(--accent); }
 
+/* Porte la liste/grille/carte et l'index alphabétique qui les borde : un
+   `position: relative` propre, sous `.fil`, pour que l'index s'ancre sur ce
+   qu'il indexe et non sur toute la colonne centrale. */
+.centre__corps { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; }
+
 /* La liste est virtualisée : un conteneur haut, une fenêtre de lignes. */
 .liste { flex: 1; overflow-y: auto; position: relative; outline: none; }
 .liste__socle { position: relative; width: 100%; }
 .liste__fenetre { position: absolute; left: 0; right: 0; top: 0; }
+
+/* Repère alphabétique — Artistes et Albums, qui sont triés pour ça. Une
+   lettre par bande de hauteur égale plutôt que des positions calculées : le
+   flex fait le travail, la seule chose à calculer est quelle lettre est
+   actuellement en tête de liste. */
+.index-alpha {
+  position: absolute; right: 3px; top: 0; bottom: 0; width: 18px;
+  display: flex; flex-direction: column;
+  z-index: 2;
+}
+.index-alpha__lettre {
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 8.5px; color: var(--mut);
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+.index-alpha__lettre:hover { color: var(--txt); }
+.index-alpha__lettre--vide { color: var(--line); cursor: default; }
+.index-alpha__lettre--actif {
+  color: var(--accent); font-size: 14px; font-weight: 700;
+}
 
 .ligne {
   display: flex; align-items: center; gap: 14px;
@@ -258,6 +297,73 @@ html, body {
 .ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ligne__sec { font-size: 12px; color: var(--mut); flex: none; }
 .ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+
+/* ---------- grille (albums, façon Plex) ---------- */
+/* Même principe de virtualisation que `.liste` : un socle qui porte la
+   hauteur totale, une fenêtre de cases translatée qui seule existe dans le
+   DOM. La fenêtre est une grille CSS ordinaire — c'est le nombre de rangées
+   qu'elle contient, pas la disposition des colonnes, qui est virtualisé. */
+.grille { flex: 1; overflow-y: auto; position: relative; outline: none; padding: 0 26px; }
+.grille__socle { position: relative; width: 100%; }
+.grille__fenetre {
+  position: absolute; left: 0; right: 0; top: 0;
+  display: grid; gap: 14px;
+}
+
+/* Les hauteurs ci-dessous sont exactes, pas approximatives : la grille est
+   virtualisée en JS (`ALBUM_TXT` dans `app.js`), qui doit prévoir la même
+   place pour chaque rangée que ce que le CSS rend réellement — sans quoi les
+   rangées non affichées dérivent de leur position. */
+.album { cursor: pointer; }
+.album__pochette {
+  position: relative;
+  aspect-ratio: 1; width: 100%;
+  border: 1px solid var(--line); border-radius: 3px;
+  background: repeating-linear-gradient(135deg, var(--panel2) 0 9px, var(--panel) 9px 18px);
+  background-size: cover; background-position: center;
+  margin-bottom: 8px;
+}
+.album:hover .album__pochette { border-color: var(--accent); }
+
+/* Lit l'album entier, sans passer par sa liste de pistes. Caché jusqu'au
+   survol : la grille en montre des dizaines à la fois, un bouton visible en
+   permanence sur chacune la couvrirait de cibles. */
+.album__lecture {
+  position: absolute; right: 7px; bottom: 7px;
+  width: 28px; height: 28px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: 10px;
+  opacity: 0; transform: translateY(3px);
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+.album:hover .album__lecture,
+.album__lecture:focus-visible { opacity: 1; transform: translateY(0); }
+.album__lecture:hover { background: var(--accent); color: var(--bg); }
+
+/* Playlist « dans l'esprit de l'album » (`genererAlchimie`) — même gabarit
+   que `.album__lecture`, à l'opposé pour ne pas s'y chevaucher. */
+.album__alchimie {
+  position: absolute; left: 7px; bottom: 7px;
+  width: 28px; height: 28px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: 17px;
+  opacity: 0; transform: translateY(3px);
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+.album:hover .album__alchimie,
+.album__alchimie:focus-visible { opacity: 1; transform: translateY(0); }
+.album__alchimie:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+.album__alchimie:disabled { opacity: .6; cursor: wait; }
+
+.album__nom {
+  height: 16px; font-size: 12.5px; line-height: 16px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.album__sec {
+  height: 14px; font-size: 11.5px; line-height: 14px; color: var(--mut); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.album:hover .album__nom { color: var(--accent); }
 
 /* ---------- carte (mode Explorer) ---------- */
 .carte { flex: 1; position: relative; min-height: 0; }
@@ -344,6 +450,11 @@ html, body {
 .aide {
   margin-top: 9px; font-size: 11.5px; line-height: 1.45; color: var(--mut);
 }
+.case {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 10px;
+  font-size: 11.5px; line-height: 1.4; color: var(--mut); cursor: pointer;
+}
+.case input { margin-top: 2px; flex: none; }
 .reglette {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
   font-size: 11.5px; color: var(--mut);
@@ -352,6 +463,17 @@ html, body {
   width: 58px; margin-left: auto; padding: 4px 6px;
   font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums;
   background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+}
+/* Le curseur de pondération : natif, pas de boîte — un `<input type=range>`
+   n'a rien à voir avec le champ numérique ci-dessus. Même famille sobre que
+   le volume du transport (`.vol input`). */
+.reglette input[type="range"] {
+  width: 84px; padding: 0; background: none; border: none;
+  accent-color: var(--accent);
+}
+.reglette__val {
+  font-family: var(--mono); font-size: 10.5px; color: var(--mut);
+  font-variant-numeric: tabular-nums; min-width: 26px; text-align: right;
 }
 
 /* Légende en dégradé — ce que demande `ui-spec.md` pour une variable
@@ -399,6 +521,7 @@ html, body {
   overflow: auto;
 }
 .pochette {
+  position: relative;
   aspect-ratio: 1; width: 100%;
   display: grid; place-items: center;
   border: 1px solid var(--line); margin-bottom: 16px;
@@ -410,12 +533,31 @@ html, body {
   letter-spacing: .12em; text-transform: uppercase; color: var(--mut);
 }
 .pochette--pleine span { display: none; }
+
+/* Playlist « dans l'esprit de ce morceau » (`genererAlchimieMorceau`) — même
+   geste que `.album__alchimie` sur une case de la grille, posé ici sur la
+   pochette de l'inspecteur. */
+.insp__alchimie {
+  position: absolute; left: 8px; bottom: 8px;
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: 18px;
+  opacity: 0; transform: translateY(3px);
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+}
+.pochette:hover .insp__alchimie,
+.insp__alchimie:focus-visible { opacity: 1; transform: translateY(0); }
+.insp__alchimie:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+.insp__alchimie:disabled { opacity: .6; cursor: wait; }
 .insp__vide { font-size: 12.5px; color: var(--mut); }
 .inspecteur h3 { font-family: var(--serif); font-size: 25px; font-weight: 500; line-height: 1.12; margin: 0; }
-.insp__artiste { font-size: 13px; color: var(--mut); margin: 5px 0 18px; }
+.insp__artiste { font-size: 13px; color: var(--mut); margin: 5px 0 18px; cursor: pointer; }
+.insp__artiste:hover { color: var(--accent); }
 .meta { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
 .meta dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); align-self: center; }
 .meta dd { margin: 0; font-family: var(--mono); font-size: 12px; }
+.meta dd.lien { cursor: pointer; }
+.meta dd.lien:hover { color: var(--accent); }
 
 /* Voisins soniques : les morceaux les plus proches dans l'espace des
    empreintes — pas sur la carte, dont la projection déforme les distances. */
@@ -499,19 +641,80 @@ html, body {
 }
 .lien:hover { color: var(--accent); }
 
-.voile {
-  position: fixed; inset: 0; z-index: 20;
-  background: rgba(0, 0, 0, .52);
-  display: grid; place-items: center;
+/* ---------- mode Bibliothèque ---------- */
+.bibliotheque { flex: 1; overflow-y: auto; padding: 24px 28px 40px; max-width: 760px; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 10px; }
+.stats__carte {
+  background: var(--panel); border: 1px solid var(--line); padding: 14px 16px;
+  min-width: 0;
 }
-.reglages {
-  width: min(620px, 88vw); max-height: 78vh; overflow: auto;
-  background: var(--panel); border: 1px solid var(--line);
-  padding: 22px 24px 26px;
+.stats__titre {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--mut); margin: 0 0 12px;
 }
-.reglages__tete { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
-.reglages h2 { font-family: var(--serif); font-size: 23px; font-weight: 500; margin: 0; }
-.reglages__tete .file__fermer { margin-left: auto; }
+
+.barres-genres { display: flex; flex-direction: column; gap: 7px; max-height: 260px; overflow-y: auto; }
+.barre-genre { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
+.barre-genre__nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barre-genre__piste { background: var(--panel2); border-radius: 2px; height: 8px; overflow: hidden; }
+.barre-genre__remplissage { background: var(--accent); height: 100%; }
+/* Distingue « sans genre identifié » d'un vrai genre minoritaire — la
+   couleur du texte, pas seulement celle de la barre, sinon les deux se
+   confondent dans une liste triée par taille. */
+.barre-genre--indetermine .barre-genre__remplissage { background: var(--mut); }
+.barre-genre--indetermine .barre-genre__nom { color: var(--mut); font-style: italic; }
+.barre-genre__valeur { font-family: var(--mono); font-size: 10.5px; color: var(--mut); text-align: right; }
+
+.histogramme {
+  display: flex; align-items: flex-end; gap: 2px; height: 130px;
+  border-bottom: 1px solid var(--line);
+}
+.histogramme__colonne { flex: 1; background: var(--accent); min-height: 1px; border-radius: 1px 1px 0 0; }
+.histogramme__colonne--vide { background: var(--panel2); }
+
+/* Listes de vérification (mode Bibliothèque) : genres suspects, doublons,
+   points isolés, éditions multiples, échecs de scan — même gabarit de ligne
+   partout, seul le contenu change. */
+.liste-verif { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.liste-verif:empty { display: none; }
+.verif {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel); padding: 9px 12px; font-size: 11.5px;
+}
+.verif__corps { flex: 1; min-width: 0; }
+.verif__ligne { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.verif__detail { color: var(--mut); font-size: 10.5px; margin-top: 2px; }
+.verif__mesure { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.verif--clic { cursor: pointer; }
+.verif--clic:hover { background: var(--panel2); }
+
+/* Mode Découvrir */
+.decouvrir-fil {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-bottom: 18px; font-size: 12.5px; color: var(--mut);
+}
+.decouvrir-fil button {
+  background: none; border: none; padding: 0; font: inherit; color: var(--accent);
+  cursor: pointer;
+}
+.decouvrir-fil button:hover { text-decoration: underline; }
+.decouvrir-fil span { color: var(--mut); }
+#decouvrir-nom { font-family: var(--serif); font-size: 25px; font-weight: 500; margin: 0 0 4px; }
+#decouvrir-liens { max-height: none; }
+.verif__albums {
+  flex: none; background: none; border: 1px solid var(--line); border-radius: 2px;
+  padding: 3px 8px; font: inherit; font-size: 10.5px; color: var(--mut); cursor: pointer;
+}
+.verif__albums:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Abscisse : des graduations positionnées en `%` sur toute la largeur, pas
+   une par tranche — 18 tranches donneraient 18 nombres illisibles. */
+.histogramme__axe { position: relative; height: 13px; margin-top: 3px; }
+.histogramme__axe span {
+  position: absolute; top: 0;
+  font-family: var(--mono); font-size: 9px; color: var(--mut); white-space: nowrap;
+}
 
 .racine {
   display: flex; align-items: center; gap: 14px;
@@ -533,6 +736,15 @@ html, body {
 .ajout { margin-top: 22px; }
 .ajout__ligne { display: flex; gap: 10px; }
 .scan-etat { font-family: var(--mono); font-size: 11px; color: var(--mut); margin: 12px 0 0; min-height: 1.4em; }
+
+.jauge {
+  appearance: none; -webkit-appearance: none;
+  width: 100%; height: 4px; margin-top: 12px; border: none; border-radius: 2px;
+  overflow: hidden; /* Safari : la piste déborde du rayon sans ça. */
+}
+.jauge::-webkit-progress-bar { background: var(--panel2); border-radius: 2px; }
+.jauge::-webkit-progress-value { background: var(--accent); border-radius: 2px; transition: width .3s ease; }
+.jauge::-moz-progress-bar { background: var(--accent); border-radius: 2px; }
 
 /* ---------- file d'attente ---------- */
 /* En superposition au-dessus de l'inspecteur : la coquille est déjà dense,

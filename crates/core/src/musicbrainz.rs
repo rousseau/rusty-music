@@ -43,6 +43,23 @@ pub struct Album {
     pub genres: Vec<Genre>,
 }
 
+/// Une relation entre deux artistes, telle que MusicBrainz la nomme —
+/// « member of band », « instrumental supporting musician »…, parfois
+/// précisée d'un attribut (« guitar », « vocal »).
+///
+/// Le sens de lecture n'est pas toujours le même : MusicBrainz porte un
+/// `direction` (« backward »/« forward ») que ce module ne redresse pas —
+/// le type est gardé tel quel, dans le sens où l'API le rend pour
+/// l'artiste demandé. Assez pour afficher « X — member of band — Y », pas
+/// encore assez pour un graphe orienté qu'on parcourrait dans les deux
+/// sens sans ambiguïté.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relation {
+    pub dst_mbid: String,
+    pub dst_name: String,
+    pub relation: String,
+}
+
 /// Délai minimal entre deux requêtes. Une seconde est la limite annoncée ;
 /// la marge évite de la frôler quand l'horloge et le réseau se décalent.
 const CADENCE: Duration = Duration::from_millis(1_100);
@@ -179,6 +196,57 @@ impl Client {
             }
         }
     }
+
+    /// Les artistes reliés à celui-ci — membre de, collaborateur,
+    /// fondateur… Mode Découvrir.
+    ///
+    /// Une liste vide est une réponse valable, comme pour les genres : la
+    /// plupart des artistes n'ont aucune relation cataloguée.
+    pub fn relations_artiste(&self, mbid: &str) -> Result<Vec<Relation>> {
+        let url = format!("https://musicbrainz.org/ws/2/artist/{mbid}?inc=artist-rels&fmt=json");
+        Ok(self
+            .json(&url)?
+            .map(|v| relations_de(&v))
+            .unwrap_or_default())
+    }
+}
+
+/// Extrait les relations vers d'autres artistes d'une réponse `artist-rels`.
+///
+/// `target-type` filtre les entités non-artiste : `inc=artist-rels` ne
+/// devrait rendre que ça, mais un champ manquant ou inattendu ne doit pas
+/// produire une ligne à moitié vide plutôt que d'être sauté.
+fn relations_de(v: &Value) -> Vec<Relation> {
+    v["relations"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|r| r["target-type"].as_str() == Some("artist"))
+                .filter_map(|r| {
+                    let dst_mbid = r["artist"]["id"].as_str()?.to_string();
+                    let dst_name = r["artist"]["name"].as_str()?.to_string();
+                    let base = r["type"].as_str()?;
+                    // Un attribut (« guitar », « vocal »…) précise le type
+                    // générique : « instrumental supporting musician » seul
+                    // ne dit pas sur quoi.
+                    let attributs: Vec<&str> = r["attributes"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(Value::as_str).collect())
+                        .unwrap_or_default();
+                    let relation = if attributs.is_empty() {
+                        base.to_string()
+                    } else {
+                        format!("{base} ({})", attributs.join(", "))
+                    };
+                    Some(Relation {
+                        dst_mbid,
+                        dst_name,
+                        relation,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Extrait et classe les genres d'une entité MusicBrainz quelconque.
@@ -304,5 +372,41 @@ mod tests {
     fn une_entite_sans_genre_rend_une_liste_vide() {
         let v: Value = serde_json::from_str(r#"{"id":"x","name":"y"}"#).expect("JSON de test");
         assert!(genres_de(&v).is_empty());
+    }
+
+    /// Extrait d'une vraie réponse `artist-rels` (Nirvana), gardé en dur —
+    /// pas d'accès réseau dans les tests.
+    #[test]
+    fn relations_de_ne_garde_que_les_artistes_et_ajoute_lattribut() {
+        let v: Value = serde_json::from_str(
+            r#"{"relations":[
+                {"type":"instrumental supporting musician","direction":"backward",
+                 "target-type":"artist","attributes":["guitar"],
+                 "artist":{"id":"258e917c-4cf0-4a1a-a07d-dacfe6b93398","name":"John Duncan"}},
+                {"type":"member of band","direction":"backward","target-type":"artist",
+                 "attributes":[],
+                 "artist":{"id":"aaaaaaaa-0000-0000-0000-000000000000","name":"Kurt Cobain"}},
+                {"type":"publié par","target-type":"label",
+                 "label":{"id":"bbbb","name":"Geffen"}}
+            ]}"#,
+        )
+        .expect("JSON de test");
+        let r = relations_de(&v);
+        assert_eq!(r.len(), 2, "la relation vers un label doit être écartée : {r:?}");
+        assert_eq!(
+            r[0],
+            Relation {
+                dst_mbid: "258e917c-4cf0-4a1a-a07d-dacfe6b93398".to_string(),
+                dst_name: "John Duncan".to_string(),
+                relation: "instrumental supporting musician (guitar)".to_string(),
+            }
+        );
+        assert_eq!(r[1].relation, "member of band", "pas d'attribut, pas de parenthèses");
+    }
+
+    #[test]
+    fn relations_de_dune_reponse_sans_relations_rend_une_liste_vide() {
+        let v: Value = serde_json::from_str(r#"{"id":"x","name":"y"}"#).expect("JSON de test");
+        assert!(relations_de(&v).is_empty());
     }
 }

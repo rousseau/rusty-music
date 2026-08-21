@@ -1,0 +1,54 @@
+# Politique de dépendances — `cargo deny check`
+#
+# Le projet est publié sous GPL-3.0-or-later : toute dépendance open source
+# est acceptable, y compris copyleft. Voir docs/rust-audio-stack.md.
+#
+# cargo-deny ne sert donc plus à filtrer le copyleft, mais à repérer :
+#   - les licences NON LIBRES (non-commercial, "research only"),
+#   - GPL-2.0-only, incompatible avec GPL-3.0,
+#   - les avis de sécurité et les doublons de versions.
+#
+#   cargo install --locked cargo-deny
+#   cargo deny check
+
+[graph]
+all-features = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-or-later",
+    "GPL-2.0-or-later",
+    "GPL-3.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+]
+confidence-threshold = 0.93
+
+# GPL-2.0-only (sans "or later") est INCOMPATIBLE avec GPL-3.0.
+# Absent de la liste ci-dessus : toute occurrence fera échouer la vérification.
+# Idem pour les licences non libres (CC-BY-NC-*, "research only").
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[advisories]
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "allow"   # bliss-rs et consorts peuvent venir de git

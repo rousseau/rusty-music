@@ -208,9 +208,15 @@ enum Cmd {
         /// Nombre de morceaux visés
         #[arg(long, default_value_t = 12)]
         steps: usize,
-        /// Graine de l'errance
+        /// Graine du bruit (les quatre modes calculés en tirent parti)
         #[arg(long, default_value_t = 1)]
         seed: u64,
+        /// Bruit commun aux quatre modes, de 0 (trajet exact) à 1 (dérive
+        /// maximale) — softmax pour l'errance, arêtes bruitées pour le
+        /// sonique, pont brownien pour le direct (voir la note en tête de
+        /// `chemin.rs`)
+        #[arg(long, default_value_t = 0.3)]
+        bruit: f32,
     },
     /// Sépare un morceau en stems (module 3)
     ///
@@ -520,7 +526,7 @@ fn main() -> Result<()> {
             );
             if project {
                 let t = Instant::now();
-                let p = rusty_music_analysis::passe::projeter_tout(&lib, familles)?;
+                let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles))?;
                 println!(
                     "carte : {} points, {} familles — {:.1} s",
                     p.empreintes,
@@ -809,7 +815,7 @@ fn main() -> Result<()> {
         }
         Cmd::Project { familles } => {
             let t = Instant::now();
-            let p = rusty_music_analysis::passe::projeter_tout(&lib, familles)?;
+            let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles))?;
             println!(
                 "{} points, {} familles — {:.1} s",
                 p.empreintes,
@@ -822,6 +828,7 @@ fn main() -> Result<()> {
             to,
             steps,
             seed,
+            bruit,
         } => {
             use rusty_music_analysis::chemin::{self, Graphe, K_VOISINS};
             use std::collections::HashSet;
@@ -885,28 +892,28 @@ fn main() -> Result<()> {
                     .into_iter()
                     .map(|(id, x, y, _famille)| (id, x, y))
                     .collect();
-                let d = chemin::direct(&points, depart.id, arrivee.id, steps);
+                let d = chemin::direct(&points, depart.id, arrivee.id, steps, seed, bruit);
                 let ms_direct = t.elapsed().as_millis();
 
                 let t = Instant::now();
-                let complet = graphe.lisse(depart.id, arrivee.id);
-                let ms_lisse = t.elapsed().as_millis();
+                let complet = graphe.sonique(depart.id, arrivee.id, seed, bruit);
+                let ms_sonique = t.elapsed().as_millis();
 
                 montrer("direct", &d)?;
                 if complet.is_empty() {
-                    println!("\nlisse — aucun chemin : les deux morceaux sont dans deux composantes disjointes du graphe");
+                    println!("\nsonique — aucun chemin : les deux morceaux sont dans deux composantes disjointes du graphe");
                 } else {
-                    println!("\n(trajet lisse complet : {} sauts)", complet.len() - 1);
-                    montrer("lisse", &chemin::echantillonner(&complet, steps))?;
+                    println!("\n(trajet sonique complet : {} sauts)", complet.len() - 1);
+                    montrer("sonique", &chemin::echantillonner(&complet, steps))?;
                 }
-                println!("\ndirect {ms_direct} ms · lisse {ms_lisse} ms");
+                println!("\ndirect {ms_direct} ms · sonique {ms_sonique} ms");
             }
 
             let t = Instant::now();
-            let e = graphe.errance(depart.id, steps, seed);
+            let e = graphe.errance(depart.id, steps, seed, bruit);
             let ms = t.elapsed().as_millis();
             montrer("errance", &e)?;
-            println!("\nerrance {ms} ms");
+            println!("\nerrance {ms} ms (bruit {bruit})");
         }
         Cmd::Demix {
             query,

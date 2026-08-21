@@ -25,6 +25,11 @@ pub struct TrackMeta {
     pub duration_ms: Option<i64>,
     pub sample_rate: Option<i64>,
     pub channels: Option<i64>,
+    /// Débit audio en kb/s — `None` pour un format sans débit constant à
+    /// annoncer (FLAC, WavPack…), pas une mesure manquante.
+    pub bitrate: Option<i64>,
+    /// Format du conteneur, tel que lofty le nomme (« MP3 », « FLAC »…).
+    pub codec: Option<String>,
     pub mb_recording_id: Option<String>,
     /// Identifiant MusicBrainz de l'artiste de piste. Peut correspondre à
     /// plusieurs artistes sur un « X feat. Y » : on ne retient que le premier,
@@ -85,11 +90,27 @@ pub fn read(path: &Path) -> Result<TrackMeta> {
         // album_artist n'a pas d'accesseur dédié : on passe par la clé générique.
         album_artist: tag.and_then(|t| t.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string())),
         genre: tag.and_then(|t| t.genre().map(|s| s.to_string())),
-        year: tag.and_then(|t| t.year()).map(|y| y as i64),
+        // `0` (« 0000 ») est un espace réservé de tagueur pour « année
+        // absente », jamais une vraie date d'enregistrement : le garder
+        // écraserait les bornes de tout ce qui affiche ou classe par année.
+        year: tag
+            .and_then(|t| t.year())
+            .map(|y| y as i64)
+            .filter(|&y| y > 0),
         track_no: tag.and_then(|t| t.track()).map(|n| n as i64),
         duration_ms: Some(props.duration().as_millis() as i64),
         sample_rate: props.sample_rate().map(|v| v as i64),
         channels: props.channels().map(|v| v as i64),
+        // Le débit audio, pas le débit global (`overall_bitrate`, qui inclut
+        // les tags embarqués) — c'est celui qui dit la qualité de l'encodage.
+        // Certains décodeurs ne le distinguent pas et ne rendent que le
+        // global : on l'accepte alors en repli plutôt que de perdre la
+        // mesure.
+        bitrate: props
+            .audio_bitrate()
+            .or_else(|| props.overall_bitrate())
+            .map(|v| v as i64),
+        codec: Some(nom_du_format(tagged.file_type())),
         mb_recording_id: tag.and_then(|t| {
             t.get_string(&ItemKey::MusicBrainzRecordingId)
                 .map(|s| s.to_string())
@@ -103,6 +124,31 @@ pub fn read(path: &Path) -> Result<TrackMeta> {
                 .map(|s| s.to_string())
         }),
     })
+}
+
+/// Nom affichable d'un format de fichier — celui de lofty (`Mpeg`, `Mp4`…)
+/// ne parlerait à personne dans un graphe de qualité.
+fn nom_du_format(t: lofty::file::FileType) -> String {
+    use lofty::file::FileType;
+    match t {
+        FileType::Mpeg => "MP3",
+        FileType::Flac => "FLAC",
+        FileType::Mp4 => "MP4",
+        FileType::Aac => "AAC",
+        FileType::Vorbis => "Ogg Vorbis",
+        FileType::Opus => "Opus",
+        FileType::Wav => "WAV",
+        FileType::Aiff => "AIFF",
+        FileType::Ape => "APE",
+        FileType::WavPack => "WavPack",
+        FileType::Mpc => "Musepack",
+        FileType::Speex => "Speex",
+        FileType::Custom(s) => s,
+        // `FileType` est `#[non_exhaustive]` : lofty peut en ajouter sans que
+        // ce soit une rupture de compatibilité pour ses utilisateurs.
+        _ => "inconnu",
+    }
+    .to_string()
 }
 
 /// D'où vient une pochette.

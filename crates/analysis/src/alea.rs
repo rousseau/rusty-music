@@ -40,6 +40,35 @@ impl Alea {
             (self.entier() % n as u64) as usize
         }
     }
+
+    /// Tirage pondéré : l'indice `i` sort avec une probabilité proportionnelle
+    /// à `poids[i]`. Un seul tirage continu (`reel`) plus un cumul — inutile
+    /// de construire une méthode des alias pour des listes de la taille d'un
+    /// voisinage (une douzaine d'éléments dans le graphe des voisins).
+    pub fn categorique(&mut self, poids: &[f32]) -> usize {
+        let total: f32 = poids.iter().sum();
+        if poids.is_empty() || total <= 0.0 {
+            return self.borne(poids.len());
+        }
+        let cible = self.reel() * total;
+        let mut cumul = 0.0;
+        for (i, &p) in poids.iter().enumerate() {
+            cumul += p;
+            if cible < cumul {
+                return i;
+            }
+        }
+        poids.len() - 1 // filet pour l'arrondi flottant en bout de cumul
+    }
+
+    /// Tirage gaussien centré réduit (Box-Muller). Sert au pont brownien du
+    /// bruit sur les chemins « direct »/« dessiné » : la littérature du
+    /// sujet parle d'écart-type, pas d'un intervalle uniforme.
+    pub fn normale(&mut self) -> f32 {
+        let u1 = self.reel().max(1e-9); // évite ln(0)
+        let u2 = self.reel();
+        (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos()
+    }
 }
 
 #[cfg(test)]
@@ -71,5 +100,39 @@ mod tests {
             assert!(a.borne(5) < 5);
         }
         assert_eq!(a.borne(0), 0, "borne nulle");
+    }
+
+    #[test]
+    fn categorique_suit_les_poids_relatifs() {
+        // Un poids dix fois plus grand doit sortir environ dix fois plus
+        // souvent — tolérance large, ce n'est pas un test de précision
+        // statistique mais une garde contre un tirage resté uniforme.
+        let mut a = Alea::depuis(3);
+        let poids = [1.0, 10.0, 1.0];
+        let mut comptes = [0u32; 3];
+        for _ in 0..6000 {
+            comptes[a.categorique(&poids)] += 1;
+        }
+        assert!(
+            comptes[1] > comptes[0] * 5 && comptes[1] > comptes[2] * 5,
+            "l'indice le plus lourd ne domine pas assez : {comptes:?}"
+        );
+
+        // Poids nuls : repli sur le tirage uniforme plutôt qu'un blocage.
+        assert!(Alea::depuis(1).categorique(&[0.0, 0.0]) < 2);
+        assert_eq!(Alea::depuis(1).categorique(&[]), 0);
+    }
+
+    #[test]
+    fn normale_est_centree_et_reduite() {
+        // Pas un test de précision statistique — une garde contre un signe
+        // inversé ou une échelle très fausse dans Box-Muller.
+        let mut a = Alea::depuis(9);
+        let tirages: Vec<f32> = (0..20_000).map(|_| a.normale()).collect();
+        let moyenne = tirages.iter().sum::<f32>() / tirages.len() as f32;
+        let variance =
+            tirages.iter().map(|x| (x - moyenne).powi(2)).sum::<f32>() / tirages.len() as f32;
+        assert!(moyenne.abs() < 0.05, "moyenne trop loin de 0 : {moyenne}");
+        assert!((variance - 1.0).abs() < 0.1, "variance trop loin de 1 : {variance}");
     }
 }

@@ -3,18 +3,19 @@
 //! | mode | ce qu'on fournit | ce qu'on obtient |
 //! |---|---|---|
 //! | [`direct`] | deux morceaux | la droite entre eux, sur la carte |
-//! | [`Graphe::lisse`] | deux morceaux | le trajet sans à-coup, de voisin en voisin |
+//! | [`Graphe::sonique`] | deux morceaux | le trajet sans à-coup, de voisin en voisin |
 //! | [`Graphe::errance`] | un morceau | une promenade au hasard qui dérive |
 //! | [`dessine`] | un tracé à la souris | les morceaux sous le trait |
 //!
-//! **Direct et lisse ne sont pas deux réglages du même calcul.** Le direct
+//! **Direct et sonique ne sont pas deux réglages du même calcul.** Le direct
 //! tire une droite à l'écran et cueille à chaque pas le morceau le plus proche
-//! du point visé : il va d'un bout à l'autre sans détour visible. Le lisse
+//! du point visé : il va d'un bout à l'autre sans détour visible. Le sonique
 //! cherche le plus court chemin dans le graphe des *k* plus proches voisins :
 //! chaque saut est par construction une transition entre proches, le trajet
-//! est plus long mais ne surprend jamais l'oreille. C'est la définition
-//! opératoire de « lisse » retenue ici — une contrainte sur les transitions,
-//! pas un lissage de courbe.
+//! est plus long mais ne surprend jamais l'oreille — lisse à l'oreille, pas
+//! forcément à l'écran, où t-SNE ne préserve que les voisinages locaux : un
+//! nom antérieur, « lisse », prêtait à confusion sur la carte pour cette
+//! raison précise.
 //!
 //! **Deux modes raisonnent en coordonnées de carte, [`direct`] et [`dessine`],
 //! et pour la même raison : l'utilisateur y désigne un geste à l'écran.** Les
@@ -38,9 +39,49 @@ pub type Empreinte = (i64, Vec<f32>);
 /// une transition entre proches.
 pub const K_VOISINS: usize = 12;
 
+/// Les quatre modes partagent un seul cadran `bruit` ∈ [0, 1] : 0 reproduit
+/// le trajet exact (déjà le cas pour direct/sonique/dessiné avant ce
+/// paramètre), plus haut dérive sans perdre le fil sonore. Chaque mode
+/// traduit ce cadran dans son propre registre — ces constantes fixent
+/// l'échelle de chacun. Choisies à l'œil/à l'oreille, pas dérivées : à
+/// ajuster comme le reste des constantes de ce fichier.
+///
+/// Le principe vient du cadre académique des « Randomized Shortest Paths »
+/// (Saerens, Yen, Achbany, Fouss, 2009), qui interpole plus court chemin et
+/// marche aléatoire via une température ; on en retient l'approximation
+/// pratique employée dans le routage GPS pour diversifier des itinéraires —
+/// bruiter les arêtes puis lancer un Dijkstra ordinaire — plutôt que la
+/// machinerie complète (inversion de matrice sur tout le graphe), hors de
+/// portée d'un curseur temps réel sur 27 000 nœuds.
+const TEMPERATURE_ECHELLE: f32 = 3.0; // errance : bruit [0,1] → température [0,3]
+const FACTEUR_BRUIT_ARETE: f32 = 0.6; // sonique : swing multiplicatif max par arête
+const FACTEUR_BRUIT_DIRECT: f32 = 0.9; // direct : écart-type max au milieu du pont, en fraction du pas d'interpolation
+
 /// Distance au carré — la racine ne change pas l'ordre, autant l'éviter.
 fn distance2(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum()
+}
+
+/// Bruit déterministe d'une arête `(i, j)`, uniforme dans [-1, 1] —
+/// indépendant de l'ordre dans lequel Dijkstra la rencontre, contrairement à
+/// un tirage puisé dans une suite séquentielle. Un simple mélange, pas un
+/// hachage cryptographique : il n'a qu'à décorréler `i`, `j` et `graine`.
+fn bruit_arete(graine: u64, i: u32, j: u32) -> f32 {
+    let m = graine
+        ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (j as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    Alea::depuis(m).reel() * 2.0 - 1.0
+}
+
+/// Décale un point visé d'un bruit gaussien 2D — même mécanisme pour
+/// [`direct`] et [`dessine`], les deux modes qui raisonnent sur la carte ;
+/// seule l'enveloppe (comment `ecart_type` varie le long du trajet) diffère
+/// entre les deux, décidée par l'appelant.
+fn bruiter(cx: f32, cy: f32, ecart_type: f32, alea: &mut Alea) -> (f32, f32) {
+    if ecart_type <= 0.0 {
+        return (cx, cy);
+    }
+    (cx + alea.normale() * ecart_type, cy + alea.normale() * ecart_type)
 }
 
 /// Les `k` morceaux les plus proches d'un morceau donné.
@@ -85,7 +126,24 @@ pub fn voisins(empreintes: &[Empreinte], id: i64, k: usize) -> Vec<i64> {
 ///   rendre quelque chose, quitte à cueillir au bord d'une région déserte ;
 /// - **les deux extrémités sont garanties.** Ce sont les morceaux choisis, pas
 ///   le produit d'un geste.
-pub fn direct(points: &[(i64, f32, f32)], depart: i64, arrivee: i64, etapes: usize) -> Vec<i64> {
+///
+/// `bruit` décale chaque point visé intermédiaire d'un **pont brownien** :
+/// écart-type nul aux deux bouts, maximal au milieu (`FACTEUR_BRUIT_DIRECT`
+/// fois le pas d'interpolation à `bruit = 1`) — les extrémités restent
+/// exactement les morceaux cliqués, seul le trajet entre les deux ondule.
+/// `bruit = 0` retrouve exactement la droite d'origine. L'écart-type est
+/// relatif au **pas** (`distance(départ, arrivée) / (étapes - 1)`), pas à un
+/// repère absolu de la carte : la densité de points en t-SNE varie énormément
+/// d'un amas à l'autre, une constante absolue rendait donc le même curseur
+/// tantôt invisible, tantôt disproportionné selon l'endroit de la carte.
+pub fn direct(
+    points: &[(i64, f32, f32)],
+    depart: i64,
+    arrivee: i64,
+    etapes: usize,
+    graine: u64,
+    bruit: f32,
+) -> Vec<i64> {
     let ou = |id: i64| {
         points
             .iter()
@@ -98,14 +156,27 @@ pub fn direct(points: &[(i64, f32, f32)], depart: i64, arrivee: i64, etapes: usi
     if depart == arrivee {
         return vec![depart];
     }
+    let bruit = bruit.clamp(0.0, 1.0);
+    let mut alea = Alea::depuis(graine);
 
     let etapes = etapes.max(2);
+    // Le pas naturel de l'interpolation — pas la largeur de la carte. Une
+    // trajectoire entre deux morceaux voisins doit onduler sur une échelle
+    // bien plus fine qu'une trajectoire entre deux morceaux aux deux bouts
+    // du nuage : sans ça, `bruit = 0.05` fait déjà sortir le trajet de son
+    // quartier dans un amas dense.
+    let pas = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt() / (etapes - 1) as f32;
     let mut route = vec![depart];
     let mut pris: HashSet<i64> = HashSet::from([depart, arrivee]);
 
     for i in 1..etapes - 1 {
         let t = i as f32 / (etapes - 1) as f32;
         let (cx, cy) = (ax + (bx - ax) * t, ay + (by - ay) * t);
+        // 0 aux deux bouts, 1 au milieu — le pont brownien reste pincé aux
+        // extrémités, qui ne passent d'ailleurs jamais par ce calcul (la
+        // boucle exclut `i = 0` et `i = etapes - 1`).
+        let enveloppe = 2.0 * (t * (1.0 - t)).sqrt();
+        let (cx, cy) = bruiter(cx, cy, bruit * FACTEUR_BRUIT_DIRECT * pas * enveloppe, &mut alea);
         let meilleur = points
             .iter()
             .filter(|(id, _, _)| !pris.contains(id))
@@ -123,24 +194,35 @@ pub fn direct(points: &[(i64, f32, f32)], depart: i64, arrivee: i64, etapes: usi
 
 /// Chemin suivant un tracé dessiné sur la carte.
 ///
-/// Seul mode qui raisonne en coordonnées de carte, et pour une raison simple :
-/// l'utilisateur pointe le dessin, pas l'espace des empreintes. Le tracé est
-/// rééchantillonné à pas d'arc constant — sans quoi les portions dessinées
-/// lentement, où les points de la souris s'accumulent, pèseraient plus que les
-/// autres.
+/// Avec [`direct`], le mode qui raisonne en coordonnées de carte, et pour une
+/// raison simple : l'utilisateur pointe le dessin, pas l'espace des
+/// empreintes. Le tracé est rééchantillonné à pas d'arc constant — sans quoi
+/// les portions dessinées lentement, où les points de la souris s'accumulent,
+/// pèseraient plus que les autres.
 ///
 /// `rayon` borne la cueillette : au-delà, l'échantillon ne rend rien plutôt
 /// que d'aller chercher un morceau à l'autre bout de la carte. Un trait qui
 /// traverse le vide produit donc un trou, pas une surprise.
+///
+/// `bruit` décale chaque point rééchantillonné du même bruit gaussien que
+/// [`direct`] (voir `bruiter`), mais à écart-type **constant** — pas de pont
+/// pincé ici, le tracé n'a pas d'extrémités à préserver au sens où `direct`
+/// en a. L'échelle suit `rayon`, pas une constante absolue : elle reste donc
+/// cohérente avec le zoom courant, dont `rayon` dépend déjà côté appelant.
+/// `bruit = 0` retrouve exactement la cueillette d'origine.
 pub fn dessine(
     points: &[(i64, f32, f32)],
     trace: &[(f32, f32)],
     etapes: usize,
     rayon: f32,
+    graine: u64,
+    bruit: f32,
 ) -> Vec<i64> {
     if points.is_empty() || trace.len() < 2 || etapes == 0 {
         return Vec::new();
     }
+    let bruit = bruit.clamp(0.0, 1.0);
+    let mut alea = Alea::depuis(graine);
 
     // Longueurs cumulées du tracé.
     let mut cumul = Vec::with_capacity(trace.len());
@@ -171,6 +253,7 @@ pub fn dessine(
             0.0
         };
         let (cx, cy) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+        let (cx, cy) = bruiter(cx, cy, bruit * rayon * 0.8, &mut alea);
 
         let meilleur = points
             .iter()
@@ -213,8 +296,8 @@ impl PartialOrd for Cout {
 /// Graphe des *k* plus proches voisins, construit une fois puis réutilisé.
 ///
 /// Le construire coûte un balayage complet ; s'en servir ne coûte plus rien.
-/// Il porte les deux modes qui ont besoin d'un voisinage explicite — le lisse
-/// et l'errance — et rend au passage `voisins` instantané.
+/// Il porte les deux modes qui ont besoin d'un voisinage explicite — le
+/// sonique et l'errance — et rend au passage `voisins` instantané.
 pub struct Graphe {
     /// Rang → identifiant de morceau.
     ids: Vec<i64>,
@@ -228,6 +311,26 @@ impl Graphe {
     /// Combien de morceaux le graphe couvre.
     pub fn taille(&self) -> usize {
         self.ids.len()
+    }
+
+    /// Le plus proche voisin de chaque morceau et la distance au carré qui
+    /// les sépare — sert au repérage des quasi-doublons (distance proche de
+    /// zéro) et des morceaux isolés (mode Bibliothèque).
+    ///
+    /// Retrouve le minimum plutôt que de lire `aretes[r][0]` : les arcs
+    /// retour, ajoutés après coup pour la connexité, ne respectent pas le tri
+    /// par distance croissante que `construire` établit au départ — même
+    /// piège que documenté dans [`Self::voisins`].
+    pub fn plus_proches(&self) -> Vec<(i64, i64, f32)> {
+        self.aretes
+            .iter()
+            .enumerate()
+            .filter_map(|(rang, v)| {
+                v.iter()
+                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|&(voisin, d2)| (self.ids[rang], self.ids[voisin as usize], d2))
+            })
+            .collect()
     }
 
     /// Construit le graphe sur `fils` fils.
@@ -327,13 +430,27 @@ impl Graphe {
     /// morceaux tombent dans deux composantes disjointes — le cas existe :
     /// avec `K_VOISINS` voisins, un petit amas très à part peut n'avoir aucune
     /// arête vers le reste. L'appelant retombe alors sur le mode direct.
-    pub fn lisse(&self, depart: i64, arrivee: i64) -> Vec<i64> {
+    ///
+    /// `bruit` (voir `FACTEUR_BRUIT_ARETE`) perturbe la distance de chaque
+    /// arête d'un facteur multiplicatif, avant de lancer un Dijkstra
+    /// ordinaire — l'approximation practique des « Randomized Shortest
+    /// Paths » retenue pour ce fichier (voir la note en tête de fichier), et
+    /// une technique documentée du routage GPS pour diversifier des
+    /// itinéraires. Le bruit d'une arête est **dérivé d'un hachage de la
+    /// paire de rangs et de la graine** (`bruit_arete`), pas d'un tirage
+    /// séquentiel : Dijkstra peut tester la même arête plusieurs fois, à des
+    /// instants différents selon l'état du tas, et un tirage séquentiel y
+    /// aurait donné une valeur différente à chaque fois — la même graine ne
+    /// redonnerait alors pas le même trajet. `bruit = 0` laisse chaque
+    /// facteur à 1 et retrouve exactement le plus court chemin d'origine.
+    pub fn sonique(&self, depart: i64, arrivee: i64, graine: u64, bruit: f32) -> Vec<i64> {
         let (Some(&a), Some(&b)) = (self.rang.get(&depart), self.rang.get(&arrivee)) else {
             return Vec::new();
         };
         if a == b {
             return vec![depart];
         }
+        let bruit = bruit.clamp(0.0, 1.0);
 
         let mut cout = vec![f32::INFINITY; self.ids.len()];
         let mut parent = vec![u32::MAX; self.ids.len()];
@@ -353,7 +470,12 @@ impl Graphe {
                 // La racine ici : additionner des carrés donnerait un chemin
                 // qui préfère un grand saut à deux petits, l'inverse de ce
                 // qu'on cherche.
-                let suivant = d + poids.sqrt();
+                let facteur = if bruit > 0.0 {
+                    (1.0 + bruit * FACTEUR_BRUIT_ARETE * bruit_arete(graine, r, *j)).max(0.1)
+                } else {
+                    1.0
+                };
+                let suivant = d + poids.sqrt() * facteur;
                 if suivant < cout[*j as usize] {
                     cout[*j as usize] = suivant;
                     parent[*j as usize] = r;
@@ -376,35 +498,73 @@ impl Graphe {
         route.into_iter().map(|r| self.ids[r as usize]).collect()
     }
 
-    /// Errance : marche aléatoire auto-évitante dans le graphe des voisins.
+    /// Errance sonique : marche aléatoire auto-évitante dans le graphe des
+    /// voisins, pondérée par la proximité — plus un voisin est proche, plus
+    /// il a de chances d'être tiré, sans que ce ne soit jamais une certitude.
     ///
-    /// À chaque pas on tire au sort parmi les voisins pas encore visités.
-    /// C'est l'auto-évitement seul qui produit la dérive : une marche
-    /// brownienne qui s'autorise le retour tourne en rond autour de son point
-    /// de départ. Aucun biais de direction n'est ajouté — le mouvement reste
-    /// celui que demande le mode, pas un chemin déguisé.
+    /// **Le principe vient de Song Alchemy, chez AudioMuse-AI** : au lieu
+    /// d'un tirage uniforme parmi les voisins libres, chacun reçoit un poids
+    /// `exp(-distance / (échelle locale × température))` — un softmax, comme
+    /// leur `ALCHEMY_TEMPERATURE` sur un score de similarité. Basse, la
+    /// température assèche la distribution et le tirage devient presque
+    /// glouton (le plus proche presque à coup sûr) ; haute, elle l'aplatit.
+    /// `bruit` est le cadran commun aux quatre modes de chemin, normalisé à
+    /// [0, 1] — voir la constante `TEMPERATURE_ECHELLE` en tête de fichier
+    /// pour son passage à la température du softmax. **Cas limite `bruit →
+    /// 1` (température → 3) : le softmax s'aplatit, proche du tirage
+    /// uniforme d'origine de cette fonction, qui ne pondérait pas du tout ;
+    /// `bruit = 0` (température → 0⁺) est presque glouton — le plus proche
+    /// voisin sort presque à coup sûr.** L'échelle locale (l'écart moyen des
+    /// voisins libres au plus proche d'entre eux) rend la température
+    /// relative à la densité du voisinage courant, pas à l'échelle absolue
+    /// des distances CLAP — sans elle, un même bruit ferait un effet
+    /// différent selon la région de la carte des empreintes.
     ///
-    /// La même graine redonne la même promenade. S'arrête tôt si tous les
-    /// voisins du morceau courant ont déjà été visités.
-    pub fn errance(&self, depart: i64, pas: usize, graine: u64) -> Vec<i64> {
+    /// C'est l'auto-évitement, pas la pondération, qui produit la dérive :
+    /// une marche qui s'autoriserait le retour tournerait en rond autour de
+    /// son point de départ, pondérée ou non.
+    ///
+    /// La même graine et le même bruit redonnent la même promenade.
+    /// S'arrête tôt si tous les voisins du morceau courant ont déjà été
+    /// visités.
+    pub fn errance(&self, depart: i64, pas: usize, graine: u64, bruit: f32) -> Vec<i64> {
         let Some(&debut) = self.rang.get(&depart) else {
             return Vec::new();
         };
+        // `bruit = 0` doit rester tirable : plancher à 1e-3 plutôt que de
+        // diviser par zéro. À cette borne, le tirage devient quasi glouton —
+        // le cas limite naturel du softmax, pas un cas à part.
+        let temperature = (bruit.clamp(0.0, 1.0) * TEMPERATURE_ECHELLE).max(1e-3);
         let mut alea = Alea::depuis(graine);
         let mut vus: HashSet<u32> = HashSet::from([debut]);
         let mut route = vec![debut];
 
         while route.len() < pas.max(1) {
             let courant = *route.last().unwrap();
-            let libres: Vec<u32> = self.aretes[courant as usize]
+            let libres: Vec<(u32, f32)> = self.aretes[courant as usize]
                 .iter()
-                .map(|(j, _)| *j)
-                .filter(|j| !vus.contains(j))
+                .copied()
+                .filter(|(j, _)| !vus.contains(j))
                 .collect();
             if libres.is_empty() {
                 break;
             }
-            let choisi = libres[alea.borne(libres.len())];
+            let d_min = libres
+                .iter()
+                .map(|&(_, d)| d)
+                .fold(f32::INFINITY, f32::min);
+            // Écart moyen au plus proche : l'« échelle » locale qui rend la
+            // température comparable d'un voisinage dense à un voisinage
+            // épars. Plancher à 1e-6 pour ne pas diviser par zéro quand tous
+            // les voisins libres sont à la même distance.
+            let echelle = (libres.iter().map(|&(_, d)| d - d_min).sum::<f32>()
+                / libres.len() as f32)
+                .max(1e-6);
+            let poids: Vec<f32> = libres
+                .iter()
+                .map(|&(_, d)| (-(d - d_min) / (echelle * temperature)).exp())
+                .collect();
+            let choisi = libres[alea.categorique(&poids)].0;
             vus.insert(choisi);
             route.push(choisi);
         }
@@ -522,7 +682,7 @@ mod tests {
     #[test]
     fn le_chemin_direct_suit_la_droite_a_lecran() {
         let p = diagonale(21, 8);
-        let route = direct(&p, 0, 20, 6);
+        let route = direct(&p, 0, 20, 6, 1, 0.0);
 
         assert_eq!(route.first(), Some(&0), "doit partir du départ");
         assert_eq!(route.last(), Some(&20), "doit arriver à l'arrivée");
@@ -546,7 +706,7 @@ mod tests {
     #[test]
     fn les_etapes_sont_regulierement_espacees() {
         let p = diagonale(41, 0);
-        let route = direct(&p, 0, 40, 6);
+        let route = direct(&p, 0, 40, 6, 1, 0.0);
         let ecarts: Vec<i64> = route.windows(2).map(|f| f[1] - f[0]).collect();
         let (mini, maxi) = (*ecarts.iter().min().unwrap(), *ecarts.iter().max().unwrap());
         assert!(
@@ -558,9 +718,36 @@ mod tests {
     #[test]
     fn aucun_morceau_en_double() {
         let p = diagonale(30, 4);
-        let route = direct(&p, 0, 29, 12);
+        let route = direct(&p, 0, 29, 12, 1, 0.0);
         let uniques: HashSet<_> = route.iter().collect();
         assert_eq!(uniques.len(), route.len(), "doublon dans {route:?}");
+    }
+
+    /// Le pont brownien reste pincé aux deux bouts, même à bruit maximal —
+    /// ce sont les morceaux cliqués, pas le produit d'un tirage — et la
+    /// même graine à bruit égal redonne le même trajet, deux graines
+    /// distinctes des trajets différents.
+    #[test]
+    fn direct_bruite_est_reproductible_et_garde_ses_extremites() {
+        let p = diagonale(41, 0);
+        let a = direct(&p, 0, 40, 8, 42, 1.0);
+        assert_eq!(a.first(), Some(&0), "le pont doit partir du départ");
+        assert_eq!(a.last(), Some(&40), "le pont doit arriver à l'arrivée");
+        assert_eq!(
+            a,
+            direct(&p, 0, 40, 8, 42, 1.0),
+            "même graine, même bruit, même trajet"
+        );
+        assert_ne!(
+            a,
+            direct(&p, 0, 40, 8, 43, 1.0),
+            "une autre graine doit dévier autrement"
+        );
+        assert_eq!(
+            direct(&p, 0, 40, 8, 42, 0.0),
+            direct(&p, 0, 40, 8, 1, 0.0),
+            "bruit nul : la graine ne doit plus rien changer"
+        );
     }
 
     #[test]
@@ -583,13 +770,13 @@ mod tests {
     fn supporte_les_cas_degeneres() {
         let e = arc(5);
         let p = diagonale(5, 0);
-        assert_eq!(direct(&p, 2, 2, 5), vec![2], "départ = arrivée");
+        assert_eq!(direct(&p, 2, 2, 5, 1, 0.0), vec![2], "départ = arrivée");
         assert!(voisins(&e, 99, 3).is_empty(), "morceau inconnu");
         assert!(voisins(&e, 0, 0).is_empty(), "zéro voisin demandé");
-        assert!(direct(&p, 0, 99, 5).is_empty(), "arrivée inconnue");
-        assert!(direct(&[], 0, 1, 5).is_empty(), "carte vide");
+        assert!(direct(&p, 0, 99, 5, 1, 0.0).is_empty(), "arrivée inconnue");
+        assert!(direct(&[], 0, 1, 5, 1, 0.0).is_empty(), "carte vide");
         // Plus d'étapes que de morceaux : on rend ce qu'on peut, sans doublon.
-        let route = direct(&p, 0, 4, 50);
+        let route = direct(&p, 0, 4, 50, 1, 0.0);
         let uniques: HashSet<_> = route.iter().collect();
         assert_eq!(uniques.len(), route.len());
     }
@@ -610,13 +797,33 @@ mod tests {
         }
     }
 
-    /// Chaque saut du chemin lisse doit être une arête du graphe : c'est la
+    #[test]
+    fn plus_proches_couvre_tout_le_monde_et_trouve_le_vrai_minimum() {
+        let mut e = arc(20);
+        // Deux empreintes identiques : leur plus proche voisin mutuel doit
+        // ressortir à distance nulle, quelle que soit sa position dans la
+        // liste d'arêtes du rang — `plus_proches` doit chercher le minimum,
+        // pas supposer un tri déjà là.
+        e.push((100, e[5].1.clone()));
+        let g = Graphe::construire(&e, 4, 3);
+        let proches: HashMap<i64, (i64, f32)> = g
+            .plus_proches()
+            .into_iter()
+            .map(|(id, voisin, d2)| (id, (voisin, d2)))
+            .collect();
+        assert_eq!(proches.len(), 21, "un plus proche par morceau du graphe");
+        assert_eq!(proches[&100], (5, 0.0));
+        assert_eq!(proches[&5].0, 100, "5 retrouve aussi son jumeau exact");
+        assert_eq!(proches[&5].1, 0.0);
+    }
+
+    /// Chaque saut du chemin sonique doit être une arête du graphe : c'est la
     /// propriété qui le distingue du direct, et la seule qui compte.
     #[test]
-    fn le_chemin_lisse_ne_saute_que_de_voisin_en_voisin() {
+    fn le_chemin_sonique_ne_saute_que_de_voisin_en_voisin() {
         let e = arc(60);
         let g = Graphe::construire(&e, 4, 4);
-        let route = g.lisse(0, 59);
+        let route = g.sonique(0, 59, 1, 0.0);
 
         assert_eq!(route.first(), Some(&0));
         assert_eq!(route.last(), Some(&59));
@@ -631,10 +838,41 @@ mod tests {
         }
     }
 
-    /// Deux amas séparés par un vide, sans arête entre eux : le lisse doit le
-    /// dire (route vide) plutôt que rendre un trajet impossible.
+    /// Bruité, le sonique reste sur les arêtes du graphe — seul le coût
+    /// change, jamais l'existence d'un saut — et redevient reproductible par
+    /// graine, comme direct et errance.
     #[test]
-    fn le_lisse_rend_vide_entre_deux_composantes() {
+    fn sonique_bruite_reste_sur_le_graphe_et_est_reproductible() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 4, 4);
+        let a = g.sonique(0, 59, 42, 1.0);
+
+        assert_eq!(a.first(), Some(&0));
+        assert_eq!(a.last(), Some(&59));
+        for f in a.windows(2) {
+            assert!(
+                g.voisins(f[0], 8).contains(&f[1]),
+                "{} → {} n'est pas une arête du graphe, même bruité",
+                f[0],
+                f[1]
+            );
+        }
+        assert_eq!(
+            a,
+            g.sonique(0, 59, 42, 1.0),
+            "même graine, même bruit, même trajet"
+        );
+        assert_eq!(
+            g.sonique(0, 59, 42, 0.0),
+            g.sonique(0, 59, 1, 0.0),
+            "bruit nul : la graine ne doit plus rien changer"
+        );
+    }
+
+    /// Deux amas séparés par un vide, sans arête entre eux : le sonique doit
+    /// le dire (route vide) plutôt que rendre un trajet impossible.
+    #[test]
+    fn le_sonique_rend_vide_entre_deux_composantes() {
         // Deux paquets diamétralement opposés sur la sphère.
         let mut e: Vec<(i64, Vec<f32>)> = Vec::new();
         for i in 0..8 {
@@ -646,11 +884,11 @@ mod tests {
         // Chaque paquet a huit membres : trois voisins suffisent à rester
         // dedans, aucune arête ne franchit le vide.
         assert!(
-            g.lisse(0, 100).is_empty(),
+            g.sonique(0, 100, 1, 0.0).is_empty(),
             "un chemin a été trouvé là où il n'y a pas d'arête"
         );
         assert!(
-            !g.lisse(0, 7).is_empty(),
+            !g.sonique(0, 7, 1, 0.0).is_empty(),
             "dans un même amas, il en faut un"
         );
     }
@@ -660,11 +898,14 @@ mod tests {
         let e = arc(60);
         let g = Graphe::construire(&e, 5, 2);
 
-        let a = g.errance(30, 15, 42);
-        assert_eq!(a, g.errance(30, 15, 42), "même graine, même promenade");
+        // bruit ≈ 1/3 : température ≈ 1,0 une fois mise à l'échelle — la
+        // valeur sur laquelle ce test était calibré avant que `bruit` ne
+        // remplace `temperature` comme paramètre public.
+        let a = g.errance(30, 15, 42, 0.333);
+        assert_eq!(a, g.errance(30, 15, 42, 0.333), "même graine, même promenade");
         assert_ne!(
             a,
-            g.errance(30, 15, 43),
+            g.errance(30, 15, 43, 0.333),
             "graines distinctes, promenades distinctes"
         );
 
@@ -678,15 +919,47 @@ mod tests {
         assert!(ecart > 5, "la marche n'a pas dérivé : {a:?}");
     }
 
+    /// Preuve que la pondération a un effet mesurable, pas seulement déclaré
+    /// en commentaire : à basse température, le premier pas de l'errance
+    /// doit tomber sur le plus proche voisin bien plus souvent que le taux
+    /// uniforme (1 sur 8 ici) que donnait l'ancien tirage.
+    #[test]
+    fn la_temperature_basse_favorise_le_plus_proche_voisin() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 8, 2);
+        let depart = 30;
+        let plus_proche = g.voisins(depart, 8)[0];
+
+        let essais = 400;
+        let mut fois_plus_proche = 0;
+        for graine in 1..=essais {
+            if g.errance(depart, 2, graine, 0.15).get(1) == Some(&plus_proche) {
+                fois_plus_proche += 1;
+            }
+        }
+        // Sous tirage uniforme (8 voisins), le taux attendu serait ~12,5 % ;
+        // on demande nettement plus, sans coller à la valeur mesurée pour ne
+        // pas figer un test sur un chiffre qui dépend du fixture.
+        assert!(
+            fois_plus_proche > essais / 4,
+            "le plus proche voisin ne domine pas à basse température : \
+             {fois_plus_proche}/{essais}"
+        );
+    }
+
     #[test]
     fn le_graphe_supporte_les_cas_degeneres() {
         let g = Graphe::construire(&[], 4, 2);
         assert_eq!(g.taille(), 0);
-        assert!(g.lisse(0, 1).is_empty());
-        assert!(g.errance(0, 5, 1).is_empty());
+        assert!(g.sonique(0, 1, 1, 0.0).is_empty());
+        assert!(g.errance(0, 5, 1, 1.0).is_empty());
 
         let un = Graphe::construire(&arc(1), 4, 2);
-        assert_eq!(un.errance(0, 5, 1), vec![0], "un seul morceau, un seul pas");
+        assert_eq!(
+            un.errance(0, 5, 1, 1.0),
+            vec![0],
+            "un seul morceau, un seul pas"
+        );
 
         // Plus de voisins demandés que de morceaux disponibles.
         let deux = Graphe::construire(&arc(2), 40, 2);
@@ -704,7 +977,7 @@ mod tests {
             pts.push((100 + i, i as f32 * 0.1, 0.9));
         }
 
-        let route = dessine(&pts, &[(0.0, 0.0), (1.0, 0.0)], 6, 0.08);
+        let route = dessine(&pts, &[(0.0, 0.0), (1.0, 0.0)], 6, 0.08, 1, 0.0);
         assert_eq!(route.len(), 6);
         assert!(
             route.iter().all(|id| *id < 100),
@@ -725,7 +998,7 @@ mod tests {
         let mut trace: Vec<(f32, f32)> = (0..10).map(|i| (i as f32 * 0.002, 0.0)).collect();
         trace.push((1.0, 0.0));
 
-        let route = dessine(&pts, &trace, 5, 0.06);
+        let route = dessine(&pts, &trace, 5, 0.06, 1, 0.0);
         assert_eq!(route.first(), Some(&0));
         assert_eq!(route.last(), Some(&20));
         let ecarts: Vec<i64> = route.windows(2).map(|f| f[1] - f[0]).collect();
@@ -739,15 +1012,15 @@ mod tests {
     fn le_trace_troue_plutot_que_dinventer() {
         let pts = vec![(1i64, 0.0f32, 0.0f32), (2, 1.0, 0.0)];
         // Un trait qui traverse une zone vide : rien à cueillir au milieu.
-        let route = dessine(&pts, &[(0.0, 0.0), (1.0, 0.0)], 9, 0.05);
+        let route = dessine(&pts, &[(0.0, 0.0), (1.0, 0.0)], 9, 0.05, 1, 0.0);
         assert_eq!(route, vec![1, 2], "un morceau lointain s'est invité");
 
         assert!(
-            dessine(&pts, &[(0.0, 0.0)], 4, 0.5).is_empty(),
+            dessine(&pts, &[(0.0, 0.0)], 4, 0.5, 1, 0.0).is_empty(),
             "trait d'un point"
         );
         assert!(
-            dessine(&[], &[(0.0, 0.0), (1.0, 0.0)], 4, 0.5).is_empty(),
+            dessine(&[], &[(0.0, 0.0), (1.0, 0.0)], 4, 0.5, 1, 0.0).is_empty(),
             "carte vide"
         );
     }
@@ -798,3 +1071,4 @@ mod tests {
         assert_eq!(echantillonner(&[1, 2, 3], 10), vec![1, 2, 3]);
     }
 }
+

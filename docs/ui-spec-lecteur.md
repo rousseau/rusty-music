@@ -89,7 +89,8 @@ volumes réels de la bibliothèque de test les contraignent fortement :
 
 - Deux origines, transparentes pour l'interface : image embarquée, sinon
   fichier du dossier. `Cover::source` le dit si l'on veut l'afficher.
-- Tailles utiles : 38 px (transport), ~180 px (grille d'albums), ~320 px
+- Tailles utiles : 38 px (transport), ~140 px (grille d'albums — resserré
+  depuis le 180 px initial pour en montrer plus à l'écran), ~320 px
   (inspecteur). Carrées, recadrage centré — les pochettes réelles vont de
   350×350 à 1200×1200.
 - **Cache côté interface obligatoire.** Le cœur ne stocke rien : les 4,9 Go

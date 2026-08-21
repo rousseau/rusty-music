@@ -157,15 +157,21 @@ fn lire_et_ingerer(lib: &Library, a_lire: Vec<PathBuf>, jobs: usize, rep: &mut S
                     Ok(_) => {
                         rep.inserted += 1;
                         debug!(path = %path.display(), "ingéré");
+                        // Un fichier qui échouait avant et se lit maintenant
+                        // — tags corrigés, remplacé — n'a plus sa place dans
+                        // la liste des échecs.
+                        let _ = lib.effacer_echec_scan(&path);
                     }
                     Err(e) => {
                         rep.failed += 1;
                         warn!(path = %path.display(), error = %e, "insertion impossible");
+                        let _ = lib.enregistrer_echec_scan(&path, &e.to_string());
                     }
                 },
                 Err(e) => {
                     rep.failed += 1;
                     warn!(path = %path.display(), error = %e, "tags illisibles");
+                    let _ = lib.enregistrer_echec_scan(&path, &e.to_string());
                 }
             }
         }

@@ -23,6 +23,83 @@ pub struct TrackRow {
     pub track_no: Option<i64>,
     pub year: Option<i64>,
     pub duration_ms: Option<i64>,
+    /// Identifiant MusicBrainz d'artiste d'album, comme [`ArtistRow::mbid`] —
+    /// sert à retrouver ses albums (`Library::albums_of_artist`) depuis un
+    /// morceau, sans passer par la liste des artistes.
+    pub artist_mbid: Option<String>,
+}
+
+/// Répartition d'une valeur continue en tranches régulières (mode
+/// Bibliothèque). `comptes[i]` couvre `[min + i*pas, min + (i+1)*pas)` ; ce
+/// qui déborde par le haut tombe dans `hors_gamme`, ce qui manque dans
+/// `sans_valeur` — deux absences de nature différente qu'il ne faut pas
+/// confondre dans une même barre.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Histogramme {
+    pub min: f64,
+    pub pas: f64,
+    pub comptes: Vec<i64>,
+    pub hors_gamme: i64,
+    pub sans_valeur: i64,
+}
+
+/// Paramètres du calcul de la carte — projection t-SNE et clustering
+/// k-means. Rien pour les empreintes elles-mêmes : le modèle CLAP importé
+/// est figé au moment du build (`crates/analysis/src/encodeur.rs`), il n'y a
+/// pas de bouton à tourner de ce côté-là.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct ParametresCarte {
+    /// Voisinage que t-SNE cherche à préserver. Doit rester bien en dessous
+    /// du nombre de morceaux — `projeter` s'en charge, ce n'est pas à
+    /// l'appelant d'y penser.
+    pub perplexite: f32,
+    /// Passes de descente de gradient. Plus haut stabilise le dessin, plus
+    /// lentement.
+    pub epoques: usize,
+    /// Nombre de familles (k de k-means), sur la carte comme dans le rail
+    /// « Familles ».
+    pub familles: usize,
+    /// Passes de k-means++. Au-delà d'une poignée de dizaines, les centres
+    /// ont déjà cessé de bouger sur une bibliothèque de cette taille.
+    pub iterations_kmeans: usize,
+    /// Écart-type du noyau gaussien de la nappe de densité — voir
+    /// [`crate::density::ParametresDensite`], que ce champ (et les deux
+    /// suivants) alimente directement.
+    pub densite_noyau: f64,
+    /// Cellules par côté de la grille de densité.
+    pub densite_resolution: usize,
+    /// Bandes par nappe de densité.
+    pub densite_bandes: usize,
+}
+
+impl Default for ParametresCarte {
+    /// Les valeurs mesurées jusqu'ici, gardées à l'identique : changer de
+    /// défaut ici changerait le dessin de la carte de quiconque n'a jamais
+    /// ouvert ce réglage.
+    fn default() -> Self {
+        let d = crate::density::ParametresDensite::default();
+        Self {
+            perplexite: 30.0,
+            epoques: 1000,
+            familles: 12,
+            iterations_kmeans: 50,
+            densite_noyau: d.noyau,
+            densite_resolution: d.resolution,
+            densite_bandes: d.bandes,
+        }
+    }
+}
+
+impl ParametresCarte {
+    /// Les trois champs de densité, sous la forme qu'attend
+    /// [`crate::density::calculer`].
+    pub fn parametres_densite(&self) -> crate::density::ParametresDensite {
+        crate::density::ParametresDensite {
+            noyau: self.densite_noyau,
+            resolution: self.densite_resolution,
+            bandes: self.densite_bandes,
+        }
+    }
 }
 
 /// Un artiste et son volume dans la bibliothèque.
@@ -44,6 +121,10 @@ pub struct AlbumRow {
     pub artist: Option<String>,
     pub year: Option<i64>,
     pub tracks: i64,
+    // Chemin d'une piste de l'album, pour en tirer la pochette (`tags::read_cover`).
+    // N'importe laquelle convient : c'est la même pochette pour tout l'album,
+    // embarquée ou dans le dossier.
+    pub path: String,
 }
 
 /// Un point de la carte.
@@ -66,6 +147,17 @@ pub struct DescripteursVus {
     pub tonalite: Option<String>,
     /// Valeur efficace, entre 0 et 1.
     pub energie: Option<f32>,
+    /// Taux de passage par zéro — élevé pour un son bruité/percussif.
+    pub zcr: Option<f32>,
+    /// Centroïde spectral (Hz), moyenne puis écart-type entre trames.
+    pub centroide_moy: Option<f32>,
+    pub centroide_ecart: Option<f32>,
+    /// Rolloff spectral (Hz, seuil 85 %), même paire.
+    pub rolloff_moy: Option<f32>,
+    pub rolloff_ecart: Option<f32>,
+    /// Aplatissement spectral (0..1, bruit vs tonal), même paire.
+    pub flatness_moy: Option<f32>,
+    pub flatness_ecart: Option<f32>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -106,7 +198,8 @@ pub type AlbumRange = (String, String, String, Vec<(String, i64)>);
 type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
 
 /// de consultation pour que l'ordre reste aligné sur [`track_from_row`].
-const TRACK_COLS: &str = "id, path, title, artist, album, track_no, year, duration_ms";
+const TRACK_COLS: &str =
+    "id, path, title, artist, album, track_no, year, duration_ms, mb_album_artist_id";
 
 /// Met à niveau une base créée par une version antérieure.
 ///
@@ -120,7 +213,17 @@ fn migrate(conn: &Connection) -> Result<()> {
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<std::result::Result<_, _>>()?;
 
-    for (nom, decl) in [("mb_artist_id", "TEXT"), ("mb_album_artist_id", "TEXT")] {
+    for (nom, decl) in [
+        ("mb_artist_id", "TEXT"),
+        ("mb_album_artist_id", "TEXT"),
+        // Débit en kb/s et format, lus par `tags::read` en même temps que
+        // `sample_rate`/`channels` — aucun décodage, juste les propriétés du
+        // fichier. Absents des morceaux scannés avant cette version : un
+        // rescan (« Scanner », case « relire même les fichiers inchangés »)
+        // les remplit sans autre passe.
+        ("bitrate", "INTEGER"),
+        ("codec", "TEXT"),
+    ] {
         if !existantes.contains(nom) {
             conn.execute_batch(&format!("ALTER TABLE tracks ADD COLUMN {nom} {decl}"))?;
         }
@@ -131,6 +234,18 @@ fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_tracks_mb_aa ON tracks(mb_album_artist_id)",
     )?;
+
+    // `artist_links` existait déjà, vide, avant le mode Découvrir — sans
+    // cette migration, une base créée par une version antérieure n'aurait
+    // jamais `dst_name` : `CREATE TABLE IF NOT EXISTS` du schéma ne touche
+    // pas une table déjà là.
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('artist_links')")?;
+    let colonnes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    if !colonnes.contains("dst_name") {
+        conn.execute_batch("ALTER TABLE artist_links ADD COLUMN dst_name TEXT")?;
+    }
 
     // Index de recherche. `remove_diacritics 2` est ce qui fait que « bjork »
     // trouve « Björk » — `LIKE` en est incapable sans ICU. `content='tracks'`
@@ -174,6 +289,34 @@ fn migrate(conn: &Connection) -> Result<()> {
     )?;
     if a_reconstruire {
         conn.execute_batch("INSERT INTO tracks_fts(tracks_fts) VALUES('rebuild')")?;
+    }
+
+    // `0` (« 0000 ») est un espace réservé de tagueur pour « année absente »,
+    // jamais une vraie date — `tags::read` ne l'écrit plus depuis cette
+    // version, mais une base déjà scannée en porte encore. Sans ce nettoyage,
+    // elle continuerait de fausser les bornes de tout ce qui classe ou
+    // colore par année, jusqu'à un rescan complet des fichiers concernés.
+    conn.execute_batch("UPDATE tracks SET year = NULL WHERE year = 0")?;
+
+    // Descripteurs timbraux (ZCR, centroïde/rolloff/aplatissement spectraux) —
+    // ajoutés après la table `descriptors` d'origine, `CREATE TABLE IF NOT
+    // EXISTS` ne les apporte donc pas à une base déjà peuplée.
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('descriptors')")?;
+    let colonnes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    for nom in [
+        "zcr",
+        "centroid_mean",
+        "centroid_std",
+        "rolloff_mean",
+        "rolloff_std",
+        "flatness_mean",
+        "flatness_std",
+    ] {
+        if !colonnes.contains(nom) {
+            conn.execute_batch(&format!("ALTER TABLE descriptors ADD COLUMN {nom} REAL"))?;
+        }
     }
 
     Ok(())
@@ -220,6 +363,7 @@ fn track_from_row(r: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
         track_no: r.get(5)?,
         year: r.get(6)?,
         duration_ms: r.get(7)?,
+        artist_mbid: r.get(8)?,
     })
 }
 
@@ -258,16 +402,17 @@ impl Library {
         self.conn.execute(
             "INSERT INTO tracks
                (path, size_bytes, mtime, title, artist, album, album_artist,
-                genre, year, track_no, duration_ms, sample_rate, channels, mb_recording_id,
-                mb_artist_id, mb_album_artist_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+                genre, year, track_no, duration_ms, sample_rate, channels, bitrate, codec,
+                mb_recording_id, mb_artist_id, mb_album_artist_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
              ON CONFLICT(path) DO UPDATE SET
                size_bytes=excluded.size_bytes, mtime=excluded.mtime,
                title=excluded.title, artist=excluded.artist, album=excluded.album,
                album_artist=excluded.album_artist, genre=excluded.genre,
                year=excluded.year, track_no=excluded.track_no,
                duration_ms=excluded.duration_ms, sample_rate=excluded.sample_rate,
-               channels=excluded.channels, mb_recording_id=excluded.mb_recording_id,
+               channels=excluded.channels, bitrate=excluded.bitrate, codec=excluded.codec,
+               mb_recording_id=excluded.mb_recording_id,
                mb_artist_id=excluded.mb_artist_id,
                mb_album_artist_id=excluded.mb_album_artist_id",
             params![
@@ -284,6 +429,8 @@ impl Library {
                 m.duration_ms,
                 m.sample_rate,
                 m.channels,
+                m.bitrate,
+                m.codec,
                 m.mb_recording_id,
                 m.mb_artist_id,
                 m.mb_album_artist_id
@@ -316,6 +463,40 @@ impl Library {
             "DELETE FROM tracks WHERE path = ?1",
             params![path.to_string_lossy()],
         )?)
+    }
+
+    /// Note l'échec de lecture d'un fichier — tags illisibles ou insertion en
+    /// échec. `ON CONFLICT` plutôt qu'un doublon : un même fichier qui échoue
+    /// à chaque scan ne doit pas empiler les lignes, seulement rafraîchir la
+    /// raison et la date.
+    pub fn enregistrer_echec_scan(&self, path: &Path, raison: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO scan_failures(path, reason) VALUES (?1, ?2)
+             ON CONFLICT(path) DO UPDATE SET reason = excluded.reason, at = strftime('%s','now')",
+            params![path.to_string_lossy(), raison],
+        )?;
+        Ok(())
+    }
+
+    /// Efface un échec — le fichier a fini par se lire, ou l'utilisateur a
+    /// choisi de le retirer de la liste sans y revenir.
+    pub fn effacer_echec_scan(&self, path: &Path) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM scan_failures WHERE path = ?1",
+            params![path.to_string_lossy()],
+        )?;
+        Ok(())
+    }
+
+    /// Les fichiers en échec, du plus récent au plus ancien.
+    pub fn echecs_scan(&self) -> Result<Vec<(String, String, i64)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, reason, at FROM scan_failures ORDER BY at DESC")?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Retire les morceaux de `root` dont le fichier a disparu du disque.
@@ -505,6 +686,353 @@ impl Library {
         Ok(noms)
     }
 
+    /// Morceaux dont le genre résolu ([`genres_du_morceau`]) ne figure pas
+    /// parmi les [`GENRES_DOMINANTS`] les plus représentés de leur famille
+    /// sonique (cluster de la carte) — le tag dit une chose, l'empreinte en
+    /// dit une autre. Un signal à vérifier, pas une certitude : deux genres
+    /// voisins (« folk » / « folk-pop ») divergent tout en étant tous deux
+    /// justes.
+    ///
+    /// Les familles trop petites pour qu'un « genre dominant » veuille dire
+    /// quelque chose sont ignorées ([`PLANCHER_ABSOLU`], déjà utilisé pour
+    /// nommer les familles).
+    pub fn genres_suspects(&self, model: &str) -> Result<Vec<(i64, String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.cluster, f.track_id, t.mb_artist_id, t.album, t.genre,
+                    COALESCE(t.title, t.path), COALESCE(t.artist, '?')
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1",
+        )?;
+        struct Ligne {
+            cluster: i64,
+            track_id: i64,
+            artiste_mbid: Option<String>,
+            album: Option<String>,
+            tag: Option<String>,
+            titre: String,
+            artiste: String,
+        }
+        let pistes: Vec<Ligne> = stmt
+            .query_map(params![model], |r| {
+                Ok(Ligne {
+                    cluster: r.get(0)?,
+                    track_id: r.get(1)?,
+                    artiste_mbid: r.get(2)?,
+                    album: r.get(3)?,
+                    tag: r.get(4)?,
+                    titre: r.get(5)?,
+                    artiste: r.get(6)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
+        let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
+        let albums = self.mb_albums()?;
+
+        // Genre résolu par morceau, et effectifs par (cluster, genre) — même
+        // arbitrage que `familles`, gardé par morceau ici au lieu d'être
+        // sommé tout de suite : il faut le comparer au dominant de son
+        // cluster, pas seulement le compter dedans.
+        let mut genre_du_morceau: HashMap<i64, String> = HashMap::new();
+        let mut cumul: HashMap<(i64, String), i64> = HashMap::new();
+        let mut taille_cluster: HashMap<i64, i64> = HashMap::new();
+        for p in &pistes {
+            *taille_cluster.entry(p.cluster).or_default() += 1;
+            let genres = genres_du_morceau(
+                p.artiste_mbid.as_deref(),
+                p.album.as_deref(),
+                p.tag.as_deref(),
+                &albums,
+                &par_album,
+                &par_artiste,
+            );
+            // `GENRES_PAR_ENTITE = 1` : au plus un genre par morceau déjà —
+            // pas d'ambiguïté à choisir lequel comparer.
+            if let Some(g) = genres.into_iter().next() {
+                genre_du_morceau.insert(p.track_id, g.clone());
+                *cumul.entry((p.cluster, g)).or_default() += 1;
+            }
+        }
+
+        // Les `GENRES_DOMINANTS` premiers de chaque cluster, par effectif.
+        let mut par_cluster: HashMap<i64, Vec<(String, i64)>> = HashMap::new();
+        for ((cluster, genre), n) in cumul {
+            par_cluster.entry(cluster).or_default().push((genre, n));
+        }
+        for v in par_cluster.values_mut() {
+            v.sort_by(|a, b| b.1.cmp(&a.1));
+            v.truncate(GENRES_DOMINANTS);
+        }
+
+        let mut suspects = Vec::new();
+        for p in &pistes {
+            if taille_cluster[&p.cluster] < PLANCHER_ABSOLU {
+                continue;
+            }
+            let Some(genre) = genre_du_morceau.get(&p.track_id) else {
+                continue;
+            };
+            let dominants = par_cluster.get(&p.cluster).map(|v| v.as_slice()).unwrap_or(&[]);
+            if dominants.iter().any(|(g, _)| g == genre) {
+                continue;
+            }
+            let etiquette = dominants
+                .iter()
+                .map(|(g, _)| g.as_str())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            suspects.push((
+                p.track_id,
+                format!("{} — {}", p.artiste, p.titre),
+                genre.clone(),
+                etiquette,
+            ));
+        }
+        Ok(suspects)
+    }
+
+    /* ------------------------------- statistiques (mode Bibliothèque) */
+
+    /// Répartition de toute la bibliothèque par genre — même arbitrage que
+    /// [`Self::familles`] (album MusicBrainz, puis artiste, puis tag du
+    /// fichier ; voir [`genres_du_morceau`]), mais sur tous les morceaux, pas
+    /// seulement ceux déjà placés sur la carte. Triée par effectif
+    /// décroissant ; un morceau sans genre résolu compte dans `"—"`.
+    pub fn stats_genres(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT mb_artist_id, album, genre FROM tracks")?;
+        let pistes: Vec<(Option<String>, Option<String>, Option<String>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
+        let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
+        let albums = self.mb_albums()?;
+
+        let mut cumul: HashMap<String, i64> = HashMap::new();
+        let mut sans_genre = 0i64;
+        for (artiste, album, tag) in &pistes {
+            let genres = genres_du_morceau(
+                artiste.as_deref(),
+                album.as_deref(),
+                tag.as_deref(),
+                &albums,
+                &par_album,
+                &par_artiste,
+            );
+            if genres.is_empty() {
+                sans_genre += 1;
+            }
+            for genre in genres {
+                *cumul.entry(genre).or_insert(0) += 1;
+            }
+        }
+        if sans_genre > 0 {
+            cumul.insert("—".to_string(), sans_genre);
+        }
+        let mut resultat: Vec<(String, i64)> = cumul.into_iter().collect();
+        resultat.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(resultat)
+    }
+
+    /// Histogramme du tempo mesuré, par tranches de [`TEMPO_PAS`] BPM à
+    /// partir de [`TEMPO_MIN`]. `LEFT JOIN` plutôt qu'un `SELECT bpm FROM
+    /// descriptors` : un morceau jamais passé dans la passe « descripteurs »
+    /// n'y a aucune ligne, et compterait sinon comme mesuré à zéro plutôt que
+    /// comme non mesuré.
+    pub fn stats_tempo(&self) -> Result<Histogramme> {
+        let valeurs: Vec<Option<f64>> = self
+            .conn
+            .prepare("SELECT d.bpm FROM tracks t LEFT JOIN descriptors d ON d.track_id = t.id")?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(histogrammer(&valeurs, TEMPO_MIN, TEMPO_PAS, TEMPO_TRANCHES))
+    }
+
+    /// Histogramme de la durée des morceaux, par tranches de [`DUREE_PAS`]
+    /// (une minute) à partir de zéro.
+    pub fn stats_durees(&self) -> Result<Histogramme> {
+        let valeurs: Vec<Option<f64>> = self
+            .conn
+            .prepare("SELECT duration_ms FROM tracks")?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(histogrammer(&valeurs, DUREE_MIN, DUREE_PAS, DUREE_TRANCHES))
+    }
+
+    /// Répartition par format de fichier (« MP3 », « FLAC »…). `NULL` — un
+    /// morceau scanné avant que `tags::read` ne lise le format — compte à
+    /// part : ce n'est pas « aucun format », c'est « pas encore mesuré ».
+    pub fn stats_codecs(&self) -> Result<Vec<(String, i64)>> {
+        let valeurs: Vec<Option<String>> = self
+            .conn
+            .prepare("SELECT codec FROM tracks")?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        let mut cumul: HashMap<String, i64> = HashMap::new();
+        for v in valeurs {
+            *cumul.entry(v.unwrap_or_else(|| "non mesuré".to_string())).or_insert(0) += 1;
+        }
+        let mut resultat: Vec<(String, i64)> = cumul.into_iter().collect();
+        resultat.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(resultat)
+    }
+
+    /// Histogramme du débit audio, par tranches de [`BITRATE_PAS`] kb/s.
+    /// Un format sans débit à annoncer (FLAC…) tombe au-delà de la dernière
+    /// tranche plutôt que d'écraser l'échelle pensée pour le domaine
+    /// habituel du MP3/AAC — voir [`BITRATE_MAX`].
+    pub fn stats_bitrate(&self) -> Result<Histogramme> {
+        let valeurs: Vec<Option<f64>> = self
+            .conn
+            .prepare("SELECT bitrate FROM tracks")?
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(histogrammer(&valeurs, BITRATE_MIN, BITRATE_PAS, BITRATE_TRANCHES))
+    }
+
+    /// Morceaux sans identifiant MusicBrainz d'artiste — ni le tag du
+    /// fichier ni un rapprochement ultérieur ne les relie à MusicBrainz, donc
+    /// ni genre affiné ni connexions d'artiste possibles pour eux.
+    pub fn stats_sans_mbid(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM tracks WHERE mb_artist_id IS NULL",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Les paramètres du calcul de la carte, une clé absente valant sa
+    /// valeur par défaut ([`ParametresCarte::default`]) — voir la table
+    /// `parametres_carte`.
+    pub fn parametres_carte(&self) -> Result<ParametresCarte> {
+        let mut stmt = self.conn.prepare("SELECT cle, valeur FROM parametres_carte")?;
+        let lignes: HashMap<String, f64> = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let d = ParametresCarte::default();
+        let get = |cle: &str, defaut: f64| lignes.get(cle).copied().unwrap_or(defaut);
+        Ok(ParametresCarte {
+            perplexite: get("perplexite", d.perplexite as f64) as f32,
+            epoques: get("epoques", d.epoques as f64) as usize,
+            familles: get("familles", d.familles as f64) as usize,
+            iterations_kmeans: get("iterations_kmeans", d.iterations_kmeans as f64) as usize,
+            densite_noyau: get("densite_noyau", d.densite_noyau),
+            densite_resolution: get("densite_resolution", d.densite_resolution as f64) as usize,
+            densite_bandes: get("densite_bandes", d.densite_bandes as f64) as usize,
+        })
+    }
+
+    /// Change un paramètre de la carte. `cle` doit être un des sept champs
+    /// de [`ParametresCarte`] — la validation du nom reste à l'appelant
+    /// (commande Tauri), cette méthode ne fait qu'écrire.
+    pub fn set_parametre_carte(&self, cle: &str, valeur: f64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO parametres_carte(cle, valeur) VALUES (?1, ?2)
+             ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+            params![cle, valeur],
+        )?;
+        Ok(())
+    }
+
+    /// Albums dont le même artiste (`album_artist` de préférence, sinon
+    /// `artist` — même repli que [`Self::albums`]) porte plusieurs titres
+    /// distincts qui ne diffèrent que par leur mention d'édition, ex.
+    /// « Kid A » et « Kid A (Remaster) ».
+    ///
+    /// Le regroupement se fait sur un titre normalisé — tout ce qui précède
+    /// la première parenthèse ou le premier crochet
+    /// ([`titre_album_normalise`]), pas de registre d'éditions à maintenir,
+    /// au prix d'un titre légitimement parenthétique tronqué à tort de temps
+    /// en temps — mais le résultat rend le titre brut le plus représenté,
+    /// pas la forme normalisée : celle-ci sert à regrouper, pas à afficher.
+    pub fn editions_multiples(&self) -> Result<Vec<(String, String, Vec<(String, i64)>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COALESCE(album_artist, artist), album, COUNT(*)
+               FROM tracks
+              WHERE album IS NOT NULL AND COALESCE(album_artist, artist) IS NOT NULL
+              GROUP BY COALESCE(album_artist, artist), album",
+        )?;
+        let lignes: Vec<(String, String, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut par_cle: HashMap<(String, String), Vec<(String, i64)>> = HashMap::new();
+        for (artiste, album, n) in lignes {
+            let norme = titre_album_normalise(&album);
+            par_cle.entry((artiste, norme)).or_default().push((album, n));
+        }
+        let mut resultat: Vec<(String, String, Vec<(String, i64)>)> = par_cle
+            .into_iter()
+            .filter(|(_, editions)| editions.len() > 1)
+            .map(|((artiste, _norme), mut editions)| {
+                editions.sort_by(|a, b| b.1.cmp(&a.1));
+                (artiste, editions[0].0.clone(), editions)
+            })
+            .collect();
+        resultat.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        Ok(resultat)
+    }
+
+    /// Répartition par humeur — tempo × énergie, tous deux déjà mesurés,
+    /// **coupés à leur médiane du moment** plutôt qu'à un seuil absolu.
+    ///
+    /// AudioMuse-AI dérive ces catégories par similarité cosinus entre
+    /// l'empreinte CLAP et un jeu de vecteurs-étiquettes (« dansant »,
+    /// « agressif »…) — hors de portée ici, le modèle importé
+    /// (`clap-audio-encoder-b5`) n'embarque que la tour audio, pas la tour
+    /// texte qu'il faudrait pour situer un mot dans le même espace. Le
+    /// substitut retenu réutilise ce qui est déjà mesuré. Le seuil absolu a
+    /// été écarté après mesure : sur les 741 morceaux déjà remesurés au
+    /// moment d'écrire ceci, l'énergie s'étale de 0,03 à 0,41 — un seuil fixe
+    /// à 0,5 aurait vidé deux des quatre catégories. La médiane du moment
+    /// s'ajuste à l'échelle réelle de la bibliothèque, quelle qu'elle soit,
+    /// et reste correcte si cette échelle se déplace en cours de mesure.
+    pub fn stats_humeur(&self) -> Result<Vec<(String, i64)>> {
+        let valeurs: Vec<(Option<f64>, Option<f64>)> = self
+            .conn
+            .prepare(
+                "SELECT d.bpm, d.energy FROM tracks t LEFT JOIN descriptors d ON d.track_id = t.id",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mediane = |mut v: Vec<f64>| -> Option<f64> {
+            if v.is_empty() {
+                return None;
+            }
+            v.sort_by(f64::total_cmp);
+            Some(v[v.len() / 2])
+        };
+        let Some(med_bpm) = mediane(valeurs.iter().filter_map(|(b, _)| *b).collect()) else {
+            return Ok(Vec::new());
+        };
+        let Some(med_energie) = mediane(valeurs.iter().filter_map(|(_, e)| *e).collect()) else {
+            return Ok(Vec::new());
+        };
+
+        let mut cumul: HashMap<&str, i64> = HashMap::new();
+        for (bpm, energie) in &valeurs {
+            let etiquette = match (bpm, energie) {
+                (Some(b), Some(e)) => match (*b >= med_bpm, *e >= med_energie) {
+                    (true, true) => "Énergique",
+                    (true, false) => "Enlevé",
+                    (false, true) => "Intense",
+                    (false, false) => "Calme",
+                },
+                _ => "non mesuré",
+            };
+            *cumul.entry(etiquette).or_insert(0) += 1;
+        }
+        let mut resultat: Vec<(String, i64)> =
+            cumul.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        resultat.sort_by(|a, b| b.1.cmp(&a.1));
+        Ok(resultat)
+    }
+
     /* --------------------------------------------- descripteurs musicaux */
 
     /// Les morceaux dont on n'a pas encore mesuré tempo, tonalité et énergie.
@@ -533,6 +1061,7 @@ impl Library {
     /// ni de tonalité, et une valeur inventée colorerait la carte d'un
     /// mensonge. La ligne est écrite quand même — c'est elle qui dit que le
     /// morceau a été mesuré, et qu'il ne faut pas y revenir.
+    #[allow(clippy::too_many_arguments)]
     pub fn save_descripteurs(
         &self,
         track_id: i64,
@@ -540,14 +1069,32 @@ impl Library {
         musical_key: Option<&str>,
         energy: f32,
         loudness: f32,
+        zcr: Option<f32>,
+        centroid_mean: Option<f32>,
+        centroid_std: Option<f32>,
+        rolloff_mean: Option<f32>,
+        rolloff_std: Option<f32>,
+        flatness_mean: Option<f32>,
+        flatness_std: Option<f32>,
     ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO descriptors(track_id, bpm, musical_key, energy, loudness)
-             VALUES (?1,?2,?3,?4,?5)
+            "INSERT INTO descriptors(
+                 track_id, bpm, musical_key, energy, loudness,
+                 zcr, centroid_mean, centroid_std,
+                 rolloff_mean, rolloff_std, flatness_mean, flatness_std)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
              ON CONFLICT(track_id) DO UPDATE SET
                bpm=excluded.bpm, musical_key=excluded.musical_key,
-               energy=excluded.energy, loudness=excluded.loudness",
-            params![track_id, bpm, musical_key, energy, loudness],
+               energy=excluded.energy, loudness=excluded.loudness,
+               zcr=excluded.zcr,
+               centroid_mean=excluded.centroid_mean, centroid_std=excluded.centroid_std,
+               rolloff_mean=excluded.rolloff_mean, rolloff_std=excluded.rolloff_std,
+               flatness_mean=excluded.flatness_mean, flatness_std=excluded.flatness_std",
+            params![
+                track_id, bpm, musical_key, energy, loudness,
+                zcr, centroid_mean, centroid_std,
+                rolloff_mean, rolloff_std, flatness_mean, flatness_std
+            ],
         )?;
         Ok(())
     }
@@ -566,6 +1113,15 @@ impl Library {
             |r| r.get(0),
         )?;
         Ok((faits, total))
+    }
+
+    /// Efface toutes les mesures de tempo/tonalité/énergie, pour les reprendre
+    /// de zéro — sert au bouton « remesurer » du mode Bibliothèque : après une
+    /// correction de l'algorithme, les valeurs déjà en base sont celles de
+    /// l'ancien, pas des trous à combler. `pending_descripteurs` ne les
+    /// reverrait jamais sans ça, une ligne y valant déjà « mesuré ».
+    pub fn effacer_descripteurs(&self) -> Result<usize> {
+        Ok(self.conn.execute("DELETE FROM descriptors", [])?)
     }
 
     /// Tempo mesuré de morceaux donnés, ceux qui en ont.
@@ -601,13 +1157,23 @@ impl Library {
     /// comme une mesure.
     pub fn descripteurs(&self, id: i64) -> Result<Option<DescripteursVus>> {
         let mut stmt = self.conn.prepare(
-            "SELECT bpm, musical_key, energy FROM descriptors WHERE track_id = ?1",
+            "SELECT bpm, musical_key, energy,
+                    zcr, centroid_mean, centroid_std,
+                    rolloff_mean, rolloff_std, flatness_mean, flatness_std
+               FROM descriptors WHERE track_id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], |r| {
             Ok(DescripteursVus {
                 bpm: r.get(0)?,
                 tonalite: r.get(1)?,
                 energie: r.get(2)?,
+                zcr: r.get(3)?,
+                centroide_moy: r.get(4)?,
+                centroide_ecart: r.get(5)?,
+                rolloff_moy: r.get(6)?,
+                rolloff_ecart: r.get(7)?,
+                flatness_moy: r.get(8)?,
+                flatness_ecart: r.get(9)?,
             })
         })?;
         Ok(match rows.next() {
@@ -702,6 +1268,60 @@ impl Library {
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    /* -------------------------------------- collaborations (mode Découvrir) */
+
+    /// A-t-on déjà demandé les relations de cet artiste — même si la
+    /// réponse était une liste vide. Sans cette trace, un artiste sans
+    /// collaboration connue serait réinterrogé à chaque visite du mode
+    /// Découvrir, une requête par seconde.
+    pub fn liens_artiste_en_cache(&self, mbid: &str) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM mb_fetched WHERE mbid = ?1 AND kind = 'relations')",
+            params![mbid],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Les relations d'un artiste et la trace du passage, dans une
+    /// transaction — même raison que [`Self::mb_poser_genres`] : une passe
+    /// interrompue entre les deux écritures ne doit ni perdre le résultat,
+    /// ni le tenir pour acquis sans l'avoir noté.
+    pub fn enregistrer_liens_artiste(
+        &mut self,
+        mbid: &str,
+        liens: &[crate::musicbrainz::Relation],
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for lien in liens {
+            tx.execute(
+                "INSERT INTO artist_links (src_mbid, dst_mbid, dst_name, relation)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(src_mbid, dst_mbid, relation) DO UPDATE SET dst_name = excluded.dst_name",
+                params![mbid, lien.dst_mbid, lien.dst_name, lien.relation],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO mb_fetched (mbid, kind) VALUES (?1, 'relations')",
+            params![mbid],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les liens déjà connus d'un artiste — toujours depuis le cache,
+    /// jamais le réseau ; c'est [`Self::liens_artiste_en_cache`] qui décide
+    /// s'il faut d'abord interroger MusicBrainz.
+    pub fn liens_artiste(&self, mbid: &str) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT dst_mbid, COALESCE(dst_name, '?'), relation FROM artist_links
+              WHERE src_mbid = ?1 ORDER BY relation, dst_name",
+        )?;
+        let rows = stmt
+            .query_map(params![mbid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Genres par identifiant, du plus sûr au moins sûr.
@@ -994,7 +1614,7 @@ impl Library {
     /// secondes, et la ligne annoncerait plus d'albums qu'elle n'en ouvre.
     pub fn albums_of_artist(&self, mbid: Option<&str>, name: &str) -> Result<Vec<AlbumRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*)
+            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
                FROM tracks
               WHERE album IS NOT NULL
                 AND ( (?1 IS NOT NULL AND mb_album_artist_id = ?1)
@@ -1010,6 +1630,7 @@ impl Library {
                     artist: r.get(1)?,
                     year: r.get(2)?,
                     tracks: r.get(3)?,
+                    path: r.get(4)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1022,7 +1643,7 @@ impl Library {
         // sinon un album entier échappe au filtre dès qu'une piste porte un
         // invité en artiste.
         let mut stmt = self.conn.prepare(
-            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*)
+            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
                FROM tracks
               WHERE album IS NOT NULL
                 AND (?1 IS NULL OR album_artist = ?1 OR artist = ?1)
@@ -1036,6 +1657,7 @@ impl Library {
                     artist: r.get(1)?,
                     year: r.get(2)?,
                     tracks: r.get(3)?,
+                    path: r.get(4)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1184,6 +1806,12 @@ const VOTES_MINIMUM: i64 = 1;
 /// ça la noie.
 const GENRES_PAR_ENTITE: usize = 1;
 
+/// Combien des genres les mieux représentés d'une famille comptent comme
+/// « dominants », pour [`Library::genres_suspects`]. Plus d'un seul : une
+/// famille mêle légitimement des genres voisins (« Reggae · Afrobeat ») sans
+/// qu'aucun morceau n'y soit pour autant suspect.
+const GENRES_DOMINANTS: usize = 3;
+
 /// Les genres d'un morceau, de la source la plus précise à la plus grossière.
 ///
 /// **L'album l'emporte sur l'artiste, l'artiste sur le fichier.** Chaque
@@ -1203,6 +1831,15 @@ const GENRES_PAR_ENTITE: usize = 1;
 /// On ne mélange pas les sources pour un même morceau. Les verser ensemble
 /// ferait cohabiter « Rock » et « rock », et le genre le plus grossier
 /// redeviendrait le plus lourd — exactement ce qu'on cherche à quitter.
+/// Le titre d'album jusqu'à la première parenthèse ou le premier crochet,
+/// en minuscules — sert à rapprocher « Kid A » et « Kid A (Remaster) » sans
+/// registre d'éditions à tenir à jour. Voir [`Library::editions_multiples`].
+fn titre_album_normalise(titre: &str) -> String {
+    let t = titre.to_lowercase();
+    let fin = t.find(['(', '[']).unwrap_or(t.len());
+    t[..fin].trim().to_string()
+}
+
 fn genres_du_morceau(
     artiste: Option<&str>,
     album: Option<&str>,
@@ -1230,6 +1867,57 @@ fn genres_du_morceau(
     tag.filter(|t| !t.is_empty())
         .map(|t| vec![t.to_string()])
         .unwrap_or_default()
+}
+
+// Tranches de 10 BPM : assez fin pour distinguer un tempo lent d'un modéré,
+// assez large pour qu'une mesure à quelques BPM près reste dans sa tranche.
+// 40 couvre les morceaux les plus lents de la bibliothèque de test, 220 les
+// plus rapides sans avoir à étendre `hors_gamme` — voir `Library::stats_tempo`.
+const TEMPO_MIN: f64 = 40.0;
+const TEMPO_PAS: f64 = 10.0;
+const TEMPO_TRANCHES: usize = 18;
+
+// Tranches d'une minute, de 0 à 12 — au-delà, `hors_gamme` regroupe les
+// morceaux longs (mix, live) plutôt que d'étirer l'histogramme pour eux.
+const DUREE_MIN: f64 = 0.0;
+const DUREE_PAS: f64 = 60_000.0;
+const DUREE_TRANCHES: usize = 12;
+
+// Tranches de 32 kb/s, de 32 à 320 — le domaine habituel du MP3/AAC (128 et
+// 320 en sont les repères les plus lus). Un format sans débit constant
+// (FLAC, WavPack…) atterrit largement au-delà : `hors_gamme` en dit alors le
+// compte, pas une tranche étirée qui écraserait le MP3 dans un coin.
+const BITRATE_MIN: f64 = 32.0;
+const BITRATE_PAS: f64 = 32.0;
+// 10, pas 9 : la tranche [320, 352) doit exister pour accueillir 320 kb/s
+// pile — le repère « qualité maximale » du MP3 — dans une tranche plutôt
+// que dans `hors_gamme`, où il se confondrait avec les formats sans perte.
+const BITRATE_TRANCHES: usize = 10;
+
+/// Répartit `valeurs` en tranches régulières de largeur `pas` à partir de
+/// `min` — voir [`Histogramme`]. Sert au tempo (BPM) comme à la durée (ms) :
+/// même forme, seules les bornes changent.
+fn histogrammer(valeurs: &[Option<f64>], min: f64, pas: f64, tranches: usize) -> Histogramme {
+    let mut comptes = vec![0i64; tranches];
+    let mut hors_gamme = 0i64;
+    let mut sans_valeur = 0i64;
+    for v in valeurs {
+        match v {
+            None => sans_valeur += 1,
+            Some(v) if *v < min => hors_gamme += 1,
+            Some(v) => match ((v - min) / pas) as usize {
+                i if i < tranches => comptes[i] += 1,
+                _ => hors_gamme += 1,
+            },
+        }
+    }
+    Histogramme {
+        min,
+        pas,
+        comptes,
+        hors_gamme,
+        sans_valeur,
+    }
 }
 
 /// Sous ce plancher, un genre décrit une poche et non une famille : son score
@@ -2043,5 +2731,299 @@ mod tests {
         let second = lib.upsert(&m).unwrap();
         assert_eq!(first, second);
         assert_eq!(lib.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn histogrammer_range_hors_gamme_et_sans_valeur() {
+        let valeurs = vec![Some(5.0), Some(12.0), Some(19.0), Some(29.0), None];
+        // Tranches [10,15) et [15,20) ; 5.0 est sous le plancher, 29.0 dépasse.
+        let h = histogrammer(&valeurs, 10.0, 5.0, 2);
+        assert_eq!(h.comptes, vec![1, 1]); // 12 -> [10,15), 19 -> [15,20)
+        assert_eq!(h.hors_gamme, 2); // 5.0 (< min) et 29.0 (>= min + 2*pas)
+        assert_eq!(h.sans_valeur, 1);
+    }
+
+    /// Sans genre MusicBrainz en base, le repli sur le tag du fichier
+    /// s'applique à toute la bibliothèque — et les morceaux sans tag
+    /// comptent dans « — » plutôt que de disparaître silencieusement.
+    #[test]
+    fn stats_genres_replie_sur_le_tag_et_compte_les_morceaux_sans_genre() {
+        let lib = Library::open_in_memory().unwrap();
+        for (path, genre) in [
+            ("/m/a.mp3", Some("Rock")),
+            ("/m/b.mp3", Some("Rock")),
+            ("/m/c.mp3", Some("Jazz")),
+            ("/m/d.mp3", None),
+        ] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                genre: genre.map(str::to_string),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let stats = lib.stats_genres().unwrap();
+        assert_eq!(
+            stats,
+            vec![
+                ("Rock".to_string(), 2),
+                ("Jazz".to_string(), 1),
+                ("—".to_string(), 1),
+            ]
+        );
+    }
+
+    /// Un morceau jamais rescanné depuis l'arrivée du champ `codec` n'a « pas
+    /// de format identifié » : un tag NULL, pas une valeur inventée.
+    #[test]
+    fn stats_codecs_distingue_le_format_du_non_mesure() {
+        let lib = Library::open_in_memory().unwrap();
+        for (path, codec) in [
+            ("/m/a.mp3", Some("MP3")),
+            ("/m/b.mp3", Some("MP3")),
+            ("/m/c.flac", Some("FLAC")),
+            ("/m/d.mp3", None),
+        ] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                codec: codec.map(str::to_string),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let stats = lib.stats_codecs().unwrap();
+        assert_eq!(
+            stats,
+            vec![
+                ("MP3".to_string(), 2),
+                ("FLAC".to_string(), 1),
+                ("non mesuré".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn stats_bitrate_range_bien_le_mp3_et_ecarte_le_flac() {
+        let lib = Library::open_in_memory().unwrap();
+        for (path, bitrate) in [
+            ("/m/a.mp3", Some(128)),
+            ("/m/b.mp3", Some(320)),
+            ("/m/c.flac", Some(1000)), // bien au-delà de BITRATE_TRANCHES*BITRATE_PAS
+            ("/m/d.wav", None),
+        ] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                bitrate,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let h = lib.stats_bitrate().unwrap();
+        assert_eq!(h.comptes.iter().sum::<i64>(), 2); // 128 et 320
+        assert_eq!(h.hors_gamme, 1); // le FLAC à 1000 kb/s
+        assert_eq!(h.sans_valeur, 1); // le WAV sans débit
+    }
+
+    /// Le `LEFT JOIN` doit distinguer « jamais mesuré » (aucune ligne dans
+    /// `descriptors`) et « mesuré, sans tempo trouvé » (`bpm` NULL) — les deux
+    /// sont « sans valeur » pour l'histogramme, mais un morceau avec un vrai
+    /// tempo doit atterrir dans sa tranche.
+    #[test]
+    fn stats_tempo_distingue_mesure_et_non_mesure() {
+        let lib = Library::open_in_memory().unwrap();
+        let jamais = lib
+            .upsert(&TrackMeta {
+                path: "/m/jamais.mp3".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let sans_tempo = lib
+            .upsert(&TrackMeta {
+                path: "/m/silence.mp3".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let mesure = lib
+            .upsert(&TrackMeta {
+                path: "/m/mesure.mp3".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let _ = jamais; // jamais analysé : aucune ligne `descriptors`, exprès.
+        lib.save_descripteurs(sans_tempo, None, None, 0.0, -100.0, None, None, None, None, None, None, None)
+            .unwrap();
+        lib.save_descripteurs(mesure, Some(122.0), None, 0.5, -12.0, None, None, None, None, None, None, None)
+            .unwrap();
+
+        let h = lib.stats_tempo().unwrap();
+        assert_eq!(h.sans_valeur, 2);
+        assert_eq!(h.comptes.iter().sum::<i64>(), 1);
+        let tranche = ((122.0 - TEMPO_MIN) / TEMPO_PAS) as usize;
+        assert_eq!(h.comptes[tranche], 1);
+    }
+
+    /// Une famille de huit morceaux, quatre genres — Jazz minoritaire, seul
+    /// hors du top 3 (`GENRES_DOMINANTS`). C'est lui, et seulement lui, qui
+    /// doit ressortir suspect.
+    #[test]
+    fn genres_suspects_ignore_le_dominant_et_signale_lisole() {
+        let lib = Library::open_in_memory().unwrap();
+        // Effectifs tous distincts : aucune égalité à départager dans le
+        // classement des dominants.
+        let genres = [
+            ("Rock", 4),
+            ("Pop", 3),
+            ("Electronic", 2),
+            ("Jazz", 1),
+        ];
+        let mut i = 0;
+        for (genre, n) in genres {
+            for _ in 0..n {
+                let id = lib
+                    .upsert(&TrackMeta {
+                        path: format!("/m/{i}.mp3").into(),
+                        title: Some(format!("Piste {i}")),
+                        artist: Some("Artiste".into()),
+                        genre: Some(genre.to_string()),
+                        ..Default::default()
+                    })
+                    .unwrap();
+                lib.save_features(id, "clap", &[0.0], 0.0, 0.0, 0).unwrap();
+                i += 1;
+            }
+        }
+        let suspects = lib.genres_suspects("clap").unwrap();
+        assert_eq!(suspects.len(), 1, "un seul suspect attendu : {suspects:?}");
+        assert_eq!(suspects[0].2, "Jazz");
+        assert_eq!(suspects[0].3, "Rock · Pop · Electronic");
+    }
+
+    /// Une famille trop petite (`PLANCHER_ABSOLU`) ne doit rien signaler : le
+    /// « dominant » d'un groupe de deux morceaux n'apprend rien.
+    #[test]
+    fn genres_suspects_ignore_les_petites_familles() {
+        let lib = Library::open_in_memory().unwrap();
+        for (i, genre) in ["Rock", "Jazz"].iter().enumerate() {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: format!("/m/{i}.mp3").into(),
+                    genre: Some(genre.to_string()),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, 0).unwrap();
+        }
+        assert!(lib.genres_suspects("clap").unwrap().is_empty());
+    }
+
+    #[test]
+    fn editions_multiples_rapproche_les_mentions_dedition() {
+        let lib = Library::open_in_memory().unwrap();
+        for (i, (artiste, album)) in [
+            ("Radiohead", "Kid A"),
+            ("Radiohead", "Kid A (Remaster)"),
+            ("Radiohead", "OK Computer"),
+            // Autre artiste, même titre : ne doit pas se mélanger.
+            ("Air", "Kid A"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            lib.upsert(&TrackMeta {
+                path: format!("/m/{i}.mp3").into(),
+                artist: Some(artiste.to_string()),
+                album: Some(album.to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let editions = lib.editions_multiples().unwrap();
+        assert_eq!(editions.len(), 1, "une seule paire d'éditions : {editions:?}");
+        let (artiste, titre, versions) = &editions[0];
+        assert_eq!(artiste, "Radiohead");
+        assert_eq!(titre, "Kid A");
+        assert_eq!(versions.len(), 2);
+    }
+
+    #[test]
+    fn titre_album_normalise_tronque_a_la_premiere_parenthese_ou_crochet() {
+        assert_eq!(titre_album_normalise("Kid A"), "kid a");
+        assert_eq!(titre_album_normalise("Kid A (Remaster)"), "kid a");
+        assert_eq!(titre_album_normalise("OK Computer [Deluxe Edition]"), "ok computer");
+    }
+
+    /// La médiane s'ajuste à l'échelle réelle des valeurs, même une échelle
+    /// resserrée loin de [0, 1] — le cas mesuré qui a écarté un seuil fixe.
+    #[test]
+    fn stats_humeur_se_calibre_sur_sa_propre_echelle() {
+        let lib = Library::open_in_memory().unwrap();
+        // Énergie resserrée entre 0,03 et 0,41, comme mesuré en vrai — un
+        // seuil fixe à 0,5 rangerait tout le monde dans « lent/léger ».
+        let pistes = [
+            (60.0, 0.05), // lent, léger  -> Calme
+            (60.0, 0.40), // lent, dense  -> Intense
+            (150.0, 0.05), // rapide, léger -> Enlevé
+            (150.0, 0.40), // rapide, dense -> Énergique
+        ];
+        for (i, (bpm, energie)) in pistes.iter().enumerate() {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: format!("/m/{i}.mp3").into(),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_descripteurs(id, Some(*bpm as f32), None, *energie as f32, -10.0, None, None, None, None, None, None, None)
+                .unwrap();
+        }
+        let humeur = lib.stats_humeur().unwrap();
+        let compte = |nom: &str| humeur.iter().find(|(n, _)| n == nom).map(|(_, c)| *c).unwrap_or(0);
+        assert_eq!(compte("Calme"), 1);
+        assert_eq!(compte("Intense"), 1);
+        assert_eq!(compte("Enlevé"), 1);
+        assert_eq!(compte("Énergique"), 1);
+    }
+
+    #[test]
+    fn parametres_carte_retombe_sur_les_defauts_puis_retient_ce_quon_change() {
+        let lib = Library::open_in_memory().unwrap();
+        let p = lib.parametres_carte().unwrap();
+        assert_eq!(p.familles, ParametresCarte::default().familles);
+        assert_eq!(p.perplexite, ParametresCarte::default().perplexite);
+
+        lib.set_parametre_carte("familles", 20.0).unwrap();
+        let p = lib.parametres_carte().unwrap();
+        assert_eq!(p.familles, 20);
+        // Le reste n'a pas bougé : changer une clé ne doit pas réinitialiser
+        // les autres.
+        assert_eq!(p.epoques, ParametresCarte::default().epoques);
+
+        // Rejouer la même clé met à jour, ne duplique pas.
+        lib.set_parametre_carte("familles", 8.0).unwrap();
+        assert_eq!(lib.parametres_carte().unwrap().familles, 8);
+    }
+
+    #[test]
+    fn liens_artiste_se_met_en_cache_meme_vide() {
+        let mut lib = Library::open_in_memory().unwrap();
+        assert!(!lib.liens_artiste_en_cache("a").unwrap());
+
+        lib.enregistrer_liens_artiste(
+            "a",
+            &[crate::musicbrainz::Relation {
+                dst_mbid: "b".to_string(),
+                dst_name: "Artiste B".to_string(),
+                relation: "member of band".to_string(),
+            }],
+        )
+        .unwrap();
+        assert!(lib.liens_artiste_en_cache("a").unwrap());
+        let liens = lib.liens_artiste("a").unwrap();
+        assert_eq!(liens, vec![("b".to_string(), "Artiste B".to_string(), "member of band".to_string())]);
+
+        // Un artiste sans aucune relation connue doit rester marqué comme
+        // déjà interrogé, sans quoi il serait réinterrogé à chaque visite.
+        lib.enregistrer_liens_artiste("c", &[]).unwrap();
+        assert!(lib.liens_artiste_en_cache("c").unwrap());
+        assert!(lib.liens_artiste("c").unwrap().is_empty());
     }
 }

@@ -21,6 +21,8 @@
         <button class="mode mode--actif" data-mode="ecoute">Écoute</button>
         <button class="mode" data-mode="explorer">Explorer</button>
         <button class="mode" data-mode="editer">Éditer</button>
+        <button class="mode" data-mode="bibliotheque">Bibliothèque</button>
+        <button class="mode" data-mode="decouvrir">Découvrir</button>
       </nav>
 
       <div class="bloc">
@@ -28,9 +30,36 @@
         <input id="q" class="chercher" type="search" placeholder="titre, artiste, album" autocomplete="off">
       </div>
 
+      <!-- Mode Écoute : deux entrées de premier niveau dans la bibliothèque. -->
+      <div class="bloc" id="bloc-vue-lib">
+        <p class="rail__titre">Parcourir</p>
+        <div class="segments">
+          <button class="segment" data-vuelib="artistes">Artistes</button>
+          <button class="segment segment--actif" data-vuelib="albums">Albums</button>
+        </div>
+      </div>
+
+      <!-- Mode Découvrir : collaborations entre artistes (MusicBrainz) -->
+      <div class="bloc" id="bloc-decouvrir" hidden>
+        <p class="rail__titre">Découvrir</p>
+        <input id="decouvrir-recherche" class="chercher" type="search"
+               placeholder="chercher un artiste" autocomplete="off">
+        <div id="decouvrir-suggestions" class="liste-verif"></div>
+        <p class="rail__titre" style="margin-top:22px">Contact MusicBrainz</p>
+        <input id="decouvrir-contact" type="email" class="chercher"
+               placeholder="votre adresse de contact" autocomplete="email">
+        <p class="aide">Nécessaire pour interroger MusicBrainz — gardée sur cet
+          ordinateur, jamais envoyée ailleurs qu'à eux. À remplir une fois.</p>
+      </div>
+
       <!-- Carte : visible en mode Explorer seulement -->
       <div class="bloc" id="bloc-colorer" hidden>
-        <p class="rail__titre">Colorer par</p>
+        <p class="rail__titre">Affichage</p>
+        <div class="segments">
+          <button class="segment segment--actif" data-affichage="points">Nuage</button>
+          <button class="segment" data-affichage="densite">Densité</button>
+        </div>
+        <p class="rail__titre" style="margin-top:14px">Colorer par</p>
         <div class="segments">
           <button class="segment segment--actif" data-couleur="famille">Famille</button>
           <button class="segment" data-couleur="annee">Année</button>
@@ -70,8 +99,8 @@
         <p class="rail__titre">Chemin</p>
         <div class="segments segments--colonne">
           <button class="segment segment--actif" data-chemin="direct">Direct</button>
-          <button class="segment" data-chemin="lisse">Lisse</button>
-          <button class="segment" data-chemin="errance">Errance</button>
+          <button class="segment" data-chemin="sonique">Sonique</button>
+          <button class="segment" data-chemin="errance">Errance sonique</button>
           <button class="segment" data-chemin="dessine">Dessiné</button>
         </div>
         <div class="bornes">
@@ -91,6 +120,17 @@
           <span>morceaux</span>
           <input id="chemin-n" type="number" min="2" max="120" step="1" value="12">
         </label>
+        <div id="bloc-bruit">
+          <label class="reglette">
+            <span>bruit</span>
+            <input id="bruit-chemin" type="range" min="0" max="1" step="0.05" value="0.3">
+            <span id="bruit-valeur" class="reglette__val">0,3</span>
+          </label>
+          <p class="aide">Ajoute une part de hasard à ce mode de chemin — 0 :
+            trajet exact ; plus haut : dérive davantage sans perdre le fil
+            sonore. Un trajet déjà tracé se rejoue à la volée quand vous
+            bougez le curseur.</p>
+        </div>
         <button id="chemin-rejouer" class="lien" hidden>Autre tirage</button>
       </div>
 
@@ -102,90 +142,250 @@
       <div class="bloc">
         <p class="rail__titre">Bibliothèque</p>
         <div id="sommaire" class="sommaire">—</div>
-        <button id="ouvrir-reglages" class="lien">Réglages…</button>
       </div>
     </aside>
-
-    <!-- Réglages : tiroir, pas une colonne permanente -->
-    <div class="voile" id="voile" hidden>
-      <section class="reglages" role="dialog" aria-label="Réglages">
-        <header class="reglages__tete">
-          <h2>Source de la bibliothèque</h2>
-          <button id="reglages-fermer" class="file__fermer" aria-label="Fermer">×</button>
-        </header>
-
-        <div id="racines" class="racines"></div>
-
-        <div class="ajout">
-          <p class="rail__titre">Ajouter un dossier</p>
-          <div class="ajout__ligne">
-            <input id="nouveau-dossier" class="chercher" type="text"
-                   placeholder="Aucun dossier choisi" spellcheck="false">
-            <button id="parcourir" class="bouton">Parcourir…</button>
-            <button id="lancer-scan" class="bouton">Scanner</button>
-          </div>
-          <p id="scan-etat" class="scan-etat"></p>
-        </div>
-
-        <div class="ajout">
-          <p class="rail__titre">Analyse</p>
-          <p class="aide" id="analyse-attente">—</p>
-          <div class="ajout__ligne">
-            <button id="lancer-analyse" class="bouton">Analyser</button>
-          </div>
-          <p id="analyse-etat" class="scan-etat"></p>
-        </div>
-
-        <div class="ajout">
-          <p class="rail__titre">Genres</p>
-          <p class="aide" id="genres-attente">—</p>
-          <div class="ajout__ligne">
-            <input id="genres-contact" type="email" class="chercher"
-                   placeholder="votre adresse de contact"
-                   autocomplete="email" />
-            <button id="lancer-genres" class="bouton">Aspirer</button>
-          </div>
-          <p id="genres-etat" class="scan-etat"></p>
-        </div>
-
-        <div class="ajout">
-          <p class="rail__titre">Stems démixés</p>
-          <p class="aide" id="stems-cache">—</p>
-          <div class="ajout__ligne">
-            <button id="vider-stems" class="bouton">Vider</button>
-          </div>
-        </div>
-      </section>
-    </div>
 
     <!-- Centre : parcours -->
     <main class="centre">
       <header class="fil">
         <button id="retour" class="fil__retour" hidden>← Artistes</button>
-        <h1 id="fil-titre">Artistes</h1>
+        <h1 id="fil-titre">Albums</h1>
         <span id="fil-compte" class="fil__compte"></span>
       </header>
-      <div id="liste" class="liste" tabindex="0"></div>
+      <div class="centre__corps">
+        <div id="liste" class="liste" tabindex="0" hidden></div>
+        <div id="grille" class="grille" tabindex="0"></div>
 
-      <!-- Mode Explorer : la carte -->
-      <div id="carte-vue" class="carte" hidden>
-        <canvas id="carte"></canvas>
-        <div id="carte-info" class="carte__info" hidden></div>
-        <div class="carte__aide" id="carte-aide">
-          molette : zoom · glisser : déplacer · clic : écouter
+        <!-- Repère alphabétique : Artistes et Albums seulement, la liste
+             d'un album ou une recherche n'a pas d'ordre à indexer. -->
+        <nav id="index-alpha" class="index-alpha" aria-label="Aller à la lettre" hidden></nav>
+
+        <!-- Mode Explorer : la carte -->
+        <div id="carte-vue" class="carte" hidden>
+          <canvas id="carte"></canvas>
+          <div id="carte-info" class="carte__info" hidden></div>
+          <div class="carte__aide" id="carte-aide">
+            molette : zoom · glisser : déplacer · clic : écouter
+          </div>
+        </div>
+
+        <!-- Mode Bibliothèque : statistiques + gestion (remplace l'ancien
+             tiroir Réglages, dont le contenu — racines/scan/analyse/genres/
+             stems — migre ici tel quel). -->
+        <div id="bibliotheque-vue" class="bibliotheque" hidden>
+          <p class="rail__titre">Aperçu</p>
+          <p class="aide" id="stats-total">—</p>
+          <section class="stats">
+            <div class="stats__carte">
+              <p class="stats__titre">Genres</p>
+              <div id="stats-genres" class="barres-genres"></div>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Tempo</p>
+              <div id="stats-tempo" class="histogramme"></div>
+              <div id="stats-tempo-axe" class="histogramme__axe"></div>
+              <p class="aide" id="stats-tempo-note"></p>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Durée</p>
+              <div id="stats-durees" class="histogramme"></div>
+              <div id="stats-durees-axe" class="histogramme__axe"></div>
+              <p class="aide" id="stats-durees-note"></p>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Formats</p>
+              <div id="stats-codecs" class="barres-genres"></div>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Débit (qualité d'encodage)</p>
+              <div id="stats-bitrate" class="histogramme"></div>
+              <div id="stats-bitrate-axe" class="histogramme__axe"></div>
+              <p class="aide" id="stats-bitrate-note"></p>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Humeur (tempo × énergie)</p>
+              <div id="stats-humeur" class="barres-genres"></div>
+              <p class="aide">Catégories relatives à cette bibliothèque — coupées à sa
+                propre médiane de tempo et d'énergie, pas à un seuil fixe.</p>
+            </div>
+            <div class="stats__carte">
+              <p class="stats__titre">Complétude</p>
+              <dl class="meta" id="stats-completude"></dl>
+            </div>
+          </section>
+
+          <p class="rail__titre" style="margin-top:32px">Paramètres de la carte</p>
+          <div class="ajout">
+            <p class="aide">Rien pour le calcul des empreintes elles-mêmes : le modèle
+              CLAP importé est figé au moment du build, aucun réglage de ce côté-là.
+              Ceux-ci ne touchent que la projection 2D et le regroupement en familles —
+              rejouables sur les empreintes déjà là, sans refaire l'analyse.</p>
+            <label class="reglette">
+              <span>perplexité (t-SNE)</span>
+              <input id="param-perplexite" type="number" min="2" max="100" step="1">
+            </label>
+            <label class="reglette">
+              <span>époques (t-SNE)</span>
+              <input id="param-epoques" type="number" min="100" max="5000" step="100">
+            </label>
+            <label class="reglette">
+              <span>familles (k-means)</span>
+              <input id="param-familles" type="number" min="2" max="200" step="1">
+            </label>
+            <label class="reglette">
+              <span>itérations (k-means)</span>
+              <input id="param-iterations" type="number" min="5" max="500" step="5">
+            </label>
+            <div class="ajout__ligne" style="margin-top:14px">
+              <button id="recalculer-carte" class="bouton">Recalculer la carte</button>
+            </div>
+            <p id="carte-parametres-etat" class="scan-etat"></p>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Nappe de densité</p>
+          <div class="ajout">
+            <p class="aide">À part de la projection et du clustering ci-dessus :
+              un réglage ici ne rejoue que la nappe, pas la carte entière.</p>
+            <label class="reglette">
+              <span>résolution de grille</span>
+              <select id="densite-resolution">
+                <option value="256">256</option>
+                <option value="512">512</option>
+                <option value="1024">1024</option>
+              </select>
+            </label>
+            <label class="reglette">
+              <span>largeur du noyau</span>
+              <input id="densite-noyau" type="range" min="0.01" max="0.06" step="0.005">
+              <span id="densite-noyau-valeur" class="reglette__val"></span>
+            </label>
+            <label class="reglette">
+              <span>bandes par territoire</span>
+              <input id="densite-bandes" type="range" min="4" max="10" step="1">
+              <span id="densite-bandes-valeur" class="reglette__val"></span>
+            </label>
+            <div class="ajout__ligne" style="margin-top:14px">
+              <button id="recalculer-densite" class="bouton">Recalculer la densité</button>
+            </div>
+            <p id="densite-parametres-etat" class="scan-etat"></p>
+            <label class="reglette" style="margin-top:14px">
+              <span>force de l'ombre</span>
+              <input id="densite-ombre" type="range" min="0" max="1" step="0.05">
+              <span id="densite-ombre-valeur" class="reglette__val"></span>
+            </label>
+            <p class="aide">Celle-ci redessine seulement — pas d'aller-retour
+              vers le moteur.</p>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Vérifications</p>
+
+          <div class="ajout">
+            <p class="rail__titre">Genres suspects</p>
+            <p class="aide">Le genre du morceau ne figure pas parmi ceux qui dominent sa
+              famille sonique sur la carte — le tag dit une chose, l'empreinte une autre.
+              Un signal à vérifier, pas une certitude.</p>
+            <div id="genres-suspects" class="liste-verif"></div>
+          </div>
+
+          <div class="ajout">
+            <p class="rail__titre">Éditions multiples</p>
+            <p class="aide">Même artiste, même titre d'album à la mention d'édition près
+              (remaster, deluxe, live…) — pour repérer les doublons d'album.</p>
+            <div id="editions-multiples" class="liste-verif"></div>
+          </div>
+
+          <div class="ajout">
+            <p class="rail__titre">Doublons probables &amp; points isolés</p>
+            <p class="aide" id="graphe-attente">Compare l'empreinte sonore de chaque
+              morceau à celle de son plus proche voisin — une dizaine de secondes sur
+              toute la bibliothèque, calculées une fois puis gardées en mémoire.</p>
+            <div class="ajout__ligne">
+              <button id="chercher-doublons" class="bouton">Chercher</button>
+            </div>
+            <p class="stats__titre" style="margin-top:16px">Doublons probables</p>
+            <div id="doublons-probables" class="liste-verif"></div>
+            <p class="stats__titre" style="margin-top:16px">Points isolés</p>
+            <div id="points-isoles" class="liste-verif"></div>
+          </div>
+
+          <div class="ajout">
+            <p class="rail__titre">Fichiers en échec</p>
+            <p class="aide" id="echecs-scan-vide"></p>
+            <div id="echecs-scan" class="liste-verif"></div>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Source de la bibliothèque</p>
+          <div id="racines" class="racines"></div>
+
+          <div class="ajout">
+            <p class="aide">Le bouton <b>Analyser</b> d'une racine relit ses tags (genre,
+              format, débit), mesure les empreintes CLAP, le tempo/la tonalité/l'énergie,
+              puis les genres MusicBrainz si une adresse de contact est renseignée
+              ci-dessous — dans cet ordre, à la suite.</p>
+            <label class="case">
+              <input id="analyse-force" type="checkbox">
+              Refaire aussi ce qui est déjà mesuré — après une correction de
+              l'algorithme, ou un format/débit ajouté depuis le dernier scan.
+            </label>
+            <label class="reglette">
+              <span>contact MusicBrainz</span>
+              <input id="analyse-contact" type="email" class="chercher"
+                     placeholder="votre adresse de contact" autocomplete="email"
+                     style="margin-left:auto; width:auto; flex:1">
+            </label>
+            <p class="aide">Sans adresse, l'étape des genres est simplement sautée — les
+              deux autres n'en ont pas besoin. MusicBrainz l'exige pour identifier qui
+              interroge son API ; elle ne part nulle part ailleurs.</p>
+            <progress id="racines-jauge" class="jauge" hidden max="1" value="0"></progress>
+            <p id="racines-etat" class="scan-etat"></p>
+          </div>
+
+          <div class="ajout">
+            <p class="rail__titre">Ajouter un dossier</p>
+            <div class="ajout__ligne">
+              <input id="nouveau-dossier" class="chercher" type="text"
+                     placeholder="Aucun dossier choisi" spellcheck="false">
+              <button id="parcourir" class="bouton">Parcourir…</button>
+              <button id="lancer-scan" class="bouton">Scanner</button>
+            </div>
+            <p id="scan-etat" class="scan-etat"></p>
+          </div>
+
+          <div class="ajout">
+            <p class="rail__titre">Stems démixés</p>
+            <p class="aide" id="stems-cache">—</p>
+            <div class="ajout__ligne">
+              <button id="vider-stems" class="bouton">Vider</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode Découvrir : collaborations entre artistes -->
+        <div id="decouvrir-vue" class="bibliotheque" hidden>
+          <nav id="decouvrir-fil" class="decouvrir-fil" hidden></nav>
+          <div id="decouvrir-vide" class="insp__vide">Cherchez un artiste dans le rail
+            pour voir ses collaborations connues de MusicBrainz.</div>
+          <div id="decouvrir-centre" hidden>
+            <h2 id="decouvrir-nom"></h2>
+            <p class="aide" id="decouvrir-etat"></p>
+            <div id="decouvrir-liens" class="liste-verif"></div>
+          </div>
         </div>
       </div>
     </main>
 
     <!-- Inspecteur droit -->
     <aside class="inspecteur">
-      <div class="pochette" id="pochette"><span>pochette</span></div>
+      <div class="pochette" id="pochette">
+        <span>pochette</span>
+        <button class="insp__alchimie" id="insp-alchimie" aria-label="Playlist dans l'esprit de ce morceau" title="Playlist dans l'esprit de ce morceau">✦</button>
+      </div>
       <div id="insp-vide" class="insp__vide">Aucun morceau sélectionné.</div>
       <div id="insp" hidden>
         <h3 id="insp-titre"></h3>
         <p id="insp-artiste" class="insp__artiste"></p>
         <dl class="meta">
-          <dt>Album</dt><dd id="insp-album">—</dd>
+          <dt>Album</dt><dd id="insp-album" class="lien">—</dd>
           <dt>Année</dt><dd id="insp-annee">—</dd>
           <dt>Piste</dt><dd id="insp-piste">—</dd>
           <dt>Durée</dt><dd id="insp-duree">—</dd>
@@ -193,6 +393,7 @@
                d'où le tiret tant qu'un morceau n'y est pas passé. -->
           <dt>Tempo</dt><dd id="insp-bpm">—</dd>
           <dt>Tonalité</dt><dd id="insp-tonalite">—</dd>
+          <dt>Timbre</dt><dd id="insp-timbre">—</dd>
         </dl>
 
         <div id="bloc-voisins" hidden>

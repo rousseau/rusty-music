@@ -53,6 +53,52 @@ const CANDIDATS: usize = 240;
 const BPM_PREFERE: f32 = 120.0;
 const ETALEMENT: f32 = 0.9;
 
+/// Sous ce ratio de l'évidence brute du gagnant, la moitié de son tempo n'est
+/// qu'un artefact et ne le détrône pas.
+///
+/// L'erreur d'octave la plus fréquente va dans un seul sens : une subdivision
+/// régulière et bien marquée (guitare en « boom-chick », charleston discret)
+/// dessine une attaque plus nette que le temps lui-même et double le tempo
+/// rendu — jamais l'inverse. La préférence log-normale ci-dessus ne suffit
+/// pas à la corriger : sur la plage retenue (60-200), elle est plus proche de
+/// 120 pour un tempo doublé que pour l'original resté lent, et confirme donc
+/// l'erreur au lieu de la rattraper. D'où cette seconde passe, jugée sur
+/// l'évidence brute — sans la préférence, qui a déjà tranché une fois plus
+/// haut et ne doit pas y revenir en double compte.
+///
+/// Calé sur un cas réel plutôt qu'un signal de synthèse : « Give My Love to
+/// Rose » (Johnny Cash, guitare en boom-chick) ressortait à 130 BPM. Sur ses
+/// cinq fenêtres mesurées, deux passaient ce seuil (ratio brut 0,99 et 1,15)
+/// et corrigeaient juste à 65 ; les trois autres (ratio 0,56 à 0,65) restent
+/// non corrigées — l'ambiguïté d'octave n'est pas résolue fenêtre par
+/// fenêtre à coup sûr, seulement rendue moins systématique.
+const SEUIL_SOUS_OCTAVE: f32 = 0.85;
+
+/// En plus du ratio ci-dessus, la moitié de la période doit montrer une
+/// corrélation à un seul décalage (pas la moyenne des trois harmoniques) qui
+/// ne soit pas insignifiante face à celle du gagnant.
+///
+/// Sans ce plancher, un train de clics de synthèse parfaitement régulier —
+/// donc sans aucune énergie à mi-décalage, l'appui entre deux clics étant
+/// rigoureusement nul — passait quand même le ratio ci-dessus (calculé, lui,
+/// sur la moyenne des trois harmoniques, où le second harmonique du
+/// sous-multiple recouvre en partie le premier du gagnant) et se voyait
+/// coupé en deux sans raison. Sur un enregistrement réel, ce plancher ne
+/// coûte rien : l'énergie n'y est jamais rigoureusement nulle.
+const SEUIL_PLANCHER_MI_DECALAGE: f32 = 0.02;
+
+/// Plancher de la moitié corrigée — distinct de `BPM_MIN`, plus bas.
+///
+/// `BPM_MIN` protège la grille de candidats : en dessous, un gagnant *de
+/// départ* confondrait le tempo avec la mesure. La correction d'octave part
+/// d'un gagnant déjà validé dans cette plage et se contente de le diviser
+/// par deux — une lecture à 50 BPM reste plausible pour un morceau lent même
+/// si la grille elle-même ne l'aurait pas proposée d'emblée. Sur « Give My
+/// Love to Rose », c'est ce qui a permis à une quatrième fenêtre (117 BPM,
+/// moitié 58,6) de rejoindre les trois autres autour de 65 plutôt que de
+/// rester bloquée juste sous 60.
+const BPM_MIN_CORRECTION: f32 = 45.0;
+
 /// Chroma de la₂ à do₇. Plus bas, l'écart d'un demi-ton rejoint la largeur
 /// d'une raie ; plus haut, les cymbales alimentent les douze classes.
 const F_MIN: f32 = 110.0;
@@ -72,6 +118,21 @@ pub struct Descripteurs {
     pub energie: f32,
     /// La même en décibels pleine échelle, plancher à −100.
     pub sonie: f32,
+    /// Taux de passage par zéro, moyenné sur les trames — élevé pour un son
+    /// bruité/percussif, bas pour un son tonal grave. `None` au silence,
+    /// même réserve que `bpm`.
+    pub zcr: Option<f32>,
+    /// Centroïde spectral (Hz) : moyenne, puis écart-type d'une trame à
+    /// l'autre — un morceau au timbre constant a un faible écart-type, un
+    /// morceau qui alterne voix et cymbales un fort.
+    pub centroide_moy: Option<f32>,
+    pub centroide_ecart: Option<f32>,
+    /// Rolloff spectral (Hz, seuil 85 %), même paire moyenne/écart-type.
+    pub rolloff_moy: Option<f32>,
+    pub rolloff_ecart: Option<f32>,
+    /// Aplatissement spectral (0..1, bruit vs tonal), même paire.
+    pub flatness_moy: Option<f32>,
+    pub flatness_ecart: Option<f32>,
 }
 
 /// Plans de FFT, fenêtres, et classe de hauteur de chaque raie. À construire
@@ -83,6 +144,9 @@ pub struct Analyseur {
     hann_chroma: Vec<f32>,
     /// Classe et poids de chaque raie du spectre de chroma.
     classes: Vec<Option<(usize, f32)>>,
+    /// Fréquence de chaque raie de `spectres()` — pour centroïde et rolloff,
+    /// calculée une fois plutôt qu'à chaque trame.
+    raies: Vec<f32>,
 }
 
 impl Default for Analyseur {
@@ -116,12 +180,16 @@ impl Analyseur {
                 Some(((note.round() as i32).rem_euclid(12) as usize, poids))
             })
             .collect();
+        let raies = (0..N_FFT / 2 + 1)
+            .map(|k| SR as f32 * k as f32 / N_FFT as f32)
+            .collect();
         Self {
             fft: p.plan_fft_forward(N_FFT),
             fft_chroma: p.plan_fft_forward(N_FFT_CHROMA),
             hann: hann(N_FFT),
             hann_chroma: hann(N_FFT_CHROMA),
             classes,
+            raies,
         }
     }
 
@@ -178,6 +246,100 @@ pub(crate) fn flux(spectres: &[Vec<f32>]) -> Vec<f32> {
         .collect()
 }
 
+/// Fréquence moyenne du spectre, pondérée par l'amplitude — aigu si le son
+/// est brillant (cymbale, sifflante), grave sinon. `0.0` sur une trame
+/// muette, écartée par l'appelant via l'énergie totale.
+pub(crate) fn centroide(trame: &[f32], raies: &[f32]) -> f32 {
+    let total: f32 = trame.iter().sum();
+    if total <= f32::EPSILON {
+        return 0.0;
+    }
+    trame.iter().zip(raies).map(|(m, f)| m * f).sum::<f32>() / total
+}
+
+/// Sous ce seuil (85 %, la valeur par défaut du domaine — Essentia et
+/// librosa la partagent) tombe l'essentiel de l'énergie spectrale. Distingue
+/// un son à large bande (bruit blanc, cymbale) d'un son concentré en
+/// fréquence (voix, basse).
+const SEUIL_ROLLOFF: f32 = 0.85;
+
+pub(crate) fn rolloff(trame: &[f32], raies: &[f32], seuil: f32) -> f32 {
+    let total: f32 = trame.iter().map(|m| m * m).sum();
+    if total <= f32::EPSILON {
+        return 0.0;
+    }
+    let cible = total * seuil;
+    let mut cumul = 0.0;
+    for (m, f) in trame.iter().zip(raies) {
+        cumul += m * m;
+        if cumul >= cible {
+            return *f;
+        }
+    }
+    raies.last().copied().unwrap_or(0.0)
+}
+
+/// Moyenne géométrique sur moyenne arithmétique du spectre — proche de 1
+/// pour du bruit (spectre plat), proche de 0 pour un son tonal (quelques
+/// raies dominantes). Le petit epsilon dans le logarithme évite `ln(0)` sur
+/// une raie éteinte, sans biaiser un spectre par ailleurs riche.
+pub(crate) fn aplatissement(trame: &[f32]) -> f32 {
+    let n = trame.len() as f32;
+    if n == 0.0 {
+        return 0.0;
+    }
+    let arithmetique = trame.iter().sum::<f32>() / n;
+    if arithmetique <= f32::EPSILON {
+        return 0.0;
+    }
+    let log_geometrique = trame.iter().map(|m| (m + 1e-10).ln()).sum::<f32>() / n;
+    log_geometrique.exp() / arithmetique
+}
+
+/// Fraction de changements de signe entre échantillons consécutifs, sur le
+/// signal temporel brut — élevé pour un son bruité/percussif, bas pour un
+/// son tonal grave. Pas de FFT ici, contrairement aux trois précédents.
+pub(crate) fn zcr(signal: &[f32]) -> f32 {
+    if signal.len() < 2 {
+        return 0.0;
+    }
+    let croisements = signal
+        .windows(2)
+        .filter(|p| (p[0] >= 0.0) != (p[1] >= 0.0))
+        .count();
+    croisements as f32 / (signal.len() - 1) as f32
+}
+
+/// Moyenne et écart-type d'une série — accumulée au fil des trames plutôt
+/// que gardée en mémoire, pour ne pas dupliquer les milliers de valeurs
+/// d'une analyse complète.
+#[derive(Default)]
+pub(crate) struct Moyenne {
+    n: usize,
+    somme: f64,
+    somme_carres: f64,
+}
+
+impl Moyenne {
+    fn pousser(&mut self, v: f32) {
+        self.n += 1;
+        self.somme += v as f64;
+        self.somme_carres += (v as f64).powi(2);
+    }
+
+    /// `None` si rien n'a été poussé — le silence, où aucune trame n'a
+    /// d'énergie à décrire.
+    fn reduire(&self) -> Option<(f32, f32)> {
+        if self.n == 0 {
+            return None;
+        }
+        let n = self.n as f64;
+        let moyenne = self.somme / n;
+        let variance = (self.somme_carres / n - moyenne.powi(2)).max(0.0);
+        Some((moyenne as f32, variance.sqrt() as f32))
+    }
+}
+
 /// Retire la tendance lente : sinon c'est la structure du morceau — couplet,
 /// refrain — qui domine l'autocorrélation, pas sa pulsation.
 pub(crate) fn centrer(env: &mut [f32]) {
@@ -230,21 +392,38 @@ pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
     // sous-multiples.
     const H: usize = 3;
     let poids_total: f32 = (1..=H).map(|h| 1.0 / h as f32).sum();
+    let brut = |bpm: f32| -> f32 {
+        let d = decalage(bpm);
+        (1..=H)
+            .map(|h| correle(env, d * h as f32) / h as f32)
+            .sum::<f32>()
+            / poids_total
+            / reference
+    };
 
-    (0..CANDIDATS)
+    let (bpm, _) = (0..CANDIDATS)
         .map(|i| {
             let bpm = BPM_MIN * (BPM_MAX / BPM_MIN).powf(i as f32 / (CANDIDATS - 1) as f32);
-            let d = decalage(bpm);
-            let peigne = (1..=H)
-                .map(|h| correle(env, d * h as f32) / h as f32)
-                .sum::<f32>()
-                / poids_total;
             let prior = (-0.5 * ((bpm / BPM_PREFERE).ln() / ETALEMENT).powi(2)).exp();
-            (bpm, peigne / reference * prior)
+            (bpm, brut(bpm) * prior)
         })
         .max_by(|a, b| a.1.total_cmp(&b.1))
-        .filter(|(_, s)| *s > 0.02)
-        .map(|(bpm, _)| bpm)
+        .filter(|(_, s)| *s > 0.02)?;
+
+    // Correction d'octave, sur l'évidence brute du gagnant plutôt que sur le
+    // score déjà pondéré — voir `SEUIL_SOUS_OCTAVE` et `SEUIL_PLANCHER_MI_DECALAGE`.
+    let d = decalage(bpm);
+    let mi_decalage = correle(env, d / 2.0) / reference;
+    let fondamentale = correle(env, d) / reference;
+    let bpm = if bpm / 2.0 >= BPM_MIN_CORRECTION
+        && mi_decalage >= fondamentale * SEUIL_PLANCHER_MI_DECALAGE
+        && brut(bpm / 2.0) >= brut(bpm) * SEUIL_SOUS_OCTAVE
+    {
+        bpm / 2.0
+    } else {
+        bpm
+    };
+    Some(bpm)
 }
 
 /// Profils de Krumhansl-Schmuckler : la place de chaque degré dans une
@@ -313,13 +492,33 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
     let mut tempos = Vec::new();
     let mut chroma = [0.0f32; 12];
     let (mut carres, mut n) = (0.0f64, 0usize);
+    let mut centroide_stat = Moyenne::default();
+    let mut rolloff_stat = Moyenne::default();
+    let mut flatness_stat = Moyenne::default();
+    let mut zcr_stat = Moyenne::default();
 
     for f in fenetres {
-        let mut env = flux(&a.spectres(f));
+        // Un seul calcul de spectres, réutilisé pour le flux (tempo) et les
+        // trois descripteurs de forme spectrale — pas de FFT en plus.
+        let spectres = a.spectres(f);
+        let mut env = flux(&spectres);
         centrer(&mut env);
         tempos.extend(tempo(&env));
         for (dst, src) in chroma.iter_mut().zip(a.chroma(&a.spectres_chroma(f))) {
             *dst += src;
+        }
+        for trame in &spectres {
+            centroide_stat.pousser(centroide(trame, &a.raies));
+            rolloff_stat.pousser(rolloff(trame, &a.raies, SEUIL_ROLLOFF));
+            flatness_stat.pousser(aplatissement(trame));
+        }
+        // Le ZCR se lit sur le signal brut, pas sur un spectre — mêmes
+        // bornes de trame (`N_FFT`/`HOP`) que `spectres()` pour rester à la
+        // même résolution temporelle que les trois précédents.
+        if f.len() >= N_FFT {
+            for d in (0..=f.len() - N_FFT).step_by(HOP) {
+                zcr_stat.pousser(zcr(&f[d..d + N_FFT]));
+            }
         }
         carres += f.iter().map(|x| (*x as f64).powi(2)).sum::<f64>();
         n += f.len();
@@ -331,6 +530,27 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
     } else {
         (carres / n as f64).sqrt() as f32
     };
+    // Silencieux : aucune des grandeurs spectrales n'a de sens — une trame
+    // muette a rendu 0.0 partout dans la boucle ci-dessus, ce n'est pas une
+    // mesure. Même réserve que `bpm`/`tonalite`.
+    let silencieux = energie <= 1e-5;
+    let paire = |stat: &Moyenne| -> (Option<f32>, Option<f32>) {
+        if silencieux {
+            (None, None)
+        } else {
+            let (m, e) = stat.reduire().unwrap_or((0.0, 0.0));
+            (Some(m), Some(e))
+        }
+    };
+    let (centroide_moy, centroide_ecart) = paire(&centroide_stat);
+    let (rolloff_moy, rolloff_ecart) = paire(&rolloff_stat);
+    let (flatness_moy, flatness_ecart) = paire(&flatness_stat);
+    let zcr = if silencieux {
+        None
+    } else {
+        zcr_stat.reduire().map(|(m, _)| m)
+    };
+
     Descripteurs {
         bpm: tempos.get(tempos.len() / 2).copied(),
         tonalite: tonalite(&chroma),
@@ -341,6 +561,13 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
         } else {
             -100.0
         },
+        zcr,
+        centroide_moy,
+        centroide_ecart,
+        rolloff_moy,
+        rolloff_ecart,
+        flatness_moy,
+        flatness_ecart,
     }
 }
 
@@ -401,6 +628,71 @@ mod tests {
         assert_eq!(
             (d.bpm, d.tonalite, d.energie, d.sonie),
             (None, None, 0.0, -100.0)
+        );
+        // Même réserve pour les descripteurs timbraux : une trame muette
+        // rendrait 0.0 partout dans la boucle interne, mais ce n'est pas une
+        // mesure — le silence ne doit rien affirmer sur le timbre.
+        assert_eq!(
+            (
+                d.zcr,
+                d.centroide_moy,
+                d.centroide_ecart,
+                d.rolloff_moy,
+                d.rolloff_ecart,
+                d.flatness_moy,
+                d.flatness_ecart,
+            ),
+            (None, None, None, None, None, None, None)
+        );
+    }
+
+    /// Bruit blanc synthétique — xorshift32, pas le compteur modulaire de
+    /// `clics` : un premier essai en `i.wrapping_mul(P) % M` s'est avéré
+    /// être une suite de Weyl, pas du bruit — spectre en peigne (pics à
+    /// 1148, 2320, 3468 Hz...) et ZCR de 0,05 au lieu de plus de 0,3.
+    /// Le décalage-XOR retrouve un spectre plat et un ZCR élevé.
+    fn bruit(secondes: f32) -> Vec<f32> {
+        let n = (SR as f32 * secondes) as usize;
+        let mut etat: u32 = 0x9E37_79B9;
+        (0..n)
+            .map(|_| {
+                etat ^= etat << 13;
+                etat ^= etat >> 17;
+                etat ^= etat << 5;
+                (etat as f32 / u32::MAX as f32) * 2.0 - 1.0
+            })
+            .collect()
+    }
+
+    /// Le bruit est spectralement plat (aplatissement proche de 1) et
+    /// change de signe sans arrêt (ZCR élevé) — l'inverse d'un ton pur.
+    #[test]
+    fn le_bruit_est_plat_et_traverse_le_zero_souvent() {
+        let d = analyser_fenetres(&[bruit(10.0)], &Analyseur::new());
+        let aplat = d.flatness_moy.expect("bruit non silencieux");
+        let zcr = d.zcr.expect("bruit non silencieux");
+        assert!(aplat > 0.5, "aplatissement {aplat} attendu > 0,5 sur du bruit");
+        assert!(zcr > 0.3, "ZCR {zcr} attendu > 0,3 sur du bruit");
+    }
+
+    /// Un ton pur concentre son énergie sur une seule raie : aplatissement
+    /// bas, centroïde proche de sa fréquence.
+    #[test]
+    fn un_ton_pur_est_concentre_et_situe_sa_frequence() {
+        let d = analyser_fenetres(&[accord(&[880.0], 10.0)], &Analyseur::new());
+        let aplat = d.flatness_moy.expect("ton non silencieux");
+        let centroide = d.centroide_moy.expect("ton non silencieux");
+        assert!(aplat < 0.3, "aplatissement {aplat} attendu < 0,3 sur un ton pur");
+        // Tolérance large : le bruit de calcul de la FFT en f32 (environ
+        // 1e-4 du pic, mesuré) se répartit sur les ~1000 raies jusqu'à
+        // 24 kHz, et le centroïde le pondère par une fréquence bien plus
+        // grande que celle du ton — quelques dix-millièmes d'amplitude
+        // suffisent à déplacer la moyenne de plusieurs dizaines de Hz.
+        let ecart = (centroide - 880.0).abs() / 880.0;
+        assert!(
+            ecart < 0.15,
+            "centroïde {centroide:.0} Hz attendu proche de 880 Hz ({:.1} % d'écart)",
+            ecart * 100.0
         );
     }
 

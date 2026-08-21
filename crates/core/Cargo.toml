@@ -19,3 +19,5 @@ serde_json.workspace = true
 ureq.workspace      = true
 ogg.workspace       = true
 opus-decoder.workspace = true
+contour.workspace   = true
+geo-types.workspace = true
