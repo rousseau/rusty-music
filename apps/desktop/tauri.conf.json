@@ -27,7 +27,8 @@
     ],
     "resources": {
       "../../models/clap-audio-encoder-b5.bpk": "models/clap-audio-encoder-b5.bpk",
-      "../../models/htdemucs.safetensors": "models/htdemucs.safetensors"
+      "../../models/htdemucs.safetensors": "models/htdemucs.safetensors",
+      "../../ville-paris.db": "ville-paris.db"
     }
   }
 }

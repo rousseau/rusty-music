@@ -339,6 +339,42 @@ fn dossier_style(app: &tauri::AppHandle) -> Option<PathBuf> {
     s.is_file().then_some(s)
 }
 
+/// Le plan de ville à afficher, ou `None` pour retomber sur le monde procédural.
+///
+/// À côté de la base : soit importé par l'utilisateur (`carto ville --sortie`),
+/// soit installé du paquet au démarrage ([`installer_plan_de_ville`]). Un
+/// fichier vide — le repli d'un `cargo build` sans `ville-paris.db`
+/// (`apps/desktop/build.rs`) qu'un paquet peut embarquer — compte pour absent.
+fn plan_de_ville(db: &Path) -> Option<PathBuf> {
+    let p = db.with_file_name("ville-paris.db");
+    match std::fs::metadata(&p) {
+        Ok(m) if m.is_file() && m.len() > 1_000_000 => Some(p),
+        _ => None,
+    }
+}
+
+/// Installe le plan de ville du paquet à côté de la base si l'utilisateur n'en
+/// a pas déjà un. Copie unique ; un `carto ville` ultérieur écrase.
+fn installer_plan_de_ville(app: &tauri::App, dossier: &Path) {
+    let cible = dossier.join("ville-paris.db");
+    if cible.exists() {
+        return;
+    }
+    let Ok(res) = app.path().resource_dir() else {
+        return;
+    };
+    let source = res.join("ville-paris.db");
+    // Le paquet peut embarquer un `ville-paris.db` vide (repli de `build.rs`) :
+    // on ne copie que du vrai.
+    if std::fs::metadata(&source).map(|m| m.len()).unwrap_or(0) < 1_000_000 {
+        return;
+    }
+    match std::fs::create_dir_all(dossier).and_then(|_| std::fs::copy(&source, &cible)) {
+        Ok(_) => tracing::info!("plan de ville (Paris) installé depuis le paquet"),
+        Err(e) => tracing::warn!(%e, "plan de ville du paquet non installé"),
+    }
+}
+
 /// Charge `ville-paris.db` une fois, la garde en mémoire ensuite — relire une
 /// vingtaine de mégaoctets à chaque « refaire les tuiles » serait un gâchis.
 /// Pas d'invalidation : la ville se remplace en bloc (`carto ville`), jamais
@@ -618,9 +654,7 @@ fn rassembler_ville(
 /// ([`rassembler`]), inchangé.
 #[tauri::command(async)]
 fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, String> {
-    let chemin_ville = etat.db.with_file_name("ville-paris.db");
-
-    let (src, paliers, ombrage_rapport) = if chemin_ville.is_file() {
+    let (src, paliers, ombrage_rapport) = if let Some(chemin_ville) = plan_de_ville(&etat.db) {
         let extrait = charger_ville(&etat, &chemin_ville)?;
         let src = rassembler_ville(&etat, &extrait)?;
         (src, rusty_music_carto::tuiles::Paliers::ville(), None)
@@ -874,10 +908,9 @@ fn itineraire_voirie(
 ) -> Result<ReponseItineraireVoirie, String> {
     use rusty_music_carto::cout_itineraire::ProfilVoirie;
 
-    let chemin_ville = etat.db.with_file_name("ville-paris.db");
-    if !chemin_ville.is_file() {
+    let Some(chemin_ville) = plan_de_ville(&etat.db) else {
         return Ok(ReponseItineraireVoirie::repli("aucune ville importée"));
-    }
+    };
     let extrait = charger_ville(&etat, &chemin_ville)?;
     let graphe_base = charger_graphe_reel(&etat, &extrait)?;
     let accrochage = match charger_accrochage_voirie(&etat, &app, &graphe_base) {
@@ -1555,10 +1588,9 @@ fn trace_rues(app: tauri::AppHandle, etat: State<Etat>, ids: Vec<i64>) -> Result
     if ids.len() < 2 {
         return Ok(Vec::new());
     }
-    let chemin_ville = etat.db.with_file_name("ville-paris.db");
-    if !chemin_ville.is_file() {
+    let Some(chemin_ville) = plan_de_ville(&etat.db) else {
         return Ok(Vec::new());
-    }
+    };
     let extrait = charger_ville(&etat, &chemin_ville)?;
     let graphe = charger_graphe_reel(&etat, &extrait)?;
     // Habillage du trait par les vraies rues : n'a de sens que sur le plan de
@@ -4655,6 +4687,10 @@ fn main() {
                 .init();
 
             tracing::info!(base = %db.display(), "ouverture de la bibliothèque");
+
+            // Le plan de ville du paquet (Paris), si l'utilisateur n'a pas déjà
+            // le sien à côté de la base. Sans lui, la carte est procédurale.
+            installer_plan_de_ville(app, &dossier);
 
             // Le lecteur aiguille les chemins de la file vers le cache HD quand
             // la lecture HD est active (`crates/superres`). La file, elle, garde
