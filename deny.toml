@@ -4,9 +4,10 @@
 # est acceptable, y compris copyleft. Voir docs/rust-audio-stack.md.
 #
 # cargo-deny ne sert donc plus à filtrer le copyleft, mais à repérer :
-#   - les licences NON LIBRES (non-commercial, "research only"),
+#   - les licences NON LIBRES (non-commercial, « research only »),
 #   - GPL-2.0-only, incompatible avec GPL-3.0,
-#   - les avis de sécurité et les doublons de versions.
+#   - les avis de sécurité et les crates que nous tirons directement sans
+#     mainteneur.
 #
 #   cargo install --locked cargo-deny
 #   cargo deny check
@@ -15,6 +16,9 @@
 all-features = true
 
 [licenses]
+# Une occurrence hors de cette liste fait échouer la vérification. GPL-2.0-only
+# (sans « or later ») en est volontairement absent : incompatible avec GPL-3.0.
+# Les licences non libres (CC-BY-NC-*, « research only ») aussi.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -25,6 +29,10 @@ allow = [
     "Zlib",
     "Unicode-3.0",
     "CC0-1.0",
+    "CDLA-Permissive-2.0", # webpki-roots / webpki-root-certs (via ureq)
+    "0BSD",                # varint-rs (via pmtiles)
+    "BSL-1.0",             # xxhash-rust (via burn-store)
+    "bzip2-1.0.6",         # libbz2-rs-sys (via zip → burn-store)
     "MPL-2.0",
     "LGPL-2.1-or-later",
     "LGPL-3.0-or-later",
@@ -37,18 +45,32 @@ allow = [
     "AGPL-3.0-or-later",
 ]
 confidence-threshold = 0.93
+# La liste ci-dessus vaut aussi comme politique affichée : on n'avertit pas
+# des entrées copyleft qu'aucune dépendance actuelle n'emploie encore.
+unused-allowed-license = "allow"
 
-# GPL-2.0-only (sans "or later") est INCOMPATIBLE avec GPL-3.0.
-# Absent de la liste ci-dessus : toute occurrence fera échouer la vérification.
-# Idem pour les licences non libres (CC-BY-NC-*, "research only").
+# `demucs-core` (notre fork épinglé de demucs-rs) ne porte pas de champ
+# `license` dans son manifeste, mais le dépôt est sous Apache-2.0 (fichier
+# LICENSE, badge du README). À corriger en amont ; en attendant, on l'énonce.
+[[licenses.clarify]]
+crate = "demucs-core"
+expression = "Apache-2.0"
+license-files = []
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Les dépendances internes (`path = "../xxx"`) n'ont pas de version : cargo-deny
+# les voit comme des jokers `*`. Ce n'en sont pas.
+allow-wildcard-paths = true
 
 [advisories]
 yanked = "deny"
+# « Non maintenu » ne se juge que sur ce qu'on tire directement : les avis qui
+# visent des crates transitives (gtk3 via tauri, bincode via burn, paste, unic)
+# ne sont pas actionnables ici.
+unmaintained = "workspace"
 
 [sources]
 unknown-registry = "deny"
-unknown-git = "allow"   # bliss-rs et consorts peuvent venir de git
+unknown-git = "allow" # bliss-rs et consorts peuvent venir de git

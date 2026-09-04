@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rusty Music — carte (essai)</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<style>
+  html, body { height:100%; margin:0; background:#14120E; }
+  #carte { position:absolute; inset:0; }
+  #bandeau {
+    position:absolute; left:12px; top:12px; z-index:10; display:flex; gap:10px; align-items:center;
+    padding:8px 12px; border-radius:8px; background:rgba(27,24,19,.86); border:1px solid #2E2921;
+    color:#EDE8DC; font:12px/1.4 system-ui,sans-serif;
+  }
+  #bandeau button { font:inherit; color:#EDE8DC; background:#221E17; border:1px solid #2E2921;
+    border-radius:6px; padding:4px 10px; cursor:pointer; }
+  #mesure { color:#9A9284; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+<div id="bandeau">
+  <span id="etat">chargement…</span>
+  <button id="mesurer">Mesurer la fluidité</button>
+  <span id="mesure"></span>
+</div>
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script>
+const etat = document.getElementById("etat");
+const sortieMesure = document.getElementById("mesure");
+let carte = null;
+
+fetch("style.json").then(r => r.json()).then(style => {
+  // Les tuiles sont ici, en clair, à côté du style.
+  style.sources.carte.tiles = [location.href.replace(/[^/]*$/, "") + "carte/{z}/{x}/{y}.mvt"];
+  style.sources.relief.tiles = [location.href.replace(/[^/]*$/, "") + "relief/{z}/{x}/{y}.png"];
+  style.glyphs = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+
+  // La vue peut être imposée par l'URL : `?zoom=7&lon=-40&lat=20`. Sert aux
+  // captures de contrôle, une par palier de révélation.
+  const p = new URLSearchParams(location.search);
+  carte = new maplibregl.Map({
+    container: "carte", style,
+    center: [+(p.get("lon") ?? 0), +(p.get("lat") ?? 0)],
+    zoom: +(p.get("zoom") ?? 1.6),
+    minZoom: 0, maxZoom: 13,
+    dragRotate: false, pitchWithRotate: false, attributionControl: false,
+    renderWorldCopies: false,
+  });
+  carte.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+  carte.on("load", () => { etat.textContent = "prête — " + carte.getStyle().layers.length + " couches"; window.__prete = true; });
+  carte.on("idle", () => { document.title = "prête"; window.__idle = true; });
+  carte.on("error", e => {
+    const m = String(e && e.error ? e.error.message : e);
+    if (/404|204/.test(m)) return;      // tuile absente : normal sur un monde creux
+    console.warn("[carte]", m);
+  });
+  window.__carte = carte;
+}).catch(e => { etat.textContent = "échec : " + e; });
+
+async function mesurer() {
+  sortieMesure.textContent = "mesure…";
+  const etapes = [
+    { center: [0, 0], zoom: 0.5 },
+    { center: [-40, 20], zoom: 4 },
+    { center: [-40, 20], zoom: 7 },
+    { center: [-38, 18], zoom: 10 },
+    { center: [10, -25], zoom: 6 },
+    { center: [0, 0], zoom: 1.6 },
+  ];
+  const trames = []; let precedent = performance.now(); let tourne = true;
+  const compter = t => { trames.push(t - precedent); precedent = t; if (tourne) requestAnimationFrame(compter); };
+  requestAnimationFrame(compter);
+  for (const e of etapes) {
+    await new Promise(res => { carte.once("moveend", res); carte.flyTo({ ...e, duration: 1400, essential: true }); });
+    await new Promise(r => setTimeout(r, 200));
+  }
+  tourne = false;
+  const t = trames.slice(2).sort((a, b) => a - b);
+  const q = p => t[Math.min(t.length - 1, Math.floor(t.length * p))];
+  const r = {
+    trames: t.length,
+    medianeMs: +q(0.5).toFixed(2), ipsMedian: +(1000 / q(0.5)).toFixed(1),
+    p95Ms: +q(0.95).toFixed(2), ipsP95: +(1000 / q(0.95)).toFixed(1),
+    pireMs: +t[t.length - 1].toFixed(1),
+    sous30ips: +(100 * t.filter(x => x > 33.4).length / t.length).toFixed(1),
+  };
+  sortieMesure.textContent = r.ipsMedian + " ips médian · p95 " + r.ipsP95 + " ips · " + r.sous30ips + " % sous 30";
+  window.__mesure = r;
+  console.log("[mesure] " + JSON.stringify(r));
+  return r;
+}
+document.getElementById("mesurer").addEventListener("click", mesurer);
+
+// `?mesure=1` lance le parcours dès que la carte est au repos et renvoie le
+// résultat au serveur — le seul canal lisible depuis un navigateur sans
+// interface.
+if (new URLSearchParams(location.search).get("mesure") === "1") {
+  const rendre = o => fetch("/__mesure/" + encodeURIComponent(JSON.stringify(o))).catch(()=>{});
+  let lance = false;
+  const partir = async () => {
+    if (lance) return; lance = true;
+    const r = await mesurer();
+    r.gpu = (() => { try {
+      const g = document.createElement("canvas").getContext("webgl2");
+      const d = g && g.getExtension("WEBGL_debug_renderer_info");
+      return d ? g.getParameter(d.UNMASKED_RENDERER_WEBGL) : "?";
+    } catch(e) { return "?"; } })();
+    rendre(r);
+  };
+  const attendre = setInterval(() => { if (window.__carte && window.__carte.loaded()) { clearInterval(attendre); setTimeout(partir, 800); } }, 300);
+  setTimeout(() => { clearInterval(attendre); partir(); }, 30000);
+}
+window.__mesurer = mesurer;
+</script>
+</body>
+</html>

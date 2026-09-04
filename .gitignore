@@ -1,5 +1,6 @@
-# Artéfacts de compilation — 111 Go sur cette machine.
+# Artéfacts de compilation.
 target/
+experiments/*/target/
 
 # Poids de modèles : 1,1 Go, et ils se récupèrent.
 # CLAP  : scripts/preparer-modele.sh   HTDemucs : scripts/preparer-demucs.sh
@@ -16,17 +17,30 @@ experiments/*/modeles/
 
 # Sorties de l'éditeur et de l'analyse, écrites à côté de la base.
 stems/
+greffes/
+
+# Rendus de diagnostic (aperçus de placement, etc.) — régénérés par les
+# exemples, jamais versionnés.
+expe/
+
+# Captures d'écran de travail déposées à la racine.
+/Capture d’écran*.png
+/Capture d'écran*.png
 
 .DS_Store
 
-# Réglages Claude Code propres à cette machine — settings.json se versionne,
-# settings.local.json non.
-.claude/settings.local.json
+# État local de Claude Code. Pour versionner des réglages d'équipe :
+# `git add -f .claude/settings.json`.
+.claude/
 
-# Schémas régénérés par Tauri à chaque build.
-apps/desktop/gen/schemas/
+# Régénéré par Tauri à chaque build.
+apps/desktop/gen/
 
-# Sortie de `sonder.py reference` : quelques secondes à refaire, et sans usage
-# sans le modèle de 501 Mo qui l'accompagne. Le cache `genres.json` de l'essai
-# MusicBrainz, lui, se versionne — il vaut trente minutes de requêtes cadencées.
+# Sorties des sondages : jetables, régénérées depuis une base locale. Elles
+# porteraient le contenu d'une bibliothèque réelle (titres, identifiants
+# d'artistes) — jamais versionnées.
 experiments/clap-texte/reference.json
+experiments/musicbrainz-genres/genres.json
+experiments/musicbrainz-genres/aspiration.log
+experiments/popularite/cache.json
+experiments/popularite/echantillon.json

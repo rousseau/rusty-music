@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 # Le backend suit celui du module 2 : `wgpu` couvre Metal/Vulkan/DX12, `cpu`
 # est le repli. `fusion` et `autotune` ne sont pas optionnels côté GPU pour ce

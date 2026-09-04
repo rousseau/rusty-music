@@ -58,28 +58,34 @@ Colonne « vérifiée » : ✔ = licence lue dans une source lors de cette reche
 ### DSP, spectral, rééchantillonnage
 | Crate | Rôle | Licence | Vérifiée |
 |---|---|---|---|
-| `rustfft` | FFT de référence en Rust | MIT/Apache-2.0 | ? |
+| `rustfft` | FFT de référence en Rust | MIT/Apache-2.0 | ✔ (module 1 : spectrogramme, excitation « E ») |
 | `realfft` | surcouche FFT réelle (2× plus rapide sur du signal réel) | MIT | ? |
-| `rubato` | rééchantillonnage async/sync, SIMD | MIT | ? |
+| `rubato` | rééchantillonnage async/sync, SIMD | MIT | ✔ (module 1 : rééchantillonnage de qualité vers la carte son — `rodio` 0.22 ne fait que du linéaire) |
 | `phastft` | FFT alternative, plus économe en mémoire | MIT **ou** Apache-2.0 | ✔ |
 | `ndrustfft` | FFT sur `ndarray` | MIT | ✔ |
 | `fundsp` | graphe DSP, filtres, générateurs (utile module 3) | MIT/Apache-2.0 | ? |
 | `dasp` | primitives de traitement d'échantillons | MIT/Apache-2.0 | ? |
 
-### Time-stretch / pitch (module 3)
+### Time-stretch / pitch (modules 1 et 3)
 | Crate | Rôle | Licence | Vérifiée |
 |---|---|---|---|
-| `signalsmith-stretch` / `ssstretch` | étirement temporel et transposition, qualité production | MIT annoncée | ? |
-| **Rubber Band** (`rubberband-sys`) | référence du domaine, meilleure qualité | GPL | ⭐ **à privilégier** |
+| **`wsola`** | étirement temporel à hauteur préservée (recouvrement-addition), temps réel, pur Rust, zéro dépendance transitive | MIT | ✔ **retenu** (module 1 : vitesse de lecture ; module 3 : `editor/src/etirement.rs`, greffe). Hauteur inchangée à 441 Hz de 0,5× à 2×. |
+| `signalsmith-stretch` / `ssstretch` | qualité production, C++ lié | MIT | écarté : `wsola` suffit et reste pur Rust |
+| **Rubber Band** (`rubberband-sys`) | référence du domaine | GPL | non retenu — `wsola` couvre le besoin |
+
+La transposition, que `wsola` ne fait pas, s'obtient en étirant puis en
+rééchantillonnant du même rapport (`rubato`). Un vocodeur de phase maison
+(~500 lignes) avait été écrit avant de vérifier `wsola` ; il a été retiré.
 
 ### Inférence ML
 | Crate | Rôle | Licence | Vérifiée |
 |---|---|---|---|
 | `burn` (+ `burn-onnx`) | framework tensoriel, backends CUDA/Metal/Vulkan/WebGPU/CPU + WASM | MIT **et** Apache-2.0 | ✔ |
-| `ort` (+ `ort-sys`) | bindings ONNX Runtime — voie la plus courte pour un modèle pré-entraîné | MIT **ou** Apache-2.0 | ✔ |
+| `ort` (+ `ort-sys`) | bindings ONNX Runtime — voie la plus courte pour un modèle pré-entraîné | MIT **ou** Apache-2.0 | ✔ (module 1 : super-résolution AERO, `docs/module3-superresolution.md`) |
+| `tract` | inférence ONNX **pur Rust** | MIT **ou** Apache-2.0 | ✘ — charge le graphe AERO mais le calcule **faux** (cos 0,68), comme wgpu sur demucs (`experiments/burn-aero/`) |
 | `candle` / `candle-onnx` | alternative Hugging Face, pur Rust | MIT **ou** Apache-2.0 | ✔ |
 
-`ort` lie ONNX Runtime (C++). L'objectif « 100 % Rust » est abandonné au profit de « ne pas réécrire » : lier du C++ éprouvé est préférable à réimplémenter. `burn-onnx` reste une option si le pur Rust simplifie le déploiement.
+`ort` lie ONNX Runtime (C++). L'objectif « 100 % Rust » est abandonné au profit de « ne pas réécrire » : lier du C++ éprouvé est préférable à réimplémenter. Deux sondages le confirment sur des modèles audio réels — HTDemucs (`experiments/burn-demucs/` : wgpu faux) et AERO (`experiments/burn-aero/` : `tract` faux, `ort` exact à ×7 le temps réel).
 
 ### Recherche de voisins, clustering, projection
 | Crate | Rôle | Licence | Vérifiée |
@@ -107,12 +113,23 @@ La projection 2D reste le maillon faible côté Rust. Démarrer en t-SNE (`bhtsn
 | `egui` | UI immédiate Rust (repli si Tauri ne convient pas) | MIT/Apache-2.0 | ? |
 
 ### Démixage (module 3)
-Pas de crate Rust dédiée. Voie retenue : **HTDemucs exporté en ONNX (MIT)** exécuté via `ort` ou `burn-onnx`. ~316 Mo, GPU conseillé, découpage overlap-add à gérer soi-même.
+Retenu : **`demucs-core`** (fork de `demucs-rs` épinglé, Apache-2.0), poids HTDemucs
+(Meta, MIT). La STFT reste en Rust, Burn ne reçoit que le réseau. L'export ONNX
++ `ort`/`burn-onnx` a été **écarté** : il déroulait la transformée de Fourier en
+milliers de nœuds (66 % du graphe) et le backend GPU rendait un résultat faux.
+Détail : `docs/module3-demixage.md`.
+
+### Super-résolution (bouton « HD »)
+Retenu : **AERO** via **`ort`** (ONNX Runtime, C++). `tract` (ONNX pur Rust)
+charge le graphe mais le calcule faux (cos 0,68). `crates/superres`,
+`docs/module3-superresolution.md`.
 
 ---
 
-## Ce qu'il reste à décider
+## Ce qui a été tranché
 
-1. **bliss-rs remplace-t-il notre pipeline d'analyse ?** Question n°1 : à évaluer avant d'écrire une ligne de descripteur.
-2. **Choix du modèle d'embedding** (musicnn vs CLAP) — CLAP permet en plus la recherche texte→audio. Vérifier la licence des **poids**.
-3. **Réduction de dimension** : t-SNE (`bhtsne`) au départ ; UMAP reste le maillon faible côté Rust.
+1. **Pipeline d'analyse : écrit ici, pas bliss-rs.** Descripteurs maison (flux
+   spectral + autocorrélation, chroma Krumhansl-Schmuckler) — voir `suite.md` §6 bis.
+2. **Modèle d'empreintes : CLAP** (`laion/clap-htsat-unfused`, poids Apache-2.0),
+   traduit d'ONNX par `burn-onnx`.
+3. **Réduction de dimension : t-SNE Barnes-Hut** (`bhtsne`, pur Rust).

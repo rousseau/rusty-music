@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Politique de dépendances : licences (GPL-3.0-or-later, aucune non libre),
+  # avis de sécurité, crates directes sans mainteneur. Aucun build — rapide,
+  # tourne sur un clone nu. Voir `deny.toml`.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # Lint et tests. macOS : c'est la plateforme sur laquelle l'application est
+  # vérifiée (bundle `.app`), et Tauri/CoreAudio y compilent sans dépendance
+  # système à installer.
+  lint-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # `crates/analysis/build.rs` traduit l'encodeur CLAP depuis l'ONNX au
+      # build : sans le modèle, rien ne compile. Il est trop lourd pour le
+      # dépôt (`.gitignore`), on le prépare une fois et on le garde en cache.
+      - name: Cache du modèle CLAP
+        id: modele
+        uses: actions/cache@v4
+        with:
+          path: models/clap-audio-encoder-b5.onnx
+          key: clap-b5-${{ hashFiles('scripts/preparer-modele.sh') }}
+
+      - name: Préparer le modèle CLAP
+        if: steps.modele.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -L --fail -o models/clap-audio-encoder.onnx \
+            https://huggingface.co/icybawss/clap-htsat-unfused-audio-encoder-onnx/resolve/main/audio_model.onnx
+          ./scripts/preparer-modele.sh
+          rm -f models/clap-audio-encoder.onnx
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace

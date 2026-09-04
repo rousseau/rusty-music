@@ -22,11 +22,17 @@ Objectif : redécouvrir la bibliothèque (équivalent AudioMuse-AI, en plus lég
 - **C'est le module déjà spécifié** : voir `ui-spec.md` (décisions thème/filtres/chemins déjà tranchées) et `architecture.md` (pipeline embeddings → réduction 2D → clustering).
 
 ## Module 3 — Éditeur / MAO
-Objectif : éditer et recomposer à partir des fichiers de la bibliothèque. **Domaine à part entière (DAW + IA audio), le plus lourd et le plus risqué — phase avancée.** Peut devenir une app compagnon partageant le cœur.
-- **Time-stretch / pitch** : **écrit en Rust**, pas lié. Les bibliothèques du domaine — Signalsmith Stretch (MIT), Rubber Band (GPL/commerciale), SoundTouch (LGPL) — sont toutes en C++ et servent de références d'algorithme, pas de dépendances. Voir la règle « tout en Rust » dans `CLAUDE.md`.
-- **Démixage (stems)** : faisable localement mais lourd. HTDemucs (dépôt Meta non maintenu → fork `adefossez/demucs`) ; **export ONNX MIT** (`StemSplitio/htdemucs-onnx`) exécutable via `ort`, y compris en WASM côté client. Coût : ~316 Mo, GPU conseillé, découpage overlap-add à gérer. Roformer/Mel-Roformer = meilleurs pour l'isolation vocale.
-- **Mixer deux pistes** : territoire DJ (beatmatching, détection de tonalité, mixage harmonique type roue de Camelot). Référence open source à étudier : **Mixxx**.
-- **Génération de piste** : partie la plus fragile (qualité inégale, calcul très intensif, licences/droits flous). Référence directe : **ACE-Step** (modèle de génération open source) et son **ACE-Step-DAW** (DAW en Rust/WASM, time-stretch double moteur Signalsmith + Rubber Band). À traiter comme expérimental et tardif.
+Objectif : éditer et recomposer à partir des fichiers de la bibliothèque. **Une piste à la fois** — ouvrir, séparer, retoucher, exporter ; ni session multipiste, ni projet sauvegardé (les stems sur le disque suffisent), ni mixage DJ (sorti du périmètre). Spéc. d'interface : `ui-spec-editeur.md`.
+
+> **Mise à jour post-décision de licence.** Ce document précédait le passage à
+> GPL-3.0 et à la règle « ne pas réécrire ». Ce qui suit décrit l'intention ;
+> l'implémentation retenue est en italique.
+
+- **Time-stretch / pitch** : ~~écrit en Rust, sans dépendance~~. *Retenu : le crate `wsola` (recouvrement-addition par similarité de forme d'onde, la méthode d'`atempo`/VLC, pur Rust, MIT). Un vocodeur de phase maison a été écrit puis retiré au profit de `wsola`. La transposition ajoute un rééchantillonnage (`rubato`).*
+- **Démixage (stems)** : HTDemucs, poids Meta (MIT). ~~Export ONNX exécuté via `ort`~~. *Retenu : `demucs-core` (fork de `demucs-rs` épinglé, URL dans `crates/editor/Cargo.toml`), où la STFT reste en Rust et où Burn ne reçoit que le réseau — l'export ONNX déroulait la transformée de Fourier en milliers de nœuds et le backend GPU s'y trompait. Voir `module3-demixage.md`.* Coût : GPU conseillé, découpage overlap-add.
+- **Greffe de stem** *(livré)* : mettre à la place d'un stem celui d'un autre morceau, calé sur le tempo et sur les temps forts (grille de battements, `analysis/src/battements.rs`).
+- **Mixer deux pistes** : **hors du module 3** depuis la spec d'interface — redevient un chantier à part s'il se fait. Territoire DJ (beatmatching, tonalité, roue de Camelot). Référence : **Mixxx**.
+- **Génération de piste** : non planifié. Partie la plus fragile (qualité inégale, calcul intensif, droits flous). Référence : **ACE-Step**.
 
 ## Séquencement
-Cœur d'ingestion → Module 1 (valide le cœur, donne vite un livrable utilisable) → Module 2 → Module 3 (phasé, éventuellement séparé). Ne pas bloquer tout le projet sur la brique la plus risquée (démixage/génération).
+Cœur d'ingestion → Module 1 → Module 2 → Module 3. **Fait** (voir `suite.md`) : les quatre briques sont livrées à leur périmètre spécifié ; restent des finitions (aléatoire/répétition du lecteur, carte sur plan de ville réel, pochettes/bios).

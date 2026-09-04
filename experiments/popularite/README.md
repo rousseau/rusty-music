@@ -128,6 +128,7 @@ python3 rapport.py                                # bilan, instantané
 
 `aspirer.py` construit `echantillon.json` (reproductible, graine fixe) au
 premier passage, puis remplit `cache.json` après chaque réponse. Les deux API
-sont publiques ; les clients s'annoncent par un `User-Agent` identifiant
-l'application, par courtoisie. `cache.json` et `echantillon.json` se versionnent
-— quelques minutes de requêtes, et le bilan reste rejouable sans réseau.
+sont publiques ; les clients s'annoncent par un `User-Agent` lu de
+`RUSTY_MUSIC_CONTACT`. `cache.json` et `echantillon.json` ne sont pas
+versionnés — ils porteraient le contenu d'une vraie bibliothèque — et se
+refont en quelques minutes.

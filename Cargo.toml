@@ -47,7 +47,10 @@ opt-level = 3
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.80"
+# 1.82 : `Option::is_none_or` (carto), et le plancher réel de nos dépendances
+# (`ort` réclame 1.81). Burn et CubeCL ne déclarent pas de version minimale
+# mais suivent de près la stable ; à relever si `cargo build` s'en plaint.
+rust-version = "1.82"
 license = "GPL-3.0-or-later"
 
 # Versions épinglées au niveau du workspace : les crates les reprennent

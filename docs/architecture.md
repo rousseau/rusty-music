@@ -1,5 +1,14 @@
 # Architecture — contexte et choix techniques
 
+> **Registre historique.** Ce fichier garde le contexte de recherche et les
+> raisons des choix. Plusieurs « points à trancher » ci-dessous **le sont
+> depuis** : modèle d'embedding → **CLAP** (via `burn-onnx`), réduction 2D →
+> **t-SNE Barnes-Hut** (`bhtsne`), time-stretch → crate **`wsola`**, démixage →
+> **`demucs-core`**. La source n'est plus Plex mais le dossier surveillé.
+> L'objectif « 100 % Rust » cède devant « ne pas réécrire » : `ort` (ONNX
+> Runtime, C++) sert la super-résolution. État courant : `CLAUDE.md` et
+> `suite.md`.
+
 ## Contexte de recherche
 Ce projet s'inscrit dans une lignée de recherche démarrée avec *Islands of Music* (Pampalk, 2001) : cartes 2D de bibliothèques musicales basées sur la similarité audio, avec la métaphore d'une carte géographique. Suites notables : nepTune (paysage 3D), Globe of Music (GeoSOM), MusicRainbow, Last.fm Artist Map. Conférence de référence du domaine : ISMIR (pas SIGGRAPH — plutôt Eurographics/IEEE VIS pour le pan visualisation). Survey de référence : Khulusi et al., *A Survey on Visualizations for Musical Data*, Computer Graphics Forum, 2020.
 

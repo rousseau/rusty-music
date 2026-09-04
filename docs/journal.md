@@ -1263,9 +1263,9 @@ C'est une propriété du modèle, pas un défaut de la chaîne.
 cette voie a été écartée : 66 % du graphe exporté n'était qu'une transformée de
 Fourier déroulée nœud par nœud, et le backend GPU s'y trompait de 33 % sur un
 stem. On s'appuie sur `demucs-core` — la STFT y reste en Rust, Burn ne reçoit
-que le réseau — dans un **fork porté en Burn 0.21**
-([`rousseau/demucs-rs`](https://github.com/rousseau/demucs-rs), branche
-`burn-0.21` ; l'amont est figé en 0.20.1 depuis mars).
+que le réseau — dans un **fork porté en Burn 0.21** (l'amont, `nikhilunni/
+demucs-rs`, est figé en 0.20.1 depuis mars). L'URL du fork et la révision
+épinglée sont dans `crates/editor/Cargo.toml`.
 
 La dépendance épingle une **révision**, jamais une branche : une branche se
 déplace, et le jour où elle bouge le build ne compilerait plus la même chose

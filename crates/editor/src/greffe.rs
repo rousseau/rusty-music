@@ -133,10 +133,10 @@ pub fn premiere_attaque(signal: &[f32], canaux: usize) -> usize {
     let mut t = 0;
     while t < trames {
         let fin = (t + fenetre).min(trames);
-        let mut energie = 0.0f32;
-        for i in t * canaux..fin * canaux {
-            energie += signal[i] * signal[i];
-        }
+        let energie: f32 = signal[t * canaux..fin * canaux]
+            .iter()
+            .map(|v| v * v)
+            .sum();
         let n = ((fin - t) * canaux).max(1);
         if energie / n as f32 > seuil {
             return t;

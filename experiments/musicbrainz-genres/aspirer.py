@@ -24,7 +24,8 @@ import urllib.request
 # MusicBrainz exige un agent identifiant l'application et un contact, et
 # limite à une requête par seconde. Les deux sont des conditions d'accès, pas
 # des recommandations : sans agent, on est bloqué.
-AGENT = "rusty-music-sondage/0.1 (contact-non-renseigne)"
+CONTACT = os.environ.get("RUSTY_MUSIC_CONTACT", "contact-non-renseigne")
+AGENT = f"rusty-music-sondage/0.1 ( {CONTACT} )"
 DELAI = 1.1
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "genres.json")
 MODELE = "clap-htsat-unfused-5f"

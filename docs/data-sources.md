@@ -1,14 +1,17 @@
 # Sources de données
 
-## Bibliothèque locale — Plex
-- Serveur Plex local (macOS), déjà configuré et fonctionnel.
-- URL locale : `http://127.0.0.1:32400`.
-- Token API récupéré via le lien « Sign in with Plex » (méthode recommandée) ou manuellement via le XML d'un morceau (`View XML` → paramètre `X-Plex-Token`).
+## Bibliothèque locale — Plex (source de test possible)
+- Un serveur Plex local peut servir de source de test au démarrage : API HTTP
+  documentée, catalogue déjà étiqueté. Le token d'API s'obtient via
+  « Sign in with Plex » ou dans le XML d'un morceau (`X-Plex-Token`).
+- Ce n'est qu'une commodité de test — la source réelle est le dossier surveillé
+  (voir plus bas).
 
-## AudioMuse-AI (référence / outil en parallèle)
-- Installé en app native macOS, relié au serveur Plex ci-dessus.
-- Fonctionnalités utilisées comme référence : clustering audio, « Music Map » (carte 2D), « Song Paths » (chemin entre deux morceaux), empreinte sonique.
-- Sert de benchmark fonctionnel pendant que ce projet développe sa propre interface, plus légère.
+## AudioMuse-AI (référence fonctionnelle)
+- Fonctionnalités utilisées comme référence : clustering audio, « Music Map »
+  (carte 2D), « Song Paths » (chemin entre deux morceaux), empreinte sonique.
+- Sert de benchmark fonctionnel pendant que ce projet développe sa propre
+  interface, plus légère.
 
 ## Connexions et collaborations entre artistes — API MusicBrainz
 - Utiliser l'API MusicBrainz plutôt que du scraping web généraliste : données structurées, gratuites, bien documentées.

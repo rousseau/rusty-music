@@ -3,6 +3,12 @@
 État au 17 août 2026. Écrit après le sondage `experiments/burn-demucs/`, qui a
 rendu une réponse plus intéressante qu'un simple oui ou non.
 
+> **Suivi.** La recommandation « A′ » ci-dessous a été appliquée : `crates/editor`
+> dépend de **`demucs-core`** via un fork de `demucs-rs` épinglé sur une
+> révision (le portage Burn 0.21 décrit ici), et non de l'amont en l'état.
+> La STFT reste en Rust, Burn ne reçoit que le réseau. L'URL du fork est dans
+> `crates/editor/Cargo.toml`.
+
 ## Le problème, en une phrase
 
 **HTDemucs s'importe correctement dans Burn, mais le seul backend assez rapide
@@ -194,9 +200,9 @@ Le portage étant mesuré, les options ne sont plus celles d'avant le sondage.
 
 ### A′ — Porter `demucs-core` en 0.21 et en dépendre par un fork — **retenu, fait**
 
-Le fork vit sur [`rousseau/demucs-rs`](https://github.com/rousseau/demucs-rs),
-branche `burn-0.21`, révision `6020111`. `crates/editor` en dépend par cette
-révision épinglée.
+Le fork est porté sur la branche `burn-0.21`, révision `6020111` ;
+`crates/editor` en dépend par cette révision épinglée. Son URL est dans
+`crates/editor/Cargo.toml`.
 
 Publier le portage sur un fork, en dépendre par révision git, et **proposer le
 même correctif en amont**. S'il est fusionné, on repointe sur l'original ;
