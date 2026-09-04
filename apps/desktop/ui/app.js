@@ -2,6 +2,10 @@
 // retient HTML/CSS/JS simple, la carte WebGL du module 2 n'impose rien ici.
 
 const { invoke } = window.__TAURI__.core;
+// Ouvre un lien dans le navigateur du système (tauri-plugin-opener) — la
+// webview ne navigue pas vers l'extérieur, et c'est voulu.
+const ouvrirLien = (url) =>
+  window.__TAURI__.opener?.openUrl(url)?.catch((e) => remonter(e, "lien externe"));
 
 // Une exception ici resterait dans la console de la vue web, invisible depuis
 // le terminal : on la renvoie au journal du processus.
@@ -88,7 +92,22 @@ const vue = {
 // et de vue par défaut de `charger()` quand elle est appelée sans argument.
 let sommet = { quoi: "albums", titre: "Albums", lignes: [] };
 
+// Artistes et Albums s'affichent tous deux dans la grille virtualisée
+// (`dessinerGrille`) — une tuile carrée par entrée, pochette pour un album,
+// mosaïque des pochettes de ses albums pour un artiste. Les pistes et la
+// recherche restent en liste.
+const vueEnGrille = (quoi = vue.quoi) => quoi === "albums" || quoi === "artistes";
+
 let fileCourante = []; // pistes envoyées au lecteur, pour l'affichage
+
+// Un bouton ✦ à la fois (case d'album ou inspecteur) : les deux partagent le
+// graphe des voisins et le panneau de composition, deux lancements concurrents
+// se marcheraient dessus.
+let alchimieEnCours = false;
+// Vrai pendant qu'une playlist ✦ se compose dans la file d'attente : `dessinerFile`
+// s'efface alors, pour ne pas écraser l'animation de remplissage avec un rendu
+// ordinaire au premier battement de sondage de la lecture.
+let fileCompositionActive = false;
 
 /* ------------------------------------------------- liste virtualisée */
 
@@ -123,21 +142,23 @@ function ligne(item, index) {
   el.className = "ligne";
   el.dataset.index = index;
 
-  if (vue.quoi === "artistes") {
-    el.innerHTML = `<span class="ligne__nom"></span>
-                    <span class="ligne__cpt"></span>`;
-    el.children[0].textContent = item.name;
-    el.children[1].textContent = `${item.albums} alb · ${item.tracks} morc`;
-  } else {
-    el.innerHTML = `<span class="ligne__no"></span>
-                    <span class="ligne__nom"></span>
-                    <span class="ligne__sec"></span>
-                    <span class="ligne__cpt"></span>`;
-    el.children[0].textContent = item.track_no ?? "";
-    el.children[1].textContent = txt(item.title, "(sans titre)");
-    el.children[2].textContent = txt(item.artist);
-    el.children[3].textContent = duree(item.duration_ms);
-    if (item.path === enLecture) el.classList.add("ligne--joue");
+  el.innerHTML = `<span class="ligne__no"></span>
+                  <span class="ligne__nom"></span>
+                  <span class="ligne__sec"></span>
+                  <span class="ligne__cpt"></span>`;
+  el.children[0].textContent = item.track_no ?? "";
+  el.children[1].textContent = txt(item.title, "(sans titre)");
+  el.children[2].textContent = txt(item.artist);
+  el.children[3].textContent = duree(item.duration_ms);
+  if (item.path === enLecture) el.classList.add("ligne--joue");
+
+  // Jauge de popularité — pour une liste de morceaux (pistes d'un album,
+  // résultats de recherche), pas pour une liste d'artistes.
+  if (vue.quoi === "pistes" && Number.isFinite(item.id)) {
+    const cell = document.createElement("span");
+    cell.className = "ligne__pop";
+    cell.appendChild(jaugePop(popParPiste.get(item.id)));
+    el.insertBefore(cell, el.children[3]); // juste avant la durée
   }
 
   el.addEventListener("click", () => activer(item));
@@ -146,6 +167,128 @@ function ligne(item, index) {
 
 liste.addEventListener("scroll", dessiner, { passive: true });
 window.addEventListener("resize", dessiner);
+
+/* --------------------------------------------------- jauge de popularité
+ *
+ * La popularité générale d'un morceau (ListenBrainz + Deezer, remplie par la
+ * passe du même nom) — un rang dans la bibliothèque, pas un compteur d'écoutes.
+ * Chargée par lot pour ce qui est visible (`popularites`), gardée en cache, et
+ * rendue en cinq segments dans la file d'attente et les listes de pistes.
+ */
+
+/// `id → {relative, echelon}` ; `null` = demandé mais le morceau n'en a pas
+/// (jauge grisée) ; absent = pas encore demandé. Vidé après chaque passe.
+const popParPiste = new Map();
+
+/// Charge la popularité des `ids` encore inconnus en une requête, puis
+/// `apres()` pour repeindre — seulement s'il y avait quelque chose à charger,
+/// sinon le repaint rappellerait cette fonction sans fin.
+async function chargerPopularites(ids, apres) {
+  const manquants = [...new Set(ids)].filter(
+    (id) => Number.isFinite(id) && !popParPiste.has(id),
+  );
+  if (manquants.length === 0) return;
+  let lignes = [];
+  try {
+    lignes = await invoke("popularites", { ids: manquants });
+  } catch (e) {
+    remonter(e, "popularité");
+  }
+  const vus = new Set();
+  for (const [id, relative, echelon] of lignes) {
+    popParPiste.set(id, { relative, echelon });
+    vus.add(id);
+  }
+  for (const id of manquants) if (!vus.has(id)) popParPiste.set(id, null);
+  if (apres) apres();
+}
+
+const MOTS_POP = ["très faible", "faible", "moyenne", "élevée", "très élevée"];
+
+/// Une jauge à cinq segments. `pop` : `{relative, echelon}` ∈ [0,1], ou une
+/// valeur fausse = inconnu (contour seul, jamais une valeur inventée — même
+/// règle que les descripteurs de l'inspecteur).
+function jaugePop(pop) {
+  const el = document.createElement("span");
+  el.className = "jauge-pop";
+  // Au moins un segment dès qu'on a une mesure : « connu et peu populaire »
+  // ne doit pas se confondre avec « inconnu ».
+  const remplis = pop ? Math.max(1, Math.round(pop.relative * 5)) : 0;
+  if (!pop) el.classList.add("jauge-pop--inconnu");
+  for (let i = 0; i < 5; i++) {
+    const seg = document.createElement("i");
+    if (i < remplis) seg.className = "jauge-pop__on";
+    el.appendChild(seg);
+  }
+  el.title = pop
+    ? `popularité : ${MOTS_POP[Math.min(4, Math.floor(pop.relative * 5))]} · ${
+        pop.echelon === "release-group" ? "mesurée sur l'album" : "mesurée sur le morceau"
+      }`
+    : "popularité inconnue — lancez la passe de popularité";
+  return el;
+}
+
+/// Vide le cache et recharge ce qui est à l'écran — après une passe de
+/// popularité, les rangs de toute la bibliothèque ont bougé. `dessinerFile`
+/// et `chargerPopularites` se chargent eux-mêmes du repaint quand les
+/// nouvelles valeurs arrivent.
+function popARecalculee() {
+  popParPiste.clear();
+  if (!$("file").hidden && !fileCompositionActive) dessinerFile();
+  if (!$("liste").hidden && vue.quoi === "pistes") {
+    dessiner();
+    chargerPopularites(
+      vue.lignes.map((l) => l.id),
+      () => {
+        if (vue.quoi === "pistes") dessiner();
+      },
+    );
+  }
+}
+
+/// La ligne d'alerte du mode Bibliothèque : n'apparaît que si de la popularité
+/// a été récupérée **et** qu'une partie date de plus de 90 jours — une
+/// notoriété bouge lentement, on ne relance pas une passe de deux heures pour
+/// rien. Le bouton « Rafraîchir » coche la case et relance la passe.
+async function chargerPopulariteFraicheur() {
+  const ligne = $("popularite-fraicheur");
+  let couverts;
+  let plusAncienne;
+  let perimes;
+  try {
+    [couverts, plusAncienne, perimes] = await invoke("popularite_fraicheur");
+  } catch (e) {
+    remonter(e, "popularité");
+    ligne.hidden = true;
+    return;
+  }
+  if (couverts === 0 || perimes === 0) {
+    ligne.hidden = true;
+    return;
+  }
+  $("popularite-fraicheur-txt").textContent =
+    `Popularité : ${perimes.toLocaleString("fr-FR")} entité${perimes > 1 ? "s" : ""} ` +
+    `de plus de 90 jours` +
+    (plusAncienne ? ` (la plus ancienne remonte à ${depuisTexte(plusAncienne)}).` : ".") +
+    " ";
+  ligne.hidden = false;
+}
+
+$("popularite-rafraichir").addEventListener("click", async () => {
+  if ($("lancer-scan").disabled) return; // une passe tourne déjà
+  $("pop-rafraichir").checked = true;
+  verrouillerActualisation(true);
+  try {
+    await passePopularite(contactMb(), "", true);
+    $("scan-etat").textContent = "Popularité rafraîchie.";
+  } catch (e) {
+    remonter(e, "popularité");
+    $("scan-etat").textContent = String(e);
+  } finally {
+    $("scan-jauge").hidden = true;
+    verrouillerActualisation(false);
+  }
+});
 
 /* --------------------------------------------------- grille d'albums */
 
@@ -176,7 +319,8 @@ function colonnesGrille() {
 }
 
 function dessinerGrille() {
-  const n = vue.lignes.length;
+  const lignes = lignesCourantes();
+  const n = lignes.length;
   const cols = colonnesGrille();
   const rangs = Math.max(1, Math.ceil(n / cols));
   grilleSocle.style.height = `${rangs * ALBUM_HAUT}px`;
@@ -188,8 +332,9 @@ function dessinerGrille() {
   grilleFenetre.style.gridTemplateColumns = `repeat(${cols}, ${ALBUM_LARG}px)`;
   grilleFenetre.replaceChildren();
 
+  const carte = vue.quoi === "artistes" ? carteArtiste : carteAlbum;
   for (let i = rangHaut * cols; i < Math.min(n, rangBas * cols); i++) {
-    grilleFenetre.appendChild(carteAlbum(vue.lignes[i]));
+    grilleFenetre.appendChild(carte(lignes[i]));
   }
   majIndexActif();
 }
@@ -205,8 +350,23 @@ function carteAlbum(item) {
                   <div class="album__sec"></div>`;
   const image = el.children[0];
   el.children[1].textContent = item.name;
-  el.children[2].textContent = `${txt(item.artist, "(sans artiste)")} · ${item.year ?? "————"}`;
+  el.children[2].innerHTML = `<span class="album__artiste"></span> · <span></span>`;
+  const artiste = el.children[2].children[0];
+  artiste.textContent = txt(item.artist, "(sans artiste)");
+  el.children[2].children[1].textContent = item.year ?? "————";
   el.addEventListener("click", () => activer(item));
+
+  // Le nom de l'artiste ouvre tous ses albums ; `stopPropagation` évite que
+  // le clic remonte à la case et ouvre la liste de pistes de cet album.
+  // `AlbumRow` n'a pas de MBID : le nom seul, avec le repli de
+  // `Library::albums_of_artist`.
+  if (item.artist) {
+    artiste.classList.add("album__artiste--lien");
+    artiste.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ouvrirAlbumsArtiste(item.artist, null).catch((err) => remonter(err, "ouvrirAlbumsArtiste"));
+    });
+  }
 
   // Les deux boutons agissent directement depuis la case ; le reste de la
   // case ouvre sa liste de pistes. `stopPropagation` sépare les gestes, sans
@@ -234,6 +394,183 @@ function carteAlbum(item) {
   return el;
 }
 
+/* ------------------------------------------------- tuile d'artiste */
+
+// artiste (mbid|nom) → Promise<string[]> de chemins d'albums avec pochette. La
+// grille est virtualisée et reconstruit ses tuiles à chaque cran de
+// défilement : sans ce cache, revenir sur une rangée relancerait la commande
+// et la lecture des tags de chaque album. Les images, elles, passent par
+// `pochette()` — même cache borné que la grille d'albums.
+const mosaiques = new Map();
+
+function cheminsArtiste(item) {
+  const cle = `${item.mbid ?? ""}|${item.name}`;
+  let p = mosaiques.get(cle);
+  if (!p) {
+    p = invoke("artist_covers", { name: item.name, mbid: item.mbid ?? null, max: 4 }).catch(
+      (err) => {
+        remonter(err, "artist_covers");
+        return [];
+      },
+    );
+    mosaiques.set(cle, p);
+  }
+  return p;
+}
+
+// Découpes de puzzle injectées dans un <svg><defs> au chargement : une pièce
+// par pochette, aux bords à tenons et mortaises qui s'emboîtent. Chaque frontière
+// interne est tracée par ses deux pièces avec les mêmes extrémités et le même
+// sens de tenon — le cran étant symétrique, les deux tracés rendent la même
+// courbe, donc ni jour ni recouvrement.
+(function injecterDecoupesPuzzle() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", "0");
+  svg.setAttribute("height", "0");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden";
+  const defs = document.createElementNS(NS, "defs");
+  svg.appendChild(defs);
+
+  // Un cran de puzzle le long du segment (ax,ay)→(bx,by), forcément axis-aligné,
+  // bombé au milieu dans la direction (tx,ty). Coordonnées 0..1 de la boîte
+  // englobante (`clipPathUnits="objectBoundingBox"`), donc indépendantes de la
+  // taille rendue. Le profil (col resserré, bulbe, col) est symétrique : le
+  // tracer de b vers a donne la même courbe.
+  const cran = (ax, ay, bx, by, tx, ty) => {
+    const len = Math.abs(bx - ax) + Math.abs(by - ay);
+    const ex = (bx - ax) / len;
+    const ey = (by - ay) / len;
+    const perp = Math.min(len, 0.5);
+    const P = (s, q) =>
+      `${(ax + ex * len * s + tx * perp * q).toFixed(4)} ${(
+        ay +
+        ey * len * s +
+        ty * perp * q
+      ).toFixed(4)}`;
+    return [
+      `L ${P(0.36, 0)}`,
+      `C ${P(0.34, 0.06)} ${P(0.3, 0.08)} ${P(0.3, 0.19)}`,
+      `C ${P(0.3, 0.3)} ${P(0.4, 0.34)} ${P(0.5, 0.34)}`,
+      `C ${P(0.6, 0.34)} ${P(0.7, 0.3)} ${P(0.7, 0.19)}`,
+      `C ${P(0.7, 0.08)} ${P(0.66, 0.06)} ${P(0.64, 0)}`,
+      `L ${P(1, 0)}`,
+    ].join(" ");
+  };
+
+  const clip = (id, d) => {
+    const cp = document.createElementNS(NS, "clipPath");
+    cp.id = id;
+    cp.setAttribute("clipPathUnits", "objectBoundingBox");
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    cp.appendChild(path);
+    defs.appendChild(cp);
+  };
+
+  clip("puz-1-0", "M0 0 H1 V1 H0 Z");
+  // 2 pièces : refend vertical, tenon vers la droite.
+  clip("puz-2-0", `M0 0 L0.5 0 ${cran(0.5, 0, 0.5, 1, 1, 0)} L0 1 Z`);
+  clip("puz-2-1", `M0.5 0 L1 0 L1 1 L0.5 1 ${cran(0.5, 1, 0.5, 0, 1, 0)} Z`);
+  // 3 pièces : bande gauche pleine hauteur, colonne droite coupée en deux.
+  clip(
+    "puz-3-0",
+    `M0 0 L0.5 0 ${cran(0.5, 0, 0.5, 0.5, -1, 0)} ${cran(0.5, 0.5, 0.5, 1, -1, 0)} L0 1 Z`,
+  );
+  clip(
+    "puz-3-1",
+    `M0.5 0 L1 0 L1 0.5 ${cran(1, 0.5, 0.5, 0.5, 0, -1)} ${cran(0.5, 0.5, 0.5, 0, -1, 0)} Z`,
+  );
+  clip(
+    "puz-3-2",
+    `M0.5 0.5 ${cran(0.5, 0.5, 1, 0.5, 0, -1)} L1 1 L0.5 1 ${cran(0.5, 1, 0.5, 0.5, -1, 0)} Z`,
+  );
+  // 4 pièces : refends en croix, un tenon par demi-refend.
+  clip(
+    "puz-4-0",
+    `M0 0 L0.5 0 ${cran(0.5, 0, 0.5, 0.5, 1, 0)} ${cran(0.5, 0.5, 0, 0.5, 0, 1)} L0 0 Z`,
+  );
+  clip(
+    "puz-4-1",
+    `M0.5 0 L1 0 L1 0.5 ${cran(1, 0.5, 0.5, 0.5, 0, -1)} ${cran(0.5, 0.5, 0.5, 0, 1, 0)} Z`,
+  );
+  clip(
+    "puz-4-2",
+    `M0 0.5 ${cran(0, 0.5, 0.5, 0.5, 0, 1)} ${cran(0.5, 0.5, 0.5, 1, -1, 0)} L0 1 Z`,
+  );
+  clip(
+    "puz-4-3",
+    `M0.5 0.5 ${cran(0.5, 0.5, 0.5, 1, -1, 0)} L1 1 L1 0.5 ${cran(1, 0.5, 0.5, 0.5, 0, -1)} Z`,
+  );
+
+  document.body.appendChild(svg);
+})();
+
+// Découpe de chaque pièce selon le nombre de pochettes (1 à 4).
+const MOSAIQUE = {
+  1: ["puz-1-0"],
+  2: ["puz-2-0", "puz-2-1"],
+  3: ["puz-3-0", "puz-3-1", "puz-3-2"],
+  4: ["puz-4-0", "puz-4-1", "puz-4-2", "puz-4-3"],
+};
+
+/// Initiales d'un artiste pour la tuile de repli (aucune pochette) : une ou
+/// deux lettres, « The » écarté pour ne pas toujours retomber sur « T ».
+function initiales(nom) {
+  const mots = (nom || "?")
+    .replace(/^(the|les|le|la)\s+/i, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const lettres = (mots.length > 1 ? mots[0][0] + mots[1][0] : (mots[0] || "?").slice(0, 2))
+    .toUpperCase();
+  return lettres || "?";
+}
+
+/// Teinte stable dérivée du nom, pour que la tuile de repli d'un artiste garde
+/// la même couleur d'une session à l'autre.
+function teinteNom(nom) {
+  let h = 0;
+  for (const c of nom || "") h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
+
+function carteArtiste(item) {
+  const el = document.createElement("div");
+  el.className = "album album--artiste";
+  el.innerHTML = `<div class="album__pochette"><div class="mosaique"></div></div>
+                  <div class="album__nom"></div>
+                  <div class="album__sec"></div>`;
+  el.children[1].textContent = item.name;
+  const alb = item.albums === 1 ? "1 album" : `${item.albums} albums`;
+  const morc = item.tracks === 1 ? "1 morceau" : `${item.tracks} morceaux`;
+  el.children[2].textContent = `${alb} · ${morc}`;
+  el.addEventListener("click", () => activer(item));
+
+  const mos = el.querySelector(".mosaique");
+  cheminsArtiste(item).then((chemins) => {
+    if (!mos.isConnected) return;
+    if (chemins.length === 0) {
+      mos.classList.add("mosaique--vide");
+      mos.style.setProperty("--teinte", teinteNom(item.name));
+      mos.textContent = initiales(item.name);
+      return;
+    }
+    const n = Math.min(chemins.length, 4);
+    MOSAIQUE[n].forEach((clip, i) => {
+      const piece = document.createElement("div");
+      piece.className = "mosaique__piece";
+      piece.style.clipPath = `url(#${clip})`;
+      mos.appendChild(piece);
+      pochette(chemins[i]).then((img) => {
+        if (img && piece.isConnected) piece.style.backgroundImage = `url("${img}")`;
+      });
+    });
+  });
+
+  return el;
+}
+
 /// Lit l'album entier, dans l'ordre du disque, sans passer par sa liste de
 /// pistes — le geste que propose le bouton posé sur la pochette.
 async function lireAlbum(item) {
@@ -242,9 +579,7 @@ async function lireAlbum(item) {
   inspecter(pistes[0]);
   fileCourante = pistes;
   tracerRouteSurCarte(pistes);
-  await invoke("play", { paths: pistes.map((t) => t.path) });
-  poserLecture(true);
-  sonder(true);
+  await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
 }
 
 const ALCHIMIE_PISTES = 20;
@@ -255,36 +590,216 @@ const ALCHIMIE_PISTES = 20;
 ///
 /// Une graine neuve à chaque clic : le bouton est pensé pour surprendre, pas
 /// pour rejouer toujours la même dérive sur le même album.
-async function genererAlchimie(item, bouton) {
+function genererAlchimie(item, bouton) {
+  return composerAlchimie({
+    bouton,
+    chemin: () =>
+      invoke("path_album", {
+        album: item.name,
+        artist: item.artist ?? null,
+        steps: ALCHIMIE_PISTES,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        bruit: bruitChemin,
+      }),
+    // Le cas courant d'échec est un album pas encore analysé (`path_album`
+    // échoue alors côté moteur) : `composerAlchimie` le journalise et remet
+    // la file en état, sans casser la lecture en cours.
+    demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
+  });
+}
+
+/// Fabrique commune aux deux boutons ✦ (case d'album, inspecteur).
+///
+/// Deux attentes se cachaient derrière la roulette système, muettes : le
+/// graphe des voisins d'abord — un balayage complet, une vingtaine de
+/// secondes la première fois d'une session, rien ensuite — puis l'errance
+/// elle-même, quasi instantanée. On les nomme toutes deux dans le panneau de
+/// file d'attente, avec une jauge, et on y fait défiler la playlist à mesure
+/// qu'elle se pose plutôt que de la livrer d'un bloc.
+///
+/// `chemin()` rend la promesse des pistes (le trajet), `demarrer(pistes)`
+/// celle de l'envoi au lecteur. La lecture part dès que le trajet est là ;
+/// le défilement qui suit n'est qu'un habillage.
+async function composerAlchimie({ bouton, chemin, demarrer }) {
+  if (alchimieEnCours) return;
+  alchimieEnCours = true;
+  const fileEtaitOuverte = !$("file").hidden;
+  let pistes = null;
+
   bouton.disabled = true;
+  bouton.classList.add("alchimie--travail");
+  demarrerCompositionFile(ALCHIMIE_PISTES);
+  basculerFile(true);
+  const jauge = sonderGrapheProgres();
+
   try {
-    const pistes = await invoke("path_album", {
-      album: item.name,
-      artist: item.artist ?? null,
-      steps: ALCHIMIE_PISTES,
-      seed: Math.floor(Math.random() * 2 ** 31),
-      bruit: bruitChemin,
-    });
-    if (pistes.length === 0) return;
+    await preparerGraphe();
+    clearInterval(jauge);
+    phaseCompositionFile("Composition de la playlist…");
+
+    pistes = await chemin();
+    if (!pistes || pistes.length === 0) return;
+
     inspecter(pistes[0]);
     fileCourante = pistes;
     tracerRouteSurCarte(pistes);
-    await invoke("play", { paths: pistes.map((t) => t.path) });
-    poserLecture(true);
-    sonder(true);
+    // Lecture tout de suite ; le sondage d'état qui démarre avec elle
+    // voudra redessiner la file, `fileCompositionActive` l'en empêche
+    // jusqu'à la fin du défilement.
+    demarrerLecture(() => demarrer(pistes)).catch((e) => remonter(e, "composerAlchimie"));
+    await revelerFile(pistes);
   } catch (e) {
-    // Le cas courant est un album pas encore analysé (`path_album` échoue
-    // alors côté moteur) : pas de morceau à lire, pas de file à casser pour
-    // autant — seul le journal en garde trace.
-    remonter(e, "genererAlchimie");
+    remonter(e, "composerAlchimie");
   } finally {
+    clearInterval(jauge);
+    finirCompositionFile();
     bouton.disabled = false;
+    bouton.classList.remove("alchimie--travail");
+    alchimieEnCours = false;
+    if (pistes && pistes.length > 0) dessinerFile();
+    else if (!fileEtaitOuverte) basculerFile(false);
+    else dessinerFile();
   }
 }
 
-grille.addEventListener("scroll", dessinerGrille, { passive: true });
+/// Ouvre la file sur la longueur cible : autant d'emplacements vides que de
+/// pistes attendues, la phase en cours au-dessus. `revelerFile` viendra
+/// ensuite y poser les vraies pistes une à une.
+function demarrerCompositionFile(cible) {
+  fileCompositionActive = true;
+  $("file-compo").hidden = false;
+  $("file-compo-phase").textContent = "Préparation du graphe des voisins…";
+  majBarreCompo(0, 0);
+  $("file-compte").textContent = `0 / ${cible}`;
+  const hote = $("file-liste");
+  hote.replaceChildren();
+  for (let i = 0; i < cible; i++) hote.appendChild(ligneSquelette(i));
+}
+
+function phaseCompositionFile(texte) {
+  $("file-compo-phase").textContent = texte;
+  majBarreCompo(0, 0); // indéterminé le temps de la composition
+}
+
+function finirCompositionFile() {
+  fileCompositionActive = false;
+  $("file-compo").hidden = true;
+}
+
+/// `fait`/`total` de la jauge de composition. `total` à 0 : va-et-vient
+/// indéterminé (graphe déjà en cache, ou composition en cours).
+function majBarreCompo(fait, total) {
+  const barre = $("file-compo-barre");
+  if (total > 0) {
+    barre.classList.remove("file__compo-barre--indetermine");
+    barre.style.marginLeft = "0";
+    barre.style.width = `${Math.round((fait / total) * 100)}%`;
+  } else {
+    barre.classList.add("file__compo-barre--indetermine");
+    barre.style.marginLeft = "";
+    barre.style.width = "";
+  }
+}
+
+/// Sonde `graphe_progress` pendant l'attente du graphe des voisins. Rend
+/// l'identifiant d'intervalle, à couper dès que `preparerGraphe` a rendu.
+function sonderGrapheProgres() {
+  return setInterval(async () => {
+    try {
+      const [fait, total] = await invoke("graphe_progress");
+      if (total > 0) {
+        $("file-compo-phase").textContent = "Préparation du graphe des voisins…";
+        majBarreCompo(fait, total);
+      }
+    } catch {
+      /* le sondage suivant réessaiera */
+    }
+  }, 200);
+}
+
+function ligneSquelette(i) {
+  const el = document.createElement("div");
+  el.className = "file__ligne file__ligne--squelette";
+  el.innerHTML = `<span class="file__rang"></span>
+                  <span class="file__txt"><b></b><span></span></span>
+                  <span class="file__duree"></span>`;
+  el.children[0].textContent = i + 1;
+  return el;
+}
+
+/// Une piste posée dans la file en composition — même gabarit que
+/// `dessinerFile`, avec l'animation d'entrée et, pour la première, la marque
+/// « graine » : c'est le morceau d'où part la dérive.
+function ligneComposee(t, i) {
+  const el = document.createElement("div");
+  el.className = "file__ligne file__ligne--pose";
+  if (i === 0) el.classList.add("file__ligne--graine");
+  el.innerHTML = `<span class="file__rang"></span>
+                  <span class="file__txt"><b></b><span></span></span>
+                  <span class="file__duree"></span>`;
+  el.children[0].textContent = i === 0 ? "✦" : i + 1;
+  el.children[1].children[0].textContent = txt(t.title, "(sans titre)");
+  el.children[1].children[1].textContent =
+    i === 0
+      ? `graine · ${txt(t.artist, "(sans artiste)")}`
+      : txt(t.artist, "(sans artiste)");
+  el.children[2].textContent = duree(t.duration_ms);
+  el.addEventListener("click", async () => {
+    await demarrerLecture(() => invoke("jump_to", { index: i }));
+  });
+  return el;
+}
+
+/// Remplace les emplacements vides par les vraies pistes, une par battement,
+/// pour donner à voir la playlist se construire. Le trajet est déjà entier —
+/// l'errance est instantanée — c'est un rythme d'affichage, pas de calcul, et
+/// l'ordre est le vrai ordre de la dérive.
+async function revelerFile(pistes) {
+  const hote = $("file-liste");
+  // La longueur cible affichée d'emblée peut différer du trajet rendu
+  // (échantillonnage côté moteur) : on réajuste les emplacements.
+  while (hote.children.length < pistes.length)
+    hote.appendChild(ligneSquelette(hote.children.length));
+  while (hote.children.length > pistes.length) hote.lastChild.remove();
+
+  for (let i = 0; i < pistes.length; i++) {
+    hote.replaceChild(ligneComposee(pistes[i], i), hote.children[i]);
+    $("file-compte").textContent = `${i + 1} / ${pistes.length}`;
+    majBarreCompo(i + 1, pistes.length);
+    await new Promise((r) => setTimeout(r, 55));
+  }
+}
+
+// Le défilement émet des dizaines d'évènements par seconde, et `dessinerGrille`
+// reconstruit toute la bande de cases visibles à chaque appel (DOM neuf,
+// écouteurs, demande de pochette). Sans ce garde-fou, la grille se traînait au
+// défilement et le bouton ▶ d'une case disparaissait sous le pointeur au
+// moindre coup de molette juste avant le clic — d'où l'impression qu'il ne
+// répondait pas. On ne redessine qu'une fois par trame, et seulement quand la
+// bande de rangées visibles a réellement changé (un cran = `ALBUM_HAUT`).
+let grilleRedessinArme = false;
+let grilleDernierRang = -1;
+function dessinerGrilleAuDefilement() {
+  if (grilleRedessinArme) return;
+  grilleRedessinArme = true;
+  requestAnimationFrame(() => {
+    grilleRedessinArme = false;
+    const rang = Math.floor(grille.scrollTop / ALBUM_HAUT);
+    if (rang === grilleDernierRang) {
+      majIndexActif();
+      return;
+    }
+    grilleDernierRang = rang;
+    dessinerGrille();
+  });
+}
+
+grille.addEventListener("scroll", dessinerGrilleAuDefilement, { passive: true });
 window.addEventListener("resize", () => {
-  if (!grille.hidden) dessinerGrille();
+  if (!grille.hidden) {
+    grilleDernierRang = -1;
+    dessinerGrille();
+  }
 });
 
 /* ---------------------------------------------------------- navigation */
@@ -293,7 +808,7 @@ window.addEventListener("resize", () => {
 // descendre dans un artiste ou un album, pour que « ← » retrouve la ligne
 // quittée plutôt que de remonter en haut de la liste.
 function scrollActuel() {
-  return (vue.quoi === "albums" ? grille : liste).scrollTop;
+  return (vueEnGrille() ? grille : liste).scrollTop;
 }
 
 function poser(quoi, titre, lignes, retour = null, scroll = 0) {
@@ -303,8 +818,16 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   vue.retour = retour;
   if (retour === null) sommet = { quoi, titre, lignes };
 
-  $("fil-titre").textContent = titre;
-  $("fil-compte").textContent = `${lignes.length} ${quoi === "artistes" ? "artistes" : quoi === "albums" ? "albums" : "morceaux"}`;
+  // Hors mode Écoute, l'en-tête appartient à l'autre mode (« Découvrir »,
+  // « Bibliothèque ») : `poser` met à jour `vue` mais n'y touche pas.
+  const horsEcoute = modeCourant !== "ecoute";
+  if (!horsEcoute) {
+    $("fil-titre").textContent = titre;
+    // La grille d'albums peut être filtrée par famille : le compte suit ce qui
+    // est réellement montré, pas le total.
+    const compte = quoi === "albums" ? lignesCourantes().length : lignes.length;
+    $("fil-compte").textContent = `${compte} ${quoi === "artistes" ? "artistes" : quoi === "albums" ? "albums" : "morceaux"}`;
+  }
   $("retour").hidden = retour === null;
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
 
@@ -317,9 +840,14 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     );
   }
 
-  const enGrille = quoi === "albums";
-  $("liste").hidden = enGrille;
-  $("grille").hidden = !enGrille;
+  const enGrille = vueEnGrille(quoi);
+  // `charger("albums")` court en fond au démarrage et se termine parfois après
+  // `basculerMode` (mode imposé par `RUSTY_MUSIC_MODE`, ou clic rapide) : on
+  // prépare alors les données sans remontrer grille ni liste.
+  $("liste").hidden = horsEcoute || enGrille;
+  $("grille").hidden = horsEcoute || !enGrille;
+  // Le choix d'ordre ne concerne que la grille d'albums du mode Écoute.
+  $("tri-albums").hidden = horsEcoute || quoi !== "albums";
   if (enGrille) {
     // Pas de `preparerGraphe()` ici : la grille est la vue par défaut de
     // l'Écoute, donc ce qu'on construirait à *chaque* lancement de l'appli,
@@ -330,6 +858,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     // continuent de le construire à la demande ; le premier geste de la
     // session qui en a besoin paie simplement le prix une fois.
     grille.scrollTop = scroll;
+    grilleDernierRang = -1;
     dessinerGrille();
   } else {
     liste.scrollTop = scroll;
@@ -339,9 +868,22 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // Repère alphabétique : seulement là où l'ordre affiché est celui des
   // noms — pas la liste des pistes d'un album (ordre du disque), ni une
   // recherche (ordre de pertinence).
-  const avecIndex = quoi === "artistes" || quoi === "albums";
+  const avecIndex = quoi === "artistes" || (quoi === "albums" && triAlbums === "alpha");
   $("index-alpha").hidden = !avecIndex;
   if (avecIndex) construireIndexAlpha();
+
+  // Liste de morceaux : la popularité se charge en lot, puis on repeint les
+  // lignes visibles (la liste est virtualisée, `dessiner` relit le cache).
+  if (quoi === "pistes") {
+    chargerPopularites(
+      lignes.map((l) => l.id),
+      () => {
+        if (vue.quoi === "pistes") dessiner();
+      },
+    );
+  }
+
+  majBlocFamillesEcoute();
 }
 
 /* -------------------------------------------------------- index alphabétique */
@@ -372,7 +914,7 @@ function premiereLettre(nom) {
 let indexAlpha = {};
 function construireIndexAlpha() {
   indexAlpha = {};
-  vue.lignes.forEach((item, i) => {
+  lignesCourantes().forEach((item, i) => {
     const l = premiereLettre(item.name);
     if (!(l in indexAlpha)) indexAlpha[l] = i;
   });
@@ -385,14 +927,15 @@ function construireIndexAlpha() {
 /// Rang affiché en haut de la fenêtre visible, pour savoir quelle lettre
 /// grossir dans le repère.
 function rangVisible() {
-  if (vue.quoi === "albums") return Math.floor(grille.scrollTop / ALBUM_HAUT) * colonnesGrille();
+  if (vueEnGrille()) return Math.floor(grille.scrollTop / ALBUM_HAUT) * colonnesGrille();
   return Math.floor(liste.scrollTop / LIGNE);
 }
 
 function majIndexActif() {
   if ($("index-alpha").hidden) return;
-  const i = Math.min(vue.lignes.length - 1, Math.max(0, rangVisible()));
-  const lettre = vue.lignes[i] ? premiereLettre(vue.lignes[i].name) : null;
+  const lignes = lignesCourantes();
+  const i = Math.min(lignes.length - 1, Math.max(0, rangVisible()));
+  const lettre = lignes[i] ? premiereLettre(lignes[i].name) : null;
   indexAlphaHote.querySelectorAll(".index-alpha__lettre").forEach((b) =>
     b.classList.toggle("index-alpha__lettre--actif", b.dataset.lettre === lettre),
   );
@@ -401,8 +944,9 @@ function majIndexActif() {
 function sauterALettre(l) {
   const rang = indexAlpha[l];
   if (rang === undefined) return;
-  if (vue.quoi === "albums") {
+  if (vueEnGrille()) {
     grille.scrollTop = Math.floor(rang / colonnesGrille()) * ALBUM_HAUT;
+    grilleDernierRang = -1;
     dessinerGrille();
   } else {
     liste.scrollTop = rang * LIGNE;
@@ -413,6 +957,27 @@ function sauterALettre(l) {
 document.querySelectorAll("[data-vuelib]").forEach((b) =>
   b.addEventListener("click", () => charger(b.dataset.vuelib)),
 );
+
+document.querySelectorAll("[data-tri]").forEach((b) =>
+  b.addEventListener("click", () => choisirTriAlbums(b.dataset.tri)),
+);
+
+/// Change l'ordre de la grille d'albums. Un clic sur « Aléatoire » rebrasse à
+/// chaque fois, même s'il est déjà actif. Le repère alphabétique n'a de sens
+/// que pour l'ordre `alpha` — masqué pour les deux autres.
+function choisirTriAlbums(tri) {
+  if (tri === "alea") rebrasserAlea(vue.lignes);
+  else if (tri === triAlbums) return;
+  triAlbums = tri;
+  document.querySelectorAll("[data-tri]").forEach((b) =>
+    b.classList.toggle("tri__opt--actif", b.dataset.tri === tri),
+  );
+  const avecIndex = vue.quoi === "albums" && tri === "alpha";
+  $("index-alpha").hidden = !avecIndex;
+  if (avecIndex) construireIndexAlpha();
+  grille.scrollTop = 0;
+  rafraichirGrille();
+}
 
 async function activer(item) {
   if (vue.quoi === "artistes") {
@@ -433,9 +998,7 @@ async function activer(item) {
     const depart = vue.lignes.indexOf(item);
     fileCourante = vue.lignes.slice(depart);
     tracerRouteSurCarte(fileCourante);
-    await invoke("play", { paths: fileCourante.map((t) => t.path) });
-    poserLecture(true);
-    sonder(true);
+    await demarrerLecture(() => invoke("play", { paths: fileCourante.map((t) => t.path) }));
   }
 }
 
@@ -476,19 +1039,23 @@ async function inspecter(t) {
   montrerVoisins(t);
 }
 
-/// Le nom de l'artiste, dans l'inspecteur, ouvre ses albums au centre — le
-/// même geste que cliquer l'artiste depuis la liste « Artistes », mais depuis
-/// n'importe quel morceau inspecté (piste, voisin sonique, point de la carte).
-$("insp-artiste").addEventListener("click", async () => {
-  const artiste = $("insp-artiste").dataset.artiste;
+/// Ouvre au centre la grille de tous les albums d'un artiste — le geste
+/// partagé par le nom de l'artiste dans l'inspecteur et dans le transport.
+async function ouvrirAlbumsArtiste(artiste, mbid) {
   if (!artiste) return;
-  const mbid = $("insp-artiste").dataset.mbid || null;
-  const albums = await invoke("albums", { artist: artiste, mbid });
+  const albums = await invoke("albums", { artist: artiste, mbid: mbid || null });
   // « Au centre » suppose le mode Écoute : depuis Explorer ou Éditer, le
   // centre montre la carte ou le dock, pas la grille.
   if (modeCourant !== "ecoute") await basculerMode("ecoute");
   poser("albums", artiste, albums, sommet);
-});
+}
+
+/// Le nom de l'artiste, dans l'inspecteur, ouvre ses albums au centre — le
+/// même geste que cliquer l'artiste depuis la liste « Artistes », mais depuis
+/// n'importe quel morceau inspecté (piste, voisin sonique, point de la carte).
+$("insp-artiste").addEventListener("click", () =>
+  ouvrirAlbumsArtiste($("insp-artiste").dataset.artiste, $("insp-artiste").dataset.mbid),
+);
 
 /// Le nom de l'album, dans l'inspecteur, ouvre ses pistes au centre — même
 /// geste et même principe que le nom de l'artiste juste au-dessus.
@@ -501,35 +1068,29 @@ $("insp-album").addEventListener("click", async () => {
   poser("pistes", album, pistes, sommet);
 });
 
-/// Playlist « dans l'esprit de ce morceau » (`genererAlchimieMorceau`) —
-/// même mécanisme que le bouton ✦ d'une case d'album (`genererAlchimie`),
-/// mais parti d'un seul morceau déjà connu de la carte : une errance sonique
-/// depuis son point, pas besoin de lui chercher un centre au préalable.
-$("insp-alchimie").addEventListener("click", async () => {
-  const bouton = $("insp-alchimie");
+/// Playlist « dans l'esprit de ce morceau » — même mécanisme que le bouton ✦
+/// d'une case d'album (`genererAlchimie`), mais partie d'un seul morceau déjà
+/// connu de la carte : une errance sonique depuis son point, pas besoin de
+/// lui chercher un centre au préalable.
+$("insp-alchimie").addEventListener("click", () => {
   const id = Number($("insp-titre").dataset.id);
   if (!Number.isFinite(id)) return;
-  bouton.disabled = true;
-  try {
-    const pistes = await invoke("path", {
-      from: id,
-      mode: "errance",
-      steps: ALCHIMIE_PISTES,
-      seed: Math.floor(Math.random() * 2 ** 31),
-      bruit: bruitChemin,
-    });
-    if (pistes.length === 0) return;
-    inspecter(pistes[0]);
-    fileCourante = pistes;
-    tracerRouteSurCarte(pistes);
-    await invoke("set_queue", { paths: pistes.map((t) => t.path) });
-    poserLecture(true);
-    sonder(true);
-  } catch (e) {
-    remonter(e, "genererAlchimieMorceau");
-  } finally {
-    bouton.disabled = false;
-  }
+  composerAlchimie({
+    bouton: $("insp-alchimie"),
+    chemin: () =>
+      invoke("path", {
+        from: id,
+        mode: "errance",
+        steps: ALCHIMIE_PISTES,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        bruit: bruitChemin,
+      }),
+    // `remplacer_file`, pas `set_queue` : la playlist doit devenir la file
+    // dès le morceau suivant. `set_queue` gardait le préchargement de la
+    // file précédente (les résultats de recherche), qui s'intercalait avant
+    // la playlist. Le morceau en cours, lui, continue sans coupure.
+    demarrer: (pistes) => invoke("remplacer_file", { paths: pistes.map((t) => t.path) }),
+  });
 });
 
 /// Tempo et tonalité sous le titre du transport.
@@ -551,6 +1112,44 @@ async function mesuresDuTransport(t) {
   const ton = tonaliteFr(d.tonalite);
   if (ton) bouts.push(ton);
   $("np-mesures").textContent = bouts.join(" · ");
+}
+
+/// Conteneurs sans perte : on y affiche la profondeur de bits plutôt que le
+/// débit (qui n'y est pas constant et ne dit rien de la qualité).
+const CODECS_SANS_PERTE = new Set(["FLAC", "WAV", "AIFF", "APE", "WavPack", "ALAC"]);
+
+/// 44100 → « 44,1 kHz » ; 48000 → « 48 kHz ».
+function khz(hz) {
+  const v = hz / 1000;
+  return `${(Number.isInteger(v) ? v : v.toFixed(1)).toString().replace(".", ",")} kHz`;
+}
+
+/// Ligne de qualité du transport : « FLAC · 16 bit · 44,1 kHz »,
+/// « MP3 · 320 kb/s · 44,1 kHz ». Segments omis quand la donnée manque.
+function formatQualite(q) {
+  const bouts = [];
+  if (q.codec) bouts.push(q.codec);
+  const sansPerte = q.codec && CODECS_SANS_PERTE.has(q.codec);
+  if (sansPerte && q.bit_depth) bouts.push(`${q.bit_depth} bit`);
+  else if (!sansPerte && q.bitrate) bouts.push(`${q.bitrate} kb/s`);
+  if (q.sample_rate) bouts.push(khz(q.sample_rate));
+  if (q.channels === 1) bouts.push("mono");
+  return bouts.join(" · ");
+}
+
+/// Qualité du fichier sous le compteur de temps. Comme `mesuresDuTransport` :
+/// suit ce qu'on **écoute**, chargé à la volée, vide si le morceau n'a pas été
+/// scanné pour son format.
+async function qualiteDuTransport(t) {
+  const vise = t.path;
+  let q;
+  try {
+    q = await invoke("qualite_piste", { id: t.id });
+  } catch {
+    return;
+  }
+  if (!q || enLecture !== vise) return;
+  $("np-qualite").textContent = formatQualite(q);
 }
 
 /// Noms français des douze classes de hauteur.
@@ -636,9 +1235,7 @@ async function montrerVoisins(t) {
       inspecter(v);
       fileCourante = [v];
       tracerRouteSurCarte(fileCourante);
-      await invoke("play", { paths: [v.path] });
-      poserLecture(true);
-      sonder(true);
+      await demarrerLecture(() => invoke("play", { paths: [v.path] }));
     });
     hote.appendChild(el);
   }
@@ -699,6 +1296,10 @@ $("q").addEventListener("input", (e) => {
 // L'interface connaît déjà la file : c'est elle qui l'a envoyée au moteur.
 // Inutile de la redemander, `current` suffit à situer la lecture.
 function dessinerFile() {
+  // La composition d'une playlist ✦ tient la main sur le panneau : elle y
+  // fait défiler ses pistes elle-même (`revelerFile`), un rendu ordinaire
+  // par-dessus effacerait l'animation.
+  if (fileCompositionActive) return;
   const hote = $("file-liste");
   $("file-compte").textContent = `${fileCourante.length} morceaux`;
 
@@ -718,19 +1319,28 @@ function dessinerFile() {
 
     el.innerHTML = `<span class="file__rang"></span>
                     <span class="file__txt"><b></b><span></span></span>
+                    <span class="file__pop"></span>
                     <span class="file__duree"></span>`;
     el.children[0].textContent = i === rangCourant ? "▶" : i + 1;
     el.children[1].children[0].textContent = txt(t.title, "(sans titre)");
     el.children[1].children[1].textContent = txt(t.artist, "(sans artiste)");
-    el.children[2].textContent = duree(t.duration_ms);
+    el.children[2].appendChild(jaugePop(popParPiste.get(t.id)));
+    el.children[3].textContent = duree(t.duration_ms);
 
     // Sauter conserve les pistes précédentes : on peut revenir en arrière.
     el.addEventListener("click", async () => {
-      await invoke("jump_to", { index: i });
-      sonder(true);
+      await demarrerLecture(() => invoke("jump_to", { index: i }));
     });
     hote.appendChild(el);
   });
+
+  // La popularité, en lot puis repaint — comme les pochettes de la grille.
+  chargerPopularites(
+    fileCourante.map((t) => t.id),
+    () => {
+      if (!$("file").hidden && !fileCompositionActive) dessinerFile();
+    },
+  );
 }
 
 function basculerFile(ouvrir) {
@@ -773,6 +1383,33 @@ let clicEnVol = false;
 function poserLecture(joue) {
   veutJouer = joue;
   $("lecture").textContent = joue ? "⏸" : "▶";
+}
+
+/// Lance une lecture en affichant l'intention **avant** que le moteur réponde.
+///
+/// `demarrer` renvoie la promesse de l'`invoke("play")` / `invoke("set_queue")`.
+/// Le moteur décode la première piste en mémoire avant de rendre la main —
+/// jusqu'à ~1 s sur support lent. Poser l'icône après cet `await` (l'ancien
+/// schéma) laissait le bouton sur ▶ pendant tout ce temps : le clic sur la
+/// pochette paraissait ignoré. On bascule donc l'icône tout de suite ;
+/// `ignorerEtatJusqua` empêche un battement de sondage de remettre ▶ tant que
+/// le moteur n'a pas confirmé la lecture.
+///
+/// Le sondage, lui, ne démarre qu'**après** que le moteur a répondu : lancé
+/// avant, son premier battement voit le lecteur encore `finished` (l'ancienne
+/// file épuisée) et se coupe aussitôt (`if (e.finished) sonder(false)`) —
+/// plus rien n'interrogeait alors le moteur et le panneau d'écoute restait
+/// figé sur « Rien en lecture ».
+async function demarrerLecture(demarrer) {
+  poserLecture(true);
+  ignorerEtatJusqua = Date.now() + 2000;
+  try {
+    await demarrer();
+  } catch (e) {
+    poserLecture(false);
+    throw e;
+  }
+  sonder(true);
 }
 
 /// Un clic à la fois : les suivants sont ignorés, pas empilés. Empilés, ils
@@ -823,6 +1460,166 @@ $("precedent").addEventListener("click", pistePrecedente);
 $("suivant").addEventListener("click", pisteSuivante);
 $("volume").addEventListener("input", (e) => invoke("set_volume", { volume: e.target.value / 100 }));
 
+// Bouton « E » : amélioration du son (excitation psychoacoustique). Choix
+// retenu entre deux lancements, comme le bruit du chemin ou le mode de
+// contact. La réglette d'intensité n'apparaît que quand « E » est actif.
+const btnAmeliorer = $("ameliorer");
+const forceAmeliorer = $("ameliorer-force");
+let ameliorationActive = localStorage.getItem("ameliorer") === "1";
+let ameliorationForce = clamp01(parseInt(localStorage.getItem("ameliorer-force"), 10), 60);
+forceAmeliorer.value = ameliorationForce;
+
+function clamp01(v, defaut) {
+  return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : defaut;
+}
+
+function refletAmeliorer() {
+  btnAmeliorer.setAttribute("aria-pressed", String(ameliorationActive));
+  forceAmeliorer.hidden = !ameliorationActive;
+}
+refletAmeliorer();
+
+// Applique l'état courant au moteur puis relance le sondage : le moteur
+// réouvre le morceau en cours en tâche de fond (~1 s) et reconstruit le
+// préchargement avec la nouvelle version. On désarme les commandes le temps
+// de la bascule, sans figer l'UI.
+async function poserAmelioration() {
+  btnAmeliorer.disabled = true;
+  forceAmeliorer.disabled = true;
+  try {
+    await invoke("set_amelioration", {
+      actif: ameliorationActive,
+      intensite: ameliorationForce / 100,
+    });
+  } finally {
+    setTimeout(() => {
+      btnAmeliorer.disabled = false;
+      forceAmeliorer.disabled = false;
+    }, 800);
+  }
+  sonder(true);
+  rafraichirSpectreTransport();
+}
+
+// Au démarrage, si actif : on ne fait que reposer le drapeau (rien ne joue
+// encore, `poserAmelioration` réouvrirait dans le vide).
+if (ameliorationActive) {
+  invoke("set_amelioration", {
+    actif: true,
+    intensite: ameliorationForce / 100,
+  }).catch(() => {});
+}
+
+btnAmeliorer.addEventListener("click", () => {
+  ameliorationActive = !ameliorationActive;
+  localStorage.setItem("ameliorer", ameliorationActive ? "1" : "0");
+  refletAmeliorer();
+  poserAmelioration();
+});
+
+// `change` et non `input` : on ne réouvre le morceau qu'au relâché, pas à
+// chaque pixel du glissement.
+forceAmeliorer.addEventListener("change", () => {
+  ameliorationForce = clamp01(parseInt(forceAmeliorer.value, 10), 60);
+  localStorage.setItem("ameliorer-force", String(ameliorationForce));
+  if (ameliorationActive) poserAmelioration();
+});
+
+// Bouton « HD » : super-résolution neuronale (AERO), rendue hors ligne.
+const btnHd = $("hd");
+let lectureHd = localStorage.getItem("lecture-hd") === "1";
+let hdSonde = null; // intervalle de suivi d'une régénération en cours
+
+// Le fond de plan de la carte MapLibre — eau, terre, voirie, bâti, toponymes.
+// Chaque thème est un `style-<id>.json` déjà écrit par `engendrer_tuiles` (côté
+// Rust, `rusty_music_carto::Palette`) ; basculer ne régénère aucune tuile.
+// `osm-clair` = le `style.json` sans suffixe. L'overlay de familles (nuage,
+// pastilles, territoires) ne dépend pas de ce choix. Déclaré ici, avec les
+// autres préférences en `localStorage`, parce qu'`initialiserGL` le lit.
+let carteTheme = localStorage.getItem("carte-theme") || "osm-clair";
+
+if (lectureHd) invoke("set_lecture_hd", { actif: true }).catch(() => {});
+
+/// Met le bouton « HD » à l'état du morceau `t` : absent / disponible / en cours.
+async function majHd(t) {
+  clearInterval(hdSonde);
+  hdSonde = null;
+  btnHd.classList.remove("travaille");
+  btnHd.disabled = false;
+  btnHd.textContent = "HD";
+  btnHd.setAttribute("aria-pressed", "false");
+  if (!t) {
+    btnHd.disabled = true;
+    return;
+  }
+  // Une régénération est-elle en cours pour ce morceau ?
+  try {
+    const s = await invoke("superres_state");
+    if (s.en_cours && s.source === t.path) return suivreHd(t);
+  } catch {}
+  // Sinon : le cache existe-t-il ?
+  try {
+    const dispo = await invoke("superres_disponible", { path: t.path });
+    btnHd.setAttribute("aria-pressed", String(dispo && lectureHd));
+    btnHd.dataset.dispo = dispo ? "1" : "0";
+  } catch {}
+}
+
+/// Suit l'avancement d'une régénération et rebascule le bouton à la fin.
+function suivreHd(t) {
+  btnHd.classList.add("travaille");
+  btnHd.disabled = true;
+  clearInterval(hdSonde);
+  hdSonde = setInterval(async () => {
+    let s;
+    try {
+      s = await invoke("superres_state");
+    } catch {
+      return;
+    }
+    if (s.source !== t.path) return;
+    if (s.en_cours) {
+      const pct = s.total ? Math.round((100 * s.faits) / s.total) : 0;
+      btnHd.textContent = `${pct}%`;
+    } else {
+      clearInterval(hdSonde);
+      hdSonde = null;
+      // enLecture peut avoir changé entre-temps.
+      const cour = fileCourante.find((x) => x.path === enLecture);
+      majHd(cour);
+      spectres.clear(); // le cache HD vient d'apparaître
+      if (lectureHd) rafraichirSpectreTransport();
+    }
+  }, 700);
+}
+
+btnHd.addEventListener("click", async () => {
+  const t = fileCourante.find((x) => x.path === enLecture);
+  if (!t || btnHd.disabled) return;
+  if (btnHd.dataset.dispo === "1") {
+    // Le cache existe : bascule lecture originale ↔ HD.
+    lectureHd = !lectureHd;
+    localStorage.setItem("lecture-hd", lectureHd ? "1" : "0");
+    btnHd.setAttribute("aria-pressed", String(lectureHd));
+    btnHd.disabled = true;
+    try {
+      await invoke("set_lecture_hd", { actif: lectureHd });
+    } finally {
+      setTimeout(() => (btnHd.disabled = false), 800);
+    }
+    sonder(true);
+    rafraichirSpectreTransport();
+  } else {
+    // Pas de cache : lancer la régénération.
+    try {
+      await invoke("start_superres", { path: t.path });
+      suivreHd(t);
+    } catch (e) {
+      remonter(e, "start_superres");
+    }
+  }
+});
+
 // Espace : lecture/pause. ← / → : piste précédente/suivante. Appelle les
 // mêmes fonctions que les boutons du transport, jamais `.click()` : un focus
 // resté sur un bouton (album, mode, « retour »…) fait sinon parfois doubler
@@ -857,60 +1654,125 @@ window.__TAURI__.event.listen("touche-media", (e) => {
   else if (e.payload === "precedent") pistePrecedente();
 });
 
-// Onde : enveloppe crête (silhouette) avec noyau RMS (corps du son), calculée
-// à partir du signal réel. Tant qu'elle n'est pas prête, un trait plat sert de
-// repère de position.
-const TRANCHES = 160;
+// Barre de progression : spectrogramme du son réellement joué (version HD du
+// cache si le HD est actif, sinon l'original), avec tête de lecture par
+// dessus. Ce que le HD a ajouté au-dessus de l'original est teinté de
+// l'accent. Le calcul décode tout le fichier — quelques secondes — donc il
+// tourne en tâche de fond et l'image apparaît quand elle est prête ; d'ici là
+// un fond neutre sert de repère.
 const wave = $("wave");
-for (let i = 0; i < TRANCHES; i++) {
-  const b = document.createElement("i");
-  b.appendChild(document.createElement("u")); // noyau RMS
-  b.style.height = "12%";
-  wave.appendChild(b);
-}
+const waveCnv = $("wave-cnv");
+const waveCtx = waveCnv.getContext("2d");
+const HAUT_SPECTRE = 42;
 
-const ondes = new Map(); // path → {peak, rms}, déjà rendues
+const spectres = new Map(); // clé path+hd → { fond: canvas } déjà peint
+let spectreCourant = null; // le { fond } affiché
+let teteCourante = 0;
 
-function poserOnde(w) {
-  for (let i = 0; i < TRANCHES; i++) {
-    const barre = wave.children[i];
-    const crete = w ? w.peak[i] ?? 0 : 0;
-    const corps = w ? w.rms[i] ?? 0 : 0;
-    // Racine : comprime la dynamique pour que les passages doux restent
-    // visibles à côté des crêtes.
-    barre.style.height = w ? `${8 + Math.sqrt(crete) * 92}%` : "12%";
-    barre.firstChild.style.height = crete > 0 ? `${(corps / crete) * 100}%` : "0%";
+/// Recompose : image de fond + assombrissement de la partie écoulée + trait.
+function peindreTransport(frac) {
+  teteCourante = Math.min(1, Math.max(0, frac || 0));
+  const w = waveCnv.width || 1;
+  const h = waveCnv.height || 1;
+  waveCtx.clearRect(0, 0, w, h);
+  if (spectreCourant) {
+    waveCtx.drawImage(spectreCourant.fond, 0, 0, w, h);
   }
+  const x = Math.round(teteCourante * w);
+  waveCtx.fillStyle = "rgba(0,0,0,.34)";
+  waveCtx.fillRect(0, 0, x, h);
+  waveCtx.fillStyle =
+    getComputedStyle(document.documentElement).getPropertyValue("--txt").trim() || "#EDE8DC";
+  waveCtx.fillRect(x, 0, 1, h);
 }
 
-/// Demande l'onde d'une piste ; le moteur répond `null` puis la calcule.
-async function chargerOnde(t) {
-  if (!t) return poserOnde(null);
-  if (ondes.has(t.path)) return poserOnde(ondes.get(t.path));
+/// Peint le spectrogramme hors écran, une fois — teinte l'ajout du HD.
+function composerSpectre(s) {
+  const { largeur: w, hauteur: h, pixels, pixels_ref, hd } = s;
+  const fond = document.createElement("canvas");
+  fond.width = w;
+  fond.height = h;
+  const fctx = fond.getContext("2d");
+  const img = fctx.createImageData(w, h);
+  const table = rampeRGB();
+  const acc = (
+    getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#c98a3b"
+  )
+    .replace("#", "")
+    .match(/../g)
+    .map((v) => parseInt(v, 16));
+  for (let i = 0; i < pixels.length; i++) {
+    const v = pixels[i];
+    let c = table[v];
+    // Là où le HD a mis nettement plus d'énergie que l'original, on vire vers
+    // l'accent — d'autant plus fort que le gain est net.
+    if (hd && pixels_ref) {
+      const gain = v - pixels_ref[i];
+      if (gain > 16) {
+        const k = Math.min(1, (gain - 16) / 90);
+        c = [
+          c[0] + (acc[0] - c[0]) * k,
+          c[1] + (acc[1] - c[1]) * k,
+          c[2] + (acc[2] - c[2]) * k,
+        ];
+      }
+    }
+    img.data[i * 4] = c[0];
+    img.data[i * 4 + 1] = c[1];
+    img.data[i * 4 + 2] = c[2];
+    img.data[i * 4 + 3] = 255;
+  }
+  fctx.putImageData(img, 0, 0);
+  return { fond };
+}
 
-  poserOnde(null);
+/// Demande le spectrogramme du son joué ; le fichier décodé prend quelques
+/// secondes, on réessaie sans marteler.
+async function chargerSpectreTransport(t) {
+  spectreCourant = null;
+  peindreTransport(teteCourante);
+  if (!t) return;
+
+  const largeur = Math.max(160, Math.round(wave.getBoundingClientRect().width));
+  waveCnv.width = largeur;
+  waveCnv.height = HAUT_SPECTRE;
+
+  const hd = lectureHd ? 1 : 0;
+  const cle = `${t.path}#${hd}`;
+  if (spectres.has(cle)) {
+    spectreCourant = spectres.get(cle);
+    return peindreTransport(teteCourante);
+  }
+
   const vise = t.path;
-  // Le calcul décode tout le fichier : 3,5 s sur la carte SD au repos, mais
-  // 13 s mesurées pendant qu'une passe d'analyse la sature. Le budget doit
-  // couvrir ce cas, sinon l'onde reste plate sans que rien ne le signale.
   const echeance = Date.now() + 120_000;
-  let attente = 300;
-  while (Date.now() < echeance) {
-    const w = await invoke("waveform", {
-      path: vise,
-      buckets: TRANCHES,
-      durationMs: t.duration_ms ?? null,
-    });
-    if (w) {
-      ondes.set(vise, w);
-      if (enLecture === vise) poserOnde(w);
+  let attente = 250;
+  while (Date.now() < echeance && enLecture === vise) {
+    let s;
+    try {
+      s = await invoke("spectre_transport", { path: vise, width: largeur, height: HAUT_SPECTRE });
+    } catch (e) {
+      remonter(e, "spectre_transport");
       return;
     }
-    if (enLecture !== vise) return; // piste changée entre-temps
+    if (s && s.pixels && s.pixels.length) {
+      const compose = composerSpectre(s);
+      spectres.set(cle, compose);
+      if (enLecture === vise) {
+        spectreCourant = compose;
+        peindreTransport(teteCourante);
+      }
+      return;
+    }
     await new Promise((r) => setTimeout(r, attente));
-    attente = Math.min(attente * 1.4, 3000); // on espace, sans marteler
+    attente = Math.min(attente * 1.4, 3000);
   }
-  remonter(`onde non calculée après 120 s : ${vise}`, "chargerOnde");
+}
+
+/// À rappeler quand le son joué change sans changer de morceau (E ou HD).
+function rafraichirSpectreTransport() {
+  const t = fileCourante.find((x) => x.path === enLecture);
+  chargerSpectreTransport(t);
 }
 
 wave.addEventListener("click", async (e) => {
@@ -959,6 +1821,9 @@ async function battement() {
     // la mesure arrive, et reste vide si le morceau n'est pas mesuré.
     $("np-mesures").textContent = "";
     if (t) mesuresDuTransport(t);
+    $("np-qualite").textContent = "";
+    if (t) qualiteDuTransport(t);
+    majHd(t);
     // L'inspecteur suit la lecture au fil de la file, pas seulement le
     // morceau sur lequel on a cliqué en premier : sans ça, il restait figé
     // sur le départ d'un album ou d'une playlist « dans l'esprit de » pendant
@@ -989,7 +1854,7 @@ async function battement() {
         }
       });
     }
-    chargerOnde(t);
+    chargerSpectreTransport(t);
     dessiner(); // met à jour la ligne surlignée
     if (!$("file").hidden) dessinerFile();
     // Sans ça, le halo « en écoute » de la carte reste figé sur le premier
@@ -1007,10 +1872,7 @@ async function battement() {
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(total)}`;
 
   const frac = total ? Math.min(1, e.position_ms / total) : 0;
-  const seuil = frac * wave.children.length;
-  for (let i = 0; i < wave.children.length; i++) {
-    wave.children[i].classList.toggle("on", i < seuil);
-  }
+  peindreTransport(frac);
   // Les spectrogrammes suivent aussi la lecture ordinaire : tant que les
   // stems ne jouent pas, ils montrent où en est le morceau d'origine.
   if (modeCourant === "editer") poserTete(frac);
@@ -1026,15 +1888,28 @@ async function battement() {
 // transformation vers les pixels : un facteur et un décalage, rien de plus.
 const carte = {
   points: [],
+  // Adresse réelle (lon/lat) de chaque morceau logé, `id -> [x, y]` — vide
+  // sur le monde fictif. Voir `villeReelle` et `chargerCarte`.
+  positionsReelles: new Map(),
   vue: { k: 1, dx: 0, dy: 0 },
   isolee: null, // famille mise en avant, ou null
   survole: null,
   depart: null, // borne de départ d'un chemin
   arrivee: null, // borne d'arrivée
-  route: null, // chemin tracé, ou null
+  route: null, // chemin tracé (les morceaux, un point par étape), ou null
+  // Le TRAIT à dessiner entre les étapes de `route` — d'ordinaire `route`
+  // lui-même (une droite d'étape en étape), sauf sur le plan de ville réel
+  // où `tracerRouteSurCarte` l'enrichit après coup avec les vraies rues
+  // entre chaque paire. `route` reste la vérité pour les repères posés à
+  // chaque étape ; `routeTrace` ne sert qu'au tracé du trait.
+  routeTrace: null,
   lasso: null, // contour en cours de tracé, en coordonnées de carte
   couleur: "famille", // famille, ou une clé de CONTINUES
-  affichage: "points", // points (nuage), ou densite (lignes de niveau)
+  // Deux visualisations, et deux seulement : le nuage t-SNE dessiné au
+  // canevas, et la carte en tuiles vectorielles. Ce sont deux lectures
+  // différentes de la même projection — l'une montre les morceaux tels quels,
+  // l'autre en fait un pays.
+  affichage: "points", // points (nuage t-SNE) | carte (tuiles)
   familles: null, // [[rang, nom, effectif]], chargé une fois
   bornes: {}, // min et max de chaque variable continue, pour la rampe
   filtre: "", // texte du filtre ; les exclus s'estompent, jamais ne disparaissent
@@ -1063,6 +1938,10 @@ const AIDE_CHEMIN = {
   dessine: [
     "Maj+glisser : le trait cueille les morceaux qu'il touche. Ce qu'il traverse à vide reste vide.",
     "maj+glisser : tracer",
+  ],
+  itineraire: [
+    "Maj+clic : le départ. Maj+clic à nouveau : une arrivée, facultative si une durée est fixée. Le trajet suit les vraies rues et la playlist est faite des morceaux qui les bordent ; le profil (grands axes / petites rues / parcs) le retrace aussitôt.",
+    "maj+clic : départ / arrivée",
   ],
 };
 
@@ -1113,6 +1992,445 @@ function retenu(p) {
 const cnv = $("carte");
 const ctx = cnv.getContext("2d");
 
+/* ------------------------------------------------- carte MapLibre (module 2)
+ *
+ * Les tuiles vectorielles remplacent le nuage et la nappe dessinés à la main ;
+ * le canevas reste, transparent, pour ce que les tuiles ne portent pas — les
+ * chemins, le lasso, les bornes de départ et d'arrivée.
+ *
+ * **MapLibre n'écoute aucun événement** (`interactive: false`) : le canevas
+ * est au-dessus et garde tous les gestionnaires, qu'il relaie. C'est ce qui
+ * permet à `versEcran` et `versCarte` — les deux seules transformations de
+ * coordonnées du fichier — de simplement déléguer, et à tout le reste (lasso,
+ * tracés, pointage) de continuer sans être réécrit.
+ *
+ * La carte vivait dans une seconde fenêtre : MapLibre ne s'y initialisait
+ * jamais, sans la moindre erreur. Dans la fenêtre principale, il démarre du
+ * premier coup — voir `docs/carto-etapes.md`.
+ */
+
+/// Demi-étendue du domaine de la carte. **Doit valoir exactement celle de
+/// `crates/carto/src/projection.rs`**, sinon la surcouche se décale des tuiles.
+/// Ne sert que sur le monde fictif — voir `villeReelle`.
+const DEMI_ETENDUE = 1.08;
+
+let gl = null; // l'instance MapLibre, ou null tant que les tuiles manquent
+let glPret = false;
+
+/// Ce sur quoi le bouton « Vue d'ensemble » ramène la caméra MapLibre :
+/// `bounds` (l'emprise de la limite communale, `metadata["rusty:bounds"]` du
+/// style) sur le plan de ville réel ; `center`/`zoom` d'accueil sinon, en
+/// dernier repli. Rempli par `initialiserGL`.
+let vueInitialeGL = null;
+
+/// `true` quand un plan de ville réel est actif (`positions_carte` a rendu
+/// quelque chose côté Rust) : `carte.points[i].x/y` valent alors des lon/lat
+/// réels — une adresse de rue, pas une position t-SNE — et
+/// `geoDepuisCarte`/`carteDepuisGeo` doivent être l'identité plutôt que la
+/// projection du monde fictif. Mis à jour par `chargerCarte`.
+let villeReelle = false;
+
+/// `true` quand ce sont les adresses réelles du plan de ville qui sont à
+/// l'écran — donc le repère dans lequel `versEcran`/`versCarte` travaillent.
+/// Le nuage t-SNE et le plan de ville coexistent : dans le nuage, on reste en
+/// t-SNE même quand une ville est importée. Les modes de chemin qui raisonnent
+/// à l'écran (direct, dessiné, lasso) passent ce drapeau au moteur pour qu'il
+/// interpole dans le bon repère — sans lui, un trait tracé sur le nuage était
+/// testé contre des positions parisiennes et n'attrapait rien.
+const carteReelle = () => carte.affichage === "carte" && villeReelle;
+
+/// Le zoom maximal accordé à la caméra MapLibre — repris de `initialiserGL`
+/// pour que `zoomer()` (molette, pincement) ne plafonne pas avant le zoom
+/// auquel les tuiles ont vraiment quelque chose à montrer (le bâti n'apparaît
+/// qu'au zoom 15 sur le plan de ville réel).
+let zoomMax = 14;
+
+/// L'instance MapLibre **si elle est aux commandes**, sinon `null`.
+///
+/// Le nuage t-SNE et la carte partagent le même canevas et les mêmes
+/// gestionnaires ; c'est ce raccourci qui décide lequel des deux repères
+/// gouverne les coordonnées, le déplacement et le zoom. Sans lui, ouvrir le
+/// nuage laissait MapLibre projeter les points et le mode devenait
+/// inatteignable.
+function carteGL() {
+  return carte.affichage === "carte" && gl ? gl : null;
+}
+
+/// La console d'une webview du système n'est pas lisible de l'extérieur : ce
+/// qui compte repart vers le journal du processus.
+function journalCarte(message, niveau = "log") {
+  console[niveau === "warn" ? "warn" : "log"]("[carte] " + message);
+  invoke("journal_carte", { niveau, message: String(message) }).catch(() => {});
+}
+
+function geoDepuisCarte(x, y) {
+  // Plan de ville réel : `x`/`y` sont déjà des lon/lat (une adresse de rue),
+  // pas un point du carré `[-1.08, 1.08]²` du monde fictif — rien à projeter.
+  if (villeReelle) return [x, y];
+  const u = (x / DEMI_ETENDUE + 1) / 2;
+  const v = (1 - y / DEMI_ETENDUE) / 2;
+  return [(u * 2 - 1) * 180, (Math.atan(Math.sinh(Math.PI * (1 - 2 * v))) * 180) / Math.PI];
+}
+
+function carteDepuisGeo(lng, lat) {
+  if (villeReelle) return [lng, lat];
+  const phi = (lat * Math.PI) / 180;
+  const u = (lng / 180 + 1) / 2;
+  const v = (1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2;
+  return [(u * 2 - 1) * DEMI_ETENDUE, (1 - v * 2) * DEMI_ETENDUE];
+}
+
+/// Combien de mètres au sol valent `px` pixels à l'écran, au centre de la vue
+/// MapLibre courante. Sur le plan de ville réel, `direct` et `dessiné`
+/// travaillent en mètres locaux côté moteur (`RepereLocal`) : le rayon de
+/// cueillette doit être dans la même unité, pas dans le repère t-SNE.
+function metresParPixels(px) {
+  if (!gl) return px;
+  const r = cnv.getBoundingClientRect();
+  const cx = r.width / 2;
+  const cy = r.height / 2;
+  const a = gl.unproject([cx, cy]);
+  const b = gl.unproject([cx + px, cy]);
+  const latM = (((a.lat + b.lat) / 2) * Math.PI) / 180;
+  const dx = (((b.lng - a.lng) * Math.PI) / 180) * Math.cos(latM) * 6371000;
+  const dy = (((b.lat - a.lat) * Math.PI) / 180) * 6371000;
+  return Math.hypot(dx, dy);
+}
+
+/// L'emprise géographique de tous les points, `[[ouest, sud], [est, nord]]`,
+/// ou `null` s'il n'y en a pas encore. Sert à `fitBounds` pour la vue
+/// d'ensemble : sur le plan de ville `p.x/p.y` sont déjà des lon/lat, sur le
+/// monde fictif `geoDepuisCarte` les projette d'abord.
+function bornesGeoPoints() {
+  let o = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  const ajoute = (lng, lat) => {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    if (lng < o) o = lng;
+    if (lng > e) e = lng;
+    if (lat < s) s = lat;
+    if (lat > n) n = lat;
+  };
+  if (villeReelle) {
+    // Sur le plan de ville, seules les adresses réelles comptent. `p.x/p.y`
+    // restent des coordonnées t-SNE (~[-1, 1]) : les passer pour des lon/lat
+    // renverrait la caméra au large de l'Afrique — c'était la cause de
+    // l'image grise. Les morceaux sans adresse sont simplement absents de
+    // `positionsReelles`.
+    for (const [lng, lat] of carte.positionsReelles.values()) ajoute(lng, lat);
+  } else {
+    for (const p of carte.points) {
+      const [lng, lat] = geoDepuisCarte(p.x, p.y);
+      ajoute(lng, lat);
+    }
+  }
+  return o <= e && s <= n ? [[o, s], [e, n]] : null;
+}
+
+/// Les tuiles passent par `addProtocol`, sur le fil principal : le fil de
+/// travail de MapLibre ne peut pas atteindre un schéma d'URI personnalisé.
+if (window.maplibregl) {
+  maplibregl.addProtocol("tuiles", async (params) => {
+    const m = /^tuiles:\/\/[^/]*\/(carte|relief)\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
+    if (!m) throw new Error("URL de tuile illisible : " + params.url);
+    const octets = await invoke("tuile", { quoi: m[1], z: +m[2], x: +m[3], y: +m[4] });
+    const donnees = octets instanceof ArrayBuffer ? octets : new Uint8Array(octets).buffer;
+    // Un tableau vide veut dire « pas de tuile ici » : le cas ordinaire sur un
+    // monde creux.
+    return { data: donnees.byteLength ? donnees : null };
+  });
+}
+
+async function initialiserGL() {
+  if (gl || !window.maplibregl) return;
+  let style;
+  try {
+    style = await invoke("style_carte", { theme: carteTheme });
+  } catch (e) {
+    // Pas encore de tuiles : le nuage dessiné à la main prend le relais.
+    console.warn("[carte] tuiles absentes :", e);
+    return;
+  }
+  // Sur le plan de ville réel, `style` porte son propre `center`/`zoom`
+  // (Paris, pas le centre du monde fictif) — voir `crate::style::construire`
+  // côté Rust. Absents sur le monde fictif : on retombe alors sur les
+  // anciennes valeurs, inchangées. `maxZoom` suit le même principe pour le
+  // sur-zoom : 14 par défaut (le monde fictif s'arrête à 9, le sur-zoom
+  // comble le reste), mais jamais moins que ce que les tuiles couvrent
+  // vraiment — sur Paris, le bâti n'apparaît qu'au zoom 15.
+  const maxZoomTuiles = style?.sources?.carte?.maxzoom;
+  zoomMax = Math.max(14, maxZoomTuiles || 0);
+  const bb = style?.metadata?.["rusty:bounds"];
+  vueInitialeGL = {
+    center: style.center || [0, 0],
+    zoom: style.zoom || 1.6,
+    bounds:
+      Array.isArray(bb) && bb.length === 4 && bb.every(Number.isFinite)
+        ? [[bb[0], bb[1]], [bb[2], bb[3]]]
+        : null,
+  };
+  gl = new maplibregl.Map({
+    container: "carte-gl",
+    style,
+    center: style.center || [0, 0],
+    zoom: style.zoom || 1.6,
+    minZoom: 0,
+    maxZoom: zoomMax,
+    // Le canevas est au-dessus et relaie tout : MapLibre ne doit rien écouter.
+    interactive: false,
+    // ODbL : sur un plan de ville réel (`crates/osm`), les tuiles viennent
+    // d'OpenStreetMap et l'attribution est obligatoire. Sur le monde
+    // fictif, l'attribution par défaut ne dirait rien de faux — elle reste
+    // affichée plutôt que testée au cas par cas ici.
+    attributionControl: { compact: true, customAttribution: "© les contributeurs OpenStreetMap" },
+    // Une carte inventée n'a ni nord ni horizon.
+    renderWorldCopies: false,
+    fadeDuration: 120,
+    localIdeographFontFamily: "'Hiragino Sans', 'Noto Sans CJK JP', sans-serif",
+  });
+  gl.on("load", () => {
+    glPret = true;
+    journalCarte(
+      "tuiles chargées : " + gl.getStyle().layers.length + " couches, zoom " +
+      gl.getZoom().toFixed(2),
+    );
+    majCouleurGL();
+    majFiltreGL();
+    majAffichageGL();
+    poserVignetteCarte(gl.getStyle());
+    dessinerCarte();
+  });
+  gl.on("zoom", majVignetteZoom);
+  gl.on("render", () => {
+    synchroniserVue();
+    dessinerSurcouche();
+  });
+  gl.on("error", (e) => {
+    const m = e && e.error ? e.error.message || String(e.error) : "";
+    if (/204|empty|Not Found/i.test(m)) return; // tuile absente : ordinaire
+    journalCarte(m, "warn");
+  });
+}
+
+/// Combien d'unités de carte tient un pixel, à la vue courante.
+function uniteParPixel() {
+  const a = gl.unproject([0, 0]);
+  const b = gl.unproject([1, 0]);
+  return Math.abs(carteDepuisGeo(b.lng, b.lat)[0] - carteDepuisGeo(a.lng, a.lat)[0]);
+}
+
+/// Recopie la vue de MapLibre dans `carte.vue`.
+///
+/// Le reste du fichier lit `carte.vue.k` pour dimensionner ses points, ses
+/// libellés et ses seuils de pointage. Plutôt que de traquer ces usages, on
+/// tient `k` à jour : c'est le facteur qui, multiplié par `echelle(r)`, donne
+/// les pixels par unité de carte — exactement ce qu'il valait avant.
+function synchroniserVue() {
+  if (!carteGL()) return;
+  const r = cnv.getBoundingClientRect();
+  const c = echelle(r);
+  if (c <= 0) return;
+  carte.vue.k = 1 / (uniteParPixel() * c);
+  const z = $("zoom-val");
+  if (z) z.textContent = `×${carte.vue.k.toFixed(1).replace(".", ",")}`;
+}
+
+/// Colorer par famille, année, tempo ou énergie : une expression de style sur
+/// la couche des morceaux, au lieu d'un redessin complet du nuage.
+/// Bascule entre les deux visualisations.
+///
+/// Le conteneur des tuiles se cache quand le nuage reprend la main : le
+/// canevas redessine alors tout lui-même, avec son propre repère.
+function majAffichageGL() {
+  const conteneur = $("carte-gl");
+  const enCarte = carte.affichage === "carte";
+  if (conteneur) conteneur.hidden = !enCarte;
+  // Le fond de plan ne concerne que les tuiles MapLibre : sur le nuage de
+  // points, le canevas dessine son propre repère et ce choix n'a aucun effet.
+  const blocFond = $("bloc-fond");
+  if (blocFond) blocFond.hidden = !enCarte;
+  majSegmentsCouleur();
+  if (enCarte && !gl) {
+    initialiserGL()
+      .then(() => {
+        majCouleurGL();
+        majFiltreGL();
+        dessinerCarte();
+      })
+      .catch((e) => journalCarte("tuiles indisponibles : " + e, "warn"));
+    return;
+  }
+  if (enCarte && gl) gl.resize();
+  const vignette = $("carte-vignette");
+  if (vignette) vignette.style.display = enCarte ? "" : "none";
+  dessinerCarte();
+}
+
+/// `#RRGGBB` → `"r, g, b"`, ou `null`. Pour bâtir `rgb()`/`rgba()`.
+function hexVersRgb(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return `${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255}`;
+}
+
+/// Le fondu de bordure façon maptoposter, **sur le plan de ville réel** : le
+/// réseau se dissout dans le fond près des bords, au lieu de s'arrêter net sur
+/// le périphérique (le halo de petite couronne lui donne de la matière). Teinte
+/// = le fond du thème chargé ; force décroissante au zoom (`majVignetteZoom`).
+function poserVignetteCarte(style) {
+  const el = $("carte-vignette");
+  if (!el) return;
+  const couches = style?.layers || [];
+  const couche = couches.find((l) => l.type === "background");
+  const hex = couche && couche.id === "terre-reelle" && couche.paint?.["background-color"];
+  const rgb = hexVersRgb(hex);
+  if (!rgb) {
+    el.style.background = "none";
+    el.dataset.actif = "";
+    return;
+  }
+  // Rampe linéaire, comme `create_gradient_fade` de maptoposter : la couleur du
+  // fond, opaque au bord, transparente vers le centre. On interpole vers cette
+  // même couleur à alpha 0 (`rgba(r,g,b,0)`), **jamais** vers `transparent` —
+  // qui vaut `rgba(0,0,0,0)` et fait virer le milieu du dégradé au gris/noir.
+  const plein = `rgb(${rgb})`, vide = `rgba(${rgb},0)`;
+  const h = 30, c = 17; // % de fondu, vertical / horizontal
+  el.style.background =
+    `linear-gradient(to bottom, ${plein}, ${vide} ${h}%, ${vide} ${100 - h}%, ${plein}),` +
+    `linear-gradient(to right, ${plein}, ${vide} ${c}%, ${vide} ${100 - c}%, ${plein})`;
+  el.dataset.actif = "1";
+  majVignetteZoom();
+}
+
+/// Opacité du fondu : pleine sous z13 (vue d'ensemble, esthétique poster),
+/// éteinte à z16 (échelle de la façade, où un voile gênerait la lecture).
+function majVignetteZoom() {
+  const el = $("carte-vignette");
+  if (!el || el.dataset.actif !== "1" || !gl) return;
+  el.style.opacity = String(Math.max(0, Math.min(1, (16 - gl.getZoom()) / 3)));
+}
+
+function majCouleurGL() {
+  if (!gl || !glPret) return;
+  // Le plan de ville réel n'a pas de point de morceau (`style::couches`,
+  // depuis que le bâtiment habité porte le morceau) — l'un des deux
+  // existe selon le chemin, jamais les deux.
+  const pointMorceaux = gl.getLayer("morceaux-point");
+  const batimentsMorceaux = gl.getLayer("batiments-morceaux");
+  if (!pointMorceaux && !batimentsMorceaux) return;
+  const teintes = couleursFamillesCarte();
+  let expr;
+  if (carte.couleur === "famille") {
+    const m = ["match", ["get", "famille"]];
+    teintes.forEach((t, i) => m.push(i, t));
+    m.push(autresCarte());
+    expr = m;
+  } else {
+    const { champ } = CONTINUES[carte.couleur] ?? {};
+    const [v0, v1] = carte.bornes[carte.couleur] ?? [0, 1];
+    const etapes = rampe();
+    const i = ["interpolate", ["linear"], ["coalesce", ["get", champ], v0]];
+    etapes.forEach((t, n) => i.push(v0 + ((v1 - v0) * n) / (etapes.length - 1), t));
+    expr = i;
+  }
+  if (pointMorceaux) gl.setPaintProperty("morceaux-point", "circle-color", expr);
+  // Seule la coloration par famille se transpose au bâtiment : les modes
+  // continus (année, tempo, énergie) n'ont pas d'attribut correspondant sur
+  // un bâtiment (`palier` n'y porte que la famille de l'occupant) — le
+  // bâtiment garde alors sa couleur de famille par défaut plutôt que de
+  // virer à une teinte plate erronée.
+  if (batimentsMorceaux && carte.couleur === "famille") {
+    // Passe par le même constructeur que `majFiltreGL` : la coloration du
+    // bâti et l'isolement d'une famille doivent rester cohérents.
+    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
+  }
+  if (gl.getLayer("territoires")) {
+    gl.setLayoutProperty(
+      "territoires",
+      "visibility",
+      carte.couleur === "famille" ? "visible" : "none",
+    );
+  }
+}
+
+/// Gris du bâti — la même valeur que `BATI` dans `crates/carto/src/style.rs`.
+/// Un bâtiment d'une famille non isolée y revient (choix utilisateur : la
+/// famille mise en avant ressort, la trame de la ville reste lisible autour).
+const GRIS_BATI = "#DEDAD2";
+
+/// Couches que l'isolement d'une famille (`carte.isolee`) masque par un
+/// **filtre**, avec le champ MVT qui porte la famille sur chacune (la plupart
+/// `famille`, le bâti et les territoires réels la portent dans `palier`).
+///
+/// Un filtre, pas une opacité : la plupart de ces couches ont une opacité
+/// **interpolée sur le zoom** dans le style, et MapLibre n'autorise `["zoom"]`
+/// qu'au sommet d'un `interpolate`/`step` — la multiplier par un `["case"]`
+/// (l'ancienne approche) produisait une expression invalide que
+/// `setPaintProperty` rejetait en silence, d'où « cliquer une famille ne fait
+/// rien ». `setFilter` n'a pas cette contrainte et masque proprement (pas de
+/// collision d'étiquette fantôme non plus). Le bâti habité est à part : il
+/// vire au gris (`couleurBatimentsMorceaux`) plutôt que de disparaître.
+const CIBLES_FILTRE_GL = [
+  ["territoires", "famille"],
+  ["territoires-reels", "palier"],
+  ["territoires-reels-contour", "palier"],
+  ["morceaux-point", "famille"],
+  ["morceaux-etiquette", "famille"],
+  ["artistes-point", "famille"],
+  ["artistes-etiquette", "famille"],
+  ["albums-point", "famille"],
+  ["albums-etiquette", "famille"],
+  ["batiments-morceaux-bord", "palier"],
+];
+
+/// Couleur de remplissage du bâti habité (`batiments-morceaux`) : la teinte
+/// de la famille de l'occupant (champ `palier`), sauf quand une famille est
+/// isolée — les autres reviennent alors au gris du bâti vacant.
+function couleurBatimentsMorceaux() {
+  const teintes = couleursFamillesCarte();
+  const gris = grisBatiCarte();
+  const parPalier = ["match", ["get", "palier"]];
+  teintes.forEach((t, i) => parPalier.push(i, t));
+  parPalier.push(gris);
+  return carte.isolee === null
+    ? parPalier
+    : ["case", ["==", ["get", "palier"], carte.isolee], parPalier, gris];
+}
+
+/// Filtre de chaque couche tel que `style::construire` l'a posé, capturé au
+/// premier appel pour pouvoir le rétablir sans le reconstruire côté JS.
+const filtreOriginal = new Map();
+function filtreBase(layer) {
+  if (!filtreOriginal.has(layer)) {
+    filtreOriginal.set(layer, gl.getFilter(layer) ?? null);
+  }
+  return filtreOriginal.get(layer);
+}
+
+/// Isole une famille sur les tuiles MapLibre — le pendant, en mode Carte, de
+/// ce que `dessinerCarte()` fait sur le canevas 2D du nuage. Les autres
+/// familles disparaissent (territoires, points et étiquettes) ; leur bâti
+/// habité vire au gris.
+function majFiltreGL() {
+  if (!gl || !glPret) return;
+
+  if (gl.getLayer("batiments-morceaux")) {
+    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
+  }
+
+  for (const [layer, champ] of CIBLES_FILTRE_GL) {
+    if (!gl.getLayer(layer)) continue;
+    const base = filtreBase(layer);
+    if (carte.isolee === null) {
+      gl.setFilter(layer, base);
+    } else {
+      const seulement = ["==", ["get", champ], carte.isolee];
+      gl.setFilter(layer, base ? ["all", base, seulement] : seulement);
+    }
+  }
+}
+
+
 function dimensionner() {
   const r = cnv.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -1129,6 +2447,16 @@ function echelle(r) {
 }
 
 function versEcran(p, r) {
+  const g = carteGL();
+  if (g) {
+    // Sur le plan de ville réel, l'adresse (si ce morceau en a une) prime
+    // sur la position t-SNE — c'est elle que les tuiles montrent.
+    const [x, y] = (villeReelle && carte.positionsReelles.get(p.id)) || [p.x, p.y];
+    const q = g.project(geoDepuisCarte(x, y));
+    return [q.x, q.y];
+  }
+  // Le nuage, lui, reste toujours en t-SNE — `p.x`/`p.y` n'ont jamais été
+  // touchés, que la ville soit active ou non.
   const { k, dx, dy } = carte.vue;
   const c = echelle(r);
   return [r.width / 2 + (p.x * c) * k + dx, r.height / 2 + (p.y * c) * k + dy];
@@ -1138,18 +2466,78 @@ function versEcran(p, r) {
 /// besoin — c'est le seul endroit où l'on part de l'écran pour aller vers les
 /// données, et non l'inverse.
 function versCarte(mx, my, r) {
+  const g = carteGL();
+  if (g) {
+    const p = g.unproject([mx, my]);
+    return carteDepuisGeo(p.lng, p.lat);
+  }
   const { k, dx, dy } = carte.vue;
   const c = echelle(r) * k;
   return [(mx - r.width / 2 - dx) / c, (my - r.height / 2 - dy) / c];
 }
 
 /// Les douze teintes de famille, lues dans la feuille de style.
+///
+/// Sert au **nuage de points**, à la **légende** et au mode Écoute — tout ce
+/// qui suit le thème clair/sombre de l'application. Sur la carte MapLibre,
+/// voir `couleursFamillesCarte` : les familles s'y calent sur le fond de plan.
 function couleursFamilles() {
   return getComputedStyle(document.documentElement)
     .getPropertyValue("--familles")
     .split(",")
     .map((c) => c.trim())
     .filter(Boolean);
+}
+
+/// Palettes de familles **de la carte**, calées sur chaque fond de plan.
+/// Miroir de `crates/carto/src/palette.rs` — les deux doivent nommer une
+/// famille de la même couleur (comme `--familles` ↔ `style.rs` auparavant) :
+/// Rust les cuit dans `style-<id>.json`, le JS les rejoue après `setStyle`
+/// pour rester cohérent avec l'isolement d'une famille (`majFiltreGL`).
+const FAMILLES_VIVES = [
+  "#EF8891", "#EC9066", "#D99E46", "#B7AF47", "#88BC6A", "#4EC497",
+  "#0CC3C3", "#38BBE6", "#73AEF8", "#A39FF6", "#C892E1", "#E289BD",
+];
+const FAMILLES_CARTE = {
+  sepia: {
+    familles: [
+      "#B24B58", "#B05323", "#9E6300", "#7E7400", "#4C8227", "#00895D",
+      "#00888A", "#0080AC", "#3472BE", "#6B63BC", "#8F56A7", "#A74D83",
+    ],
+    autres: "#8A7A60",
+    bati: "#EADBC4",
+  },
+  encre: {
+    familles: [
+      "#B06A70", "#AE7455", "#A08346", "#7C8347", "#579156", "#2E9480",
+      "#33908F", "#4C86A0", "#6981AC", "#7D74A6", "#94709E", "#B06C94",
+    ],
+    autres: "#8C867A",
+    bati: "#ECE6DB",
+  },
+  nuit: { familles: FAMILLES_VIVES, autres: "#8C8C90", bati: "#333333" },
+  "bleu-plan": {
+    familles: [
+      "#E6A6AD", "#E3AB8A", "#D4B47C", "#BCC088", "#9CCA94", "#74CDB4",
+      "#6CC9D2", "#86C6E2", "#A2C8F5", "#C0BEF5", "#D6B0E7", "#E6ADD0",
+    ],
+    autres: "#7C93AE",
+    bati: "#234870",
+  },
+};
+
+/// Le jeu de familles pour la carte : celui du fond de plan actif, ou celui de
+/// la feuille de style (`osm-clair`, qui suit le thème de l'appli).
+function couleursFamillesCarte() {
+  return FAMILLES_CARTE[carteTheme]?.familles ?? couleursFamilles();
+}
+/// Le gris « fourre-tout » (`#6E6656` par défaut) accordé au fond de plan.
+function autresCarte() {
+  return FAMILLES_CARTE[carteTheme]?.autres ?? "#6E6656";
+}
+/// Le gris du bâti (vacant, ou d'une famille non isolée) accordé au fond.
+function grisBatiCarte() {
+  return FAMILLES_CARTE[carteTheme]?.bati ?? GRIS_BATI;
 }
 
 /// Pastilles pré-dessinées, une par couleur.
@@ -1231,7 +2619,6 @@ function dessinerNuage(r) {
 // ou la variable de coloration ne changent pas. Le tracé par image se contente
 // ensuite d'un `drawImage` mis à l'échelle de la vue courante — le panoramique
 // et le zoom sont donc gratuits, sans reconstruire la grille à chaque geste.
-const DENSITE_MARGE = 0.08; // déborde un peu [-1, 1] — même marge que `crates/core/src/density.rs`
 
 // Le regroupement par famille (genre) a migré côté Rust
 // (`crates/core::density`) : noyau gaussien par famille + carré marchant →
@@ -1248,181 +2635,6 @@ const DENSITE_MARGE = 0.08; // déborde un peu [-1, 1] — même marge que `crat
 // nappe, pas de recouvrement entre familles à résoudre, donc aucun besoin du
 // vecteur Rust.
 
-const AUTRES = -2; // doit rester égal à `rusty_music_core::density::AUTRES`
-
-let densite = null; // { bandes, image, demiCote } — voir `chargerDensite`
-
-/// À rappeler quand les points rechargent : le résultat de densité vient du
-/// moteur, mis en cache après chaque recalcul de la carte (ou de la densité
-/// seule) — jamais reconstruit ici.
-async function chargerDensite() {
-  const r = await invoke("density_view");
-  densite = { bandes: r.bandes, image: null, demiCote: 1 + DENSITE_MARGE };
-}
-
-/// Force de l'ombre portée (0..1), le seul des quatre réglages qui n'exige
-/// pas d'aller-retour vers le moteur : décalage, flou et opacité de l'ombre
-/// n'affectent que le rendu, pas le calcul. Mémorisé en local, comme le
-/// bruit des chemins.
-const OMBRE_DEFAUT = 0.6;
-let forceOmbre = Number(localStorage.getItem("densite-ombre"));
-if (!Number.isFinite(forceOmbre) || forceOmbre < 0 || forceOmbre > 1) forceOmbre = OMBRE_DEFAUT;
-
-/// Construit (une fois par résultat de densité, par réglage d'ombre, par
-/// isolement de famille ou par palier de zoom — voir `tailleDensiteEcran`)
-/// l'image hors-écran du relief.
-///
-/// Chaque bande est peinte en aplat opaque — pas de dégradé, pas de
-/// transparence qui laisserait deviner le territoire voisin — d'autant plus
-/// sombre et saturé que son palier est haut : la densité s'y lit à la
-/// luminosité, la teinte ne dit que le territoire. L'ombre portée vient de
-/// `ctx.shadow*`, posée une fois ici : chaque bande projette son ombre sur
-/// celle du dessous, du palier le plus bas au plus haut, comme des
-/// découpes de papier empilées. Un trait nu, sans ombre, referme chaque
-/// territoire sur son palier le plus bas — la frontière entre deux genres,
-/// distincte du relief interne d'un même genre.
-///
-/// **Les teintes viennent de `--familles`**, indexées par identifiant de
-/// famille — les mêmes que le nuage de points et la légende « Familles »
-/// (`teintes[cluster % teintes.length]`, voir `dessinerNuage`). Un
-/// `--territoires` séparé (Okabe-Ito) avait été essayé pour garantir la
-/// distinction en deutéranopie ; retiré, la carte redessinée changeait de
-/// teinte par famille selon le mode d'affichage, ce qui a été jugé pire que
-/// le risque de confusion sur sept genres au plus (`AUTRES` prend déjà le
-/// surplus, côté Rust).
-///
-/// Une image hors-écran plutôt qu'un tracé vectoriel à chaque image :
-/// `shadowBlur` est coûteux, et le répéter sur des dizaines de bandes à
-/// chaque geste de zoom aurait coûté la fluidité qu'on cherche à garder.
-/// Peinte une fois, elle ne coûte plus ensuite qu'un `drawImage`.
-function construireImageDensite(r) {
-  const { bandes } = densite;
-  const teintes = couleursFamilles();
-  const style = getComputedStyle(document.documentElement);
-  const gris = style.getPropertyValue("--mut").trim() || "#9A9284";
-  const encre = style.getPropertyValue("--txt").trim() || "#EDE8DC";
-  const teinteDe = (famille) => {
-    if (famille === AUTRES) return gris;
-    if (carte.isolee !== null && famille !== carte.isolee) return gris; // estompé, pas masqué
-    return teintes[famille % teintes.length] ?? gris;
-  };
-
-  const gn = tailleDensiteEcran(r);
-  const c = document.createElement("canvas");
-  c.width = gn;
-  c.height = gn;
-  const g = c.getContext("2d");
-  const echelleEcran = gn / (2 * densite.demiCote);
-  g.setTransform(echelleEcran, 0, 0, echelleEcran, gn / 2, gn / 2);
-
-  const chemin = (bande) => {
-    const p = new Path2D();
-    for (const polygone of bande.polygones) {
-      for (const anneau of polygone) {
-        if (anneau.length < 3) continue;
-        p.moveTo(anneau[0][0], anneau[0][1]);
-        for (let i = 1; i < anneau.length; i++) p.lineTo(anneau[i][0], anneau[i][1]);
-        p.closePath();
-      }
-    }
-    return p;
-  };
-
-  // 2 à 4 px de décalage, 6 à 10 px de flou, 25 à 35 % d'opacité — les
-  // bornes demandées, parcourues par `forceOmbre`, en pixels de l'image
-  // hors-écran. `shadowOffset*` et `shadowBlur` ne suivent **pas**
-  // `ctx.setTransform` — vérifié à l'essai après un premier réglage qui les
-  // divisait par `echelleEcran` et ne rendait plus rien : ils vivent dans
-  // l'espace propre du canevas, pas dans le repère mis à l'échelle
-  // ci-dessus. Aucune compensation à faire.
-  const t = Math.min(1, Math.max(0, forceOmbre));
-  g.shadowColor = `rgba(0,0,0,${(0.25 + 0.1 * t).toFixed(3)})`;
-  g.shadowOffsetX = 2 + 2 * t;
-  g.shadowOffsetY = 2 + 2 * t;
-  g.shadowBlur = 6 + 4 * t;
-
-  const parTerritoire = new Map();
-  for (const b of bandes) {
-    if (b.famille === null) continue; // la nappe globale ne se peint pas ici
-    if (!parTerritoire.has(b.famille)) parTerritoire.set(b.famille, []);
-    parTerritoire.get(b.famille).push(b);
-  }
-
-  // L'ordre entre territoires n'a pas d'importance pour le remplissage —
-  // par construction (densité maximale gagnante côté Rust) ils ne se
-  // recouvrent jamais. Seul l'ordre des paliers *à l'intérieur* d'un même
-  // territoire compte, pour que l'ombre tombe dans le bon sens.
-  for (const [famille, groupe] of parTerritoire) {
-    groupe.sort((a, b) => a.palier - b.palier);
-    const [h, s, l] = hexHSL(teinteDe(famille));
-    const n = groupe.length;
-    for (const bande of groupe) {
-      const creux = n > 1 ? bande.palier / (n - 1) : 1;
-      const sBande = 0.28 + (Math.min(0.85, s + 0.15) - 0.28) * creux;
-      const lHaut = Math.min(0.68, l + 0.18);
-      const lBande = lHaut - (lHaut - Math.max(0.3, l - 0.16)) * creux;
-      const [rr, gg, bb] = hslRGB(h, sBande, lBande);
-      g.fillStyle = `rgb(${rr},${gg},${bb})`;
-      g.fill(chemin(bande));
-    }
-  }
-
-  // La frontière entre genres : un trait net sur le contour extérieur de
-  // chaque territoire (son palier le plus bas, trié plus haut), sans ombre —
-  // la limite entre deux territoires, pas le relief d'une bande à l'autre
-  // dans un même territoire.
-  //
-  // `lineWidth`, à la différence de `shadowOffset*`/`shadowBlur` plus haut,
-  // **suit** `ctx.setTransform` : une valeur en pixels d'écran telle quelle
-  // s'y retrouvait multipliée par `echelleEcran` (des centaines de fois),
-  // un trait si large qu'il recouvrait le canevas entier — repéré au rendu
-  // (un aplat uni au lieu des territoires), pas à la lecture du code.
-  g.shadowColor = "transparent";
-  g.strokeStyle = encre;
-  g.globalAlpha = 0.55;
-  g.lineJoin = "round";
-  g.lineWidth = Math.max(1, gn / 700) / echelleEcran;
-  for (const [, groupe] of parTerritoire) g.stroke(chemin(groupe[0]));
-  g.globalAlpha = 1;
-
-  densite.image = c;
-  densite.kRef = carte.vue.k;
-}
-
-/// Résolution de l'image hors-écran, asservie au zoom courant plutôt que
-/// fixe : une image bâtie une fois pour toutes à 1024 restait nette à
-/// l'échelle d'origine mais se pixellisait en zoomant, puisqu'elle n'est
-/// alors plus qu'agrandie. Bornée aux deux bouts — 768 en dessous, pour ne
-/// pas repartir d'une image inutilement grossière à faible zoom ; 3072
-/// au-dessus, pour qu'un zoom extrême ne construise pas une image
-/// démesurée. Passé ce plafond, un léger flou reste préférable à la
-/// mémoire et au temps qu'exigerait une image plus grande — voir
-/// `zoomer`, qui referait cette image après un geste de zoom, pas pendant.
-function tailleDensiteEcran(r) {
-  const dpr = window.devicePixelRatio || 1;
-  const cote = 2 * echelle(r) * carte.vue.k * densite.demiCote * dpr;
-  return Math.round(Math.min(3072, Math.max(768, cote)));
-}
-
-/// Invalide l'image hors-écran sans recharger le résultat de densité —
-/// isoler une famille, tirer le curseur d'ombre ou finir un geste de zoom
-/// change le rendu, pas le calcul.
-function invaliderImageDensite() {
-  if (densite) densite.image = null;
-}
-
-/// Recopie l'image hors-écran à l'échelle de la vue courante — le seul
-/// travail refait à chaque image de panoramique ou de zoom.
-function dessinerDensiteFamille(r) {
-  if (!densite || densite.bandes.length === 0) return;
-  if (!densite.image) construireImageDensite(r);
-  const d = densite.demiCote;
-  const [x0, y0] = versEcran({ x: -d, y: -d }, r);
-  const [x1, y1] = versEcran({ x: d, y: d }, r);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(densite.image, x0, y0, x1 - x0, y1 - y0);
-}
 
 /* ---------------------------------------- densité, variable continue */
 
@@ -1430,56 +2642,6 @@ function dessinerDensiteFamille(r) {
 // calcul, entièrement en JS — une seule nappe, jamais de recouvrement entre
 // familles à résoudre, donc aucun besoin du pavage vectoriel ci-dessus.
 
-const DENSITE_GN_CONTINU = 128;
-const NIVEAUX_CONTINU = [0.1, 0.24, 0.4, 0.58, 0.76, 0.92];
-
-let densiteContinue = null; // cache séparé — voir `invaliderDensiteContinue`
-
-function invaliderDensiteContinue() {
-  densiteContinue = null;
-}
-
-function versGrilleContinu(v, gn) {
-  const lo = -1 - DENSITE_MARGE, hi = 1 + DENSITE_MARGE;
-  return Math.min(gn - 1, Math.max(0, Math.floor(((v - lo) / (hi - lo)) * gn)));
-}
-
-/// Flou en boîte, trois passes séparables : approxime un noyau gaussien sans
-/// le coût d'une vraie convolution — suffisant pour une seule nappe basse
-/// résolution, contrairement à la grille bien plus fine calculée côté Rust.
-function flouterChampContinu(champ, gn, rayon = 2, passes = 3) {
-  let src = champ;
-  for (let pass = 0; pass < passes; pass++) {
-    const h = new Float32Array(gn * gn);
-    for (let y = 0; y < gn; y++) {
-      for (let x = 0; x < gn; x++) {
-        let s = 0, n = 0;
-        for (let dx = -rayon; dx <= rayon; dx++) {
-          const xx = x + dx;
-          if (xx < 0 || xx >= gn) continue;
-          s += src[y * gn + xx];
-          n++;
-        }
-        h[y * gn + x] = s / n;
-      }
-    }
-    const v = new Float32Array(gn * gn);
-    for (let x = 0; x < gn; x++) {
-      for (let y = 0; y < gn; y++) {
-        let s = 0, n = 0;
-        for (let dy = -rayon; dy <= rayon; dy++) {
-          const yy = y + dy;
-          if (yy < 0 || yy >= gn) continue;
-          s += h[yy * gn + x];
-          n++;
-        }
-        v[y * gn + x] = s / n;
-      }
-    }
-    src = v;
-  }
-  champ.set(src);
-}
 
 function hexRGB(hex) {
   const n = parseInt((hex || "#9A9284").replace("#", ""), 16);
@@ -1515,81 +2677,16 @@ function hslRGB(h, s, l) {
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 }
 
-function bitmapDensiteContinue(couche, gn, etapes, v0, v1) {
-  const c = document.createElement("canvas");
-  c.width = gn;
-  c.height = gn;
-  const g = c.getContext("2d");
-  const img = g.createImageData(gn, gn);
-  for (let i = 0; i < gn * gn; i++) {
-    const t = couche.max > 0 ? couche.champ[i] / couche.max : 0;
-    if (t < NIVEAUX_CONTINU[0]) {
-      img.data[i * 4 + 3] = 0;
-      continue;
-    }
-    let n = 0;
-    for (const seuil of NIVEAUX_CONTINU) if (t >= seuil) n++;
-    const creux = (n - 1) / (NIVEAUX_CONTINU.length - 1);
-
-    const v = couche.pesValeurs[i] > 1e-6 ? couche.valeurs[i] / couche.pesValeurs[i] : null;
-    const hex = v != null && v1 > v0 ? surRampe(etapes, Math.min(1, Math.max(0, (v - v0) / (v1 - v0)))) : "#9A9284";
-    const [rr, gg, bb] = hexRGB(hex);
-    const o = i * 4;
-    img.data[o] = rr;
-    img.data[o + 1] = gg;
-    img.data[o + 2] = bb;
-    img.data[o + 3] = Math.round((0.7 + 0.25 * creux) * 255);
-  }
-  g.putImageData(img, 0, 0);
-  return c;
-}
-
-function construireDensiteContinue() {
-  const gn = DENSITE_GN_CONTINU;
-  const continu = CONTINUES[carte.couleur];
-  const etapes = rampe();
-  const [v0, v1] = carte.bornes[carte.couleur] ?? [0, 0];
-
-  const champ = new Float32Array(gn * gn);
-  const valeurs = new Float32Array(gn * gn);
-  const pesValeurs = new Float32Array(gn * gn);
-  for (const p of carte.points) {
-    const i = versGrilleContinu(p.y, gn) * gn + versGrilleContinu(p.x, gn);
-    champ[i] += 1;
-    const v = p[continu.champ];
-    if (v != null && (!continu.valide || continu.valide(v))) {
-      valeurs[i] += v;
-      pesValeurs[i] += 1;
-    }
-  }
-  flouterChampContinu(champ, gn);
-  flouterChampContinu(valeurs, gn);
-  flouterChampContinu(pesValeurs, gn);
-
-  const couche = { champ, valeurs, pesValeurs };
-  couche.max = Math.max(...champ);
-  couche.bitmap = couche.max > 0 ? bitmapDensiteContinue(couche, gn, etapes, v0, v1) : null;
-  return { gn, couche };
-}
-
-function dessinerDensiteContinue(r) {
-  if (!densiteContinue) densiteContinue = construireDensiteContinue();
-  const { couche } = densiteContinue;
-  if (!couche.bitmap) return;
-  const bord = -1 - DENSITE_MARGE;
-  const [x0, y0] = versEcran({ x: bord, y: bord }, r);
-  const [x1, y1] = versEcran({ x: -bord, y: -bord }, r);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(couche.bitmap, x0, y0, x1 - x0, y1 - y0);
-}
-
-function dessinerDensite(r) {
-  if (CONTINUES[carte.couleur]) dessinerDensiteContinue(r);
-  else dessinerDensiteFamille(r);
-}
 
 function dessinerCarte() {
+  // En mode carte, les tuiles portent le fond : le canevas ne garde que la
+  // surcouche. En mode nuage, il dessine tout, comme avant.
+  const g = carteGL();
+  if (g) {
+    g.resize();
+    dessinerSurcouche();
+    return;
+  }
   const r = dimensionner();
   const style = getComputedStyle(document.documentElement);
   const encre = style.getPropertyValue("--txt").trim() || "#EDE8DC";
@@ -1604,14 +2701,27 @@ function dessinerCarte() {
     return;
   }
 
-  if (carte.affichage === "densite") {
-    // La nappe est le sujet en mode densité : le nuage de points ne se
-    // dessine plus par-dessus.
-    dessinerDensite(r);
-  } else {
-    dessinerNuage(r);
-  }
+  // Le nuage t-SNE, tel qu'il a toujours été.
+  dessinerNuage(r);
+  surcoucheSur(r, encre, accent);
+}
 
+/// Ce que le canevas dessine par-dessus les tuiles : le lasso en cours, le
+/// tracé à la souris, l'itinéraire, les bornes, le survol. Tout ce que les
+/// tuiles ne portent pas parce que cela change à chaque geste.
+function dessinerSurcouche() {
+  if (!carteGL()) return;
+  const r = dimensionner();
+  const style = getComputedStyle(document.documentElement);
+  ctx.clearRect(0, 0, r.width, r.height);
+  surcoucheSur(
+    r,
+    style.getPropertyValue("--txt").trim() || "#EDE8DC",
+    style.getPropertyValue("--accent").trim() || "#C07C4A",
+  );
+}
+
+function surcoucheSur(r, encre, accent) {
   // Le lasso en cours : contour fermé et zone assombrie, pour qu'on voie ce
   // qu'on attrape avant de lâcher.
   if (carte.lasso && carte.lasso.length > 1) {
@@ -1661,9 +2771,15 @@ function dessinerCarte() {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
+    // Le trait suit `routeTrace` (les vraies rues, une fois habillé) — mais
+    // seulement en mode Carte : ses points intermédiaires sont des lon/lat,
+    // qui n'ont aucun sens passés tels quels dans le repère t-SNE du Nuage.
+    // Les repères ci-dessous restent posés sur `route` (une entrée par
+    // morceau) — `routeTrace` peut porter bien plus de points que d'étapes.
+    const trait = (carteGL() && carte.routeTrace) || carte.route;
     const tracer = () => {
       ctx.beginPath();
-      carte.route.forEach((p, i) => {
+      trait.forEach((p, i) => {
         const [x, y] = versEcran(p, r);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -1740,8 +2856,24 @@ function dessinerCarte() {
   }
 }
 
-/// Point le plus proche du curseur, dans un rayon raisonnable.
+/// Point sous le curseur — sur le plan réel, vise d'abord le bâtiment que
+/// MapLibre a effectivement peint sous ce pixel (`queryRenderedFeatures`) :
+/// depuis que le morceau est un bâtiment entier, pas un point (voir
+/// `carto-etapes.md`), un simple rayon autour du centroïde manquait tout
+/// clic vers le bord d'un grand bâtiment. Retombe sur le point le plus
+/// proche dans un rayon raisonnable si rien n'est peint là (bâtiment vacant,
+/// zoom trop large, ou monde fictif sans bâti).
 function pointSous(mx, my) {
+  const g = carteGL();
+  if (g && villeReelle && g.getLayer("batiments-morceaux")) {
+    const feats = g.queryRenderedFeatures([mx, my], { layers: ["batiments-morceaux"] });
+    const id = feats[0]?.properties?.morceau;
+    if (id != null && id >= 0 && (carte.isolee === null || feats[0].properties.palier === carte.isolee)) {
+      const p = carte.points.find((pt) => pt.id === id);
+      if (p) return p;
+    }
+  }
+
   const r = cnv.getBoundingClientRect();
   let meilleur = null;
   let d2min = 14 * 14;
@@ -1775,8 +2907,14 @@ cnv.addEventListener("mousemove", (e) => {
   }
 
   if (glisse) {
-    carte.vue.dx += e.movementX;
-    carte.vue.dy += e.movementY;
+    const g = carteGL();
+    if (g) {
+      // Le canevas relaie : MapLibre n'écoute rien lui-même.
+      g.panBy([-e.movementX, -e.movementY], { duration: 0 });
+    } else {
+      carte.vue.dx += e.movementX;
+      carte.vue.dy += e.movementY;
+    }
     dessinerCarte();
     return;
   }
@@ -1872,6 +3010,24 @@ cnv.addEventListener("mouseleave", () => {
 
 /// Applique un facteur de zoom autour d'un point de l'écran.
 function zoomer(f, cx, cy) {
+  const g = carteGL();
+  if (g) {
+    // Zoomer autour du curseur : on note le point du monde qui s'y trouve,
+    // on change d'échelle, puis on recentre pour l'y remettre. Les boutons
+    // +/− appellent sans coordonnées : `unproject([undefined, …])` lève dans
+    // MapLibre — on retombe alors sur le centre du canevas.
+    const r0 = cnv.getBoundingClientRect();
+    if (cx == null) cx = r0.width / 2;
+    if (cy == null) cy = r0.height / 2;
+    const avant = g.unproject([cx, cy]);
+    const z = Math.min(zoomMax, Math.max(0, g.getZoom() + Math.log2(f)));
+    g.setZoom(z);
+    const apres = g.unproject([cx, cy]);
+    const c = g.getCenter();
+    g.setCenter([c.lng + (avant.lng - apres.lng), c.lat + (avant.lat - apres.lat)]);
+    synchroniserVue();
+    return;
+  }
   const r = cnv.getBoundingClientRect();
   const mx = (cx ?? r.width / 2) - r.width / 2;
   const my = (cy ?? r.height / 2) - r.height / 2;
@@ -1884,26 +3040,14 @@ function zoomer(f, cx, cy) {
   carte.vue.dy = my - (my - carte.vue.dy) * reel;
   $("zoom-val").textContent = `×${carte.vue.k.toFixed(1).replace(".", ",")}`;
   dessinerCarte();
-  reconstruireDensiteApresZoom();
 }
 
 /// L'image hors-écran de la densité est bâtie pour un niveau de zoom donné
-/// (`tailleDensiteEcran`) : la redessiner à chaque cran de molette la
+/// : la redessiner à chaque cran de molette la
 /// referait des dizaines de fois par seconde pour rien, un délai court
 /// après la fin du geste suffit — même principe que le bruit des chemins
 /// ou la force de l'ombre.
 let attenteZoomDensite = null;
-function reconstruireDensiteApresZoom() {
-  if (carte.affichage !== "densite" || !densite || !densite.image) return;
-  // En dessous d'un tiers d'écart, l'image en cache reste assez nette :
-  // pas la peine de la reconstruire pour un cran de molette.
-  if (densite.kRef && carte.vue.k / densite.kRef < 1.3 && densite.kRef / carte.vue.k < 1.3) return;
-  clearTimeout(attenteZoomDensite);
-  attenteZoomDensite = setTimeout(() => {
-    invaliderImageDensite();
-    dessinerCarte();
-  }, 220);
-}
 
 cnv.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -1920,9 +3064,35 @@ cnv.addEventListener("wheel", (e) => {
 $("zoom-plus").addEventListener("click", () => zoomer(1.4));
 $("zoom-moins").addEventListener("click", () => zoomer(1 / 1.4));
 $("zoom-reset").addEventListener("click", () => {
+  const g = carteGL();
+  if (g) {
+    // Priorité à la limite communale (`vueInitialeGL.bounds`) : prise sur la
+    // frontière réelle, elle ne se fait pas tirer au loin par un morceau mal
+    // géocodé. À défaut — monde fictif — l'emprise des points. Le `zoom`
+    // d'accueil du style (14, niveau du quartier) n'est qu'un dernier repli.
+    const b = vueInitialeGL?.bounds || bornesGeoPoints();
+    let applique = null;
+    if (b) {
+      // On calcule la caméra sans bouger, on la vérifie, puis on l'applique :
+      // une emprise dégénérée (coordonnées parasites) donnerait un zoom
+      // minuscule et une carte vide — mieux vaut alors le centre d'accueil.
+      const cam = g.cameraForBounds(b, { padding: 40 });
+      if (cam && cam.zoom >= 6) {
+        g.jumpTo(cam);
+        applique = `bounds → zoom ${cam.zoom.toFixed(2)}`;
+      }
+    }
+    if (!applique && vueInitialeGL) {
+      g.jumpTo({ center: vueInitialeGL.center, zoom: vueInitialeGL.zoom });
+      applique = `centre d'accueil (bounds ${b ? "rejetées" : "absentes"})`;
+    }
+    journalCarte("vue d'ensemble : " + (applique || "aucune cible"));
+    synchroniserVue();
+    dessinerCarte();
+    return;
+  }
   carte.vue = { k: 1, dx: 0, dy: 0 };
   $("zoom-val").textContent = "×1,0";
-  invaliderImageDensite();
   dessinerCarte();
 });
 
@@ -1949,9 +3119,7 @@ cnv.addEventListener("click", async (e) => {
   dessinerBornes();
   inspecter(p);
   fileCourante = [p];
-  await invoke("play", { paths: [p.path] });
-  poserLecture(true);
-  sonder(true);
+  await demarrerLecture(() => invoke("play", { paths: [p.path] }));
   dessinerCarte();
 });
 
@@ -1976,6 +3144,8 @@ async function tracerChemin(spec) {
       steps: longueurChemin(),
       seed: carte.graine,
       bruit: bruitChemin,
+      reel: carteReelle(),
+      famille: carte.isolee,
     });
   } finally {
     patienter(null);
@@ -1993,7 +3163,12 @@ async function tracerChemin(spec) {
 /// tracé-ci, avec un nouveau bruit ou une nouvelle graine.
 async function tracerDessin(trace) {
   const r = cnv.getBoundingClientRect();
-  const rayon = 24 / (echelle(r) * carte.vue.k);
+  // Sur le plan de ville, le tracé et les points sont en lon/lat projetés en
+  // mètres côté moteur : le rayon aussi (24 px du zoom courant, en mètres).
+  // Sur le nuage t-SNE, le rayon reste dans le repère de la vue.
+  const rayon = carteReelle()
+    ? metresParPixels(24)
+    : 24 / (echelle(r) * carte.vue.k);
   carte.refaire = { dessine: true, trace, rayon };
   patienter("cueillette sous le trait…");
   let pistes;
@@ -2004,11 +3179,15 @@ async function tracerDessin(trace) {
       radius: rayon,
       seed: carte.graine,
       bruit: bruitChemin,
+      reel: carteReelle(),
+      famille: carte.isolee,
     });
   } finally {
     patienter(null);
   }
-  poserChemin(pistes, "le trait n'a touché aucun morceau");
+  // Le trait dessiné EST l'intention : sur le plan de ville, on l'affiche tel
+  // quel, sans le remplacer par un routage de rues entre les morceaux cueillis.
+  poserChemin(pistes, "le trait n'a touché aucun morceau", carteReelle() ? trace : null);
 }
 
 /// Rejoue le dernier chemin tracé — bouton « Autre tirage » ou curseur de
@@ -2029,6 +3208,7 @@ async function rejouerChemin() {
         radius: rayon,
         seed: carte.graine,
         bruit: bruitChemin,
+        reel: carteReelle(),
       });
     } catch (e) {
       remonter(e, "chemin dessiné");
@@ -2036,7 +3216,7 @@ async function rejouerChemin() {
     } finally {
       patienter(null);
     }
-    poserChemin(pistes, "le trait n'a touché aucun morceau");
+    poserChemin(pistes, "le trait n'a touché aucun morceau", carteReelle() ? trace : null);
   } else {
     await tracerChemin(carte.refaire);
   }
@@ -2052,7 +3232,7 @@ async function jouerSelection(contour) {
   patienter("sélection…");
   let pistes;
   try {
-    pistes = await invoke("selection", { trace: contour });
+    pistes = await invoke("selection", { trace: contour, reel: carteReelle(), famille: carte.isolee });
   } finally {
     patienter(null);
   }
@@ -2072,17 +3252,64 @@ async function jouerSelection(contour) {
 /// (`enLecture`), indépendant de `carte.route`. Sans effet tant que la carte
 /// n'a pas chargé ses points ; `basculerMode` rejoue l'appel pour la file en
 /// cours en entrant dans Explorer, pour rattraper une file lancée avant.
-function tracerRouteSurCarte(pistes) {
+let traceRuesGraine = 0; // écarte une réponse `trace_rues` périmée par un trajet plus récent
+
+function tracerRouteSurCarte(pistes, polyligne = null) {
   if (!carte.points.length) return;
   const parId = new Map(carte.points.map((p) => [p.id, p]));
   carte.route =
     pistes && pistes.length >= 2
       ? pistes.map((t) => parId.get(t.id)).filter(Boolean)
       : null;
+  // Le trait suit d'abord la droite d'étape en étape — même donnée que les
+  // repères, tant que rien de mieux n'est arrivé.
+  carte.routeTrace = carte.route;
+  traceRuesGraine++;
+
+  // L'itinéraire sur voirie (et le tracé dessiné) livrent déjà leur ligne : on
+  // l'affiche telle quelle, sans repasser par `trace_rues` (qui router-ait
+  // entre les morceaux dans l'ordre de la playlist et pourrait boucler).
+  // `{x, y}` = lon/lat, comme les segments de `trace_rues`.
+  if (villeReelle && polyligne && polyligne.length && carte.route) {
+    carte.routeTrace =
+      polyligne.length >= 2
+        ? [
+            carte.route[0],
+            ...polyligne.map(([x, y]) => ({ x, y })),
+            carte.route[carte.route.length - 1],
+          ]
+        : carte.route; // polyligne dégénérée : la droite entre morceaux, mais pas d'habillage
+    if (modeCourant === "explorer") dessinerCarte();
+    return;
+  }
+
   if (modeCourant === "explorer") dessinerCarte();
+
+  // Sur le plan de ville réel, habiller ce trait avec les vraies rues entre
+  // chaque paire consécutive — **le choix des morceaux ne change pas**,
+  // seule la ligne dessinée. Asynchrone et non bloquant : le trait droit
+  // reste affiché jusqu'à ce que les rues arrivent, puis le remplace.
+  if (villeReelle && carte.route && carte.route.length >= 2) {
+    const ids = carte.route.map((p) => p.id);
+    const graine = traceRuesGraine;
+    invoke("trace_rues", { ids })
+      .then((segments) => {
+        // Un autre trajet est arrivé entre-temps, ou la route a été effacée :
+        // cette réponse ne concerne plus ce qui est à l'écran.
+        if (graine !== traceRuesGraine || !carte.route) return;
+        const habille = [carte.route[0]];
+        segments.forEach((segment, i) => {
+          for (const [x, y] of segment) habille.push({ x, y });
+          habille.push(carte.route[i + 1]);
+        });
+        carte.routeTrace = habille;
+        if (modeCourant === "explorer") dessinerCarte();
+      })
+      .catch((e) => journalCarte("habillage du trait par les rues : " + e, "warn"));
+  }
 }
 
-async function poserChemin(pistes, vide = "aucun chemin trouvé") {
+async function poserChemin(pistes, vide = "aucun chemin trouvé", polyligne = null) {
   if (!pistes || pistes.length < 2) {
     $("fil-compte").textContent = vide;
     carte.route = null;
@@ -2090,7 +3317,7 @@ async function poserChemin(pistes, vide = "aucun chemin trouvé") {
     return;
   }
 
-  tracerRouteSurCarte(pistes);
+  tracerRouteSurCarte(pistes, polyligne);
   fileCourante = pistes;
   // Sans ce redessin, le panneau « file » resté ouvert continue de montrer
   // l'ancienne liste : rien d'autre ne le rafraîchit ici tant que le premier
@@ -2100,9 +3327,7 @@ async function poserChemin(pistes, vide = "aucun chemin trouvé") {
   // `set_queue`, pas `play` : si le premier morceau ne change pas — un
   // simple réglage du curseur de bruit ou « Autre tirage » sur le même
   // départ —, la lecture en cours n'a aucune raison de repartir de zéro.
-  await invoke("set_queue", { paths: pistes.map((t) => t.path) });
-  poserLecture(true);
-  sonder(true);
+  await demarrerLecture(() => invoke("set_queue", { paths: pistes.map((t) => t.path) }));
   inspecter(pistes[0]);
   dessinerCarte();
   $("fil-compte").textContent = `chemin de ${pistes.length} morceaux`;
@@ -2122,28 +3347,33 @@ window.addEventListener("resize", () => {
   if (!$("carte-vue").hidden) dessinerCarte();
 });
 
-/// La légende des familles : pastille, nom, effectif.
+/// Charge `carte.familles` (`[[cluster, nom, effectif]]`) au premier besoin —
+/// mêmes données pour la légende d'Explorer et le filtre de l'Écoute.
 ///
 /// Les noms viennent du moteur. Ni le genre le plus fréquent — « Rock » domine
 /// six familles sur douze et ne les distinguerait pas — ni le plus
 /// caractéristique, qui nommait « Ska Rock » une famille de 4 321 morceaux
 /// menée par Bob Marley. Les deux à la fois : voir `nommer_les_familles`.
-async function dessinerFamilles() {
-  const hote = $("familles");
-  if (!carte.familles) {
-    try {
-      carte.familles = await invoke("families");
-    } catch (e) {
-      remonter(e, "familles");
-      carte.familles = [];
-    }
+async function chargerFamilles() {
+  if (carte.familles) return;
+  try {
+    carte.familles = await invoke("families");
+  } catch (e) {
+    remonter(e, "familles");
+    carte.familles = [];
   }
+}
 
+/// Rendu commun de la légende des familles : une pastille teintée, un nom, un
+/// effectif par famille. `estActive(cluster)` décide du filet d'accent,
+/// `auClic(cluster)` réagit au clic. Explorer isole une famille sur la carte ;
+/// l'Écoute coche/décoche une famille du filtre de la grille de pochettes.
+function rendreFamilles(hote, estActive, auClic) {
   const teintes = couleursFamilles();
   hote.replaceChildren();
-  for (const [c, nom, n] of carte.familles) {
+  for (const [c, nom, n] of carte.familles ?? []) {
     const el = document.createElement("button");
-    el.className = "famille" + (carte.isolee === c ? " famille--isolee" : "");
+    el.className = "famille" + (estActive(c) ? " famille--isolee" : "");
     el.innerHTML = `<span class="famille__pastille"></span>
                     <span></span><span class="famille__n"></span>`;
     el.children[0].style.background = teintes[c % teintes.length] ?? "currentColor";
@@ -2152,19 +3382,187 @@ async function dessinerFamilles() {
     el.children[1].textContent = nom || `famille ${c + 1}`;
     el.children[1].title = nom || "";
     el.children[2].textContent = n.toLocaleString("fr-FR");
-    el.addEventListener("click", () => {
-      carte.isolee = carte.isolee === c ? null : c;
-      invaliderImageDensite(); // les territoires écartés changent de teinte
-      dessinerFamilles();
-      dessinerCarte();
-    });
+    el.addEventListener("click", () => auClic(c));
     hote.appendChild(el);
   }
+}
+
+async function dessinerFamilles() {
+  await chargerFamilles();
+  rendreFamilles(
+    $("familles"),
+    (c) => carte.isolee === c,
+    (c) => {
+      carte.isolee = carte.isolee === c ? null : c;
+      dessinerFamilles();
+      dessinerCarte();
+      majFiltreGL();
+      // Le filtre par famille borne aussi le chemin : un chemin déjà tracé se
+      // recalcule pour ne garder que la famille isolée (ou la relâcher).
+      if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
+    },
+  );
+}
+
+/* ------------------------------------------- filtre par famille — mode Écoute
+ *
+ * La grille de pochettes ne montre que les albums dont la famille sonique
+ * dominante est cochée. Ensemble vide = tout est montré. Même légende que le
+ * mode Explorer (`rendreFamilles`), mais multi-sélection et sans lien avec la
+ * carte. Les familles viennent du même clustering ; le filtre n'a de sens
+ * qu'une fois la carte calculée.
+ */
+
+const filtreFamilles = new Set();
+let famillesParAlbum = null; // Map "nom\nartiste" → cluster dominant
+
+function cleAlbum(a) {
+  return `${a.name}\n${a.artist ?? ""}`;
+}
+
+async function chargerFamillesParAlbum() {
+  try {
+    const paires = await invoke("album_families");
+    famillesParAlbum = new Map(
+      paires.map(([nom, artiste, c]) => [`${nom}\n${artiste ?? ""}`, c]),
+    );
+  } catch (e) {
+    remonter(e, "familles des albums");
+    famillesParAlbum = new Map();
+  }
+}
+
+/// Les albums réellement affichés dans la grille : `vue.lignes` filtré par les
+/// familles cochées. Sans filtre, ou sans données de famille, on rend tout.
+function albumsAffiches() {
+  if (filtreFamilles.size === 0 || !famillesParAlbum) return vue.lignes;
+  return vue.lignes.filter((a) => filtreFamilles.has(famillesParAlbum.get(cleAlbum(a))));
+}
+
+/// Ordre de la grille d'albums. `alpha` est l'ordre rendu par le moteur
+/// (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee` et `alea`
+/// retrient une copie côté interface.
+let triAlbums = "alpha";
+// clé d'album → tirage aléatoire, régénéré à chaque clic sur « Aléatoire ».
+// Passer par la clé (et non l'objet) garde l'ordre stable quand le filtre
+// familles réduit la liste affichée.
+let grainesAlea = new Map();
+
+function rebrasserAlea(lignes) {
+  grainesAlea = new Map();
+  for (const a of lignes) grainesAlea.set(cleAlbum(a), Math.random());
+}
+
+function trierAlbums(lignes) {
+  if (triAlbums === "annee") {
+    return [...lignes].sort((a, b) => {
+      const ya = a.year ?? -Infinity;
+      const yb = b.year ?? -Infinity;
+      if (ya !== yb) return yb - ya;
+      return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
+    });
+  }
+  if (triAlbums === "alea") {
+    return [...lignes].sort(
+      (a, b) => (grainesAlea.get(cleAlbum(a)) ?? 0) - (grainesAlea.get(cleAlbum(b)) ?? 0),
+    );
+  }
+  return lignes;
+}
+
+/// Les lignes de la vue courante — la grille d'albums peut être filtrée et
+/// retriée, tout le reste (liste d'artistes, pistes d'un album, recherche)
+/// passe tel quel.
+function lignesCourantes() {
+  return vue.quoi === "albums" ? trierAlbums(albumsAffiches()) : vue.lignes;
+}
+
+async function dessinerFamillesEcoute() {
+  await chargerFamilles();
+  rendreFamilles(
+    $("familles-ecoute"),
+    (c) => filtreFamilles.has(c),
+    (c) => {
+      if (filtreFamilles.has(c)) filtreFamilles.delete(c);
+      else filtreFamilles.add(c);
+      dessinerFamillesEcoute();
+      rafraichirGrille();
+    },
+  );
+  $("familles-ecoute-tout").hidden = filtreFamilles.size === 0;
+}
+
+/// Affiche le bloc « Familles » de l'Écoute quand il a un sens : mode Écoute,
+/// grille d'albums à l'écran, et carte déjà calculée (sinon aucune famille à
+/// proposer).
+function majBlocFamillesEcoute() {
+  const utile =
+    modeCourant === "ecoute" &&
+    vue.quoi === "albums" &&
+    famillesParAlbum &&
+    famillesParAlbum.size > 0;
+  $("bloc-familles-ecoute").hidden = !utile;
+}
+
+/// Recalcule la grille après un changement de filtre : nouveau compte, repère
+/// alphabétique reconstruit sur la liste filtrée, bande de rangées redessinée.
+function rafraichirGrille() {
+  majBlocFamillesEcoute();
+  if ($("grille").hidden) return;
+  $("fil-compte").textContent = `${lignesCourantes().length} albums`;
+  construireIndexAlpha();
+  grilleDernierRang = -1;
+  dessinerGrille();
+}
+
+$("familles-ecoute-tout").addEventListener("click", () => {
+  filtreFamilles.clear();
+  dessinerFamillesEcoute();
+  rafraichirGrille();
+});
+
+/// À rappeler quand le clustering a changé (recalcul de la carte, genres
+/// aspirés) : les numéros de famille et l'appartenance des albums ont bougé,
+/// le filtre courant ne veut plus rien dire.
+async function familleARecalculee() {
+  carte.familles = null;
+  famillesParAlbum = null;
+  famillesParArtiste = null;
+  filtreFamilles.clear();
+  filtreFamillesDecouvrir.clear();
+  await chargerFamillesParAlbum();
+  if (modeCourant === "ecoute") {
+    await dessinerFamillesEcoute();
+    rafraichirGrille();
+  }
+  if (modeCourant === "decouvrir") {
+    await chargerFamillesParArtiste();
+    await dessinerFamillesDecouvrir();
+    rendreFilDecouvrir();
+  }
+}
+
+/// Sur le plan de ville réel, un bâtiment ne sait se colorer que par famille
+/// (`majCouleurGL`) — les modes continus (année/tempo/énergie) resteraient
+/// des boutons actifs sans aucun effet visible, une incohérence plutôt
+/// qu'une limite honnête. Désactivés dans ce cas, avec un repli sur
+/// « Famille » si l'un d'eux était choisi au moment de la bascule.
+function majSegmentsCouleur() {
+  const desactives = carte.affichage === "carte" && villeReelle;
+  let bascule = false;
+  document.querySelectorAll("[data-couleur]").forEach((b) => {
+    const continu = b.dataset.couleur !== "famille";
+    b.disabled = desactives && continu;
+    b.title = b.disabled ? "Un bâtiment ne sait se colorer que par famille sur le plan de ville réel" : "";
+    if (b.disabled && b.classList.contains("segment--actif")) bascule = true;
+  });
+  if (bascule) document.querySelector('[data-couleur="famille"]')?.click();
 }
 
 document.querySelectorAll("[data-couleur]").forEach((b) =>
   b.addEventListener("click", () => {
     carte.couleur = b.dataset.couleur;
+    majCouleurGL();
     document
       .querySelectorAll("[data-couleur]")
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
@@ -2173,14 +3571,104 @@ document.querySelectorAll("[data-couleur]").forEach((b) =>
     $("bloc-familles").hidden = carte.couleur !== "famille";
     // Le pavage par territoires (Rust) ne dépend pas de « Colorer par » — il
     // n'y a qu'une seule nappe continue à refaire ici.
-    invaliderDensiteContinue();
     dessinerCarte();
   }),
 );
 
+/* ------------------------------------------------------ fond de plan (thème) */
+
+function majBoutonsTheme() {
+  document
+    .querySelectorAll("#carte-theme [data-theme]")
+    .forEach((b) => b.classList.toggle("segment--actif", b.dataset.theme === carteTheme));
+}
+majBoutonsTheme();
+
+document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
+  b.addEventListener("click", async () => {
+    if (b.dataset.theme === carteTheme) return;
+    carteTheme = b.dataset.theme;
+    localStorage.setItem("carte-theme", carteTheme);
+    majBoutonsTheme();
+    // Pas d'instance MapLibre encore : `initialiserGL` relira `carteTheme`.
+    if (!gl) return;
+    try {
+      const style = await invoke("style_carte", { theme: carteTheme });
+      // `setStyle` diffe : mêmes sources, mêmes couches, mêmes ids — seules les
+      // couleurs de peinture changent, donc pas de rechargement de tuile et la
+      // caméra ne bouge pas.
+      gl.setStyle(style);
+      // Les mutations de style au runtime (couleur par famille, isolement,
+      // visibilité des territoires) portaient sur l'ancien style : les rejouer
+      // une fois le nouveau prêt. `setStyle` peut émettre plusieurs `styledata`
+      // avant que le style soit complet — on attend `isStyleLoaded`.
+      const rejouer = () => {
+        if (!gl || !gl.isStyleLoaded()) return;
+        gl.off("styledata", rejouer);
+        majCouleurGL();
+        majFiltreGL();
+        majAffichageGL();
+        poserVignetteCarte(gl.getStyle());
+      };
+      gl.on("styledata", rejouer);
+      rejouer();
+    } catch (e) {
+      remonter(e, "thème de la carte");
+    }
+  }),
+);
+
+/// Les modes de chemin qui ont un sens dans chaque affichage.
+///
+/// L'itinéraire suit de vraies rues — rien à suivre sur un nuage t-SNE.
+/// Sonique et errance sautent d'un voisin sonore au suivant sans égard pour
+/// la géographie : sur la carte, ce sont des zigzags qui ne servent pas
+/// l'exploration du plan, contrairement au nuage où c'est justement le
+/// point.
+const MODES_CHEMIN = {
+  points: ["direct", "sonique", "errance", "dessine"],
+  carte: ["direct", "dessine", "itineraire"],
+};
+
+/// Montre/cache les réglages propres à chaque mode de chemin. « morceaux » et
+/// « bruit » disparaissent pour l'itinéraire (qui a ses propres réglages :
+/// profil, durée) ; le bouton « Tracer » ne reste que hors plan de ville, où le
+/// calcul musical est trop lent pour se déclencher tout seul.
+function majReglagesChemin() {
+  const estItin = carte.chemin === "itineraire";
+  if ($("bloc-itineraire")) $("bloc-itineraire").hidden = !estItin;
+  if ($("reglette-morceaux")) $("reglette-morceaux").hidden = estItin;
+  if ($("bloc-bruit")) $("bloc-bruit").hidden = estItin;
+  if ($("itin-tracer")) $("itin-tracer").hidden = estItin && carteReelle();
+  if (estItin && $("chemin-rejouer")) $("chemin-rejouer").hidden = true;
+}
+
+/// Affiche les boutons de mode de chemin qui ont un sens dans l'affichage
+/// courant, et bascule sur « direct » si le mode actif n'en fait plus
+/// partie.
+function majModesChemin() {
+  const disponibles = MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points;
+  document.querySelectorAll("[data-chemin]").forEach((b) => {
+    b.hidden = !disponibles.includes(b.dataset.chemin);
+  });
+  if (!disponibles.includes(carte.chemin)) {
+    poserModeChemin("direct");
+  } else {
+    majReglagesChemin();
+  }
+}
+
 document.querySelectorAll("[data-affichage]").forEach((b) =>
   b.addEventListener("click", () => {
     carte.affichage = b.dataset.affichage;
+    // Un tracé dessiné dans un repère (t-SNE / lon-lat) n'a plus de sens dans
+    // l'autre : on repart propre plutôt que de rejouer des coordonnées
+    // étrangères au repère courant.
+    carte.refaire = null;
+    carte.route = null;
+    carte.routeTrace = null;
+    majAffichageGL();
+    majModesChemin();
     document
       .querySelectorAll("[data-affichage]")
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
@@ -2220,6 +3708,20 @@ function dessinerBornes() {
       ? `${txt(t.artist, "?")} — ${txt(t.title, "?")}`
       : "—";
   }
+  majDureeItin();
+}
+
+/// Une arrivée posée prime sur la durée : « va jusque-là » l'emporte. On grise
+/// alors le curseur de durée pour que ce soit visible.
+function majDureeItin() {
+  const e = $("itin-minutes");
+  if (!e) return;
+  const inactif = !!carte.arrivee;
+  e.disabled = inactif;
+  const l = $("itin-minutes")?.closest(".reglette");
+  if (l) l.style.opacity = inactif ? 0.4 : "";
+  const out = $("itin-minutes-val");
+  if (out) out.textContent = inactif ? "→ arrivée" : +e.value > 0 ? `${e.value} min` : "libre";
 }
 
 document.querySelectorAll("[data-borne]").forEach((b) =>
@@ -2228,6 +3730,7 @@ document.querySelectorAll("[data-borne]").forEach((b) =>
     carte.route = null;
     dessinerBornes();
     dessinerCarte();
+    retracerItineraireSiPret();
   }),
 );
 
@@ -2246,7 +3749,13 @@ async function poserBorne(t) {
   if (!carte.depart) carte.depart = t;
   else carte.arrivee = t;
   dessinerBornes();
-  if (carte.depart && carte.arrivee) {
+  if (carte.chemin === "itineraire") {
+    // Sur le plan de ville, l'itinéraire se trace tout seul dès le départ posé
+    // (l'arrivée est facultative si une durée est fixée) — comme `direct`.
+    // Sans plan de ville, le calcul musical est trop lent pour ça : le bouton
+    // « Tracer » reste visible et prend la main.
+    if (carteReelle()) await tracerItineraire();
+  } else if (carte.depart && carte.arrivee) {
     await tracerChemin({
       from: carte.depart.id,
       to: carte.arrivee.id,
@@ -2257,6 +3766,7 @@ async function poserBorne(t) {
 
 function poserModeChemin(mode) {
   carte.chemin = mode;
+  majReglagesChemin();
   carte.trace = null;
   // Change de mode sans changer de trajet : « Autre tirage » et le curseur
   // de bruit rejoueraient sinon la spécification de l'ancien mode sous le
@@ -2269,7 +3779,9 @@ function poserModeChemin(mode) {
   $("chemin-aide").textContent =
     `${AIDE_CHEMIN[mode][0]} Ou : chercher puis Entrée pour poser une borne.`;
   $("carte-aide").textContent = aideCourante();
-  $("chemin-rejouer").hidden = !carte.refaire;
+  // En itinéraire, la visibilité du bouton dépend des variantes — gérée par
+  // `majReglagesChemin` ci-dessus.
+  if (mode !== "itineraire") $("chemin-rejouer").hidden = !carte.refaire;
   dessinerBornes();
   dessinerCarte();
 
@@ -2298,6 +3810,8 @@ function poserModeChemin(mode) {
   // la trajectoire qui change, pas le point d'où l'on veut explorer.
   if (mode === "errance") {
     if (carte.depart) tracerChemin({ from: carte.depart.id, mode: "errance" }).catch((e) => remonter(e, "chemin"));
+  } else if (mode === "itineraire") {
+    if (carte.depart && carteReelle()) tracerItineraire().catch((e) => remonter(e, "itinéraire"));
   } else if (mode !== "dessine" && carte.depart && carte.arrivee) {
     tracerChemin({ from: carte.depart.id, to: carte.arrivee.id, mode }).catch((e) => remonter(e, "chemin"));
   }
@@ -2367,10 +3881,35 @@ function preparerGraphe() {
 async function chargerCarte() {
   const [points] = await Promise.all([
     invoke("map_view"),
-    chargerDensite().catch((e) => remonter(e, "densité")),
   ]);
   carte.points = points;
-  invaliderDensiteContinue(); // les points ont changé, la nappe continue doit se refaire
+
+  // Plan de ville réel : la vraie adresse (lon/lat) de chaque morceau logé,
+  // **à côté** de `p.x`/`p.y` — jamais à la place. `p.x`/`p.y` restent la
+  // position t-SNE partout : c'est ce que lit le mode Nuage, qui doit rester
+  // correct que la ville soit active ou non. `versEcran` choisit laquelle
+  // utiliser selon `villeReelle` et l'affichage courant. `positions_carte`
+  // échoue sur le chemin fictif : c'est le signal, pas une erreur à
+  // remonter.
+  let positionsReelles = null;
+  try {
+    positionsReelles = await invoke("positions_carte");
+  } catch {
+    positionsReelles = null;
+  }
+  villeReelle = !!(positionsReelles && Object.keys(positionsReelles).length > 0);
+  carte.positionsReelles = villeReelle ? new Map(Object.entries(positionsReelles).map(([id, p]) => [+id, p])) : new Map();
+  majSegmentsCouleur();
+  if (villeReelle) {
+    const sansAdresse = carte.points.filter((p) => !carte.positionsReelles.has(p.id)).length;
+    if (sansAdresse) {
+      // Un morceau que l'affectation n'a pas logé n'a pas d'entrée ici :
+      // `versEcran` retombe alors sur sa position t-SNE plutôt que de le
+      // faire disparaître.
+      journalCarte(`${sansAdresse} morceau(x) sans adresse réelle, position t-SNE conservée`, "warn");
+    }
+  }
+
   const [faits, total] = await invoke("map_progress");
 
   // Les bornes de chaque variable, une fois pour toutes au chargement.
@@ -2387,7 +3926,8 @@ async function chargerCarte() {
       ? `${carte.points.length.toLocaleString("fr-FR")} placés · ${(total - faits).toLocaleString("fr-FR")} en attente`
       : `${carte.points.length.toLocaleString("fr-FR")} morceaux`;
   dessinerFamilles();
-  dessinerCarte();
+  majAffichageGL();
+  majModesChemin();
 }
 
 /* ---------------------------------------------------------- modes */
@@ -2397,6 +3937,11 @@ async function basculerMode(mode) {
   const editer = mode === "editer";
   const bibliotheque = mode === "bibliotheque";
   const decouvrir = mode === "decouvrir";
+  // Quitter Découvrir éteint les pastilles « nouveau » : ce qu'on vient de
+  // voir n'est plus une nouveauté au prochain passage.
+  if (modeCourant === "decouvrir" && mode !== "decouvrir") {
+    invoke("decouvrir_tout_vu").catch((e) => remonter(e, "découvrir"));
+  }
   document.querySelectorAll(".mode").forEach((b) =>
     b.classList.toggle("mode--actif", b.dataset.mode === mode),
   );
@@ -2407,14 +3952,26 @@ async function basculerMode(mode) {
   $("carte-vue").hidden = !explorer;
   $("bibliotheque-vue").hidden = !bibliotheque;
   $("decouvrir-vue").hidden = !decouvrir;
-  $("liste").hidden = explorer || bibliotheque || decouvrir || vue.quoi === "albums";
-  $("grille").hidden = explorer || bibliotheque || decouvrir || vue.quoi !== "albums";
+  $("liste").hidden = explorer || bibliotheque || decouvrir || vueEnGrille();
+  $("grille").hidden = explorer || bibliotheque || decouvrir || !vueEnGrille();
+  // L'ordre de la grille d'albums n'existe qu'en Écoute : `poser` le rétablit
+  // en y revenant, mais ne court pas pour les autres modes.
+  $("tri-albums").hidden = mode !== "ecoute" || vue.quoi !== "albums";
   $("retour").hidden = explorer || bibliotheque || decouvrir || vue.retour === null;
   $("index-alpha").hidden = $("index-alpha").hidden || bibliotheque || decouvrir;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir;
+  // « Chercher » (recherche globale de la bibliothèque) alimente #liste, masquée
+  // en Bibliothèque et Découvrir : le champ n'y ferait rien de visible. En
+  // Explorer il change de rôle (filtre de la carte), on le garde.
+  $("bloc-chercher").hidden = bibliotheque || decouvrir;
   $("bloc-colorer").hidden = !explorer;
   $("bloc-chemin").hidden = !explorer;
   $("bloc-familles").hidden = !explorer || carte.couleur !== "famille";
+  // Le filtre par famille de l'Écoute : `majBlocFamillesEcoute` le rallume si
+  // la grille d'albums est à l'écran et la carte calculée.
+  $("bloc-familles-ecoute").hidden = true;
+  // Idem pour le filtre par famille de Découvrir (`majBlocFamillesDecouvrir`).
+  if (!decouvrir) $("bloc-familles-decouvrir").hidden = true;
   $("bloc-demix").hidden = !editer;
   $("bloc-decouvrir").hidden = !decouvrir;
   $("dock").hidden = !editer || edition.stems.length === 0;
@@ -2434,19 +3991,47 @@ async function basculerMode(mode) {
     $("fil-titre").textContent = "Bibliothèque";
     $("fil-compte").textContent = "";
     await dessinerRacines();
-    majCacheStems().catch((e) => remonter(e, "stems"));
+    majCache().catch((e) => remonter(e, "cache"));
+    chargerDossierDonnees().catch((e) => remonter(e, "dossier de données"));
     chargerStatsBibliotheque().catch((e) => remonter(e, "statistiques"));
+    reprendreActualisationEnCours().catch((e) => remonter(e, "actualisation"));
     chargerVerifications().catch((e) => remonter(e, "vérifications"));
     chargerParametresCarte().catch((e) => remonter(e, "paramètres de la carte"));
+    chargerVocabulaireFamilles().catch((e) => remonter(e, "vocabulaire des familles"));
+    chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
   } else if (decouvrir) {
     $("fil-titre").textContent = "Découvrir";
     $("fil-compte").textContent = "";
     chargerArtistesDecouvrir().catch((e) => remonter(e, "découvrir"));
+    entrerDecouvrir().catch((e) => remonter(e, "découvrir"));
+    // Filtre par famille du fil : les données au premier passage, le rendu à
+    // chaque entrée (les familles ont pu être renommées depuis).
+    {
+      const rendre = () => {
+        dessinerFamillesDecouvrir();
+        rendreFilDecouvrir();
+      };
+      if (famillesParArtiste) rendre();
+      else
+        chargerFamillesParArtiste()
+          .then(rendre)
+          .catch((e) => remonter(e, "familles des artistes"));
+    }
   } else {
     poser(vue.quoi, vue.titre, vue.lignes, vue.retour);
     // Le mode Éditer travaille sur la sélection courante : on la relit à
     // chaque entrée plutôt que de la mémoriser, elle a pu changer depuis.
     if (editer) poserSourceEdition();
+    // Filtre par famille de l'Écoute : les données au premier passage, le
+    // rendu à chaque entrée (les familles ont pu être renommées depuis).
+    if (mode === "ecoute") {
+      const rendre = () => {
+        dessinerFamillesEcoute();
+        rafraichirGrille();
+      };
+      if (famillesParAlbum) rendre();
+      else chargerFamillesParAlbum().then(rendre).catch((e) => remonter(e, "familles des albums"));
+    }
   }
 }
 
@@ -2469,10 +4054,43 @@ async function chargerArtistesDecouvrir() {
   }
 }
 
-$("decouvrir-contact").value = localStorage.getItem("decouvrir-contact") || "";
-$("decouvrir-contact").addEventListener("change", (e) => {
-  localStorage.setItem("decouvrir-contact", e.target.value.trim());
-});
+/// L'adresse de contact MusicBrainz : une seule valeur, exigée dans le
+/// User-Agent pour toute requête à leur API. Deux fonctions s'en servent —
+/// les collaborations d'artiste (ce mode) et la passe « Genres MusicBrainz »
+/// du mode Bibliothèque — d'où deux champs, tenus synchronisés sur une même
+/// clé de stockage.
+const CONTACT_MB_CLE = "mb-contact";
+const CHAMPS_CONTACT_MB = ["decouvrir-contact", "analyse-contact"];
+
+function contactMb() {
+  return (localStorage.getItem(CONTACT_MB_CLE) || "").trim();
+}
+
+(function initContactMb() {
+  // Reprise de l'ancienne clé, du temps où seul Découvrir gardait l'adresse
+  // (et où le champ de Bibliothèque n'était pas persisté du tout).
+  const ancien = localStorage.getItem("decouvrir-contact");
+  if (ancien && !localStorage.getItem(CONTACT_MB_CLE)) {
+    localStorage.setItem(CONTACT_MB_CLE, ancien.trim());
+  }
+  localStorage.removeItem("decouvrir-contact");
+
+  const valeur = contactMb();
+  for (const id of CHAMPS_CONTACT_MB) {
+    const champ = $(id);
+    if (!champ) continue;
+    champ.value = valeur;
+    champ.addEventListener("change", (e) => {
+      const v = e.target.value.trim();
+      localStorage.setItem(CONTACT_MB_CLE, v);
+      for (const autre of CHAMPS_CONTACT_MB) {
+        if (autre === id) continue;
+        const c = $(autre);
+        if (c) c.value = v;
+      }
+    });
+  }
+})();
 
 $("decouvrir-recherche").addEventListener("input", (e) => {
   const q = e.target.value.trim().toLowerCase();
@@ -2555,7 +4173,7 @@ async function afficherArtisteDecouvrir(mbid, nom) {
 }
 
 function decouvrirContact() {
-  return $("decouvrir-contact").value.trim();
+  return contactMb();
 }
 
 /// Pousse `mbid` sur le fil d'Ariane et l'affiche au centre — le geste de
@@ -2592,6 +4210,394 @@ function dessinerFilDecouvrir() {
     }
   });
 }
+
+/* ---------------------------------------- mode Découvrir : le fil d'actualité */
+
+/// Au bout de combien d'heures sans passe on en relance une à l'ouverture du
+/// mode. Douze heures : assez pour ne pas interroger MusicBrainz à chaque
+/// aller-retour, assez peu pour que « récent » le reste.
+const DECOUVRIR_PEREMPTION_H = 12;
+
+/// Vrai tant qu'une passe tourne, pour ne pas en lancer deux.
+let decouvrirEnCours = false;
+
+/// La date (epoch s) de la dernière passe, retenue du dernier `decouvrir_feed`.
+let decouvrirDernierePasse = null;
+
+/// Un bouton stylé comme un lien, avec son action.
+function boutonLien(texte, action) {
+  const b = document.createElement("button");
+  b.className = "lien";
+  b.textContent = texte;
+  b.addEventListener("click", action);
+  return b;
+}
+
+/// L'onglet ouvert dans le panneau central — mémorisé d'une visite à l'autre.
+let decouvrirOnglet = "sorties";
+try {
+  decouvrirOnglet = localStorage.getItem("decouvrir-onglet") || "sorties";
+} catch {
+  /* stockage indisponible : on garde le défaut */
+}
+
+/// Pochettes du fil, par identifiant de release-group. Bornées de fait par le
+/// nombre de sorties d'une passe (~60), pas d'éviction à prévoir. `null` =
+/// pas de pochette connue, pour ne pas la redemander à chaque rendu.
+const pochettesCaa = new Map();
+function pochetteDecouvrir(rgMbid) {
+  let p = pochettesCaa.get(rgMbid);
+  if (!p) {
+    p = invoke("decouvrir_pochette", { rgMbid }).catch(() => null);
+    pochettesCaa.set(rgMbid, p);
+  }
+  return p;
+}
+
+/// URL d'une page Last.fm — les espaces en `+`, le reste encodé. Un album
+/// inconnu y tombe sur une page « introuvable » avec une recherche : acceptable.
+function lienLastfm(...segments) {
+  const enc = (s) => encodeURIComponent(s).replace(/%20/g, "+");
+  return "https://www.last.fm/music/" + segments.map(enc).join("/");
+}
+
+/// Entrée dans le mode : on affiche le fil tel qu'il est, puis on lance une
+/// passe si la dernière est ancienne (et si une adresse de contact est là).
+async function entrerDecouvrir() {
+  await chargerFilDecouvrir();
+  const passe = decouvrirDernierePasse;
+  const vieux =
+    passe === null || Date.now() / 1000 - passe > DECOUVRIR_PEREMPTION_H * 3600;
+  if (vieux && contactMb().includes("@")) {
+    await lancerPasseDecouvrir();
+  }
+}
+
+async function chargerFilDecouvrir() {
+  const fil = await invoke("decouvrir_feed");
+  filDecouvrir = fil;
+  decouvrirDernierePasse = fil.derniere_passe ?? null;
+
+  $("decouvrir-fraicheur").textContent = fil.derniere_passe
+    ? `Actualisé ${depuisTexte(fil.derniere_passe)}.`
+    : "Jamais actualisé.";
+
+  rendreFilDecouvrir();
+}
+
+/// Le dernier fil reçu de `decouvrir_feed`, gardé pour le re-rendre à chaque
+/// changement du filtre par famille sans refaire la requête.
+let filDecouvrir = null;
+
+/// La famille sonique de l'artiste-ancre d'une sortie — celle inscrite dans le
+/// fil ne bouge pas, seul le filtre change. Ensemble vide, ou familles pas
+/// encore chargées : tout passe.
+function sortiePasseFamille(s) {
+  if (filtreFamillesDecouvrir.size === 0 || !famillesParArtiste) return true;
+  return filtreFamillesDecouvrir.has(famillesParArtiste.get(s.artiste_mbid));
+}
+
+/// Un voisin passe si l'une de ses ancres (`src_mbids`) est dans une famille
+/// cochée — il a pu être proposé par plusieurs artistes de familles différentes.
+function voisinPasseFamille(v) {
+  if (filtreFamillesDecouvrir.size === 0 || !famillesParArtiste) return true;
+  return (v.src_mbids ?? []).some((m) => filtreFamillesDecouvrir.has(famillesParArtiste.get(m)));
+}
+
+/// Applique le filtre par famille au fil courant et redessine les trois
+/// onglets. Les compteurs suivent le filtre ; « Pas encore de nouveautés » et
+/// « Tout marquer comme vu » restent calés sur le fil brut — ce qui est masqué
+/// par un filtre reste du contenu.
+function rendreFilDecouvrir() {
+  const fil = filDecouvrir;
+  if (!fil) return;
+
+  const sorties = fil.sorties.filter(sortiePasseFamille);
+  const collaborations = fil.collaborations.filter(sortiePasseFamille);
+  const voisins = fil.voisins.filter(voisinPasseFamille);
+
+  rendreListeSorties("decouvrir-sorties", "decouvrir-vide-sorties", sorties);
+  rendreListeSorties("decouvrir-collabs", "decouvrir-vide-collabs", collaborations);
+  rendreListeVoisins(voisins);
+
+  const n = (id, v) => ($(id).textContent = v ? ` ${v}` : "");
+  n("decouvrir-n-sorties", sorties.length);
+  n("decouvrir-n-collabs", collaborations.length);
+  n("decouvrir-n-voisins", voisins.length);
+
+  const vide =
+    fil.sorties.length === 0 && fil.collaborations.length === 0 && fil.voisins.length === 0;
+  $("decouvrir-actus-vide").hidden = !vide;
+  $("decouvrir-onglets").hidden = vide;
+  poserOngletDecouvrir(decouvrirOnglet);
+
+  const nouveaux =
+    [...fil.sorties, ...fil.collaborations, ...fil.voisins].some((x) => !x.vu);
+  $("decouvrir-vu-tout").hidden = !nouveaux;
+
+  majBlocFamillesDecouvrir();
+}
+
+/* ------------------------------------------ filtre par famille — mode Découvrir
+ *
+ * Même légende que le mode Explorer (`rendreFamilles`), même multi-sélection
+ * que le filtre de l'Écoute. Une sortie, une collaboration ou un voisin est
+ * rangé dans la famille sonique de son artiste-ancre (celui de la
+ * bibliothèque). Ensemble vide = tout est montré. N'a de sens qu'une fois la
+ * carte calculée.
+ */
+
+const filtreFamillesDecouvrir = new Set();
+let famillesParArtiste = null; // Map mb_album_artist_id → cluster dominant
+
+async function chargerFamillesParArtiste() {
+  try {
+    const paires = await invoke("artist_families");
+    famillesParArtiste = new Map(paires);
+  } catch (e) {
+    remonter(e, "familles des artistes");
+    famillesParArtiste = new Map();
+  }
+}
+
+async function dessinerFamillesDecouvrir() {
+  await chargerFamilles();
+  rendreFamilles(
+    $("familles-decouvrir"),
+    (c) => filtreFamillesDecouvrir.has(c),
+    (c) => {
+      if (filtreFamillesDecouvrir.has(c)) filtreFamillesDecouvrir.delete(c);
+      else filtreFamillesDecouvrir.add(c);
+      dessinerFamillesDecouvrir();
+      rendreFilDecouvrir();
+    },
+  );
+  $("familles-decouvrir-tout").hidden = filtreFamillesDecouvrir.size === 0;
+}
+
+/// Affiche le bloc « Familles » de Découvrir quand il a un sens : mode
+/// Découvrir, familles des artistes chargées, et carte déjà calculée.
+function majBlocFamillesDecouvrir() {
+  const utile =
+    modeCourant === "decouvrir" &&
+    famillesParArtiste &&
+    famillesParArtiste.size > 0 &&
+    (carte.familles?.length ?? 0) > 0;
+  $("bloc-familles-decouvrir").hidden = !utile;
+}
+
+$("familles-decouvrir-tout").addEventListener("click", () => {
+  filtreFamillesDecouvrir.clear();
+  dessinerFamillesDecouvrir();
+  rendreFilDecouvrir();
+});
+
+function poserOngletDecouvrir(onglet) {
+  decouvrirOnglet = onglet;
+  try {
+    localStorage.setItem("decouvrir-onglet", onglet);
+  } catch {
+    /* rien : la préférence ne survivra pas à la session, sans plus */
+  }
+  for (const b of $("decouvrir-onglets").children) {
+    b.classList.toggle("segment--actif", b.dataset.onglet === onglet);
+  }
+  $("decouvrir-panneau-sorties").hidden = onglet !== "sorties";
+  $("decouvrir-panneau-collabs").hidden = onglet !== "collabs";
+  $("decouvrir-panneau-voisins").hidden = onglet !== "voisins";
+}
+
+$("decouvrir-onglets").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-onglet]");
+  if (b) poserOngletDecouvrir(b.dataset.onglet);
+});
+
+/// « il y a 3 jours », « il y a 5 h », « à l'instant » — à partir d'un epoch s.
+function depuisTexte(epochS) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - epochS));
+  if (s < 3600) return "il y a moins d'une heure";
+  if (s < 86400) return `il y a ${Math.round(s / 3600)} h`;
+  const j = Math.round(s / 86400);
+  return j <= 1 ? "hier" : `il y a ${j} jours`;
+}
+
+/// Badge de type + « il y a N jours » à partir d'une date 'YYYY-MM-DD' partielle.
+function ageSortie(date) {
+  if (!date) return "";
+  const complet = date.length === 4 ? `${date}-01-01` : date.length === 7 ? `${date}-01` : date;
+  const j = Math.round((Date.now() - new Date(complet).getTime()) / 86400000);
+  if (!Number.isFinite(j)) return date;
+  if (j <= 0) return "aujourd'hui";
+  if (j === 1) return "hier";
+  if (j < 31) return `il y a ${j} jours`;
+  return date;
+}
+
+/// Ouvre l'explorateur de collaborations sur un artiste, depuis le fil.
+function explorerDepuisFil(mbid, nom) {
+  decouvrirFil = [];
+  naviguerDecouvrir(mbid, nom).catch((e) => remonter(e, "découvrir"));
+}
+
+/// Une ligne du fil : pochette (facultative, chargée à la volée), un corps
+/// texte, une colonne de liens. Compacte — plusieurs par écran.
+function ligneDecouvrir({ nouveau, rgMbid, titre, sous, collab, liens }) {
+  const ligne = document.createElement("div");
+  ligne.className = "decouvrir-ligne" + (nouveau ? " decouvrir-ligne--nouveau" : "");
+
+  if (rgMbid !== undefined) {
+    const pochette = document.createElement("div");
+    pochette.className = "decouvrir-ligne__pochette";
+    ligne.appendChild(pochette);
+    pochetteDecouvrir(rgMbid).then((uri) => {
+      if (!uri) return;
+      const img = document.createElement("img");
+      img.src = uri;
+      img.alt = "";
+      pochette.appendChild(img);
+      pochette.classList.add("decouvrir-ligne__pochette--pleine");
+    });
+  }
+
+  const corps = document.createElement("div");
+  corps.className = "decouvrir-ligne__corps";
+  const t = document.createElement("div");
+  t.className = "decouvrir-ligne__titre";
+  t.textContent = titre;
+  t.title = titre;
+  corps.appendChild(t);
+  corps.appendChild(sous);
+  if (collab) {
+    const c = document.createElement("div");
+    c.className = "decouvrir-ligne__collab";
+    c.textContent = `avec ${collab}`;
+    c.title = collab;
+    corps.appendChild(c);
+  }
+  ligne.appendChild(corps);
+
+  const col = document.createElement("div");
+  col.className = "decouvrir-ligne__liens";
+  for (const l of liens) col.appendChild(l);
+  ligne.appendChild(col);
+
+  return ligne;
+}
+
+function rendreListeSorties(idListe, idVide, sorties) {
+  const hote = $(idListe);
+  hote.replaceChildren();
+  $(idVide).hidden = sorties.length > 0;
+  for (const s of sorties) {
+    const sous = document.createElement("div");
+    sous.className = "decouvrir-ligne__sous";
+    const artiste = boutonLien(s.artiste_nom, () =>
+      explorerDepuisFil(s.artiste_mbid, s.artiste_nom),
+    );
+    artiste.classList.add("lien--inline");
+    sous.append(artiste, document.createTextNode(
+      [s.type_primaire, ageSortie(s.date_sortie)].filter(Boolean).map((x) => ` · ${x}`).join(""),
+    ));
+
+    hote.appendChild(
+      ligneDecouvrir({
+        nouveau: !s.vu,
+        rgMbid: s.rg_mbid,
+        titre: s.titre,
+        sous,
+        collab: s.collaborateurs,
+        liens: [
+          boutonLien("MusicBrainz", () =>
+            ouvrirLien(`https://musicbrainz.org/release-group/${s.rg_mbid}`),
+          ),
+          boutonLien("Last.fm", () => ouvrirLien(lienLastfm(s.artiste_nom, s.titre))),
+        ],
+      }),
+    );
+  }
+}
+
+function rendreListeVoisins(voisins) {
+  const hote = $("decouvrir-voisins");
+  hote.replaceChildren();
+  $("decouvrir-vide-voisins").hidden = voisins.length > 0;
+  for (const v of voisins) {
+    const sous = document.createElement("div");
+    sous.className = "decouvrir-ligne__sous";
+    sous.textContent = v.portes.length
+      ? `proche de ${v.portes.slice(0, 3).join(", ")}`
+      : "artiste voisin";
+
+    hote.appendChild(
+      ligneDecouvrir({
+        nouveau: !v.vu,
+        titre: v.dst_nom,
+        sous,
+        liens: [
+          boutonLien("MusicBrainz", () =>
+            ouvrirLien(`https://musicbrainz.org/artist/${v.dst_mbid}`),
+          ),
+          boutonLien("Explorer ▸", () => explorerDepuisFil(v.dst_mbid, v.dst_nom)),
+        ],
+      }),
+    );
+  }
+}
+
+/// Lance la passe et suit son avancement (barre + texte), puis rafraîchit le fil.
+async function lancerPasseDecouvrir() {
+  if (decouvrirEnCours) return;
+  const contact = contactMb();
+  if (!contact.includes("@")) {
+    $("decouvrir-fraicheur").textContent =
+      "Renseignez une adresse de contact MusicBrainz dans le rail.";
+    return;
+  }
+  decouvrirEnCours = true;
+  $("decouvrir-actualiser").disabled = true;
+  const ligne = $("decouvrir-avancement");
+  const jauge = $("decouvrir-jauge");
+  ligne.hidden = false;
+  jauge.hidden = false;
+  jauge.removeAttribute("value"); // barre indéterminée tant qu'on n'a pas de total
+  ligne.textContent = "Actualisation… (recherche des sorties récentes)";
+  try {
+    await invoke("start_decouvrir", { contact });
+    await attendreFin("decouvrir_state", 1500, (d) => {
+      if (!d.en_cours) return;
+      if (d.total) {
+        jauge.max = d.total;
+        jauge.value = d.artistes;
+        const reste = Math.max(0, d.total - d.artistes);
+        ligne.textContent =
+          `${d.artistes.toLocaleString("fr-FR")} / ${d.total.toLocaleString("fr-FR")} étapes` +
+          ` — ${d.sorties_neuves} sorties, ${d.voisins_neufs} voisins` +
+          (reste ? ` — reste ~${dureeLongue(reste * SECONDES_PAR_ARTISTE)}` : "");
+      }
+    });
+  } catch (e) {
+    ligne.textContent = String(e);
+    remonter(e, "découvrir");
+  } finally {
+    decouvrirEnCours = false;
+    $("decouvrir-actualiser").disabled = false;
+    ligne.hidden = true;
+    jauge.hidden = true;
+    jauge.value = 0;
+    await chargerFilDecouvrir().catch((e) => remonter(e, "découvrir"));
+    const r = (await invoke("decouvrir_state").catch(() => null))?.resultat;
+    if (r && r.startsWith("échec")) $("decouvrir-fraicheur").textContent = r;
+  }
+}
+
+$("decouvrir-actualiser").addEventListener("click", () =>
+  lancerPasseDecouvrir().catch((e) => remonter(e, "découvrir")),
+);
+
+$("decouvrir-vu-tout").addEventListener("click", async () => {
+  await invoke("decouvrir_tout_vu").catch((e) => remonter(e, "découvrir"));
+  await chargerFilDecouvrir().catch((e) => remonter(e, "découvrir"));
+});
 
 /* --------------------------------------------------- mode Bibliothèque */
 
@@ -2800,6 +4806,72 @@ for (const [id, cle] of Object.entries(CHAMPS_PARAMETRES_CARTE)) {
   });
 }
 
+/* --------------------------------- vocabulaire des familles par genre */
+
+// Une ligne par famille : « Nom: genre1, genre2, genre3 ». Format texte
+// plutôt qu'une liste éditable élément par élément — plus rapide à relire et
+// à corriger d'un coup pour douze familles, et rien ici n'a besoin de
+// glisser-déposer.
+function serialiserVocabulaire(vocabulaire) {
+  return vocabulaire.map(([nom, genres]) => `${nom}: ${genres.join(", ")}`).join("\n");
+}
+
+function analyserVocabulaire(texte) {
+  const vocabulaire = [];
+  for (const ligne of texte.split("\n")) {
+    const deux = ligne.indexOf(":");
+    if (deux < 0) continue; // ligne vide ou incomplète, ignorée sans erreur
+    const nom = ligne.slice(0, deux).trim();
+    const genres = ligne
+      .slice(deux + 1)
+      .split(",")
+      .map((g) => g.trim().toLowerCase())
+      .filter(Boolean);
+    if (nom && genres.length) vocabulaire.push([nom, genres]);
+  }
+  return vocabulaire;
+}
+
+async function chargerVocabulaireFamilles() {
+  const v = await invoke("vocabulaire_familles");
+  $("vocabulaire-familles").value = serialiserVocabulaire(v);
+}
+
+$("enregistrer-vocabulaire").addEventListener("click", async () => {
+  const bouton = $("enregistrer-vocabulaire");
+  bouton.disabled = true;
+  $("vocabulaire-etat").textContent = "Enregistrement…";
+  try {
+    const vocabulaire = analyserVocabulaire($("vocabulaire-familles").value);
+    await invoke("definir_vocabulaire_familles", { vocabulaire });
+    $("vocabulaire-etat").textContent =
+      `${vocabulaire.length} famille(s) enregistrée(s) — « Recalculer la carte » pour l'appliquer.`;
+  } catch (e) {
+    remonter(e, "vocabulaire des familles");
+    $("vocabulaire-etat").textContent = String(e);
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+$("reinitialiser-vocabulaire").addEventListener("click", async () => {
+  const bouton = $("reinitialiser-vocabulaire");
+  bouton.disabled = true;
+  try {
+    // Liste vide = restaure les valeurs par défaut côté base, voir
+    // `Library::definir_vocabulaire_familles`.
+    await invoke("definir_vocabulaire_familles", { vocabulaire: [] });
+    await chargerVocabulaireFamilles();
+    $("vocabulaire-etat").textContent =
+      "Valeurs par défaut restaurées — « Recalculer la carte » pour l'appliquer.";
+  } catch (e) {
+    remonter(e, "vocabulaire des familles");
+    $("vocabulaire-etat").textContent = String(e);
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
 $("recalculer-carte").addEventListener("click", async () => {
   const bouton = $("recalculer-carte");
   bouton.disabled = true;
@@ -2809,8 +4881,8 @@ $("recalculer-carte").addEventListener("click", async () => {
     $("carte-parametres-etat").textContent =
       `${r.empreintes.toLocaleString("fr-FR")} morceaux replacés, ${r.familles.toLocaleString("fr-FR")} familles.`;
     // La carte affichée, si elle l'est, montre des positions périmées ; les
-    // familles nommées le sont tout autant.
-    carte.familles = null;
+    // familles nommées et le filtre par famille de l'Écoute le sont tout autant.
+    await familleARecalculee();
     if (modeCourant === "explorer") {
       await chargerCarte();
       await dessinerFamilles();
@@ -2818,6 +4890,40 @@ $("recalculer-carte").addEventListener("click", async () => {
   } catch (e) {
     remonter(e, "recalcul de la carte");
     $("carte-parametres-etat").textContent = String(e);
+  } finally {
+    bouton.disabled = false;
+  }
+});
+
+// Régénère les tuiles vectorielles (module `carto`), et rouvre MapLibre sur
+// le résultat. Bascule automatiquement sur le plan de ville réel si
+// `ville-paris.db` existe (`main.rs::engendrer_tuiles`) : rien à choisir ici.
+//
+// **Aucun autre bouton n'appelait `engendrer_tuiles`** avant celui-ci — la
+// commande existait côté Rust, mais rien côté interface ne la déclenchait ;
+// la carte affichée restait celle de la dernière génération, quel que soit
+// le plan de ville importé depuis.
+$("regenerer-tuiles").addEventListener("click", async () => {
+  const bouton = $("regenerer-tuiles");
+  bouton.disabled = true;
+  $("tuiles-etat").textContent = "Génération en cours…";
+  try {
+    const r = await invoke("engendrer_tuiles");
+    $("tuiles-etat").textContent = r;
+    // Les tuiles ont changé sous l'instance MapLibre en place : la relancer
+    // à neuf plutôt que d'espérer qu'elle redemande ce qu'elle a déjà en
+    // cache.
+    if (gl) {
+      gl.remove();
+      gl = null;
+      glPret = false;
+    }
+    if (modeCourant === "explorer" && carte.affichage === "carte") {
+      majAffichageGL();
+    }
+  } catch (e) {
+    remonter(e, "génération des tuiles");
+    $("tuiles-etat").textContent = String(e);
   } finally {
     bouton.disabled = false;
   }
@@ -2864,9 +4970,7 @@ $("recalculer-densite").addEventListener("click", async () => {
     await invoke("recompute_density");
     $("densite-parametres-etat").textContent = "Nappe de densité à jour.";
     if (modeCourant === "explorer") {
-      await chargerDensite();
-      invaliderImageDensite();
-      dessinerCarte();
+          dessinerCarte();
     }
   } catch (e) {
     remonter(e, "recalcul de la densité");
@@ -2876,22 +4980,6 @@ $("recalculer-densite").addEventListener("click", async () => {
   }
 });
 
-// Force de l'ombre : redessine seulement, aucun aller-retour vers le moteur
-// — mêmes principe et délai que le bruit des chemins.
-$("densite-ombre").value = forceOmbre;
-$("densite-ombre-valeur").textContent = forceOmbre.toFixed(2).replace(".", ",");
-let attenteOmbre = null;
-$("densite-ombre").addEventListener("input", (e) => {
-  const v = Number(e.target.value);
-  forceOmbre = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : OMBRE_DEFAUT;
-  $("densite-ombre-valeur").textContent = forceOmbre.toFixed(2).replace(".", ",");
-  localStorage.setItem("densite-ombre", String(forceOmbre));
-  clearTimeout(attenteOmbre);
-  attenteOmbre = setTimeout(() => {
-    invaliderImageDensite();
-    if (modeCourant === "explorer") dessinerCarte();
-  }, 120);
-});
 
 /// Genres suspects et éditions multiples : peu coûteux (une requête
 /// d'agrégation), rejoués à chaque entrée dans le mode comme le reste des
@@ -3051,37 +5139,27 @@ $("parcourir").addEventListener("click", async () => {
   if (choisi) $("nouveau-dossier").value = choisi;
 });
 
-let sondageScan = null;
+/// « Scanner » : le point de départ du mode. Avec un dossier saisi, il
+/// l'ajoute et lui fait faire toute la chaîne ([`analyserRacine`] — scan,
+/// empreintes, tempo/tonalité/énergie, genres) ; sans, il rattrape ce qui
+/// manque sur toutes les racines déjà surveillées (`lancerChaineComplete`).
+/// Les deux chaînes reprennent où elles s'étaient arrêtées, et se grisent
+/// elles-mêmes le temps de tourner (`verrouillerActualisation`).
 $("lancer-scan").addEventListener("click", async () => {
   const chemin = $("nouveau-dossier").value.trim();
-  if (!chemin) return;
   try {
-    // Pas de case « force » ici : un dossier qu'on vient d'ajouter n'a rien
-    // à relire, tout y est encore neuf. C'est le bouton « Analyser » de la
-    // racine, une fois apparue dans la liste, qui la propose pour la suite.
-    await invoke("start_scan", { path: chemin, force: false });
-  } catch (e) {
-    $("scan-etat").textContent = String(e);
-    return;
-  }
-  $("lancer-scan").disabled = true;
-
-  // Le scan tourne dans son thread : on suit son avancement par sondage. Sur
-  // un support lent il dure des dizaines de minutes, d'où le pas d'une seconde.
-  clearInterval(sondageScan);
-  sondageScan = setInterval(async () => {
-    const s = await invoke("scan_state");
-    if (s.en_cours) {
-      $("scan-etat").textContent = `scan en cours… ${s.morceaux.toLocaleString("fr-FR")} morceaux en base`;
+    if (chemin) {
+      $("nouveau-dossier").value = "";
+      await analyserRacine(chemin);
+    } else if ((await invoke("roots")).length === 0) {
+      $("scan-etat").textContent = "Choisissez d'abord un dossier de musique.";
     } else {
-      clearInterval(sondageScan);
-      sondageScan = null;
-      $("lancer-scan").disabled = false;
-      $("scan-etat").textContent = s.resultat ?? "";
-      await dessinerRacines();
-      await charger();
+      await lancerChaineComplete();
     }
-  }, 1000);
+  } catch (e) {
+    remonter(e, "scan");
+    $("scan-etat").textContent = String(e);
+  }
 });
 
 /* ---------------------------------------------------------- analyse */
@@ -3138,22 +5216,22 @@ function attendreFin(commande, pas, surProgres) {
 
 /// Le bouton « Analyser » d'une racine, tout ce que la bibliothèque sait
 /// faire sur ses fichiers, enchaîné : scan (relit tags/format/débit),
-/// empreintes CLAP, tempo/tonalité/énergie, puis genres MusicBrainz si une
-/// adresse de contact est renseignée. Un seul bouton par racine plutôt que
-/// quatre sections séparées à faire tourner soi-même dans l'ordre — c'est
-/// toujours le même ordre, autant l'écrire une fois.
+/// empreintes CLAP, tempo/tonalité/énergie, genres MusicBrainz si une adresse
+/// de contact est renseignée, puis popularité générale (ListenBrainz +
+/// Deezer, sans clé). Un seul bouton par racine plutôt que cinq sections
+/// séparées à faire tourner soi-même dans l'ordre — c'est toujours le même
+/// ordre, autant l'écrire une fois.
 ///
-/// Les quatre passes restent globales côté moteur (pas de filtre par
-/// racine) : dans l'usage courant — une racine qu'on vient d'ajouter ou de
-/// changer — ce qui est « en attente » est justement ce qu'on vient de
-/// scanner, donc le résultat correspond à l'intention même sans filtrage
-/// explicite.
+/// Les passes restent globales côté moteur (pas de filtre par racine) : dans
+/// l'usage courant — une racine qu'on vient d'ajouter ou de changer — ce qui
+/// est « en attente » est justement ce qu'on vient de scanner, donc le
+/// résultat correspond à l'intention même sans filtrage explicite.
 async function analyserRacine(chemin) {
-  document.querySelectorAll(".racine__analyser").forEach((b) => (b.disabled = true));
+  verrouillerActualisation(true);
   const force = $("analyse-force").checked;
-  const contact = $("analyse-contact").value.trim();
-  const etat = $("racines-etat");
-  const jauge = $("racines-jauge");
+  const contact = contactMb();
+  const etat = $("scan-etat");
+  const jauge = $("scan-jauge");
   try {
     etat.textContent = `${chemin} — scan…`;
     jauge.hidden = true;
@@ -3167,7 +5245,7 @@ async function analyserRacine(chemin) {
     etat.textContent = `${chemin} — empreintes…`;
     await invoke("start_analysis");
     await attendreFin("analysis_state", 2000, (a) => {
-      majJauge("racines-jauge", a.en_cours, a.faits, a.total);
+      majJauge("scan-jauge", a.en_cours, a.faits, a.total);
       if (a.en_cours) {
         const reste = Math.max(0, a.total - a.faits);
         etat.textContent = a.total
@@ -3176,13 +5254,14 @@ async function analyserRacine(chemin) {
       }
     });
     // La projection a replacé tous les points : la carte affichée est
-    // périmée, y compris ses familles.
+    // périmée, y compris ses familles et le filtre par famille de l'Écoute.
     if (modeCourant === "explorer") await chargerCarte();
+    await familleARecalculee();
 
     etat.textContent = `${chemin} — tempo, tonalité, énergie…`;
     await invoke("start_descripteurs", { force });
     await attendreFin("descripteurs_state", 2000, (d) => {
-      majJauge("racines-jauge", d.en_cours, d.faits, d.total);
+      majJauge("scan-jauge", d.en_cours, d.faits, d.total);
       if (d.en_cours) {
         etat.textContent = d.total
           ? `${chemin} — mesures : ${d.faits.toLocaleString("fr-FR")} / ${d.total.toLocaleString("fr-FR")}`
@@ -3194,7 +5273,7 @@ async function analyserRacine(chemin) {
       etat.textContent = `${chemin} — genres…`;
       await invoke("start_enrichment", { contact });
       await attendreFin("enrichment_state", 3000, (e) => {
-        majJauge("racines-jauge", e.en_cours, e.artistes, e.total);
+        majJauge("scan-jauge", e.en_cours, e.artistes, e.total);
         if (e.en_cours) {
           const reste = Math.max(0, e.total - e.artistes);
           etat.textContent = e.total
@@ -3202,10 +5281,33 @@ async function analyserRacine(chemin) {
             : `${chemin} — genres…`;
         }
       });
-      // Nommées à la volée : il suffit de les redemander.
+      // Nommées à la volée : il suffit de les redemander. Les numéros de
+      // famille ne bougent pas (le clustering est intact), le filtre par
+      // famille de l'Écoute reste donc valide — on ne rafraîchit que les noms.
       carte.familles = null;
+      famillesParAlbum = null;
+      await chargerFamillesParAlbum();
       if (modeCourant === "explorer") await dessinerFamilles();
+      else if (modeCourant === "ecoute") {
+        await dessinerFamillesEcoute();
+        rafraichirGrille();
+      }
     }
+
+    // Popularité générale (ListenBrainz + Deezer). Sans condition d'adresse :
+    // les deux API sont publiques ; le contact ne sert qu'au User-Agent.
+    etat.textContent = `${chemin} — popularité…`;
+    await invoke("start_popularite", { contact, rafraichir: $("pop-rafraichir").checked });
+    await attendreFin("popularite_state", 3000, (p) => {
+      majJauge("scan-jauge", p.en_cours, p.faits, p.total);
+      if (p.en_cours) {
+        etat.textContent = p.total
+          ? `${chemin} — popularité : ${p.faits.toLocaleString("fr-FR")} / ${p.total.toLocaleString("fr-FR")}`
+          : `${chemin} — popularité…`;
+      }
+    });
+    popARecalculee();
+    await chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
 
     jauge.hidden = true;
     etat.textContent = `${chemin} — terminé.`;
@@ -3216,34 +5318,269 @@ async function analyserRacine(chemin) {
     remonter(e, "analyse de la racine");
     etat.textContent = String(e);
   } finally {
-    document.querySelectorAll(".racine__analyser").forEach((b) => (b.disabled = false));
+    verrouillerActualisation(false);
   }
 }
 
-/* --------------------------------------------------- cache de stems */
+/* ----------------------------------------- chaîne de passes de fond */
 
-/// Ce que les séparations occupent sur le disque.
-///
-/// Un jeu de quatre stems pèse 124 Mo : quinze morceaux séparés remplissent
-/// deux gigaoctets sans que rien ne le dise. Le montrer ici est la seule chose
-/// qui empêche la fuite d'être silencieuse.
-async function majCacheStems() {
-  const [octets, morceaux] = await invoke("stems_cache");
-  $("vider-stems").disabled = morceaux === 0;
-  $("stems-cache").textContent = morceaux
-    ? `${morceaux} morceau${morceaux > 1 ? "x" : ""} séparé${morceaux > 1 ? "s" : ""} — ` +
-      `${(octets / 1e9).toFixed(2).replace(".", ",")} Go. ` +
-      `Les vider force à redémixer, rien d'autre n'est perdu.`
-    : "Aucun morceau séparé pour l'instant.";
+/// Les passes de fond, enchaînées par « Scanner » quand il n'y a pas de
+/// dossier neuf à ajouter (`lancerChaineComplete`). Même moteur que la chaîne
+/// « Analyser » d'une racine ([`analyserRacine`]), mais sur toutes les racines
+/// à la fois. Les commandes sont globales côté moteur ; le scan, seul à
+/// prendre une racine, est rejoué sur chacune à la suite.
+
+/// Une ligne d'avancement dans le panneau : la barre (visible et graduée dès
+/// qu'un total est connu, cachée sinon) et le texte, préfixé de l'étape quand
+/// c'est la chaîne complète qui tourne (« Étape 2/4 — … »).
+function avancementActu(phase, texte, faits, total) {
+  const jauge = $("scan-jauge");
+  jauge.hidden = !total;
+  if (total) {
+    jauge.max = total;
+    jauge.value = faits;
+  }
+  $("scan-etat").textContent = phase + texte;
 }
 
-$("vider-stems").addEventListener("click", async () => {
+const pourcent = (a, b) => (b ? ` (${Math.round((a / b) * 100)} %)` : "");
+
+async function passeScan(force, phase) {
+  const racines = await invoke("roots");
+  if (racines.length === 0) {
+    $("scan-etat").textContent = phase + "aucun dossier surveillé.";
+    return;
+  }
+  for (let i = 0; i < racines.length; i++) {
+    const r = racines[i];
+    const ou = racines.length > 1 ? ` (dossier ${i + 1}/${racines.length})` : "";
+    avancementActu(phase, `scan${ou} : démarrage…`, 0, 0);
+    await invoke("start_scan", { path: r.path, force });
+    await attendreFin("scan_state", 1000, (s) => {
+      // Le scan n'annonce pas de total : le compte qui monte est la seule
+      // mesure d'avancement possible, sans barre.
+      if (s.en_cours) {
+        avancementActu(phase, `scan${ou} : ${s.morceaux.toLocaleString("fr-FR")} morceaux vus`, 0, 0);
+      }
+    });
+  }
+  await charger();
+}
+
+async function passeEmpreintes(phase) {
+  avancementActu(phase, "empreintes : démarrage…", 0, 0);
+  await invoke("start_analysis");
+  await attendreFin("analysis_state", 1500, (a) => {
+    if (!a.en_cours) return;
+    const reste = Math.max(0, a.total - a.faits);
+    avancementActu(
+      phase,
+      a.total
+        ? `empreintes : ${a.faits.toLocaleString("fr-FR")} / ${a.total.toLocaleString("fr-FR")}${pourcent(a.faits, a.total)} — reste ${dureeLongue(reste * SECONDES_PAR_MORCEAU)}`
+        : "empreintes : démarrage…",
+      a.faits,
+      a.total,
+    );
+  });
+  // La projection a replacé tous les points — mêmes suites qu'`analyserRacine`.
+  if (modeCourant === "explorer") await chargerCarte();
+  await familleARecalculee();
+}
+
+async function passeDescripteurs(force, phase) {
+  avancementActu(phase, "tempo, tonalité, énergie : démarrage…", 0, 0);
+  await invoke("start_descripteurs", { force });
+  await attendreFin("descripteurs_state", 1500, (d) => {
+    if (!d.en_cours) return;
+    const reste = Math.max(0, d.total - d.faits);
+    avancementActu(
+      phase,
+      d.total
+        ? `tempo, tonalité, énergie : ${d.faits.toLocaleString("fr-FR")} / ${d.total.toLocaleString("fr-FR")}${pourcent(d.faits, d.total)} — reste ${dureeLongue(reste * SECONDES_PAR_MORCEAU)}`
+        : "tempo, tonalité, énergie : démarrage…",
+      d.faits,
+      d.total,
+    );
+  });
+}
+
+async function passeGenres(contact, phase) {
+  avancementActu(phase, "genres : démarrage…", 0, 0);
+  await invoke("start_enrichment", { contact });
+  await attendreFin("enrichment_state", 3000, (e) => {
+    if (!e.en_cours) return;
+    const reste = Math.max(0, e.total - e.artistes);
+    avancementActu(
+      phase,
+      e.total
+        ? `genres : ${e.artistes.toLocaleString("fr-FR")} / ${e.total.toLocaleString("fr-FR")} artistes${pourcent(e.artistes, e.total)} — reste ${dureeLongue(reste * SECONDES_PAR_ARTISTE)}`
+        : "genres : démarrage…",
+      e.artistes,
+      e.total,
+    );
+  });
+  carte.familles = null;
+  famillesParAlbum = null;
+  await chargerFamillesParAlbum();
+  if (modeCourant === "explorer") await dessinerFamilles();
+  else if (modeCourant === "ecoute") {
+    await dessinerFamillesEcoute();
+    rafraichirGrille();
+  }
+}
+
+/// La popularité générale (ListenBrainz + Deezer). Ne dépend d'aucune clé ni
+/// adresse : `contact` ne sert qu'au User-Agent de ListenBrainz. `rafraichir`
+/// réinterroge aussi ce qui date de plus de 90 jours (case du rail).
+async function passePopularite(contact, phase, rafraichir = false) {
+  avancementActu(phase, "popularité : démarrage…", 0, 0);
+  await invoke("start_popularite", { contact, rafraichir });
+  await attendreFin("popularite_state", 3000, (p) => {
+    if (!p.en_cours) return;
+    avancementActu(
+      phase,
+      p.total
+        ? `popularité : ${p.faits.toLocaleString("fr-FR")} / ${p.total.toLocaleString("fr-FR")}${pourcent(p.faits, p.total)}`
+        : "popularité : démarrage…",
+      p.faits,
+      p.total,
+    );
+  });
+  popARecalculee();
+  chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
+}
+
+/// La chaîne complète — scan, empreintes, tempo/tonalité/énergie, genres,
+/// popularité — sur toutes les racines surveillées, l'étape en cours affichée
+/// en clair. C'est ce que « Scanner » lance quand aucun dossier neuf n'est
+/// saisi ; chaque passe reprend où elle s'était arrêtée.
+async function lancerChaineComplete() {
+  const force = $("analyse-force").checked;
+  const contact = contactMb();
+  const etat = $("scan-etat");
+  verrouillerActualisation(true);
+  try {
+    await passeScan(force, "Étape 1/5 — ");
+    await passeEmpreintes("Étape 2/5 — ");
+    await passeDescripteurs(force, "Étape 3/5 — ");
+    if (contact.includes("@")) await passeGenres(contact, "Étape 4/5 — ");
+    else etat.textContent = "Étape 4/5 — genres sautés (pas d'adresse de contact MusicBrainz)";
+    await passePopularite(contact, "Étape 5/5 — ", $("pop-rafraichir").checked);
+    etat.textContent = `${etat.textContent} — terminé.`;
+  } catch (e) {
+    remonter(e, "actualisation");
+    etat.textContent = String(e);
+  } finally {
+    $("scan-jauge").hidden = true;
+    $("scan-jauge").value = 0;
+    verrouillerActualisation(false);
+    await dessinerRacines();
+    await chargerStatsBibliotheque();
+    await chargerVerifications();
+  }
+}
+
+/// Une passe ne tourne qu'à un exemplaire côté moteur : tant qu'elle est là,
+/// on grise tout ce qui pourrait en relancer une — « Scanner » comme les
+/// « Analyser » des racines.
+function verrouillerActualisation(occupe) {
+  document
+    .querySelectorAll("#lancer-scan, .racine__analyser")
+    .forEach((b) => (b.disabled = occupe));
+}
+
+/// Une passe lancée avant de quitter le mode continue de tourner : en
+/// revenant dans Bibliothèque, on raccroche l'affichage à son état plutôt que
+/// de laisser la ligne muette pendant qu'elle avance.
+async function reprendreActualisationEnCours() {
+  const sondes = [
+    ["scan_state", "scan"],
+    ["analysis_state", "empreintes"],
+    ["descripteurs_state", "tempo, tonalité, énergie"],
+    ["enrichment_state", "genres"],
+    ["popularite_state", "popularité"],
+  ];
+  for (const [cmd, nom] of sondes) {
+    let s;
+    try {
+      s = await invoke(cmd);
+    } catch {
+      continue;
+    }
+    if (!s.en_cours) continue;
+    verrouillerActualisation(true);
+    attendreFin(cmd, 2000, (e) => {
+      if (!e.en_cours) {
+        $("scan-etat").textContent = `${nom} — terminé.`;
+        return;
+      }
+      const faits = e.faits ?? e.artistes ?? 0;
+      avancementActu(
+        "",
+        e.total
+          ? `${nom} : ${faits.toLocaleString("fr-FR")} / ${e.total.toLocaleString("fr-FR")}${pourcent(faits, e.total)}`
+          : `${nom} : ${faits.toLocaleString("fr-FR")}…`,
+        faits,
+        e.total,
+      );
+    })
+      .catch((err) => remonter(err, "actualisation"))
+      .finally(async () => {
+        $("scan-jauge").hidden = true;
+        verrouillerActualisation(false);
+        if (cmd === "popularite_state") {
+          popARecalculee();
+          chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
+        }
+        await dessinerRacines();
+        await chargerStatsBibliotheque();
+      });
+    return;
+  }
+}
+
+/* --------------------------------------------- stockage & cache */
+
+/// Le dossier où l'application écrit tout — montré tel quel, l'utilisateur doit
+/// pouvoir le retrouver dans son gestionnaire de fichiers, le sauvegarder ou le
+/// purger.
+async function chargerDossierDonnees() {
+  $("dossier-donnees").textContent = await invoke("dossier_donnees");
+}
+
+/// Ce que l'audio dérivé occupe sur le disque — stems démixés et rendus HD.
+///
+/// Un jeu de quatre stems pèse 124 Mo, un cache HD grossit d'un morceau à
+/// l'autre : sans ce compte, c'est une fuite qu'on ne découvre qu'en cherchant
+/// pourquoi le disque se remplit.
+async function majCache() {
+  const [[oStems, nStems], [oHd, nHd]] = await Promise.all([
+    invoke("stems_cache"),
+    invoke("superres_cache"),
+  ]);
+  const octets = oStems + oHd;
+  $("vider-cache").disabled = octets === 0;
+  if (octets === 0) {
+    $("cache-taille").textContent = "Aucun audio dérivé en cache pour l'instant.";
+    return;
+  }
+  const bouts = [];
+  if (nStems) bouts.push(`${nStems} morceau${nStems > 1 ? "x" : ""} démixé${nStems > 1 ? "s" : ""}`);
+  if (nHd) bouts.push(`${nHd} rendu${nHd > 1 ? "s" : ""} HD`);
+  $("cache-taille").textContent =
+    `${bouts.join(" · ")} — ${(octets / 1e9).toFixed(2).replace(".", ",")} Go. ` +
+    `Les vider force à refaire ces rendus, rien d'autre n'est perdu.`;
+}
+
+$("vider-cache").addEventListener("click", async () => {
+  $("vider-cache").disabled = true;
   try {
     await invoke("stems_cache_vider");
+    await invoke("vider_cache_hd");
   } catch (e) {
-    remonter(e, "vidage des stems");
+    remonter(e, "vidage du cache");
   }
-  await majCacheStems();
+  await majCache();
 });
 
 /// Écrit ce qu'on entend dans un dossier choisi.
@@ -3346,10 +5683,7 @@ async function battementStems() {
     : "";
 
   const frac = e.duree_ms ? Math.min(1, e.position_ms / e.duree_ms) : 0;
-  const seuil = frac * wave.children.length;
-  for (let i = 0; i < wave.children.length; i++) {
-    wave.children[i].classList.toggle("on", i < seuil);
-  }
+  peindreTransport(frac);
   // La même fraction pour tout le monde : barre du bas et spectrogrammes
   // montrent le même instant parce qu'ils lisent la même valeur.
   poserTete(frac);
@@ -4402,7 +6736,346 @@ async function charger(quoi = sommet.quoi) {
   $("sommaire").style.whiteSpace = "pre-line";
 }
 
-charger("albums").catch((e) => {
-  $("fil-titre").textContent = "Erreur";
-  $("sommaire").textContent = String(e);
-});
+charger("albums")
+  .then(() => chargerFamillesParAlbum())
+  .then(() => {
+    dessinerFamillesEcoute();
+    rafraichirGrille();
+  })
+  .catch((e) => {
+    $("fil-titre").textContent = "Erreur";
+    $("sommaire").textContent = String(e);
+  });
+
+
+// Mode imposé par l'environnement, s'il y en a un. Voir `mode_initial`.
+invoke("mode_initial")
+  .then((m) => {
+    if (m) basculerMode(m);
+  })
+  .catch(() => {});
+
+/* ------------------------------------------------------------- itinéraires
+ *
+ * Le moteur vit dans `analysis::reseau` : un seul graphe, plusieurs fonctions
+ * de coût. Cette section ne fait que poser la demande et rendre le résultat
+ * — dont le **dénivelé**, la popularité le long du trajet, que le document
+ * prévoyait pour le profil d'altitude.
+ */
+
+let itinProfil = "autoroute";
+
+document.querySelectorAll("[data-profil]").forEach((b) =>
+  b.addEventListener("click", () => {
+    itinProfil = b.dataset.profil;
+    document
+      .querySelectorAll("[data-profil]")
+      .forEach((s) => s.classList.toggle("segment--actif", s === b));
+    retracerItineraireSiPret();
+  }),
+);
+
+const majReglette = (id, sortie, rendu) => {
+  const e = $(id);
+  if (!e) return;
+  const poser = () => ($(sortie).textContent = rendu(e.value));
+  e.addEventListener("input", poser);
+  e.addEventListener("change", retracerItineraireSiPret);
+  poser();
+};
+// 0 minute = pas de contrainte de durée (il faut alors une arrivée).
+majReglette("itin-minutes", "itin-minutes-val", (v) => (+v > 0 ? `${v} min` : "libre"));
+
+const barresDenivele = (popularite) =>
+  popularite.map((p) => "▁▂▃▄▅▆▇█"[Math.min(7, Math.round(p * 7))]).join("");
+
+/// Pose l'itinéraire calculé (un seul trajet — le choix, c'est le profil).
+async function poserItineraire(t) {
+  const surVoirie = typeof t.distance_m === "number";
+  await poserChemin(t.pistes, "aucun itinéraire", t.polyligne || null);
+  const distance = surVoirie
+    ? `${(t.distance_m / 1000).toFixed(1)} km`
+    : `distance ${t.distance_sonique.toFixed(2)}`;
+  $("itin-etat").textContent =
+    `${t.pistes.length} morceaux · ${(t.duree_ms / 60000).toFixed(0)} min · ` +
+    `${distance} · ${barresDenivele(t.popularite)}`;
+}
+
+/// L'itinéraire musical (graphe des voisins) — le comportement d'origine, et le
+/// repli quand la voirie ne peut pas répondre (pas de ville, morceau sans
+/// adresse, ou vue Points).
+async function itineraireMusical(minutes) {
+  const trajets = await invoke("itineraire", {
+    depart: carte.depart.id,
+    arrivee: carte.arrivee ? carte.arrivee.id : null,
+    profil: itinProfil,
+    minutes: minutes > 0 ? minutes : null,
+  });
+  if (!trajets.length) {
+    $("itin-etat").textContent = "aucun itinéraire";
+    return;
+  }
+  await poserItineraire(trajets[0]);
+}
+
+/// Trace l'itinéraire courant : sur voirie si le plan de ville est actif,
+/// musical sinon (ou en repli). Appelé automatiquement quand une borne est
+/// posée ou un réglage changé, comme `direct`/`dessiné` — plus besoin du
+/// bouton « Tracer » sur la carte de Paris.
+async function tracerItineraire() {
+  const etat = $("itin-etat");
+  if (!carte.depart) {
+    etat.textContent = "choisir un morceau de départ sur la carte";
+    return;
+  }
+  const minutes = Number($("itin-minutes").value);
+  etat.textContent = carteReelle()
+    ? "calcul de l'itinéraire…"
+    : "calcul… (le réseau se construit une fois par session)";
+  if ($("itin-tracer")) $("itin-tracer").disabled = true;
+  try {
+    if (!carteReelle()) {
+      await itineraireMusical(minutes);
+      return;
+    }
+    const reponse = await invoke("itineraire_voirie", {
+      depart: carte.depart.id,
+      arrivee: carte.arrivee ? carte.arrivee.id : null,
+      profil: itinProfil,
+      minutes: minutes > 0 ? minutes : null,
+      famille: carte.isolee,
+      rayonM: null,
+    });
+    if (reponse.repli) {
+      // Pas de ville / tuiles pas prêtes : le musical se suffit à lui-même.
+      // Sinon on montre la raison et on enchaîne sur le musical.
+      const muet = /aucune ville|pas encore générée/.test(reponse.repli);
+      if (!muet) etat.textContent = reponse.repli + " — itinéraire musical";
+      await itineraireMusical(minutes);
+      return;
+    }
+    await poserItineraire(reponse.trajets[0]);
+  } catch (e) {
+    etat.textContent = "échec : " + e;
+  } finally {
+    if ($("itin-tracer")) $("itin-tracer").disabled = false;
+  }
+}
+
+$("itin-tracer")?.addEventListener("click", tracerItineraire);
+
+/// Rejoue l'itinéraire quand un de ses réglages change — mais seulement s'il y
+/// a déjà un départ et qu'on est sur le plan de ville (le musical est trop lent
+/// pour un recalcul à chaque cran). Court délai, comme le curseur de bruit.
+let attenteItin = null;
+function retracerItineraireSiPret() {
+  if (carte.chemin !== "itineraire" || !carte.depart || !carteReelle()) return;
+  clearTimeout(attenteItin);
+  attenteItin = setTimeout(() => tracerItineraire().catch((e) => remonter(e, "itinéraire")), 200);
+}
+
+
+/* ------------------------------------------------- autotest de la carte
+ *
+ * Une webview du système ne se pilote pas de l'extérieur : sans ce banc,
+ * « est-ce que le lasso marche encore ? » ne se vérifie qu'à la main, et donc
+ * ne se vérifie pas. Il exerce les chemins de code que l'arrivée de MapLibre a
+ * touchés — les deux transformations de coordonnées, le pointage, le lasso, la
+ * bascule des modes — et rend son verdict au journal du processus.
+ *
+ * Déclenché par `RUSTY_MUSIC_AUTOTEST=1`.
+ */
+async function autotestCarte() {
+  const resultats = [];
+  // **Rendre compte au fil de l'eau, pas à la fin.** Grouper les résultats
+  // rendait tout blocage opaque : le banc ne disait rien, et l'on ne savait
+  // même pas s'il avait démarré. Chaque ligne part maintenant dès qu'elle est
+  // connue, ce qui localise l'arrêt au pas près.
+  const verifier = (nom, ok, detail = "") => {
+    const v = { nom, ok, detail: String(detail).slice(0, 120) };
+    resultats.push(v);
+    journalCarte(`${v.ok ? "OK  " : "ÉCHEC"} ${v.nom}${v.detail ? " — " + v.detail : ""}`, v.ok ? "log" : "warn");
+  };
+  const etape = (nom) => journalCarte("… " + nom);
+  const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  try {
+    etape("bascule en mode explorer");
+    if (modeCourant !== "explorer") await basculerMode("explorer");
+    await attendre(500);
+    verifier("morceaux chargés", carte.points.length > 0, carte.points.length);
+
+    // --- mode nuage : le repère du canevas -------------------------------
+    carte.affichage = "points";
+    majAffichageGL();
+    await attendre(200);
+    const r = cnv.getBoundingClientRect();
+    verifier("canevas dimensionné", r.width > 100 && r.height > 100, `${r.width}×${r.height}`);
+
+    const p0 = carte.points[0];
+    const [ex, ey] = versEcran(p0, r);
+    const [rx, ry] = versCarte(ex, ey, r);
+    verifier(
+      "nuage : aller-retour des coordonnées",
+      Math.abs(rx - p0.x) < 1e-3 && Math.abs(ry - p0.y) < 1e-3,
+      `${p0.x.toFixed(4)}→${rx.toFixed(4)}`,
+    );
+    verifier("nuage : pointage", pointSous(ex, ey)?.id === p0.id, pointSous(ex, ey)?.id);
+
+    const avantZoom = carte.vue.k;
+    zoomer(1.4, r.width / 2, r.height / 2);
+    verifier("nuage : zoom", carte.vue.k > avantZoom, `${avantZoom.toFixed(2)}→${carte.vue.k.toFixed(2)}`);
+    carte.vue = { k: 1, dx: 0, dy: 0 };
+
+    // --- mode carte : le repère de MapLibre ------------------------------
+    etape("passage en mode carte");
+    carte.affichage = "carte";
+    const t0 = performance.now();
+    majAffichageGL();
+    for (let i = 0; i < 240 && !glPret; i++) await attendre(250);
+    const ms = performance.now() - t0;
+    verifier(
+      "carte : tuiles chargées",
+      glPret,
+      glPret ? `${gl.getStyle().layers.length} couches en ${(ms / 1000).toFixed(1)} s` : "délai dépassé",
+    );
+    // Une carte qui met plus de trois secondes à paraître passe pour cassée.
+    verifier("carte : délai d'apparition", glPret && ms < 3000, `${(ms / 1000).toFixed(1)} s`);
+
+    if (glPret) {
+      const [gx, gy] = versEcran(p0, r);
+      const [gxr, gyr] = versCarte(gx, gy, r);
+      verifier(
+        "carte : aller-retour des coordonnées",
+        Math.abs(gxr - p0.x) < 1e-3 && Math.abs(gyr - p0.y) < 1e-3,
+        `${p0.x.toFixed(4)}→${gxr.toFixed(4)}`,
+      );
+      verifier("carte : pointage", pointSous(gx, gy)?.id === p0.id, pointSous(gx, gy)?.id);
+
+      const zAvant = gl.getZoom();
+      zoomer(1.4, r.width / 2, r.height / 2);
+      verifier("carte : zoom", gl.getZoom() > zAvant, `${zAvant.toFixed(2)}→${gl.getZoom().toFixed(2)}`);
+
+      // Les boutons +/− appellent `zoomer` sans coordonnées : ne doit pas
+      // lever dans MapLibre (`unproject` d'un point indéfini).
+      const zB = gl.getZoom();
+      let boutonOk = true;
+      try {
+        $("zoom-plus").click();
+        $("zoom-moins").click();
+      } catch (err) {
+        boutonOk = false;
+      }
+      verifier("carte : boutons +/−", boutonOk && Math.abs(gl.getZoom() - zB) < 1e-6, gl.getZoom().toFixed(2));
+
+      const cAvant = gl.getCenter().lng;
+      const g2 = carteGL();
+      g2.panBy([-50, 0], { duration: 0 });
+      verifier("carte : déplacement", gl.getCenter().lng !== cAvant, gl.getCenter().lng.toFixed(3));
+
+      // La vue d'ensemble cadre l'emprise cible (limite communale, ou les
+      // points sur le monde fictif) : elle dézoome sous le niveau d'accueil et
+      // fait tenir l'emprise dans la fenêtre.
+      const b = vueInitialeGL?.bounds || bornesGeoPoints();
+      $("zoom-reset").click();
+      const dedans = b && (() => {
+        const sw = gl.project(b[0]);
+        const ne = gl.project(b[1]);
+        const { width, height } = cnv.getBoundingClientRect();
+        return sw.x >= -2 && ne.x <= width + 2 && ne.y >= -2 && sw.y <= height + 2;
+      })();
+      verifier(
+        "carte : vue d'ensemble",
+        !!b && dedans && gl.getZoom() < (vueInitialeGL?.zoom ?? 14),
+        `zoom ${gl.getZoom().toFixed(2)}`,
+      );
+
+      // Les entités des tuiles répondent-elles au pointage ?
+      const rendues = gl.queryRenderedFeatures({ layers: ["territoires"] });
+      verifier("carte : entités interrogeables", rendues.length > 0, rendues.length);
+    }
+
+    // --- le lasso, dans les deux repères ---------------------------------
+    for (const mode of ["points", "carte"]) {
+      carte.affichage = mode;
+      majAffichageGL();
+      await attendre(150);
+      // Le contour part de l'écran, comme un vrai geste : on prend un
+      // rectangle au centre du canevas et on le convertit dans le repère du
+      // mode actif. C'est justement cette conversion que MapLibre a changée.
+      const c = [
+        versCarte(r.width * 0.3, r.height * 0.3, r),
+        versCarte(r.width * 0.7, r.height * 0.3, r),
+        versCarte(r.width * 0.7, r.height * 0.7, r),
+        versCarte(r.width * 0.3, r.height * 0.7, r),
+      ];
+      try {
+        etape(`lasso (${mode}) — appel`);
+        const pris = await invoke("selection", { trace: c, reel: carteReelle() });
+        verifier(
+          `lasso (${mode})`,
+          pris.length > 0 && pris.length < carte.points.length,
+          `${pris.length} morceaux`,
+        );
+      } catch (e) {
+        verifier(`lasso (${mode})`, false, e);
+      }
+    }
+
+    // --- l'itinéraire ----------------------------------------------------
+    try {
+      etape("itinéraire — construction du réseau, une trentaine de secondes");
+      const t = await invoke("itineraire", {
+        depart: carte.points[0].id,
+        arrivee: null,
+        profil: "sentier",
+        minutes: 20,
+      });
+      verifier(
+        "itinéraire",
+        t.length > 0 && t[0].pistes.length > 1,
+        `${t[0]?.pistes.length} morceaux, ${(t[0]?.duree_ms / 60000).toFixed(0)} min`,
+      );
+    } catch (e) {
+      verifier("itinéraire", false, e);
+    }
+
+    // --- l'itinéraire sur voirie réelle (si une ville est importée) ------
+    if (villeReelle) {
+      try {
+        etape("itinéraire sur voirie — accrochage des morceaux aux rues");
+        const rep = await invoke("itineraire_voirie", {
+          depart: carte.points[0].id,
+          arrivee: null,
+          profil: "panoramique",
+          minutes: 20,
+          famille: null,
+          rayonM: null,
+        });
+        const t = rep.trajets[0];
+        verifier(
+          "itinéraire voirie",
+          !rep.repli && t && t.pistes.length > 1 && t.polyligne.length > 1,
+          rep.repli || `${t?.pistes.length} morceaux, polyligne ${t?.polyligne.length} points`,
+        );
+      } catch (e) {
+        verifier("itinéraire voirie", false, e);
+      }
+    }
+
+    carte.affichage = "points";
+    majAffichageGL();
+  } catch (e) {
+    verifier("autotest", false, (e && e.stack) || e);
+  }
+
+  journalCarte(
+    `AUTOTEST ${resultats.filter((v) => v.ok).length}/${resultats.length}`,
+  );
+}
+
+invoke("autotest_carte")
+  .then((oui) => {
+    if (oui) setTimeout(autotestCarte, 2500);
+  })
+  .catch(() => {});

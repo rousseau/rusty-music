@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rusty Music</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="atelier">
@@ -18,14 +19,14 @@
 
       <nav class="modes" aria-label="Mode">
         <p class="rail__titre">Mode</p>
-        <button class="mode mode--actif" data-mode="ecoute">Écoute</button>
+        <button class="mode mode--actif" data-mode="ecoute">Écouter</button>
         <button class="mode" data-mode="explorer">Explorer</button>
         <button class="mode" data-mode="editer">Éditer</button>
         <button class="mode" data-mode="bibliotheque">Bibliothèque</button>
         <button class="mode" data-mode="decouvrir">Découvrir</button>
       </nav>
 
-      <div class="bloc">
+      <div class="bloc" id="bloc-chercher">
         <p class="rail__titre">Chercher</p>
         <input id="q" class="chercher" type="search" placeholder="titre, artiste, album" autocomplete="off">
       </div>
@@ -39,6 +40,14 @@
         </div>
       </div>
 
+      <!-- Mode Écoute : filtrer la grille de pochettes par famille sonique,
+           avec la légende du mode Explorer. -->
+      <div class="bloc" id="bloc-familles-ecoute" hidden>
+        <p class="rail__titre">Familles</p>
+        <div id="familles-ecoute" class="familles"></div>
+        <button id="familles-ecoute-tout" class="lien" hidden>Toutes les familles</button>
+      </div>
+
       <!-- Mode Découvrir : collaborations entre artistes (MusicBrainz) -->
       <div class="bloc" id="bloc-decouvrir" hidden>
         <p class="rail__titre">Découvrir</p>
@@ -49,7 +58,18 @@
         <input id="decouvrir-contact" type="email" class="chercher"
                placeholder="votre adresse de contact" autocomplete="email">
         <p class="aide">Nécessaire pour interroger MusicBrainz — gardée sur cet
-          ordinateur, jamais envoyée ailleurs qu'à eux. À remplir une fois.</p>
+          ordinateur, jamais envoyée ailleurs qu'à eux. À remplir une fois : la
+          même adresse sert à la passe « Genres MusicBrainz » du mode Bibliothèque.</p>
+        <p class="aide">Une fois l'adresse renseignée, le fil se met à jour tout
+          seul à l'ouverture du mode, et ne garde que les sorties de moins d'un mois.</p>
+      </div>
+
+      <!-- Mode Découvrir : filtrer le fil par famille sonique de l'artiste-ancre,
+           avec la légende du mode Explorer. -->
+      <div class="bloc" id="bloc-familles-decouvrir" hidden>
+        <p class="rail__titre">Familles</p>
+        <div id="familles-decouvrir" class="familles"></div>
+        <button id="familles-decouvrir-tout" class="lien" hidden>Toutes les familles</button>
       </div>
 
       <!-- Carte : visible en mode Explorer seulement -->
@@ -57,7 +77,7 @@
         <p class="rail__titre">Affichage</p>
         <div class="segments">
           <button class="segment segment--actif" data-affichage="points">Nuage</button>
-          <button class="segment" data-affichage="densite">Densité</button>
+          <button class="segment" data-affichage="carte">Carte</button>
         </div>
         <p class="rail__titre" style="margin-top:14px">Colorer par</p>
         <div class="segments">
@@ -65,6 +85,16 @@
           <button class="segment" data-couleur="annee">Année</button>
           <button class="segment" data-couleur="tempo">Tempo</button>
           <button class="segment" data-couleur="energie">Énergie</button>
+        </div>
+        <div id="bloc-fond" hidden>
+          <p class="rail__titre" style="margin-top:14px">Fond de plan</p>
+          <div class="segments segments--colonne" id="carte-theme">
+            <button class="segment segment--actif" data-theme="osm-clair">OSM clair</button>
+            <button class="segment" data-theme="sepia">Sépia chaud</button>
+            <button class="segment" data-theme="encre">Encre</button>
+            <button class="segment" data-theme="nuit">Nuit</button>
+            <button class="segment" data-theme="bleu-plan">Bleu plan</button>
+          </div>
         </div>
         <div class="zoom">
           <button id="zoom-moins" aria-label="Dézoomer">−</button>
@@ -102,6 +132,25 @@
           <button class="segment" data-chemin="sonique">Sonique</button>
           <button class="segment" data-chemin="errance">Errance sonique</button>
           <button class="segment" data-chemin="dessine">Dessiné</button>
+          <button class="segment" data-chemin="itineraire">Itinéraire</button>
+        </div>
+
+        <!-- Itinéraire : le réseau de circulation et ses profils. Visible
+             seulement dans ce mode de chemin. -->
+        <div id="bloc-itineraire" hidden>
+          <p class="rail__titre" style="margin-top:12px">Profil</p>
+          <div class="segments segments--colonne">
+            <button class="segment segment--actif" data-profil="autoroute">Par le connu — les grands axes</button>
+            <button class="segment" data-profil="sentier">Redécouvrir — les petites rues</button>
+            <button class="segment" data-profil="panoramique">Panoramique — parcs et berges</button>
+          </div>
+          <label class="reglette" style="margin-top:10px">
+            <span>durée</span>
+            <input id="itin-minutes" type="range" min="0" max="120" step="5" value="40">
+            <output id="itin-minutes-val">40 min</output>
+          </label>
+          <button id="itin-tracer" class="bouton" style="margin-top:10px;width:100%">Tracer</button>
+          <p id="itin-etat" class="aide"></p>
         </div>
         <div class="bornes">
           <div class="borne" id="borne-depart">
@@ -116,7 +165,7 @@
           </div>
         </div>
         <p id="chemin-aide" class="aide"></p>
-        <label class="reglette">
+        <label class="reglette" id="reglette-morceaux">
           <span>morceaux</span>
           <input id="chemin-n" type="number" min="2" max="120" step="1" value="12">
         </label>
@@ -151,6 +200,14 @@
         <button id="retour" class="fil__retour" hidden>← Artistes</button>
         <h1 id="fil-titre">Albums</h1>
         <span id="fil-compte" class="fil__compte"></span>
+        <!-- Ordre de la grille d'albums (mode Écoute). L'ordre alphabétique
+             vient déjà trié du moteur ; « année » et « aléatoire » retrient
+             côté interface. -->
+        <div id="tri-albums" class="tri" hidden>
+          <button class="tri__opt tri__opt--actif" data-tri="alpha">A–Z</button>
+          <button class="tri__opt" data-tri="annee">Année</button>
+          <button class="tri__opt" data-tri="alea">Aléatoire</button>
+        </div>
       </header>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
@@ -162,6 +219,13 @@
 
         <!-- Mode Explorer : la carte -->
         <div id="carte-vue" class="carte" hidden>
+          <!-- Les tuiles vectorielles dessous, la surcouche dessus : chemins,
+               lasso et bornes restent sur le canevas, qui garde tous les
+               gestionnaires de souris et les relaie à MapLibre. -->
+          <div id="carte-gl"></div>
+          <!-- Fondu de bordure façon maptoposter, sur le plan de ville réel :
+               au-dessus des tuiles, sous le canevas (les tracés restent nets). -->
+          <div id="carte-vignette"></div>
           <canvas id="carte"></canvas>
           <div id="carte-info" class="carte__info" hidden></div>
           <div class="carte__aide" id="carte-aide">
@@ -173,7 +237,68 @@
              tiroir Réglages, dont le contenu — racines/scan/analyse/genres/
              stems — migre ici tel quel). -->
         <div id="bibliotheque-vue" class="bibliotheque" hidden>
-          <p class="rail__titre">Aperçu</p>
+          <!-- Le point de départ, en tête : le dossier de musique, puis
+               « Scanner » qui enchaîne toutes les passes. Suivi du dossier de
+               stockage et du vidage de cache — tout ce qui touche au disque,
+               groupé avant les statistiques. -->
+          <p class="rail__titre">Source de la bibliothèque</p>
+          <div class="ajout">
+            <p class="aide">Le point de départ. Choisissez le dossier où vit votre
+              musique, puis « Scanner » : il relit les fichiers et enchaîne tous les
+              calculs — empreintes, tempo / tonalité / énergie, genres MusicBrainz,
+              puis popularité générale — dans cet ordre. Chaque passe reprend où
+              elle s'était arrêtée ; relancer ne refait que ce qui manque. Le bouton
+              « Analyser » d'une racine fait la même chaîne, sur elle seule.</p>
+            <div id="racines" class="racines"></div>
+            <div class="ajout__ligne" style="margin-top:14px">
+              <input id="nouveau-dossier" class="chercher" type="text"
+                     placeholder="Aucun dossier choisi" spellcheck="false">
+              <button id="parcourir" class="bouton">Parcourir…</button>
+              <button id="lancer-scan" class="bouton">Scanner</button>
+            </div>
+            <label class="case">
+              <input id="analyse-force" type="checkbox">
+              Refaire aussi ce qui est déjà mesuré
+            </label>
+            <label class="case">
+              <input id="pop-rafraichir" type="checkbox">
+              Rafraîchir aussi la popularité de plus de 90 jours
+            </label>
+            <label class="reglette">
+              <span>contact MusicBrainz</span>
+              <input id="analyse-contact" type="email" class="chercher"
+                     placeholder="votre adresse de contact" autocomplete="email"
+                     style="margin-left:auto; width:auto; flex:1">
+            </label>
+            <p class="aide">Sans adresse, seule l'étape des genres est sautée — les
+              autres n'en ont pas besoin. MusicBrainz l'exige pour identifier qui
+              interroge son API ; elle ne part nulle part ailleurs. C'est la même
+              adresse que le champ « Contact MusicBrainz » du mode Découvrir — la
+              remplir ici la remplit là, et l'inverse.</p>
+            <progress id="scan-jauge" class="jauge" hidden max="1" value="0"></progress>
+            <p id="scan-etat" class="scan-etat"></p>
+            <p class="aide" id="popularite-fraicheur" hidden>
+              <span id="popularite-fraicheur-txt"></span>
+              <button id="popularite-rafraichir" class="lien">Rafraîchir</button>
+            </p>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Stockage</p>
+          <div class="ajout">
+            <p class="aide">Où l'application garde tout ce qu'elle produit : la base
+              et les empreintes, les journaux, les stems démixés, les rendus HD et
+              les tuiles de la carte.</p>
+            <p id="dossier-donnees" class="chemin-donnees">—</p>
+            <p class="aide" id="cache-taille" style="margin-top:12px">—</p>
+            <div class="ajout__ligne">
+              <button id="vider-cache" class="bouton bouton--danger">Vider le cache</button>
+            </div>
+            <p class="aide">Efface les stems démixés et les rendus HD — de l'audio
+              dérivé, refait à la demande. La base, les empreintes et la carte ne
+              sont pas touchées.</p>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Aperçu</p>
           <p class="aide" id="stats-total">—</p>
           <section class="stats">
             <div class="stats__carte">
@@ -229,17 +354,44 @@
               <input id="param-epoques" type="number" min="100" max="5000" step="100">
             </label>
             <label class="reglette">
-              <span>familles (k-means)</span>
+              <span>familles (repli k-means)</span>
               <input id="param-familles" type="number" min="2" max="200" step="1">
             </label>
             <label class="reglette">
-              <span>itérations (k-means)</span>
+              <span>itérations (repli k-means)</span>
               <input id="param-iterations" type="number" min="5" max="500" step="5">
             </label>
+            <p class="aide">Le regroupement en familles se fait par genre, pas par
+              k-means : ci-dessous. Les deux réglages au-dessus ne servent que de
+              repli, quand aucun morceau n'a de genre connu (bibliothèque jamais
+              passée par « Enrichir »).</p>
             <div class="ajout__ligne" style="margin-top:14px">
               <button id="recalculer-carte" class="bouton">Recalculer la carte</button>
             </div>
             <p id="carte-parametres-etat" class="scan-etat"></p>
+            <p class="aide">Régénère les tuiles vectorielles affichées en mode
+              Carte — le plan de ville réel (`ville-paris.db`) s'il a été
+              importé, sinon le monde engendré depuis la bibliothèque.</p>
+            <div class="ajout__ligne">
+              <button id="regenerer-tuiles" class="bouton">Régénérer les tuiles</button>
+            </div>
+            <p id="tuiles-etat" class="scan-etat"></p>
+          </div>
+
+          <p class="rail__titre" style="margin-top:32px">Vocabulaire des familles</p>
+          <div class="ajout">
+            <p class="aide">Une famille par ligne : son nom, deux-points, les genres
+              MusicBrainz qui s'y rattachent, séparés par des virgules. Un morceau dont
+              le genre figure ici rejoint directement sa famille ; les autres rejoignent
+              la famille sonique la plus proche. Change la carte au prochain
+              « Recalculer la carte » ci-dessus, pas avant.</p>
+            <textarea id="vocabulaire-familles" class="reglette__texte" rows="14"
+              spellcheck="false" placeholder="Rock: rock, alternative rock, punk&#10;Jazz: jazz, acid jazz, fusion"></textarea>
+            <div class="ajout__ligne" style="margin-top:10px">
+              <button id="enregistrer-vocabulaire" class="bouton">Enregistrer le vocabulaire</button>
+              <button id="reinitialiser-vocabulaire" class="bouton">Valeurs par défaut</button>
+            </div>
+            <p id="vocabulaire-etat" class="scan-etat"></p>
           </div>
 
           <p class="rail__titre" style="margin-top:32px">Nappe de densité</p>
@@ -270,9 +422,6 @@
             <p id="densite-parametres-etat" class="scan-etat"></p>
             <label class="reglette" style="margin-top:14px">
               <span>force de l'ombre</span>
-              <input id="densite-ombre" type="range" min="0" max="1" step="0.05">
-              <span id="densite-ombre-valeur" class="reglette__val"></span>
-            </label>
             <p class="aide">Celle-ci redessine seulement — pas d'aller-retour
               vers le moteur.</p>
           </div>
@@ -314,57 +463,50 @@
             <div id="echecs-scan" class="liste-verif"></div>
           </div>
 
-          <p class="rail__titre" style="margin-top:32px">Source de la bibliothèque</p>
-          <div id="racines" class="racines"></div>
-
-          <div class="ajout">
-            <p class="aide">Le bouton <b>Analyser</b> d'une racine relit ses tags (genre,
-              format, débit), mesure les empreintes CLAP, le tempo/la tonalité/l'énergie,
-              puis les genres MusicBrainz si une adresse de contact est renseignée
-              ci-dessous — dans cet ordre, à la suite.</p>
-            <label class="case">
-              <input id="analyse-force" type="checkbox">
-              Refaire aussi ce qui est déjà mesuré — après une correction de
-              l'algorithme, ou un format/débit ajouté depuis le dernier scan.
-            </label>
-            <label class="reglette">
-              <span>contact MusicBrainz</span>
-              <input id="analyse-contact" type="email" class="chercher"
-                     placeholder="votre adresse de contact" autocomplete="email"
-                     style="margin-left:auto; width:auto; flex:1">
-            </label>
-            <p class="aide">Sans adresse, l'étape des genres est simplement sautée — les
-              deux autres n'en ont pas besoin. MusicBrainz l'exige pour identifier qui
-              interroge son API ; elle ne part nulle part ailleurs.</p>
-            <progress id="racines-jauge" class="jauge" hidden max="1" value="0"></progress>
-            <p id="racines-etat" class="scan-etat"></p>
-          </div>
-
-          <div class="ajout">
-            <p class="rail__titre">Ajouter un dossier</p>
-            <div class="ajout__ligne">
-              <input id="nouveau-dossier" class="chercher" type="text"
-                     placeholder="Aucun dossier choisi" spellcheck="false">
-              <button id="parcourir" class="bouton">Parcourir…</button>
-              <button id="lancer-scan" class="bouton">Scanner</button>
-            </div>
-            <p id="scan-etat" class="scan-etat"></p>
-          </div>
-
-          <div class="ajout">
-            <p class="rail__titre">Stems démixés</p>
-            <p class="aide" id="stems-cache">—</p>
-            <div class="ajout__ligne">
-              <button id="vider-stems" class="bouton">Vider</button>
-            </div>
-          </div>
         </div>
 
-        <!-- Mode Découvrir : collaborations entre artistes -->
+        <!-- Mode Découvrir : le fil d'actualité + l'explorateur de collaborations -->
         <div id="decouvrir-vue" class="bibliotheque" hidden>
+          <div class="decouvrir-tete">
+            <p class="aide" id="decouvrir-fraicheur"></p>
+            <button id="decouvrir-actualiser" class="lien">Actualiser</button>
+            <button id="decouvrir-vu-tout" class="lien" hidden>Tout marquer comme vu</button>
+          </div>
+          <progress id="decouvrir-jauge" class="jauge" hidden max="1" value="0"></progress>
+          <p class="aide" id="decouvrir-avancement" hidden></p>
+
+          <div id="decouvrir-actus">
+            <div class="segments" id="decouvrir-onglets" role="tablist">
+              <button class="segment segment--actif" data-onglet="sorties" role="tab">
+                Sorties<span class="segment__n" id="decouvrir-n-sorties"></span></button>
+              <button class="segment" data-onglet="collabs" role="tab">
+                Collaborations<span class="segment__n" id="decouvrir-n-collabs"></span></button>
+              <button class="segment" data-onglet="voisins" role="tab">
+                À écouter ailleurs<span class="segment__n" id="decouvrir-n-voisins"></span></button>
+            </div>
+            <div id="decouvrir-panneau-sorties" class="decouvrir-panneau">
+              <div id="decouvrir-sorties" class="decouvrir-liste"></div>
+              <div id="decouvrir-vide-sorties" class="insp__vide" hidden>Aucune sortie récente pour vos artistes.</div>
+            </div>
+            <div id="decouvrir-panneau-collabs" class="decouvrir-panneau" hidden>
+              <div id="decouvrir-collabs" class="decouvrir-liste"></div>
+              <div id="decouvrir-vide-collabs" class="insp__vide" hidden>Aucune collaboration récente.</div>
+            </div>
+            <div id="decouvrir-panneau-voisins" class="decouvrir-panneau" hidden>
+              <div id="decouvrir-voisins" class="decouvrir-liste"></div>
+              <div id="decouvrir-vide-voisins" class="insp__vide" hidden>Aucun artiste voisin pour l'instant.</div>
+            </div>
+            <div id="decouvrir-actus-vide" class="insp__vide" hidden>Pas encore
+              d'actualité. Renseignez une adresse de contact MusicBrainz dans le
+              rail, puis « Actualiser » — la première passe peut être longue.</div>
+          </div>
+
+          <hr class="decouvrir-separateur">
+
           <nav id="decouvrir-fil" class="decouvrir-fil" hidden></nav>
-          <div id="decouvrir-vide" class="insp__vide">Cherchez un artiste dans le rail
-            pour voir ses collaborations connues de MusicBrainz.</div>
+          <div id="decouvrir-vide" class="insp__vide">Cherchez un artiste dans le rail,
+            ou cliquez un artiste du fil, pour explorer ses collaborations connues
+            de MusicBrainz.</div>
           <div id="decouvrir-centre" hidden>
             <h2 id="decouvrir-nom"></h2>
             <p class="aide" id="decouvrir-etat"></p>
@@ -455,8 +597,35 @@
              mesuré : la passe couvre 15 847 morceaux sur 27 044. -->
         <span id="np-mesures" class="np__mesures"></span>
       </div>
-      <div class="wave" id="wave" role="slider" aria-label="Position dans la piste" tabindex="0"></div>
-      <span class="tc" id="tc">00:00 / 00:00</span>
+      <div class="wave" id="wave" role="slider" aria-label="Position dans la piste" tabindex="0">
+        <canvas id="wave-cnv"></canvas>
+      </div>
+      <div class="tc-bloc">
+        <span class="tc" id="tc">00:00 / 00:00</span>
+        <!-- Qualité du fichier en écoute : « FLAC · 16 bit · 44,1 kHz ».
+             Vide (et masquée) tant que le morceau n'a pas été scanné pour son
+             format. -->
+        <span class="np__mesures" id="np-qualite"></span>
+      </div>
+      <span class="transport__amelio">
+        <!-- « E » et « HD » empilés verticalement pour gagner de la largeur
+             dans le transport. -->
+        <span class="transport__amelio-col">
+          <button id="ameliorer" class="transport__e" aria-pressed="false"
+                  aria-label="Amélioration du son"
+                  title="Recrée le haut du spectre des fichiers compressés (excitation psychoacoustique). Réouvre le morceau en cours — une seconde de décodage, sans coupure. Sans effet sur un fichier déjà pleine bande.">E</button>
+          <!-- « HD » : super-résolution neuronale (AERO), rendue hors ligne vers
+               un cache. Trois états — absent (clic = régénérer), en cours
+               (pourcentage), disponible (bascule original ↔ HD). -->
+          <button id="hd" class="transport__e" aria-pressed="false"
+                  aria-label="Régénérer / écouter en HD"
+                  title="Reconstruit le haut du spectre par un modèle appris (AERO). Rendu hors ligne — une trentaine de secondes par minute d'audio — puis écoutable en basculant ici.">HD</button>
+        </span>
+        <input id="ameliorer-force" class="transport__e-force" type="range"
+               min="0" max="100" value="60" hidden
+               aria-label="Intensité de l'amélioration"
+               title="Intensité de l'amélioration">
+      </span>
       <label class="vol">
         <span>vol</span>
         <input id="volume" type="range" min="0" max="100" value="100">
@@ -471,10 +640,17 @@
         <span id="file-compte" class="fil__compte"></span>
         <button id="file-fermer" class="file__fermer" aria-label="Fermer">×</button>
       </header>
+      <!-- Pendant qu'une playlist ✦ se compose : la phase en cours (graphe des
+           voisins, puis composition) et sa progression. Masqué le reste du temps. -->
+      <div id="file-compo" class="file__compo" hidden>
+        <span id="file-compo-phase" class="file__compo-phase"></span>
+        <div class="file__compo-jauge"><i id="file-compo-barre"></i></div>
+      </div>
       <div id="file-liste" class="file__liste"></div>
     </aside>
 
   </div>
-  <script src="app.js"></script>
+  <script src="vendor/maplibre-gl.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

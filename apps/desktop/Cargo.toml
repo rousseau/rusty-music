@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 [build-dependencies]
 tauri-build.workspace = true
@@ -13,11 +14,25 @@ tauri-build.workspace = true
 rusty-music-core = { path = "../../crates/core" }
 rusty-music-player = { path = "../../crates/player" }
 rusty-music-analysis = { path = "../../crates/analysis" }
+rusty-music-carto = { path = "../../crates/carto" }
 rusty-music-editor = { path = "../../crates/editor" }
+rusty-music-superres = { path = "../../crates/superres" }
+# Lecture directe de `ville-paris.db` : `main.rs` appelle `osm::base::lire`
+# pour brancher le plan de ville réel sur `carto::ville::rassembler`.
+rusty-music-osm = { path = "../../crates/osm" }
 tauri.workspace   = true
 tauri-plugin-dialog.workspace = true
+tauri-plugin-opener.workspace = true
 global-hotkey     = "0.8"
 serde.workspace   = true
 anyhow.workspace  = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+serde_json.workspace = true
+
+# Lecture des archives de tuiles, servies à la webview par un protocole
+# personnalisé. `mmap-async-tokio` seul : le fichier est local, il n'y a ni S3
+# ni HTTP à interroger. Tauri fait déjà tourner tokio, on ne l'ajoute pas.
+pmtiles = { version = "0.24", default-features = false, features = ["mmap-async-tokio"] }
+tokio = { version = "1", features = ["rt", "fs"] }

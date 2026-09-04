@@ -9,13 +9,22 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rusty_music_analysis::chemin::{Empreinte, Graphe};
 use rusty_music_core::db::{AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+
+/// Hachage de `ui/`, injecté par `build.rs`. Jamais lu à l'exécution — sa seule
+/// fonction est de faire dépendre la compilation de ce fichier du contenu de
+/// l'interface, pour que `generate_context!` ré-embarque les assets dès qu'un
+/// fichier de `ui/` change. Voir `build.rs`.
+const _UI_HASH: &str = env!("RUSTY_UI_HASH");
+
+mod tuiles;
 
 /// État partagé. `rusqlite::Connection` et le lecteur ne sont pas `Sync` : on
 /// les protège chacun par un verrou plutôt que d'ouvrir une base par appel.
@@ -24,10 +33,22 @@ struct Etat {
     player: Mutex<Player>,
     /// Chemin de la base, pour que le scan puisse ouvrir sa propre connexion.
     db: PathBuf,
+    /// Racine du cache HD (`crates/superres`), à côté de la base. Le lecteur y
+    /// aiguille les pistes régénérées quand la lecture HD est active.
+    hd: PathBuf,
+    /// Avancement d'une régénération HD, sondé par l'interface.
+    superres: Mutex<EtatSuperres>,
+    /// Le modèle AERO, chargé à la première régénération puis gardé (~156 Mo).
+    superres_modele: Mutex<Option<rusty_music_superres::Modele>>,
     scan: Mutex<EtatScan>,
     analyse: Mutex<EtatAnalyse>,
     descripteurs: Mutex<EtatDescripteurs>,
     enrichissement: Mutex<EtatEnrichissement>,
+    /// Avancement de la passe de popularité générale (ListenBrainz + Deezer).
+    popularite: Mutex<EtatPopularite>,
+    /// Avancement de la passe du mode Découvrir (sorties, collaborations,
+    /// voisins), sondé par l'interface.
+    decouvrir: Mutex<EtatDecouvrir>,
     demix: Mutex<EtatDemix>,
     /// Où en est la transposition des stems. Elle tourne dans son fil : c'est
     /// une vingtaine de secondes par stem, et l'interface doit rester servie.
@@ -50,11 +71,69 @@ struct Etat {
     /// lorsque ce nombre a bougé, et seulement pour les modes qui en ont
     /// besoin (sonique et errance).
     graphe: Mutex<Option<(usize, Arc<Graphe>)>>,
+    /// Verrou pris pour toute la durée d'une construction de `graphe`.
+    ///
+    /// `graphe` lui-même n'est tenu que le temps de lire ou d'écrire le cache,
+    /// jamais pendant le balayage (une quinzaine de secondes) — sinon
+    /// l'inspecteur, qui sonde `graphe_progress`, se bloquerait. Mais relâché
+    /// ainsi, plusieurs commandes `path`/`prepare_graph`/`path_album` arrivées
+    /// coup sur coup (l'utilisateur qui bascule vite entre sonique et errance)
+    /// lançaient chacune son propre balayage : six en parallèle, le CPU
+    /// sursouscrit d'autant, et chacun passait de 15 s à 85 s — vécu comme un
+    /// gel. Ce verrou-ci sérialise : le premier construit, les suivants
+    /// attendent puis retrouvent le cache déjà chaud.
+    graphe_construction: Mutex<()>,
+    /// Avancement du balayage qui construit `graphe`, sondé par l'interface
+    /// (`graphe_progress`). `graphe_total` à 0 : aucun balayage en cours —
+    /// jamais lancé, ou déjà en cache. Sinon `graphe_fait` sur `graphe_total`
+    /// empreintes. Sans lui, la première errance d'une session laisse
+    /// l'interface muette une vingtaine de secondes.
+    graphe_fait: AtomicUsize,
+    graphe_total: AtomicUsize,
     /// Nappe de densité de la carte — polygones prêts à remplir. Recalculée
     /// seulement après une projection/clustering réussi ([`recalculer_densite`]),
     /// jamais par image ni au zoom : c'est tout l'intérêt de la garder ici
     /// plutôt que de la refaire côté interface à chaque geste.
+    /// Le réseau de circulation, bâti à la première demande d'itinéraire.
+    /// Une trentaine de secondes, dominées par le graphe des voisins — comme
+    /// `graphe`, on ne le refait pas à chaque trajet.
+    reseau: Mutex<Option<rusty_music_analysis::reseau::Reseau>>,
     densite: Mutex<Option<rusty_music_core::density::ResultatDensite>>,
+    /// Le plan de ville importé (`carto ville`), chargé une fois puis gardé —
+    /// `ville-paris.db` fait une vingtaine de mégaoctets, pas question de la
+    /// relire à chaque « refaire les tuiles ». `None` tant qu'aucune ville
+    /// n'a été chargée ; `rassembler` retombe alors sur le monde fictif.
+    ville: Mutex<Option<Arc<rusty_music_osm::Extrait>>>,
+    /// Le graphe routable du plan de ville (`carto::reseau_reel`), bâti à la
+    /// première demande d'itinéraire réel — quelques dizaines de
+    /// millisecondes sur Paris, mais pas question de le refaire à chaque
+    /// trajet tracé. Non pondéré : sert de référence d'indexation des sommets
+    /// et à l'accrochage des morceaux.
+    graphe_reel: Mutex<Option<Arc<rusty_music_carto::reseau_reel::Graphe>>>,
+    /// Chaque morceau accroché à son sommet de voirie, dans les deux sens —
+    /// bâti une fois sur `graphe_reel` (l'indexation des sommets ne dépend pas
+    /// de la pondération), invalidé quand les tuiles sont refaites.
+    accrochage_voirie: Mutex<Option<Arc<AccrochageVoirie>>>,
+    /// Un graphe de voirie **pondéré** par profil — trois entrées au plus. Même
+    /// jeu de sommets que `graphe_reel`, seuls les poids d'arête changent.
+    graphes_voirie: Mutex<
+        std::collections::HashMap<
+            rusty_music_carto::cout_itineraire::ProfilVoirie,
+            Arc<rusty_music_carto::reseau_reel::Graphe>,
+        >,
+    >,
+    /// La grille « aux abords d'un parc ou de l'eau », pour le profil
+    /// panoramique — ne dépend que de l'extrait.
+    agrement_voirie: Mutex<Option<Arc<rusty_music_carto::cout_itineraire::ProximiteAgrement>>>,
+}
+
+/// Chaque morceau accroché au sommet de voirie le plus proche, dans les deux
+/// sens. Bâti par [`charger_accrochage_voirie`].
+struct AccrochageVoirie {
+    /// Morceau → sommet de voirie (index dans `graphe_reel`).
+    sommet_de: std::collections::HashMap<i64, u32>,
+    /// Sommet de voirie → les morceaux qui s'y accrochent.
+    morceaux_a: std::collections::HashMap<u32, Vec<i64>>,
 }
 
 /// Avancement du scan en cours, sondé par l'interface.
@@ -88,6 +167,34 @@ fn coeurs_arriere_plan() -> usize {
         .unwrap_or(4)
         .saturating_sub(1)
         .max(1)
+}
+
+/// Fils pour une passe de fond, ajustés au support des racines surveillées.
+///
+/// Une carte SD ou une clé USB, sous forte lecture concurrente, ne se contente
+/// pas de ralentir : rencontré en pratique, un lecteur de carte peut y
+/// déclencher une panique noyau (`pcie-sdreader`, timeout de complétion PCIe)
+/// et emporter la machine avec lui — pas seulement l'application. Un disque
+/// interne n'a pas ce travers — c'est donc lui, et lui seul, qui garde
+/// `coeurs_arriere_plan()`. Une seule racine amovible suffit à brider toute la
+/// passe : les fils sont partagés entre tous les fichiers, quelle que soit
+/// leur racine. Un seul fil à la fois sur l'amovible : la marge de sécurité
+/// compte plus que la vitesse, vu le prix d'une erreur ici.
+fn fils_pour_passe(lib: &Library) -> usize {
+    const FILS_AMOVIBLE: usize = 1;
+    let amovible = lib
+        .roots()
+        .map(|racines| {
+            racines
+                .iter()
+                .any(|r| rusty_music_core::volume::est_amovible(Path::new(&r.path)))
+        })
+        .unwrap_or(false);
+    if amovible {
+        FILS_AMOVIBLE
+    } else {
+        coeurs_arriere_plan()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +287,1082 @@ fn map_view(etat: State<Etat>) -> Result<Vec<MapPoint>, String> {
     Ok(pts)
 }
 
+/// Ce que la webview doit savoir avant d'ouvrir la carte MapLibre.
+#[derive(serde::Serialize)]
+struct EtatTuiles {
+    pretes: bool,
+    carte: String,
+    relief: String,
+    octets: u64,
+    /// Vraies si l'archive est plus vieille que la dernière projection : la
+    /// carte a bougé sous les tuiles, il faut les refaire.
+    perimees: bool,
+}
+
+#[tauri::command(async)]
+fn tuiles_etat(app: tauri::AppHandle, etat: State<Etat>) -> Result<EtatTuiles, String> {
+    let carte = tuiles::chemin_carte(&app).map_err(echec)?;
+    let relief = tuiles::chemin_relief(&app).map_err(echec)?;
+    let meta = std::fs::metadata(&carte).ok();
+    let octets = meta.as_ref().map(|m| m.len()).unwrap_or(0)
+        + std::fs::metadata(&relief).map(|m| m.len()).unwrap_or(0);
+
+    // La projection la plus récente fait foi : `features.computed_at` bouge à
+    // chaque recalcul de la carte.
+    let projetee = etat
+        .lib
+        .lock()
+        .map_err(echec)?
+        .derniere_projection(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)?;
+    let ecrite = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64);
+
+    Ok(EtatTuiles {
+        pretes: carte.is_file() && relief.is_file() && dossier_style(&app).is_some(),
+        carte: carte.display().to_string(),
+        relief: relief.display().to_string(),
+        octets,
+        perimees: match (ecrite, projetee) {
+            (Some(e), Some(p)) => e < p,
+            (None, _) => true,
+            _ => false,
+        },
+    })
+}
+
+fn dossier_style(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let s = tuiles::dossier(app).ok()?.join("style.json");
+    s.is_file().then_some(s)
+}
+
+/// Charge `ville-paris.db` une fois, la garde en mémoire ensuite — relire une
+/// vingtaine de mégaoctets à chaque « refaire les tuiles » serait un gâchis.
+/// Pas d'invalidation : la ville se remplace en bloc (`carto ville`), jamais
+/// en place, et un nouvel import survient hors session.
+fn charger_ville(etat: &State<Etat>, chemin: &Path) -> Result<Arc<rusty_music_osm::Extrait>, String> {
+    let mut cache = etat.ville.lock().map_err(echec)?;
+    if let Some(extrait) = &*cache {
+        return Ok(extrait.clone());
+    }
+    let extrait = Arc::new(rusty_music_osm::base::lire(chemin).map_err(echec)?);
+    *cache = Some(extrait.clone());
+    Ok(extrait)
+}
+
+/// Le graphe routable du plan de ville, construit une fois puis gardé — même
+/// principe que [`charger_ville`], et sur le même extrait.
+fn charger_graphe_reel(
+    etat: &State<Etat>,
+    extrait: &rusty_music_osm::Extrait,
+) -> Result<Arc<rusty_music_carto::reseau_reel::Graphe>, String> {
+    let mut cache = etat.graphe_reel.lock().map_err(echec)?;
+    if let Some(graphe) = &*cache {
+        return Ok(graphe.clone());
+    }
+    let graphe = Arc::new(rusty_music_carto::reseau_reel::Graphe::construire(extrait));
+    *cache = Some(graphe.clone());
+    Ok(graphe)
+}
+
+/// La grille « aux abords d'un parc ou de l'eau », construite une fois par
+/// session — ne dépend que de l'extrait (profil panoramique).
+fn charger_agrement_voirie(
+    etat: &State<Etat>,
+    extrait: &rusty_music_osm::Extrait,
+) -> Result<Arc<rusty_music_carto::cout_itineraire::ProximiteAgrement>, String> {
+    let mut cache = etat.agrement_voirie.lock().map_err(echec)?;
+    if let Some(a) = &*cache {
+        return Ok(a.clone());
+    }
+    let a = Arc::new(rusty_music_carto::cout_itineraire::ProximiteAgrement::nouvelle(extrait, 120.0));
+    *cache = Some(a.clone());
+    Ok(a)
+}
+
+/// Un graphe de voirie pondéré par profil, mis en cache. Le jeu de sommets est
+/// identique à celui de `graphe_reel` : seule la pondération d'arête change.
+fn charger_graphe_voirie(
+    etat: &State<Etat>,
+    extrait: &rusty_music_osm::Extrait,
+    profil: rusty_music_carto::cout_itineraire::ProfilVoirie,
+) -> Result<Arc<rusty_music_carto::reseau_reel::Graphe>, String> {
+    use rusty_music_carto::cout_itineraire::friction_itineraire;
+
+    if let Some(g) = etat.graphes_voirie.lock().map_err(echec)?.get(&profil) {
+        return Ok(g.clone());
+    }
+    let agrement = charger_agrement_voirie(etat, extrait)?;
+    let graphe = Arc::new(rusty_music_carto::reseau_reel::Graphe::construire_pondere(
+        extrait,
+        friction_itineraire(profil, Some(&agrement)),
+    ));
+    etat.graphes_voirie.lock().map_err(echec)?.insert(profil, graphe.clone());
+    Ok(graphe)
+}
+
+/// Accroche chaque morceau (son adresse réelle, `positions.json`) au sommet de
+/// voirie le plus proche. Bâti une fois sur `graphe_base` — l'indexation des
+/// sommets ne dépend pas de la pondération, donc l'accrochage vaut pour tous
+/// les graphes de voirie pondérés.
+///
+/// `Err` si aucune position réelle n'est disponible (pas de plan de ville, ou
+/// tuiles pas encore générées) — l'appelant en fait un repli.
+fn charger_accrochage_voirie(
+    etat: &State<Etat>,
+    app: &tauri::AppHandle,
+    graphe_base: &rusty_music_carto::reseau_reel::Graphe,
+) -> Result<Arc<AccrochageVoirie>, String> {
+    {
+        let cache = etat.accrochage_voirie.lock().map_err(echec)?;
+        if let Some(a) = &*cache {
+            return Ok(a.clone());
+        }
+    }
+
+    // `points_de_carte_effectifs(reel = true)` lit `positions.json` : `(id,
+    // lon, lat)`. Sur le chemin fictif il retombe sur le t-SNE — sans rapport
+    // avec une rue —, d'où le garde-fou `positions.json` ci-dessous.
+    let dossier = tuiles::dossier(app).map_err(echec)?;
+    if !dossier.join("positions.json").is_file() {
+        return Err("carte réelle pas encore générée".into());
+    }
+    let points = points_de_carte_effectifs(etat, app, true)?;
+    if points.is_empty() {
+        return Err("aucune adresse réelle".into());
+    }
+
+    let index = graphe_base.index_sommets();
+    let mut sommet_de: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
+    let mut morceaux_a: std::collections::HashMap<u32, Vec<i64>> = std::collections::HashMap::new();
+    for (id, x, y) in points {
+        if let Some(s) = index.plus_proche(graphe_base, [x as f64, y as f64], 200.0) {
+            sommet_de.insert(id, s);
+            morceaux_a.entry(s).or_default().push(id);
+        }
+    }
+    // Ordre déterministe des morceaux d'un même sommet (départage à rang égal).
+    for v in morceaux_a.values_mut() {
+        v.sort_unstable();
+    }
+    tracing::info!(
+        accroches = sommet_de.len(),
+        sommets = morceaux_a.len(),
+        "morceaux accrochés à la voirie"
+    );
+    let a = Arc::new(AccrochageVoirie { sommet_de, morceaux_a });
+    *etat.accrochage_voirie.lock().map_err(echec)? = Some(a.clone());
+    Ok(a)
+}
+
+/// Popularité par morceau, `[0, 1]` — proxy « nombre de morceaux gardés de
+/// l'artiste », faute de compteur d'écoute (comme [`construire_reseau`]). Sert
+/// de « dénivelé » le long d'un itinéraire.
+fn popularites_par_artiste(vue: &[MapPoint]) -> std::collections::HashMap<i64, f32> {
+    let mut par_artiste: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for p in vue {
+        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+    }
+    let max = par_artiste.values().copied().max().unwrap_or(1).max(1) as f32;
+    vue.iter()
+        .map(|p| {
+            let n = par_artiste[&p.artist.clone().unwrap_or_default()] as f32;
+            (p.id, n / max)
+        })
+        .collect()
+}
+
+/// Les morceaux rencontrés le long d'un tracé de voirie, dans l'ordre du
+/// parcours. C'est le cœur du mode « itinéraire » : le trajet suit les rues,
+/// la playlist est faite de ce qui les borde.
+///
+/// - `couloir` : sommet → rang (position le long du tracé), de
+///   [`rusty_music_carto::reseau_reel::Graphe::couloir`] ;
+/// - `famille` : si `Some`, ne garder que ces morceaux (le filtre d'Explorer) —
+///   mais le départ et l'arrivée passent toujours ;
+/// - `arrivee_id` : **si `Some`, elle est le terminus** (forcée en queue) et la
+///   durée est ignorée — « va jusque-là » l'emporte ;
+/// - `duree_cible_ms` : ne s'applique **que sans arrivée** — la playlist
+///   s'arrête quand le cumul des durées atteint la cible (moins 90 s de
+///   tolérance).
+#[allow(clippy::too_many_arguments)]
+fn morceaux_le_long(
+    accrochage: &AccrochageVoirie,
+    couloir: &std::collections::HashMap<u32, usize>,
+    depart_id: i64,
+    arrivee_id: Option<i64>,
+    famille: Option<&HashSet<i64>>,
+    duree_cible_ms: Option<u64>,
+    duree: &dyn Fn(i64) -> u64,
+) -> Vec<i64> {
+    const PLAFOND: usize = 120;
+    const TOLERANCE_MS: u64 = 90_000;
+
+    // **Une arrivée posée prime : le trajet va jusqu'à elle**, et la durée ne
+    // s'applique plus (elle ne sert qu'aux itinéraires sans arrivée — « une
+    // balade de 40 min par là »). L'arrivée est forcée en queue et exclue du
+    // corps ; le départ toujours en tête.
+    let terminus = arrivee_id;
+    let borne = |id: i64| id == depart_id || Some(id) == terminus;
+    let duree_cible_ms = if terminus.is_some() { None } else { duree_cible_ms };
+
+    // (rang, id) pour chaque morceau du couloir.
+    let mut candidats: Vec<(usize, i64)> = Vec::new();
+    for (sommet, rang) in couloir {
+        if let Some(ids) = accrochage.morceaux_a.get(sommet) {
+            for &id in ids {
+                candidats.push((*rang, id));
+            }
+        }
+    }
+    candidats.sort_unstable_by_key(|&(rang, id)| (rang, id));
+
+    let mut vus: HashSet<i64> = HashSet::new();
+    let mut suite: Vec<i64> = Vec::new();
+    for (_, id) in candidats {
+        if borne(id) || !vus.insert(id) {
+            continue;
+        }
+        if let Some(f) = famille {
+            if !f.contains(&id) {
+                continue;
+            }
+        }
+        suite.push(id);
+    }
+
+    // Départ en tête.
+    suite.retain(|&id| !borne(id));
+    suite.insert(0, depart_id);
+
+    // La durée prime : on coupe dès que le cumul l'atteint.
+    if let Some(cible) = duree_cible_ms {
+        let seuil = cible.saturating_sub(TOLERANCE_MS);
+        let mut cumul = 0u64;
+        let mut coupe = suite.len();
+        for (i, &id) in suite.iter().enumerate() {
+            cumul += duree(id);
+            if cumul >= seuil {
+                coupe = i + 1;
+                break;
+            }
+        }
+        suite.truncate(coupe.max(1));
+    } else if let Some(a) = terminus {
+        // Pas de durée : l'arrivée est le terminus.
+        if a != depart_id {
+            suite.push(a);
+        }
+    }
+
+    suite.truncate(PLAFOND.max(1));
+    suite
+}
+
+/// Assemble une [`rusty_music_carto::source::Source`] depuis le plan de
+/// ville réel plutôt que depuis le monde engendré — voir
+/// `rusty_music_carto::ville::rassembler`.
+fn rassembler_ville(
+    etat: &State<Etat>,
+    extrait: &rusty_music_osm::Extrait,
+) -> Result<rusty_music_carto::source::Source, String> {
+    let modele = rusty_music_analysis::passe::MODELE;
+    let lib = etat.lib.lock().map_err(echec)?;
+    let vue = lib.map_view(modele).map_err(echec)?;
+    if vue.is_empty() {
+        return Err("aucun morceau sur la carte : lancer l'analyse d'abord".into());
+    }
+    let noms_famille: std::collections::HashMap<i64, String> = lib
+        .familles(modele)
+        .map_err(echec)?
+        .into_iter()
+        .map(|(id, nom, _)| (id, nom))
+        .collect();
+    drop(lib);
+
+    let r = rusty_music_carto::ville::rassembler(
+        extrait,
+        &vue,
+        &noms_famille,
+        rusty_music_carto::ville::ESPACEMENT_PAR_DEFAUT,
+        Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+    );
+    // Pas de `curiosites` sur le plan de ville : `style::couches_ville` ne les
+    // rend plus (pastilles brunes plus grosses qu'un bâtiment). Le dispositif
+    // monument/refuge/fondation reste propre au monde fictif.
+    tracing::info!(
+        adresses = r.adresses_posees,
+        sans_adresse = r.morceaux_sans_adresse,
+        repli_quartier = r.repli_quartier,
+        hors_zone = r.hors_zone,
+        debordements = r.debordements,
+        artistes_ancres = r.artistes_ancres,
+        batiments_peuples = r.batiments_peuples,
+        erreur_quartiers = r.quartiers_erreur_relative,
+        albums = r.source.albums.len(),
+        "plan de ville réel assemblé"
+    );
+    Ok(r.source)
+}
+
+/// Fabrique les deux archives. Quelques secondes sur 27 000 morceaux — la
+/// commande est `async`, donc hors du fil de l'interface.
+///
+/// Deux chemins : si `ville-paris.db` existe à côté de la bibliothèque
+/// (importée via `carto ville`), la carte affiche le vrai plan de ville
+/// ([`rassembler_ville`]) — pas de relief à ombrer, Paris est plat. Sinon,
+/// repli sur le monde fictif engendré depuis la bibliothèque
+/// ([`rassembler`]), inchangé.
+#[tauri::command(async)]
+fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, String> {
+    let chemin_ville = etat.db.with_file_name("ville-paris.db");
+
+    let (src, paliers, ombrage_rapport) = if chemin_ville.is_file() {
+        let extrait = charger_ville(&etat, &chemin_ville)?;
+        let src = rassembler_ville(&etat, &extrait)?;
+        (src, rusty_music_carto::tuiles::Paliers::ville(), None)
+    } else {
+        tracing::info!(
+            "aucune ville importée — carte procédurale de repli ; lancer \
+             `carto ville <extrait.osm.pbf> --commune <nom>` pour Paris"
+        );
+        let (src, champ, resolution) = rassembler(&etat)?;
+        let ombrage = rusty_music_carto::relief::Ombrage::default();
+        let rr = rusty_music_carto::relief::ecrire(
+            &champ,
+            resolution,
+            &ombrage,
+            &tuiles::chemin_relief(&app).map_err(echec)?,
+        )
+        .map_err(echec)?;
+        (src, rusty_music_carto::tuiles::Paliers::default(), Some(rr))
+    };
+
+    let chemin = tuiles::chemin_carte(&app).map_err(echec)?;
+    let r = rusty_music_carto::tuiles::ecrire(&src, &paliers, &chemin).map_err(echec)?;
+
+    // Le style part avec les tuiles : même source, mêmes paliers, aucune
+    // dérive possible entre ce qui est dans les tuiles et ce qui s'affiche.
+    // `construire` retire lui-même la source « relief » sur le plan de ville
+    // réel (`Source::est_ville_reelle`) — rien à faire ici pour l'omettre.
+    //
+    // **Une variante de style par palette de fond de plan.** N'affecte que
+    // `style.json`, jamais les tuiles : reconstruire le style est du pur JSON,
+    // presque gratuit face à la `Source` (déjà bâtie ci-dessus). L'interface
+    // bascule ensuite entre ces fichiers sans régénérer quoi que ce soit.
+    // `osm-clair` prend le nom sans suffixe (le style lu par défaut).
+    let dossier_style = tuiles::dossier(&app).map_err(echec)?;
+    for palette in rusty_music_carto::Palette::toutes() {
+        let style =
+            rusty_music_carto::style::construire(&src, &paliers, &tuiles::base(), palette);
+        let nom = if palette.id == "osm-clair" {
+            "style.json".to_string()
+        } else {
+            format!("style-{}.json", palette.id)
+        };
+        std::fs::write(
+            dossier_style.join(nom),
+            serde_json::to_vec_pretty(&style).map_err(echec)?,
+        )
+        .map_err(echec)?;
+    }
+
+    // Les positions réelles (lon/lat) des morceaux, pour que la surcouche du
+    // canevas (lasso, survol, chemin dessiné) retrouve chaque morceau là où
+    // les tuiles le montrent. Sans ce fichier, `app.js` n'a que les
+    // coordonnées t-SNE de `map_view` — sans aucun rapport avec une adresse
+    // de rue une fois le plan de ville réel actif. Absent (donc en échec à
+    // la lecture) sur le chemin fictif : c'est le signal qu'`app.js` utilise
+    // pour savoir dans quel repère il travaille.
+    let chemin_positions = tuiles::dossier(&app).map_err(echec)?.join("positions.json");
+    if src.est_ville_reelle() {
+        let positions: std::collections::HashMap<i64, [f32; 2]> =
+            src.morceaux.iter().map(|m| (m.id, [m.x, m.y])).collect();
+        std::fs::write(&chemin_positions, serde_json::to_vec(&positions).map_err(echec)?)
+            .map_err(echec)?;
+    } else {
+        std::fs::remove_file(&chemin_positions).ok();
+    }
+
+    // L'ancienne archive reste projetée en mémoire tant qu'on ne la lâche pas.
+    app.state::<tuiles::Archives>().oublier();
+
+    // Les tuiles viennent de changer : `positions.json` avec, donc tout ce qui
+    // en dépend (l'accrochage des morceaux à la voirie, les graphes pondérés,
+    // la grille d'agrément, et l'extrait / le graphe de base eux-mêmes en cas
+    // de réimport). On repart de zéro à la prochaine demande d'itinéraire.
+    *etat.ville.lock().map_err(echec)? = None;
+    *etat.graphe_reel.lock().map_err(echec)? = None;
+    *etat.accrochage_voirie.lock().map_err(echec)? = None;
+    etat.graphes_voirie.lock().map_err(echec)?.clear();
+    *etat.agrement_voirie.lock().map_err(echec)? = None;
+
+    match ombrage_rapport {
+        Some(rr) => {
+            tracing::info!(
+                tuiles = r.tuiles,
+                relief = rr.tuiles,
+                secondes = r.duree.as_secs_f64() + rr.duree.as_secs_f64(),
+                "tuiles engendrées"
+            );
+            Ok(format!(
+                "{} tuiles ({:.1} Mo) et {} d'ombrage ({:.1} Mo) en {:.1} s",
+                r.tuiles,
+                r.octets as f64 / 1_048_576.0,
+                rr.tuiles,
+                rr.octets as f64 / 1_048_576.0,
+                r.duree.as_secs_f64() + rr.duree.as_secs_f64()
+            ))
+        }
+        None => {
+            tracing::info!(
+                tuiles = r.tuiles,
+                secondes = r.duree.as_secs_f64(),
+                "tuiles engendrées (plan de ville réel)"
+            );
+            Ok(format!(
+                "{} tuiles ({:.1} Mo) en {:.1} s — plan de ville réel (© les contributeurs OpenStreetMap)",
+                r.tuiles,
+                r.octets as f64 / 1_048_576.0,
+                r.duree.as_secs_f64()
+            ))
+        }
+    }
+}
+
+/// Un itinéraire, tel que l'interface le reçoit.
+#[derive(serde::Serialize)]
+struct ItineraireVu {
+    pistes: Vec<MapPoint>,
+    duree_ms: u64,
+    distance_sonique: f32,
+    /// Le dénivelé : la popularité le long du trajet.
+    popularite: Vec<f32>,
+    classes: Vec<String>,
+}
+
+/// Trace un itinéraire dans le réseau de circulation.
+///
+/// `carto-google-maps.md` §3 : un seul graphe, plusieurs fonctions de coût. La
+/// durée cible est la contrainte la plus utile côté utilisateur — « un
+/// itinéraire de 40 minutes » est une vraie demande.
+#[tauri::command(async)]
+fn itineraire(
+    etat: State<Etat>,
+    depart: i64,
+    arrivee: Option<i64>,
+    profil: String,
+    minutes: Option<u64>,
+) -> Result<Vec<ItineraireVu>, String> {
+    use rusty_music_analysis::reseau::{Options, Profil};
+
+    let modele = rusty_music_analysis::passe::MODELE;
+    {
+        // Construction paresseuse, une seule fois par session.
+        let mut cache = etat.reseau.lock().map_err(echec)?;
+        if cache.is_none() {
+            *cache = Some(construire_reseau(&etat, modele)?);
+        }
+    }
+    let cache = etat.reseau.lock().map_err(echec)?;
+    let reseau = cache.as_ref().expect("réseau construit juste au-dessus");
+
+    let mut o = Options::nouveau(
+        depart,
+        match profil.as_str() {
+            "sentier" => Profil::Sentier,
+            "panoramique" => Profil::Panoramique,
+            _ => Profil::Autoroute,
+        },
+    );
+    o.arrivee = arrivee;
+    o.alternatives = 1;
+    o.duree_cible_ms = minutes.map(|m| m * 60_000);
+
+    let trajets = reseau.itineraires(&o).map_err(echec)?;
+    drop(cache);
+
+    let lib = etat.lib.lock().map_err(echec)?;
+    let par_id: std::collections::HashMap<i64, MapPoint> = lib
+        .map_view(modele)
+        .map_err(echec)?
+        .into_iter()
+        .map(|p| (p.id, p))
+        .collect();
+    drop(lib);
+    trajets
+        .into_iter()
+        .map(|t| {
+            let pistes: Vec<MapPoint> = t
+                .morceaux
+                .iter()
+                .filter_map(|id| par_id.get(id).cloned())
+                .collect();
+            Ok(ItineraireVu {
+                pistes,
+                duree_ms: t.duree_ms,
+                distance_sonique: t.distance_sonique,
+                popularite: t.popularite,
+                classes: t.classes.iter().map(|c| format!("{c:?}").to_lowercase()).collect(),
+            })
+        })
+        .collect()
+}
+
+/// Un itinéraire routé sur la voirie réelle, tel que l'interface le reçoit.
+#[derive(serde::Serialize)]
+struct ItineraireVoirieVu {
+    /// Les morceaux rencontrés le long des rues, dans l'ordre — la playlist.
+    pistes: Vec<MapPoint>,
+    /// La ligne du trajet, déjà routée sur les rues : `[lon, lat]`. L'interface
+    /// n'a plus à rappeler `trace_rues`.
+    polyligne: Vec<[f64; 2]>,
+    /// Somme des durées des `pistes`.
+    duree_ms: u64,
+    /// Longueur de la `polyligne`, en mètres.
+    distance_m: f64,
+    /// Le dénivelé : la popularité le long du trajet, un `f32` par piste.
+    popularite: Vec<f32>,
+    /// Les classes de voie traversées, doublons consécutifs retirés.
+    classes: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ReponseItineraireVoirie {
+    /// `Some(raison)` : l'interface affiche la raison et retombe sur
+    /// l'itinéraire musical (`itineraire`).
+    repli: Option<String>,
+    trajets: Vec<ItineraireVoirieVu>,
+}
+
+impl ReponseItineraireVoirie {
+    fn repli(raison: &str) -> ReponseItineraireVoirie {
+        ReponseItineraireVoirie { repli: Some(raison.into()), trajets: Vec::new() }
+    }
+}
+
+/// Distance équirectangulaire entre deux points `[lon, lat]`, en mètres — même
+/// approximation que `carto::reseau_reel` et `osm::Troncon::longueur_m`.
+fn distance_lonlat_m(a: [f64; 2], b: [f64; 2]) -> f64 {
+    let lat_moy = (a[1] + b[1]).to_radians() / 2.0;
+    let dx = (b[0] - a[0]).to_radians() * lat_moy.cos() * 6_371_000.0;
+    let dy = (b[1] - a[1]).to_radians() * 6_371_000.0;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Trace un itinéraire **sur les vraies rues** et compose la playlist des
+/// morceaux qui les bordent.
+///
+/// `docs/carto-ville.md` (révisé) : sur le plan de ville, ce mode ne se
+/// contente plus d'habiller le trait d'un chemin musical — c'est la voirie qui
+/// choisit les morceaux. Le chemin musical (`itineraire`) reste le repli quand
+/// il n'y a pas de ville, pas d'adresse, ou dans le nuage.
+#[tauri::command(async)]
+#[allow(clippy::too_many_arguments)]
+fn itineraire_voirie(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    depart: i64,
+    arrivee: Option<i64>,
+    profil: String,
+    minutes: Option<u64>,
+    famille: Option<i64>,
+    rayon_m: Option<f64>,
+) -> Result<ReponseItineraireVoirie, String> {
+    use rusty_music_carto::cout_itineraire::ProfilVoirie;
+
+    let chemin_ville = etat.db.with_file_name("ville-paris.db");
+    if !chemin_ville.is_file() {
+        return Ok(ReponseItineraireVoirie::repli("aucune ville importée"));
+    }
+    let extrait = charger_ville(&etat, &chemin_ville)?;
+    let graphe_base = charger_graphe_reel(&etat, &extrait)?;
+    let accrochage = match charger_accrochage_voirie(&etat, &app, &graphe_base) {
+        Ok(a) => a,
+        Err(_) => {
+            return Ok(ReponseItineraireVoirie::repli(
+                "carte réelle pas encore générée — refaire les tuiles",
+            ))
+        }
+    };
+    let profil_v = ProfilVoirie::depuis_nom(&profil);
+    let graphe = charger_graphe_voirie(&etat, &extrait, profil_v)?;
+
+    // Positions réelles (lon/lat) des morceaux.
+    let positions: std::collections::HashMap<i64, [f64; 2]> =
+        points_de_carte_effectifs(&etat, &app, true)?
+            .into_iter()
+            .map(|(id, x, y)| (id, [x as f64, y as f64]))
+            .collect();
+    let Some(&depart_pos) = positions.get(&depart) else {
+        return Ok(ReponseItineraireVoirie::repli("ce morceau n'a pas d'adresse sur la carte"));
+    };
+    if graphe.accrocher(depart_pos).is_none() {
+        return Ok(ReponseItineraireVoirie::repli("le départ n'est rattaché à aucune rue"));
+    }
+    let arrivee_pos = match arrivee {
+        Some(a) => match positions.get(&a) {
+            Some(&p) if graphe.accrocher(p).is_some() => Some(p),
+            _ => {
+                return Ok(ReponseItineraireVoirie::repli(
+                    "l'arrivée n'a pas d'adresse sur la carte",
+                ))
+            }
+        },
+        None => None,
+    };
+
+    let permis: Option<HashSet<i64>> =
+        famille.map(|f| morceaux_de_famille(&etat, f)).transpose()?;
+
+    // `map_view` une fois : hydratation, durées, popularité.
+    let modele = rusty_music_analysis::passe::MODELE;
+    let vue = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        lib.map_view(modele).map_err(echec)?
+    };
+    let par_id: std::collections::HashMap<i64, MapPoint> =
+        vue.iter().map(|p| (p.id, p.clone())).collect();
+    let duree_ms_de: std::collections::HashMap<i64, u64> = vue
+        .iter()
+        .map(|p| (p.id, p.duration_ms.unwrap_or(0).max(0) as u64))
+        .collect();
+    let pop_de = popularites_par_artiste(&vue);
+    let duree = |id: i64| duree_ms_de.get(&id).copied().unwrap_or(0);
+
+    // Cible = position d'arrivée, sinon un morceau assez loin pour qu'il y ait
+    // ~`minutes` de musique en chemin.
+    let cible_ms = minutes.filter(|m| *m > 0).map(|m| m * 60_000);
+    let cible_pos = match (arrivee_pos, cible_ms) {
+        (Some(p), _) => p,
+        (None, Some(cible)) => {
+            let couts = graphe.couts_depuis(depart_pos);
+            let mut candidats: Vec<(u64, i64)> = accrochage
+                .sommet_de
+                .iter()
+                .filter(|(id, _)| {
+                    permis.as_ref().is_none_or(|f| f.contains(*id) || **id == depart)
+                })
+                .filter_map(|(&id, &s)| couts.get(s as usize).copied().flatten().map(|c| (c, id)))
+                .collect();
+            candidats.sort_unstable();
+            // Viser ~2× la durée : le tracé ne longe qu'une partie des morceaux
+            // « à portée » (ceux de son couloir), pas tous ceux du disque de
+            // coût. Sans cette marge, la playlist manque souvent la cible et le
+            // tracé, tronqué au dernier morceau, reste tout petit.
+            let vise = cible.saturating_mul(2);
+            let mut cumul = 0u64;
+            let mut cible_id = candidats.last().map(|&(_, id)| id);
+            for &(_, id) in &candidats {
+                cumul += duree(id);
+                if cumul >= vise {
+                    cible_id = Some(id);
+                    break;
+                }
+            }
+            match cible_id.and_then(|id| positions.get(&id)) {
+                Some(&p) => p,
+                None => {
+                    return Ok(ReponseItineraireVoirie::repli(
+                        "aucun morceau accessible pour cette durée",
+                    ))
+                }
+            }
+        }
+        (None, None) => {
+            return Ok(ReponseItineraireVoirie::repli("choisir une arrivée ou une durée"));
+        }
+    };
+
+    // Un seul trajet : le meilleur pour ce profil. Les « variantes » (Yen /
+    // pénalité) ne donnaient que des versions dégradées du même profil — le
+    // choix, c'est le profil lui-même.
+    let Some((trace, _)) = graphe.chemin_sommets(depart_pos, cible_pos) else {
+        return Ok(ReponseItineraireVoirie::repli("pas de route jusque-là"));
+    };
+
+    // Table classe par tronçon, pour nommer les voies traversées.
+    let classe_de: std::collections::HashMap<i64, rusty_music_osm::Classe> =
+        extrait.troncons.iter().map(|t| (t.id, t.classe)).collect();
+    let rayon = rayon_m.unwrap_or(25.0).max(0.0);
+
+    let couloir = graphe.couloir(&trace, rayon);
+    let route =
+        morceaux_le_long(&accrochage, &couloir, depart, arrivee, permis.as_ref(), cible_ms, &duree);
+    let pistes: Vec<MapPoint> = route.iter().filter_map(|id| par_id.get(id).cloned()).collect();
+    if pistes.len() < 2 {
+        return Ok(ReponseItineraireVoirie::repli(
+            "aucun morceau le long de cet itinéraire — essayer une autre durée ou un autre profil",
+        ));
+    }
+
+    // **Avec une arrivée, le tracé va jusqu'à elle** — on garde tout. Sans
+    // arrivée, `chemin_sommets` file jusqu'à une destination provisoire (~la
+    // durée de musique plus loin) ; si les morceaux sont denses près du départ,
+    // la playlist s'arrête bien avant, et dessiner la polyligne entière puis
+    // rejoindre le dernier morceau (souvent revenu près du départ) faisait une
+    // boucle. On tronque donc au dernier morceau retenu.
+    let fin = if arrivee.is_some() {
+        trace.len()
+    } else {
+        fin_de_trace(&route, &accrochage, &couloir, trace.len())
+    };
+    let trace = &trace[..fin];
+
+    let polyligne: Vec<[f64; 2]> = trace.iter().map(|&s| graphe.point(s)).collect();
+    let distance_m = polyligne.windows(2).map(|w| distance_lonlat_m(w[0], w[1])).sum();
+    let duree_ms = pistes.iter().map(|p| duree(p.id)).sum();
+    let popularite: Vec<f32> =
+        pistes.iter().map(|p| pop_de.get(&p.id).copied().unwrap_or(0.0)).collect();
+    let mut classes: Vec<String> = Vec::new();
+    for t in graphe.troncons_traverses(trace) {
+        if let Some(c) = classe_de.get(&t) {
+            let nom = c.nom().to_string();
+            if classes.last() != Some(&nom) {
+                classes.push(nom);
+            }
+        }
+    }
+
+    Ok(ReponseItineraireVoirie {
+        repli: None,
+        trajets: vec![ItineraireVoirieVu {
+            pistes,
+            polyligne,
+            duree_ms,
+            distance_m,
+            popularite,
+            classes,
+        }],
+    })
+}
+
+/// Jusqu'où le tracé doit être dessiné : un cran après le sommet du **dernier
+/// morceau retenu** dans le couloir. Au moins 2 sommets (pour une polyligne),
+/// au plus toute la longueur du tracé. `route` inconnu du couloir → tout le
+/// tracé.
+fn fin_de_trace(
+    route: &[i64],
+    accrochage: &AccrochageVoirie,
+    couloir: &std::collections::HashMap<u32, usize>,
+    longueur_trace: usize,
+) -> usize {
+    let jusqua = route
+        .iter()
+        .filter_map(|id| accrochage.sommet_de.get(id))
+        .filter_map(|s| couloir.get(s))
+        .copied()
+        .max()
+        .map_or(longueur_trace, |r| r + 1);
+    jusqua.min(longueur_trace).max(2.min(longueur_trace))
+}
+
+/// Rassemble ce qu'il faut au réseau et le construit.
+fn construire_reseau(
+    etat: &State<Etat>,
+    modele: &str,
+) -> Result<rusty_music_analysis::reseau::Reseau, String> {
+    use rusty_music_analysis::reseau::{Morceau, Parametres, Reseau};
+    use std::collections::HashMap;
+
+    let lib = etat.lib.lock().map_err(echec)?;
+    let empreintes = lib.embeddings(modele).map_err(echec)?;
+    let vue = lib.map_view(modele).map_err(echec)?;
+    if vue.is_empty() {
+        return Err("aucun morceau sur la carte".into());
+    }
+    let points = lib.map_points(modele).map_err(echec)?;
+    let mut parametres = lib.parametres_carte().map_err(echec)?.parametres_densite();
+    drop(lib);
+
+    // La popularité dont on dispose : le nombre de morceaux gardés d'un
+    // artiste. La base ne porte aucun compteur d'écoute.
+    let mut par_artiste: HashMap<String, u32> = HashMap::new();
+    for p in &vue {
+        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+    }
+    let index: HashMap<&str, u32> = par_artiste
+        .keys()
+        .enumerate()
+        .map(|(i, n)| (n.as_str(), i as u32))
+        .collect();
+    let morceaux: Vec<Morceau> = vue
+        .iter()
+        .map(|p| {
+            let a = p.artist.clone().unwrap_or_default();
+            Morceau {
+                id: p.id,
+                duree_ms: p.duration_ms.unwrap_or(0).max(0) as u64,
+                artiste: index[a.as_str()],
+                famille: p.cluster,
+                x: p.x,
+                y: p.y,
+                morceaux_de_lartiste: par_artiste[&a],
+            }
+        })
+        .collect();
+
+    parametres.noyau = rusty_music_carto::relief::NOYAU;
+    let champ = rusty_music_core::density::champ_global(&points, &parametres);
+    Ok(Reseau::construire(
+        empreintes,
+        &morceaux,
+        &champ,
+        parametres.resolution,
+        &Parametres {
+            fils: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8),
+            ..Default::default()
+        },
+    ))
+}
+
+/// Faut-il lancer l'autotest de la carte ?
+///
+/// `RUSTY_MUSIC_AUTOTEST=1`. Une webview du système ne se pilote pas de
+/// l'extérieur : sans ce banc, les interactions ne se vérifient qu'à la main,
+/// donc ne se vérifient pas.
+#[tauri::command(async)]
+fn autotest_carte() -> bool {
+    std::env::var("RUSTY_MUSIC_AUTOTEST").is_ok_and(|v| v != "0")
+}
+
+/// Le mode dans lequel ouvrir l'application, si l'environnement en impose un.
+///
+/// `RUSTY_MUSIC_MODE=explorer` ouvre directement sur la carte. Sert aux essais
+/// — une webview du système ne se pilote pas de l'extérieur — et rend service
+/// à qui veut retrouver son mode au démarrage.
+#[tauri::command(async)]
+fn mode_initial() -> Option<String> {
+    std::env::var("RUSTY_MUSIC_MODE").ok().filter(|v| !v.is_empty())
+}
+
+/// Renvoie au journal du processus ce que la console de la webview dit.
+///
+/// Une webview du système n'a pas d'inspecteur accessible depuis l'extérieur :
+/// sans ce renvoi, une carte qui ne s'affiche pas ne dit rien du tout. C'est ce
+/// qui a permis de trouver que MapLibre démarre dans la fenêtre principale et
+/// pas dans une seconde.
+#[tauri::command(async)]
+fn journal_carte(niveau: String, message: String) {
+    match niveau.as_str() {
+        "error" => tracing::error!(target: "carte", "{message}"),
+        "warn" => tracing::warn!(target: "carte", "{message}"),
+        _ => tracing::info!(target: "carte", "{message}"),
+    }
+}
+
+/// Les octets d'une tuile, pour `maplibregl.addProtocol`.
+///
+/// Rend un tableau vide quand la tuile n'existe pas : c'est le cas ordinaire
+/// sur un monde creux, et MapLibre s'en accommode sans le compter comme une
+/// erreur.
+#[tauri::command]
+async fn tuile(
+    app: tauri::AppHandle,
+    quoi: String,
+    z: u8,
+    x: u32,
+    y: u32,
+) -> Result<tauri::ipc::Response, String> {
+    if !tuiles::archive_valide(&quoi) {
+        return Err(format!("archive inconnue : {quoi}"));
+    }
+    let octets = tuiles::lire(&app, &quoi, z, x, y)
+        .await
+        .map_err(echec)?
+        .unwrap_or_default();
+    Ok(tauri::ipc::Response::new(octets))
+}
+
+/// Le style MapLibre, lu à côté des archives.
+///
+/// Il est **écrit en même temps que les tuiles**, et c'est délibéré : les deux
+/// partagent les mêmes paliers et la même liste de familles, ils ne peuvent
+/// plus diverger. Le recalculer à l'ouverture coûtait 42 secondes mesurées —
+/// `Library::familles` refait tout l'arbitrage des genres MusicBrainz sur
+/// 27 000 morceaux — pour un résultat identique à celui de la veille.
+///
+/// `theme` choisit la palette de fond de plan : `engendrer_tuiles` a écrit un
+/// `style-<id>.json` par palette de [`rusty_music_carto::Palette`]. L'`id` est
+/// filtré contre `Palette::par_id` (pas de `../`, pas de nom arbitraire), et on
+/// retombe sur `style.json` si le fichier de thème manque — tuiles engendrées
+/// avant cette fonctionnalité, ou thème `osm-clair`.
+#[tauri::command(async)]
+fn style_carte(
+    app: tauri::AppHandle,
+    theme: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let dossier = tuiles::dossier(&app).map_err(echec)?;
+    let chemin = match theme.as_deref() {
+        Some(id)
+            if id != "osm-clair"
+                && rusty_music_carto::Palette::par_id(id).is_some()
+                && dossier.join(format!("style-{id}.json")).is_file() =>
+        {
+            dossier.join(format!("style-{id}.json"))
+        }
+        _ => dossier.join("style.json"),
+    };
+    let texte = std::fs::read_to_string(&chemin)
+        .map_err(|e| format!("style introuvable ({}) : {e}", chemin.display()))?;
+    serde_json::from_str(&texte).map_err(echec)
+}
+
+/// Les positions réelles (lon/lat) des morceaux sur le plan de ville, écrites
+/// par `engendrer_tuiles` à côté du style. Échoue sur le chemin fictif — pas
+/// d'erreur applicative, `app.js` lit cet échec comme « pas de plan de ville
+/// réel actif » et retombe sur les coordonnées t-SNE de `map_view`.
+#[tauri::command(async)]
+fn positions_carte(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let chemin = tuiles::dossier(&app).map_err(echec)?.join("positions.json");
+    let texte = std::fs::read_to_string(&chemin)
+        .map_err(|e| format!("positions introuvables ({}) : {e}", chemin.display()))?;
+    serde_json::from_str(&texte).map_err(echec)
+}
+
+/// Rassemble ce qu'il faut aux deux archives : morceaux, familles, bandes, et
+/// le champ continu du relief.
+fn rassembler(
+    etat: &State<Etat>,
+) -> Result<(rusty_music_carto::source::Source, Vec<f64>, usize), String> {
+    use rusty_music_carto::source;
+    let modele = rusty_music_analysis::passe::MODELE;
+    let lib = etat.lib.lock().map_err(echec)?;
+
+    let vue = lib.map_view(modele).map_err(echec)?;
+    if vue.is_empty() {
+        return Err("aucun morceau sur la carte : lancer l'analyse d'abord".into());
+    }
+    let vue_gardee = vue.clone();
+    let lib_ordre = lib.ordre_darrivee().map_err(echec)?;
+    let empreintes_gardees: std::collections::HashMap<i64, Vec<f32>> =
+        lib.embeddings(modele).map_err(echec)?.into_iter().collect();
+    let familles: Vec<source::Famille> = lib
+        .familles(modele)
+        .map_err(echec)?
+        .into_iter()
+        .map(|(id, nom, effectif)| source::Famille {
+            id,
+            nom,
+            effectif: effectif as usize,
+        })
+        .collect();
+    let points = lib.map_points(modele).map_err(echec)?;
+    let mut parametres = lib.parametres_carte().map_err(echec)?.parametres_densite();
+    drop(lib);
+
+    let nappe = rusty_music_core::density::calculer(&points, &parametres);
+    // Le relief veut un champ plus lisse que les territoires : au noyau des
+    // contours (0,02) l'ombrage ressemble à du papier froissé — vérifié à
+    // l'œil sur la bibliothèque réelle.
+    parametres.noyau = rusty_music_carto::relief::NOYAU;
+    let champ = rusty_music_core::density::champ_global(&points, &parametres);
+
+    // Le peuplement et le réseau entrent dans les tuiles au même titre que les
+    // territoires : sans lieux ni routes, la carte n'est qu'une nappe.
+    let ordre = lib_ordre;
+    let par_id: std::collections::HashMap<i64, &MapPoint> =
+        vue_gardee.iter().map(|p| (p.id, p)).collect();
+    let arrivants: Vec<rusty_music_carto::peuplement::Arrivant> = ordre
+        .iter()
+        .filter_map(|a| {
+            let p = par_id.get(&a.track_id)?;
+            Some(rusty_music_carto::peuplement::Arrivant {
+                track_id: a.track_id,
+                x: p.x,
+                y: p.y,
+                empreinte: empreintes_gardees.get(&a.track_id).cloned().unwrap_or_default(),
+                famille: p.cluster,
+                date: a.date,
+                artiste: p.artist.clone().unwrap_or_default(),
+            })
+        })
+        .collect();
+    let peupl = rusty_music_carto::peuplement::peupler(
+        &arrivants,
+        &rusty_music_carto::peuplement::Parametres::default(),
+    );
+    tracing::info!(
+        etablissements = peupl.rapport.etablissements,
+        iles = peupl.rapport.iles,
+        "peuplement"
+    );
+
+    // **La parcelle remplace la coordonnée t-SNE.** C'est ce qui fait que les
+    // morceaux habitent la carte au lieu de flotter dessus. Le CLI le faisait
+    // déjà ; ce chemin-ci ne le faisait pas, et le bouton « refaire les
+    // tuiles » rendait donc une carte différente de celle du CLI.
+    let parcelles: std::collections::HashMap<i64, (f32, f32)> = peupl
+        .habitants
+        .iter()
+        .map(|h| (h.track_id, (h.x, h.y)))
+        .collect();
+    let morceaux: Vec<source::Morceau> = vue_gardee
+        .iter()
+        .filter_map(|p| {
+            let &(x, y) = parcelles.get(&p.id)?;
+            Some(source::Morceau {
+                id: p.id,
+                x,
+                y,
+                famille: p.cluster,
+                titre: p.title.clone().unwrap_or_default(),
+                artiste: p.artist.clone().unwrap_or_default(),
+                annee: p.year.map(|a| a as i32),
+                bpm: p.bpm,
+                energie: p.energy,
+            })
+        })
+        .collect();
+
+    // Le réseau de circulation, construit ici plutôt que réutilisé depuis
+    // l'état : `rassembler` tourne dans une commande qui tient déjà le verrou
+    // de la bibliothèque, et le réseau met une trentaine de secondes — le
+    // partager demanderait de réordonner les verrous pour rien.
+    let reseau = construire_reseau(etat, modele)?;
+    let etab_de: std::collections::HashMap<i64, u32> = peupl
+        .habitants
+        .iter()
+        .map(|h| (h.track_id, h.etablissement))
+        .collect();
+    let centres: std::collections::HashMap<u32, (f32, f32)> = peupl
+        .etablissements
+        .iter()
+        .map(|e| (e.id, (e.cx, e.cy)))
+        .collect();
+    let routes_gardees = source::reseau_entre_lieux(
+        &reseau.troncons_identifies(),
+        &etab_de,
+        &centres,
+        &champ,
+        parametres.resolution,
+    );
+
+    let rivieres = rusty_music_carto::hydro::tracer(
+        &champ,
+        parametres.resolution,
+        &rusty_music_carto::hydro::Parametres::default(),
+    );
+    let curiosites = source::curiosites(&morceaux, &peupl.etablissements, &reseau.refuges(0.995), 60);
+
+    Ok((
+        source::Source {
+            morceaux,
+            familles,
+            bandes: nappe.bandes,
+            routes: routes_gardees,
+            etablissements: peupl.etablissements,
+            rivieres,
+            curiosites,
+            ..Default::default()
+        },
+        champ,
+        parametres.resolution,
+    ))
+}
+
 /// Trace un chemin et rend les pistes traversées, dans l'ordre du trajet.
 ///
 /// `mode` choisit la fabrique — `chemin.rs` documente ce qui les distingue :
@@ -201,7 +1384,9 @@ fn map_view(etat: State<Etat>) -> Result<Vec<MapPoint>, String> {
 const BRUIT_DEFAUT: f32 = 0.3;
 
 #[tauri::command(async)]
+#[allow(clippy::too_many_arguments)] // interface de commande Tauri : chaque champ vient du JS
 fn path(
+    app: tauri::AppHandle,
     etat: State<Etat>,
     from: i64,
     to: Option<i64>,
@@ -209,37 +1394,79 @@ fn path(
     steps: usize,
     seed: Option<u64>,
     bruit: Option<f32>,
+    reel: Option<bool>,
+    famille: Option<i64>,
 ) -> Result<Vec<TrackRow>, String> {
     use rusty_music_analysis::chemin;
     let mode = mode.unwrap_or_else(|| "direct".into());
     let graine = seed.unwrap_or(1);
     let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
+    let reel = reel.unwrap_or(false);
     let debut = std::time::Instant::now();
+
+    // Filtre par famille : quand une famille est isolée dans Explorer, le
+    // chemin ne doit traverser qu'elle. Le nuage passé au mode direct est
+    // amputé des autres familles ; le graphe sonique est restreint.
+    let permis = match famille {
+        Some(f) => Some(morceaux_de_famille(&etat, f)?),
+        None => None,
+    };
+    let carte_filtree = |etat: &State<Etat>, app: &tauri::AppHandle| -> Result<Vec<(i64, f32, f32)>, String> {
+        let mut p = points_de_carte_effectifs(etat, app, reel)?;
+        // Sur le plan de ville réel, les positions sont des lon/lat : on les
+        // projette en mètres pour que « le plus proche » se mesure comme à
+        // l'écran (voir [`RepereLocal`]). Le nuage t-SNE, lui, est déjà isotrope.
+        if reel {
+            RepereLocal::projeter_liste(&mut p);
+        }
+        if let Some(ref ids) = permis {
+            p.retain(|(id, _, _)| ids.contains(id));
+        }
+        Ok(p)
+    };
 
     // Le direct raisonne sur la carte, les deux autres sur les empreintes : on
     // ne charge que ce que le mode demande. Les empreintes font 55 Mo.
     let route = match mode.as_str() {
         "errance" => {
             let vecteurs = charger_vecteurs(&etat)?;
-            construire_graphe(&etat, &vecteurs)?.errance(from, steps, graine, bruit)
+            let base = construire_graphe(&etat, &vecteurs)?;
+            let restreint;
+            let graphe: &Graphe = match &permis {
+                Some(ids) => {
+                    restreint = base.restreint(ids);
+                    &restreint
+                }
+                None => &base,
+            };
+            graphe.errance(from, steps, graine, bruit)
         }
         "sonique" => {
             let arrivee = to.ok_or("le mode sonique demande une arrivée")?;
             let vecteurs = charger_vecteurs(&etat)?;
-            let complet = construire_graphe(&etat, &vecteurs)?.sonique(from, arrivee, graine, bruit);
+            let base = construire_graphe(&etat, &vecteurs)?;
+            let restreint;
+            let graphe: &Graphe = match &permis {
+                Some(ids) => {
+                    restreint = base.restreint(ids);
+                    &restreint
+                }
+                None => &base,
+            };
+            let complet = graphe.sonique(from, arrivee, graine, bruit);
             if complet.is_empty() {
                 // Les deux morceaux ne communiquent pas dans le graphe : mieux
                 // vaut la droite que rien du tout. Le journal le dit,
                 // l'interface l'annonce.
                 tracing::info!(from, arrivee, "sonique impossible, repli sur direct");
-                chemin::direct(&points_de_carte(&etat)?, from, arrivee, steps, graine, bruit)
+                chemin::direct(&carte_filtree(&etat, &app)?, from, arrivee, steps, graine, bruit)
             } else {
                 chemin::echantillonner(&complet, steps.max(2))
             }
         }
         _ => {
             let arrivee = to.ok_or("le mode direct demande une arrivée")?;
-            chemin::direct(&points_de_carte(&etat)?, from, arrivee, steps, graine, bruit)
+            chemin::direct(&carte_filtree(&etat, &app)?, from, arrivee, steps, graine, bruit)
         }
     };
 
@@ -256,19 +1483,45 @@ fn path(
 /// Chemin suivant un tracé dessiné à la souris sur la carte.
 ///
 /// `trace` est la suite des points parcourus, dans le repère de la carte
-/// (`[-1, 1]` sur les deux axes) ; `radius` la distance au-delà de laquelle on
-/// ne cueille rien. L'interface la calcule depuis le zoom courant, pour que le
-/// trait attrape exactement ce qu'il touche à l'écran.
+/// (`[-1, 1]` sur les deux axes — ou en lon/lat sur le plan de ville réel,
+/// voir [`points_de_carte_effectifs`]) ; `radius` la distance au-delà de
+/// laquelle on ne cueille rien. L'interface la calcule depuis le zoom
+/// courant, pour que le trait attrape exactement ce qu'il touche à l'écran.
 #[tauri::command(async)]
+#[allow(clippy::too_many_arguments)] // interface de commande Tauri : chaque champ vient du JS
 fn path_drawn(
+    app: tauri::AppHandle,
     etat: State<Etat>,
     trace: Vec<(f32, f32)>,
     steps: usize,
     radius: f32,
     seed: Option<u64>,
     bruit: Option<f32>,
+    reel: Option<bool>,
+    famille: Option<i64>,
 ) -> Result<Vec<TrackRow>, String> {
-    let points = points_de_carte(&etat)?;
+    let reel = reel.unwrap_or(false);
+    let mut points = points_de_carte_effectifs(&etat, &app, reel)?;
+    let mut trace = trace;
+    // Plan de ville réel : positions ET tracé sont des lon/lat. On les projette
+    // dans le même repère métrique (voir [`RepereLocal`]) ; `radius` arrive déjà
+    // en mètres depuis l'interface (`tracerDessin`, branche `carteReelle`).
+    if reel && ressemble_a_lon_lat(&points) {
+        let rep = RepereLocal::autour(&points);
+        for p in &mut points {
+            let (x, y) = rep.projeter(p.1, p.2);
+            (p.1, p.2) = (x, y);
+        }
+        for t in &mut trace {
+            let (x, y) = rep.projeter(t.0, t.1);
+            *t = (x, y);
+        }
+    }
+    // Filtre par famille : le trait ne cueille que dans la famille isolée.
+    if let Some(f) = famille {
+        let ids = morceaux_de_famille(&etat, f)?;
+        points.retain(|(id, _, _)| ids.contains(id));
+    }
     let route = rusty_music_analysis::chemin::dessine(
         &points,
         &trace,
@@ -280,6 +1533,103 @@ fn path_drawn(
     let pistes = pistes_de(&etat, &route)?;
     tracing::info!(n = pistes.len(), points = trace.len(), "chemin dessiné");
     Ok(pistes)
+}
+
+/// Les segments de rues réelles entre chaque paire consécutive d'un
+/// itinéraire déjà choisi — habille le trait dessiné sur le plan de ville
+/// réel, sans toucher au choix des morceaux. Ce choix reste entièrement
+/// celui du réseau **sonique** (`itineraire` ci-dessus, ou `path`/
+/// `path_drawn` pour direct/dessiné) : la question ici n'est pas « quels
+/// morceaux » mais « quel trait dessiner entre eux ».
+///
+/// `ids` est la liste ordonnée des morceaux d'un chemin déjà tracé ; le
+/// résultat a un élément de moins, un `Vec` de points `[lon, lat]` par paire
+/// consécutive. Un `Vec` vide en position `i` marque un segment sans chemin
+/// trouvé (l'une des deux adresses n'a pas de position réelle, ou les deux
+/// n'appartiennent pas à la même composante routable) — `app.js` retombe
+/// alors sur le trait synthétique existant pour ce segment précis, pas pour
+/// tout l'itinéraire.
+#[tauri::command(async)]
+fn trace_rues(app: tauri::AppHandle, etat: State<Etat>, ids: Vec<i64>) -> Result<Vec<Vec<[f64; 2]>>, String> {
+    if ids.len() < 2 {
+        return Ok(Vec::new());
+    }
+    let chemin_ville = etat.db.with_file_name("ville-paris.db");
+    if !chemin_ville.is_file() {
+        return Ok(Vec::new());
+    }
+    let extrait = charger_ville(&etat, &chemin_ville)?;
+    let graphe = charger_graphe_reel(&etat, &extrait)?;
+    // Habillage du trait par les vraies rues : n'a de sens que sur le plan de
+    // ville, et raisonne sur les adresses réelles quelle que soit la vue.
+    let points = points_de_carte_effectifs(&etat, &app, true)?;
+    let position = |id: i64| points.iter().find(|(i, _, _)| *i == id).map(|(_, x, y)| [*x as f64, *y as f64]);
+
+    let segments: Vec<Vec<[f64; 2]>> = ids
+        .windows(2)
+        .map(|paire| match (position(paire[0]), position(paire[1])) {
+            (Some(a), Some(b)) => graphe.chemin(a, b).unwrap_or_default(),
+            _ => Vec::new(),
+        })
+        .collect();
+    tracing::info!(n = segments.iter().filter(|s| !s.is_empty()).count(), sur = segments.len(), "trait habillé de rues réelles");
+    Ok(segments)
+}
+
+/// Reprojette des positions `[lon, lat]` en mètres locaux (équirectangulaire).
+///
+/// `direct` et `dessine` cueillent, à chaque pas, le morceau **le plus proche**
+/// du point visé, et `dessine` rééchantillonne le tracé à pas d'arc constant.
+/// En degrés bruts, ces deux mesures sont faussées : à la latitude de Paris un
+/// degré de longitude vaut ~0,66 degré de latitude, donc « le plus proche »
+/// tirait vers le nord-sud et le trait ne suivait pas la ligne visée. On projette
+/// d'abord en mètres — l'origine est quelconque (translation sans effet ni sur
+/// « le plus proche » ni sur une longueur d'arc), seul compte le rapport des
+/// axes.
+struct RepereLocal {
+    lon0: f64,
+    lat0: f64,
+    cos_lat0: f64,
+}
+
+impl RepereLocal {
+    fn autour(points: &[(i64, f32, f32)]) -> RepereLocal {
+        let n = points.len().max(1) as f64;
+        let lon0 = points.iter().map(|p| p.1 as f64).sum::<f64>() / n;
+        let lat0 = points.iter().map(|p| p.2 as f64).sum::<f64>() / n;
+        RepereLocal { lon0, lat0, cos_lat0: lat0.to_radians().cos() }
+    }
+
+    fn projeter(&self, lon: f32, lat: f32) -> (f32, f32) {
+        const R: f64 = 6_371_000.0;
+        (
+            ((lon as f64 - self.lon0).to_radians() * self.cos_lat0 * R) as f32,
+            ((lat as f64 - self.lat0).to_radians() * R) as f32,
+        )
+    }
+
+    /// Reprojette une liste de positions en place — sans effet si elles ne
+    /// ressemblent pas à des lon/lat (garde-fou : `points_de_carte_effectifs`
+    /// retombe en silence sur le t-SNE si `positions.json` manque, et une
+    /// latitude t-SNE tourne autour de 0, pas de 48,8).
+    fn projeter_liste(points: &mut [(i64, f32, f32)]) {
+        if !ressemble_a_lon_lat(points) {
+            return;
+        }
+        let rep = RepereLocal::autour(points);
+        for p in points.iter_mut() {
+            let (x, y) = rep.projeter(p.1, p.2);
+            (p.1, p.2) = (x, y);
+        }
+    }
+}
+
+/// Les positions ressemblent-elles à des lon/lat (plan de ville réel) plutôt
+/// qu'à des coordonnées t-SNE ? La latitude d'une vraie ville est loin de 0 ;
+/// le nuage t-SNE tient dans `[-1,1]²`.
+fn ressemble_a_lon_lat(points: &[(i64, f32, f32)]) -> bool {
+    let Some(&(_, _, lat)) = points.first() else { return false };
+    lat.abs() > 5.0 && lat.abs() < 89.0
 }
 
 /// Les coordonnées de carte de tous les morceaux placés.
@@ -294,6 +1644,65 @@ fn points_de_carte(etat: &State<Etat>) -> Result<Vec<(i64, f32, f32)>, String> {
         .into_iter()
         .map(|(id, x, y, _famille)| (id, x, y))
         .collect())
+}
+
+/// Les identifiants des morceaux d'une famille (cluster de la carte).
+///
+/// Le filtre par famille du mode Explorer (`carte.isolee`, `app.js`) borne
+/// aussi le calcul d'un chemin : quand une famille est isolée, la playlist ne
+/// doit contenir que des morceaux de cette famille — les points hors famille
+/// sont retirés du nuage avant `chemin::direct`/`dessine`, et le graphe
+/// sonique est restreint (voir [`Graphe::restreint`]).
+fn morceaux_de_famille(etat: &State<Etat>, famille: i64) -> Result<HashSet<i64>, String> {
+    let lib = etat.lib.lock().map_err(echec)?;
+    Ok(lib
+        .map_points(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)?
+        .into_iter()
+        .filter(|(_, _, _, f)| *f == famille)
+        .map(|(id, _, _, _)| id)
+        .collect())
+}
+
+/// Les coordonnées **effectivement affichées** — celles que `versEcran`/
+/// `versCarte` d'`app.js` utilisent, dans le même repère.
+///
+/// Sur le plan de ville réel, un morceau n'habite plus sa position t-SNE
+/// mais une adresse (`positions.json`, écrit par `engendrer_tuiles` à côté
+/// des tuiles) : le lasso, le tracé dessiné et le mode direct doivent
+/// raisonner sur cette même adresse, sinon ils testent un contour dessiné
+/// sur Paris contre des positions qui n'ont plus aucun rapport avec l'écran.
+///
+/// **Mais uniquement quand c'est le plan de ville qui est à l'écran.** Le
+/// nuage t-SNE et le plan de ville coexistent (bouton « Points » / « Carte »
+/// du rail) : dans le nuage, `versEcran`/`versCarte` restent en t-SNE même
+/// quand une ville est importée. L'interface passe donc `reel` — vrai
+/// seulement quand `carte.affichage === "carte" && villeReelle` — et sur le
+/// nuage on retombe sur les positions t-SNE, celles que le geste vise
+/// réellement.
+///
+/// Retombe aussi sur [`points_de_carte`] (t-SNE) si `positions.json` est
+/// absent ou vide — le chemin fictif, ou aucune génération de tuiles pas
+/// encore lancée.
+fn points_de_carte_effectifs(
+    etat: &State<Etat>,
+    app: &tauri::AppHandle,
+    reel: bool,
+) -> Result<Vec<(i64, f32, f32)>, String> {
+    if reel {
+        if let Ok(dossier) = tuiles::dossier(app) {
+            if let Ok(texte) = std::fs::read_to_string(dossier.join("positions.json")) {
+                if let Ok(reelles) =
+                    serde_json::from_str::<std::collections::HashMap<i64, [f32; 2]>>(&texte)
+                {
+                    if !reelles.is_empty() {
+                        return Ok(reelles.into_iter().map(|(id, [x, y])| (id, x, y)).collect());
+                    }
+                }
+            }
+        }
+    }
+    points_de_carte(etat)
 }
 
 /// Hydrate une suite d'identifiants en pistes complètes, dans le même ordre.
@@ -316,21 +1725,37 @@ fn pistes_de(etat: &State<Etat>, route: &[i64]) -> Result<Vec<TrackRow>, String>
 /// L'appelant qui veut éviter l'attente appelle `prepare_graph` en avance.
 fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<Graphe>, String> {
     let n = vecteurs.len();
-    {
-        let cache = etat.graphe.lock().map_err(echec)?;
-        if let Some((taille, g)) = cache.as_ref() {
-            if *taille == n {
-                return Ok(Arc::clone(g));
-            }
-        }
+    let en_cache = |etat: &State<Etat>| -> Result<Option<Arc<Graphe>>, String> {
+        Ok(etat
+            .graphe
+            .lock()
+            .map_err(echec)?
+            .as_ref()
+            .filter(|(taille, _)| *taille == n)
+            .map(|(_, g)| Arc::clone(g)))
+    };
+    if let Some(g) = en_cache(etat)? {
+        return Ok(g);
+    }
+
+    // Un seul balayage à la fois. Ceux qui attendent ici retrouvent, une fois
+    // le verrou obtenu, le cache déjà rempli par le premier — d'où la seconde
+    // vérification avant de se lancer à son tour.
+    let _construction = etat.graphe_construction.lock().map_err(echec)?;
+    if let Some(g) = en_cache(etat)? {
+        return Ok(g);
     }
 
     let debut = std::time::Instant::now();
-    let neuf = Arc::new(Graphe::construire(
+    etat.graphe_fait.store(0, Ordering::Relaxed);
+    etat.graphe_total.store(n, Ordering::Relaxed);
+    let neuf = Arc::new(Graphe::construire_suivi(
         vecteurs,
         rusty_music_analysis::chemin::K_VOISINS,
         coeurs_arriere_plan(),
+        &etat.graphe_fait,
     ));
+    etat.graphe_total.store(0, Ordering::Relaxed);
     tracing::info!(n, ms = debut.elapsed().as_millis(), "graphe des voisins");
     *etat.graphe.lock().map_err(echec)? = Some((n, Arc::clone(&neuf)));
     Ok(neuf)
@@ -355,6 +1780,30 @@ fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, String> {
         .lock()
         .map_err(echec)?
         .familles(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)
+}
+
+/// La famille sonique dominante de chaque album — le filtre par famille de la
+/// grille de pochettes du mode Écoute (`app.js`), qui réutilise la légende des
+/// familles du mode Explorer.
+#[tauri::command(async)]
+fn album_families(etat: State<Etat>) -> Result<Vec<(String, Option<String>, i64)>, String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .familles_des_albums(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)
+}
+
+/// La famille sonique dominante de chaque artiste (`mb_album_artist_id`) — le
+/// filtre par famille du fil du mode Découvrir (`app.js`), qui réutilise la
+/// légende des familles du mode Explorer.
+#[tauri::command(async)]
+fn artist_families(etat: State<Etat>) -> Result<Vec<(String, i64)>, String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .familles_des_artistes(rusty_music_analysis::passe::MODELE)
         .map_err(echec)
 }
 
@@ -384,6 +1833,30 @@ fn set_map_parameter(etat: State<Etat>, cle: String, valeur: f64) -> Result<(), 
         .lock()
         .map_err(echec)?
         .set_parametre_carte(&cle, valeur)
+        .map_err(echec)
+}
+
+/// Le vocabulaire des familles par genre, dans l'ordre d'affichage.
+#[tauri::command(async)]
+fn vocabulaire_familles(etat: State<Etat>) -> Result<Vec<(String, Vec<String>)>, String> {
+    etat.lib.lock().map_err(echec)?.vocabulaire_familles().map_err(echec)
+}
+
+/// Remplace le vocabulaire en bloc. Une liste vide restaure les valeurs par
+/// défaut — voir `Library::definir_vocabulaire_familles`.
+///
+/// Ne relance rien elle-même : comme pour `set_map_parameter`, c'est
+/// `project` (rappelé par l'interface après coup) qui recalcule la carte
+/// avec le nouveau vocabulaire.
+#[tauri::command(async)]
+fn definir_vocabulaire_familles(
+    etat: State<Etat>,
+    vocabulaire: Vec<(String, Vec<String>)>,
+) -> Result<(), String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .definir_vocabulaire_familles(&vocabulaire)
         .map_err(echec)
 }
 
@@ -568,23 +2041,27 @@ fn isolated_points(etat: State<Etat>) -> Result<Vec<PointIsole>, String> {
 /// la base : une zone donne des dizaines de morceaux, et les enchaîner au
 /// hasard produirait une playlist qui saute d'un bout à l'autre.
 #[tauri::command(async)]
-fn selection(etat: State<Etat>, trace: Vec<(f32, f32)>) -> Result<Vec<TrackRow>, String> {
+fn selection(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    trace: Vec<(f32, f32)>,
+    reel: Option<bool>,
+    famille: Option<i64>,
+) -> Result<Vec<TrackRow>, String> {
     if trace.len() < 3 {
         return Ok(Vec::new());
     }
-    let points: Vec<(i64, f32, f32)> = {
-        let lib = etat.lib.lock().map_err(echec)?;
-        lib.map_points(rusty_music_analysis::passe::MODELE)
-            .map_err(echec)?
-            .into_iter()
-            .map(|(id, x, y, _)| (id, x, y))
-            .collect()
+    let points = points_de_carte_effectifs(&etat, &app, reel.unwrap_or(false))?;
+    let permis = match famille {
+        Some(f) => Some(morceaux_de_famille(&etat, f)?),
+        None => None,
     };
 
     let dedans: Vec<i64> = points
         .iter()
         .filter(|(_, x, y)| dans_le_contour(&trace, *x, *y))
         .map(|(id, _, _)| *id)
+        .filter(|id| permis.as_ref().is_none_or(|ids| ids.contains(id)))
         .collect();
 
     let vecteurs = charger_vecteurs(&etat)?;
@@ -702,6 +2179,19 @@ fn js_error(message: String, source: Option<String>) {
     tracing::error!(source = source.unwrap_or_default(), "interface : {message}");
 }
 
+/// `(fait, total)` du balayage qui construit le graphe des voisins.
+///
+/// `total == 0` : rien en cours — jamais construit, ou déjà en cache et donc
+/// instantané. L'interface sonde ça pendant l'attente de la première playlist
+/// « dans l'esprit de » pour montrer une jauge plutôt qu'une roulette muette.
+#[tauri::command(async)]
+fn graphe_progress(etat: State<Etat>) -> (i64, i64) {
+    (
+        etat.graphe_fait.load(Ordering::Relaxed) as i64,
+        etat.graphe_total.load(Ordering::Relaxed) as i64,
+    )
+}
+
 /// Combien de morceaux restent à analyser — pour dire où en est la carte.
 #[tauri::command(async)]
 fn map_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
@@ -758,7 +2248,7 @@ fn suspect_genres(etat: State<Etat>) -> Result<Vec<(i64, String, String, String)
 
 /// Albums présents sous plusieurs éditions chez le même artiste.
 #[tauri::command(async)]
-fn multiple_editions(etat: State<Etat>) -> Result<Vec<(String, String, Vec<(String, i64)>)>, String> {
+fn multiple_editions(etat: State<Etat>) -> Result<Vec<rusty_music_core::db::EditionsAlbum>, String> {
     etat.lib.lock().map_err(echec)?.editions_multiples().map_err(echec)
 }
 
@@ -798,6 +2288,15 @@ struct EtatEnrichissement {
     resultat: Option<String>,
 }
 
+/// Avancement de la passe de popularité générale, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatPopularite {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
 /// Lance le calcul des empreintes des morceaux en attente.
 ///
 /// Déclenché à la main, et pas enchaîné au scan : sur une bibliothèque neuve
@@ -824,11 +2323,11 @@ fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
-        let fils = coeurs_arriere_plan();
 
         let issue = Library::open(&db)
             .map_err(|e| e.to_string())
             .and_then(|lib| {
+                let fils = fils_pour_passe(&lib);
                 rusty_music_analysis::passe::empreintes(
                     &lib,
                     None,
@@ -926,9 +2425,9 @@ fn start_descripteurs(app: tauri::AppHandle, etat: State<Etat>, force: Option<bo
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
-        let fils = coeurs_arriere_plan();
 
         let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
+            let fils = fils_pour_passe(&lib);
             if force {
                 lib.effacer_descripteurs().map_err(|e| e.to_string())?;
             }
@@ -1047,6 +2546,101 @@ fn enrichment_state(etat: State<Etat>) -> Result<EtatEnrichissement, String> {
     Ok(etat.enrichissement.lock().map_err(echec)?.clone())
 }
 
+/// Au-delà de combien de jours une popularité déjà récupérée redevient « à
+/// faire » quand on demande un rafraîchissement. Une notoriété bouge lentement.
+const POP_PEREMPTION_JOURS: i64 = 90;
+
+/// Lance la passe de popularité générale (ListenBrainz + Deezer).
+///
+/// Comme l'enrichissement : fil séparé, connexion propre, reprenable et
+/// additive. Mais **aucune clé ni compte** — ListenBrainz et Deezer sont des
+/// API publiques. `contact`, s'il est renseigné, part dans le `User-Agent` de
+/// ListenBrainz par courtoisie ; son absence ne saute rien.
+///
+/// `rafraichir` : à `false`, on ne comble que les trous ; à `true`, on
+/// réinterroge aussi ce qui date de plus de [`POP_PEREMPTION_JOURS`].
+#[tauri::command(async)]
+fn start_popularite(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    contact: String,
+    rafraichir: bool,
+) -> Result<(), String> {
+    {
+        let mut p = etat.popularite.lock().map_err(echec)?;
+        if p.en_cours {
+            return Err("une passe de popularité est déjà en cours".into());
+        }
+        *p = EtatPopularite {
+            en_cours: true,
+            ..Default::default()
+        };
+    }
+
+    let db = etat.db.clone();
+    let contact = contact.trim().to_string();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+        let dz = rusty_music_core::deezer::Client::new();
+        // `depuis` : instant avant lequel une entité déjà interrogée redevient
+        // « à faire ». `0` (par défaut) ne rafraîchit rien.
+        let depuis = if rafraichir {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64 - POP_PEREMPTION_JOURS * 86_400)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::popularite::actualiser(&mut lib, &lb, &dz, depuis, usize::MAX, |b| {
+                if let Ok(mut p) = etat.popularite.lock() {
+                    p.faits = b.faits;
+                    p.total = b.total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} enregistrements + {} albums (ListenBrainz), \
+                 {} / {} pistes retrouvées (Deezer), {} morceaux couverts",
+                b.lb_enregistrements, b.lb_albums, b.deezer_trouves, b.deezer, b.couverts
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "passe de popularité terminée");
+
+        let mut fin = etat.popularite.lock();
+        if let Ok(p) = fin.as_mut() {
+            p.en_cours = false;
+            p.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+/// Où en est la passe de popularité.
+#[tauri::command(async)]
+fn popularite_state(etat: State<Etat>) -> Result<EtatPopularite, String> {
+    Ok(etat.popularite.lock().map_err(echec)?.clone())
+}
+
+/// Fraîcheur de la popularité pour la ligne d'alerte du mode Bibliothèque :
+/// `(morceaux couverts, epoch de la plus ancienne interrogation, entités de
+/// plus de 90 jours)`.
+#[tauri::command(async)]
+fn popularite_fraicheur(etat: State<Etat>) -> Result<(i64, Option<i64>, i64), String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .popularite_fraicheur(POP_PEREMPTION_JOURS)
+        .map_err(echec)
+}
+
 /// Les collaborateurs d'un artiste — mode Découvrir. Sert du cache s'il y
 /// en a un, sinon interroge MusicBrainz et le remplit.
 ///
@@ -1081,6 +2675,128 @@ fn artist_links(
     lib.liens_artiste(&mbid).map_err(echec)
 }
 
+/// Avancement de la passe du mode Découvrir, sondé par l'interface — comme
+/// `enrichment_state`.
+#[derive(Clone, Default, serde::Serialize)]
+struct EtatDecouvrir {
+    en_cours: bool,
+    artistes: usize,
+    total: usize,
+    sorties_neuves: usize,
+    voisins_neufs: usize,
+    resultat: Option<String>,
+}
+
+/// Le fil du mode Découvrir, tel que la base le tient.
+///
+/// Lecture seule : `start_decouvrir` fait le travail réseau. La fenêtre est
+/// fixée à un mois — c'est l'esprit du mode, une actualité.
+#[tauri::command(async)]
+fn decouvrir_feed(etat: State<Etat>) -> Result<rusty_music_core::db::FilDecouvrir, String> {
+    etat.lib.lock().map_err(echec)?.decouvrir_fil(30).map_err(echec)
+}
+
+#[tauri::command(async)]
+fn decouvrir_state(etat: State<Etat>) -> Result<EtatDecouvrir, String> {
+    Ok(etat.decouvrir.lock().map_err(echec)?.clone())
+}
+
+/// Marque tout le fil comme vu — les pastilles « nouveau » s'éteignent.
+#[tauri::command(async)]
+fn decouvrir_tout_vu(etat: State<Etat>) -> Result<(), String> {
+    etat.lib.lock().map_err(echec)?.decouvrir_tout_vu().map_err(echec)
+}
+
+/// La pochette d'une sortie du fil Découvrir, en `data:` URI — comme `cover`,
+/// mais servie depuis Cover Art Archive plutôt que des tags d'un fichier local.
+///
+/// Cache disque partagé avec les pochettes locales (`<données app>/pochettes/`,
+/// clé `caa-<mbid>`) : une vignette déjà récupérée ne repart pas sur le réseau,
+/// et un album sans pochette (fréquent le mois de sa sortie) n'est pas
+/// redemandé. Le cache mémoire côté interface fait le reste pendant la session.
+#[tauri::command]
+async fn decouvrir_pochette(
+    etat: State<'_, Etat>,
+    rg_mbid: String,
+) -> Result<Option<String>, String> {
+    // L'identifiant vient du fil, mais on le vérifie : il sert de nom de
+    // fichier de cache et part dans une URL.
+    if rg_mbid.len() != 36 || !rg_mbid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+        return Err("identifiant de release-group invalide".into());
+    }
+    let dossier_cache = etat.db.with_file_name("pochettes");
+    tauri::async_runtime::spawn_blocking(move || {
+        let cle = format!("caa-{rg_mbid}");
+        if let Some(valeur) = lire_cache_pochette(&dossier_cache, &cle) {
+            return Ok(valeur);
+        }
+        let valeur = rusty_music_core::pochette::release_group(&rg_mbid)
+            .map_err(echec)?
+            .map(|octets| format!("data:image/jpeg;base64,{}", base64(&octets)));
+        ecrire_cache_pochette(&dossier_cache, &cle, valeur.as_deref());
+        Ok(valeur)
+    })
+    .await
+    .map_err(echec)?
+}
+
+/// Lance l'actualisation du fil Découvrir : sorties récentes (ListenBrainz
+/// `fresh-releases`, une requête) puis artistes similaires (un appel par
+/// artiste de la bibliothèque, cadencé).
+///
+/// Comme `start_enrichment` : déclenchée à la main (ou par l'interface à
+/// l'ouverture du mode si la dernière passe est ancienne), sur son propre fil,
+/// avec sa propre connexion. Additive et reprenable.
+#[tauri::command(async)]
+fn start_decouvrir(app: tauri::AppHandle, etat: State<Etat>, contact: String) -> Result<(), String> {
+    let contact = contact.trim().to_string();
+    if !contact.contains('@') {
+        return Err("Une adresse de contact valable est demandée pour interroger les API.".into());
+    }
+    {
+        let mut d = etat.decouvrir.lock().map_err(echec)?;
+        if d.en_cours {
+            return Err("une actualisation est déjà en cours".into());
+        }
+        *d = EtatDecouvrir {
+            en_cours: true,
+            ..Default::default()
+        };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
+                if let Ok(mut d) = etat.decouvrir.lock() {
+                    d.artistes = b.artistes;
+                    d.total = b.total;
+                    d.sorties_neuves = b.sorties_neuves;
+                    d.voisins_neufs = b.voisins_neufs;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} sorties neuves, {} voisins sur {} artistes",
+                b.sorties_neuves, b.voisins_neufs, b.artistes
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        let mut fin = etat.decouvrir.lock();
+        if let Ok(d) = fin.as_mut() {
+            d.en_cours = false;
+            d.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Mode Éditer : démixage (module 3)
 // ---------------------------------------------------------------------------
@@ -1113,6 +2829,168 @@ fn dossier_stems(etat: &State<Etat>, source: &Path) -> PathBuf {
 /// Racine du cache de stems, à côté de la base.
 fn racine_stems(etat: &State<Etat>) -> PathBuf {
     etat.db.parent().unwrap_or(Path::new(".")).join("stems")
+}
+
+/// Avancement d'une régénération HD (super-résolution), sondé par l'interface.
+#[derive(Clone, Default, serde::Serialize)]
+struct EtatSuperres {
+    en_cours: bool,
+    /// Le morceau traité, pour que l'interface sache si l'avancement est le sien.
+    source: String,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Régénère un morceau en haute résolution (AERO) — rendu hors ligne vers le
+/// cache `hd/`. Tourne dans son fil : ~30 s par minute d'audio stéréo, plus le
+/// chargement du modèle au premier appel.
+#[tauri::command(async)]
+fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Result<(), String> {
+    let source = PathBuf::from(&path);
+    if !source.is_file() {
+        return Err(format!("{path} est introuvable"));
+    }
+    let modele_onnx = rusty_music_core::modeles::trouver("aero-11025-44100.onnx")
+        .ok_or_else(|| rusty_music_core::modeles::introuvable("aero-11025-44100.onnx"))?;
+    {
+        let mut s = etat.superres.lock().map_err(echec)?;
+        if s.en_cours {
+            return Err("une régénération est déjà en cours".into());
+        }
+        *s = EtatSuperres {
+            en_cours: true,
+            source: path.clone(),
+            ..Default::default()
+        };
+    }
+    let cible = rusty_music_superres::chemin_cache(&etat.hd, &source);
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let _ = std::fs::create_dir_all(&etat.hd);
+        rusty_music_superres::purger_anciens(&etat.hd);
+
+        let progres = |faits: usize, total: usize| {
+            let mut s = match etat.superres.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            s.faits = faits;
+            s.total = total;
+        };
+
+        let issue = (|| -> rusty_music_superres::Result<f32> {
+            let mut garde = etat.superres_modele.lock().expect("verrou modèle");
+            if garde.is_none() {
+                *garde = Some(rusty_music_superres::Modele::charger(&modele_onnx)?);
+            }
+            let modele = garde.as_mut().expect("modèle chargé");
+            rusty_music_superres::regenerer(&source, &cible, modele, progres)
+        })();
+
+        let bilan = match issue {
+            // Le spectre de la source est conservé (mélange HF), donc le HD ne
+            // peut pas ternir ; mais au-dessus de ~16 kHz de coupure il n'a
+            // presque rien à ajouter — autant le dire.
+            Ok(coupure) if coupure >= 16_000.0 => format!(
+                "régénéré, mais la source monte déjà à {} kHz — le HD n'ajoute presque rien",
+                (coupure / 1000.0).round() as i32
+            ),
+            Ok(_) => "régénéré en HD".to_string(),
+            Err(e) => {
+                let _ = std::fs::remove_file(&cible);
+                format!("échec : {e}")
+            }
+        };
+        tracing::info!(%bilan, source = %path, "régénération HD terminée");
+        if let Ok(mut s) = etat.superres.lock() {
+            s.en_cours = false;
+            s.resultat = Some(bilan);
+        }
+        // Libère le handle `State` avant la fin de la fermeture, pour que
+        // l'emprunt du verrou ci-dessus se termine à temps (E0597 sinon).
+        let _ = etat;
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn superres_state(etat: State<Etat>) -> Result<EtatSuperres, String> {
+    Ok(etat.superres.lock().map_err(echec)?.clone())
+}
+
+/// Vrai si le morceau a déjà une version HD en cache.
+#[tauri::command(async)]
+fn superres_disponible(etat: State<Etat>, path: String) -> Result<bool, String> {
+    Ok(rusty_music_superres::chemin_cache(&etat.hd, Path::new(&path)).is_file())
+}
+
+/// Active/coupe la lecture des versions HD (quand elles existent). Réouvre le
+/// morceau en cours en tâche de fond, comme le bouton « E ».
+#[tauri::command(async)]
+fn set_lecture_hd(app: tauri::AppHandle, etat: State<Etat>, actif: bool) -> Result<(), String> {
+    rusty_music_superres::set_lecture_hd(actif);
+    let courant = etat
+        .player
+        .lock()
+        .map_err(echec)?
+        .current()
+        .map(std::path::Path::to_path_buf);
+    let Some(chemin) = courant else {
+        return Ok(());
+    };
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
+        match rusty_music_player::ouvrir(&ouvert) {
+            Ok(source) => {
+                let verrou = etat.player.lock();
+                if let Ok(mut player) = verrou {
+                    if let Err(e) = player.remplacer_courant(&chemin, source) {
+                        tracing::warn!(error = %e, "bascule HD impossible");
+                    }
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "réouverture HD impossible"),
+        }
+    });
+    Ok(())
+}
+
+/// Taille du cache HD et nombre de morceaux régénérés.
+#[tauri::command(async)]
+fn superres_cache(etat: State<Etat>) -> Result<(u64, usize), String> {
+    let dossier = &etat.hd;
+    let mut octets = 0;
+    let mut n = 0;
+    if let Ok(entrees) = std::fs::read_dir(dossier) {
+        for e in entrees.flatten() {
+            if let Ok(m) = e.metadata() {
+                octets += m.len();
+                n += 1;
+            }
+        }
+    }
+    Ok((octets, n))
+}
+
+/// Vide le cache HD.
+#[tauri::command(async)]
+fn vider_cache_hd(etat: State<Etat>) -> Result<(), String> {
+    if etat.hd.is_dir() {
+        std::fs::remove_dir_all(&etat.hd).map_err(echec)?;
+    }
+    Ok(())
+}
+
+/// Le dossier où l'application écrit tout : la base et les empreintes, les
+/// journaux, les stems démixés, les rendus HD, les tuiles de la carte. Montré en
+/// tête du mode Bibliothèque — l'utilisateur doit pouvoir retrouver, sauvegarder
+/// ou purger ce que le logiciel pose sur son disque.
+#[tauri::command(async)]
+fn dossier_donnees(etat: State<Etat>) -> Result<String, String> {
+    let d = etat.db.parent().ok_or("la base n'a pas de dossier parent")?;
+    Ok(d.display().to_string())
 }
 
 /// Vitesse de lecture des stems, appliquée immédiatement.
@@ -1737,6 +3615,63 @@ struct SpectreVue {
     pixels: Vec<u8>,
 }
 
+/// Spectrogramme du **son réellement joué** pour le morceau à `path` :
+///
+/// - version HD du cache si la lecture HD est active et qu'elle existe ;
+/// - sinon le fichier d'origine.
+///
+/// Quand ce qui joue diffère de l'original (HD), rend **aussi** le
+/// spectrogramme de l'original (`pixels_ref`) : l'interface peut alors teinter
+/// ce que le HD a ajouté. Rend la coupure estimée de la source, pour tracer le
+/// trait « au-dessus, c'est reconstruit ».
+#[tauri::command(async)]
+fn spectre_transport(
+    etat: State<Etat>,
+    path: String,
+    width: usize,
+    height: usize,
+) -> Result<SpectreTransport, String> {
+    let origine = PathBuf::from(&path);
+    let joue = rusty_music_superres::resoudre(&etat.hd, &origine);
+    let hd = joue != origine;
+    let e = rusty_music_player::amelioration().actif();
+
+    // Le son joué : version HD du cache, sinon l'original ; puis l'excitateur
+    // « E » par-dessus s'il est actif (il n'existe qu'en mémoire).
+    let s = if e {
+        rusty_music_player::spectre_ameliore(&joue, width, height).map_err(echec)?
+    } else {
+        rusty_music_player::spectre::calculer(&joue, width, height).map_err(echec)?
+    };
+
+    // Référence à teinter : l'original brut, dès que le son joué en diffère.
+    let modifie = hd || e;
+    let pixels_ref = if modifie {
+        rusty_music_player::spectre::calculer(&origine, width, height)
+            .ok()
+            .filter(|r| r.pixels.len() == s.pixels.len())
+            .map(|r| r.pixels)
+    } else {
+        None
+    };
+    Ok(SpectreTransport {
+        largeur: s.largeur,
+        hauteur: s.hauteur,
+        pixels: s.pixels,
+        pixels_ref,
+        hd: modifie,
+    })
+}
+
+#[derive(serde::Serialize)]
+struct SpectreTransport {
+    largeur: usize,
+    hauteur: usize,
+    pixels: Vec<u8>,
+    pixels_ref: Option<Vec<u8>>,
+    hd: bool,
+}
+
 /// Les WAV de stems d'un dossier, avec le nom de leur stem.
 ///
 /// Le nom est ce qui suit le dernier tiret cadratin : `Die Oros — drums.wav`
@@ -2136,15 +4071,150 @@ fn scan_state(etat: State<Etat>) -> Result<EtatScan, String> {
 
 /// Pochette d'un morceau, en `data:` URI directement consommable par `<img>`.
 ///
-/// Rien n'est mis en cache ici : c'est le rôle de l'interface, qui sait ce
-/// qu'elle affiche. Compter 50 à 210 ms par appel sur un support lent.
-#[tauri::command(async)]
-fn cover(path: String) -> Result<Option<String>, String> {
-    let cover = rusty_music_core::tags::read_cover(Path::new(&path)).map_err(echec)?;
-    Ok(cover.map(|c| {
+/// **Mise en cache sur disque**, sous `<données app>/pochettes/` — voir
+/// [`cle_pochette`]. Le cache mémoire côté interface (`app.js`) évite de
+/// repayer les 50 à 210 ms d'extraction pendant une session, mais repart à
+/// froid à chaque lancement ; celui-ci persiste, et une pochette déjà servie
+/// une fois ne relit plus jamais le fichier source tant qu'il n'a pas changé.
+///
+/// **Corps bloquant renvoyé sur le pool `spawn_blocking`.** La lecture disque
+/// et le parsing des tags (`lofty`) coûtent 50 à 210 ms à froid, et la grille
+/// d'albums en demande des dizaines d'un coup. Exécutées telles quelles sur le
+/// pool du runtime, elles en occupaient tous les fils et une commande de
+/// transport (`play`, `toggle_pause`) attendait derrière — la lecture partait
+/// avec plusieurs secondes de retard pendant qu'on faisait défiler les
+/// pochettes. Le pool dédié aux tâches bloquantes n'entre pas en concurrence
+/// avec les commandes courtes.
+#[tauri::command]
+async fn cover(etat: State<'_, Etat>, path: String) -> Result<Option<String>, String> {
+    let dossier_cache = etat.db.with_file_name("pochettes");
+    tauri::async_runtime::spawn_blocking(move || cover_extraire(&dossier_cache, &path))
+        .await
+        .map_err(echec)?
+}
+
+fn cover_extraire(dossier_cache: &Path, path: &str) -> Result<Option<String>, String> {
+    let chemin = Path::new(path);
+
+    // Sans métadonnées lisibles (fichier disparu, permission refusée), pas de
+    // clé de cache fiable : on extrait directement, comme avant ce cache.
+    let mtime = std::fs::metadata(chemin).ok().and_then(|m| m.modified().ok());
+    let cle = mtime.map(|m| cle_pochette(chemin, m));
+
+    if let Some(cle) = &cle {
+        if let Some(valeur) = lire_cache_pochette(dossier_cache, cle) {
+            return Ok(valeur);
+        }
+    }
+
+    let cover = rusty_music_core::tags::read_cover(chemin).map_err(echec)?;
+    let valeur = cover.map(|c| {
         let mime = c.mime.as_deref().unwrap_or("image/jpeg");
         format!("data:{mime};base64,{}", base64(&c.data))
-    }))
+    });
+    if let Some(cle) = &cle {
+        ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
+    }
+    Ok(valeur)
+}
+
+/// Les chemins de piste d'au plus `max` albums d'un artiste qui portent une
+/// pochette lisible — la matière du tuilage en mosaïque de la vue Artistes.
+///
+/// Rend des chemins, pas des images : l'interface les repasse à `cover`, dont
+/// le cache mémoire (borné, partagé avec la grille d'albums et l'inspecteur)
+/// et le cache disque font le reste. Le tri des tags, lui, se fait ici une
+/// fois — chaque album candidat passe par [`cover_extraire`], qui remplit le
+/// cache disque au passage et permet d'écarter les albums sans pochette (d'où
+/// un résultat parfois plus court que `max`).
+#[tauri::command]
+async fn artist_covers(
+    etat: State<'_, Etat>,
+    name: String,
+    mbid: Option<String>,
+    max: usize,
+) -> Result<Vec<String>, String> {
+    let albums = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        lib.albums_of_artist(mbid.as_deref(), &name).map_err(echec)?
+    };
+    // Borne dure : un artiste prolifique ne doit pas faire lire les tags de
+    // cent albums pour une vignette qui n'en montre que quatre.
+    let max = max.min(9);
+    let dossier_cache = etat.db.with_file_name("pochettes");
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut chemins: Vec<String> = Vec::new();
+        for album in albums {
+            if chemins.len() >= max {
+                break;
+            }
+            if let Ok(Some(_)) = cover_extraire(&dossier_cache, &album.path) {
+                chemins.push(album.path);
+            }
+        }
+        Ok(chemins)
+    })
+    .await
+    .map_err(echec)?
+}
+
+/// Marqueur d'entrée « pas de pochette » dans le cache disque : un octet nul,
+/// qu'aucune image ni aucune `data:` URI valide ne peut produire — pas
+/// d'ambiguïté avec un contenu réel. Sans lui, un morceau sans pochette
+/// resonderait ses tags à chaque affichage, cache ou pas.
+const SANS_POCHETTE: &[u8] = b"\0";
+
+/// Clé de cache : hachage FNV-1a (même construction que `db::hacher`) du
+/// chemin **et** de la date de modification du fichier.
+///
+/// La mtime dans la clé, pas seulement le chemin, est ce qui rend
+/// l'invalidation automatique : remplacer le fichier (nouveau tag,
+/// ré-encodage) change sa mtime, donc sa clé — l'ancienne entrée reste sur
+/// disque, inerte, plutôt que d'exiger une purge active.
+fn cle_pochette(path: &Path, mtime: std::time::SystemTime) -> String {
+    let epoch = mtime
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for octet in path
+        .to_string_lossy()
+        .as_bytes()
+        .iter()
+        .chain(&epoch.to_le_bytes())
+    {
+        h ^= *octet as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
+/// Lit une entrée du cache. `None` extérieur = pas en cache (à calculer),
+/// `Some(None)` intérieur = en cache et confirmé sans pochette.
+fn lire_cache_pochette(dossier: &Path, cle: &str) -> Option<Option<String>> {
+    let octets = std::fs::read(dossier.join(cle)).ok()?;
+    if octets == SANS_POCHETTE {
+        Some(None)
+    } else {
+        Some(String::from_utf8(octets).ok())
+    }
+}
+
+/// Écrit une entrée. Une erreur d'écriture (disque plein, dossier en lecture
+/// seule) ne doit pas faire échouer la requête : la pochette a déjà été
+/// extraite, autant la rendre, le prochain appel réessaiera le cache.
+///
+/// **Sans limite de taille pour l'instant** : contrairement à `target/` (un
+/// artefact de compilation qui peut regrossir indéfiniment à chaque
+/// recompilation), le nombre de pochettes distinctes est borné par celui des
+/// albums de la bibliothèque, et chaque entrée pèse au plus quelques centaines
+/// de Ko. Si ça devient un problème mesuré, appliquer la même politique que
+/// `POCHETTES_MAX` côté JS (`app.js`) plutôt qu'inventer une seconde règle.
+fn ecrire_cache_pochette(dossier: &Path, cle: &str, valeur: Option<&str>) {
+    if std::fs::create_dir_all(dossier).is_err() {
+        return;
+    }
+    let _ = std::fs::write(dossier.join(cle), valeur.map_or(SANS_POCHETTE, str::as_bytes));
 }
 
 /// Tempo, tonalité et énergie d'un morceau — ce que la passe a mesuré.
@@ -2158,6 +4228,27 @@ fn descripteurs(
     id: i64,
 ) -> Result<Option<rusty_music_core::db::DescripteursVus>, String> {
     etat.lib.lock().map_err(echec)?.descripteurs(id).map_err(echec)
+}
+
+/// La popularité générale des morceaux `ids` — `(track_id, relative 0..1,
+/// echelon)`. Un morceau absent de la réponse n'en a pas (jauge grisée).
+/// Chargée par lot pour ce qui est visible (file d'attente, liste de pistes),
+/// comme les pochettes — jamais dans `TrackRow`.
+#[tauri::command(async)]
+fn popularites(etat: State<Etat>, ids: Vec<i64>) -> Result<Vec<(i64, f64, String)>, String> {
+    etat.lib.lock().map_err(echec)?.popularites(&ids).map_err(echec)
+}
+
+/// Qualité d'encodage du morceau en écoute — codec, débit, échantillonnage,
+/// profondeur de bits. Affichée sous le compteur de temps du transport.
+/// Champs partiellement `None` sur un morceau scanné avant la lecture du
+/// format (un rescan les remplit).
+#[tauri::command(async)]
+fn qualite_piste(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<Option<rusty_music_core::db::QualitePiste>, String> {
+    etat.lib.lock().map_err(echec)?.qualite_piste(id).map_err(echec)
 }
 
 /// Enveloppe d'une piste : crête et RMS par tranche.
@@ -2264,6 +4355,47 @@ fn set_queue(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
         .map_err(echec)
 }
 
+/// Remplace la file par `paths` en gardant la piste écoutée sans coupure.
+///
+/// Le bouton ✦ « playlist dans l'esprit de ce morceau » : la nouvelle liste
+/// part du morceau en cours et doit vraiment enchaîner dès le suivant.
+/// `set_queue` gardait le préchargement de l'ancienne file — un ou deux
+/// morceaux des résultats de recherche se glissaient avant la playlist.
+#[tauri::command(async)]
+fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
+    let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+
+    let courant = etat
+        .player
+        .lock()
+        .map_err(echec)?
+        .current()
+        .map(std::path::Path::to_path_buf);
+
+    // Tête de file différente de ce qu'on écoute (ou rien en lecture) :
+    // `play` suffit, rien à rouvrir.
+    if courant.as_deref() != chemins.first().map(PathBuf::as_path) {
+        return etat
+            .player
+            .lock()
+            .map_err(echec)?
+            .play(&chemins)
+            .map_err(echec);
+    }
+    let chemin = courant.expect("tête de file == piste en cours");
+
+    // Hors du verrou `player` : `ouvrir` peut lire le disque plusieurs
+    // secondes. Même précaution que la bascule d'amélioration et le
+    // préchargement.
+    let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
+    let source = rusty_music_player::ouvrir(&ouvert).map_err(echec)?;
+    etat.player
+        .lock()
+        .map_err(echec)?
+        .rebrancher_file(&chemins, source)
+        .map_err(echec)
+}
+
 #[tauri::command(async)]
 fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
     let player = etat.player.lock().map_err(echec)?;
@@ -2307,6 +4439,59 @@ fn seek(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_volume(etat: State<Etat>, volume: f32) -> Result<(), String> {
     etat.player.lock().map_err(echec)?.set_volume(volume);
+    Ok(())
+}
+
+/// Bouton « E » : active/coupe l'amélioration du son (excitation
+/// psychoacoustique) et, si fourni, règle son intensité (`0.0`..=`1.0`). Si un
+/// morceau joue, il est réouvert **en tâche de fond** à la même position — le
+/// son en cours continue pendant le décodage, puis on bascule sans coupure. Le
+/// préchargement se reconstruit tout seul au sondage suivant, avec la nouvelle
+/// version.
+#[tauri::command(async)]
+fn set_amelioration(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    actif: bool,
+    intensite: Option<f32>,
+) -> Result<(), String> {
+    let ame = rusty_music_player::amelioration();
+    ame.set_actif(actif);
+    if let Some(i) = intensite {
+        ame.set_intensite(i);
+    }
+
+    let courant = etat
+        .player
+        .lock()
+        .map_err(echec)?
+        .current()
+        .map(std::path::Path::to_path_buf);
+    let Some(chemin) = courant else {
+        return Ok(());
+    };
+
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        // Hors du verrou `player` : `ouvrir` lit le drapeau global qu'on vient
+        // de poser et applique (ou non) l'amélioration. Le chemin est résolu
+        // vers le cache HD s'il y a lieu, comme dans le préchargement.
+        let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
+        let source = match rusty_music_player::ouvrir(&ouvert) {
+            Ok(source) => source,
+            Err(e) => {
+                tracing::warn!(error = %e, "réouverture pour amélioration impossible");
+                return;
+            }
+        };
+        let mut player = match etat.player.lock() {
+            Ok(player) => player,
+            Err(_) => return,
+        };
+        if let Err(e) = player.remplacer_courant(&chemin, source) {
+            tracing::warn!(error = %e, "bascule d'amélioration impossible");
+        }
+    });
     Ok(())
 }
 
@@ -2407,47 +4592,154 @@ fn enregistrer_touches_media(app: tauri::AppHandle) {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
-                // `symphonia` commente chaque trame ID3 qu'il ne gère pas
-                // (TCMP, UFID…) et chaque estimation de durée, à chaque piste
-                // ouverte : des dizaines de lignes qui noient les nôtres. La
-                // directive est ajoutée par-dessus RUST_LOG, pour que fixer
-                // `RUST_LOG=info` ne réveille pas ce bruit.
-                .add_directive("symphonia=warn".parse().expect("directive valide"))
-                // `lofty` en fait autant sur les conteneurs MP4 (« Skipping
-                // empty data atom ») à chaque pochette lue.
-                .add_directive("lofty=error".parse().expect("directive valide")),
-        )
-        .init();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            use tracing_subscriber::layer::SubscriberExt;
+            use tracing_subscriber::util::SubscriberInitExt;
+
             // La base vit à côté des données de l'application, pas dans le
             // répertoire courant : une app de bureau n'a pas de « cwd » stable.
             let dossier = app.path().app_data_dir()?;
             let db = dossier.join("rusty-music.db");
+            let hd = dossier.join("hd");
+
+            // Le journal console seul ne survit pas à un plantage qui emporte
+            // la machine — rencontré en pratique pendant une analyse. Un
+            // second récepteur écrit donc les mêmes évènements dans un fichier
+            // sous les données de l'app, pour retrouver après coup le dernier
+            // fichier en cours de traitement sans avoir eu à garder un
+            // terminal ouvert. `non_blocking` fait l'écriture sur son propre
+            // fil : la garde doit vivre jusqu'à la fin du processus, sans quoi
+            // les dernières lignes resteraient dans son tampon — fuite
+            // volontaire, il n'y en a qu'une pour toute la durée de vie de
+            // l'appli.
+            let dossier_logs = dossier.join("logs");
+            std::fs::create_dir_all(&dossier_logs)?;
+            let fichier = tracing_appender::rolling::daily(dossier_logs, "rusty-music.log");
+            let (fichier, garde) = tracing_appender::non_blocking(fichier);
+            Box::leak(Box::new(garde));
+
+            let directives = || {
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+                    // `symphonia` commente chaque trame ID3 qu'il ne gère pas
+                    // (TCMP, UFID…) et chaque estimation de durée, à chaque
+                    // piste ouverte : des dizaines de lignes qui noient les
+                    // nôtres. La directive est ajoutée par-dessus RUST_LOG,
+                    // pour que fixer `RUST_LOG=info` ne réveille pas ce bruit.
+                    .add_directive("symphonia=warn".parse().expect("directive valide"))
+                    // Le décodeur MP3 crie `invalid main_data_begin, underflow`
+                    // sur la première trame après chaque `seek` : le réservoir
+                    // de bits repart vide et pointe en arrière dans des octets
+                    // non décodés. `decode::par_position` se positionne sur
+                    // chaque fenêtre, ~4 fois par fichier — inévitable et sans
+                    // effet, le décodeur récupère en une trame (~26 ms sur 10 s
+                    // analysés).
+                    .add_directive(
+                        "symphonia_bundle_mp3::layer3=error"
+                            .parse()
+                            .expect("directive valide"),
+                    )
+                    // `lofty` en fait autant sur les conteneurs MP4 (« Skipping
+                    // empty data atom ») à chaque pochette lue.
+                    .add_directive("lofty=error".parse().expect("directive valide"))
+            };
+
+            tracing_subscriber::registry()
+                .with(directives())
+                .with(tracing_subscriber::fmt::layer())
+                .with(tracing_subscriber::fmt::layer().with_writer(fichier).with_ansi(false))
+                .init();
+
             tracing::info!(base = %db.display(), "ouverture de la bibliothèque");
+
+            // Le lecteur aiguille les chemins de la file vers le cache HD quand
+            // la lecture HD est active (`crates/superres`). La file, elle, garde
+            // les chemins d'origine — c'est eux que l'interface suit.
+            let mut player = Player::new()?;
+            let hd_pour_lecteur = hd.clone();
+            player.set_resolveur(move |p| rusty_music_superres::resoudre(&hd_pour_lecteur, p));
 
             app.manage(Etat {
                 lib: Mutex::new(Library::open(&db)?),
-                player: Mutex::new(Player::new()?),
+                player: Mutex::new(player),
                 db,
+                hd,
+                superres: Mutex::new(EtatSuperres::default()),
+                superres_modele: Mutex::new(None),
                 scan: Mutex::new(EtatScan::default()),
                 analyse: Mutex::new(EtatAnalyse::default()),
                 descripteurs: Mutex::new(EtatDescripteurs::default()),
                 enrichissement: Mutex::new(EtatEnrichissement::default()),
+                popularite: Mutex::new(EtatPopularite::default()),
+                decouvrir: Mutex::new(EtatDecouvrir::default()),
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 ondes: Mutex::new(Default::default()),
                 vecteurs: Mutex::new(Arc::new(Vec::new())),
                 graphe: Mutex::new(None),
+                graphe_construction: Mutex::new(()),
+                graphe_fait: AtomicUsize::new(0),
+                graphe_total: AtomicUsize::new(0),
+                reseau: Mutex::new(None),
                 densite: Mutex::new(None),
+                ville: Mutex::new(None),
+                graphe_reel: Mutex::new(None),
+                accrochage_voirie: Mutex::new(None),
+                graphes_voirie: Mutex::new(std::collections::HashMap::new()),
+                agrement_voirie: Mutex::new(None),
             });
+            app.manage(tuiles::Archives::default());
+
+            // La fenêtre est bâtie ici, pas déclarée dans `tauri.conf.json`, pour
+            // une seule raison : y accrocher `on_web_resource_request`.
+            //
+            // **Sans cache-control, la webview sert un `app.js` périmé.** Tauri
+            // renvoie les fichiers embarqués sans le moindre en-tête de fraîcheur ;
+            // WKWebView les garde alors sur disque et continue de servir la
+            // version d'un ancien build même après recompilation — le pendant
+            // côté exécution du piège déjà décrit dans `build.rs` côté
+            // compilation. `no-store` sur le protocole `tauri://` le coupe net :
+            // les assets sont en mémoire, rien à gagner à les mettre en cache.
+            // `RUSTY_MUSIC_INCOGNITO` : mode d'essai — webview sans persistance
+            // (jamais de cache périmé, jamais de `localStorage` partagé avec
+            // l'app installée) et fenêtre au premier plan pour la capture
+            // d'écran. Sans effet en usage normal.
+            let essai = std::env::var("RUSTY_MUSIC_INCOGNITO").is_ok();
+            let fenetre =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Rusty Music")
+                    .inner_size(1400.0, 900.0)
+                    .min_inner_size(960.0, 620.0)
+                    .incognito(essai)
+                    .always_on_top(essai)
+                    .focused(true)
+                    .on_web_resource_request(|req, resp| {
+                        if req.uri().scheme_str() == Some("tauri") {
+                            resp.headers_mut().insert(
+                                tauri::http::header::CACHE_CONTROL,
+                                tauri::http::HeaderValue::from_static("no-store"),
+                            );
+                        }
+                    })
+                    .build()?;
+
+            // Purge unique du cache de la webview. Les anciens builds n'ont
+            // laissé aucun en-tête de fraîcheur : WKWebView sert alors sans fin
+            // l'`index.html` d'une version antérieure, y compris après
+            // recompilation. Une fois cette purge faite (marqueur à côté de la
+            // base), le `no-store` ci-dessus suffit — on ne recommence pas, car
+            // la purge efface aussi le `localStorage` (adresse MusicBrainz,
+            // onglet mémorisé).
+            let marqueur = dossier.join(".webview-purgee-v1");
+            if !marqueur.exists() {
+                let _ = fenetre.clear_all_browsing_data();
+                let _ = fenetre.reload();
+                let _ = std::fs::write(&marqueur, b"1");
+            }
 
             // Sans cela, la fenêtre s'ouvre parfois sans être le répondeur
             // clavier : les raccourcis (espace, flèches) n'arrivent alors
@@ -2458,12 +4750,19 @@ fn main() {
             }
 
             enregistrer_touches_media(app.handle().clone());
+
+            // Un cache HD produit par une version antérieure du pipeline
+            // (rééchantillonnage, mélange…) donnerait un son étouffé joué tel
+            // quel : on l'efface au démarrage.
+            rusty_music_superres::purger_anciens(&app.state::<Etat>().hd);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             artists,
             albums,
             tracks_of_album,
+            artist_covers,
             search,
             roots,
             forget_root,
@@ -2473,7 +4772,19 @@ fn main() {
             waveform,
             descripteurs,
             map_view,
+            tuiles_etat,
+            engendrer_tuiles,
+            style_carte,
+            positions_carte,
+            trace_rues,
+            journal_carte,
+            mode_initial,
+            autotest_carte,
+            itineraire,
+            itineraire_voirie,
+            tuile,
             map_progress,
+            graphe_progress,
             density_view,
             library_stats,
             probable_duplicates,
@@ -2484,6 +4795,8 @@ fn main() {
             dismiss_scan_failure,
             map_parameters,
             set_map_parameter,
+            vocabulaire_familles,
+            definir_vocabulaire_familles,
             recompute_map,
             recompute_density,
             start_analysis,
@@ -2493,7 +4806,16 @@ fn main() {
             descripteurs_progress,
             start_enrichment,
             enrichment_state,
+            start_popularite,
+            popularite_state,
+            popularite_fraicheur,
+            popularites,
             artist_links,
+            start_decouvrir,
+            decouvrir_state,
+            decouvrir_feed,
+            decouvrir_tout_vu,
+            decouvrir_pochette,
             start_demix,
             demix_state,
             stems_existants,
@@ -2516,11 +4838,24 @@ fn main() {
             path_album,
             selection,
             families,
+            album_families,
+            artist_families,
             prepare_graph,
             neighbours,
             js_error,
+            qualite_piste,
+            set_amelioration,
+            spectre_transport,
+            start_superres,
+            superres_state,
+            superres_disponible,
+            set_lecture_hd,
+            superres_cache,
+            vider_cache_hd,
+            dossier_donnees,
             play,
             set_queue,
+            remplacer_file,
             toggle_pause,
             skip,
             previous,
@@ -2535,7 +4870,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{dans_le_contour, sous_une_racine};
+    use super::{
+        cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
+        fin_de_trace, morceaux_le_long, sous_une_racine, AccrochageVoirie, RepereLocal,
+    };
+    use std::collections::{HashMap, HashSet};
     use std::path::Path;
 
     /// Un rendu ne doit jamais atterrir sous une racine surveillée : il y
@@ -2598,5 +4937,162 @@ mod tests {
         assert!(!dans_le_contour(&c, 1.5, 0.5));
         assert!(!dans_le_contour(&c, 0.5, 1.5));
         assert!(!dans_le_contour(&c, -0.5, 0.5));
+    }
+
+    fn dossier_de_test(nom: &str) -> std::path::PathBuf {
+        // `std::env::temp_dir()`, jamais un chemin fixe du dépôt — voir la
+        // consigne de l'incident des 199 Go.
+        let d = std::env::temp_dir().join(format!(
+            "rusty-music-test-pochettes-{nom}-{}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&d).ok();
+        d
+    }
+
+    #[test]
+    fn une_cle_change_avec_le_chemin_et_la_mtime() {
+        let t0 = std::time::UNIX_EPOCH;
+        let t1 = t0 + std::time::Duration::from_secs(1);
+        let a = Path::new("/a.mp3");
+        let b = Path::new("/b.mp3");
+        assert_ne!(cle_pochette(a, t0), cle_pochette(b, t0), "chemins différents");
+        assert_ne!(cle_pochette(a, t0), cle_pochette(a, t1), "mtimes différentes");
+        assert_eq!(cle_pochette(a, t0), cle_pochette(a, t0), "déterministe");
+    }
+
+    #[test]
+    fn le_cache_sert_ce_quil_a_recu() {
+        let dossier = dossier_de_test("sert");
+        let cle = "abc";
+        ecrire_cache_pochette(&dossier, cle, Some("data:image/jpeg;base64,zzz"));
+        assert_eq!(
+            lire_cache_pochette(&dossier, cle),
+            Some(Some("data:image/jpeg;base64,zzz".to_string()))
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn le_cache_distingue_absent_de_confirme_sans_pochette() {
+        let dossier = dossier_de_test("sans");
+        assert_eq!(
+            lire_cache_pochette(&dossier, "jamais-vu"),
+            None,
+            "pas encore en cache"
+        );
+        ecrire_cache_pochette(&dossier, "sans-art", None);
+        assert_eq!(
+            lire_cache_pochette(&dossier, "sans-art"),
+            Some(None),
+            "en cache, confirmé sans pochette"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn une_mtime_differente_retrouve_une_cle_differente_donc_pas_lentree_perimee() {
+        let dossier = dossier_de_test("perime");
+        let chemin = Path::new("/musique/piste.mp3");
+        let ancienne = cle_pochette(chemin, std::time::UNIX_EPOCH);
+        ecrire_cache_pochette(&dossier, &ancienne, Some("vieille-pochette"));
+
+        let nouvelle = cle_pochette(
+            chemin,
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(60),
+        );
+        assert_eq!(
+            lire_cache_pochette(&dossier, &nouvelle),
+            None,
+            "le fichier a changé : la clé change, l'ancienne entrée ne sert plus"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    /// Un accrochage monté à la main : trois sommets alignés, un morceau par
+    /// sommet, plus un intrus d'une autre famille sur le sommet du milieu.
+    fn accrochage_dessai() -> AccrochageVoirie {
+        let mut sommet_de = HashMap::new();
+        let mut morceaux_a: HashMap<u32, Vec<i64>> = HashMap::new();
+        for (id, s) in [(10, 0u32), (20, 1), (30, 1), (40, 2)] {
+            sommet_de.insert(id, s);
+            morceaux_a.entry(s).or_default().push(id);
+        }
+        AccrochageVoirie { sommet_de, morceaux_a }
+    }
+
+    #[test]
+    fn morceaux_le_long_ordonne_dedoublonne_et_borne_la_famille() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let famille: HashSet<i64> = [10, 20, 40].into_iter().collect(); // 30 exclu
+        let duree = |_id: i64| 0u64;
+        let suite = morceaux_le_long(&acc, &couloir, 10, Some(40), Some(&famille), None, &duree);
+        // départ 10 en tête, arrivée 40 en queue, 30 filtré, 20 au milieu.
+        assert_eq!(suite, vec![10, 20, 40]);
+    }
+
+    #[test]
+    fn morceaux_le_long_coupe_a_la_duree_cible() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let duree = |_id: i64| 10 * 60_000u64; // 10 min chacun
+        // Cible 25 min, tolérance 90 s : 10 (0) + 20 (10) + 30 (20) → 30 min ≥ 23,5.
+        let suite = morceaux_le_long(&acc, &couloir, 10, None, None, Some(25 * 60_000), &duree);
+        assert_eq!(suite, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn morceaux_le_long_larrivee_prime_sur_la_duree() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let duree = |_id: i64| 10 * 60_000u64;
+        // Arrivée 40 posée : « va jusque-là » l'emporte, la durée (15 min) est
+        // ignorée — la playlist va jusqu'à 40.
+        let suite = morceaux_le_long(&acc, &couloir, 10, Some(40), None, Some(15 * 60_000), &duree);
+        assert_eq!(suite, vec![10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn fin_de_trace_sarrete_au_dernier_morceau_pas_a_la_destination() {
+        let acc = accrochage_dessai(); // 10@sommet0, 20&30@sommet1, 40@sommet2
+        // Tracé de 10 sommets ; le couloir place le sommet 1 au rang 3.
+        let couloir: HashMap<u32, usize> =
+            [(0u32, 0usize), (1, 3), (2, 8)].into_iter().collect();
+        // Playlist = [10, 20] → dernier morceau au rang 3 → tracé coupé à 4.
+        assert_eq!(fin_de_trace(&[10, 20], &acc, &couloir, 10), 4);
+        // Playlist qui va jusqu'à 40 (rang 8) → coupé à 9.
+        assert_eq!(fin_de_trace(&[10, 20, 40], &acc, &couloir, 10), 9);
+        // Morceaux hors couloir → tout le tracé.
+        assert_eq!(fin_de_trace(&[99], &acc, &couloir, 10), 10);
+        // Tracé dégénéré.
+        assert_eq!(fin_de_trace(&[10], &acc, &couloir, 1), 1);
+    }
+
+    #[test]
+    fn repere_local_corrige_lanisotropie_lon_lat() {
+        // Trois points autour de Notre-Dame : l'un ~730 m à l'est (Δlon), l'autre
+        // ~1110 m au nord (Δlat). En degrés bruts, 0,01° dans les deux sens
+        // paraîtraient à égale distance ; en mètres, l'est est bien plus proche.
+        let ancre = (0i64, 2.35_f32, 48.85_f32);
+        let est = (1i64, 2.36_f32, 48.85_f32);
+        let nord = (2i64, 2.35_f32, 48.86_f32);
+        let mut pts = vec![ancre, est, nord];
+
+        // En degrés bruts, un écart de 0,01° pèse pareil au nord et à l'est —
+        // c'est justement le biais que la projection corrige.
+        let d2_deg = |a: (i64, f32, f32), b: (i64, f32, f32)| {
+            (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)
+        };
+        assert!((d2_deg(ancre, est) - d2_deg(ancre, nord)).abs() < 1e-6);
+
+        RepereLocal::projeter_liste(&mut pts);
+        let d2 = |a: usize, b: usize| {
+            (pts[a].1 - pts[b].1).powi(2) + (pts[a].2 - pts[b].2).powi(2)
+        };
+        // 0 = ancre, 1 = est (~730 m), 2 = nord (~1110 m).
+        assert!(d2(0, 1) < d2(0, 2), "après projection, l'est doit être le plus proche");
+        let est_m = d2(0, 1).sqrt();
+        assert!((est_m - 730.0).abs() < 40.0, "~730 m attendus, obtenu {est_m}");
     }
 }

@@ -254,6 +254,17 @@ html, body {
 }
 .fil__retour:hover { color: var(--accent); }
 
+/* Ordre de la grille d'albums : posé à droite de l'en-tête, après le compte. */
+.tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; }
+.tri__opt {
+  font: inherit; font-size: 11px; font-family: var(--mono);
+  background: none; border: none; color: var(--mut);
+  cursor: pointer; padding: 4px 8px;
+}
+.tri__opt + .tri__opt { border-left: 1px solid var(--line); }
+.tri__opt:hover { color: var(--txt); }
+.tri__opt--actif { background: var(--panel2); color: var(--accent); }
+
 /* Porte la liste/grille/carte et l'index alphabétique qui les borde : un
    `position: relative` propre, sous `.fil`, pour que l'index s'ancre sur ce
    qu'il indexe et non sur toute la colonne centrale. */
@@ -297,6 +308,25 @@ html, body {
 .ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ligne__sec { font-size: 12px; color: var(--mut); flex: none; }
 .ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.ligne__pop, .file__pop { flex: none; display: flex; align-items: center; }
+
+/* Jauge de popularité générale — cinq segments façon indicateur de signal,
+   dans la file d'attente et les listes de pistes. Contour seul (aucun segment
+   plein) = popularité inconnue : jamais une valeur inventée, comme les
+   descripteurs de l'inspecteur. */
+.jauge-pop { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; flex: none; }
+.jauge-pop i {
+  width: 3px; border-radius: 1px;
+  background: var(--panel2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.jauge-pop i:nth-child(1) { height: 5px; }
+.jauge-pop i:nth-child(2) { height: 7px; }
+.jauge-pop i:nth-child(3) { height: 9px; }
+.jauge-pop i:nth-child(4) { height: 11px; }
+.jauge-pop i:nth-child(5) { height: 13px; }
+.jauge-pop i.jauge-pop__on { background: var(--accent); box-shadow: none; }
+.jauge-pop--inconnu { opacity: .4; }
 
 /* ---------- grille (albums, façon Plex) ---------- */
 /* Même principe de virtualisation que `.liste` : un socle qui porte la
@@ -364,6 +394,31 @@ html, body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .album:hover .album__nom { color: var(--accent); }
+.album__artiste--lien { cursor: pointer; }
+.album__artiste--lien:hover { color: var(--accent); text-decoration: underline; }
+
+/* Tuile d'artiste : même gabarit qu'une case d'album, mais la pochette est une
+   mosaïque en puzzle des pochettes de ses albums (`carteArtiste`). Chaque pièce
+   couvre toute la tuile et n'est révélée qu'à travers sa découpe `clip-path` ;
+   les découpes s'emboîtent sans jour. */
+.album--artiste .album__pochette { background: var(--panel2); }
+.mosaique {
+  position: absolute; inset: 0;
+  border-radius: inherit; overflow: hidden;
+  background: var(--panel2);
+}
+.mosaique__piece {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  filter: drop-shadow(0 0 0.5px rgba(0, 0, 0, .55));
+}
+/* Repli sans aucune pochette : initiales sur aplat teinté par le nom. */
+.mosaique--vide {
+  display: grid; place-items: center;
+  background: hsl(var(--teinte, 220) 22% 30%);
+  color: hsl(var(--teinte, 220) 30% 82%);
+  font-size: 34px; font-weight: 600; letter-spacing: 1px;
+}
 
 /* ---------- carte (mode Explorer) ---------- */
 .carte { flex: 1; position: relative; min-height: 0; }
@@ -412,8 +467,11 @@ html, body {
   background: none; border: none; color: var(--mut); padding: 5px 0;
 }
 .segment + .segment { border-left: 1px solid var(--line); }
-.segment:hover { color: var(--txt); }
+.segment:hover:not(:disabled) { color: var(--txt); }
 .segment--actif { background: var(--panel2); color: var(--accent); }
+/* Un bâtiment ne sait se colorer que par famille sur le plan de ville
+   réel (`majSegmentsCouleur`, app.js) — même dégradé que `.bouton:disabled`. */
+.segment:disabled { opacity: .4; cursor: default; }
 
 /* Quatre modes de chemin ne tiennent pas côte à côte dans le rail : on les
    empile, et la séparation passe du côté gauche au côté haut. */
@@ -470,6 +528,15 @@ html, body {
 .reglette input[type="range"] {
   width: 84px; padding: 0; background: none; border: none;
   accent-color: var(--accent);
+}
+/* Le vocabulaire des familles : une ligne de texte par famille, pas un
+   champ numérique — `.reglette` ne convient pas, la police mono aide à
+   repérer les deux-points et les virgules d'un coup d'œil. */
+.reglette__texte {
+  display: block; width: 100%; margin-top: 10px; padding: 8px 10px;
+  font: inherit; font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+  background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+  resize: vertical;
 }
 .reglette__val {
   font-family: var(--mono); font-size: 10.5px; color: var(--mut);
@@ -549,6 +616,18 @@ html, body {
 .insp__alchimie:focus-visible { opacity: 1; transform: translateY(0); }
 .insp__alchimie:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
 .insp__alchimie:disabled { opacity: .6; cursor: wait; }
+
+/* ✦ au travail : le graphe des voisins se construit, puis la playlist se
+   compose. Le glyphe tourne — le seul signe, avec la jauge de la file, que
+   quelque chose avance ; sans ça, `:disabled` seul se lit comme un blocage. */
+@keyframes alchimie-tourne { to { transform: rotate(1turn); } }
+.album__alchimie.alchimie--travail,
+.insp__alchimie.alchimie--travail {
+  opacity: 1;
+  background: var(--accent); color: var(--bg);
+  animation: alchimie-tourne 1.5s linear infinite;
+}
+
 .insp__vide { font-size: 12.5px; color: var(--mut); }
 .inspecteur h3 { font-family: var(--serif); font-size: 25px; font-weight: 500; line-height: 1.12; margin: 0; }
 .insp__artiste { font-size: 13px; color: var(--mut); margin: 5px 0 18px; cursor: pointer; }
@@ -611,19 +690,43 @@ html, body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Barres de progression : cliquables pour se déplacer. */
-/* Onde : chaque trait porte la crête, son <u> intérieur le noyau RMS. */
-.wave { flex: 1; height: 30px; display: flex; align-items: center; gap: 1px; min-width: 40px; cursor: pointer; }
-.wave i {
-  flex: 1; min-width: 1px; background: var(--line);
-  display: flex; align-items: center; justify-content: center;
-  transition: height .25s ease, background .12s linear;
+/* Barre de progression : spectrogramme du son réellement joué, cliquable pour
+   se déplacer. Axe des fréquences logarithmique (grave en bas), tête de
+   lecture par-dessus. Quand le HD est actif, les fréquences qu'il a ajoutées
+   sont teintées de l'accent (voir `peindreTransport`). */
+.wave { flex: 1; height: 42px; min-width: 40px; cursor: pointer; position: relative; }
+#wave-cnv {
+  display: block; width: 100%; height: 100%;
+  border-radius: 2px; background: var(--panel2);
+  image-rendering: pixelated;
 }
-.wave i u { display: block; width: 100%; background: var(--mut); }
-.wave i.on { background: color-mix(in srgb, var(--accent) 55%, transparent); }
-.wave i.on u { background: var(--accent); }
 
-.tc { font-family: var(--mono); font-size: 11px; color: var(--mut); flex: none; }
+.tc { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.tc-bloc { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+/* Bouton « E » — amélioration du son. Même carré arrondi que `.reglage button`
+   du dock des stems. */
+.transport__e {
+  width: 22px; height: 22px; flex: none;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: transparent; color: var(--mut);
+  font: 600 12px var(--mono); line-height: 1; cursor: pointer;
+}
+.transport__e:hover:not(:disabled) { color: var(--txt); border-color: var(--mut); }
+.transport__e[aria-pressed="true"] {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.transport__e:disabled { opacity: .4; cursor: default; }
+/* « HD » : deux caractères (et jusqu'à « 100% » pendant une régénération),
+   donc largeur libre — centré sous « E » dans la colonne. */
+#hd { width: auto; min-width: 22px; padding: 0 5px; font-size: 10px; letter-spacing: .04em; }
+#hd.travaille { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
+.transport__amelio { display: flex; align-items: center; gap: 7px; flex: none; }
+/* « E » au-dessus de « HD » : deux boutons de 22 px de haut, ~47 px en tout,
+   tiennent dans la rangée de 64 px du transport. */
+.transport__amelio-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; }
+.transport__e-force { width: 60px; accent-color: var(--accent); }
+.transport__e-force[hidden] { display: none; }
 .transport__file {
   font-family: var(--mono); font-size: 9.5px;
   letter-spacing: .12em; text-transform: uppercase;
@@ -708,6 +811,61 @@ html, body {
 }
 .verif__albums:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Mode Découvrir — le fil d'actualité */
+.decouvrir-tete {
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.decouvrir-tete .aide { margin-top: 0; }
+#decouvrir-avancement {
+  font-family: var(--mono); font-size: 11px; margin: 4px 0 0; min-height: 1.4em;
+}
+/* Onglets du panneau central — collants, pour rester en vue au défilement. */
+#decouvrir-onglets {
+  position: sticky; top: 0; z-index: 2; background: var(--bg);
+  margin: 14px 0 12px;
+}
+.segment__n {
+  font-family: var(--mono); font-size: 9.5px; opacity: .7; margin-left: 4px;
+}
+.decouvrir-panneau { min-height: 60px; }
+
+/* Une ligne du fil : pochette · corps · liens. */
+.decouvrir-liste { display: flex; flex-direction: column; }
+.decouvrir-ligne {
+  display: flex; align-items: center; gap: 11px;
+  padding: 7px 4px; border-bottom: 1px solid var(--line);
+}
+.decouvrir-ligne--nouveau { box-shadow: inset 2px 0 0 var(--accent); }
+.decouvrir-ligne__pochette {
+  width: 44px; height: 44px; flex: none; border-radius: 3px;
+  background: repeating-linear-gradient(135deg, var(--panel2) 0 7px, var(--panel) 7px 14px);
+}
+.decouvrir-ligne__pochette--pleine { background: none; }
+.decouvrir-ligne__pochette img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 3px; display: block;
+}
+.decouvrir-ligne__corps { flex: 1; min-width: 0; }
+.decouvrir-ligne__titre {
+  font-size: 12.5px; color: var(--txt);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.decouvrir-ligne__sous,
+.decouvrir-ligne__collab {
+  font-size: 11px; color: var(--mut);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.decouvrir-ligne__collab { font-style: italic; }
+.decouvrir-ligne__liens {
+  flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+.decouvrir-ligne__liens .lien { font-size: 11px; }
+.lien--inline { padding: 0; font-size: inherit; color: var(--mut); }
+.lien--inline:hover { color: var(--accent); }
+.decouvrir-separateur {
+  border: none; border-top: 1px solid var(--line); margin: 26px 0 18px;
+}
+
 /* Abscisse : des graduations positionnées en `%` sur toute la largeur, pas
    une par tranche — 18 tranches donneraient 18 nombres illisibles. */
 .histogramme__axe { position: relative; height: 13px; margin-top: 3px; }
@@ -736,6 +894,17 @@ html, body {
 .ajout { margin-top: 22px; }
 .ajout__ligne { display: flex; gap: 10px; }
 .scan-etat { font-family: var(--mono); font-size: 11px; color: var(--mut); margin: 12px 0 0; min-height: 1.4em; }
+
+/* « Scanner » : l'action de départ du mode, teintée comme l'accent. */
+#lancer-scan { border-color: var(--accent); color: var(--accent); }
+
+/* Le dossier de stockage : un chemin qu'on doit pouvoir lire en entier et
+   copier, donc pas d'ellipse — il passe à la ligne. */
+.chemin-donnees {
+  font-family: var(--mono); font-size: 12px; color: var(--txt);
+  word-break: break-all; margin: 8px 0 0;
+  background: var(--panel); border: 1px solid var(--line); padding: 8px 10px;
+}
 
 .jauge {
   appearance: none; -webkit-appearance: none;
@@ -783,6 +952,57 @@ html, body {
 .file__txt b { display: block; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file__txt span { display: block; font-size: 11.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file__duree { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+
+/* ---- composition d'une playlist ✦ dans la file ---- */
+
+/* Bandeau de phase : « Préparation du graphe des voisins… » (~20 s la
+   première fois d'une session), puis « Composition… ». */
+.file__compo {
+  padding: 12px 18px 14px; border-bottom: 1px solid var(--line); flex: none;
+}
+.file__compo-phase {
+  display: block; font-family: var(--mono); font-size: 10.5px; color: var(--mut);
+  letter-spacing: .03em; margin-bottom: 9px;
+}
+.file__compo-jauge { height: 3px; background: var(--panel2); border-radius: 2px; overflow: hidden; }
+.file__compo-jauge i {
+  display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px;
+  transition: width .3s ease;
+}
+/* Phase sans total connu (graphe déjà en cache, ou composition en cours) :
+   un va-et-vient plutôt qu'une barre figée à zéro. */
+.file__compo-jauge i.file__compo-barre--indetermine {
+  width: 34%; transition: none;
+  animation: file-compo-navette 1.05s ease-in-out infinite alternate;
+}
+@keyframes file-compo-navette { from { margin-left: 0; } to { margin-left: 66%; } }
+
+/* Emplacement des pistes à venir : la longueur cible est visible tout de
+   suite, chaque piste vient s'y poser. */
+.file__ligne--squelette { cursor: default; }
+.file__ligne--squelette:hover { background: none; }
+.file__ligne--squelette .file__txt b,
+.file__ligne--squelette .file__txt span {
+  background: var(--panel2); border-radius: 3px; color: transparent;
+}
+.file__ligne--squelette .file__txt b { width: 62%; height: 11px; }
+.file__ligne--squelette .file__txt span { width: 40%; height: 9px; margin-top: 5px; }
+
+@keyframes file-pose {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.file__ligne--pose { animation: file-pose .22s ease both; }
+.file__ligne--graine .file__rang { color: var(--accent); }
+.file__ligne--graine .file__txt span { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .album__alchimie.alchimie--travail,
+  .insp__alchimie.alchimie--travail,
+  .file__compo-jauge i.file__compo-barre--indetermine,
+  .file__ligne--pose { animation: none; }
+  .file__ligne--pose { opacity: 1; transform: none; }
+}
 .vol { display: flex; align-items: center; gap: 7px; flex: none; }
 .vol span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
 .vol input { width: 74px; accent-color: var(--accent); }
@@ -878,3 +1098,14 @@ html, body {
   padding: 3px 10px;
   font-size: 11px;
 }
+
+/* Carte MapLibre : les tuiles dessous, la surcouche de dessin dessus. Le
+   canevas reste transparent et garde les gestionnaires — il relaie à
+   MapLibre, qui n'écoute rien lui-même (`interactive: false`). */
+#carte-gl { position: absolute; inset: 0; }
+#carte-vue > canvas { position: absolute; inset: 0; }
+/* Le fondu de bordure : dégradé posé par `poserVignetteCarte`, opacité
+   modulée au zoom par `majVignetteZoom` (plein en vue d'ensemble, nul à
+   l'échelle de la rue). */
+#carte-vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s; }
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display: none !important; }
