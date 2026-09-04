@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! L'espace d'empreintes veut-il dire quelque chose ?
 //!
 //! Un cosinus élevé entre deux morceaux ne prouve rien tout seul : les

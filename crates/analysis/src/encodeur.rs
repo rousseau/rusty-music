@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! L'encodeur audio de CLAP, exécuté par Burn.
 //!
 //! Le modèle n'est pas interprété au vol depuis un fichier ONNX : `burn-onnx`

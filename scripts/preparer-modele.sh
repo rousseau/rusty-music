@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Prépare l'encodeur audio de CLAP pour l'import Burn.
 #
 # À jouer une fois, et à rejouer seulement si le modèle ou le fenêtrage change.

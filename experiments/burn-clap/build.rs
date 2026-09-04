@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Génère du Rust natif depuis le modèle ONNX, au moment du build.
 //!
 //! C'est tout l'essai : `burn-onnx` déclare supporter les 34 opérateurs que ce

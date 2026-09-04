@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Application de bureau — coquille « Atelier », mode Écoute (module 1).
 //!
 //! Cette couche ne fait que raccorder : toute la logique vit dans `rusty-music-core`

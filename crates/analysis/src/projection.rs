@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Réduction des empreintes à deux dimensions, pour la carte.
 //!
 //! t-SNE Barnes-Hut. `architecture.md` signalait l'écosystème Rust comme moins

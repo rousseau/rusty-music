@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Surveillance continue de la racine (notify).
 //!
 //! Les éditeurs de tags écrivent souvent en plusieurs opérations rapprochées :

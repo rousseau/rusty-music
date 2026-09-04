@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Démixe un fichier et rend les RMS par stem — pour comparer deux backends
 //! sur la même entrée réelle.
 //!

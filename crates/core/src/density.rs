@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Nappe de densité de la carte (module 2) : une estimation à noyau gaussien
 //! par famille, plus une globale, réduites en bandes de niveau (isobandes).
 //!

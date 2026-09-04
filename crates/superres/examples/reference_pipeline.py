@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Référence PyTorch pour `examples/verifier.rs` : model() sur un fichier entier.
 
   PYTHONPATH=/tmp/rusty-music-aero-src python3 reference_pipeline.py \

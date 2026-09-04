@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Carte de **coût de déplacement sur la voirie** depuis l'île de la Cité :
 //! visualise ce que donnerait un peuplement piloté par la topographie (des
 //! géodésiques de rues) au lieu du disque euclidien actuel.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Jalon 1 — combien coûte une empreinte.
 //!
 //! Mesure le seul poste que le plan du module 2 laissait chiffré à l'estime :

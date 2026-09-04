@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Prépare le générateur AERO (super-résolution audio) pour l'exécution hors
 # ligne — export ONNX du **seul réseau**, STFT laissée à Rust.
 #

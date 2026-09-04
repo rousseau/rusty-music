@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que coûte un maillage de Voronoï sur la bibliothèque réelle.
 //!
 //! Mesure préalable à la refonte des formes : les contours par isolignes

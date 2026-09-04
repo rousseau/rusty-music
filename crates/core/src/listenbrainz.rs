@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! ListenBrainz : le client, et rien d'autre.
 //!
 //! Comme [`crate::musicbrainz`], ce module parle au réseau et rend des données ;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La passe du mode Découvrir : interroge ListenBrainz, remplit le fil
 //! d'actualité (nouveaux disques, collaborations, artistes voisins).
 //!

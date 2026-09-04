@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le plan de ville réel sur la bibliothèque réelle : combien d'adresses, de
 //! tuiles, en combien de temps — et **la boucle de validation du rendu**. Sort
 //! dans `$TMPDIR/rusty-music-paris/` : les tuiles en clair, les 5 styles

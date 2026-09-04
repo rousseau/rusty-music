@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Persistance du plan de ville.
 //!
 //! Le `.osm.pbf` fait trois cent vingt mégaoctets et met dix secondes à se

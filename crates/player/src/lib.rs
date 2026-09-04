@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Lecture audio (module 1) : sortie, transport, file d'attente.
 //!
 //! Crate séparé du cœur d'ingestion à dessein : la pile audio du système

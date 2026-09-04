@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Import d'un extrait OpenStreetMap.
 //!
 //! La carte ne fabrique plus son monde : elle emprunte celui d'une vraie ville.

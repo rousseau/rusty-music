@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Lecture des métadonnées embarquées, agnostique au format (lofty).
 
 use std::path::{Path, PathBuf};

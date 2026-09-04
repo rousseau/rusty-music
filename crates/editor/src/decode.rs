@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Décodage vers ce qu'attend le démixage : stéréo, 44,1 kHz, entier.
 //!
 //! Rien à voir avec `analysis::decode`, qui rend du mono 48 kHz par fenêtres

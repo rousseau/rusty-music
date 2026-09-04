@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le peuplement : des habitants, des établissements, une carte qui se lit.
 //!
 //! Conception complète dans `docs/carto-peuplement-architecture.md`. Ce module

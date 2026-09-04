@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Construction Tauri, plus une chose que `tauri_build` ne fait pas : dire à
 //! Cargo de **recompiler `main.rs`** quand l'interface change.
 //!

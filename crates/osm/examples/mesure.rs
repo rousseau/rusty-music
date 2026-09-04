@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Mesure ce qu'un extrait OSM offre comme support à la bibliothèque.
 //!
 //!     cargo run --release -p rusty-music-osm --example mesure -- <fichier.osm.pbf>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Base locale SQLite : la seule source de vérité pour les trois modules.
 
 use std::collections::{HashMap, HashSet};

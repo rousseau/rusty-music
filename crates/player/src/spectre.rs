@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Spectrogramme d'un fichier, pour l'affichage.
 //!
 //! L'onde (`waveform.rs`) montre *combien* il y a de son au fil du temps ; le

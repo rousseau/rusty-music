@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La tour texte de CLAP, exécutée par Burn — et comparée à PyTorch.
 //!
 //! Pas de tokeniseur ici : `sonder.py reference` a écrit les identifiants de

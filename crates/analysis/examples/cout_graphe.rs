@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Combien coûte la construction du graphe, selon le profil de compilation.
 use rusty_music_analysis::chemin::Graphe;
 

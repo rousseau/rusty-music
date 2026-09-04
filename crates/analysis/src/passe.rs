@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La passe d'analyse : des morceaux en base aux points de la carte.
 //!
 //! Décodage et empreintes se font morceau par morceau, en parallèle. La

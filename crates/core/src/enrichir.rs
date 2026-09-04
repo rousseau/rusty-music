@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La passe d'enrichissement : interroge MusicBrainz, remplit la base.
 //!
 //! Séparée de [`crate::musicbrainz`], qui ne fait que parler au réseau, et de

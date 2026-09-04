@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Genres MusicBrainz : le client, et rien d'autre.
 //!
 //! Ce module parle au réseau et rend des données ; il n'écrit pas en base et

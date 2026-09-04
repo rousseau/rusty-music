@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Références PyTorch pour l'essai `burn-aero`.
 
 Rejoue le réseau seul (comme `scripts/preparer-aero.sh`) et dumpe, en binaire

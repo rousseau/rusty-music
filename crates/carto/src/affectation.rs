@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Étage 1 de l'affectation : familles musicales → quartiers de Paris.
 //!
 //! `docs/carto-ville.md` pose le principe (Procruste puis Voronoï sous

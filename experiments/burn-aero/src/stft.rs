@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! STFT / iSTFT reproduisant `aero/src/models/spec.py` (qui appelle
 //! `torch.stft` / `torch.istft`), pour la voie « réseau seul + STFT en Rust ».
 //!

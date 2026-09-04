@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Récupère les modèles déjà préparés depuis les *release assets* du dépôt.
 #
 #   ./scripts/telecharger-modeles.sh [clap | demucs | aero | tout]

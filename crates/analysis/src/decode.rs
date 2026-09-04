@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Décodage d'un fichier vers le format qu'attend le frontal log-mel.
 //!
 //! Le modèle veut du mono à 48 kHz ; la bibliothèque est en 44,1 kHz stéréo

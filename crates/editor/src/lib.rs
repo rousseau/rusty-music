@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Démixage en stems (module 3 — Éditeur / MAO).
 //!
 //! Sépare un morceau en batterie, basse, voix et « autre », par HTDemucs

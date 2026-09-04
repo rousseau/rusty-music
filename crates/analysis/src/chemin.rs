@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Chemins dans la bibliothèque : quatre façons de fabriquer un trajet.
 //!
 //! | mode | ce qu'on fournit | ce qu'on obtient |

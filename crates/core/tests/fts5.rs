@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La recherche repose sur FTS5 et sur son repli des diacritiques. Ni l'un ni
 //! l'autre n'est garanti par défaut : ils dépendent des options de compilation
 //! du SQLite embarqué par `rusqlite`. Ce test nomme cette dépendance, pour que

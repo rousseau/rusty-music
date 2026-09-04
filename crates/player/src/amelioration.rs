@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Traitement du tampon audio décodé, avant remise à `rodio`.
 //!
 //! Deux étages, appliqués dans [`crate::ouvrir`] — donc hors du verrou

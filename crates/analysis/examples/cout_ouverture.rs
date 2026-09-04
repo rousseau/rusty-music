@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Où part le temps quand on se positionne : l'ouverture, ou la lecture ?
 //!
 //! Sur le SSD, le positionnement rend le décodage sept fois moins cher. Sur la

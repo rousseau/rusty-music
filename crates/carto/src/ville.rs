@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Assemble une [`Source`] depuis le vrai plan de ville (`crates/osm`) plutôt
 //! que depuis le monde engendré.
 //!

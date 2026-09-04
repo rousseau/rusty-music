@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Bilan de la sonde de popularité — lit `echantillon.json` + `cache.json`.
 
 Répond aux trois questions de la phase 0 :

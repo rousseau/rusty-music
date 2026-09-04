@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Génère l'encodeur CLAP en Rust natif, depuis l'ONNX, au moment du build.
 //!
 //! `burn-onnx` produit deux fichiers dans `OUT_DIR` : le code du modèle

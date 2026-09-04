@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La grille de battements : où les temps tombent, et pas seulement à quelle
 //! vitesse ils se suivent.
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que les tuiles doivent contenir, avant toute question de format.
 //!
 //! Le crate ne lit pas la base : il reçoit des données déjà rassemblées, comme

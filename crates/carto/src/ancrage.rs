@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Étage 0 : reloger les artistes les plus populaires sur les monuments
 //! iconiques de Paris.
 //!

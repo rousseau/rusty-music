@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! De l'espace de la carte au monde géographique fictif.
 //!
 //! MapLibre ne sait afficher qu'une Terre. La carte, elle, vit dans un carré

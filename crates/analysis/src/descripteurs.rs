@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Tempo, tonalité, énergie : les grandeurs nommables d'un morceau.
 //!
 //! `ui-spec.md` promet de colorer et filtrer la carte par année, tempo et

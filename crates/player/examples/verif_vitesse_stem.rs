@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La vitesse d'un seul stem agit-elle vraiment ?
 //!
 //! ```bash

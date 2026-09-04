@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Récupère les poids du démixage (module 3).
 #
 #   ./scripts/preparer-demucs.sh [htdemucs | htdemucs_6s | htdemucs_ft]

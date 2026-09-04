@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Essai burn-aero : valide le pipeline « STFT Rust → réseau ONNX → iSTFT Rust »
 //! contre les références PyTorch de `reference_aero.py`.
 //!

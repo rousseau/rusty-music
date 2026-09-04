@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Profils de routage pour l'itinéraire du mode Explorer.
 //!
 //! `docs/carto-google-maps.md` §3 : un seul graphe, plusieurs fonctions de

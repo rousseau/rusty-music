@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Enveloppe d'une piste, pour l'affichage.
 //!
 //! La maquette de direction 1a demande une onde qui « n'est plus un motif

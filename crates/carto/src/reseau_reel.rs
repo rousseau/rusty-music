@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Un graphe routable sur le plan de ville réel — pour qu'un itinéraire
 //! suive vraiment les rues, au lieu d'une ligne droite entre deux adresses.
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Décodage des fichiers Opus.
 //!
 //! symphonia — donc rodio, donc tout le reste du projet — ne décode pas Opus.

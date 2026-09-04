@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que l'étirement coûte, et ce qu'il fait aux transitoires.
 use rustfft::{num_complex::Complex, FftPlanner};
 

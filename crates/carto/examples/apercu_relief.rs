@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Écrit la tuile de relief du zoom 0 en PNG, pour juger un réglage à l'œil.
 //!
 //! `cargo run --release -p rusty-music-carto --example apercu_relief -- <base> <sortie.png>`

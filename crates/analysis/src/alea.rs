@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Générateur pseudo-aléatoire déterministe, partagé par le module 2.
 //!
 //! xorshift64* : une vingtaine de lignes, aucune dépendance. Le déterminisme

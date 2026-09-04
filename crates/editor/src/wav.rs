@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Écriture des stems en WAV.
 //!
 //! Écrit à la main plutôt qu'avec une bibliothèque : un en-tête RIFF PCM tient

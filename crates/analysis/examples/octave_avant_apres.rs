@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Concentration anormale dans [40, 90] BPM, avant/après la correction
 //! montante — la mesure de validation prévue par le plan de recherche sur
 //! l'octave (voir le fichier de plan, section « Vérification »).

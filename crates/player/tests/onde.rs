@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Vérifie que l'enveloppe suit vraiment le signal, sur un fichier réel.
 //! Ignoré par défaut : dépend d'un fichier de la bibliothèque locale, passé
 //! par la variable d'environnement `ONDE_FICHIER`.

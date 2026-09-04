@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Référence ONNX Runtime pour l'essai d'import Burn de HTDemucs.
 
 Fait passer par ONNX Runtime exactement le signal que `src/main.rs` fabrique,

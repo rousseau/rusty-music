@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Super-résolution audio hors ligne — « régénérer en HD ».
 //!
 //! Un fichier compressé a perdu le haut de son spectre. AERO (modèle appris,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Construction des tuiles vectorielles et écriture de l'archive PMTiles.
 //!
 //! Rien ici n'encode le format : `mvt` écrit le protobuf des tuiles, `pmtiles`

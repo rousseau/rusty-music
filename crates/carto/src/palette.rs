@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Les couleurs du **fond de plan** — l'eau, la terre, la voirie, le bâti, les
 //! toponymes — **plus les douze teintes de familles** telles qu'elles
 //! s'affichent *sur la carte MapLibre* (bâti habité, quartiers, points de

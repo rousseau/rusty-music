@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ombrage du relief, en tuiles raster, sous les territoires.
 //!
 //! Le champ de densité tient lieu d'altitude : là où les morceaux

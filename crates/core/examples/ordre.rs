@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 fn main() -> anyhow::Result<()> {
     let base = std::env::args().nth(1).unwrap_or_else(|| "rusty-music.db".into());
     let lib = rusty_music_core::db::Library::open(std::path::Path::new(&base))?;

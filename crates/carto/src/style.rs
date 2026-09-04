@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le style MapLibre, engendré depuis Rust.
 //!
 //! **Pourquoi ne pas l'écrire à la main en JSON.** Le style et les tuiles

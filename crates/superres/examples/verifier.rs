@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Vérifie le pipeline de super-résolution contre des références PyTorch.
 //!
 //!   # 1. exporter le modèle

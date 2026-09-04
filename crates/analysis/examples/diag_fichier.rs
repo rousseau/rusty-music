@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Diagnostic ponctuel : décode un seul fichier et rapporte sa taille en
 //! mémoire, sans passer par l'encodeur GPU. Jetable — sert à isoler un
 //! fichier suspect sans relancer la passe complète.

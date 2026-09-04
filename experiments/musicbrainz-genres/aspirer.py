@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Aspire les genres MusicBrainz de tous les artistes de la bibliothèque.
 
 Hors du workspace : c'est un sondage. Il répond à une question précise —

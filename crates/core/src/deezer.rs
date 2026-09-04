@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Deezer : le client, et rien d'autre.
 //!
 //! Comme [`crate::musicbrainz`] et [`crate::listenbrainz`], ce module parle au

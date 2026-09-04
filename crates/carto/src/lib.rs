@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Tuiles vectorielles de la carte (module 2).
 //!
 //! Rust produit les tuiles, MapLibre les affiche. Ce crate ne dessine rien : il

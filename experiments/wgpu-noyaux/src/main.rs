@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Quel noyau wgpu calcule faux ?
 //!
 //! HTDemucs importé depuis ONNX rend des stems justes sur processeur et faux

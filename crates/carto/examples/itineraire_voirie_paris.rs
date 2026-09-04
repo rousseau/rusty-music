@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! L'itinéraire du mode Explorer, routé sur la vraie voirie : pour chaque
 //! profil, la longueur du trajet, les rues traversées et la taille du couloir
 //! (les sommets d'où proviendront les morceaux de la playlist).

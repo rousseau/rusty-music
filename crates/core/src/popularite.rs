@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La passe de popularité générale : interroge ListenBrainz et Deezer, remplit
 //! la base.
 //!

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le peuplement sur la bibliothèque réelle : combien d'établissements, de
 //! quels rangs, en combien de temps.
 //!

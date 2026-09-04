@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le réseau de circulation et ses profils d'itinéraire.
 //!
 //! `carto-google-maps.md` §2 et §3. Deux idées, et la seconde vient d'OSRM :

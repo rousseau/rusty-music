@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Combien de fenêtres faut-il pour décrire un morceau ?
 //!
 //! L'encodeur HTSAT prend dix secondes. Trois fenêtres couvrent 12 % d'un

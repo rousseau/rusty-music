@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Lecture simultanée de plusieurs stems, avec solo et coupure à la volée.
 //!
 //! Le [`Player`](crate::Player) du module 1 enchaîne une file : une piste après

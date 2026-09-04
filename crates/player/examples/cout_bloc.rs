@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La pire salve du rappel audio, selon la taille de bloc.
 //!
 //! ```bash

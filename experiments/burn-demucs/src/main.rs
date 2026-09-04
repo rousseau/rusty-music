@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Fait tourner HTDemucs importé par `burn-onnx` et vérifie ce qu'il rend.
 //!
 //! Deux questions, dans l'ordre :

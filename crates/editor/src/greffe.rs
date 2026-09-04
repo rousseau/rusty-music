@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Greffe : mettre à la place d'un stem celui d'un autre morceau.
 //!
 //! C'est le premier geste de l'éditeur qui va chercher quelque chose dans la

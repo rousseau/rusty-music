@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Spectrogrammes log-mel, au format attendu par l'encodeur audio de CLAP.
 //!
 //! Les valeurs ci-dessous ne sont pas négociables : elles reproduisent le

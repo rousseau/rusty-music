@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que la grille de battements atteint, sur une vérité terrain fabriquée.
 //!
 //! ```bash

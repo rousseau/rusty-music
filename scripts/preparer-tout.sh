@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Reconstruit les modèles depuis leurs sources d'origine (au lieu de les
 # télécharger prêts avec `telecharger-modeles.sh`).
 #

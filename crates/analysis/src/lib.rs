@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Empreintes audio (module 2 — Exploration).
 //!
 //! Un modèle pré-entraîné transforme un extrait en vecteur : c'est la distance

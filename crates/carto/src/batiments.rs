@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Une grille spatiale de bâtiments, pour que l'étage 3 loge chaque morceau
 //! dans un vrai bâtiment plutôt qu'en bordure de rue.
 //!

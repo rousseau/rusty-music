@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Étirement temporel et transposition.
 //!
 //! **Vérifié avant d'écrire quoi que ce soit** : `wsola` fait déjà l'étirement

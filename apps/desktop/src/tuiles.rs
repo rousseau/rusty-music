@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Les tuiles de la carte, engendrées puis servies à la webview.
 //!
 //! MapLibre veut des tuiles derrière une URL. Rust lit l'archive PMTiles et les

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le graphe routable sur la vraie ville : combien de sommets, en combien de
 //! temps, et un plus court chemin réel entre deux points pris au hasard.
 //!

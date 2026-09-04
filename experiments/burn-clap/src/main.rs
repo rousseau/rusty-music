@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Fait tourner l'encodeur CLAP importé par `burn-onnx`, et vérifie qu'il dit
 //! la même chose que la chaîne de production (ONNX Runtime).
 //!

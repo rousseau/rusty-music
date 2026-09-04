@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Cœur d'ingestion.
 //!
 //! Point d'entrée unique du logiciel : un répertoire de musique, scanné puis

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que coûte le réseau de circulation, sur la bibliothèque réelle.
 //!
 //! `cargo run --release -p rusty-music-analysis --example cout_reseau -- <base>`

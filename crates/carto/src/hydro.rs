@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le réseau hydrographique : ce qui manque le plus au réalisme.
 //!
 //! Une carte se reconnaît à ses rivières autant qu'à ses routes. Elles donnent

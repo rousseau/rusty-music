@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Garde-fou : l'encodeur Burn rend-il toujours ce que rendait ONNX Runtime ?
 //!
 //! La migration a été validée par comparaison directe — cosinus 1,0000000000

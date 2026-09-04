@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Pilote en ligne de commande du cœur d'ingestion.
 //!
 //! Sert à valider le cœur avant que l'interface existe :

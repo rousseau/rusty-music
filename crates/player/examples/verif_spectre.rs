@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Le spectrogramme distingue-t-il vraiment les stems ?
 //!
 //! Un spectrogramme joli n'est pas un spectrogramme utile. Le contrôle porte

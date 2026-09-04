@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Sonde de popularité — récupère ListenBrainz + Deezer pour un échantillon.
 
 Hors du workspace : c'est un sondage. Il répond aux questions de la phase 0 de

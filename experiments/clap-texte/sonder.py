@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Sonde : la tour texte de CLAP sait-elle nommer nos familles ?
 
 Trois questions, dans cet ordre — chacune ne vaut d'être posée que si la

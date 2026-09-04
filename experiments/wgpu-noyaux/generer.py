@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fabrique un modèle ONNX par opérateur suspect, et sa sortie de référence.
 
 Les suspects sont les opérateurs que HTDemucs emploie et que CLAP n'employait

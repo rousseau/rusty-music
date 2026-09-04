@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Que liraient les douze familles si on les nommait avec MusicBrainz ?
 
 Applique à la lettre le score du moteur (`nommer_les_familles`, part × log₂ de

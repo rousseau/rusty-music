@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Une **carte de coût de déplacement** sur la voirie réelle : depuis un point
 //! source, combien « coûte » chaque endroit de la ville si l'on se déplace le
 //! long des rues, les grandes voies comptant moins au mètre que les impasses.

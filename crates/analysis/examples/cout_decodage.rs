@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Décoder tout le fichier, ou se placer aux trois fenêtres ?
 //!
 //! `cout_chaine` a montré que le décodage pèse 87 % de la chaîne. Or on ne

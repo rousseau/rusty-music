@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Traduit HTDemucs en Rust natif, au moment du build.
 //!
 //! Contrairement à CLAP, ce modèle déclare déjà son entrée en dur —

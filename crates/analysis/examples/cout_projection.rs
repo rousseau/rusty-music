@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Ce que coûte la projection à l'échelle de la bibliothèque.
 //!
 //! La projection ne se découpe pas : les coordonnées t-SNE n'ont de sens que

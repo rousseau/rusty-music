@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Cover Art Archive : la pochette d'un album, par identifiant de release-group.
 //!
 //! Comme [`crate::musicbrainz`] et [`crate::listenbrainz`], ce module ne fait

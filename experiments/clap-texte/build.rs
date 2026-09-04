@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Génère du Rust natif depuis la tour texte de CLAP, au moment du build.
 //!
 //! **La question de l'essai.** La tour audio n'a pas été importable telle que

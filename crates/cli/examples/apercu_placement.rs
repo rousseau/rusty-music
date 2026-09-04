@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Évaluation qualitative du placement des morceaux sur le plan de ville, et
 //! images SVG pour la juger à l'œil.
 //!

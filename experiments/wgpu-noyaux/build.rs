@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Traduit les neuf modèles d'un opérateur en Rust natif.
 //!
 //! Chacun ne contient qu'un nœud : si la génération échoue sur l'un d'eux,

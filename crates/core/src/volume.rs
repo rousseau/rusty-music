@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Nature du support qui porte un chemin — amovible ou non.
 //!
 //! Sert à moduler la concurrence d'un balayage : une carte SD ou une clé USB

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare notre carte à celle d'AudioMuse-AI sur la même bibliothèque.
 
 Hors du workspace : c'est un sondage, pas une dépendance. Rien de ce que

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La projection préserve-t-elle le genre, ou l'empreinte ne le porte-t-elle
 //! pas ? Deux hypothèses pour un même symptôme — une famille de genre étalée
 //! sur presque toute la carte — et ce contrôle les sépare.

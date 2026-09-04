@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Où passe le temps d'une transposition, phase par phase.
 //!
 //! ```bash

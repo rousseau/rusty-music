@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Scan initial d'une racine : parcours récursif, lecture des tags, insertion.
 //!
 //! La lecture des tags passe par un petit pool de threads : elle est dominée

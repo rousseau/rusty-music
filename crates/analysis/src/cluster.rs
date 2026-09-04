@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Regroupement des morceaux en familles, pour la légende de la carte.
 //!
 //! Deux méthodes. [`kmeans`] est purement acoustique : elle ne sait rien des

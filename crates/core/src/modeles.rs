@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Où trouver les poids des modèles, selon d'où on tourne.
 //!
 //! Deux exécutions n'ont pas la même idée de « à côté » :

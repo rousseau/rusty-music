@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! La carte veut-elle dire quelque chose ?
 //!
 //! Contrôle indépendant du modèle : on compare les distances sur la carte à

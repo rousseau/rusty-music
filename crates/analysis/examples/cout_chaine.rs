@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Coût de la chaîne complète, sur de vrais morceaux.
 //!
 //! Complète le jalon 1, qui ne chiffrait que l'inférence : on mesure ici les
