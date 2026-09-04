@@ -17,6 +17,25 @@ Rust » (voir `docs/rust-audio-stack.md`).
 Écrit intégralement par Claude. Contexte de travail : `CLAUDE.md`.
 Spécifications : `docs/`.
 
+## Installer
+
+**Utiliser l'application (macOS, sans rien compiler)** — télécharger le
+`.dmg` de la [dernière release](https://github.com/rousseau/rusty-music/releases/latest),
+l'ouvrir, glisser l'app dans Applications. Le paquet n'est pas signé : au
+premier lancement, **clic droit sur l'app → Ouvrir** (un double-clic normal
+est bloqué par Gatekeeper).
+
+**Construire depuis les sources, en une commande** — [Rust](https://rustup.rs)
+et un compilateur C installés (`xcode-select --install`) :
+
+```bash
+git clone https://github.com/rousseau/rusty-music && cd rusty-music && ./scripts/release.sh
+```
+
+Cette seule commande installe `tauri-cli` si besoin, télécharge les modèles et
+le plan de Paris (~0,4 Go, empreintes vérifiées), puis construit `.app` et
+`.dmg` dans `target/release/bundle/`. Compte 15-30 min au premier lancement.
+
 ## État
 
 | Brique | État |
@@ -84,24 +103,20 @@ La base est créée dans `./rusty-music.db` (modifiable avec `--db`).
 
 ### L'application de bureau
 
-Les trois modèles sont nécessaires (`tauri-build` vérifie les ressources) ;
-la carte embarque le plan de Paris :
+Pour un paquet prêt à l'emploi, voir « Installer » plus haut. En développement,
+les trois modèles sont nécessaires (`tauri-build` vérifie les ressources) ;
+la carte affiche le plan de Paris si `ville-paris.db` est présent :
 
 ```bash
 ./scripts/telecharger-modeles.sh        # les trois modèles
 ./scripts/telecharger-ville.sh          # le plan de Paris (~56 Mo)
-cargo run -p rusty-music-desktop        # dev
-./scripts/release.sh                    # .app + .dmg (macOS), --universal en option
+cargo run -p rusty-music-desktop
 ```
 
 L'application tient sa propre base dans le dossier de données du système
 (`app_data_dir()/rusty-music.db`) et propose un sélecteur de dossier au premier
-lancement. Le plan de Paris (`ville-paris.db`) est installé du paquet au premier
-lancement ; `carto ville` permet d'en importer un autre.
-
-Le `.dmg` publié n'est ni signé ni notarisé : au premier lancement, macOS le
-bloque. **Clic droit sur l'app → Ouvrir**, puis confirmer ; ou
-`xattr -dr com.apple.quarantine "/Applications/Rusty Music.app"`.
+lancement. Le plan de Paris est installé du paquet au premier lancement d'un
+`.app` construit par `release.sh` ; `carto ville` permet d'en importer un autre.
 
 ### Vérifier
 

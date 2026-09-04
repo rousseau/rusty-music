@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Construit le paquet macOS (`.app` + `.dmg`) de Rusty Music.
+# Construit le paquet macOS (`.app` + `.dmg`) de Rusty Music — de bout en bout,
+# en une commande une fois Rust et un compilateur C installés :
+#
+#   git clone https://github.com/rousseau/rusty-music && cd rusty-music && ./scripts/release.sh
 #
 #   ./scripts/release.sh [--universal]
 #
@@ -15,9 +18,18 @@ set -euo pipefail
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RACINE"
 
-command -v cargo-tauri >/dev/null 2>&1 || {
-  echo "cargo-tauri absent : cargo install --locked tauri-cli" >&2
+command -v cargo >/dev/null 2>&1 || {
+  echo "Rust absent : https://rustup.rs" >&2
   exit 1
+}
+command -v cc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1 || {
+  echo "Compilateur C absent : installer les outils en ligne de commande Xcode" >&2
+  echo "  (xcode-select --install)" >&2
+  exit 1
+}
+command -v cargo-tauri >/dev/null 2>&1 || {
+  echo "→ tauri-cli (une fois — quelques minutes)"
+  cargo install --locked tauri-cli --version "^2"
 }
 
 echo "→ modèles et plan de ville"
