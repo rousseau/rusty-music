@@ -61,7 +61,7 @@ experiments/           sondages jetables, hors du workspace
 
   ```bash
   ./scripts/telecharger-modeles.sh        # les trois, depuis les release assets
-  ./scripts/telecharger-modeles.sh clap   # le minimum pour compiler
+  ./scripts/telecharger-modeles.sh clap   # suffit pour `cargo build -p rusty-music-cli`
   ```
 
   Le script vérifie les empreintes SHA-256. Pour reconstruire les modèles
@@ -84,15 +84,19 @@ La base est créée dans `./rusty-music.db` (modifiable avec `--db`).
 
 ### L'application de bureau
 
+Les trois modèles sont nécessaires (`tauri-build` vérifie les ressources) ;
+la carte affiche le plan de Paris si `ville-paris.db` est présente :
+
 ```bash
+./scripts/telecharger-modeles.sh        # les trois modèles
+./scripts/telecharger-ville.sh          # le plan de Paris (~56 Mo)
 cargo run -p rusty-music-desktop        # dev
 cargo tauri build                       # .app + .dmg (macOS)
 ```
 
 L'application tient sa propre base dans le dossier de données du système
 (`app_data_dir()/rusty-music.db`) et propose un sélecteur de dossier au premier
-lancement. `cargo tauri build` empaquette les poids déclarés dans
-`apps/desktop/tauri.conf.json` — ils doivent donc être présents dans `models/`.
+lancement. Sans `ville-paris.db`, la carte se rabat sur un monde procédural.
 
 ### Vérifier
 

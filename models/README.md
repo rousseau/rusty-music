@@ -5,7 +5,7 @@ fichier). Deux façons de le remplir :
 
 ```bash
 ./scripts/telecharger-modeles.sh        # récupère les trois, empreintes vérifiées
-./scripts/telecharger-modeles.sh clap   # le minimum pour que `cargo build` passe
+./scripts/telecharger-modeles.sh clap   # suffit pour `cargo build -p rusty-music-cli`
 ```
 
 ou, pour reconstruire depuis les sources d'origine :
@@ -25,7 +25,8 @@ La licence des poids est **distincte** de celle du code (GPL-3.0-or-later).
 Autres fichiers possibles ici, non requis :
 
 - `clap-audio-encoder-b5.bpk` — poids de CLAP au format Burn, **régénérés** par
-  `crates/analysis/build.rs` dans `OUT_DIR` puis recopiés ici lors d'un build
-  `release` (c'est cette copie qu'empaquette `cargo tauri build`).
+  `crates/analysis/build.rs` dans `OUT_DIR` puis recopiés ici **à chaque
+  build** (c'est cette copie qu'empaquette `cargo tauri build`, et que
+  `tauri-build` exige de trouver ici même pour un simple `cargo build`).
 - `htdemucs_6s.safetensors`, `htdemucs_ft.safetensors` — variantes de démixage
   (`scripts/preparer-demucs.sh htdemucs_6s`).

@@ -13,7 +13,7 @@ Prérequis :
 
   ```bash
   ./scripts/telecharger-modeles.sh        # les trois
-  ./scripts/telecharger-modeles.sh clap   # le minimum pour compiler
+  ./scripts/telecharger-modeles.sh clap   # suffit pour le binaire `rusty-music` seul
   ```
 
   `crates/analysis/build.rs` traduit l'encodeur CLAP depuis l'ONNX au moment
