@@ -6,9 +6,15 @@
 //! **Les algorithmes sont ceux des bibliothèques du domaine, pas des
 //! inventions.** Tempo : flux spectral puis autocorrélation à peigne, comme
 //! `onset/specflux` et `beattracking` d'aubio. Tonalité : chroma corrélé aux
-//! profils de Krumhansl-Schmuckler, comme QM-DSP (celui de Mixxx). Les écrire
-//! plutôt que les lier évite une dépendance C et un passage sous copyleft, pour
-//! trois cents lignes.
+//! profils de Krumhansl-Schmuckler, comme QM-DSP (celui de Mixxx).
+//!
+//! **Écrits plutôt que liés à l'origine pour éviter une dépendance C et un
+//! passage sous copyleft — raison caduque depuis le passage du projet sous
+//! GPL-3.0-or-later** (`CLAUDE.md`), qui débloque explicitement `aubio` et
+//! `Essentia`. Réécrire ce module par-dessus une bibliothèque mûre reste une
+//! évaluation à faire, pas encore faite (`docs/rust-audio-stack.md`) ; ce
+//! qui suit n'est donc qu'un correctif de l'algorithme maison existant, pas
+//! un jugement sur sa pérennité.
 //!
 //! **La grille de battements est dans `battements.rs`**, et elle part d'ici :
 //! même flux spectral, même autocorrélation. Ce module rend un tempo, celui-là
@@ -53,8 +59,9 @@ const CANDIDATS: usize = 240;
 const BPM_PREFERE: f32 = 120.0;
 const ETALEMENT: f32 = 0.9;
 
-/// Sous ce ratio de l'évidence brute du gagnant, la moitié de son tempo n'est
-/// qu'un artefact et ne le détrône pas.
+/// En dessous de ce rapport entre les temps faibles et les temps forts d'une
+/// grille, les attaques alternent assez pour que le gagnant soit jugé une
+/// subdivision d'un temps deux fois plus lent : on le divise par deux.
 ///
 /// L'erreur d'octave la plus fréquente va dans un seul sens : une subdivision
 /// régulière et bien marquée (guitare en « boom-chick », charleston discret)
@@ -62,30 +69,23 @@ const ETALEMENT: f32 = 0.9;
 /// rendu — jamais l'inverse. La préférence log-normale ci-dessus ne suffit
 /// pas à la corriger : sur la plage retenue (60-200), elle est plus proche de
 /// 120 pour un tempo doublé que pour l'original resté lent, et confirme donc
-/// l'erreur au lieu de la rattraper. D'où cette seconde passe, jugée sur
-/// l'évidence brute — sans la préférence, qui a déjà tranché une fois plus
-/// haut et ne doit pas y revenir en double compte.
+/// l'erreur au lieu de la rattraper. D'où cette seconde passe.
 ///
-/// Calé sur un cas réel plutôt qu'un signal de synthèse : « Give My Love to
-/// Rose » (Johnny Cash, guitare en boom-chick) ressortait à 130 BPM. Sur ses
-/// cinq fenêtres mesurées, deux passaient ce seuil (ratio brut 0,99 et 1,15)
-/// et corrigeaient juste à 65 ; les trois autres (ratio 0,56 à 0,65) restent
-/// non corrigées — l'ambiguïté d'octave n'est pas résolue fenêtre par
-/// fenêtre à coup sûr, seulement rendue moins systématique.
-const SEUIL_SOUS_OCTAVE: f32 = 0.85;
-
-/// En plus du ratio ci-dessus, la moitié de la période doit montrer une
-/// corrélation à un seul décalage (pas la moyenne des trois harmoniques) qui
-/// ne soit pas insignifiante face à celle du gagnant.
+/// **Le tell est l'alternance fort/faible d'un temps sur deux**, pas
+/// l'évidence brute au sous-multiple. Comparer `brut(bpm / 2)` à `brut(bpm)`,
+/// ou même `correle(env, 2d)` à `correle(env, d)`, ne discrimine rien : ces
+/// décalages tombent tous sur des pics réels d'un train périodique de
+/// période T, et le seul écart mesuré vient de la quantification en trames
+/// d'une période fractionnaire (mesuré : un train de clics parfaitement
+/// régulier donnait déjà un rapport de 1,22, division à tort de 55 % de la
+/// bibliothèque). On pose donc un peigne à la période du gagnant, on cherche
+/// sa meilleure phase, et on compare l'énergie moyenne des dents de rang pair
+/// à celle des dents de rang impair — même période, même interpolation pour
+/// les deux, le biais de quantification s'annule. Un train régulier rend un
+/// rapport de ~1 et n'est jamais touché.
 ///
-/// Sans ce plancher, un train de clics de synthèse parfaitement régulier —
-/// donc sans aucune énergie à mi-décalage, l'appui entre deux clics étant
-/// rigoureusement nul — passait quand même le ratio ci-dessus (calculé, lui,
-/// sur la moyenne des trois harmoniques, où le second harmonique du
-/// sous-multiple recouvre en partie le premier du gagnant) et se voyait
-/// coupé en deux sans raison. Sur un enregistrement réel, ce plancher ne
-/// coûte rien : l'énergie n'y est jamais rigoureusement nulle.
-const SEUIL_PLANCHER_MI_DECALAGE: f32 = 0.02;
+/// Valeur de départ, à recaler sur `examples/octave_avant_apres.rs`.
+const SEUIL_SOUS_OCTAVE: f32 = 0.60;
 
 /// Plancher de la moitié corrigée — distinct de `BPM_MIN`, plus bas.
 ///
@@ -98,6 +98,43 @@ const SEUIL_PLANCHER_MI_DECALAGE: f32 = 0.02;
 /// moitié 58,6) de rejoindre les trois autres autour de 65 plutôt que de
 /// rester bloquée juste sous 60.
 const BPM_MIN_CORRECTION: f32 = 45.0;
+
+/// Nombre de phases essayées pour caler le peigne de la correction
+/// descendante. Le pas vaut T/`PHASES_PEIGNE` — à 120 BPM, 46,9 trames de
+/// période, soit ~1 trame, sous la largeur d'un pic de flux.
+const PHASES_PEIGNE: usize = 48;
+
+/// Sens montant : sous ce ratio, le double du tempo gagnant n'est qu'un
+/// artefact et ne le détrône pas.
+///
+/// Jugé sur `brut`, qui discrimine ici là où il ne discrimine pas dans
+/// l'autre sens : le double du gagnant échantillonne l'autocorrélation en
+/// d/2 et 3d/2 — des creux, pas des pics — donc un faux double y perd
+/// franchement, et le seuil peut être serré (1,02 : le double doit dépasser
+/// l'évidence du gagnant lui-même, pas seulement en approcher une fraction).
+/// Une subdivision en croches est quasi universelle dans la musique
+/// populaire — charleston, guitare rythmique — si bien que presque tout
+/// morceau montre une évidence non négligeable au double de son tempo réel ;
+/// un seuil lâche suroctaverait la majorité de la bibliothèque.
+///
+/// Calé sur un cas réel : « Hard Core 100% Fluor » (Watcha, hardcore)
+/// ressortait à 46 BPM alors que l'évidence brute, sur une grille élargie,
+/// pointe nettement vers ~183 sur 4 de ses 5 fenêtres. Le gagnant de grille
+/// (dans [60, 200]) y est 92,2 (évidence 0,711) contre 183,5 son double
+/// (évidence 0,730, ratio 1,03) — largement au-dessus du seuil retenu.
+const SEUIL_SUR_OCTAVE: f32 = 1.02;
+
+/// Plafond du double corrigé — symétrique de `BPM_MIN_CORRECTION`, par le
+/// même rapport à sa borne de grille (`BPM_MIN_CORRECTION / BPM_MIN` = 0,75,
+/// donc `BPM_MAX / 0,75` ≈ 267).
+///
+/// `BPM_MAX` protège la grille de candidats : au-delà, un gagnant *de
+/// départ* confondrait le tempo avec ses doubles croches (voir sa doc). La
+/// correction part d'un gagnant déjà validé dans cette plage et se contente
+/// de le doubler — une lecture à 267 BPM reste plausible pour un morceau
+/// très rapide (hardcore, speedcore) même si la grille elle-même ne
+/// l'aurait pas proposée d'emblée.
+const BPM_MAX_CORRECTION: f32 = 266.7;
 
 /// Chroma de la₂ à do₇. Plus bas, l'écart d'un demi-ton rejoint la largeur
 /// d'une raie ; plus haut, les cymbales alimentent les douze classes.
@@ -379,6 +416,63 @@ pub(crate) fn correle(env: &[f32], d: f32) -> f32 {
     somme / n as f32
 }
 
+/// Rapport entre les temps faibles et les temps forts d'une grille de période
+/// `periode` (en trames) posée sur l'enveloppe d'attaques.
+///
+/// Un peigne de Dirac de cette période est glissé sur `PHASES_PEIGNE` phases ;
+/// à celle qui ramasse le plus d'énergie, les dents de rang pair et de rang
+/// impair sont moyennées séparément, et l'on rend `faible / fort` — le plus
+/// petit des deux sur le plus grand.
+///
+/// **1,0 = aucune alternance**, tous les temps se valent, la période est le
+/// vrai battement. **Vers 0 = un temps sur deux est nettement plus faible**,
+/// la période n'est qu'une subdivision d'un temps deux fois plus lent (guitare
+/// en boom-chick, charleston sur les croches).
+///
+/// Le peigne travaille à période constante et même interpolation pour les deux
+/// familles de dents : contrairement à une comparaison `correle(d)` contre
+/// `correle(2d)`, le biais de quantification d'une période fractionnaire en
+/// trames s'annule dans le rapport.
+fn alternance_dents(env: &[f32], periode: f32) -> f32 {
+    if periode < 1.0 || env.len() < 2 {
+        return 1.0;
+    }
+    let dents = |phi: f32| -> (f32, f32) {
+        let (mut pair, mut impair) = (0.0f32, 0.0f32);
+        let (mut n_pair, mut n_impair) = (0usize, 0usize);
+        let mut x = phi;
+        let mut rang = 0usize;
+        while (x as usize) + 1 < env.len() {
+            let (j, t) = (x.floor() as usize, x.fract());
+            let v = env[j] * (1.0 - t) + env[j + 1] * t;
+            if rang % 2 == 0 {
+                pair += v;
+                n_pair += 1;
+            } else {
+                impair += v;
+                n_impair += 1;
+            }
+            rang += 1;
+            x += periode;
+        }
+        let moy = |s: f32, n: usize| if n > 0 { s / n as f32 } else { 0.0 };
+        (moy(pair, n_pair), moy(impair, n_impair))
+    };
+
+    let mut meilleur = (f32::MIN, 1.0f32);
+    for k in 0..PHASES_PEIGNE {
+        let phi = periode * k as f32 / PHASES_PEIGNE as f32;
+        let (p, i) = dents(phi);
+        let total = p + i;
+        let (fort, faible) = if p >= i { (p, i) } else { (i, p) };
+        let rapport = if fort > f32::EPSILON { faible / fort } else { 1.0 };
+        if total > meilleur.0 {
+            meilleur = (total, rapport);
+        }
+    }
+    meilleur.1
+}
+
 /// Le tempo le plus vraisemblable, ou `None` si rien ne ressort — en pratique,
 /// le silence seul.
 pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
@@ -410,15 +504,25 @@ pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
         .max_by(|a, b| a.1.total_cmp(&b.1))
         .filter(|(_, s)| *s > 0.02)?;
 
-    // Correction d'octave, sur l'évidence brute du gagnant plutôt que sur le
-    // score déjà pondéré — voir `SEUIL_SOUS_OCTAVE` et `SEUIL_PLANCHER_MI_DECALAGE`.
+    // Correction d'octave. Les deux sens sont mutuellement exclusifs, jamais
+    // chaînés : un gagnant ne descend ou ne monte qu'une fois.
+    //
+    // Ils ne se jugent pas sur la même grandeur, et c'est voulu — voir
+    // `SEUIL_SOUS_OCTAVE` et `SEUIL_SUR_OCTAVE`. Le sens descendant regarde
+    // l'alternance fort/faible d'un temps sur deux ([`alternance_dents`]) ;
+    // `brut(bpm / 2)` ne discriminerait rien, il n'échantillonne que des
+    // pics réels. Le sens montant, lui, peut s'appuyer sur `brut` : le
+    // double échantillonne des creux, un faux double y perd.
     let d = decalage(bpm);
-    let mi_decalage = correle(env, d / 2.0) / reference;
-    let fondamentale = correle(env, d) / reference;
-    let bpm = if bpm / 2.0 >= BPM_MIN_CORRECTION
-        && mi_decalage >= fondamentale * SEUIL_PLANCHER_MI_DECALAGE
-        && brut(bpm / 2.0) >= brut(bpm) * SEUIL_SOUS_OCTAVE
-    {
+    let corrige_vers_le_bas =
+        bpm / 2.0 >= BPM_MIN_CORRECTION && alternance_dents(env, d) < SEUIL_SOUS_OCTAVE;
+    let corrige_vers_le_haut =
+        bpm * 2.0 <= BPM_MAX_CORRECTION && brut(bpm * 2.0) >= brut(bpm) * SEUIL_SUR_OCTAVE;
+    // Le sens montant l'emporte quand les deux qualifient : son test est le
+    // plus rare et le plus spécifique.
+    let bpm = if corrige_vers_le_haut {
+        bpm * 2.0
+    } else if corrige_vers_le_bas {
         bpm / 2.0
     } else {
         bpm
@@ -618,6 +722,55 @@ mod tests {
                 ecart * 100.0
             );
         }
+    }
+
+    /// Un seul train de clics à `bpm_rapide`, mais un clic sur deux plus
+    /// fort — le motif d'accent (grosse caisse en fin de mesure) qui, sur un
+    /// morceau réel très rapide, peut faire préférer au peigne le rythme de
+    /// la mesure plutôt que celui du battement. **Un seul train, pas deux
+    /// superposés** : ajouter un second train complet au taux de la mesure
+    /// injecterait une périodicité qui n'existe pas dans le mécanisme réel
+    /// et biaiserait le test dans le mauvais sens (constaté en écrivant ce
+    /// test : ça fait au contraire *descendre* un gagnant déjà juste).
+    fn clics_accentues(bpm_rapide: f32, secondes: f32, gain_fort: f32, gain_faible: f32) -> Vec<f32> {
+        let n = (SR as f32 * secondes) as usize;
+        let periode = (SR as f32 * 60.0 / bpm_rapide) as usize;
+        let mut s = vec![0.0f32; n];
+        for (indice, debut) in (0..n).step_by(periode).enumerate() {
+            let gain = if indice % 2 == 0 { gain_fort } else { gain_faible };
+            let duree = (SR as usize / 50).min(n - debut);
+            for i in 0..duree {
+                let t = i as f32 / duree as f32;
+                s[debut + i] = gain * (1.0 - t) * (((i * 7919) % 2001) as f32 / 1000.0 - 1.0);
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn le_tempo_remonte_un_rythme_accentue_a_la_mesure() {
+        // Calé sur le mécanisme réel diagnostiqué sur « Hard Core 100% Fluor »
+        // (Watcha, hardcore ~183 BPM) : le gagnant de grille s'arrête sur le
+        // rythme de la mesure (moitié du vrai tempo) parce que son accent
+        // l'emporte sur le battement régulier, et la correction descendante
+        // seule ne peut alors que l'enfoncer. `facteur_accent = 3.0` : assez
+        // pour que la mesure domine nettement l'évidence brute, sans quoi le
+        // peigne retrouve le battement directement et ne teste rien.
+        let a = Analyseur::new();
+        let attendu = 176.0f32; // sa moitié, 88, reste dans la grille [60,200]
+        // Contraste mesuré, pas deviné : en dessous de 0,8 le rythme de la
+        // mesure domine trop pour laisser une évidence testable au
+        // battement ; 0,9 donne une marge confortable au-dessus du seuil.
+        let mut env = flux(&a.spectres(&clics_accentues(attendu, 12.0, 1.0, 0.9)));
+        centrer(&mut env);
+        let trouve = tempo(&env).expect("pulsation régulière");
+        let ecart = (trouve - attendu).abs() / attendu;
+        assert!(
+            ecart < 0.03,
+            "attendu {attendu}, lu {trouve:.1} ({:.1} %) — la correction montante n'a pas \
+             remonté le rythme de la mesure vers le battement",
+            ecart * 100.0
+        );
     }
 
     /// Le silence n'a pas de tempo. Rendre 120 par défaut colorerait la carte

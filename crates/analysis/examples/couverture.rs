@@ -5,6 +5,14 @@
 //! Maintenant que le positionnement rend le décodage sept fois moins cher, on
 //! peut se payer davantage de fenêtres — encore faut-il que ça serve.
 //!
+//! **Ça ne sert pas.** Poussé jusqu'à 25 fenêtres (250 s — la quasi-totalité
+//! de la plupart des morceaux de la bibliothèque), le rapport au hasard ne
+//! bouge plus depuis 5 : 0,52-0,53× sur toute la plage 5-25, contre 0,58× à
+//! une seule fenêtre. Le plafond est atteint à 50 s, pas repoussé par le
+//! reste du morceau. Couvrir davantage coûte (environ 5× plus de calcul par
+//! morceau, mesuré : 2,53 s à 25 fenêtres contre 0,36 s à 5 sur SSD) sans
+//! rien rendre en échange — voir `docs/journal.md`, section empreintes.
+//!
 //! Le juge est le même qu'au jalon 2, et il est indépendant du modèle :
 //! l'album et l'artiste viennent des tags, que le réseau n'a jamais vus. Une
 //! représentation est meilleure si elle rapproche les morceaux d'un même
@@ -12,10 +20,11 @@
 //!
 //!   cargo run --release -p rusty-music-analysis --example couverture -- <base.db> [albums]
 //!
-//! Les neuf fenêtres sont décodées **une seule fois** : les fenêtrages plus
-//! courts en sont des sous-ensembles exacts (`fractions(3)` ⊂ `fractions(9)`).
-//! Les variantes comparées portent donc exactement le même audio — la seule
-//! différence est le nombre de fenêtres moyennées.
+//! Toutes les fenêtres de `MAX` sont décodées **une seule fois** : les
+//! fenêtrages plus courts en sont des sous-ensembles exacts
+//! (`fractions(3)` ⊂ `fractions(MAX)`). Les variantes comparées portent donc
+//! exactement le même audio — la seule différence est le nombre de fenêtres
+//! moyennées.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -28,8 +37,8 @@ use rusty_music_core::Library;
 
 /// Fenêtrages comparés. Chacun doit diviser le plus grand pour que ses
 /// positions en soient un sous-ensemble exact.
-const VARIANTES: [usize; 4] = [1, 3, 5, 9];
-const MAX: usize = 9;
+const VARIANTES: [usize; 6] = [1, 3, 5, 9, 15, 25];
+const MAX: usize = 25;
 
 /// Indices, dans les `MAX` fenêtres décodées, de celles que retient `n`.
 fn indices(n: usize) -> Vec<usize> {
