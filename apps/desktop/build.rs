@@ -23,7 +23,39 @@ fn main() {
     let mut h = Hachage::new();
     surveiller(Path::new("ui"), &mut h);
     println!("cargo:rustc-env=RUSTY_UI_HASH={:016x}", h.valeur());
+    completer_ressources_de_paquet();
     tauri_build::build();
+}
+
+/// `tauri_build::build()` refuse de tourner si une ressource déclarée dans
+/// `tauri.conf.json` manque — même pour un simple `cargo build`/`clippy`, où
+/// l'on n'empaquette rien.
+///
+/// Deux d'entre elles ne sont pas dans le dépôt : `htdemucs.safetensors`
+/// (téléchargée par `scripts/telecharger-modeles.sh`) et
+/// `clap-audio-encoder-b5.bpk` (produite par `crates/analysis/build.rs`, mais
+/// seulement en profil `release`, et sans garantie d'ordre entre scripts de
+/// build). Pour que la compilation aboutisse quand même, on pose un fichier
+/// vide en dernier recours. Un build `release` — le seul qui empaquette —
+/// écrit le vrai `.bpk` par-dessus (`analysis/build.rs`), et
+/// `scripts/telecharger-modeles.sh` fournit le vrai `.safetensors`.
+fn completer_ressources_de_paquet() {
+    for nom in ["clap-audio-encoder-b5.bpk", "htdemucs.safetensors"] {
+        let chemin = Path::new("../../models").join(nom);
+        if chemin.exists() {
+            continue;
+        }
+        if let Some(dir) = chemin.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        match std::fs::File::create(&chemin) {
+            Ok(_) => println!(
+                "cargo:warning=ressource `{nom}` absente — fichier vide posé. \
+                 Un build release ou `scripts/telecharger-modeles.sh` fournit la vraie."
+            ),
+            Err(e) => println!("cargo:warning=impossible de poser `{nom}` : {e}"),
+        }
+    }
 }
 
 /// Déclare chaque fichier de `ui/` à Cargo (pour relancer ce script) et le
