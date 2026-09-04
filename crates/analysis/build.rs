@@ -51,25 +51,21 @@ fn signaler_les_poids() {
     println!("cargo:rustc-env=RM_POIDS={}", poids.display());
 }
 
-/// Dépose les poids dans `models/`, d'où l'empaqueteur les prendra.
+/// Dépose les poids dans `models/`, où `apps/desktop/tauri.conf.json` les
+/// déclare comme ressource du paquet.
 ///
-/// **Seulement depuis un build `release`, et toujours en écrasant.** Deux
-/// raisons, toutes deux payées d'un bogue :
+/// **À chaque build, en écrasant.** Le `.bpk` est déterministe : `burn-onnx`
+/// génère les mêmes octets depuis le même `.onnx`, quel que soit l'`opt-level`.
+/// Le faire aussi en debug règle deux choses : `cargo build`/`clippy` de
+/// `apps/desktop` échouait tant que le fichier n'existait pas (tauri-build
+/// vérifie l'existence des ressources), et un `cargo tauri build` n'est plus
+/// le seul à savoir produire un paquet cohérent.
 ///
-/// - chaque profil de compilation régénère code *et* poids ; un emplacement
-///   partagé entre profils est ambigu par construction. `cargo tauri build`
-///   compile en release, donc c'est release qui a le droit d'écrire ;
-/// - la version précédente comparait les **tailles** pour éviter une copie
-///   inutile. Tous ces `.bpk` font exactement la même taille : la copie était
-///   systématiquement sautée, et le paquet embarquait des poids venus d'un
-///   build antérieur — ne correspondant au code d'aucun des deux profils.
-///
-/// Une copie de 117 Mo par build release coûte une fraction de seconde. Le
-/// doute, lui, coûte une empreinte fausse sans le moindre message.
+/// Deux bogues passés, pour mémoire : comparer les **tailles** pour éviter une
+/// copie sautait toujours (tous les `.bpk` font la même taille), et le paquet
+/// embarquait alors des poids d'un build antérieur. D'où la copie
+/// inconditionnelle — 117 Mo, une fraction de seconde.
 fn deposer_pour_le_paquet() {
-    if std::env::var("PROFILE").as_deref() != Ok("release") {
-        return;
-    }
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     let source = Path::new(&out).join("model").join(format!("{POIDS}.bpk"));
     let dossier = Path::new("../../models");
