@@ -17,6 +17,7 @@ pub mod pochette;
 pub mod opus;
 pub mod scan;
 pub mod tags;
+pub mod volume;
 pub mod watch;
 
 pub use db::Library;
