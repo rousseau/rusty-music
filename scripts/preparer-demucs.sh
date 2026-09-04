@@ -26,6 +26,12 @@ esac
 SORTIE="$RACINE/models/$VARIANTE.safetensors"
 URL="https://huggingface.co/set-soft/audio_separation/resolve/main/Demucs/$VARIANTE.safetensors"
 
+# Empreinte connue de la variante par défaut (celle qu'empaquette la release).
+# Les autres ne sont pas vérifiées faute d'avoir été téléchargées ici.
+SHA_ATTENDU=""
+[ "$VARIANTE" = "htdemucs" ] && \
+  SHA_ATTENDU=8193504cdfb3943adaf039b8acb524a46e87ebf232c383ac7a32c80a6578423e
+
 if [ -f "$SORTIE" ]; then
   echo "✓ déjà là : $SORTIE"
   exit 0
@@ -33,6 +39,14 @@ fi
 
 mkdir -p "$RACINE/models"
 echo "→ $VARIANTE ($POIDS)"
-curl -L --fail --progress-bar -o "$SORTIE.partiel" "$URL"
+curl -L --fail --retry 3 --retry-delay 5 --progress-bar -o "$SORTIE.partiel" "$URL"
+if [ -n "$SHA_ATTENDU" ]; then
+  REEL="$(shasum -a 256 "$SORTIE.partiel" | cut -d' ' -f1)"
+  if [ "$REEL" != "$SHA_ATTENDU" ]; then
+    echo "✗ empreinte inattendue : $REEL (attendu $SHA_ATTENDU)" >&2
+    rm -f "$SORTIE.partiel"
+    exit 1
+  fi
+fi
 mv "$SORTIE.partiel" "$SORTIE"
 echo "✓ $SORTIE"

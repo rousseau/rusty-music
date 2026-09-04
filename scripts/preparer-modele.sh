@@ -31,11 +31,22 @@ LOT=5
 TRAMES=1001
 MELS=64
 
+SOURCE_URL="https://huggingface.co/icybawss/clap-htsat-unfused-audio-encoder-onnx/resolve/main/audio_model.onnx"
+SOURCE_SHA=a1c2b43c44f71e0fa841a4b86700886c199bf87699ea45632c4d831bc6c88957
+
 if [ ! -f "$MODELE" ]; then
-  echo "Modèle absent. Le récupérer d'abord :" >&2
-  echo >&2
-  echo "  mkdir -p models && curl -L -o $MODELE \\" >&2
-  echo "    https://huggingface.co/icybawss/clap-htsat-unfused-audio-encoder-onnx/resolve/main/audio_model.onnx" >&2
+  echo "→ modèle source depuis Hugging Face"
+  curl -L --fail --retry 3 --retry-delay 5 -o "$MODELE.partiel" "$SOURCE_URL"
+  mv "$MODELE.partiel" "$MODELE"
+fi
+
+REEL="$(shasum -a 256 "$MODELE" | cut -d' ' -f1)"
+if [ "$REEL" != "$SOURCE_SHA" ]; then
+  echo "✗ le modèle source n'a pas l'empreinte attendue" >&2
+  echo "  $MODELE" >&2
+  echo "  attendu $SOURCE_SHA" >&2
+  echo "  obtenu  $REEL" >&2
+  echo "  (le supprimer et relancer, ou vérifier la source)" >&2
   exit 1
 fi
 
