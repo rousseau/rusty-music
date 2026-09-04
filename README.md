@@ -85,18 +85,23 @@ La base est créée dans `./rusty-music.db` (modifiable avec `--db`).
 ### L'application de bureau
 
 Les trois modèles sont nécessaires (`tauri-build` vérifie les ressources) ;
-la carte affiche le plan de Paris si `ville-paris.db` est présente :
+la carte embarque le plan de Paris :
 
 ```bash
 ./scripts/telecharger-modeles.sh        # les trois modèles
 ./scripts/telecharger-ville.sh          # le plan de Paris (~56 Mo)
 cargo run -p rusty-music-desktop        # dev
-cargo tauri build                       # .app + .dmg (macOS)
+./scripts/release.sh                    # .app + .dmg (macOS), --universal en option
 ```
 
 L'application tient sa propre base dans le dossier de données du système
 (`app_data_dir()/rusty-music.db`) et propose un sélecteur de dossier au premier
-lancement. Sans `ville-paris.db`, la carte se rabat sur un monde procédural.
+lancement. Le plan de Paris (`ville-paris.db`) est installé du paquet au premier
+lancement ; `carto ville` permet d'en importer un autre.
+
+Le `.dmg` publié n'est ni signé ni notarisé : au premier lancement, macOS le
+bloque. **Clic droit sur l'app → Ouvrir**, puis confirmer ; ou
+`xattr -dr com.apple.quarantine "/Applications/Rusty Music.app"`.
 
 ### Vérifier
 

@@ -22,6 +22,12 @@
     "category": "Music",
     "shortDescription": "Écouter, explorer et éditer sa bibliothèque musicale, hors ligne.",
     "longDescription": "Suite musicale locale et autonome : lecture, carte 2D de la bibliothèque par similarité sonore, et démixage en stems. Tout le calcul se fait sur la machine, aucun service distant.",
+    "homepage": "https://github.com/rousseau/rusty-music",
+    "license": "GPL-3.0-or-later",
+    "copyright": "GPL-3.0-or-later — plan de ville © les contributeurs OpenStreetMap (ODbL)",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
     "icon": [
       "icons/icon.png"
     ],
