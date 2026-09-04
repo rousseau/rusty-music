@@ -15,6 +15,7 @@ pub mod modeles;
 pub mod musicbrainz;
 pub mod pochette;
 pub mod opus;
+pub mod popularite;
 pub mod scan;
 pub mod tags;
 pub mod volume;
