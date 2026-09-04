@@ -1,0 +1,28 @@
+# Essai : quel moteur d'inférence pour le générateur AERO exporté
+# (`models/aero-11025-44100.onnx`, produit par `scripts/preparer-aero.sh`) ?
+#
+# Hors du workspace (`exclude = ["experiments"]`) — un essai doit pouvoir
+# échouer sans rien casser d'autre.
+#
+#   - `tract` : pur Rust, pas de lib native — mais fidèle sur ce graphe ?
+#   - `ort`   : ONNX Runtime, lib native téléchargée — fidèle, et rapide ?
+#
+# Comparés au cosinus / erreur L2 contre PyTorch (`reference_aero.py`), méthode
+# des sondages `../burn-clap` et `../burn-demucs`.
+#
+# Licences : tract MIT OR Apache-2.0 ; ort (wrapper) MIT OR Apache-2.0,
+#            ONNX Runtime MIT ; ndarray MIT OR Apache-2.0.
+[package]
+name = "burn-aero"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tract-onnx = "0.23"
+ort = { version = "=2.0.0-rc.10", features = ["ndarray"] }
+ndarray = "0.16"
+rustfft = "6"
+
+[profile.dev]
+opt-level = 2

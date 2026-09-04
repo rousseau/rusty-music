@@ -1,0 +1,22 @@
+[package]
+name = "rusty-music-superres"
+description = "Super-résolution audio hors ligne (AERO via ONNX Runtime) — module 3, « régénérer en HD »."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+# ONNX Runtime : le seul moteur qui exécute AERO fidèlement (voir
+# `experiments/burn-aero/` : tract donne des nombres faux). Télécharge la
+# bibliothèque au build. Licence du wrapper MIT OR Apache-2.0, ORT lui-même MIT.
+ort = { version = "=2.0.0-rc.10", features = ["ndarray"] }
+ndarray = "0.16"
+rustfft.workspace = true
+rodio.workspace = true
+rubato.workspace = true
+# Licence Apache-2.0.
+thiserror.workspace = true
+tracing.workspace = true
