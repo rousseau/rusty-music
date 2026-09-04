@@ -19,20 +19,34 @@ use crate::{db::Library, is_audio, tags};
 /// Fenêtre de regroupement des évènements.
 pub const DEBOUNCE: Duration = Duration::from_millis(750);
 
-/// Surveille `root` indéfiniment et met la base à jour.
-///
-/// Bloquant : à lancer dans un thread dédié. Ce sera le point de branchement
-/// naturel pour notifier l'interface (canal sortant à ajouter quand l'UI
-/// existera).
-pub fn watch_root(lib: &Library, root: &Path) -> Result<()> {
-    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
+/// Handle d'une surveillance active — opaque : ce qu'il y a dedans (un
+/// `notify::RecommendedWatcher`) n'a pas besoin d'être connu de qui
+/// l'appelle. L'abandonner (`drop`) arrête la surveillance du filesystem et
+/// fait sortir la [`boucle`] qui lui est associée.
+pub struct Surveillance(#[allow(dead_code)] notify::RecommendedWatcher);
 
+/// Pose la surveillance de `root` et rend le handle à conserver, avec le
+/// récepteur des évènements à passer à [`boucle`].
+///
+/// Ne bloque pas : poser un watcher est immédiat, seule [`boucle`] tourne
+/// indéfiniment. Séparé de `watch_root` pour qui doit garder la main sur
+/// plusieurs racines à la fois (l'application de bureau, une par racine) —
+/// [`watch_root`] combine les deux pour l'usage à une seule racine du CLI.
+pub fn demarrer(root: &Path) -> Result<(Surveillance, mpsc::Receiver<notify::Result<Event>>)> {
+    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
     let mut watcher = notify::recommended_watcher(move |res| {
         let _ = tx.send(res);
     })?;
     watcher.watch(root, RecursiveMode::Recursive)?;
-    info!(root = %root.display(), "surveillance active");
+    Ok((Surveillance(watcher), rx))
+}
 
+/// Regroupe et applique les évènements du récepteur rendu par [`demarrer`].
+///
+/// Bloquant : à lancer dans un thread dédié. Sort quand la [`Surveillance`]
+/// associée est abandonnée — c'est le seul signal d'arrêt, il n'y en a pas
+/// d'autre à envoyer explicitement.
+pub fn boucle(lib: &Library, rx: mpsc::Receiver<notify::Result<Event>>) {
     let mut pending: HashSet<PathBuf> = HashSet::new();
     let mut last_event = Instant::now();
 
@@ -55,7 +69,14 @@ pub fn watch_root(lib: &Library, root: &Path) -> Result<()> {
             flush(lib, &mut pending);
         }
     }
+}
 
+/// Surveille `root` indéfiniment et met la base à jour. Bloquant : à lancer
+/// dans un thread dédié.
+pub fn watch_root(lib: &Library, root: &Path) -> Result<()> {
+    let (_surveillance, rx) = demarrer(root)?;
+    info!(root = %root.display(), "surveillance active");
+    boucle(lib, rx);
     Ok(())
 }
 

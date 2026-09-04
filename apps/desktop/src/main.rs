@@ -42,6 +42,11 @@ struct Etat {
     /// Le modèle AERO, chargé à la première régénération puis gardé (~156 Mo).
     superres_modele: Mutex<Option<rusty_music_superres::Modele>>,
     scan: Mutex<EtatScan>,
+    /// Une surveillance continue par racine (`notify`), démarrée au lancement
+    /// pour chaque racine connue et à l'ajout d'une nouvelle ([`demarrer_surveillance`]).
+    /// Retirer une entrée (`oublier`) abandonne le handle et arrête la
+    /// surveillance correspondante — c'est le seul signal d'arrêt qui existe.
+    surveillances: Mutex<std::collections::HashMap<PathBuf, rusty_music_core::watch::Surveillance>>,
     analyse: Mutex<EtatAnalyse>,
     descripteurs: Mutex<EtatDescripteurs>,
     enrichissement: Mutex<EtatEnrichissement>,
@@ -4016,6 +4021,44 @@ fn stems_greffer(
 // Réglages : source de la bibliothèque
 // ---------------------------------------------------------------------------
 
+/// Démarre la surveillance continue de `root`, si elle ne l'est pas déjà.
+///
+/// Pose le watcher (immédiat) puis lance la boucle d'évènements dans son
+/// propre fil, avec sa propre connexion — même raison que [`start_scan`] : ne
+/// pas tenir `Etat::lib` pendant une opération qui dure toute la session.
+/// Idempotent : sans effet si `root` est déjà surveillée, donc appelable sans
+/// vérifier soi-même (au démarrage, après un scan réussi…).
+fn demarrer_surveillance(etat: &Etat, root: &Path) {
+    {
+        let deja = etat.surveillances.lock().unwrap_or_else(|e| e.into_inner());
+        if deja.contains_key(root) {
+            return;
+        }
+    }
+    let (surveillance, rx) = match rusty_music_core::watch::demarrer(root) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(root = %root.display(), %e, "surveillance impossible");
+            return;
+        }
+    };
+    etat.surveillances
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(root.to_path_buf(), surveillance);
+    tracing::info!(root = %root.display(), "surveillance démarrée");
+
+    let db = etat.db.clone();
+    let root = root.to_path_buf();
+    std::thread::spawn(move || {
+        match Library::open(&db) {
+            Ok(lib) => rusty_music_core::watch::boucle(&lib, rx),
+            Err(e) => tracing::warn!(%e, "surveillance : base inaccessible"),
+        }
+        tracing::info!(root = %root.display(), "surveillance arrêtée");
+    });
+}
+
 /// Oublie une racine **et les morceaux qui en dépendent**.
 #[tauri::command(async)]
 fn forget_root(etat: State<Etat>, path: String) -> Result<usize, String> {
@@ -4025,6 +4068,13 @@ fn forget_root(etat: State<Etat>, path: String) -> Result<usize, String> {
         .map_err(echec)?
         .remove_root(Path::new(&path))
         .map_err(echec)?;
+    // Sans ça, un évènement filesystem reçu après coup remettrait le morceau
+    // en base — la surveillance ne sait pas que l'utilisateur vient de dire
+    // « oublie ». Abandonner le handle est le seul moyen de l'arrêter.
+    etat.surveillances
+        .lock()
+        .map_err(echec)?
+        .remove(Path::new(&path));
     tracing::info!(%path, morceaux = n, "racine oubliée");
     Ok(n)
 }
@@ -4068,6 +4118,7 @@ fn start_scan(
                 .map_err(|e| e.to_string())
         });
 
+        let succes = issue.is_ok();
         let bilan = match issue {
             Ok(r) => format!(
                 "{} vus · {} ingérés · {} inchangés · {} retirés · {} en échec",
@@ -4080,6 +4131,12 @@ fn start_scan(
         // Le garde est nommé : dans un `if let`, son temporaire vivrait plus
         // longtemps que le `State` dont il emprunte.
         let etat = app.state::<Etat>();
+        // Une racine qui vient d'être scannée avec succès — nouvelle ou déjà
+        // connue — doit être surveillée en continu ; `demarrer_surveillance`
+        // ne fait rien si elle l'est déjà.
+        if succes {
+            demarrer_surveillance(&etat, &racine);
+        }
         let verrou = etat.scan.lock();
         if let Ok(mut s) = verrou {
             s.en_cours = false;
@@ -4707,6 +4764,7 @@ fn main() {
                 superres: Mutex::new(EtatSuperres::default()),
                 superres_modele: Mutex::new(None),
                 scan: Mutex::new(EtatScan::default()),
+                surveillances: Mutex::new(std::collections::HashMap::new()),
                 analyse: Mutex::new(EtatAnalyse::default()),
                 descripteurs: Mutex::new(EtatDescripteurs::default()),
                 enrichissement: Mutex::new(EtatEnrichissement::default()),
@@ -4730,6 +4788,21 @@ fn main() {
                 agrement_voirie: Mutex::new(None),
             });
             app.manage(tuiles::Archives::default());
+
+            // Surveillance continue de chaque racine déjà connue — c'est elle
+            // qui manquait pour que « scanné puis surveillé automatiquement »
+            // (README) soit vrai dans l'application, pas seulement en CLI.
+            // Échec toléré par racine : une racine débranchée (clé USB,
+            // partage réseau) ne doit pas empêcher les autres de démarrer.
+            let etat = app.state::<Etat>();
+            let racines = etat
+                .lib
+                .lock()
+                .map(|l| l.roots().unwrap_or_default())
+                .unwrap_or_default();
+            for r in racines {
+                demarrer_surveillance(&etat, Path::new(&r.path));
+            }
 
             // La fenêtre est bâtie ici, pas déclarée dans `tauri.conf.json`, pour
             // une seule raison : y accrocher `on_web_resource_request`.
