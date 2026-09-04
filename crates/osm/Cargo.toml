@@ -1,0 +1,24 @@
+[package]
+name = "rusty-music-osm"
+description = "Import d'un extrait OpenStreetMap : le plan de ville qui sert de support à la carte."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+anyhow.workspace = true
+tracing.workspace = true
+
+# Lecture du format `.osm.pbf`. **Vérifié avant d'écrire le nôtre** : un PBF est
+# une suite de blocs protobuf compressés, aux coordonnées delta-encodées et aux
+# clés de tags indirectées par une table de chaînes — trois occasions de se
+# tromper en silence. MIT OR Apache-2.0.
+osmpbf = "0.3"
+
+# La ville vit dans **sa propre base**, à côté de celle de la bibliothèque.
+# Elle n'en fait pas partie : elle ne vient pas du dossier surveillé, elle se
+# remplace en bloc (Paris aujourd'hui, Venise demain) et elle ne doit pas
+# grossir la base de l'utilisateur de vingt mégaoctets de géométrie empruntée.
+rusqlite.workspace = true

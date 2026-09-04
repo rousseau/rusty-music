@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 [[bin]]
 name = "rusty-music"
@@ -12,8 +13,11 @@ path = "src/main.rs"
 
 [dependencies]
 rusty-music-core = { path = "../core" }
+rusty-music-osm = { path = "../osm" }
 rusty-music-player = { path = "../player" }
 rusty-music-analysis = { path = "../analysis" }
+rusty-music-carto = { path = "../carto" }
+serde_json.workspace = true
 rusty-music-editor = { path = "../editor" }
 anyhow.workspace = true
 clap.workspace = true

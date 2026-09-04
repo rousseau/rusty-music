@@ -1,5 +1,15 @@
 //! Regroupement des morceaux en familles, pour la légende de la carte.
 //!
+//! Deux méthodes. [`kmeans`] est purement acoustique : elle ne sait rien des
+//! genres et regroupe par similarité d'empreinte, ce qui produit parfois des
+//! familles que rien de commun ne nomme — mesuré : « Reggae · Rock » sur la
+//! bibliothèque réelle, deux genres que rien ne rapproche sinon le hasard de
+//! l'entraînement du modèle. [`familles_par_genre`] part au contraire d'un
+//! vocabulaire de genres reconnaissables et n'utilise l'empreinte que pour
+//! les morceaux que le vocabulaire ne sait pas nommer. C'est la méthode
+//! retenue pour la carte ; `kmeans` reste comme point de comparaison et pour
+//! qui voudrait un regroupement sans dépendre d'aucun genre déclaré.
+//!
 //! K-means avec initialisation k-means++, écrit ici plutôt que pris à
 //! `linfa` : c'est une quarantaine de lignes, et `linfa-clustering` entraîne
 //! `ndarray` et, selon les options, une BLAS système. `architecture.md` garde
@@ -9,6 +19,8 @@
 //! Le regroupement se fait sur les empreintes complètes, pas sur les
 //! coordonnées 2D : t-SNE déforme les distances, et regrouper sur son résultat
 //! reviendrait à décrire la carte au lieu de la musique.
+
+use std::collections::HashMap;
 
 use crate::alea::Alea;
 
@@ -98,6 +110,90 @@ pub fn kmeans(points: &[Vec<f32>], k: usize, iterations: usize) -> Vec<usize> {
     appartenance
 }
 
+/// Répartit `points` en familles de `vocabulaire`, plus le repli acoustique
+/// pour ce qu'il ne couvre pas.
+///
+/// Le vocabulaire est fourni par l'appelant, pas compilé en dur : c'est un
+/// réglage de bibliothèque ([`rusty_music_core::db::Library::vocabulaire_familles`]),
+/// pas un algorithme. Ce module n'en connaît aucun par défaut.
+///
+/// Deux passes :
+///
+/// 1. **Ancrage.** Un morceau dont `genres[i]` figure dans le vocabulaire
+///    rejoint directement la famille correspondante — aucun calcul de
+///    distance, le genre déclaré est pris tel quel.
+/// 2. **Repli acoustique.** Pour les autres (genre inconnu, absent du
+///    vocabulaire, ou empreinte sans genre du tout), chaque famille ancrée a
+///    un centroïde — la moyenne des empreintes qu'elle vient de recevoir. Le
+///    morceau rejoint le centroïde le plus proche, comme un k-means à une
+///    seule itération dont les centres de départ sont donnés par les genres
+///    plutôt que tirés au hasard.
+///
+/// Une famille du vocabulaire sans aucun morceau ancré n'a pas de centroïde
+/// et ne peut recevoir personne au repli : elle disparaît simplement du
+/// résultat, plutôt que de forcer une comparaison contre un centre qui ne
+/// représenterait rien.
+///
+/// `genres[i]` doit être en minuscules — c'est ainsi que MusicBrainz les
+/// rend et que `vocabulaire` doit donc l'être aussi, aucune casse à
+/// normaliser ici.
+pub fn familles_par_genre(
+    points: &[Vec<f32>],
+    genres: &[Option<String>],
+    vocabulaire: &[(String, Vec<String>)],
+) -> Vec<Option<usize>> {
+    assert_eq!(points.len(), genres.len(), "un genre par morceau, même absent");
+    if points.is_empty() || vocabulaire.is_empty() {
+        return vec![None; points.len()];
+    }
+    let dim = points[0].len();
+
+    // Table de recherche genre -> famille : construite une fois, pas à
+    // chaque morceau.
+    let index_du_genre: HashMap<&str, usize> = vocabulaire
+        .iter()
+        .enumerate()
+        .flat_map(|(i, (_, alias))| alias.iter().map(move |a| (a.as_str(), i)))
+        .collect();
+
+    let mut appartenance: Vec<Option<usize>> = vec![None; points.len()];
+    let mut a_ancrer: Vec<usize> = Vec::new();
+    for (i, g) in genres.iter().enumerate() {
+        match g.as_deref().and_then(|g| index_du_genre.get(g)) {
+            Some(&famille) => appartenance[i] = Some(famille),
+            None => a_ancrer.push(i),
+        }
+    }
+
+    let mut sommes = vec![vec![0.0f32; dim]; vocabulaire.len()];
+    let mut effectifs = vec![0usize; vocabulaire.len()];
+    for (i, a) in appartenance.iter().enumerate() {
+        if let Some(f) = a {
+            for (s, v) in sommes[*f].iter_mut().zip(&points[i]) {
+                *s += v;
+            }
+            effectifs[*f] += 1;
+        }
+    }
+    let centroides: Vec<Option<Vec<f32>>> = sommes
+        .into_iter()
+        .zip(&effectifs)
+        .map(|(somme, &n)| {
+            (n > 0).then(|| somme.into_iter().map(|s| s / n as f32).collect())
+        })
+        .collect();
+
+    for i in a_ancrer {
+        appartenance[i] = centroides
+            .iter()
+            .enumerate()
+            .filter_map(|(f, c)| c.as_ref().map(|c| (f, distance2(&points[i], c))))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(f, _)| f);
+    }
+    appartenance
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +240,78 @@ mod tests {
         assert!(kmeans(&[], 3, 10).is_empty());
         // Plus de familles demandées que de points, et points identiques.
         assert_eq!(kmeans(&vec![vec![1.0, 1.0]; 3], 10, 10).len(), 3);
+    }
+
+    /// Un petit vocabulaire ad hoc, indépendant du réglage réel — les tests
+    /// n'ont pas à connaître les douze familles par défaut, seulement le
+    /// contrat de la fonction.
+    fn vocabulaire_essai() -> Vec<(String, Vec<String>)> {
+        vec![
+            ("Reggae".to_string(), vec!["reggae".to_string(), "dub".to_string()]),
+            ("Rock".to_string(), vec!["rock".to_string()]),
+            ("Jazz".to_string(), vec!["jazz".to_string()]),
+            ("Classique".to_string(), vec!["classical".to_string()]),
+        ]
+    }
+    const REGGAE: usize = 0;
+    const ROCK: usize = 1;
+    const JAZZ: usize = 2;
+    const CLASSIQUE: usize = 3;
+
+    #[test]
+    fn un_genre_du_vocabulaire_ancre_directement_sans_toucher_a_lempreinte() {
+        // Deux morceaux du même genre, à des empreintes opposées : le genre
+        // déclaré doit l'emporter sur toute notion de distance.
+        let points = vec![vec![1.0, 0.0], vec![-1.0, 0.0]];
+        let genres = vec![Some("reggae".to_string()), Some("reggae".to_string())];
+        let familles = familles_par_genre(&points, &genres, &vocabulaire_essai());
+        assert_eq!(familles[0], Some(REGGAE));
+        assert_eq!(familles[1], Some(REGGAE));
+    }
+
+    #[test]
+    fn un_genre_hors_vocabulaire_bascule_au_repli_acoustique() {
+        // Une ancre "Rock" nette à (10, 0) ; un morceau de genre inconnu
+        // tout près doit la rejoindre au repli.
+        let points = vec![vec![10.0, 0.0], vec![10.1, 0.0]];
+        let genres = vec![Some("rock".to_string()), Some("un genre que rien ne connaît".to_string())];
+        let familles = familles_par_genre(&points, &genres, &vocabulaire_essai());
+        assert_eq!(familles[0], Some(ROCK));
+        assert_eq!(familles[1], Some(ROCK), "devrait rejoindre le centroïde le plus proche");
+    }
+
+    #[test]
+    fn un_morceau_sans_genre_passe_aussi_par_le_repli() {
+        let points = vec![vec![0.0, 5.0], vec![0.0, 5.05]];
+        let genres = vec![Some("jazz".to_string()), None];
+        let familles = familles_par_genre(&points, &genres, &vocabulaire_essai());
+        assert_eq!(familles[1], Some(JAZZ));
+    }
+
+    #[test]
+    fn une_famille_jamais_ancree_narrive_jamais_par_repli() {
+        // Aucun morceau "Classique" : sa famille ne doit jamais apparaître,
+        // faute de centroïde pour la représenter.
+        let points = vec![vec![1.0, 1.0], vec![1.0, 1.0], vec![50.0, 50.0]];
+        let genres = vec![
+            Some("rock".to_string()),
+            Some("rock".to_string()),
+            None, // loin de tout, mais "Classique" ne peut pas le recevoir
+        ];
+        let familles = familles_par_genre(&points, &genres, &vocabulaire_essai());
+        assert!(!familles.contains(&Some(CLASSIQUE)));
+        assert_eq!(familles[2], Some(ROCK), "seule famille ancrée disponible");
+    }
+
+    #[test]
+    fn supporte_une_bibliotheque_vide() {
+        assert!(familles_par_genre(&[], &[], &vocabulaire_essai()).is_empty());
+    }
+
+    #[test]
+    fn supporte_un_vocabulaire_vide() {
+        let points = vec![vec![1.0, 1.0]];
+        let genres = vec![Some("rock".to_string())];
+        assert_eq!(familles_par_genre(&points, &genres, &[]), vec![None]);
     }
 }

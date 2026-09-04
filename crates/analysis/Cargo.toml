@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 # Le backend se choisit à la compilation, comme le veut Burn. `gpu` passe par
 # wgpu (Metal ici, Vulkan ou DX12 ailleurs) ; `cpu` est le repli pour une
@@ -18,12 +19,19 @@ cpu = ["burn/ndarray"]
 [build-dependencies]
 burn-onnx.workspace = true
 
+[dev-dependencies]
+anyhow.workspace = true
+
 [dependencies]
 burn.workspace      = true
 burn-store.workspace = true
 rustfft.workspace   = true
 rodio.workspace     = true
 bhtsne.workspace    = true
+serde.workspace     = true
+pathfinding.workspace = true
+petgraph.workspace  = true
+rustworkx-core.workspace = true
 rusty-music-core = { path = "../core" }
 thiserror.workspace = true
 tracing.workspace   = true

@@ -8,6 +8,19 @@
 //! sur une sphère où la similarité se lit en cosinus ; une fois normalisés, la
 //! distance euclidienne en est une fonction monotone, et t-SNE ne travaille
 //! que sur l'ordre des distances.
+//!
+//! **Score z par dimension et amorçage spectral : essayés, mesurés, écartés.**
+//! `bhtsne` 0.7 fournit `spectral_init` (`rust-audio-stack.md` le notait encore
+//! comme absent de l'écosystème) ; l'exemple `genre_projection` a chiffré les
+//! deux sur la bibliothèque réelle. Ni l'un ni l'autre ne bouge la
+//! conservation de voisinage (~13 % des douze plus proches survivent à la
+//! projection) ni la pureté de genre du voisinage projeté (~43 %). L'amorçage
+//! spectral resserre les petites familles éparses mais **étale les grandes**
+//! (Rock, Électronique, Hip-Hop, celles dont on se plaignait), pour un coût de
+//! projection multiplié par 3,5. Le plafond est ailleurs : dans l'empreinte,
+//! plusieurs familles de genre sont plus dispersées que le hasard (Jazz 1,08×
+//! le hasard, Classical 1,31×) — aucune projection 2 d n'en fera un quartier
+//! compact, seule une entrée qui porte le genre le pourrait.
 
 /// Coordonnée d'un morceau sur la carte.
 #[derive(Debug, Clone, Copy)]

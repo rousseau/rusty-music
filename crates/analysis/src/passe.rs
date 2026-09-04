@@ -78,6 +78,10 @@ pub fn empreintes(
         .map(|t| (t.id, PathBuf::from(&t.path)))
         .collect();
     let total = file.len();
+    // Pour retrouver, sur le fil d'écriture, le chemin d'un échec signalé par
+    // son seul identifiant — c'est lui qui va dans `scan_failures`.
+    let chemins: std::collections::HashMap<i64, &Path> =
+        file.iter().map(|(id, p)| (*id, p.as_path())).collect();
     let curseur = AtomicUsize::new(0);
 
     // Deux canaux en série. Un spectrogramme pèse 1,3 Mo : la borne les
@@ -152,7 +156,17 @@ pub fn empreintes(
                         rapport.echecs += 1;
                     }
                 },
-                None => rapport.echecs += 1,
+                None => {
+                    rapport.echecs += 1;
+                    // Un fichier qui déstabilise déjà son support ne doit pas
+                    // être retapé à chaque passe — voir `pending_analysis`.
+                    if let Some(chemin) = chemins.get(&id) {
+                        let _ = lib.enregistrer_echec_scan(
+                            chemin,
+                            "décodage impossible pendant l'analyse (empreintes)",
+                        );
+                    }
+                }
             }
             vus += 1;
             if vus % 25 == 0 || vus == total {
@@ -172,11 +186,22 @@ pub fn empreintes(
 /// rapport. Heureusement l'opération est bon marché (6 s sur 27 000 points),
 /// donc rejouable après chaque lot d'empreintes.
 ///
-/// `familles` prime sur [`Library::parametres_carte`] quand fourni — c'est
-/// ce que garde le `--familles` de la CLI, un réglage ponctuel plutôt qu'un
-/// changement du paramètre gardé en base. `None` (l'appli desktop) retombe
-/// sur ce que l'interface a réglé — ou les valeurs par défaut, tant que
-/// personne n'y a touché.
+/// `familles` ne sert plus qu'au repli k-means ([`kmeans_de_secours`]) — voir
+/// plus bas — le regroupement par genre n'a pas de compte à fixer, il rend
+/// ce que le vocabulaire et la bibliothèque donnent.
+///
+/// **Le regroupement se fait par genre, pas par k-means, dès qu'il y a un
+/// genre à lire.** `cluster.rs` explique le choix : k-means, purement
+/// acoustique, a rendu des familles que rien de commun ne nomme (mesuré :
+/// « Reggae · Rock »). Le vocabulaire de [`cluster::familles_par_genre`]
+/// ancre chaque famille sur un genre reconnaissable et ne retombe sur
+/// l'empreinte que pour ce que le vocabulaire ne sait pas nommer.
+///
+/// **`familles` retrouve son rôle d'avant** dans un seul cas : aucun morceau
+/// n'a de genre résolu — bibliothèque jamais passée par `enrich` et sans tag
+/// `genre` exploitable. Le vocabulaire n'aurait alors aucune ancre, et sans
+/// repli la carte perdrait toute famille d'un coup. `kmeans` reprend la main
+/// pour ce cas précis, comme avant cette bascule.
 pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, Error> {
     let empreintes = lib.embeddings(MODELE)?;
     let mut rapport = Rapport {
@@ -189,7 +214,6 @@ pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, 
     }
 
     let params = lib.parametres_carte()?;
-    let familles = familles.unwrap_or(params.familles);
 
     let vecteurs: Vec<Vec<f32>> = empreintes.iter().map(|(_, v)| v.clone()).collect();
     let mut points = projeter(&vecteurs, params.perplexite, params.epoques);
@@ -197,20 +221,41 @@ pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, 
 
     // Le regroupement porte sur les empreintes, pas sur la carte : t-SNE
     // déforme les distances, s'en servir décrirait le dessin, pas la musique.
-    let appartenance = kmeans(
-        &vecteurs,
-        familles.clamp(1, vecteurs.len()),
-        params.iterations_kmeans,
-    );
+    let genres = lib.genres_resolus(MODELE)?;
+    let genres_alignes: Vec<Option<String>> = empreintes
+        .iter()
+        .map(|(id, _)| genres.get(id).cloned())
+        .collect();
+    let vocabulaire = lib.vocabulaire_familles()?;
+
+    let appartenance: Vec<i64> = if genres_alignes.iter().any(Option::is_some) {
+        crate::cluster::familles_par_genre(&vecteurs, &genres_alignes, &vocabulaire)
+            .into_iter()
+            // Sans famille (aucun genre du vocabulaire ancré assez près) :
+            // -1, convention déjà en usage côté carte pour « morceau sans
+            // famille ».
+            .map(|f| f.map_or(-1, |f| f as i64))
+            .collect()
+    } else {
+        kmeans(
+            &vecteurs,
+            familles.unwrap_or(params.familles).clamp(1, vecteurs.len()),
+            params.iterations_kmeans,
+        )
+        .into_iter()
+        .map(|f| f as i64)
+        .collect()
+    };
     rapport.familles = appartenance
         .iter()
+        .filter(|f| **f >= 0)
         .collect::<std::collections::HashSet<_>>()
         .len();
 
     let maj: Vec<(i64, f32, f32, i64)> = empreintes
         .iter()
         .zip(points.iter().zip(&appartenance))
-        .map(|((id, _), (p, c))| (*id, p.x, p.y, *c as i64))
+        .map(|((id, _), (p, c))| (*id, p.x, p.y, *c))
         .collect();
     lib.update_map(MODELE, &maj)?;
     Ok(rapport)
@@ -305,6 +350,10 @@ pub fn descripteurs(
         .map(|p| (p.id, PathBuf::from(p.path)))
         .collect();
     let total = file.len();
+    // Même usage que dans `empreintes` : retrouver le chemin d'un échec sur
+    // le fil d'écriture, pour l'enregistrer dans `scan_failures`.
+    let chemins: std::collections::HashMap<i64, &Path> =
+        file.iter().map(|(id, p)| (*id, p.as_path())).collect();
     let curseur = AtomicUsize::new(0);
     let (tx, rx) =
         std::sync::mpsc::sync_channel::<(i64, Option<Descripteurs>)>(travailleurs.max(1) * 2);
@@ -368,7 +417,15 @@ pub fn descripteurs(
                         }
                     }
                 }
-                None => rapport.echecs += 1,
+                None => {
+                    rapport.echecs += 1;
+                    if let Some(chemin) = chemins.get(&id) {
+                        let _ = lib.enregistrer_echec_scan(
+                            chemin,
+                            "décodage impossible pendant l'analyse (descripteurs)",
+                        );
+                    }
+                }
             }
             vus += 1;
             avancement(vus, total);

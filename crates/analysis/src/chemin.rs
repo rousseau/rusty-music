@@ -29,6 +29,7 @@
 
 use crate::alea::Alea;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Un morceau et son empreinte. Les deux voyagent toujours ensemble : les
 /// fonctions d'ici rendent des identifiants, jamais des indices de tableau.
@@ -333,6 +334,48 @@ impl Graphe {
             .collect()
     }
 
+    /// Rang → identifiant de morceau.
+    pub fn identifiants(&self) -> &[i64] {
+        &self.ids
+    }
+
+    /// Le rang d'un morceau, s'il est dans le graphe.
+    pub fn rang_de(&self, id: i64) -> Option<u32> {
+        self.rang.get(&id).copied()
+    }
+
+    /// Le voisinage d'un rang, tel qu'il est rangé — arcs retour compris, donc
+    /// pas trié par distance croissante (voir [`Self::voisins`]).
+    pub fn voisinage(&self, rang: u32) -> &[(u32, f32)] {
+        self.aretes
+            .get(rang as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Les arêtes vues comme non orientées : une seule fois par paire.
+    ///
+    /// Le voisinage des *k* plus proches n'est pas symétrique, et
+    /// [`Self::construire`] ajoute des arcs retour pour la connexité : sans
+    /// dédoublonnage, une paire compterait deux fois dans la centralité.
+    pub fn aretes_uniques(&self) -> Vec<(u32, u32)> {
+        let mut vues = std::collections::HashSet::new();
+        let mut sortie = Vec::new();
+        for (i, voisins) in self.aretes.iter().enumerate() {
+            for &(j, _) in voisins {
+                let paire = if (i as u32) < j {
+                    (i as u32, j)
+                } else {
+                    (j, i as u32)
+                };
+                if paire.0 != paire.1 && vues.insert(paire) {
+                    sortie.push(paire);
+                }
+            }
+        }
+        sortie
+    }
+
     /// Construit le graphe sur `fils` fils.
     ///
     /// Balayage complet : n² distances. Sur 27 044 empreintes de 512
@@ -341,6 +384,21 @@ impl Graphe {
     /// dépendance et une approximation pour un calcul fait une fois par
     /// session.
     pub fn construire(empreintes: &[Empreinte], k: usize, fils: usize) -> Self {
+        Self::construire_suivi(empreintes, k, fils, &AtomicUsize::new(0))
+    }
+
+    /// Comme [`Self::construire`], en publiant l'avancement du balayage dans
+    /// `fait` — une empreinte traitée par incrément, sur `empreintes.len()`.
+    ///
+    /// L'appli le lit d'un autre fil pour afficher une jauge pendant la
+    /// vingtaine de secondes que coûte la première errance d'une session ; la
+    /// CLI et les tests passent par [`Self::construire`], qui l'ignore.
+    pub fn construire_suivi(
+        empreintes: &[Empreinte],
+        k: usize,
+        fils: usize,
+        fait: &AtomicUsize,
+    ) -> Self {
         let n = empreintes.len();
         let ids: Vec<i64> = empreintes.iter().map(|(i, _)| *i).collect();
         let rang: HashMap<i64, u32> = ids
@@ -355,7 +413,9 @@ impl Graphe {
         let k = k.clamp(1, n - 1);
 
         // Découpage statique : chaque ligne coûte exactement le même balayage,
-        // un curseur atomique n'apporterait rien.
+        // un curseur atomique pour distribuer le travail n'apporterait rien.
+        // `fait`, lui, ne distribue rien : il ne fait que compter les lignes
+        // traversées pour la jauge de l'appelant.
         let fils = fils.max(1);
         let taille = n.div_ceil(fils);
         std::thread::scope(|portee| {
@@ -382,6 +442,7 @@ impl Graphe {
                             a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
                         });
                         *sortie = tampon.clone();
+                        fait.fetch_add(1, Ordering::Relaxed);
                     }
                 });
             }
@@ -403,6 +464,35 @@ impl Graphe {
             }
         }
 
+        Graphe { ids, rang, aretes }
+    }
+
+    /// Un sous-graphe limité aux morceaux `permis`.
+    ///
+    /// Mêmes arêtes, mais seules celles dont les deux extrémités sont permises
+    /// subsistent. Sert au filtre par famille du mode Explorer : un chemin
+    /// sonique ou une errance qui ne doit traverser qu'une seule famille se
+    /// calcule sur `graphe.restreint(&famille)`, sans reconstruire le graphe
+    /// complet (aucune distance n'est recalculée, juste l'adjacence filtrée).
+    ///
+    /// Le sous-graphe peut être disjoint là où le graphe complet était
+    /// connexe : une famille dont deux amas ne communiquaient que par un
+    /// morceau d'une autre famille. `sonique` rend alors vide et l'appelant
+    /// retombe sur le mode direct, lui aussi filtré.
+    pub fn restreint(&self, permis: &HashSet<i64>) -> Graphe {
+        let ids: Vec<i64> = self.ids.iter().copied().filter(|id| permis.contains(id)).collect();
+        let rang: HashMap<i64, u32> =
+            ids.iter().enumerate().map(|(r, i)| (*i, r as u32)).collect();
+        let aretes: Vec<Vec<(u32, f32)>> = ids
+            .iter()
+            .map(|id| {
+                let ancien = self.rang[id] as usize;
+                self.aretes[ancien]
+                    .iter()
+                    .filter_map(|(j, d)| rang.get(&self.ids[*j as usize]).map(|nr| (*nr, *d)))
+                    .collect()
+            })
+            .collect();
         Graphe { ids, rang, aretes }
     }
 
@@ -798,6 +888,17 @@ mod tests {
     }
 
     #[test]
+    fn construire_suivi_compte_chaque_empreinte_une_fois() {
+        let e = arc(40);
+        let fait = AtomicUsize::new(0);
+        let g = Graphe::construire_suivi(&e, 4, 3, &fait);
+        // Le graphe est le même que sans suivi, et le compteur a vu passer
+        // les 40 lignes — la jauge de l'appli s'appuie dessus.
+        assert_eq!(g.taille(), 40);
+        assert_eq!(fait.load(Ordering::Relaxed), 40);
+    }
+
+    #[test]
     fn plus_proches_couvre_tout_le_monde_et_trouve_le_vrai_minimum() {
         let mut e = arc(20);
         // Deux empreintes identiques : leur plus proche voisin mutuel doit
@@ -944,6 +1045,32 @@ mod tests {
             fois_plus_proche > essais / 4,
             "le plus proche voisin ne domine pas à basse température : \
              {fois_plus_proche}/{essais}"
+        );
+    }
+
+    /// Le sous-graphe restreint ne garde que les morceaux permis, et un chemin
+    /// sonique qui y court n'en traverse aucun autre.
+    #[test]
+    fn le_sous_graphe_restreint_ne_traverse_que_les_permis() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 6, 3);
+        // Une famille : un morceau sur deux.
+        let permis: HashSet<i64> = (0..60).filter(|i| i % 2 == 0).collect();
+        let r = g.restreint(&permis);
+
+        assert_eq!(r.taille(), 30);
+        let route = r.sonique(0, 58, 1, 0.0);
+        assert_eq!(route.first(), Some(&0));
+        assert_eq!(route.last(), Some(&58));
+        assert!(
+            route.iter().all(|id| permis.contains(id)),
+            "le chemin sort de la famille : {route:?}"
+        );
+
+        let promenade = r.errance(0, 10, 7, 0.3);
+        assert!(
+            promenade.iter().all(|id| permis.contains(id)),
+            "l'errance sort de la famille : {promenade:?}"
         );
     }
 

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rusty Music — aperçu plan de ville</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<style>
+  html, body { height:100%; margin:0; background:#111; }
+  #carte { position:absolute; inset:0; }
+  #bandeau {
+    position:absolute; left:12px; top:12px; z-index:10;
+    display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    padding:8px 10px; border-radius:8px; background:rgba(20,20,20,.86);
+    border:1px solid #333; color:#eee; font:12px/1.3 system-ui,sans-serif;
+  }
+  #bandeau .grp { display:flex; gap:4px; align-items:center; }
+  #bandeau .grp + .grp { border-left:1px solid #444; padding-left:8px; }
+  #bandeau b { color:#9aa; font-weight:600; }
+  #bandeau button {
+    font:inherit; color:#ddd; background:#262626; border:1px solid #3a3a3a;
+    border-radius:5px; padding:3px 8px; cursor:pointer;
+  }
+  #bandeau button.actif { background:#3a3a3a; color:#fff; border-color:#666; }
+  #etat { color:#8a8; font-variant-numeric:tabular-nums; }
+  /* Le dégradé de bordure de maptoposter (`create_gradient_fade`) : le réseau
+     se fond dans le fond en haut et en bas. Teinte posée par le JS = le `bg`
+     du thème. `?vignette=0` pour comparer sans. */
+  #vignette { position:absolute; inset:0; z-index:5; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+<div id="vignette"></div>
+<div id="bandeau">
+  <span class="grp"><b>thème</b><span id="themes"></span></span>
+  <span class="grp"><b>niveau</b>
+    <button data-rendu="fond">fond</button>
+    <button data-rendu="bati">+bâti</button>
+    <button data-rendu="complet">complet</button>
+  </span>
+  <span class="grp" id="etat">chargement…</span>
+</div>
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script>
+const THEMES = [
+  ["style.json", "OSM clair"],
+  ["style-sepia.json", "Sépia"],
+  ["style-encre.json", "Encre"],
+  ["style-nuit.json", "Nuit"],
+  ["style-bleu-plan.json", "Bleu plan"],
+];
+
+// Groupes de couches — miroir de `crates/carto/src/style.rs::couches_ville`.
+const GROUPES = {
+  fond: ["terre-reelle", "eaux-reelles", "verts-reels", "routes-reelles"],
+  bati: ["batiments-reels", "batiments-reels-bord"],
+  overlay: [
+    "territoires-reels", "territoires-reels-contour",
+    "batiments-morceaux", "batiments-morceaux-bord",
+    "artistes-point", "artistes-etiquette",
+    "albums-point", "albums-etiquette", "morceaux-etiquette",
+  ],
+};
+const NIVEAUX = {
+  fond: ["fond"],
+  bati: ["fond", "bati"],
+  complet: ["fond", "bati", "overlay"],
+};
+
+const params = new URLSearchParams(location.search);
+let styleActuel = params.get("style") || "style.json";
+let renduActuel = params.get("rendu") || "complet";
+const etat = document.getElementById("etat");
+let carte = null;
+
+// Boutons de thème.
+const boutonsTheme = document.getElementById("themes");
+for (const [fichier, nom] of THEMES) {
+  const b = document.createElement("button");
+  b.textContent = nom;
+  b.dataset.style = fichier;
+  b.addEventListener("click", () => charger(fichier, renduActuel));
+  boutonsTheme.appendChild(b);
+}
+for (const b of document.querySelectorAll("[data-rendu]")) {
+  b.addEventListener("click", () => appliquerRendu(b.dataset.rendu));
+}
+
+function majBoutons() {
+  for (const b of document.querySelectorAll("[data-style]"))
+    b.classList.toggle("actif", b.dataset.style === styleActuel);
+  for (const b of document.querySelectorAll("[data-rendu]"))
+    b.classList.toggle("actif", b.dataset.rendu === renduActuel);
+}
+
+function appliquerRendu(rendu) {
+  renduActuel = rendu;
+  majBoutons();
+  if (!carte || !carte.isStyleLoaded()) return;
+  const visibles = new Set(NIVEAUX[rendu].flatMap((g) => GROUPES[g]));
+  for (const ids of Object.values(GROUPES))
+    for (const id of ids)
+      if (carte.getLayer(id))
+        carte.setLayoutProperty(id, "visibility", visibles.has(id) ? "visible" : "none");
+}
+
+// Force `f` (0-1) du dégradé de bordure ; `?vignette=0` pour désactiver.
+const VIGNETTE = Math.max(0, Math.min(1, +(params.get("vignette") ?? 0.34)));
+
+function hexVersRgb(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
+function poserVignette(style) {
+  const couche = style.layers.find((l) => l.type === "background");
+  const rgb = hexVersRgb(couche && couche.paint?.["background-color"]);
+  const el = document.getElementById("vignette");
+  if (!VIGNETTE || !rgb) { el.style.background = "none"; return; }
+  // Rampe linéaire, comme `create_gradient_fade` de maptoposter. On interpole
+  // vers `rgba(r,g,b,0)`, jamais `transparent` (= `rgba(0,0,0,0)`, qui grise le
+  // milieu du dégradé).
+  const plein = `rgb(${rgb})`, vide = `rgba(${rgb},0)`;
+  const h = (VIGNETTE * 100).toFixed(1), c = (VIGNETTE * 58).toFixed(1);
+  el.style.background =
+    `linear-gradient(to bottom, ${plein}, ${vide} ${h}%, ${vide} ${100 - h}%, ${plein}),` +
+    `linear-gradient(to right, ${plein}, ${vide} ${c}%, ${vide} ${100 - c}%, ${plein})`;
+}
+
+async function charger(fichier, rendu) {
+  styleActuel = fichier;
+  renduActuel = rendu;
+  majBoutons();
+  etat.textContent = "chargement…";
+  const style = await (await fetch(fichier + "?t=" + Date.now())).json();
+  poserVignette(style);
+
+  const racine = location.href.replace(/[^/]*(\?.*)?$/, "");
+  style.sources.carte.tiles = [racine + "carte/{z}/{x}/{y}.mvt"];
+  if (style.sources.relief) style.sources.relief.tiles = [racine + "relief/{z}/{x}/{y}.png"];
+  style.glyphs = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+
+  const centre = style.center || [2.34, 48.86];
+  const zoom = +(params.get("zoom") ?? style.zoom ?? 13);
+  const centreUrl = params.get("lon") && params.get("lat")
+    ? [+params.get("lon"), +params.get("lat")] : centre;
+
+  if (carte) {
+    // Garder la vue courante d'un thème à l'autre.
+    const c = carte.getCenter(), z = carte.getZoom();
+    carte.setStyle(style);
+    carte.jumpTo({ center: c, zoom: z });
+  } else {
+    carte = new maplibregl.Map({
+      container: "carte", style,
+      center: centreUrl, zoom,
+      minZoom: 8, maxZoom: 18,
+      dragRotate: false, pitchWithRotate: false,
+      attributionControl: { compact: true, customAttribution: "© les contributeurs OpenStreetMap" },
+      renderWorldCopies: false,
+    });
+    carte.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    window.__carte = carte;
+  }
+  carte.once("styledata", () => {
+    if (!carte.isStyleLoaded()) { carte.once("idle", () => appliquerRendu(renduActuel)); }
+    else appliquerRendu(renduActuel);
+  });
+  carte.once("idle", () => {
+    etat.textContent = `z${carte.getZoom().toFixed(1)} · ${carte.getStyle().layers.length} couches`;
+  });
+  carte.on("moveend", () => {
+    etat.textContent = `z${carte.getZoom().toFixed(1)} · ${carte.getStyle().layers.length} couches`;
+  });
+  carte.on("error", (e) => {
+    const m = String(e && e.error ? e.error.message : e);
+    if (/404|204|Not ?Found/i.test(m)) return;
+    console.warn("[carte]", m);
+  });
+}
+
+charger(styleActuel, renduActuel);
+</script>
+</body>
+</html>

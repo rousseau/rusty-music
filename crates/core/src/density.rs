@@ -14,7 +14,7 @@ use contour::ContourBuilder;
 /// Le domaine de la carte déborde un peu [-1, 1] — même marge que
 /// l'interface (`DENSITE_MARGE` côté `app.js`) — pour que les bandes du bord
 /// ne soient pas coupées à vif.
-const MARGE: f64 = 0.08;
+pub const MARGE: f64 = 0.08;
 
 /// Au-delà de ce nombre de familles, les plus petites rejoignent le
 /// territoire [`AUTRES`] plutôt que de garder chacune sa propre teinte —
@@ -85,6 +85,64 @@ pub struct Bande {
 #[derive(Debug, Clone, serde::Serialize, Default)]
 pub struct ResultatDensite {
     pub bandes: Vec<Bande>,
+}
+
+/// Le champ de densité global, **avant** réduction en bandes.
+///
+/// [`calculer`] rend des paliers ; le relief, lui, a besoin de l'altitude
+/// continue — un ombrage calculé sur des marches d'escalier ferait apparaître
+/// les paliers comme des falaises. La grille est carrée, de côté
+/// `parametres.resolution`, et couvre le domaine `[-1-MARGE, 1+MARGE]²`,
+/// exactement celui des bandes.
+///
+/// Les valeurs sont normalisées sur le maximum : `1.0` au sommet, `0.0` là où
+/// aucun morceau ne pèse.
+pub fn champ_global(points: &[(i64, f32, f32, i64)], parametres: &ParametresDensite) -> Vec<f64> {
+    let gn = parametres.resolution.max(2);
+    let lo = -1.0 - MARGE;
+    let pas = (2.0 + 2.0 * MARGE) / gn as f64;
+    let vers_grille = |v: f32| -> usize {
+        let t = ((v as f64 - lo) / pas).floor();
+        t.clamp(0.0, (gn - 1) as f64) as usize
+    };
+
+    let mut champ = vec![0.0f64; gn * gn];
+    for &(_, x, y, _) in points {
+        champ[vers_grille(y) * gn + vers_grille(x)] += 1.0;
+    }
+    flouter_gaussien(&mut champ, gn, (parametres.noyau / pas).max(0.5));
+
+    let max = champ.iter().cloned().fold(0.0, f64::max);
+    if max > 0.0 {
+        for v in &mut champ {
+            *v /= max;
+        }
+    }
+    champ
+}
+
+/// Lit le champ de densité en coordonnées de **carte**, par interpolation
+/// bilinéaire.
+///
+/// [`champ_global`] rend une grille ; savoir ce qu'elle vaut sous un point
+/// demande de refaire la même conversion, et deux copies de cette conversion
+/// finiraient par diverger d'une demi-cellule.
+pub fn echantillonner(champ: &[f64], gn: usize, x: f32, y: f32) -> f64 {
+    if gn < 2 || champ.len() != gn * gn {
+        return 0.0;
+    }
+    let lo = -1.0 - MARGE;
+    let pas = (2.0 + 2.0 * MARGE) / gn as f64;
+    // Le `-0,5` place l'échantillon au centre de la cellule, pas à son coin.
+    let gx = ((x as f64 - lo) / pas - 0.5).clamp(0.0, gn as f64 - 1.0);
+    let gy = ((y as f64 - lo) / pas - 0.5).clamp(0.0, gn as f64 - 1.0);
+    let (x0, y0) = (gx.floor() as usize, gy.floor() as usize);
+    let (x1, y1) = ((x0 + 1).min(gn - 1), (y0 + 1).min(gn - 1));
+    let (fx, fy) = (gx - x0 as f64, gy - y0 as f64);
+    let v = |x: usize, y: usize| champ[y * gn + x];
+    let bas = v(x0, y0) * (1.0 - fx) + v(x1, y0) * fx;
+    let haut = v(x0, y1) * (1.0 - fx) + v(x1, y1) * fx;
+    bas * (1.0 - fy) + haut * fy
 }
 
 /// Calcule la nappe de densité : une grille par famille, plus une globale,
@@ -405,6 +463,69 @@ mod tests {
                 "bande sommitale de la famille {famille} centrée en ({cx}, {cy}), attendue près de {centre:?}"
             );
         }
+    }
+
+    /// Le champ global doit culminer là où les morceaux sont, et s'annuler
+    /// loin d'eux — c'est tout ce que le relief lui demande.
+    #[test]
+    fn le_champ_global_culmine_sur_lamas() {
+        let points: Vec<(i64, f32, f32, i64)> = (0..200)
+            .map(|i| (i, 0.3 + (i % 7) as f32 * 0.002, -0.2, 0i64))
+            .collect();
+        let parametres = ParametresDensite {
+            noyau: 0.03,
+            resolution: 128,
+            bandes: 4,
+        };
+        let champ = champ_global(&points, &parametres);
+        assert_eq!(champ.len(), 128 * 128);
+
+        let gn = 128usize;
+        let lo = -1.0 - MARGE;
+        let pas = (2.0 + 2.0 * MARGE) / gn as f64;
+        let cellule = |x: f64, y: f64| -> usize {
+            let gx = ((x - lo) / pas).floor().clamp(0.0, (gn - 1) as f64) as usize;
+            let gy = ((y - lo) / pas).floor().clamp(0.0, (gn - 1) as f64) as usize;
+            gy * gn + gx
+        };
+        // Le maximum vaut 1 quelque part — c'est le contrat de la
+        // normalisation. Il ne tombe pas forcément sur la cellule de (0,3 ;
+        // -0,2) : les morceaux s'étalent un peu et le flou déplace le sommet
+        // d'une cellule ou deux.
+        let max = champ.iter().cloned().fold(0.0, f64::max);
+        assert!((max - 1.0).abs() < 1e-9, "maximum non normalisé : {max}");
+        assert!(
+            champ[cellule(0.3, -0.2)] > 0.9,
+            "l'amas doit être tout près du sommet : {}",
+            champ[cellule(0.3, -0.2)]
+        );
+        assert!(
+            champ[cellule(-0.8, 0.8)] < 0.01,
+            "le champ doit s'éteindre loin de l'amas"
+        );
+    }
+
+    /// L'échantillonnage doit retrouver le sommet là où sont les morceaux, et
+    /// zéro loin d'eux — mêmes attentes que `champ_global`, mais lues en
+    /// coordonnées de carte plutôt qu'en indices de grille.
+    #[test]
+    fn lechantillonnage_suit_les_coordonnees_de_carte() {
+        let points: Vec<(i64, f32, f32, i64)> =
+            (0..200).map(|i| (i, -0.4, 0.55, 0i64)).collect();
+        let parametres = ParametresDensite {
+            noyau: 0.04,
+            resolution: 128,
+            bandes: 4,
+        };
+        let champ = champ_global(&points, &parametres);
+        let sur = echantillonner(&champ, 128, -0.4, 0.55);
+        let loin = echantillonner(&champ, 128, 0.7, -0.7);
+        assert!(sur > 0.9, "sous l'amas : {sur}");
+        assert!(loin < 0.01, "loin de l'amas : {loin}");
+        // Hors domaine, on rend la valeur du bord plutôt qu'une panique.
+        assert!(echantillonner(&champ, 128, -50.0, 50.0).is_finite());
+        // Une grille incohérente ne doit pas faire tomber l'appelant.
+        assert_eq!(echantillonner(&champ, 999, 0.0, 0.0), 0.0);
     }
 
     /// Douze familles, bien au-delà de `FAMILLES_MAX` (7) : au plus sept

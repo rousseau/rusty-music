@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rusty Music — coût de déplacement sur la voirie</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<style>
+  html, body { height:100%; margin:0; background:#0c0d10; }
+  #carte { position:absolute; inset:0; }
+  #bandeau {
+    position:absolute; left:12px; top:12px; z-index:10;
+    padding:9px 11px; border-radius:8px; background:rgba(16,17,20,.88);
+    border:1px solid #2b2d33; color:#e6e6e6; font:12px/1.4 system-ui,sans-serif;
+    max-width:280px;
+  }
+  #bandeau b { color:#9fb0c3; }
+  #bandeau label { display:flex; align-items:center; gap:6px; margin-top:5px; }
+  #echelle { display:flex; height:8px; margin-top:7px; border-radius:2px; overflow:hidden; }
+  #echelle i { flex:1; }
+</style>
+</head>
+<body>
+<div id="carte"></div>
+<div id="bandeau">
+  <b>Coût de déplacement depuis l'île de la Cité</b><br>
+  le long des rues, avenues comptées « rapides », impasses « lentes ».
+  <label><input type="checkbox" id="voirie" checked> réseau en fil de fer</label>
+  <label><input type="range" id="opacite" min="0" max="100" value="72"> opacité</label>
+  <div id="echelle"></div>
+  <span style="font-size:11px;color:#8a8f98">proche &larr;&nbsp;&nbsp;&nbsp;&nbsp;&rarr; loin</span>
+</div>
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script>
+const SOURCE = __SOURCE__;
+// Rampe « viridis-like », du proche (violet foncé) au loin (jaune).
+const RAMPE = [
+  [0.00,'#2b0a3d'],[0.15,'#3b0f70'],[0.30,'#4a2fa0'],[0.45,'#3e6ab0'],
+  [0.60,'#2f9aa0'],[0.75,'#43c07d'],[0.88,'#a7d94b'],[1.00,'#f2e63d']
+];
+document.getElementById('echelle').innerHTML =
+  RAMPE.map(([,c]) => `<i style="background:${c}"></i>`).join('');
+const fillColor = ['interpolate',['linear'],['get','t']];
+RAMPE.forEach(([t,c]) => { fillColor.push(t, c); });
+
+const map = new maplibregl.Map({
+  container: 'carte',
+  style: { version: 8, sources: {}, layers: [
+    { id:'fond', type:'background', paint:{ 'background-color':'#0c0d10' } }
+  ] },
+  center: SOURCE, zoom: 12
+});
+
+map.on('load', () => {
+  map.addSource('cout', { type:'geojson', data:'cout.geojson' });
+  map.addSource('voirie', { type:'geojson', data:'voirie.geojson' });
+  map.addSource('frontiere', { type:'geojson', data:'frontiere.geojson' });
+
+  map.addLayer({
+    id:'cout-fill', type:'fill', source:'cout',
+    paint:{ 'fill-color': fillColor, 'fill-opacity': 0.72, 'fill-antialias': false }
+  });
+  map.addLayer({
+    id:'cout-ligne', type:'line', source:'cout',
+    paint:{ 'line-color':'#000', 'line-opacity':0.18, 'line-width':0.5 }
+  });
+  map.addLayer({
+    id:'voirie', type:'line', source:'voirie',
+    paint:{ 'line-color':'#cdd3db', 'line-opacity':0.22, 'line-width':0.4 }
+  });
+  map.addLayer({
+    id:'frontiere', type:'line', source:'frontiere',
+    paint:{ 'line-color':'#8a8f98', 'line-width':1, 'line-dasharray':[3,2] }
+  });
+  map.addLayer({
+    id:'source', type:'circle',
+    source:{ type:'geojson', data:{ type:'Feature', geometry:{ type:'Point', coordinates: SOURCE } } },
+    paint:{ 'circle-radius':5, 'circle-color':'#fff', 'circle-stroke-color':'#000', 'circle-stroke-width':1.5 }
+  });
+
+  document.getElementById('voirie').onchange = e =>
+    map.setLayoutProperty('voirie', 'visibility', e.target.checked ? 'visible' : 'none');
+  document.getElementById('opacite').oninput = e =>
+    map.setPaintProperty('cout-fill', 'fill-opacity', e.target.value / 100);
+});
+</script>
+</body>
+</html>

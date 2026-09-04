@@ -20,6 +20,7 @@ pub mod encodeur;
 pub mod mel;
 pub mod passe;
 pub mod projection;
+pub mod reseau;
 
 pub use encodeur::{Embedder, LOT};
 

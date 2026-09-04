@@ -1,0 +1,50 @@
+[package]
+name = "rusty-music-carto"
+description = "Tuiles vectorielles de la carte (module 2) : projection, MVT, PMTiles."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+rusty-music-osm = { path = "../osm" }
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Encodage des tuiles vectorielles. **Vérifié avant d'écrire le nôtre** : le
+# format MVT est un protobuf avec un encodage de géométrie en zigzag et des
+# tables de clés/valeurs par couche — trois occasions de se tromper en silence.
+# `mvt` couvre la version 2.1 de la spécification. MIT OR Apache-2.0.
+mvt = "0.15"
+
+# Écriture de l'archive PMTiles. `default-features = false` écarte les six
+# arrière-plans asynchrones (S3, HTTP, object_store, tokio, moka) dont on n'a
+# aucun usage : on écrit un fichier local, une fois. Seul `write` reste, qui
+# tire `countio`, `flate2` et `twox-hash`. MIT OR Apache-2.0.
+pmtiles = { version = "0.24", default-features = false, features = ["write"] }
+
+# Encodage des tuiles de relief. MapLibre sait ombrer lui-même un modèle
+# numérique de terrain encodé en RGB (`raster-dem` + couche `hillshade`) : on
+# lui livre l'altitude, il calcule l'éclairement. Licence MIT-0 OR Apache-2.0.
+png = "0.18"
+voronoice.workspace = true
+
+# Contours des quartiers musicaux : le diagramme de puissance de l'étage 1
+# (`affectation::partitionner`), évalué sur une grille du territoire parisien,
+# devient un aplat par famille visible en dézoomant. Même brique que
+# `core::density` pour les nappes du monde fictif. MIT OR Apache-2.0.
+contour.workspace = true
+geo-types.workspace = true
+
+# Plus court chemin sur le graphe routable du plan de ville réel
+# (`reseau_reel`) — la même brique que `crates/analysis/src/reseau.rs` pour
+# le graphe musical, ici sur un graphe de rues.
+pathfinding.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
