@@ -52,26 +52,20 @@ experiments/           sondages jetables, hors du workspace
 
 - **Rust 1.82+** et un **compilateur C** (`rusqlite` compile SQLite depuis les
   sources au premier build).
-- **Les modèles** ne sont pas dans le dépôt (1,1 Go, `.gitignore`). Le
+- **Les modèles** ne sont pas dans le dépôt (~0,35 Go, `.gitignore`). Le
   `build.rs` de `crates/analysis` traduit l'encodeur CLAP depuis l'ONNX au
-  moment du build : **sans le modèle, rien ne compile.**
+  moment du build : **sans au moins ce modèle, rien ne compile.**
 
   ```bash
-  # CLAP — empreintes du module 2 (obligatoire pour compiler) :
-  mkdir -p models && curl -L -o models/clap-audio-encoder.onnx \
-    https://huggingface.co/icybawss/clap-htsat-unfused-audio-encoder-onnx/resolve/main/audio_model.onnx
-  ./scripts/preparer-modele.sh          # → models/clap-audio-encoder-b5.onnx
-
-  # HTDemucs — démixage du module 3 (nécessaire pour `demix` et le mode Éditer) :
-  ./scripts/preparer-demucs.sh          # → models/htdemucs.safetensors
-
-  # AERO — super-résolution (nécessaire pour le bouton « HD ») :
-  ./scripts/preparer-aero.sh --checkpoint CHEMIN.th
+  ./scripts/telecharger-modeles.sh        # les trois, depuis les release assets
+  ./scripts/telecharger-modeles.sh clap   # le minimum pour compiler
   ```
 
-  `preparer-modele.sh` et `preparer-aero.sh` créent un environnement Python
-  jetable (`onnx`, `onnxruntime`). Ils rappellent quoi faire si une entrée
-  manque.
+  Le script vérifie les empreintes SHA-256. Pour reconstruire les modèles
+  depuis les sources plutôt que de les télécharger (`onnx`, `onnxruntime` dans
+  un venv jetable) : `scripts/preparer-modele.sh` (CLAP),
+  `scripts/preparer-demucs.sh` (HTDemucs), `scripts/preparer-aero.sh` (AERO).
+  Détail par modèle : `models/README.md`.
 
 ### Le moteur en ligne de commande
 

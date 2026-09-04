@@ -39,23 +39,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # `crates/analysis/build.rs` traduit l'encodeur CLAP depuis l'ONNX au
-      # build : sans le modèle, rien ne compile. Il est trop lourd pour le
-      # dépôt (`.gitignore`), on le prépare une fois et on le garde en cache.
-      - name: Cache du modèle CLAP
-        id: modele
+      # build ; `editor`/`superres` chargent leurs poids à l'exécution. Trop
+      # lourds pour le dépôt (`.gitignore`), récupérés des release assets et
+      # gardés en cache (clé = empreinte du script, qui porte les SHA-256).
+      - name: Cache des modèles
+        id: modeles
         uses: actions/cache@v4
         with:
-          path: models/clap-audio-encoder-b5.onnx
-          key: clap-b5-${{ hashFiles('scripts/preparer-modele.sh') }}
+          path: |
+            models/clap-audio-encoder-b5.onnx
+            models/htdemucs.safetensors
+            models/aero-11025-44100.onnx
+          key: modeles-${{ hashFiles('scripts/telecharger-modeles.sh') }}
 
-      - name: Préparer le modèle CLAP
-        if: steps.modele.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p models
-          curl -L --fail -o models/clap-audio-encoder.onnx \
-            https://huggingface.co/icybawss/clap-htsat-unfused-audio-encoder-onnx/resolve/main/audio_model.onnx
-          ./scripts/preparer-modele.sh
-          rm -f models/clap-audio-encoder.onnx
+      - name: Télécharger les modèles
+        if: steps.modeles.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/telecharger-modeles.sh
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings

@@ -2,10 +2,10 @@
 target/
 experiments/*/target/
 
-# Poids de modèles : 1,1 Go, et ils se récupèrent.
-# CLAP  : scripts/preparer-modele.sh   HTDemucs : scripts/preparer-demucs.sh
-# Les essais régénèrent les leurs (voir le README de chacun).
-models/
+# Poids de modèles — récupérés par scripts/telecharger-modeles.sh, ou
+# reconstruits par scripts/preparer-*.sh. Voir models/README.md.
+models/*
+!models/README.md
 experiments/*/modeles/
 
 # Bases locales : celle du dépôt est un reste de développement, celle qui
