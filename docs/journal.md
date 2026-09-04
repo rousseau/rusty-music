@@ -692,6 +692,55 @@ nous sommes réellement plus maigres est la **couverture**. Et les 10 s ne sont
 pas un raccourci qu'on s'est autorisé : l'encodeur HTSAT en variante `unfused`
 prend une entrée de dix secondes, point — couvrir plus demande plusieurs passes.
 
+### Les deux écarts chiffrés — 23 août 2026
+
+Deux pistes d'amélioration identifiées en comparant à AudioMuse-AI : plus de
+mels (128 contre 64) et plus de couverture (le morceau entier contre 50 s).
+Chiffrées avant d'y toucher.
+
+**128 mels — ce n'est pas un réglage, c'est un autre modèle.**
+`crates/analysis/src/mel.rs` le dit dès son en-tête : 64 bandes, n_fft 1024,
+hop 480, échelle HTK, non normalisé — « ne reproduisent pas au hasard le
+prétraitement de `ClapFeatureExtractor` pour `laion/clap-htsat-unfused` », ce
+sont **les valeurs que ce checkpoint exige**. Les poids embarqués ont été
+entraînés sur des spectrogrammes de cette forme précise ; leur donner 128
+bandes ne les affinerait pas, ça les rendrait aveugles — un modèle dont les
+poids attendent 64 canaux ne sait rien faire d'un 129ᵉ. Le « 128 mels,
+n_fft 2048 » d'AudioMuse-AI décrit **un autre point de contrôle** (« DCLAP »,
+distinct de `htsat-unfused`) : changer de résolution reviendrait à sourcer et
+importer un modèle entièrement différent — un chantier de l'ampleur de
+`experiments/burn-clap/` lui-même, pas un paramètre à tourner.
+
+**Couvrir le morceau entier — chiffré, et le résultat est net : aucun
+bénéfice mesuré.** `couverture.rs` comparait déjà 1/3/5/9 fenêtres et
+plafonnait à 9 (0,51×). Poussé à 15 et 25 fenêtres (jusqu'à 250 s — la
+quasi-totalité de la plupart des morceaux) sur 318 morceaux réels, 8 albums :
+
+| fenêtres | couverture | même album | même artiste | hasard |
+|---|---|---|---|---|
+| 1 | 10 s | 0,58× | 0,58× | 0,400 |
+| 3 | 30 s | 0,52× | 0,52× | 0,359 |
+| 5 | 50 s | 0,52× | 0,52× | 0,355 |
+| 9 | 90 s | 0,52× | 0,53× | 0,353 |
+| 15 | 150 s | 0,53× | 0,53× | 0,353 |
+| 25 | 250 s | 0,53× | 0,53× | 0,353 |
+
+**Le plafond est atteint à 50 s et ne bouge plus jusqu'à 250 s** — cinq fois
+plus de matière sans le moindre gain mesurable. Le coût, lui, est réel et
+linéaire : 806 s pour 318 morceaux à 25 fenêtres, soit 2,53 s/morceau contre
+0,36 s à 5 fenêtres sur SSD (`Coûts mesurés`, plus bas) — environ 5-7× plus
+cher pour un rapport au hasard identique au dix-millième près.
+
+**Conclusion des deux chiffrages : ni l'un ni l'autre n'est rentable en
+l'état.** Les 512 dimensions de l'empreinte elle-même ne sont pas en cause —
+sondage à l'oreille fait le même jour (`rusty-music voisins`) : Nirvana
+rapproche Nirvana/Tool/Soundgarden/Alice in Chains, Get Lucky rapproche
+N*E*R*D et Michael Jackson *Off the Wall*. Le 8 % de recouvrement
+musical/géographique mesuré sur la carte (`carto-ville.md`, objection V1)
+n'accuse donc pas l'empreinte : il accuse la grossièreté du placement
+inter-artiste, déjà objectivé indépendamment (le passage à 12 familles par
+genre n'a rien changé à ce chiffre non plus — voir `carto-ville.md`).
+
 ### Coûts mesurés
 
 Par morceau, chaîne complète, **avant** le positionnement :
@@ -913,6 +962,276 @@ Deux points qui se voient à l'écran :
 - **Le calcul d'une onde passe de 3,5 s à 13 s** quand une passe d'analyse
   sature la carte : les deux se disputent le même support.
 
+## Rendu cartographique — tuiles vectorielles et MapLibre
+
+`crates/carto` : projection, tuiles MVT, archive PMTiles, ombrage, style. Ni
+encodeur MVT ni écrivain PMTiles écrits ici — `mvt` 0.15 et `pmtiles` 0.24
+(MIT/Apache-2.0) les couvrent, et `pmtiles` sert justement de socle à
+**martin**, le serveur de tuiles que `CLAUDE.md` désignait. `maplibre-rs` reste
+écarté : archivé, rendu de texte inachevé.
+
+### La projection : le carré de la carte est le monde entier
+
+Le piège annoncé par `CLAUDE.md`. La décision tient en une phrase : le domaine
+`[-1,08 ; 1,08]²` de la carte **est** le carré complet de Mercator, pas une
+région posée quelque part sur une Terre. Le zoom 0 montre donc toute la
+bibliothèque dans une seule tuile.
+
+Deux conséquences, et la première n'était pas prévue :
+
+- **la déformation de Mercator nous arrange.** Aux latitudes extrêmes une même
+  distance occupe plus de pixels ; le nuage étant centré, ce sont ses bords —
+  les familles rares, la longue traîne — qui gagnent de la place ;
+- **la demi-étendue doit valoir exactement celle du champ de densité**
+  (`1 + core::density::MARGE`), sinon relief et territoires se décalent l'un par
+  rapport à l'autre sans qu'aucun des deux n'ait l'air faux.
+
+### Le relief : ombrage calculé ici, et non par MapLibre
+
+MapLibre sait ombrer un modèle numérique de terrain (`raster-dem` +
+`hillshade`), et c'était la voie évidente. Écartée pour deux raisons :
+
+- son calcul de pente part de la taille d'un pixel **en mètres**, déduite du
+  zoom et de la latitude. Notre monde n'a pas de mètres : il fait 40 000 km de
+  large parce que c'est ce que vaut un planisphère, et une altitude
+  vraisemblable y serait rigoureusement plate ;
+- ce calcul dépend du zoom, donc le relief **changerait d'aspect en zoomant**.
+  Correct sur une vraie Terre, faux sur une carte inventée.
+
+L'ombrage de Horn (1981) tient en trente lignes, et trois défauts en sont
+sortis, tous attrapés par des tests :
+
+1. **le point neutre n'est pas 0,5 mais `cos(zénith)`**, l'éclairement d'un sol
+   plat — 0,71 à 45°. Prendre 0,5 couvrait toute la carte, mer comprise, d'un
+   voile clair de 18 % ;
+2. **le signe de la pente nord-sud.** La formule de Horn suppose déjà des
+   ordonnées descendantes, comme `v` : « corriger » ce signe éclairait le
+   sud-est ;
+3. **l'exagération.** 24 donnait des pentes de 88° partout — plus rien que du
+   noir et du blanc. La bonne échelle divise par l'écart **en unités de monde**,
+   ce qui rend l'ombrage identique à tous les zooms ; 0,20 convient.
+
+Un quatrième réglage s'est décidé à l'œil, pas au test : **le noyau de densité
+du relief n'est pas celui des territoires.** À 0,02, le réglage des contours,
+l'ombrage ressemble à du papier froissé — la nappe porte tout le détail des
+27 000 morceaux. 0,05 rend des massifs et des vallées ; 0,08 déborde jusqu'aux
+bords et fait perdre la forme d'île.
+
+### Le défaut qui a coûté le plus cher : une expression de zoom imbriquée
+
+Écrire
+
+```json
+"circle-radius": ["*", ["sqrt", ["get","effectif"]],
+                       ["interpolate", ["linear"], ["zoom"], 3, 0.45, 9, 1.3]]
+```
+
+fait **rejeter le style entier**. La spécification exige que `["zoom"]` soit
+l'entrée de l'expression la plus extérieure. Le symptôme : carte noire, `load`
+qui ne se déclenche jamais, et **rien nulle part** — ni erreur, ni avertissement,
+ni trace. Il se manifestait à l'identique dans la webview et dans un navigateur,
+ce qui a d'abord fait soupçonner la webview.
+
+D'où deux garde-fous, tous deux dans `crates/carto/src/style.rs` :
+
+- **le style est engendré depuis Rust**, à partir des mêmes `Paliers` que les
+  tuiles : ce qui n'est pas dans la tuile ne peut plus être déclaré dans le
+  style ;
+- un test parcourt chaque propriété et **refuse toute expression de zoom qui
+  n'est pas en tête**.
+
+### Ce que ça coûte — mesuré sur 27 042 morceaux
+
+| | |
+|---|---|
+| lecture de la base | 0,64 s |
+| nappe de densité | 0,58 s |
+| tuiles vectorielles | 1,30 s |
+| ombrage | 2,00 s |
+| **total** | **4,5 s** |
+| archive vectorielle | 16,7 Mo, 60 373 tuiles, zooms 0-9 |
+| archive d'ombrage | 9,0 Mo, 85 tuiles, zooms 0-3 |
+
+Par zoom : 1 tuile à z0 (211 Ko, la plus lourde de toutes), 626 à z5, 29 579 à
+z9 (0,2 Ko en moyenne). Les territoires s'arrêtent à z6 et le sur-zoom les sert
+au-delà — les produire jusqu'au bout multiplierait l'archive sans rien ajouter
+à l'écran.
+
+**Latence mesurée** (Chrome, GPU Metal, M4 Pro), d'un saut de caméra jusqu'à
+l'image stabilisée, cache chaud :
+
+| échelle | ms | ce qui est rendu |
+|---|---|---|
+| z0 planisphère | 316 | 255 territoires, 11 noms de familles |
+| z3 continents | 602 | 120 territoires, 579 artistes |
+| z5 territoires | 603 | 66 territoires, 37 villes et leurs étiquettes |
+| z7 villes | 606 | villes et premiers morceaux |
+| z9 morceaux | 614 | morceaux |
+
+Les ~600 ms sont dominés par le placement des symboles de MapLibre, pas par nos
+tuiles : le z0, qui n'en place que onze, tombe à 316 ms.
+
+**La fluidité en images par seconde n'a pas pu être mesurée honnêtement.** Voir
+ci-dessous.
+
+### Ce qui ne marche pas : MapLibre dans la webview de Tauri
+
+**MapLibre ne s'initialise pas dans la WKWebView.** Son fil de travail se crée
+(`getWorkerCount()` rend 1) mais ne répond jamais : aucun `style.load`, aucun
+`styledata`, aucune erreur, aucune trace — même avec un style minimal sans
+aucune source. Écarté par l'expérience, dans cet ordre :
+
+| hypothèse | vérification | verdict |
+|---|---|---|
+| notre style | style minimal, une seule couche de fond | échoue pareil |
+| nos tuiles | aucune source déclarée | échoue pareil |
+| la politique de sécurité | CSP désactivée | échoue pareil |
+| un blob interdit | `new Worker(URL.createObjectURL(...))` | fonctionne |
+| une régression de la v5 | v4.7.1 | échoue pareil |
+| le fil issu d'un blob | bundle `maplibre-gl-csp` + `setWorkerUrl` | échoue pareil |
+
+Ce qui a été appris en chemin et reste acquis :
+
+- **le schéma d'URI personnalisé de Tauri n'est pas atteignable depuis
+  MapLibre.** Son fil de travail est construit sur une URL `blob:`, d'origine
+  opaque, et WKWebView refuse ses requêtes en silence. D'où le passage par
+  `maplibregl.addProtocol`, qui charge sur le fil principal, où `invoke`
+  fonctionne. C'est la bonne architecture indépendamment du reste ;
+- **la fenêtre principale saturait l'IPC.** Elle charge ses 27 000 points au
+  démarrage, et les réponses de la fenêtre carte attendaient derrière :
+  **110 secondes mesurées** entre le retour d'une commande côté Rust et sa
+  réception côté JavaScript ;
+- **`Library::familles` coûtait 42 s à froid** — tout l'arbitrage des genres
+  MusicBrainz sur 27 000 morceaux, refait à chaque ouverture de la carte. Le
+  style est désormais écrit **avec** les tuiles et relu depuis un fichier : plus
+  de recalcul, et plus de dérive possible entre les deux.
+
+Ce qui reste à trancher : soit trouver ce que WKWebView refuse à MapLibre (une
+bissection du bundle, ou un rapport en amont), soit changer de coquille pour la
+carte. Rien de tout cela ne touche `crates/carto`, qui est vérifié et mesuré
+indépendamment.
+
+## Réseau de circulation et profils d'itinéraire
+
+`crates/analysis/src/reseau.rs`. `carto-google-maps.md` §2 et §3. **Aucun plus
+court chemin n'est écrit** : `pathfinding` 4.15 (A*, Dijkstra, Yen),
+`rustworkx-core` 0.18 (centralité de Brandes), `petgraph` 0.8 (arbre couvrant
+minimal). `fast_paths` reste en réserve — voir les temps de routage plus bas,
+il n'a pas lieu d'être.
+
+### Un seul graphe, quatre coûts
+
+La promesse d'OSRM, reprise telle quelle : le graphe des douze plus proches
+voisins ne change jamais, seul le prix d'une arête change. Trois profils sont
+de vraies fonctions de coût — `distance ÷ popularité`, `distance × popularité`,
+pénalité de maintien dans le même territoire. **Le quatrième, les étapes
+imposées, n'en est pas une** : c'est un enchaînement de tronçons, comme les
+arrêts d'un itinéraire routier, et le document le range à tort dans la même
+colonne. Un test vérifie que le voisinage d'un morceau est identique sous les
+quatre profils : c'est ce qui garantit qu'il n'y a bien qu'un graphe.
+
+### Deux défauts qui n'étaient pas devinables
+
+**`1 − cosinus` n'est pas une distance.** C'est la moitié du carré de la corde :
+l'inégalité triangulaire n'y tient pas, et la somme de petits sauts y est très
+inférieure au saut direct. L'heuristique d'A* bâtie dessus **majorait** au lieu
+de minorer, et A* rendait des trajets plus chers que l'optimum sans rien
+signaler — 726 352 contre 344 551 sur le corpus d'essai, plus du double. On
+route donc sur l'**angle**, qui est la géodésique de la sphère et une vraie
+métrique ; il classe les arêtes dans le même ordre. `1 − cos` reste ce qu'on
+*rapporte* comme distance sonique, la grandeur du document.
+
+**L'itinéraire à durée cible rendait une promenade, pas un chemin.** Première
+version : l'état de recherche portait la durée écoulée, quantifiée par paliers.
+Résultat sur la bibliothèque réelle : deux titres de reels irlandais alternés
+quatre fois chacun — rebondir entre deux voisins très proches est le moyen le
+moins cher de remplir quarante minutes. Interdire le demi-tour n'y suffit pas,
+le cycle passe simplement à trois morceaux.
+
+La correction tient en une observation : **un plus court chemin à coûts positifs
+ne repasse jamais par un nœud.** Il suffit de ne pas mettre la durée dans
+l'état. La durée se traite alors par le choix de la destination :
+
+- **sans arrivée imposée** — un seul `dijkstra_all` depuis le départ, la durée
+  cumulée le long de l'arbre des plus courts chemins, et l'on garde la
+  destination dont le trajet dure ce qu'on a demandé ;
+- **avec une arrivée imposée** — Yen énumère des chemins simples du moins cher
+  au plus cher, on retient celui dont la durée colle.
+
+Les deux sont entièrement des appels de bibliothèque.
+
+### La centralité : à quelle échelle la mesurer
+
+Brandes coûte `O(V·E)`. Mesuré sur 27 042 morceaux et 261 270 arêtes :
+
+| échelle | centralité | construction totale | autoroutes | nationales |
+|---|---|---|---|---|
+| morceaux | **226,6 s** | 243,7 s | 207 | 7 832 |
+| artistes | **5,0 s** | 22,1 s | 197 | 7 833 |
+
+**Quarante-six fois plus rapide pour une classification à une arête près.** Le
+graphe contracté des artistes est donc le défaut — et ce n'est pas qu'un
+raccourci : le document dit « autoroute : relie les grands pôles », et les pôles
+sont les artistes, pas les morceaux. Mesurer le couloir plutôt que le brin est
+plus proche de ce qu'on cherche. L'échelle exacte reste accessible
+(`Echelle::Morceaux`) pour qui veut vérifier.
+
+### La hiérarchie, sur la bibliothèque réelle
+
+| classe | arêtes | part |
+|---|---|---|
+| autoroute | 197 | 0,1 % |
+| nationale | 7 833 | 3,0 % |
+| secondaire | 203 961 | 78,1 % |
+| sentier | 49 279 | 18,9 % |
+
+Plus 271 **refuges isolés** — des morceaux dont même le plus proche voisin est
+loin.
+
+Les autoroutes sont peu nombreuses **par construction** : ce sont les arêtes de
+l'arbre de crête reliant les 80 grands pôles, pas un seuil de centralité. Un
+seuil rendrait des tronçons épars ; l'arbre rend un réseau **continu**, ce qu'un
+test vérifie. L'arbre suit la ligne de crête de densité parce que le coût d'une
+arête y est majoré par le creux qu'elle traverse. Approximation de Steiner par
+Kou-Markowsky-Berman : plus courts chemins entre pôles (`pathfinding`), arbre
+couvrant minimal (`petgraph`), puis redéploiement des chemins.
+
+### Ce que ça coûte à l'usage
+
+Construction : 22,1 s, dont 16,1 s pour le graphe des voisins — c'est lui le
+poste principal, pas la centralité. À faire une fois par session, comme le
+graphe de `chemin.rs`.
+
+Routage, sur 27 042 morceaux :
+
+| | |
+|---|---|
+| autoroute, bout à bout | 9,3 ms |
+| sentier | 19,5 ms |
+| panoramique | 4,2 ms |
+| **« 40 minutes »** | **1 ms** — 39,8 min rendues |
+| trois alternatives (Yen) | 67 ms |
+
+Les profils divergent réellement : popularité moyenne 0,720 par autoroute contre
+0,381 par sentier, entre les deux mêmes morceaux.
+
+**La popularité est le nombre de morceaux gardés d'un artiste.** ListenBrainz et
+les compteurs de lecture locaux que prévoit `data-sources.md` n'existent pas, et
+la base ne porte aucun compteur d'écoute. C'est une approximation locale et
+honnête, normalisée en logarithme parce que la distribution s'étale de 1 à 769 :
+en échelle linéaire, tout le monde vaudrait zéro sauf trois artistes.
+
+### Commande
+
+```
+rusty-music itineraire <départ> [--arrivee N] [--profil autoroute|sentier|panoramique]
+                       [--minutes 40] [--etapes a,b,c] [--eviter-autoroutes]
+                       [--alternatives 3] [--k 12]
+```
+
+Elle affiche le profil de popularité en barres — le dénivelé du document — et la
+classe de chaque tronçon.
+
 ## Démixage (module 3)
 
 Les poids ne sont pas dans le dépôt — 84 Mo. Une fois :
@@ -1125,3 +1444,691 @@ modules.
 - **Les stems sont écrêtés à l'écriture.** Un stem peut dépasser 1,0 là où le
   mélange ne le faisait pas ; sans écrêtage, la conversion en 16 bits replierait
   le signal et le craquement s'entendrait.
+
+### Correction bidirectionnelle du tempo — 26 août 2026
+
+Suite à `docs/journal.md` (« Les deux écarts chiffrés ») et au plan de
+recherche sur l'octave (voir l'historique de session) : `Cmd::Voisins` avait
+révélé un bug concret sur « Hard Core 100% Fluor » (Watcha) — 46 BPM en base,
+alors que l'évidence brute d'autocorrélation pointe nettement vers ~183 sur
+4 de ses 5 fenêtres. Cause reconstituée : `descripteurs::tempo()` ne corrige
+l'octave que dans un sens (division par deux) ; un gagnant de grille ambigu
+(~92 BPM, à mi-chemin entre deux lectures plausibles) se faisait rediviser
+au lieu d'être remultiplié vers le vrai tempo.
+
+**Correctif livré** : `SEUIL_SUR_OCTAVE` (1,02) et `BPM_MAX_CORRECTION`
+(266,7, symétrique de `BPM_MIN_CORRECTION` par le même rapport à sa borne de
+grille) — `crates/analysis/src/descripteurs.rs`. Le sens montant l'emporte
+quand les deux qualifient : un départage par simple comparaison d'évidence
+brute favorise structurellement la moitié (elle recouvre une partie des
+harmoniques du gagnant par construction du peigne), ce qui aurait annulé la
+correction utile — mesuré en écrivant le correctif, pas deviné.
+
+**Calibré et validé sur trois cas réels** avant tout déploiement :
+- Watcha, cas signalé : 4 des 5 fenêtres remontent à ~183-184 BPM, la
+  médiane passe de 46 à 183 — corrigé.
+- Johnny Cash « Give My Love to Rose », référence historique du seuil
+  descendant : résultat inchangé au niveau de la médiane (65,5 BPM),
+  fenêtre par fenêtre identique à la calibration documentée en 2026
+  (« Give My Love to Rose… 130… corrige juste à 65 »).
+- Alexi Murdoch « Dream About Flying », déjà plausible (61 BPM) : médiane
+  inchangée malgré une fenêtre isolée qui bascule.
+
+Test synthétique portable ajouté (`le_tempo_remonte_un_rythme_accentue_a_la_mesure`) :
+un train de clics à tempo rapide dont un clic sur deux est accentué de 10 %
+(gain 1,0/0,9 — calé empiriquement, en dessous de 0,8 le rythme de la mesure
+domine trop pour laisser une évidence testable au battement) reproduit le
+mécanisme réel sans dépendre d'un fichier externe.
+
+**Validation à plus large échelle — `crates/analysis/examples/octave_avant_apres.rs`,
+300 morceaux au hasard de la bibliothèque réelle** : la concentration dans
+[40, 90] BPM baisse de 83,7 % à 75,3 %, celle dans [150, 267] BPM monte de
+3,7 % à 12,7 % — le mouvement prédit, dans le bon sens, sur un échantillon
+non trié sur le volet (539 s, 1,8 s/morceau).
+
+**Mais la validation révèle aussi une vraie limite, honnêtement à
+signaler.** 42 morceaux sur 300 (14 %) se déplacent de plus de 3 %, et
+plusieurs, inspectés, sont des **faux positifs plausibles** — une comptine
+enfantine instrumentale (« Le chat est par terre ») passe de 55 à 220 BPM.
+Sondé en détail : l'évidence brute élargie montre un vrai pic vers 73 BPM
+(220,75 / 3 ≈ 73,6) que la comparaison gagnant-contre-double ne peut pas
+voir, puisqu'elle ne compare que deux candidats à la fois. **Le seuil ne
+sépare pas franchement les deux populations** : les ratios des vrais
+positifs (Watcha : 1,02-1,05) et ceux de ce faux positif se chevauchent — un
+seuil plus strict qui exclurait le second exclurait aussi le premier. Ce
+n'est pas un bogue d'implémentation à corriger, c'est la limite structurelle
+d'une comparaison à deux candidats déjà anticipée par le plan de recherche
+(« aucune piste ne promet d'éliminer l'erreur d'octave, seulement d'en
+réduire l'incidence ») — et par la littérature externe citée (erreurs de
+facteur 2/3/4 qui restent un problème ouvert même à l'état de l'art.
+
+**Décision** : gardé. Le bilan agrégé est net et mesuré positif (le
+symptôme à 87 % à l'échelle de toute la bibliothèque se réduit
+significativement), le cas qui a motivé le correctif est résolu, la
+référence historique n'a pas régressé. Les faux positifs sur matière très
+répétitive (comptines, boucles simples) restent un résidu documenté, du
+ressort des pistes 2 (a priori adaptatif) ou 3 (consensus inter-fenêtres) si
+on veut le réduire encore — pas de ce correctif-ci.
+
+> **Suite (1er sept. 2026)** : le sens *descendant* décrit ici — hérité, pas
+> ajouté par ce correctif — s'est avéré rabaisser d'une octave 55 % de la
+> bibliothèque. Son discriminant (`brut(bpm/2)` contre `brut(bpm)`) ne
+> discriminait rien. Remplacé par un test d'alternance fort/faible. Voir
+> « La correction d'octave descendante rabaissait la moitié de la
+> bibliothèque ».
+
+## Mode Écouter — qualité du fichier et bouton « E » — 29 août 2026
+
+Détail complet : `docs/amelioration-audio.md`.
+
+### Ligne de qualité
+
+`codec` / `bitrate` / `sample_rate` / `channels` étaient déjà en base
+(lofty, au scan) mais nuls part exposés piste par piste. Ajout d'une commande
+`qualite_piste(id)` calquée sur `descripteurs`, d'une colonne `bit_depth`
+(migration, comme `bitrate`/`codec` avant elle — `NULL` jusqu'au prochain
+rescan « relire les inchangés »), et d'une ligne sous le compteur de temps :
+`FLAC · 16 bit · 44,1 kHz`, `MP3 · 320 kb/s · 44,1 kHz`. La profondeur de
+bits n'est montrée que pour les codecs sans perte — lofty en rend parfois une
+pour les formats avec perte, où elle n'a pas de sens.
+
+### Bouton « E »
+
+**Ce que « E » n'est pas** : une normalisation de loudness. Volume constant
+d'un morceau à l'autre, c'est utile mais ce n'est pas une amélioration — ça
+ira dans le mode Bibliothèque.
+
+**Ce que « E » est** : un excitateur par non-linéarité. Synthèse des 2ᵉ et
+3ᵉ harmoniques de la bande `[2,5 kHz, coupure]`, ajoutées dans le médium-aigu
+audible autant qu'au-dessus de la coupure, dans le domaine STFT (pas de
+suréchantillonnage, pas de repliement). Sur un FLAC ou un MP3 320,
+`estimer_coupure` renvoie ≥ 18 kHz et la chaîne est un **passe-plat** — le
+fichier ressort intact (test).
+
+**Premier essai corrigé après écoute** : la version initiale ne recopiait
+qu'une octave translatée *au-dessus* de la coupure (~16 kHz pour un MP3 128)
+— quasi inaudible pour une oreille adulte (« je sens très peu de différence
+sur un MP3 128 »). La synthèse d'harmoniques qui redescendent dans le
+médium-aigu s'entend, elle. Ajout au passage d'une **intensité réglable**
+(`0`..`1`, défaut `0,6`, courbe `intensité²`) — réglette dans le transport,
+visible seulement quand « E » est actif, agit au relâché pour ne pas
+réouvrir le morceau à chaque pixel.
+
+Analyse écartée : la super-résolution neuronale (AERO, AudioSR via ONNX). Le
+code est en MIT partout, mais les **poids musique d'AERO sont entraînés sur
+MUSDB18-HQ, non commercial** — exclu par la politique de licence du projet.
+AudioSR ne documente pas la licence de ses poids, et sa diffusion latente est
+plus lente que le temps réel même sur A100. Reporté au module 3,
+conditionné à un ré-entraînement sur corpus libre ou à une clarification de
+licence.
+
+Insertion : dans `ouvrir()`, sur le tampon déjà décodé en RAM, **hors du
+verrou `Player`**. Bascule en cours d'écoute sans coupure —
+`Player::remplacer_courant` réouvre le morceau en tâche de fond et le remet à
+la position courante sous un verrou tenu quelques microsecondes, le
+préchargement se reconstruit au sondage suivant. État global au processus
+(`OnceLock`/`AtomicBool`) pour ne pas alourdir la signature de `ouvrir`.
+
+### Rééchantillonnage `rubato`, toujours actif
+
+Découvert en vérifiant si le bouton « E » devait porter le rééchantillonnage :
+`rodio` 0.22 dit lui-même, dans `SampleRateConverter`, ne faire qu'une
+interpolation linéaire pour monter en fréquence et jeter des échantillons
+pour descendre — « may introduce audible distortions ». On rééchantillonne
+donc le tampon vers la fréquence de la carte son avec `rubato` (`Fft`
+synchrone) dans `ouvrir()`, et le convertisseur de `rodio` devient un
+passe-plat. Passe-plat aussi quand les fréquences coïncident déjà (cas
+courant : 44,1 kHz des deux côtés).
+
+Nouvelles dépendances : `rubato` (MIT). `fundsp`, un temps envisagé pour un
+excitateur temporel, écarté — la voie fréquentielle sur `rustfft` (déjà là,
+et déjà l'outil du spectrogramme) évite le repliement sans suréchantillonnage
+et sans arbre de dépendances supplémentaire.
+
+### Sondage super-résolution neuronale (AERO)
+
+Le dépôt `slp-rl/aero` (MIT) cloné et lu : c'est un U-Net sur spectrogramme
+complexe de la lignée HDemucs — **la même famille d'opérateurs sur laquelle le
+sondage `experiments/burn-demucs/` a mesuré que le GPU de Burn rend des
+nombres faux**, plus LSTM, attention et l'activation Snake (`Sin`). La voie
+Burn+GPU est donc une impasse pour AERO comme pour le module 3 ; la porte de
+sortie est la même : `ort` + CoreML, STFT sortie du graphe et refaite en Rust.
+
+**Bloqué sur la licence des poids** : le checkpoint musique d'AERO est
+entraîné sur MUSDB18-HQ (non commercial), exclu par `CLAUDE.md`. Les
+checkpoints `4-16` publics, eux, sont sur VCTK (CC BY) mais c'est de la voix
+en 4→16 kHz. Sortie propre : ré-entraîner la config musique sur MTG-Jamendo
+ou FMA (CC BY) — quelques jours de GPU, `train.py` fourni. C'est ce qui
+reporte le chantier.
+
+Livré : `experiments/burn-aero/README.md` (sondage), `scripts/preparer-aero.sh`
+(export ONNX du réseau seul, STFT exclue — recette `preparer-modele.sh`),
+`docs/module3-superresolution.md` (architecture du rendu hors-ligne
+« régénérer en HD »).
+
+**30 août — licence débloquée par le mandant** (« on utilise tous les outils
+disponibles ; la licence sera adaptée à la publication »). Le sondage a donc
+été mené jusqu'au bout :
+
+- checkpoint musique récupéré (`musdb/aero-nfft=512-hl=256`, 437 Mo, via
+  l'interstitiel « virus scan » de Google Drive) ;
+- `preparer-aero.sh` reconstruit le modèle depuis
+  `pkg['models']['generator']['kwargs']` (pas d'hydra), retire deux irritants
+  — `torch.eye(T, bool)` de l'attention → `(delta == 0)` pour éviter `EyeLike`
+  que ORT CPU n'implémente pas ; kwargs filtrés sur la signature d'`Aero` —,
+  exporte le réseau seul et **vérifie la parité : erreur L2 relative
+  2,8 × 10⁻⁵** contre PyTorch. Graphe de 628 nœuds, 0 opérateur exotique.
+  `models/aero-11025-44100.onnx`, 156 Mo, métadonnées STFT embarquées ;
+- **moteur d'inférence tranché par la mesure** (`experiments/burn-aero`,
+  `cargo run --release`, segment de 5 s contre la référence PyTorch) :
+
+  | moteur | fidélité | temps 5 s | verdict |
+  |---|---|---|---|
+  | `tract` (pur Rust) | cos **0,68 — faux** | 2,5 s (×2 TR) | un opérateur mal exécuté, comme wgpu sur demucs |
+  | `ort` (ONNX Runtime) | cos **1,000000** (rel 3e-5) | 0,70 s (**×7 TR**, CPU) | retenu |
+
+  Une piste de 4 min ≈ 35 s de rendu. `ort` télécharge ONNX Runtime (MIT) au
+  build ; `ort-sys` tire `ureq`/`tar`/`flate2`.
+
+Reste (`docs/module3-superresolution.md`, tableau d'étapes) : STFT/iSTFT Rust
+fidèle à `torch.stft` (périodique, normalized, reflect — le prochain risque),
+boucle de segments avec recouvrement, crate `crates/superres`, cache `hd/`,
+commandes, aiguillage lecture, bouton « HD ». Rien encore dans le workspace.
+
+### Super-résolution — crate `crates/superres`, bout à bout
+
+Étapes 3 à 7 du tableau, faites dans la foulée.
+
+**STFT/iSTFT Rust** (`crates/superres/src/stft.rs`) reproduisant les
+`torch.stft` / `torch.istft` d'AERO. Les détails qui comptaient, tous à
+vérifier contre une référence PyTorch et non à deviner : fenêtre de Hann
+**périodique** (`0.5 - 0.5·cos(2πn/N)`, pas `N-1`) ; `normalized=True` ⇒
+chaque trame ÷ √nfft ; `center=True` ⇒ repli (`reflect`) de nfft/2 avant
+fenêtrage ; bin de Nyquist jeté (256 bins) ; et surtout `_spec` travaille en
+`hop=64 win=128` (fenêtre de 128 zéro-complétée à 512), `_ispec` en
+`hop=256 win=512` — c'est là qu'est le sur-échantillonnage ×4. Segment isolé,
+pipeline complet : **erreur L2 relative 1 × 10⁻⁵** contre PyTorch.
+
+**Segmentation** : le modèle a une entrée figée (T=862 trames ≈ 5 s). On
+découpe le morceau en segments de 5 s avec 25 % de recouvrement, addition-
+recouvrement avec fondu trapézoïdal. Fichier entier Rust vs `model()` PyTorch
+non segmenté : **1,1 %** — la part de la segmentation (chaque segment
+normalise par sa propre moyenne/écart-type), pas un défaut ; `predict.py`
+d'AERO fait pire (segments de 10 s bout à bout, sans recouvrement).
+
+**Piège `rubato`** : `Fft::process_all` de la 5.0 laisse ~1 s d'amorce fausse
+en tête de signal — son retrait annoncé du retard de démarrage ne suffit pas
+pour 44,1 → 11,025 kHz. Contourné en préfixant l'entrée d'un bloc réfléchi et
+en jetant l'amorce correspondante : écart au rééchantillonneur de référence
+12 % → 5 × 10⁻⁴. (Diagnostic : le signal était juste à 99,95 % **sauf** le
+premier dixième, à 40 % d'erreur.)
+
+**Format du cache** : WAV PCM 16 bits, comme les stems. `flacenc` (pur Rust)
+produit un FLAC valide que `soundfile` relit mais que `symphonia` (donc
+`rodio`, donc le lecteur) refuse — « end of stream ». Un WAV de 4 min stéréo
+pèse ~42 Mo ; acceptable pour les quelques morceaux qu'on régénère.
+
+**Aiguillage lecture** : `Player` porte un `resoudre: Fn(&Path) -> PathBuf`,
+identité par défaut, que l'appli branche sur `superres::resoudre(&hd, p)`.
+`Player.queue` garde les chemins d'origine (repérage de l'interface) ; seules
+`a_precharger` / `completer` / la réouverture « E » passent par la résolution.
+Drapeau global `lecture_hd` (comme « E »), bouton `#hd` à trois états dans le
+transport.
+
+**Test réel** : Lamb « Sacred Space », MP3 128, 7 min stéréo — régénéré en
+**164 s** (×2,6 le temps réel), sortie 44,1 kHz 16 bits, crête rabattue à
+−0,3 dBFS (le modèle n'est pas borné, on préfère réduire que d'écrêter).
+
+### Le rééchantillonneur étouffait tout — deuxième piège `rubato`
+
+Testé sur « Trawalc'h » de Startijenn (MP4 266 kb/s) : le HD **étouffait
+complètement** le son, coupure à ~8 kHz là où l'original monte à 19 kHz et où
+AERO en PyTorch rend ~17 kHz. Diagnostic par analyse de bandes : mon
+pipeline, alimenté du `lr` de `torchaudio`, sortait un aigu correct ; alimenté
+de mon propre `lr` (`rubato`), il s'effondrait. **`rubato::Fft::new` coupe
+beaucoup trop bas** : son défaut vise un sous-bloc de ~256 trames pour la
+latence, ce qui donne une **FFT de sortie de 64 points** à 44,1 → 11,025 kHz —
+fenêtre anti-repliement si grossière que la coupure tombe à 4,3 kHz au lieu de
+5,3. AERO voit alors une entrée déjà sur-filtrée et calibre sa reconstruction
+en conséquence : sortie étranglée. `new_custom(…, sub_chunks = 1, chunk 16384,
+Hann, …)` rend une FFT de sortie de milliers de points, coupure à 5,3 kHz
+comme `torchaudio` — HD final à 16,6 kHz, comme la référence PyTorch.
+
+### Puis « Beng Beng Beng » (MP3 128) : encore sourd — le fond du problème
+
+Même après le rééchantillonneur, le HD étouffait « Beng Beng Beng ». Analyse
+de bandes : le HD *étendait* bien la coupure (14 → 17 kHz) mais **creusait la
+présence** — 8–12 kHz passait de 10,9 % à 7,6 %. Cause : le pipeline
+**remplaçait tout le spectre** par la sortie du modèle, qui repart d'un 11 kHz
+(Nyquist 5,5) et rebâtit le médium-aigu réel plus mou que le MP3 ne le
+portait. Un MP3 128 monte à ~16 kHz : on jetait 5,5–16 kHz de vrai contenu
+pour le reconstruire moins bien.
+
+**Correctif : mélange HF.** `regenerer` garde le spectre de la source **sous
+sa coupure estimée** et ne prend le modèle qu'**au-dessus** (croisement par
+masque en cosinus surélevé de 300 Hz, domaine STFT 2048).
+`melanger_hf(source_44k, hd, fc)`. Résultat mesuré sur « Beng » : bandes
+0–16 kHz identiques à l'original (13,4 vs 13,6 % ; 10,8 vs 10,9 %), le HD
+n'ajoute que 16–22 kHz (0,1 → 1,7 %). Sur « Trawalc'h » (coupure 21 kHz) le
+mélange rend l'original à l'octet près — le HD ne peut plus ternir, il ne
+peut qu'ajouter ou ne rien faire.
+
+**Garde-fou** : `regenerer` rend la coupure estimée ; au-dessus de 16 kHz,
+`start_superres` prévient — « la source monte déjà à 21 kHz, le HD n'ajoute
+presque rien ».
+
+`regenerer_depuis_lr` reste la sortie brute du modèle (sans mélange) pour les
+tests de parité ; `regenerer` = décode → modèle → mélange → WAV.
+
+### Le cache figeait les anciens sons — troisième itération
+
+Après tout ça, « Beng Beng Beng » sonnait *encore* étouffé au relancement.
+Cause : le **cache HD contenait le fichier d'une version antérieure** du
+pipeline (coupure à 6,5 kHz, mesurée), joué tel quel — l'activation HD était
+instantanée, sans régénération. Corrigés :
+
+- **`VERSION_CACHE`** dans le nom du fichier (`<hash>-v3.wav`). Un cache d'une
+  version antérieure n'est plus trouvé. `purger_anciens` supprime les fichiers
+  qui ne portent pas la version courante ; appelé au démarrage et avant chaque
+  régénération. **À incrémenter dès que `regenerer` change.**
+- **Mélange par maximum spectral** (au lieu d'un masque fixe autour de la
+  coupure) : sous `fc`, la source ; au-dessus, la raie la plus forte des deux.
+  Garantie forte — le HD **ne peut qu'ajouter**, même si la coupure est
+  sous-estimée : là où la source est encore présente au-dessus de `fc`, elle
+  gagne. Mesuré sur « Beng » : bandes 0–16 kHz à la décimale de l'original.
+- **Axe du spectrogramme fixé** (`spectre::F_MAX = 22 050 Hz`), plus lié à la
+  fréquence de Nyquist de l'entrée. Deux spectrogrammes se comparent sur la
+  même échelle : un aigu manquant est une bande sombre en haut, pas une image
+  « écrasée » sur une échelle plus courte.
+
+### Barre de lecture : spectrogramme au lieu de l'onde
+
+Sur demande, `#wave` passe de 160 barres crête/RMS à un **spectrogramme du son
+réellement joué** (canevas, axe log-fréquence, tête de lecture par-dessus,
+clic pour se déplacer inchangé). Commande `spectre_transport(path, w, h)` :
+
+- résout le chemin comme le lecteur (cache HD si la lecture HD est active) ;
+- applique l'excitateur « E » au vol s'il est actif
+  (`player::spectre_ameliore`, via `ouvrir`) ;
+- rend **aussi** le spectrogramme de l'original quand le son joué en diffère
+  (`pixels_ref`), pour que l'interface **teinte de l'accent ce que E ou HD a
+  ajouté** — d'autant plus vif que le gain d'énergie est net.
+
+Calcul en tâche de fond, mis en cache par (chemin, état HD) ; l'image paraît
+quand elle est prête, un fond neutre sert de repère d'ici là. Zéro coût sur
+la lecture (affichage seul), zéro sur la régénération. `spectre::calculer` est
+refactorisé en `calculer_echantillons` réutilisable.
+
+### La playlist ✦ ne prenait pas la main sur la file — 30 août 2026
+
+Le bouton ✦ « playlist dans l'esprit de ce morceau » (inspecteur, mode
+Écouter) envoyait la nouvelle liste par `set_queue`. Or `set_queue` est fait
+pour la **régénération d'un chemin sur la carte** : même départ, on garde les
+`prochain` premiers rangs déjà confiés à `rodio` et on ne remplace que la
+suite. Quand la playlist part du morceau **en cours de lecture**, ce départ
+identique déclenchait cette conservation — et les un ou deux morceaux de
+l'ancienne file (les résultats de recherche) restaient en tête, préchargés,
+avant que la playlist ne démarre. De l'extérieur : « la playlist Alchémie ne
+démarre pas ».
+
+Corrigé par `Player::rebrancher_file` + commande `remplacer_file` : on garde
+la piste en cours **sans coupure** (sortie vidée, piste rouverte à sa
+position — même procédé que `remplacer_courant` pour la bascule « E »/HD),
+mais on **abandonne le préchargement** de l'ancienne file. `charges = [0]`,
+`prochain = 1` : le sondage prépare la suite sur la nouvelle liste. Si rien
+ne joue, ou si la tête de la nouvelle file n'est pas le morceau écouté, on
+retombe sur `play`. `set_queue` reste inchangé pour la carte.
+
+### Filtrer la grille de pochettes par famille — mode Écouter
+
+La légende des familles du mode Explorer (pastille teintée + nom + effectif,
+`rendreFamilles`) est réutilisée telle quelle dans le rail du mode Écouter,
+au-dessus de « Bibliothèque ». Cochée, une famille restreint la grille aux
+albums dont la **famille sonique dominante** est celle-là ; plusieurs
+familles cumulent (OU), rien de coché montre tout, « Toutes les familles »
+efface la sélection.
+
+Commande `album_families` → `Library::familles_des_albums` : pour chaque
+album (clé nom + `COALESCE(album_artist, artist)`, identique à `albums`), le
+cluster de la carte le plus représenté parmi ses morceaux projetés, égalité
+tranchée par le plus petit numéro. Un album dont aucun morceau n'est encore
+sur la carte n'a pas d'entrée — le filtre le laisse alors visible.
+
+Côté interface, `vue.lignes` reste la liste complète ; `lignesCourantes()`
+applique le filtre au vol, partagé par la grille virtualisée, le repère
+alphabétique et le compte du fil d'Ariane. Le mapping album→famille est
+rechargé (et le filtre vidé) après tout recalcul du clustering
+(`familleARecalculee`).
+
+### La playlist ✦ se compose à vue, dans la file — 30 août 2026
+
+Un clic sur ✦ (case d'album ou inspecteur) laissait l'utilisateur devant la
+roulette système, sans rien dans le logiciel. Deux attentes s'y cachaient,
+muettes : le **graphe des voisins** d'abord — un balayage complet, ~20 s la
+première fois d'une session, gardé en cache ensuite — puis l'errance
+elle-même, quasi instantanée, qui rend d'un bloc les 20 morceaux dans l'ordre
+du trajet.
+
+Les deux boutons passent maintenant par une fabrique commune,
+`composerAlchimie({ bouton, chemin, demarrer })` :
+
+- le glyphe ✦ tourne (`alchimie--travail`) tant que ça travaille ;
+- le panneau **file d'attente** s'ouvre d'emblée sur 20 emplacements vides
+  (la longueur cible visible tout de suite) surmontés d'un bandeau de phase
+  et d'une jauge — « Préparation du graphe des voisins… » puis
+  « Composition de la playlist… » ;
+- la playlist vient s'y **poser piste par piste** (`revelerFile`, un rang par
+  battement de 55 ms) ; la première porte la marque « graine » ;
+- la **lecture démarre dès que le trajet est là**, sans attendre la fin du
+  défilement — celui-ci n'est qu'un habillage, pas un calcul.
+  `fileCompositionActive` empêche le sondage d'état de redessiner la file
+  par-dessus l'animation.
+
+Côté moteur, la jauge de la première phase est déterminée : `Graphe`
+gagne `construire_suivi`, qui incrémente un `AtomicUsize` par empreinte
+balayée (`construire` délègue avec un compteur jeté — CLI et tests
+inchangés). `Etat` porte `graphe_fait`/`graphe_total` (`total == 0` : rien
+en cours), lus par la commande `graphe_progress` que l'interface sonde à
+5 Hz pendant l'attente. Le graphe déjà en cache : `preparerGraphe` rend
+aussitôt, on saute droit à la composition.
+
+### Actualiser les passes une à une, depuis l'Aperçu — 30 août 2026
+
+L'histogramme du tempo du mode Bibliothèque semblait périmé : creux, calé sur
+3 199 morceaux quand la sauvegarde `rusty-music.avant-remesure-tempo` du
+20 août en portait 15 838. En réalité rien de périmé — `library_stats` relit
+la base à chaque entrée dans le mode, sans cache. C'est la base qui était
+incomplète : la remesure du 20 août avait été lancée avec « tout refaire »,
+donc `start_descripteurs { force: true }` a d'abord appelé
+`effacer_descripteurs()` (les 15 847 lignes), puis la passe s'est arrêtée à
+3 200 (app fermée). Aucune reprise au démarrage, et le seul moyen de la
+relancer était le bouton « Analyser » d'une racine, tout en bas des réglages
+— qui rejoue *les quatre* passes à la suite. L'humeur (tempo × énergie)
+affichait 23 845 « non mesurés » pour la même raison : `stats_humeur` compte
+non mesuré dès que `bpm` **ou** `energy` est NULL.
+
+Nouveau panneau **Actualiser** dans l'Aperçu, à côté de **Complétude** qui en
+montre le besoin. Un bouton **Tout actualiser** rejoue la chaîne entière
+(scan → empreintes → descripteurs → genres) comme « Analyser » d'une racine,
+mais sur toutes les racines ; quatre boutons en dessous — *Scanner les
+dossiers*, *Empreintes*, *Tempo · tonalité · énergie*, *Genres MusicBrainz* —
+relancent une seule passe (`lancerPasse` dispatche vers `passeScan` /
+`passeEmpreintes` / `passeDescripteurs` / `passeGenres`). S'y ajoutent la case
+« Refaire aussi ce qui est déjà mesuré » et le champ contact MusicBrainz,
+déplacés depuis le bloc « Source de la bibliothèque ». Le scan, seule passe à
+prendre une racine, est rejoué sur chacune à la suite.
+
+Avancement visible à chaque tour de sonde (`avancementActu`) : barre `<progress>`
+graduée dès qu'un total est connu (empreintes, descripteurs, genres —
+`faits / total (NN %) — reste ~Xh`), texte seul pour le scan qui n'annonce pas
+de total (compte qui monte). Pendant « Tout actualiser », chaque ligne est
+préfixée de l'étape en cours (« Étape 3/4 — … »). Un « démarrage… » est posé
+avant le premier `invoke` pour qu'il n'y ait pas de trou muet.
+
+`verrouillerActualisation` grise les boutons de l'Aperçu **et** les
+« Analyser » des racines pendant qu'une passe tourne (une seule de chaque
+sorte côté moteur). `reprendreActualisationEnCours`, appelé à l'entrée du
+mode, raccroche l'affichage à une passe déjà en vol. Le bouton « Analyser »
+d'une racine et sa jauge `racines-jauge` restent en place, inchangés.
+
+### Mode Découvrir — le fil d'actualité — 30 août 2026
+
+Le mode Découvrir n'était qu'un explorateur manuel : on cherchait un artiste,
+on voyait ses collaborateurs MusicBrainz (`artist_links`), on naviguait le
+graphe. Il lui manquait l'actualité — ce qui vient de sortir.
+
+**Trois flux, reconstruits à partir des dates, faute de « news » libre.**
+Aucune API ne rend un flux d'actualité musicale exploitable ; on la
+reconstitue.
+
+1. **Sorties récentes** — *un seul* appel à `explore/fresh-releases` de
+   ListenBrainz (CC0) rend les sorties de la planète sur la fenêtre demandée
+   (~8 000 pour 30 jours) ; on les croise avec les identifiants d'artistes de la
+   bibliothèque. On garde Album/EP/Single, sans type secondaire disqualifiant
+   (Live, Compilation, Remix…), datées des 30 derniers jours. Dates partielles
+   (« 2026 », « 2026-08 ») complétées par `musicbrainz::completer_date` en
+   `YYYY-MM-DD`, qui se compare et se trie comme une chaîne — SQLite
+   `date('now', ?)` tient l'horloge, pas de crate de calendrier. Plafond de
+   4 sorties par artiste et par passe : Buckethead publie une douzaine d'EP le
+   même jour.
+2. **Collaborations** — pas de flux dédié : une sortie créditée à plus d'un
+   artiste (`artist_mbids` de longueur > 1). La colonne `collaborateurs` de
+   `decouvrir_sorties` porte le libellé du crédit ; non vide, la sortie va dans
+   la section « Collaborations » plutôt que « Sorties récentes ».
+3. **Artistes voisins** — les candidats ne sont pas dans la bibliothèque, donc
+   pas d'empreinte : la carte du mode Explorer ne s'applique pas. On prend
+   `labs.api.listenbrainz.org/similar-artists` (agrégé sur les écoutes de la
+   communauté), un appel par artiste, avec repli sur le graphe de collaboration
+   déjà en base (`artist_links`, aucun réseau) pour ceux que ListenBrainz ne
+   couvre pas. On écarte les artistes qu'on possède déjà.
+
+**Pas d'historique d'écoute.** La reco n'est donc pas personnalisée par les
+écoutes ; le classement se fait sur le nombre de portes d'entrée (combien
+d'artistes connus mènent à un voisin) et la récence.
+
+**Le piège « Various Artists ».** Une première version interrogeait MusicBrainz
+artiste par artiste (`release-group?artist=…`) pour toute la discographie, puis
+filtrait sur la date. L'artiste #1 de la bibliothèque de test par nombre de
+morceaux est *Various Artists*, crédité sur des dizaines de milliers de
+compilations : la pagination — 100 par page, une requête par seconde — ne
+finissait jamais, la passe restait muette et l'interface aussi. Corrigé sur
+deux fronts : `musicbrainz::albums_artiste` plafonne à 600 albums (utile aussi
+pour la passe *genres*), et le mode Découvrir écarte les artistes spéciaux de
+MusicBrainz (`ARTISTES_SPECIAUX` : `[unknown]`, `[traditional]`…). Surtout, la
+passe ne parcourt plus les discographies : `fresh-releases` fait le travail en
+une requête.
+
+**La passe (`core::decouvrir::actualiser`)** est calquée sur `enrichir` :
+additive, reprenable, `Bilan` + callback d'avancement. Le suivi des voisins
+(`decouvrir_suivi`, `kind = "voisins"`) fonctionne comme `mb_fetched` mais
+**périme** à 30 jours — la similarité bouge lentement ; l'étape sorties pose sa
+propre marque (`@passe`). `decouvrir_elaguer` retire du fil ce qui a plus d'un
+an.
+
+Coût mesuré sur la bibliothèque réelle : ~1 min 30 pour une passe complète
+(60 artistes-voisins × 1 s + un `fresh-releases`), 61 sorties retenues sur
+30 jours. En régime établi (voisins périmés à 30 j) la passe se réduit au seul
+appel `fresh-releases`, quelques secondes.
+
+**Interface.** Commandes Tauri sur le modèle du trio enrichissement
+(`start_decouvrir` / `decouvrir_state` / `decouvrir_feed` / `decouvrir_tout_vu`).
+À l'entrée dans le mode, le fil s'affiche tel quel puis une passe se relance si
+la dernière date de plus de 12 h **et** qu'une adresse de contact est
+renseignée ; un bouton « Actualiser » force la passe. **Barre de progression**
+`<progress>` (même style que l'Aperçu) pilotée par `decouvrir_state`
+(`artistes / total`, ETA), plus une ligne de texte — sans quoi un clic sur
+« Actualiser » ne montrait rien pendant une minute.
+
+**Trois onglets, pas trois sections empilées.** Le défilement d'un long fil
+mélangeait sorties, collaborations et voisins. On garde le même sélecteur
+`.segments` que le rail (Sorties · Collaborations · À écouter ailleurs), avec
+le compte sur chaque onglet, collant en haut au défilement ; l'onglet ouvert
+est mémorisé (`localStorage`). Les cartes deviennent des **lignes compactes** :
+pochette 44 px à gauche (Cover Art Archive, `front-250`, via une commande
+`decouvrir_pochette` qui met en cache disque comme `cover` — la CSP interdit
+les images distantes), titre, « artiste · type · il y a N jours », puis deux
+liens sortants — **MusicBrainz** (la page du release-group) et **Last.fm** (la
+page de l'album). Le nom d'artiste est cliquable et rouvre l'explorateur de
+collaborations. `tauri-plugin-opener` pour les liens : la webview ne navigue
+pas dehors.
+
+CLI : `rusty-music decouvrir --contact … --jours 30`.
+
+Schéma : `decouvrir_sorties`, `decouvrir_voisins`, `decouvrir_suivi` — trois
+tables neuves, aucune migration de colonne.
+
+### Deux pièges de la webview Tauri, rencontrés en chemin — 30 août 2026
+
+**L'interface servie était systématiquement périmée.** Tauri renvoie les
+fichiers embarqués **sans en-tête de fraîcheur** ; WKWebView les met alors en
+cache disque et continue de servir l'`index.html` d'un ancien build, même après
+recompilation — la webview affichait trois modes quand le code en portait cinq.
+Et le `build.rs` du dépôt, censé forcer la reconstruction quand `ui/` change, ne
+suffisait pas : `cargo:rerun-if-changed` relance le *script*, pas la compilation
+de `main.rs` où vit `generate_context!`. Deux correctifs :
+
+- `build.rs` hache tout `ui/` et publie le hachage en `cargo:rustc-env` ;
+  `main.rs` le lit (`const _UI_HASH = env!(…)`), donc tout changement d'interface
+  invalide `main.rs` et ré-embarque les assets. Plus besoin de
+  `cargo clean -p rusty-music-desktop`.
+- La fenêtre est bâtie en Rust (plus dans `tauri.conf.json`) pour lui accrocher
+  `on_web_resource_request` : `Cache-Control: no-store` sur le protocole
+  `tauri://`. Les assets sont en mémoire, aucun intérêt à les cacher. Une purge
+  unique de la webview au premier lancement (marqueur `.webview-purgee-v1`)
+  efface l'entrée périmée héritée des anciens builds.
+- `RUSTY_MUSIC_INCOGNITO=1` : webview non persistante + fenêtre au premier plan,
+  pour tester la version courante sans cache ni conflit avec l'app installée.
+
+**Grille d'albums par-dessus le fil.** `charger("albums")` tourne en fond au
+démarrage et se termine parfois *après* `basculerMode` (mode imposé par
+`RUSTY_MUSIC_MODE`, ou clic rapide) : son `poser("albums", …)` remontrait la
+grille et réécrivait le titre. `poser` respecte maintenant `modeCourant` — hors
+mode Écoute, il met à jour les données sans toucher à la vue centrale.
+
+### La correction d'octave descendante rabaissait la moitié de la bibliothèque — 1er septembre 2026
+
+Après avoir basculé les données de la carte SD vers le SSD interne (pour
+échapper aux blocages de lecture) et reconstruit la bibliothèque, l'histogramme
+de tempo du mode Bibliothèque s'est révélé écrasé vers 40-70 BPM.
+L'histogramme n'était pas périmé — `library_stats` relit la base à chaque
+affichage — et la base était complète (27 118 / 27 170 morceaux mesurés).
+C'était l'estimateur qui déraillait.
+
+**Diagnostic par comparaison de sauvegardes.** La base du 20 août (ancien
+estimateur, avant la correction bidirectionnelle) piquait vers 100-140 BPM,
+rien sous 60. Les bases du 31 août et du 1er septembre piquent vers 40-90 avec
+une falaise nette à 90. Jointure morceau à morceau, chemins normalisés SD→SSD,
+15 838 paires : **55 % des morceaux divisés par ~2**, ratio moyen 0,75.
+
+**Cause : le discriminant du sens descendant ne discriminait rien.**
+`descripteurs::tempo()` divisait le gagnant de grille par deux dès que
+`brut(bpm / 2) ≥ brut(bpm) * 0,85`. Or `brut(bpm / 2)` échantillonne
+l'autocorrélation en 2T, 4T, 6T — tous des pics réels d'un train périodique de
+période T. Le ratio vaut ~1 par construction, le seuil de 0,85 passe presque
+toujours, la division se déclenchait sur quasi tout morceau au gagnant ≥ 90 BPM.
+Le comble : même une comparaison `correle(env, 2d)` contre `correle(env, d)`
+est biaisée — la quantification en trames d'une période fractionnaire fait
+tomber `2d` sur un meilleur calage que `d` (un train de clics parfaitement
+régulier donnait déjà un rapport de 1,22, mesuré).
+
+**Correctif : `alternance_dents()`.** Le vrai signe qu'un gagnant est une
+subdivision, c'est que les attaques *alternent* fort/faible (guitare en
+boom-chick, charleston sur les croches). On pose un peigne à la période du
+gagnant, on cherche sa meilleure phase, et on compare l'énergie moyenne des
+dents de rang pair à celle des dents de rang impair. Même période, même
+interpolation pour les deux familles de dents : le biais de quantification
+s'annule dans le rapport. Un temps sur deux nettement plus faible (rapport
+`faible / fort` sous `SEUIL_SOUS_OCTAVE`, calé à 0,60) → division par deux.
+C'est la mécanique de `battements.rs::ramasse`, réutilisée ici. Le sens montant
+(`corrige_vers_le_haut`, cas Watcha) est inchangé ; `SEUIL_PLANCHER_MI_DECALAGE`
+disparaît, le nouveau test rejetant nativement le train de clics régulier.
+
+**Validation — `examples/octave_avant_apres.rs`, 300 morceaux au hasard.**
+Concentration dans [40, 90] BPM : **75,7 % → 39,3 %**. Concentration dans
+[150, 267] : 11,7 % → 18,3 %. 150 morceaux déplacés, quasi tous ×2,00 exact,
+et la liste inspectée est saine : Soundgarden « Kickstand » 46→92, RHCP
+« Backwoods » 56→111, Killing Joke 47→94. Aucune ballade lente doublée à tort.
+Le résidu de 39 % dans [40, 90] mélange des erreurs d'octave non rattrapées et
+de la musique réellement lente — indépartageable sans vérité terrain. Les
+66 tests de `rusty-music-analysis` passent.
+
+**Reste à faire** : repasser les 27 000 morceaux (passe *Tempo · tonalité ·
+énergie*, « refaire ce qui est déjà mesuré ») et vérifier que l'histogramme se
+recentre. `SEUIL_SOUS_OCTAVE` est le seul réglage à bouger si le bilan global
+penche encore.
+
+### Filtrer le fil par famille — mode Découvrir — 1er septembre 2026
+
+Même légende que l'Explorer (`rendreFamilles`), même multi-sélection que le
+filtre de l'Écoute, dans un bloc « Familles » du rail. Cochée, une famille
+restreint les trois onglets du fil (Sorties, Collaborations, À écouter
+ailleurs) aux entrées dont l'**artiste-ancre** — celui de la bibliothèque qui
+a fait remonter la sortie ou le voisin — appartient à cette famille. Plusieurs
+familles cumulent (OU), rien de coché montre tout, « Toutes les familles »
+efface. L'explorateur de collaborations reste non filtré : ses artistes
+viennent de MusicBrainz et n'ont pas de famille.
+
+Commande `artist_families` → `Library::familles_des_artistes` : pour chaque
+`mb_album_artist_id`, le cluster de la carte le plus représenté parmi ses
+morceaux projetés, égalité tranchée par le plus petit numéro. Même arbitrage
+que `familles_des_albums`.
+
+`VoisinFil` gagne un champ `src_mbids` (les ancres du voisin, agrégées par
+`GROUP_CONCAT(DISTINCT v.src_mbid)`) — un voisin passe si l'une d'elles est
+cochée. Les sorties portaient déjà `artiste_mbid`.
+
+Côté interface, `filDecouvrir` garde le dernier fil reçu ; `rendreFilDecouvrir`
+applique le filtre au vol sans refaire la requête. Les compteurs d'onglet
+suivent le filtre ; « Pas encore de nouveautés » et « Tout marquer comme vu »
+restent calés sur le fil brut. Mapping rechargé et filtre vidé après tout
+recalcul du clustering (`familleARecalculee`).
+
+### Popularité générale — sonde puis socle ListenBrainz + Deezer — 2 septembre 2026
+
+Demande de l'utilisateur : une popularité de morceau qui ne vienne **pas** d'un
+compteur local mais de la notoriété dans le monde, récupérée à l'analyse et
+montrée en jauge dans la file et les listes de pistes. Plan complet dans
+`docs/popularite.md`.
+
+**Phase 0 — sonde** (`experiments/popularite/`, Python, cache versionné). 200
+morceaux au hasard, ListenBrainz par MBID et Deezer par recherche. Verdict :
+ListenBrainz **97 %** de couverture (enregistrement ou album), uniforme sur
+toute la longue traîne ; Deezer **80 %** au niveau piste, **99 % de
+rapprochements justes à condition d'exiger artiste *et* titre concordants**
+(la sonde ne vérifiait d'abord que l'artiste : ~2 % de faux, plus quelques %
+de mauvais morceau du bon artiste). Accord LB ↔ Deezer ρ ≈ 0,55 — modéré, donc
+complémentaires. Spotify/YouTube écartés : ils exigent une clé et ne
+combleraient que 1,5 % de trous.
+
+**Phase 1 — socle.** Trois tables (`popularite` brute par source,
+`popularite_fetched` avec péremption façon `decouvrir_suivi`, `track_popularite`
+recalculée en bloc). Client Deezer neuf ; ListenBrainz gagne le POST
+(`/1/popularity/*`, lots de 60). Passe `popularite::actualiser` sur le patron
+d'`enrichir` : reprenable, additive, un échec réseau n'interrompt rien.
+
+La **valeur affichée** n'est pas un compte — les échelles vont de 1 à 1,7 M
+d'écoutes et le `rank` Deezer est borné et planchéré. C'est un **rang
+percentile** par source (part des morceaux strictement moins écoutés), puis la
+**médiane** des rangs des sources disponibles. Repli enregistrement →
+release-group (lien titre normalisé, comme les genres) → pas de ligne, donc
+grisé.
+
+Étape **5/5** de la chaîne d'analyse (`analyserRacine`, `lancerChaineComplete`),
+sans condition d'adresse — ListenBrainz et Deezer sont des API publiques, le
+contact ne sert qu'au `User-Agent`. Mesuré : ~10 min ListenBrainz + ~2 h Deezer
+(une recherche par enregistrement) sur 27 000 morceaux, du même ordre que la
+passe de genres, et reprenable. `rusty-music popularite` côté CLI.
+
+**Phase 2 — la jauge.** Composant `.jauge-pop` : cinq segments façon indicateur
+de signal, `round(relative × 5)` pleins, mais **au moins un dès qu'une mesure
+existe** — sans ça « connu et peu populaire » se confondrait avec « inconnu »,
+qui se rend en contour seul (jamais une valeur inventée, comme les descripteurs
+de l'inspecteur). Infobulle : « popularité : élevée · mesurée sur le morceau »
+(ou « sur l'album » quand on est retombé sur le release-group).
+
+Commande `popularites { ids }` séparée, comme `descripteurs` — la popularité ne
+vit pas dans `TrackRow`, l'interface la demande par lot pour ce qu'elle
+affiche. Cache `popParPiste` côté `app.js` ; `chargerPopularites` ne repeint
+que s'il y avait quelque chose à charger, sinon le repaint la rappellerait sans
+fin. Câblée dans la file d'attente (`dessinerFile`) et les listes de morceaux
+(`ligne`, pour `vue.quoi === "pistes"` — pistes d'un album et résultats de
+recherche). `popARecalculee` vide le cache et recharge après la passe.
+
+Pas encore vue à l'œil dans la webview (l'extension navigateur n'était pas
+connectée, et une WKWebView ne se pilote pas de l'extérieur) : `jaugePop` et le
+cache sont testés hors interface, tout compile, les tests core passent.
+
+**Phase 3 — rafraîchissement.** (Last.fm ayant été écarté, la phase Last.fm du
+plan initial saute.) Le paramètre `depuis` de `popularite::actualiser` était
+déjà là depuis la phase 1 ; `start_popularite` gagne un booléen `rafraichir`
+qui pose `depuis = now − 90 j`. `pop_recordings_candidats` et `pop_deja_fait`
+reprennent alors tout ce qui dépasse ce délai — une notoriété bouge lentement,
+90 j est large.
+
+Case « Rafraîchir aussi la popularité de plus de 90 jours » dans le rail, à
+côté de « Refaire ce qui est déjà mesuré », décochée par défaut : rafraîchir
+coûte jusqu'à deux heures (Deezer), l'utilisateur choisit. `popularite_fraicheur`
+rend `(couverts, plus_ancienne_at, perimes)` ; la ligne d'alerte du mode
+Bibliothèque n'apparaît que si de la popularité existe **et** qu'une partie
+dépasse 90 j, avec un bouton « Rafraîchir » qui coche la case et lance la passe
+seule. Rien d'automatique — convention du projet.
