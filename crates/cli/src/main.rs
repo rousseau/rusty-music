@@ -5,12 +5,14 @@
 //!   rusty-music watch ~/Musique
 //!   rusty-music stats
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use rusty_music_core::db::TrackRow;
 use rusty_music_core::{scan, watch, Library};
 
 #[derive(Parser)]
@@ -169,6 +171,45 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         fils: usize,
     },
+    /// Trace un itinéraire dans le réseau de circulation
+    Itineraire {
+        /// Morceau de départ (identifiant)
+        depart: i64,
+        /// Morceau d'arrivée (identifiant). Facultatif avec `--minutes`.
+        #[arg(long)]
+        arrivee: Option<i64>,
+        /// autoroute | sentier | panoramique
+        #[arg(long, default_value = "autoroute")]
+        profil: String,
+        /// Durée cible de la playlist, en minutes
+        #[arg(long)]
+        minutes: Option<u64>,
+        /// Étapes imposées, dans l'ordre
+        #[arg(long, value_delimiter = ',')]
+        etapes: Vec<i64>,
+        /// Éviter les morceaux les plus connus
+        #[arg(long)]
+        eviter_autoroutes: bool,
+        /// Nombre d'itinéraires proposés (1 à 3)
+        #[arg(long, default_value_t = 1)]
+        alternatives: usize,
+        /// Voisins par morceau
+        #[arg(long, default_value_t = 12)]
+        k: usize,
+    },
+    /// Produit l'archive de tuiles vectorielles lue par MapLibre
+    Tuiles {
+        /// Où écrire l'archive
+        #[arg(long, default_value = "carte.pmtiles")]
+        sortie: PathBuf,
+        /// Zoom maximal produit. Au-delà, MapLibre sur-zoome la dernière tuile.
+        #[arg(long, default_value_t = 9)]
+        zoom_max: u8,
+        /// Dépose aussi les tuiles en clair (`z/x/y`) et une page d'essai, pour
+        /// ouvrir la carte dans un navigateur ordinaire.
+        #[arg(long)]
+        repertoire: Option<PathBuf>,
+    },
     /// Affiche les familles de la carte et leurs noms
     ///
     /// Les noms viennent de trois sources, de la plus précise à la plus
@@ -178,6 +219,56 @@ enum Cmd {
         /// Montre aussi les artistes dominants de chaque famille
         #[arg(long)]
         artistes: bool,
+    },
+    /// Étage 1 de l'affectation : répartit les familles musicales sur les
+    /// quartiers d'un plan de ville déjà importé (`ville`)
+    Quartiers {
+        /// La base de ville à lire (voir `ville --sortie`)
+        #[arg(long, default_value = "ville-paris.db")]
+        ville: PathBuf,
+    },
+    /// Étage 2 de l'affectation : loge chaque artiste sur une ou plusieurs
+    /// rues de la zone de sa famille (rejoue l'étage 1 au passage)
+    Rues {
+        /// La base de ville à lire (voir `ville --sortie`)
+        #[arg(long, default_value = "ville-paris.db")]
+        ville: PathBuf,
+        /// Distance entre deux adresses le long d'une rue, en mètres
+        #[arg(long, default_value_t = 4.0)]
+        espacement: f64,
+    },
+    /// Étage 3 de l'affectation : sème chaque morceau à une adresse le long
+    /// de la rue de son artiste (rejoue les étages 1 et 2 au passage), puis
+    /// mesure la préservation du voisinage musical → géographique
+    Adresses {
+        /// La base de ville à lire (voir `ville --sortie`)
+        #[arg(long, default_value = "ville-paris.db")]
+        ville: PathBuf,
+        /// Distance entre deux adresses le long d'une rue, en mètres
+        #[arg(long, default_value_t = 4.0)]
+        espacement: f64,
+        /// Nombre de morceaux échantillonnés pour la mesure de voisinage
+        #[arg(long, default_value_t = 500)]
+        echantillon: usize,
+    },
+    /// Importe un plan de ville depuis un extrait OpenStreetMap
+    ///
+    /// La carte n'invente plus son monde : elle emprunte celui d'une vraie
+    /// ville. Prenez l'extrait de la région chez Geofabrik — pour Paris,
+    /// `europe/france/ile-de-france-latest.osm.pbf` — puis découpez-le sur la
+    /// limite communale. L'archive `.osm.pbf` peut être supprimée après.
+    ///
+    /// Les données OSM sont sous ODbL : leur affichage impose de citer
+    /// « © les contributeurs OpenStreetMap ».
+    Ville {
+        /// L'extrait `.osm.pbf` à lire
+        pbf: PathBuf,
+        /// La commune à découper, telle qu'OSM la nomme (`admin_level=8`)
+        #[arg(long, default_value = "Paris")]
+        commune: String,
+        /// Où écrire la base de la ville
+        #[arg(long)]
+        sortie: Option<PathBuf>,
     },
     /// Aspire les genres MusicBrainz des artistes et de leurs albums
     ///
@@ -195,7 +286,50 @@ enum Cmd {
         #[arg(long)]
         contact: Option<String>,
     },
-    /// Trace un chemin entre deux morceaux, dans les trois modes calculés
+    /// Actualise le fil du mode Découvrir : nouveaux disques, collaborations,
+    /// artistes voisins
+    ///
+    /// Interroge MusicBrainz (sorties par artiste) et ListenBrainz (artistes
+    /// similaires, sorties récentes). Additive et reprenable, comme `enrich`.
+    Decouvrir {
+        /// Adresse de contact envoyée aux API (ou `RUSTY_MUSIC_CONTACT`)
+        #[arg(long)]
+        contact: Option<String>,
+        /// Âge maximal d'une sortie pour figurer au fil, en jours
+        #[arg(long, default_value_t = 30)]
+        jours: i64,
+        /// Artistes interrogés pour leurs voisins, au plus (0 = défaut)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+    },
+    /// Récupère la popularité générale des morceaux (ListenBrainz + Deezer)
+    ///
+    /// Deux API publiques, sans clé ni compte. Additive et reprenable, comme
+    /// `enrich` : l'interrompre ne perd rien, la relancer ne refait rien.
+    Popularite {
+        /// Contact pour le User-Agent ListenBrainz — courtoisie, pas exigé
+        /// (ou `RUSTY_MUSIC_CONTACT`)
+        #[arg(long)]
+        contact: Option<String>,
+        /// Entités à traiter au plus, par échelon (0 = toutes)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+        /// Réinterroger ce qui date de plus de N jours (0 = ne rafraîchit rien)
+        #[arg(long, default_value_t = 0)]
+        rafraichir_des: i64,
+    },
+    /// Sondage de qualité : les k plus proches voisins d'un morceau
+    ///
+    /// Dans l'espace des empreintes CLAP — pour juger à l'oreille (ou au moins
+    /// au nom) si le voisinage veut dire quelque chose.
+    Voisins {
+        /// Morceau de départ (texte cherché, comme `search`)
+        recherche: String,
+        /// Nombre de voisins
+        #[arg(long, default_value_t = 12)]
+        k: usize,
+    },
+    /// Trace un chemin entre deux morceaux, dans les quatre modes calculés
     ///
     /// Sert surtout à mesurer : le graphe des voisins se construit ici sans
     /// interface, et son coût décide si l'application peut le bâtir à la
@@ -357,6 +491,17 @@ fn main() -> Result<()> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
                 .add_directive("lofty=error".parse().expect("directive valide"))
                 .add_directive("symphonia=warn".parse().expect("directive valide"))
+                // Le décodeur MP3 crie `invalid main_data_begin, underflow`
+                // sur la première trame après chaque `seek` : le réservoir de
+                // bits repart vide et pointe en arrière dans des octets non
+                // décodés. `decode::par_position` se positionne sur chaque
+                // fenêtre, donc ~4 fois par fichier — inévitable et sans effet,
+                // le décodeur récupère en une trame (~26 ms sur 10 s analysés).
+                .add_directive(
+                    "symphonia_bundle_mp3::layer3=error"
+                        .parse()
+                        .expect("directive valide"),
+                )
                 // ONNX Runtime commente chacune de ses allocations.
                 .add_directive("ort=warn".parse().expect("directive valide")),
         )
@@ -742,6 +887,649 @@ fn main() -> Result<()> {
                 r.sans_tempo, r.sans_tonalite, r.echecs
             );
         }
+        Cmd::Itineraire {
+            depart,
+            arrivee,
+            profil,
+            minutes,
+            etapes,
+            eviter_autoroutes,
+            alternatives,
+            k,
+        } => {
+            use rusty_music_analysis::reseau::{Options, Profil};
+            let modele = rusty_music_analysis::passe::MODELE;
+
+            let (reseau, rapport) = construire_reseau(&lib, modele, k)?;
+            println!(
+                "réseau : {} morceaux, {} arêtes, {} refuges — {:.1} s",
+                rapport.morceaux,
+                rapport.aretes,
+                rapport.refuges,
+                rapport.ms_total as f64 / 1000.0
+            );
+            for (nom, n) in &rapport.par_classe {
+                println!("  {nom:<12} {n:>7}");
+            }
+
+            let profil = if !etapes.is_empty() {
+                Profil::Etapes(etapes)
+            } else {
+                match profil.as_str() {
+                    "sentier" => Profil::Sentier,
+                    "panoramique" => Profil::Panoramique,
+                    "autoroute" => Profil::Autoroute,
+                    autre => anyhow::bail!("profil inconnu : {autre}"),
+                }
+            };
+            let mut o = Options::nouveau(depart, profil);
+            o.arrivee = arrivee;
+            o.eviter_autoroutes = eviter_autoroutes;
+            o.alternatives = alternatives.clamp(1, 3);
+            if let Some(m) = minutes {
+                o.duree_cible_ms = Some(m * 60_000);
+            }
+
+            let t = std::time::Instant::now();
+            let trajets = reseau.itineraires(&o)?;
+            println!("\n{} itinéraire(s) en {:.0} ms", trajets.len(), t.elapsed().as_secs_f64() * 1000.0);
+            for (n, i) in trajets.iter().enumerate() {
+                println!(
+                    "\n— itinéraire {} — {} morceaux, {:.1} min, distance sonique {:.2}",
+                    n + 1,
+                    i.morceaux.len(),
+                    i.duree_ms as f64 / 60_000.0,
+                    i.distance_sonique
+                );
+                for (rang, id) in i.morceaux.iter().enumerate() {
+                    let t = lib.track(*id)?;
+                    let (titre, artiste) = t
+                        .map(|t| (t.title.unwrap_or_default(), t.artist.unwrap_or_default()))
+                        .unwrap_or_default();
+                    // Le dénivelé : la popularité le long du trajet, ce que
+                    // l'interface tracera en profil d'altitude.
+                    let pop = i.popularite[rang];
+                    let barre = "▁▂▃▄▅▆▇█"
+                        .chars()
+                        .nth(((pop * 7.0).round() as usize).min(7))
+                        .unwrap_or('▁');
+                    let voie = i
+                        .classes
+                        .get(rang)
+                        .map(|c| format!(" {c:?}").to_lowercase())
+                        .unwrap_or_default();
+                    println!("  {barre} {artiste} — {titre}{voie}");
+                }
+            }
+        }
+        Cmd::Tuiles {
+            sortie,
+            zoom_max,
+            repertoire,
+        } => {
+            use rusty_music_carto::{relief, source, tuiles};
+            let modele = rusty_music_analysis::passe::MODELE;
+
+            let depart = std::time::Instant::now();
+            let vue = lib.map_view(modele)?;
+            if vue.is_empty() {
+                anyhow::bail!(
+                    "aucun morceau sur la carte — lancer `rusty-music analyser` puis `carte` d'abord"
+                );
+            }
+            let familles: Vec<source::Famille> = lib
+                .familles(modele)?
+                .into_iter()
+                .map(|(id, nom, effectif)| source::Famille {
+                    id,
+                    nom,
+                    effectif: effectif as usize,
+                })
+                .collect();
+            let lecture = depart.elapsed();
+            let parametres = lib.parametres_carte()?.parametres_densite();
+
+            // --- L'ordre de la chaîne, et il compte ---------------------
+            //
+            // Le peuplement passe **en premier**, et tout le reste en découle.
+            // Une première version le calculait à la fin et n'en gardait que
+            // les établissements : les morceaux restaient à leurs coordonnées
+            // t-SNE, et la carte montrait un nuage avec des épingles posées
+            // dessus. Zoomer sur « LED ZEPPELIN » ne montrait pas les morceaux
+            // de Led Zeppelin groupés là, mais les points qui traînaient dans
+            // le coin.
+            //
+            // Désormais : peuplement → parcelles → densité, relief,
+            // territoires et réseau, tous calculés sur ces parcelles.
+            let t_peupl = std::time::Instant::now();
+            let ordre = lib.ordre_darrivee()?;
+            let par_id: std::collections::HashMap<i64, &rusty_music_core::db::MapPoint> =
+                vue.iter().map(|p| (p.id, p)).collect();
+            let empreintes: std::collections::HashMap<i64, Vec<f32>> =
+                lib.embeddings(modele)?.into_iter().collect();
+            let arrivants: Vec<rusty_music_carto::peuplement::Arrivant> = ordre
+                .iter()
+                .filter_map(|a| {
+                    let p = par_id.get(&a.track_id)?;
+                    Some(rusty_music_carto::peuplement::Arrivant {
+                        track_id: a.track_id,
+                        x: p.x,
+                        y: p.y,
+                        empreinte: empreintes.get(&a.track_id).cloned().unwrap_or_default(),
+                        famille: p.cluster,
+                        date: a.date,
+                        artiste: p.artist.clone().unwrap_or_default(),
+                    })
+                })
+                .collect();
+            let peupl = rusty_music_carto::peuplement::peupler(
+                &arrivants,
+                &rusty_music_carto::peuplement::Parametres::default(),
+            );
+            println!(
+                "  peuplement : {} établissements ({}) en {:.1} s",
+                peupl.rapport.etablissements,
+                peupl
+                    .rapport
+                    .par_rang
+                    .iter()
+                    .map(|(n, c)| format!("{c} {n}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                t_peupl.elapsed().as_secs_f64()
+            );
+
+            // **La parcelle remplace la coordonnée t-SNE.** C'est ce qui fait
+            // que les morceaux habitent la carte au lieu de flotter dessus.
+            let parcelles: std::collections::HashMap<i64, (f32, f32)> = peupl
+                .habitants
+                .iter()
+                .map(|h| (h.track_id, (h.x, h.y)))
+                .collect();
+
+            let morceaux: Vec<source::Morceau> = vue
+                .iter()
+                .filter_map(|p| {
+                    let &(x, y) = parcelles.get(&p.id)?;
+                    Some(source::Morceau {
+                        id: p.id,
+                        x,
+                        y,
+                        famille: p.cluster,
+                        titre: p.title.clone().unwrap_or_default(),
+                        artiste: p.artist.clone().unwrap_or_default(),
+                        annee: p.year.map(|a| a as i32),
+                        bpm: p.bpm,
+                        energie: p.energy,
+                    })
+                })
+                .collect();
+
+            // --- Deux géographies, et il faut les distinguer ------------
+            //
+            // **La terre ne se définit pas par où sont les maisons.** Le
+            // littoral, le relief et les territoires viennent de la
+            // distribution d'origine — la projection, lisse et continue. Les
+            // agglomérations, les morceaux et les routes viennent des
+            // parcelles.
+            //
+            // Les calculer tous sur les parcelles a été essayé : les morceaux
+            // groupés font du champ de densité une série de pics, la terre se
+            // fragmente en un archipel d'îles à une ville, et il ne reste
+            // aucun continent. C'est cohérent avec le modèle et illisible
+            // comme carte.
+            let points: Vec<(i64, f32, f32, i64)> = lib.map_points(modele)?;
+            let densite = std::time::Instant::now();
+            let nappe = rusty_music_core::density::calculer(&points, &parametres);
+            let mut para_relief = parametres;
+            para_relief.noyau = relief::NOYAU;
+            let champ = rusty_music_core::density::champ_global(&points, &para_relief);
+            let densite = densite.elapsed();
+
+            // Le réseau : les arêtes viennent du son, mais leur géométrie —
+            // donc le filtre de longueur qui décide ce qui est dessinable —
+            // vient des parcelles.
+            let t_reseau = std::time::Instant::now();
+            let (reseau, rap) = construire_reseau_sur(&lib, modele, 12, &parcelles)?;
+            // **Le réseau relie des lieux, pas des morceaux.** Tant qu'il
+            // reliait les morceaux un à un, les trois quarts des tronçons
+            // étaient trop longs pour être dessinés — depuis que les morceaux
+            // sont groupés, une arête sonore va d'un établissement à un autre.
+            // On les agrège donc par couple d'établissements : une route, sa
+            // classe (la meilleure des arêtes qui la traversent) et le nombre
+            // de liens qu'elle porte.
+            let etab_de: std::collections::HashMap<i64, u32> = peupl
+                .habitants
+                .iter()
+                .map(|h| (h.track_id, h.etablissement))
+                .collect();
+            let centre: std::collections::HashMap<u32, (f32, f32)> = peupl
+                .etablissements
+                .iter()
+                .map(|e| (e.id, (e.cx, e.cy)))
+                .collect();
+            let routes = source::reseau_entre_lieux(
+                &reseau.troncons_identifies(),
+                &etab_de,
+                &centre,
+                &champ,
+                para_relief.resolution,
+            );
+            let compte = |nom: &str| {
+                rap.par_classe.iter().find(|(n, _)| n == nom).map(|(_, n)| *n).unwrap_or(0)
+            };
+            let longues = routes
+                .iter()
+                .filter(|r| {
+                    let (a, z) = (r.points[0], r.points[r.points.len() - 1]);
+                    let (dx, dy) = (a[0] - z[0], a[1] - z[1]);
+                    (dx * dx + dy * dy).sqrt() > 0.20 && r.classe <= 1
+                })
+                .count();
+            let ms_reseau = t_reseau.elapsed();
+
+            // Les rivières descendent du relief vers la mer, et les points
+            // remarquables signalent ce qui mérite le détour.
+            let rivieres = rusty_music_carto::hydro::tracer(
+                &champ,
+                para_relief.resolution,
+                &rusty_music_carto::hydro::Parametres::default(),
+            );
+            let curiosites = source::curiosites(
+                &morceaux,
+                &peupl.etablissements,
+                &reseau.refuges(0.995),
+                60,
+            );
+            println!(
+                "  {} rivières, {} points remarquables",
+                rivieres.len(),
+                curiosites.len()
+            );
+
+            let src = source::Source {
+                morceaux,
+                familles,
+                bandes: nappe.bandes,
+                routes,
+                etablissements: peupl.etablissements,
+                rivieres,
+                curiosites,
+                ..Default::default()
+            };
+            let paliers = tuiles::Paliers {
+                zoom_max,
+                ..Default::default()
+            };
+            let rep_carte = repertoire.as_ref().map(|r| r.join("carte"));
+            let r = tuiles::ecrire_avec(&src, &paliers, &sortie, rep_carte.as_deref())?;
+
+            // Le relief part du même champ, dans le même carré : les deux
+            // archives se superposent au pixel près.
+            let chemin_relief = sortie.with_file_name(format!(
+                "{}-relief.pmtiles",
+                sortie
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "carte".into())
+            ));
+            let ombrage = relief::Ombrage::default();
+            let rep_relief = repertoire.as_ref().map(|r| r.join("relief"));
+            let rr = relief::ecrire_avec(
+                &champ,
+                parametres.resolution,
+                &ombrage,
+                &chemin_relief,
+                rep_relief.as_deref(),
+            )?;
+
+            // Le style vit **à côté des archives** : c'est là que
+            // l'application le lit, et l'écrire avec les tuiles interdit qu'ils
+            // divergent. La base `tuiles://` est interceptée côté JavaScript
+            // par `maplibregl.addProtocol`.
+            let palette = rusty_music_carto::Palette::osm_clair();
+            let style_app =
+                rusty_music_carto::style::construire(&src, &paliers, "tuiles://tuiles", &palette);
+            if let Some(dossier) = sortie.parent() {
+                std::fs::write(
+                    dossier.join("style.json"),
+                    serde_json::to_vec_pretty(&style_app)?,
+                )?;
+            }
+
+            if let Some(rep) = &repertoire {
+                let style = rusty_music_carto::style::construire(&src, &paliers, ".", &palette);
+                std::fs::write(rep.join("style.json"), serde_json::to_vec_pretty(&style)?)?;
+                std::fs::write(rep.join("index.html"), PAGE_ESSAI)?;
+                println!("{}/index.html — servir ce dossier en HTTP\n", rep.display());
+            }
+
+            println!(
+                "{}\n  lecture de la base : {:.2} s\n  nappe de densité   : {:.2} s\n  \
+                 réseau ({} autoroutes, {} nationales, dont {} trop longues pour être dessinées) : {:.2} s\n  \
+                 tuiles             : {:.2} s\n  total              : {:.2} s",
+                sortie.display(),
+                lecture.as_secs_f64(),
+                densite.as_secs_f64(),
+                compte("autoroute"),
+                compte("nationale"),
+                longues,
+                ms_reseau.as_secs_f64(),
+                r.duree.as_secs_f64(),
+                (lecture + densite + ms_reseau + r.duree).as_secs_f64(),
+            );
+            println!(
+                "  {} tuiles, {:.1} Mo\n",
+                r.tuiles,
+                r.octets as f64 / 1_048_576.0
+            );
+            println!(
+                "{}\n  {} tuiles d'ombrage, {:.1} Mo, {:.2} s\n",
+                chemin_relief.display(),
+                rr.tuiles,
+                rr.octets as f64 / 1_048_576.0,
+                rr.duree.as_secs_f64()
+            );
+            println!("  zoom   tuiles      octets   moy/tuile");
+            for (z, n, o) in &r.par_zoom {
+                println!(
+                    "  {z:>4}  {n:>7}  {:>9.1} Ko  {:>7.1} Ko",
+                    *o as f64 / 1024.0,
+                    *o as f64 / 1024.0 / *n as f64
+                );
+            }
+        }
+        Cmd::Ville { pbf, commune, sortie } => {
+            let sortie = sortie.unwrap_or_else(|| {
+                cli.db.with_file_name(format!("ville-{}.db", commune.to_lowercase()))
+            });
+            println!("Lecture de {}…", pbf.display());
+            let depart = std::time::Instant::now();
+            let extrait = rusty_music_osm::extraire(&pbf, rusty_music_osm::PARIS, Some(&commune))?;
+            let r = extrait.resume();
+            match &extrait.frontiere {
+                Some(f) => println!(
+                    "  {commune} découpé sur sa limite communale ({} anneau(x)) en {:.1} s",
+                    f.anneaux.len(),
+                    depart.elapsed().as_secs_f64()
+                ),
+                None => println!(
+                    "  ATTENTION : limite communale introuvable, cadre rectangulaire conservé"
+                ),
+            }
+            println!(
+                "  {} tronçons ({:.0} km), {} rues distinctes, {} bâtiments, {} surfaces d'eau, {} espaces verts",
+                r.troncons, r.longueur_km, r.rues_distinctes, r.batis, r.eaux, r.verts
+            );
+            rusty_music_osm::base::ecrire(
+                &extrait,
+                &sortie,
+                &commune,
+                "Geofabrik / OpenStreetMap (ODbL)",
+            )?;
+            let poids = std::fs::metadata(&sortie).map(|m| m.len()).unwrap_or(0);
+            println!(
+                "  écrit dans {} ({:.1} Mo)",
+                sortie.display(),
+                poids as f64 / 1e6
+            );
+            println!("  © les contributeurs OpenStreetMap — données sous ODbL");
+        }
+        Cmd::Quartiers { ville } => {
+            let ville = if ville.is_absolute() {
+                ville
+            } else {
+                cli.db.with_file_name(&ville)
+            };
+            let modele = rusty_music_analysis::passe::MODELE;
+            let vue = lib.map_view(modele)?;
+            if vue.is_empty() {
+                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+            }
+            let noms: HashMap<i64, String> = lib
+                .familles(modele)?
+                .into_iter()
+                .map(|(id, nom, _)| (id, nom))
+                .collect();
+
+            println!("Lecture de {}…", ville.display());
+            let extrait = rusty_music_osm::base::lire(&ville)?;
+
+            let depart = std::time::Instant::now();
+            let prep = rusty_music_carto::ville::preparer(
+                &extrait,
+                &vue,
+                rusty_music_carto::ville::ESPACEMENT_PAR_DEFAUT,
+                Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+            );
+            let quartiers = &prep.quartiers;
+            let duree = depart.elapsed();
+
+            println!(
+                "  {} familles ({} morceaux), {} artistes ancrés aux monuments — zone peuplée : {} rues, {} bâtiments\n",
+                prep.familles.len(),
+                vue.len(),
+                prep.ancrages.par_artiste.len(),
+                prep.rues_noyau.len(),
+                prep.autorises.len(),
+            );
+
+            println!(
+                "  {:<28} {:>10} {:>10} {:>8}",
+                "famille", "cible (m)", "obtenue", "écart"
+            );
+            let mut ids: Vec<i64> = prep.familles.iter().map(|f| f.id).collect();
+            ids.sort_by(|a, b| {
+                quartiers.cible[b]
+                    .partial_cmp(&quartiers.cible[a])
+                    .unwrap()
+            });
+            for id in ids {
+                let cible = quartiers.cible[&id];
+                let obtenue = quartiers.capacite.get(&id).copied().unwrap_or(0.0);
+                let ecart = 100.0 * (obtenue - cible) / cible.max(1.0);
+                let nom = noms.get(&id).cloned().unwrap_or_else(|| format!("famille {id}"));
+                println!("  {nom:<28} {cible:>10.0} {obtenue:>10.0} {ecart:>+7.0} %");
+            }
+            println!(
+                "\n  erreur relative maximale : {:.0} % — {} rues, {:.2} s",
+                100.0 * quartiers.erreur_relative_max(),
+                prep.rues_noyau.len(),
+                duree.as_secs_f64()
+            );
+        }
+        Cmd::Rues { ville, espacement } => {
+            let ville = if ville.is_absolute() {
+                ville
+            } else {
+                cli.db.with_file_name(&ville)
+            };
+            let modele = rusty_music_analysis::passe::MODELE;
+            let vue = lib.map_view(modele)?;
+            if vue.is_empty() {
+                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+            }
+            println!("Lecture de {}…", ville.display());
+            let extrait = rusty_music_osm::base::lire(&ville)?;
+
+            let depart = std::time::Instant::now();
+            let prep = rusty_music_carto::ville::preparer(
+                &extrait,
+                &vue,
+                espacement,
+                Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+            );
+            let voirie = &prep.voirie;
+            let duree = depart.elapsed();
+
+            println!(
+                "  {} familles, {} artistes ({} morceaux), {} ancrés aux monuments — zone peuplée : {} rues, {} bâtiments, espacement {espacement:.0} m\n",
+                prep.familles.len(),
+                prep.artistes.len(),
+                vue.len(),
+                prep.ancrages.par_artiste.len(),
+                prep.rues_noyau.len(),
+                prep.autorises.len(),
+            );
+
+            let mut par_taille: Vec<usize> = voirie.logements.values().map(|l| l.rues.len()).collect();
+            par_taille.sort_unstable();
+            let sur_une_rue = par_taille.iter().filter(|n| **n == 1).count();
+            let sur_plusieurs = par_taille.iter().filter(|n| **n > 1).count();
+            let max_rues = par_taille.last().copied().unwrap_or(0);
+            let capacite_totale: usize = voirie.logements.values().map(|l| l.capacite).sum();
+            let besoin_total: usize = prep.artistes.iter().map(|a| a.effectif).sum();
+
+            println!(
+                "  {} artistes logés — {sur_une_rue} sur une seule rue, {sur_plusieurs} sur plusieurs (jusqu'à {max_rues})",
+                voirie.logements.len()
+            );
+            println!(
+                "  capacité offerte {capacite_totale} adresses pour {besoin_total} morceaux ({:.0} % de marge)",
+                100.0 * (capacite_totale as f64 / besoin_total.max(1) as f64 - 1.0)
+            );
+            println!(
+                "  {} rues jamais prises, {} débordements de zone",
+                voirie.rues_libres.len(),
+                voirie.debordements.len()
+            );
+            if !voirie.debordements.is_empty() {
+                println!("  débordements : {}", voirie.debordements.join(", "));
+            }
+
+            let mut plus_gros: Vec<(&String, &rusty_music_carto::affectation::Logement)> =
+                voirie.logements.iter().collect();
+            plus_gros.sort_by_key(|(_, l)| std::cmp::Reverse(l.rues.len()));
+            println!("\n  les artistes logés sur le plus de rues :");
+            for (nom, logement) in plus_gros.iter().take(8) {
+                println!(
+                    "    {:<28} {} rue(s), {} adresses — {}",
+                    nom,
+                    logement.rues.len(),
+                    logement.capacite,
+                    logement.rues.join(" · ")
+                );
+            }
+
+            println!("\n  {duree:.2?} pour {} artistes", prep.artistes.len());
+        }
+        Cmd::Adresses { ville, espacement, echantillon } => {
+            let ville = if ville.is_absolute() {
+                ville
+            } else {
+                cli.db.with_file_name(&ville)
+            };
+            let modele = rusty_music_analysis::passe::MODELE;
+            let vue = lib.map_view(modele)?;
+            if vue.is_empty() {
+                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+            }
+
+            let noms: HashMap<i64, String> = lib
+                .familles(modele)?
+                .into_iter()
+                .map(|(id, nom, _)| (id, nom))
+                .collect();
+
+            println!("Lecture de {}…", ville.display());
+            let extrait = rusty_music_osm::base::lire(&ville)?;
+
+            let depart = std::time::Instant::now();
+            let r = rusty_music_carto::ville::rassembler(
+                &extrait,
+                &vue,
+                &noms,
+                espacement,
+                Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+            );
+            let duree = depart.elapsed();
+
+            println!(
+                "  {} adresses posées, {} sans adresse, {} repli quartier, {} hors zone — {duree:.2?}",
+                r.adresses_posees, r.morceaux_sans_adresse, r.repli_quartier, r.hors_zone,
+            );
+            println!(
+                "  {} artistes ancrés aux monuments, {} bâtiments peuplés, erreur quartiers {:.0} %, {} débordements",
+                r.artistes_ancres,
+                r.batiments_peuples,
+                100.0 * r.quartiers_erreur_relative,
+                r.debordements,
+            );
+
+            // --- Objection V1 : le voisinage musical survit-il à l'affectation ? ---
+            //
+            // kNN géographique par balayage complet, comme `chemin::voisins` le
+            // fait côté empreintes. Positions en mètres locaux : le lon/lat
+            // brut biaiserait le voisinage par la latitude.
+            println!("\n  mesure du voisinage (échantillon de {echantillon}) :");
+            let empreintes = lib.embeddings(modele)?;
+            let repere = rusty_music_carto::affectation::Repere::centre_de(&extrait);
+            let positions: HashMap<i64, [f64; 2]> = r
+                .source
+                .morceaux
+                .iter()
+                .map(|m| (m.id, repere.vers_m([m.x as f64, m.y as f64])))
+                .collect();
+            let artiste_de: HashMap<i64, &str> = vue
+                .iter()
+                .filter_map(|p| rusty_music_carto::ancrage::nom_artiste(p).map(|n| (p.id, n)))
+                .collect();
+            let ids_places: Vec<i64> = positions.keys().copied().collect();
+            let pas = (ids_places.len() / echantillon.max(1)).max(1);
+            let echantillon_ids: Vec<i64> = ids_places.iter().step_by(pas).copied().collect();
+
+            const K: usize = rusty_music_analysis::chemin::K_VOISINS;
+            let mut recouvrements = Vec::with_capacity(echantillon_ids.len());
+            let mut part_meme_artiste = Vec::with_capacity(echantillon_ids.len());
+            for &id in &echantillon_ids {
+                let musicaux = rusty_music_analysis::chemin::voisins(&empreintes, id, K);
+                if musicaux.is_empty() {
+                    continue;
+                }
+                let Some(&ici) = positions.get(&id) else { continue };
+                let mut geo: Vec<(i64, f64)> = positions
+                    .iter()
+                    .filter(|(j, _)| **j != id)
+                    .map(|(j, p)| (*j, (p[0] - ici[0]).powi(2) + (p[1] - ici[1]).powi(2)))
+                    .collect();
+                let k = K.min(geo.len());
+                if k == 0 {
+                    continue;
+                }
+                geo.select_nth_unstable_by(k - 1, |a, b| a.1.total_cmp(&b.1));
+                geo.truncate(k);
+                let geo_set: std::collections::HashSet<i64> = geo.into_iter().map(|(j, _)| j).collect();
+                let commun = musicaux.iter().filter(|j| geo_set.contains(j)).count();
+                recouvrements.push(commun as f64 / K as f64);
+
+                // Diagnostic : la perte vient-elle de l'ordre intra-rue (le
+                // même artiste, mais mal ordonné) ou du placement entre
+                // artistes (des voisins sonores chez un tout autre artiste,
+                // donc sur une tout autre rue) ?
+                if let Some(&nom) = artiste_de.get(&id) {
+                    let meme = musicaux.iter().filter(|j| artiste_de.get(j) == Some(&nom)).count();
+                    part_meme_artiste.push(meme as f64 / K as f64);
+                }
+            }
+            recouvrements.sort_by(|a, b| a.total_cmp(b));
+            let moyenne = recouvrements.iter().sum::<f64>() / recouvrements.len().max(1) as f64;
+            let mediane = recouvrements.get(recouvrements.len() / 2).copied().unwrap_or(0.0);
+            let part_meme_artiste_moy =
+                part_meme_artiste.iter().sum::<f64>() / part_meme_artiste.len().max(1) as f64;
+            println!(
+                "    recouvrement k={K} — moyenne {:.0} %, médiane {:.0} % sur {} morceaux testés",
+                100.0 * moyenne,
+                100.0 * mediane,
+                recouvrements.len()
+            );
+            println!(
+                "    (part des {K} plus proches voisins musicaux qui restent parmi les {K} plus proches géographiques)"
+            );
+            println!(
+                "    part des voisins musicaux qui sont du MÊME artiste : {:.0} % en moyenne",
+                100.0 * part_meme_artiste_moy
+            );
+        }
         Cmd::Familles { artistes } => {
             let modele = rusty_music_analysis::passe::MODELE;
             let (couverts, total) = lib.mb_couverture(modele, 1)?;
@@ -813,6 +1601,103 @@ fn main() -> Result<()> {
                 );
             }
         }
+        Cmd::Decouvrir {
+            contact,
+            jours,
+            limite,
+        } => {
+            let mut lib = lib;
+            let contact = contact
+                .or_else(|| std::env::var("RUSTY_MUSIC_CONTACT").ok())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Les API demandent un contact dans l'agent.\n  \
+                         Le donner avec --contact, ou par RUSTY_MUSIC_CONTACT."
+                    )
+                })?;
+            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+
+            println!("Actualisation du fil Découvrir…");
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan =
+                rusty_music_core::decouvrir::actualiser(&mut lib, &lb, jours, limite, |b| {
+                    if b.artistes >= dernier + 5 {
+                        dernier = b.artistes;
+                        println!(
+                            "  {} / {} étapes · {} sorties · {} voisins · {:.0} min",
+                            b.artistes,
+                            b.total,
+                            b.sorties_neuves,
+                            b.voisins_neufs,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
+            println!(
+                "\n{} sorties neuves, {} voisins écrits — {:.0} min",
+                bilan.sorties_neuves,
+                bilan.voisins_neufs,
+                t.elapsed().as_secs_f64() / 60.0
+            );
+            if bilan.echecs > 0 {
+                println!("{} étapes en échec ; relancer la commande les reprendra.", bilan.echecs);
+            }
+        }
+        Cmd::Popularite {
+            contact,
+            limite,
+            rafraichir_des,
+        } => {
+            let mut lib = lib;
+            let contact = contact
+                .or_else(|| std::env::var("RUSTY_MUSIC_CONTACT").ok())
+                .unwrap_or_default();
+            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+            let dz = rusty_music_core::deezer::Client::new();
+            let limite = if limite == 0 { usize::MAX } else { limite };
+            let depuis = if rafraichir_des <= 0 {
+                0
+            } else {
+                let maintenant = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                maintenant - rafraichir_des * 86_400
+            };
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::popularite::actualiser(
+                &mut lib,
+                &lb,
+                &dz,
+                depuis,
+                limite,
+                |b| {
+                    if b.faits >= dernier + 25 {
+                        dernier = b.faits;
+                        println!(
+                            "  {} / {} étapes · {} trouvées sur Deezer · {:.0} min",
+                            b.faits,
+                            b.total,
+                            b.deezer_trouves,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                },
+            )?;
+            println!(
+                "\n{} enregistrements + {} albums (ListenBrainz), \
+                 {} / {} pistes retrouvées (Deezer), {} morceaux couverts — {:.0} min",
+                bilan.lb_enregistrements,
+                bilan.lb_albums,
+                bilan.deezer_trouves,
+                bilan.deezer,
+                bilan.couverts,
+                t.elapsed().as_secs_f64() / 60.0
+            );
+        }
         Cmd::Project { familles } => {
             let t = Instant::now();
             let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles))?;
@@ -822,6 +1707,53 @@ fn main() -> Result<()> {
                 p.familles,
                 t.elapsed().as_secs_f64()
             );
+        }
+        Cmd::Voisins { recherche, k } => {
+            let modele = rusty_music_analysis::passe::MODELE;
+            let trouves = lib.search(&recherche, 10)?;
+            // Un titre qui correspond mot pour mot l'emporte sur l'ordre
+            // alphabétique de `search` (par artiste/album/piste) : sinon
+            // « Bohemian Rhapsody » retombe sur la première piste de l'album
+            // du même nom — pas la chanson.
+            let depart = trouves
+                .iter()
+                .find(|t| t.title.as_deref().is_some_and(|ti| ti.eq_ignore_ascii_case(recherche.trim())))
+                .or_else(|| trouves.first());
+            let Some(depart) = depart else {
+                anyhow::bail!("aucun morceau ne correspond à « {recherche} »");
+            };
+            if trouves.len() > 1 {
+                println!(
+                    "  ({} résultats pour « {recherche} », pris : {} — {})",
+                    trouves.len(),
+                    depart.title.as_deref().unwrap_or("?"),
+                    depart.artist.as_deref().unwrap_or("?")
+                );
+            }
+            let empreintes = lib.embeddings(modele)?;
+            let voisins = rusty_music_analysis::chemin::voisins(&empreintes, depart.id, k);
+            if voisins.is_empty() {
+                anyhow::bail!("pas d'empreinte pour ce morceau — `analyser` d'abord");
+            }
+            let par_id: HashMap<i64, TrackRow> = {
+                let ids: std::collections::HashSet<i64> = voisins.iter().copied().collect();
+                lib.tracks_by_ids(&ids)?.into_iter().map(|t| (t.id, t)).collect()
+            };
+            println!(
+                "\n  {} — {}\n  ses {k} plus proches voisins :",
+                depart.title.as_deref().unwrap_or("?"),
+                depart.artist.as_deref().unwrap_or("?")
+            );
+            for (rang, id) in voisins.iter().enumerate() {
+                let Some(t) = par_id.get(id) else { continue };
+                println!(
+                    "  {:>2}. {:<40} {:<25} {}",
+                    rang + 1,
+                    t.title.as_deref().unwrap_or("?"),
+                    t.artist.as_deref().unwrap_or("?"),
+                    t.album.as_deref().unwrap_or("")
+                );
+            }
         }
         Cmd::Path {
             from,
@@ -1082,4 +2014,90 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Page d'essai déposée avec les tuiles en clair. Volontairement minimale :
+/// elle sert à juger le rendu et à le mesurer, pas à remplacer l'interface.
+const PAGE_ESSAI: &str = include_str!("essai.html");
+
+/// Rassemble ce qu'il faut au réseau de circulation et le construit.
+///
+/// La popularité est le nombre de morceaux gardés d'un artiste : c'est la
+/// seule dont on dispose, la base ne portant aucun compteur d'écoute.
+fn construire_reseau(
+    lib: &Library,
+    modele: &str,
+    k: usize,
+) -> anyhow::Result<(
+    rusty_music_analysis::reseau::Reseau,
+    rusty_music_analysis::reseau::RapportConstruction,
+)> {
+    construire_reseau_sur(lib, modele, k, &std::collections::HashMap::new())
+}
+
+/// Idem, mais en plaçant les morceaux là où le peuplement les a installés.
+///
+/// Les arêtes du réseau viennent du **son** ; leur géométrie vient des
+/// parcelles. C'est elle qui décide ce qu'on peut dessiner : une route n'est
+/// une route que si elle est courte sur la carte. Un dictionnaire vide laisse
+/// les coordonnées de la projection.
+fn construire_reseau_sur(
+    lib: &Library,
+    modele: &str,
+    k: usize,
+    parcelles: &std::collections::HashMap<i64, (f32, f32)>,
+) -> anyhow::Result<(
+    rusty_music_analysis::reseau::Reseau,
+    rusty_music_analysis::reseau::RapportConstruction,
+)> {
+    use rusty_music_analysis::reseau::{Morceau, Parametres, Reseau};
+    use std::collections::HashMap;
+
+    let empreintes = lib.embeddings(modele)?;
+    let vue = lib.map_view(modele)?;
+    anyhow::ensure!(!vue.is_empty(), "aucun morceau sur la carte");
+
+    let mut par_artiste: HashMap<String, u32> = HashMap::new();
+    for p in &vue {
+        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+    }
+    let index: HashMap<&str, u32> = par_artiste
+        .keys()
+        .enumerate()
+        .map(|(i, n)| (n.as_str(), i as u32))
+        .collect();
+
+    let morceaux: Vec<Morceau> = vue
+        .iter()
+        .map(|p| {
+            let artiste = p.artist.clone().unwrap_or_default();
+            let (x, y) = parcelles.get(&p.id).copied().unwrap_or((p.x, p.y));
+            Morceau {
+                id: p.id,
+                duree_ms: p.duration_ms.unwrap_or(0).max(0) as u64,
+                artiste: index[artiste.as_str()],
+                famille: p.cluster,
+                x,
+                y,
+                morceaux_de_lartiste: par_artiste[&artiste],
+            }
+        })
+        .collect();
+
+    let points = lib.map_points(modele)?;
+    let mut parametres = lib.parametres_carte()?.parametres_densite();
+    parametres.noyau = rusty_music_carto::relief::NOYAU;
+    let champ = rusty_music_core::density::champ_global(&points, &parametres);
+
+    Ok(Reseau::construire_mesure(
+        empreintes,
+        &morceaux,
+        &champ,
+        parametres.resolution,
+        &Parametres {
+            k,
+            fils: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8),
+            ..Default::default()
+        },
+    ))
 }

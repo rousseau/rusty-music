@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/cli", "crates/player", "crates/analysis", "crates/editor", "apps/desktop"]
+members = ["crates/core", "crates/cli", "crates/osm", "crates/player", "crates/analysis", "crates/carto", "crates/editor", "crates/superres", "apps/desktop"]
 # `experiments/` reste hors du workspace : ce qu'on y essaie doit pouvoir ne
 # pas compiler sans empêcher `cargo build` de passer sur le reste.
 exclude = ["experiments"]
@@ -15,6 +15,20 @@ exclude = ["experiments"]
 # graphe des 12 plus proches voisins y demandait **524 s au lieu de 19 s** —
 # neuf minutes à saturer tous les cœurs, sans rien afficher. L'application
 # passait pour plantée.
+# **La compilation incrémentale est désactivée, et ce n'est pas un détail.**
+# Elle avait accumulé 53 Go d'artefacts, et `target/` pesait 162 Go à lui seul
+# — le disque était plein à 98 %. La cause tient à la conjonction de deux
+# choses propres à ce projet : les modèles ONNX traduits en Rust (4 400 lignes
+# générées pour CLAP, 8 600 pour HTDemucs) et l'`opt-level = 3` ci-dessous, qui
+# fait recompiler largement à chaque changement. L'incrémental n'y gagnait donc
+# presque rien tout en gardant tout.
+#
+# Contrepartie : une reconstruction un peu plus longue après un changement dans
+# un crate de calcul. À rétablir si la gêne l'emporte, en surveillant `du -sh
+# target`.
+[profile.dev]
+incremental = false
+
 [profile.dev.package."*"]
 opt-level = 3
 
@@ -49,6 +63,9 @@ walkdir   = "2"
 clap      = { version = "4", features = ["derive"] }
 tracing   = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Journal persistant (bureau) : la console seule ne survit pas à un
+# redémarrage forcé — voir apps/desktop/src/main.rs.
+tracing-appender = "0.2"
 
 # Lecture audio (module 1). rodio décode via symphonia — le décodeur retenu
 # dans architecture.md. `default-features = false` écarte `recording`, dont on
@@ -67,6 +84,9 @@ tauri-build = { version = "2", features = [] }
 # Sélecteur de dossier natif pour les réglages : choisir la source de la
 # bibliothèque en naviguant, plutôt qu'en saisissant un chemin.
 tauri-plugin-dialog = "2"
+# Ouvre un lien dans le navigateur du système — mode Découvrir : « voir sur
+# MusicBrainz ». Remplace `shell.open`, retiré du cœur de Tauri v2.
+tauri-plugin-opener = "2"
 # Sérialisation des données du moteur vers l'interface — `architecture.md` :
 # « le moteur expose positions, clusters, métadonnées à l'interface (JSON) ».
 serde      = { version = "1", features = ["derive"] }
@@ -80,6 +100,12 @@ serde_json = "1"
 # d'un vocodeur, et conçue pour le temps réel (`push`/`pull`, `set_tempo` en
 # direct). Mesuré : hauteur inchangée à 441 Hz de 0,5× à 2×. Licence MIT.
 wsola = "0.1"
+
+# Rééchantillonnage de qualité vers la fréquence de la carte son (toujours
+# actif) — `rodio` 0.22 ne fait qu'une interpolation linéaire, audible sur les
+# rapports non entiers (48 kHz → 44,1 kHz). `rubato` fait un sinc par FFT.
+# **Vérifié avant d'écrire le nôtre.** Licence MIT.
+rubato = "5"
 
 # Décodage Opus, que symphonia ne sait pas faire — un album entier de la
 # bibliothèque de test restait hors de la carte. `opus-decoder` est un portage
@@ -129,3 +155,21 @@ bhtsne = "0.7"
 # MIT OR Apache-2.0.
 contour   = "0.13"
 geo-types = "0.7"
+
+# Maillage de Voronoï pour les formes de la carte. Les contours par isolignes
+# rendent des taches arrondies ; un maillage rend des polygones aux bords
+# irréguliers, ce qui est l'aspect d'une vraie carte. Bâti sur `delaunator`,
+# et fournit la relaxation de Lloyd. Licence MIT.
+voronoice = "0.2"
+
+# Routage (module 2). `carto-google-maps.md` §3 : « ne rien réécrire » —
+# A*, Dijkstra et Yen (k plus courts chemins) sont dans `pathfinding`, et la
+# structure de graphe dans `petgraph`. Licences MIT OR Apache-2.0.
+pathfinding = "4.15"
+petgraph    = "0.8"
+
+# Centralité d'intermédiarité (Brandes), que `petgraph` n'a pas — il ne fournit
+# que PageRank. `rustworkx-core` est le cœur Rust de rustworkx (Qiskit), bâti
+# sur les graphes de petgraph, et rend la centralité **des arêtes**, celle dont
+# la hiérarchie routière a besoin. Licence Apache-2.0.
+rustworkx-core = "0.18"

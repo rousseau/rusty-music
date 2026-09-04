@@ -111,6 +111,20 @@ CREATE TABLE IF NOT EXISTS parametres_carte (
     valeur REAL NOT NULL
 );
 
+-- Le vocabulaire des familles par genre — quelles familles la carte
+-- reconnaît, et quels genres MusicBrainz s'y rattachent. Vide = valeurs par
+-- défaut ([`Library::vocabulaire_familles`]), même convention que
+-- `parametres_carte` ci-dessus : réglable par l'utilisateur, pas de
+-- migration à écrire pour changer les valeurs de départ. L'ordre
+-- d'insertion (implicite, par `rowid`) est celui dans lequel les familles
+-- ont été écrites — sans conséquence sur le résultat (chaque recalcul
+-- réécrit `features.cluster` en entier), seulement sur l'ordre d'affichage.
+CREATE TABLE IF NOT EXISTS vocabulaire_familles (
+    nom   TEXT NOT NULL,
+    genre TEXT NOT NULL,
+    PRIMARY KEY (nom, genre)
+);
+
 -- Genres MusicBrainz, aspirés par identifiant.
 --
 -- Pourquoi une source de plus alors que les fichiers portent déjà un genre :
@@ -153,4 +167,91 @@ CREATE TABLE IF NOT EXISTS mb_fetched (
     kind TEXT    NOT NULL,                   -- 'artist' | 'albums'
     at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     PRIMARY KEY (mbid, kind)
+);
+
+-- Mode Découvrir : le fil d'actualité.
+--
+-- Sorties (release-groups MusicBrainz) d'artistes de la bibliothèque, repérées
+-- pour être montrées dans le fil tant qu'elles tiennent dans la fenêtre
+-- d'actualité (un mois par défaut). L'ancre est un artiste qu'on possède ;
+-- `collaborateurs` porte le reste du crédit — non vide, c'est une collaboration.
+CREATE TABLE IF NOT EXISTS decouvrir_sorties (
+    rg_mbid           TEXT PRIMARY KEY,       -- release-group MusicBrainz
+    artiste_mbid      TEXT NOT NULL,          -- l'artiste-ancre (dans la bibliothèque)
+    artiste_nom       TEXT NOT NULL,
+    titre             TEXT NOT NULL,
+    -- MusicBrainz rend souvent une date partielle ('2026', '2026-08'). On garde
+    -- la forme brute pour l'affichage et une forme complétée en 'YYYY-MM-DD'
+    -- pour filtrer et trier par simple comparaison de chaînes.
+    date_sortie       TEXT,
+    date_sortie_norm  TEXT,
+    type_primaire     TEXT,                   -- Album | EP | Single | …
+    types_secondaires TEXT,                   -- 'Live,Compilation'
+    collaborateurs    TEXT,                   -- crédits hors artiste-ancre, séparés par ' · '
+    repere_le         INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    vu                INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_decouvrir_sorties_date ON decouvrir_sorties(date_sortie_norm);
+
+-- Artistes voisins proposés, hors bibliothèque. `source` distingue la
+-- similarité ListenBrainz (agrégée sur les écoutes de la communauté) du repli
+-- par le graphe de collaboration local.
+CREATE TABLE IF NOT EXISTS decouvrir_voisins (
+    src_mbid  TEXT NOT NULL,                  -- artiste de la bibliothèque
+    dst_mbid  TEXT NOT NULL,
+    dst_nom   TEXT NOT NULL,
+    score     REAL NOT NULL,
+    source    TEXT NOT NULL,                  -- 'listenbrainz' | 'collab'
+    repere_le INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    vu        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (src_mbid, dst_mbid, source)
+);
+
+-- Dernière interrogation par artiste et par type ('sorties' | 'voisins').
+-- Comme `mb_fetched`, mais avec péremption : passé un délai, on réinterroge,
+-- puisqu'une actualité vieillit. `MAX(at)` sert aussi à dater la dernière passe.
+CREATE TABLE IF NOT EXISTS decouvrir_suivi (
+    mbid TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (mbid, kind)
+);
+
+-- Popularité générale — la notoriété d'un morceau dans le monde, récupérée de
+-- sources externes agrégées (ListenBrainz, Deezer). Rien à voir avec un
+-- compteur d'écoutes local : voir `docs/popularite.md`.
+
+-- Popularité brute, telle qu'une source la rend. Une ligne par (entité, source).
+-- Deezer n'indexe pas par MBID : sa ligne 'recording'/'deezer' est rangée sous
+-- le MBID d'enregistrement du morceau qu'on a cherché par « artiste + titre ».
+CREATE TABLE IF NOT EXISTS popularite (
+    mbid      TEXT    NOT NULL,   -- MBID d'enregistrement ou de release-group
+    kind      TEXT    NOT NULL,   -- 'recording' | 'release-group'
+    source    TEXT    NOT NULL,   -- 'listenbrainz' | 'deezer'
+    ecoutes   INTEGER,            -- écoutes / streams / rang, selon la source
+    auditeurs INTEGER,            -- auditeurs distincts, quand la source le donne
+    at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (mbid, kind, source)
+);
+
+-- Ce qui a déjà été demandé, y compris quand la réponse était vide — sans quoi
+-- une entité inconnue d'une source serait réinterrogée à chaque passe. `at`
+-- porte la péremption : au-delà d'un délai, l'entité redevient « à faire »
+-- (contrairement à `mb_fetched`, définitif).
+CREATE TABLE IF NOT EXISTS popularite_fetched (
+    mbid   TEXT    NOT NULL,
+    kind   TEXT    NOT NULL,      -- 'recording' | 'release-group'
+    source TEXT    NOT NULL,      -- 'listenbrainz' | 'deezer'
+    at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (mbid, kind, source)
+);
+
+-- Popularité résolue et normalisée par morceau, prête pour l'affichage.
+-- Réécrite en bloc à chaque passe (comme `features.cluster`) : ce n'est pas
+-- une donnée d'entrée mais un calcul dérivé de `popularite` + la distribution.
+CREATE TABLE IF NOT EXISTS track_popularite (
+    track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    relative   REAL    NOT NULL,  -- 0..1, rang dans la bibliothèque
+    echelon    TEXT    NOT NULL,  -- 'recording' | 'release-group'
+    calcule_le INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );

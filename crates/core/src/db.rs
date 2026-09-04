@@ -102,6 +102,57 @@ impl ParametresCarte {
     }
 }
 
+/// Vocabulaire par défaut des familles par genre — voir
+/// [`Library::vocabulaire_familles`]. Vit ici, à côté de `ParametresCarte`,
+/// et non dans `rusty-music-analysis` : c'est une donnée de configuration de
+/// la bibliothèque (réglable, persistée), pas un algorithme ; `analysis` en
+/// dépend, pas l'inverse.
+///
+/// **Mesuré sur une bibliothèque réelle avant d'être écrit** — les genres
+/// les mieux votés d'au moins cinq artistes (`mb_genres`) : `hip hop` (130
+/// artistes), `jazz` (81), `alternative rock` (67), `electronic` (52),
+/// `rock` (50), `folk` (40), `reggae` (21), `pop` (21), `chanson française`
+/// (19), `funk` (17), `soul` (15), `blues` (15), `nu metal` (14), `dub`
+/// (14), etc. Une bibliothèque différente peut vouloir une autre liste —
+/// c'est justement pour ça qu'elle est réglable plutôt que figée dans le
+/// code.
+const VOCABULAIRE_DEFAUT: &[(&str, &[&str])] = &[
+    (
+        "Rock",
+        &[
+            "rock", "alternative rock", "hard rock", "psychedelic rock", "folk rock",
+            "blues rock", "pop rock", "progressive rock", "punk", "grunge", "indie rock",
+            "post-punk", "garage rock",
+        ],
+    ),
+    (
+        "Metal",
+        &[
+            "metal", "nu metal", "alternative metal", "thrash metal", "industrial metal",
+            "groove metal", "heavy metal", "death metal", "black metal", "doom metal",
+        ],
+    ),
+    ("Hip Hop", &["hip hop", "boom bap", "rap", "trap"]),
+    (
+        "Électronique",
+        &[
+            "electronic", "drum and bass", "big beat", "ambient", "downtempo", "trip hop",
+            "house", "techno", "idm", "electronica", "synthwave",
+        ],
+    ),
+    ("Jazz", &["jazz", "acid jazz", "fusion", "bebop", "swing"]),
+    ("Reggae", &["reggae", "dub", "dancehall", "ska"]),
+    ("Soul · Funk", &["funk", "soul", "r&b", "disco", "motown"]),
+    (
+        "Folk",
+        &["folk", "celtic", "bluegrass", "country", "americana", "singer-songwriter"],
+    ),
+    ("Chanson", &["chanson française", "chanson", "variété française"]),
+    ("Classique", &["classical", "baroque", "opera", "contemporary classical"]),
+    ("Pop", &["pop", "synthpop", "dance pop", "indie pop"]),
+    ("Monde", &["afrobeat", "world", "latin", "flamenco"]),
+];
+
 /// Un artiste et son volume dans la bibliothèque.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ArtistRow {
@@ -160,6 +211,22 @@ pub struct DescripteursVus {
     pub flatness_ecart: Option<f32>,
 }
 
+/// Qualité d'encodage d'un morceau, telle que `tags::read` l'a lue sur le
+/// disque. Chaque champ est facultatif **séparément** : un morceau scanné avant
+/// que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
+/// sens que pour les conteneurs sans perte.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QualitePiste {
+    pub codec: Option<String>,
+    /// kb/s.
+    pub bitrate: Option<i64>,
+    /// Hz.
+    pub sample_rate: Option<i64>,
+    pub channels: Option<i64>,
+    /// Bits — renseigné pour les formats sans perte seulement.
+    pub bit_depth: Option<i64>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MapPoint {
     pub id: i64,
@@ -169,6 +236,11 @@ pub struct MapPoint {
     pub cluster: i64,
     pub title: Option<String>,
     pub artist: Option<String>,
+    /// Artiste de regroupement (`tracks.album_artist`), distinct de `artist`
+    /// qui peut lister un featuring entier (« X feat. Y »). C'est ce champ
+    /// qu'il faut utiliser pour identifier *un* artiste, pas `artist` — voir
+    /// le commentaire sur `mb_album_artist_id` dans le schéma.
+    pub album_artist: Option<String>,
     pub album: Option<String>,
     pub track_no: Option<i64>,
     pub year: Option<i64>,
@@ -177,6 +249,64 @@ pub struct MapPoint {
     /// pas passé — la carte doit savoir colorer sans eux.
     pub bpm: Option<f32>,
     pub energy: Option<f32>,
+    /// Popularité générale, rang percentile `0..1` dans la bibliothèque
+    /// (`track_popularite.relative`). Absente tant que les passes `enrich` +
+    /// `popularité` ne sont pas passées, ou si l'entité est inconnue de
+    /// ListenBrainz et Deezer. La carte s'en sert pour ancrer les artistes les
+    /// plus connus sur les monuments (`crate::ancrage`, dans `rusty_music_carto`).
+    pub popularite: Option<f64>,
+}
+
+/// Un morceau et sa place dans l'ordre du peuplement.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArriveeBrute {
+    pub track_id: i64,
+    /// AAAAMMJJ. Le mois et le jour valent 00 quand on ne les connaît pas.
+    pub date: u32,
+    pub source: String,
+    /// Hachage stable de (artiste, album) : regroupe les pistes d'un disque.
+    pub album: u64,
+    pub piste: u16,
+}
+
+/// `1973-03-01` → `19730301`, `1973-03` → `19730300`, `1973` → `19730000`.
+fn date_iso_vers_cle(d: &str) -> Option<u32> {
+    let mut parts = d.split('-');
+    let a: u32 = parts.next()?.parse().ok()?;
+    if !(1900..=2100).contains(&a) {
+        return None;
+    }
+    let m: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    let j: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    Some(a * 10_000 + m.min(12) * 100 + j.min(31))
+}
+
+/// Un instant epoch vers la même clé AAAAMMJJ, sans dépendance de date : on
+/// n'a besoin que d'un ordre, et l'arithmétique civile grégorienne tient en
+/// quinze lignes (algorithme de Howard Hinnant).
+fn epoch_vers_cle(secondes: i64) -> u32 {
+    let jours = secondes.div_euclid(86_400) + 719_468;
+    let ere = jours.div_euclid(146_097);
+    let doe = jours - ere * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + ere * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y.clamp(1900, 2100) as u32) * 10_000 + (m as u32) * 100 + (d as u32)
+}
+
+/// Hachage stable d'un couple artiste/album. Doit rendre la même valeur d'une
+/// exécution à l'autre : c'est lui qui départage les arrivées d'une même année.
+fn hacher(artiste: &str, album: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for octet in artiste.as_bytes().iter().chain(b"\x1f").chain(album.as_bytes()) {
+        h ^= *octet as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    h
 }
 
 /// Une racine surveillée, telle qu'affichée dans les réglages.
@@ -188,15 +318,124 @@ pub struct RootRow {
     pub tracks: i64,
 }
 
-/// Colonnes projetées pour un [`TrackRow`], partagées par toutes les requêtes
 /// Un album MusicBrainz prêt à ranger : identifiant, titre tel qu'il est
 /// publié, titre normalisé pour le rapprochement, et genres avec leurs votes.
 pub type AlbumRange = (String, String, String, Vec<(String, i64)>);
+
+/// Un album et ses éditions multiples : l'artiste, le titre brut le plus
+/// représenté, puis chaque édition (titre publié, nombre de pistes).
+pub type EditionsAlbum = (String, String, Vec<(String, i64)>);
 
 /// Une piste vue par le nommage des familles : sa famille, son artiste
 /// MusicBrainz, son album, et le genre inscrit dans le fichier.
 type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
 
+/// Une piste vue par le recalcul de popularité : son id, son MBID
+/// d'enregistrement, son MBID d'artiste, son album.
+type PistePop = (i64, Option<String>, Option<String>, Option<String>);
+
+/// Une sortie repérée pour le mode Découvrir, prête à ranger. Le titre
+/// normalisé n'a pas sa place ici — on ne rapproche pas ces sorties d'un
+/// fichier, elles ne sont pas (encore) dans la bibliothèque.
+#[derive(Debug, Clone)]
+pub struct SortieARanger {
+    pub rg_mbid: String,
+    pub titre: String,
+    /// Date brute telle que MusicBrainz la donne, pour l'affichage.
+    pub date_sortie: Option<String>,
+    /// Date complétée en `YYYY-MM-DD` ([`crate::musicbrainz::completer_date`]),
+    /// pour le filtre de fenêtre et le tri.
+    pub date_sortie_norm: Option<String>,
+    pub type_primaire: Option<String>,
+    /// Types secondaires joints par une virgule (« Live,Compilation »).
+    pub types_secondaires: Option<String>,
+    /// Noms crédités hors artiste-ancre, joints par « · ». `None` ou vide = pas
+    /// une collaboration.
+    pub collaborateurs: Option<String>,
+}
+
+/// Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SortieFil {
+    pub rg_mbid: String,
+    pub artiste_mbid: String,
+    pub artiste_nom: String,
+    pub titre: String,
+    pub date_sortie: Option<String>,
+    pub type_primaire: Option<String>,
+    pub collaborateurs: Option<String>,
+    pub vu: bool,
+}
+
+/// Un artiste voisin proposé, avec les artistes de la bibliothèque qui y mènent.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoisinFil {
+    pub dst_mbid: String,
+    pub dst_nom: String,
+    pub score: f64,
+    pub source: String,
+    /// Noms des artistes-ancre — « proche de X, Y que vous écoutez ».
+    pub portes: Vec<String>,
+    /// `mb_album_artist_id` des artistes-ancre — pour filtrer le fil par famille
+    /// sonique côté interface (un voisin passe si l'une de ses ancres est dans
+    /// une famille cochée).
+    pub src_mbids: Vec<String>,
+    pub vu: bool,
+}
+
+/// Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
+/// écouter ailleurs, plus la date de la dernière passe.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FilDecouvrir {
+    pub derniere_passe: Option<i64>,
+    pub sorties: Vec<SortieFil>,
+    pub collaborations: Vec<SortieFil>,
+    pub voisins: Vec<VoisinFil>,
+}
+
+/// Un enregistrement dont la popularité reste à récupérer. `artiste` et
+/// `titre` servent à la recherche Deezer, qui n'a pas de MBID.
+#[derive(Debug, Clone)]
+pub struct PisteAPopulariser {
+    pub recording_mbid: String,
+    pub artiste: Option<String>,
+    pub titre: Option<String>,
+}
+
+/// Une popularité brute à ranger : `ecoutes` porte la métrique principale de
+/// la source (écoutes ListenBrainz, `rank` Deezer), `auditeurs` le compte
+/// d'auditeurs distincts quand la source le donne.
+#[derive(Debug, Clone, Copy)]
+pub struct PopulariteBrute<'a> {
+    pub mbid: &'a str,
+    pub ecoutes: i64,
+    pub auditeurs: Option<i64>,
+}
+
+/// Convertit une liste `(id, valeur)` en `id → rang percentile` dans `[0, 1]` :
+/// la part des valeurs strictement inférieures. Insensible à l'échelle et aux
+/// distributions à longue traîne — c'est pourquoi on mélange des rangs, pas
+/// des comptes bruts (`docs/popularite.md`).
+fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> HashMap<i64, f64> {
+    let paires: Vec<(i64, f64)> = paires.collect();
+    let mut triees: Vec<f64> = paires.iter().map(|(_, v)| *v).collect();
+    triees.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let n = triees.len();
+    paires
+        .into_iter()
+        .map(|(id, v)| {
+            let moins = triees.partition_point(|x| *x < v);
+            let rang = if n > 1 {
+                moins as f64 / (n - 1) as f64
+            } else {
+                0.5
+            };
+            (id, rang)
+        })
+        .collect()
+}
+
+/// Colonnes projetées pour un [`TrackRow`], partagées par toutes les requêtes
 /// de consultation pour que l'ordre reste aligné sur [`track_from_row`].
 const TRACK_COLS: &str =
     "id, path, title, artist, album, track_no, year, duration_ms, mb_album_artist_id";
@@ -223,9 +462,31 @@ fn migrate(conn: &Connection) -> Result<()> {
         // les remplit sans autre passe.
         ("bitrate", "INTEGER"),
         ("codec", "TEXT"),
+        // Profondeur de bits des formats sans perte (« 16 bit »), lue par
+        // `tags::read` comme `bitrate`/`codec`. `NULL` tant qu'un rescan
+        // « relire même les fichiers inchangés » ne l'a pas remplie.
+        ("bit_depth", "INTEGER"),
     ] {
         if !existantes.contains(nom) {
             conn.execute_batch(&format!("ALTER TABLE tracks ADD COLUMN {nom} {decl}"))?;
+        }
+    }
+
+    // Les dates d'œuvre, pour le placement chronologique du peuplement.
+    // `first_release_date` est **déjà** dans la réponse MusicBrainz que
+    // `mb_poser_albums` reçoit : c'est la date de l'œuvre et non celle du
+    // pressage, donc ce qui corrige les rééditions. `secondary_types` porte
+    // « Compilation », qui signale une date à ne pas croire.
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('mb_release_groups')")?;
+    let colonnes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    drop(stmt);
+    for (nom, decl) in [("first_release_date", "TEXT"), ("secondary_types", "TEXT")] {
+        if !colonnes.contains(nom) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE mb_release_groups ADD COLUMN {nom} {decl}"
+            ))?;
         }
     }
 
@@ -403,8 +664,8 @@ impl Library {
             "INSERT INTO tracks
                (path, size_bytes, mtime, title, artist, album, album_artist,
                 genre, year, track_no, duration_ms, sample_rate, channels, bitrate, codec,
-                mb_recording_id, mb_artist_id, mb_album_artist_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+                bit_depth, mb_recording_id, mb_artist_id, mb_album_artist_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
              ON CONFLICT(path) DO UPDATE SET
                size_bytes=excluded.size_bytes, mtime=excluded.mtime,
                title=excluded.title, artist=excluded.artist, album=excluded.album,
@@ -412,6 +673,7 @@ impl Library {
                year=excluded.year, track_no=excluded.track_no,
                duration_ms=excluded.duration_ms, sample_rate=excluded.sample_rate,
                channels=excluded.channels, bitrate=excluded.bitrate, codec=excluded.codec,
+               bit_depth=excluded.bit_depth,
                mb_recording_id=excluded.mb_recording_id,
                mb_artist_id=excluded.mb_artist_id,
                mb_album_artist_id=excluded.mb_album_artist_id",
@@ -431,6 +693,7 @@ impl Library {
                 m.channels,
                 m.bitrate,
                 m.codec,
+                m.bit_depth,
                 m.mb_recording_id,
                 m.mb_artist_id,
                 m.mb_album_artist_id
@@ -465,10 +728,13 @@ impl Library {
         )?)
     }
 
-    /// Note l'échec de lecture d'un fichier — tags illisibles ou insertion en
-    /// échec. `ON CONFLICT` plutôt qu'un doublon : un même fichier qui échoue
+    /// Note l'échec de lecture d'un fichier — tags illisibles, insertion en
+    /// échec, ou décodage audio impossible pendant une passe d'analyse.
+    /// `ON CONFLICT` plutôt qu'un doublon : un même fichier qui échoue
     /// à chaque scan ne doit pas empiler les lignes, seulement rafraîchir la
-    /// raison et la date.
+    /// raison et la date. `pending_analysis`/`pending_descripteurs` excluent
+    /// ce qui figure ici — sans quoi un fichier qui déstabilise son support
+    /// (carte SD, lecteur USB) serait retenté à l'identique à chaque passe.
     pub fn enregistrer_echec_scan(&self, path: &Path, raison: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO scan_failures(path, reason) VALUES (?1, ?2)
@@ -672,6 +938,123 @@ impl Library {
         Ok(nommer_les_familles(&effectifs, &comptes))
     }
 
+    /// Pour chaque album, sa famille sonique dominante — le cluster de la carte
+    /// le plus représenté parmi ses morceaux déjà projetés.
+    ///
+    /// Sert le filtre par famille de la grille de pochettes du mode Écoute, qui
+    /// réutilise la légende des familles du mode Explorer. La clé d'album est
+    /// celle de [`Library::albums`] : nom + `COALESCE(album_artist, artist)`.
+    /// Les albums dont aucun morceau n'est encore sur la carte n'apparaissent
+    /// pas — le filtre les laisse alors visibles par défaut.
+    pub fn familles_des_albums(
+        &self,
+        model: &str,
+    ) -> Result<Vec<(String, Option<String>, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.album, COALESCE(t.album_artist, t.artist), f.cluster, COUNT(*)
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND f.cluster IS NOT NULL AND t.album IS NOT NULL
+              GROUP BY t.album, COALESCE(t.album_artist, t.artist), f.cluster",
+        )?;
+        let lignes: Vec<(String, Option<String>, i64, i64)> = stmt
+            .query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        // Cluster majoritaire par album ; à égalité, le plus petit numéro
+        // tranche, pour que le filtre range un album au même endroit d'une
+        // session à l'autre.
+        let mut par_album: HashMap<(String, Option<String>), (i64, i64)> = HashMap::new();
+        for (album, artiste, cluster, n) in lignes {
+            let e = par_album.entry((album, artiste)).or_insert((cluster, n));
+            if n > e.1 || (n == e.1 && cluster < e.0) {
+                *e = (cluster, n);
+            }
+        }
+        Ok(par_album
+            .into_iter()
+            .map(|((album, artiste), (cluster, _))| (album, artiste, cluster))
+            .collect())
+    }
+
+    /// Pour chaque artiste (`mb_album_artist_id`), sa famille sonique dominante
+    /// — le cluster de la carte le plus représenté parmi ses morceaux projetés.
+    ///
+    /// Sert le filtre par famille du fil du mode Découvrir (`app.js`), qui
+    /// réutilise la légende des familles du mode Explorer. Même arbitrage que
+    /// [`Library::familles_des_albums`] : majorité, et le plus petit numéro à
+    /// égalité pour que le classement soit stable d'une session à l'autre.
+    pub fn familles_des_artistes(&self, model: &str) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.mb_album_artist_id, f.cluster, COUNT(*)
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND f.cluster IS NOT NULL
+                AND t.mb_album_artist_id IS NOT NULL AND t.mb_album_artist_id <> ''
+              GROUP BY t.mb_album_artist_id, f.cluster",
+        )?;
+        let lignes: Vec<(String, i64, i64)> = stmt
+            .query_map(params![model], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut par_artiste: HashMap<String, (i64, i64)> = HashMap::new();
+        for (mbid, cluster, n) in lignes {
+            let e = par_artiste.entry(mbid).or_insert((cluster, n));
+            if n > e.1 || (n == e.1 && cluster < e.0) {
+                *e = (cluster, n);
+            }
+        }
+        Ok(par_artiste
+            .into_iter()
+            .map(|(mbid, (cluster, _))| (mbid, cluster))
+            .collect())
+    }
+
+    /// Le genre le plus précis de chaque morceau analysé, résolu par la même
+    /// hiérarchie que [`Library::familles`] (album MusicBrainz, puis artiste,
+    /// puis tag du fichier) — mais **par morceau**, pas agrégé par cluster.
+    ///
+    /// Sert à ancrer un regroupement par genre plutôt que par k-means : un
+    /// morceau dont le genre est connu n'a pas besoin d'être placé par
+    /// distance, il appartient déjà à sa famille.
+    pub fn genres_resolus(&self, model: &str) -> Result<HashMap<i64, String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.track_id, t.mb_artist_id, t.album, t.genre
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1",
+        )?;
+        let pistes: Vec<PisteNommage> = stmt
+            .query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
+        let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
+        let albums = self.mb_albums()?;
+
+        let mut resolus = HashMap::new();
+        for (track_id, artiste, album, tag) in &pistes {
+            if let Some(genre) = genres_du_morceau(
+                artiste.as_deref(),
+                album.as_deref(),
+                tag.as_deref(),
+                &albums,
+                &par_album,
+                &par_artiste,
+            )
+            .into_iter()
+            .next()
+            {
+                // En minuscules : MusicBrainz les rend déjà ainsi, mais le
+                // repli sur le tag du fichier ne le garantit pas, et
+                // `cluster::VOCABULAIRE` compare sans normaliser la casse.
+                resolus.insert(*track_id, genre.to_lowercase());
+            }
+        }
+        Ok(resolus)
+    }
+
     /// Les artistes les mieux représentés d'une famille. Diagnostic : c'est en
     /// les lisant qu'on juge si l'étiquette dit vrai.
     pub fn artistes_de_famille(&self, model: &str, cluster: i64, n: usize) -> Result<Vec<String>> {
@@ -761,7 +1144,7 @@ impl Library {
             par_cluster.entry(cluster).or_default().push((genre, n));
         }
         for v in par_cluster.values_mut() {
-            v.sort_by(|a, b| b.1.cmp(&a.1));
+            v.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
             v.truncate(GENRES_DOMINANTS);
         }
 
@@ -938,6 +1321,76 @@ impl Library {
         Ok(())
     }
 
+    /// Le vocabulaire des familles par genre, dans l'ordre où il a été
+    /// écrit. Table vide = [`VOCABULAIRE_DEFAUT`] — même convention que
+    /// [`Library::parametres_carte`].
+    pub fn vocabulaire_familles(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT nom, genre FROM vocabulaire_familles ORDER BY rowid")?;
+        let lignes: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        if lignes.is_empty() {
+            return Ok(VOCABULAIRE_DEFAUT
+                .iter()
+                .map(|(nom, genres)| {
+                    (
+                        nom.to_string(),
+                        genres.iter().map(|g| g.to_string()).collect(),
+                    )
+                })
+                .collect());
+        }
+
+        // Regroupe par nom en gardant l'ordre de première apparition — celui
+        // des `rowid`, donc celui de la dernière écriture.
+        let mut ordre: Vec<String> = Vec::new();
+        let mut par_nom: HashMap<String, Vec<String>> = HashMap::new();
+        for (nom, genre) in lignes {
+            if !par_nom.contains_key(&nom) {
+                ordre.push(nom.clone());
+            }
+            par_nom.entry(nom).or_default().push(genre);
+        }
+        Ok(ordre
+            .into_iter()
+            .map(|nom| {
+                let genres = par_nom.remove(&nom).expect("clé vue à l'instant");
+                (nom, genres)
+            })
+            .collect())
+    }
+
+    /// Remplace le vocabulaire des familles en base, en bloc.
+    ///
+    /// Une famille sans aucun genre est écartée : elle ne pourrait jamais
+    /// ancrer un morceau, ce serait une entrée morte dans le réglage. Passer
+    /// une liste vide restaure les valeurs par défaut — la table vidée,
+    /// [`Library::vocabulaire_familles`] retombe sur [`VOCABULAIRE_DEFAUT`].
+    pub fn definir_vocabulaire_familles(&mut self, vocabulaire: &[(String, Vec<String>)]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM vocabulaire_familles", [])?;
+        {
+            let mut inserer =
+                tx.prepare("INSERT INTO vocabulaire_familles (nom, genre) VALUES (?1, ?2)")?;
+            for (nom, genres) in vocabulaire {
+                if genres.is_empty() {
+                    continue;
+                }
+                for genre in genres {
+                    let genre = genre.trim().to_lowercase();
+                    if !genre.is_empty() {
+                        inserer.execute(params![nom.trim(), genre])?;
+                    }
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Albums dont le même artiste (`album_artist` de préférence, sinon
     /// `artist` — même repli que [`Self::albums`]) porte plusieurs titres
     /// distincts qui ne diffèrent que par leur mention d'édition, ex.
@@ -949,7 +1402,7 @@ impl Library {
     /// au prix d'un titre légitimement parenthétique tronqué à tort de temps
     /// en temps — mais le résultat rend le titre brut le plus représenté,
     /// pas la forme normalisée : celle-ci sert à regrouper, pas à afficher.
-    pub fn editions_multiples(&self) -> Result<Vec<(String, String, Vec<(String, i64)>)>> {
+    pub fn editions_multiples(&self) -> Result<Vec<EditionsAlbum>> {
         let mut stmt = self.conn.prepare(
             "SELECT COALESCE(album_artist, artist), album, COUNT(*)
                FROM tracks
@@ -965,11 +1418,11 @@ impl Library {
             let norme = titre_album_normalise(&album);
             par_cle.entry((artiste, norme)).or_default().push((album, n));
         }
-        let mut resultat: Vec<(String, String, Vec<(String, i64)>)> = par_cle
+        let mut resultat: Vec<EditionsAlbum> = par_cle
             .into_iter()
             .filter(|(_, editions)| editions.len() > 1)
             .map(|((artiste, _norme), mut editions)| {
-                editions.sort_by(|a, b| b.1.cmp(&a.1));
+                editions.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
                 (artiste, editions[0].0.clone(), editions)
             })
             .collect();
@@ -1029,7 +1482,7 @@ impl Library {
         }
         let mut resultat: Vec<(String, i64)> =
             cumul.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
-        resultat.sort_by(|a, b| b.1.cmp(&a.1));
+        resultat.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
         Ok(resultat)
     }
 
@@ -1039,13 +1492,15 @@ impl Library {
     ///
     /// Restreint à ceux qui ont déjà une empreinte : la passe des descripteurs
     /// décode les mêmes fenêtres, et il n'y a pas de sens à mesurer un morceau
-    /// que la carte ne montre pas.
+    /// que la carte ne montre pas. Exclut aussi les fichiers en échec connu
+    /// (`scan_failures`) — même raison que `pending_analysis`.
     pub fn pending_descripteurs(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
         let sql = format!(
             "SELECT {TRACK_COLS} FROM tracks
               WHERE EXISTS (SELECT 1 FROM features f
                              WHERE f.track_id = tracks.id AND f.model = ?1)
                 AND NOT EXISTS (SELECT 1 FROM descriptors d WHERE d.track_id = tracks.id)
+                AND NOT EXISTS (SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
               ORDER BY added_at LIMIT ?2"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -1180,6 +1635,28 @@ impl Library {
             Some(v) => Some(v?),
             None => None,
         })
+    }
+
+    /// Qualité d'encodage d'un morceau — codec, débit, échantillonnage,
+    /// profondeur de bits. Lue au scan, `None` si le morceau n'est pas en base.
+    pub fn qualite_piste(&self, id: i64) -> Result<Option<QualitePiste>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT codec, bitrate, sample_rate, channels, bit_depth
+                   FROM tracks WHERE id = ?1",
+                params![id],
+                |r| {
+                    Ok(QualitePiste {
+                        codec: r.get(0)?,
+                        bitrate: r.get(1)?,
+                        sample_rate: r.get(2)?,
+                        channels: r.get(3)?,
+                        bit_depth: r.get(4)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     /* ------------------------------------------------ genres MusicBrainz */
@@ -1324,6 +1801,294 @@ impl Library {
         Ok(rows)
     }
 
+    /* ------------------------------------------- mode Découvrir : le fil */
+
+    /// Les MBID d'artistes d'album présents dans la bibliothèque.
+    ///
+    /// Sert deux fois dans la passe Découvrir : écarter des voisins ceux qu'on
+    /// possède déjà, et retenir des sorties fraîches de ListenBrainz celles qui
+    /// concernent un artiste connu.
+    pub fn artist_mbids(&self) -> Result<HashSet<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT mb_album_artist_id FROM tracks
+              WHERE mb_album_artist_id IS NOT NULL AND mb_album_artist_id <> ''",
+        )?;
+        let s = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<HashSet<_>, _>>()?;
+        Ok(s)
+    }
+
+    /// `mbid` → nom, pour tous les artistes d'album de la bibliothèque.
+    ///
+    /// Le mode Découvrir s'en sert pour nommer l'artiste-ancre d'une sortie
+    /// repérée par ListenBrainz, qui ne rend que des identifiants.
+    pub fn artist_noms(&self) -> Result<HashMap<String, String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT mb_album_artist_id, MIN(COALESCE(album_artist, artist))
+               FROM tracks
+              WHERE mb_album_artist_id IS NOT NULL AND mb_album_artist_id <> ''
+                AND COALESCE(album_artist, artist) IS NOT NULL
+              GROUP BY mb_album_artist_id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out = HashMap::new();
+        for r in rows {
+            let (mbid, nom) = r?;
+            out.insert(mbid, nom);
+        }
+        Ok(out)
+    }
+
+    /// Marque une étape de la passe Découvrir comme faite maintenant.
+    ///
+    /// `decouvrir_poser_sorties` / `_voisins` le font déjà par artiste ; celle-ci
+    /// sert à l'étape « sorties » qui n'a pas d'artiste (une seule requête
+    /// ListenBrainz pour toute la bibliothèque), pour que `decouvrir_derniere_passe`
+    /// la voie même quand il n'y a aucun voisin à interroger.
+    pub fn decouvrir_marquer_passe(&self, etape: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO decouvrir_suivi (mbid, kind) VALUES ('@passe', ?1)",
+            params![etape],
+        )?;
+        Ok(())
+    }
+
+    /// Les artistes de la bibliothèque à (ré)interroger pour `kind`
+    /// (`"sorties"` ou `"voisins"`), les plus fournis d'abord — la couverture
+    /// en morceaux monte alors vite, comme pour [`Self::mb_artistes_en_attente`].
+    ///
+    /// Un artiste revient quand son suivi est absent ou plus vieux que
+    /// `peremption_jours` : une actualité vieillit, là où un genre est acquis
+    /// une fois pour toutes. `limite` à 0 = tous.
+    pub fn decouvrir_en_attente(
+        &self,
+        kind: &str,
+        peremption_jours: i64,
+        limite: usize,
+    ) -> Result<Vec<(String, String)>> {
+        let limite = if limite == 0 { i64::MAX } else { limite as i64 };
+        let mut stmt = self.conn.prepare(
+            "SELECT t.mb_album_artist_id,
+                    MIN(COALESCE(t.album_artist, t.artist)),
+                    COUNT(*) n
+               FROM tracks t
+               LEFT JOIN decouvrir_suivi s
+                      ON s.mbid = t.mb_album_artist_id AND s.kind = ?1
+              WHERE t.mb_album_artist_id IS NOT NULL AND t.mb_album_artist_id <> ''
+                AND COALESCE(t.album_artist, t.artist) IS NOT NULL
+                AND (s.at IS NULL OR s.at < strftime('%s','now') - ?2 * 86400)
+              GROUP BY t.mb_album_artist_id
+              ORDER BY n DESC
+              LIMIT ?3",
+        )?;
+        let rows = stmt
+            .query_map(params![kind, peremption_jours, limite], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Insère une sortie repérée dans le fil.
+    ///
+    /// `INSERT OR IGNORE` sur `rg_mbid` : une sortie déjà connue garde son `vu`
+    /// et sa date de repérage. Rend `true` si la ligne est neuve.
+    pub fn decouvrir_ajouter_sortie(
+        &self,
+        artiste_mbid: &str,
+        artiste_nom: &str,
+        s: &SortieARanger,
+    ) -> Result<bool> {
+        let n = self.conn.execute(
+            "INSERT OR IGNORE INTO decouvrir_sorties
+               (rg_mbid, artiste_mbid, artiste_nom, titre, date_sortie,
+                date_sortie_norm, type_primaire, types_secondaires, collaborateurs)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                s.rg_mbid,
+                artiste_mbid,
+                artiste_nom,
+                s.titre,
+                s.date_sortie,
+                s.date_sortie_norm,
+                s.type_primaire,
+                s.types_secondaires,
+                s.collaborateurs,
+            ],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Range les voisins d'un artiste et marque son suivi, dans une
+    /// transaction. `ON CONFLICT` rafraîchit le score sans perdre le `vu`.
+    /// Rend le nombre de lignes écrites (insérées ou mises à jour).
+    pub fn decouvrir_poser_voisins(
+        &mut self,
+        src_mbid: &str,
+        voisins: &[(String, String, f64, String)],
+    ) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let mut ecrits = 0usize;
+        for (dst_mbid, dst_nom, score, source) in voisins {
+            ecrits += tx.execute(
+                "INSERT INTO decouvrir_voisins (src_mbid, dst_mbid, dst_nom, score, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(src_mbid, dst_mbid, source)
+                   DO UPDATE SET score = excluded.score, dst_nom = excluded.dst_nom",
+                params![src_mbid, dst_mbid, dst_nom, score, source],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO decouvrir_suivi (mbid, kind) VALUES (?1, 'voisins')",
+            params![src_mbid],
+        )?;
+        tx.commit()?;
+        Ok(ecrits)
+    }
+
+    /// Le fil complet du mode Découvrir.
+    ///
+    /// Ne garde que les sorties dont la date normalisée tombe dans les
+    /// `fenetre_jours` derniers jours. Une sortie à collaborateurs va dans
+    /// `collaborations`, les autres dans `sorties`. Les voisins sont regroupés
+    /// par artiste cible et classés par nombre de portes d'entrée.
+    pub fn decouvrir_fil(&self, fenetre_jours: i64) -> Result<FilDecouvrir> {
+        let derniere_passe: Option<i64> =
+            self.conn
+                .query_row("SELECT MAX(at) FROM decouvrir_suivi", [], |r| r.get(0))?;
+
+        let fenetre = format!("-{fenetre_jours} days");
+        let mut stmt = self.conn.prepare(
+            "SELECT rg_mbid, artiste_mbid, artiste_nom, titre, date_sortie,
+                    type_primaire, collaborateurs, vu
+               FROM decouvrir_sorties
+              WHERE date_sortie_norm IS NOT NULL
+                AND date_sortie_norm >= date('now', ?1)
+              ORDER BY date_sortie_norm DESC, artiste_nom COLLATE NOCASE",
+        )?;
+        let toutes: Vec<SortieFil> = stmt
+            .query_map(params![fenetre], |r| {
+                Ok(SortieFil {
+                    rg_mbid: r.get(0)?,
+                    artiste_mbid: r.get(1)?,
+                    artiste_nom: r.get(2)?,
+                    titre: r.get(3)?,
+                    date_sortie: r.get(4)?,
+                    type_primaire: r.get(5)?,
+                    collaborateurs: r.get(6)?,
+                    vu: r.get::<_, i64>(7)? != 0,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let (collaborations, sorties): (Vec<SortieFil>, Vec<SortieFil>) = toutes
+            .into_iter()
+            .partition(|s| s.collaborateurs.as_deref().is_some_and(|c| !c.is_empty()));
+
+        let mut stmt = self.conn.prepare(
+            "SELECT v.dst_mbid, MIN(v.dst_nom), MAX(v.score), MIN(v.source), MIN(v.vu),
+                    GROUP_CONCAT(DISTINCT COALESCE(a.nom, v.src_mbid)),
+                    GROUP_CONCAT(DISTINCT v.src_mbid)
+               FROM decouvrir_voisins v
+               LEFT JOIN (
+                    SELECT mb_album_artist_id AS mbid,
+                           MIN(COALESCE(album_artist, artist)) AS nom
+                      FROM tracks
+                     WHERE mb_album_artist_id IS NOT NULL
+                     GROUP BY mb_album_artist_id
+               ) a ON a.mbid = v.src_mbid
+              WHERE v.dst_mbid NOT IN (
+                        SELECT mb_album_artist_id FROM tracks
+                         WHERE mb_album_artist_id IS NOT NULL AND mb_album_artist_id <> '')
+              GROUP BY v.dst_mbid
+              ORDER BY COUNT(*) DESC, MAX(v.score) DESC
+              LIMIT 60",
+        )?;
+        let voisins: Vec<VoisinFil> = stmt
+            .query_map([], |r| {
+                let portes: String = r.get::<_, Option<String>>(5)?.unwrap_or_default();
+                let src_mbids: String = r.get::<_, Option<String>>(6)?.unwrap_or_default();
+                Ok(VoisinFil {
+                    dst_mbid: r.get(0)?,
+                    dst_nom: r.get(1)?,
+                    score: r.get(2)?,
+                    source: r.get(3)?,
+                    vu: r.get::<_, i64>(4)? != 0,
+                    // GROUP_CONCAT DISTINCT ne prend pas de séparateur autre que
+                    // la virgule ; un nom d'artiste qui en contient une est rare
+                    // et sans conséquence ici (une porte affichée en deux).
+                    portes: portes
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                    // Un mbid ne contient jamais de virgule — le découpage est sûr.
+                    src_mbids: src_mbids
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(FilDecouvrir {
+            derniere_passe,
+            sorties,
+            collaborations,
+            voisins,
+        })
+    }
+
+    /// La date d'il y a `jours` jours, en `YYYY-MM-DD`. SQLite tient l'horloge —
+    /// pas besoin d'un crate de calendrier pour borner la fenêtre d'actualité.
+    pub fn date_il_y_a(&self, jours: i64) -> Result<String> {
+        Ok(self.conn.query_row(
+            "SELECT date('now', ?1)",
+            params![format!("-{jours} days")],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// La date (epoch s) de la dernière passe Découvrir, ou `None` si aucune —
+    /// l'interface s'en sert pour décider s'il faut relancer à l'ouverture.
+    pub fn decouvrir_derniere_passe(&self) -> Result<Option<i64>> {
+        Ok(self
+            .conn
+            .query_row("SELECT MAX(at) FROM decouvrir_suivi", [], |r| r.get(0))?)
+    }
+
+    /// Marque tout le fil comme vu — les pastilles « nouveau » s'éteignent.
+    pub fn decouvrir_tout_vu(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "UPDATE decouvrir_sorties SET vu = 1 WHERE vu = 0;
+             UPDATE decouvrir_voisins SET vu = 1 WHERE vu = 0;",
+        )?;
+        Ok(())
+    }
+
+    /// Efface ce qui est sorti de la fenêtre d'actualité, pour que les tables
+    /// ne gonflent pas indéfiniment : les sorties datées de plus de
+    /// `garder_jours`, et les voisins qu'aucune passe n'a revus depuis 90 jours.
+    pub fn decouvrir_elaguer(&self, garder_jours: i64) -> Result<()> {
+        let limite = format!("-{garder_jours} days");
+        self.conn.execute(
+            "DELETE FROM decouvrir_sorties
+              WHERE date_sortie_norm IS NULL OR date_sortie_norm < date('now', ?1)",
+            params![limite],
+        )?;
+        self.conn.execute(
+            "DELETE FROM decouvrir_voisins
+              WHERE repere_le < strftime('%s','now') - 90 * 86400",
+            [],
+        )?;
+        Ok(())
+    }
+
     /// Genres par identifiant, du plus sûr au moins sûr.
     ///
     /// **Le classement compte plus que le seuil**, et l'avoir cru l'inverse a
@@ -1385,6 +2150,261 @@ impl Library {
             out.entry((artiste, norme)).or_insert(mbid);
         }
         Ok(out)
+    }
+
+    /* --------------------------------------------- popularité générale */
+
+    /// Les enregistrements dont la popularité reste à récupérer sur au moins
+    /// une source (ListenBrainz ou Deezer). `depuis` est l'instant à partir
+    /// duquel un enregistrement déjà interrogé compte comme « frais » :
+    /// `depuis = 0` ne rafraîchit rien, `now − 90 j` réinterroge le périmé.
+    /// Les plus représentés d'abord, comme [`Self::mb_artistes_en_attente`].
+    pub fn pop_recordings_candidats(
+        &self,
+        depuis: i64,
+        limite: usize,
+    ) -> Result<Vec<PisteAPopulariser>> {
+        let limite = if limite == usize::MAX {
+            i64::MAX
+        } else {
+            limite as i64
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT t.mb_recording_id, MIN(t.artist), MIN(t.title), COUNT(*) n
+               FROM tracks t
+              WHERE t.mb_recording_id IS NOT NULL AND t.mb_recording_id <> ''
+                AND (SELECT COUNT(*) FROM popularite_fetched f
+                      WHERE f.mbid = t.mb_recording_id AND f.kind = 'recording'
+                        AND f.source IN ('listenbrainz', 'deezer') AND f.at >= ?1) < 2
+              GROUP BY t.mb_recording_id
+              ORDER BY n DESC
+              LIMIT ?2",
+        )?;
+        let out = stmt
+            .query_map(params![depuis, limite], |r| {
+                Ok(PisteAPopulariser {
+                    recording_mbid: r.get(0)?,
+                    artiste: r.get(1)?,
+                    titre: r.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Les release-groups dont la popularité ListenBrainz reste à récupérer.
+    /// Le lien morceau → release-group se fait en Rust, par
+    /// `(mb_artist_id, titre normalisé)` — exactement comme [`genres_du_morceau`].
+    pub fn pop_rg_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
+        let albums = self.mb_albums()?;
+        let deja = self.pop_deja_fait("listenbrainz", "release-group", depuis)?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT mb_artist_id, album, COUNT(*) n FROM tracks
+              WHERE mb_artist_id IS NOT NULL AND mb_artist_id <> '' AND album IS NOT NULL
+              GROUP BY mb_artist_id, album
+              ORDER BY n DESC",
+        )?;
+        let lignes: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut vus = HashSet::new();
+        let mut out = Vec::new();
+        for (artiste, album) in lignes {
+            let cle = (artiste, crate::musicbrainz::normaliser_titre(&album));
+            if let Some(rg) = albums.get(&cle) {
+                if !deja.contains(rg) && vus.insert(rg.clone()) {
+                    out.push(rg.clone());
+                    if out.len() >= limite {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Les MBID déjà interrogés (et encore frais) pour une source et un
+    /// échelon donnés. `depuis` : voir [`Self::pop_recordings_candidats`].
+    pub fn pop_deja_fait(
+        &self,
+        source: &str,
+        kind: &str,
+        depuis: i64,
+    ) -> Result<HashSet<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT mbid FROM popularite_fetched
+              WHERE source = ?1 AND kind = ?2 AND at >= ?3",
+        )?;
+        let s = stmt
+            .query_map(params![source, kind, depuis], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(s)
+    }
+
+    /// Range les popularités d'un lot et marque tous les MBID demandés comme
+    /// interrogés — les deux dans une transaction, comme
+    /// [`Self::mb_poser_genres`] : une passe coupée ne perd ni ne refait.
+    /// `demandes` couvre tout le lot (y compris les inconnus, pour ne pas y
+    /// revenir) ; `trouves` n'en est que le sous-ensemble ayant rendu un
+    /// chiffre.
+    pub fn pop_poser(
+        &mut self,
+        source: &str,
+        kind: &str,
+        demandes: &[String],
+        trouves: &[PopulariteBrute<'_>],
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for p in trouves {
+            tx.execute(
+                "INSERT INTO popularite (mbid, kind, source, ecoutes, auditeurs, at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, strftime('%s','now'))
+                 ON CONFLICT(mbid, kind, source)
+                 DO UPDATE SET ecoutes = excluded.ecoutes,
+                               auditeurs = excluded.auditeurs,
+                               at = excluded.at",
+                params![p.mbid, kind, source, p.ecoutes, p.auditeurs],
+            )?;
+        }
+        for mbid in demandes {
+            tx.execute(
+                "INSERT OR REPLACE INTO popularite_fetched (mbid, kind, source)
+                 VALUES (?1, ?2, ?3)",
+                params![mbid, kind, source],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// État de fraîcheur de la popularité, pour la ligne d'alerte du mode
+    /// Bibliothèque : combien de morceaux ont une popularité, l'instant de la
+    /// plus ancienne interrogation, et combien d'entités datent de plus de
+    /// `peremption_jours`.
+    pub fn popularite_fraicheur(&self, peremption_jours: i64) -> Result<(i64, Option<i64>, i64)> {
+        let couverts: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM track_popularite", [], |r| r.get(0))?;
+        let plus_ancienne: Option<i64> = self
+            .conn
+            .query_row("SELECT MIN(at) FROM popularite_fetched", [], |r| r.get(0))?;
+        let perimes: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM popularite_fetched
+              WHERE at < strftime('%s','now') - ?1",
+            params![peremption_jours * 86_400],
+            |r| r.get(0),
+        )?;
+        Ok((couverts, plus_ancienne, perimes))
+    }
+
+    /// `mbid → métrique brute` pour une source et un échelon (écoutes
+    /// ListenBrainz, `rank` Deezer).
+    fn pop_valeurs(&self, source: &str, kind: &str) -> Result<HashMap<String, f64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT mbid, ecoutes FROM popularite
+              WHERE source = ?1 AND kind = ?2 AND ecoutes IS NOT NULL",
+        )?;
+        let m = stmt
+            .query_map(params![source, kind], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as f64))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(m)
+    }
+
+    /// Recalcule `track_popularite` en entier depuis `popularite` et la
+    /// distribution de la bibliothèque — voir « la valeur affichée » de
+    /// `docs/popularite.md`. Rend le nombre de morceaux couverts.
+    ///
+    /// Pour chaque morceau : sa métrique par source à son meilleur échelon
+    /// (enregistrement → release-group), chaque métrique convertie en **rang
+    /// percentile** dans la bibliothèque, puis la **médiane** des rangs des
+    /// sources disponibles. Un morceau sans aucune source n'a pas de ligne.
+    pub fn recalculer_track_popularite(&mut self) -> Result<usize> {
+        let albums = self.mb_albums()?;
+        let lb_rec = self.pop_valeurs("listenbrainz", "recording")?;
+        let lb_rg = self.pop_valeurs("listenbrainz", "release-group")?;
+        let dz_rec = self.pop_valeurs("deezer", "recording")?;
+
+        let pistes: Vec<PistePop> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id, mb_recording_id, mb_artist_id, album FROM tracks")?;
+            let v = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<std::result::Result<_, _>>()?;
+            v
+        };
+
+        // Valeur brute par source et échelon de chaque morceau.
+        struct Brut {
+            id: i64,
+            lb: Option<f64>,
+            dz: Option<f64>,
+            echelon: &'static str,
+        }
+        let mut bruts = Vec::new();
+        for (id, rec, artiste, album) in &pistes {
+            let rg = match (artiste, album) {
+                (Some(a), Some(al)) => albums
+                    .get(&(a.clone(), crate::musicbrainz::normaliser_titre(al)))
+                    .cloned(),
+                _ => None,
+            };
+            let lb_r = rec.as_deref().and_then(|m| lb_rec.get(m)).copied();
+            let dz_r = rec.as_deref().and_then(|m| dz_rec.get(m)).copied();
+            let lb_g = rg.as_deref().and_then(|m| lb_rg.get(m)).copied();
+
+            let lb = lb_r.or(lb_g);
+            let echelon = if lb_r.is_some() || dz_r.is_some() {
+                "recording"
+            } else if lb_g.is_some() {
+                "release-group"
+            } else {
+                continue;
+            };
+            bruts.push(Brut {
+                id: *id,
+                lb,
+                dz: dz_r,
+                echelon,
+            });
+        }
+
+        let rang_lb = rangs_percentiles(bruts.iter().filter_map(|b| b.lb.map(|v| (b.id, v))));
+        let rang_dz = rangs_percentiles(bruts.iter().filter_map(|b| b.dz.map(|v| (b.id, v))));
+
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM track_popularite", [])?;
+        let mut n = 0usize;
+        for b in &bruts {
+            let mut rangs: Vec<f64> = Vec::new();
+            if let Some(r) = rang_lb.get(&b.id) {
+                rangs.push(*r);
+            }
+            if let Some(r) = rang_dz.get(&b.id) {
+                rangs.push(*r);
+            }
+            if rangs.is_empty() {
+                continue;
+            }
+            rangs.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            let relative = if rangs.len() % 2 == 1 {
+                rangs[rangs.len() / 2]
+            } else {
+                (rangs[rangs.len() / 2 - 1] + rangs[rangs.len() / 2]) / 2.0
+            };
+            tx.execute(
+                "INSERT INTO track_popularite (track_id, relative, echelon, calcule_le)
+                 VALUES (?1, ?2, ?3, strftime('%s','now'))",
+                params![b.id, relative, b.echelon],
+            )?;
+            n += 1;
+        }
+        tx.commit()?;
+        Ok(n)
     }
 
     /// Combien d'artistes ont été interrogés, et combien ont rendu un genre.
@@ -1466,11 +2486,12 @@ impl Library {
     pub fn map_view(&self, model: &str) -> Result<Vec<MapPoint>> {
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.path, f.x, f.y, COALESCE(f.cluster, -1),
-                    t.title, t.artist, t.album, t.track_no, t.year, t.duration_ms,
-                    d.bpm, d.energy
+                    t.title, t.artist, t.album_artist, t.album, t.track_no, t.year, t.duration_ms,
+                    d.bpm, d.energy, tp.relative
                FROM features f
                JOIN tracks t ON t.id = f.track_id
                LEFT JOIN descriptors d ON d.track_id = t.id
+               LEFT JOIN track_popularite tp ON tp.track_id = t.id
               WHERE f.model = ?1 AND f.x IS NOT NULL
               ORDER BY t.id",
         )?;
@@ -1484,12 +2505,14 @@ impl Library {
                     cluster: r.get(4)?,
                     title: r.get(5)?,
                     artist: r.get(6)?,
-                    album: r.get(7)?,
-                    track_no: r.get(8)?,
-                    year: r.get(9)?,
-                    duration_ms: r.get(10)?,
-                    bpm: r.get(11)?,
-                    energy: r.get(12)?,
+                    album_artist: r.get(7)?,
+                    album: r.get(8)?,
+                    track_no: r.get(9)?,
+                    year: r.get(10)?,
+                    duration_ms: r.get(11)?,
+                    bpm: r.get(12)?,
+                    energy: r.get(13)?,
+                    popularite: r.get(14)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1497,6 +2520,157 @@ impl Library {
     }
 
     /// Positions sur la carte pour un modèle donné — ce que lira le module 2.
+    /// L'ordre d'arrivée des morceaux, pour le placement chronologique.
+    ///
+    /// Rend `(track_id, date AAAAMMJJ, source, clé d'album, disque, piste)`,
+    /// **déjà trié** : l'ordre lexicographique de ce n-uplet est l'ordre du
+    /// peuplement.
+    ///
+    /// L'échelle de datation, du plus fiable au moins :
+    ///
+    /// | source | d'où | ce qu'elle vaut |
+    /// |---|---|---|
+    /// | `musicbrainz` | `first_release_date` du release-group | la date de l'œuvre, pas du pressage — corrige les rééditions |
+    /// | `tag` | `tracks.year` | date de l'édition ; 26 493 morceaux sur 27 044 |
+    /// | `album` | médiane des frères datés du même album | +56 mesurés |
+    /// | `artiste` | médiane des morceaux datés de l'artiste | +23 mesurés |
+    /// | `ingestion` | `tracks.added_at` | 472 morceaux, dont 504 n'ont aucun MBID : rien ne les sauvera |
+    ///
+    /// Les morceaux sans date ne sont **ni écartés ni maquillés** : ils portent
+    /// leur date d'entrée dans la bibliothèque et `date_source = 'ingestion'`,
+    /// pour que la carte puisse les rendre autrement et qu'une correction
+    /// ultérieure sache lesquels rejouer.
+    pub fn ordre_darrivee(&self) -> Result<Vec<ArriveeBrute>> {
+        // 1. Ce que les tags disent.
+        let mut stmt = self.conn.prepare(
+            // `GROUP BY t.id` n'est pas une précaution : un artiste peut avoir
+            // plusieurs release-groups au même titre normalisé — un album et sa
+            // réédition, une version live homonyme — et la jointure rendait
+            // alors **plusieurs lignes par morceau**. Mesuré : 28 363 arrivées
+            // pour 27 044 morceaux. `MIN` retient la plus ancienne, ce qui est
+            // précisément la date d'œuvre qu'on cherche.
+            "SELECT t.id, t.year, t.album, t.album_artist, t.artist, t.track_no, t.added_at,
+                    MIN(r.first_release_date), MIN(r.secondary_types)
+               FROM tracks t
+               LEFT JOIN mb_release_groups r
+                      ON r.artist_mbid = t.mb_album_artist_id
+                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+              GROUP BY t.id
+              ORDER BY t.id",
+        )?;
+        struct Ligne {
+            id: i64,
+            annee: Option<i64>,
+            album: String,
+            artiste: String,
+            piste: i64,
+            ajoute: i64,
+            mb_date: Option<String>,
+            compilation: bool,
+        }
+        let lignes: Vec<Ligne> = stmt
+            .query_map([], |r| {
+                let album: Option<String> = r.get(2)?;
+                let album_artiste: Option<String> = r.get(3)?;
+                let artiste: Option<String> = r.get(4)?;
+                let types: Option<String> = r.get(8)?;
+                Ok(Ligne {
+                    id: r.get(0)?,
+                    annee: r.get(1)?,
+                    album: album.unwrap_or_default(),
+                    artiste: album_artiste
+                        .or(artiste)
+                        .unwrap_or_default(),
+                    piste: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
+                    ajoute: r.get(6)?,
+                    mb_date: r.get(7)?,
+                    compilation: types
+                        .as_deref()
+                        .is_some_and(|t| t.to_lowercase().contains("compilation")),
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        // 2. Les médianes de secours, par album puis par artiste.
+        let mut par_album: HashMap<&str, Vec<i64>> = HashMap::new();
+        let mut par_artiste: HashMap<&str, Vec<i64>> = HashMap::new();
+        for l in &lignes {
+            if let Some(a) = l.annee.filter(|a| (1900..=2100).contains(a)) {
+                if !l.album.is_empty() {
+                    par_album.entry(l.album.as_str()).or_default().push(a);
+                }
+                if !l.artiste.is_empty() {
+                    par_artiste.entry(l.artiste.as_str()).or_default().push(a);
+                }
+            }
+        }
+        let mediane = |v: &mut Vec<i64>| -> i64 {
+            v.sort_unstable();
+            v[v.len() / 2]
+        };
+        let med_album: HashMap<&str, i64> = par_album
+            .into_iter()
+            .map(|(k, mut v)| (k, mediane(&mut v)))
+            .collect();
+        let med_artiste: HashMap<&str, i64> = par_artiste
+            .into_iter()
+            .map(|(k, mut v)| (k, mediane(&mut v)))
+            .collect();
+
+        let mut sortie: Vec<ArriveeBrute> = lignes
+            .iter()
+            .map(|l| {
+                // Une compilation date d'elle-même, pas des œuvres qu'elle
+                // rassemble : sa date de release-group ne vaut rien ici.
+                let mb = if l.compilation { None } else { l.mb_date.as_deref() };
+                let (date, source) = if let Some(d) = mb.and_then(date_iso_vers_cle) {
+                    (d, "musicbrainz")
+                } else if let Some(a) = l.annee.filter(|a| (1900..=2100).contains(a)) {
+                    (a as u32 * 10_000, "tag")
+                } else if let Some(&a) = med_album.get(l.album.as_str()) {
+                    (a as u32 * 10_000, "album")
+                } else if let Some(&a) = med_artiste.get(l.artiste.as_str()) {
+                    (a as u32 * 10_000, "artiste")
+                } else {
+                    (epoch_vers_cle(l.ajoute), "ingestion")
+                };
+                ArriveeBrute {
+                    track_id: l.id,
+                    date,
+                    source: source.to_string(),
+                    // Un album arrive **en bloc** : sans ce regroupement, ses
+                    // pistes s'éparpilleraient parmi les 1 341 arrivées d'une
+                    // même année et chacune irait fonder ailleurs.
+                    album: hacher(&l.artiste, &l.album),
+                    piste: l.piste.clamp(0, 9999) as u16,
+                }
+            })
+            .collect();
+
+        sortie.sort_by(|a, b| {
+            a.date
+                .cmp(&b.date)
+                .then_with(|| a.album.cmp(&b.album))
+                .then_with(|| a.piste.cmp(&b.piste))
+                .then_with(|| a.track_id.cmp(&b.track_id))
+        });
+        Ok(sortie)
+    }
+
+    /// Quand la projection a été calculée pour la dernière fois, en epoch.
+    ///
+    /// Sert à savoir si un dérivé de la carte — les tuiles vectorielles, par
+    /// exemple — a été fabriqué avant ou après le dernier recalcul. `None`
+    /// quand rien n'est encore projeté.
+    pub fn derniere_projection(&self, model: &str) -> Result<Option<i64>> {
+        let v: Option<i64> = self.conn.query_row(
+            "SELECT MAX(computed_at) FROM features WHERE model = ?1 AND x IS NOT NULL",
+            params![model],
+            |r| r.get(0),
+        )?;
+        Ok(v)
+    }
+
     pub fn map_points(&self, model: &str) -> Result<Vec<(i64, f32, f32, i64)>> {
         let mut stmt = self.conn.prepare(
             "SELECT track_id, x, y, cluster FROM features
@@ -1524,12 +2698,21 @@ impl Library {
     /// un autre fenêtrage — laissait donc les morceaux déjà passés hors de la
     /// nouvelle passe, et la carte restait amputée de moitié sans le moindre
     /// message. `analyzed_at` garde son rôle de date, pas de verrou.
+    ///
+    /// **Exclut aussi les fichiers déjà en échec** (`scan_failures`) : sans
+    /// empreinte, un fichier qui échoue au décodage y reste indéfiniment, et
+    /// le retenter à chaque passe reviendrait à retaper la même lecture
+    /// problématique sur le même support — c'est précisément ce qui a fait
+    /// paniquer le pilote PCIe d'un lecteur de carte SD en pratique. Retirer
+    /// un fichier de cette liste (`effacer_echec_scan`) lui rend sa chance.
     pub fn pending_analysis(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
         let sql = format!(
             "SELECT {TRACK_COLS} FROM tracks
               WHERE NOT EXISTS (
                     SELECT 1 FROM features f
                      WHERE f.track_id = tracks.id AND f.model = ?1)
+                AND NOT EXISTS (
+                    SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
               ORDER BY added_at LIMIT ?2"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -1612,12 +2795,25 @@ impl Library {
     /// un artiste réunit ses pistes étiquetées MusicBrainz et celles qui ne le
     /// sont pas. Filtrer sur le seul identifiant ferait disparaître les
     /// secondes, et la ligne annoncerait plus d'albums qu'elle n'en ouvre.
+    ///
+    /// L'identifiant peut manquer à l'appel (une case de la grille d'albums ne
+    /// le porte pas). On le rattrape alors depuis le nom, comme
+    /// [`Library::artists`] : sans ce repli, un artiste dont toutes les pistes
+    /// sont étiquetées MusicBrainz ne renverrait aucun album.
     pub fn albums_of_artist(&self, mbid: Option<&str>, name: &str) -> Result<Vec<AlbumRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
+            "WITH resolu AS (
+               SELECT MIN(mb_album_artist_id) AS mbid
+                 FROM tracks
+                WHERE mb_album_artist_id IS NOT NULL
+                  AND COALESCE(album_artist, artist) = ?2
+               HAVING COUNT(DISTINCT mb_album_artist_id) = 1
+             )
+             SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
                FROM tracks
               WHERE album IS NOT NULL
-                AND ( (?1 IS NOT NULL AND mb_album_artist_id = ?1)
+                AND ( (COALESCE(?1, (SELECT mbid FROM resolu)) IS NOT NULL
+                       AND mb_album_artist_id = COALESCE(?1, (SELECT mbid FROM resolu)))
                    OR (mb_album_artist_id IS NULL
                        AND COALESCE(album_artist, artist) = ?2) )
               GROUP BY album, COALESCE(album_artist, artist)
@@ -1700,6 +2896,47 @@ impl Library {
         let rows = stmt
             .query_map(params![requete, limit], track_from_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Les morceaux dont l'identifiant est dans `ids`, dans n'importe quel
+    /// ordre — à l'appelant de les rassembler par identifiant s'il veut un
+    /// ordre précis. Sert à afficher un titre/artiste à partir d'une liste de
+    /// voisins (`chemin::voisins` ne rend que des identifiants).
+    pub fn tracks_by_ids(&self, ids: &std::collections::HashSet<i64>) -> Result<Vec<TrackRow>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let places = vec!["?"; ids.len()].join(",");
+        let sql = format!("SELECT {TRACK_COLS} FROM tracks WHERE id IN ({places})");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|i| i as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(params.as_slice(), track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// La popularité générale des morceaux `ids` : `(track_id, relative 0..1,
+    /// echelon)`. Seuls ceux qui en ont une figurent — l'interface grise les
+    /// autres. Commande séparée, comme les descripteurs : la popularité ne
+    /// vit pas dans `TrackRow`, l'interface la demande pour ce qu'elle affiche.
+    pub fn popularites(&self, ids: &[i64]) -> Result<Vec<(i64, f64, String)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let places = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT track_id, relative, echelon FROM track_popularite
+              WHERE track_id IN ({places})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids), |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
         Ok(rows)
     }
 
@@ -2496,6 +3733,29 @@ mod tests {
         );
     }
 
+    /// Ouvrir un artiste depuis une case de la grille d'albums : `AlbumRow` ne
+    /// porte pas d'identifiant, l'appel se fait donc sur le nom seul. Ses
+    /// albums étiquetés MusicBrainz doivent quand même remonter.
+    #[test]
+    fn albums_of_artist_sans_identifiant_rattrape_les_albums_etiquetes() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = "3fb49f5a-fdc0-4789-9c84-22b38b3f3cb5";
+        for (path, album) in [("/m/1.mp3", "In Search Of..."), ("/m/2.mp3", "Fly or Die")] {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                artist: Some("N.E.R.D".into()),
+                album: Some(album.into()),
+                album_artist: Some("N.E.R.D".into()),
+                mb_album_artist_id: Some(id.into()),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+
+        let albums = lib.albums_of_artist(None, "N.E.R.D").unwrap();
+        assert_eq!(albums.len(), 2, "les albums étiquetés ne remontent pas : {albums:?}");
+    }
+
     /// Sans identifiant, le repli se fait sur le nom — et deux artistes
     /// distincts ne doivent pas fusionner sous prétexte qu'ils n'en ont pas.
     #[test]
@@ -2557,6 +3817,47 @@ mod tests {
 
         let chez_air = lib.albums(Some("Air")).unwrap();
         assert_eq!(chez_air.len(), 2);
+    }
+
+    #[test]
+    fn familles_des_albums_prend_le_cluster_majoritaire() {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute = |path: &str, album: &str, artiste: &str, cluster: Option<i64>| {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: path.into(),
+                    album: Some(album.into()),
+                    album_artist: Some(artiste.into()),
+                    ..Default::default()
+                })
+                .unwrap();
+            if let Some(c) = cluster {
+                lib.save_features(id, "clap", &[0.0], 0.0, 0.0, c).unwrap();
+            }
+        };
+
+        ajoute("/m/a1.mp3", "A", "X", Some(1));
+        ajoute("/m/a2.mp3", "A", "X", Some(1));
+        ajoute("/m/a3.mp3", "A", "X", Some(2));
+        ajoute("/m/b1.mp3", "B", "Y", Some(3));
+        ajoute("/m/b2.mp3", "B", "Y", Some(3));
+        // Égalité 5 / 7 : le plus petit numéro tranche.
+        ajoute("/m/c1.mp3", "C", "Z", Some(7));
+        ajoute("/m/c2.mp3", "C", "Z", Some(5));
+        // Aucun morceau projeté : l'album n'apparaît pas, le filtre le laisse
+        // visible par défaut.
+        ajoute("/m/d1.mp3", "D", "W", None);
+
+        let mut f = lib.familles_des_albums("clap").unwrap();
+        f.sort();
+        assert_eq!(
+            f,
+            vec![
+                ("A".to_string(), Some("X".to_string()), 1),
+                ("B".to_string(), Some("Y".to_string()), 3),
+                ("C".to_string(), Some("Z".to_string()), 5),
+            ]
+        );
     }
 
     #[test]
@@ -2731,6 +4032,54 @@ mod tests {
         let second = lib.upsert(&m).unwrap();
         assert_eq!(first, second);
         assert_eq!(lib.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn pending_analysis_exclut_un_fichier_deja_en_echec() {
+        let lib = Library::open_in_memory().unwrap();
+        let m = TrackMeta {
+            path: "/musique/casse.mp3".into(),
+            title: Some("Casse".into()),
+            ..Default::default()
+        };
+        lib.upsert(&m).unwrap();
+        assert_eq!(lib.pending_analysis("clap", i64::MAX).unwrap().len(), 1);
+
+        // Un fichier qui a déjà fait planter une passe ne doit pas être
+        // retenté à chaque relance — voir `passe::empreintes`.
+        lib.enregistrer_echec_scan(Path::new("/musique/casse.mp3"), "décodage impossible")
+            .unwrap();
+        assert!(lib.pending_analysis("clap", i64::MAX).unwrap().is_empty());
+
+        // L'utilisateur peut lui redonner sa chance.
+        lib.effacer_echec_scan(Path::new("/musique/casse.mp3")).unwrap();
+        assert_eq!(lib.pending_analysis("clap", i64::MAX).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn qualite_piste_rend_ce_que_le_scan_a_lu() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/a.flac".into(),
+                codec: Some("FLAC".into()),
+                sample_rate: Some(44_100),
+                channels: Some(2),
+                bit_depth: Some(16),
+                bitrate: None,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let q = lib.qualite_piste(id).unwrap().unwrap();
+        assert_eq!(q.codec.as_deref(), Some("FLAC"));
+        assert_eq!(q.sample_rate, Some(44_100));
+        assert_eq!(q.channels, Some(2));
+        assert_eq!(q.bit_depth, Some(16));
+        assert_eq!(q.bitrate, None);
+
+        // Morceau absent : None, pas une erreur.
+        assert!(lib.qualite_piste(999).unwrap().is_none());
     }
 
     #[test]
@@ -3025,5 +4374,390 @@ mod tests {
         lib.enregistrer_liens_artiste("c", &[]).unwrap();
         assert!(lib.liens_artiste_en_cache("c").unwrap());
         assert!(lib.liens_artiste("c").unwrap().is_empty());
+    }
+
+    fn sortie(rg: &str, date_norm: &str, collab: Option<&str>) -> SortieARanger {
+        SortieARanger {
+            rg_mbid: rg.into(),
+            titre: format!("Disque {rg}"),
+            date_sortie: Some(date_norm.into()),
+            date_sortie_norm: Some(date_norm.into()),
+            type_primaire: Some("Album".into()),
+            types_secondaires: None,
+            collaborateurs: collab.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn decouvrir_ajouter_sortie_preserve_vu_a_la_reinsertion() {
+        let lib = Library::open_in_memory().unwrap();
+        let hier = lib.date_il_y_a(1).unwrap();
+
+        assert!(lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None)).unwrap());
+        lib.decouvrir_marquer_passe("sorties").unwrap();
+        lib.decouvrir_tout_vu().unwrap();
+
+        // Une seconde passe revoit la même sortie : rien de neuf, et le « vu »
+        // tient — sans quoi la pastille « nouveau » se rallumerait à chaque
+        // actualisation.
+        assert!(!lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None)).unwrap());
+        assert!(lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg2", &hier, None)).unwrap());
+
+        let fil = lib.decouvrir_fil(30).unwrap();
+        assert_eq!(fil.sorties.len(), 2);
+        assert!(fil.sorties.iter().find(|s| s.rg_mbid == "rg1").unwrap().vu);
+        assert!(!fil.sorties.iter().find(|s| s.rg_mbid == "rg2").unwrap().vu);
+    }
+
+    #[test]
+    fn decouvrir_fil_filtre_la_fenetre_et_separe_les_collaborations() {
+        let lib = Library::open_in_memory().unwrap();
+        let hier = lib.date_il_y_a(1).unwrap();
+        let vieux = lib.date_il_y_a(120).unwrap();
+
+        for s in [
+            sortie("recent", &hier, None),
+            sortie("collab", &hier, Some("Invité")),
+            sortie("vieux", &vieux, None),
+        ] {
+            lib.decouvrir_ajouter_sortie("a", "Artiste A", &s).unwrap();
+        }
+        lib.decouvrir_marquer_passe("sorties").unwrap();
+
+        let fil = lib.decouvrir_fil(30).unwrap();
+        assert_eq!(fil.sorties.iter().map(|s| &s.rg_mbid).collect::<Vec<_>>(), ["recent"]);
+        assert_eq!(fil.collaborations.iter().map(|s| &s.rg_mbid).collect::<Vec<_>>(), ["collab"]);
+        assert!(fil.derniere_passe.is_some());
+    }
+
+    #[test]
+    fn decouvrir_en_attente_respecte_la_peremption_et_lordre() {
+        let mut lib = Library::open_in_memory().unwrap();
+        // Deux morceaux pour « gros », un seul pour « petit » : le plus fourni
+        // d'abord.
+        for (i, mbid, nom) in [(1, "gros", "Gros"), (2, "gros", "Gros"), (3, "petit", "Petit")] {
+            lib.upsert(&TrackMeta {
+                path: format!("/m/{i}.mp3").into(),
+                title: Some("t".into()),
+                artist: Some(nom.into()),
+                album: Some("al".into()),
+                album_artist: Some(nom.into()),
+                mb_album_artist_id: Some(mbid.into()),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+
+        let attente = lib.decouvrir_en_attente("voisins", 30, 0).unwrap();
+        assert_eq!(
+            attente.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(),
+            ["gros", "petit"]
+        );
+
+        // « gros » vient d'être interrogé : il sort de la liste jusqu'à
+        // péremption.
+        lib.decouvrir_poser_voisins("gros", &[]).unwrap();
+        let attente = lib.decouvrir_en_attente("voisins", 30, 0).unwrap();
+        assert_eq!(attente.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(), ["petit"]);
+    }
+
+    #[test]
+    fn decouvrir_voisins_ecarte_les_artistes_de_la_bibliotheque() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.mp3".into(),
+            title: Some("t".into()),
+            artist: Some("Connu".into()),
+            album: Some("al".into()),
+            album_artist: Some("Connu".into()),
+            mb_album_artist_id: Some("src".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/2.mp3".into(),
+            title: Some("t".into()),
+            artist: Some("Déjà là".into()),
+            album: Some("al".into()),
+            album_artist: Some("Déjà là".into()),
+            mb_album_artist_id: Some("dedans".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.decouvrir_poser_voisins(
+            "src",
+            &[
+                ("dehors".into(), "Dehors".into(), 0.9, "listenbrainz".into()),
+                ("dedans".into(), "Déjà là".into(), 0.8, "listenbrainz".into()),
+            ],
+        )
+        .unwrap();
+
+        let fil = lib.decouvrir_fil(30).unwrap();
+        assert_eq!(fil.voisins.len(), 1);
+        assert_eq!(fil.voisins[0].dst_mbid, "dehors");
+        assert_eq!(fil.voisins[0].portes, vec!["Connu".to_string()]);
+    }
+
+    #[test]
+    fn rangs_percentiles_place_par_valeur_croissante() {
+        let r = rangs_percentiles([(10, 5.0), (20, 5.0), (30, 100.0), (40, 1.0)].into_iter());
+        assert_eq!(r[&40], 0.0, "la plus petite valeur → 0");
+        assert_eq!(r[&30], 1.0, "la plus grande → 1");
+        // Deux valeurs égales : même rang (part des valeurs strictement plus petites).
+        assert_eq!(r[&10], r[&20]);
+        assert!((r[&10] - (1.0 / 3.0)).abs() < 1e-9);
+    }
+
+    /// La popularité par morceau : posée par source, résolue au meilleur
+    /// échelon, mélangée en rang. Un morceau sans aucune source n'a pas de ligne.
+    #[test]
+    fn recalcul_track_popularite_resout_echelon_et_melange_les_rangs() {
+        let mut lib = Library::open_in_memory().unwrap();
+        let ajoute = |lib: &Library, id: i64, rec: &str, art: &str, album: &str| {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (id, path, mb_recording_id, mb_artist_id, mb_album_artist_id, album, added_at)
+                     VALUES (?1, ?2, ?3, ?4, ?4, ?5, 0)",
+                    params![id, format!("/m/{id}.flac"), rec, art, album],
+                )
+                .unwrap();
+        };
+        ajoute(&lib, 1, "rec-a", "art-x", "Disque X");
+        ajoute(&lib, 2, "rec-b", "art-x", "Disque X"); // même album, pas de reco propre côté LB
+        ajoute(&lib, 3, "rec-c", "art-y", "Disque Y");
+        ajoute(&lib, 4, "rec-d", "art-z", "Disque Z"); // aucune source → pas de ligne
+
+        lib.conn
+            .execute(
+                "INSERT INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+                 VALUES ('rg-x', 'art-x', 'Disque X', 'disquex'), ('rg-y', 'art-y', 'Disque Y', 'disquey')",
+                [],
+            )
+            .unwrap();
+
+        lib.pop_poser(
+            "listenbrainz",
+            "recording",
+            &["rec-a".into(), "rec-c".into()],
+            &[
+                PopulariteBrute { mbid: "rec-a", ecoutes: 100, auditeurs: Some(10) },
+                PopulariteBrute { mbid: "rec-c", ecoutes: 5, auditeurs: Some(1) },
+            ],
+        )
+        .unwrap();
+        lib.pop_poser(
+            "listenbrainz",
+            "release-group",
+            &["rg-x".into(), "rg-y".into()],
+            &[
+                PopulariteBrute { mbid: "rg-x", ecoutes: 50, auditeurs: Some(5) },
+                PopulariteBrute { mbid: "rg-y", ecoutes: 9, auditeurs: Some(2) },
+            ],
+        )
+        .unwrap();
+        lib.pop_poser(
+            "deezer",
+            "recording",
+            &["rec-a".into()],
+            &[PopulariteBrute { mbid: "rec-a", ecoutes: 900_000, auditeurs: None }],
+        )
+        .unwrap();
+
+        let couverts = lib.recalculer_track_popularite().unwrap();
+        assert_eq!(couverts, 3, "le morceau 4 (aucune source) est écarté");
+
+        let lignes: Vec<(i64, f64, String)> = lib
+            .conn
+            .prepare("SELECT track_id, relative, echelon FROM track_popularite ORDER BY track_id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+
+        assert_eq!(lignes.len(), 3);
+        assert_eq!(lignes[0].0, 1);
+        assert_eq!(lignes[0].2, "recording"); // reco LB + Deezer
+        assert_eq!(lignes[1].0, 2);
+        assert_eq!(lignes[1].2, "release-group"); // repli sur l'album X
+        assert_eq!(lignes[2].2, "recording"); // reco LB connue
+        // Le morceau 1 (le plus écouté partout) domine.
+        assert!(lignes[0].1 > lignes[1].1 && lignes[0].1 > lignes[2].1);
+
+        // `popularites` ne rend que les morceaux couverts parmi ceux demandés.
+        let mut vus = lib.popularites(&[1, 2, 4, 999]).unwrap();
+        vus.sort_by_key(|(id, ..)| *id);
+        assert_eq!(vus.iter().map(|(id, ..)| *id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(lib.popularites(&[]).unwrap(), Vec::new());
+    }
+
+    /// Une entité déjà interrogée ne revient pas dans les candidats — sauf si
+    /// `depuis` la déclare périmée.
+    #[test]
+    fn pop_candidats_excluent_ce_qui_est_deja_fait() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_recording_id, artist, title, added_at)
+                 VALUES (1, '/m/1.flac', 'rec-1', 'Art', 'Titre', 0)",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
+
+        // Fait sur une seule source : encore candidat (l'autre reste à faire).
+        lib.pop_poser("listenbrainz", "recording", &["rec-1".into()], &[]).unwrap();
+        assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
+
+        // Fait sur les deux : plus candidat.
+        lib.pop_poser("deezer", "recording", &["rec-1".into()], &[]).unwrap();
+        assert!(lib.pop_recordings_candidats(0, 100).unwrap().is_empty());
+
+        // `depuis` très grand : tout fetch compte comme périmé, l'entité revient.
+        let futur = i64::MAX;
+        assert_eq!(lib.pop_recordings_candidats(futur, 100).unwrap().len(), 1);
+        assert!(lib.pop_deja_fait("listenbrainz", "recording", futur).unwrap().is_empty());
+        assert_eq!(lib.pop_deja_fait("listenbrainz", "recording", 0).unwrap().len(), 1);
+    }
+
+    /// La ligne d'alerte : rien à signaler tant que rien n'est vieux ; l'âge
+    /// d'un fetch le fait basculer dans « périmé ».
+    #[test]
+    fn popularite_fraicheur_compte_le_perime() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, added_at) VALUES (1, '/m/1.flac', 0)",
+                [],
+            )
+            .unwrap();
+        lib.pop_poser("listenbrainz", "recording", &["rec-neuf".into()], &[])
+            .unwrap();
+        // Un fetch daté d'il y a 200 jours.
+        lib.conn
+            .execute(
+                "INSERT INTO popularite_fetched (mbid, kind, source, at)
+                 VALUES ('rec-vieux', 'recording', 'listenbrainz',
+                         strftime('%s','now') - 200*86400)",
+                [],
+            )
+            .unwrap();
+
+        let (couverts, _plus_ancienne, perimes) = lib.popularite_fraicheur(90).unwrap();
+        assert_eq!(couverts, 0, "aucun track_popularite calculé ici");
+        assert_eq!(perimes, 1, "seul le fetch de 200 j dépasse 90 j");
+        // Seuil relevé au-delà de l'âge du vieux : plus rien de périmé.
+        assert_eq!(lib.popularite_fraicheur(300).unwrap().2, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests_ordre {
+    use super::*;
+
+    #[test]
+    fn les_dates_iso_se_convertissent_en_cle() {
+        assert_eq!(date_iso_vers_cle("1973-03-01"), Some(19_730_301));
+        assert_eq!(date_iso_vers_cle("1973-03"), Some(19_730_300));
+        assert_eq!(date_iso_vers_cle("1973"), Some(19_730_000));
+        // Une date partielle doit rester **avant** toute date complète de la
+        // même année : c'est ce que le remplissage par des zéros garantit.
+        assert!(date_iso_vers_cle("1973").unwrap() < date_iso_vers_cle("1973-01-01").unwrap());
+        assert_eq!(date_iso_vers_cle("pas une date"), None);
+        assert_eq!(date_iso_vers_cle("1650-01-01"), None);
+    }
+
+    #[test]
+    fn lepoch_se_convertit_en_cle() {
+        // Valeurs de référence, vérifiées contre une bibliothèque de dates.
+        assert_eq!(epoch_vers_cle(1_787_000_000), 20_260_817);
+        assert_eq!(epoch_vers_cle(1_000_000_000), 20_010_909);
+        assert_eq!(epoch_vers_cle(1_700_000_000), 20_231_114);
+        assert_eq!(epoch_vers_cle(0), 19_700_101);
+        // Monotone : c'est tout ce que l'ordre du peuplement lui demande.
+        assert!(epoch_vers_cle(1_000_000_000) < epoch_vers_cle(1_700_000_000));
+    }
+
+    #[test]
+    fn le_hachage_dalbum_est_stable_et_discriminant() {
+        assert_eq!(hacher("a", "b"), hacher("a", "b"));
+        assert_ne!(hacher("a", "b"), hacher("b", "a"));
+        // Le séparateur évite qu'« ab » + « c » collisionne avec « a » + « bc ».
+        assert_ne!(hacher("ab", "c"), hacher("a", "bc"));
+    }
+
+    /// L'échelle de datation, de bout en bout : chaque échelon doit prendre le
+    /// relais du précédent, et un morceau sans rien doit tout de même arriver.
+    #[test]
+    fn lechelle_de_datation_rattrape_les_trous() {
+        let lib = Library::open_in_memory().unwrap();
+        let poser = |id: i64, annee: Option<i64>, album: &str, artiste: &str| {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (id, path, year, album, album_artist, track_no, added_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, 1, 1000000000)",
+                    params![id, format!("/x/{id}.flac"), annee, album, artiste],
+                )
+                .unwrap();
+        };
+        poser(1, Some(1990), "Disque", "Groupe");
+        poser(2, None, "Disque", "Groupe"); // rattrapé par l'album
+        poser(3, None, "Autre", "Groupe"); // rattrapé par l'artiste
+        poser(4, None, "Seul", "Inconnu"); // rien : date d'ingestion
+
+        let ordre = lib.ordre_darrivee().unwrap();
+        let par_id: HashMap<i64, &ArriveeBrute> =
+            ordre.iter().map(|a| (a.track_id, a)).collect();
+        assert_eq!(par_id[&1].source, "tag");
+        assert_eq!(par_id[&2].source, "album");
+        assert_eq!(par_id[&2].date, 19_900_000);
+        assert_eq!(par_id[&3].source, "artiste");
+        assert_eq!(par_id[&4].source, "ingestion");
+        // Aucun morceau n'est perdu en route.
+        assert_eq!(ordre.len(), 4);
+    }
+
+    /// Les pistes d'un album arrivent **ensemble**. Sans cela, les 1 341
+    /// arrivées d'une même année les éparpilleraient et chacune irait fonder
+    /// son propre établissement.
+    #[test]
+    fn un_album_arrive_en_bloc() {
+        let lib = Library::open_in_memory().unwrap();
+        for (id, album, piste) in [
+            (1i64, "A", 1i64),
+            (2, "B", 1),
+            (3, "A", 2),
+            (4, "B", 2),
+            (5, "A", 3),
+        ] {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (id, path, year, album, album_artist, track_no, added_at)
+                     VALUES (?1, ?2, 2000, ?3, 'G', ?4, 0)",
+                    params![id, format!("/x/{id}.flac"), album, piste],
+                )
+                .unwrap();
+        }
+        let ordre = lib.ordre_darrivee().unwrap();
+        let albums: Vec<u64> = ordre.iter().map(|a| a.album).collect();
+        // Trois pistes du même album, puis deux de l'autre : jamais alternés.
+        let mut changements = 0;
+        for p in albums.windows(2) {
+            if p[0] != p[1] {
+                changements += 1;
+            }
+        }
+        assert_eq!(changements, 1, "les albums s'entremêlent : {albums:?}");
+        // Et dans l'ordre des pistes à l'intérieur d'un album.
+        let premier = albums[0];
+        let pistes: Vec<u16> = ordre
+            .iter()
+            .filter(|a| a.album == premier)
+            .map(|a| a.piste)
+            .collect();
+        assert!(pistes.windows(2).all(|p| p[0] <= p[1]), "{pistes:?}");
     }
 }
