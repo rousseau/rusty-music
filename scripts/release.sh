@@ -24,16 +24,23 @@ echo "→ modèles et plan de ville"
 ./scripts/telecharger-modeles.sh
 ./scripts/telecharger-ville.sh
 
-ARGS=()
+# Un tableau vide sous `set -u` fait planter bash 3.2 (celui de macOS) à son
+# expansion — d'où une chaîne plutôt qu'un tableau pour l'argument optionnel.
+CIBLE=""
 if [ "${1:-}" = "--universal" ]; then
-  for cible in aarch64-apple-darwin x86_64-apple-darwin; do
-    rustup target list --installed | grep -qx "$cible" || rustup target add "$cible"
+  for c in aarch64-apple-darwin x86_64-apple-darwin; do
+    rustup target list --installed | grep -qx "$c" || rustup target add "$c"
   done
-  ARGS+=(--target universal-apple-darwin)
+  CIBLE="universal-apple-darwin"
 fi
 
-echo "→ cargo tauri build ${ARGS[*]:-}"
-cargo tauri build "${ARGS[@]}"
+if [ -n "$CIBLE" ]; then
+  echo "→ cargo tauri build --target $CIBLE"
+  cargo tauri build --target "$CIBLE"
+else
+  echo "→ cargo tauri build"
+  cargo tauri build
+fi
 
 echo
 echo "Paquets produits :"
