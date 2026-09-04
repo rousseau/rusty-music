@@ -1,9 +1,12 @@
 <!doctype html>
+<!-- Page de diagnostic déposée par `carto tuiles --repertoire`, pour ouvrir
+     les tuiles dans un navigateur ordinaire. MapLibre et les glyphes viennent
+     du réseau (unpkg, demotiles) — l'application, elle, les embarque. -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <title>Rusty Music — carte (essai)</title>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <style>
   html, body { height:100%; margin:0; background:#14120E; }
   #carte { position:absolute; inset:0; }
@@ -24,7 +27,7 @@
   <button id="mesurer">Mesurer la fluidité</button>
   <span id="mesure"></span>
 </div>
-<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script>
 const etat = document.getElementById("etat");
 const sortieMesure = document.getElementById("mesure");
