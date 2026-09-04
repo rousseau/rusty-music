@@ -6,6 +6,7 @@
 //! directement.
 
 pub mod db;
+pub mod decouvrir;
 pub mod deezer;
 pub mod density;
 pub mod enrichir;
