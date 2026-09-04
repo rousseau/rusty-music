@@ -373,8 +373,8 @@ solide.
 
 ## Ce qui n'est pas dans ce plan, et pourquoi
 
-- **Aléatoire et répétition** (module 1) : tu les as écartés de la v1. À
-  reprendre quand la file d'attente sera retravaillée, pas avant.
+- **Aléatoire et répétition** (module 1) : écartés de la v1. À reprendre quand
+  la file d'attente sera retravaillée, pas avant.
 - **Les 10 fichiers opus** : une dépendance pour 0,04 % de la bibliothèque.
   À faire si l'occasion se présente, jamais pour elle-même.
 - **La PR amont chez `demucs-rs`** : ouverte, sans réponse. Notre révision est

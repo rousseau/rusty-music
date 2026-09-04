@@ -1,0 +1,24 @@
+name: Idée
+description: Proposer une fonctionnalité ou un changement
+labels: ["idée"]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Le besoin
+      description: Quel problème ça résout, ou quel usage ça ouvre.
+    validations:
+      required: true
+  - type: textarea
+    id: piste
+    attributes:
+      label: Piste envisagée
+      description: >
+        Facultatif. Si ça touche un module précis (`docs/modules.md`) ou une
+        décision déjà prise (`docs/`, `CLAUDE.md`), dis-le.
+  - type: checkboxes
+    id: perimetre
+    attributes:
+      label: Périmètre
+      options:
+        - label: J'ai regardé `docs/suite.md` — ce n'est pas déjà prévu ou écarté.

@@ -1,5 +1,8 @@
 # Rusty Music — suite musicale locale
 
+[![CI](https://github.com/rousseau/rusty-music/actions/workflows/ci.yml/badge.svg)](https://github.com/rousseau/rusty-music/actions/workflows/ci.yml)
+[![Licence : GPL-3.0-or-later](https://img.shields.io/badge/licence-GPL--3.0--or--later-blue.svg)](LICENSE)
+
 Logiciel de bureau autonome et local pour **écouter, explorer et éditer** une
 bibliothèque musicale. Point d'entrée unique : un répertoire de musique, scanné
 puis surveillé automatiquement. Tout le calcul — décodage, empreintes,

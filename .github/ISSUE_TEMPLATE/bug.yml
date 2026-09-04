@@ -1,0 +1,35 @@
+name: Bogue
+description: Quelque chose ne fonctionne pas comme prévu
+labels: ["bogue"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Ce qui se passe
+      description: Et ce que tu attendais à la place.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Comment le reproduire
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Version de macOS
+      placeholder: "14.5"
+    validations:
+      required: true
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Contexte
+      description: >
+        Sortie de `rusty-music stats` si c'est pertinent, taille de la
+        bibliothèque, application ou ligne de commande, logs éventuels.
