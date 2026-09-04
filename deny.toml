@@ -49,14 +49,6 @@ confidence-threshold = 0.93
 # des entrées copyleft qu'aucune dépendance actuelle n'emploie encore.
 unused-allowed-license = "allow"
 
-# `demucs-core` (notre fork épinglé de demucs-rs) ne porte pas de champ
-# `license` dans son manifeste, mais le dépôt est sous Apache-2.0 (fichier
-# LICENSE, badge du README). À corriger en amont ; en attendant, on l'énonce.
-[[licenses.clarify]]
-crate = "demucs-core"
-expression = "Apache-2.0"
-license-files = []
-
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

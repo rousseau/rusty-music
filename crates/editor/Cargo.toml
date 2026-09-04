@@ -23,7 +23,7 @@ cpu = ["demucs-core/ndarray"]
 # Révision épinglée, jamais une branche : une branche se déplace, et le jour où
 # elle bouge le build ne compilerait plus la même chose sans que rien ne le
 # dise. Pour suivre le fork, on change ce `rev` sciemment.
-demucs-core = { git = "https://github.com/rousseau/demucs-rs", rev = "60201112cea12bbfa3cb6e4b24ff2d6bac7cde0d" }
+demucs-core = { git = "https://github.com/rousseau/demucs-rs", rev = "effc95836cd848c17215a1b0af6e683aa6ee1421" }
 burn.workspace       = true
 rodio.workspace      = true
 rustfft.workspace    = true
