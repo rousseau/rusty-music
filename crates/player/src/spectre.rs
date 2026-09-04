@@ -38,6 +38,12 @@ const PLAGE_DB: f32 = 80.0;
 /// Plus basse fréquence représentée. En dessous, l'échelle logarithmique
 /// consacrerait des pixels à ce qu'aucun haut-parleur ne restitue.
 const F_MIN: f32 = 40.0;
+/// Plus haute fréquence représentée — **fixe**, quelle que soit la fréquence
+/// d'échantillonnage de l'entrée. Deux spectrogrammes (original / HD, ou deux
+/// morceaux) se comparent alors sur la même échelle verticale : un aigu
+/// manquant se lit comme une bande sombre en haut, pas comme une image
+/// « écrasée » sur une échelle plus courte.
+const F_MAX: f32 = 22_050.0;
 
 /// Une image de spectrogramme, prête à colorer.
 pub struct Spectre {
@@ -54,15 +60,21 @@ pub struct Spectre {
 /// besoin d'être redimensionnée à l'affichage.
 pub fn calculer(chemin: &Path, largeur: usize, hauteur: usize) -> Result<Spectre> {
     let (mono, sr) = decoder_mono(chemin)?;
+    Ok(calculer_echantillons(&mono, sr, largeur, hauteur))
+}
+
+/// Comme [`calculer`], mais sur des échantillons mono déjà décodés — pour
+/// montrer le son *après* une transformation en mémoire (excitateur « E »).
+pub fn calculer_echantillons(mono: &[f32], sr: u32, largeur: usize, hauteur: usize) -> Spectre {
     let largeur = largeur.max(1);
     let hauteur = hauteur.max(1);
 
     if mono.len() < N_FFT {
-        return Ok(Spectre {
+        return Spectre {
             pixels: vec![0; largeur * hauteur],
             largeur,
             hauteur,
-        });
+        };
     }
 
     let fft = FftPlanner::<f32>::new().plan_fft_forward(N_FFT);
@@ -101,17 +113,17 @@ pub fn calculer(chemin: &Path, largeur: usize, hauteur: usize) -> Result<Spectre
     let maxi = amplitudes.iter().copied().fold(0.0f32, f32::max).max(1e-9);
     let plancher = -PLAGE_DB;
 
-    let nyquist = sr as f32 / 2.0;
-    let (log_min, log_max) = (F_MIN.log10(), nyquist.log10());
+    let (log_min, log_max) = (F_MIN.log10(), F_MAX.log10());
     let mut pixels = vec![0u8; largeur * hauteur];
 
     for y in 0..hauteur {
-        // Haut de l'image = aigus.
+        // Haut de l'image = aigus. Échelle fixée à `F_MAX`, pas à la fréquence
+        // de Nyquist de l'entrée.
         let f = if hauteur > 1 {
             let t = y as f32 / (hauteur - 1) as f32;
             10f32.powf(log_max - t * (log_max - log_min))
         } else {
-            nyquist
+            F_MAX
         };
         let raie = (f * N_FFT as f32 / sr as f32).min((raies - 1) as f32);
         let (bas, frac) = (raie.floor() as usize, raie.fract());
@@ -126,11 +138,11 @@ pub fn calculer(chemin: &Path, largeur: usize, hauteur: usize) -> Result<Spectre
         }
     }
 
-    Ok(Spectre {
+    Spectre {
         pixels,
         largeur,
         hauteur,
-    })
+    }
 }
 
 /// Décode un fichier en mono, à sa fréquence d'origine.

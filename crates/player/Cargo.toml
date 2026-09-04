@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 [dependencies]
 rusty-music-core = { path = "../core" }
@@ -12,6 +13,7 @@ rusty-music-core = { path = "../core" }
 # des stems s'en sert aussi. Pas une nouvelle dépendance, un nouvel usage.
 wsola.workspace      = true
 rustfft.workspace   = true
+rubato.workspace    = true
 rodio.workspace   = true
 cpal.workspace    = true
 thiserror.workspace = true

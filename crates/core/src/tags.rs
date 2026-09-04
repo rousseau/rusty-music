@@ -25,6 +25,9 @@ pub struct TrackMeta {
     pub duration_ms: Option<i64>,
     pub sample_rate: Option<i64>,
     pub channels: Option<i64>,
+    /// Profondeur de bits — renseignée pour les formats sans perte (FLAC, WAV,
+    /// AIFF…), `None` pour les formats avec perte où elle n'a pas de sens.
+    pub bit_depth: Option<i64>,
     /// Débit audio en kb/s — `None` pour un format sans débit constant à
     /// annoncer (FLAC, WavPack…), pas une mesure manquante.
     pub bitrate: Option<i64>,
@@ -101,6 +104,9 @@ pub fn read(path: &Path) -> Result<TrackMeta> {
         duration_ms: Some(props.duration().as_millis() as i64),
         sample_rate: props.sample_rate().map(|v| v as i64),
         channels: props.channels().map(|v| v as i64),
+        // Renseignée par lofty pour les conteneurs sans perte seulement ;
+        // `format_qualite` côté interface ne l'affiche que pour ceux-là.
+        bit_depth: props.bit_depth().map(|v| v as i64),
         // Le débit audio, pas le débit global (`overall_bitrate`, qui inclut
         // les tags embarqués) — c'est celui qui dit la qualité de l'encodage.
         // Certains décodeurs ne le distinguent pas et ne rendent que le
