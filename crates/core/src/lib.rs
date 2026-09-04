@@ -6,11 +6,14 @@
 //! directement.
 
 pub mod db;
+pub mod deezer;
 pub mod density;
 pub mod enrichir;
 pub mod error;
+pub mod listenbrainz;
 pub mod modeles;
 pub mod musicbrainz;
+pub mod pochette;
 pub mod opus;
 pub mod scan;
 pub mod tags;

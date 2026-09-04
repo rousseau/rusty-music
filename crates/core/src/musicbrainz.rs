@@ -41,6 +41,14 @@ pub struct Album {
     pub mbid: String,
     pub titre: String,
     pub genres: Vec<Genre>,
+    /// `first-release-date` : la première parution du release-group, tous
+    /// pressages confondus. Souvent partielle (« 2026 », « 2026-08 »), parfois
+    /// absente. Sert au mode Découvrir à ne garder que les sorties récentes.
+    pub date_sortie: Option<String>,
+    /// `primary-type` : Album, EP, Single, Broadcast, Other.
+    pub type_primaire: Option<String>,
+    /// `secondary-types` : Compilation, Live, Remix, Soundtrack…
+    pub types_secondaires: Vec<String>,
 }
 
 /// Une relation entre deux artistes, telle que MusicBrainz la nomme —
@@ -67,6 +75,13 @@ const CADENCE: Duration = Duration::from_millis(1_100);
 /// Nombre de release-groups par page. 100 est le maximum accepté ; la plupart
 /// des artistes tiennent en une seule requête.
 const PAR_PAGE: usize = 100;
+
+/// Plafond de pages parcourues pour un artiste. Un vrai groupe tient largement
+/// en dessous — même Frank Zappa n'a pas 600 albums. Au-delà, c'est un artiste
+/// spécial de MusicBrainz (« Various Artists », crédité sur des dizaines de
+/// milliers de compilations) : sans ce plafond, une passe s'y enlise pour des
+/// heures, une requête par seconde.
+const MAX_PAGES: usize = 6;
 
 /// Combien de fois réessayer avant d'abandonner un identifiant.
 const ESSAIS: u32 = 4;
@@ -185,6 +200,18 @@ impl Client {
                     mbid: mbid.to_string(),
                     titre: titre.to_string(),
                     genres: genres_de(&rg),
+                    date_sortie: rg["first-release-date"]
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string),
+                    type_primaire: rg["primary-type"]
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string),
+                    types_secondaires: rg["secondary-types"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                        .unwrap_or_default(),
                 });
             }
             let total = v["release-group-count"].as_u64().unwrap_or(0) as usize;
@@ -192,6 +219,14 @@ impl Client {
             // `recus == 0` protège du cas où le compte annoncé dépasse ce que
             // l'API rend réellement : sans lui, la boucle tournerait sans fin.
             if depuis >= total || recus == 0 {
+                return Ok(albums);
+            }
+            if depuis >= MAX_PAGES * PAR_PAGE {
+                tracing::warn!(
+                    %mbid, total,
+                    "discographie tronquée à {} albums — artiste spécial ?",
+                    MAX_PAGES * PAR_PAGE
+                );
                 return Ok(albums);
             }
         }
@@ -297,6 +332,44 @@ pub fn normaliser_titre(titre: &str) -> String {
                 .then(|| c.to_lowercase().next().unwrap_or(c))
         })
         .collect()
+}
+
+/// Réduit un nom d'artiste à ce qui permet de le reconnaître d'une source à
+/// l'autre : minuscules, sans accent ni ponctuation, et sans le crédit
+/// secondaire d'un « X feat. Y ». Sert au rapprochement Deezer, qui se fait
+/// par recherche « artiste + titre » faute de MBID.
+pub fn cle_artiste(nom: &str) -> String {
+    let bas = nom.to_lowercase();
+    let mut s = bas.as_str();
+    for coupe in [" feat.", " feat ", " ft.", " ft ", " featuring ", " & ", " and ", " x ", " vs ", " vs."] {
+        if let Some(i) = s.find(coupe) {
+            s = &s[..i];
+        }
+    }
+    s.chars()
+        .filter_map(|c| {
+            let c = sans_accent(c);
+            c.is_alphanumeric().then_some(c)
+        })
+        .collect()
+}
+
+/// Complète une date MusicBrainz partielle en `YYYY-MM-DD`.
+///
+/// `first-release-date` vaut « 2026 », « 2026-08 » ou « 2026-08-15 » — parfois
+/// rien. Complétée au premier jour du mois ou de l'année, elle se compare et se
+/// trie comme une chaîne, sans dépendre d'un calendrier : c'est tout ce dont le
+/// filtre de fenêtre du mode Découvrir a besoin. Rend `None` si l'entrée n'a
+/// pas au moins une année de quatre chiffres.
+pub fn completer_date(brute: &str) -> Option<String> {
+    let mut parts = brute.trim().splitn(3, '-');
+    let annee = parts.next()?;
+    if annee.len() != 4 || !annee.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let mois = parts.next().filter(|m| m.len() == 2).unwrap_or("01");
+    let jour = parts.next().filter(|j| j.len() == 2).unwrap_or("01");
+    Some(format!("{annee}-{mois}-{jour}"))
 }
 
 /// Rabat les lettres accentuées les plus courantes sur leur base.
@@ -408,5 +481,22 @@ mod tests {
     fn relations_de_dune_reponse_sans_relations_rend_une_liste_vide() {
         let v: Value = serde_json::from_str(r#"{"id":"x","name":"y"}"#).expect("JSON de test");
         assert!(relations_de(&v).is_empty());
+    }
+
+    #[test]
+    fn completer_date_remplit_les_dates_partielles() {
+        assert_eq!(completer_date("2026").as_deref(), Some("2026-01-01"));
+        assert_eq!(completer_date("2026-08").as_deref(), Some("2026-08-01"));
+        assert_eq!(completer_date("2026-08-15").as_deref(), Some("2026-08-15"));
+        assert_eq!(completer_date(" 2026-08-15 ").as_deref(), Some("2026-08-15"));
+        // Une comparaison de chaînes suffit alors à ordonner deux sorties.
+        assert!(completer_date("2026-08-01") > completer_date("2026-07-31"));
+    }
+
+    #[test]
+    fn completer_date_rejette_ce_qui_na_pas_dannee() {
+        assert_eq!(completer_date(""), None);
+        assert_eq!(completer_date("????"), None);
+        assert_eq!(completer_date("26-08"), None);
     }
 }

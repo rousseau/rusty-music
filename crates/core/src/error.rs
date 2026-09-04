@@ -23,7 +23,7 @@ pub enum Error {
     #[error("le chemin n'existe pas ou n'est pas un dossier : {0}")]
     NotADirectory(PathBuf),
 
-    /// Interrogation d'une source distante (MusicBrainz).
+    /// Interrogation d'une source distante (MusicBrainz, ListenBrainz).
     ///
     /// Toujours récupérable : l'enrichissement est additif, une bibliothèque
     /// sans réseau reste entièrement utilisable. Cette erreur interrompt une
