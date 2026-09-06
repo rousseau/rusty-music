@@ -299,6 +299,41 @@ fn epoch_vers_cle(secondes: i64) -> u32 {
     (y.clamp(1900, 2100) as u32) * 10_000 + (m as u32) * 100 + (d as u32)
 }
 
+/// Année d'un album, la plus fiable connue : `first_release_date` de
+/// MusicBrainz (la date de l'œuvre, pas du pressage — corrige les rééditions),
+/// sauf compilation dont la date de release-group ne dit rien de ses titres ;
+/// sinon le tag. Même arbitrage que la table de fiabilité de
+/// [`Library::ordre_darrivee`], réduit à ce dont un album a besoin — sans les
+/// médianes de secours, qui n'ont de sens que faute d'aucune date pour un
+/// morceau isolé.
+fn annee_fiable_album(mb_date: Option<&str>, compilation: bool, tag_annee: Option<i64>) -> Option<i64> {
+    if !compilation {
+        if let Some(a) = mb_date.and_then(date_iso_vers_cle).map(|k| (k / 10_000) as i64) {
+            return Some(a);
+        }
+    }
+    tag_annee.filter(|a| (1900..=2100).contains(a))
+}
+
+/// Construit une [`AlbumRow`] depuis une ligne `(album, artiste, année tag,
+/// pistes, chemin, date MusicBrainz, types secondaires)` — la forme commune
+/// aux requêtes de [`Library::albums`] et [`Library::albums_of_artist`].
+fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
+    let tag_annee: Option<i64> = r.get(2)?;
+    let mb_date: Option<String> = r.get(5)?;
+    let types: Option<String> = r.get(6)?;
+    let compilation = types
+        .as_deref()
+        .is_some_and(|t| t.to_lowercase().contains("compilation"));
+    Ok(AlbumRow {
+        name: r.get(0)?,
+        artist: r.get(1)?,
+        year: annee_fiable_album(mb_date.as_deref(), compilation, tag_annee),
+        tracks: r.get(3)?,
+        path: r.get(4)?,
+    })
+}
+
 /// Hachage stable d'un couple artiste/album. Doit rendre la même valeur d'une
 /// exécution à l'autre : c'est lui qui départage les arrivées d'une même année.
 fn hacher(artiste: &str, album: &str) -> u64 {
@@ -320,8 +355,20 @@ pub struct RootRow {
 }
 
 /// Un album MusicBrainz prêt à ranger : identifiant, titre tel qu'il est
-/// publié, titre normalisé pour le rapprochement, et genres avec leurs votes.
-pub type AlbumRange = (String, String, String, Vec<(String, i64)>);
+/// publié, titre normalisé pour le rapprochement, genres avec leurs votes,
+/// date de première parution du release-group (`first-release-date`,
+/// souvent partielle) et types secondaires joints par une virgule
+/// (« Live,Compilation ») — c'est de ces deux derniers champs que dépendent
+/// [`Library::ordre_darrivee`] et [`Library::albums`] pour préférer la date
+/// de l'œuvre à celle, moins sûre, du tag.
+pub type AlbumRange = (
+    String,
+    String,
+    String,
+    Vec<(String, i64)>,
+    Option<String>,
+    Option<String>,
+);
 
 /// Un album et ses éditions multiples : l'artiste, le titre brut le plus
 /// représenté, puis chaque édition (titre publié, nombre de pistes).
@@ -1723,14 +1770,24 @@ impl Library {
     /// Les albums d'un artiste et leurs genres, en une transaction.
     ///
     /// `albums` porte, pour chaque disque, son identifiant, son titre, le titre
-    /// normalisé qui servira au rapprochement, et ses genres.
+    /// normalisé qui servira au rapprochement, ses genres, et la date de
+    /// parution du release-group avec ses types secondaires — sans ces deux
+    /// derniers, [`Library::ordre_darrivee`] et [`Library::albums`] n'ont
+    /// jamais rien à corriger et retombent silencieusement sur le seul tag.
     pub fn mb_poser_albums(&mut self, artiste: &str, albums: &[AlbumRange]) -> Result<()> {
         let tx = self.conn.transaction()?;
-        for (mbid, titre, norme, genres) in albums {
+        for (mbid, titre, norme, genres, date_sortie, types_secondaires) in albums {
             tx.execute(
-                "INSERT OR REPLACE INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![mbid, artiste, titre, norme],
+                "INSERT INTO mb_release_groups
+                   (mbid, artist_mbid, title, title_norm, first_release_date, secondary_types)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(mbid) DO UPDATE SET
+                   artist_mbid = excluded.artist_mbid,
+                   title = excluded.title,
+                   title_norm = excluded.title_norm,
+                   first_release_date = excluded.first_release_date,
+                   secondary_types = excluded.secondary_types",
+                params![mbid, artiste, titre, norme, date_sortie, types_secondaires],
             )?;
             for (nom, votes) in genres {
                 tx.execute(
@@ -2810,53 +2867,48 @@ impl Library {
                   AND COALESCE(album_artist, artist) = ?2
                HAVING COUNT(DISTINCT mb_album_artist_id) = 1
              )
-             SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
-               FROM tracks
-              WHERE album IS NOT NULL
+             SELECT t.album, COALESCE(t.album_artist, t.artist), MIN(t.year), COUNT(*), MIN(t.path),
+                    MIN(r.first_release_date), MIN(r.secondary_types)
+               FROM tracks t
+               LEFT JOIN mb_release_groups r
+                      ON r.artist_mbid = t.mb_album_artist_id
+                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+              WHERE t.album IS NOT NULL
                 AND ( (COALESCE(?1, (SELECT mbid FROM resolu)) IS NOT NULL
-                       AND mb_album_artist_id = COALESCE(?1, (SELECT mbid FROM resolu)))
-                   OR (mb_album_artist_id IS NULL
-                       AND COALESCE(album_artist, artist) = ?2) )
-              GROUP BY album, COALESCE(album_artist, artist)
-              ORDER BY album COLLATE NOCASE",
+                       AND t.mb_album_artist_id = COALESCE(?1, (SELECT mbid FROM resolu)))
+                   OR (t.mb_album_artist_id IS NULL
+                       AND COALESCE(t.album_artist, t.artist) = ?2) )
+              GROUP BY t.album, COALESCE(t.album_artist, t.artist)
+              ORDER BY t.album COLLATE NOCASE",
         )?;
         let rows = stmt
-            .query_map(params![mbid, name], |r| {
-                Ok(AlbumRow {
-                    name: r.get(0)?,
-                    artist: r.get(1)?,
-                    year: r.get(2)?,
-                    tracks: r.get(3)?,
-                    path: r.get(4)?,
-                })
-            })?
+            .query_map(params![mbid, name], album_row_from_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
     /// Albums, tous ou ceux d'un artiste donné.
+    ///
+    /// L'année rendue est [`annee_fiable_album`] — MusicBrainz avant le tag —
+    /// pas le seul tag : voir sa doc pour l'arbitrage.
     pub fn albums(&self, artist: Option<&str>) -> Result<Vec<AlbumRow>> {
         // `artist` filtre sur l'artiste d'album comme sur celui de la piste :
         // sinon un album entier échappe au filtre dès qu'une piste porte un
         // invité en artiste.
         let mut stmt = self.conn.prepare(
-            "SELECT album, COALESCE(album_artist, artist), MIN(year), COUNT(*), MIN(path)
-               FROM tracks
-              WHERE album IS NOT NULL
-                AND (?1 IS NULL OR album_artist = ?1 OR artist = ?1)
-              GROUP BY album, COALESCE(album_artist, artist)
-              ORDER BY album COLLATE NOCASE",
+            "SELECT t.album, COALESCE(t.album_artist, t.artist), MIN(t.year), COUNT(*), MIN(t.path),
+                    MIN(r.first_release_date), MIN(r.secondary_types)
+               FROM tracks t
+               LEFT JOIN mb_release_groups r
+                      ON r.artist_mbid = t.mb_album_artist_id
+                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+              WHERE t.album IS NOT NULL
+                AND (?1 IS NULL OR t.album_artist = ?1 OR t.artist = ?1)
+              GROUP BY t.album, COALESCE(t.album_artist, t.artist)
+              ORDER BY t.album COLLATE NOCASE",
         )?;
         let rows = stmt
-            .query_map(params![artist], |r| {
-                Ok(AlbumRow {
-                    name: r.get(0)?,
-                    artist: r.get(1)?,
-                    year: r.get(2)?,
-                    tracks: r.get(3)?,
-                    path: r.get(4)?,
-                })
-            })?
+            .query_map(params![artist], album_row_from_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -4719,6 +4771,83 @@ mod tests_ordre {
         assert_eq!(par_id[&4].source, "ingestion");
         // Aucun morceau n'est perdu en route.
         assert_eq!(ordre.len(), 4);
+    }
+
+    /// `mb_poser_albums` doit garder la date de parution et les types
+    /// secondaires du release-group, pas seulement son titre — sinon
+    /// `ordre_darrivee` et `albums` n'ont jamais rien à corriger et
+    /// retombent silencieusement sur le seul tag, même après une passe
+    /// `enrich` réussie.
+    #[test]
+    fn mb_poser_albums_conserve_la_date_et_corrige_le_tag() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Disque".into()),
+            album_artist: Some("Groupe".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(1999), // année de réédition, portée par le tag
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Disque".into(),
+                "disque".into(),
+                Vec::new(),
+                Some("1973-03-01".into()), // date de l'œuvre, antérieure au tag
+                None,
+            )],
+        )
+        .unwrap();
+
+        let ordre = lib.ordre_darrivee().unwrap();
+        assert_eq!(ordre.len(), 1);
+        assert_eq!(ordre[0].source, "musicbrainz");
+        assert_eq!(ordre[0].date, 19_730_301);
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(
+            albums[0].year,
+            Some(1973),
+            "l'année de l'album doit suivre MusicBrainz, pas le seul tag"
+        );
+    }
+
+    /// Une compilation date d'elle-même, pas des œuvres qu'elle rassemble :
+    /// sa `first_release_date` de release-group ne doit pas écraser le tag.
+    #[test]
+    fn mb_poser_albums_ignore_la_date_dune_compilation() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Spawn".into()),
+            album_artist: Some("Various".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(1997),
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Spawn".into(),
+                "spawn".into(),
+                Vec::new(),
+                Some("2010-01-01".into()), // date d'une réédition de la compilation
+                Some("Compilation".into()),
+            )],
+        )
+        .unwrap();
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(albums[0].year, Some(1997), "le tag doit l'emporter sur la compilation");
     }
 
     /// Les pistes d'un album arrivent **ensemble**. Sans cela, les 1 341

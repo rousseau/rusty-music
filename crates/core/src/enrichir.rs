@@ -88,6 +88,9 @@ pub fn enrichir(
                             a.titre.clone(),
                             normaliser_titre(&a.titre),
                             a.genres.iter().map(|g| (g.nom.clone(), g.votes)).collect(),
+                            a.date_sortie.clone(),
+                            (!a.types_secondaires.is_empty())
+                                .then(|| a.types_secondaires.join(",")),
                         )
                     })
                     .collect();
