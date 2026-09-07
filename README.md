@@ -9,6 +9,8 @@ puis surveillé automatiquement. Tout le calcul — décodage, empreintes,
 démixage, carte — se fait sur la machine ; aucun service distant, aucune clé
 d'API.
 
+Notes sur le développement de ce logiciel et les réflexions associées : [https://rousseau.github.io/rusty-music](https://rousseau.github.io/rusty-music)
+
 En Rust de bout en bout, à une exception près : l'inférence des modèles de
 démixage et de super-résolution passe par ONNX Runtime (C++) via `ort`, un
 choix assumé — « ne pas réécrire ce qui existe » l'emporte ici sur « tout en
@@ -16,8 +18,6 @@ Rust » (voir `docs/rust-audio-stack.md`).
 
 Écrit intégralement par Claude. Contexte de travail : `CLAUDE.md`.
 Spécifications : `docs/`.
-
-Notes sur le développement de ce logiciel : [https://rousseau.github.io/rusty-music](https://rousseau.github.io/rusty-music)
 
 ## Installer
 
