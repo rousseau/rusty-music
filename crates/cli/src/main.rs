@@ -319,6 +319,61 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         rafraichir_des: i64,
     },
+    /// Récupère les biographies d'artiste (TheAudioDB)
+    ///
+    /// Résolution **exclusivement par MBID** (`tracks.mb_artist_id`) — jamais
+    /// par nom : un artiste sans MBID est ignoré, jamais mal attribué. Aucune
+    /// clé requise (clé de test partagée, 30 req/min) ; `--cle` accélère si
+    /// l'utilisateur en a une personnelle.
+    Biographies {
+        /// Clé personnelle TheAudioDB (sinon la clé de test partagée)
+        #[arg(long)]
+        cle: Option<String>,
+        /// Artistes à traiter au plus (0 = tous)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+    },
+    /// Récupère les critiques d'albums (CritiqueBrainz)
+    ///
+    /// Aucune clé requise, interrogation par release-group MusicBrainz —
+    /// jamais de recherche approximative. « Aucune critique » est une réponse
+    /// normale, mémorisée comme pour les autres sources.
+    Critiques {
+        /// Release-groups à traiter au plus (0 = tous)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+        /// Revérifier ce qui date de plus de N jours (0 = ne rafraîchit rien)
+        #[arg(long, default_value_t = 0)]
+        rafraichir_des: i64,
+    },
+    /// Relie les éditions MusicBrainz connues à leur édition Discogs
+    ///
+    /// Par la relation d'URL que MusicBrainz porte vers Discogs
+    /// (`inc=url-rels`) — jamais une recherche par nom. Léger : peut tourner à
+    /// chaque enrichissement. Préalable à `import-discogs`, qui ne cherche
+    /// dans le dump que les éditions déjà reliées ici.
+    DiscogsLier {
+        /// Adresse de contact envoyée à MusicBrainz (ou `RUSTY_MUSIC_CONTACT`)
+        #[arg(long)]
+        contact: Option<String>,
+        /// Éditions à vérifier au plus (0 = toutes)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+    },
+    /// Importe les crédits Discogs (musicien, producteur, ingénieur…) depuis
+    /// le dump mensuel CC0
+    ///
+    /// Jamais l'API Discogs en direct. Télécharge (ou réutilise, `--fichier`)
+    /// `releases.xml.gz` (≈ 11 Go, un seul fichier suffit) et n'y cherche que
+    /// les éditions déjà reliées par `discogs-lier` — la table de crédits ne
+    /// grossit donc que de ce que la bibliothèque possède réellement.
+    /// Séparé du scan normal : à lancer à la main ou par une tâche planifiée
+    /// (cron/launchd), une fois par mois.
+    ImportDiscogs {
+        /// Réutilise un dump déjà téléchargé au lieu d'en retélécharger un
+        #[arg(long)]
+        fichier: Option<std::path::PathBuf>,
+    },
     /// Sondage de qualité : les k plus proches voisins d'un morceau
     ///
     /// Dans l'espace des empreintes CLAP — pour juger à l'oreille (ou au moins
@@ -1530,6 +1585,40 @@ fn main() -> Result<()> {
                 "    part des voisins musicaux qui sont du MÊME artiste : {:.0} % en moyenne",
                 100.0 * part_meme_artiste_moy
             );
+
+            // --- Invariant du curseur temporel (docs/carto-ville.md) ---------
+            //
+            // À toute année choisie, le nombre de bâtiments montrés comme
+            // occupés doit être exactement égal au nombre de morceaux logés
+            // dont l'année est ≤ à celle-là (un morceau sans année compte
+            // comme toujours occupé des deux côtés). Vérifié ici sur la vraie
+            // bibliothèque plutôt que seulement sur le jeu d'essai
+            // (`ville::tests::le_batiment_habite_porte_lannee_de_son_occupant`).
+            let mut annees: Vec<i32> = r.source.morceaux.iter().filter_map(|m| m.annee).collect();
+            if annees.is_empty() {
+                println!("\n  curseur temporel : aucun morceau logé n'a d'année, rien à vérifier");
+            } else {
+                annees.sort_unstable();
+                annees.dedup();
+                let graine = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as usize)
+                    .unwrap_or(0);
+                let seuil = annees[graine % annees.len()];
+                let occupes = r
+                    .source
+                    .batiments
+                    .iter()
+                    .filter(|b| b.morceau_id.is_some())
+                    .filter(|b| b.annee.is_none_or(|a| a <= seuil))
+                    .count();
+                let attendus =
+                    r.source.morceaux.iter().filter(|m| m.annee.is_none_or(|a| a <= seuil)).count();
+                println!(
+                    "\n  curseur temporel à {seuil} : {occupes} bâtiments occupés pour {attendus} morceaux attendus{}",
+                    if occupes == attendus { " — invariant vérifié" } else { " — ÉCART, propagation de l'année à revoir" }
+                );
+            }
         }
         Cmd::Familles { artistes } => {
             let modele = rusty_music_analysis::passe::MODELE;
@@ -1696,6 +1785,108 @@ fn main() -> Result<()> {
                 bilan.deezer_trouves,
                 bilan.deezer,
                 bilan.couverts,
+                t.elapsed().as_secs_f64() / 60.0
+            );
+        }
+        Cmd::Biographies { cle, limite } => {
+            let mut lib = lib;
+            let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
+            let limite = if limite == 0 { usize::MAX } else { limite };
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::biographies::actualiser(&mut lib, &client, 0, limite, |b| {
+                if b.faits >= dernier + 25 {
+                    dernier = b.faits;
+                    println!("  {} / {} artistes · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
+                }
+            })?;
+            println!(
+                "\n{} artistes interrogés, {} avec une biographie — {:.0} min",
+                bilan.interroges, bilan.trouves, t.elapsed().as_secs_f64() / 60.0
+            );
+        }
+        Cmd::Critiques { limite, rafraichir_des } => {
+            let mut lib = lib;
+            let client = rusty_music_core::critiquebrainz::Client::new();
+            let limite = if limite == 0 { usize::MAX } else { limite };
+            let depuis = if rafraichir_des <= 0 {
+                0
+            } else {
+                let maintenant = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                maintenant - rafraichir_des * 86_400
+            };
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, limite, |b| {
+                if b.faits >= dernier + 25 {
+                    dernier = b.faits;
+                    println!("  {} / {} albums · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
+                }
+            })?;
+            println!(
+                "\n{} albums interrogés, {} avec au moins une critique — {:.0} min",
+                bilan.albums_interroges, bilan.albums_avec_critique, t.elapsed().as_secs_f64() / 60.0
+            );
+        }
+        Cmd::DiscogsLier { contact, limite } => {
+            let mut lib = lib;
+            let contact = contact
+                .or_else(|| std::env::var("RUSTY_MUSIC_CONTACT").ok())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "MusicBrainz demande un contact dans l'agent.\n  \
+                         Le donner avec --contact, ou par RUSTY_MUSIC_CONTACT."
+                    )
+                })?;
+            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let limite = if limite == 0 { usize::MAX } else { limite };
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::discogs_import::lier(&mut lib, &client, limite, |b| {
+                if b.faits >= dernier + 25 {
+                    dernier = b.faits;
+                    println!("  {} / {} éditions · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
+                }
+            })?;
+            println!(
+                "\n{} éditions vérifiées, {} reliées à Discogs — {:.0} min",
+                bilan.interrogees, bilan.liees, t.elapsed().as_secs_f64() / 60.0
+            );
+        }
+        Cmd::ImportDiscogs { fichier } => {
+            let mut lib = lib;
+            let t = Instant::now();
+
+            let chemin = match fichier {
+                Some(f) => f,
+                None => {
+                    let dest = std::env::temp_dir().join("rusty-music-discogs-releases.xml.gz");
+                    println!("Téléchargement du dernier dump Discogs (≈ 11 Go)…");
+                    rusty_music_core::discogs_import::telecharger_dernier_dump(&dest)?;
+                    dest
+                }
+            };
+
+            println!("Import des crédits depuis {}…", chemin.display());
+            let mut dernier = 0u64;
+            let bilan = rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
+                if b.editions_vues >= dernier + 500_000 {
+                    dernier = b.editions_vues;
+                    println!(
+                        "  {} éditions parcourues · {} retenues · {:.0} min",
+                        b.editions_vues, b.editions_retenues, t.elapsed().as_secs_f64() / 60.0
+                    );
+                }
+            })?;
+            println!(
+                "\n{} éditions parcourues, {} retenues, {} fragments illisibles ignorés — {:.0} min",
+                bilan.editions_vues, bilan.editions_retenues, bilan.fragments_malformes,
                 t.elapsed().as_secs_f64() / 60.0
             );
         }

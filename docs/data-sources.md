@@ -26,4 +26,6 @@
 ## Enrichissement métadonnées (module 1 — Lecteur)
 - **Pochettes** : Cover Art Archive (liée à MusicBrainz, gratuite, propre) via identifiant MusicBrainz de l'album.
 - **Bio / genre / crédits** : Wikidata et Wikipédia, résolus par identifiant MusicBrainz de l'artiste.
-- **Critiques d'albums** : PAS d'API libre exploitable (AllMusic, Pitchfork… sous copyright, sans API ouverte). Prévoir un lien sortant ou s'en tenir aux données factuelles — ne pas concevoir l'UI autour de cette donnée.
+- **Biographies d'artiste** : TheAudioDB, résolu **exclusivement par MBID** (`artist-mb.php?i=`), jamais par nom — voir `docs/enrichissement-lecteur.md`. Biographie anglaise et française (`strBiographyFR`), quand disponibles.
+- **Crédits détaillés par édition** (musicien de session, producteur, ingénieur du son) : Discogs, via ses **dumps mensuels CC0** (`data.discogs.com`) — jamais l'API en direct. Lien retrouvé par la relation d'URL que MusicBrainz porte vers Discogs, jamais une recherche par nom.
+- **Critiques d'albums** : ~~PAS d'API libre exploitable~~ — **inexact**. **CritiqueBrainz** (MetaBrainz, licence Creative Commons — BY-SA ou BY-NC-SA selon la critique) publie des critiques par identifiant MusicBrainz de release-group, sans clé. Le texte complet peut être stocké et affiché, à condition d'une attribution obligatoire (auteur, mention CritiqueBrainz, licence exacte) partout où il apparaît. Détail : `docs/enrichissement-lecteur.md`.

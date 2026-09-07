@@ -77,6 +77,7 @@ Build : Rust 1.82+, un compilateur C, et les modèles préparés (`scripts/`,
 et pièges : README, section « Démarrer ».
 
 ## Documents détaillés
+- `docs/interface-guidelines.md` — **contrat de cohérence d'interface, transversal aux cinq modes (Écouter, Explorer, Éditer, Bibliothèque, Découvrir), plus l'audit complet de l'existant contre ce contrat. À consulter avant toute construction ou modification d'interface, dans n'importe quel mode.**
 - `docs/suite.md` — **état d'avancement par brique et ordre de ce qui reste. À lire pour savoir où en est le projet.**
 - `docs/modules.md` — décomposition en cœur + 3 modules, périmètre et références par module. Écrit avant la décision de licence : la règle « time-stretch/démixage en Rust pur, sans dépendance » y est **caduque** (voir stack ci-dessus).
 - `docs/architecture.md` — contexte de recherche (Islands of Music, Audio Atlas, AudioMuse-AI), pipeline, alternatives. Registre historique : plusieurs « points à trancher » y sont depuis tranchés (CLAP, t-SNE).
@@ -86,6 +87,7 @@ et pièges : README, section « Démarrer ».
 - `docs/module3-demixage.md` — pourquoi le démixage passe par `demucs-core` (Burn) et non l'export ONNX + `ort`.
 - `docs/data-sources.md` — Plex/AudioMuse-AI, MusicBrainz, enrichissement métadonnées.
 - `docs/popularite.md` — **popularité générale (ListenBrainz + Deezer, sans clé API) : passe d'analyse (étape 5/5, rafraîchissement 90 j) + jauge à 5 segments dans la file et les listes de pistes. Livré. Reste hors chantier : popularité d'artiste pour la carte.**
+- `docs/enrichissement-lecteur.md` — **trois sources de plus, chacune désactivable : biographies TheAudioDB (par MBID d'artiste seulement), crédits par édition Discogs (dumps mensuels CC0, jamais l'API), critiques CritiqueBrainz (licence CC, attribution obligatoire). Corrige `data-sources.md` sur les critiques.**
 - `docs/carto-ville.md` — **modèle retenu : la carte est le plan d'une vraie ville (Paris). Familles → quartiers, artistes → rues, morceaux → adresses. À lire en premier pour la carte.**
 - `docs/carto-peuplement.md` — modèle du peuplement (morceaux = habitants, placement chronologique). Son support généré est remplacé par le plan de ville ; son intention est reprise par `carto-ville.md`.
 - `docs/carto-peuplement-architecture.md` — **mécanique du peuplement : traits du générateur de monde, placement incrémental, typologie, schéma SQL, réglages et objections.**

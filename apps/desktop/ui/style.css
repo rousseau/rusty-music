@@ -296,6 +296,9 @@ html, body {
   color: var(--accent); font-size: 14px; font-weight: 700;
 }
 
+/* `height: 44px` doit rester égal à `LIGNE` dans `app.js` (`const LIGNE =
+   44`) : la liste virtualisée s'en sert pour calculer quelles lignes sont
+   à l'écran. Changer l'un sans l'autre désaligne le rendu silencieusement. */
 .ligne {
   display: flex; align-items: center; gap: 14px;
   padding: 0 26px; height: 44px;
@@ -559,12 +562,16 @@ html, body {
    dense ne supporte pas douze teintes, et la palette validée plafonne à
    trois sur ce type de graphique. Isoler vaut mieux que colorier. */
 .familles { display: flex; flex-direction: column; gap: 1px; }
+/* Une ligne par famille — toujours ce conteneur, même sans le second bouton
+   (§ 3 de la frise), pour que son apparition/disparition selon le mode ne
+   redistribue jamais la légende. */
+.famille-ligne { display: flex; align-items: baseline; gap: 2px; }
 .famille__pastille {
   width: 9px; height: 9px; flex: none; border-radius: 50%;
   align-self: center;
 }
 .famille {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0;
   background: none; border: none; padding: 3px 0; cursor: pointer;
   font: inherit; font-size: 12.5px; color: var(--mut); text-align: left;
 }
@@ -578,6 +585,18 @@ html, body {
   margin-left: auto; font-family: var(--mono); font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
+/* Zoom vertical ciblé de la frise (§ 3) : étendre/réduire une bande depuis sa
+   ligne de légende, sans toucher à l'isolement (le bouton `.famille`
+   voisin). Une bordure comme `.zoom button` — un glyphe seul en `opacity`
+   réduite se perdait dans le panneau, invisible plutôt que discret. */
+.famille__etendre {
+  flex: none; align-self: center; cursor: pointer;
+  width: 17px; height: 17px; line-height: 15px; text-align: center; padding: 0;
+  font: inherit; font-size: 11px; background: none;
+  border: 1px solid var(--line); border-radius: 2px; color: var(--mut);
+}
+.famille__etendre:hover { color: var(--txt); border-color: var(--accent); }
+.famille__etendre--actif { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- inspecteur ---------- */
 .inspecteur {
@@ -656,6 +675,28 @@ html, body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Biographie (TheAudioDB), crédits par édition (Discogs) et critiques
+   (CritiqueBrainz) — trois sources de plus dans l'inspecteur partagé,
+   `docs/enrichissement-lecteur.md`. */
+.insp__bio { font-size: 12.5px; line-height: 1.5; white-space: pre-line; margin: 0; }
+
+.credits { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.credits li { padding: 5px 0; border-top: 1px solid var(--line); }
+.credits li:first-child { border-top: none; }
+/* Mention discrète, par courtoisie — la licence CC0 de Discogs ne l'exige
+   pas, contrairement à l'attribution CritiqueBrainz ci-dessous. */
+.credit-source { font-size: 10.5px; color: var(--mut); margin: 6px 0 0; }
+
+.critiques { display: flex; flex-direction: column; gap: 14px; }
+.critique { border-top: 1px solid var(--line); padding-top: 10px; margin: 0; }
+.critique p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+/* Attribution obligatoire — auteur, mention CritiqueBrainz, licence exacte —
+   visible partout où le texte apparaît, jamais mutualisée en une seule
+   mention pour toutes les critiques. Contrastée, à la différence de la
+   mention Discogs ci-dessus : ici c'est une obligation de licence. */
+.critique-attribution { margin-top: 6px !important; font-size: 11px; color: var(--mut); }
+.critique-attribution a { color: var(--accent); }
+
 /* ---------- transport ---------- */
 .transport {
   grid-area: trans;
@@ -689,6 +730,12 @@ html, body {
   display: block; font-size: 12px; color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Titre et artiste naviguent (voir leurs `addEventListener` dans app.js) —
+   même langage que `.insp__artiste`/`.lien` : curseur, survol vers
+   l'accent. `#np-mesures` est un `span` voisin mais pas cliquable, d'où un
+   sélecteur d'id plutôt que `.transport__now span` qui l'aurait inclus. */
+#np-titre, #np-artiste { cursor: pointer; }
+#np-titre:hover, #np-artiste:hover { color: var(--accent); }
 
 /* Barre de progression : spectrogramme du son réellement joué, cliquable pour
    se déplacer. Axe des fréquences logarithmique (grave en bas), tête de

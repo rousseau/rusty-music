@@ -255,3 +255,75 @@ CREATE TABLE IF NOT EXISTS track_popularite (
     echelon    TEXT    NOT NULL,  -- 'recording' | 'release-group'
     calcule_le INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+
+-- Trois sources d'enrichissement de plus (`docs/enrichissement-lecteur.md`) :
+-- biographies (TheAudioDB), crédits par édition (Discogs, dumps CC0),
+-- critiques d'albums (CritiqueBrainz). Même patron « données + déjà-demandé »
+-- que `popularite`/`popularite_fetched` ci-dessus.
+
+-- Biographies TheAudioDB, une ligne par artiste MusicBrainz. Résolution
+-- **exclusivement par MBID** (`tracks.mb_artist_id`) — jamais par nom : voir
+-- `docs/enrichissement-lecteur.md`.
+CREATE TABLE IF NOT EXISTS theaudiodb_artistes (
+    mb_artist_id  TEXT PRIMARY KEY,
+    id_theaudiodb TEXT,
+    biographie_en TEXT,
+    biographie_fr TEXT,
+    recupere_le   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS theaudiodb_fetched (
+    mb_artist_id TEXT PRIMARY KEY,
+    at           INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+-- Lien entre une édition MusicBrainz (`tracks.mb_release_id`) et son édition
+-- Discogs correspondante, retrouvé par la relation d'URL MusicBrainz
+-- (`inc=url-rels`, type "discogs") — jamais par recherche de nom.
+-- `discogs_release_id` NULL = vérifié, aucun lien Discogs trouvé.
+CREATE TABLE IF NOT EXISTS editions_discogs (
+    mb_release_id      TEXT PRIMARY KEY,
+    discogs_release_id INTEGER,
+    at                 INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+-- Crédits par édition Discogs (musicien de session, producteur, ingénieur…),
+-- importés depuis les dumps mensuels CC0 — jamais l'API Discogs en direct.
+-- Une ligne par (personne, rôle, portée-piste) : `pistes` est la notation
+-- Discogs de la piste concernée ('' = toute l'édition, sinon "A1, A2" —
+-- informatif seulement, pas résolu vers `tracks.track_no`).
+CREATE TABLE IF NOT EXISTS credits_discogs (
+    discogs_release_id INTEGER NOT NULL,
+    personne           TEXT NOT NULL,
+    role               TEXT NOT NULL,
+    pistes             TEXT NOT NULL DEFAULT '',
+    discogs_artist_id  INTEGER,
+    source             TEXT NOT NULL DEFAULT 'discogs',
+    PRIMARY KEY (discogs_release_id, personne, role, pistes)
+);
+CREATE INDEX IF NOT EXISTS idx_credits_discogs_release ON credits_discogs(discogs_release_id);
+
+-- Critiques CritiqueBrainz, plusieurs par release-group. Licence CC (BY-SA ou
+-- BY-NC-SA selon la critique, jamais supposée uniforme) : le texte complet
+-- peut être stocké tel quel, à condition d'afficher l'attribution partout où
+-- il apparaît (auteur, mention CritiqueBrainz, licence exacte).
+CREATE TABLE IF NOT EXISTS critiques (
+    id                 TEXT PRIMARY KEY,     -- UUID CritiqueBrainz
+    mbid_release_group TEXT NOT NULL,
+    source             TEXT NOT NULL DEFAULT 'critiquebrainz',
+    auteur             TEXT,
+    licence_id         TEXT NOT NULL,        -- ex. "CC BY-SA 3.0"
+    licence_nom        TEXT,
+    langue             TEXT,
+    texte              TEXT NOT NULL,
+    url_originale      TEXT,
+    recupere_le        INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_critiques_rg ON critiques(mbid_release_group);
+
+-- « Aucune critique » est une réponse valable, mémorisée comme pour les
+-- autres sources — sans quoi un album sans critique serait réinterrogé à
+-- chaque passe.
+CREATE TABLE IF NOT EXISTS critiques_fetched (
+    mbid_release_group TEXT PRIMARY KEY,
+    at                 INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);

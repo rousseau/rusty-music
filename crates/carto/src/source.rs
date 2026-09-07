@@ -9,9 +9,10 @@ use std::collections::HashMap;
 
 use rusty_music_core::density::Bande;
 
-/// Accumulateur par artiste : somme des x, somme des y, effectif, et le
-/// nombre de morceaux par famille (pour trancher la famille dominante).
-type CumulArtiste = (f64, f64, usize, HashMap<i64, usize>);
+/// Accumulateur par artiste : somme des x, somme des y, effectif, le nombre
+/// de morceaux par famille (pour trancher la famille dominante), et la plus
+/// ancienne année de sortie rencontrée.
+type CumulArtiste = (f64, f64, usize, HashMap<i64, usize>, Option<i32>);
 
 /// Un morceau placé sur la carte.
 #[derive(Debug, Clone)]
@@ -54,6 +55,11 @@ pub struct Artiste {
     /// Paris (`crate::ancrage`, `docs/carto-ville.md`). `None` = artiste
     /// ordinaire, posé sur sa rue par l'affectation.
     pub ancre: Option<String>,
+    /// La plus ancienne année de sortie connue parmi ses morceaux — c'est
+    /// elle que le curseur temporel du plan de ville réel compare pour
+    /// révéler l'artiste (et le monument, s'il est ancré : le même point).
+    /// `None` si aucun de ses morceaux ne porte d'année fiable.
+    pub annee: Option<i32>,
 }
 
 /// Un tronçon du réseau de circulation, en coordonnées de carte.
@@ -179,6 +185,13 @@ pub struct BatimentReel {
     /// bâtiment, comme `style::couleur_famille` colore un point de morceau
     /// ailleurs sur la carte. `None` si vacant.
     pub famille: Option<i64>,
+    /// L'année de sortie du morceau qui l'habite — c'est elle que le curseur
+    /// temporel compare pour décider si le bâtiment est déjà occupé ou
+    /// retombe dans le style « vacant » (`docs/carto-ville.md`). `None` si
+    /// vacant, ou si le morceau n'a pas d'année fiable (dans ce cas le
+    /// bâtiment reste occupé quel que soit le curseur — un morceau non daté
+    /// n'attend pas son tour).
+    pub annee: Option<i32>,
 }
 
 /// Un repère réel notable — musée, monument, lieu de culte — en `[lon, lat]`,
@@ -193,6 +206,11 @@ pub struct PointReel {
     /// Artiste ancré sur ce monument, s'il y en a un (`crate::ancrage`). Le
     /// rendu accole alors son nom au symbole du monument.
     pub artiste: Option<String>,
+    /// Première année de sortie de l'artiste ancré, s'il y en a un — même
+    /// donnée que [`Artiste::annee`], reprise ici pour que le curseur
+    /// temporel puisse aussi révéler le marqueur du monument. `None` pour un
+    /// monument sans artiste ancré (jamais soumis au curseur).
+    pub annee: Option<i32>,
 }
 
 /// Un album, posé au milieu des bâtiments de ses morceaux — l'échelon
@@ -294,17 +312,20 @@ impl Source {
                 continue;
             }
             let e = cumul.entry(m.artiste.as_str()).or_insert_with(|| {
-                (0.0, 0.0, 0, HashMap::new())
+                (0.0, 0.0, 0, HashMap::new(), None)
             });
             e.0 += m.x as f64;
             e.1 += m.y as f64;
             e.2 += 1;
             *e.3.entry(m.famille).or_insert(0) += 1;
+            if let Some(a) = m.annee {
+                e.4 = Some(e.4.map_or(a, |min| min.min(a)));
+            }
         }
 
         let mut villes: Vec<Artiste> = cumul
             .into_iter()
-            .map(|(nom, (sx, sy, n, familles))| {
+            .map(|(nom, (sx, sy, n, familles, annee))| {
                 let dominante = familles
                     .into_iter()
                     // À égalité, le plus petit identifiant : sinon l'ordre de
@@ -320,6 +341,7 @@ impl Source {
                     famille: dominante,
                     effectif: n,
                     ancre: None,
+                    annee,
                 }
             })
             .collect();
@@ -510,6 +532,10 @@ mod tests {
     use super::*;
 
     fn morceau(id: i64, x: f32, y: f32, famille: i64, artiste: &str) -> Morceau {
+        morceau_datee(id, x, y, famille, artiste, Some(2000))
+    }
+
+    fn morceau_datee(id: i64, x: f32, y: f32, famille: i64, artiste: &str, annee: Option<i32>) -> Morceau {
         Morceau {
             id,
             x,
@@ -517,7 +543,7 @@ mod tests {
             famille,
             titre: format!("titre {id}"),
             artiste: artiste.to_string(),
-            annee: Some(2000),
+            annee,
             bpm: None,
             energie: None,
         }
@@ -555,6 +581,25 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.artistes()[0].famille, 7);
+    }
+
+    /// L'artiste porte la plus ancienne année de sortie de ses morceaux, pas
+    /// la plus récente ni une moyenne — c'est l'année où il apparaît pour de
+    /// bon sur le curseur temporel, pas celle de son dernier morceau.
+    #[test]
+    fn un_artiste_porte_la_plus_ancienne_annee_de_ses_morceaux() {
+        let s = Source {
+            morceaux: vec![
+                morceau_datee(1, 0.0, 0.0, 0, "A", Some(2005)),
+                morceau_datee(2, 1.0, 1.0, 0, "A", Some(1998)),
+                morceau_datee(3, 1.0, 1.0, 0, "A", None),
+                morceau_datee(4, -0.5, 0.0, 1, "B", None),
+            ],
+            ..Default::default()
+        };
+        let villes = s.artistes();
+        assert_eq!(villes.iter().find(|v| v.nom == "A").unwrap().annee, Some(1998));
+        assert_eq!(villes.iter().find(|v| v.nom == "B").unwrap().annee, None);
     }
 
     /// Le cas qui condamne le barycentre : deux amas, un vide au milieu.

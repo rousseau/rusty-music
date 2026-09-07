@@ -179,6 +179,33 @@ pub struct AlbumRow {
     pub path: String,
 }
 
+/// Un album annoté pour le mode Explorer → Anneau : identité, famille
+/// dominante, date de sortie, chemin d'une piste pour la pochette.
+///
+/// `id` est [`hacher`]`(artiste, album)`, casté en `i64` — le même hachage
+/// que celui qui regroupe déjà les pistes d'un disque dans
+/// [`Library::ordre_darrivee`] ; aucune autre identité d'album n'existe dans
+/// le schéma (voir [`Library::albums`], une simple agrégation SQL sans id
+/// stable). Voir [`Library::albums_annotes`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AlbumNoeud {
+    pub id: i64,
+    pub name: String,
+    pub artist: String,
+    /// Cluster dominant, `None` tant qu'aucun morceau de l'album n'est
+    /// projeté (voir [`Library::familles_des_albums`]).
+    pub famille: Option<i64>,
+    /// AAAAMMJJ, le plus ancien parmi les morceaux de l'album — voir la table
+    /// de fiabilité de [`Library::ordre_darrivee`].
+    pub date: u32,
+    pub path: Option<String>,
+    /// Somme des durées de ses morceaux — sert l'épaisseur de l'arc d'album
+    /// sur le second anneau du mode Explorer → Anneau. Choisie plutôt que la
+    /// popularité générale : toujours disponible, même sans passe
+    /// popularité, voir `docs/popularite.md`.
+    pub duree_ms: i64,
+}
+
 /// Un point de la carte.
 ///
 /// Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
@@ -345,6 +372,72 @@ fn hacher(artiste: &str, album: &str) -> u64 {
     h
 }
 
+/// Repère hors-échelle pour le streamgraph du mode Explorer → Temps : les
+/// morceaux sans date fiable (`ArriveeBrute::source == "ingestion"`) portent
+/// ce bucket plutôt qu'une année inventée, voir [`Library::flux_temporel`].
+pub const BUCKET_INCERTAIN: i32 = i32::MIN;
+
+/// Année → bucket du streamgraph temporel : annuel à partir de 1990 (le gros
+/// de la bibliothèque, bien daté), par tranche de 5 ans entre 1950 et 1989
+/// (plus rare, dates plus bruitées), par décennie avant.
+fn bucket_annee(annee: i32) -> i32 {
+    if annee >= 1990 {
+        annee
+    } else if annee >= 1950 {
+        1950 + (annee - 1950) / 5 * 5
+    } else {
+        (annee / 10) * 10
+    }
+}
+
+/// Effectif d'une famille dans un bucket temporel — une bande du streamgraph.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BandeAnnuelle {
+    pub bucket: i32,
+    pub famille: i64,
+    pub effectif: i64,
+}
+
+/// Une étape du fil d'un artiste : sa famille dominante dans ce bucket, et
+/// combien de ses morceaux y contribuent.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PointFilArtiste {
+    pub bucket: i32,
+    pub famille: i64,
+    pub effectif: i64,
+    /// Le détail par album de ce bucket — c'est lui que l'interface montre au
+    /// survol d'un fil, sans quoi le streamgraph ne dit rien de plus que « ce
+    /// genre a grossi », pas quelle sortie précise y a contribué.
+    pub albums: Vec<AlbumPoint>,
+}
+
+/// Un album d'un artiste dans un bucket temporel donné, tel que montré au
+/// survol d'un fil — voir [`PointFilArtiste::albums`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AlbumPoint {
+    pub nom: String,
+    pub famille: i64,
+    pub effectif: i64,
+}
+
+/// Le parcours d'un artiste à travers les buckets temporels — un fil du
+/// streamgraph.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FilArtiste {
+    pub artiste: String,
+    pub mb_artist_id: Option<String>,
+    pub effectif_total: i64,
+    pub points: Vec<PointFilArtiste>,
+}
+
+/// Tout ce qu'il faut pour dessiner le mode Explorer → Temps : les bandes
+/// (familles × buckets) et les fils (artistes × buckets).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct FluxTemporel {
+    pub bandes: Vec<BandeAnnuelle>,
+    pub fils: Vec<FilArtiste>,
+}
+
 /// Une racine surveillée, telle qu'affichée dans les réglages.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RootRow {
@@ -460,6 +553,57 @@ pub struct PopulariteBrute<'a> {
     pub auditeurs: Option<i64>,
 }
 
+/// Une biographie TheAudioDB à ranger, résolue par MBID d'artiste.
+#[derive(Debug, Clone)]
+pub struct BioBrute {
+    pub mb_artist_id: String,
+    pub id_theaudiodb: Option<String>,
+    pub biographie_en: Option<String>,
+    pub biographie_fr: Option<String>,
+}
+
+/// Une biographie telle que servie à l'inspecteur.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BioArtiste {
+    pub mb_artist_id: String,
+    pub biographie_en: Option<String>,
+    pub biographie_fr: Option<String>,
+}
+
+/// Un crédit Discogs à ranger — voir `credits_discogs` du schéma.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CreditDiscogs {
+    pub personne: String,
+    pub role: String,
+    pub pistes: String,
+    pub discogs_artist_id: Option<i64>,
+}
+
+/// Une critique CritiqueBrainz à ranger.
+#[derive(Debug, Clone)]
+pub struct CritiqueBrute {
+    pub id: String,
+    pub auteur: Option<String>,
+    pub licence_id: String,
+    pub licence_nom: Option<String>,
+    pub langue: Option<String>,
+    pub texte: String,
+    pub url_originale: Option<String>,
+}
+
+/// Une critique telle que servie à l'inspecteur — l'attribution est
+/// obligatoire partout où `texte` apparaît (licence CC).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Critique {
+    pub id: String,
+    pub auteur: Option<String>,
+    pub licence_id: String,
+    pub licence_nom: Option<String>,
+    pub langue: Option<String>,
+    pub texte: String,
+    pub url_originale: Option<String>,
+}
+
 /// Convertit une liste `(id, valeur)` en `id → rang percentile` dans `[0, 1]` :
 /// la part des valeurs strictement inférieures. Insensible à l'échelle et aux
 /// distributions à longue traîne — c'est pourquoi on mélange des rangs, pas
@@ -514,6 +658,10 @@ fn migrate(conn: &Connection) -> Result<()> {
         // `tags::read` comme `bitrate`/`codec`. `NULL` tant qu'un rescan
         // « relire même les fichiers inchangés » ne l'a pas remplie.
         ("bit_depth", "INTEGER"),
+        // MBID d'édition (release, pas release-group) — lu par `tags::read`
+        // via `ItemKey::MusicBrainzReleaseId`. Sert à retrouver la relation
+        // d'URL Discogs de cette édition précise (`docs/enrichissement-lecteur.md`).
+        ("mb_release_id", "TEXT"),
     ] {
         if !existantes.contains(nom) {
             conn.execute_batch(&format!("ALTER TABLE tracks ADD COLUMN {nom} {decl}"))?;
@@ -536,6 +684,29 @@ fn migrate(conn: &Connection) -> Result<()> {
                 "ALTER TABLE mb_release_groups ADD COLUMN {nom} {decl}"
             ))?;
         }
+    }
+
+    // Les deux colonnes ci-dessus ont longtemps existé sans jamais être
+    // écrites : `mb_poser_albums` ignorait `first_release_date` et
+    // `secondary_types` avant ce correctif. Toute base déjà enrichie porte
+    // donc des artistes marqués « déjà faits » dans `mb_fetched` sans
+    // aucune date sur leurs release-groups — et `mb_artistes_en_attente` ne
+    // revisite jamais un artiste déjà marqué. Sans cette purge, une
+    // bibliothèque déjà enrichie resterait pour toujours sans dates,
+    // correctif ou pas. La ligne sentinelle (même idiome que
+    // `decouvrir_marquer_passe`) garantit que ça ne se fait qu'une fois :
+    // sans elle, un artiste dont MusicBrainz ne connaît vraiment aucune
+    // date serait purgé à chaque démarrage et sa repasse rejouée sans fin.
+    let deja_purge: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM mb_fetched WHERE mbid = '@migration' AND kind = 'purge_dates_2026_09')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !deja_purge {
+        conn.execute_batch(
+            "DELETE FROM mb_fetched WHERE kind IN ('artist', 'albums');
+             INSERT INTO mb_fetched (mbid, kind) VALUES ('@migration', 'purge_dates_2026_09');",
+        )?;
     }
 
     // Créé ici, et non dans le schéma : la colonne visée peut venir d'être
@@ -712,8 +883,8 @@ impl Library {
             "INSERT INTO tracks
                (path, size_bytes, mtime, title, artist, album, album_artist,
                 genre, year, track_no, duration_ms, sample_rate, channels, bitrate, codec,
-                bit_depth, mb_recording_id, mb_artist_id, mb_album_artist_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
+                bit_depth, mb_recording_id, mb_artist_id, mb_album_artist_id, mb_release_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
              ON CONFLICT(path) DO UPDATE SET
                size_bytes=excluded.size_bytes, mtime=excluded.mtime,
                title=excluded.title, artist=excluded.artist, album=excluded.album,
@@ -724,7 +895,8 @@ impl Library {
                bit_depth=excluded.bit_depth,
                mb_recording_id=excluded.mb_recording_id,
                mb_artist_id=excluded.mb_artist_id,
-               mb_album_artist_id=excluded.mb_album_artist_id",
+               mb_album_artist_id=excluded.mb_album_artist_id,
+               mb_release_id=excluded.mb_release_id",
             params![
                 m.path.to_string_lossy(),
                 m.size_bytes,
@@ -744,7 +916,8 @@ impl Library {
                 m.bit_depth,
                 m.mb_recording_id,
                 m.mb_artist_id,
-                m.mb_album_artist_id
+                m.mb_album_artist_id,
+                m.mb_release_id
             ],
         )?;
         let id = self.conn.query_row(
@@ -1023,6 +1196,207 @@ impl Library {
         Ok(par_album
             .into_iter()
             .map(|((album, artiste), (cluster, _))| (album, artiste, cluster))
+            .collect())
+    }
+
+    /// Famille secondaire d'un album « à cheval » sur deux familles — la
+    /// deuxième famille la plus représentée parmi ses morceaux, retenue
+    /// seulement si elle atteint au moins deux morceaux (sans ce seuil, un
+    /// seul morceau mal étiqueté suffirait à fabriquer une fausse
+    /// hybridation). Sert uniquement à colorer l'arc entrant depuis cette
+    /// famille-là sur la frise des filiations (`docs/frise-filiations.md`
+    /// § 3) ; ne détermine jamais la bande ni la position d'un album, qui
+    /// restent celles de la famille majoritaire ([`Self::familles_des_albums`]).
+    ///
+    /// Clé de retour : [`hacher`]`(artiste, album) as i64`, la même que
+    /// [`Self::albums_annotes`] — pas de recalcul de similarité, seulement un
+    /// second passage sur le même comptage par (album, famille).
+    pub fn familles_secondaires_albums(&self, model: &str) -> Result<HashMap<i64, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.album, COALESCE(t.album_artist, t.artist), f.cluster, COUNT(*)
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND f.cluster IS NOT NULL AND t.album IS NOT NULL
+              GROUP BY t.album, COALESCE(t.album_artist, t.artist), f.cluster",
+        )?;
+        let lignes: Vec<(String, Option<String>, i64, i64)> = stmt
+            .query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut par_album: HashMap<(String, Option<String>), Vec<(i64, i64)>> = HashMap::new();
+        for (album, artiste, cluster, n) in lignes {
+            par_album.entry((album, artiste)).or_default().push((cluster, n));
+        }
+
+        let mut secondaires = HashMap::new();
+        for ((album, artiste), mut comptes) in par_album {
+            // Effectif décroissant, plus petit numéro de famille en cas
+            // d'égalité — même tri que la dominante, pour que la deuxième
+            // place soit stable d'une session à l'autre.
+            comptes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            if let Some(&(famille, n)) = comptes.get(1) {
+                if n >= 2 {
+                    let id = hacher(&artiste.unwrap_or_default(), &album) as i64;
+                    secondaires.insert(id, famille);
+                }
+            }
+        }
+        Ok(secondaires)
+    }
+
+    /// Centroïde d'empreinte de chaque album — la moyenne des vecteurs de ses
+    /// morceaux déjà analysés, clé [`hacher`]`(artiste, album) as i64`.
+    ///
+    /// Sert le mode Explorer → Anneau : trouver les albums sonorement proches
+    /// d'un album donné revient à chercher parmi ces centroïdes avec
+    /// [`rusty_music_analysis::chemin::voisins`] — pas de nouveau calcul de
+    /// distance, pas de graphe à construire (un balayage linéaire sur
+    /// quelques milliers d'albums coûte quelques millisecondes).
+    pub fn album_embeddings(&self, model: &str) -> Result<Vec<(i64, Vec<f32>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.album, COALESCE(t.album_artist, t.artist), f.vector
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND t.album IS NOT NULL",
+        )?;
+        struct Ligne {
+            album: String,
+            artiste: Option<String>,
+            vector: Vec<u8>,
+        }
+        let lignes: Vec<Ligne> = stmt
+            .query_map(params![model], |r| {
+                Ok(Ligne {
+                    album: r.get(0)?,
+                    artiste: r.get(1)?,
+                    vector: r.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut cumul: HashMap<i64, (Vec<f32>, u32)> = HashMap::new();
+        for l in lignes {
+            let artiste = l.artiste.unwrap_or_default();
+            let id = hacher(&artiste, &l.album) as i64;
+            let v: Vec<f32> = l
+                .vector
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            let e = cumul.entry(id).or_insert_with(|| (vec![0.0; v.len()], 0));
+            for (a, b) in e.0.iter_mut().zip(&v) {
+                *a += b;
+            }
+            e.1 += 1;
+        }
+
+        Ok(cumul
+            .into_iter()
+            .map(|(id, (somme, n))| {
+                let n = (n.max(1)) as f32;
+                (id, somme.into_iter().map(|x| x / n).collect())
+            })
+            .collect())
+    }
+
+    /// Chaque album connu, annoté de sa famille dominante et de sa date de
+    /// sortie — voir [`AlbumNoeud`]. Croise [`Library::albums`] (identité et
+    /// pochette), [`Library::familles_des_albums`] (famille) et
+    /// [`Library::ordre_darrivee`] (date, groupée par le même hachage
+    /// d'album) : les trois partagent déjà la même clé `(album,
+    /// COALESCE(album_artist, artist))`, il n'y a qu'à les assembler.
+    pub fn albums_annotes(&self, model: &str) -> Result<Vec<AlbumNoeud>> {
+        let mut noeuds: HashMap<i64, AlbumNoeud> = HashMap::new();
+
+        for row in self.albums(None)? {
+            let artist = row.artist.unwrap_or_default();
+            let id = hacher(&artist, &row.name) as i64;
+            noeuds.insert(
+                id,
+                AlbumNoeud {
+                    id,
+                    name: row.name,
+                    artist,
+                    famille: None,
+                    date: 0,
+                    path: Some(row.path),
+                    duree_ms: 0,
+                },
+            );
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT album, COALESCE(album_artist, artist), SUM(COALESCE(duration_ms, 0))
+               FROM tracks
+              WHERE album IS NOT NULL
+              GROUP BY album, COALESCE(album_artist, artist)",
+        )?;
+        let durees: Vec<(String, Option<String>, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        for (album, artiste, duree) in durees {
+            let artiste = artiste.unwrap_or_default();
+            let id = hacher(&artiste, &album) as i64;
+            if let Some(n) = noeuds.get_mut(&id) {
+                n.duree_ms = duree;
+            }
+        }
+
+        for (album, artiste, cluster) in self.familles_des_albums(model)? {
+            let artiste = artiste.unwrap_or_default();
+            let id = hacher(&artiste, &album) as i64;
+            if let Some(n) = noeuds.get_mut(&id) {
+                n.famille = Some(cluster);
+            }
+        }
+
+        // La date la plus ancienne parmi les morceaux de l'album — même
+        // arbitrage que l'arrivée sur la carte : voir `ArriveeBrute.album`,
+        // qui utilise déjà exactement ce hachage pour grouper un disque.
+        let mut dates: HashMap<i64, u32> = HashMap::new();
+        for a in self.ordre_darrivee()? {
+            let id = a.album as i64;
+            dates
+                .entry(id)
+                .and_modify(|d| *d = (*d).min(a.date))
+                .or_insert(a.date);
+        }
+        for (id, date) in dates {
+            if let Some(n) = noeuds.get_mut(&id) {
+                n.date = date;
+            }
+        }
+
+        Ok(noeuds.into_values().collect())
+    }
+
+    /// Recherche d'albums pour la barre de recherche en mode Explorer →
+    /// Anneau — même index plein texte que [`Library::search`], mais
+    /// regroupé par album ; l'identité (`id`) est calculée ici, une fois pour
+    /// toutes, jamais recalculée côté interface.
+    pub fn search_albums(&self, q: &str, limit: i64) -> Result<Vec<(i64, String, String)>> {
+        let requete = requete_fts(q);
+        if requete.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT t.album, COALESCE(t.album_artist, t.artist)
+               FROM tracks t
+              WHERE t.album IS NOT NULL
+                AND t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?1)
+              ORDER BY t.album COLLATE NOCASE
+              LIMIT ?2",
+        )?;
+        let lignes: Vec<(String, Option<String>)> = stmt
+            .query_map(params![requete, limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(lignes
+            .into_iter()
+            .map(|(album, artiste)| {
+                let artiste = artiste.unwrap_or_default();
+                let id = hacher(&artiste, &album) as i64;
+                (id, album, artiste)
+            })
             .collect())
     }
 
@@ -2465,6 +2839,280 @@ impl Library {
         Ok(n)
     }
 
+    /* -------------------------------------------- biographies (TheAudioDB) */
+
+    /// Les MBID d'artiste dont la biographie reste à récupérer. **Aucun repli
+    /// par nom** : un artiste sans `mb_artist_id` n'entre jamais ici — voir
+    /// `docs/enrichissement-lecteur.md`. `depuis` : voir
+    /// [`Self::pop_recordings_candidats`].
+    pub fn theaudiodb_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
+        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let mut stmt = self.conn.prepare(
+            "SELECT t.mb_artist_id, COUNT(*) n FROM tracks t
+              WHERE t.mb_artist_id IS NOT NULL AND t.mb_artist_id <> ''
+                AND NOT EXISTS (SELECT 1 FROM theaudiodb_fetched f
+                                 WHERE f.mb_artist_id = t.mb_artist_id AND f.at >= ?1)
+              GROUP BY t.mb_artist_id
+              ORDER BY n DESC
+              LIMIT ?2",
+        )?;
+        let out = stmt
+            .query_map(params![depuis, limite], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range les biographies d'un lot et marque tous les MBID demandés comme
+    /// interrogés — même transaction, patron [`Self::pop_poser`].
+    pub fn theaudiodb_poser(&mut self, demandes: &[String], trouvees: &[BioBrute]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for b in trouvees {
+            tx.execute(
+                "INSERT INTO theaudiodb_artistes
+                   (mb_artist_id, id_theaudiodb, biographie_en, biographie_fr, recupere_le)
+                 VALUES (?1, ?2, ?3, ?4, strftime('%s','now'))
+                 ON CONFLICT(mb_artist_id) DO UPDATE SET
+                   id_theaudiodb=excluded.id_theaudiodb,
+                   biographie_en=excluded.biographie_en,
+                   biographie_fr=excluded.biographie_fr,
+                   recupere_le=excluded.recupere_le",
+                params![b.mb_artist_id, b.id_theaudiodb, b.biographie_en, b.biographie_fr],
+            )?;
+        }
+        for mbid in demandes {
+            tx.execute(
+                "INSERT OR REPLACE INTO theaudiodb_fetched (mb_artist_id) VALUES (?1)",
+                params![mbid],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les biographies connues pour un morceau. `mb_artist_id` peut porter
+    /// plusieurs MBID `/`-séparés (« X feat. Y ») : une entrée par MBID connu.
+    pub fn bio_pour_piste(&self, track_id: i64) -> Result<Vec<BioArtiste>> {
+        let brut: Option<String> = self.conn.query_row(
+            "SELECT mb_artist_id FROM tracks WHERE id = ?1",
+            params![track_id],
+            |r| r.get(0),
+        ).optional()?.flatten();
+        let Some(brut) = brut else { return Ok(Vec::new()) };
+
+        let mut stmt = self.conn.prepare(
+            "SELECT mb_artist_id, biographie_en, biographie_fr
+               FROM theaudiodb_artistes WHERE mb_artist_id = ?1",
+        )?;
+        let mut out = Vec::new();
+        for mbid in brut.split('/').map(str::trim).filter(|s| !s.is_empty()) {
+            if let Some(row) = stmt
+                .query_row(params![mbid], |r| {
+                    Ok(BioArtiste {
+                        mb_artist_id: r.get(0)?,
+                        biographie_en: r.get(1)?,
+                        biographie_fr: r.get(2)?,
+                    })
+                })
+                .optional()?
+            {
+                out.push(row);
+            }
+        }
+        Ok(out)
+    }
+
+    /* --------------------------------------- crédits Discogs (dumps CC0) */
+
+    /// Les MBID d'édition (`tracks.mb_release_id`) dont le lien Discogs reste
+    /// à vérifier — jamais interrogés via `editions_discogs`.
+    pub fn discogs_liaison_candidats(&self, limite: usize) -> Result<Vec<String>> {
+        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT t.mb_release_id FROM tracks t
+              WHERE t.mb_release_id IS NOT NULL AND t.mb_release_id <> ''
+                AND NOT EXISTS (SELECT 1 FROM editions_discogs e
+                                 WHERE e.mb_release_id = t.mb_release_id)
+              LIMIT ?1",
+        )?;
+        let out = stmt
+            .query_map(params![limite], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range le lien (ou son absence — `discogs_release_id = NULL`) entre une
+    /// édition MusicBrainz et son édition Discogs.
+    pub fn discogs_lier_edition(
+        &self,
+        mb_release_id: &str,
+        discogs_release_id: Option<i64>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO editions_discogs (mb_release_id, discogs_release_id, at)
+             VALUES (?1, ?2, strftime('%s','now'))
+             ON CONFLICT(mb_release_id) DO UPDATE SET
+               discogs_release_id=excluded.discogs_release_id, at=excluded.at",
+            params![mb_release_id, discogs_release_id],
+        )?;
+        Ok(())
+    }
+
+    /// Tous les identifiants d'édition Discogs à rechercher dans le prochain
+    /// dump — ceux qu'on a réussi à relier depuis MusicBrainz.
+    pub fn discogs_wanted_ids(&self) -> Result<HashSet<u64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT discogs_release_id FROM editions_discogs
+              WHERE discogs_release_id IS NOT NULL",
+        )?;
+        let out = stmt
+            .query_map([], |r| r.get::<_, i64>(0).map(|v| v as u64))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range les crédits d'une édition Discogs — remplace ce qui existait déjà
+    /// pour cette édition (un import réécrit, il ne fusionne pas).
+    pub fn credits_poser(&mut self, discogs_release_id: u64, credits: &[CreditDiscogs]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM credits_discogs WHERE discogs_release_id = ?1",
+            params![discogs_release_id as i64],
+        )?;
+        for c in credits {
+            tx.execute(
+                "INSERT OR IGNORE INTO credits_discogs
+                   (discogs_release_id, personne, role, pistes, discogs_artist_id, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'discogs')",
+                params![discogs_release_id as i64, c.personne, c.role, c.pistes, c.discogs_artist_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les crédits Discogs d'un morceau, via son édition MusicBrainz.
+    pub fn credits_pour_piste(&self, track_id: i64) -> Result<Vec<CreditDiscogs>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT c.personne, c.role, c.pistes, c.discogs_artist_id
+               FROM tracks t
+               JOIN editions_discogs e ON e.mb_release_id = t.mb_release_id
+               JOIN credits_discogs c ON c.discogs_release_id = e.discogs_release_id
+              WHERE t.id = ?1
+              ORDER BY c.personne",
+        )?;
+        let out = stmt
+            .query_map(params![track_id], |r| {
+                Ok(CreditDiscogs {
+                    personne: r.get(0)?,
+                    role: r.get(1)?,
+                    pistes: r.get(2)?,
+                    discogs_artist_id: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /* --------------------------------------- critiques (CritiqueBrainz) */
+
+    /// Les release-groups dont les critiques restent à récupérer. Réutilise
+    /// `mb_release_groups`, déjà rempli par l'enrichissement des genres — pas
+    /// de nouvelle résolution nom → release-group.
+    pub fn critiques_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
+        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let mut stmt = self.conn.prepare(
+            "SELECT mbid FROM mb_release_groups g
+              WHERE NOT EXISTS (SELECT 1 FROM critiques_fetched f
+                                  WHERE f.mbid_release_group = g.mbid AND f.at >= ?1)
+              LIMIT ?2",
+        )?;
+        let out = stmt
+            .query_map(params![depuis, limite], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range les critiques d'un release-group et marque celui-ci comme
+    /// interrogé — « aucune critique » est une réponse valable, marquée comme
+    /// les autres.
+    pub fn critiques_poser(&mut self, mbid_rg: &str, critiques: &[CritiqueBrute]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for c in critiques {
+            tx.execute(
+                "INSERT INTO critiques
+                   (id, mbid_release_group, source, auteur, licence_id, licence_nom,
+                    langue, texte, url_originale, recupere_le)
+                 VALUES (?1, ?2, 'critiquebrainz', ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s','now'))
+                 ON CONFLICT(id) DO UPDATE SET
+                   auteur=excluded.auteur, licence_id=excluded.licence_id,
+                   licence_nom=excluded.licence_nom, langue=excluded.langue,
+                   texte=excluded.texte, url_originale=excluded.url_originale,
+                   recupere_le=excluded.recupere_le",
+                params![
+                    c.id, mbid_rg, c.auteur, c.licence_id, c.licence_nom,
+                    c.langue, c.texte, c.url_originale
+                ],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO critiques_fetched (mbid_release_group) VALUES (?1)",
+            params![mbid_rg],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les critiques connues pour un morceau, via son release-group
+    /// MusicBrainz (même résolution `(mb_artist_id, titre normalisé)` que
+    /// [`Self::pop_rg_candidats`]).
+    pub fn critiques_pour_piste(&self, track_id: i64) -> Result<Vec<Critique>> {
+        let Some(rg) = self.release_group_pour_piste(track_id)? else {
+            return Ok(Vec::new());
+        };
+        self.critiques_pour_release_group(&rg)
+    }
+
+    /// Le release-group MusicBrainz d'un morceau, s'il est connu — même
+    /// résolution que la popularité et les genres à l'échelon album.
+    pub fn release_group_pour_piste(&self, track_id: i64) -> Result<Option<String>> {
+        let Some((artiste, album)) = self
+            .conn
+            .query_row(
+                "SELECT mb_artist_id, album FROM tracks WHERE id = ?1",
+                params![track_id],
+                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+            )
+            .optional()?
+            .and_then(|(a, b)| Some((a?, b?)))
+        else {
+            return Ok(None);
+        };
+        let albums = self.mb_albums()?;
+        Ok(albums.get(&(artiste, crate::musicbrainz::normaliser_titre(&album))).cloned())
+    }
+
+    fn critiques_pour_release_group(&self, mbid_rg: &str) -> Result<Vec<Critique>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, auteur, licence_id, licence_nom, langue, texte, url_originale
+               FROM critiques WHERE mbid_release_group = ?1
+              ORDER BY recupere_le DESC",
+        )?;
+        let out = stmt
+            .query_map(params![mbid_rg], |r| {
+                Ok(Critique {
+                    id: r.get(0)?,
+                    auteur: r.get(1)?,
+                    licence_id: r.get(2)?,
+                    licence_nom: r.get(3)?,
+                    langue: r.get(4)?,
+                    texte: r.get(5)?,
+                    url_originale: r.get(6)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
     /// Combien d'artistes ont été interrogés, et combien ont rendu un genre.
     pub fn mb_avancement(&self) -> Result<(i64, i64, i64)> {
         let total: i64 = self.conn.query_row(
@@ -2741,6 +3389,167 @@ impl Library {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Agrège la bibliothèque par bucket temporel et par famille, pour le
+    /// streamgraph du mode Explorer → Temps : l'effectif par (bucket,
+    /// famille) fait les bandes, la famille dominante par (artiste, bucket)
+    /// fait les fils — voir [`FluxTemporel`].
+    ///
+    /// La date vient de [`Self::ordre_darrivee`] (déjà la meilleure
+    /// résolution disponible : MusicBrainz avant tag avant médiane, voir sa
+    /// table de fiabilité), pas de la seule colonne `tracks.year`. Les
+    /// morceaux sans date fiable portent [`BUCKET_INCERTAIN`] plutôt qu'une
+    /// année inventée.
+    pub fn flux_temporel(&self, model: &str) -> Result<FluxTemporel> {
+        let arrivees = self.ordre_darrivee()?;
+        let mut bucket_par_piste: HashMap<i64, i32> = HashMap::with_capacity(arrivees.len());
+        for a in &arrivees {
+            let bucket = if a.source == "ingestion" {
+                BUCKET_INCERTAIN
+            } else {
+                bucket_annee((a.date / 10_000) as i32)
+            };
+            bucket_par_piste.insert(a.track_id, bucket);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT f.track_id, f.cluster, COALESCE(t.album_artist, t.artist), t.mb_album_artist_id, t.album
+               FROM features f JOIN tracks t ON t.id = f.track_id
+              WHERE f.model = ?1 AND f.cluster IS NOT NULL",
+        )?;
+        struct Ligne {
+            track_id: i64,
+            cluster: i64,
+            artiste: Option<String>,
+            mb_artist_id: Option<String>,
+            album: Option<String>,
+        }
+        let lignes: Vec<Ligne> = stmt
+            .query_map(params![model], |r| {
+                Ok(Ligne {
+                    track_id: r.get(0)?,
+                    cluster: r.get(1)?,
+                    artiste: r.get(2)?,
+                    mb_artist_id: r.get(3)?,
+                    album: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut bandes: HashMap<(i32, i64), i64> = HashMap::new();
+        let mut par_artiste_bucket: HashMap<(String, i32), HashMap<i64, i64>> = HashMap::new();
+        // Détail par album, sous chaque (artiste, bucket) — c'est lui que le
+        // survol d'un fil montre. Une même paire peut porter plusieurs albums
+        // (une sortie et une réédition la même année) et, plus rarement, un
+        // album à cheval sur deux familles.
+        let mut albums_par_artiste_bucket: HashMap<(String, i32), HashMap<String, HashMap<i64, i64>>> =
+            HashMap::new();
+        let mut mb_id_de: HashMap<String, Option<String>> = HashMap::new();
+
+        for l in &lignes {
+            let Some(&bucket) = bucket_par_piste.get(&l.track_id) else {
+                continue;
+            };
+            *bandes.entry((bucket, l.cluster)).or_default() += 1;
+
+            let Some(artiste) = l.artiste.clone().filter(|a| !a.is_empty()) else {
+                continue;
+            };
+            mb_id_de
+                .entry(artiste.clone())
+                .or_insert_with(|| l.mb_artist_id.clone());
+            *par_artiste_bucket
+                .entry((artiste.clone(), bucket))
+                .or_default()
+                .entry(l.cluster)
+                .or_default() += 1;
+
+            if let Some(album) = l.album.clone().filter(|a| !a.is_empty()) {
+                *albums_par_artiste_bucket
+                    .entry((artiste, bucket))
+                    .or_default()
+                    .entry(album)
+                    .or_default()
+                    .entry(l.cluster)
+                    .or_default() += 1;
+            }
+        }
+
+        let bandes = bandes
+            .into_iter()
+            .map(|((bucket, famille), effectif)| BandeAnnuelle {
+                bucket,
+                famille,
+                effectif,
+            })
+            .collect();
+
+        // Famille dominante d'un groupe de comptes par famille ; à égalité,
+        // la plus petite l'emporte — trier par famille croissante avant de
+        // chercher le maximum le garantit, indépendamment de l'ordre
+        // d'itération de la table. Sert à l'artiste comme à chaque album.
+        let dominante = |comptes: HashMap<i64, i64>| -> Option<(i64, i64)> {
+            let mut comptes: Vec<(i64, i64)> = comptes.into_iter().collect();
+            comptes.sort_by_key(|&(famille, _)| famille);
+            comptes
+                .into_iter()
+                .fold(None, |meilleur: Option<(i64, i64)>, cur| match meilleur {
+                    Some(m) if m.1 >= cur.1 => Some(m),
+                    _ => Some(cur),
+                })
+        };
+
+        let mut par_artiste: HashMap<String, Vec<PointFilArtiste>> = HashMap::new();
+        for ((artiste, bucket), par_famille) in par_artiste_bucket {
+            let Some((famille, effectif)) = dominante(par_famille) else {
+                continue;
+            };
+
+            let mut albums: Vec<AlbumPoint> = albums_par_artiste_bucket
+                .get(&(artiste.clone(), bucket))
+                .map(|par_album| {
+                    par_album
+                        .iter()
+                        .filter_map(|(nom, par_f)| {
+                            let effectif = par_f.values().sum();
+                            let (famille, _) = dominante(par_f.clone())?;
+                            Some(AlbumPoint { nom: nom.clone(), famille, effectif })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            albums.sort_by(|a, b| b.effectif.cmp(&a.effectif).then_with(|| a.nom.cmp(&b.nom)));
+
+            par_artiste.entry(artiste).or_default().push(PointFilArtiste {
+                bucket,
+                famille,
+                effectif,
+                albums,
+            });
+        }
+
+        let mut fils: Vec<FilArtiste> = par_artiste
+            .into_iter()
+            .map(|(artiste, mut points)| {
+                points.sort_by_key(|p| p.bucket);
+                let effectif_total = points.iter().map(|p| p.effectif).sum();
+                let mb_artist_id = mb_id_de.get(&artiste).cloned().flatten();
+                FilArtiste {
+                    artiste,
+                    mb_artist_id,
+                    effectif_total,
+                    points,
+                }
+            })
+            .collect();
+        fils.sort_by(|a, b| {
+            b.effectif_total
+                .cmp(&a.effectif_total)
+                .then_with(|| a.artiste.cmp(&b.artiste))
+        });
+
+        Ok(FluxTemporel { bandes, fils })
     }
 
     pub fn count(&self) -> Result<i64> {
@@ -3914,6 +4723,126 @@ mod tests {
     }
 
     #[test]
+    fn flux_temporel_agrege_bandes_et_fils() {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute = |path: &str, artiste: &str, album: &str, annee: i64, cluster: i64| {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: path.into(),
+                    artist: Some(artiste.into()),
+                    album_artist: Some(artiste.into()),
+                    album: Some(album.into()),
+                    year: Some(annee),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster)
+                .unwrap();
+        };
+
+        // X migre du rock (1990) vers l'électro (1994) ; Y ne compte qu'un
+        // morceau, trop peu pour peser sur la famille dominante de X.
+        ajoute("/m/x1.mp3", "X", "A", 1990, 1);
+        ajoute("/m/x2.mp3", "X", "A", 1990, 1);
+        ajoute("/m/x3.mp3", "X", "B", 1994, 2);
+        ajoute("/m/y1.mp3", "Y", "C", 1994, 2);
+
+        let flux = lib.flux_temporel("clap").unwrap();
+
+        let mut bandes: Vec<(i32, i64, i64)> = flux
+            .bandes
+            .iter()
+            .map(|b| (b.bucket, b.famille, b.effectif))
+            .collect();
+        bandes.sort();
+        assert_eq!(bandes, vec![(1990, 1, 2), (1994, 2, 2)]);
+
+        let x = flux.fils.iter().find(|f| f.artiste == "X").unwrap();
+        assert_eq!(x.effectif_total, 3);
+        let points: Vec<(i32, i64)> = x.points.iter().map(|p| (p.bucket, p.famille)).collect();
+        assert_eq!(points, vec![(1990, 1), (1994, 2)], "le style de X bascule en 1994");
+
+        // Le détail par album, montré au survol d'un fil : l'album « A »
+        // porte le bucket 1990, « B » le bucket 1994.
+        let point_1990 = x.points.iter().find(|p| p.bucket == 1990).unwrap();
+        assert_eq!(
+            point_1990.albums.iter().map(|a| (a.nom.as_str(), a.famille, a.effectif)).collect::<Vec<_>>(),
+            vec![("A", 1, 2)],
+        );
+        let point_1994 = x.points.iter().find(|p| p.bucket == 1994).unwrap();
+        assert_eq!(
+            point_1994.albums.iter().map(|a| (a.nom.as_str(), a.famille, a.effectif)).collect::<Vec<_>>(),
+            vec![("B", 2, 1)],
+        );
+    }
+
+    #[test]
+    fn album_embeddings_moyenne_les_empreintes_dun_meme_album() {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute = |path: &str, artiste: &str, album: &str, vecteur: &[f32]| {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: path.into(),
+                    artist: Some(artiste.into()),
+                    album_artist: Some(artiste.into()),
+                    album: Some(album.into()),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_features(id, "clap", vecteur, 0.0, 0.0, 0).unwrap();
+        };
+        ajoute("/m/x1.mp3", "X", "A", &[1.0, 0.0]);
+        ajoute("/m/x2.mp3", "X", "A", &[3.0, 0.0]);
+        ajoute("/m/y1.mp3", "Y", "B", &[0.0, 5.0]);
+
+        let par_id: HashMap<i64, Vec<f32>> = lib.album_embeddings("clap").unwrap().into_iter().collect();
+
+        assert_eq!(par_id[&(hacher("X", "A") as i64)], vec![2.0, 0.0]);
+        assert_eq!(par_id[&(hacher("Y", "B") as i64)], vec![0.0, 5.0]);
+    }
+
+    #[test]
+    fn albums_annotes_croise_famille_et_date() {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute =
+            |path: &str, artiste: &str, album: &str, annee: i64, cluster: i64, duree_ms: i64| {
+                let id = lib
+                    .upsert(&TrackMeta {
+                        path: path.into(),
+                        artist: Some(artiste.into()),
+                        album_artist: Some(artiste.into()),
+                        album: Some(album.into()),
+                        year: Some(annee),
+                        duration_ms: Some(duree_ms),
+                        ..Default::default()
+                    })
+                    .unwrap();
+                lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster)
+                    .unwrap();
+            };
+        ajoute("/m/x1.mp3", "X", "A", 1990, 1, 200_000);
+        ajoute("/m/x2.mp3", "X", "A", 1990, 1, 180_000);
+        ajoute("/m/x3.mp3", "X", "B", 1994, 2, 240_000);
+
+        let par_id: HashMap<i64, AlbumNoeud> = lib
+            .albums_annotes("clap")
+            .unwrap()
+            .into_iter()
+            .map(|n| (n.id, n))
+            .collect();
+
+        let a = &par_id[&(hacher("X", "A") as i64)];
+        assert_eq!(a.famille, Some(1));
+        assert_eq!(a.date, 19_900_000);
+        assert_eq!(a.artist, "X");
+        assert_eq!(a.duree_ms, 380_000, "somme des durées de l'album");
+
+        let b = &par_id[&(hacher("X", "B") as i64)];
+        assert_eq!(b.famille, Some(2));
+        assert_eq!(b.date, 19_940_000);
+    }
+
+    #[test]
     fn tracks_of_album_respecte_lordre_du_disque() {
         let lib = bibliotheque_test();
         let pistes = lib.tracks_of_album("Moon Safari", None).unwrap();
@@ -3930,6 +4859,17 @@ mod tests {
         assert_eq!(lib.search("Moon", 50).unwrap().len(), 2); // album
         assert_eq!(lib.search("introuvable", 50).unwrap().len(), 0);
         assert_eq!(lib.search("a", 2).unwrap().len(), 2); // la limite s'applique
+    }
+
+    #[test]
+    fn search_albums_regroupe_par_album() {
+        let lib = bibliotheque_test();
+        // « Moon Safari » compte deux pistes retenues par la recherche : sans
+        // le regroupement, il apparaîtrait deux fois.
+        let r = lib.search_albums("Moon", 50).unwrap();
+        assert_eq!(r.len(), 1, "l'album ne doit sortir qu'une fois : {r:?}");
+        assert_eq!(r[0].1, "Moon Safari");
+        assert_eq!(lib.search_albums("introuvable", 50).unwrap().len(), 0);
     }
 
     /// Mise à niveau d'une base peuplée avant que l'index de recherche
@@ -3953,6 +4893,70 @@ mod tests {
             lib.search("kanan", 10).unwrap().len(),
             1,
             "l'index n'a pas été reconstruit pour les lignes préexistantes"
+        );
+    }
+
+    /// Une base enrichie par le code d'avant le correctif porte des artistes
+    /// marqués « déjà faits » sans aucune date sur leurs release-groups —
+    /// `mb_poser_albums` ne les écrivait pas encore. La migration doit les
+    /// remettre « à faire » pour qu'un `enrich` ultérieur les rattrape.
+    #[test]
+    fn purge_dates_remet_en_attente_les_artistes_deja_fetches() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute(
+            "INSERT INTO tracks(path, artist, mb_artist_id) VALUES ('/m/a.mp3', 'X', 'mbid-x')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+             VALUES ('rg-1', 'mbid-x', 'Album', 'album')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')", [])
+            .unwrap();
+        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'albums')", [])
+            .unwrap();
+
+        migrate(&conn).unwrap();
+        let lib = Library { conn };
+
+        assert_eq!(
+            lib.mb_artistes_en_attente("artist", 10).unwrap(),
+            vec!["mbid-x".to_string()],
+            "l'artiste doit redevenir « à faire » après la purge"
+        );
+    }
+
+    /// Sans ligne sentinelle, la purge rejouerait à chaque démarrage — et un
+    /// artiste dont MusicBrainz ne connaît vraiment aucune date (une repasse
+    /// honnête peut légitimement en rendre aucune) serait remis « à faire »
+    /// indéfiniment, contrairement à l'esprit « reprend où elle s'est
+    /// arrêtée » du module.
+    #[test]
+    fn purge_dates_ne_se_repete_pas() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        migrate(&conn).unwrap(); // premier « démarrage » : pose la sentinelle
+
+        // Une repasse d'enrich réussie depuis : l'artiste est de nouveau
+        // marqué fait, toujours sans date connue.
+        conn.execute(
+            "INSERT INTO tracks(path, artist, mb_artist_id) VALUES ('/m/a.mp3', 'X', 'mbid-x')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')", [])
+            .unwrap();
+
+        migrate(&conn).unwrap(); // deuxième « démarrage »
+        let lib = Library { conn };
+
+        assert!(
+            lib.mb_artistes_en_attente("artist", 10).unwrap().is_empty(),
+            "la purge ne doit jouer qu'une fois"
         );
     }
 
@@ -4704,6 +5708,133 @@ mod tests {
         assert_eq!(perimes, 1, "seul le fetch de 200 j dépasse 90 j");
         // Seuil relevé au-delà de l'âge du vieux : plus rien de périmé.
         assert_eq!(lib.popularite_fraicheur(300).unwrap().2, 0);
+    }
+
+    /// Un artiste sans MBID n'entre jamais dans les candidats — aucun repli
+    /// par nom, voir `docs/enrichissement-lecteur.md`.
+    #[test]
+    fn theaudiodb_candidats_ignore_les_artistes_sans_mbid() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute_batch(
+                "INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (1, '/m/1.flac', 'art-1', 0);
+                 INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (2, '/m/2.flac', NULL, 0);",
+            )
+            .unwrap();
+        assert_eq!(lib.theaudiodb_candidats(0, 100).unwrap(), vec!["art-1".to_string()]);
+
+        lib.theaudiodb_poser(
+            &["art-1".to_string()],
+            &[BioBrute {
+                mb_artist_id: "art-1".into(),
+                id_theaudiodb: Some("111".into()),
+                biographie_en: Some("bio en".into()),
+                biographie_fr: Some("bio fr".into()),
+            }],
+        )
+        .unwrap();
+        assert!(lib.theaudiodb_candidats(0, 100).unwrap().is_empty());
+
+        let bios = lib.bio_pour_piste(1).unwrap();
+        assert_eq!(bios.len(), 1);
+        assert_eq!(bios[0].biographie_fr.as_deref(), Some("bio fr"));
+        assert!(lib.bio_pour_piste(2).unwrap().is_empty());
+    }
+
+    /// Le lien Discogs se pose y compris quand il est absent (`None`) — pour
+    /// ne pas revérifier une édition sans relation cataloguée à chaque passe.
+    #[test]
+    fn discogs_liaison_candidats_et_lien_absent_memorise() {
+        let lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_release_id, added_at)
+                 VALUES (1, '/m/1.flac', 'rel-1', 0)",
+                [],
+            )
+            .unwrap();
+        assert_eq!(lib.discogs_liaison_candidats(100).unwrap(), vec!["rel-1".to_string()]);
+
+        lib.discogs_lier_edition("rel-1", None).unwrap();
+        assert!(lib.discogs_liaison_candidats(100).unwrap().is_empty());
+        assert!(lib.discogs_wanted_ids().unwrap().is_empty());
+    }
+
+    /// Les crédits se retrouvent depuis une piste via son édition MusicBrainz,
+    /// et un import réécrit ceux d'une édition plutôt que de les cumuler.
+    #[test]
+    fn credits_poser_remplace_les_credits_dune_edition() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_release_id, added_at)
+                 VALUES (1, '/m/1.flac', 'rel-1', 0)",
+                [],
+            )
+            .unwrap();
+        lib.discogs_lier_edition("rel-1", Some(249_504)).unwrap();
+
+        lib.credits_poser(
+            249_504,
+            &[CreditDiscogs {
+                personne: "Ancien".into(),
+                role: "Mixed By".into(),
+                pistes: String::new(),
+                discogs_artist_id: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(lib.credits_pour_piste(1).unwrap().len(), 1);
+
+        lib.credits_poser(
+            249_504,
+            &[CreditDiscogs {
+                personne: "Nouveau".into(),
+                role: "Producer".into(),
+                pistes: "A1, A2".into(),
+                discogs_artist_id: Some(1),
+            }],
+        )
+        .unwrap();
+        let credits = lib.credits_pour_piste(1).unwrap();
+        assert_eq!(credits.len(), 1, "l'ancien crédit doit avoir été remplacé");
+        assert_eq!(credits[0].personne, "Nouveau");
+        assert_eq!(credits[0].pistes, "A1, A2");
+    }
+
+    /// « Aucune critique » se mémorise comme les autres réponses vides du
+    /// projet — l'album ne revient pas à chaque passe.
+    #[test]
+    fn critiques_poser_memorise_labsence_de_critique() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+                 VALUES ('rg-1', 'art-1', 'Titre', 'titre')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(lib.critiques_candidats(0, 100).unwrap(), vec!["rg-1".to_string()]);
+
+        lib.critiques_poser("rg-1", &[]).unwrap();
+        assert!(lib.critiques_candidats(0, 100).unwrap().is_empty());
+
+        lib.critiques_poser(
+            "rg-1",
+            &[CritiqueBrute {
+                id: "crit-1".into(),
+                auteur: Some("Quelquun".into()),
+                licence_id: "CC BY-SA 3.0".into(),
+                licence_nom: Some("Creative Commons Attribution-ShareAlike 3.0".into()),
+                langue: Some("fr".into()),
+                texte: "Un album marquant.".into(),
+                url_originale: Some("https://critiquebrainz.org/review/crit-1".into()),
+            }],
+        )
+        .unwrap();
+        let critiques = lib.critiques_pour_release_group("rg-1").unwrap();
+        assert_eq!(critiques.len(), 1);
+        assert_eq!(critiques[0].auteur.as_deref(), Some("Quelquun"));
     }
 }
 

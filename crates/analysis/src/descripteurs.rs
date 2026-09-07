@@ -477,6 +477,31 @@ fn alternance_dents(env: &[f32], periode: f32) -> f32 {
 /// Le tempo le plus vraisemblable, ou `None` si rien ne ressort — en pratique,
 /// le silence seul.
 pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
+    tempo_detaille(env).map(|d| d.bpm)
+}
+
+/// Les grandeurs intermédiaires du choix de tempo, pour diagnostiquer un
+/// gagnant douteux (`examples/diagnostic_tempo.rs`) sans deviner à l'aveugle
+/// pourquoi une correction d'octave a ou n'a pas joué. `tempo()` reste le
+/// seul appelé en production ([`tempo`]) ; ceci n'ajoute qu'une fenêtre sur
+/// le même calcul, aucune branche neuve.
+#[derive(Debug, Clone, Copy)]
+pub struct DiagnosticTempo {
+    /// Le gagnant de la grille, avant toute correction d'octave.
+    pub gagnant_grille: f32,
+    /// Rapport dents faibles/fortes du peigne au gagnant de grille — sous
+    /// [`SEUIL_SOUS_OCTAVE`], la correction descendante s'applique.
+    pub alternance: f32,
+    /// `brut(gagnant × 2) / brut(gagnant)` — au-dessus de
+    /// [`SEUIL_SUR_OCTAVE`], la correction montante s'applique.
+    pub brut_double_sur_brut: f32,
+    pub corrige_vers_le_bas: bool,
+    pub corrige_vers_le_haut: bool,
+    /// Le tempo rendu par [`tempo`], après correction éventuelle.
+    pub bpm: f32,
+}
+
+pub fn tempo_detaille(env: &[f32]) -> Option<DiagnosticTempo> {
     let decalage = |bpm: f32| 60.0 * TPS / bpm;
     let reference = correle(env, 0.0);
     if (env.len() as f32) < decalage(BPM_MIN) * 3.0 || reference <= f32::EPSILON {
@@ -496,7 +521,7 @@ pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
             / reference
     };
 
-    let (bpm, _) = (0..CANDIDATS)
+    let (gagnant_grille, _) = (0..CANDIDATS)
         .map(|i| {
             let bpm = BPM_MIN * (BPM_MAX / BPM_MIN).powf(i as f32 / (CANDIDATS - 1) as f32);
             let prior = (-0.5 * ((bpm / BPM_PREFERE).ln() / ETALEMENT).powi(2)).exp();
@@ -514,21 +539,72 @@ pub(crate) fn tempo(env: &[f32]) -> Option<f32> {
     // `brut(bpm / 2)` ne discriminerait rien, il n'échantillonne que des
     // pics réels. Le sens montant, lui, peut s'appuyer sur `brut` : le
     // double échantillonne des creux, un faux double y perd.
-    let d = decalage(bpm);
+    let d = decalage(gagnant_grille);
+    let alternance = alternance_dents(env, d);
+    let brut_double_sur_brut = brut(gagnant_grille * 2.0) / brut(gagnant_grille);
     let corrige_vers_le_bas =
-        bpm / 2.0 >= BPM_MIN_CORRECTION && alternance_dents(env, d) < SEUIL_SOUS_OCTAVE;
+        gagnant_grille / 2.0 >= BPM_MIN_CORRECTION && alternance < SEUIL_SOUS_OCTAVE;
     let corrige_vers_le_haut =
-        bpm * 2.0 <= BPM_MAX_CORRECTION && brut(bpm * 2.0) >= brut(bpm) * SEUIL_SUR_OCTAVE;
+        gagnant_grille * 2.0 <= BPM_MAX_CORRECTION && brut_double_sur_brut >= SEUIL_SUR_OCTAVE;
     // Le sens montant l'emporte quand les deux qualifient : son test est le
     // plus rare et le plus spécifique.
     let bpm = if corrige_vers_le_haut {
-        bpm * 2.0
+        gagnant_grille * 2.0
     } else if corrige_vers_le_bas {
-        bpm / 2.0
+        gagnant_grille / 2.0
     } else {
-        bpm
+        gagnant_grille
     };
-    Some(bpm)
+    Some(DiagnosticTempo {
+        gagnant_grille,
+        alternance,
+        brut_double_sur_brut,
+        corrige_vers_le_bas,
+        corrige_vers_le_haut,
+        bpm,
+    })
+}
+
+/// Tolérance de regroupement des gagnants de grille entre fenêtres — un même
+/// morceau retombe souvent au dixième de BPM près d'une fenêtre à l'autre.
+const TOLERANCE_ACCORD_GRILLE: f32 = 0.03;
+
+/// Annule une correction descendante minoritaire et isolée : plusieurs
+/// fenêtres d'un même morceau tombant sur le même gagnant de grille (à
+/// `TOLERANCE_ACCORD_GRILLE` près, **avant** correction) sont une mesure
+/// répétée de la même chose, pas cinq mesures indépendantes. Si l'une
+/// d'elles corrige vers le bas alors qu'une autre, sur ce même gagnant, ne
+/// corrige pas, le désaccord vient du test d'alternance — sujet aux aléas
+/// de la fenêtre precise — pas d'une vraie différence de morceau. Mesuré :
+/// sur « Let Us Play » (Le Peuple de l'Herbe), les 5 fenêtres retombent à
+/// 101,8-102,3 avant correction, mais seules 3 sur 5 franchissent
+/// `SEUIL_SOUS_OCTAVE` et divisent — la médiane sortait alors à 51 BPM au
+/// lieu de 102. Décisions prises sur l'instantané d'avant tout changement,
+/// pour ne pas dépendre de l'ordre de traitement des fenêtres.
+///
+/// Volontairement asymétrique et borné : ne fait jamais que ramener un bpm
+/// vers son propre gagnant de grille (jamais l'inverse, jamais une
+/// correction nouvelle), et seulement pour la correction descendante — la
+/// montante n'a pas montré ce défaut sur les cas mesurés
+/// (`examples/diagnostic_tempo.rs`).
+pub fn stabiliser_corrections(diagnostics: &mut [DiagnosticTempo]) {
+    let original: Vec<DiagnosticTempo> = diagnostics.to_vec();
+    for (i, d) in diagnostics.iter_mut().enumerate() {
+        if !d.corrige_vers_le_bas {
+            continue;
+        }
+        let gagnant = original[i].gagnant_grille;
+        let desaccord = original.iter().enumerate().any(|(j, o)| {
+            j != i
+                && !o.corrige_vers_le_bas
+                && !o.corrige_vers_le_haut
+                && ((o.gagnant_grille - gagnant).abs() / gagnant) < TOLERANCE_ACCORD_GRILLE
+        });
+        if desaccord {
+            d.corrige_vers_le_bas = false;
+            d.bpm = gagnant;
+        }
+    }
 }
 
 /// Profils de Krumhansl-Schmuckler : la place de chaque degré dans une
@@ -594,7 +670,7 @@ pub fn analyser(path: &Path, a: &Analyseur) -> Result<Descripteurs, decode::Erro
 /// rendrait une valeur aberrante que la moyenne propagerait. Le chroma, lui, se
 /// cumule — la tonalité se lit d'autant mieux qu'on a entendu plus de notes.
 pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
-    let mut tempos = Vec::new();
+    let mut tempos: Vec<DiagnosticTempo> = Vec::new();
     let mut chroma = [0.0f32; 12];
     let (mut carres, mut n) = (0.0f64, 0usize);
     let mut centroide_stat = Moyenne::default();
@@ -608,7 +684,7 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
         let spectres = a.spectres(f);
         let mut env = flux(&spectres);
         centrer(&mut env);
-        tempos.extend(tempo(&env));
+        tempos.extend(tempo_detaille(&env));
         for (dst, src) in chroma.iter_mut().zip(a.chroma(&a.spectres_chroma(f))) {
             *dst += src;
         }
@@ -629,7 +705,11 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
         n += f.len();
     }
 
-    tempos.sort_by(f32::total_cmp);
+    // Annule les corrections descendantes minoritaires et isolées avant de
+    // réduire à la médiane — voir `stabiliser_corrections`.
+    stabiliser_corrections(&mut tempos);
+    let mut bpms: Vec<f32> = tempos.iter().map(|d| d.bpm).collect();
+    bpms.sort_by(f32::total_cmp);
     let energie = if n == 0 {
         0.0
     } else {
@@ -657,7 +737,7 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
     };
 
     Descripteurs {
-        bpm: tempos.get(tempos.len() / 2).copied(),
+        bpm: bpms.get(bpms.len() / 2).copied(),
         tonalite: tonalite(&chroma),
         energie,
         // Plancher : le silence numérique donnerait −∞, que SQLite ne range pas.
@@ -674,6 +754,25 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
         flatness_moy,
         flatness_ecart,
     }
+}
+
+/// Le diagnostic de tempo **par fenêtre** (5 valeurs, `None` si une fenêtre
+/// est silencieuse), sans réduire à la médiane — pour voir si un BPM final
+/// douteux vient d'une erreur systématique sur les 5 fenêtres ou d'une
+/// bascule d'octave d'une fenêtre à l'autre (`examples/diagnostic_tempo.rs`).
+/// `analyser`/`analyser_fenetres` restent le chemin de production ; cette
+/// fonction n'est appelée que par l'outillage de diagnostic.
+pub fn tempos_par_fenetre(path: &Path, a: &Analyseur) -> Result<Vec<Option<DiagnosticTempo>>, decode::Error> {
+    let fenetres = decode::fenetres(path, decode::FENETRES)?;
+    Ok(fenetres
+        .iter()
+        .map(|f| {
+            let spectres = a.spectres(f);
+            let mut env = flux(&spectres);
+            centrer(&mut env);
+            tempo_detaille(&env)
+        })
+        .collect())
 }
 
 #[cfg(test)]

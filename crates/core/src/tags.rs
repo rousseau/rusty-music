@@ -42,6 +42,11 @@ pub struct TrackMeta {
     /// Identifiant MusicBrainz de l'artiste d'album — unique, même sur les
     /// pistes en featuring. C'est lui qui regroupe les artistes.
     pub mb_album_artist_id: Option<String>,
+    /// Identifiant MusicBrainz de l'**édition** (release) — distinct du
+    /// release-group : c'est le pressage précis (Picard : `MUSICBRAINZ_ALBUMID`).
+    /// Sert à retrouver la relation d'URL Discogs de cette édition précise,
+    /// voir `docs/enrichissement-lecteur.md`.
+    pub mb_release_id: Option<String>,
 }
 
 /// Lit les tags et les propriétés audio d'un fichier.
@@ -128,6 +133,10 @@ pub fn read(path: &Path) -> Result<TrackMeta> {
         }),
         mb_album_artist_id: tag.and_then(|t| {
             t.get_string(&ItemKey::MusicBrainzReleaseArtistId)
+                .map(|s| s.to_string())
+        }),
+        mb_release_id: tag.and_then(|t| {
+            t.get_string(&ItemKey::MusicBrainzReleaseId)
                 .map(|s| s.to_string())
         }),
     })

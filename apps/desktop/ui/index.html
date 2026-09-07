@@ -78,36 +78,108 @@
         <div class="segments">
           <button class="segment segment--actif" data-affichage="points">Nuage</button>
           <button class="segment" data-affichage="carte">Carte</button>
+          <button class="segment" data-affichage="temps">Temps</button>
+          <button class="segment" data-affichage="anneau">Anneau</button>
         </div>
-        <p class="rail__titre" style="margin-top:14px">Colorer par</p>
-        <div class="segments">
-          <button class="segment segment--actif" data-couleur="famille">Famille</button>
-          <button class="segment" data-couleur="annee">Année</button>
-          <button class="segment" data-couleur="tempo">Tempo</button>
-          <button class="segment" data-couleur="energie">Énergie</button>
+        <!-- Intervalle d'années : commun aux quatre visualisations
+             (`filtreAnnee`, `majVisibiliteIntervalleAnnees`) — mêmes bornes
+             que « Colorer par : Année » (`carte.bornes.annee`), pas une
+             seconde lecture. Un morceau hors intervalle s'estompe (Nuage,
+             Temps, Anneau) ou disparaît/retombe en gris (Carte, contrainte
+             MapLibre) ; un morceau sans année reste toujours montré. -->
+        <div id="bloc-intervalle-annees" hidden>
+          <p class="rail__titre" style="margin-top:14px">Années</p>
+          <label class="reglette">
+            <span>de</span>
+            <input id="annee-debut" type="range" min="0" max="1" step="1" value="0">
+            <output id="annee-debut-val">—</output>
+          </label>
+          <label class="reglette">
+            <span>à</span>
+            <input id="annee-fin" type="range" min="0" max="1" step="1" value="1">
+            <output id="annee-fin-val">—</output>
+          </label>
+          <button id="annee-reinit" class="lien" hidden>Toutes les années</button>
         </div>
-        <div id="bloc-fond" hidden>
-          <p class="rail__titre" style="margin-top:14px">Fond de plan</p>
-          <div class="segments segments--colonne" id="carte-theme">
-            <button class="segment segment--actif" data-theme="osm-clair">OSM clair</button>
-            <button class="segment" data-theme="sepia">Sépia chaud</button>
-            <button class="segment" data-theme="encre">Encre</button>
-            <button class="segment" data-theme="nuit">Nuit</button>
-            <button class="segment" data-theme="bleu-plan">Bleu plan</button>
+        <!-- La couleur, le fond de plan et sa légende n'ont pas de sens en
+             Temps ni en Anneau : la couleur y est la famille par
+             construction, il n'y a pas de tuiles. Masqué en bloc par
+             `majAffichageTemps`/`majAffichageAnneau`. -->
+        <div id="bloc-colorer-par">
+          <p class="rail__titre" style="margin-top:14px">Colorer par</p>
+          <div class="segments">
+            <button class="segment segment--actif" data-couleur="famille">Famille</button>
+            <button class="segment" data-couleur="annee">Année</button>
+            <button class="segment" data-couleur="tempo">Tempo</button>
+            <button class="segment" data-couleur="energie">Énergie</button>
+          </div>
+          <div id="bloc-fond" hidden>
+            <p class="rail__titre" style="margin-top:14px">Fond de plan</p>
+            <div class="segments segments--colonne" id="carte-theme">
+              <button class="segment segment--actif" data-theme="osm-clair">OSM clair</button>
+              <button class="segment" data-theme="sepia">Sépia chaud</button>
+              <button class="segment" data-theme="encre">Encre</button>
+              <button class="segment" data-theme="nuit">Nuit</button>
+              <button class="segment" data-theme="bleu-plan">Bleu plan</button>
+            </div>
+          </div>
+          <div id="legende-continue" class="legende" hidden>
+            <div class="legende__barre"></div>
+            <div class="legende__bornes">
+              <span id="continue-min">—</span><span id="continue-max">—</span>
+            </div>
           </div>
         </div>
-        <div class="zoom">
+        <!-- Pas de zoom en Anneau : un cercle de rayon fixe, rien à agrandir
+             — masqué par `majAffichageAnneau`. -->
+        <div class="zoom" id="bloc-zoom">
           <button id="zoom-moins" aria-label="Dézoomer">−</button>
           <span class="zoom__val" id="zoom-val">×1,0</span>
           <button id="zoom-plus" aria-label="Zoomer">+</button>
           <button id="zoom-reset" aria-label="Vue d'ensemble">⤢</button>
         </div>
-        <div id="legende-continue" class="legende" hidden>
-          <div class="legende__barre"></div>
-          <div class="legende__bornes">
-            <span id="continue-min">—</span><span id="continue-max">—</span>
-          </div>
+        <!-- Temps (frise des filiations) : seuil de marquage des hubs — un
+             album dont le nombre d'arcs sortants dépasse ce seuil reçoit un
+             anneau distinctif (`docs/frise-filiations.md` § 6). Valeur
+             initiale calculée (moyenne + 2 écarts-types des degrés sortants)
+             au premier chargement, ajustable ensuite comme le reste du rail. -->
+        <div id="bloc-temps" hidden>
+          <label class="reglette" style="margin-top:14px">
+            <span>hub dès</span>
+            <input id="temps-seuil" type="range" min="1" max="40" step="1" value="8">
+            <output id="temps-seuil-val">8 connexions</output>
+          </label>
         </div>
+        <!-- Anneau : l'album focal se choisit par la barre de recherche
+             principale (#q), pas un champ dédié — une seule barre dans toute
+             l'appli. Les résultats s'affichent ici pendant la frappe. -->
+        <div id="bloc-anneau" hidden>
+          <div id="anneau-resultats" class="candidats" hidden></div>
+          <label class="reglette" style="margin-top:14px">
+            <span>voisins</span>
+            <input id="anneau-k" type="range" min="3" max="20" step="1" value="8">
+            <output id="anneau-k-val">8</output>
+          </label>
+          <label class="reglette">
+            <span>tension</span>
+            <input id="anneau-beta" type="range" min="0" max="1" step="0.05" value="0.8">
+            <output id="anneau-beta-val">0,80</output>
+          </label>
+          <p class="aide">Chercher un album ci-dessus, choisir un résultat.
+            Cliquer un voisin de l'anneau en fait le nouvel album focal. La
+            tension règle le regroupement des liens par famille (bundling
+            hiérarchique) — 0 : droites directes, 1 : suit la hiérarchie.</p>
+        </div>
+      </div>
+
+      <!-- Juste après Affichage/Colorer par, pas après Chemin : sur la frise,
+           le panneau Voyage (départ/arrivée/morceaux/bruit/aide) est assez
+           long pour repousser les familles hors du rail visible sans
+           scroller — l'accordéon d'extension verticale (§ 3 de
+           `docs/frise-filiations.md`) devient alors introuvable. -->
+      <div class="bloc" id="bloc-familles" hidden>
+        <p class="rail__titre">Familles</p>
+        <div id="familles" class="familles"></div>
       </div>
 
       <!-- Mode Éditer : le démixage -->
@@ -133,6 +205,7 @@
           <button class="segment" data-chemin="errance">Errance sonique</button>
           <button class="segment" data-chemin="dessine">Dessiné</button>
           <button class="segment" data-chemin="itineraire">Itinéraire</button>
+          <button class="segment" data-chemin="voyage">Voyage</button>
         </div>
 
         <!-- Itinéraire : le réseau de circulation et ses profils. Visible
@@ -181,11 +254,6 @@
             bougez le curseur.</p>
         </div>
         <button id="chemin-rejouer" class="lien" hidden>Autre tirage</button>
-      </div>
-
-      <div class="bloc" id="bloc-familles" hidden>
-        <p class="rail__titre">Familles</p>
-        <div id="familles" class="familles"></div>
       </div>
 
       <div class="bloc">
@@ -264,6 +332,22 @@
               <input id="pop-rafraichir" type="checkbox">
               Rafraîchir aussi la popularité de plus de 90 jours
             </label>
+            <label class="case">
+              <input id="bio-active" type="checkbox" checked>
+              Biographies (TheAudioDB)
+            </label>
+            <label class="case">
+              <input id="critiques-active" type="checkbox" checked>
+              Critiques (CritiqueBrainz)
+            </label>
+            <label class="case">
+              <input id="discogs-lier-active" type="checkbox" checked>
+              Liaison Discogs (crédits par édition)
+            </label>
+            <p class="aide">Les trois n'exigent aucune clé et n'interrompent jamais la
+              chaîne — décochez celles dont vous n'avez pas l'usage. L'import des
+              crédits Discogs lui-même (le dump mensuel, plusieurs Go) ne se fait pas
+              ici : voir <code>rusty-music import-discogs</code>.</p>
             <label class="reglette">
               <span>contact MusicBrainz</span>
               <input id="analyse-contact" type="email" class="chercher"
@@ -420,10 +504,6 @@
               <button id="recalculer-densite" class="bouton">Recalculer la densité</button>
             </div>
             <p id="densite-parametres-etat" class="scan-etat"></p>
-            <label class="reglette" style="margin-top:14px">
-              <span>force de l'ombre</span>
-            <p class="aide">Celle-ci redessine seulement — pas d'aller-retour
-              vers le moteur.</p>
           </div>
 
           <p class="rail__titre" style="margin-top:32px">Vérifications</p>
@@ -537,6 +617,37 @@
           <dt>Tonalité</dt><dd id="insp-tonalite">—</dd>
           <dt>Timbre</dt><dd id="insp-timbre">—</dd>
         </dl>
+
+        <!-- Écrit par `signalerErreur` quand un des chargements ci-dessous
+             (descripteurs, voisins, bio, crédits, critiques) échoue —
+             auparavant silencieux, l'échec ne laissait rien voir à l'écran. -->
+        <p id="insp-erreur" class="aide" hidden></p>
+
+        <!-- Biographie (TheAudioDB) — résolue par MBID d'artiste seulement,
+             jamais par nom : voir `docs/enrichissement-lecteur.md`. -->
+        <div id="bloc-bio" hidden>
+          <p class="rail__titre" style="margin-top:22px">Biographie</p>
+          <p id="insp-bio" class="insp__bio"></p>
+        </div>
+
+        <!-- Crédits par édition (Discogs, dumps CC0) — mention de source
+             discrète par courtoisie, la licence CC0 ne l'exige pas. -->
+        <div id="bloc-credits" hidden>
+          <p class="rail__titre" style="margin-top:22px">Crédits de l'édition</p>
+          <ul id="insp-credits" class="credits"></ul>
+          <p class="credit-source">source : Discogs</p>
+        </div>
+
+        <!-- Critiques (CritiqueBrainz) — licence CC (BY-SA ou BY-NC-SA selon
+             la critique) : attribution obligatoire, jamais mutualisée. -->
+        <div id="bloc-critiques" hidden>
+          <p class="rail__titre" style="margin-top:22px">Critiques</p>
+          <div id="insp-critiques" class="critiques"></div>
+          <p id="insp-ecrire-critique" class="aide" hidden>
+            Aucune critique connue. <a id="insp-lien-critique" href="#" target="_blank"
+              rel="noopener noreferrer">Écrire une critique sur CritiqueBrainz</a>
+          </p>
+        </div>
 
         <div id="bloc-voisins" hidden>
           <p class="rail__titre" style="margin-top:22px">Voisins soniques</p>

@@ -22,3 +22,5 @@ ogg.workspace       = true
 opus-decoder.workspace = true
 contour.workspace   = true
 geo-types.workspace = true
+flate2.workspace    = true
+quick-xml.workspace = true

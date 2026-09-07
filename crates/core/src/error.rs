@@ -34,4 +34,12 @@ pub enum Error {
 
     #[error("fichier Opus illisible : {0}")]
     Opus(String),
+
+    /// Donnée locale illisible — un fragment XML du dump Discogs, par
+    /// exemple. Distinct de [`Error::Reseau`] : ce n'est pas une source
+    /// distante injoignable, c'est un contenu déjà en main mais malformé.
+    /// Toujours récupérable à l'échelle d'une seule entrée : voir
+    /// `crate::discogs`.
+    #[error("donnée illisible : {0}")]
+    Parsing(String),
 }

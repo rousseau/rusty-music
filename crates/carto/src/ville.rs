@@ -571,8 +571,10 @@ pub fn rassembler(
         .iter()
         .map(|c| {
             let morceau_id = occupation.get(&c.id).copied();
-            let famille = morceau_id.and_then(|id| par_id.get(&id)).map(|p| p.cluster);
-            crate::source::BatimentReel { points: c.points.clone(), morceau_id, famille }
+            let occupant = morceau_id.and_then(|id| par_id.get(&id));
+            let famille = occupant.map(|p| p.cluster);
+            let annee = occupant.and_then(|p| p.year).map(|a| a as i32);
+            crate::source::BatimentReel { points: c.points.clone(), morceau_id, famille, annee }
         })
         .collect();
 
@@ -718,6 +720,32 @@ pub fn rassembler(
         })
         .collect();
 
+    // --- La première année de sortie de chaque artiste, pour le curseur
+    // temporel du plan de ville réel (`docs/carto-ville.md`). Deux sources
+    // distinctes, comme pour `artistes`/`ancrages` plus haut : un artiste
+    // ordinaire a ses pistes dans `pistes_par_artiste` (les ancrés en sont
+    // exclus, `est_ancre` ci-dessus), un artiste ancré les a dans
+    // `ancrages.adresses`.
+    let annee_ordinaire: HashMap<&str, i32> = pistes_par_artiste
+        .iter()
+        .filter_map(|(nom, ids)| {
+            ids.iter()
+                .filter_map(|id| par_id.get(id).and_then(|p| p.year).map(|a| a as i32))
+                .min()
+                .map(|a| (nom.as_str(), a))
+        })
+        .collect();
+    let mut annee_ancre: HashMap<&str, i32> = HashMap::new();
+    for a in &ancrages.adresses {
+        let Some(p) = par_id.get(&a.track_id) else { continue };
+        let Some(nom) = crate::ancrage::nom_artiste(p) else { continue };
+        let Some(y) = p.year else { continue };
+        annee_ancre
+            .entry(nom)
+            .and_modify(|min| *min = (*min).min(y as i32))
+            .or_insert(y as i32);
+    }
+
     // --- Les artistes, posés sur leur rue, prêts pour `Source`. -------------
     // Pas au barycentre de leurs morceaux logés (`Source::artistes`) : après
     // un repli d'étage 3, ce barycentre tombe dans un vide entre deux amas,
@@ -748,6 +776,7 @@ pub fn rassembler(
                 famille: a.famille,
                 effectif: a.effectif,
                 ancre: None,
+                annee: annee_ordinaire.get(a.nom.as_str()).copied(),
             })
         })
         .collect();
@@ -761,6 +790,7 @@ pub fn rassembler(
             famille: famille_dominante_ancre.get(nom.as_str()).copied().unwrap_or(-1),
             effectif: effectif_ancre.get(nom.as_str()).copied().unwrap_or(0),
             ancre: Some(ancre.monument.clone()),
+            annee: annee_ancre.get(nom.as_str()).copied(),
         });
     }
     // `tuiles::rang_artiste` prend l'indice pour le rang : trier par effectif
@@ -826,11 +856,13 @@ pub fn rassembler(
                     .iter()
                     .find(|(_, a)| distance2(a.point_m, point_m) < 25.0)
                     .map(|(nom, _)| nom.clone());
+                let annee = artiste.as_deref().and_then(|nom| annee_ancre.get(nom).copied());
                 crate::source::PointReel {
                     point: p.point,
                     nom: p.nom.clone(),
                     genre: p.genre.clone(),
                     artiste,
+                    annee,
                 }
             })
             .collect(),
@@ -941,6 +973,47 @@ mod tests {
         assert!(!r.source.troncons_reels.is_empty());
         // Chaque rue logée porte un nom affiché non vide.
         assert!(r.source.troncons_reels.iter().all(|t| !t.nom.is_empty()));
+    }
+
+    fn point_annee(id: i64, cluster: i64, artist: &str, annee: Option<i64>) -> MapPoint {
+        MapPoint { year: annee, ..point(id, 0.0, 0.0, cluster, artist, "Album", id) }
+    }
+
+    /// L'invariant que `docs/carto-ville.md` réclame pour le curseur
+    /// temporel : à toute année choisie, le nombre de bâtiments montrés comme
+    /// occupés doit être exactement égal au nombre de morceaux logés dont
+    /// l'année est ≤ à celle-là — un morceau sans année compte comme toujours
+    /// occupé des deux côtés (décision du 5 sept. 2026, cohérente avec le
+    /// bucket incertain du streamgraph). Vrai par construction — l'année du
+    /// bâtiment est recopiée de celle de son occupant — mais c'est
+    /// exactement le genre de recopie qui se troue en silence.
+    #[test]
+    fn le_batiment_habite_porte_lannee_de_son_occupant() {
+        let extrait = extrait_dessai();
+        let annees = [
+            Some(1990), Some(2005), None, Some(1998), Some(2010), Some(1990),
+            Some(2020), None, Some(2001), Some(1995), Some(2015), Some(1990),
+        ];
+        let vue: Vec<MapPoint> = annees
+            .iter()
+            .enumerate()
+            .map(|(i, &a)| point_annee(i as i64, (i % 2) as i64, &format!("Artiste {}", i % 2), a))
+            .collect();
+
+        let r = rassembler(&extrait, &vue, &HashMap::new(), ESPACEMENT_PAR_DEFAUT, None);
+        assert_eq!(r.morceaux_sans_adresse, 0, "l'invariant suppose tout le monde logé");
+
+        for seuil in [1989, 1995, 2000, 2010, 2020, 2021] {
+            let occupes = r
+                .source
+                .batiments
+                .iter()
+                .filter(|b| b.morceau_id.is_some())
+                .filter(|b| b.annee.is_none_or(|a| a <= seuil))
+                .count();
+            let attendus = r.source.morceaux.iter().filter(|m| m.annee.is_none_or(|a| a <= seuil)).count();
+            assert_eq!(occupes, attendus, "seuil {seuil}");
+        }
     }
 
     #[test]

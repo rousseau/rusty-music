@@ -1155,10 +1155,19 @@ fn points_musicaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Valu
                     zmax, 0.7]
             }
         }),
+        // **L'album s'efface une fois le bâti individuel révélé.** Sans
+        // `maxzoom`, le point restait affiché indéfiniment (son opacité
+        // plafonnait à 0,6 au dernier palier de l'`interpolate`, faute de
+        // palier suivant) : à `morceaux_des`, chaque bâtiment se colore déjà
+        // par lui-même, et le point d'album flottant à côté n'apportait plus
+        // rien — juste un doublon visuel pour le même morceau signalé deux
+        // fois (retour d'usage, sept. 2026). Un cran et demi de zoom pour ne
+        // pas couper net l'échelon pendant la transition artiste → bâtiment.
         json!({
             "id": "albums-point", "type": "circle",
             "source": "carte", "source-layer": "albums",
             "minzoom": p.albums_des as f64,
+            "maxzoom": (p.morceaux_des as f64) + 1.5,
             "paint": {
                 "circle-radius": ["interpolate", ["linear"], ["zoom"],
                     p.albums_des as f64, 2.2, p.morceaux_des as f64, 3.6],
@@ -1175,6 +1184,7 @@ fn points_musicaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Valu
             "id": "albums-etiquette", "type": "symbol",
             "source": "carte", "source-layer": "albums",
             "minzoom": (p.albums_des + 1) as f64,
+            "maxzoom": (p.morceaux_des as f64) + 1.5,
             "layout": {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],

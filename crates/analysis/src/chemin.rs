@@ -55,9 +55,16 @@ pub const K_VOISINS: usize = 12;
 /// bruiter les arêtes puis lancer un Dijkstra ordinaire — plutôt que la
 /// machinerie complète (inversion de matrice sur tout le graphe), hors de
 /// portée d'un curseur temps réel sur 27 000 nœuds.
-const TEMPERATURE_ECHELLE: f32 = 3.0; // errance : bruit [0,1] → température [0,3]
+const TEMPERATURE_ECHELLE: f32 = 3.0; // errance/voyage : bruit [0,1] → température [0,3]
 const FACTEUR_BRUIT_ARETE: f32 = 0.6; // sonique : swing multiplicatif max par arête
 const FACTEUR_BRUIT_DIRECT: f32 = 0.9; // direct : écart-type max au milieu du pont, en fraction du pas d'interpolation
+/// Voyage : pénalité additive (dans l'exposant du softmax, même échelle que
+/// le coût de distance) pour changer de famille d'un pas à l'autre. Assez
+/// haute pour que la marche préfère nettement rester dans sa famille, jamais
+/// infinie — dériver vers un style adjacent est le but de la fonctionnalité,
+/// pas un accident à empêcher. Choisie à l'oreille, comme le reste de ce
+/// fichier.
+const COUT_CHANGEMENT_FAMILLE: f32 = 2.0;
 
 /// Distance au carré — la racine ne change pas l'ordre, autant l'éviter.
 fn distance2(a: &[f32], b: &[f32]) -> f32 {
@@ -661,6 +668,88 @@ impl Graphe {
         }
         route.into_iter().map(|r| self.ids[r as usize]).collect()
     }
+
+    /// Voyage dans le temps : comme [`Self::errance`], une marche
+    /// auto-évitante pondérée par la proximité sonore, mais qui n'avance
+    /// **jamais que vers l'avant dans le temps**.
+    ///
+    /// `ordre` donne le rang chronologique de chaque morceau (voir
+    /// `Library::ordre_darrivee`, côté cœur) ; à chaque pas, seuls les
+    /// voisins d'un rang strictement supérieur au morceau courant restent
+    /// candidats — pas besoin de retirer les arêtes rétrogrades du graphe au
+    /// préalable, un filtre à chaque pas suffit, exactement comme
+    /// `errance` filtre déjà les voisins visités.
+    ///
+    /// `familles` (le cluster de chaque morceau) ajoute un coût — pas une
+    /// interdiction — au changement de famille d'un pas à l'autre
+    /// ([`COUT_CHANGEMENT_FAMILLE`]) : le voyage doit pouvoir dériver vers un
+    /// style réellement adjacent (« hérite d'un style précurseur »), pas
+    /// rester enfermé dans le cluster de départ ni sauter au hasard d'un
+    /// style à l'autre.
+    ///
+    /// S'arrête tôt si le morceau courant n'a plus aucun voisin postérieur —
+    /// une impasse chronologique légitime en bout de bibliothèque, pas une
+    /// erreur. Même graine, même bruit : même voyage.
+    pub fn voyage(
+        &self,
+        depart: i64,
+        ordre: &HashMap<i64, u32>,
+        familles: &HashMap<i64, i64>,
+        pas: usize,
+        bruit: f32,
+        graine: u64,
+    ) -> Vec<i64> {
+        let (Some(&debut), Some(&rang_depart)) = (self.rang.get(&depart), ordre.get(&depart))
+        else {
+            return Vec::new();
+        };
+        let temperature = (bruit.clamp(0.0, 1.0) * TEMPERATURE_ECHELLE).max(1e-3);
+        let mut alea = Alea::depuis(graine);
+        let mut route = vec![debut];
+        let mut rang_temps = rang_depart;
+        let mut famille_courante = familles.get(&depart).copied();
+
+        while route.len() < pas.max(1) {
+            let courant = *route.last().unwrap();
+            let candidats: Vec<(u32, f32)> = self.aretes[courant as usize]
+                .iter()
+                .copied()
+                .filter(|(j, _)| {
+                    ordre
+                        .get(&self.ids[*j as usize])
+                        .is_some_and(|&r| r > rang_temps)
+                })
+                .collect();
+            if candidats.is_empty() {
+                break;
+            }
+            let d_min = candidats
+                .iter()
+                .map(|&(_, d)| d)
+                .fold(f32::INFINITY, f32::min);
+            let echelle = (candidats.iter().map(|&(_, d)| d - d_min).sum::<f32>()
+                / candidats.len() as f32)
+                .max(1e-6);
+            let poids: Vec<f32> = candidats
+                .iter()
+                .map(|&(j, d)| {
+                    let id = self.ids[j as usize];
+                    let cout_distance = (d - d_min) / (echelle * temperature);
+                    let cout_famille = match (famille_courante, familles.get(&id)) {
+                        (Some(a), Some(&b)) if a != b => COUT_CHANGEMENT_FAMILLE,
+                        _ => 0.0,
+                    };
+                    (-(cout_distance + cout_famille)).exp()
+                })
+                .collect();
+            let (j, _) = candidats[alea.categorique(&poids)];
+            let id = self.ids[j as usize];
+            rang_temps = ordre[&id];
+            famille_courante = familles.get(&id).copied();
+            route.push(j);
+        }
+        route.into_iter().map(|r| self.ids[r as usize]).collect()
+    }
 }
 
 /// Ordonne un ensemble de morceaux en un parcours de proche en proche.
@@ -1046,6 +1135,70 @@ mod tests {
             fois_plus_proche > essais / 4,
             "le plus proche voisin ne domine pas à basse température : \
              {fois_plus_proche}/{essais}"
+        );
+    }
+
+    /// Le voyage n'avance jamais en arrière dans le temps, même quand un
+    /// voisin plus proche mais antérieur existe.
+    #[test]
+    fn le_voyage_navance_que_dans_le_temps() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 6, 3);
+        // Rang chronologique inverse de l'identifiant : le voisin sonore le
+        // plus proche d'un morceau est presque toujours antérieur, le voyage
+        // doit donc souvent s'écarter du plus proche voisin pour avancer.
+        let ordre: HashMap<i64, u32> = (0..60).map(|i| (i, (60 - i) as u32)).collect();
+        let familles: HashMap<i64, i64> = (0..60).map(|i| (i, 0)).collect();
+
+        let route = g.voyage(10, &ordre, &familles, 20, 0.3, 1);
+        assert_eq!(route.first(), Some(&10));
+        for f in route.windows(2) {
+            assert!(
+                ordre[&f[1]] > ordre[&f[0]],
+                "le voyage recule dans le temps : {route:?}"
+            );
+        }
+    }
+
+    /// Même graine, même bruit : même voyage. Une autre graine dévie.
+    #[test]
+    fn le_voyage_est_reproductible() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 6, 3);
+        let ordre: HashMap<i64, u32> = (0..60).map(|i| (i, i as u32)).collect();
+        let familles: HashMap<i64, i64> = (0..60).map(|i| (i, 0)).collect();
+
+        let a = g.voyage(0, &ordre, &familles, 15, 0.4, 42);
+        assert_eq!(
+            a,
+            g.voyage(0, &ordre, &familles, 15, 0.4, 42),
+            "même graine, même bruit, même voyage"
+        );
+        assert_ne!(
+            a,
+            g.voyage(0, &ordre, &familles, 15, 0.4, 43),
+            "une autre graine doit dévier"
+        );
+    }
+
+    /// Un coût de changement de famille assez fort force le voyage à ne
+    /// franchir la frontière que lorsque plus aucun voisin de la famille de
+    /// départ ne reste devant lui dans le temps.
+    #[test]
+    fn le_voyage_privilegie_sa_famille_avant_de_deriver() {
+        let e = arc(40);
+        let g = Graphe::construire(&e, 10, 2);
+        let ordre: HashMap<i64, u32> = (0..40).map(|i| (i, i as u32)).collect();
+        // Le morceau 0 et ses voisins immédiats (1..10) partagent une
+        // famille ; tout le reste appartient à une autre.
+        let familles: HashMap<i64, i64> = (0..40)
+            .map(|i| (i, if i < 10 { 0 } else { 1 }))
+            .collect();
+
+        let route = g.voyage(0, &ordre, &familles, 5, 0.05, 7);
+        assert!(
+            route.iter().all(|id| familles[id] == 0),
+            "le voyage a quitté sa famille alors qu'elle offrait encore des voisins : {route:?}"
         );
     }
 

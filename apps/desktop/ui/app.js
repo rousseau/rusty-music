@@ -20,7 +20,23 @@ window.addEventListener("unhandledrejection", (e) =>
 );
 
 const $ = (id) => document.getElementById(id);
-const LIGNE = 44; // hauteur d'une ligne, en accord avec la CSS
+
+/// Affiche `texte` dans le petit slot de statut `idStatut` — la convention
+/// déjà en place ailleurs dans l'appli (`#chemin-aide`, `#demix-etat`,
+/// `#dock-aide`, tous en classe `.aide`/`.scan-etat`) — et journalise
+/// `erreur` via `remonter`. `remonter` seul ne montre jamais rien à l'écran,
+/// seulement au journal Rust : un appel resté sur `remonter` nu échoue en
+/// silence du point de vue de l'utilisateur. Généralise le motif déjà écrit
+/// une fois pour `appliquerUn` (dock des stems) plutôt que d'en inventer un
+/// nouveau — pas de bandeau ni de toast, la sobriété du contrat d'interface
+/// (`docs/interface-guidelines.md`) s'applique aussi aux erreurs.
+function signalerErreur(idStatut, texte, erreur, source) {
+  const el = $(idStatut);
+  if (el) el.textContent = texte;
+  remonter(erreur, source ?? idStatut);
+}
+
+const LIGNE = 44; // hauteur d'une ligne — doit rester égale à `.ligne { height }` dans style.css
 
 /* ------------------------------------------------------------------ outils */
 
@@ -247,16 +263,20 @@ function popARecalculee() {
 }
 
 /// La ligne d'alerte du mode Bibliothèque : n'apparaît que si de la popularité
-/// a été récupérée **et** qu'une partie date de plus de 90 jours — une
-/// notoriété bouge lentement, on ne relance pas une passe de deux heures pour
-/// rien. Le bouton « Rafraîchir » coche la case et relance la passe.
+/// a été récupérée **et** qu'une partie a dépassé le seuil de péremption —
+/// une notoriété bouge lentement, on ne relance pas une passe de deux heures
+/// pour rien. Le bouton « Rafraîchir » coche la case et relance la passe.
 async function chargerPopulariteFraicheur() {
   const ligne = $("popularite-fraicheur");
   let couverts;
   let plusAncienne;
   let perimes;
+  let peremptionJours;
   try {
-    [couverts, plusAncienne, perimes] = await invoke("popularite_fraicheur");
+    // Le seuil vient du moteur (`POP_PEREMPTION_JOURS`) plutôt que d'être
+    // recopié en dur ici — sinon le texte pourrait mentir si la constante
+    // change côté Rust sans qu'on pense à répercuter le texte.
+    [couverts, plusAncienne, perimes, peremptionJours] = await invoke("popularite_fraicheur");
   } catch (e) {
     remonter(e, "popularité");
     ligne.hidden = true;
@@ -268,7 +288,7 @@ async function chargerPopulariteFraicheur() {
   }
   $("popularite-fraicheur-txt").textContent =
     `Popularité : ${perimes.toLocaleString("fr-FR")} entité${perimes > 1 ? "s" : ""} ` +
-    `de plus de 90 jours` +
+    `de plus de ${peremptionJours} jours` +
     (plusAncienne ? ` (la plus ancienne remonte à ${depuisTexte(plusAncienne)}).` : ".") +
     " ";
   ligne.hidden = false;
@@ -625,6 +645,7 @@ async function composerAlchimie({ bouton, chemin, demarrer }) {
   alchimieEnCours = true;
   const fileEtaitOuverte = !$("file").hidden;
   let pistes = null;
+  let echec = false;
 
   bouton.disabled = true;
   bouton.classList.add("alchimie--travail");
@@ -649,16 +670,30 @@ async function composerAlchimie({ bouton, chemin, demarrer }) {
     demarrerLecture(() => demarrer(pistes)).catch((e) => remonter(e, "composerAlchimie"));
     await revelerFile(pistes);
   } catch (e) {
-    remonter(e, "composerAlchimie");
+    echec = true;
+    // Auparavant : la file se refermait ou restait vide sans indice — un clic
+    // sur ✦ suivi d'une jauge qui tourne puis de rien.
+    signalerErreur("file-compo-phase", "échec de la composition de la playlist", e, "composerAlchimie");
   } finally {
     clearInterval(jauge);
-    finirCompositionFile();
     bouton.disabled = false;
     bouton.classList.remove("alchimie--travail");
     alchimieEnCours = false;
-    if (pistes && pistes.length > 0) dessinerFile();
-    else if (!fileEtaitOuverte) basculerFile(false);
-    else dessinerFile();
+    if (echec) {
+      // Laisse le message ci-dessus visible un instant plutôt que de
+      // refermer aussitôt le panneau — `finirCompositionFile` l'effacerait
+      // avec lui.
+      fileCompositionActive = false;
+      setTimeout(() => {
+        finirCompositionFile();
+        if (!fileEtaitOuverte) basculerFile(false);
+      }, 2500);
+    } else {
+      finirCompositionFile();
+      if (pistes && pistes.length > 0) dessinerFile();
+      else if (!fileEtaitOuverte) basculerFile(false);
+      else dessinerFile();
+    }
   }
 }
 
@@ -1009,9 +1044,16 @@ $("retour").addEventListener("click", () => {
 
 /* ---------------------------------------------------------- inspecteur */
 
+/// L'album affiché dans l'inspecteur (`inspecterAlbum`), ou `null` si c'est
+/// un morceau (`inspecter`) — l'un exclut l'autre. Sert au bouton ✦, qui n'a
+/// pas la même source de chemin selon le cas (voir son gestionnaire de clic).
+let inspectionAlbum = null;
+
 async function inspecter(t) {
+  inspectionAlbum = null;
   $("insp-vide").hidden = true;
   $("insp").hidden = false;
+  $("insp-erreur").hidden = true;
   // Sert à savoir, au retour d'un calcul, si l'inspecteur montre encore le
   // même morceau.
   $("insp-titre").dataset.path = t.path;
@@ -1030,13 +1072,93 @@ async function inspecter(t) {
   $("insp-piste").textContent = t.track_no ?? "—";
   $("insp-duree").textContent = duree(t.duration_ms);
 
+  const viseePochette = t.path;
   const img = await pochette(t.path);
+  // L'inspecteur a pu changer de morceau pendant la résolution (cache ou
+  // lecture disque) — même garde que `montrerDescripteurs` et consorts.
+  if ($("insp-titre").dataset.path !== viseePochette) return;
   const el = $("pochette");
   el.style.backgroundImage = img ? `url("${img}")` : "";
   el.classList.toggle("pochette--pleine", Boolean(img));
 
   montrerDescripteurs(t);
   montrerVoisins(t);
+  montrerBio(t);
+  montrerCredits(t);
+  montrerCritiques(t);
+}
+
+/// Peuple l'inspecteur pour un album de l'anneau — le même composant que
+/// pour un morceau (`inspecter`), généralisé plutôt que dupliqué (voir
+/// `docs/carto-anneau.md` § panneau d'information) : pas de piste ni de
+/// descripteurs (BPM/tonalité n'ont pas de sens à l'échelle d'un album, les
+/// champs retombent sur leur tiret par défaut), les « voisins soniques »
+/// sont déjà ceux du dernier `album_ring` (`anneau.voisins`), pas un nouvel
+/// appel au moteur.
+async function inspecterAlbum(noeud) {
+  inspectionAlbum = noeud;
+  $("insp-vide").hidden = true;
+  $("insp").hidden = false;
+  $("insp-erreur").hidden = true;
+  // Chaîne vide, jamais un chemin de morceau : c'est ce que les gardes anti-
+  // course de `montrerDescripteurs`/`montrerVoisins` comparent pour savoir si
+  // l'inspecteur montre encore la même chose — un album n'a pas de chemin,
+  // mais doit tout de même invalider une réponse de morceau encore en vol.
+  $("insp-titre").dataset.path = "";
+  $("insp-titre").dataset.id = "";
+  $("insp-titre").textContent = noeud.name;
+  $("insp-artiste").textContent = noeud.artist;
+  $("insp-artiste").dataset.artiste = noeud.artist ?? "";
+  $("insp-artiste").dataset.mbid = "";
+  $("insp-album").textContent = "—";
+  $("insp-album").dataset.album = "";
+  $("insp-album").dataset.artiste = "";
+  $("insp-annee").textContent = noeud.annee ?? "—";
+  $("insp-piste").textContent = "—";
+  $("insp-duree").textContent = duree(noeud.duree_ms);
+  $("insp-bpm").textContent = "—";
+  $("insp-tonalite").textContent = "—";
+  $("insp-timbre").textContent = "—";
+  // Biographie/crédits/critiques se demandent par identifiant de piste — un
+  // nœud d'album de l'anneau n'en porte pas (son `id` est celui de l'album).
+  // Simplification assumée : ces trois blocs restent cachés à cette échelle.
+  $("bloc-bio").hidden = true;
+  $("bloc-credits").hidden = true;
+  $("bloc-critiques").hidden = true;
+
+  const img = noeud.path ? await pochette(noeud.path) : null;
+  // L'inspecteur a pu changer d'album pendant la résolution de la pochette.
+  if (inspectionAlbum !== noeud) return;
+  const el = $("pochette");
+  el.style.backgroundImage = img ? `url("${img}")` : "";
+  el.classList.toggle("pochette--pleine", Boolean(img));
+
+  montrerVoisinsAlbum();
+}
+
+/// Les voisins soniques d'un album, dans l'inspecteur — mêmes gabarit et
+/// classe (`.voisin`) que `montrerVoisins`, mais depuis `anneau.voisins`
+/// (déjà calculés par `album_ring`) : cliquer l'un d'eux en fait le nouvel
+/// album focal, plutôt que de lancer sa lecture (une entrée de l'anneau n'a
+/// pas de piste unique à jouer).
+function montrerVoisinsAlbum() {
+  const bloc = $("bloc-voisins");
+  const hote = $("voisins");
+  if (anneau.voisins.length === 0) {
+    bloc.hidden = true;
+    return;
+  }
+  hote.replaceChildren();
+  for (const v of anneau.voisins) {
+    const el = document.createElement("button");
+    el.className = "voisin";
+    el.innerHTML = "<b></b><span></span>";
+    el.children[0].textContent = v.name;
+    el.children[1].textContent = v.artist;
+    el.addEventListener("click", () => chargerAnneau(v.id));
+    hote.appendChild(el);
+  }
+  bloc.hidden = false;
 }
 
 /// Ouvre au centre la grille de tous les albums d'un artiste — le geste
@@ -1068,13 +1190,49 @@ $("insp-album").addEventListener("click", async () => {
   poser("pistes", album, pistes, sommet);
 });
 
+/// Le titre du morceau en cours, dans le transport, peuple l'inspecteur —
+/// qui donne alors, gratuitement, la re-navigation vers son album ou les
+/// albums de l'artiste (les deux gestionnaires juste au-dessus). Rien ne
+/// joue : `dataset.path` est vide, `find` ne trouve rien, no-op.
+$("np-titre").addEventListener("click", () => {
+  const t = fileCourante.find((x) => x.path === $("np-titre").dataset.path);
+  if (t) inspecter(t);
+});
+
+/// L'artiste du morceau en cours, dans le transport, ouvre ses albums au
+/// centre — même fonction que le nom d'artiste de l'inspecteur, prévue pour
+/// ce second usage (voir son commentaire ci-dessus).
+$("np-artiste").addEventListener("click", () =>
+  ouvrirAlbumsArtiste($("np-artiste").dataset.artiste, $("np-artiste").dataset.mbid),
+);
+
 /// Playlist « dans l'esprit de ce morceau » — même mécanisme que le bouton ✦
 /// d'une case d'album (`genererAlchimie`), mais partie d'un seul morceau déjà
 /// connu de la carte : une errance sonique depuis son point, pas besoin de
 /// lui chercher un centre au préalable.
 $("insp-alchimie").addEventListener("click", () => {
+  // L'inspecteur montre soit un morceau (`inspecter`), soit un album de
+  // l'anneau (`inspecterAlbum`) — l'un exclut l'autre (`inspectionAlbum`).
+  // Un album n'a pas un seul morceau d'où partir : `path_album` (déjà
+  // spécifié pour la case ✦ de la grille) part du morceau le plus central.
+  if (inspectionAlbum) {
+    const { name, artist } = inspectionAlbum;
+    composerAlchimie({
+      bouton: $("insp-alchimie"),
+      chemin: () =>
+        invoke("path_album", {
+          album: name,
+          artist: artist || null,
+          steps: ALCHIMIE_PISTES,
+          seed: Math.floor(Math.random() * 2 ** 31),
+          bruit: bruitChemin,
+        }),
+      demarrer: (pistes) => invoke("remplacer_file", { paths: pistes.map((t) => t.path) }),
+    });
+    return;
+  }
   const id = Number($("insp-titre").dataset.id);
-  if (!Number.isFinite(id)) return;
+  if (!Number.isFinite(id) || $("insp-titre").dataset.id === "") return;
   composerAlchimie({
     bouton: $("insp-alchimie"),
     chemin: () =>
@@ -1177,6 +1335,18 @@ function tonaliteFr(t) {
 /// Tempo et tonalité du morceau inspecté.
 ///
 /// **Un tiret quand ce n'est pas mesuré, jamais une valeur par défaut.** La
+/// Passerelle vers `signalerErreur` pour les chargements secondaires de
+/// l'inspecteur (descripteurs, voisins, bio, crédits, critiques) : n'affiche
+/// rien si l'inspecteur montre déjà un autre morceau (changé pendant
+/// l'appel), et démasque `#insp-erreur` — contrairement aux slots que
+/// `signalerErreur` réutilise ailleurs (`#chemin-aide`, `#dock-aide`…),
+/// celui-ci reste caché tant que rien n'a échoué.
+function signalerErreurInspecteur(vise, texte, e, source) {
+  if ($("insp-titre").dataset.path !== vise) return;
+  signalerErreur("insp-erreur", texte, e, source);
+  $("insp-erreur").hidden = false;
+}
+
 /// passe couvre 15 847 morceaux sur 27 044 ; afficher « 120 BPM » sur le reste
 /// donnerait une mesure qu'on n'a pas.
 async function montrerDescripteurs(t) {
@@ -1187,7 +1357,8 @@ async function montrerDescripteurs(t) {
   let d;
   try {
     d = await invoke("descripteurs", { id: t.id });
-  } catch {
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement des descripteurs", e, "descripteurs");
     return;
   }
   // L'inspecteur a pu changer de morceau pendant l'appel.
@@ -1218,7 +1389,8 @@ async function montrerVoisins(t) {
   let proches = [];
   try {
     proches = await invoke("neighbours", { id: t.id, count: 6 });
-  } catch {
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement des voisins soniques", e, "voisins");
     return;
   }
   // L'inspecteur a pu changer de morceau pendant le calcul.
@@ -1242,6 +1414,110 @@ async function montrerVoisins(t) {
   bloc.hidden = false;
 }
 
+/// Biographie d'artiste (TheAudioDB) — résolue par MBID seulement, jamais par
+/// nom (`docs/enrichissement-lecteur.md`). FR si connue, sinon EN ; le bloc
+/// reste caché si aucune des deux n'est disponible — jamais de texte inventé.
+async function montrerBio(t) {
+  const bloc = $("bloc-bio");
+  const vise = t.path;
+  bloc.hidden = true;
+
+  let bios = [];
+  try {
+    bios = await invoke("bio_piste", { id: t.id });
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement de la biographie", e, "biographie");
+    return;
+  }
+  if ($("insp-titre").dataset.path !== vise) return;
+  const texte = bios.map((b) => b.biographie_fr || b.biographie_en).find(Boolean);
+  if (!texte) return;
+  $("insp-bio").textContent = texte;
+  bloc.hidden = false;
+}
+
+/// Crédits par édition (Discogs, dumps CC0) — musicien de session,
+/// producteur, ingénieur du son… Vide tant que la liaison MusicBrainz →
+/// Discogs et l'import mensuel n'ont pas couvert cette édition précise.
+async function montrerCredits(t) {
+  const bloc = $("bloc-credits");
+  const hote = $("insp-credits");
+  const vise = t.path;
+  bloc.hidden = true;
+
+  let credits = [];
+  try {
+    credits = await invoke("credits_piste", { id: t.id });
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement des crédits", e, "crédits");
+    return;
+  }
+  if (credits.length === 0 || $("insp-titre").dataset.path !== vise) return;
+
+  hote.replaceChildren();
+  for (const c of credits) {
+    const li = document.createElement("li");
+    li.textContent = c.pistes ? `${c.personne} — ${c.role} (${c.pistes})` : `${c.personne} — ${c.role}`;
+    hote.appendChild(li);
+  }
+  bloc.hidden = false;
+}
+
+/// Critiques d'album (CritiqueBrainz) — licence CC (BY-SA ou BY-NC-SA selon
+/// la critique, jamais supposée uniforme) : attribution obligatoire à chaque
+/// critique affichée, jamais mutualisée en une seule mention. La plupart des
+/// albums n'en ont aucune — état normal, pas une erreur : on invite alors à en
+/// écrire une plutôt que de laisser un vide silencieux.
+async function montrerCritiques(t) {
+  const bloc = $("bloc-critiques");
+  const hote = $("insp-critiques");
+  const lienBloc = $("insp-ecrire-critique");
+  const vise = t.path;
+  bloc.hidden = true;
+  lienBloc.hidden = true;
+
+  let critiques = [];
+  try {
+    critiques = await invoke("critiques_piste", { id: t.id });
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement des critiques", e, "critiques");
+    return;
+  }
+  if ($("insp-titre").dataset.path !== vise) return;
+
+  if (critiques.length === 0) {
+    let lien = null;
+    try {
+      lien = await invoke("lien_ecrire_critique", { id: t.id });
+    } catch {
+      /* pas de release-group connu : ni critique ni invitation à en écrire */
+    }
+    if (lien && $("insp-titre").dataset.path === vise) {
+      $("insp-lien-critique").href = lien;
+      lienBloc.hidden = false;
+      bloc.hidden = false;
+    }
+    return;
+  }
+
+  hote.replaceChildren();
+  for (const c of critiques) {
+    const el = document.createElement("article");
+    el.className = "critique";
+    const texte = document.createElement("p");
+    texte.textContent = c.texte;
+    const attribution = document.createElement("p");
+    attribution.className = "critique-attribution";
+    const lienLicence = c.url_originale
+      ? `<a href="${c.url_originale}" target="_blank" rel="noopener noreferrer">CritiqueBrainz</a>`
+      : "CritiqueBrainz";
+    attribution.innerHTML = `${txt(c.auteur, "auteur inconnu")} · ${lienLicence} · ${txt(c.licence_nom, c.licence_id)}`;
+    el.append(texte, attribution);
+    hote.appendChild(el);
+  }
+  bloc.hidden = false;
+}
+
 /* ---------------------------------------------------------- recherche */
 
 let modeCourant = "ecoute";
@@ -1255,6 +1531,17 @@ let minuteur;
 // d'une touche : on cherche, on valide, la borne se pose.
 $("q").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter" || modeCourant !== "explorer") return;
+  // Anneau : la barre choisit un album, pas une borne de chemin — le
+  // premier résultat de la recherche en cours devient l'album focal.
+  if (modeAnneau()) {
+    const id = anneau.resultats[0]?.id;
+    if (id == null) {
+      $("fil-compte").textContent = "aucun album trouvé";
+      return;
+    }
+    await chargerAnneau(id);
+    return;
+  }
   const candidats = carte.points.filter(retenu);
   if (candidats.length === 0) {
     $("fil-compte").textContent = "rien à poser comme borne";
@@ -1273,6 +1560,12 @@ $("q").addEventListener("input", (e) => {
   clearTimeout(minuteur);
   const q = e.target.value.trim();
   minuteur = setTimeout(async () => {
+    // Anneau : la barre cherche des albums, pas des morceaux — l'identité
+    // (le hachage) est calculée une fois côté moteur, jamais ici.
+    if (modeCourant === "explorer" && modeAnneau()) {
+      await chercherAlbums(q);
+      return;
+    }
     // Sur la carte, chercher ne remplace pas la vue : les morceaux qui ne
     // correspondent pas s'estompent et restent en fond. `ui-spec.md` le
     // tranche ainsi — le contexte de la bibliothèque ne doit pas disparaître.
@@ -1798,6 +2091,9 @@ function sonder(actif) {
 // sondage : sans ce verrou les appels s'empilent et retardent les commandes de
 // transport, qui attendent alors derrière eux.
 let battementEnVol = false;
+// Un seul signalement par panne, pas un par sondage — à 5 Hz, `remonter`
+// spammerait le journal sans rien apprendre de plus après le premier coup.
+let battementEnErreur = false;
 
 async function battement() {
   if (edition.enLecture) return battementStems();
@@ -1806,7 +2102,12 @@ async function battement() {
   let e;
   try {
     e = await invoke("playback_state");
-  } catch {
+    battementEnErreur = false;
+  } catch (err) {
+    if (!battementEnErreur) {
+      battementEnErreur = true;
+      remonter(err, "sondage de lecture");
+    }
     return;
   } finally {
     battementEnVol = false;
@@ -1816,7 +2117,12 @@ async function battement() {
     enLecture = e.current;
     const t = fileCourante.find((x) => x.path === enLecture);
     $("np-titre").textContent = t ? txt(t.title, "(sans titre)") : "Rien en lecture";
+    // Sert aux clics ci-dessous (§ « le transport navigue ») — même motif
+    // que les `dataset.*` posés par `inspecter()`.
+    $("np-titre").dataset.path = t?.path ?? "";
     $("np-artiste").textContent = t ? txt(t.artist, "(sans artiste)") : "Choisissez un morceau";
+    $("np-artiste").dataset.artiste = t?.artist ?? "";
+    $("np-artiste").dataset.mbid = t?.artist_mbid ?? "";
     // Hors du chemin critique, comme la pochette : la ligne se remplit quand
     // la mesure arrive, et reste vide si le morceau n'est pas mesuré.
     $("np-mesures").textContent = "";
@@ -1905,11 +2211,11 @@ const carte = {
   routeTrace: null,
   lasso: null, // contour en cours de tracé, en coordonnées de carte
   couleur: "famille", // famille, ou une clé de CONTINUES
-  // Deux visualisations, et deux seulement : le nuage t-SNE dessiné au
-  // canevas, et la carte en tuiles vectorielles. Ce sont deux lectures
-  // différentes de la même projection — l'une montre les morceaux tels quels,
-  // l'autre en fait un pays.
-  affichage: "points", // points (nuage t-SNE) | carte (tuiles)
+  // Trois visualisations : le nuage t-SNE dessiné au canevas, la carte en
+  // tuiles vectorielles, et le streamgraph temporel (voir l'objet `temps`
+  // plus bas, qui porte ses propres coordonnées — temps × famille empilée,
+  // rien à voir avec l'embedding ou le lon/lat d'ici).
+  affichage: "points", // points (nuage t-SNE) | carte (tuiles) | temps (streamgraph)
   familles: null, // [[rang, nom, effectif]], chargé une fois
   bornes: {}, // min et max de chaque variable continue, pour la rampe
   filtre: "", // texte du filtre ; les exclus s'estompent, jamais ne disparaissent
@@ -1942,6 +2248,10 @@ const AIDE_CHEMIN = {
   itineraire: [
     "Maj+clic : le départ. Maj+clic à nouveau : une arrivée, facultative si une durée est fixée. Le trajet suit les vraies rues et la playlist est faite des morceaux qui les bordent ; le profil (grands axes / petites rues / parcs) le retrace aussitôt.",
     "maj+clic : départ / arrivée",
+  ],
+  voyage: [
+    "Chercher un morceau puis Entrée : un voyage part de lui et n'avance que dans le temps, de voisin sonore en voisin sonore — il peut dériver vers une famille adjacente, jamais revenir en arrière.",
+    "chercher + Entrée : départ",
   ],
 };
 
@@ -1978,8 +2288,10 @@ function surRampe(etapes, t) {
   return etapes[i];
 }
 
-/// Vrai si le point passe le filtre courant.
+/// Vrai si le point passe le filtre courant — texte de recherche et
+/// intervalle d'années (`filtreAnnee`).
 function retenu(p) {
+  if (!dansIntervalleAnnee(p.year)) return false;
   if (!carte.filtre) return true;
   const q = carte.filtre;
   return (
@@ -1987,6 +2299,438 @@ function retenu(p) {
     (p.artist || "").toLowerCase().includes(q) ||
     (p.album || "").toLowerCase().includes(q)
   );
+}
+
+/// Ordonne les bandes de familles pour minimiser la distance verticale totale
+/// pondérée des arcs inter-familles — *minimum linear arrangement*, résolu
+/// exactement par programmation dynamique sur les sous-ensembles de bits
+/// (`docs/frise-filiations.md` § 2) : `dp[mask] = cut(mask) + min_{v∈mask}
+/// dp[mask\{v}]`, où `cut(mask)` est le poids total entre `mask` et son
+/// complément. O(2ⁿ·n) — pour n = 12 (le vocabulaire de familles par défaut),
+/// quelques dizaines de milliers d'opérations, largement sous la
+/// milliseconde ; reste praticable jusqu'à une vingtaine de familles. Calculé
+/// une seule fois par chargement du réseau (`chargerTemps`), jamais à
+/// l'image : aucun coût pour le rendu.
+///
+/// `poids` est une `Map` de `"idA,idB"` (idA < idB) vers un poids ≥ 0.
+function ordonnerBandes(familles, poids) {
+  const n = familles.length;
+  if (n <= 2) return familles.slice();
+
+  const w = (i, j) => {
+    const a = familles[i], b = familles[j];
+    return poids.get(a < b ? `${a},${b}` : `${b},${a}`) || 0;
+  };
+
+  // Au-delà d'une vingtaine de familles, 2ⁿ cesse d'être instantané : repli
+  // glouton documenté (`docs/frise-filiations.md` § 2), jamais atteint avec
+  // le vocabulaire par défaut.
+  if (n > 20) return ordonnerBandesGlouton(familles, w, n);
+
+  const bit = (x) => 31 - Math.clz32(x);
+  const total = 1 << n;
+  const degre = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = 0; j < n; j++) if (j !== i) s += w(i, j);
+    degre[i] = s;
+  }
+  // sumTotal(mask) = Σ degré des éléments de mask ; interne(mask) = Σ poids
+  // des paires internes à mask. cut(mask) = sumTotal(mask) − 2·interne(mask)
+  // — le poids entre mask et son complément, sans jamais énumérer ce dernier.
+  const sumTotal = new Float64Array(total);
+  const interne = new Float64Array(total);
+  for (let mask = 1; mask < total; mask++) {
+    const bas = mask & -mask;
+    const i = bit(bas);
+    const reste = mask ^ bas;
+    sumTotal[mask] = sumTotal[reste] + degre[i];
+    let ajout = 0;
+    let m = reste;
+    while (m) {
+      const b = m & -m;
+      ajout += w(i, bit(b));
+      m ^= b;
+    }
+    interne[mask] = interne[reste] + ajout;
+  }
+  const cut = (mask) => sumTotal[mask] - 2 * interne[mask];
+
+  const dp = new Float64Array(total);
+  const choix = new Int8Array(total).fill(-1);
+  for (let mask = 1; mask < total; mask++) {
+    let meilleur = Infinity;
+    let meilleurV = -1;
+    let m = mask;
+    while (m) {
+      const b = m & -m;
+      const v = bit(b);
+      const c = dp[mask ^ b];
+      if (c < meilleur) {
+        meilleur = c;
+        meilleurV = v;
+      }
+      m ^= b;
+    }
+    dp[mask] = cut(mask) + meilleur;
+    choix[mask] = meilleurV;
+  }
+
+  // Rétropropagation : `choix[mask]` est le dernier élément ajouté pour
+  // atteindre `mask`, donc la position la plus à droite parmi ceux de mask.
+  const ordre = new Array(n);
+  let mask = total - 1;
+  for (let pos = n - 1; pos >= 0; pos--) {
+    const v = choix[mask];
+    ordre[pos] = familles[v];
+    mask ^= 1 << v;
+  }
+  return ordre;
+}
+
+/// Repli glouton du *minimum linear arrangement*, pour un vocabulaire de
+/// familles trop grand pour la DP exacte — voir `ordonnerBandes`. Part de la
+/// paire la plus fortement connectée puis étend l'extrémité la plus
+/// prometteuse à chaque pas. O(n²), toujours instantané.
+function ordonnerBandesGlouton(familles, w, n) {
+  const reste = new Set(familles.map((_, i) => i));
+  let meilleurePaire = [0, Math.min(1, n - 1)];
+  let meilleurPoids = -1;
+  for (const i of reste) {
+    for (const j of reste) {
+      if (i >= j) continue;
+      const p = w(i, j);
+      if (p > meilleurPoids) {
+        meilleurPoids = p;
+        meilleurePaire = [i, j];
+      }
+    }
+  }
+  const ordre = [...meilleurePaire];
+  for (const i of ordre) reste.delete(i);
+  while (reste.size) {
+    let meilleur = null;
+    let poidsMax = -1;
+    let avant = false;
+    for (const i of reste) {
+      const pd = w(ordre[ordre.length - 1], i);
+      const pg = w(ordre[0], i);
+      if (pd > poidsMax) {
+        poidsMax = pd;
+        meilleur = i;
+        avant = false;
+      }
+      if (pg > poidsMax) {
+        poidsMax = pg;
+        meilleur = i;
+        avant = true;
+      }
+    }
+    reste.delete(meilleur);
+    if (avant) ordre.unshift(meilleur);
+    else ordre.push(meilleur);
+  }
+  return ordre.map((i) => familles[i]);
+}
+
+/// État du mode Explorer → Temps : la frise des filiations, un point par
+/// album sur un axe chronologique, réparti en bandes de familles
+/// (`docs/frise-filiations.md`). Remplace l'ancien streamgraph — même
+/// réseau que le mode Anneau (`reseau_albums`), seule la position à l'écran
+/// change (chronologique + bande, au lieu de radial).
+///
+/// Coordonnées propres — temps (x) et bande de famille (y) — jamais mêlées à
+/// `carte.points`/`carte.vue`, qui portent des positions d'embedding ou de
+/// lon/lat.
+const temps = {
+  charge: false,
+  albums: [], // [{id, name, artist, famille, familleSecondaire, annee, sortants}]
+  arcs: [], // [{a, b, distance}] — le même fond permanent que l'anneau
+  bandes: [], // familles, dans l'ordre calculé par `ordonnerBandes` (haut → bas)
+  posFamille: new Map(), // famille -> index dans `bandes`
+  minAnnee: null,
+  maxAnnee: null,
+  aIncertain: false,
+  // Seuil de marquage des hubs (§ 6) — initialisé au chargement à
+  // moyenne + 2 écarts-types des degrés sortants, ajustable ensuite par le
+  // curseur du rail (`#temps-seuil`, `temps.seuilHub` mis à jour en direct).
+  seuilHub: 8,
+  // Bande étendue verticalement (§ 3, zoom vertical ciblé) — un id de
+  // famille, ou `null`. Basculée depuis la légende (`rendreFamilles`), pas un
+  // zoom généraliste : l'axe horizontal (`vue.k` ci-dessous) et l'axe
+  // vertical ont chacun leur propre contrôle, jamais couplés.
+  bandeEtendue: null,
+  // Un point par album effectivement dessiné à la dernière image, en
+  // coordonnées écran — reconstruit à chaque `dessinerTemps`, c'est sur lui
+  // que `survolerTemps` pointe pour retrouver l'album sous la souris.
+  puces: [],
+  survole: null,
+  survoleCle: null,
+  // Zoom et glisser sur les deux axes à la fois — un seul facteur `k` pour
+  // le temps et les bandes ensemble (comme `carte.vue.k` sur le nuage), `dx`
+  // et `dy` les décalages en pixels de chaque axe, reclampés à chaque image
+  // dans `dessinerTemps` pour ne jamais faire défiler du vide. L'accordéon
+  // (`bandeEtendue`) et `k` composent : étendre une bande donne un point de
+  // départ, zoomer permet ensuite d'aller y regarder de près.
+  vue: { k: 1, dx: 0, dy: 0 },
+  // Bornes du dernier tracé (`{xDeb, xFin, xPasBase, n, yHaut, hauteur}`) —
+  // c'est sur elles que `zoomerTemps` calcule le
+  // nouveau décalage, sans dupliquer le calcul des marges de `dessinerTemps`.
+  disposition: null,
+};
+
+/// Charge le réseau d'albums et calcule l'ordre des bandes au premier passage
+/// en mode Temps — mêmes données pour toute la session, comme
+/// `anneau.reseau`. Réutilise `reseau_albums` (le fond permanent du mode
+/// Anneau) : aucun calcul de similarité neuf, voir `docs/frise-filiations.md`.
+async function chargerTemps() {
+  if (temps.charge) return;
+  await chargerFamilles();
+  let r;
+  try {
+    r = await invoke("reseau_albums", { limiteArcs: 4000 });
+  } catch (e) {
+    signalerErreur("fil-compte", "échec du chargement du réseau d'albums", e, "réseau d'albums (frise)");
+    return;
+  }
+
+  const albums = r.albums.map((a) => ({
+    id: a.id,
+    name: a.name,
+    artist: a.artist,
+    famille: a.famille,
+    familleSecondaire: a.famille_secondaire ?? null,
+    annee: a.annee ?? null,
+    sortants: 0,
+  }));
+  const parId = new Map(albums.map((a) => [a.id, a]));
+  const arcs = r.arcs.filter((l) => parId.has(l.a) && parId.has(l.b));
+
+  temps.albums = albums;
+  temps.arcs = arcs;
+  temps.aIncertain = albums.some((a) => a.annee == null);
+  const annees = albums.map((a) => a.annee).filter((a) => a != null);
+  temps.minAnnee = annees.length ? Math.min(...annees) : null;
+  temps.maxAnnee = annees.length ? Math.max(...annees) : null;
+
+  // Poids inter-familles : agrégat des arcs album-à-album du réseau existant,
+  // groupés par paire de familles maîtresses — voir `ordonnerBandes` et
+  // `docs/frise-filiations.md` § 2. Les arcs intra-famille ne comptent pas :
+  // ils ne changent rien à une distance verticale nulle par construction.
+  const poids = new Map();
+  for (const l of arcs) {
+    const fa = parId.get(l.a).famille;
+    const fb = parId.get(l.b).famille;
+    if (fa == null || fb == null || fa === fb) continue;
+    const cle = fa < fb ? `${fa},${fb}` : `${fb},${fa}`;
+    poids.set(cle, (poids.get(cle) || 0) + 1 / (1 + l.distance));
+  }
+  temps.bandes = ordonnerBandes(
+    carte.familles.map(([c]) => c),
+    poids,
+  );
+  temps.posFamille = new Map(temps.bandes.map((f, i) => [f, i]));
+
+  // Degré sortant de chaque album — un arc compte pour son extrémité la plus
+  // ancienne, vers un album plus tardif (§ 6). Deux albums de la même année
+  // n'ont pas de sens directionnel : l'arc ne compte pour aucun des deux.
+  for (const l of arcs) {
+    const a = parId.get(l.a);
+    const b = parId.get(l.b);
+    if (a.annee == null || b.annee == null || a.annee === b.annee) continue;
+    (a.annee < b.annee ? a : b).sortants++;
+  }
+  const degres = albums.map((a) => a.sortants).filter((d) => d > 0);
+  if (degres.length) {
+    const moyenne = degres.reduce((s, d) => s + d, 0) / degres.length;
+    const variance = degres.reduce((s, d) => s + (d - moyenne) ** 2, 0) / degres.length;
+    temps.seuilHub = Math.max(3, Math.round(moyenne + 2 * Math.sqrt(variance)));
+    const curseur = $("temps-seuil");
+    if (curseur) {
+      curseur.value = String(Math.min(40, temps.seuilHub));
+      $("temps-seuil-val").textContent = `${temps.seuilHub} connexion${temps.seuilHub > 1 ? "s" : ""}`;
+    }
+  }
+
+  temps.charge = true;
+}
+
+/// État du mode Explorer → Anneau : un graphe circulaire à liens groupés
+/// (hierarchical edge bundling, façon Eigenfactor) centré sur **un seul
+/// album focal** — ses voisins soniques, scindés en antérieurs/postérieurs.
+///
+/// Coordonnées propres — un cercle centré sur le canevas — jamais mêlées à
+/// `carte.points`/`carte.vue` ni à `temps.*` : ni un embedding, ni un axe du
+/// temps. Pas de zoom : un cercle de rayon fixe n'a rien à agrandir.
+const anneau = {
+  focal: null, // {id, name, artist, famille, path}, ou null tant que rien n'est choisi
+  voisins: [], // [{id, name, artist, famille, path, avant}]
+  k: 8, // nombre de voisins demandés au moteur
+  // Tension du bundling hiérarchique (Holten) — voir `courbeBundle`. 1 :
+  // suit exactement la hiérarchie genre/album ; 0 : droite directe.
+  beta: 0.8,
+  resultats: [], // dernier résultat de recherche d'album, pour la barre #q
+  // Un point par nœud dessiné à la dernière image, en coordonnées écran —
+  // reconstruit à chaque `dessinerAnneau`, c'est sur lui que `survolerAnneau`
+  // pointe pour retrouver l'album sous la souris ou sous un clic.
+  puces: [],
+  survole: null,
+  // Le fond permanent, chargé une fois par session (voir `chargerReseauAnneau`)
+  // — tous les albums connus et un échantillon de leurs liens. C'est là que
+  // vit la position de chaque album (`angleAlbum`), calculée une bonne fois
+  // pour toutes : elle ne dépend jamais de l'album focal, voir
+  // `docs/carto-anneau.md` § stabilité des positions.
+  reseau: {
+    charge: false,
+    albums: [], // [{id, name, artist, famille, path, duree_ms, annee}]
+    arcs: [], // [{a, b, distance}], le fond ténu
+    arcsFamille: new Map(), // cluster -> {debut, fin}, mêmes bornes que la couronne
+    angleAlbum: new Map(), // id -> angle, stable
+  },
+};
+
+/// Intervalle d'années, commun aux quatre visualisations du mode Explorer
+/// (Nuage, Carte, Temps, Anneau) — un seul réglage plutôt que quatre, pour
+/// que « voir les morceaux entre 1990 et 2000 » ait le même sens partout.
+/// Mêmes bornes que la rampe « Colorer par : Année » (`carte.bornes.annee`),
+/// pas une seconde lecture. `min`/`max` restent `null` tant que les bornes ne
+/// sont pas connues, ou s'il n'y a pas au moins deux années distinctes à
+/// délimiter — le bloc reste alors caché (`majVisibiliteIntervalleAnnees`).
+/// `debut`/`fin` couvrent tout par défaut : rien n'est filtré tant qu'on n'a
+/// pas resserré l'intervalle.
+const filtreAnnee = {
+  min: null,
+  max: null,
+  debut: null,
+  fin: null,
+};
+
+/// `true` si l'intervalle est resserré — sinon rien à filtrer, quel que soit
+/// le mode.
+function intervalleAnneeActif() {
+  return filtreAnnee.min != null && (filtreAnnee.debut > filtreAnnee.min || filtreAnnee.fin < filtreAnnee.max);
+}
+
+/// Un morceau/artiste/album sans année compte **toujours** comme dans
+/// l'intervalle — l'absence de date ne doit jamais l'exclure d'une vue
+/// (même règle que le filtre texte : on estompe un contenu qu'on écarte,
+/// on ne fait jamais disparaître un contenu faute de savoir le classer).
+function dansIntervalleAnnee(annee) {
+  if (!intervalleAnneeActif()) return true;
+  if (annee == null) return true;
+  return annee >= filtreAnnee.debut && annee <= filtreAnnee.fin;
+}
+
+/// Cherche des albums pour la barre `#q` en mode Anneau, et remplit
+/// `#anneau-resultats`. `anneau.resultats` garde la dernière liste pour que
+/// Entrée (dans le gestionnaire de `#q`) puisse en retenir le premier sans
+/// relancer une recherche.
+async function chercherAlbums(q) {
+  const hote = $("anneau-resultats");
+  if (!q) {
+    anneau.resultats = [];
+    hote.hidden = true;
+    hote.replaceChildren();
+    return;
+  }
+  let resultats;
+  try {
+    resultats = await invoke("search_albums", { query: q, limit: 20 });
+  } catch (e) {
+    remonter(e, "recherche d'albums");
+    return;
+  }
+  anneau.resultats = resultats;
+  hote.replaceChildren();
+  hote.hidden = resultats.length === 0;
+  for (const a of resultats) {
+    const el = document.createElement("button");
+    el.className = "candidat";
+    el.innerHTML = "<b></b><span></span>";
+    el.children[0].textContent = a.name;
+    el.children[1].textContent = a.artist;
+    el.addEventListener("click", () => chargerAnneau(a.id));
+    hote.appendChild(el);
+  }
+}
+
+/// Fait de `id` l'album focal de l'anneau et recharge son voisinage — appelée
+/// aussi bien depuis un résultat de recherche que depuis un clic sur un
+/// voisin déjà affiché (« marcher » dans le graphe de ressemblance).
+async function chargerAnneau(id) {
+  patienter("calcul de l'anneau…");
+  let vue;
+  try {
+    vue = await invoke("album_ring", { albumId: id, k: anneau.k });
+  } catch (e) {
+    signalerErreur("fil-compte", "échec du calcul de l'anneau", e, "anneau");
+    return;
+  } finally {
+    patienter(null);
+  }
+  anneau.focal = vue.focal;
+  anneau.voisins = vue.voisins;
+  $("anneau-resultats").hidden = true;
+  $("fil-compte").textContent = `${anneau.focal.name} — ${anneau.voisins.length} voisin(s)`;
+  await inspecterAlbum(anneau.focal);
+  dessinerCarte();
+}
+
+/// Charge le fond permanent de l'anneau une fois par session — tous les
+/// albums connus et un échantillon de leurs liens de plus proche voisinage
+/// (voir `reseau_albums` côté cœur). Après quoi `calculerAnglesAnneau` fixe
+/// la position de chacun, une bonne fois pour toutes.
+async function chargerReseauAnneau() {
+  if (anneau.reseau.charge) return;
+  await chargerFamilles();
+  let r;
+  try {
+    r = await invoke("reseau_albums", { limiteArcs: 1500 });
+  } catch (e) {
+    remonter(e, "réseau d'albums");
+    return;
+  }
+  anneau.reseau.albums = r.albums;
+  anneau.reseau.arcs = r.arcs;
+  calculerAnglesAnneau();
+  anneau.reseau.charge = true;
+}
+
+/// Fixe l'angle de chaque famille (mêmes bornes que la couronne extérieure)
+/// et de chaque album (réparti sur le sous-arc de sa famille, dans un ordre
+/// stable — par identifiant, pas par l'ordre de retour du moteur). Appelée
+/// une seule fois par chargement du réseau : c'est cette stabilité qui
+/// garantit qu'un album ne bouge jamais quand on change d'album focal — voir
+/// `docs/carto-anneau.md` § stabilité des positions.
+function calculerAnglesAnneau() {
+  const arcsFamille = new Map();
+  const total = carte.familles.reduce((s, [, , n]) => s + n, 0) || 1;
+  let angleCourant = -Math.PI / 2;
+  for (const [cluster, , n] of carte.familles) {
+    const largeur = (n / total) * Math.PI * 2;
+    arcsFamille.set(cluster, { debut: angleCourant, fin: angleCourant + largeur });
+    angleCourant += largeur;
+  }
+
+  const parFamille = new Map();
+  for (const a of anneau.reseau.albums) {
+    if (a.famille == null || !arcsFamille.has(a.famille)) continue;
+    if (!parFamille.has(a.famille)) parFamille.set(a.famille, []);
+    parFamille.get(a.famille).push(a);
+  }
+  for (const groupe of parFamille.values()) {
+    groupe.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  }
+
+  const angleAlbum = new Map();
+  for (const [cluster, groupe] of parFamille) {
+    const { debut, fin } = arcsFamille.get(cluster);
+    const pas = (fin - debut) / groupe.length;
+    groupe.forEach((a, i) => angleAlbum.set(a.id, debut + pas * (i + 0.5)));
+  }
+
+  anneau.reseau.arcsFamille = arcsFamille;
+  anneau.reseau.angleAlbum = angleAlbum;
 }
 
 const cnv = $("carte");
@@ -2055,6 +2799,16 @@ let zoomMax = 14;
 function carteGL() {
   return carte.affichage === "carte" && gl ? gl : null;
 }
+
+/// `true` sur le streamgraph temporel — voir l'objet `temps` et
+/// `dessinerTemps`. Ni embedding ni tuiles : un troisième repère, propre à ce
+/// mode, jamais mêlé aux deux autres.
+const modeTemps = () => carte.affichage === "temps";
+
+/// `true` sur l'anneau de similarité par album — voir l'objet `anneau` et
+/// `dessinerAnneau`. Un quatrième repère, encore différent des trois autres :
+/// un cercle centré sur un album focal, pas un axe temps ni un embedding.
+const modeAnneau = () => carte.affichage === "anneau";
 
 /// La console d'une webview du système n'est pas lisible de l'extérieur : ce
 /// qui compte repart vers le journal du processus.
@@ -2248,6 +3002,7 @@ function majAffichageGL() {
   // points, le canevas dessine son propre repère et ce choix n'a aucun effet.
   const blocFond = $("bloc-fond");
   if (blocFond) blocFond.hidden = !enCarte;
+  majVisibiliteIntervalleAnnees();
   majSegmentsCouleur();
   if (enCarte && !gl) {
     initialiserGL()
@@ -2383,18 +3138,48 @@ const CIBLES_FILTRE_GL = [
   ["batiments-morceaux-bord", "palier"],
 ];
 
+/// Parmi les couches ci-dessus, celles qui répondent en plus à l'intervalle
+/// d'années (`filtreAnnee`) — un artiste (et le monument où il est ancré, le
+/// même point) hors de l'intervalle de son premier morceau, et le bord du
+/// bâti habité qui doit disparaître avec lui (le remplissage, lui, vire au
+/// gris par la peinture — voir `couleurBatimentsMorceaux`). Le reste
+/// (territoires, morceaux, albums) est de la géographie ou hors du périmètre
+/// tranché pour ce chantier — `docs/carto-ville.md` : territoires, voirie,
+/// hydrographie, espaces verts n'en dépendent jamais.
+const CIBLES_FILTRE_ANNEE_GL = ["artistes-point", "artistes-etiquette", "batiments-morceaux-bord"];
+
+/// L'expression MapLibre « cette entité est hors de l'intervalle », ou
+/// `null` si l'intervalle n'est pas resserré (rien à exclure). Une entité
+/// sans année (`coalesce` retombe alors sur `debut`, qui est toujours dans
+/// l'intervalle puisque `debut <= fin`) ne peut jamais être hors intervalle —
+/// même règle que `dansIntervalleAnnee` côté canevas.
+function clauseAnneeHorsIntervalle() {
+  if (!intervalleAnneeActif()) return null;
+  const v = ["coalesce", ["get", "annee"], filtreAnnee.debut];
+  return ["any", ["<", v, filtreAnnee.debut], [">", v, filtreAnnee.fin]];
+}
+
 /// Couleur de remplissage du bâti habité (`batiments-morceaux`) : la teinte
 /// de la famille de l'occupant (champ `palier`), sauf quand une famille est
-/// isolée — les autres reviennent alors au gris du bâti vacant.
+/// isolée — les autres reviennent alors au gris du bâti vacant — ou quand
+/// l'année de l'occupant tombe hors de l'intervalle choisi
+/// (`filtreAnnee`) : le bâtiment retombe alors dans le même gris, exactement
+/// le style « vacant » déjà en place, pas une teinte inventée pour l'occasion.
+///
+/// Un bâtiment n'a pas d'année propre ; c'est celle du morceau qui l'habite
+/// (`crates/carto/src/tuiles.rs`, tag `annee`).
 function couleurBatimentsMorceaux() {
   const teintes = couleursFamillesCarte();
   const gris = grisBatiCarte();
   const parPalier = ["match", ["get", "palier"]];
   teintes.forEach((t, i) => parPalier.push(i, t));
   parPalier.push(gris);
-  return carte.isolee === null
-    ? parPalier
-    : ["case", ["==", ["get", "palier"], carte.isolee], parPalier, gris];
+  const conditions = [];
+  if (carte.isolee !== null) conditions.push(["!=", ["get", "palier"], carte.isolee]);
+  const hors = clauseAnneeHorsIntervalle();
+  if (hors) conditions.push(hors);
+  if (!conditions.length) return parPalier;
+  return ["case", conditions.length === 1 ? conditions[0] : ["any", ...conditions], gris, parPalier];
 }
 
 /// Filtre de chaque couche tel que `style::construire` l'a posé, capturé au
@@ -2418,18 +3203,66 @@ function majFiltreGL() {
     gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
   }
 
+  const hors = clauseAnneeHorsIntervalle();
+  const dansIntervalle = hors && ["!", hors];
   for (const [layer, champ] of CIBLES_FILTRE_GL) {
     if (!gl.getLayer(layer)) continue;
     const base = filtreBase(layer);
-    if (carte.isolee === null) {
-      gl.setFilter(layer, base);
-    } else {
-      const seulement = ["==", ["get", champ], carte.isolee];
-      gl.setFilter(layer, base ? ["all", base, seulement] : seulement);
-    }
+    const clauses = base ? [base] : [];
+    if (carte.isolee !== null) clauses.push(["==", ["get", champ], carte.isolee]);
+    if (dansIntervalle && CIBLES_FILTRE_ANNEE_GL.includes(layer)) clauses.push(dansIntervalle);
+    gl.setFilter(layer, clauses.length === 0 ? null : clauses.length === 1 ? clauses[0] : ["all", ...clauses]);
   }
 }
 
+/// Montre ou cache le bloc d'intervalle : mode Explorer (les quatre
+/// visualisations, pas seulement Carte) et au moins deux années distinctes à
+/// délimiter.
+function majVisibiliteIntervalleAnnees() {
+  const bloc = $("bloc-intervalle-annees");
+  if (bloc) bloc.hidden = !(modeCourant === "explorer" && filtreAnnee.min != null);
+}
+
+/// Bornes de l'intervalle : les mêmes que celles déjà calculées pour la
+/// rampe « Colorer par : Année » (`carte.bornes.annee`, voir `chargerCarte`)
+/// — pas une seconde lecture de `carte.points`. Ouvre sur l'intervalle
+/// complet : rien n'est filtré tant qu'on n'a pas resserré.
+function initialiserFiltreAnnee() {
+  const [min, max] = carte.bornes.annee ?? [0, 0];
+  if (!(min < max)) {
+    filtreAnnee.min = filtreAnnee.max = filtreAnnee.debut = filtreAnnee.fin = null;
+    majVisibiliteIntervalleAnnees();
+    return;
+  }
+  filtreAnnee.min = min;
+  filtreAnnee.max = max;
+  filtreAnnee.debut = min;
+  filtreAnnee.fin = max;
+  const de = $("annee-debut");
+  const a = $("annee-fin");
+  if (de) { de.min = String(min); de.max = String(max); de.value = String(min); }
+  if (a) { a.min = String(min); a.max = String(max); a.value = String(max); }
+  majEtiquetteIntervalleAnnees();
+  majVisibiliteIntervalleAnnees();
+}
+
+function majEtiquetteIntervalleAnnees() {
+  const sd = $("annee-debut-val");
+  const sf = $("annee-fin-val");
+  if (sd) sd.textContent = filtreAnnee.debut == null ? "—" : String(filtreAnnee.debut);
+  if (sf) sf.textContent = filtreAnnee.fin == null ? "—" : String(filtreAnnee.fin);
+  const reinit = $("annee-reinit");
+  if (reinit) reinit.hidden = !intervalleAnneeActif();
+}
+
+/// Répercute un changement d'intervalle sur la visualisation active — la
+/// carte MapLibre (tuiles déjà construites, un filtre/une couleur suffit) ou
+/// le canevas (Nuage/Temps/Anneau, un simple redessin : `retenu`/
+/// `dansIntervalleAnnee` font le tri à chaque image).
+function rafraichirFiltreAnnee() {
+  majFiltreGL();
+  dessinerCarte();
+}
 
 function dimensionner() {
   const r = cnv.getBoundingClientRect();
@@ -2678,6 +3511,808 @@ function hslRGB(h, s, l) {
 }
 
 
+/// La frise des filiations du mode Explorer → Temps : un point par album sur
+/// un axe chronologique, réparti en bandes de familles dont l'ordre minimise
+/// la distance verticale totale des arcs inter-familles — voir l'objet
+/// `temps`, `ordonnerBandes`, et `docs/frise-filiations.md`. Remplace
+/// l'ancien streamgraph (bandes empilées par bucket temporel), jugé
+/// insatisfaisant — voir `docs/carto-anneau.md`.
+function dessinerTemps(r, encre, accent) {
+  if (!temps.charge) {
+    ctx.fillStyle = encre;
+    ctx.globalAlpha = 0.6;
+    ctx.font = "13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Chargement de la frise…", r.width / 2, r.height / 2);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (temps.albums.length === 0 || temps.minAnnee == null) {
+    ctx.fillStyle = encre;
+    ctx.globalAlpha = 0.6;
+    ctx.font = "13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Aucune date exploitable pour l'instant.", r.width / 2, r.height / 2);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  const teintes = couleursFamilles();
+  const noms = new Map(carte.familles.map(([c, nom]) => [c, nom]));
+  const nBandes = Math.max(1, temps.bandes.length);
+  const aIncertain = temps.aIncertain;
+  const largeurIncertain = aIncertain ? 34 : 0;
+  const marge = { haut: 10, bas: 28, gauche: aIncertain ? 20 + largeurIncertain + 20 : 20, droite: 92 };
+  const xDeb = marge.gauche;
+  const xFin = r.width - marge.droite;
+  const yHaut = marge.haut;
+  const yBas = r.height - marge.bas;
+  const hauteur = Math.max(1, yBas - yHaut);
+
+  // Zoom vertical (même `temps.vue.k` que l'horizontal, § plus haut) : même
+  // reclampage que le zoom horizontal ci-dessous, appliqué à la hauteur
+  // totale des bandes plutôt qu'à la largeur du temps. `hauteurEchelle` est
+  // ce que l'accordéon (juste après) répartit entre les bandes — étendre une
+  // bande puis zoomer dedans composent naturellement, l'un donne un point de
+  // départ, l'autre permet d'aller y regarder de près.
+  const hauteurEchelle = hauteur * temps.vue.k;
+  temps.vue.dy =
+    hauteurEchelle <= hauteur
+      ? (hauteur - hauteurEchelle) / 2
+      : Math.min(0, Math.max(hauteur - hauteurEchelle, temps.vue.dy));
+
+  // Bande étendue (§ 3, accordéon depuis la légende — `temps.bandeEtendue`,
+  // basculé par `rendreFamilles`) : cette bande seule prend `FRACTION_ETENDUE`
+  // de la hauteur (zoomée), les autres se partagent le reste à parts égales.
+  const FRACTION_ETENDUE = 0.55;
+  const iEtendue =
+    temps.bandeEtendue != null ? temps.posFamille.get(temps.bandeEtendue) : undefined;
+  const hauteursBandes = new Float64Array(nBandes);
+  if (iEtendue !== undefined) {
+    const reste = (hauteurEchelle * (1 - FRACTION_ETENDUE)) / Math.max(1, nBandes - 1);
+    for (let i = 0; i < nBandes; i++) hauteursBandes[i] = i === iEtendue ? hauteurEchelle * FRACTION_ETENDUE : reste;
+  } else {
+    hauteursBandes.fill(hauteurEchelle / nBandes);
+  }
+  const y0Bandes = new Float64Array(nBandes);
+  {
+    let cumul = yHaut + temps.vue.dy;
+    for (let i = 0; i < nBandes; i++) {
+      y0Bandes[i] = cumul;
+      cumul += hauteursBandes[i];
+    }
+  }
+
+  const minA = temps.minAnnee;
+  const maxA = temps.maxAnnee;
+  const nAnnees = Math.max(1, maxA - minA);
+  const xPasBase = (xFin - xDeb) / nAnnees; // pixels par année, à k = 1
+
+  // Reclampe le décalage à chaque image, pas seulement au moment du geste :
+  // un redimensionnement de la fenêtre ou un changement de l'intervalle
+  // connu (nouvelle analyse) doit lui aussi retomber sur une vue sans vide.
+  const xPas = xPasBase * temps.vue.k;
+  const largeurDisponible = xFin - xDeb;
+  const largeurTotale = nAnnees * xPas;
+  temps.vue.dx =
+    largeurTotale <= largeurDisponible
+      ? (largeurDisponible - largeurTotale) / 2
+      : Math.min(0, Math.max(largeurDisponible - largeurTotale, temps.vue.dx));
+  temps.disposition = { xDeb, xFin, xPasBase, n: nAnnees + 1, yHaut, hauteur };
+
+  const xi = 20; // colonne « incertain »
+  const xDeAnnee = (annee) => xDeb + (annee - minA) * xPas + temps.vue.dx;
+  const xDeAlbum = (a) => (a.annee == null ? xi + largeurIncertain / 2 : xDeAnnee(a.annee));
+
+  // Jitter vertical déterministe (empreinte de l'id) — évite que deux albums
+  // de la même année et de la même famille se superposent exactement, sans
+  // jamais dépendre de qui d'autre est affiché à côté : la position d'un
+  // album ne bouge jamais d'une session à l'autre (stabilité, § 1).
+  const jitter = (id) => {
+    let h = 2166136261;
+    for (let i = 0; i < id.length; i++) {
+      h ^= id.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return ((h >>> 0) / 4294967295) * 2 - 1; // [-1, 1]
+  };
+  const yDeAlbum = (a) => {
+    const pos = temps.posFamille.get(a.famille) ?? 0;
+    const h = hauteursBandes[pos] ?? hauteur / nBandes;
+    const centre = y0Bandes[pos] + h / 2;
+    return centre + jitter(a.id) * h * 0.32;
+  };
+
+  // Bandes de familles — jamais redistribuées par l'affichage lui-même (seule
+  // l'accordéon de la légende change leur hauteur, § 3) : un fond ténu pour
+  // situer les groupes, un séparateur entre chacune, son nom en bordure
+  // droite (hors zone de zoom horizontal, l'axe des bandes ne bouge jamais).
+  temps.bandes.forEach((f, i) => {
+    const estompee = carte.isolee !== null && carte.isolee !== f;
+    ctx.fillStyle = teintes[f % teintes.length] ?? accent;
+    ctx.globalAlpha = estompee ? 0.02 : 0.06;
+    ctx.fillRect(xDeb - 4, y0Bandes[i], xFin - xDeb + 8, hauteursBandes[i]);
+  });
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = encre;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= nBandes; i++) {
+    const y = i < nBandes ? y0Bandes[i] : yBas;
+    ctx.globalAlpha = 0.08;
+    ctx.beginPath();
+    ctx.moveTo(xDeb - 4, y);
+    ctx.lineTo(xFin + 4, y);
+    ctx.stroke();
+  }
+  ctx.textAlign = "left";
+  ctx.font = "11px system-ui";
+  temps.bandes.forEach((f, i) => {
+    const estompee = carte.isolee !== null && carte.isolee !== f;
+    ctx.fillStyle = teintes[f % teintes.length] ?? encre;
+    ctx.globalAlpha = estompee ? 0.25 : 0.85;
+    ctx.fillText(noms.get(f) || `famille ${f + 1}`, xFin + 8, y0Bandes[i] + hauteursBandes[i] / 2 + 4);
+  });
+  ctx.globalAlpha = 1;
+
+  // Graduation temporelle : trait fin tous les 6 mois, trait épais tous les
+  // 10 ans — l'année ne s'imprime jamais en continu, seulement au survol
+  // (voir `survolerTemps`), § 5.
+  const anneeDeb = Math.floor(minA) - 1;
+  const anneeFin = Math.ceil(maxA) + 1;
+  ctx.strokeStyle = encre;
+  for (let demi = anneeDeb * 2; demi <= anneeFin * 2; demi++) {
+    const annee = demi / 2;
+    const x = xDeAnnee(annee);
+    if (x < xDeb - 2 || x > xFin + 2) continue;
+    const decennie = Number.isInteger(annee) && annee % 10 === 0;
+    ctx.lineWidth = decennie ? 1.5 : 1;
+    ctx.globalAlpha = decennie ? 0.35 : 0.12;
+    ctx.beginPath();
+    ctx.moveTo(x, yBas);
+    ctx.lineTo(x, yBas + (decennie ? 8 : 4));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+
+  // L'intervalle d'années (`filtreAnnee`) : hors intervalle, un voile plutôt
+  // qu'une disparition (même règle que l'isolement d'une famille).
+  if (intervalleAnneeActif()) {
+    const xGauche = xDeAnnee(filtreAnnee.debut);
+    const xDroite = xDeAnnee(filtreAnnee.fin);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#14120E";
+    ctx.globalAlpha = 0.65;
+    if (xGauche > xDeb) ctx.fillRect(xDeb, yHaut - 4, Math.min(xGauche, xFin) - xDeb, hauteur + 8);
+    if (xDroite < xFin) ctx.fillRect(Math.max(xDroite, xDeb), yHaut - 4, xFin - Math.max(xDroite, xDeb), hauteur + 8);
+    ctx.globalAlpha = 1;
+  }
+
+  // La colonne « dates incertaines » — ces albums n'ont pas de place légitime
+  // sur l'axe du temps, mieux vaut le dire que les répartir au hasard dans
+  // une année (même traitement que l'ancien streamgraph).
+  if (aIncertain) {
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = encre;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xi + largeurIncertain + 8, yHaut);
+    ctx.lineTo(xi + largeurIncertain + 8, yBas);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = encre;
+    ctx.globalAlpha = 0.5;
+    ctx.font = "10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("incertain", xi + largeurIncertain / 2, yBas + 14);
+    ctx.globalAlpha = 1;
+  }
+
+  const parId = new Map(temps.albums.map((a) => [a.id, a]));
+  const filtre = (carte.filtre || "").toLowerCase();
+  const correspond = (a) =>
+    !filtre || a.name.toLowerCase().includes(filtre) || a.artist.toLowerCase().includes(filtre);
+
+  // Fond permanent de liens : même mécanique que l'anneau (`dessinerAnneau`
+  // § fond permanent de liens) — un trait ténu et **de force constante** pour
+  // tout le réseau, coloré par la famille du premier album de l'arc. Ce n'est
+  // que la sélection (plus bas) qui code la force par l'épaisseur/opacité :
+  // mélanger les deux langages sur la même couche est ce qui rendait la frise
+  // « moins jolie que l'anneau ». Un arc dont l'arrivée correspond à la
+  // famille secondaire de l'album cible (hybridation, § 3) ressort à peine —
+  // un indice, pas un second langage.
+  for (const l of temps.arcs) {
+    const a = parId.get(l.a);
+    const b = parId.get(l.b);
+    if (!a || !b) continue;
+    const renforce = b.familleSecondaire != null && b.familleSecondaire === a.famille;
+    ctx.strokeStyle = teintes[a.famille % teintes.length] ?? encre;
+    ctx.lineWidth = renforce ? 0.9 : 0.6;
+    ctx.globalAlpha = renforce ? 0.09 : 0.05;
+    ctx.beginPath();
+    ctx.moveTo(xDeAlbum(a), yDeAlbum(a));
+    ctx.quadraticCurveTo(
+      (xDeAlbum(a) + xDeAlbum(b)) / 2,
+      (yDeAlbum(a) + yDeAlbum(b)) / 2 - Math.abs(xDeAlbum(b) - xDeAlbum(a)) * 0.08,
+      xDeAlbum(b),
+      yDeAlbum(b),
+    );
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+
+  // Sélection : les voisins du focal ressortent par-dessus le fond — même
+  // mécanique que l'anneau (`dessinerAnneau` § sélection), le même état
+  // partagé (`anneau.focal`/`anneau.voisins`, peuplé par `chargerAnneau` —
+  // voir le gestionnaire de clic) plutôt qu'un focal propre à la frise. Les
+  // vrais voisins soniques (`album_ring`), pas seulement l'arête éparse du
+  // fond permanent : épaisseur et opacité codent la force, couleur = famille
+  // du voisin (la provenance), jamais de tiret ni de pointillé.
+  const focal = anneau.focal ? parId.get(anneau.focal.id) : null;
+  if (focal && anneau.voisins.length) {
+    const distances = anneau.voisins.map((v) => v.distance);
+    const dMin = Math.min(...distances);
+    const dMax = Math.max(...distances);
+    const forceDe = (d) => (dMax <= dMin ? 0.5 : 1 - (d - dMin) / (dMax - dMin));
+    const xf = xDeAlbum(focal);
+    const yf = yDeAlbum(focal);
+    for (const v of anneau.voisins) {
+      const cible = parId.get(v.id);
+      if (!cible) continue;
+      const force = forceDe(v.distance);
+      const xv = xDeAlbum(cible);
+      const yv = yDeAlbum(cible);
+      ctx.strokeStyle = teintes[v.famille % teintes.length] ?? accent;
+      ctx.globalAlpha = 0.45 + force * 0.55;
+      ctx.lineWidth = 1.5 + force * 4;
+      ctx.beginPath();
+      ctx.moveTo(xf, yf);
+      ctx.quadraticCurveTo((xf + xv) / 2, (yf + yv) / 2 - Math.abs(xv - xf) * 0.08, xv, yv);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+  }
+
+  // Albums : un point par album, teinté par sa famille maîtresse. Un anneau
+  // supplémentaire marque les hubs (§ 6) — un signal explicite dans le rendu
+  // du point lui-même, visible même quand ses arcs sont estompés à l'état de
+  // base (règle « estomper, jamais masquer », `docs/carto-anneau.md`). Le
+  // focal, lui, ignore l'estompage : une sélection reste lisible quel que
+  // soit le filtre.
+  temps.puces = [];
+  for (const a of temps.albums) {
+    const x = xDeAlbum(a);
+    if (a.annee != null && (x < xDeb - 20 || x > xFin + 20)) continue;
+    const y = yDeAlbum(a);
+    // Culling vertical, symétrique de l'horizontal ci-dessus — utile dès que
+    // le zoom ou l'accordéon poussent une bande hors du cadre visible.
+    if (y < yHaut - 20 || y > yBas + 20) continue;
+    const estFocal = !!focal && a.id === focal.id;
+    const estompee =
+      !estFocal &&
+      ((carte.isolee !== null && carte.isolee !== a.famille) ||
+        !dansIntervalleAnnee(a.annee) ||
+        (!!filtre && !correspond(a)));
+    const hub = a.sortants >= temps.seuilHub;
+    const rayon = (hub ? 3.2 : 2.2) + (estFocal ? 1 : 0);
+    ctx.fillStyle = teintes[a.famille % teintes.length] ?? accent;
+    ctx.globalAlpha = estompee ? 0.15 : 0.85;
+    ctx.beginPath();
+    ctx.arc(x, y, rayon, 0, Math.PI * 2);
+    ctx.fill();
+    if (hub) {
+      ctx.strokeStyle = teintes[a.famille % teintes.length] ?? accent;
+      ctx.globalAlpha = estompee ? 0.15 : 0.75;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(x, y, rayon + 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+    if (estFocal) {
+      ctx.strokeStyle = encre;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, rayon + (hub ? 5 : 2.5), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+    temps.puces.push({ x, y, album: a });
+  }
+  ctx.globalAlpha = 1;
+
+  // La playlist en cours (`fileCourante`) — même traitement que l'anneau
+  // (`dessinerAnneau` § playlist en cours) : chaque morceau ramené à son
+  // album (nom + artiste, `fileCourante` n'a pas l'identifiant du réseau),
+  // doublons consécutifs fondus. Accent, opacité quasi pleine, surépaisseur —
+  // le même langage épaisseur/opacité que le reste, poussé au maximum : le
+  // tracé du mode Chemin (voyage) est ce qu'on est venu lire, pas un troisième
+  // style de trait. Point 4 : rien à changer côté moteur, la dérive
+  // temporelle/le bruit du voyage restent intacts (`tracerChemin`).
+  const parCle = new Map(temps.albums.map((a) => [`${a.name} ${a.artist}`, a]));
+  const arretsRoute = [];
+  for (const t of fileCourante) {
+    const alb = parCle.get(`${t.album || ""} ${t.artist || ""}`);
+    if (!alb) continue;
+    const dernier = arretsRoute[arretsRoute.length - 1];
+    if (dernier && dernier.id === alb.id) continue;
+    arretsRoute.push(alb);
+  }
+  if (arretsRoute.length >= 2) {
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < arretsRoute.length - 1; i++) {
+      const xa = xDeAlbum(arretsRoute[i]);
+      const ya = yDeAlbum(arretsRoute[i]);
+      const xb = xDeAlbum(arretsRoute[i + 1]);
+      const yb = yDeAlbum(arretsRoute[i + 1]);
+      ctx.beginPath();
+      ctx.moveTo(xa, ya);
+      ctx.quadraticCurveTo((xa + xb) / 2, (ya + yb) / 2 - Math.abs(xb - xa) * 0.08, xb, yb);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    ctx.fillStyle = accent;
+    for (const alb of arretsRoute) {
+      ctx.beginPath();
+      ctx.arc(xDeAlbum(alb), yDeAlbum(alb), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
+  // (`surcoucheSur`) — le morceau en cours se ramène à son album par la
+  // même clé que `parCle` ci-dessus, `fileCourante` n'ayant que le nom.
+  const pisteEnLecture = fileCourante.find((x) => x.path === enLecture);
+  const albumEnLecture =
+    pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
+  if (albumEnLecture) {
+    const x = xDeAlbum(albumEnLecture);
+    const y = yDeAlbum(albumEnLecture);
+    ctx.strokeStyle = encre;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+  }
+
+  // Le point survolé : un halo, comme sur l'ancien streamgraph.
+  if (temps.survole) {
+    ctx.strokeStyle = encre;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(temps.survole.x, temps.survole.y, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+}
+
+/// L'anneau du mode Explorer → Anneau : un graphe circulaire à liens groupés
+/// centré sur l'album focal (`anneau.focal`) — voir l'objet `anneau` et
+/// `Library::album_embeddings`/`album_ring` côté cœur. Inspiré du rendu
+/// d'Eigenfactor (Moritz Stefaner) : un anneau extérieur pour les familles,
+/// nommées, un second anneau intérieur pour les albums.
+///
+/// Anneau extérieur = les 12 familles, longueur d'arc ∝ effectif
+/// (`carte.familles`, déjà chargé pour la légende du rail), nom affiché en
+/// bordure. Anneau intérieur = le focal et ses voisins, répartis sur le
+/// sous-arc de leur famille pour ne jamais se chevaucher, chacun un arc dont
+/// l'**épaisseur radiale ∝ la durée totale de l'album** (`duree_ms`) —
+/// demande explicite : « proche de l'esprit Eigenfactor ». Liens = une
+/// courbe quadratique par voisin, tirée vers le centre (simplification à un
+/// seul foyer d'un bundling hiérarchique complet : le focal est déjà la
+/// racine, pas besoin d'ancêtre commun intermédiaire) dont l'**épaisseur ∝
+/// la proximité d'empreinte** (`v.distance`, normalisée parmi les voisins
+/// affichés — l'échelle absolue d'une distance CLAP n'a pas de sens en soi).
+/// Rayon fixe, pas de zoom.
+/// Chemin dans la hiérarchie genre/album entre deux feuilles — voir
+/// `docs/carto-anneau.md` § diagnostic. Deux niveaux seulement (racine →
+/// famille → album), mais suffisants pour un vrai bundling hiérarchique :
+/// deux albums d'une même famille partagent son nœud comme plus proche
+/// ancêtre commun (chemin à 3 points), deux albums de familles distinctes ne
+/// partagent que la racine (chemin à 5 points, en passant par les deux
+/// nœuds de famille). C'est ce partage qui fait converger les liens vers une
+/// même famille avant qu'ils ne divergent vers leurs feuilles respectives —
+/// pas un simple rayonnement depuis le centre.
+function cheminAncetres(posA, familleA, posB, familleB, hubs, racine) {
+  if (familleA === familleB) return [posA, hubs.get(familleA), posB];
+  return [posA, hubs.get(familleA), racine, hubs.get(familleB), posB];
+}
+
+/// Tension de Holten (*Hierarchical Edge Bundles*, 2006) : à `beta = 1`, la
+/// courbe suit exactement le chemin par la hiérarchie (`chemin`) ; à `beta =
+/// 0`, elle redevient la droite entre les deux feuilles. Chaque point
+/// intermédiaire est le mélange des deux, comme `d3.curveBundle.beta` — les
+/// extrémités, elles, restent toujours exactement les feuilles. Réglable
+/// dans le rail (`anneau.beta`) : l'effet se juge à l'œil, pas par un calcul.
+function courbeBundle(chemin, beta) {
+  const n = chemin.length;
+  if (n < 3) return chemin;
+  const [dx, dy] = chemin[0];
+  const [fx, fy] = chemin[n - 1];
+  return chemin.map((p, i) => {
+    if (i === 0 || i === n - 1) return p;
+    const t = i / (n - 1);
+    const tx = dx + (fx - dx) * t;
+    const ty = dy + (fy - dy) * t;
+    return [beta * p[0] + (1 - beta) * tx, beta * p[1] + (1 - beta) * ty];
+  });
+}
+
+/// Une ligne lissée par une courbe quadratique passant par le milieu de
+/// chaque paire de points consécutifs — même technique que `dessinerTemps`,
+/// pour un faisceau organique plutôt qu'une polyligne à coudes.
+function tracerLigneLissee(pts) {
+  if (pts.length < 2) return;
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i][0] + pts[i + 1][0]) / 2;
+    const my = (pts[i][1] + pts[i + 1][1]) / 2;
+    ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+  }
+  const dernier = pts[pts.length - 1];
+  ctx.lineTo(dernier[0], dernier[1]);
+}
+
+/// Désature une teinte de famille pour le fond (anneaux), en gardant sa
+/// teinte et sa clarté — même principe que la carte topographique
+/// (`docs/carto-direction.md`) : la couleur reste rare et porte un sens,
+/// elle ne doit pas crier. Les liens, eux, gardent la teinte pleine : c'est
+/// ce qu'on est venu regarder, pas le fond.
+function desature(hex, facteur = 0.4) {
+  const [h, s, l] = hexHSL(hex);
+  const [r, g, b] = hslRGB(h, s * facteur, l);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/// Trait de rappel + étiquette externe pour un voisin du focal sélectionné —
+/// révélation par sélection, pas un nom permanent sur chaque segment (voir
+/// `docs/carto-anneau.md` § étiquettes). Comme les noms de famille, mais
+/// radial depuis la position réelle du nœud plutôt que le milieu d'un arc.
+function dessinerRappel(pos, nom, cx, cy, rayonExt, encre) {
+  const angle = Math.atan2(pos[1] - cy, pos[0] - cx);
+  const bout = [cx + Math.cos(angle) * (rayonExt + 26), cy + Math.sin(angle) * (rayonExt + 26)];
+  ctx.strokeStyle = encre;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pos[0], pos[1]);
+  ctx.lineTo(bout[0], bout[1]);
+  ctx.stroke();
+
+  const gauche = Math.cos(angle) < 0;
+  ctx.save();
+  ctx.translate(bout[0], bout[1]);
+  ctx.rotate(gauche ? angle + Math.PI : angle);
+  ctx.fillStyle = encre;
+  ctx.globalAlpha = 0.9;
+  ctx.font = "10px system-ui";
+  ctx.textAlign = gauche ? "right" : "left";
+  ctx.fillText(nom, 0, 0);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function dessinerAnneau(r, encre, accent) {
+  // Le fond permanent n'est pas encore revenu de `chargerReseauAnneau` —
+  // rien à dessiner tant qu'on n'a pas au moins la couronne des familles.
+  if (!anneau.reseau.charge || !carte.familles || carte.familles.length === 0) {
+    ctx.fillStyle = encre;
+    ctx.globalAlpha = 0.6;
+    ctx.font = "13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Chargement du réseau…", r.width / 2, r.height / 2);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  const teintes = couleursFamilles();
+  const cx = r.width / 2;
+  const cy = r.height / 2;
+  // Marge plus large qu'un simple anneau : les noms de famille et les
+  // étiquettes de rappel débordent au dehors de `rayonExt`.
+  const rayonExt = Math.min(r.width, r.height) / 2 - 54;
+  const epaisseurFamille = 10;
+  const rayonAlbum = rayonExt - epaisseurFamille - 20;
+  // Le nœud de famille du bundling hiérarchique — entre l'anneau des albums
+  // et le centre, jamais confondu avec `rayonAlbum` (une position de calcul,
+  // pas un rayon dessiné).
+  const rayonHub = rayonAlbum * 0.45;
+  const racine = [cx, cy];
+  const EPAISSEUR_ALBUM_MIN = 1;
+  const EPAISSEUR_ALBUM_MAX = 9;
+
+  // Couronne des familles — angles stables (`anneau.reseau.arcsFamille`,
+  // fixés par `calculerAnglesAnneau`), désaturée : c'est le fond, pas ce
+  // qu'on est venu lire (voir `desature`).
+  const arcsFamille = anneau.reseau.arcsFamille;
+  const hubsFamille = new Map(); // cluster -> [x, y], nœud de la hiérarchie
+  ctx.lineWidth = epaisseurFamille;
+  ctx.textBaseline = "middle";
+  for (const [cluster, nom, n] of carte.familles) {
+    const bornes = arcsFamille.get(cluster);
+    if (!bornes) continue;
+    const { debut, fin } = bornes;
+    const milieu = (debut + fin) / 2;
+    hubsFamille.set(cluster, [cx + Math.cos(milieu) * rayonHub, cy + Math.sin(milieu) * rayonHub]);
+
+    ctx.strokeStyle = desature(teintes[cluster % teintes.length] ?? accent);
+    ctx.beginPath();
+    ctx.arc(cx, cy, rayonExt - epaisseurFamille / 2, debut, fin);
+    ctx.stroke();
+
+    // Le nom, radial — retourné sur la moitié gauche du cercle pour ne
+    // jamais se lire la tête en bas, comme sur un cadran ordinaire. Permanent
+    // pour la famille (12 noms, lisibles) — pas pour chaque album, voir plus
+    // bas.
+    const gauche = Math.cos(milieu) < 0;
+    ctx.save();
+    ctx.translate(cx + Math.cos(milieu) * (rayonExt + 8), cy + Math.sin(milieu) * (rayonExt + 8));
+    ctx.rotate(gauche ? milieu + Math.PI : milieu);
+    ctx.fillStyle = encre;
+    ctx.globalAlpha = 0.8;
+    ctx.font = "11px system-ui";
+    ctx.textAlign = gauche ? "right" : "left";
+    ctx.fillText(nom || `famille ${cluster + 1}`, 0, 0);
+    ctx.restore();
+  }
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 1;
+
+  // Position de chaque album — stable, jamais recalculée au changement de
+  // focal (voir `docs/carto-anneau.md` § stabilité des positions) : c'est
+  // l'angle mémorisé par `calculerAnglesAnneau` qui est fixe, seuls `cx`/`cy`/
+  // les rayons (dépendants de la taille du canevas) sont recalculés ici.
+  const positions = new Map();
+  const parAlbum = new Map(anneau.reseau.albums.map((a) => [a.id, a]));
+  for (const a of anneau.reseau.albums) {
+    const angle = anneau.reseau.angleAlbum.get(a.id);
+    if (angle === undefined) continue;
+    positions.set(a.id, [cx + Math.cos(angle) * rayonAlbum, cy + Math.sin(angle) * rayonAlbum]);
+  }
+
+  // La largeur angulaire d'un album, par famille — même division que
+  // `calculerAnglesAnneau`, recalculée ici seulement pour savoir combien de
+  // place laisser entre deux arcs voisins (le « seam »).
+  const comptesFamille = new Map();
+  for (const a of anneau.reseau.albums) {
+    if (a.famille == null || !arcsFamille.has(a.famille)) continue;
+    comptesFamille.set(a.famille, (comptesFamille.get(a.famille) || 0) + 1);
+  }
+  const pasParFamille = new Map();
+  for (const [cluster, n] of comptesFamille) {
+    const { debut, fin } = arcsFamille.get(cluster);
+    pasParFamille.set(cluster, (fin - debut) / n);
+  }
+
+  // Anneau intérieur : **chaque album connu**, en trait fin et désaturé —
+  // c'est la texture tissée permanente qui manquait (voir
+  // `docs/carto-anneau.md` § pourquoi ça manque de richesse). Le focal et ses
+  // voisins ressortent par-dessus, plus loin dans cette fonction.
+  const durees = anneau.reseau.albums.map((a) => a.duree_ms || 0);
+  const dureeMin = Math.min(...durees);
+  const dureeMax = Math.max(...durees);
+  const epaisseurAlbum = (duree) => {
+    if (dureeMax <= dureeMin) return (EPAISSEUR_ALBUM_MIN + EPAISSEUR_ALBUM_MAX) / 2;
+    const t = (duree - dureeMin) / (dureeMax - dureeMin);
+    return EPAISSEUR_ALBUM_MIN + t * (EPAISSEUR_ALBUM_MAX - EPAISSEUR_ALBUM_MIN);
+  };
+
+  anneau.puces = [];
+  for (const a of anneau.reseau.albums) {
+    const pos = positions.get(a.id);
+    const angle = anneau.reseau.angleAlbum.get(a.id);
+    if (!pos || angle === undefined) continue;
+    const pas = pasParFamille.get(a.famille) || 0.02;
+    const marge = pas * 0.1;
+
+    ctx.strokeStyle = desature(teintes[a.famille % teintes.length] ?? accent);
+    ctx.lineWidth = epaisseurAlbum(a.duree_ms || 0);
+    // Même règle que le filtre par famille : un album hors de l'intervalle
+    // d'années s'estompe, il ne disparaît jamais.
+    ctx.globalAlpha = dansIntervalleAnnee(a.annee) ? 0.55 : 0.08;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rayonAlbum, angle - pas / 2 + marge, angle + pas / 2 - marge);
+    ctx.stroke();
+
+    anneau.puces.push({ id: a.id, x: pos[0], y: pos[1], rayon: 6, noeud: a });
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+
+  // Fond permanent de liens : un sous-ensemble représentatif de tout le
+  // réseau (le plus proche voisin de chaque album, voir `reseau_albums`),
+  // très ténu — la densité tissée que la sélection vient ensuite isoler,
+  // pas remplacer (même règle que le filtre par famille de la carte :
+  // estomper, jamais masquer).
+  for (const arc of anneau.reseau.arcs) {
+    const posA = positions.get(arc.a);
+    const posB = positions.get(arc.b);
+    if (!posA || !posB) continue;
+    const familleA = parAlbum.get(arc.a)?.famille;
+    const familleB = parAlbum.get(arc.b)?.famille;
+    if (familleA == null || familleB == null) continue;
+    const chemin = cheminAncetres(posA, familleA, posB, familleB, hubsFamille, racine);
+    ctx.strokeStyle = teintes[familleA % teintes.length] ?? accent;
+    ctx.globalAlpha = 0.05;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    tracerLigneLissee(courbeBundle(chemin, anneau.beta));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+
+  // Sélection : les flux du focal ressortent par-dessus le fond — épaisseur
+  // et opacité montent nettement, couleur du voisin (la provenance), le
+  // reste reste visible mais nettement plus discret. Un seul langage pour la
+  // force : jamais de tiret ni de pointillé.
+  if (anneau.focal) {
+    const posFocal = positions.get(anneau.focal.id);
+    if (posFocal && anneau.voisins.length) {
+      const distances = anneau.voisins.map((v) => v.distance);
+      const dMin = Math.min(...distances);
+      const dMax = Math.max(...distances);
+      const forceDe = (d) => (dMax <= dMin ? 0.5 : 1 - (d - dMin) / (dMax - dMin)); // 1 : le plus proche
+      for (const v of anneau.voisins) {
+        const posV = positions.get(v.id);
+        if (!posV) continue;
+        const chemin = cheminAncetres(posFocal, anneau.focal.famille, posV, v.famille, hubsFamille, racine);
+        const force = forceDe(v.distance);
+        ctx.strokeStyle = teintes[v.famille % teintes.length] ?? accent;
+        ctx.globalAlpha = 0.45 + force * 0.55;
+        ctx.lineWidth = 1.5 + force * 4;
+        ctx.beginPath();
+        tracerLigneLissee(courbeBundle(chemin, anneau.beta));
+        ctx.stroke();
+
+        dessinerRappel(posV, v.name, cx, cy, rayonExt, encre);
+      }
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
+
+      // Le focal lui-même : son arc redessiné en pleine teinte + surépaisseur,
+      // pour qu'il ressorte du fond désaturé.
+      const angleFocal = anneau.reseau.angleAlbum.get(anneau.focal.id);
+      if (angleFocal !== undefined) {
+        const pasFocal = pasParFamille.get(anneau.focal.famille) || 0.02;
+        ctx.strokeStyle = teintes[anneau.focal.famille % teintes.length] ?? accent;
+        ctx.lineWidth = epaisseurAlbum(anneau.focal.duree_ms || 0) + 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rayonAlbum, angleFocal - pasFocal / 2, angleFocal + pasFocal / 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+    }
+  }
+
+  // La playlist en cours (`fileCourante`), s'il y en a une — même principe
+  // que `tracerRouteSurCarte` pour nuage/carte, ici sur les albums plutôt
+  // que les morceaux : chaque morceau est ramené à son album (retrouvé par
+  // nom + artiste, `fileCourante` n'a pas l'identifiant de l'anneau), les
+  // doublons consécutifs d'un même album sont fondus en une seule étape.
+  const parCle = new Map(anneau.reseau.albums.map((a) => [`${a.name} ${a.artist}`, a]));
+  const arretsRoute = [];
+  for (const t of fileCourante) {
+    const alb = parCle.get(`${t.album || ""} ${t.artist || ""}`);
+    if (!alb) continue;
+    const dernier = arretsRoute[arretsRoute.length - 1];
+    if (dernier && dernier.id === alb.id) continue;
+    arretsRoute.push(alb);
+  }
+  if (arretsRoute.length >= 2) {
+    for (let i = 0; i < arretsRoute.length - 1; i++) {
+      const posA = positions.get(arretsRoute[i].id);
+      const posB = positions.get(arretsRoute[i + 1].id);
+      if (!posA || !posB) continue;
+      const chemin = cheminAncetres(
+        posA,
+        arretsRoute[i].famille,
+        posB,
+        arretsRoute[i + 1].famille,
+        hubsFamille,
+        racine,
+      );
+      ctx.strokeStyle = accent;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      tracerLigneLissee(courbeBundle(chemin, anneau.beta));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    // Un repère à chaque étape, pour lire l'ordre de la playlist sur l'anneau.
+    for (const a of arretsRoute) {
+      const pos = positions.get(a.id);
+      if (!pos) continue;
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(pos[0], pos[1], 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
+  // (`surcoucheSur`) et que sur la frise (`dessinerTemps`) — même clé
+  // `parCle` que ci-dessus pour ramener le morceau en cours à son album.
+  const pisteEnLecture = fileCourante.find((x) => x.path === enLecture);
+  const albumEnLecture =
+    pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
+  const posEnLecture = albumEnLecture && positions.get(albumEnLecture.id);
+  if (posEnLecture) {
+    ctx.strokeStyle = encre;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(posEnLecture[0], posEnLecture[1], 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.arc(posEnLecture[0], posEnLecture[1], 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+  }
+
+  // Le point survolé : un halo, pour le retrouver dans le fouillis des arcs.
+  if (anneau.survole) {
+    ctx.strokeStyle = encre;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(anneau.survole.x, anneau.survole.y, anneau.survole.rayon, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+}
+
+/// Survol de l'anneau : retrouve le nœud le plus proche du curseur (voir
+/// `anneau.puces`, reconstruit à chaque `dessinerAnneau`) et montre son
+/// identité — un clic dessus (voir le gestionnaire `click` du canevas) en
+/// fait le nouvel album focal.
+function survolerAnneau(mx, my, r) {
+  let meilleur = null;
+  let d2min = 14 * 14;
+  for (const p of anneau.puces) {
+    const d2 = (p.x - mx) ** 2 + (p.y - my) ** 2;
+    if (d2 < d2min) {
+      d2min = d2;
+      meilleur = p;
+    }
+  }
+  if (meilleur === anneau.survole) return;
+  anneau.survole = meilleur;
+  const info = $("carte-info");
+  if (meilleur) {
+    info.hidden = false;
+    info.innerHTML = "<b></b><span></span>";
+    // Le rôle (focal / antérieur / postérieur) n'a de sens que par rapport à
+    // la sélection courante — un album du fond permanent, hors sélection,
+    // n'en a aucun.
+    const estFocal = anneau.focal && meilleur.id === anneau.focal.id;
+    const voisin = anneau.voisins.find((v) => v.id === meilleur.id);
+    const role = estFocal ? "album focal" : voisin ? (voisin.avant ? "antérieur" : "postérieur") : null;
+    info.children[0].textContent = meilleur.noeud.name;
+    info.children[1].textContent = [meilleur.noeud.artist, role, duree(meilleur.noeud.duree_ms)]
+      .filter(Boolean)
+      .join(" — ");
+    info.style.left = `${Math.min(mx + 14, r.width - 290)}px`;
+    info.style.top = `${my + 14}px`;
+  } else {
+    info.hidden = true;
+  }
+  dessinerCarte();
+}
+
 function dessinerCarte() {
   // En mode carte, les tuiles portent le fond : le canevas ne garde que la
   // surcouche. En mode nuage, il dessine tout, comme avant.
@@ -2691,6 +4326,23 @@ function dessinerCarte() {
   const style = getComputedStyle(document.documentElement);
   const encre = style.getPropertyValue("--txt").trim() || "#EDE8DC";
   const accent = style.getPropertyValue("--accent").trim() || "#C07C4A";
+
+  // Le streamgraph est un troisième dessin sur le même canevas, pas une
+  // variante du nuage : ses axes (temps × famille empilée) n'ont rien à voir
+  // avec l'embedding que `dessinerNuage`/`surcoucheSur` savent tracer.
+  if (modeTemps()) {
+    ctx.clearRect(0, 0, r.width, r.height);
+    dessinerTemps(r, encre, accent);
+    return;
+  }
+
+  // L'anneau, de même : un cercle centré sur un album focal, encore un autre
+  // repère que l'embedding, le lon/lat ou l'axe du temps.
+  if (modeAnneau()) {
+    ctx.clearRect(0, 0, r.width, r.height);
+    dessinerAnneau(r, encre, accent);
+    return;
+  }
 
   ctx.clearRect(0, 0, r.width, r.height);
   if (carte.points.length === 0) {
@@ -2864,6 +4516,12 @@ function surcoucheSur(r, encre, accent) {
 /// proche dans un rayon raisonnable si rien n'est peint là (bâtiment vacant,
 /// zoom trop large, ou monde fictif sans bâti).
 function pointSous(mx, my) {
+  // Le streamgraph n'a pas de position d'écran par morceau — seulement des
+  // bandes et des fils agrégés (voir `dessinerTemps`) : rien à pointer.
+  // Chercher un morceau puis Entrée reste la façon de poser un départ.
+  // L'anneau non plus : ses nœuds sont des albums, pas des morceaux, pointés
+  // par `survolerAnneau`/`anneau.puces`, pas par `carte.points`.
+  if (modeTemps() || modeAnneau()) return null;
   const g = carteGL();
   if (g && villeReelle && g.getLayer("batiments-morceaux")) {
     const feats = g.queryRenderedFeatures([mx, my], { layers: ["batiments-morceaux"] });
@@ -2889,6 +4547,68 @@ function pointSous(mx, my) {
   return meilleur;
 }
 
+/// Survol du streamgraph : retrouve le point de fil d'artiste le plus proche
+/// du curseur (voir `temps.puces`, reconstruit à chaque `dessinerTemps`) et
+/// montre son détail par album — c'est la seule façon de descendre du genre
+/// à l'album sur ce mode, faute d'une position à cliquer par morceau.
+/// Survol de la frise : l'album le plus proche du curseur, ou — à défaut —
+/// l'année sous le curseur quand il traîne sur la bande de graduation, seule
+/// façon de lire une année puisqu'elle ne s'imprime plus en continu (§ 5).
+function survolerTemps(mx, my, r) {
+  let meilleur = null;
+  let d2min = 12 * 12;
+  for (const p of temps.puces) {
+    const d2 = (p.x - mx) ** 2 + (p.y - my) ** 2;
+    if (d2 < d2min) {
+      d2min = d2;
+      meilleur = p;
+    }
+  }
+
+  let anneeSurvolee = null;
+  const d = temps.disposition;
+  if (!meilleur && d && d.n > 1) {
+    const yBas = r.height - 28;
+    if (my >= yBas - 2 && my <= yBas + 14 && mx >= d.xDeb - 4 && mx <= d.xFin + 4) {
+      anneeSurvolee = Math.round(
+        temps.minAnnee + (mx - d.xDeb - temps.vue.dx) / (d.xPasBase * temps.vue.k),
+      );
+    }
+  }
+
+  const cle = meilleur ? `a:${meilleur.album.id}` : anneeSurvolee != null ? `y:${anneeSurvolee}` : null;
+  if (cle === temps.survoleCle) return;
+  temps.survoleCle = cle;
+  // La puce entière, pas seulement ses coordonnées : le gestionnaire de clic
+  // (`cnv.addEventListener("click")`) lit `temps.survole.album` pour peupler
+  // l'inspecteur partagé — même schéma que `anneau.survole`.
+  temps.survole = meilleur;
+
+  const info = $("carte-info");
+  if (meilleur) {
+    const a = meilleur.album;
+    const noms = new Map(carte.familles.map(([c, nom]) => [c, nom]));
+    const fam = noms.get(a.famille) || `famille ${a.famille + 1}`;
+    const secondaire = a.familleSecondaire != null ? ` + ${noms.get(a.familleSecondaire) || ""}` : "";
+    const hub = a.sortants >= temps.seuilHub ? " · hub" : "";
+    info.hidden = false;
+    info.innerHTML = "<b></b><span></span>";
+    info.children[0].textContent = `${a.name} — ${a.artist}`;
+    info.children[1].textContent = `${a.annee ?? "date incertaine"} · ${fam}${secondaire}${hub}`;
+    info.style.left = `${Math.min(mx + 14, r.width - 290)}px`;
+    info.style.top = `${my + 14}px`;
+  } else if (anneeSurvolee != null) {
+    info.hidden = false;
+    info.innerHTML = "<b></b>";
+    info.children[0].textContent = String(anneeSurvolee);
+    info.style.left = `${Math.min(mx + 10, r.width - 100)}px`;
+    info.style.top = `${my - 24}px`;
+  } else {
+    info.hidden = true;
+  }
+  dessinerCarte();
+}
+
 cnv.addEventListener("mousemove", (e) => {
   const r = cnv.getBoundingClientRect();
   const mx = e.clientX - r.left;
@@ -2911,11 +4631,27 @@ cnv.addEventListener("mousemove", (e) => {
     if (g) {
       // Le canevas relaie : MapLibre n'écoute rien lui-même.
       g.panBy([-e.movementX, -e.movementY], { duration: 0 });
+    } else if (modeTemps()) {
+      // Les deux axes, comme Nuage/Carte juste en dessous — le temps
+      // (`dx`) et les bandes (`dy`, zoom vertical continu). Reclampés au
+      // prochain dessin, voir `temps.vue`.
+      temps.vue.dx += e.movementX;
+      temps.vue.dy += e.movementY;
     } else {
       carte.vue.dx += e.movementX;
       carte.vue.dy += e.movementY;
     }
     dessinerCarte();
+    return;
+  }
+
+  if (modeTemps()) {
+    survolerTemps(mx, my, r);
+    return;
+  }
+
+  if (modeAnneau()) {
+    survolerAnneau(mx, my, r);
     return;
   }
 
@@ -2951,6 +4687,21 @@ cnv.addEventListener("mousedown", (e) => {
   // Un relâchement hors du canevas ne produit pas de `click` : sans cette
   // remise à zéro, le drapeau survivrait et avalerait le clic suivant.
   vientDeDessiner = false;
+
+  // Le streamgraph n'a ni lasso ni tracé à la souris — chercher un morceau
+  // puis Entrée reste le seul geste de départ du mode Temps — mais il se
+  // glisse horizontalement comme les deux autres affichages (voir la
+  // branche `modeTemps()` de `mousemove`, plus bas).
+  if (modeTemps()) {
+    glisse = true;
+    departGlisse = [e.clientX, e.clientY];
+    return;
+  }
+
+  // L'anneau n'a ni lasso, ni tracé, ni glisser — un cercle de rayon fixe,
+  // centré d'office. Le seul geste est le clic (voir le gestionnaire `click`
+  // plus bas) : chercher un album, ou en cliquer un déjà affiché.
+  if (modeAnneau()) return;
 
   // Alt+glisser : lasso. Disponible dans tous les modes de chemin — c'est une
   // sélection, pas un chemin, et rien ne justifie de la cacher derrière un
@@ -3004,12 +4755,48 @@ window.addEventListener("mouseup", async () => {
 
 cnv.addEventListener("mouseleave", () => {
   carte.survole = null;
+  temps.survole = null;
+  anneau.survole = null;
   $("carte-info").hidden = true;
   dessinerCarte();
 });
 
 /// Applique un facteur de zoom autour d'un point de l'écran.
+/// Zoom horizontal du streamgraph, autour de `cx` (pixel écran, l'axe des
+/// familles empilées ne zoome jamais). Même principe que le zoom du nuage :
+/// on retrouve le bucket sous le curseur avant le geste, on change d'échelle,
+/// puis on décale pour l'y remettre — sans quoi zoomer ferait fuir le point
+/// qu'on visait plutôt que s'en rapprocher.
+/// Zoom de la frise — un seul facteur (`temps.vue.k`) pour les deux axes à la
+/// fois, exactement comme `zoomer` sur le nuage (`carte.vue.k` juste plus
+/// bas) : un geste de molette/pincement zoome le temps et les bandes
+/// ensemble, glisser déplace les deux (voir le gestionnaire `mousemove`).
+/// Deux axes, donc deux pivots à préserver sous le curseur — `cx` pour
+/// l'année (repère `xDeb`/`xPasBase`), `cy` pour la bande (repère `yHaut`) —
+/// mais un seul `k`, recalculé une fois, jamais deux facteurs qui pourraient
+/// diverger l'un de l'autre.
+function zoomerTemps(f, cx, cy) {
+  const d = temps.disposition;
+  if (!d) return;
+  const xSousCurseur = d.n >= 2 ? (cx - d.xDeb - temps.vue.dx) / (d.xPasBase * temps.vue.k) : null;
+  const ySousCurseur = (cy - d.yHaut - temps.vue.dy) / temps.vue.k;
+  temps.vue.k = Math.min(40, Math.max(1, temps.vue.k * f));
+  if (xSousCurseur != null) {
+    temps.vue.dx = cx - d.xDeb - xSousCurseur * d.xPasBase * temps.vue.k;
+  }
+  temps.vue.dy = cy - d.yHaut - ySousCurseur * temps.vue.k;
+  $("zoom-val").textContent = `×${temps.vue.k.toFixed(1).replace(".", ",")}`;
+  dessinerCarte();
+}
+
 function zoomer(f, cx, cy) {
+  if (modeTemps()) {
+    const r = cnv.getBoundingClientRect();
+    zoomerTemps(f, cx ?? r.width / 2, cy ?? r.height / 2);
+    return;
+  }
+  // Pas de zoom sur l'anneau : un cercle de rayon fixe n'a rien à agrandir.
+  if (modeAnneau()) return;
   const g = carteGL();
   if (g) {
     // Zoomer autour du curseur : on note le point du monde qui s'y trouve,
@@ -3045,25 +4832,36 @@ function zoomer(f, cx, cy) {
 /// L'image hors-écran de la densité est bâtie pour un niveau de zoom donné
 /// : la redessiner à chaque cran de molette la
 /// referait des dizaines de fois par seconde pour rien, un délai court
-/// après la fin du geste suffit — même principe que le bruit des chemins
-/// ou la force de l'ombre.
+/// après la fin du geste suffit — même principe que le bruit des chemins.
 let attenteZoomDensite = null;
 
 cnv.addEventListener("wheel", (e) => {
   e.preventDefault();
+  const r = cnv.getBoundingClientRect();
+  const mx = e.clientX - r.left;
+  const my = e.clientY - r.top;
+
   // Proportionnel à l'ampleur du geste, et non un pas fixe par évènement :
   // un trackpad en émet des dizaines par centimètre de doigt, là où une
   // molette en émet un par cran. Le pas fixe rendait le zoom inutilisable au
   // trackpad. Le facteur est borné pour qu'une inertie brutale ne fasse pas
-  // traverser toute la plage d'un coup.
+  // traverser toute la plage d'un coup. Un seul geste, les deux axes à la
+  // fois — `zoomer` sait déjà distinguer les affichages, voir `zoomerTemps`,
+  // qui zoome le temps et les bandes ensemble sur la frise, exactement comme
+  // `carte.vue.k` le fait sur le nuage.
   const f = Math.exp(-Math.max(-40, Math.min(40, e.deltaY)) * 0.0035);
-  const r = cnv.getBoundingClientRect();
-  zoomer(f, e.clientX - r.left, e.clientY - r.top);
+  zoomer(f, mx, my);
 }, { passive: false });
 
 $("zoom-plus").addEventListener("click", () => zoomer(1.4));
 $("zoom-moins").addEventListener("click", () => zoomer(1 / 1.4));
 $("zoom-reset").addEventListener("click", () => {
+  if (modeTemps()) {
+    temps.vue = { k: 1, dx: 0, dy: 0 };
+    $("zoom-val").textContent = "×1,0";
+    dessinerCarte();
+    return;
+  }
   const g = carteGL();
   if (g) {
     // Priorité à la limite communale (`vueInitialeGL.bounds`) : prise sur la
@@ -3101,6 +4899,28 @@ cnv.addEventListener("click", async (e) => {
     vientDeDessiner = false;
     return;
   }
+
+  // Anneau : cliquer n'importe quel album du fond (pas seulement un voisin
+  // déjà affiché) en fait le nouvel album focal — « marcher » dans le graphe
+  // de ressemblance. Cliquer le focal lui-même ne fait rien, il l'est déjà.
+  if (modeAnneau()) {
+    if (anneau.survole && anneau.survole.id !== anneau.focal?.id) {
+      await chargerAnneau(anneau.survole.id);
+    }
+    return;
+  }
+
+  // Temps (frise des filiations) : même geste que l'anneau, même état focal
+  // partagé (`anneau.focal`/`anneau.voisins`) — `chargerAnneau` peuple à la
+  // fois la sélection dessinée (§ 2) et l'inspecteur partagé (§ 1), pas un
+  // composant propre à la frise.
+  if (modeTemps()) {
+    if (temps.survole && temps.survole.album.id !== anneau.focal?.id) {
+      await chargerAnneau(temps.survole.album.id);
+    }
+    return;
+  }
+
   const p = carte.survole;
   if (!p) return;
 
@@ -3139,14 +4959,30 @@ async function tracerChemin(spec) {
   patienter("calcul du chemin…");
   let pistes;
   try {
-    pistes = await invoke("path", {
-      ...spec,
-      steps: longueurChemin(),
-      seed: carte.graine,
-      bruit: bruitChemin,
-      reel: carteReelle(),
-      famille: carte.isolee,
-    });
+    // Le voyage n'a ni arrivée ni notion de famille isolée ou de plan de
+    // ville — un axe temporel, pas un espace à filtrer — d'où une commande
+    // à lui, plutôt qu'un mode de plus dans `path`.
+    pistes =
+      spec.mode === "voyage"
+        ? await invoke("voyage", {
+            from: spec.from,
+            steps: longueurChemin(),
+            seed: carte.graine,
+            bruit: bruitChemin,
+          })
+        : await invoke("path", {
+            ...spec,
+            steps: longueurChemin(),
+            seed: carte.graine,
+            bruit: bruitChemin,
+            reel: carteReelle(),
+            famille: carte.isolee,
+          });
+  } catch (e) {
+    // Sans ce catch, l'échec ne laissait qu'un rappel de gestes générique en
+    // pied de carte — rien qui dise qu'un calcul a réellement échoué.
+    signalerErreur("chemin-aide", "échec du calcul du chemin", e, "chemin");
+    return;
   } finally {
     patienter(null);
   }
@@ -3368,10 +5204,19 @@ async function chargerFamilles() {
 /// effectif par famille. `estActive(cluster)` décide du filet d'accent,
 /// `auClic(cluster)` réagit au clic. Explorer isole une famille sur la carte ;
 /// l'Écoute coche/décoche une famille du filtre de la grille de pochettes.
-function rendreFamilles(hote, estActive, auClic) {
+///
+/// `extension`, optionnel : sur la frise des filiations seulement (§ 3), un
+/// second contrôle par ligne — étendre/réduire cette bande verticalement
+/// (`estActive`/`auClic` propres à ce contrôle, indépendants de l'isolement).
+/// Toujours une ligne (`.famille-ligne`) même sans `extension`, pour que
+/// l'ajout du second bouton ne redistribue jamais la mise en page existante.
+function rendreFamilles(hote, estActive, auClic, extension) {
   const teintes = couleursFamilles();
   hote.replaceChildren();
   for (const [c, nom, n] of carte.familles ?? []) {
+    const ligne = document.createElement("div");
+    ligne.className = "famille-ligne";
+
     const el = document.createElement("button");
     el.className = "famille" + (estActive(c) ? " famille--isolee" : "");
     el.innerHTML = `<span class="famille__pastille"></span>
@@ -3383,7 +5228,19 @@ function rendreFamilles(hote, estActive, auClic) {
     el.children[1].title = nom || "";
     el.children[2].textContent = n.toLocaleString("fr-FR");
     el.addEventListener("click", () => auClic(c));
-    hote.appendChild(el);
+    ligne.appendChild(el);
+
+    if (extension) {
+      const actif = extension.estActive(c);
+      const bouton = document.createElement("button");
+      bouton.className = "famille__etendre" + (actif ? " famille__etendre--actif" : "");
+      bouton.title = actif ? "Réduire cette bande" : "Étendre cette bande verticalement";
+      bouton.textContent = "↕";
+      bouton.addEventListener("click", () => extension.auClic(c));
+      ligne.appendChild(bouton);
+    }
+
+    hote.appendChild(ligne);
   }
 }
 
@@ -3401,6 +5258,19 @@ async function dessinerFamilles() {
       // recalcule pour ne garder que la famille isolée (ou la relâcher).
       if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
     },
+    // Zoom vertical ciblé (§ 3) : seulement sur la frise, où une bande peut
+    // compresser plusieurs milliers d'albums (Rock · Grunge, par exemple).
+    // Ailleurs (Nuage, Carte, Anneau), aucune notion de « bande » n'existe.
+    modeTemps()
+      ? {
+          estActive: (c) => temps.bandeEtendue === c,
+          auClic: (c) => {
+            temps.bandeEtendue = temps.bandeEtendue === c ? null : c;
+            dessinerFamilles();
+            dessinerCarte();
+          },
+        }
+      : undefined,
   );
 }
 
@@ -3628,6 +5498,12 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
 const MODES_CHEMIN = {
   points: ["direct", "sonique", "errance", "dessine"],
   carte: ["direct", "dessine", "itineraire"],
+  // Le streamgraph n'a ni géométrie d'écran (direct, dessiné) ni deux bornes
+  // à relier (sonique) : seul un départ qui avance dans le temps a un sens.
+  temps: ["voyage"],
+  // L'anneau n'a aucun mode de chemin : ni chronologie à parcourir, ni
+  // géométrie d'écran à tracer — juste un album focal et ses voisins.
+  anneau: [],
 };
 
 /// Montre/cache les réglages propres à chaque mode de chemin. « morceaux » et
@@ -3648,38 +5524,115 @@ function majReglagesChemin() {
 /// partie.
 function majModesChemin() {
   const disponibles = MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points;
+  // L'anneau n'a aucun mode de chemin (voir `MODES_CHEMIN.anneau`) : sans ce
+  // repli, le bloc « Chemin » restait affiché — titre, bornes vides et aide
+  // du mode « direct » — alors qu'aucun de ses boutons n'a de sens ici.
+  $("bloc-chemin").hidden = disponibles.length === 0;
   document.querySelectorAll("[data-chemin]").forEach((b) => {
     b.hidden = !disponibles.includes(b.dataset.chemin);
   });
+  if (disponibles.length === 0) return;
   if (!disponibles.includes(carte.chemin)) {
-    poserModeChemin("direct");
+    // « direct » n'existe pas dans tous les affichages (le streamgraph n'a
+    // que « voyage ») : le premier mode disponible, pas une valeur fixe.
+    // `false` : ce repli est automatique, pas un choix de l'utilisateur — il
+    // ne doit jamais retracer (voir la note sur `retracer` de `poserModeChemin`).
+    poserModeChemin(disponibles[0] ?? "direct", false);
   } else {
     majReglagesChemin();
+  }
+}
+
+/// Montre/cache ce qui n'a de sens que sur le nuage ou la carte — couleur,
+/// fond de plan, zoom — et ce qui n'a de sens que sur le streamgraph, le
+/// seuil des fils d'artiste.
+function majAffichageTemps() {
+  const t = modeTemps();
+  // La couleur n'a pas de sens non plus sur l'anneau (voir
+  // `majAffichageAnneau`, appelée au même endroit) : les deux calculent la
+  // même condition, pour que l'ordre d'appel ne fasse jamais gagner l'un sur
+  // l'autre.
+  $("bloc-colorer-par").hidden = t || modeAnneau();
+  $("bloc-temps").hidden = !t;
+  if (t) {
+    $("zoom-val").textContent = `×${temps.vue.k.toFixed(1).replace(".", ",")}`;
+    chargerTemps().then(() => dessinerCarte());
+  }
+}
+
+/// Montre/cache ce qui n'a de sens que sur l'anneau — le curseur « voisins »
+/// — et cache le zoom (un cercle de rayon fixe n'a rien à agrandir). Jumelle
+/// de `majAffichageTemps`, appelée au même endroit.
+function majAffichageAnneau() {
+  const a = modeAnneau();
+  $("bloc-colorer-par").hidden = a || modeTemps();
+  $("bloc-anneau").hidden = !a;
+  $("bloc-zoom").hidden = a;
+  if (a) {
+    $("anneau-k").value = anneau.k;
+    $("anneau-k-val").textContent = String(anneau.k);
+    $("anneau-beta").value = anneau.beta;
+    $("anneau-beta-val").textContent = anneau.beta.toFixed(2).replace(".", ",");
+    chargerReseauAnneau().then(() => dessinerCarte());
   }
 }
 
 document.querySelectorAll("[data-affichage]").forEach((b) =>
   b.addEventListener("click", () => {
     carte.affichage = b.dataset.affichage;
-    // Un tracé dessiné dans un repère (t-SNE / lon-lat) n'a plus de sens dans
-    // l'autre : on repart propre plutôt que de rejouer des coordonnées
-    // étrangères au repère courant.
+    // Un chemin *calculé* (le tracé d'un mode direct/sonique/dessiné) vit
+    // dans un repère précis (t-SNE, lon-lat, temps) et n'a plus de sens dans
+    // un autre : on l'efface plutôt que de rejouer des coordonnées
+    // étrangères au repère courant. La playlist EN COURS DE LECTURE
+    // (`fileCourante`) est une donnée complètement différente — elle ne doit
+    // jamais dépendre de l'affichage, voir `tracerRouteSurCarte` juste après.
     carte.refaire = null;
     carte.route = null;
     carte.routeTrace = null;
+    carte.survole = null;
+    temps.survole = null;
+    anneau.survole = null;
+    anneau.focal = null;
+    anneau.voisins = [];
+    $("carte-info").hidden = true;
     majAffichageGL();
+    majAffichageTemps();
+    majAffichageAnneau();
     majModesChemin();
+    // La légende gagne/perd le bouton d'extension verticale (§ 3) selon
+    // qu'on entre ou quitte la frise — sans ce rafraîchissement, il resterait
+    // affiché après être passé sur la Carte, ou absent en revenant sur Temps.
+    dessinerFamilles();
+    // `majModesChemin` ne rafraîchit le pied de carte que lorsqu'un mode de
+    // chemin existe pour ce nouvel affichage (voir son repli sur l'anneau,
+    // qui n'en a aucun) — le garantir ici plutôt que dans chaque branche.
+    $("carte-aide").textContent = aideCourante();
     document
       .querySelectorAll("[data-affichage]")
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
+    // Redessine la playlist en cours dans le nouveau repère — nuage et carte
+    // en ont besoin pour reconstruire `carte.route`/`carte.routeTrace`,
+    // effacés juste au-dessus ; l'anneau, lui, lit `fileCourante` directement
+    // à chaque image (voir `dessinerAnneau`) et n'en a pas besoin, mais
+    // l'appeler ne coûte rien de plus qu'un redessin déjà prévu.
+    tracerRouteSurCarte(fileCourante);
     dessinerCarte();
   }),
 );
 
-/// Rappel du geste attendu, en pied de carte.
+/// Rappel du geste attendu, en pied de carte. Le streamgraph a un zoom et un
+/// glisser horizontaux, mais ni clic (rien à écouter directement dessus) ni
+/// lasso (pas de sélection de zone sur un axe temporel).
 function aideCourante() {
+  // L'anneau n'a ni zoom, ni glisser, ni lasso, ni chemin — juste un clic
+  // pour changer d'album focal. `carte.chemin` peut porter n'importe quelle
+  // valeur laissée par le dernier affichage à en avoir eu un ; inutile d'y
+  // toucher ici.
+  if (modeAnneau()) return "clic sur un voisin : nouvel album focal";
   const [, court] = AIDE_CHEMIN[carte.chemin];
-  return `molette : zoom · glisser : déplacer · clic : écouter · ${court} · alt+glisser : lasso`;
+  return modeTemps()
+    ? `molette : zoom · glisser : déplacer · ${court}`
+    : `molette : zoom · glisser : déplacer · clic : écouter · ${court} · alt+glisser : lasso`;
 }
 
 /// Montre ou cache la légende en dégradé, et y inscrit les bornes de la
@@ -3736,14 +5689,14 @@ document.querySelectorAll("[data-borne]").forEach((b) =>
 
 /// Pose une borne et trace dès que les deux sont là.
 ///
-/// L'errance n'a qu'une borne : elle part dès le départ posé.
+/// L'errance et le voyage n'ont qu'une borne : ils partent dès le départ posé.
 async function poserBorne(t) {
-  if (carte.chemin === "errance") {
+  if (carte.chemin === "errance" || carte.chemin === "voyage") {
     carte.depart = t;
     carte.arrivee = null;
     dessinerBornes();
     carte.graine = 1;
-    await tracerChemin({ from: t.id, mode: "errance" });
+    await tracerChemin({ from: t.id, mode: carte.chemin });
     return;
   }
   if (!carte.depart) carte.depart = t;
@@ -3764,7 +5717,24 @@ async function poserBorne(t) {
   }
 }
 
-function poserModeChemin(mode) {
+/// Le texte du rail pour un mode de chemin donné. Le rappel « ou : chercher
+/// puis Entrée » n'a de sens que là où un autre geste existe déjà — le
+/// voyage, lui, ne se pose que par la recherche, l'ajouter ferait doublon.
+function texteAideChemin(mode) {
+  const base = AIDE_CHEMIN[mode][0];
+  return mode === "voyage" ? base : `${base} Ou : chercher puis Entrée pour poser une borne.`;
+}
+
+/// `retracer` : ne relance un chemin depuis les bornes déjà choisies
+/// (`carte.depart`/`carte.arrivee`) que sur un choix explicite de l'utilisateur
+/// (le bouton `[data-chemin]`, tout en bas). Les réaffirmations automatiques
+/// du mode — `majModesChemin` qui retombe sur un mode par défaut au
+/// changement d'**affichage** (nuage/carte/temps/anneau), ou l'entrée dans
+/// Explorer — passent `false` : la visualisation ne doit jamais avoir
+/// d'effet de bord sur la playlist en cours de lecture. Sans cette
+/// distinction, changer d'affichage avec un vieux départ/arrivée encore posé
+/// relançait un chemin et écrasait silencieusement `fileCourante`.
+function poserModeChemin(mode, retracer = true) {
   carte.chemin = mode;
   majReglagesChemin();
   carte.trace = null;
@@ -3776,8 +5746,7 @@ function poserModeChemin(mode) {
   document
     .querySelectorAll("[data-chemin]")
     .forEach((s) => s.classList.toggle("segment--actif", s.dataset.chemin === mode));
-  $("chemin-aide").textContent =
-    `${AIDE_CHEMIN[mode][0]} Ou : chercher puis Entrée pour poser une borne.`;
+  $("chemin-aide").textContent = texteAideChemin(mode);
   $("carte-aide").textContent = aideCourante();
   // En itinéraire, la visibilité du bouton dépend des variantes — gérée par
   // `majReglagesChemin` ci-dessus.
@@ -3791,25 +5760,26 @@ function poserModeChemin(mode) {
   // **Le dire est indispensable.** Le calcul sature tous les cœurs ; muet, il
   // se lit comme un plantage, ventilateurs compris. On l'annonce donc dans le
   // rail et en pied de carte, et on efface dès que c'est prêt.
-  if (mode === "sonique" || mode === "errance") {
+  if (mode === "sonique" || mode === "errance" || mode === "voyage") {
     const attente = "Préparation du graphe des voisins…";
     $("chemin-aide").textContent = attente;
     patienter(attente);
     preparerGraphe().finally(() => {
       // Le mode a pu changer entre-temps : on réaffiche l'aide du mode
       // courant, pas celle de celui qui avait lancé la préparation.
-      $("chemin-aide").textContent =
-        `${AIDE_CHEMIN[carte.chemin][0]} Ou : chercher puis Entrée pour poser une borne.`;
+      $("chemin-aide").textContent = texteAideChemin(carte.chemin);
       patienter();
     });
   }
 
   // Le départ (et l'arrivée) choisis restent d'un mode à l'autre — voir
-  // `carte.depart`, jamais effacé ci-dessus. Changer de mode doit donc
-  // aussitôt retracer avec ces bornes-là, sans obliger à recliquer : c'est
-  // la trajectoire qui change, pas le point d'où l'on veut explorer.
-  if (mode === "errance") {
-    if (carte.depart) tracerChemin({ from: carte.depart.id, mode: "errance" }).catch((e) => remonter(e, "chemin"));
+  // `carte.depart`, jamais effacé ci-dessus. Changer de mode *explicitement*
+  // doit aussitôt retracer avec ces bornes-là, sans obliger à recliquer :
+  // c'est la trajectoire qui change, pas le point d'où l'on veut explorer.
+  // Mais seulement sur ce choix explicite (voir la note sur `retracer`).
+  if (!retracer) return;
+  if (mode === "errance" || mode === "voyage") {
+    if (carte.depart) tracerChemin({ from: carte.depart.id, mode }).catch((e) => remonter(e, "chemin"));
   } else if (mode === "itineraire") {
     if (carte.depart && carteReelle()) tracerItineraire().catch((e) => remonter(e, "itinéraire"));
   } else if (mode !== "dessine" && carte.depart && carte.arrivee) {
@@ -3856,6 +5826,64 @@ $("bruit-chemin").addEventListener("input", (e) => {
   attenteBruit = setTimeout(() => {
     rejouerChemin().catch((e) => remonter(e, "réglage du bruit"));
   }, 250);
+});
+
+/// Seuil de marquage des hubs de la frise — voir `temps.seuilHub` et
+/// `dessinerTemps` § 6. Initialisé au chargement à une valeur calculée
+/// (moyenne + 2 écarts-types des degrés sortants), ajustable ensuite ici.
+$("temps-seuil-val").textContent = `${temps.seuilHub} connexions`;
+$("temps-seuil").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  temps.seuilHub = Number.isFinite(v) ? Math.max(1, v) : temps.seuilHub;
+  $("temps-seuil-val").textContent = `${temps.seuilHub} connexion${temps.seuilHub > 1 ? "s" : ""}`;
+  if (modeTemps()) dessinerCarte();
+});
+
+/// Nombre de voisins demandés au moteur pour l'anneau — change la taille de
+/// la requête `album_ring`, pas seulement le rendu : redemande donc l'anneau
+/// courant plutôt que de se contenter de redessiner.
+$("anneau-k").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  anneau.k = Number.isFinite(v) ? Math.min(20, Math.max(3, v)) : anneau.k;
+  $("anneau-k-val").textContent = String(anneau.k);
+});
+$("anneau-k").addEventListener("change", () => {
+  if (modeAnneau() && anneau.focal) chargerAnneau(anneau.focal.id);
+});
+
+/// Tension du bundling — pur rendu, pas un nouveau voisinage : redessiner
+/// suffit, pas la peine de redemander l'anneau au moteur.
+$("anneau-beta").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  anneau.beta = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : anneau.beta;
+  $("anneau-beta-val").textContent = anneau.beta.toFixed(2).replace(".", ",");
+  if (modeAnneau()) dessinerCarte();
+});
+
+/// L'intervalle d'années (`filtreAnnee`), commun aux quatre visualisations.
+/// Pur rendu côté données déjà chargées (tuiles ou `carte.points`) : glisser
+/// refiltre et redessine, ça ne redemande jamais rien au moteur.
+$("annee-debut").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  if (Number.isFinite(v)) filtreAnnee.debut = Math.min(v, filtreAnnee.fin);
+  $("annee-debut").value = String(filtreAnnee.debut);
+  majEtiquetteIntervalleAnnees();
+  rafraichirFiltreAnnee();
+});
+$("annee-fin").addEventListener("input", (e) => {
+  const v = Number(e.target.value);
+  if (Number.isFinite(v)) filtreAnnee.fin = Math.max(v, filtreAnnee.debut);
+  $("annee-fin").value = String(filtreAnnee.fin);
+  majEtiquetteIntervalleAnnees();
+  rafraichirFiltreAnnee();
+});
+$("annee-reinit").addEventListener("click", () => {
+  filtreAnnee.debut = filtreAnnee.min;
+  filtreAnnee.fin = filtreAnnee.max;
+  $("annee-debut").value = String(filtreAnnee.min);
+  $("annee-fin").value = String(filtreAnnee.max);
+  majEtiquetteIntervalleAnnees();
+  rafraichirFiltreAnnee();
 });
 
 /// Construit le graphe des voisins en tâche de fond, une seule fois à la
@@ -3920,6 +5948,7 @@ async function chargerCarte() {
     carte.bornes[cle] = vs.length ? [Math.min(...vs), Math.max(...vs)] : [0, 0];
   }
   majLegendeContinue();
+  initialiserFiltreAnnee();
   $("fil-titre").textContent = "Carte";
   $("fil-compte").textContent =
     faits < total
@@ -3928,6 +5957,9 @@ async function chargerCarte() {
   dessinerFamilles();
   majAffichageGL();
   majModesChemin();
+  chargerTemps().then(() => {
+    if (modeTemps()) dessinerCarte();
+  });
 }
 
 /* ---------------------------------------------------------- modes */
@@ -3946,6 +5978,7 @@ async function basculerMode(mode) {
     b.classList.toggle("mode--actif", b.dataset.mode === mode),
   );
   modeCourant = mode;
+  majVisibiliteIntervalleAnnees();
   // Entrer dans l'éditeur avec des stems déjà affichés doit les rendre
   // audibles : c'est ce qu'on vient y faire.
   if (editer) prendreLaMain().catch((e) => remonter(e, "stems"));
@@ -3981,7 +6014,12 @@ async function basculerMode(mode) {
   if (!editer && edition.enLecture) await arreterStems();
 
   if (explorer) {
-    poserModeChemin(carte.chemin);
+    // `false` : ré-affirme juste l'état du rail en entrant dans Explorer, ne
+    // doit pas relancer un chemin depuis un vieux départ/arrivée — la
+    // visualisation doit rester indépendante de la playlist en cours.
+    poserModeChemin(carte.chemin, false);
+    majAffichageTemps();
+    majAffichageAnneau();
     await chargerCarte();
     // Rattrape une file lancée depuis l'Écoute avant la première visite
     // d'Explorer : la carte n'avait alors pas encore ses points pour y
@@ -5309,6 +7347,22 @@ async function analyserRacine(chemin) {
     popARecalculee();
     await chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
 
+    if ($("bio-active").checked) {
+      etat.textContent = `${chemin} — biographies…`;
+      await invoke("start_biographies", { cle: null });
+      await attendreFin("biographies_state", 2000, (b) => majJauge("scan-jauge", b.en_cours, b.faits, b.total));
+    }
+    if ($("critiques-active").checked) {
+      etat.textContent = `${chemin} — critiques…`;
+      await invoke("start_critiques", { rafraichir: false });
+      await attendreFin("critiques_state", 2000, (c) => majJauge("scan-jauge", c.en_cours, c.faits, c.total));
+    }
+    if ($("discogs-lier-active").checked && contact.includes("@")) {
+      etat.textContent = `${chemin} — liaison Discogs…`;
+      await invoke("start_discogs_liaison", { contact });
+      await attendreFin("discogs_liaison_state", 2000, (d) => majJauge("scan-jauge", d.en_cours, d.faits, d.total));
+    }
+
     jauge.hidden = true;
     etat.textContent = `${chemin} — terminé.`;
     await dessinerRacines();
@@ -5370,7 +7424,9 @@ async function passeScan(force, phase) {
 async function passeEmpreintes(phase) {
   avancementActu(phase, "empreintes : démarrage…", 0, 0);
   await invoke("start_analysis");
-  await attendreFin("analysis_state", 1500, (a) => {
+  // Même cadence que `analyserRacine` pour ce même sondage — les deux
+  // chemins ne doivent pas diverger sans raison.
+  await attendreFin("analysis_state", 2000, (a) => {
     if (!a.en_cours) return;
     const reste = Math.max(0, a.total - a.faits);
     avancementActu(
@@ -5390,7 +7446,8 @@ async function passeEmpreintes(phase) {
 async function passeDescripteurs(force, phase) {
   avancementActu(phase, "tempo, tonalité, énergie : démarrage…", 0, 0);
   await invoke("start_descripteurs", { force });
-  await attendreFin("descripteurs_state", 1500, (d) => {
+  // Même cadence que `analyserRacine` pour ce même sondage.
+  await attendreFin("descripteurs_state", 2000, (d) => {
     if (!d.en_cours) return;
     const reste = Math.max(0, d.total - d.faits);
     avancementActu(
@@ -5450,10 +7507,69 @@ async function passePopularite(contact, phase, rafraichir = false) {
   chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
 }
 
+/// Biographies (TheAudioDB) — aucune clé requise, décochable indépendamment
+/// (case « Biographies (TheAudioDB) » du rail). Résolution exclusivement par
+/// MBID : un artiste sans MBID n'est jamais interrogé, voir
+/// `docs/enrichissement-lecteur.md`.
+async function passeBiographies(phase) {
+  avancementActu(phase, "biographies : démarrage…", 0, 0);
+  await invoke("start_biographies", { cle: null });
+  await attendreFin("biographies_state", 2000, (b) => {
+    if (!b.en_cours) return;
+    avancementActu(
+      phase,
+      b.total
+        ? `biographies : ${b.faits.toLocaleString("fr-FR")} / ${b.total.toLocaleString("fr-FR")}${pourcent(b.faits, b.total)}`
+        : "biographies : démarrage…",
+      b.faits,
+      b.total,
+    );
+  });
+}
+
+/// Critiques (CritiqueBrainz) — aucune clé requise, décochable indépendamment
+/// (case « Critiques (CritiqueBrainz) » du rail).
+async function passeCritiques(phase) {
+  avancementActu(phase, "critiques : démarrage…", 0, 0);
+  await invoke("start_critiques", { rafraichir: false });
+  await attendreFin("critiques_state", 2000, (c) => {
+    if (!c.en_cours) return;
+    avancementActu(
+      phase,
+      c.total
+        ? `critiques : ${c.faits.toLocaleString("fr-FR")} / ${c.total.toLocaleString("fr-FR")}${pourcent(c.faits, c.total)}`
+        : "critiques : démarrage…",
+      c.faits,
+      c.total,
+    );
+  });
+}
+
+/// Liaison Discogs (léger : retrouve l'édition Discogs de chaque édition
+/// MusicBrainz connue) — décochable indépendamment (case « Liaison Discogs »
+/// du rail). Demande un contact MusicBrainz, comme les genres ; sautée sans
+/// adresse plutôt que de faire échouer la chaîne.
+async function passeDiscogsLiaison(contact, phase) {
+  avancementActu(phase, "liaison Discogs : démarrage…", 0, 0);
+  await invoke("start_discogs_liaison", { contact });
+  await attendreFin("discogs_liaison_state", 2000, (d) => {
+    if (!d.en_cours) return;
+    avancementActu(
+      phase,
+      d.total
+        ? `liaison Discogs : ${d.faits.toLocaleString("fr-FR")} / ${d.total.toLocaleString("fr-FR")}${pourcent(d.faits, d.total)}`
+        : "liaison Discogs : démarrage…",
+      d.faits,
+      d.total,
+    );
+  });
+}
+
 /// La chaîne complète — scan, empreintes, tempo/tonalité/énergie, genres,
-/// popularité — sur toutes les racines surveillées, l'étape en cours affichée
-/// en clair. C'est ce que « Scanner » lance quand aucun dossier neuf n'est
-/// saisi ; chaque passe reprend où elle s'était arrêtée.
+/// popularité, puis biographies/critiques/liaison Discogs si cochées — sur
+/// toutes les racines surveillées, l'étape en cours affichée en clair. C'est
+/// ce que « Scanner » lance quand aucun dossier neuf n'est saisi ; chaque
+/// passe reprend où elle s'était arrêtée.
 async function lancerChaineComplete() {
   const force = $("analyse-force").checked;
   const contact = contactMb();
@@ -5466,6 +7582,11 @@ async function lancerChaineComplete() {
     if (contact.includes("@")) await passeGenres(contact, "Étape 4/5 — ");
     else etat.textContent = "Étape 4/5 — genres sautés (pas d'adresse de contact MusicBrainz)";
     await passePopularite(contact, "Étape 5/5 — ", $("pop-rafraichir").checked);
+    if ($("bio-active").checked) await passeBiographies("Biographies — ");
+    if ($("critiques-active").checked) await passeCritiques("Critiques — ");
+    if ($("discogs-lier-active").checked && contact.includes("@")) {
+      await passeDiscogsLiaison(contact, "Liaison Discogs — ");
+    }
     etat.textContent = `${etat.textContent} — terminé.`;
   } catch (e) {
     remonter(e, "actualisation");
@@ -5499,6 +7620,9 @@ async function reprendreActualisationEnCours() {
     ["descripteurs_state", "tempo, tonalité, énergie"],
     ["enrichment_state", "genres"],
     ["popularite_state", "popularité"],
+    ["biographies_state", "biographies"],
+    ["critiques_state", "critiques"],
+    ["discogs_liaison_state", "liaison Discogs"],
   ];
   for (const [cmd, nom] of sondes) {
     let s;
@@ -5573,6 +7697,16 @@ async function majCache() {
 }
 
 $("vider-cache").addEventListener("click", async () => {
+  // Même garde-fou que « Oublier » une racine : l'action force à refaire des
+  // rendus coûteux (démixage, super-résolution), même si aucun morceau n'est
+  // perdu.
+  const ok = confirm(
+    "Vider le cache d'audio dérivé ?\n\nLes stems démixés et les rendus HD " +
+      "seront supprimés ; ils devront être refaits à la demande (une " +
+      "trentaine de secondes par morceau démixé, davantage en HD). Aucun " +
+      "fichier de la bibliothèque n'est touché.",
+  );
+  if (!ok) return;
   $("vider-cache").disabled = true;
   try {
     await invoke("stems_cache_vider");
@@ -5885,9 +8019,12 @@ async function appliquerReglages() {
   if (!edition.stems.length) return;
   const boutons = document.querySelectorAll(".reglage button");
   boutons.forEach((b) => (b.disabled = true));
-  const avant = edition.enLecture ? await invoke("stems_state") : null;
-  $("dock-aide").textContent = "calcul…";
   try {
+    // Dans le `try` avec le reste : un échec ici laissait auparavant les
+    // boutons désactivés pour de bon, faute de passer par le `finally`
+    // ci-dessous.
+    const avant = edition.enLecture ? await invoke("stems_state") : null;
+    $("dock-aide").textContent = "calcul…";
     const traites = await transposerStems(
       edition.stems.map((s) => [s.nom, s.chemin]),
       edition.stems.map(tonaliteDe),
@@ -5911,8 +8048,9 @@ async function appliquerReglages() {
   } catch (e) {
     $("dock-aide").textContent = "";
     remonter(e, "vitesse et hauteur");
+  } finally {
+    boutons.forEach((b) => (b.disabled = false));
   }
-  boutons.forEach((b) => (b.disabled = false));
   sonder(true);
 }
 

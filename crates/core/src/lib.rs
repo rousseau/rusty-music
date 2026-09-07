@@ -6,10 +6,15 @@
 //! modules (lecteur, exploration, éditeur). Aucun module ne relit le disque
 //! directement.
 
+pub mod biographies;
+pub mod critiquebrainz;
+pub mod critiques;
 pub mod db;
 pub mod decouvrir;
 pub mod deezer;
 pub mod density;
+pub mod discogs;
+pub mod discogs_import;
 pub mod enrichir;
 pub mod error;
 pub mod listenbrainz;
@@ -20,6 +25,7 @@ pub mod opus;
 pub mod popularite;
 pub mod scan;
 pub mod tags;
+pub mod theaudiodb;
 pub mod volume;
 pub mod watch;
 

@@ -474,6 +474,35 @@ Le modèle n'est pas jeté — il trouve son support.
   les rivières par D8 — Paris a la Seine. Autant de travail **économisé**, et
   c'est le principal gain de la bascule.
 
+> **Le peuplement rejouable en animation, sur le vrai plan (5 sept. 2026).**
+> `annee: Option<i32>` devient une propriété de tuile : celle du morceau qui
+> occupe un bâtiment (`source::BatimentReel`), la plus ancienne année de
+> sortie d'un artiste (`source::Artiste` — un artiste ancré la porte aussi,
+> c'est le même point que son monument), et donc du monument où il est ancré.
+> Un curseur temporel du mode Carte (plan réel seulement) la compare : un
+> bâtiment/artiste/monument dont l'année dépasse le curseur retombe dans le
+> style « vacant »/masqué déjà en place — aucune apparence inventée pour
+> l'occasion. Mécanique **`setFilter`/`setPaintProperty`**, pas
+> `feature-state` : le codebase portait déjà ce geste pour isoler une famille
+> (`app.js::majFiltreGL`/`CIBLES_FILTRE_GL`), une comparaison à un seuil
+> global est un filtre, pas un état par entité, et `feature-state` aurait
+> exigé de plomber un id stable par tuile qui n'existe pas aujourd'hui. Un
+> morceau sans année fiable compte comme **toujours déjà là** (cohérent avec
+> `BUCKET_INCERTAIN` du streamgraph, déjà hors de l'axe du temps plutôt que
+> pincé à une extrémité) — un `coalesce` côté style retombe sur le seuil
+> courant, jamais sur une valeur qui l'exclurait. Bornes du curseur = celles
+> déjà calculées pour « Colorer par année » (`carte.bornes.annee`), pas une
+> seconde lecture. Un bouton lecture anime le curseur à vitesse réglable.
+> Répondent : bâti habité, `artistes-point`/`artistes-etiquette` (donc les
+> monuments ancrés). Ne répondent pas, géographie pure : territoires, voirie,
+> hydrographie, espaces verts.
+>
+> Invariant vérifié par construction (`ville::tests::
+> le_batiment_habite_porte_lannee_de_son_occupant`, et affiché sur la vraie
+> bibliothèque par `carto adresses`) : à toute année, le nombre de bâtiments
+> montrés occupés égale le nombre de morceaux logés dont l'année est ≤ à
+> celle-là (les non datés comptés des deux côtés).
+
 ## Le réseau et les itinéraires
 
 Le réseau routier devient la voirie réelle. La distance routière ne vaut donc la

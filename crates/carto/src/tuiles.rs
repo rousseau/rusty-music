@@ -243,6 +243,14 @@ struct Anneau {
     /// que d'approcher un centroïde à quelques pixels près — un bâtiment
     /// est une forme, pas un point (`carto-etapes.md`).
     morceau: i64,
+    /// Année de sortie du morceau qui habite ce bâtiment, `-1` sinon (tout ce
+    /// qui n'est pas un bâtiment habité, ou un occupant sans année fiable).
+    /// Même convention que `morceau` ci-dessus : écrite uniformément, lue
+    /// seulement par `batiments-morceaux`. `-1` se compare toujours en
+    /// dessous de n'importe quel seuil réel du curseur temporel : un
+    /// occupant sans année reste donc occupé quel que soit le curseur, au
+    /// lieu d'attendre une date qu'on ne connaît pas.
+    annee: i64,
     /// Identifiant du polygone d'origine. Un trou doit être encodé dans la
     /// même entité que son contour extérieur, sinon il se remplit.
     groupe: u32,
@@ -410,6 +418,12 @@ pub fn ecrire_avec(
             if let Some(monument) = a.ancre {
                 etiquettes.push(("ancre", Valeur::Texte(monument)));
             }
+            // Absente si l'artiste n'a aucun morceau à année fiable : le
+            // curseur temporel (`style::couches_ville`) le révèle alors dès
+            // le début plutôt que d'attendre une date qu'on ne connaît pas.
+            if let Some(annee) = a.annee {
+                etiquettes.push(("annee", Valeur::Entier(annee as i64)));
+            }
             Point {
                 u: m.u,
                 v: m.v,
@@ -481,6 +495,11 @@ pub fn ecrire_avec(
             // Monument où un artiste populaire est ancré (`crate::ancrage`).
             if let Some(artiste) = &p.artiste {
                 etiquettes.push(("artiste", Valeur::Texte(artiste.clone())));
+            }
+            // Absente pour un monument sans artiste ancré : jamais soumis au
+            // curseur temporel, contrairement à son marqueur.
+            if let Some(annee) = p.annee {
+                etiquettes.push(("annee", Valeur::Entier(annee as i64)));
             }
             Point {
                 u: m.u,
@@ -577,6 +596,7 @@ pub fn ecrire_avec(
                     famille,
                     palier: bande.palier as i64,
                     morceau: -1,
+                    annee: -1,
                     groupe,
                     bornes: b,
                 });
@@ -612,6 +632,7 @@ pub fn ecrire_avec(
             // apparaître les agglomérations les unes après les autres.
             palier: crate::peuplement::Rang::depuis_population(e.population).indice(),
             morceau: -1,
+            annee: -1,
             groupe: 1_000_000 + n as u32,
             bornes: b,
         });
@@ -725,6 +746,7 @@ pub fn ecrire_avec(
                 famille,
                 palier: 0,
                 morceau: -1,
+                annee: -1,
                 groupe: groupe_debut + n as u32,
                 bornes,
             });
@@ -754,6 +776,7 @@ pub fn ecrire_avec(
             famille: FAMILLE_BATIMENT_REEL,
             palier: b.famille.unwrap_or(-1),
             morceau: b.morceau_id.unwrap_or(-1),
+            annee: b.annee.map(|a| a as i64).unwrap_or(-1),
             groupe: 2_000_000 + n as u32,
             bornes,
         });
@@ -783,6 +806,7 @@ pub fn ecrire_avec(
                     famille: FAMILLE_TERRITOIRE_REEL,
                     palier: terr.famille,
                     morceau: -1,
+                    annee: -1,
                     groupe: groupe_territoire,
                     bornes,
                 });
@@ -1192,6 +1216,7 @@ fn couche_polygones(
             let famille = ctx.anneaux[indices[i]].famille;
             let palier = ctx.anneaux[indices[i]].palier;
             let morceau = ctx.anneaux[indices[i]].morceau;
+            let annee = ctx.anneaux[indices[i]].annee;
             let mut geom = GeomEncoder::new(GeomType::Polygon);
             for (mut anneau, trou) in anneaux_coupes {
                 orienter(&mut anneau, trou);
@@ -1210,6 +1235,7 @@ fn couche_polygones(
             // uniformément évite un `if famille == FAMILLE_BATIMENT_REEL`
             // ici — quelques octets par entité, jamais consultés ailleurs.
             entite.add_tag_int("morceau", morceau);
+            entite.add_tag_int("annee", annee);
             if let Some(n) = noms.get(&famille) {
                 entite.add_tag_string("nom", n);
             }
@@ -1769,7 +1795,7 @@ mod tests {
                 famille: Some(0),
                 artiste: Some("Nina Simone".into()),
             }],
-            batiments: vec![BatimentReel { points: carre(2.340, 48.850, 0.0005), morceau_id: None, famille: None }],
+            batiments: vec![BatimentReel { points: carre(2.340, 48.850, 0.0005), morceau_id: None, famille: None, annee: None }],
             eaux: vec![ContourReel { points: carre(2.350, 48.860, 0.001) }],
             verts: vec![ContourReel { points: carre(2.330, 48.840, 0.001) }],
             frontiere: Some(vec![carre(2.30, 48.80, 0.1)]),

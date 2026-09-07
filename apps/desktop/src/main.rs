@@ -8,13 +8,13 @@
 // Sur Windows, évite d'ouvrir une console derrière la fenêtre.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rusty_music_analysis::chemin::{Empreinte, Graphe};
-use rusty_music_core::db::{AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
+use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, FluxTemporel, MapPoint, RootRow, TrackRow};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -52,6 +52,14 @@ struct Etat {
     enrichissement: Mutex<EtatEnrichissement>,
     /// Avancement de la passe de popularité générale (ListenBrainz + Deezer).
     popularite: Mutex<EtatPopularite>,
+    /// Avancement de la passe de biographies (TheAudioDB).
+    biographies: Mutex<EtatBio>,
+    /// Avancement de la passe de critiques (CritiqueBrainz).
+    critiques: Mutex<EtatCritiques>,
+    /// Avancement de la passe de liaison Discogs (légère — retrouve l'édition
+    /// Discogs de chaque édition MusicBrainz connue). L'import lourd du dump
+    /// mensuel n'a pas d'état ici : CLI/cron uniquement, séparé du scan normal.
+    discogs_liaison: Mutex<EtatDiscogsLiaison>,
     /// Avancement de la passe du mode Découvrir (sorties, collaborations,
     /// voisins), sondé par l'interface.
     decouvrir: Mutex<EtatDecouvrir>,
@@ -96,6 +104,22 @@ struct Etat {
     /// l'interface muette une vingtaine de secondes.
     graphe_fait: AtomicUsize,
     graphe_total: AtomicUsize,
+    /// Centroïdes d'empreinte par album (mode Explorer → Anneau), avec le
+    /// nombre d'empreintes qui les a produits — même invalidation que
+    /// `graphe`. Pas de balayage O(n²) ici (voir `album_embeddings`), donc
+    /// pas besoin d'un verrou de construction séparé : le calcul est assez
+    /// court pour rester sous le verrou du cache lui-même.
+    album_centroides: Mutex<Option<(usize, Arc<Vec<(i64, Vec<f32>)>>)>>,
+    /// Métadonnées de chaque album (famille, date, pochette), même clé et
+    /// même invalidation que `album_centroides` — les deux sont toujours
+    /// recalculés ensemble.
+    album_noeuds: Mutex<Option<(usize, Arc<HashMap<i64, AlbumNoeud>>)>>,
+    /// Graphe des k plus proches albums par empreinte — le fond permanent du
+    /// mode Explorer → Anneau (voir `reseau_albums`), distinct du graphe des
+    /// morceaux (`graphe` ci-dessus). `k` couvre déjà le maximum du curseur
+    /// « voisins » du rail : pas la peine de le reconstruire quand l'anneau
+    /// en redemande simplement plus large.
+    album_graphe: Mutex<Option<(usize, Arc<Graphe>)>>,
     /// Nappe de densité de la carte — polygones prêts à remplir. Recalculée
     /// seulement après une projection/clustering réussi ([`recalculer_densite`]),
     /// jamais par image ni au zoom : c'est tout l'intérêt de la garder ici
@@ -1519,6 +1543,56 @@ fn path(
     Ok(pistes)
 }
 
+/// Voyage dans le temps depuis `from` : le seul mode de chemin du mode
+/// Explorer → Temps (voir `MODES_CHEMIN.temps` côté `app.js`) — une marche
+/// sonique qui n'avance jamais en arrière chronologiquement, voir
+/// [`rusty_music_analysis::chemin::Graphe::voyage`]. `bruit` et `seed`
+/// jouent le même rôle que pour [`path`].
+#[tauri::command(async)]
+fn voyage(
+    etat: State<Etat>,
+    from: i64,
+    steps: usize,
+    seed: Option<u64>,
+    bruit: Option<f32>,
+) -> Result<Vec<TrackRow>, String> {
+    let graine = seed.unwrap_or(1);
+    let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
+    let debut = std::time::Instant::now();
+
+    let vecteurs = charger_vecteurs(&etat)?;
+    let graphe = construire_graphe(&etat, &vecteurs)?;
+
+    let ordre: HashMap<i64, u32> = etat
+        .lib
+        .lock()
+        .map_err(echec)?
+        .ordre_darrivee()
+        .map_err(echec)?
+        .into_iter()
+        .enumerate()
+        .map(|(rang, a)| (a.track_id, rang as u32))
+        .collect();
+    let familles: HashMap<i64, i64> = etat
+        .lib
+        .lock()
+        .map_err(echec)?
+        .map_points(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)?
+        .into_iter()
+        .map(|(id, _, _, f)| (id, f))
+        .collect();
+
+    let route = graphe.voyage(from, &ordre, &familles, steps, bruit, graine);
+    let pistes = pistes_de(&etat, &route)?;
+    tracing::info!(
+        n = pistes.len(),
+        ms = debut.elapsed().as_millis(),
+        "voyage tracé"
+    );
+    Ok(pistes)
+}
+
 /// Chemin suivant un tracé dessiné à la souris sur la carte.
 ///
 /// `trace` est la suite des points parcourus, dans le repère de la carte
@@ -1818,6 +1892,17 @@ fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, String> {
         .lock()
         .map_err(echec)?
         .familles(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)
+}
+
+/// Bandes et fils du mode Explorer → Temps — voir
+/// [`rusty_music_core::db::Library::flux_temporel`].
+#[tauri::command(async)]
+fn temporal_view(etat: State<Etat>) -> Result<FluxTemporel, String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .flux_temporel(rusty_music_analysis::passe::MODELE)
         .map_err(echec)
 }
 
@@ -2145,6 +2230,206 @@ fn neighbours(etat: State<Etat>, id: i64, count: usize) -> Result<Vec<TrackRow>,
     pistes_de(&etat, &proches)
 }
 
+/// Un album trouvé par la recherche du mode Explorer → Anneau.
+///
+/// `id` voyage en décimal : un hachage 64 bits dépasse la précision d'un
+/// `Number` JS. Calculé une fois côté cœur ([`rusty_music_core::db::Library::search_albums`]),
+/// jamais recalculé côté interface — voir la note sur `hacher` dans
+/// `crates/core/src/db.rs`.
+#[derive(serde::Serialize)]
+struct AlbumHit {
+    id: String,
+    name: String,
+    artist: String,
+}
+
+/// Recherche d'albums pour la barre `#q` en mode Explorer → Anneau.
+#[tauri::command(async)]
+fn search_albums(etat: State<Etat>, query: String, limit: i64) -> Result<Vec<AlbumHit>, String> {
+    Ok(etat
+        .lib
+        .lock()
+        .map_err(echec)?
+        .search_albums(&query, limit)
+        .map_err(echec)?
+        .into_iter()
+        .map(|(id, name, artist)| AlbumHit { id: id.to_string(), name, artist })
+        .collect())
+}
+
+/// Un nœud album, partagé par le mode Explorer → Anneau (focal ou voisin) et
+/// la frise des filiations du mode Explorer → Temps.
+#[derive(serde::Serialize)]
+struct AnneauNoeud {
+    id: String,
+    name: String,
+    artist: String,
+    famille: Option<i64>,
+    /// Famille secondaire d'un album à cheval sur deux familles, `None` sinon
+    /// — voir [`rusty_music_core::db::Library::familles_secondaires_albums`].
+    /// Toujours `None` pour un [`AnneauVoisin`] construit par [`album_ring`] :
+    /// l'anneau n'a pas besoin de cette nuance, seule la frise colore un arc
+    /// entrant par elle.
+    famille_secondaire: Option<i64>,
+    path: Option<String>,
+    /// Somme des durées de ses morceaux, en ms — épaisseur de son arc sur le
+    /// second anneau (voir `AlbumNoeud::duree_ms`).
+    duree_ms: i64,
+    /// Année de sortie, `None` tant qu'aucune date fiable n'est connue (voir
+    /// `AlbumNoeud::date`, 0 = inconnue).
+    annee: Option<i32>,
+}
+
+impl From<&AlbumNoeud> for AnneauNoeud {
+    fn from(a: &AlbumNoeud) -> Self {
+        Self {
+            id: a.id.to_string(),
+            name: a.name.clone(),
+            artist: a.artist.clone(),
+            famille: a.famille,
+            famille_secondaire: None,
+            path: a.path.clone(),
+            duree_ms: a.duree_ms,
+            annee: (a.date > 0).then_some((a.date / 10_000) as i32),
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct AnneauVoisin {
+    #[serde(flatten)]
+    noeud: AnneauNoeud,
+    /// Vrai si cet album précède le focal dans le temps, faux s'il le suit
+    /// (ou à égalité — voir `Library::albums_annotes`, une date de
+    /// résolution à la journée).
+    avant: bool,
+    /// Distance au carré entre les centroïdes d'empreinte du focal et de ce
+    /// voisin — épaisseur du lien : plus proche, plus épais. Brute (pas de
+    /// racine ni de normalisation, l'échelle n'a de sens que relative aux
+    /// autres voisins du même focal) ; à l'interface de la ramener à une
+    /// épaisseur de trait parmi les voisins affichés.
+    distance: f32,
+}
+
+#[derive(serde::Serialize)]
+struct AnneauVue {
+    focal: AnneauNoeud,
+    voisins: Vec<AnneauVoisin>,
+}
+
+/// Les k albums les plus proches d'un album focal par empreinte, scindés en
+/// antérieurs/postérieurs — mode Explorer → Anneau.
+///
+/// Balayage linéaire sur les centroïdes d'album (voir `charger_centroides_albums`
+/// et la doc de `Library::album_embeddings` sur pourquoi aucun graphe n'est
+/// construit ici) : pas de mise en cache par requête, la bibliothèque compte
+/// trop peu d'albums pour que ce soit utile.
+#[tauri::command(async)]
+fn album_ring(etat: State<Etat>, album_id: String, k: usize) -> Result<AnneauVue, String> {
+    let id: i64 = album_id
+        .parse()
+        .map_err(|_| format!("identifiant d'album invalide : {album_id}"))?;
+    let (centroides, noeuds) = charger_centroides_albums(&etat)?;
+
+    let focal = noeuds
+        .get(&id)
+        .ok_or_else(|| "album inconnu ou sans morceau analysé".to_string())?;
+
+    let vecteur = |i: i64| centroides.iter().find(|(vid, _)| *vid == i).map(|(_, v)| v.as_slice());
+    let vecteur_focal = vecteur(id);
+
+    let proches = rusty_music_analysis::chemin::voisins(&centroides, id, k);
+    let voisins = proches
+        .into_iter()
+        .filter_map(|vid| Some((noeuds.get(&vid)?, vecteur(vid)?)))
+        .map(|(v, vv)| AnneauVoisin {
+            noeud: v.into(),
+            avant: v.date < focal.date,
+            distance: match vecteur_focal {
+                Some(vf) => vf.iter().zip(vv).map(|(a, b)| (a - b) * (a - b)).sum(),
+                None => 0.0,
+            },
+        })
+        .collect();
+
+    Ok(AnneauVue { focal: focal.into(), voisins })
+}
+
+/// Un lien du fond permanent de l'anneau — voir `reseau_albums`. `distance`
+/// sert à trier/plafonner côté moteur ; l'interface s'en sert aussi pour
+/// moduler l'opacité, à l'identique de `AnneauVoisin::distance`.
+#[derive(serde::Serialize)]
+struct AnneauArcBase {
+    a: String,
+    b: String,
+    distance: f32,
+}
+
+#[derive(serde::Serialize)]
+struct AnneauReseau {
+    /// Chaque album qui a une famille connue — c'est sur cette liste que
+    /// l'interface calcule une bonne fois pour toutes la position de chacun
+    /// sur l'anneau (voir `docs/carto-anneau.md` § stabilité des positions) :
+    /// jamais recalculée au changement d'album focal.
+    albums: Vec<AnneauNoeud>,
+    /// Un sous-ensemble représentatif des liens de tout le réseau — le plus
+    /// proche voisin de chaque album, dédoublonné — affiché en permanence et
+    /// très estompé, pour la texture tissée que la référence Eigenfactor a
+    /// déjà même sans sélection (voir `docs/carto-anneau.md` § état de base).
+    arcs: Vec<AnneauArcBase>,
+}
+
+/// Le fond permanent du mode Explorer → Anneau et de la frise des filiations
+/// (mode Explorer → Temps) : tous les albums connus et un échantillon de
+/// leurs liens de plus proche voisinage — voir `AnneauReseau`. Chargé une
+/// fois par session par chacun des deux modes (voir `chargerReseauAnneau`/
+/// `chargerReseauFrise` côté interface), jamais reconstruit au changement de
+/// focal ou d'album survolé.
+#[tauri::command(async)]
+fn reseau_albums(etat: State<Etat>, limite_arcs: usize) -> Result<AnneauReseau, String> {
+    let (centroides, noeuds) = charger_centroides_albums(&etat)?;
+    let graphe = charger_graphe_albums(&etat, &centroides)?;
+    let secondaires = etat
+        .lib
+        .lock()
+        .map_err(echec)?
+        .familles_secondaires_albums(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)?;
+
+    let albums = noeuds
+        .values()
+        .filter(|n| n.famille.is_some())
+        .map(|n| {
+            let mut noeud: AnneauNoeud = n.into();
+            noeud.famille_secondaire = secondaires.get(&n.id).copied();
+            noeud
+        })
+        .collect();
+
+    let mut vues: HashSet<(i64, i64)> = HashSet::new();
+    let mut arcs: Vec<(i64, i64, f32)> = Vec::new();
+    for (id, voisin, d2) in graphe.plus_proches() {
+        if id == voisin {
+            continue;
+        }
+        let paire = if id < voisin { (id, voisin) } else { (voisin, id) };
+        if vues.insert(paire) {
+            arcs.push((id, voisin, d2));
+        }
+    }
+    // Les liens les plus forts d'abord : si la limite tranche, elle retire
+    // les plus faibles, jamais l'inverse.
+    arcs.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+    arcs.truncate(limite_arcs);
+    let arcs = arcs
+        .into_iter()
+        .filter(|(a, b, _)| noeuds.get(a).is_some_and(|n| n.famille.is_some()) && noeuds.get(b).is_some_and(|n| n.famille.is_some()))
+        .map(|(a, b, distance)| AnneauArcBase { a: a.to_string(), b: b.to_string(), distance })
+        .collect();
+
+    Ok(AnneauReseau { albums, arcs })
+}
+
 /// Playlist « dans l'esprit de l'album » : une errance ordinaire, mais partie
 /// du morceau le plus central de l'album plutôt que d'un seul morceau choisi
 /// à la main. `chemin::parcours` donne ce pivot — le morceau dont l'empreinte
@@ -2204,6 +2489,79 @@ fn charger_vecteurs(etat: &State<Etat>) -> Result<Arc<Vec<Empreinte>>, String> {
         tracing::info!(n = cache.len(), "empreintes chargées");
     }
     Ok(Arc::clone(&cache))
+}
+
+/// Centroïdes d'empreinte par album et leurs métadonnées, mis en cache
+/// ensemble — mode Explorer → Anneau. Contrairement à `construire_graphe`,
+/// pas de verrou de construction séparé : `album_embeddings`/`albums_annotes`
+/// ne font qu'agréger du SQL, pas un balayage O(n²) — voir leur documentation
+/// côté cœur.
+fn charger_centroides_albums(
+    etat: &State<Etat>,
+) -> Result<(Arc<Vec<(i64, Vec<f32>)>>, Arc<HashMap<i64, AlbumNoeud>>), String> {
+    let lib = etat.lib.lock().map_err(echec)?;
+    let n = lib
+        .count_embeddings(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)?;
+
+    let mut cache_c = etat.album_centroides.lock().map_err(echec)?;
+    let mut cache_n = etat.album_noeuds.lock().map_err(echec)?;
+    let a_jour = matches!(
+        (&*cache_c, &*cache_n),
+        (Some((tc, _)), Some((tn, _))) if *tc == n && *tn == n
+    );
+    if !a_jour {
+        let debut = std::time::Instant::now();
+        let centroides = Arc::new(
+            lib.album_embeddings(rusty_music_analysis::passe::MODELE)
+                .map_err(echec)?,
+        );
+        let noeuds = Arc::new(
+            lib.albums_annotes(rusty_music_analysis::passe::MODELE)
+                .map_err(echec)?
+                .into_iter()
+                .map(|a| (a.id, a))
+                .collect::<HashMap<_, _>>(),
+        );
+        tracing::info!(
+            albums = centroides.len(),
+            ms = debut.elapsed().as_millis(),
+            "centroïdes d'albums"
+        );
+        *cache_c = Some((n, centroides));
+        *cache_n = Some((n, noeuds));
+    }
+    let c = Arc::clone(&cache_c.as_ref().unwrap().1);
+    let no = Arc::clone(&cache_n.as_ref().unwrap().1);
+    Ok((c, no))
+}
+
+/// Le curseur « voisins » du rail plafonne à 20 (voir `index.html`) : le
+/// graphe des albums doit couvrir au moins ça pour que `Graphe::voisins`
+/// puisse rendre le maximum demandé, pas seulement ce qu'il faut au fond
+/// permanent.
+const ANNEAU_K_MAX: usize = 20;
+
+/// Construit (ou retrouve en cache) le graphe des k plus proches albums —
+/// voir `Etat::album_graphe`. Balayage complet sur les centroïdes, pas sur
+/// les 27 000 morceaux : quelques milliers de nœuds, une fraction de seconde
+/// même à plusieurs cœurs de moins que `construire_graphe`.
+fn charger_graphe_albums(
+    etat: &State<Etat>,
+    centroides: &Arc<Vec<(i64, Vec<f32>)>>,
+) -> Result<Arc<Graphe>, String> {
+    let n = centroides.len();
+    let mut cache = etat.album_graphe.lock().map_err(echec)?;
+    if let Some((taille, g)) = cache.as_ref() {
+        if *taille == n {
+            return Ok(Arc::clone(g));
+        }
+    }
+    let debut = std::time::Instant::now();
+    let g = Arc::new(Graphe::construire(centroides, ANNEAU_K_MAX, coeurs_arriere_plan()));
+    tracing::info!(albums = n, ms = debut.elapsed().as_millis(), "graphe des albums");
+    *cache = Some((n, Arc::clone(&g)));
+    Ok(g)
 }
 
 /// Remonte une erreur de l'interface dans le journal du processus.
@@ -2668,15 +3026,249 @@ fn popularite_state(etat: State<Etat>) -> Result<EtatPopularite, String> {
 }
 
 /// Fraîcheur de la popularité pour la ligne d'alerte du mode Bibliothèque :
-/// `(morceaux couverts, epoch de la plus ancienne interrogation, entités de
-/// plus de 90 jours)`.
+/// `(morceaux couverts, epoch de la plus ancienne interrogation, entités
+/// périmées, seuil de péremption en jours)`. Le seuil est renvoyé plutôt que
+/// recopié en dur côté JS, pour que le texte affiché ne puisse pas mentir si
+/// `POP_PEREMPTION_JOURS` change un jour.
 #[tauri::command(async)]
-fn popularite_fraicheur(etat: State<Etat>) -> Result<(i64, Option<i64>, i64), String> {
-    etat.lib
+fn popularite_fraicheur(etat: State<Etat>) -> Result<(i64, Option<i64>, i64, i64), String> {
+    let (couverts, plus_ancienne, perimes) = etat
+        .lib
         .lock()
         .map_err(echec)?
         .popularite_fraicheur(POP_PEREMPTION_JOURS)
-        .map_err(echec)
+        .map_err(echec)?;
+    Ok((couverts, plus_ancienne, perimes, POP_PEREMPTION_JOURS))
+}
+
+/// Avancement de la passe de biographies TheAudioDB, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatBio {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Lance la passe de biographies (TheAudioDB).
+///
+/// Comme la popularité : fil séparé, connexion propre, reprenable et
+/// additive. **Aucune clé requise** — la clé de test partagée suffit ;
+/// `cle`, si l'utilisateur en a une personnelle, l'accélère. Résolution
+/// **exclusivement par MBID** : un artiste sans `mb_artist_id` n'est jamais
+/// interrogé par nom (`docs/enrichissement-lecteur.md`).
+#[tauri::command(async)]
+fn start_biographies(app: tauri::AppHandle, etat: State<Etat>, cle: Option<String>) -> Result<(), String> {
+    {
+        let mut b = etat.biographies.lock().map_err(echec)?;
+        if b.en_cours {
+            return Err("une passe de biographies est déjà en cours".into());
+        }
+        *b = EtatBio { en_cours: true, ..Default::default() };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::biographies::actualiser(&mut lib, &client, 0, usize::MAX, |b| {
+                if let Ok(mut e) = etat.biographies.lock() {
+                    e.faits = b.faits;
+                    e.total = b.total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => format!("{} artistes interrogés, {} avec une biographie", b.interroges, b.trouves),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "passe de biographies terminée");
+
+        let mut fin = etat.biographies.lock();
+        if let Ok(b) = fin.as_mut() {
+            b.en_cours = false;
+            b.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn biographies_state(etat: State<Etat>) -> Result<EtatBio, String> {
+    Ok(etat.biographies.lock().map_err(echec)?.clone())
+}
+
+/// La biographie du morceau `id`, chargée à l'ouverture de l'inspecteur —
+/// commande séparée, comme `descripteurs` : rien n'est chargé tant que rien
+/// ne l'affiche.
+#[tauri::command(async)]
+fn bio_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::BioArtiste>, String> {
+    etat.lib.lock().map_err(echec)?.bio_pour_piste(id).map_err(echec)
+}
+
+/// Avancement de la passe de critiques CritiqueBrainz, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatCritiques {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Au-delà de combien de jours une absence de critique redevient « à
+/// vérifier ». Une critique neuve reste rare : fenêtre plus longue que la
+/// popularité (90 j).
+const CRITIQUES_PEREMPTION_JOURS: i64 = 180;
+
+/// Lance la passe de critiques (CritiqueBrainz).
+///
+/// Aucune clé requise, interrogation par release-group MusicBrainz — jamais
+/// de recherche approximative. `rafraichir` : à `false`, ne comble que les
+/// albums jamais vérifiés ; à `true`, revérifie aussi ceux de plus de
+/// [`CRITIQUES_PEREMPTION_JOURS`] (une critique neuve reste rare).
+#[tauri::command(async)]
+fn start_critiques(app: tauri::AppHandle, etat: State<Etat>, rafraichir: bool) -> Result<(), String> {
+    {
+        let mut c = etat.critiques.lock().map_err(echec)?;
+        if c.en_cours {
+            return Err("une passe de critiques est déjà en cours".into());
+        }
+        *c = EtatCritiques { en_cours: true, ..Default::default() };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let client = rusty_music_core::critiquebrainz::Client::new();
+        let depuis = if rafraichir {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64 - CRITIQUES_PEREMPTION_JOURS * 86_400)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
+                if let Ok(mut e) = etat.critiques.lock() {
+                    e.faits = b.faits;
+                    e.total = b.total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} albums interrogés, {} avec au moins une critique",
+                b.albums_interroges, b.albums_avec_critique
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "passe de critiques terminée");
+
+        let mut fin = etat.critiques.lock();
+        if let Ok(c) = fin.as_mut() {
+            c.en_cours = false;
+            c.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn critiques_state(etat: State<Etat>) -> Result<EtatCritiques, String> {
+    Ok(etat.critiques.lock().map_err(echec)?.clone())
+}
+
+/// Les critiques du morceau `id`, via son release-group MusicBrainz.
+#[tauri::command(async)]
+fn critiques_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::Critique>, String> {
+    etat.lib.lock().map_err(echec)?.critiques_pour_piste(id).map_err(echec)
+}
+
+/// Lien de sortie vers la page CritiqueBrainz de l'album du morceau `id` —
+/// invite à en écrire une, même (surtout) quand `critiques_piste` est vide.
+#[tauri::command(async)]
+fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<String>, String> {
+    let rg = etat.lib.lock().map_err(echec)?.release_group_pour_piste(id).map_err(echec)?;
+    Ok(rg.map(|mbid| rusty_music_core::critiques::url_ecrire_critique(&mbid)))
+}
+
+/// Avancement de la passe de liaison Discogs, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatDiscogsLiaison {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Lance la passe de liaison Discogs — retrouve l'édition Discogs de chaque
+/// édition MusicBrainz connue (`tracks.mb_release_id`) par la relation d'URL
+/// que porte MusicBrainz, jamais par recherche de nom. Légère (une requête
+/// MusicBrainz par édition) : peut tourner à chaque enrichissement, contrairement
+/// à l'import lourd du dump mensuel (CLI/cron, voir `docs/enrichissement-lecteur.md`).
+#[tauri::command(async)]
+fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: String) -> Result<(), String> {
+    let contact = contact.trim().to_string();
+    if !contact.contains('@') {
+        return Err("MusicBrainz demande une adresse de contact valable.".into());
+    }
+    {
+        let mut d = etat.discogs_liaison.lock().map_err(echec)?;
+        if d.en_cours {
+            return Err("une passe de liaison Discogs est déjà en cours".into());
+        }
+        *d = EtatDiscogsLiaison { en_cours: true, ..Default::default() };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let client = rusty_music_core::musicbrainz::Client::new(&contact);
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::discogs_import::lier(&mut lib, &client, usize::MAX, |b| {
+                if let Ok(mut e) = etat.discogs_liaison.lock() {
+                    e.faits = b.faits;
+                    e.total = b.total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => format!("{} éditions vérifiées, {} reliées à Discogs", b.interrogees, b.liees),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "passe de liaison Discogs terminée");
+
+        let mut fin = etat.discogs_liaison.lock();
+        if let Ok(d) = fin.as_mut() {
+            d.en_cours = false;
+            d.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn discogs_liaison_state(etat: State<Etat>) -> Result<EtatDiscogsLiaison, String> {
+    Ok(etat.discogs_liaison.lock().map_err(echec)?.clone())
+}
+
+/// Les crédits Discogs du morceau `id`, via son édition MusicBrainz — vide
+/// tant que la liaison et l'import mensuel n'ont pas encore couvert cette
+/// édition, jamais une valeur inventée.
+#[tauri::command(async)]
+fn credits_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::CreditDiscogs>, String> {
+    etat.lib.lock().map_err(echec)?.credits_pour_piste(id).map_err(echec)
 }
 
 /// Les collaborateurs d'un artiste — mode Découvrir. Sert du cache s'il y
@@ -4769,6 +5361,9 @@ fn main() {
                 descripteurs: Mutex::new(EtatDescripteurs::default()),
                 enrichissement: Mutex::new(EtatEnrichissement::default()),
                 popularite: Mutex::new(EtatPopularite::default()),
+                biographies: Mutex::new(EtatBio::default()),
+                critiques: Mutex::new(EtatCritiques::default()),
+                discogs_liaison: Mutex::new(EtatDiscogsLiaison::default()),
                 decouvrir: Mutex::new(EtatDecouvrir::default()),
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
@@ -4779,6 +5374,9 @@ fn main() {
                 graphe_construction: Mutex::new(()),
                 graphe_fait: AtomicUsize::new(0),
                 graphe_total: AtomicUsize::new(0),
+                album_centroides: Mutex::new(None),
+                album_noeuds: Mutex::new(None),
+                album_graphe: Mutex::new(None),
                 reseau: Mutex::new(None),
                 densite: Mutex::new(None),
                 ville: Mutex::new(None),
@@ -4919,6 +5517,16 @@ fn main() {
             start_popularite,
             popularite_state,
             popularite_fraicheur,
+            start_biographies,
+            biographies_state,
+            bio_piste,
+            start_critiques,
+            critiques_state,
+            critiques_piste,
+            lien_ecrire_critique,
+            start_discogs_liaison,
+            discogs_liaison_state,
+            credits_piste,
             popularites,
             artist_links,
             start_decouvrir,
@@ -4946,10 +5554,15 @@ fn main() {
             path,
             path_drawn,
             path_album,
+            voyage,
             selection,
             families,
             album_families,
             artist_families,
+            temporal_view,
+            search_albums,
+            album_ring,
+            reseau_albums,
             prepare_graph,
             neighbours,
             js_error,

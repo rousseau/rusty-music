@@ -176,3 +176,14 @@ petgraph    = "0.8"
 # sur les graphes de petgraph, et rend la centralité **des arêtes**, celle dont
 # la hiérarchie routière a besoin. Licence Apache-2.0.
 rustworkx-core = "0.18"
+
+# Import du dump mensuel Discogs (crédits par édition, `docs/enrichissement-lecteur.md`).
+# `flate2` décode le gzip en flux (jamais le XML complet en mémoire ni sur
+# disque) ; `quick-xml` lit en mode évènementiel plutôt que par désérialisation
+# globale, pour tolérer les irrégularités documentées du format. Licences
+# MIT OR Apache-2.0 toutes les deux.
+flate2   = "1"
+# 0.42 minimum : RUSTSEC-2026-0195 (allocation non bornée dans `NsReader`) ne
+# touche que le lecteur conscient des espaces de noms, qu'on n'utilise pas —
+# `cargo deny` le signale quand même en dessous de 0.41.
+quick-xml = "0.42"

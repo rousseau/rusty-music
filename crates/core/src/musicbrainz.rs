@@ -245,6 +245,42 @@ impl Client {
             .map(|v| relations_de(&v))
             .unwrap_or_default())
     }
+
+    /// L'identifiant Discogs de l'édition (release) `mbid`, retrouvé par la
+    /// relation d'URL que MusicBrainz porte vers Discogs — **jamais une
+    /// recherche par nom**. `None` aussi bien pour une édition sans relation
+    /// Discogs cataloguée que pour un MBID inconnu ; à l'appelant de marquer
+    /// l'édition comme vérifiée dans les deux cas.
+    pub fn discogs_release_id(&self, mbid: &str) -> Result<Option<u64>> {
+        let url = format!("https://musicbrainz.org/ws/2/release/{mbid}?inc=url-rels&fmt=json");
+        Ok(self
+            .json(&url)?
+            .and_then(|v| discogs_url_de(&v))
+            .and_then(|u| discogs_id_depuis_url(&u)))
+    }
+}
+
+/// Extrait l'URL Discogs d'une réponse `url-rels`, si elle en porte une.
+///
+/// `target-type` filtre les relations qui ne visent pas une URL —
+/// `inc=url-rels` ne devrait rendre que ça, même défense qu'ailleurs contre un
+/// champ manquant ou inattendu.
+fn discogs_url_de(v: &Value) -> Option<String> {
+    v["relations"].as_array()?.iter().find_map(|r| {
+        (r["target-type"].as_str() == Some("url") && r["type"].as_str() == Some("discogs"))
+            .then(|| r["url"]["resource"].as_str())
+            .flatten()
+            .map(str::to_string)
+    })
+}
+
+/// L'identifiant numérique d'une URL d'édition Discogs
+/// (`https://www.discogs.com/release/249504-...` → `249504`) — c'est aussi la
+/// clé des dumps mensuels CC0.
+fn discogs_id_depuis_url(url: &str) -> Option<u64> {
+    let apres = url.split("/release/").nth(1)?;
+    let chiffres: String = apres.chars().take_while(|c| c.is_ascii_digit()).collect();
+    chiffres.parse().ok()
 }
 
 /// Extrait les relations vers d'autres artistes d'une réponse `artist-rels`.
@@ -482,6 +518,42 @@ mod tests {
     fn relations_de_dune_reponse_sans_relations_rend_une_liste_vide() {
         let v: Value = serde_json::from_str(r#"{"id":"x","name":"y"}"#).expect("JSON de test");
         assert!(relations_de(&v).is_empty());
+    }
+
+    /// Extrait d'une vraie réponse `url-rels` (une édition), gardé en dur.
+    #[test]
+    fn discogs_url_de_ne_garde_que_la_relation_discogs() {
+        let v: Value = serde_json::from_str(
+            r#"{"relations":[
+                {"type":"amazon asin","target-type":"url",
+                 "url":{"resource":"https://www.amazon.com/dp/B000000"}},
+                {"type":"discogs","target-type":"url",
+                 "url":{"resource":"https://www.discogs.com/release/249504-Rick-Astley-Never-Gonna-Give-You-Up"}}
+            ]}"#,
+        )
+        .expect("JSON de test");
+        assert_eq!(
+            discogs_url_de(&v).as_deref(),
+            Some("https://www.discogs.com/release/249504-Rick-Astley-Never-Gonna-Give-You-Up")
+        );
+    }
+
+    #[test]
+    fn discogs_url_de_sans_relation_discogs_rend_rien() {
+        let v: Value = serde_json::from_str(r#"{"relations":[]}"#).expect("JSON de test");
+        assert!(discogs_url_de(&v).is_none());
+    }
+
+    #[test]
+    fn discogs_id_depuis_url_lit_lentier_avant_le_slug() {
+        assert_eq!(
+            discogs_id_depuis_url(
+                "https://www.discogs.com/release/249504-Rick-Astley-Never-Gonna-Give-You-Up"
+            ),
+            Some(249504)
+        );
+        assert_eq!(discogs_id_depuis_url("https://www.discogs.com/master/12345"), None);
+        assert_eq!(discogs_id_depuis_url("n'importe quoi"), None);
     }
 
     #[test]
