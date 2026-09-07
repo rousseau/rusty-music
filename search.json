@@ -1,0 +1,92 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Rusty Music",
+    "section": "",
+    "text": "Introduction\n(à rédiger)\n\n\n\n\n\n\nNoteParagraphe de test\n\n\n\nCe paragraphe vérifie la chaîne de rendu — appel de note, citation et bibliographie en fin de chapitre. Le placement des morceaux sur la carte du mode Explorer doit rester contraint par la voirie plutôt que par un espace euclidien libre, un principe proche des cartes de communautés de réseaux (Rosvall and Bergstrom 2010) et des cartes thématiques de type GMap (Gansner et al. 2010). Les travaux fondateurs sur l’organisation visuelle d’archives musicales, comme Islands of Music (Pampalk 2001), restent une référence pour ce mode1.\n\n\n\n\n1 Ce paragraphe et cette note sont un texte de test, à retirer une fois la chaîne de publication vérifiée.\n\nGansner, Emden R., Yifan Hu, and Stephen Kobourov. 2010. “GMap: Visualizing Graphs and Clusters as Maps.” IEEE Pacific Visualization Symposium (PacificVis), 201–8. https://doi.org/10.1109/PACIFICVIS.2010.5429590.\n\n\nPampalk, Elias. 2001. “Islands of Music: Analysis, Organization, and Visualization of Music Archives.” Master’s thesis, Vienna University of Technology.\n\n\nRosvall, Martin, and Carl T. Bergstrom. 2010. “Mapping Change in Large Networks.” PLoS ONE 5 (1): e8694. https://doi.org/10.1371/journal.pone.0008694.",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "ecouter.html",
+    "href": "ecouter.html",
+    "title": "1  Écouter",
+    "section": "",
+    "text": "(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>1</span>  <span class='chapter-title'>Écouter</span>"
+    ]
+  },
+  {
+    "objectID": "explorer.html",
+    "href": "explorer.html",
+    "title": "2  Explorer",
+    "section": "",
+    "text": "2.1 Carte\n(à rédiger)\n(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Explorer</span>"
+    ]
+  },
+  {
+    "objectID": "explorer.html#anneau",
+    "href": "explorer.html#anneau",
+    "title": "2  Explorer",
+    "section": "2.2 Anneau",
+    "text": "2.2 Anneau\n(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Explorer</span>"
+    ]
+  },
+  {
+    "objectID": "explorer.html#temps",
+    "href": "explorer.html#temps",
+    "title": "2  Explorer",
+    "section": "2.3 Temps",
+    "text": "2.3 Temps\n(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>2</span>  <span class='chapter-title'>Explorer</span>"
+    ]
+  },
+  {
+    "objectID": "editer.html",
+    "href": "editer.html",
+    "title": "3  Éditer",
+    "section": "",
+    "text": "(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>3</span>  <span class='chapter-title'>Éditer</span>"
+    ]
+  },
+  {
+    "objectID": "bibliotheque.html",
+    "href": "bibliotheque.html",
+    "title": "4  Bibliothèque",
+    "section": "",
+    "text": "(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Bibliothèque</span>"
+    ]
+  },
+  {
+    "objectID": "decouvrir.html",
+    "href": "decouvrir.html",
+    "title": "5  Découvrir",
+    "section": "",
+    "text": "(à rédiger)",
+    "crumbs": [
+      "<span class='chapter-number'>5</span>  <span class='chapter-title'>Découvrir</span>"
+    ]
+  },
+  {
+    "objectID": "references.html",
+    "href": "references.html",
+    "title": "Références",
+    "section": "",
+    "text": "Gansner, Emden R., Yifan Hu, and Stephen Kobourov. 2010.\n“GMap: Visualizing Graphs and Clusters as\nMaps.” IEEE Pacific Visualization Symposium\n(PacificVis), 201–8. https://doi.org/10.1109/PACIFICVIS.2010.5429590.\n\n\nPampalk, Elias. 2001. “Islands of Music: Analysis, Organization,\nand Visualization of Music Archives.” Master’s thesis, Vienna\nUniversity of Technology.\n\n\nRosvall, Martin, and Carl T. Bergstrom. 2010. “Mapping Change in\nLarge Networks.” PLoS ONE 5 (1): e8694. https://doi.org/10.1371/journal.pone.0008694.",
+    "crumbs": [
+      "Références"
+    ]
+  }
+]
