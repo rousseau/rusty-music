@@ -17,6 +17,8 @@ Rust » (voir `docs/rust-audio-stack.md`).
 Écrit intégralement par Claude. Contexte de travail : `CLAUDE.md`.
 Spécifications : `docs/`.
 
+Notes sur le développement de ce logiciel : [https://rousseau.github.io/rusty-music](https://rousseau.github.io/rusty-music)
+
 ## Installer
 
 **Utiliser l'application (macOS, sans rien compiler)** — télécharger le
