@@ -27,6 +27,13 @@ const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
 mod tuiles;
 
+/// Centroïdes d'empreinte par album (identifiant, vecteur) — voir
+/// `charger_centroides_albums`.
+type CentroidesAlbums = Vec<(i64, Vec<f32>)>;
+/// Métadonnées d'album indexées par le même identifiant que
+/// [`CentroidesAlbums`].
+type NoeudsAlbums = HashMap<i64, AlbumNoeud>;
+
 /// État partagé. `rusqlite::Connection` et le lecteur ne sont pas `Sync` : on
 /// les protège chacun par un verrou plutôt que d'ouvrir une base par appel.
 struct Etat {
@@ -109,11 +116,11 @@ struct Etat {
     /// `graphe`. Pas de balayage O(n²) ici (voir `album_embeddings`), donc
     /// pas besoin d'un verrou de construction séparé : le calcul est assez
     /// court pour rester sous le verrou du cache lui-même.
-    album_centroides: Mutex<Option<(usize, Arc<Vec<(i64, Vec<f32>)>>)>>,
+    album_centroides: Mutex<Option<(usize, Arc<CentroidesAlbums>)>>,
     /// Métadonnées de chaque album (famille, date, pochette), même clé et
     /// même invalidation que `album_centroides` — les deux sont toujours
     /// recalculés ensemble.
-    album_noeuds: Mutex<Option<(usize, Arc<HashMap<i64, AlbumNoeud>>)>>,
+    album_noeuds: Mutex<Option<(usize, Arc<NoeudsAlbums>)>>,
     /// Graphe des k plus proches albums par empreinte — le fond permanent du
     /// mode Explorer → Anneau (voir `reseau_albums`), distinct du graphe des
     /// morceaux (`graphe` ci-dessus). `k` couvre déjà le maximum du curseur
@@ -2498,7 +2505,7 @@ fn charger_vecteurs(etat: &State<Etat>) -> Result<Arc<Vec<Empreinte>>, String> {
 /// côté cœur.
 fn charger_centroides_albums(
     etat: &State<Etat>,
-) -> Result<(Arc<Vec<(i64, Vec<f32>)>>, Arc<HashMap<i64, AlbumNoeud>>), String> {
+) -> Result<(Arc<CentroidesAlbums>, Arc<NoeudsAlbums>), String> {
     let lib = etat.lib.lock().map_err(echec)?;
     let n = lib
         .count_embeddings(rusty_music_analysis::passe::MODELE)

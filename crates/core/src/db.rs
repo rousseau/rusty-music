@@ -1224,7 +1224,8 @@ impl Library {
             })?
             .collect::<std::result::Result<_, _>>()?;
 
-        let mut par_album: HashMap<(String, Option<String>), Vec<(i64, i64)>> = HashMap::new();
+        type ComptesFamillesParAlbum = HashMap<(String, Option<String>), Vec<(i64, i64)>>;
+        let mut par_album: ComptesFamillesParAlbum = HashMap::new();
         for (album, artiste, cluster, n) in lignes {
             par_album.entry((album, artiste)).or_default().push((cluster, n));
         }
