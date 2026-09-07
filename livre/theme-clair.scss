@@ -1,0 +1,64 @@
+/*-- scss:defaults --*/
+
+// Tokens repris de apps/desktop/ui/style.css (direction « Relief »,
+// thème clair) — même trajectoire que le thème sombre, pas dérivée
+// mécaniquement (voir commentaire dans style.css).
+$body-bg:    #F3EFE6;
+$body-color: #241F18;
+$panel-bg:   #FBF8F1;
+$panel2-bg:  #EFEADF;
+$line:       #DCD4C4;
+$mut:        #6B6355;
+$accent:     #A85F2C;
+
+$link-color: $accent;
+$code-color: $accent;
+$code-bg:    $panel2-bg;
+
+$border-color: $line;
+$border-radius: 2px;
+
+$font-family-sans-serif: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+$font-family-monospace:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+$headings-font-family:   Newsreader, Georgia, "Times New Roman", serif;
+$headings-font-weight:   500;
+$toc-font-size: 0.8em;
+
+$navbar-bg: $panel-bg;
+$navbar-fg: $body-color;
+$sidebar-bg: $panel-bg;
+$sidebar-fg: $body-color;
+$sidebar-hl: $accent;
+
+$table-border-color: $line;
+
+/*-- scss:rules --*/
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+#quarto-sidebar, .sidebar-navigation {
+  background-color: $panel-bg;
+  border-right: 1px solid $line;
+}
+
+.navbar {
+  background-color: $panel-bg !important;
+  border-bottom: 1px solid $line;
+}
+
+pre, code {
+  border-radius: $border-radius;
+}
+
+blockquote {
+  border-left: 2px solid $accent;
+  color: $mut;
+}
+
+.callout {
+  border-radius: $border-radius;
+}
+
+#refs {
+  font-size: 0.95em;
+}

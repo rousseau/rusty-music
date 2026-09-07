@@ -1,0 +1,12 @@
+/* Ajustements typographiques transversaux aux deux thèmes — les couleurs
+   elles-mêmes vivent dans theme-sombre.scss / theme-clair.scss. */
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.01em;
+}
+
+.chapter-number, .quarto-title-meta-heading {
+  font-family: var(--bs-font-monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

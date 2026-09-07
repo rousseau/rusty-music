@@ -1,0 +1,34 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "Rusty Music"
+  subtitle: "Suite musicale locale autonome"
+  author: "François Rousseau"
+  date: today
+  repo-url: https://github.com/rousseau/rusty-music
+  repo-actions: [edit, issue]
+  chapters:
+    - index.qmd
+    - ecouter.qmd
+    - explorer.qmd
+    - editer.qmd
+    - bibliotheque.qmd
+    - decouvrir.qmd
+    - references.qmd
+
+bibliography: references.bib
+csl: chicago-author-date.csl
+reference-location: margin
+
+format:
+  html:
+    theme:
+      light: theme-clair.scss
+      dark: theme-sombre.scss
+    css: styles.css
+    toc: true
+    number-sections: true
+    code-copy: true
+    smooth-scroll: true

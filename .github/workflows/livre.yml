@@ -1,0 +1,29 @@
+name: Livre — rendu et publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "livre/**"
+      - ".github/workflows/livre.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Rendre et publier sur GitHub Pages
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+          path: livre
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
