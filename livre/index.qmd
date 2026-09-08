@@ -1,6 +1,8 @@
 # Introduction {.unnumbered}
 
-*(à rédiger)*
+Rusty Music est né de la frustration de lecteur de musique comme iTunes (maintenant Musique), de leur gestion d'une bibliothèque locale et leur capacité limitée. 
+
+L'idée de départ est de simplement indiquer le chemin d'un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.
 
 ::: {.callout-note}
 ## Paragraphe de test
