@@ -13,6 +13,14 @@ d'albums du mode Explorer → Anneau (`docs/carto-anneau.md`) est déjà le
 réseau dont elle a besoin — seule la position à l'écran change (chronologique
 + bande, au lieu de radial).
 
+La sélection est elle aussi partagée : le même état `anneau.focal` /
+`anneau.voisins` (peuplé par `chargerAnneau`) éclaire les voisins soniques du
+focal sur la frise comme sur l'anneau — un clic sur un album, et **le suivi
+de la lecture** : quand une playlist est lancée, le focal désigne l'album du
+morceau en cours, recalé à chaque changement de piste. Détail et arbitrage
+(navigation manuelle vs lecture, inspecteur) : `docs/carto-anneau.md` § « Le
+focal suit la lecture ».
+
 - **Réseau d'albums** — `apps/desktop/src/main.rs::reseau_albums` (ligne 2371)
   construit déjà les nœuds et les arcs :
   - `charger_centroides_albums` (main.rs:2467) → `AlbumNoeud{id, name, artist,

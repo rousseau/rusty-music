@@ -71,6 +71,39 @@ Eigenfactor n'isole jamais un seul nœud : sa vue par défaut affiche déjà les
 ### Stabilité des positions — même principe que le peuplement
 La position d'un album sur l'anneau ne dépend **jamais** du focal sélectionné. Seul l'éclairage des liens change au clic. Un anneau qui se réorganise à chaque sélection casse la mémorisation.
 
+### Le focal suit la lecture
+
+Le focal n'est pas seulement posé au clic : quand une playlist (ou un album
+entier) est lancée, l'anneau **et** la frise des filiations (`frise-filiations.md`,
+même état `anneau.focal`/`anneau.voisins`) désignent l'album du morceau en
+cours — mêmes voisins soniques mis en avant, même trait épaissi, comme si on
+l'avait cliqué.
+
+**L'affichage ne montre QUE le disque en cours d'écoute** — son album focal et
+ses voisins soniques, rien d'autre. Le suivi (`suivreAlbumEnLecture`) tourne à
+chaque battement du sondage de lecture ; il est idempotent (une comparaison
+nom + artiste, il sort aussitôt si l'album focal est déjà le bon) et n'appelle
+le moteur que quand la lecture entre dans un autre album. Une navigation
+manuelle dans l'anneau pendant l'écoute est reprise au battement suivant —
+même esprit que l'inspecteur (qui suit le morceau joué), le suivi étant ici
+plus serré parce qu'un survol de l'anneau, lui, n'écrit pas le focal.
+L'inspecteur suit le morceau et non le disque : le suivi ne le détourne pas
+(`chargerAnneau(..., { avecInspecteur: false })`).
+
+**Pas de tracé de la playlist en cours sur Temps/Anneau.** `dessinerTemps` et
+`dessinerAnneau` ne tracent plus le trajet accent reliant tous les albums de
+`fileCourante`. Sur une playlist « alchimie » lancée depuis un album, ce
+trajet partait du disque d'origine et se **superposait** aux voisins du disque
+écouté — deux jeux de connexions à l'écran au lieu d'un. Le trajet reste sur
+le Nuage et la Carte (`tracerRouteSurCarte`), où il a un sens géographique.
+
+Si le nouvel album ne peut pas être montré — jamais analysé (pas d'anneau
+calculable), ou hors du réseau (sans famille, absent de la frise) — la
+sélection est **effacée** (`anneau.focal = null`), jamais laissée sur le
+disque précédent : l'affichage désigne ce qu'on écoute, ou rien. L'échec du
+calcul reste silencieux (`{ discret: true }`, pas de message d'erreur) — ce
+n'est pas l'utilisateur qui a demandé ce calcul.
+
 ### Étiquettes — révélation par sélection, pas affichage permanent
 Comme Eigenfactor : pas de nom en permanence sur chaque segment (illisible à l'échelle de la bibliothèque). Nom au survol ; pour les voisins directs du focal sélectionné, petit trait de rappel (leader line) vers une étiquette externe.
 

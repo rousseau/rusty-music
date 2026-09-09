@@ -2183,6 +2183,13 @@ async function battement() {
   // stems ne jouent pas, ils montrent où en est le morceau d'origine.
   if (modeCourant === "editer") poserTete(frac);
 
+  // Frise et anneau : l'album focal partagé suit le morceau joué. Appelé à
+  // chaque battement, hors du bloc de changement de morceau ci-dessus (qui met
+  // à jour `enLecture` en première ligne puis peut lever avant la fin) —
+  // `suivreAlbumEnLecture` est idempotente, elle sort aussitôt si l'album focal
+  // est déjà le bon.
+  suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (anneau/frise)"));
+
   // Plus rien ne bouge : inutile de continuer à interroger le moteur. Toute
   // action de transport relance le sondage.
   if (e.finished || e.paused) sonder(false);
@@ -2553,6 +2560,9 @@ async function chargerTemps() {
   }
 
   temps.charge = true;
+  // Idem `chargerReseauAnneau` : forcer un nouveau passage du suivi de lecture
+  // maintenant que la frise peut tracer.
+  albumFocalLecture = null;
 }
 
 /// État du mode Explorer → Anneau : un graphe circulaire à liens groupés
@@ -2657,23 +2667,158 @@ async function chercherAlbums(q) {
 /// Fait de `id` l'album focal de l'anneau et recharge son voisinage — appelée
 /// aussi bien depuis un résultat de recherche que depuis un clic sur un
 /// voisin déjà affiché (« marcher » dans le graphe de ressemblance).
-async function chargerAnneau(id) {
-  patienter("calcul de l'anneau…");
+///
+/// `discret` : appel de fond, quand c'est la lecture qui déplace le focal
+/// (`suivreAlbumEnLecture`) et non un geste. On tait alors le mot d'attente
+/// du pied de carte et, en cas d'échec (album sans empreinte), l'erreur dans
+/// `#fil-compte` — ce n'est pas l'utilisateur qui a demandé ce calcul.
+/// `avecInspecteur` : peuple l'inspecteur avec l'album (le défaut, comme un
+/// clic) ; `false` en suivi de lecture, où l'inspecteur suit le morceau joué.
+async function chargerAnneau(id, { discret = false, avecInspecteur = true } = {}) {
+  if (!discret) patienter("calcul de l'anneau…");
   let vue;
   try {
     vue = await invoke("album_ring", { albumId: id, k: anneau.k });
   } catch (e) {
-    signalerErreur("fil-compte", "échec du calcul de l'anneau", e, "anneau");
+    if (discret) {
+      // L'album joué n'a pas d'anneau calculable (jamais analysé) : plutôt
+      // que de laisser la sélection sur le disque précédent, on l'efface —
+      // l'affichage doit désigner ce qu'on écoute, ou rien.
+      remonter(e, "anneau (suivi de lecture)");
+      anneau.focal = null;
+      anneau.voisins = [];
+      dessinerCarte();
+    } else {
+      signalerErreur("fil-compte", "échec du calcul de l'anneau", e, "anneau");
+    }
     return;
   } finally {
-    patienter(null);
+    if (!discret) patienter(null);
   }
   anneau.focal = vue.focal;
   anneau.voisins = vue.voisins;
   $("anneau-resultats").hidden = true;
   $("fil-compte").textContent = `${anneau.focal.name} — ${anneau.voisins.length} voisin(s)`;
-  await inspecterAlbum(anneau.focal);
+  if (avecInspecteur) await inspecterAlbum(anneau.focal);
   dessinerCarte();
+}
+
+/// Retrouve l'identifiant d'anneau d'un album (nom + artiste) — d'abord dans
+/// les réseaux déjà chargés (Temps, Anneau), qui portent l'identité exacte
+/// calculée par le moteur, sinon par une recherche plein texte. Comparaison
+/// insensible à la casse et aux espaces de bord : l'artiste d'une piste
+/// (`tracks.artist`) n'est pas toujours l'artiste de regroupement dont le
+/// moteur dérive l'identité du disque. `null` si l'album reste introuvable.
+async function idAlbumPour(nom, artiste) {
+  const eq = (x, y) => (x || "").trim().toLowerCase() === (y || "").trim().toLowerCase();
+  for (const liste of [temps.albums, anneau.reseau.albums]) {
+    if (!liste || liste.length === 0) continue;
+    const exact = liste.find((a) => eq(a.name, nom) && eq(a.artist, artiste));
+    if (exact) return exact.id;
+    const parNom = liste.find((a) => eq(a.name, nom));
+    if (parNom) return parNom.id;
+  }
+  try {
+    const hits = await invoke("search_albums", { query: nom, limit: 20 });
+    const exact = hits.find((h) => eq(h.name, nom) && eq(h.artist, artiste));
+    if (exact) return exact.id;
+    return hits.find((h) => eq(h.name, nom))?.id ?? null;
+  } catch (e) {
+    remonter(e, "recherche d'album (suivi de lecture)");
+    return null;
+  }
+}
+
+/// Album (nom + artiste) **effectivement affiché** comme focal de l'anneau /
+/// de la frise parce qu'on l'écoute — `null` tant que rien ne l'est. N'est
+/// posé qu'**après** confirmation que `anneau.focal` le reflète : si le
+/// premier essai échoue (réseau pas encore chargé, `album_ring` en erreur),
+/// il reste `null` et le battement suivant réessaie. C'était le bug « les
+/// liens n'apparaissent qu'au 2ᵉ morceau » : la clé était posée avant le
+/// succès, et la déduplication bloquait tout nouvel essai sur le 1ᵉʳ disque.
+let albumFocalLecture = null;
+/// Clé du disque en cours de résolution — anti-concurrence : le sondage
+/// appelle `suivreAlbumEnLecture` à 5 Hz sans l'attendre.
+let suiviAlbumEnVol = null;
+const cleAlbumLecture = (nom, artiste) => JSON.stringify([nom ?? null, artiste ?? ""]);
+
+/// Fait de l'album du morceau en cours de lecture le focal partagé de la
+/// frise (Temps) et de l'anneau — « comme si on l'avait cliqué » : ses voisins
+/// soniques, ses arcs mis en avant, et **rien d'autre**. Appelée à chaque
+/// battement du sondage (idempotente : sort tout de suite si l'album focal est
+/// déjà le bon) et à chaque entrée dans Temps/Anneau.
+///
+/// L'affichage désigne **toujours** le disque en cours d'écoute : la lecture
+/// entre dans un autre album → il devient le focal ; le disque ne peut pas
+/// être montré (pas de métadonnée, hors réseau, jamais analysé) → la sélection
+/// est effacée, jamais laissée sur le disque précédent. Ne touche pas
+/// l'inspecteur — en lecture il suit le morceau, pas le disque.
+async function suivreAlbumEnLecture() {
+  if (modeCourant !== "explorer" || (!modeTemps() && !modeAnneau())) {
+    albumFocalLecture = null;
+    suiviAlbumEnVol = null;
+    return;
+  }
+  // Morceau joué absent de la file : fenêtre courte après `remplacer_file` —
+  // le morceau d'avant finit de jouer pendant que la nouvelle playlist prend
+  // la main. État transitoire, on ne touche à rien (le prochain morceau de la
+  // file résoudra).
+  const piste = fileCourante.find((x) => x.path === enLecture);
+  if (!piste) return;
+  const nom = piste.album || null;
+  const artiste = piste.artist || "";
+  const cle = cleAlbumLecture(nom, artiste);
+
+  // Déjà affiché pour ce disque, ou déjà en cours de résolution : rien à faire.
+  if (albumFocalLecture && cleAlbumLecture(albumFocalLecture.nom, albumFocalLecture.artiste) === cle) return;
+  if (suiviAlbumEnVol === cle) return;
+  suiviAlbumEnVol = cle;
+  try {
+    // Morceau sans métadonnée d'album : rien de montrable, on efface — jamais
+    // garder les connexions du disque précédent.
+    if (!nom) {
+      if (anneau.focal) {
+        anneau.focal = null;
+        anneau.voisins = [];
+        dessinerCarte();
+      }
+      albumFocalLecture = { nom, artiste };
+      return;
+    }
+
+    const id = await idAlbumPour(nom, artiste);
+    if (suiviAlbumEnVol !== cle) return; // un autre disque a pris la main
+
+    if (id == null) {
+      // Introuvable — album pas indexé, ou (rare) `search_albums` qui a raté au
+      // démarrage. On **n'enregistre pas** : le prochain battement réessaie.
+      if (anneau.focal) {
+        anneau.focal = null;
+        anneau.voisins = [];
+        dessinerCarte();
+      }
+      $("fil-compte").textContent = `${nom} — hors du réseau d'albums`;
+      return;
+    }
+
+    if (!(anneau.focal && String(anneau.focal.id) === String(id))) {
+      await chargerAnneau(id, { discret: true, avecInspecteur: false });
+      if (suiviAlbumEnVol !== cle) return;
+    } else {
+      // Focal déjà bon mais on repasse ici (réseau qui vient d'arriver, par ex.)
+      // : forcer un redessin pour que l'anneau trace enfin la sélection.
+      dessinerCarte();
+    }
+    // `id` résolu : on enregistre, que `chargerAnneau` ait tracé l'anneau ou
+    // qu'il ait échoué (album sans empreinte → `focal` remis à `null`,
+    // affichage vide mais stable — « ce qu'on écoute, ou rien »). Le rendu
+    // effectif, si le réseau finit encore de charger, est rattrapé par
+    // `chargerReseauAnneau` (qui remet `albumFocalLecture` à `null` en fin de
+    // chargement pour forcer un nouveau passage).
+    albumFocalLecture = { nom, artiste };
+  } finally {
+    if (suiviAlbumEnVol === cle) suiviAlbumEnVol = null;
+  }
 }
 
 /// Charge le fond permanent de l'anneau une fois par session — tous les
@@ -2694,6 +2839,10 @@ async function chargerReseauAnneau() {
   anneau.reseau.arcs = r.arcs;
   calculerAnglesAnneau();
   anneau.reseau.charge = true;
+  // Le réseau vient d'arriver : un album focal posé avant (par le suivi de
+  // lecture, alors que `dessinerAnneau` ne pouvait encore rien tracer) doit
+  // être redessiné. On force un nouveau passage du suivi.
+  albumFocalLecture = null;
 }
 
 /// Fixe l'angle de chaque famille (mêmes bornes que la couronne extérieure)
@@ -3823,46 +3972,14 @@ function dessinerTemps(r, encre, accent) {
   }
   ctx.globalAlpha = 1;
 
-  // La playlist en cours (`fileCourante`) — même traitement que l'anneau
-  // (`dessinerAnneau` § playlist en cours) : chaque morceau ramené à son
-  // album (nom + artiste, `fileCourante` n'a pas l'identifiant du réseau),
-  // doublons consécutifs fondus. Accent, opacité quasi pleine, surépaisseur —
-  // le même langage épaisseur/opacité que le reste, poussé au maximum : le
-  // tracé du mode Chemin (voyage) est ce qu'on est venu lire, pas un troisième
-  // style de trait. Point 4 : rien à changer côté moteur, la dérive
-  // temporelle/le bruit du voyage restent intacts (`tracerChemin`).
+  // Pas de tracé de la playlist en cours ici : sur Temps/Anneau, l'affichage
+  // ne montre **que** l'album du morceau écouté et ses voisins soniques (le
+  // focal, plus haut, piloté par `suivreAlbumEnLecture`). Superposer le
+  // trajet de toute la file — qui part de l'album d'origine d'une playlist
+  // « alchimie » — ajoutait un second jeu de connexions étranger au disque en
+  // cours. `parCle` reste : le halo « album en écoute » juste dessous en a
+  // besoin.
   const parCle = new Map(temps.albums.map((a) => [`${a.name} ${a.artist}`, a]));
-  const arretsRoute = [];
-  for (const t of fileCourante) {
-    const alb = parCle.get(`${t.album || ""} ${t.artist || ""}`);
-    if (!alb) continue;
-    const dernier = arretsRoute[arretsRoute.length - 1];
-    if (dernier && dernier.id === alb.id) continue;
-    arretsRoute.push(alb);
-  }
-  if (arretsRoute.length >= 2) {
-    ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.9;
-    ctx.lineWidth = 2.5;
-    for (let i = 0; i < arretsRoute.length - 1; i++) {
-      const xa = xDeAlbum(arretsRoute[i]);
-      const ya = yDeAlbum(arretsRoute[i]);
-      const xb = xDeAlbum(arretsRoute[i + 1]);
-      const yb = yDeAlbum(arretsRoute[i + 1]);
-      ctx.beginPath();
-      ctx.moveTo(xa, ya);
-      ctx.quadraticCurveTo((xa + xb) / 2, (ya + yb) / 2 - Math.abs(xb - xa) * 0.08, xb, yb);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1;
-    ctx.fillStyle = accent;
-    for (const alb of arretsRoute) {
-      ctx.beginPath();
-      ctx.arc(xDeAlbum(alb), yDeAlbum(alb), 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
 
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) — le morceau en cours se ramène à son album par la
@@ -4196,53 +4313,13 @@ function dessinerAnneau(r, encre, accent) {
     }
   }
 
-  // La playlist en cours (`fileCourante`), s'il y en a une — même principe
-  // que `tracerRouteSurCarte` pour nuage/carte, ici sur les albums plutôt
-  // que les morceaux : chaque morceau est ramené à son album (retrouvé par
-  // nom + artiste, `fileCourante` n'a pas l'identifiant de l'anneau), les
-  // doublons consécutifs d'un même album sont fondus en une seule étape.
-  const parCle = new Map(anneau.reseau.albums.map((a) => [`${a.name} ${a.artist}`, a]));
-  const arretsRoute = [];
-  for (const t of fileCourante) {
-    const alb = parCle.get(`${t.album || ""} ${t.artist || ""}`);
-    if (!alb) continue;
-    const dernier = arretsRoute[arretsRoute.length - 1];
-    if (dernier && dernier.id === alb.id) continue;
-    arretsRoute.push(alb);
-  }
-  if (arretsRoute.length >= 2) {
-    for (let i = 0; i < arretsRoute.length - 1; i++) {
-      const posA = positions.get(arretsRoute[i].id);
-      const posB = positions.get(arretsRoute[i + 1].id);
-      if (!posA || !posB) continue;
-      const chemin = cheminAncetres(
-        posA,
-        arretsRoute[i].famille,
-        posB,
-        arretsRoute[i + 1].famille,
-        hubsFamille,
-        racine,
-      );
-      ctx.strokeStyle = accent;
-      ctx.globalAlpha = 0.9;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      tracerLigneLissee(courbeBundle(chemin, anneau.beta));
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1;
-    // Un repère à chaque étape, pour lire l'ordre de la playlist sur l'anneau.
-    for (const a of arretsRoute) {
-      const pos = positions.get(a.id);
-      if (!pos) continue;
-      ctx.fillStyle = accent;
-      ctx.beginPath();
-      ctx.arc(pos[0], pos[1], 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
+  // Pas de tracé de playlist ici : sur Temps/Anneau, l’affichage ne montre
+  // **que** l’album du morceau écouté et ses voisins soniques (le focal, plus
+  // haut, piloté par `suivreAlbumEnLecture`). Superposer le trajet de toute la
+  // file — qui part de l’album d’origine d’une playlist « alchimie » —
+  // ajoutait un second jeu de connexions étranger au disque en cours. `parCle`
+  // reste : le halo « album en écoute » juste dessous en a besoin.
+  const parCle = new Map(anneau.reseau.albums.map((a) => [`${a.name} ${a.artist}`, a]));
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) et que sur la frise (`dessinerTemps`) — même clé
   // `parCle` que ci-dessus pour ramener le morceau en cours à son album.
@@ -5556,7 +5633,12 @@ function majAffichageTemps() {
   $("bloc-temps").hidden = !t;
   if (t) {
     $("zoom-val").textContent = `×${temps.vue.k.toFixed(1).replace(".", ",")}`;
-    chargerTemps().then(() => dessinerCarte());
+    // Le focal a été remis à zéro par le changement d'affichage ; si un
+    // disque joue, il le redevient (`suivreAlbumEnLecture` s'en assure).
+    chargerTemps().then(() => {
+      dessinerCarte();
+      suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (frise)"));
+    });
   }
 }
 
@@ -5573,7 +5655,10 @@ function majAffichageAnneau() {
     $("anneau-k-val").textContent = String(anneau.k);
     $("anneau-beta").value = anneau.beta;
     $("anneau-beta-val").textContent = anneau.beta.toFixed(2).replace(".", ",");
-    chargerReseauAnneau().then(() => dessinerCarte());
+    chargerReseauAnneau().then(() => {
+      dessinerCarte();
+      suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (anneau)"));
+    });
   }
 }
 
