@@ -4,7 +4,7 @@
     "href": "index.html",
     "title": "Rusty Music",
     "section": "",
-    "text": "Introduction\nRusty Music est né de la frustration de lecteur de musique comme iTunes (maintenant Musique), de leur gestion d’une bibliothèque locale et leur capacité limitée.\nL’idée de départ est de simplement indiquer le chemin d’un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.\n\n\n\n\n\n\nNoteParagraphe de test\n\n\n\nCe paragraphe vérifie la chaîne de rendu — appel de note, citation et bibliographie en fin de chapitre. Le placement des morceaux sur la carte du mode Explorer doit rester contraint par la voirie plutôt que par un espace euclidien libre, un principe proche des cartes de communautés de réseaux (Rosvall and Bergstrom 2010) et des cartes thématiques de type GMap (Gansner et al. 2010). Les travaux fondateurs sur l’organisation visuelle d’archives musicales, comme Islands of Music (Pampalk 2001), restent une référence pour ce mode1.\n\n\n\n\n1 Ce paragraphe et cette note sont un texte de test, à retirer une fois la chaîne de publication vérifiée.\n\nGansner, Emden R., Yifan Hu, and Stephen Kobourov. 2010. “GMap: Visualizing Graphs and Clusters as Maps.” IEEE Pacific Visualization Symposium (PacificVis), 201–8. https://doi.org/10.1109/PACIFICVIS.2010.5429590.\n\n\nPampalk, Elias. 2001. “Islands of Music: Analysis, Organization, and Visualization of Music Archives.” Master’s thesis, Vienna University of Technology.\n\n\nRosvall, Martin, and Carl T. Bergstrom. 2010. “Mapping Change in Large Networks.” PLoS ONE 5 (1): e8694. https://doi.org/10.1371/journal.pone.0008694.",
+    "text": "Introduction\nRusty Music est né de la frustration de l’utilisation de lecteur de musique comme iTunes (maintenant Musique).\nL’idée de départ est de simplement indiquer le chemin d’un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.\nLe logiciel se décompose donc en 4 modes : écouter, explorer, éditer et découvrir.\n\n\n\n\n\n\nNoteParagraphe de test\n\n\n\nCe paragraphe vérifie la chaîne de rendu — appel de note, citation et bibliographie en fin de chapitre. Le placement des morceaux sur la carte du mode Explorer doit rester contraint par la voirie plutôt que par un espace euclidien libre, un principe proche des cartes de communautés de réseaux (Rosvall and Bergstrom 2010) et des cartes thématiques de type GMap (Gansner et al. 2010). Les travaux fondateurs sur l’organisation visuelle d’archives musicales, comme Islands of Music (Pampalk 2001), restent une référence pour ce mode1.\n\n\n\n\n1 Ce paragraphe et cette note sont un texte de test, à retirer une fois la chaîne de publication vérifiée.\n\nGansner, Emden R., Yifan Hu, and Stephen Kobourov. 2010. “GMap: Visualizing Graphs and Clusters as Maps.” IEEE Pacific Visualization Symposium (PacificVis), 201–8. https://doi.org/10.1109/PACIFICVIS.2010.5429590.\n\n\nPampalk, Elias. 2001. “Islands of Music: Analysis, Organization, and Visualization of Music Archives.” Master’s thesis, Vienna University of Technology.\n\n\nRosvall, Martin, and Carl T. Bergstrom. 2010. “Mapping Change in Large Networks.” PLoS ONE 5 (1): e8694. https://doi.org/10.1371/journal.pone.0008694.",
     "crumbs": [
       "Introduction"
     ]
@@ -60,23 +60,23 @@
     ]
   },
   {
-    "objectID": "bibliotheque.html",
-    "href": "bibliotheque.html",
-    "title": "4  Bibliothèque",
+    "objectID": "decouvrir.html",
+    "href": "decouvrir.html",
+    "title": "4  Découvrir",
     "section": "",
     "text": "(à rédiger)",
     "crumbs": [
-      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Bibliothèque</span>"
+      "<span class='chapter-number'>4</span>  <span class='chapter-title'>Découvrir</span>"
     ]
   },
   {
-    "objectID": "decouvrir.html",
-    "href": "decouvrir.html",
-    "title": "5  Découvrir",
+    "objectID": "bibliotheque.html",
+    "href": "bibliotheque.html",
+    "title": "5  Bibliothèque",
     "section": "",
     "text": "(à rédiger)",
     "crumbs": [
-      "<span class='chapter-number'>5</span>  <span class='chapter-title'>Découvrir</span>"
+      "<span class='chapter-number'>5</span>  <span class='chapter-title'>Bibliothèque</span>"
     ]
   },
   {
