@@ -17,12 +17,13 @@
         <span class="marque__ver">v0.1</span>
       </div>
 
+      <button class="mode bibliotheque-entree" data-mode="bibliotheque">Bibliothèque</button>
+
       <nav class="modes" aria-label="Mode">
         <p class="rail__titre">Mode</p>
         <button class="mode mode--actif" data-mode="ecoute">Écouter</button>
         <button class="mode" data-mode="explorer">Explorer</button>
         <button class="mode" data-mode="editer">Éditer</button>
-        <button class="mode" data-mode="bibliotheque">Bibliothèque</button>
         <button class="mode" data-mode="decouvrir">Découvrir</button>
       </nav>
 
@@ -368,6 +369,22 @@
               chaîne — décochez celles dont vous n'avez pas l'usage. L'import des
               crédits Discogs lui-même (le dump mensuel, plusieurs Go) ne se fait pas
               ici : voir <code>rusty-music import-discogs</code>.</p>
+            <label class="case">
+              <input id="lastfm-active" type="checkbox">
+              Tags de genre (Last.fm)
+            </label>
+            <label class="reglette" id="lastfm-cle-ligne" hidden>
+              <span>clé Last.fm</span>
+              <input id="lastfm-cle" type="text" class="chercher"
+                     placeholder="clé personnelle (last.fm/api)" autocomplete="off"
+                     style="margin-left:auto; width:auto; flex:1">
+            </label>
+            <p class="aide">Vote le nom des familles aux côtés de MusicBrainz et du
+              vocabulaire CLAP-texte (voir l'inspecteur) — n'affecte ni la position ni
+              le regroupement des morceaux sur la carte. Contrairement aux trois
+              sources ci-dessus, Last.fm exige une clé personnelle, gratuite sur
+              <code>last.fm/api</code> : décochée par défaut tant qu'elle n'est pas
+              renseignée.</p>
             <label class="reglette">
               <span>contact MusicBrainz</span>
               <input id="analyse-contact" type="email" class="chercher"
@@ -643,11 +660,28 @@
              auparavant silencieux, l'échec ne laissait rien voir à l'écran. -->
         <p id="insp-erreur" class="aide" hidden></p>
 
+        <!-- Nom de la famille — vote entre MusicBrainz, le vocabulaire
+             CLAP-texte et Last.fm (`docs/nommage-familles.md`). Lu depuis le
+             cache de `chargerFamilles()`, pas un appel par piste : le vote
+             est calculé une fois par famille, pas par morceau. -->
+        <div id="bloc-nom-famille" hidden>
+          <p class="rail__titre" style="margin-top:22px">Famille</p>
+          <p id="insp-famille-nom" class="insp__famille-nom"></p>
+          <div id="insp-famille-incertain" hidden>
+            <p class="aide">Nom incertain — les trois sources divergent :</p>
+            <ul id="insp-famille-propositions" class="insp__famille-propositions"></ul>
+            <button id="insp-famille-affiner" class="lien">Affiner cette famille ?</button>
+            <div id="insp-famille-affinage" hidden></div>
+          </div>
+        </div>
+
         <!-- Biographie (TheAudioDB) — résolue par MBID d'artiste seulement,
-             jamais par nom : voir `docs/enrichissement-lecteur.md`. -->
+             jamais par nom : voir `docs/enrichissement-lecteur.md`. Mention
+             de source discrète, comme pour les crédits Discogs. -->
         <div id="bloc-bio" hidden>
           <p class="rail__titre" style="margin-top:22px">Biographie</p>
           <p id="insp-bio" class="insp__bio"></p>
+          <p class="credit-source">source : TheAudioDB</p>
         </div>
 
         <!-- Crédits par édition (Discogs, dumps CC0) — mention de source
@@ -717,6 +751,11 @@
                  aria-label="Transposition en demi-tons" value="±0">
           <button data-r="tonalite" data-d="1" aria-label="Monter d'un demi-ton">+</button>
         </div>
+        <!-- N'apparaît qu'au-delà de ±20 % d'étirement d'ensemble : `wsola`
+             commence à s'entendre. La mesure, pas l'interdiction. -->
+        <span id="vitesse-alerte" class="derive" hidden>
+          <b>étirement franc — le son peut se ternir</b>
+        </span>
         <!-- N'apparaît que lorsque les stems n'avancent plus du même pas.
              Un avertissement permanent ne serait pas lu ; celui-ci porte la
              mesure, pas la mise en garde. -->
@@ -788,6 +827,15 @@
         <span id="file-compte" class="fil__compte"></span>
         <button id="file-fermer" class="file__fermer" aria-label="Fermer">×</button>
       </header>
+      <!-- Aléatoire et répétition : deux bascules du moteur, pas de l'affichage —
+           `set_alea`/`set_repetition` (`app.js`) pilotent la file côté Rust,
+           chaque ligne reflète ensuite ce qu'il a réellement retenu. -->
+      <div class="file__transport">
+        <button id="file-alea" class="file__bouton" aria-pressed="false"
+                title="Lecture aléatoire : mélange ce qui n'est pas encore joué.">aléatoire</button>
+        <button id="file-repeter" class="file__bouton" aria-pressed="false" data-mode="aucune"
+                title="Répéter : coupé → toute la file → le morceau en cours.">répéter</button>
+      </div>
       <!-- Pendant qu'une playlist ✦ se compose : la phase en cours (graphe des
            voisins, puis composition) et sa progression. Masqué le reste du temps. -->
       <div id="file-compo" class="file__compo" hidden>

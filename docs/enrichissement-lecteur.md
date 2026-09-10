@@ -12,6 +12,10 @@ en ajoute trois, chacune **best-effort, asynchrone, jamais bloquante**, et
    producteur, ingénieur du son), importés depuis les **dumps mensuels CC0**.
 3. **CritiqueBrainz** — critiques d'albums, licence Creative Commons.
 
+Une quatrième a suivi, pour un usage différent — voir « 4. Last.fm » plus
+bas : elle ne s'affiche pas dans le Lecteur, elle vote le nom des familles du
+mode Explorer (`docs/nommage-familles.md`).
+
 `docs/data-sources.md` affirmait qu'aucune API libre n'existait pour les
 critiques d'albums — **c'est devenu faux** : CritiqueBrainz couvre ce besoin.
 
@@ -44,6 +48,9 @@ Radiohead), stockés avec leur MBID et la date de récupération.
   demandé, y compris sans résultat).
 - Tauri : `start_biographies { cle }` / `biographies_state` / `bio_piste { id }`.
 - CLI : `rusty-music biographies [--cle] [--limite]`.
+- Attribution : aucune obligation, mais mention discrète « source :
+  TheAudioDB » sous la biographie dans le panneau de droite, par courtoisie —
+  même traitement que les crédits Discogs.
 
 ## 2. Discogs — crédits par édition, via les dumps CC0
 
@@ -131,12 +138,39 @@ de l'album invite à en écrire une plutôt qu'un vide silencieux.
   `critiques_piste { id }` / `lien_ecrire_critique { id }`.
 - CLI : `rusty-music critiques [--limite] [--rafraichir-des]`.
 
+## 4. Last.fm — tags de genre, pour le nommage des familles
+
+**N'affiche rien dans le Lecteur** — sert le vote de nommage des familles du
+mode Explorer, aux côtés de MusicBrainz et du vocabulaire CLAP-texte : voir
+`docs/nommage-familles.md`. Interrogation `artist.getTopTags` par MBID
+d'artiste, jamais par nom — même discipline que TheAudioDB.
+
+**Seule des quatre sources à exiger une clé personnelle** — gratuite sur
+`last.fm/api`, mais Last.fm n'offre pas de clé de test partagée comme
+TheAudioDB. Décochée par défaut dans le rail tant qu'aucune clé n'est
+renseignée (`docs/popularite.md` avait écarté Last.fm pour la popularité pour
+cette même raison ; ici la clé est demandée, pour un usage différent).
+
+Une clé refusée (HTTP 401/403, ou codes Last.fm 4/10/26/29) **arrête la
+passe** et fait remonter l'erreur — `lastfm.rs::EchecTags::Bloquant` : un
+autre artiste échouerait à l'identique, et un bilan « 0 tag » serait
+indiscernable d'une bibliothèque sans tags. Un échec ponctuel (5xx, réseau)
+laisse l'artiste pour un prochain passage (`Bilan.echecs`) sans interrompre.
+
+- Client réseau : `crates/core/src/lastfm.rs` (`Client::tags_artiste`).
+- Passe : `crates/core/src/lastfm_pass.rs::actualiser`.
+- Schéma : `lastfm_tags` (une ligne par tag) + `lastfm_fetched`.
+- Tauri : `start_lastfm { cle, rafraichir }` / `lastfm_state`.
+- CLI : `rusty-music lastfm --cle <clé> [--limite] [--rafraichir-des]`.
+
 ## Interface
 
 Rail d'analyse (mode Bibliothèque, près de « Rafraîchir aussi la
 popularité… ») : trois cases indépendantes — « Biographies (TheAudioDB) »,
 « Critiques (CritiqueBrainz) », « Liaison Discogs » — cochées par défaut,
-aucune clé requise. Décocher l'une n'affecte pas les autres. L'import lourd du
+aucune clé requise. Décocher l'une n'affecte pas les autres. Une quatrième,
+« Tags de genre (Last.fm) », décochée par défaut le temps qu'une clé
+personnelle soit renseignée. L'import lourd du
 dump Discogs n'y figure pas : CLI/cron uniquement.
 
 Inspecteur (`apps/desktop/ui/app.js`, `montrerBio`/`montrerCredits`/
@@ -147,3 +181,8 @@ restent cachés depuis `inspecterAlbum` (un nœud d'album de l'anneau ne porte
 pas d'identifiant de piste compatible avec `bio_piste`/`credits_piste`/
 `critiques_piste`) — simplification assumée, comme `inspecterAlbum` le fait
 déjà pour les descripteurs (BPM/tonalité).
+
+Le bloc « Famille » (`montrerNomFamille`, même inspecteur) affiche le nom
+issu du vote entre MusicBrainz, CLAP-texte et Last.fm, mais ne suit **pas**
+ce patron piste-par-piste : le vote est par famille, pas par morceau — voir
+`docs/nommage-familles.md`.

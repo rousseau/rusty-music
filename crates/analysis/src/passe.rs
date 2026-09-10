@@ -259,6 +259,23 @@ pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, 
         .map(|((id, _), (p, c))| (*id, p.x, p.y, *c))
         .collect();
     lib.update_map(MODELE, &maj)?;
+
+    // Vote CLAP-texte pour le nommage des familles (`docs/nommage-
+    // familles.md`) : calculé en lot, comme la projection et le
+    // regroupement ci-dessus, car le calibrage a besoin du score de tous
+    // les morceaux avant de centrer chaque colonne. Absent tant que le
+    // vocabulaire n'a pas été généré hors ligne — MusicBrainz et Last.fm
+    // votent alors seuls.
+    if let Some(vocab) = crate::vocabulaire_texte::charger() {
+        let gagnants = crate::vocabulaire_texte::voter(&vecteurs, &vocab);
+        let maj_labels: Vec<(i64, Option<String>)> = empreintes
+            .iter()
+            .zip(gagnants)
+            .map(|((id, _), g)| (*id, g))
+            .collect();
+        lib.update_texte_labels(MODELE, &maj_labels)?;
+    }
+
     Ok(rapport)
 }
 

@@ -285,6 +285,16 @@ html, body {
 .mode--actif { color: var(--txt); border-left-color: var(--accent); }
 .mode:disabled { opacity: .38; cursor: default; }
 
+/* Bibliothèque : point de départ, pas un mode — posée au-dessus du sélecteur
+   de mode plutôt que dedans (`docs/interface-guidelines.md`). */
+.bibliotheque-entree {
+  display: block; width: 100%; text-align: left;
+  font-weight: 600; border: 1px solid var(--line); border-radius: 2px;
+  background: var(--panel2); padding: 8px 11px; margin-bottom: 26px;
+}
+.bibliotheque-entree:hover:not(:disabled) { border-color: var(--accent); color: var(--txt); }
+.bibliotheque-entree.mode--actif { border-color: var(--accent); color: var(--accent); }
+
 .chercher {
   width: 100%; font: inherit; font-size: 13px;
   background: var(--panel2); color: var(--txt);
@@ -797,6 +807,14 @@ html, body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Nom de la famille — vote entre MusicBrainz, le vocabulaire CLAP-texte et
+   Last.fm (`docs/nommage-familles.md`). Les trois propositions ne
+   s'affichent que quand elles divergent (« nom incertain ») — jamais fondues
+   en une ligne, pour que le désaccord reste lisible plutôt que caché. */
+.insp__famille-nom { font-size: 12.5px; margin: 0; }
+.insp__famille-propositions { list-style: none; margin: 6px 0; padding: 0; font-size: 11.5px; color: var(--mut); }
+.insp__famille-propositions li { padding: 2px 0; }
+
 /* Biographie (TheAudioDB), crédits par édition (Discogs) et critiques
    (CritiqueBrainz) — trois sources de plus dans l'inspecteur partagé,
    `docs/enrichissement-lecteur.md`. */
@@ -805,8 +823,9 @@ html, body {
 .credits { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
 .credits li { padding: 5px 0; border-top: 1px solid var(--line); }
 .credits li:first-child { border-top: none; }
-/* Mention discrète, par courtoisie — la licence CC0 de Discogs ne l'exige
-   pas, contrairement à l'attribution CritiqueBrainz ci-dessous. */
+/* Mention discrète, par courtoisie — ni la licence CC0 de Discogs ni
+   TheAudioDB ne l'exigent, contrairement à l'attribution CritiqueBrainz
+   ci-dessous. */
 .credit-source { font-size: 10.5px; color: var(--mut); margin: 6px 0 0; }
 
 .critiques { display: flex; flex-direction: column; gap: 14px; }
@@ -970,7 +989,7 @@ html, body {
   background: none; border: none; padding: 0; font: inherit; color: var(--accent);
   cursor: pointer;
 }
-.decouvrir-fil button:hover { text-decoration: underline; }
+.decouvrir-fil button:hover { color: var(--txt); }
 .decouvrir-fil span { color: var(--mut); }
 #decouvrir-nom { font-family: var(--serif); font-size: 25px; font-weight: 500; margin: 0 0 4px; }
 #decouvrir-liens { max-height: none; }
@@ -1120,6 +1139,25 @@ html, body {
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0;
 }
 .file__fermer:hover { color: var(--txt); }
+
+/* Aléatoire / répétition : mêmes bascules discrètes que « E »/« HD » du
+   transport (`.transport__e`), texte au lieu d'une lettre — la largeur
+   varie ici (« répéter tout »), un carré fixe ne conviendrait pas. */
+.file__transport {
+  display: flex; gap: 8px;
+  padding: 10px 18px; border-bottom: 1px solid var(--line); flex: none;
+}
+.file__bouton {
+  flex: 1; padding: 5px 0; border: 1px solid var(--line); border-radius: 5px;
+  background: transparent; color: var(--mut);
+  font: 500 11px var(--sans); cursor: pointer;
+}
+.file__bouton:hover { color: var(--txt); border-color: var(--mut); }
+.file__bouton[aria-pressed="true"] {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 .file__liste { flex: 1; overflow-y: auto; }
 .file__vide { padding: 18px; font-size: 12.5px; color: var(--mut); }
 
@@ -1136,6 +1174,18 @@ html, body {
 .file__txt b { display: block; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file__txt span { display: block; font-size: 11.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file__duree { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+
+/* Réordonnance manuelle : glisser-déposer natif d'une ligne sur une autre.
+   `box-shadow` plutôt que `border` pour le repère d'insertion, afin de ne pas
+   décaler la hauteur des lignes ; redessin du panneau suspendu pendant le
+   glissement (`glissementEnCours`, app.js) — sans ça, un morceau qui avance
+   ou une pochette qui arrive pendant qu'on glisse arrache le nœud DOM en
+   cours de glissement sous la main, ce que la mécanique en boutons évitait
+   sans y penser. */
+.file__ligne[draggable="true"] { cursor: grab; }
+.file__ligne--glissee { opacity: .4; cursor: grabbing; }
+.file__ligne--depose-dessus { box-shadow: inset 0 2px 0 var(--accent); }
+.file__ligne--depose-dessous { box-shadow: inset 0 -2px 0 var(--accent); }
 
 /* ---- composition d'une playlist ✦ dans la file ---- */
 

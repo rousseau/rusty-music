@@ -9,7 +9,7 @@ l'ordre et les raisons.
 | Brique | État |
 |---|---|
 | Cœur d'ingestion | livré — 27 044 morceaux, scan et surveillance, décodage Opus |
-| Module 1 — Lecteur | v1 livrée ; restent aléatoire/répétition et réordonnancement de la file |
+| Module 1 — Lecteur | v1 livrée ; **file d'attente retravaillée — aléatoire, répétition (aucune/toutes/une), réordonnancement par glisser-déposer** |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie** |
 | Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
 | Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; restent pochettes et bios |
@@ -333,24 +333,26 @@ description est excellente sans réglage — « a symphony orchestra » remonte 
 Ravel, « a saxophone solo » trois Steve Coleman, « an accordion » Yann Tiersen
 et Fred Guichen. C'est aussi le livrable qui coûte les 501 Mo.
 
-### 7 bis. Ce qu'il reste à décider
+### 7 bis. Ce qu'il reste à décider — **tranché, voir `docs/nommage-familles.md`**
 
-Le sondage a rendu son verdict ; **le choix est à faire, il n'est pas dicté par
-la mesure.**
+Le sondage avait rendu son verdict sans trancher le choix ; c'est fait. Le
+plan initialement envisagé ici (miner des citations dans les critiques
+CritiqueBrainz pour élargir le vocabulaire à la main) est **abandonné** —
+couverture trop faible, et mauvais niveau de granularité : les critiques
+décrivent des albums, le nommage a besoin de décrire des styles.
 
-| | à embarquer | bénéfice |
-|---|---|---|
-| **nommer les familles** | 102 Ko de table, aucun modèle, aucun tokeniseur | mesuré : 7 mieux, 3 égales, 2 fausses |
-| **chercher par description** | 501 Mo, un tokeniseur BPE RoBERTa, processeur seulement | le meilleur résultat de l'essai |
+Retenu à la place, **détaillé dans `docs/nommage-familles.md`** : un
+vocabulaire construit depuis les genres MusicBrainz réels de la bibliothèque
+(pas choisis à la main) et leur article Wikipédia, un vote entre trois
+sources indépendantes (MusicBrainz, CLAP-texte, Last.fm) plutôt qu'une seule
+autorité, un « nom incertain » affiché avec les trois propositions quand
+elles divergent plutôt qu'un choix tranché en silence, et un affinage local
+suggéré (jamais automatique) pour les familles les plus disputées.
 
-Le premier est presque gratuit et à moitié convaincant ; le second est net et
-quadruple la taille de l'application. Rien n'oblige à prendre les deux, ni à
-les prendre dans cet ordre.
-
-**Une question d'interface reste ouverte, et elle n'a pas été sondée** : un nom
-de famille doit tenir dans une légende, et « a female choir singing in harmony ·
-a female singer with a piano » n'en est pas un. La voie évidente est un
-vocabulaire de couples — la phrase pour CLAP, un libellé court pour l'écran.
+La question d'interface laissée ouverte ici — un nom de famille doit tenir
+dans une légende — reste résolue comme avant ce chantier : le vocabulaire
+associe à chaque phrase le nom du genre MusicBrainz dont elle est issue, qui
+sert de libellé court partout où l'espace manque (légende, anneau, frise).
 
 ### 8. Mixage de deux pistes — ~1 semaine
 
@@ -373,8 +375,6 @@ solide.
 
 ## Ce qui n'est pas dans ce plan, et pourquoi
 
-- **Aléatoire et répétition** (module 1) : écartés de la v1. À reprendre quand
-  la file d'attente sera retravaillée, pas avant.
 - **Les 10 fichiers opus** : une dépendance pour 0,04 % de la bibliothèque.
   À faire si l'occasion se présente, jamais pour elle-même.
 - **La PR amont chez `demucs-rs`** : ouverte, sans réponse. Notre révision est

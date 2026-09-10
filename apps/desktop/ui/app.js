@@ -1049,6 +1049,11 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   }
 
   majBlocFamillesEcoute();
+
+  // En Éditer, `poser` a masqué grille et liste (gate `horsEcoute`) : c'est
+  // `majEtatEditer` qui décide de les ré-afficher, selon l'état du parcours,
+  // et qui les redessine une fois visibles.
+  if (modeCourant === "editer") majEtatEditer();
 }
 
 /* -------------------------------------------------------- index alphabétique */
@@ -1245,6 +1250,7 @@ async function inspecter(t) {
 
   montrerDescripteurs(t);
   montrerVoisins(t);
+  montrerNomFamille(t);
   montrerBio(t);
   montrerCredits(t);
   montrerCritiques(t);
@@ -1281,9 +1287,11 @@ async function inspecterAlbum(noeud) {
   $("insp-bpm").textContent = "—";
   $("insp-tonalite").textContent = "—";
   $("insp-timbre").textContent = "—";
-  // Biographie/crédits/critiques se demandent par identifiant de piste — un
-  // nœud d'album de l'anneau n'en porte pas (son `id` est celui de l'album).
-  // Simplification assumée : ces trois blocs restent cachés à cette échelle.
+  // Famille/biographie/crédits/critiques se demandent par identifiant de
+  // piste — un nœud d'album de l'anneau n'en porte pas (son `id` est celui
+  // de l'album). Simplification assumée : ces blocs restent cachés à cette
+  // échelle, comme `montrerDescripteurs` le fait déjà pour BPM/tonalité.
+  $("bloc-nom-famille").hidden = true;
   $("bloc-bio").hidden = true;
   $("bloc-credits").hidden = true;
   $("bloc-critiques").hidden = true;
@@ -1598,6 +1606,92 @@ async function montrerBio(t) {
   bloc.hidden = false;
 }
 
+/// Le nom de la famille du morceau — vote entre MusicBrainz, le vocabulaire
+/// CLAP-texte et Last.fm (`docs/nommage-familles.md`). Le vote lui-même est
+/// par famille, pas par morceau : servi une fois par `chargerFamilles()` et
+/// mis en cache dans `carte.familleVotes`, consulté ici plutôt que redemandé
+/// — seul le numéro de famille du morceau manque parfois (un point de la
+/// carte le porte déjà, `t.cluster` ; les autres vues de piste non), d'où le
+/// seul appel réseau de cette fonction.
+async function montrerNomFamille(t) {
+  const bloc = $("bloc-nom-famille");
+  const vise = t.path;
+  bloc.hidden = true;
+  $("insp-famille-incertain").hidden = true;
+  $("insp-famille-affinage").hidden = true;
+
+  let cluster = t.cluster;
+  if (cluster === undefined || cluster === null) {
+    try {
+      cluster = await invoke("famille_piste", { id: t.id });
+    } catch (e) {
+      signalerErreurInspecteur(vise, "échec du chargement de la famille", e, "famille");
+      return;
+    }
+    if ($("insp-titre").dataset.path !== vise) return;
+  }
+  if (cluster === null || cluster === undefined || cluster < 0) return;
+
+  await chargerFamilles();
+  if ($("insp-titre").dataset.path !== vise) return;
+  const vote = (carte.familleVotes ?? []).find((v) => v.cluster === cluster);
+  if (!vote) return;
+
+  $("insp-famille-nom").textContent = vote.nom_affiche;
+  if (!vote.fiable) {
+    const hote = $("insp-famille-propositions");
+    hote.replaceChildren();
+    for (const [source, nom] of [
+      ["MusicBrainz", vote.musicbrainz],
+      ["CLAP-texte", vote.clap_texte],
+      ["Last.fm", vote.lastfm],
+    ]) {
+      if (!nom) continue;
+      const li = document.createElement("li");
+      li.textContent = `${source} : ${nom}`;
+      hote.appendChild(li);
+    }
+    $("insp-famille-incertain").hidden = false;
+    $("insp-famille-affiner").dataset.cluster = String(cluster);
+  }
+  bloc.hidden = false;
+}
+
+/// Affinage local d'une famille « incertaine », suggéré jamais automatique
+/// (`docs/nommage-familles.md`) : un k-means restreint aux seuls morceaux de
+/// cette famille, chaque sous-groupe nommé par le même vote. N'écrit rien en
+/// base — ni territoire de carte, ni bande d'anneau ou de frise.
+$("insp-famille-affiner").addEventListener("click", async () => {
+  const bouton = $("insp-famille-affiner");
+  const cluster = Number(bouton.dataset.cluster);
+  if (Number.isNaN(cluster)) return;
+  const hote = $("insp-famille-affinage");
+  bouton.disabled = true;
+  bouton.textContent = "Affinage…";
+  try {
+    const sous = await invoke("subdiviser_famille", { cluster });
+    hote.replaceChildren();
+    for (const s of sous) {
+      const p = document.createElement("p");
+      p.textContent = `${s.nom_affiche} (${s.effectif.toLocaleString("fr-FR")})`;
+      hote.appendChild(p);
+    }
+    hote.hidden = sous.length === 0;
+  } catch (e) {
+    remonter(e, "affinage de famille");
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = "Affiner cette famille ?";
+  }
+});
+
+/// Le champ de clé Last.fm n'a de sens que la case cochée — décochée par
+/// défaut (contrairement aux trois autres sources, Last.fm exige une clé
+/// personnelle, voir `docs/nommage-familles.md`).
+$("lastfm-active").addEventListener("change", () => {
+  $("lastfm-cle-ligne").hidden = !$("lastfm-active").checked;
+});
+
 /// Crédits par édition (Discogs, dumps CC0) — musicien de session,
 /// producteur, ingénieur du son… Vide tant que la liaison MusicBrainz →
 /// Discogs et l'import mensuel n'ont pas couvert cette édition précise.
@@ -1748,6 +1842,62 @@ $("q").addEventListener("input", (e) => {
 
 /* ------------------------------------------------------ file d'attente */
 
+// Aléatoire et répétition : l'état affiché suit toujours le moteur (mis à
+// jour par le sondage du transport, plus bas), jamais l'inverse — un clic
+// envoie l'action puis attend la file résultante avant de se croire cru.
+let etatAlea = false;
+let etatRepetition = "aucune";
+// Rang à partir duquel la file se laisse encore réordonner ou mélanger — les
+// rangs qui précèdent sont déjà confiés à la sortie côté moteur
+// (`Player::verrou`). Recopié du sondage ; peut donc retarder d'un battement
+// (200 ms) sur la vérité — sans conséquence, le moteur reste seul juge et
+// ignore silencieusement un échange qui déborderait sur ce qui est déjà parti.
+let etatVerrou = 0;
+// Glisser-déposer en cours (rang de la ligne saisie, ou `null`) — suspend le
+// redessin du panneau (voir `dessinerFile`) : sans ça, un morceau qui avance
+// ou une pochette qui arrive pendant le geste arracherait le nœud DOM en
+// cours de glissement sous la main.
+let glissementEnCours = false;
+let rangGlisse = null;
+
+const LIBELLE_REPETITION = { aucune: "répéter", toutes: "répéter tout", une: "répéter 1" };
+const SUITE_REPETITION = { aucune: "toutes", toutes: "une", une: "aucune" };
+
+function refletAlea() {
+  $("file-alea").setAttribute("aria-pressed", String(etatAlea));
+}
+
+function refletRepetition() {
+  const bouton = $("file-repeter");
+  bouton.dataset.mode = etatRepetition;
+  bouton.textContent = LIBELLE_REPETITION[etatRepetition];
+  bouton.setAttribute("aria-pressed", String(etatRepetition !== "aucune"));
+}
+
+/// Reprend l'ordre réellement retenu par le moteur (`chemins`, dans l'ordre)
+/// après un mélange ou un glisser-déposer — lui seul sait ce qui a pris,
+/// [`Player::deplacer`]/`set_alea` ignorant en silence ce qui déborderait sur
+/// ce qui est déjà confié à la sortie. Les métadonnées déjà chargées
+/// (titre, popularité…) suivent chaque piste par son chemin.
+function resynchroniserFile(chemins) {
+  const parChemin = new Map(fileCourante.map((t) => [t.path, t]));
+  const reordonnee = chemins.map((c) => parChemin.get(c)).filter(Boolean);
+  if (reordonnee.length === chemins.length) fileCourante = reordonnee;
+  dessinerFile();
+}
+
+$("file-alea").addEventListener("click", async () => {
+  etatAlea = !etatAlea;
+  refletAlea();
+  resynchroniserFile(await invoke("set_alea", { actif: etatAlea }));
+});
+
+$("file-repeter").addEventListener("click", async () => {
+  etatRepetition = SUITE_REPETITION[etatRepetition];
+  refletRepetition();
+  await invoke("set_repetition", { mode: etatRepetition });
+});
+
 // L'interface connaît déjà la file : c'est elle qui l'a envoyée au moteur.
 // Inutile de la redemander, `current` suffit à situer la lecture.
 function dessinerFile() {
@@ -1755,6 +1905,9 @@ function dessinerFile() {
   // fait défiler ses pistes elle-même (`revelerFile`), un rendu ordinaire
   // par-dessus effacerait l'animation.
   if (fileCompositionActive) return;
+  // Un glissement en cours tient la ligne saisie : la remplacer sous la main
+  // (un morceau qui avance, une pochette qui arrive) casserait le geste.
+  if (glissementEnCours) return;
   const hote = $("file-liste");
   $("file-compte").textContent = `${fileCourante.length} morceaux`;
 
@@ -1781,6 +1934,58 @@ function dessinerFile() {
     el.children[1].children[1].textContent = txt(t.artist, "(sans artiste)");
     el.children[2].appendChild(jaugePop(popParPiste.get(t.id)));
     el.children[3].textContent = duree(t.duration_ms);
+
+    // Réordonnance manuelle par glisser-déposer : seule la suite pas encore
+    // confiée à la sortie s'y prête (`etatVerrou`) — le moteur l'ignorerait
+    // de toute façon, mais ne pas rendre la ligne saisissable évite un
+    // glissement qui semble n'avoir aucun effet.
+    if (i >= etatVerrou) {
+      el.draggable = true;
+      el.addEventListener("dragstart", (ev) => {
+        glissementEnCours = true;
+        rangGlisse = i;
+        el.classList.add("file__ligne--glissee");
+        ev.dataTransfer.effectAllowed = "move";
+        // Certains moteurs exigent `setData` pour armer le glisser — même si
+        // `rangGlisse` (fermeture JS) suffit ici à retrouver la source.
+        ev.dataTransfer.setData("text/plain", String(i));
+      });
+      el.addEventListener("dragend", () => {
+        glissementEnCours = false;
+        rangGlisse = null;
+        hote
+          .querySelectorAll(".file__ligne--glissee, .file__ligne--depose-dessus, .file__ligne--depose-dessous")
+          .forEach((n) =>
+            n.classList.remove("file__ligne--glissee", "file__ligne--depose-dessus", "file__ligne--depose-dessous"),
+          );
+      });
+      el.addEventListener("dragover", (ev) => {
+        if (rangGlisse === null) return;
+        ev.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const dessous = ev.clientY > rect.top + rect.height / 2;
+        el.classList.toggle("file__ligne--depose-dessus", !dessous);
+        el.classList.toggle("file__ligne--depose-dessous", dessous);
+      });
+      el.addEventListener("dragleave", () => {
+        el.classList.remove("file__ligne--depose-dessus", "file__ligne--depose-dessous");
+      });
+      el.addEventListener("drop", async (ev) => {
+        ev.preventDefault();
+        const dessous = el.classList.contains("file__ligne--depose-dessous");
+        el.classList.remove("file__ligne--depose-dessus", "file__ligne--depose-dessous");
+        if (rangGlisse === null || rangGlisse === i) return;
+        // Par identité plutôt qu'un calcul de rang : sans ça, un décalage
+        // suivant que la source est au-dessus ou en dessous de la cible est
+        // facile à rater. `fileCourante` ne bouge pas pendant un glissement
+        // (`glissementEnCours` ci-dessus), `t`/`piste` restent valides.
+        const piste = fileCourante[rangGlisse];
+        const sansGlissee = fileCourante.filter((x) => x !== piste);
+        let a = sansGlissee.indexOf(t);
+        if (dessous) a += 1;
+        resynchroniserFile(await invoke("deplacer_file", { de: rangGlisse, a }));
+      });
+    }
 
     // Sauter conserve les pistes précédentes : on peut revenir en arrière.
     el.addEventListener("click", async () => {
@@ -2279,6 +2484,20 @@ async function battement() {
     return;
   } finally {
     battementEnVol = false;
+  }
+
+  // Aléatoire, répétition et verrou de réordonnance : le moteur reste seul
+  // juge, l'affichage ne fait que suivre. Pas de redessin ici — seulement
+  // sur un vrai changement de morceau ou une action du panneau — sans quoi
+  // la file se reconstruirait à 5 Hz sous le curseur de qui la parcourt.
+  etatVerrou = e.verrou;
+  if (etatAlea !== e.alea) {
+    etatAlea = e.alea;
+    refletAlea();
+  }
+  if (etatRepetition !== e.repetition) {
+    etatRepetition = e.repetition;
+    refletRepetition();
   }
 
   if (e.current !== enLecture) {
@@ -5436,12 +5655,26 @@ window.addEventListener("resize", () => {
 /// caractéristique, qui nommait « Ska Rock » une famille de 4 321 morceaux
 /// menée par Bob Marley. Les deux à la fois : voir `nommer_les_familles`.
 async function chargerFamilles() {
-  if (carte.familles) return;
-  try {
-    carte.familles = await invoke("families");
-  } catch (e) {
-    remonter(e, "familles");
-    carte.familles = [];
+  if (!carte.familles) {
+    try {
+      carte.familles = await invoke("families");
+    } catch (e) {
+      remonter(e, "familles");
+      carte.familles = [];
+    }
+  }
+  // Détail du vote à trois sources (`docs/nommage-familles.md`), pour le
+  // bloc « Famille » de l'inspecteur — best-effort : son échec n'empêche pas
+  // la légende de la carte, déjà servie par `carte.familles` ci-dessus.
+  // Rechargé dès qu'il est absent, indépendamment de `carte.familles` : une
+  // passe Last.fm invalide le vote sans toucher aux noms de la légende
+  // (`carte.familleVotes = null` seul, voir `passeLastfm`).
+  if (!carte.familleVotes) {
+    try {
+      carte.familleVotes = await invoke("families_detail");
+    } catch {
+      carte.familleVotes = [];
+    }
   }
 }
 
@@ -5641,6 +5874,7 @@ $("familles-ecoute-tout").addEventListener("click", () => {
 /// le filtre courant ne veut plus rien dire.
 async function familleARecalculee() {
   carte.familles = null;
+  carte.familleVotes = null;
   famillesParAlbum = null;
   famillesParArtiste = null;
   filtreFamilles.clear();
@@ -7589,6 +7823,7 @@ async function analyserRacine(chemin) {
       // famille ne bougent pas (le clustering est intact), le filtre par
       // famille de l'Écoute reste donc valide — on ne rafraîchit que les noms.
       carte.familles = null;
+      carte.familleVotes = null;
       famillesParAlbum = null;
       await chargerFamillesParAlbum();
       if (modeCourant === "explorer") await dessinerFamilles();
@@ -7627,6 +7862,13 @@ async function analyserRacine(chemin) {
       etat.textContent = `${chemin} — liaison Discogs…`;
       await invoke("start_discogs_liaison", { contact });
       await attendreFin("discogs_liaison_state", 2000, (d) => majJauge("scan-jauge", d.en_cours, d.faits, d.total));
+    }
+    const cleLastfm = $("lastfm-cle").value.trim();
+    if ($("lastfm-active").checked && cleLastfm) {
+      etat.textContent = `${chemin} — tags Last.fm…`;
+      await invoke("start_lastfm", { cle: cleLastfm, rafraichir: false });
+      await attendreFin("lastfm_state", 2000, (l) => majJauge("scan-jauge", l.en_cours, l.faits, l.total));
+      carte.familleVotes = null; // le vote peut avoir changé
     }
 
     jauge.hidden = true;
@@ -7743,6 +7985,7 @@ async function passeGenres(contact, phase) {
     );
   });
   carte.familles = null;
+  carte.familleVotes = null;
   famillesParAlbum = null;
   await chargerFamillesParAlbum();
   if (modeCourant === "explorer") await dessinerFamilles();
@@ -7831,6 +8074,28 @@ async function passeDiscogsLiaison(contact, phase) {
   });
 }
 
+/// Tags de genre Last.fm — vote de nommage des familles
+/// (`docs/nommage-familles.md`), pas la popularité. Décochable indépendamment
+/// (case « Tags de genre (Last.fm) » du rail) ; contrairement aux trois
+/// autres sources, exige une clé personnelle — appelant garant qu'elle est
+/// présente (voir `lancerChaineComplete`).
+async function passeLastfm(cle, phase) {
+  avancementActu(phase, "tags Last.fm : démarrage…", 0, 0);
+  await invoke("start_lastfm", { cle, rafraichir: false });
+  await attendreFin("lastfm_state", 2000, (l) => {
+    if (!l.en_cours) return;
+    avancementActu(
+      phase,
+      l.total
+        ? `tags Last.fm : ${l.faits.toLocaleString("fr-FR")} / ${l.total.toLocaleString("fr-FR")}${pourcent(l.faits, l.total)}`
+        : "tags Last.fm : démarrage…",
+      l.faits,
+      l.total,
+    );
+  });
+  carte.familleVotes = null; // le vote peut avoir changé
+}
+
 /// La chaîne complète — scan, empreintes, tempo/tonalité/énergie, genres,
 /// popularité, puis biographies/critiques/liaison Discogs si cochées — sur
 /// toutes les racines surveillées, l'étape en cours affichée en clair. C'est
@@ -7852,6 +8117,10 @@ async function lancerChaineComplete() {
     if ($("critiques-active").checked) await passeCritiques("Critiques — ");
     if ($("discogs-lier-active").checked && contact.includes("@")) {
       await passeDiscogsLiaison(contact, "Liaison Discogs — ");
+    }
+    const cleLastfm = $("lastfm-cle").value.trim();
+    if ($("lastfm-active").checked && cleLastfm) {
+      await passeLastfm(cleLastfm, "Tags Last.fm — ");
     }
     etat.textContent = `${etat.textContent} — terminé.`;
   } catch (e) {

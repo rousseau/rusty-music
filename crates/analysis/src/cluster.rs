@@ -111,6 +111,24 @@ pub fn kmeans(points: &[Vec<f32>], k: usize, iterations: usize) -> Vec<usize> {
     appartenance
 }
 
+/// Nombre d'itérations pour [`subdiviser`] — une famille compte quelques
+/// centaines à quelques milliers de morceaux, pas 27 000 : la convergence y
+/// est rapide, pas besoin des réglages de `parametres_carte`.
+const ITERATIONS_AFFINAGE: usize = 50;
+
+/// Affinage local suggéré dans l'inspecteur (`docs/nommage-familles.md`) :
+/// un simple k-means restreint aux empreintes d'**une seule** famille, pour
+/// qui veut voir si un « nom incertain » cache en fait plusieurs styles.
+///
+/// Volontairement le même algorithme que [`kmeans`], à un réglage
+/// d'itérations près — rien ici n'écrit dans `features.cluster` ni ne crée
+/// de territoire de carte : l'appelant (`rusty_music_core::db::Library::
+/// sous_groupes_votes`) traite le résultat comme un identifiant local,
+/// jamais comme un cluster.
+pub fn subdiviser(points: &[Vec<f32>], k: usize) -> Vec<usize> {
+    kmeans(points, k, ITERATIONS_AFFINAGE)
+}
+
 /// Répartit `points` en familles de `vocabulaire`, plus le repli acoustique
 /// pour ce qu'il ne couvre pas.
 ///

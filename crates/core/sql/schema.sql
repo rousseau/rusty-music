@@ -327,3 +327,21 @@ CREATE TABLE IF NOT EXISTS critiques_fetched (
     mbid_release_group TEXT PRIMARY KEY,
     at                 INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+
+-- Tags de genre Last.fm, une quatrième source d'enrichissement — pas pour la
+-- popularité (`docs/popularite.md` l'avait écartée faute de clé), mais pour
+-- voter aux côtés de MusicBrainz et du vocabulaire CLAP-texte dans le
+-- nommage des familles (`docs/nommage-familles.md`). Interrogation par MBID
+-- d'artiste uniquement, `artist.getTopTags` — même patron « données +
+-- déjà-demandé » que `popularite`/`popularite_fetched`.
+CREATE TABLE IF NOT EXISTS lastfm_tags (
+    mb_artist_id TEXT NOT NULL,
+    tag          TEXT NOT NULL,
+    poids        INTEGER NOT NULL,   -- 0-100, tel que Last.fm le rend
+    recupere_le  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (mb_artist_id, tag)
+);
+CREATE TABLE IF NOT EXISTS lastfm_fetched (
+    mb_artist_id TEXT PRIMARY KEY,
+    at           INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);

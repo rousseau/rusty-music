@@ -52,8 +52,10 @@ La maquette ne montre que « ça joue ». À spécifier :
   niveau d'origine). Proposition : commande discrète à droite du minutage,
   repliée par défaut — la contrainte de sobriété stricte d'`ui-spec.md`
   s'applique ici aussi.
-- **Aléatoire / répétition.** Ni l'un ni l'autre n'existe dans le moteur. À
-  trancher : les spécifier maintenant, ou les remettre à plus tard.
+- **Aléatoire / répétition.** — **livré.** Deux boutons dans le transport du
+  panneau de file : aléatoire (mélange Fisher-Yates de ce qui n'a pas encore
+  été confié à la sortie, l'ordre d'avant est rendu à la désactivation) et
+  répétition cyclant aucune → toutes → une.
 - **Rafraîchissement.** `Player::position()` se lit par sondage, il n'y a pas
   de flux d'évènements. 4 à 10 rafraîchissements par seconde suffisent pour la
   progression ; inutile de viser la fréquence d'écran.
@@ -68,8 +70,10 @@ Absente de tout ce qui existe. Proposition :
   `Player::current()` et `Player::remaining()`.
 - Un album envoyé en lecture remplace la file (`Player::play`) ; « ajouter à la
   suite » l'allonge (`Player::enqueue`).
-- À trancher : réordonnancement par glisser-déposer, ou file en lecture seule
-  pour la première version.
+- **Réordonnancement par glisser-déposer — livré.** Seule la portion de file
+  pas encore confiée à la sortie se laisse déplacer ; le moteur ignore en
+  silence un déplacement qui déborderait sur ce qui joue ou est préchargé, et
+  l'interface se recale sur la file qu'il renvoie.
 
 ## Vues de parcours
 
@@ -118,7 +122,7 @@ Chiffres relevés sur la bibliothèque réelle (27 044 morceaux) :
 
 ## Ce que l'interface demandera au moteur
 
-Manques identifiés en écrivant ce document. Les deux premiers sont faits :
+Manques identifiés en écrivant ce document. Les trois premiers sont faits :
 
 1. ~~**Piste précédente**~~ — fait. `rodio` ne sachant qu'avancer, `previous()`
    reconstruit la sortie à partir du rang visé, sans toucher à la file : sans
@@ -127,7 +131,10 @@ Manques identifiés en écrivant ce document. Les deux premiers sont faits :
 2. ~~**Recherche sans accents**~~ — fait. Index FTS5 à contenu externe,
    tokenizer `unicode61 remove_diacritics 2`, tenu à jour par déclencheurs.
    « bjork » trouve « Björk », « kanan » trouve « Kanañ a ri! ».
-3. **Aléatoire / répétition** : rien côté moteur. Hors périmètre v1.
+3. ~~**Aléatoire / répétition**~~ — fait, avec le réordonnancement de la file
+   par glisser-déposer. `Player` porte `set_alea`, `set_repetition`,
+   `deplacer`, `verrou` (rang déjà confié à la sortie) ; l'aléatoire retient
+   l'ordre d'avant pour le rendre à la désactivation.
 4. **Pistes d'un artiste** : `tracks_of_artist()` n'existe pas ; on passe
    aujourd'hui par `albums_of_artist()` puis `tracks_of_album()`.
 5. **Durée totale de la file** : à calculer côté interface à partir des
@@ -156,9 +163,9 @@ identifiant ferait ouvrir moins d'albums que la ligne n'en annonce.
 - **Regroupement des artistes : par identifiant MusicBrainz.** Repli sur le
   texte quand l'identifiant manque.
 - **Périmètre de la première version**, au-delà de lire / mettre en pause / se
-  déplacer : piste précédente et recherche sans accents. Sont écartés de la v1
-  l'aléatoire, la répétition, et le réordonnancement de la file (qui reste donc
-  en lecture seule).
+  déplacer : piste précédente et recherche sans accents. L'aléatoire, la
+  répétition et le réordonnancement de la file, d'abord écartés de la v1, ont
+  été ajoutés depuis lors d'une reprise du panneau de file.
 
 ## Questions ouvertes
 

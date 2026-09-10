@@ -63,6 +63,9 @@ struct Etat {
     biographies: Mutex<EtatBio>,
     /// Avancement de la passe de critiques (CritiqueBrainz).
     critiques: Mutex<EtatCritiques>,
+    /// Avancement de la passe de tags Last.fm — sert le nommage des
+    /// familles (`docs/nommage-familles.md`), pas la popularité.
+    lastfm: Mutex<EtatLastfm>,
     /// Avancement de la passe de liaison Discogs (légère — retrouve l'édition
     /// Discogs de chaque édition MusicBrainz connue). L'import lourd du dump
     /// mensuel n'a pas d'état ici : CLI/cron uniquement, séparé du scan normal.
@@ -3207,6 +3210,138 @@ fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<String>, St
     Ok(rg.map(|mbid| rusty_music_core::critiques::url_ecrire_critique(&mbid)))
 }
 
+/// Avancement de la passe de tags Last.fm, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatLastfm {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Au-delà de combien de jours des tags redeviennent « à vérifier ».
+const LASTFM_PEREMPTION_JOURS: i64 = 180;
+
+/// Lance la passe de tags Last.fm — vote de nommage des familles
+/// (`docs/nommage-familles.md`), pas la popularité. Clé personnelle exigée
+/// (gratuite, sur last.fm/api) : contrairement aux autres sources, Last.fm
+/// n'a pas de clé de test partagée.
+#[tauri::command(async)]
+fn start_lastfm(app: tauri::AppHandle, etat: State<Etat>, cle: String, rafraichir: bool) -> Result<(), String> {
+    {
+        let mut e = etat.lastfm.lock().map_err(echec)?;
+        if e.en_cours {
+            return Err("une passe Last.fm est déjà en cours".into());
+        }
+        *e = EtatLastfm { en_cours: true, ..Default::default() };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let client = rusty_music_core::lastfm::Client::new(cle);
+        let depuis = if rafraichir {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64 - LASTFM_PEREMPTION_JOURS * 86_400)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let issue = (|| {
+            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+            rusty_music_core::lastfm_pass::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
+                if let Ok(mut e) = etat.lastfm.lock() {
+                    e.faits = b.faits;
+                    e.total = b.total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        })();
+
+        let bilan = match issue {
+            Ok(b) => {
+                let echecs = if b.echecs > 0 {
+                    format!(", {} à reprendre plus tard", b.echecs)
+                } else {
+                    String::new()
+                };
+                format!(
+                    "{} artistes interrogés, {} avec au moins un tag{echecs}",
+                    b.artistes_interroges, b.artistes_avec_tags
+                )
+            }
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "passe Last.fm terminée");
+
+        let mut fin = etat.lastfm.lock();
+        if let Ok(e) = fin.as_mut() {
+            e.en_cours = false;
+            e.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn lastfm_state(etat: State<Etat>) -> Result<EtatLastfm, String> {
+    Ok(etat.lastfm.lock().map_err(echec)?.clone())
+}
+
+/// La famille du morceau `id` — la plupart des vues de piste ne portent pas
+/// déjà ce numéro (seuls les points de la carte l'ont) : l'inspecteur ne
+/// l'appelle donc que faute de mieux, avant de lire le nom voté dans le
+/// cache de `families_detail`. `None` sur un morceau pas encore projeté.
+#[tauri::command(async)]
+fn famille_piste(etat: State<Etat>, id: i64) -> Result<Option<i64>, String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .cluster_de_piste(rusty_music_analysis::passe::MODELE, id)
+        .map_err(echec)
+}
+
+/// Le détail du vote de nommage des familles — trois propositions et un
+/// drapeau de confiance par famille (`docs/nommage-familles.md`). `families`
+/// reste le nom simple qu'utilisent la carte, l'anneau et la frise ; cette
+/// commande sert le nouveau bloc de l'inspecteur (« nom incertain »),
+/// chargée une fois et mise en cache côté JS comme `families`.
+#[tauri::command(async)]
+fn families_detail(etat: State<Etat>) -> Result<Vec<rusty_music_core::db::VoteFamille>, String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .familles_votees(rusty_music_analysis::passe::MODELE)
+        .map_err(echec)
+}
+
+/// Affinage local suggéré dans l'inspecteur, jamais automatique
+/// (`docs/nommage-familles.md`) : redécoupe les seuls morceaux de la
+/// famille `cluster` par un k-means restreint, puis nomme chaque
+/// sous-groupe par le même vote à trois sources. N'écrit rien dans
+/// `features.cluster` — les identifiants de sous-groupe rendus n'ont de
+/// sens que pour cet appel, jamais réutilisés par la carte, l'anneau ou la
+/// frise.
+#[tauri::command(async)]
+fn subdiviser_famille(etat: State<Etat>, cluster: i64) -> Result<Vec<rusty_music_core::db::VoteFamille>, String> {
+    const K: usize = 3;
+    let lib = etat.lib.lock().map_err(echec)?;
+    let modele = rusty_music_analysis::passe::MODELE;
+    let empreintes = lib.embeddings_du_cluster(modele, cluster).map_err(echec)?;
+    if empreintes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let vecteurs: Vec<Vec<f32>> = empreintes.iter().map(|(_, v)| v.clone()).collect();
+    let groupes = rusty_music_analysis::cluster::subdiviser(&vecteurs, K);
+    let assignations: Vec<(i64, i64)> = empreintes
+        .iter()
+        .zip(groupes)
+        .map(|((id, _), g)| (*id, g as i64))
+        .collect();
+    lib.sous_groupes_votes(modele, &assignations).map_err(echec)
+}
+
 /// Avancement de la passe de liaison Discogs, sondé par l'interface.
 #[derive(Default, Clone, serde::Serialize)]
 struct EtatDiscogsLiaison {
@@ -5097,6 +5232,12 @@ struct EtatLecture {
     position_ms: u64,
     remaining: usize,
     volume: f32,
+    /// « aucune », « toutes » ou « une » — reflète `set_repetition`.
+    repetition: &'static str,
+    alea: bool,
+    /// Rang de la file à partir duquel elle peut encore être mélangée ou
+    /// réordonnée — voir `rusty_music_player::Player::verrou`.
+    verrou: usize,
 }
 
 #[tauri::command(async)]
@@ -5193,6 +5334,51 @@ fn jump_to(etat: State<Etat>, index: usize) -> Result<(), String> {
         .map_err(echec)
 }
 
+/// File d'attente dans l'ordre courant — après un mélange ou une
+/// ré-ordonnance manuelle, c'est le seul moyen fiable pour l'interface de
+/// savoir ce que le moteur a réellement retenu (`set_alea`/`deplacer_file`
+/// l'ignorent silencieusement quand la piste visée est déjà confiée à la
+/// sortie).
+fn file_en_chaines(player: &rusty_music_player::Player) -> Vec<String> {
+    player
+        .queue()
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect()
+}
+
+/// Bascule l'aléatoire du panneau « file d'attente ». Rend la file dans son
+/// ordre effectif : mélangée à l'activation, restaurée à la désactivation.
+#[tauri::command(async)]
+fn set_alea(etat: State<Etat>, actif: bool) -> Result<Vec<String>, String> {
+    let mut player = etat.player.lock().map_err(echec)?;
+    player.set_alea(actif);
+    Ok(file_en_chaines(&player))
+}
+
+/// Répétition du panneau « file d'attente » — `mode` vaut « aucune »,
+/// « toutes » ou « une ».
+#[tauri::command(async)]
+fn set_repetition(etat: State<Etat>, mode: String) -> Result<(), String> {
+    let mode = match mode.as_str() {
+        "toutes" => rusty_music_player::Repetition::Toutes,
+        "une" => rusty_music_player::Repetition::Une,
+        _ => rusty_music_player::Repetition::Aucune,
+    };
+    etat.player.lock().map_err(echec)?.set_repetition(mode);
+    Ok(())
+}
+
+/// Déplace une piste de la file — la ré-ordonnance manuelle par
+/// glisser-déposer du panneau. Rend la file dans son ordre effectif : voir
+/// [`file_en_chaines`].
+#[tauri::command(async)]
+fn deplacer_file(etat: State<Etat>, de: usize, a: usize) -> Result<Vec<String>, String> {
+    let mut player = etat.player.lock().map_err(echec)?;
+    player.deplacer(de, a);
+    Ok(file_en_chaines(&player))
+}
+
 #[tauri::command(async)]
 fn seek(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
     etat.player
@@ -5205,6 +5391,10 @@ fn seek(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_volume(etat: State<Etat>, volume: f32) -> Result<(), String> {
     etat.player.lock().map_err(echec)?.set_volume(volume);
+    // Le même curseur commande les stems quand ils ont la main.
+    if let Some(m) = etat.stems.lock().map_err(echec)?.as_ref() {
+        m.set_volume(volume);
+    }
     Ok(())
 }
 
@@ -5296,6 +5486,13 @@ fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
         position_ms: player.position().as_millis() as u64,
         remaining: player.remaining(),
         volume: player.volume(),
+        repetition: match player.repetition() {
+            rusty_music_player::Repetition::Aucune => "aucune",
+            rusty_music_player::Repetition::Toutes => "toutes",
+            rusty_music_player::Repetition::Une => "une",
+        },
+        alea: player.alea(),
+        verrou: player.verrou(),
     })
 }
 
@@ -5447,6 +5644,7 @@ fn main() {
                 popularite: Mutex::new(EtatPopularite::default()),
                 biographies: Mutex::new(EtatBio::default()),
                 critiques: Mutex::new(EtatCritiques::default()),
+                lastfm: Mutex::new(EtatLastfm::default()),
                 discogs_liaison: Mutex::new(EtatDiscogsLiaison::default()),
                 decouvrir: Mutex::new(EtatDecouvrir::default()),
                 demix: Mutex::new(EtatDemix::default()),
@@ -5509,6 +5707,12 @@ fn main() {
                     .incognito(essai)
                     .always_on_top(essai)
                     .focused(true)
+                    // Sans ça, la webview capte le glisser-déposer au niveau
+                    // natif (macOS/Windows) pour son propre dépôt de fichiers
+                    // — jamais utilisé ici — et les évènements DOM
+                    // `dragover`/`drop` de la file d'attente (`app.js`) ne
+                    // sont plus délivrés du tout.
+                    .disable_drag_drop_handler()
                     .on_web_resource_request(|req, resp| {
                         if req.uri().scheme_str() == Some("tauri") {
                             resp.headers_mut().insert(
@@ -5608,6 +5812,11 @@ fn main() {
             critiques_state,
             critiques_piste,
             lien_ecrire_critique,
+            start_lastfm,
+            lastfm_state,
+            famille_piste,
+            families_detail,
+            subdiviser_famille,
             start_discogs_liaison,
             discogs_liaison_state,
             credits_piste,
@@ -5668,6 +5877,9 @@ fn main() {
             skip,
             previous,
             jump_to,
+            set_alea,
+            set_repetition,
+            deplacer_file,
             seek,
             set_volume,
             playback_state,

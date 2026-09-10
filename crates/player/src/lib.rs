@@ -183,6 +183,96 @@ pub const RETOUR_DEBUT: Duration = Duration::from_secs(3);
 /// donc que quelques-unes, complétées au fil de la lecture.
 const PRECHARGE: usize = 3;
 
+/// Mode de répétition de la file — panneau « file d'attente » du mode
+/// Écouter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Repetition {
+    #[default]
+    Aucune,
+    /// La file entière boucle : la dernière piste enchaîne sur la première.
+    Toutes,
+    /// La piste en cours rejoue indéfiniment.
+    Une,
+}
+
+/// xorshift64* minimal, pour mélanger la file — pas de graine à retenir,
+/// contrairement à `crates/analysis::alea::Alea` : l'errance sur la carte
+/// doit rejouer identique d'une fois sur l'autre, le mélange de la file veut
+/// au contraire un tirage différent chaque fois qu'on l'active. Vingtaine de
+/// lignes, aucune dépendance nouvelle — même choix que `crates/analysis`.
+struct Rng(u64);
+
+impl Rng {
+    fn depuis(graine: u64) -> Self {
+        Rng(if graine == 0 {
+            0x9E37_79B9_7F4A_7C15
+        } else {
+            graine
+        })
+    }
+
+    fn horloge() -> Self {
+        let graine = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        Self::depuis(graine)
+    }
+
+    /// Entier dans `[0, n)`. Rend 0 si `n` est nul.
+    fn borne(&mut self, n: usize) -> usize {
+        if n == 0 {
+            return 0;
+        }
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        let x = self.0.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        (x % n as u64) as usize
+    }
+}
+
+/// Mélange de Fisher-Yates.
+fn melanger_rng(tranche: &mut [PathBuf], rng: &mut Rng) {
+    for i in (1..tranche.len()).rev() {
+        let j = rng.borne(i + 1);
+        tranche.swap(i, j);
+    }
+}
+
+/// Graine fournie, pour rester testable — voir [`Rng`]. Utilisée seulement
+/// par les tests ; [`melanger`] (graine tirée de l'horloge) est la version de
+/// production.
+#[cfg(test)]
+fn melanger_avec(tranche: &mut [PathBuf], graine: u64) {
+    melanger_rng(tranche, &mut Rng::depuis(graine));
+}
+
+fn melanger(tranche: &mut [PathBuf]) {
+    melanger_rng(tranche, &mut Rng::horloge());
+}
+
+/// Déplace la piste au rang `de` pour qu'elle atterrisse au rang `a` — la
+/// ré-ordonnance manuelle par glisser-déposer du panneau. `a` s'entend comme
+/// dans `Vec::insert` : le rang visé une fois la piste retirée, pas son rang
+/// avant retrait — convention `splice` habituelle pour « déplacer un élément
+/// à l'index a ». Ignoré si l'un des deux rangs est déjà confié à la sortie
+/// (avant `verrou`), hors limites, ou identique : on ne peut plus revenir sur
+/// ce qui joue ou est déjà préparé, seule la suite se laisse réordonner.
+///
+/// Fonction libre plutôt que méthode de [`Player`] — comme [`melanger`] —
+/// pour rester testable sans périphérique audio réel.
+fn deplacer_dans(queue: &mut Vec<PathBuf>, verrou: usize, de: usize, a: usize) {
+    if de == a || de >= queue.len() || a >= queue.len() {
+        return;
+    }
+    if de < verrou || a < verrou {
+        return;
+    }
+    let piste = queue.remove(de);
+    queue.insert(a, piste);
+}
+
 /// Sortie audio et transport.
 ///
 /// Une seule instance par processus : elle tient la sortie du système ouverte.
@@ -208,6 +298,18 @@ pub struct Player {
     /// application. `queue` garde toujours les chemins d'origine : c'est eux
     /// que `current` rend, et l'interface s'y repère.
     resoudre: Box<dyn Fn(&Path) -> PathBuf + Send + Sync>,
+    /// Répétition demandée par le panneau « file d'attente ».
+    repetition: Repetition,
+    /// Aléatoire demandé par le panneau « file d'attente ».
+    alea: bool,
+    /// Ordre de la file avant le dernier mélange — sert à le défaire quand
+    /// l'aléatoire est coupé. Vide tant qu'il n'a jamais été activé sur cette
+    /// file. Un réordonnancement manuel ([`Self::deplacer`]) pendant que
+    /// l'aléatoire est actif n'y est pas répercuté : le couper ensuite
+    /// retombe sur l'ordre du dernier mélange, pas sur ce réordonnancement —
+    /// accepté plutôt que de retenir un historique complet pour ce cas
+    /// marginal.
+    avant_melange: Vec<PathBuf>,
 }
 
 impl Player {
@@ -229,6 +331,9 @@ impl Player {
             prochain: 0,
             charges: Vec::new(),
             resoudre: Box::new(|p| p.to_path_buf()),
+            repetition: Repetition::default(),
+            alea: false,
+            avant_melange: Vec::new(),
         })
     }
 
@@ -345,17 +450,93 @@ impl Player {
     /// Piste à précharger, si la réserve n'est pas pleine — ou `None`. Ne
     /// fait aucune I/O, sûr à appeler verrou tenu. Le chemin rendu est déjà
     /// **résolu** (cache HD compris) : c'est celui à passer à [`ouvrir`].
+    ///
+    /// Porte aussi la répétition : [`Repetition::Une`] renvoie sans cesse le
+    /// rang courant sans avancer `prochain` (la file de sortie se retrouve
+    /// avec plusieurs copies consécutives de la même piste — c'est ce qui
+    /// enchaîne sans coupure, `rodio` ne poussant aucun évènement de fin de
+    /// piste) ; [`Repetition::Toutes`] boucle `prochain` à zéro en bout de
+    /// file plutôt que de s'arrêter.
     pub fn a_precharger(&mut self) -> Option<(usize, PathBuf)> {
-        if self.inner.len() >= PRECHARGE || self.prochain >= self.queue.len() {
+        if self.inner.len() >= PRECHARGE || self.queue.is_empty() {
             return None;
         }
-        let rang = self.prochain;
+        let rang = if self.repetition == Repetition::Une {
+            self.index().unwrap_or(self.prochain.min(self.queue.len() - 1))
+        } else {
+            if self.prochain >= self.queue.len() {
+                if self.repetition == Repetition::Toutes {
+                    self.prochain = 0;
+                } else {
+                    return None;
+                }
+            }
+            let rang = self.prochain;
+            // On avance avant de tenter : une piste que `symphonia` ne sait
+            // pas décoder — les fichiers Opus de la bibliothèque —
+            // bloquerait sinon la file sur elle, réessayée à chaque passage.
+            self.prochain += 1;
+            rang
+        };
         let piste = (self.resoudre)(&self.queue[rang]);
-        // On avance avant de tenter : une piste que `symphonia` ne sait pas
-        // décoder — les fichiers Opus de la bibliothèque — bloquerait sinon la
-        // file sur elle, réessayée à chaque passage.
-        self.prochain += 1;
         Some((rang, piste))
+    }
+
+    /// Répétition en cours.
+    pub fn repetition(&self) -> Repetition {
+        self.repetition
+    }
+
+    pub fn set_repetition(&mut self, r: Repetition) {
+        self.repetition = r;
+    }
+
+    /// Aléatoire en cours.
+    pub fn alea(&self) -> bool {
+        self.alea
+    }
+
+    /// Bascule l'aléatoire. À l'activation, mélange ce qui n'est pas encore
+    /// confié à la sortie et retient l'ordre d'avant pour le rendre à la
+    /// désactivation — voir [`Self::avant_melange`].
+    pub fn set_alea(&mut self, actif: bool) {
+        if actif == self.alea {
+            return;
+        }
+        self.alea = actif;
+        if actif {
+            self.avant_melange = self.queue.clone();
+            let verrou = self.prochain.min(self.queue.len());
+            melanger(&mut self.queue[verrou..]);
+        } else {
+            let verrou = self.prochain.min(self.queue.len());
+            // Les pistes déjà confiées à la sortie ne sont pas rejouées : on
+            // les écarte de l'ordre d'avant avant de le rendre à la suite. Un
+            // chemin dupliqué dans la file (rare) peut en écarter une copie
+            // de trop — accepté, pas de quoi retenir un compte par chemin.
+            let dejas: std::collections::HashSet<&Path> =
+                self.queue[..verrou].iter().map(PathBuf::as_path).collect();
+            let suite: Vec<PathBuf> = self
+                .avant_melange
+                .iter()
+                .filter(|p| !dejas.contains(p.as_path()))
+                .cloned()
+                .collect();
+            self.queue.truncate(verrou);
+            self.queue.extend(suite);
+        }
+    }
+
+    /// Déplace une piste de la file — la ré-ordonnance manuelle par
+    /// glisser-déposer du panneau. Voir [`deplacer_dans`].
+    pub fn deplacer(&mut self, de: usize, a: usize) {
+        deplacer_dans(&mut self.queue, self.prochain, de, a);
+    }
+
+    /// Rang à partir duquel la file peut encore être réordonnée ou mélangée —
+    /// tout ce qui précède est déjà confié à la sortie.
+    pub fn verrou(&self) -> usize {
+        self.prochain
     }
 
     /// Empile une source déjà ouverte par [`ouvrir`]. Ne fait aucune I/O, sûr
@@ -551,5 +732,81 @@ mod tests {
         assert!(player.is_finished());
         assert!(player.current().is_none());
         assert_eq!(player.remaining(), 0);
+    }
+
+    fn chemins(n: usize) -> Vec<PathBuf> {
+        (0..n).map(|i| PathBuf::from(format!("{i}.flac"))).collect()
+    }
+
+    #[test]
+    fn melanger_garde_le_meme_ensemble_de_pistes() {
+        let original = chemins(20);
+        let mut melangee = original.clone();
+        melanger_avec(&mut melangee, 7);
+
+        let mut a = original.clone();
+        let mut b = melangee.clone();
+        a.sort();
+        b.sort();
+        assert_eq!(a, b, "le mélange a perdu ou dupliqué une piste");
+        assert_ne!(original, melangee, "vingt pistes mélangées à l'identique — improbable");
+    }
+
+    #[test]
+    fn melanger_deux_graines_differentes_donnent_des_ordres_differents() {
+        let mut a = chemins(20);
+        let mut b = a.clone();
+        melanger_avec(&mut a, 1);
+        melanger_avec(&mut b, 2);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn melanger_tolere_les_tranches_courtes() {
+        let mut vide: Vec<PathBuf> = Vec::new();
+        melanger_avec(&mut vide, 1);
+        assert!(vide.is_empty());
+
+        let mut une = chemins(1);
+        melanger_avec(&mut une, 1);
+        assert_eq!(une, chemins(1));
+    }
+
+    #[test]
+    fn deplacer_dans_bouge_la_piste() {
+        let mut f = chemins(5);
+        deplacer_dans(&mut f, 0, 1, 3);
+        assert_eq!(
+            f,
+            vec![
+                PathBuf::from("0.flac"),
+                PathBuf::from("2.flac"),
+                PathBuf::from("3.flac"),
+                PathBuf::from("1.flac"),
+                PathBuf::from("4.flac"),
+            ]
+        );
+    }
+
+    #[test]
+    fn deplacer_dans_ignore_sous_le_verrou() {
+        let mut f = chemins(5);
+        let avant = f.clone();
+        deplacer_dans(&mut f, 2, 0, 3); // de < verrou
+        assert_eq!(f, avant);
+        deplacer_dans(&mut f, 2, 3, 1); // a < verrou
+        assert_eq!(f, avant);
+    }
+
+    #[test]
+    fn deplacer_dans_ignore_hors_limites_ou_identite() {
+        let mut f = chemins(5);
+        let avant = f.clone();
+        deplacer_dans(&mut f, 0, 2, 2); // de == a
+        assert_eq!(f, avant);
+        deplacer_dans(&mut f, 0, 9, 1); // de hors limites
+        assert_eq!(f, avant);
+        deplacer_dans(&mut f, 0, 1, 9); // a hors limites
+        assert_eq!(f, avant);
     }
 }

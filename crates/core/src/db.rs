@@ -471,6 +471,11 @@ pub type EditionsAlbum = (String, String, Vec<(String, i64)>);
 /// MusicBrainz, son album, et le genre inscrit dans le fichier.
 type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
 
+/// `(groupe, artiste MusicBrainz, album, tag de fichier, genre gagnant
+/// CLAP-texte)` — l'entrée du vote à trois sources, voir
+/// [`Library::nommer_par_groupe`].
+type PisteVote = (i64, Option<String>, Option<String>, Option<String>, Option<String>);
+
 /// Une piste vue par le recalcul de popularité : son id, son MBID
 /// d'enregistrement, son MBID d'artiste, son album.
 type PistePop = (i64, Option<String>, Option<String>, Option<String>);
@@ -602,6 +607,28 @@ pub struct Critique {
     pub langue: Option<String>,
     pub texte: String,
     pub url_originale: Option<String>,
+}
+
+/// Une famille nommée par vote entre trois sources indépendantes —
+/// MusicBrainz, le vocabulaire CLAP-texte et Last.fm. Voir
+/// `docs/nommage-familles.md`.
+///
+/// `fiable` distingue un nom sur lequel au moins deux sources s'accordent
+/// (ou qu'une critique CritiqueBrainz est venue confirmer) d'un simple repli
+/// sur MusicBrainz seul quand les trois divergent — c'est ce dernier cas que
+/// l'inspecteur affiche comme « nom incertain », avec les trois propositions
+/// visibles plutôt qu'un choix silencieux.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct VoteFamille {
+    pub cluster: i64,
+    pub effectif: i64,
+    pub fiable: bool,
+    /// Ce que la carte, l'anneau et la frise affichent — toujours renseigné,
+    /// même quand `fiable` est faux (repli sur le nom MusicBrainz).
+    pub nom_affiche: String,
+    pub musicbrainz: String,
+    pub clap_texte: String,
+    pub lastfm: String,
 }
 
 /// Convertit une liste `(id, valeur)` en `id → rang percentile` dans `[0, 1]` :
@@ -797,6 +824,19 @@ fn migrate(conn: &Connection) -> Result<()> {
         if !colonnes.contains(nom) {
             conn.execute_batch(&format!("ALTER TABLE descriptors ADD COLUMN {nom} REAL"))?;
         }
+    }
+
+    // Le genre gagnant du vote CLAP-texte, par morceau — calculé en lot par
+    // `crates/analysis` (le calibrage a besoin du score de tous les morceaux
+    // contre tout le vocabulaire avant de prendre l'argmax) et persisté ici
+    // au même endroit que `cluster`, pour ne pas refaire le produit matriciel
+    // à chaque lecture des familles. Voir `docs/nommage-familles.md`.
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('features')")?;
+    let colonnes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    if !colonnes.contains("texte_label") {
+        conn.execute_batch("ALTER TABLE features ADD COLUMN texte_label TEXT")?;
     }
 
     Ok(())
@@ -1105,32 +1145,145 @@ impl Library {
         Ok(rows)
     }
 
+    /// La famille (`features.cluster`) d'un morceau, si elle est déjà
+    /// calculée — `None` sur un morceau pas encore projeté. Sert l'inspecteur
+    /// (`docs/nommage-familles.md`) : la plupart des vues de piste ne
+    /// portent pas déjà ce numéro (seuls les points de la carte l'ont), un
+    /// lookup ponctuel évite d'en refaire porter le champ partout.
+    pub fn cluster_de_piste(&self, model: &str, track_id: i64) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT cluster FROM features WHERE model = ?1 AND track_id = ?2",
+                params![model, track_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
+            .map_err(Into::into)
+    }
+
+    /// Les empreintes d'une seule famille — sert l'affinage local suggéré
+    /// dans l'inspecteur (`docs/nommage-familles.md`) : `crates/analysis`
+    /// n'y fait tourner un k-means que sur ce sous-ensemble, jamais sur la
+    /// bibliothèque entière, et rien de ce qui en sort n'est écrit dans
+    /// `features.cluster`.
+    pub fn embeddings_du_cluster(&self, model: &str, cluster: i64) -> Result<Vec<(i64, Vec<f32>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT track_id, vector FROM features
+              WHERE model = ?1 AND cluster = ?2
+              ORDER BY track_id",
+        )?;
+        let rows = stmt
+            .query_map(params![model, cluster], |r| {
+                let id: i64 = r.get(0)?;
+                let blob: Vec<u8> = r.get(1)?;
+                let v = blob
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
+                Ok((id, v))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Les familles de la carte, nommées par leurs genres.
     ///
-    /// **Trois sources, par ordre de précision décroissante** — l'album
-    /// MusicBrainz, puis l'artiste MusicBrainz, puis le tag du fichier. Le
-    /// détail de l'arbitrage est dans [`genres_du_morceau`], le nommage dans
-    /// [`nommer_les_familles`] : la base ne rend ici que des comptes, pour que
-    /// les deux règles se testent sans elle.
+    /// Mince projeté de [`Self::familles_votees`] — la carte, l'anneau et la
+    /// frise n'ont besoin que d'un nom par famille, jamais du détail du vote.
+    /// Signature et forme du triplet inchangées, pour ne rien casser côté
+    /// interface (`docs/nommage-familles.md`).
     pub fn familles(&self, model: &str) -> Result<Vec<(i64, String, i64)>> {
+        Ok(self
+            .familles_votees(model)?
+            .into_iter()
+            .map(|v| (v.cluster, v.nom_affiche, v.effectif))
+            .collect())
+    }
+
+    /// Les familles de la carte, nommées par un vote entre trois sources
+    /// indépendantes — MusicBrainz, le vocabulaire CLAP-texte et Last.fm.
+    /// Voir `docs/nommage-familles.md`.
+    ///
+    /// **Trois sources, par ordre de précision décroissante** pour
+    /// MusicBrainz — l'album, puis l'artiste, puis le tag du fichier. Le
+    /// détail de l'arbitrage est dans [`genres_du_morceau`], le nommage par
+    /// source dans [`nommer_les_familles`] (appelée trois fois, une par
+    /// source, sans y toucher) ; la combinaison est dans [`arbitrer_vote`].
+    pub fn familles_votees(&self, model: &str) -> Result<Vec<VoteFamille>> {
         let mut stmt = self.conn.prepare(
-            "SELECT f.cluster, t.mb_artist_id, t.album, t.genre
+            "SELECT f.cluster, t.mb_artist_id, t.album, t.genre, f.texte_label
                FROM features f JOIN tracks t ON t.id = f.track_id
               WHERE f.model = ?1",
         )?;
-        let pistes: Vec<PisteNommage> = stmt
-            .query_map(params![model], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        let pistes: Vec<PisteVote> =
+            stmt.query_map(params![model], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
             })?
             .collect::<std::result::Result<_, _>>()?;
+        self.nommer_par_groupe(&pistes)
+    }
 
+    /// Affinage local d'une famille — nomme, par le même vote, des
+    /// sous-groupes calculés à la volée (typiquement un k-means restreint
+    /// aux empreintes de la famille, côté `crates/analysis`) au lieu des
+    /// familles de `features.cluster`. `assignations` donne, pour chaque
+    /// morceau considéré, son sous-groupe (0, 1, 2…) — un identifiant local
+    /// à cet appel, **jamais** écrit dans `features.cluster` ni réutilisé
+    /// par la carte, l'anneau ou la frise. Voir `docs/nommage-familles.md`.
+    pub fn sous_groupes_votes(
+        &self,
+        model: &str,
+        assignations: &[(i64, i64)],
+    ) -> Result<Vec<VoteFamille>> {
+        if assignations.is_empty() {
+            return Ok(Vec::new());
+        }
+        let groupe_de: HashMap<i64, i64> = assignations.iter().cloned().collect();
+        let ids: Vec<i64> = assignations.iter().map(|(id, _)| *id).collect();
+        let placeholders = std::iter::repeat_n("?", ids.len()).collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT t.id, t.mb_artist_id, t.album, t.genre, f.texte_label
+               FROM tracks t JOIN features f ON f.track_id = t.id
+              WHERE f.model = ? AND t.id IN ({placeholders})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&model];
+        params.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
+        let pistes: Vec<PisteVote> =
+            stmt.query_map(params.as_slice(), |r| {
+                let id: i64 = r.get(0)?;
+                Ok((id, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })?
+            .filter_map(|res| {
+                res.ok().and_then(|(id, artiste, album, tag, texte_label)| {
+                    groupe_de.get(&id).map(|g| (*g, artiste, album, tag, texte_label))
+                })
+            })
+            .collect();
+        self.nommer_par_groupe(&pistes)
+    }
+
+    /// Le cœur du vote à trois sources, partagé par [`Self::familles_votees`]
+    /// et [`Self::sous_groupes_votes`] : `pistes` donne, par morceau,
+    /// `(groupe, artiste MusicBrainz, album, tag de fichier, genre gagnant
+    /// CLAP-texte)` — un identifiant de groupe générique, famille de la
+    /// carte ou sous-groupe d'un affinage local, cette fonction n'en sait
+    /// rien et ne le réécrit nulle part.
+    fn nommer_par_groupe(
+        &self,
+        pistes: &[PisteVote],
+    ) -> Result<Vec<VoteFamille>> {
         let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
         let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
         let albums = self.mb_albums()?;
+        let par_artiste_lastfm = self.lastfm_tags(LASTFM_POIDS_MINIMUM)?;
 
-        let mut comptes: Vec<(i64, String, i64)> = Vec::new();
-        let mut cumul: HashMap<(i64, String), i64> = HashMap::new();
-        for (cluster, artiste, album, tag) in &pistes {
+        let mut cumul_mb: HashMap<(i64, String), i64> = HashMap::new();
+        let mut cumul_clap: HashMap<(i64, String), i64> = HashMap::new();
+        let mut cumul_lastfm: HashMap<(i64, String), i64> = HashMap::new();
+        let mut rg_par_cluster: HashMap<i64, HashSet<String>> = HashMap::new();
+        for (cluster, artiste, album, tag, texte_label) in pistes {
             for genre in genres_du_morceau(
                 artiste.as_deref(),
                 album.as_deref(),
@@ -1139,24 +1292,107 @@ impl Library {
                 &par_album,
                 &par_artiste,
             ) {
-                *cumul.entry((*cluster, genre)).or_default() += 1;
+                *cumul_mb.entry((*cluster, genre)).or_default() += 1;
+            }
+            if let Some(label) = texte_label {
+                *cumul_clap.entry((*cluster, label.clone())).or_default() += 1;
+            }
+            if let Some(tag) = artiste
+                .as_deref()
+                .and_then(|a| par_artiste_lastfm.get(a))
+                .and_then(|tags| tags.first())
+            {
+                *cumul_lastfm.entry((*cluster, tag.clone())).or_default() += 1;
+            }
+            if let (Some(artiste), Some(album)) = (artiste, album) {
+                let cle = (artiste.clone(), crate::musicbrainz::normaliser_titre(album));
+                if let Some(rg) = albums.get(&cle) {
+                    rg_par_cluster.entry(*cluster).or_default().insert(rg.clone());
+                }
             }
         }
-        for ((cluster, genre), n) in cumul {
-            comptes.push((cluster, genre, n));
-        }
+        let versifier = |cumul: HashMap<(i64, String), i64>| -> Vec<(i64, String, i64)> {
+            cumul.into_iter().map(|((c, g), n)| (c, g, n)).collect()
+        };
+        let comptes_mb = versifier(cumul_mb);
+        let comptes_clap = versifier(cumul_clap);
+        let comptes_lastfm = versifier(cumul_lastfm);
 
-        // L'effectif compte tous les morceaux de la famille, y compris ceux
-        // sans genre : c'est la taille de la tache sur la carte.
-        let mut stmt = self
-            .conn
-            .prepare("SELECT cluster, COUNT(*) FROM features WHERE model = ?1 GROUP BY cluster")?;
-        let mut effectifs: Vec<(i64, i64)> = stmt
-            .query_map(params![model], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<std::result::Result<_, _>>()?;
+        // L'effectif compte tous les morceaux du groupe, y compris ceux sans
+        // genre : c'est la taille de la tache sur la carte (ou du
+        // sous-groupe, pour l'affinage local) — directement depuis `pistes`,
+        // qui porte déjà une ligne par morceau considéré.
+        let mut compte: HashMap<i64, i64> = HashMap::new();
+        for (groupe, _, _, _, _) in pistes {
+            *compte.entry(*groupe).or_default() += 1;
+        }
+        let mut effectifs: Vec<(i64, i64)> = compte.into_iter().collect();
         effectifs.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
 
-        Ok(nommer_les_familles(&effectifs, &comptes))
+        // `nom_mb` garde son repli « Famille N » : c'est le filet de sécurité
+        // de la légende quand les trois sources divergent (ou manquent).
+        // CLAP-texte et Last.fm, eux, ne doivent jamais recevoir ce repli
+        // pour le vote — voir [`nommer_les_familles_option`].
+        let noms_mb = nommer_les_familles(&effectifs, &comptes_mb);
+        let carte_clap: HashMap<i64, String> = nommer_les_familles_option(&effectifs, &comptes_clap)
+            .into_iter()
+            .filter_map(|(c, n, _)| n.map(|n| (c, n)))
+            .collect();
+        let carte_lastfm: HashMap<i64, String> =
+            nommer_les_familles_option(&effectifs, &comptes_lastfm)
+                .into_iter()
+                .filter_map(|(c, n, _)| n.map(|n| (c, n)))
+                .collect();
+
+        let mut out = Vec::with_capacity(noms_mb.len());
+        for (cluster, nom_mb, effectif) in noms_mb {
+            let nom_clap = carte_clap.get(&cluster).cloned().unwrap_or_default();
+            let nom_lastfm = carte_lastfm.get(&cluster).cloned().unwrap_or_default();
+            let critique_confirme = |candidat: &str| -> bool {
+                let Some(rgs) = rg_par_cluster.get(&cluster) else { return false };
+                self.critique_contient(rgs, candidat).unwrap_or(false)
+            };
+            let (fiable, nom_affiche) =
+                arbitrer_vote(&nom_mb, &nom_clap, &nom_lastfm, critique_confirme);
+            out.push(VoteFamille {
+                cluster,
+                effectif,
+                fiable,
+                nom_affiche,
+                musicbrainz: nom_mb,
+                clap_texte: nom_clap,
+                lastfm: nom_lastfm,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Une critique disponible pour un des release-groups `rgs` contient-elle
+    /// (en sous-chaîne, insensible à la casse) le libellé de tête de
+    /// `candidat` ? Signal de confirmation de dernier recours quand les trois
+    /// sources principales divergent — voir [`arbitrer_vote`]. Borné à 200
+    /// release-groups par appel : une famille de plusieurs milliers de
+    /// morceaux n'a besoin que d'un indice, pas d'un balayage complet.
+    fn critique_contient(&self, rgs: &HashSet<String>, candidat: &str) -> Result<bool> {
+        let tete = tete_normalisee(candidat);
+        if tete.is_empty() {
+            return Ok(false);
+        }
+        let rgs: Vec<&String> = rgs.iter().take(200).collect();
+        if rgs.is_empty() {
+            return Ok(false);
+        }
+        let placeholders = std::iter::repeat_n("?", rgs.len()).collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT texte FROM critiques WHERE mbid_release_group IN ({placeholders})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let textes: Vec<String> = stmt
+            .query_map(rusqlite::params_from_iter(rgs.iter()), |r| {
+                r.get::<_, String>(0)
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(textes.iter().any(|t| t.to_lowercase().contains(&tete)))
     }
 
     /// Pour chaque album, sa famille sonique dominante — le cluster de la carte
@@ -3114,6 +3350,85 @@ impl Library {
         Ok(out)
     }
 
+    /* --------------------------------------------------- tags (Last.fm) */
+
+    /// Les artistes dont les tags Last.fm restent à récupérer. Même forme que
+    /// `mb_fetched` (kind = 'artist') mais avec péremption, comme
+    /// `popularite_fetched` : `depuis = 0` ne rafraîchit rien.
+    pub fn lastfm_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
+        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT t.mb_artist_id FROM tracks t
+              WHERE t.mb_artist_id IS NOT NULL AND t.mb_artist_id <> ''
+                AND NOT EXISTS (SELECT 1 FROM lastfm_fetched f
+                                 WHERE f.mb_artist_id = t.mb_artist_id AND f.at >= ?1)
+              LIMIT ?2",
+        )?;
+        let out = stmt
+            .query_map(params![depuis, limite], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range les tags Last.fm d'un artiste et le marque comme interrogé —
+    /// « aucun tag » est une réponse valable, marquée comme pour les autres
+    /// sources.
+    pub fn lastfm_tags_poser(&mut self, mbid: &str, tags: &[crate::lastfm::Tag]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM lastfm_tags WHERE mb_artist_id = ?1", params![mbid])?;
+        for t in tags {
+            tx.execute(
+                "INSERT INTO lastfm_tags (mb_artist_id, tag, poids) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(mb_artist_id, tag) DO UPDATE SET poids=excluded.poids",
+                params![mbid, t.nom, t.poids],
+            )?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO lastfm_fetched (mb_artist_id) VALUES (?1)",
+            params![mbid],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les tags Last.fm connus, par artiste, triés par poids décroissant —
+    /// miroir de [`Self::mb_genres`] pour le vote de nommage des familles.
+    pub fn lastfm_tags(&self, plancher: u32) -> Result<HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT mb_artist_id, tag FROM lastfm_tags
+              WHERE poids >= ?1
+              ORDER BY mb_artist_id, poids DESC, tag",
+        )?;
+        let mut out: HashMap<String, Vec<String>> = HashMap::new();
+        let lignes = stmt.query_map(params![plancher], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        for l in lignes {
+            let (mbid, tag) = l?;
+            out.entry(mbid).or_default().push(tag);
+        }
+        Ok(out)
+    }
+
+    /// Les genres MusicBrainz assez représentés dans la bibliothèque pour
+    /// entrer dans le vocabulaire CLAP-texte — voir `docs/nommage-
+    /// familles.md`. `seuil` compte les entités MusicBrainz **distinctes**
+    /// (artiste ou release-group, sans distinction) qui portent le genre,
+    /// pas les votes internes à `mb_genres` : un genre porté par beaucoup
+    /// d'entités pèse réellement sur la bibliothèque, même si chacune ne l'a
+    /// reçu qu'une fois. Du plus représenté au moins représenté.
+    pub fn genres_candidats(&self, seuil: i64) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT genre, COUNT(DISTINCT mbid) n FROM mb_genres
+              GROUP BY genre HAVING n >= ?1
+              ORDER BY n DESC, genre",
+        )?;
+        let out = stmt
+            .query_map(params![seuil], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
     /// Combien d'artistes ont été interrogés, et combien ont rendu un genre.
     pub fn mb_avancement(&self) -> Result<(i64, i64, i64)> {
         let total: i64 = self.conn.query_row(
@@ -3179,6 +3494,23 @@ impl Library {
             )?;
             for (id, x, y, c) in points {
                 stmt.execute(params![id, model, x, y, c])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Écrit le genre gagnant du vote CLAP-texte, un par morceau — calculé en
+    /// lot par `crates/analysis` (voir `features.texte_label` dans
+    /// `migrate`). `None` efface une entrée sans phrase gagnante exploitable.
+    pub fn update_texte_labels(&self, model: &str, labels: &[(i64, Option<String>)]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "UPDATE features SET texte_label=?3 WHERE track_id=?1 AND model=?2",
+            )?;
+            for (id, label) in labels {
+                stmt.execute(params![id, model, label])?;
             }
         }
         tx.commit()?;
@@ -4020,6 +4352,11 @@ fn histogrammer(valeurs: &[Option<f64>], min: f64, pas: f64, tranches: usize) ->
     }
 }
 
+/// Sous ce poids, un tag Last.fm est trop marginal pour compter — l'échelle
+/// (0-100) n'est pas celle des votes MusicBrainz, un plancher bas suffit à
+/// écarter le bruit occasionnel sans perdre les tags réels.
+const LASTFM_POIDS_MINIMUM: u32 = 5;
+
 /// Sous ce plancher, un genre décrit une poche et non une famille : son score
 /// serait tiré par le hasard de quelques morceaux. Le seuil est relatif à la
 /// taille de la famille, plus un minimum absolu pour les petites bibliothèques.
@@ -4045,6 +4382,29 @@ fn nommer_les_familles(
     effectifs: &[(i64, i64)],
     comptes: &[(i64, String, i64)],
 ) -> Vec<(i64, String, i64)> {
+    nommer_les_familles_option(effectifs, comptes)
+        .into_iter()
+        .enumerate()
+        .map(|(rang, (famille, nom, effectif))| {
+            (famille, nom.unwrap_or_else(|| format!("Famille {}", rang + 1)), effectif)
+        })
+        .collect()
+}
+
+/// Le cœur de [`nommer_les_familles`], sans son repli « Famille N ».
+///
+/// Le repli est le bon choix pour une légende, qui doit toujours montrer un
+/// nom — mais c'est un aveu d'absence, pas une proposition, et le vote à
+/// trois sources ([`Library::nommer_par_groupe`]) ne doit jamais le traiter
+/// comme telle : sans cette distinction, deux sources qui n'ont *toutes les
+/// deux* rien à dire tombent sur le même « Famille N » (même rang, même
+/// bibliothèque de familles) et semblent s'accorder — un faux consensus qui
+/// a fait disparaître les vrais noms MusicBrainz derrière un désaccord
+/// fantôme, mesuré en développant ce chantier.
+fn nommer_les_familles_option(
+    effectifs: &[(i64, i64)],
+    comptes: &[(i64, String, i64)],
+) -> Vec<(i64, Option<String>, i64)> {
     // La population de référence, c'est l'ensemble des morceaux classés : la
     // sur-représentation se mesure contre ce que la carte montre, pas contre
     // une bibliothèque dont une partie n'est pas encore analysée.
@@ -4065,7 +4425,7 @@ fn nommer_les_familles(
 
     let mut vus: HashSet<String> = HashSet::new();
     let mut sortie = Vec::with_capacity(effectifs.len());
-    for (rang, (famille, effectif)) in effectifs.iter().enumerate() {
+    for (famille, effectif) in effectifs {
         let mut classe: Vec<(&str, f64)> = Vec::new();
         if let Some(genres) = par_famille.get(famille) {
             let dans_la_famille: i64 = genres.iter().map(|(_, n)| n).sum();
@@ -4088,8 +4448,10 @@ fn nommer_les_familles(
         classe.sort_by(|a, b| b.1.total_cmp(&a.1));
         let genres: Vec<&str> = classe.into_iter().map(|(g, _)| g).collect();
 
-        let nom = libeller(&genres, &vus).unwrap_or_else(|| format!("Famille {}", rang + 1));
-        vus.insert(empreinte_libelle(&nom));
+        let nom = libeller(&genres, &vus);
+        if let Some(n) = &nom {
+            vus.insert(empreinte_libelle(n));
+        }
         sortie.push((*famille, nom, *effectif));
     }
     sortie
@@ -4179,6 +4541,128 @@ fn se_redisent(a: &str, b: &str) -> bool {
             x == y || (x.len().min(y.len()) >= 5 && (x.starts_with(y) || y.starts_with(x)))
         })
     })
+}
+
+/// Le libellé de tête d'un nom de famille (« X · Y » → « X »), normalisé
+/// pour comparer trois sources qui n'écrivent pas pareil (casse, ponctuation)
+/// — sert au vote de [`arbitrer_vote`], pas à l'affichage.
+fn tete_normalisee(nom: &str) -> String {
+    let tete = nom.split(" · ").next().unwrap_or(nom);
+    tete.chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Combine les trois votes d'une famille en un nom affiché et un drapeau de
+/// confiance — voir `docs/nommage-familles.md`.
+///
+/// Volontairement simple, comme demandé : **au moins deux des trois
+/// libellés de tête s'accordent** → fiable, ce libellé est affiché. Si les
+/// trois divergent, une critique CritiqueBrainz disponible peut confirmer
+/// l'un des trois (`critique_confirme`) ; sinon, repli sur le nom
+/// MusicBrainz seul — le filet de sécurité déjà en place avant ce chantier,
+/// pour que la carte garde toujours un nom.
+fn arbitrer_vote(
+    nom_mb: &str,
+    nom_clap: &str,
+    nom_lastfm: &str,
+    critique_confirme: impl Fn(&str) -> bool,
+) -> (bool, String) {
+    let sources = [nom_mb, nom_clap, nom_lastfm];
+    let normalises: Vec<Option<String>> = sources
+        .iter()
+        .map(|s| {
+            let t = tete_normalisee(s);
+            (!t.is_empty()).then_some(t)
+        })
+        .collect();
+
+    for (i, a) in normalises.iter().enumerate() {
+        let Some(a) = a else { continue };
+        for (j, b) in normalises.iter().enumerate().skip(i + 1) {
+            let Some(b) = b else { continue };
+            if a == b {
+                // Préfère la casse MusicBrainz quand elle est du bon côté de
+                // l'accord — c'est la convention de capitalisation établie.
+                let choisi = if i == 0 || j == 0 { nom_mb } else { sources[i] };
+                return (true, choisi.to_string());
+            }
+        }
+    }
+
+    for nom in sources {
+        if !nom.is_empty() && critique_confirme(nom) {
+            return (true, nom.to_string());
+        }
+    }
+
+    (false, nom_mb.to_string())
+}
+
+#[cfg(test)]
+mod tests_vote {
+    use super::arbitrer_vote;
+
+    #[test]
+    fn deux_sources_daccord_lemportent() {
+        let (fiable, nom) = arbitrer_vote(
+            "Alternative Metal",
+            "A Heavy Metal Band With Screamed Vocals",
+            "alternative metal",
+            |_| false,
+        );
+        assert!(fiable);
+        assert_eq!(nom, "Alternative Metal");
+    }
+
+    #[test]
+    fn trois_sources_en_desaccord_replient_sur_musicbrainz() {
+        let (fiable, nom) = arbitrer_vote(
+            "Reggae · Rock",
+            "An African Percussion Ensemble",
+            "worldbeat",
+            |_| false,
+        );
+        assert!(!fiable);
+        assert_eq!(nom, "Reggae · Rock");
+    }
+
+    #[test]
+    fn une_critique_confirme_une_proposition_divergente() {
+        let (fiable, nom) = arbitrer_vote(
+            "Reggae · Rock",
+            "An African Percussion Ensemble",
+            "worldbeat",
+            |candidat| candidat == "An African Percussion Ensemble",
+        );
+        assert!(fiable);
+        assert_eq!(nom, "An African Percussion Ensemble");
+    }
+
+    #[test]
+    fn des_sources_vides_ne_saccordent_jamais_entre_elles() {
+        let (fiable, nom) = arbitrer_vote("Reggae · Rock", "", "", |_| false);
+        assert!(!fiable);
+        assert_eq!(nom, "Reggae · Rock");
+    }
+
+    /// `arbitrer_vote` compare des chaînes, il ne sait pas qu'un repli
+    /// « Famille N » n'est pas une vraie proposition — la garantie que deux
+    /// replis identiques ne s'accordent jamais vient d'ailleurs : voir
+    /// `nommer_les_familles_option` et le test de régression
+    /// `db::tests::familles_votees_ignore_le_faux_accord_de_deux_replis`.
+    /// Documenté ici pour que ce piège ne se réintroduise pas au niveau du
+    /// vote lui-même : lui refiler « Famille 1 »/« Famille 1 » les ferait
+    /// s'accorder à tort, exactement le bug mesuré en développant ce
+    /// chantier.
+    #[test]
+    fn arbitrer_vote_ne_distingue_pas_un_repli_dune_vraie_proposition() {
+        let (fiable, _) = arbitrer_vote("Rock · Grunge", "Famille 1", "Famille 1", |_| false);
+        assert!(fiable, "arbitrer_vote seul ne peut pas le détecter — c'est voulu, voir le commentaire");
+    }
 }
 
 #[cfg(test)]
@@ -5836,6 +6320,162 @@ mod tests {
         let critiques = lib.critiques_pour_release_group("rg-1").unwrap();
         assert_eq!(critiques.len(), 1);
         assert_eq!(critiques[0].auteur.as_deref(), Some("Quelquun"));
+    }
+
+    /// Bout en bout : `familles_votees` combine MusicBrainz, CLAP-texte et
+    /// Last.fm. Une famille où deux sources s'accordent sort fiable ; une où
+    /// les trois divergent replie sur MusicBrainz, comme avant ce chantier.
+    #[test]
+    fn familles_votees_distingue_laccord_du_desaccord() {
+        let mut lib = Library::open_in_memory().unwrap();
+
+        let ajoute = |lib: &Library, path: &str, artiste_mbid: &str, cluster: i64| -> i64 {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: path.into(),
+                    artist: Some(artiste_mbid.into()),
+                    mb_artist_id: Some(artiste_mbid.into()),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster).unwrap();
+            id
+        };
+
+        // Famille 1 : MusicBrainz et Last.fm s'accordent sur « metal ».
+        for i in 0..5 {
+            let id = ajoute(&lib, &format!("/m/x{i}.mp3"), "mbid-x", 1);
+            lib.conn
+                .execute(
+                    "UPDATE features SET texte_label = 'A Punk Rock Band Playing Fast'
+                      WHERE track_id = ?1 AND model = 'clap'",
+                    rusqlite::params![id],
+                )
+                .unwrap();
+        }
+        lib.conn
+            .execute(
+                "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES ('mbid-x','artist','Alternative Metal',5)",
+                [],
+            )
+            .unwrap();
+        lib.lastfm_tags_poser(
+            "mbid-x",
+            &[crate::lastfm::Tag { nom: "alternative metal".into(), poids: 50 }],
+        )
+        .unwrap();
+
+        // Famille 2 : les trois sources divergent, comme le ska français de
+        // l'essai — repli attendu sur le nom MusicBrainz seul.
+        for i in 0..5 {
+            let id = ajoute(&lib, &format!("/m/y{i}.mp3"), "mbid-y", 2);
+            lib.conn
+                .execute(
+                    "UPDATE features SET texte_label = 'An African Percussion Ensemble'
+                      WHERE track_id = ?1 AND model = 'clap'",
+                    rusqlite::params![id],
+                )
+                .unwrap();
+        }
+        lib.conn
+            .execute(
+                "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES ('mbid-y','artist','Reggae',5)",
+                [],
+            )
+            .unwrap();
+        lib.lastfm_tags_poser(
+            "mbid-y",
+            &[crate::lastfm::Tag { nom: "worldbeat".into(), poids: 50 }],
+        )
+        .unwrap();
+
+        let votes = lib.familles_votees("clap").unwrap();
+        let f1 = votes.iter().find(|v| v.cluster == 1).unwrap();
+        assert!(f1.fiable, "metal : MusicBrainz et Last.fm s'accordent");
+        assert_eq!(f1.nom_affiche, "Alternative Metal");
+
+        let f2 = votes.iter().find(|v| v.cluster == 2).unwrap();
+        assert!(!f2.fiable, "trois sources en désaccord, comme le ska de l'essai");
+        assert_eq!(f2.nom_affiche, "Reggae");
+        assert_eq!(f2.musicbrainz, "Reggae");
+        assert_eq!(f2.clap_texte, "An African Percussion Ensemble");
+        assert_eq!(f2.lastfm, "Worldbeat");
+
+        // `familles()` (les 5 points de lecture de l'interface) projette le
+        // même nom affiché, signature inchangée.
+        let simples = lib.familles("clap").unwrap();
+        assert!(simples.contains(&(1, "Alternative Metal".to_string(), 5)));
+        assert!(simples.contains(&(2, "Reggae".to_string(), 5)));
+
+        // Affinage local : les mêmes morceaux, redécoupés en sous-groupes
+        // ignorant `features.cluster` — l'identifiant de sous-groupe est
+        // local à cet appel, jamais réécrit en base.
+        let mut assignations: Vec<(i64, i64)> = Vec::new();
+        for (i, (id, _)) in lib.embeddings_du_cluster("clap", 1).unwrap().into_iter().enumerate() {
+            assignations.push((id, (i % 2) as i64));
+        }
+        for (id, _) in lib.embeddings_du_cluster("clap", 2).unwrap() {
+            assignations.push((id, 9)); // un sous-groupe à part, sans rapport
+        }
+        let sous = lib.sous_groupes_votes("clap", &assignations).unwrap();
+        // Trois sous-groupes locaux (0, 1, 9), aucun n'est un cluster 1/2 de
+        // `features.cluster` — la fonction ne lit que ce qu'on lui donne.
+        let mut ids: Vec<i64> = sous.iter().map(|v| v.cluster).collect();
+        ids.sort();
+        assert_eq!(ids, vec![0, 1, 9]);
+    }
+
+    /// Régression, mesurée en développant ce chantier sur la bibliothèque
+    /// réelle : quand CLAP-texte et Last.fm n'ont **aucune** donnée (l'état
+    /// courant tant que le vocabulaire n'est pas généré et que Last.fm n'a
+    /// pas tourné), les deux tombaient sur le même repli « Famille N » —
+    /// même rang, même liste de familles — et `arbitrer_vote` prenait ce
+    /// faux consensus pour un accord, effaçant les vrais noms MusicBrainz de
+    /// toute la carte. `familles()` doit rendre les noms MusicBrainz
+    /// intacts, comme avant l'introduction du vote.
+    #[test]
+    fn familles_votees_ignore_le_faux_accord_de_deux_replis() {
+        let lib = Library::open_in_memory().unwrap();
+        let ajoute = |path: &str, artiste_mbid: &str, cluster: i64| {
+            let id = lib
+                .upsert(&TrackMeta {
+                    path: path.into(),
+                    mb_artist_id: Some(artiste_mbid.into()),
+                    ..Default::default()
+                })
+                .unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster).unwrap();
+        };
+        for i in 0..5 {
+            ajoute(&format!("/m/x{i}.mp3"), "mbid-x", 1);
+        }
+        for i in 0..5 {
+            ajoute(&format!("/m/y{i}.mp3"), "mbid-y", 2);
+        }
+        lib.conn
+            .execute(
+                "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES ('mbid-x','artist','Rock',5)",
+                [],
+            )
+            .unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO mb_genres (mbid, kind, genre, votes) VALUES ('mbid-y','artist','Jazz',5)",
+                [],
+            )
+            .unwrap();
+        // Ni `texte_label` (aucun vocabulaire généré), ni `lastfm_tags`
+        // (aucune passe Last.fm) — l'état par défaut d'une bibliothèque qui
+        // n'a pas encore mis en place ces deux sources.
+
+        let votes = lib.familles_votees("clap").unwrap();
+        let f1 = votes.iter().find(|v| v.cluster == 1).unwrap();
+        let f2 = votes.iter().find(|v| v.cluster == 2).unwrap();
+        assert!(!f1.fiable);
+        assert!(!f2.fiable);
+        assert_eq!(f1.nom_affiche, "Rock");
+        assert_eq!(f2.nom_affiche, "Jazz");
+        assert_ne!(f1.nom_affiche, f2.nom_affiche, "pas de faux consensus entre les deux familles");
     }
 }
 

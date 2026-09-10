@@ -22,6 +22,7 @@ pub mod mel;
 pub mod passe;
 pub mod projection;
 pub mod reseau;
+pub mod vocabulaire_texte;
 
 pub use encodeur::{Embedder, LOT};
 

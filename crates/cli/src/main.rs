@@ -346,6 +346,36 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         rafraichir_des: i64,
     },
+    /// Récupère les tags de genre communautaires (Last.fm)
+    ///
+    /// Sert le nommage des familles (`docs/nommage-familles.md`), pas la
+    /// popularité — vote aux côtés de MusicBrainz et du vocabulaire
+    /// CLAP-texte. Résolution **exclusivement par MBID d'artiste**, jamais
+    /// par nom. Clé personnelle exigée (gratuite, sur last.fm/api).
+    Lastfm {
+        /// Clé personnelle Last.fm
+        #[arg(long)]
+        cle: String,
+        /// Artistes à traiter au plus (0 = tous)
+        #[arg(long, default_value_t = 0)]
+        limite: usize,
+        /// Réinterroger ce qui date de plus de N jours (0 = ne rafraîchit rien)
+        #[arg(long, default_value_t = 0)]
+        rafraichir_des: i64,
+    },
+    /// Liste les genres MusicBrainz de la bibliothèque assez représentés
+    /// pour entrer dans le vocabulaire CLAP-texte
+    ///
+    /// Un genre par ligne, sur la sortie standard — sert d'entrée à
+    /// `experiments/clap-texte/preparer_vocabulaire.py`
+    /// (`docs/nommage-familles.md`). Compte les entités MusicBrainz
+    /// distinctes (artiste ou release-group) qui portent le genre, sans
+    /// tenir compte des votes internes à `mb_genres`.
+    GenresCandidats {
+        /// Entités MusicBrainz distinctes minimum pour retenir un genre
+        #[arg(long, default_value_t = 200)]
+        seuil: i64,
+    },
     /// Relie les éditions MusicBrainz connues à leur édition Discogs
     ///
     /// Par la relation d'URL que MusicBrainz porte vers Discogs
@@ -1832,6 +1862,43 @@ fn main() -> Result<()> {
                 "\n{} albums interrogés, {} avec au moins une critique — {:.0} min",
                 bilan.albums_interroges, bilan.albums_avec_critique, t.elapsed().as_secs_f64() / 60.0
             );
+        }
+        Cmd::Lastfm { cle, limite, rafraichir_des } => {
+            let mut lib = lib;
+            let client = rusty_music_core::lastfm::Client::new(cle);
+            let limite = if limite == 0 { usize::MAX } else { limite };
+            let depuis = if rafraichir_des <= 0 {
+                0
+            } else {
+                let maintenant = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                maintenant - rafraichir_des * 86_400
+            };
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::lastfm_pass::actualiser(&mut lib, &client, depuis, limite, |b| {
+                if b.faits >= dernier + 25 {
+                    dernier = b.faits;
+                    println!("  {} / {} artistes · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
+                }
+            })?;
+            let echecs = if bilan.echecs > 0 {
+                format!(", {} laissés pour un prochain passage", bilan.echecs)
+            } else {
+                String::new()
+            };
+            println!(
+                "\n{} artistes interrogés, {} avec au moins un tag{echecs} — {:.0} min",
+                bilan.artistes_interroges, bilan.artistes_avec_tags, t.elapsed().as_secs_f64() / 60.0
+            );
+        }
+        Cmd::GenresCandidats { seuil } => {
+            for genre in lib.genres_candidats(seuil)? {
+                println!("{genre}");
+            }
         }
         Cmd::DiscogsLier { contact, limite } => {
             let mut lib = lib;
