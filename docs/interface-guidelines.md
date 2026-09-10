@@ -1,30 +1,33 @@
-# Contrat d'interface — transversal aux cinq modes
+# Contrat d'interface — transversal aux cinq écrans
 
 > Document de cohérence, pas de design. Les règles ci-dessous ont presque
 > toutes été décidées ailleurs — `ui-spec.md` (Explorer), `ui-spec-lecteur.md`
 > (Écouter), `ui-spec-editeur.md` (Éditer), `carto-anneau.md` (Anneau),
 > `frise-filiations.md` (Temps) — puis oubliées dès qu'on quittait le module
 > où elles avaient été écrites. Ce document les rassemble en un seul contrat,
-> **applicable aux cinq modes** (Écouter, Explorer, Éditer, Bibliothèque,
-> Découvrir), et vérifie ce qui existe déjà contre ce contrat.
+> **applicable aux cinq écrans du rail** — les **quatre modes** (Écouter,
+> Explorer, Éditer, Découvrir) plus **Bibliothèque**, point d'entrée posé
+> au-dessus du sélecteur de mode plutôt que dedans — et vérifie ce qui existe
+> déjà contre ce contrat.
 
 > **Correction de périmètre au moment d'écrire ce document (7 septembre
 > 2026)** : la commande qui a produit ce document supposait Éditer et
 > Découvrir sans interface construite. C'est faux pour les deux —
 > `apps/desktop/ui/app.js` porte ~15 fonctions dédiées à Découvrir (fil
 > d'actualité, explorateur de collaborations) et une dizaine à Éditer (dock de
-> stems, greffe, spectrogrammes), toutes branchées à un mode du rail. L'audit
-> couvre donc les **sept lignes** (cinq modes, dont les trois sous-modes
+> stems, greffe, spectrogrammes), toutes branchées à un écran du rail. L'audit
+> couvre donc les **sept lignes** (cinq écrans, dont les trois sous-modes
 > d'Explorer), aucune n'étant écartée comme prématurée.
 
-## Le socle commun — ce qu'aucun mode ne redéfinit
+## Le socle commun — ce qu'aucun écran ne redéfinit
 
 Le modèle retenu (`ui-spec.md`, « Atelier ») n'appartient pas à Explorer. Il
-tient en quatre zones, présentes et identiques dans les cinq modes :
+tient en quatre zones, présentes et identiques dans les cinq écrans :
 
-- **Rail gauche fixe** — identité, sélecteur de mode à cinq boutons (`Écouter
-  / Explorer / Éditer / Bibliothèque / Découvrir`), puis des blocs propres au
-  mode courant, montrés ou masqués par `basculerMode()`
+- **Rail gauche fixe** — identité, puis **Bibliothèque** en entrée de rail
+  isolée (point de départ, pas un mode), puis le sélecteur de mode à quatre
+  boutons (`Écouter / Explorer / Éditer / Découvrir`), puis des blocs propres
+  à l'écran courant, montrés ou masqués par `basculerMode()`
   (`apps/desktop/ui/app.js:5831`).
 - **Zone centrale propre à chaque mode** — pas le même composant partout : le
   nuage/la carte/l'anneau/la frise pour Explorer, la grille d'albums ou la
@@ -39,12 +42,12 @@ tient en quatre zones, présentes et identiques dans les cinq modes :
 - **Transport pleine largeur en bas** — `footer.transport`
   (`index.html:698`), en dehors de tout conteneur conditionné par le mode ;
   aucun code ne le masque (vérifié : aucune occurrence de `.transport` suivie
-  de `.hidden` dans `app.js`). Persiste tel quel dans les cinq modes, y
+  de `.hidden` dans `app.js`). Persiste tel quel dans les cinq écrans, y
   compris Bibliothèque et Découvrir où on ne s'y attend pas forcément.
 - **Dock optionnel** — `#dock` (`index.html:661`), réservé à Éditer, pousse le
   centre vers le haut sans reproduire la mécanique du rail ou de l'inspecteur.
 
-## Règles universelles — dans les cinq modes, sans exception
+## Règles universelles — dans les cinq écrans, sans exception
 
 ### 1. Un seul inspecteur, partagé
 Toute sélection peuple `#insp` (`aside.inspecteur`). Aucun mode ne recrée son
@@ -77,7 +80,7 @@ selon le focal.
 ### 5. Sobriété stricte
 AudioMuse-AI comme référence négative explicite. Densité maîtrisée,
 hiérarchie typographique forte, pas d'empilement de contrôles visibles en
-permanence — dans les cinq modes, pas seulement Explorer où la règle a été
+permanence — dans les cinq écrans, pas seulement Explorer où la règle a été
 écrite.
 
 ### 6. Les deux thèmes traités sérieusement
@@ -130,14 +133,14 @@ deux principes, pas des lois indépendantes d'eux.
 
 Sept lignes : Écouter, les trois sous-modes d'Explorer, Bibliothèque, Éditer,
 Découvrir. Verdicts : ✅ conforme · ❌ non conforme (raison précise) · —
-non applicable.
+non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 ### Écouter
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | `inspecter()` (`app.js:1017`) peuple `#insp` ; aucun panneau pochette/bio/critique séparé dans la zone centrale (`index.html:266-306` ne contient que `#liste`/`#grille`). |
-| 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("pistes", …)`, `app.js:1505-1507`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. |
+| 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : numéro → lecture, titre/album/artiste → navigation). Dans les pistes d'un album (`lignePiste`), la ligne joue toujours, mais deux zones se signalent au survol : le titre (passe à l'accent, le n° de piste devient ▶) rappelle que le clic lance l'écoute, tandis que le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `app.js` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `app.js:814`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
@@ -190,9 +193,10 @@ non applicable.
 
 ### Bibliothèque
 
-> Rappel de vocabulaire : « Bibliothèque » désigne ici le mode du rail
-> (réglages, statistiques, vérifications) — pas le fait de parcourir ses
-> artistes/albums, qui se passe en mode **Écouter**. La Règle 2 sur « une
+> Rappel de vocabulaire : « Bibliothèque » désigne ici l'écran atteint par
+> l'entrée de rail du même nom (réglages, statistiques, vérifications) — pas
+> un mode au sens du sélecteur à quatre boutons, et pas le fait de parcourir
+> ses artistes/albums, qui se passe en mode **Écouter**. La Règle 2 sur « une
 > recherche dans Bibliothèque » de la commande d'origine vise en réalité la
 > recherche du rail, auditée sous Écouter.
 
@@ -212,16 +216,16 @@ non applicable.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | Le morceau source de l'édition passe par le même inspecteur ; le dock ne duplique pas ses métadonnées. |
-| 2 | Estomper, jamais masquer | — | Pas de filtre/recherche dans le dock lui-même ; les candidats de greffe (`zoneGreffe`) sont une liste de résultats, pas un filtre sur un ensemble déjà visible. |
-| 3 | Palette unique | — | Le dock ne colore rien par famille. |
-| 4 | Stabilité des positions | ✅ | Ouvrir/fermer un panneau de stem (`s.ouvert`) ajoute ou retire un bloc sous sa propre ligne, sans déplacer les autres lignes de façon imprévisible. |
-| 5 | Sobriété stricte | ✅ | En-tête du dock : deux pas-à-pas (vitesse, hauteur) et un bouton Exporter, rien de plus tant qu'aucun stem n'est déplié. |
+| 1 | Inspecteur unique | ✅ | Le morceau source passe par le même inspecteur ; **le détail d'un stem sélectionné y va aussi** (`#bloc-stem`, `majInspecteurStem`), plus de panneau déplié sous la ligne dans la pile. |
+| 2 | Estomper, jamais masquer | — | Pas de filtre/recherche dans la pile ni la barre d'outils ; les candidats de greffe (`zoneGreffe`) sont une liste de résultats, pas un filtre sur un ensemble déjà visible. |
+| 3 | Palette unique | — | La pile de stems ne colore rien par famille (le mini-nuage de greffe, quand il existera, devra lire `--familles`). |
+| 4 | Stabilité des positions | ✅ | Sélectionner un stem (`edition.stemSel`) souligne sa ligne et peuple l'inspecteur, sans déplacer les lignes de la pile ni les réordonner. |
+| 5 | Sobriété stricte | ✅ | Barre d'outils : deux pas-à-pas d'ensemble (vitesse, hauteur), la dérive quand elle existe, Exporter. La pile : nom, solo, muet, badge, niveau, spectrogramme — le reste attend la sélection, dans l'inspecteur. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
-| 7 | Zoom/pan cohérents | — | Pas encore de zoom temporel de forme d'onde — question restée ouverte dans `ui-spec-lecteur.md` (« barres décoratives en v1, ou vraie onde »). Le contrat de la Règle 7 s'appliquera dès qu'un tel zoom existera : mêmes gestes que `zoomer()`/`zoomerTemps()`, pas une troisième mécanique. |
-| 8 | Révélation par échelle | ✅ | Le panneau vitesse/hauteur/greffe par stem n'apparaît qu'au clic (`s.ouvert`, `app.js:8196`) — exactement la divulgation progressive que Bibliothèque n'applique pas à ses propres réglages avancés. |
-| 9 | Langage de force unique | — | Pas de relations entre morceaux affichées aujourd'hui ; la liste de voisins pour la greffe (`zoneGreffe`) est une liste classée, pas un graphe à encoder. À surveiller — pas à écarter — si une visualisation des sources apparaît. |
-| — | Écart documentaire, hors des neuf règles | ⚠️ | `ui-spec-editeur.md` décide « le dock… pousse la carte vers le haut sans la faire disparaître… la carte reste la réserve de matière : c'est là qu'on choisit quoi ouvrir ». Dans le code, `basculerMode()` masque `#carte-vue` dès qu'on n'est pas en Explorer (`app.js:5849`, `hidden = !explorer`) ; en Éditer, la zone centrale est `#liste`/`#grille` (`app.js:5922-5926`), pas la carte. Ce n'est pas une violation d'une des neuf règles — le socle commun révisé en tête de ce document acte que la zone centrale est propre à chaque mode — mais c'est un écart avec une décision **spécifique et datée** de `ui-spec-editeur.md` qui mériterait d'être retranchée ou mise à jour, pas laissée à contredire silencieusement le code. |
+| 7 | Zoom/pan cohérents | — | Pas encore de zoom temporel de la pile. Le contrat de la Règle 7 s'appliquera dès qu'il existera : mêmes gestes que `zoomer()`/`zoomerTemps()`, et le playhead unique (`positionnerPlayhead`) devra suivre le même facteur. |
+| 8 | Révélation par échelle | ✅ | Le détail vitesse/hauteur/greffe d'un stem n'apparaît qu'à la sélection de sa ligne (`majInspecteurStem`), dans l'inspecteur commun — divulgation progressive que Bibliothèque n'applique pas à ses propres réglages avancés. |
+| 9 | Langage de force unique | — | Pas de relations entre morceaux affichées ; la liste de voisins pour la greffe (`zoneGreffe`) est une liste classée. À surveiller si le mini-nuage de greffe (prévu, `ui-spec-editeur.md`) affiche un jour des liens. |
+| — | Écart, hors des neuf règles | ✅ | **Résolu le 10 septembre 2026 — doc puis code.** `ui-spec-editeur.md` a retranché « le dock pousse la carte vers le haut » ; le centre d'Éditer est **l'établi à trois états** (`majEtatEditer` : `#grille`/`#liste` → `#editer-separer` → `#editer-etabli`), `#bloc-demix` est descendu du rail au centre, le détail d'un stem peuple `#bloc-stem` dans l'inspecteur, et `#dock` est une barre d'outils pleine largeur (plus de `max-height: 34vh`). Reste une passe de vérification visuelle dans l'app en fonctionnement (alignement du playhead au pixel, largeur de la barre sur fenêtre étroite). |
 
 ### Découvrir
 
@@ -260,7 +264,7 @@ conforme, sur la moitié « accessible » de la règle plutôt que sur la moiti�
 ## Checklist de fin de tâche
 
 À revérifier explicitement, règle par règle, avant de considérer un écran
-terminé — dans n'importe lequel des cinq modes :
+terminé — dans n'importe lequel des cinq écrans :
 
 1. **Inspecteur** — la sélection peuple-t-elle `#insp` existant, ou ce nouvel
    écran recrée-t-il pochette/métadonnées/bio ailleurs ?
