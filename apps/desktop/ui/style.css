@@ -1118,6 +1118,12 @@ html, body {
    que l'utilisateur regarde vraiment. */
 #demix-jauge { height: 6px; }
 
+/* Barre de transposition : compacte, posée dans la barre d'outils des stems et
+   groupée à droite avec le texte d'avancement plutôt qu'étalée sur toute la
+   largeur comme les jauges de passe de fond. */
+#transpose-jauge { width: 120px; height: 6px; margin-top: 0; margin-left: auto; flex: none; }
+#transpose-jauge:not([hidden]) + .dock__aide { margin-left: 8px; }
+
 /* ---------- file d'attente ---------- */
 /* En superposition au-dessus de l'inspecteur : la coquille est déjà dense,
    un quatrième volet permanent la ferait basculer côté « panneau ». */

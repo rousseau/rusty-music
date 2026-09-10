@@ -766,6 +766,10 @@
         </span>
         <button id="exporter" class="bouton bouton--mince"
                 title="Écrit ce qu'on entend : les stems audibles, à leurs niveaux, avec la vitesse et la hauteur de chacun.">Exporter…</button>
+        <!-- Ne paraît que pendant un calcul de transposition (`transposerStems`) :
+             graduée stem par stem, comme la barre de la séparation. -->
+        <progress id="transpose-jauge" class="jauge" hidden max="1" value="0"
+                  aria-label="Progression de la transposition"></progress>
         <span id="dock-aide" class="dock__aide"></span>
         <button id="dock-fermer" class="file__fermer" aria-label="Fermer les stems">×</button>
       </header>

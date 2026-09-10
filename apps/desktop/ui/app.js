@@ -9464,6 +9464,18 @@ async function transposerStems(stems, demiTons) {
     return depart.stems;
   }
 
+  // Barre graduée stem par stem, comme celle de la séparation : à une vingtaine
+  // de secondes par stem, une barre qui bouge dit « ça avance » là où un texte
+  // figé laisse craindre un blocage.
+  const jauge = $("transpose-jauge");
+  const finJauge = () => {
+    jauge.hidden = true;
+    jauge.value = 0;
+  };
+  jauge.hidden = false;
+  jauge.max = depart.total;
+  jauge.value = 0;
+
   return new Promise((resolve, reject) => {
     const t = setInterval(async () => {
       let e;
@@ -9471,6 +9483,7 @@ async function transposerStems(stems, demiTons) {
         e = await invoke("etirer_state");
       } catch (err) {
         clearInterval(t);
+        finJauge();
         reject(err);
         return;
       }
@@ -9478,10 +9491,13 @@ async function transposerStems(stems, demiTons) {
       // pourcentage global reste immobile assez longtemps pour qu'on le croie
       // bloqué.
       if (e.en_cours) {
-        $("dock-aide").textContent = `transposition ${e.faits + 1}/${e.total}…`;
+        jauge.max = e.total;
+        jauge.value = e.faits;
+        $("dock-aide").textContent = `transposition ${Math.min(e.faits + 1, e.total)}/${e.total}…`;
         return;
       }
       clearInterval(t);
+      finJauge();
       if (e.erreur) reject(e.erreur);
       else resolve(e.stems);
     }, 400);

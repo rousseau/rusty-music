@@ -154,6 +154,14 @@ Ce qui manque, et dans cet ordre :
   À 100 % la matière n'est pas traitée du tout : la voie directe est court-
   circuitée.
 
+  **La hauteur montre une barre de progression** (10 septembre) : depuis le
+  passage à `wsola`, transposer coûte une vingtaine de secondes par stem, et un
+  texte figé laissait craindre un blocage. `transposerStems` affiche donc dans
+  la barre d'outils une jauge graduée stem par stem (`#transpose-jauge`, alimentée
+  par `etirer_state` → `EtatTranspose.faits`/`total`), du même genre que celle de
+  la séparation. Réglage neutre ou déjà en cache : rien ne s'affiche, c'est
+  instantané.
+
   ~~Reste à faire : le réglage **par stem**.~~ **Fait le 18 août** (relogé le
   10 septembre). Sélectionner une ligne ouvre dans l'inspecteur son propre
   pas-à-pas de vitesse et de hauteur, plus un bouton « suivre l'ensemble » qui
