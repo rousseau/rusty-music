@@ -114,6 +114,10 @@ let sommet = { quoi: "albums", titre: "Albums", lignes: [] };
 // recherche restent en liste.
 const vueEnGrille = (quoi = vue.quoi) => quoi === "albums" || quoi === "artistes";
 
+// Une liste de morceaux avec jauge de popularité : les pistes d'un album ou
+// les résultats de recherche (mêmes lignes `TrackRow`, même chargement en lot).
+const estListePistes = (quoi = vue.quoi) => quoi === "pistes" || quoi === "recherche";
+
 let fileCourante = []; // pistes envoyées au lecteur, pour l'affichage
 
 // Un bouton ✦ à la fois (case d'album ou inspecteur) : les deux partagent le
@@ -157,28 +161,153 @@ function ligne(item, index) {
   const el = document.createElement("div");
   el.className = "ligne";
   el.dataset.index = index;
-
-  el.innerHTML = `<span class="ligne__no"></span>
-                  <span class="ligne__nom"></span>
-                  <span class="ligne__sec"></span>
-                  <span class="ligne__cpt"></span>`;
-  el.children[0].textContent = item.track_no ?? "";
-  el.children[1].textContent = txt(item.title, "(sans titre)");
-  el.children[2].textContent = txt(item.artist);
-  el.children[3].textContent = duree(item.duration_ms);
   if (item.path === enLecture) el.classList.add("ligne--joue");
+  return vue.quoi === "recherche" ? ligneRecherche(el, item) : lignePiste(el, item);
+}
 
-  // Jauge de popularité — pour une liste de morceaux (pistes d'un album,
-  // résultats de recherche), pas pour une liste d'artistes.
-  if (vue.quoi === "pistes" && Number.isFinite(item.id)) {
+/// Une ligne de la liste des pistes d'un album. Deux zones se répondent : le
+/// numéro (→ ▶ au survol ou au survol du titre) et le titre lancent la lecture
+/// depuis cette piste, le nom d'artiste ouvre ses albums. Le clic de la ligne
+/// elle-même joue aussi — le titre n'est qu'un repère visuel de ce geste.
+function lignePiste(el, item) {
+  el.classList.add("ligne--pistes");
+
+  el.appendChild(boutonJouer(item));
+
+  const titre = document.createElement("span");
+  titre.className = "ligne__nom";
+  titre.textContent = txt(item.title, "(sans titre)");
+  titre.title = "Lire ce morceau";
+  el.appendChild(titre);
+
+  // Le nom d'artiste mène à ses albums, sans lancer la piste — même geste que
+  // dans les résultats de recherche et l'inspecteur. `stopPropagation` (dans
+  // `lienLigne`) le sépare du clic de la ligne, qui lui joue le morceau.
+  if (item.artist) {
+    el.appendChild(
+      lienLigne(item.artist, "ligne__sec", () =>
+        ouvrirAlbumsArtiste(item.artist, item.artist_mbid, snapVue()),
+      ),
+    );
+  } else {
+    const sec = document.createElement("span");
+    sec.className = "ligne__sec";
+    el.appendChild(sec);
+  }
+
+  ajouterPopEtDuree(el, item);
+  el.addEventListener("click", () => activer(item));
+  return el;
+}
+
+/// Une ligne de résultat de recherche. Ici la ligne n'est pas cliquable : seul
+/// le numéro (→ ▶ au survol) lance la lecture (la file se forme avec la suite
+/// des résultats, comme `activer`), tandis que le titre et l'album mènent à
+/// l'album et le nom d'artiste à ses albums, sans rien lancer.
+function ligneRecherche(el, item) {
+  el.classList.add("ligne--recherche");
+
+  el.appendChild(boutonJouer(item, "·"));
+
+  el.appendChild(
+    lienLigne(txt(item.title, "(sans titre)"), "ligne__nom", () =>
+      ouvrirAlbumDePiste(item),
+    ),
+  );
+  if (item.album) {
+    el.appendChild(
+      lienLigne(item.album, "ligne__meta", () => ouvrirAlbumDePiste(item)),
+    );
+  }
+  if (item.artist) {
+    el.appendChild(
+      lienLigne(item.artist, "ligne__meta", () =>
+        ouvrirAlbumsArtiste(item.artist, item.artist_mbid, snapVue()),
+      ),
+    );
+  }
+
+  ajouterPopEtDuree(el, item);
+  return el;
+}
+
+/// Le n° de piste sous forme de bouton de lecture : il montre le numéro (ou
+/// `fallback` s'il manque), qui cède la place à ▶ au survol / focus et sur le
+/// morceau en cours. Clic → lit `item` via `activer`, sans laisser le clic
+/// remonter à la ligne.
+function boutonJouer(item, fallback = "") {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "ligne__jouer";
+  b.title = "Lire ce morceau";
+  b.setAttribute("aria-label", `Lire ${txt(item.title, "ce morceau")}`);
+  b.innerHTML = `<span class="jouer__no"></span><span class="jouer__ic" aria-hidden="true">▶</span>`;
+  b.children[0].textContent = item.track_no ?? fallback;
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    activer(item);
+  });
+  return b;
+}
+
+/// Jauge de popularité (si le morceau a un id) puis durée, en fin de ligne —
+/// commun aux pistes d'un album et aux résultats de recherche.
+function ajouterPopEtDuree(el, item) {
+  if (Number.isFinite(item.id)) {
     const cell = document.createElement("span");
     cell.className = "ligne__pop";
     cell.appendChild(jaugePop(popParPiste.get(item.id)));
-    el.insertBefore(cell, el.children[3]); // juste avant la durée
+    el.appendChild(cell);
   }
+  const cpt = document.createElement("span");
+  cpt.className = "ligne__cpt";
+  cpt.textContent = duree(item.duration_ms);
+  el.appendChild(cpt);
+}
 
-  el.addEventListener("click", () => activer(item));
-  return el;
+/// Un fragment de texte cliquable dans une ligne de liste (bouton nu) : ne
+/// remonte pas au clic de la ligne, tronque proprement, et prend l'accent au
+/// survol pour se signaler comme lien.
+function lienLigne(texte, cls, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = `${cls} ligne__lien`;
+  b.textContent = texte;
+  b.title = texte;
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return b;
+}
+
+/// Instantané de la vue de liste courante, à garder comme cible de retour quand
+/// on descend d'une ligne vers un album ou un artiste (résultat de recherche ou
+/// piste d'un album) — même forme que les instantanés construits par `activer`.
+function snapVue() {
+  return {
+    quoi: vue.quoi,
+    titre: vue.titre,
+    lignes: vue.lignes,
+    retour: vue.retour,
+    scroll: scrollActuel(),
+  };
+}
+
+/// Ouvre au centre les pistes de l'album qui contient `item`. À défaut d'album
+/// (résultat sans métadonnée d'album), retombe sur l'inspecteur du morceau.
+async function ouvrirAlbumDePiste(item) {
+  if (!item.album) {
+    inspecter(item);
+    return;
+  }
+  const retour = snapVue();
+  const pistes = await invoke("tracks_of_album", {
+    album: item.album,
+    artist: item.artist ?? null,
+  });
+  if (modeCourant !== "ecoute") await basculerMode("ecoute");
+  poser("pistes", item.album, pistes, retour);
 }
 
 liste.addEventListener("scroll", dessiner, { passive: true });
@@ -251,12 +380,12 @@ function jaugePop(pop) {
 function popARecalculee() {
   popParPiste.clear();
   if (!$("file").hidden && !fileCompositionActive) dessinerFile();
-  if (!$("liste").hidden && vue.quoi === "pistes") {
+  if (!$("liste").hidden && estListePistes()) {
     dessiner();
     chargerPopularites(
       vue.lignes.map((l) => l.id),
       () => {
-        if (vue.quoi === "pistes") dessiner();
+        if (estListePistes()) dessiner();
       },
     );
   }
@@ -910,11 +1039,11 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
 
   // Liste de morceaux : la popularité se charge en lot, puis on repeint les
   // lignes visibles (la liste est virtualisée, `dessiner` relit le cache).
-  if (quoi === "pistes") {
+  if (estListePistes(quoi)) {
     chargerPopularites(
       lignes.map((l) => l.id),
       () => {
-        if (vue.quoi === "pistes") dessiner();
+        if (estListePistes()) dessiner();
       },
     );
   }
@@ -1196,13 +1325,13 @@ function montrerVoisinsAlbum() {
 
 /// Ouvre au centre la grille de tous les albums d'un artiste — le geste
 /// partagé par le nom de l'artiste dans l'inspecteur et dans le transport.
-async function ouvrirAlbumsArtiste(artiste, mbid) {
+async function ouvrirAlbumsArtiste(artiste, mbid, retour = sommet) {
   if (!artiste) return;
   const albums = await invoke("albums", { artist: artiste, mbid: mbid || null });
   // « Au centre » suppose le mode Écoute : depuis Explorer ou Éditer, le
   // centre montre la carte ou le dock, pas la grille.
   if (modeCourant !== "ecoute") await basculerMode("ecoute");
-  poser("albums", artiste, albums, sommet);
+  poser("albums", artiste, albums, retour);
 }
 
 /// Le nom de l'artiste, dans l'inspecteur, ouvre ses albums au centre — le
@@ -1613,7 +1742,7 @@ $("q").addEventListener("input", (e) => {
     }
     if (!q) return charger();
     const r = await invoke("search", { query: q, limit: 200 });
-    poser("pistes", `« ${q} »`, r, sommet);
+    poser("recherche", `« ${q} »`, r, sommet);
   }, 180);
 });
 

@@ -379,11 +379,61 @@ html, body {
 }
 .ligne:hover { background: var(--panel); }
 .ligne--joue { color: var(--accent); }
-.ligne__no { font-family: var(--mono); font-size: 11px; color: var(--mut); width: 26px; flex: none; text-align: right; }
 .ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Pistes d'un album : deux zones distinctes se signalent séparément. Survoler
+   le titre le passe à l'accent et change le n° de piste en ▶ (le clic lance
+   l'écoute) ; survoler le nom d'artiste ne colore que lui (le clic ouvre ses
+   albums). La vue `recherche` ne rend jamais la ligne cliquable — voir plus bas. */
+.ligne--pistes .ligne__nom { cursor: pointer; }
+.ligne--pistes .ligne__nom:hover { color: var(--accent); }
+.ligne--pistes:has(.ligne__nom:hover) .jouer__no { opacity: 0; }
+.ligne--pistes:has(.ligne__nom:hover) .jouer__ic { opacity: 1; }
 .ligne__sec { font-size: 12px; color: var(--mut); flex: none; }
 .ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
 .ligne__pop, .file__pop { flex: none; display: flex; align-items: center; }
+
+/* Fragments de texte cliquables dans une ligne de liste (bouton nu) : le titre
+   mène à l'album, le nom d'artiste à ses albums — sans lancer la piste. Servent
+   dans les résultats de recherche et dans les pistes d'un album. */
+.ligne__lien {
+  background: none; border: 0; padding: 0; margin: 0;
+  font-family: inherit; font-size: inherit; font-weight: inherit;
+  color: inherit; text-align: left; cursor: pointer;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Métadonnées secondaires en lien : gardent leur gris et leur petit corps
+   (la combinaison de classes l'emporte quel que soit l'ordre des règles). */
+.ligne__lien.ligne__sec,
+.ligne__lien.ligne__meta { font-size: 12px; color: var(--mut); }
+.ligne__meta { flex: 0 1 auto; }
+/* Zone cliquable signalée par la seule couleur — pas de soulignement, pour
+   alléger l'interface (même parti pris que `.album__nom`/`.album__artiste`). */
+.ligne__lien:hover { color: var(--accent); }
+
+/* Résultats de recherche : rien n'est cliquable au niveau de la ligne — le
+   numéro lance la lecture, le texte mène ailleurs. (Dans les pistes d'un
+   album, la ligne joue toujours ; seul le nom d'artiste s'en détache.) */
+.ligne--recherche { cursor: default; gap: 10px; }
+/* Le numéro de piste : bouton nu de 26 px, le chiffre cédant la place à ▶ au
+   survol ou au focus (et en continu sur le morceau qui joue). `align-self:
+   stretch` lui donne la hauteur de la ligne pour que ▶ s'y centre. */
+.ligne__jouer {
+  position: relative; width: 26px; flex: none; align-self: stretch;
+  display: flex; align-items: center; justify-content: flex-end;
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.jouer__no { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.jouer__ic {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: flex-end;
+  font-size: 9px; color: var(--accent); opacity: 0;
+}
+.ligne__jouer:hover .jouer__no,
+.ligne__jouer:focus-visible .jouer__no,
+.ligne--joue .jouer__no { opacity: 0; }
+.ligne__jouer:hover .jouer__ic,
+.ligne__jouer:focus-visible .jouer__ic,
+.ligne--joue .jouer__ic { opacity: 1; }
 
 /* Jauge de popularité générale — cinq segments façon indicateur de signal,
    dans la file d'attente et les listes de pistes. Contour seul (aucun segment
@@ -470,7 +520,7 @@ html, body {
 }
 .album:hover .album__nom { color: var(--accent); }
 .album__artiste--lien { cursor: pointer; }
-.album__artiste--lien:hover { color: var(--accent); text-decoration: underline; }
+.album__artiste--lien:hover { color: var(--accent); }
 
 /* Tuile d'artiste : même gabarit qu'une case d'album, mais la pochette est une
    mosaïque en puzzle des pochettes de ses albums (`carteArtiste`). Chaque pièce

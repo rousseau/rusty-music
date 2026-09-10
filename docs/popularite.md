@@ -12,8 +12,8 @@ artiste oublié dont on a tout gardé.
 La popularité viendra donc de **sources externes agrégées**, récupérée pendant
 l'analyse de la bibliothèque, mise en cache, rafraîchie de loin en loin. Elle
 s'affiche comme une **jauge graduée** à côté de chaque morceau — dans la file
-d'attente (panneau droit) et dans la liste des pistes d'un album (panneau
-central).
+d'attente (panneau droit), dans la liste des pistes d'un album et dans les
+résultats de recherche (panneau central).
 
 **Additive, comme l'enrichissement des genres** (`crates/core/src/enrichir.rs`) :
 une bibliothèque qui n'a jamais vu le réseau reste entièrement utilisable, la
@@ -30,7 +30,7 @@ Toutes les sources ci-dessous s'interrogent par MBID ou se rattachent à un MBID
 |---|---|---|---|---|
 | **ListenBrainz** `/1/popularity/{recording,release-group}` | `total_listen_count`, `total_user_count`, **par lot** (POST d'une liste de MBID) | recording · release-group | aucun | CC0, même fondation que MusicBrainz, auto-hébergeable |
 | **Deezer** `api.deezer.com/search/track` | `rank` (piste, ~10 k – 1 M) | piste | aucun | API publique, ~50 req/5 s ; recherche par artiste + titre, **retenue seulement si artiste ET titre concordent** |
-| ~~Last.fm~~ | — | — | clé d'API | **écarté** — on évite les clés pour l'instant |
+| ~~Last.fm~~ | — | — | clé d'API | **écarté ici** — on évite les clés pour la popularité ; réintroduit ailleurs pour un usage différent, voir note plus bas |
 | ~~Discogs, Spotify, YouTube~~ | — | — | jeton / OAuth / clé | **écartés** — même raison |
 
 **Décision — deux sources, aucune clé.**
@@ -50,6 +50,13 @@ Toutes les sources ci-dessous s'interrogent par MBID ou se rattachent à un MBID
 - **Tout ce qui demande une clé ou un jeton est écarté** — Last.fm, Discogs,
   Spotify, YouTube. Décision de l'utilisateur ; et la sonde montre que ce n'est
   pas nécessaire (1,5 % de morceaux sans aucune source).
+
+**Note — Last.fm est revenu, mais pas ici.** `docs/nommage-familles.md`
+l'emploie pour ses tags de genre communautaires (`artist.getTopTags`), un des
+trois votes qui nomment les familles du mode Explorer — rien à voir avec la
+popularité. La clé y est demandée à l'utilisateur (gratuite, `last.fm/api`),
+la source restant décochée par défaut tant qu'elle n'est pas renseignée. La
+décision ci-dessus (aucune clé pour la popularité) n'est pas revenue.
 
 **Ce qui n'est accessible par aucune source ouverte** : ventes réelles
 (Luminate — B2B payant), positions de charts (Billboard, SNEP — pas d'API),
@@ -250,15 +257,16 @@ l'inspecteur (`montrerDescripteurs`, `app.js`).
 Infobulle : le rang en clair (« popularité : élevée »), l'échelon (« mesurée
 sur le morceau » / « sur l'album ») et les sources ayant répondu.
 
-**Deux emplacements**, une seule fabrique de composant :
+**Trois emplacements**, une seule fabrique de composant :
 
-1. **File d'attente** — `dessinerFile` (`app.js:1156`). La ligne passe de
+1. **File d'attente** — `dessinerFile`. La ligne passe de
    `rang · texte · durée` à `rang · texte · jauge · durée`. Au rendu de la
    file, un seul appel `popularites` avec tous les `id` visibles, puis on
    distribue.
-2. **Liste des pistes d'un album** — `ligne` (`app.js:140`), utilisée par
-   `poser("pistes", …)`. Même cellule `.ligne__pop`, même appel groupé à
-   l'ouverture de l'album.
+2. **Liste des pistes d'un album et résultats de recherche** — `lignePiste` /
+   `ligneRecherche`, via `ajouterPopEtDuree`. Toute vue de morceaux
+   (`estListePistes` : `quoi === "pistes" || quoi === "recherche"`) partage la
+   cellule `.ligne__pop` et l'appel groupé déclenché par `poser`.
 
 CSS dans `apps/desktop/ui/style.css`, près de `.barre-genre` (déjà une barre
 graduée) et `.file__ligne`.
@@ -326,12 +334,20 @@ genres, et reprenable. `--limite` la borne.
   × 5)` pleins, **au moins un dès qu'une mesure existe** (sinon « connu et peu
   populaire » = « inconnu »), contour seul si inconnu, infobulle « popularité :
   {mot} · mesurée sur {le morceau|l'album} ».
-- Câblé dans `dessinerFile` (file d'attente) et `ligne` (listes de morceaux —
-  pistes d'un album *et* résultats de recherche, `vue.quoi === "pistes"`) ;
-  `poser` déclenche le chargement, la liste virtualisée relit le cache au
-  défilement. `popARecalculee` vide le cache et recharge après une passe.
+- Câblé dans `dessinerFile` (file d'attente) et dans les listes de morceaux —
+  pistes d'un album *et* résultats de recherche, la garde `estListePistes`
+  (`vue.quoi === "pistes" || "recherche"`) portant `lignePiste` /
+  `ligneRecherche` via `ajouterPopEtDuree` ; `poser` déclenche le chargement,
+  la liste virtualisée relit le cache au défilement. `popARecalculee` vide le
+  cache et recharge après une passe.
 - CSS `.jauge-pop` près de `.barre-genre` — teintes par variables, thème clair
   et sombre.
+- Extension aux résultats de recherche (10 septembre 2026) : la refonte des
+  lignes de liste sépare pistes d'album (`lignePiste`) et recherche
+  (`ligneRecherche`) et déplace la jauge dans la fabrique commune
+  `ajouterPopEtDuree` ; la garde passe de `vue.quoi === "pistes"` à
+  `estListePistes`. Gestes de ligne revus au passage (`boutonJouer`,
+  `lienLigne`) — audit `interface-guidelines.md` Règle 2, écran Écouter.
 
 Pas de vérification visuelle dans la webview Tauri (extension navigateur non
 connectée, et WKWebView ne se pilote pas de l'extérieur) : logique de
