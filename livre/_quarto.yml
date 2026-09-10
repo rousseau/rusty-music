@@ -14,8 +14,8 @@ book:
     - ecouter.qmd
     - explorer.qmd
     - editer.qmd
-    - bibliotheque.qmd
     - decouvrir.qmd
+    - bibliotheque.qmd
     - references.qmd
 
 bibliography: references.bib

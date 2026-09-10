@@ -1,8 +1,10 @@
 # Introduction {.unnumbered}
 
-Rusty Music est né de la frustration de lecteur de musique comme iTunes (maintenant Musique), de leur gestion d'une bibliothèque locale et leur capacité limitée. 
+Rusty Music est né de la frustration de l'utilisation de lecteur de musique comme iTunes (maintenant Musique). 
 
 L'idée de départ est de simplement indiquer le chemin d'un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.
+
+Le logiciel se décompose donc en 4 modes : écouter, explorer, éditer et découvrir.
 
 ::: {.callout-note}
 ## Paragraphe de test
