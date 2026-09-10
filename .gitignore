@@ -14,6 +14,10 @@ experiments/*/modeles/
 *.db-shm
 *.db-wal
 *.db.avant-*
+*.db.bak-*
+
+# Journal d'une passe de pipeline lancée à la main.
+/pipeline.log
 
 # Sorties de l'éditeur et de l'analyse, écrites à côté de la base.
 stems/
