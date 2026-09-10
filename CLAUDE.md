@@ -83,7 +83,7 @@ et pièges : README, section « Démarrer ».
 - `docs/architecture.md` — contexte de recherche (Islands of Music, Audio Atlas, AudioMuse-AI), pipeline, alternatives. Registre historique : plusieurs « points à trancher » y sont depuis tranchés (CLAP, t-SNE).
 - `docs/ui-spec.md` — brief d'interface du module 2 (Exploration).
 - `docs/ui-spec-lecteur.md` — brief d'interface du module 1 (Lecteur).
-- `docs/ui-spec-editeur.md` — brief d'interface du module 3 (Éditeur). Périmètre tranché : une piste, pas de projet sauvegardé.
+- `docs/ui-spec-editeur.md` — brief d'interface du module 3 (Éditeur). Périmètre tranché : une piste, pas de projet sauvegardé. **Centre = « l'établi » à trois états (choisir / séparer / retoucher), décidé et implémenté le 10 sept. 2026 : la pile de stems occupe le centre, le détail d'un stem va dans l'inspecteur commun (`#bloc-stem`), le dock est une barre d'outils pleine largeur. `majEtatEditer` dans `app.js`. Reste une vérification visuelle dans l'app.** Décision 9 (10 sept.) : **BPM cible fait** — bouton d'unité %↔BPM dans la barre d'outils, actif si pulsation franche (`tempo_cible`, netteté ≥ 2 sur le stem `drums`), repli octave « ½ / ×2 ». Reste : tonalité cible par stem, et la greffe qui cale aussi la tonalité (`demi_tons_rendu` à ajouter à `Plan`).
 - `docs/module3-demixage.md` — pourquoi le démixage passe par `demucs-core` (Burn) et non l'export ONNX + `ort`.
 - `docs/data-sources.md` — Plex/AudioMuse-AI, MusicBrainz, enrichissement métadonnées.
 - `docs/popularite.md` — **popularité générale (ListenBrainz + Deezer, sans clé API) : passe d'analyse (étape 5/5, rafraîchissement 90 j) + jauge à 5 segments dans la file et les listes de pistes. Livré. Reste hors chantier : popularité d'artiste pour la carte.**

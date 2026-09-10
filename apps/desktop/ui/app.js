@@ -835,6 +835,7 @@ window.addEventListener("resize", () => {
     grilleDernierRang = -1;
     dessinerGrille();
   }
+  positionnerPlayhead();
 });
 
 /* ---------------------------------------------------------- navigation */
@@ -1034,12 +1035,44 @@ async function activer(item) {
     fileCourante = vue.lignes.slice(depart);
     tracerRouteSurCarte(fileCourante);
     await demarrerLecture(() => invoke("play", { paths: fileCourante.map((t) => t.path) }));
+    // En Éditer, choisir une piste dans la liste, c'est choisir le morceau à
+    // travailler : on passe de l'état « choisir » à « séparer / retoucher ».
+    if (modeCourant === "editer") {
+      edition.montrerChoix = false;
+      edition.sourceChoisie = true;
+      await poserSourceEdition();
+    }
   }
 }
 
 $("retour").addEventListener("click", () => {
+  // En Éditer, depuis la carte de séparation ou l'établi, « ← Choisir un
+  // morceau » ramène au sélecteur sans décharger les stems déjà séparés
+  // (`docs/ui-spec-editeur.md`, état 1). En état 1, le bouton retrouve son
+  // rôle de fil de navigation ordinaire.
+  if (
+    modeCourant === "editer" &&
+    !edition.montrerChoix &&
+    (edition.stems.length || (edition.sourceChoisie && edition.source))
+  ) {
+    edition.montrerChoix = true;
+    edition.sourceChoisie = false;
+    majEtatEditer();
+    return;
+  }
   const r = vue.retour;
   if (r) poser(r.quoi, r.titre, r.lignes, r.retour ?? null, r.scroll ?? 0);
+});
+
+// Raccourci « Séparer « … » » de l'en-tête, en Éditer : le morceau en lecture
+// devient le morceau choisi, sans avoir à le retrouver dans la liste.
+$("editer-candidat").addEventListener("click", async () => {
+  const cand = fileCourante.find((t) => t.path === enLecture);
+  if (!cand) return;
+  await inspecter(cand);
+  edition.montrerChoix = false;
+  edition.sourceChoisie = true;
+  await poserSourceEdition();
 });
 
 /* ---------------------------------------------------------- inspecteur */
@@ -1694,6 +1727,12 @@ function poserLecture(joue) {
 /// plus rien n'interrogeait alors le moteur et le panneau d'écoute restait
 /// figé sur « Rien en lecture ».
 async function demarrerLecture(demarrer) {
+  // Lecture ordinaire et lecture des stems s'excluent : `stems_play` met le
+  // lecteur du module 1 en pause côté moteur, ici on fait l'inverse — sans ça,
+  // choisir un autre morceau pendant que les stems jouent laissait les deux
+  // sorties audio se superposer, et le bouton du bas ne pilotait plus que
+  // l'une des deux.
+  if (edition.enLecture) await arreterStems();
   poserLecture(true);
   ignorerEtatJusqua = Date.now() + 2000;
   try {
@@ -6090,9 +6129,21 @@ async function basculerMode(mode) {
   $("bloc-familles-ecoute").hidden = true;
   // Idem pour le filtre par famille de Découvrir (`majBlocFamillesDecouvrir`).
   if (!decouvrir) $("bloc-familles-decouvrir").hidden = true;
-  $("bloc-demix").hidden = !editer;
   $("bloc-decouvrir").hidden = !decouvrir;
-  $("dock").hidden = !editer || edition.stems.length === 0;
+  // La carte de séparation, l'établi et la barre d'outils des stems : `majEtatEditer`
+  // en décide selon l'avancement (`docs/ui-spec-editeur.md`). Hors Éditer, tout est masqué.
+  if (!editer) {
+    $("editer-separer").hidden = true;
+    $("editer-etabli").hidden = true;
+    $("dock").hidden = true;
+    $("bloc-stem").hidden = true;
+    $("editer-candidat").hidden = true;
+  } else {
+    // Entrer dans le mode : on repart du sélecteur (ou de l'établi si des
+    // stems sont déjà chargés — `majEtatEditer` le voit).
+    edition.montrerChoix = false;
+    edition.sourceChoisie = false;
+  }
 
   // Sortir de l'édition rend la sortie au lecteur ordinaire : garder les
   // stems chargés tiendrait 186 Mo et une sortie audio pour rien.
@@ -6144,7 +6195,8 @@ async function basculerMode(mode) {
     poser(vue.quoi, vue.titre, vue.lignes, vue.retour);
     // Le mode Éditer travaille sur la sélection courante : on la relit à
     // chaque entrée plutôt que de la mémoriser, elle a pu changer depuis.
-    if (editer) poserSourceEdition();
+    // `poserSourceEdition` appelle `majEtatEditer`, qui range le centre.
+    if (editer) await poserSourceEdition();
     // Filtre par famille de l'Écoute : les données au premier passage, le
     // rendu à chaque entrée (les familles ont pu être renommées depuis).
     if (mode === "ecoute") {
@@ -7832,7 +7884,7 @@ $("exporter").addEventListener("click", async () => {
   // qu'on sache en quoi.
   for (const st of edition.stems) {
     if (st.greffe) parts.push(`${st.nom} greffé`);
-    else if (stemEcarte(st)) parts.push(`${st.nom} ${etiquetteStem(st)}`);
+    else if (stemEcarte(st)) parts.push(`${st.nom} ${resumeStem(st)}`);
   }
   const nom = parts.join(" — ").replace(/[/\\:]/g, "-");
 
@@ -7915,13 +7967,22 @@ async function battementStems() {
 const edition = {
   source: null, // TrackRow
   variante: "htdemucs",
-  // Un stem : { nom, chemin, origine, niveau, vitesse, tonalite, greffe, ouvert, voisins }
+  // Un stem : { nom, chemin, origine, niveau, vitesse, tonalite, greffe, voisins }
   // `chemin` est ce qu'on joue — il change quand on greffe ; `origine` est le
   // stem séparé, qu'on ne perd jamais de vue. `vitesse` et `tonalite` valent
   // `null` tant que le stem suit les réglages d'ensemble.
   stems: [],
   muets: new Set(),
   solo: null,
+  // Le stem dont le détail est ouvert dans l'inspecteur (`#bloc-stem`), par nom.
+  stemSel: null,
+  // `true` : l'utilisateur est revenu au sélecteur de morceau depuis l'établi
+  // (bouton « ← Choisir un morceau ») sans décharger les stems.
+  montrerChoix: false,
+  // `true` : une piste a été choisie explicitement (clic dans la liste) — on
+  // passe alors de « choisir » à « séparer ». Sans ça, entrer dans le mode
+  // reste sur le sélecteur, le morceau en lecture n'étant qu'un candidat.
+  sourceChoisie: false,
   enLecture: false, // un multipiste est-il chargé côté moteur ?
   tete: 0, // position de lecture, de 0 à 1 — partagée par tous les affichages
   // Vitesse et tonalité **d'ensemble**. Elles pilotent tous les stems que rien
@@ -7929,9 +7990,72 @@ const edition = {
   // décision 4 : global par défaut, par stem en option).
   vitesse: 1.0,
   tonalite: 0,
+  // Le réglage « vitesse » se lit-il en BPM plutôt qu'en pour cent ? N'est
+  // vrai que si `tempoSource` existe (pulsation franche) et que l'utilisateur
+  // l'a choisi (bouton d'unité). `docs/ui-spec-editeur.md`, décision 9.
+  vitesseEnBpm: false,
+  // { bpm, nettete } du morceau ouvert, ou `null` si sa pulsation n'est pas
+  // assez franche pour viser un BPM (nappe, rubato). Rempli par `majTempoSource`
+  // après que les stems sont là — la netteté se mesure sur le stem `drums`.
+  tempoSource: null,
   // Dernière dérive mesurée par le moteur, en millisecondes.
   deriveMs: 0,
 };
+
+/// En deçà, la pulsation n'est pas franche et on ne propose pas de BPM cible :
+/// « au-delà de 2, la pulsation est franche » (`battements::Grille`).
+const NETTETE_FRANCHE = 2.0;
+
+/// Le BPM cible est-il actif ? Vrai seulement si le morceau pulse franchement
+/// **et** que l'utilisateur a basculé l'unité.
+function vitesseEnBpm() {
+  return edition.vitesseEnBpm && !!edition.tempoSource;
+}
+function bpmSource() {
+  return edition.tempoSource?.bpm ?? null;
+}
+
+/// Pas effectif d'un réglage : en mode BPM, un pas vaut 1 BPM, soit une
+/// fraction de facteur qui dépend du tempo source.
+function pasReglage(nom) {
+  if (nom === "vitesse" && vitesseEnBpm()) return 1 / bpmSource();
+  return REGLAGES[nom].pas;
+}
+
+/// Le repliement d'octave à proposer, ou 0 s'il n'y a pas lieu.
+///
+/// `edition.vitesse` est le rapport `bpm_cible / bpm_source`. Hors de
+/// [1/√2, √2], viser ce BPM revient à un étirement de plus d'une demi-octave :
+/// le bouton « ½ » ou « ×2 » ramène le rapport près de 1 en admettant que le
+/// morceau se lit à demi- ou double-tempo (`greffe::tempo_replie`).
+function octaveVitesse() {
+  if (!vitesseEnBpm()) return 0;
+  if (edition.vitesse > Math.SQRT2) return 0.5;
+  if (edition.vitesse < Math.SQRT1_2) return 2;
+  return 0;
+}
+
+/// Va chercher le tempo du morceau ouvert et la netteté de sa pulsation, et
+/// décide si la barre d'outils peut proposer un BPM cible. Appelée une fois les
+/// stems présents — la netteté se mesure sur le stem `drums`.
+async function majTempoSource() {
+  edition.tempoSource = null;
+  const src = edition.source;
+  if (src) {
+    try {
+      const t = await invoke("tempo_cible", { id: src.id });
+      if (t.bpm && t.nettete !== null && t.nettete >= NETTETE_FRANCHE) {
+        edition.tempoSource = { bpm: t.bpm, nettete: t.nettete };
+      }
+    } catch (e) {
+      // Pas de BPM cible, on reste en pour cent — ce n'est pas une erreur à
+      // remonter, juste un réglage de moins.
+      console.warn("tempo_cible", e);
+    }
+  }
+  if (!edition.tempoSource) edition.vitesseEnBpm = false;
+  dessinerReglages();
+}
 
 /// Bornes et pas des deux réglages.
 ///
@@ -7946,13 +8070,24 @@ const REGLAGES = {
     pas: 0.05,
     min: 0.25,
     max: 4.0,
-    ecrire: (v) => `${Math.round(v * 100)} %`,
-    // **Toujours des pour cent, jamais un rapport.** « 2 » est ambigu — deux
-    // pour cent ou deux fois ? Le champ affiche « % », il lit donc des pour
-    // cent, et 2 est refusé par la borne basse plutôt qu'interprété.
+    // En pour cent par défaut ; en BPM quand le morceau pulse franchement et
+    // que l'unité a été basculée — `edition.vitesse` reste le rapport, l'unité
+    // n'est qu'une vue (`docs/ui-spec-editeur.md`, décision 9).
+    ecrire: (v) =>
+      vitesseEnBpm() ? `${Math.round(v * bpmSource())} BPM` : `${Math.round(v * 100)} %`,
+    // **Ni pour cent ni BPM ambigus.** « 2 » en pour cent est refusé par la
+    // borne basse plutôt qu'interprété comme « deux fois » ; en BPM, le champ
+    // affiche « BPM » et lit donc un tempo, converti en rapport.
     lire: (t) => {
-      const n = Number(String(t).replace("%", "").replace(",", ".").trim());
-      return Number.isFinite(n) ? n / 100 : null;
+      const n = Number(
+        String(t)
+          .replace(/%|BPM/gi, "")
+          .replace(",", ".")
+          .trim(),
+      );
+      if (!Number.isFinite(n)) return null;
+      if (vitesseEnBpm()) return bpmSource() ? n / bpmSource() : null;
+      return n / 100;
     },
     immediat: true,
   },
@@ -7999,7 +8134,7 @@ function cablerChamp(champ, nom, lire, poser) {
     // champ numérique, et cela évite de sortir du clavier pour un pas.
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
-      poser(calerReglage(nom, lire() + r.pas * (e.key === "ArrowUp" ? 1 : -1)));
+      poser(calerReglage(nom, lire() + pasReglage(nom) * (e.key === "ArrowUp" ? 1 : -1)));
     }
   });
   champ.addEventListener("change", () => {
@@ -8022,7 +8157,13 @@ function cablerChamp(champ, nom, lire, poser) {
 function calerReglage(nom, valeur) {
   const r = REGLAGES[nom];
   const borne = Math.min(r.max, Math.max(r.min, valeur));
-  return Math.round(borne / r.pas) * r.pas;
+  // En mode BPM, on cale sur un tempo entier plutôt que sur un pas de rapport :
+  // le champ montre « 128 BPM », pas « 128,3 ».
+  if (nom === "vitesse" && vitesseEnBpm()) {
+    return Math.round(borne * bpmSource()) / bpmSource();
+  }
+  const pas = pasReglage(nom);
+  return Math.round(borne / pas) * pas;
 }
 
 /// Vitesse et hauteur effectives d'un stem : les siennes s'il en a, sinon
@@ -8148,6 +8289,24 @@ function dessinerReglages() {
     champ.classList.remove("reglage__val--faux");
     champ.value = r.ecrire(edition[nom]);
   }
+
+  // Bascule d'unité : cachée tant que le morceau ne pulse pas franchement.
+  // Elle porte l'unité courante — cliquer passe à l'autre.
+  const unite = $("vitesse-unite");
+  unite.hidden = !edition.tempoSource;
+  unite.textContent = vitesseEnBpm() ? "BPM" : "%";
+  unite.classList.toggle("reglage__unite--actif", vitesseEnBpm());
+
+  // Repliement d'octave : « ½ » si viser ce BPM étire de plus d'une demi-octave
+  // vers le haut, « ×2 » vers le bas, rien sinon.
+  const oct = $("vitesse-octave");
+  const f = octaveVitesse();
+  oct.hidden = f === 0;
+  oct.textContent = f === 0.5 ? "½" : f === 2 ? "×2" : "";
+
+  // Au-delà de ±20 % d'étirement d'ensemble, `wsola` s'entend : on le dit, dans
+  // les deux unités — c'est le rapport qui compte, pas la façon de l'écrire.
+  $("vitesse-alerte").hidden = Math.abs(edition.vitesse - 1) <= 0.2;
 }
 
 for (const nom of Object.keys(REGLAGES)) {
@@ -8167,10 +8326,10 @@ for (const nom of Object.keys(REGLAGES)) {
 
 dessinerReglages();
 
-document.querySelectorAll(".dock__tete .reglage button").forEach((b) => {
+document.querySelectorAll(".dock__tete .reglage button[data-r]").forEach((b) => {
   b.addEventListener("click", async () => {
     const nom = b.dataset.r;
-    edition[nom] = calerReglage(nom, edition[nom] + REGLAGES[nom].pas * Number(b.dataset.d));
+    edition[nom] = calerReglage(nom, edition[nom] + pasReglage(nom) * Number(b.dataset.d));
     dessinerReglages();
     if (REGLAGES[nom].immediat) {
       // Un flottant à écrire, rien de plus : ni recalcul, ni rechargement, ni
@@ -8181,6 +8340,27 @@ document.querySelectorAll(".dock__tete .reglage button").forEach((b) => {
     }
     dessinerStems();
   });
+});
+
+/// Bascule le réglage « vitesse » entre pour cent et BPM. Ne touche pas à
+/// `edition.vitesse` : c'est le même rapport, lu autrement. Caler ensuite fait
+/// tomber l'affichage sur un tempo entier.
+$("vitesse-unite").addEventListener("click", () => {
+  if (!edition.tempoSource) return;
+  edition.vitesseEnBpm = !edition.vitesseEnBpm;
+  if (edition.vitesseEnBpm) edition.vitesse = calerReglage("vitesse", edition.vitesse);
+  dessinerReglages();
+});
+
+/// Replie le rapport de tempo à l'octave : le morceau se lit à demi- ou
+/// double-tempo, et viser le BPM ne demande plus qu'un étirement léger.
+$("vitesse-octave").addEventListener("click", async () => {
+  const f = octaveVitesse();
+  if (!f) return;
+  edition.vitesse = calerReglage("vitesse", edition.vitesse * f);
+  dessinerReglages();
+  await appliquerVitesses();
+  dessinerStems();
 });
 
 /// Montre la dérive — et seulement quand il y en a une à montrer.
@@ -8218,14 +8398,145 @@ function morceauAEditer() {
   return fileCourante.find((t) => t.path === path) ?? null;
 }
 
-function poserSourceEdition() {
+async function poserSourceEdition() {
   const t = morceauAEditer();
+  const change = (t?.path ?? null) !== (edition.source?.path ?? null);
+  // Changer de morceau abandonne les stems du précédent — et coupe leur
+  // lecture : sans ça, les anciens stems continuaient de sonner par-dessus le
+  // nouveau morceau.
+  if (change && edition.enLecture) await arreterStems();
   edition.source = t;
   $("demix-source").textContent = t
     ? `${txt(t.artist, "?")} — ${txt(t.title, "?")}`
     : "Choisis un morceau dans la liste ou sur la carte.";
   $("lancer-demix").disabled = !t;
-  if (t) chargerStemsExistants(t);
+  // Revenir sur le même morceau (simple ré-entrée dans le mode) garde
+  // l'établi et ses réglages en place.
+  if (change) {
+    edition.stems = [];
+    edition.stemSel = null;
+    // Le tempo est propre au morceau : on l'oublie tant que le nouveau n'est
+    // pas mesuré, plutôt que d'afficher un instant le BPM du précédent.
+    edition.tempoSource = null;
+    edition.vitesseEnBpm = false;
+    dessinerReglages();
+  }
+  if (t && (change || !edition.stems.length)) chargerStemsExistants(t);
+  majEtatEditer();
+}
+
+/// Le centre d'Éditer a trois états (`docs/ui-spec-editeur.md`, « Le parcours ») :
+///  1. **choisir** — la grille/liste, comme en Écoute ;
+///  2. **séparer** — la carte de séparation au centre (`#editer-separer`) ;
+///  3. **retoucher** — la pile de stems (`#editer-etabli`) + la barre d'outils
+///     (`#dock`), le détail d'un stem dans l'inspecteur (`#bloc-stem`).
+/// `montrerChoix` force le retour à l'état 1 depuis l'établi sans décharger.
+function majEtatEditer() {
+  if (modeCourant !== "editer") return;
+  const aStems = edition.stems.length > 0;
+  // Par défaut on choisit ; on ne passe à « séparer » que sur un choix
+  // explicite (clic sur une piste), et à « retoucher » dès qu'il y a des stems.
+  const etat = edition.montrerChoix
+    ? 1
+    : aStems
+      ? 3
+      : edition.sourceChoisie && edition.source
+        ? 2
+        : 1;
+  const choisir = etat === 1;
+
+  $("editer-separer").hidden = etat !== 2;
+  $("editer-etabli").hidden = etat !== 3;
+  $("dock").hidden = etat !== 3;
+  $("bloc-stem").hidden = etat !== 3 || !edition.stemSel;
+
+  if (choisir) {
+    // État 1 = le navigateur d'Écoute, tel quel. `poser` masque grille et
+    // liste hors mode Écoute (et les met en page à hauteur nulle) : on les
+    // ré-affiche et on les redessine ici, une fois visibles.
+    const enGrille = vueEnGrille();
+    $("liste").hidden = enGrille;
+    $("grille").hidden = !enGrille;
+    if (enGrille) {
+      grilleDernierRang = -1;
+      dessinerGrille();
+    } else {
+      dessiner();
+    }
+    const avecIndex =
+      vue.quoi === "artistes" || (vue.quoi === "albums" && triAlbums === "alpha");
+    $("index-alpha").hidden = !avecIndex;
+    $("fil-titre").textContent = vue.titre;
+    const compte = vue.quoi === "albums" ? lignesCourantes().length : vue.lignes.length;
+    $("fil-compte").textContent = `${compte} ${
+      vue.quoi === "artistes" ? "artistes" : vue.quoi === "albums" ? "albums" : "morceaux"
+    }`;
+    $("retour").hidden = vue.retour === null;
+    $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
+    // Raccourci vers la séparation du morceau en lecture.
+    const cand = fileCourante.find((t) => t.path === enLecture) ?? null;
+    $("editer-candidat").hidden = !cand;
+    if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
+  } else {
+    $("liste").hidden = true;
+    $("grille").hidden = true;
+    $("index-alpha").hidden = true;
+    $("editer-candidat").hidden = true;
+    const t = edition.source;
+    $("fil-titre").textContent =
+      `${etat === 2 ? "Séparer" : "Établi"} — ${txt(t?.title, "?")}`;
+    $("fil-compte").textContent = "";
+    $("retour").hidden = false;
+    $("retour").textContent = "← Choisir un morceau";
+  }
+
+  if (etat === 3) positionnerPlayhead();
+}
+
+/// Le playhead unique en travers de la pile — un seul trait qui relie les
+/// têtes de lecture peintes sur chaque spectrogramme (`docs/ui-spec-editeur.md`,
+/// décision 8). Silencieux tant que la pile n'est pas à l'écran.
+function positionnerPlayhead() {
+  const ph = $("playhead");
+  const etabli = $("editer-etabli");
+  const pistes = $("dock-pistes");
+  const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
+  if (modeCourant !== "editer" || etabli.hidden || !premier || !pistes.children.length) {
+    ph.hidden = true;
+    return;
+  }
+  // Deltas de rectangles : sans ambiguïté de padding ou d'offsetParent.
+  // `.etabli` (le bloc englobant) n'a pas de bordure, `re.left` = bord interne.
+  const rc = premier.canvas.getBoundingClientRect();
+  const re = etabli.getBoundingClientRect();
+  const rp = pistes.getBoundingClientRect();
+  ph.style.left = `${Math.round(rc.left - re.left + etabli.scrollLeft + edition.tete * rc.width)}px`;
+  ph.style.top = `${Math.round(rp.top - re.top + etabli.scrollTop)}px`;
+  ph.style.height = `${pistes.offsetHeight}px`;
+  ph.hidden = false;
+}
+
+/// Le détail du stem sélectionné, dans l'inspecteur commun — plus de panneau
+/// déplié sous la ligne (`interface-guidelines.md` Règle 1).
+function majInspecteurStem() {
+  const hote = $("insp-stem");
+  const s = edition.stems.find((x) => x.nom === edition.stemSel);
+  const montrer = !!s && modeCourant === "editer" && edition.stems.length > 0;
+  $("bloc-stem").hidden = !montrer;
+  if (!montrer) {
+    hote.replaceChildren();
+    return;
+  }
+  $("insp-stem-nom").textContent = s.nom;
+  hote.replaceChildren(panneauStem(s));
+}
+
+/// Met à jour, sur la ligne d'un stem dans la pile, le résumé de ce qui
+/// s'écarte de l'ensemble (« +3 · greffé »…) et l'accent — appelé quand
+/// l'inspecteur change un réglage, sans redessiner toute la pile.
+function majResumeLigne(s) {
+  const etat = document.querySelector(`.piste[data-stem="${s.nom}"] .stem__etat`);
+  if (etat) etat.textContent = resumeStem(s);
 }
 
 /// Les stems prennent la main sur la lecture, au même instant et dans le même
@@ -8281,7 +8592,6 @@ function stemNeuf([nom, chemin]) {
     vitesse: null,
     tonalite: null,
     greffe: null,
-    ouvert: false,
     voisins: null,
   };
 }
@@ -8292,6 +8602,7 @@ async function chargerStemsExistants(t) {
     edition.stems = trouves.map(stemNeuf);
     dessinerStems();
     $("demix-etat").textContent = `${trouves.length} stems déjà calculés`;
+    majTempoSource();
     if (modeCourant === "editer") await prendreLaMain();
   } else {
     edition.stems = [];
@@ -8309,6 +8620,27 @@ document.querySelectorAll("[data-variante]").forEach((b) =>
   }),
 );
 
+/// Barre + texte pendant une séparation.
+///
+/// Tant que le moteur décode le morceau et chauffe le modèle, aucun segment
+/// n'est connu : la barre reste indéterminée et le texte garde l'ordre de
+/// grandeur. Ensuite elle se gradue segment par segment ; la variante affinée
+/// nomme en plus le stem en cours, ses quatre réseaux passant l'un après
+/// l'autre.
+function majAvancementDemix(d) {
+  const jauge = $("demix-jauge");
+  if (!d.segments_total) {
+    jauge.removeAttribute("value");
+    $("demix-etat").textContent = "séparation en cours… (compter ~30 s par morceau)";
+    return;
+  }
+  jauge.max = d.segments_total;
+  jauge.value = d.segments_faits;
+  const pct = Math.round((100 * d.segments_faits) / d.segments_total);
+  const stem = d.stem ? ` — ${d.stem} en cours` : "";
+  $("demix-etat").textContent = `séparation : ${pct} %${stem}`;
+}
+
 let sondageDemix = null;
 $("lancer-demix").addEventListener("click", async () => {
   const t = edition.source;
@@ -8321,13 +8653,20 @@ $("lancer-demix").addEventListener("click", async () => {
   }
   $("lancer-demix").disabled = true;
   $("demix-etat").textContent = "séparation en cours… (compter ~30 s par morceau)";
+  $("demix-jauge").hidden = false;
+  $("demix-jauge").removeAttribute("value"); // indéterminée le temps du décodage et de la chauffe
 
   clearInterval(sondageDemix);
   sondageDemix = setInterval(async () => {
     const d = await invoke("demix_state");
-    if (d.en_cours) return;
+    if (d.en_cours) {
+      majAvancementDemix(d);
+      return;
+    }
     clearInterval(sondageDemix);
     sondageDemix = null;
+    $("demix-jauge").hidden = true;
+    $("demix-jauge").value = 0;
     $("lancer-demix").disabled = false;
     $("demix-etat").textContent = d.resultat ?? "";
     if (edition.enLecture) await arreterStems();
@@ -8335,33 +8674,39 @@ $("lancer-demix").addEventListener("click", async () => {
     edition.solo = null;
     edition.muets.clear();
     dessinerStems();
+    majTempoSource();
     // Même règle qu'au chargement d'un démixage existant : afficher des stems,
     // c'est en faire la source. Sans cela, solo, coupure, vitesse et hauteur
     // n'agissaient sur rien tant qu'on n'avait pas relancé la lecture.
     await prendreLaMain();
-  }, 1500);
+  }, 800); // assez serré pour que la barre avance visiblement segment par segment
 });
 
 function dessinerStems() {
   const hote = $("dock-pistes");
   hote.replaceChildren();
-  $("dock").hidden = edition.stems.length === 0 || modeCourant !== "editer";
   $("dock-source").textContent = edition.source ? txt(edition.source.title, "?") : "";
   if (!edition.enLecture) {
     $("dock-aide").textContent = edition.stems.length ? "▶ en bas pour écouter les stems" : "";
   }
   majDerive();
 
+  // Ranger le centre **avant** de peindre : `#editer-etabli` doit être visible
+  // pour que les canevas aient leur largeur réelle — un spectrogramme calculé à
+  // largeur nulle est ensuite étiré et flou.
+  majEtatEditer();
+
   for (const s of edition.stems) {
-    // La ligne et, replié dessous, ce qui ne concerne que ce stem. Replié
-    // parce que la ligne porte déjà quatre commandes : un éditeur est
-    // précisément l'endroit où l'Atelier retomberait en panneau
-    // d'administration (`docs/ui-spec-editeur.md`).
+    // La ligne du stem. Ce qui ne concerne que lui — vitesse, hauteur,
+    // remplacement — n'est plus déplié dessous : il va dans l'inspecteur
+    // (`majInspecteurStem`), un seul inspecteur (`interface-guidelines.md`).
     const piste = document.createElement("div");
     piste.className = "piste";
+    piste.dataset.stem = s.nom;
 
     const el = document.createElement("div");
     el.className = "stem";
+    el.classList.toggle("stem--sel", edition.stemSel === s.nom);
     const muet = edition.muets.has(s.nom);
     const solo = edition.solo === s.nom;
     // Le solo l'emporte : c'est la convention de toutes les tables de mixage.
@@ -8369,23 +8714,28 @@ function dessinerStems() {
     el.classList.toggle("stem--muet", !audible);
     el.classList.toggle("stem--solo", solo);
 
-    el.innerHTML = `<span class="stem__nom"></span>
-                    <button class="stem__b" data-a="solo">solo</button>
-                    <button class="stem__b" data-a="muet">muet</button>
-                    <button class="stem__b" data-a="regler"></button>
-                    <span class="stem__jauge" title="Niveau — tirer pour régler"><i></i></span>
+    // Colonne de commande étroite à gauche (façon en-tête de piste de
+    // séquenceur), le spectrogramme prend tout le reste de la largeur.
+    // Cliquer le nom sélectionne le stem : son détail (vitesse, hauteur,
+    // remplacement) s'ouvre dans l'inspecteur — pas de bouton dédié.
+    el.innerHTML = `<div class="stem__ctrl">
+                      <button class="stem__tete" data-a="sel"
+                              title="Régler ce stem — vitesse, hauteur, remplacement">
+                        <span class="stem__nom"></span>
+                        <span class="stem__etat"></span>
+                      </button>
+                      <span class="stem__actions">
+                        <button class="stem__b" data-a="solo" title="Solo">S</button>
+                        <button class="stem__b" data-a="muet" title="Muet">M</button>
+                      </span>
+                      <span class="stem__jauge" title="Niveau — tirer pour régler"><i></i></span>
+                    </div>
                     <canvas class="stem__spectre"></canvas>`;
-    el.children[0].textContent = s.nom;
-    el.children[1].classList.toggle("stem__b--actif", solo);
-    el.children[2].classList.toggle("stem__b--actif", muet);
-    el.querySelector("i").style.width = `${(audible ? s.niveau : 0) * 100}%`;
-
-    // Le badge dit ce que ce stem a de particulier — et « régler » quand il
-    // n'a rien de particulier à dire.
-    const badge = el.children[3];
-    badge.textContent = etiquetteStem(s);
-    badge.classList.toggle("stem__b--regle", stemEcarte(s));
-    badge.title = "Vitesse, hauteur et remplacement de ce stem seul";
+    el.querySelector(".stem__nom").textContent = s.nom;
+    el.querySelector(".stem__etat").textContent = resumeStem(s);
+    el.querySelector('[data-a="solo"]').classList.toggle("stem__b--actif", solo);
+    el.querySelector('[data-a="muet"]').classList.toggle("stem__b--actif", muet);
+    el.querySelector(".stem__jauge i").style.width = `${(audible ? s.niveau : 0) * 100}%`;
 
     el.querySelector('[data-a="solo"]').addEventListener("click", () => {
       edition.solo = solo ? null : s.nom;
@@ -8398,8 +8748,8 @@ function dessinerStems() {
       dessinerStems();
       appliquerNiveaux();
     });
-    badge.addEventListener("click", () => {
-      s.ouvert = !s.ouvert;
+    el.querySelector('[data-a="sel"]').addEventListener("click", () => {
+      edition.stemSel = edition.stemSel === s.nom ? null : s.nom;
       dessinerStems();
     });
 
@@ -8431,23 +8781,26 @@ function dessinerStems() {
     });
 
     piste.appendChild(el);
-    if (s.ouvert) piste.appendChild(panneauStem(s, badge));
     hote.appendChild(piste);
     dessinerSpectre(cnv, s);
   }
+
+  majInspecteurStem();
+  majEtatEditer();
 }
 
-/// Ce que le badge d'une ligne affiche : rien de particulier, ou quoi.
-function etiquetteStem(s) {
+/// Résumé de ce qui écarte un stem de l'ensemble, pour sa ligne dans la pile —
+/// chaîne vide quand il suit tout (la ligne n'affiche alors rien).
+function resumeStem(s) {
   const bouts = [];
   if (s.vitesse !== null) bouts.push(REGLAGES.vitesse.ecrire(s.vitesse));
   if (s.tonalite !== null) bouts.push(REGLAGES.tonalite.ecrire(s.tonalite));
   if (s.greffe) bouts.push("greffé");
-  return bouts.length ? bouts.join(" · ") : "régler";
+  return bouts.join(" · ");
 }
 
 /// Le panneau d'un stem : sa vitesse, sa hauteur, et d'où le remplacer.
-function panneauStem(s, badge) {
+function panneauStem(s) {
   const pan = document.createElement("div");
   pan.className = "stem__pan";
 
@@ -8483,8 +8836,9 @@ function panneauStem(s, badge) {
       champ.value = REGLAGES[nom].ecrire(nom === "vitesse" ? vitesseDe(s) : tonaliteDe(s));
     }
     ensemble.disabled = s.vitesse === null && s.tonalite === null;
-    badge.textContent = etiquetteStem(s);
-    badge.classList.toggle("stem__b--regle", stemEcarte(s));
+    // Refléter le changement sur la ligne du stem dans la pile, sans la
+    // redessiner entièrement (on garde le focus des champs en cours de saisie).
+    majResumeLigne(s);
     majDerive();
   };
 
@@ -8747,11 +9101,17 @@ function attendreDemix() {
         reject(e);
         return;
       }
-      if (d.en_cours) return;
+      if (d.en_cours) {
+        if (d.segments_total) {
+          const pct = Math.round((100 * d.segments_faits) / d.segments_total);
+          $("dock-aide").textContent = `séparation du morceau voisin… ${pct} %`;
+        }
+        return;
+      }
       clearInterval(t);
       if (d.stems.length) resolve(d);
       else reject(d.resultat ?? "la séparation du morceau voisin a échoué");
-    }, 1500);
+    }, 1000);
   });
 }
 
@@ -8761,9 +9121,19 @@ function attendreDemix() {
 /// séquentielle déjà retenue pour la carte. Une rampe n'oppose pas des
 /// identités — c'est ce qui l'autorise là où trois teintes catégorielles
 /// seraient déjà de trop.
+/// Hauteur visible d'un spectrogramme de stem, en pixels CSS — doit suivre
+/// `.stem__spectre { height }` dans `style.css`. Volontairement basse : la
+/// pile doit rester lisible avec une dizaine de stems (variante 6 stems +
+/// greffes).
+const HAUT_STEM_SPECTRE = 64;
+
 async function dessinerSpectre(cnv, stem) {
-  const largeur = Math.max(120, Math.round(cnv.getBoundingClientRect().width));
-  const hauteur = 46;
+  // Rendu à la densité de l'écran : sur un écran Retina, un canevas calculé à
+  // la taille CSS est étiré ×2 et devient flou. On calcule donc à
+  // `devicePixelRatio` près et on laisse le CSS le réduire.
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const largeur = Math.max(240, Math.round(cnv.getBoundingClientRect().width * dpr));
+  const hauteur = Math.round(HAUT_STEM_SPECTRE * dpr);
 
   if (!stem.spectre) {
     try {
@@ -8805,6 +9175,8 @@ async function dessinerSpectre(cnv, stem) {
   stem.fond = fond;
   stem.canvas = cnv;
   peindreSpectre(stem);
+  // Le canevas vient d'être dimensionné : le playhead unique peut se caler.
+  positionnerPlayhead();
 }
 
 /// Repose le spectrogramme et trace la tête de lecture dessus.
@@ -8827,10 +9199,12 @@ function peindreSpectre(stem) {
   ctx.fillRect(x, 0, 1, cnv.height);
 }
 
-/// Déplace la tête de lecture sur tous les spectrogrammes à la fois.
+/// Déplace la tête de lecture sur tous les spectrogrammes à la fois, et le
+/// playhead unique qui les relie.
 function poserTete(frac) {
   edition.tete = Math.min(1, Math.max(0, frac || 0));
   for (const s of edition.stems) peindreSpectre(s);
+  positionnerPlayhead();
 }
 
 /// Table de 256 couleurs interpolée sur `--rampe`, calculée une fois.
@@ -8918,6 +9292,10 @@ async function lireStems() {
     await appliquerVitesses();
   } catch (e) {
     edition.enLecture = false;
+    // `stems_play` a pu réussir avant qu'une étape suivante échoue : on coupe
+    // le multipiste côté moteur, sans quoi il jouerait sans que rien ne le
+    // pilote (le sondage suit `edition.enLecture`).
+    await invoke("stems_transport", { action: "arreter", position: null }).catch(() => {});
     $("dock-aide").textContent = "";
     $("demix-etat").textContent = String(e);
     return;
@@ -8927,17 +9305,24 @@ async function lireStems() {
   sonder(true);
 }
 
+/// Coupe la lecture des stems. Toujours sûre à appeler — même si l'interface
+/// pense qu'ils ne jouent pas : l'ordre part quand même au moteur, ce qui
+/// évite un multipiste orphelin qui sonnerait sans que rien ne le pilote.
 async function arreterStems() {
-  if (!edition.enLecture) return;
+  const jouait = edition.enLecture;
   edition.enLecture = false;
-  await invoke("stems_transport", { action: "arreter", position: null });
+  await invoke("stems_transport", { action: "arreter", position: null }).catch(() => {});
   $("dock-aide").textContent = "";
-  poserTete(0);
+  if (jouait) poserTete(0);
 }
 
 $("dock-fermer").addEventListener("click", async () => {
   if (edition.enLecture) await arreterStems();
-  $("dock").hidden = true;
+  // Ferme l'établi : on repart de la carte de séparation, sans recalcul si on
+  // rouvre (`stems_existants` les retrouve).
+  edition.stems = [];
+  edition.stemSel = null;
+  dessinerStems();
 });
 
 /* ---------------------------------------------------------- démarrage */

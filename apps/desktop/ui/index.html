@@ -182,20 +182,9 @@
         <div id="familles" class="familles"></div>
       </div>
 
-      <!-- Mode Éditer : le démixage -->
-      <div class="bloc" id="bloc-demix" hidden>
-        <p class="rail__titre">Démixage</p>
-        <p class="aide" id="demix-source">Aucun morceau choisi.</p>
-        <div class="segments segments--colonne" id="variantes">
-          <button class="segment segment--actif" data-variante="htdemucs">4 stems</button>
-          <button class="segment" data-variante="htdemucs_6s">6 stems — + guitare, piano</button>
-          <button class="segment" data-variante="htdemucs_ft">4 stems affinés — plus lent</button>
-        </div>
-        <div class="ajout__ligne" style="margin-top:10px">
-          <button id="lancer-demix" class="bouton">Séparer</button>
-        </div>
-        <p id="demix-etat" class="scan-etat"></p>
-      </div>
+      <!-- Mode Éditer : le bloc « Démixage » ne vit plus dans le rail — il
+           descend au centre en état 2 (« carte de séparation »,
+           `docs/ui-spec-editeur.md`). Le rail ne garde que le permanent. -->
 
       <div class="bloc" id="bloc-chemin" hidden>
         <p class="rail__titre">Chemin</p>
@@ -267,6 +256,9 @@
       <header class="fil">
         <button id="retour" class="fil__retour" hidden>← Artistes</button>
         <h1 id="fil-titre">Albums</h1>
+        <!-- Mode Éditer, état « choisir » : raccourci vers la séparation du
+             morceau en lecture, sans avoir à le retrouver dans la liste. -->
+        <button id="editer-candidat" class="fil__candidat" hidden></button>
         <span id="fil-compte" class="fil__compte"></span>
         <!-- Ordre de la grille d'albums (mode Écoute). L'ordre alphabétique
              vient déjà trié du moteur ; « année » et « aléatoire » retrient
@@ -284,6 +276,34 @@
         <!-- Repère alphabétique : Artistes et Albums seulement, la liste
              d'un album ou une recherche n'a pas d'ordre à indexer. -->
         <nav id="index-alpha" class="index-alpha" aria-label="Aller à la lettre" hidden></nav>
+
+        <!-- Mode Éditer, état 2 : la carte de séparation, au centre. Le bloc
+             « Démixage » a quitté le rail (`docs/ui-spec-editeur.md`, « Le
+             parcours — le centre a trois états »). -->
+        <div id="editer-separer" class="editer-separer" hidden>
+          <div id="bloc-demix" class="demix-carte">
+            <p class="rail__titre">Démixage</p>
+            <p class="aide" id="demix-source">Aucun morceau choisi.</p>
+            <div class="segments segments--colonne" id="variantes">
+              <button class="segment segment--actif" data-variante="htdemucs">4 stems</button>
+              <button class="segment" data-variante="htdemucs_6s">6 stems — + guitare, piano</button>
+              <button class="segment" data-variante="htdemucs_ft">4 stems affinés — plus lent</button>
+            </div>
+            <div class="ajout__ligne" style="margin-top:10px">
+              <button id="lancer-demix" class="bouton">Séparer</button>
+            </div>
+            <progress id="demix-jauge" class="jauge" hidden max="1" value="0"></progress>
+            <p id="demix-etat" class="scan-etat"></p>
+          </div>
+        </div>
+
+        <!-- Mode Éditer, état 3 : l'établi. La pile de stems occupe le centre,
+             un seul playhead vertical en travers. Le détail d'un stem est
+             porté par l'inspecteur (#bloc-stem), pas déplié sous la ligne. -->
+        <div id="editer-etabli" class="etabli" hidden>
+          <div id="dock-pistes" class="dock__pistes"></div>
+          <div id="playhead" class="playhead" hidden></div>
+        </div>
 
         <!-- Mode Explorer : la carte -->
         <div id="carte-vue" class="carte" hidden>
@@ -654,11 +674,21 @@
           <div id="voisins" class="voisins"></div>
         </div>
       </div>
+
+      <!-- Mode Éditer : le détail du stem sélectionné dans la pile. Un seul
+           inspecteur (`interface-guidelines.md` Règle 1) — sa vitesse, sa
+           hauteur, d'où le remplacer. Peuplé par `majInspecteurStem`. -->
+      <div id="bloc-stem" hidden>
+        <p class="rail__titre">Stem sélectionné</p>
+        <p id="insp-stem-nom" class="insp__stem-nom"></p>
+        <div id="insp-stem"></div>
+      </div>
     </aside>
 
-    <!-- Dock du module 3 : pousse le centre vers le haut sans le masquer,
-         comme le veut `ui-spec.md` — la carte et les listes restent la
-         réserve de matière. -->
+    <!-- Barre d'outils des stems (module 3) : pleine largeur au-dessus du
+         transport, présente en état « établi » seulement. Les réglages
+         d'ensemble ; le détail d'un stem est dans l'inspecteur, la pile est
+         au centre (`docs/ui-spec-editeur.md`). -->
     <section class="dock" id="dock" hidden aria-label="Stems">
       <header class="dock__tete">
         <p class="rail__titre">Stems</p>
@@ -668,8 +698,16 @@
           <b>vitesse</b>
           <button data-r="vitesse" data-d="-1" aria-label="Ralentir">−</button>
           <input id="val-vitesse" class="reglage__val" inputmode="decimal"
-                 aria-label="Vitesse en pour cent" value="100 %">
+                 aria-label="Vitesse de lecture" value="100 %">
           <button data-r="vitesse" data-d="1" aria-label="Accélérer">+</button>
+          <!-- N'apparaît que si le morceau pulse franchement : bascule le
+               réglage entre pour cent et BPM (`docs/ui-spec-editeur.md`). -->
+          <button id="vitesse-unite" class="reglage__unite" hidden
+                  title="Régler la vitesse en BPM plutôt qu'en pour cent. Proposé quand la pulsation du morceau est franche — pratique pour amener un stem au tempo d'un autre."></button>
+          <!-- Repliement d'octave : n'apparaît qu'en BPM, quand viser ce tempo
+               demande plus d'une demi-octave d'étirement. -->
+          <button id="vitesse-octave" class="reglage__unite" hidden
+                  title="Le morceau se lit peut-être à demi- ou double-tempo : ramener le rapport près de 1 au lieu d'étirer d'une octave."></button>
         </div>
         <div class="reglage" role="group" aria-label="Transposition en demi-tons"
              title="Transposition de tous les stems, en demi-tons, à durée inchangée. Quelques secondes de calcul par réglage. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
@@ -692,7 +730,6 @@
         <span id="dock-aide" class="dock__aide"></span>
         <button id="dock-fermer" class="file__fermer" aria-label="Fermer les stems">×</button>
       </header>
-      <div id="dock-pistes" class="dock__pistes"></div>
     </section>
 
     <!-- Transport pleine largeur -->

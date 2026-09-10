@@ -86,9 +86,10 @@ html, body {
   display: grid;
   height: 100vh;
   grid-template-columns: 232px 1fr 300px;
-  /* Le dock du module 3 occupe une rangée à hauteur nulle tant qu'il est
-     masqué : `ui-spec.md` veut qu'il pousse le centre vers le haut sans le
-     faire disparaître — la carte reste la réserve de matière. */
+  /* La barre d'outils des stems (module 3) occupe une rangée à hauteur nulle
+     tant qu'elle est masquée. Ce n'est plus un tiroir : la pile de stems vit
+     au centre, cette rangée ne porte que les réglages d'ensemble
+     (`docs/ui-spec-editeur.md`, « Le parcours — le centre a trois états »). */
   grid-template-rows: 1fr auto 64px;
   grid-template-areas:
     "rail centre inspecteur"
@@ -96,61 +97,126 @@ html, body {
     "trans trans trans";
 }
 
-/* ---------- dock : les stems (module 3) ---------- */
+/* ---------- barre d'outils des stems (module 3) ---------- */
+/* Plus un tiroir : une bande pleine largeur au-dessus du transport, qui ne
+   porte que les réglages d'ensemble. La pile est au centre (`.etabli`). */
 .dock {
   grid-area: dock;
   background: var(--panel);
   border-top: 1px solid var(--line);
-  padding: 12px 18px 14px;
-  max-height: 34vh;
-  overflow: auto;
+  padding: 8px 18px;
 }
-.dock__tete { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.dock__tete { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .dock__tete .file__fermer { margin-left: auto; }
-.dock__pistes { display: flex; flex-direction: column; gap: 6px; }
+/* Un titre long ne pousse pas les réglages hors de la barre. */
+#dock-source { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock__pistes { display: flex; flex-direction: column; gap: 8px; }
 .dock__aide {
   margin-left: auto; font-family: var(--mono); font-size: 9.5px;
   letter-spacing: .1em; text-transform: uppercase; color: var(--mut); opacity: .7;
 }
 .dock__tete .file__fermer { margin-left: 12px; }
 
-/* Spectrogramme d'un stem : ce qu'il contient, pas seulement combien. */
-.stem__spectre {
-  margin-left: auto; flex: 1 1 auto; min-width: 120px;
-  height: 46px; display: block; background: var(--bg); cursor: pointer;
+/* ---------- l'établi : la pile de stems au centre (état 3) ---------- */
+.etabli {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 12px 16px; position: relative;
 }
-/* Le niveau est un vrai réglage : on le tire. */
-.stem__jauge { cursor: ew-resize; }
-.stem__jauge:hover i { filter: brightness(1.25); }
+.etabli .dock__pistes { gap: 4px; }
+/* Un seul playhead vertical en travers de la pile — il rend visible la
+   décision « un seul curseur » (`docs/ui-spec-editeur.md`). Les têtes de
+   lecture peintes sur chaque spectrogramme restent, alignées ; ce trait ne
+   fait que relier les intervalles. */
+.playhead {
+  position: absolute; width: 1px;
+  background: var(--accent); opacity: .55; pointer-events: none;
+}
 
-/* Une piste de stem : nom, boutons solo/muet, niveau. */
-.stem {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border: 1px solid var(--line); background: var(--panel2);
+/* ---------- état 2 : la carte de séparation, au centre ---------- */
+.editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px; display: flex; justify-content: center; }
+.demix-carte {
+  width: min(520px, 100%); align-self: flex-start;
+  border: 1px solid var(--line); background: var(--panel); padding: 24px;
 }
-.stem__nom { font-size: 12.5px; min-width: 84px; }
+.demix-carte .segments { margin: 12px 0; }
+
+/* Une piste de stem, façon en-tête de piste d'un séquenceur (GarageBand) :
+   colonne de commande étroite à gauche, le spectrogramme prend tout le reste
+   de la largeur et respire en hauteur. */
+.stem {
+  display: grid; grid-template-columns: 74px minmax(0, 1fr);
+  height: 66px; /* 64 px de spectrogramme + les 2 filets */
+  border: 1px solid var(--line); background: var(--panel2);
+  overflow: hidden;
+}
 .stem--muet { opacity: .4; }
-.stem--solo { border-color: var(--accent); }
+.stem--solo, .stem--sel { border-color: var(--accent); }
+
+/* Colonne juste assez large pour S / M et le fader — tout le reste va au
+   spectrogramme. */
+.stem__ctrl {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 4px 6px; border-right: 1px solid var(--line);
+  min-height: 0; overflow: hidden;
+}
+
+/* Le nom EST la commande de sélection — cliquer ouvre le détail du stem dans
+   l'inspecteur (vitesse, hauteur, remplacement). Pas de bouton dédié : c'est
+   l'en-tête de piste qu'on clique, comme dans un séquenceur. */
+.stem__tete {
+  display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+  background: none; border: 0; padding: 2px 0; margin: 0; cursor: pointer;
+  font: inherit; color: var(--mut); text-align: left; width: 100%;
+}
+.stem__tete:hover { color: var(--txt); }
+.stem--sel .stem__tete { color: var(--accent); }
+.stem__nom {
+  font-size: 12px; line-height: 1.15; text-transform: capitalize;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Ce qui écarte le stem de l'ensemble (« +3 · greffé »…), vide sinon. */
+.stem__etat {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .04em;
+  color: var(--accent); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; width: 100%;
+}
+.stem__etat:empty { display: none; }
+
+.stem__actions { display: flex; gap: 4px; }
 .stem__b {
-  font: inherit; font-size: 11px; cursor: pointer; padding: 3px 9px;
-  background: none; border: 1px solid var(--line); color: var(--mut);
+  font: inherit; font-size: 10px; line-height: 1.4; cursor: pointer;
+  padding: 2px 5px; background: none; border: 1px solid var(--line); color: var(--mut);
 }
 .stem__b:hover { color: var(--txt); }
 .stem__b--actif { color: var(--accent); border-color: var(--accent); }
+
+/* Le niveau : discret, sur toute la largeur de l'étroite colonne — un réglage
+   d'appoint, pas le geste principal. */
 .stem__jauge {
-  height: 5px; flex: 0 0 90px;
+  margin-top: 3px; width: 100%; height: 3px; cursor: ew-resize;
   background: var(--line); position: relative; overflow: hidden;
 }
+.stem__jauge:hover i { filter: brightness(1.25); }
 .stem__jauge i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
 
-/* Un stem et, replié dessous, ce qui ne concerne que lui : sa vitesse, sa
-   hauteur, et d'où le remplacer. Replié parce que la ligne porte déjà quatre
-   commandes — l'éditeur est précisément l'endroit où l'Atelier retomberait en
-   panneau d'administration (`docs/ui-spec-editeur.md`). */
+.stem__spectre {
+  display: block; width: 100%; height: 64px;
+  background: var(--bg); cursor: pointer;
+}
+
+/* Une piste = une ligne de stem. Ce qui ne concerne qu'un stem (vitesse,
+   hauteur, remplacement) n'est plus déplié dessous : il va dans l'inspecteur
+   (`#bloc-stem`), un seul inspecteur — l'éditeur est précisément l'endroit où
+   l'Atelier retomberait en panneau d'administration
+   (`docs/ui-spec-editeur.md`). */
 .piste { display: flex; flex-direction: column; }
+.insp__stem-nom {
+  font-family: var(--serif); font-size: 19px; font-weight: 500;
+  letter-spacing: -.01em; margin: 4px 0 12px; text-transform: capitalize;
+}
 .stem__pan {
-  border: 1px solid var(--line); border-top: none;
-  background: var(--panel2); padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel2); padding: 12px;
   display: flex; flex-direction: column; gap: 10px;
 }
 .stem__pan .reglage:first-child { margin-left: 0; }
@@ -253,6 +319,12 @@ html, body {
   color: var(--mut); cursor: pointer; padding: 0;
 }
 .fil__retour:hover { color: var(--accent); }
+.fil__candidat {
+  font: inherit; font-size: 11.5px; cursor: pointer;
+  background: none; border: 1px solid var(--line); color: var(--mut);
+  padding: 4px 10px; align-self: center;
+}
+.fil__candidat:hover { color: var(--txt); border-color: var(--accent); }
 
 /* Ordre de la grille d'albums : posé à droite de l'en-tête, après le compte. */
 .tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; }
@@ -962,6 +1034,21 @@ html, body {
 .jauge::-webkit-progress-value { background: var(--accent); border-radius: 2px; transition: width .3s ease; }
 .jauge::-moz-progress-bar { background: var(--accent); border-radius: 2px; }
 
+/* Phase indéterminée (décodage + chauffe du modèle, avant le premier segment) :
+   une lueur qui balaie la piste, pour que « ça travaille » se voie. */
+.jauge:indeterminate { background: var(--panel2); }
+.jauge:indeterminate::-webkit-progress-bar {
+  background: linear-gradient(90deg,
+    var(--panel2) 0%, var(--panel2) 30%, var(--accent) 50%, var(--panel2) 70%, var(--panel2) 100%);
+  background-size: 250% 100%;
+  animation: jauge-balayage 1.2s linear infinite;
+}
+@keyframes jauge-balayage { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+
+/* Barre du démixage : un peu plus haute que les jauges de fond, c'est l'attente
+   que l'utilisateur regarde vraiment. */
+#demix-jauge { height: 6px; }
+
 /* ---------- file d'attente ---------- */
 /* En superposition au-dessus de l'inspecteur : la coquille est déjà dense,
    un quatrième volet permanent la ferait basculer côté « panneau ». */
@@ -1137,6 +1224,22 @@ html, body {
 .reglage__val--faux {
   border-color: var(--accent);
   border-style: dashed;
+}
+
+/* Bascule d'unité (% ↔ BPM) et repliement d'octave : plus étroits qu'un
+   pas-à-pas, ils portent du texte et non un signe. Ne s'affichent que sur une
+   pulsation franche, d'où la discrétion — ce n'est pas un réglage de premier
+   plan. */
+.reglage button.reglage__unite {
+  width: auto;
+  min-width: 22px;
+  padding: 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.reglage button.reglage__unite--actif {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Bouton d'export : dans l'en-tête du dock, plus discret qu'un bouton de rail. */

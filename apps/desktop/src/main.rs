@@ -3445,6 +3445,14 @@ struct EtatDemix {
     /// Le morceau en cours de traitement, pour que l'interface sache si les
     /// stems affichés sont bien les siens.
     source: String,
+    /// Segments audio traités et total, pour la barre de progression. `total`
+    /// reste à zéro tant que le découpage n'est pas connu (décodage puis
+    /// chauffe du modèle, ou morceau trop court pour être découpé) : la barre
+    /// se montre alors indéterminée.
+    segments_faits: usize,
+    segments_total: usize,
+    /// Variante affinée : le stem dont le réseau tourne en ce moment.
+    stem: Option<String>,
     /// Stems produits : nom et chemin du WAV.
     stems: Vec<(String, String)>,
     resultat: Option<String>,
@@ -4090,7 +4098,13 @@ fn start_demix(
         let etat = app.state::<Etat>();
         let issue = rusty_music_editor::Demixeur::charger(None, variante).and_then(|d| {
             d.chauffer();
-            d.separer_fichier(&source, &sortie)
+            d.separer_fichier_suivi(&source, &sortie, |p| {
+                if let Ok(mut e) = etat.demix.lock() {
+                    e.segments_faits = p.segments_faits;
+                    e.segments_total = p.segments_total;
+                    e.stem = p.stem.map(str::to_string);
+                }
+            })
         });
 
         let (stems, bilan) = match issue {
@@ -4122,6 +4136,7 @@ fn start_demix(
         let verrou = etat.demix.lock();
         if let Ok(mut d) = verrou {
             d.en_cours = false;
+            d.stem = None;
             d.stems = stems;
             d.resultat = Some(bilan);
         }
@@ -4150,8 +4165,11 @@ fn stems_play(etat: State<Etat>, stems: Vec<(String, String)>) -> Result<Vec<Str
     let noms = multi.noms().to_vec();
 
     // Le lecteur du module 1 se tait : deux sorties audio superposées, ce
-    // serait le morceau d'origine par-dessus ses propres stems.
+    // serait le morceau d'origine par-dessus ses propres stems. On lui reprend
+    // au passage son volume : le curseur de la barre du bas commande la même
+    // écoute, les stems ne doivent pas repartir à fond.
     if let Ok(p) = etat.player.lock() {
+        multi.set_volume(p.volume());
         p.pause();
     }
     *etat.stems.lock().map_err(echec)? = Some(multi);
@@ -4483,6 +4501,65 @@ fn voisins_de_stem(etat: State<Etat>, id: i64, count: usize) -> Result<VoisinsSt
         ecartes,
         sans_tempo,
     })
+}
+
+/// Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
+/// qu'un pourcentage de vitesse.
+#[derive(serde::Serialize)]
+struct TempoCible {
+    /// Tempo du morceau entier, tel que la passe de descripteurs l'a mesuré.
+    /// C'est plus sûr qu'une mesure sur un seul stem, et c'est le nombre que
+    /// l'utilisateur reconnaît. `None` : morceau non mesuré.
+    bpm: Option<f32>,
+    /// Netteté de la pulsation, mesurée sur le stem `drums` de l'établi
+    /// (`battements::Grille`). **Au-delà de 2, la pulsation est franche** ;
+    /// l'interface ne propose le BPM cible qu'à cette condition. `None` : pas
+    /// de stem `drums`, ou il ne se décode pas.
+    nettete: Option<f32>,
+}
+
+/// Le tempo du morceau ouvert et la netteté de sa pulsation.
+///
+/// Le BPM cible n'a de sens que sur une matière qui pulse : une nappe ou un
+/// morceau rubato n'a pas de tempo à viser, et lui en proposer un donnerait
+/// une précision qu'on n'a pas. L'interface s'en sert pour choisir entre le
+/// réglage en BPM et le réglage en pourcentage (`docs/ui-spec-editeur.md`).
+///
+/// La netteté se mesure sur le stem `drums` — le meilleur signal de pulsation
+/// une fois le morceau séparé — par la même grille que la greffe
+/// (`grilles_des_stems`). Le tempo, lui, vient de la base : mesuré sur le
+/// mélange entier, il est plus robuste qu'une batterie seule.
+#[tauri::command(async)]
+fn tempo_cible(etat: State<Etat>, id: i64) -> Result<TempoCible, String> {
+    let (bpm, chemin) = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        let bpm = lib.tempos(&[id]).map_err(echec)?.get(&id).copied();
+        let chemin = lib.track(id).map_err(echec)?.map(|t| t.path);
+        (bpm, chemin)
+    };
+
+    let nettete = chemin.and_then(|p| {
+        let dossier = dossier_stems(&etat, Path::new(&p));
+        let (_, drums) = stems_du_dossier(&dossier)
+            .into_iter()
+            .find(|(n, _)| n == "drums")?;
+        let s = rusty_music_editor::decode::stereo(&drums).ok()?;
+        let mono: Vec<f32> = s
+            .gauche
+            .iter()
+            .zip(&s.droite)
+            .map(|(g, d)| (g + d) * 0.5)
+            .collect();
+        let analyseur = rusty_music_analysis::descripteurs::Analyseur::new();
+        rusty_music_analysis::battements::grille_reechantillonnee(
+            &mono,
+            rusty_music_editor::SR,
+            &analyseur,
+        )
+        .map(|g| g.nettete)
+    });
+
+    Ok(TempoCible { bpm, nettete })
 }
 
 /// Un stem greffé, et ce qu'il a fallu lui faire.
@@ -5557,6 +5634,7 @@ fn main() {
             stems_state,
             stem_spectre,
             voisins_de_stem,
+            tempo_cible,
             stems_greffer,
             path,
             path_drawn,

@@ -435,6 +435,21 @@ impl Multipiste {
         self.inner.is_paused()
     }
 
+    /// Volume maître, appliqué après la somme des stems. `1.0` = niveau
+    /// d'origine.
+    ///
+    /// Distinct des niveaux par piste ([`Multipiste::regler`]) : ceux-là font
+    /// le solo et la coupure, celui-ci est le curseur de la barre du bas. Sans
+    /// lui, passer la lecture aux stems remettait le son à fond, en ignorant le
+    /// volume choisi pour le morceau mêlé.
+    pub fn volume(&self) -> f32 {
+        self.inner.volume()
+    }
+
+    pub fn set_volume(&self, volume: f32) {
+        self.inner.set_volume(volume);
+    }
+
     /// Position de lecture, celle de référence.
     ///
     /// Lue sur le curseur maître et non sur le lecteur : c'est lui qui fait

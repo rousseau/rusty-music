@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — mode Éditer, l'établi à trois états</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Reprend les jetons de `apps/desktop/ui/style.css` — direction « Relief »,
+   encre chaude sur papier. Cette maquette ne fait qu'illustrer la disposition
+   décidée dans `docs/ui-spec-editeur.md` (« Le parcours — le centre a trois
+   états »). Rien ici n'est branché : les canvas sont du bruit, les listes sont
+   figées. */
+:root {
+  --bg:#14120E; --panel:#1B1813; --panel2:#221E17; --line:#2E2921;
+  --txt:#EDE8DC; --mut:#9A9284; --accent:#C07C4A;
+  --serif:Newsreader, Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --familles:#EF8891,#EC9066,#D99E46,#B7AF47,#88BC6A,#4EC497,
+             #0CC3C3,#38BBE6,#73AEF8,#A39FF6,#C892E1,#E289BD;
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--txt);
+  font-family:var(--sans); font-size:14px; overflow:hidden;
+  -webkit-font-smoothing:antialiased; }
+
+/* -------- sélecteur d'état de la maquette (hors app) -------- */
+.demo-bar {
+  position:fixed; top:0; left:0; right:0; z-index:50;
+  display:flex; align-items:center; gap:14px;
+  padding:6px 14px; background:#0d0b08; border-bottom:1px solid var(--line);
+  font-family:var(--mono); font-size:11px; color:var(--mut);
+}
+.demo-bar b { color:var(--txt); font-weight:500; letter-spacing:.04em; }
+.demo-bar button {
+  font:inherit; background:none; border:1px solid var(--line); color:var(--mut);
+  padding:3px 10px; cursor:pointer;
+}
+.demo-bar button.actif { color:var(--accent); border-color:var(--accent); }
+.demo-note { margin-left:auto; font-style:italic; }
+
+/* -------- gabarit Atelier -------- */
+.atelier {
+  position:absolute; inset:33px 0 0 0;
+  display:grid;
+  grid-template-columns:232px 1fr 300px;
+  /* La barre d'outils des stems remplace le « dock » tiroir : une rangée
+     pleine largeur au-dessus du transport, présente seulement en état 3. */
+  grid-template-rows:1fr auto 64px;
+  grid-template-areas:
+    "rail centre inspecteur"
+    "barre barre barre"
+    "trans trans trans";
+}
+
+/* -------- rail -------- */
+.rail { grid-area:rail; background:var(--panel); border-right:1px solid var(--line);
+  padding:18px 16px; overflow-y:auto; display:flex; flex-direction:column; gap:22px; }
+.marque { font-family:var(--serif); font-size:18px; letter-spacing:-.01em; }
+.rail__titre { font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--mut); margin:0 0 8px; }
+.entree-lib { font-size:12.5px; color:var(--mut); padding:6px 0; border-bottom:1px solid var(--line); }
+.modes { display:flex; flex-direction:column; }
+.mode { font:inherit; font-size:13px; text-align:left; background:none;
+  border:none; border-left:2px solid transparent; color:var(--mut);
+  padding:7px 10px; cursor:pointer; }
+.mode--actif { color:var(--accent); border-left-color:var(--accent); background:var(--panel2); }
+.aide { font-size:11.5px; color:var(--mut); line-height:1.55; margin:6px 0 0; }
+.sommaire { font-family:var(--mono); font-size:11px; color:var(--mut); line-height:1.7; }
+
+.segments--colonne { display:flex; flex-direction:column; gap:0; border:1px solid var(--line); }
+.segment { font:inherit; font-size:12px; text-align:left; background:none; border:none;
+  color:var(--mut); padding:8px 10px; cursor:pointer; }
+.segment + .segment { border-top:1px solid var(--line); }
+.segment--actif { background:var(--panel2); color:var(--accent); }
+.bouton { font:inherit; font-size:12.5px; background:var(--panel2); color:var(--txt);
+  border:1px solid var(--line); padding:7px 14px; cursor:pointer; }
+.bouton:hover { border-color:var(--accent); }
+.bouton--mince { padding:5px 12px; font-size:11.5px; }
+
+/* -------- centre -------- */
+.centre { grid-area:centre; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.fil { display:flex; align-items:baseline; gap:14px; padding:20px 26px 14px;
+  border-bottom:1px solid var(--line); flex:none; }
+.fil__retour { font:inherit; font-size:12.5px; background:none; border:none;
+  color:var(--mut); cursor:pointer; padding:0; }
+.fil__retour:hover { color:var(--accent); }
+.fil h1 { font-family:var(--serif); font-size:24px; font-weight:500; letter-spacing:-.01em; margin:0; }
+.fil__compte { font-family:var(--mono); font-size:10.5px; color:var(--mut); margin-left:auto; }
+.centre__corps { flex:1; min-width:0; min-height:0; position:relative; display:flex;
+  flex-direction:column; overflow:hidden; }
+
+/* état 1 : la grille d'albums, réutilisée telle quelle */
+.grille { flex:1; overflow-y:auto; padding:20px 26px;
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:18px 16px; align-content:start; }
+.album { cursor:pointer; }
+.album__art { aspect-ratio:1; background:var(--panel2); border:1px solid var(--line);
+  display:flex; align-items:flex-end; padding:6px; font-family:var(--mono); font-size:9px; color:var(--mut); }
+.album__t { font-size:12px; margin-top:6px; line-height:1.3; }
+.album__a { font-size:11px; color:var(--mut); }
+.album--candidat .album__art { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.album__badge { font-family:var(--mono); font-size:8.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); display:block; margin-top:4px; }
+
+/* état 2 : la carte de séparation, au centre */
+.demix { flex:1; overflow-y:auto; padding:38px; display:flex; justify-content:center; }
+.demix__carte { width:min(520px,100%); border:1px solid var(--line); background:var(--panel);
+  padding:26px; }
+.demix__tete { display:flex; gap:18px; align-items:center; margin-bottom:22px; }
+.demix__art { width:96px; height:96px; flex:none; background:var(--panel2); border:1px solid var(--line);
+  display:flex; align-items:flex-end; padding:6px; font-family:var(--mono); font-size:9px; color:var(--mut); }
+.demix__titre { font-family:var(--serif); font-size:21px; font-weight:500; }
+.demix__artiste { color:var(--mut); font-size:13px; margin-top:2px; }
+.demix__cout { font-family:var(--mono); font-size:10px; color:var(--mut); float:right; }
+.jauge { width:100%; height:4px; background:var(--line); margin-top:18px; position:relative; overflow:hidden; }
+.jauge i { position:absolute; inset:0 auto 0 0; width:44%; background:var(--accent); }
+.demix__etat { font-family:var(--mono); font-size:10.5px; color:var(--mut); margin-top:8px; }
+
+/* état 3 : l'établi — la pile de stems */
+.etabli { flex:1; overflow-y:auto; padding:16px 22px; position:relative; }
+.pile { display:flex; flex-direction:column; gap:10px; position:relative; }
+.lane { border:1px solid var(--line); background:var(--panel); display:grid;
+  grid-template-columns:132px minmax(0,1fr); }
+.lane--sel { border-color:var(--accent); }
+.lane--muet { opacity:.42; }
+.lane__flanc { padding:12px 12px 10px; border-right:1px solid var(--line); display:flex;
+  flex-direction:column; gap:8px; }
+.lane__nom { font-size:13.5px; }
+.lane__b-rangee { display:flex; gap:6px; }
+.stem__b { font:inherit; font-size:10.5px; cursor:pointer; padding:3px 8px;
+  background:none; border:1px solid var(--line); color:var(--mut); }
+.stem__b:hover { color:var(--txt); }
+.stem__b--actif { color:var(--accent); border-color:var(--accent); }
+.stem__b--regle { color:var(--accent); }
+.fader { height:5px; background:var(--line); position:relative; margin-top:2px; cursor:ew-resize; }
+.fader i { position:absolute; inset:0 auto 0 0; background:var(--accent); }
+.lane__spectre { display:block; width:100%; height:88px; background:var(--bg); cursor:pointer; }
+/* le playhead unique, en travers de toute la pile */
+.playhead { position:absolute; top:0; bottom:0; width:1px; background:var(--accent);
+  pointer-events:none; box-shadow:0 0 5px var(--accent); }
+.playhead::before { content:""; position:absolute; top:-1px; left:-3px; border:3px solid transparent;
+  border-top-color:var(--accent); }
+
+/* -------- barre d'outils des stems (ex-dock) -------- */
+.barre { grid-area:barre; background:var(--panel); border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:16px; padding:8px 18px; font-size:12px; }
+.barre__titre { font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--mut); }
+.reglage { display:flex; align-items:center; gap:6px; }
+.reglage b { font-weight:500; font-size:11px; color:var(--mut); }
+.reglage button { font:inherit; width:22px; height:22px; background:none; border:1px solid var(--line);
+  color:var(--mut); cursor:pointer; }
+.reglage__val { width:52px; text-align:center; font-family:var(--mono); font-size:11px;
+  background:var(--bg); border:1px solid var(--line); color:var(--txt); padding:3px 2px; }
+.derive { font-family:var(--mono); font-size:10.5px; color:var(--accent); display:flex; gap:8px; align-items:center; }
+.barre__fin { margin-left:auto; display:flex; gap:12px; align-items:center; }
+.barre__aide { font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--mut); opacity:.7; }
+
+/* -------- inspecteur -------- */
+.inspecteur { grid-area:inspecteur; background:var(--panel); border-left:1px solid var(--line);
+  padding:18px 18px 24px; overflow-y:auto; }
+.pochette { aspect-ratio:1; background:var(--panel2); border:1px solid var(--line);
+  display:flex; align-items:flex-end; padding:8px; font-family:var(--mono); font-size:9px;
+  color:var(--mut); margin-bottom:14px; }
+.insp__titre { font-family:var(--serif); font-size:18px; font-weight:500; }
+.insp__artiste { color:var(--mut); font-size:12.5px; margin:2px 0 14px; }
+.meta { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; margin:0;
+  font-size:12px; }
+.meta dt { color:var(--mut); font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+  text-transform:uppercase; align-self:center; }
+.meta dd { margin:0; }
+.insp__section-titre { font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--mut); margin:22px 0 10px; }
+.insp__stem-nom { font-family:var(--serif); font-size:20px; font-weight:500; }
+.stem__ligne { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.stem__note { font-size:11px; color:var(--mut); line-height:1.5; margin:8px 0 0; }
+.candidats { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.candidat { text-align:left; font:inherit; background:var(--panel2); border:1px solid var(--line);
+  color:var(--txt); padding:7px 9px; cursor:pointer; display:grid; gap:1px; }
+.candidat:hover { border-color:var(--accent); }
+.candidat b { font-size:12px; font-weight:500; }
+.candidat span { font-family:var(--mono); font-size:9.5px; color:var(--mut); }
+.mini-nuage { width:100%; height:120px; border:1px solid var(--line); background:var(--bg);
+  margin-top:10px; display:block; }
+.badge-todo { font-family:var(--mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--accent); border:1px dashed var(--accent); padding:2px 6px; margin-left:6px; }
+
+/* -------- transport -------- */
+.transport { grid-area:trans; background:var(--panel); border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:14px; padding:0 18px; }
+.transport__play { width:34px; height:34px; border-radius:50%; border:1px solid var(--accent);
+  background:none; color:var(--accent); cursor:pointer; font-size:13px; }
+.transport__nav { background:none; border:none; color:var(--mut); font-size:16px; cursor:pointer; }
+.transport__art { width:40px; height:40px; background:var(--panel2); border:1px solid var(--line); flex:none; }
+.transport__now { display:flex; flex-direction:column; min-width:150px; }
+.transport__now b { font-size:12.5px; font-weight:500; }
+.transport__now span { font-size:11px; color:var(--mut); }
+.wave { flex:1; height:38px; background:var(--bg); border:1px solid var(--line); position:relative; }
+.wave i { position:absolute; top:0; bottom:0; width:1px; background:var(--accent); left:36%; }
+.tc { font-family:var(--mono); font-size:10.5px; color:var(--mut); }
+.vol { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9px;
+  color:var(--mut); text-transform:uppercase; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <b>Maquette — mode Éditer</b>
+  <button data-etat="1" class="actif">1 · Choisir</button>
+  <button data-etat="2">2 · Séparer</button>
+  <button data-etat="3">3 · Retoucher (l'établi)</button>
+  <span class="demo-note">illustre <code>docs/ui-spec-editeur.md</code> · rien n'est branché</span>
+</div>
+
+<div class="atelier">
+
+  <!-- ================= RAIL ================= -->
+  <aside class="rail">
+    <div class="marque">Rusty Music</div>
+    <div class="entree-lib">Bibliothèque</div>
+    <div class="modes">
+      <button class="mode">Écouter</button>
+      <button class="mode">Explorer</button>
+      <button class="mode mode--actif">Éditer</button>
+      <button class="mode">Découvrir</button>
+    </div>
+
+    <!-- Le rail d'Éditer ne garde que le permanent. Le bloc « Démixage »
+         (variantes + Séparer) descend au centre en état 2. -->
+    <div id="rail-etat">
+      <p class="rail__titre">Éditer</p>
+      <p class="aide" id="rail-aide"></p>
+    </div>
+
+    <div style="margin-top:auto">
+      <p class="rail__titre">Bibliothèque</p>
+      <div class="sommaire">27 044 morceaux<br>1 893 artistes<br>15 847 mesurés</div>
+    </div>
+  </aside>
+
+  <!-- ================= CENTRE ================= -->
+  <main class="centre">
+    <header class="fil">
+      <button class="fil__retour" id="fil-retour" hidden>← Choisir un morceau</button>
+      <h1 id="fil-titre">Choisir un morceau</h1>
+      <span class="fil__compte" id="fil-compte"></span>
+    </header>
+    <div class="centre__corps">
+
+      <!-- état 1 -->
+      <div class="grille" id="vue-choisir"></div>
+
+      <!-- état 2 -->
+      <div class="demix" id="vue-separer" hidden>
+        <div class="demix__carte">
+          <div class="demix__tete">
+            <div class="demix__art">pochette</div>
+            <div>
+              <div class="demix__titre">Nightshift</div>
+              <div class="demix__artiste">Commodores</div>
+            </div>
+          </div>
+          <div class="segments--colonne" style="margin-bottom:4px">
+            <button class="segment segment--actif">4 stems <span class="demix__cout">~30 s</span></button>
+            <button class="segment">6 stems — + guitare, piano <span class="demix__cout">~30 s</span></button>
+            <button class="segment">4 stems affinés — plus lent <span class="demix__cout">~4 min</span></button>
+          </div>
+          <p class="aide">Le coût est annoncé avant le bouton, comme pour l'analyse.
+            Un morceau déjà séparé s'ouvre directement dans l'établi, sans recalcul.</p>
+          <button class="bouton" style="margin-top:16px">Séparer</button>
+          <div class="jauge"><i></i></div>
+          <p class="demix__etat">séparation — 44 % · passage 3 / 5</p>
+        </div>
+      </div>
+
+      <!-- état 3 -->
+      <div class="etabli" id="vue-etabli" hidden>
+        <div class="pile" id="pile"></div>
+        <div class="playhead" id="playhead" hidden></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ================= INSPECTEUR ================= -->
+  <aside class="inspecteur">
+    <div class="pochette">pochette</div>
+
+    <!-- morceau source : toujours là, l'inspecteur commun -->
+    <div id="insp-morceau">
+      <div class="insp__titre" id="insp-titre">Nightshift</div>
+      <div class="insp__artiste">Commodores · Nightshift · 1985</div>
+      <dl class="meta">
+        <dt>Durée</dt><dd>4:59</dd>
+        <dt>Tempo</dt><dd>106 BPM</dd>
+        <dt>Tonalité</dt><dd>La♭ majeur</dd>
+        <dt>Timbre</dt><dd>chaud, cuivré</dd>
+      </dl>
+    </div>
+
+    <!-- détail d'un stem : peuplé au clic sur une ligne, en état 3 -->
+    <div id="insp-stem" hidden>
+      <p class="insp__section-titre">Stem sélectionné</p>
+      <div class="insp__stem-nom" id="insp-stem-nom">voix</div>
+
+      <div class="stem__ligne">
+        <div class="reglage"><b>vitesse</b><button>−</button>
+          <input class="reglage__val" value="100 %"><button>+</button></div>
+      </div>
+      <div class="stem__ligne">
+        <div class="reglage"><b>hauteur</b><button>−</button>
+          <input class="reglage__val" value="±0"><button>+</button></div>
+        <button class="stem__b" disabled>suivre l'ensemble</button>
+      </div>
+      <p class="stem__note">Régler ce stem seul le désynchronise des autres, et
+        l'écart grandit tant que la lecture continue. « Suivre l'ensemble »
+        réaligne.</p>
+
+      <p class="insp__section-titre">Remplacer ce stem</p>
+      <button class="stem__b">remplacer par…</button>
+      <p class="stem__note">12 voisins au tempo de 106 BPM — 3 écartés pour leur
+        tempo, 1 sans tempo mesuré.</p>
+      <div class="candidats">
+        <button class="candidat"><b>Luther Vandross — Never Too Much</b><span>109 BPM · séparé</span></button>
+        <button class="candidat"><b>Alexander O'Neal — Criticize</b><span>103 BPM · ~30 s</span></button>
+        <button class="candidat"><b>The S.O.S. Band — Just Be Good to Me</b><span>108 BPM · ~30 s</span></button>
+      </div>
+      <canvas class="mini-nuage" id="mini-nuage" width="264" height="120"></canvas>
+      <p class="stem__note">À faire <span class="badge-todo">todo</span> — montrer
+        ces voisins comme la carte : mini-projection t-SNE, palette des familles.
+        C'est ce qui fait de la greffe un pont vers la carte.</p>
+    </div>
+  </aside>
+
+  <!-- ================= BARRE D'OUTILS (état 3 seulement) ================= -->
+  <section class="barre" id="barre" hidden>
+    <span class="barre__titre">Stems</span>
+    <div class="reglage"><b>ensemble · vitesse</b><button>−</button>
+      <input class="reglage__val" value="100 %"><button>+</button></div>
+    <div class="reglage"><b>ensemble · hauteur</b><button>−</button>
+      <input class="reglage__val" value="±0"><button>+</button></div>
+    <span class="derive" id="derive" hidden><b>voix : +1,2 s de dérive</b>
+      <button class="stem__b">réaligner</button></span>
+    <div class="barre__fin">
+      <span class="barre__aide">clic sur un spectrogramme : se déplacer</span>
+      <button class="bouton bouton--mince">Exporter…</button>
+    </div>
+  </section>
+
+  <!-- ================= TRANSPORT ================= -->
+  <footer class="transport">
+    <button class="transport__nav">‹</button>
+    <button class="transport__play">▶</button>
+    <button class="transport__nav">›</button>
+    <div class="transport__art"></div>
+    <div class="transport__now">
+      <b id="tr-titre">Nightshift</b>
+      <span>Commodores</span>
+    </div>
+    <div class="wave"><i></i></div>
+    <span class="tc">01:48 / 04:59</span>
+    <label class="vol"><span>vol</span><input type="range" value="100"></label>
+  </footer>
+
+</div>
+
+<script>
+const STEMS = [
+  { nom:"batterie", niveau:0.9,  ecart:null },
+  { nom:"basse",    niveau:0.8,  ecart:null },
+  { nom:"autres",   niveau:0.75, ecart:null },
+  { nom:"voix",     niveau:0.85, ecart:"+3 · greffé" },
+];
+let stemSel = 3;   // « voix » ouvert d'emblée, pour montrer l'inspecteur
+let etat = 1;
+
+/* -- faux spectrogramme : du bruit filtré, juste pour la silhouette -- */
+function peindreSpectre(cnv, graine) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cnv.clientWidth, h = cnv.clientHeight;
+  cnv.width = w * dpr; cnv.height = h * dpr;
+  const ctx = cnv.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = "#14120E"; ctx.fillRect(0, 0, w, h);
+  let s = graine * 9973;
+  const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let x = 0; x < w; x += 2) {
+    const amp = 0.25 + 0.75 * Math.abs(Math.sin(x / 26 + graine)) * rnd();
+    for (let y = 0; y < h; y += 2) {
+      const bande = 1 - y / h;
+      const v = amp * bande * (0.4 + 0.6 * rnd());
+      if (v < 0.08) continue;
+      const c = Math.round(v * 210);
+      ctx.fillStyle = `rgb(${c},${Math.round(c*0.72)},${Math.round(c*0.4)})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+}
+
+function peindreNuage(cnv) {
+  const ctx = cnv.getContext("2d");
+  const w = cnv.width, h = cnv.height;
+  ctx.fillStyle = "#14120E"; ctx.fillRect(0, 0, w, h);
+  const fam = getComputedStyle(document.documentElement).getPropertyValue("--familles").split(",");
+  let s = 42;
+  const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let i = 0; i < 260; i++) {
+    ctx.fillStyle = fam[Math.floor(rnd() * fam.length)].trim();
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(rnd() * w, rnd() * h, 2, 2);
+  }
+  // les 3 candidats, plus gros, près du centre
+  ctx.globalAlpha = 1;
+  for (const [dx, dy] of [[-14, 8], [22, -6], [6, 20]]) {
+    ctx.fillStyle = fam[6].trim();
+    ctx.beginPath(); ctx.arc(w/2 + dx, h/2 + dy, 3.5, 0, 7); ctx.fill();
+  }
+  ctx.strokeStyle = "#C07C4A"; ctx.globalAlpha = .8;
+  ctx.strokeRect(w/2 - 5, h/2 - 5, 10, 10);
+}
+
+/* -- état 1 : grille d'albums -- */
+const ALBUMS = [
+  ["Nightshift","Commodores",true],["Songs in the Key of Life","Stevie Wonder",false],
+  ["Off the Wall","Michael Jackson",false],["Rumours","Fleetwood Mac",false],
+  ["Aja","Steely Dan",false],["Innervisions","Stevie Wonder",false],
+  ["Hejira","Joni Mitchell",false],["Gaucho","Steely Dan",false],
+  ["Avalon","Roxy Music",false],["Different Light","The Bangles",false],
+  ["Brothers in Arms","Dire Straits",false],["So","Peter Gabriel",false],
+];
+function rendreGrille() {
+  const g = document.getElementById("vue-choisir");
+  g.innerHTML = "";
+  for (const [t, a, cand] of ALBUMS) {
+    const d = document.createElement("div");
+    d.className = "album" + (cand ? " album--candidat" : "");
+    d.innerHTML = `<div class="album__art">${a.toLowerCase().replace(/[^a-z]/g,'').slice(0,8)}</div>
+      <div class="album__t">${t}</div><div class="album__a">${a}</div>
+      ${cand ? '<span class="album__badge">en lecture — candidat</span>' : ''}`;
+    g.appendChild(d);
+  }
+}
+
+/* -- état 3 : pile de stems -- */
+function rendrePile() {
+  const p = document.getElementById("pile");
+  p.innerHTML = "";
+  STEMS.forEach((st, i) => {
+    const lane = document.createElement("div");
+    lane.className = "lane" + (i === stemSel ? " lane--sel" : "") + (st.niveau === 0 ? " lane--muet" : "");
+    lane.innerHTML = `
+      <div class="lane__flanc">
+        <span class="lane__nom">${st.nom}</span>
+        <div class="lane__b-rangee">
+          <button class="stem__b">solo</button>
+          <button class="stem__b">muet</button>
+          <button class="stem__b ${st.ecart ? 'stem__b--regle' : ''}">${st.ecart || 'régler'}</button>
+        </div>
+        <div class="fader"><i style="width:${st.niveau*100}%"></i></div>
+      </div>
+      <canvas class="lane__spectre"></canvas>`;
+    lane.addEventListener("click", () => { stemSel = i; rendrePile(); majInspecteur(); });
+    p.appendChild(lane);
+    peindreSpectre(lane.querySelector("canvas"), i + 1);
+  });
+  const ph = document.getElementById("playhead");
+  ph.hidden = false;
+  const corps = document.querySelector(".etabli");
+  ph.style.left = (corps.getBoundingClientRect().width * 0.36) + "px";
+}
+
+function majInspecteur() {
+  const enEtabli = etat === 3;
+  document.getElementById("insp-stem").hidden = !enEtabli;
+  document.getElementById("insp-morceau").style.opacity = enEtabli ? ".55" : "1";
+  if (enEtabli) {
+    document.getElementById("insp-stem-nom").textContent = STEMS[stemSel].nom;
+    peindreNuage(document.getElementById("mini-nuage"));
+  }
+}
+
+/* -- bascule d'état -- */
+function poser(n) {
+  etat = n;
+  document.querySelectorAll(".demo-bar button").forEach(b =>
+    b.classList.toggle("actif", +b.dataset.etat === n));
+  document.getElementById("vue-choisir").hidden = n !== 1;
+  document.getElementById("vue-separer").hidden = n !== 2;
+  document.getElementById("vue-etabli").hidden  = n !== 3;
+  document.getElementById("barre").hidden = n !== 3;
+  document.getElementById("derive").hidden = n !== 3;
+  document.getElementById("fil-retour").hidden = n === 1;
+  document.getElementById("playhead").hidden = n !== 3;
+
+  const titres = { 1:"Choisir un morceau", 2:"Séparer — Nightshift", 3:"Établi — Nightshift" };
+  document.getElementById("fil-titre").textContent = titres[n];
+  document.getElementById("fil-compte").textContent = n === 1 ? "1 342 albums" : "";
+
+  const aides = {
+    1:"Choisissez un morceau ci-contre — celui en lecture est le candidat par défaut, mis en avant.",
+    2:"La séparation se lance au centre. Le rail ne garde que ce qui est permanent au mode.",
+    3:"Réglages d'ensemble dans la barre du bas ; le détail d'un stem est dans l'inspecteur, au clic sur sa ligne.",
+  };
+  document.getElementById("rail-aide").textContent = aides[n];
+
+  if (n === 3) { rendrePile(); }
+  majInspecteur();
+}
+
+document.querySelectorAll(".demo-bar button").forEach(b =>
+  b.addEventListener("click", () => poser(+b.dataset.etat)));
+document.getElementById("fil-retour").addEventListener("click", () => poser(1));
+window.addEventListener("resize", () => { if (etat === 3) rendrePile(); });
+
+rendreGrille();
+poser(1);
+</script>
+</body>
+</html>

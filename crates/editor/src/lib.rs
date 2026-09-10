@@ -17,6 +17,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use demucs_core::listener::{ForwardEvent, ForwardListener};
 use demucs_core::model::metadata::{self, ModelInfo, StemId};
 use demucs_core::{Demucs, ModelOptions};
 
@@ -168,9 +169,82 @@ pub struct Piste {
     pub droite: Vec<f32>,
 }
 
+/// Avancement d'une séparation, rapporté au fil du calcul.
+///
+/// Un morceau plus long que la fenêtre d'entraînement (~7,8 s) est découpé en
+/// segments qui se recouvrent : c'est le seul jalon régulier que `demucs-core`
+/// émette pendant l'inférence, et donc la mesure d'avancement. En dessous de
+/// cette durée tout passe en un bloc et `segments_total` reste à zéro — la
+/// séparation est alors quasi instantanée.
+#[derive(Debug, Clone, Default)]
+pub struct Progres {
+    /// Segments franchis, et leur nombre total (0 tant qu'il est inconnu).
+    pub segments_faits: usize,
+    pub segments_total: usize,
+    /// Variante affinée seulement : le stem dont le réseau tourne à présent.
+    /// Les quatre réseaux passent l'un après l'autre — autant dire lequel.
+    pub stem: Option<&'static str>,
+}
+
+/// Traduit les évènements de `demucs-core` en [`Progres`] pour l'appelant.
+///
+/// On n'écoute que le découpage en segments et, pour la variante affinée, la
+/// fin de chaque réseau ; les évènements par couche du réseau sont ignorés.
+struct Ecouteur<'a> {
+    rappel: &'a mut dyn FnMut(&Progres),
+    etat: Progres,
+    stems: &'static [StemId],
+    affinee: bool,
+}
+
+impl ForwardListener for Ecouteur<'_> {
+    fn on_event(&mut self, event: ForwardEvent) {
+        match event {
+            ForwardEvent::ChunkStarted { index, total } => {
+                self.etat.segments_faits = index;
+                self.etat.segments_total = total;
+                (self.rappel)(&self.etat);
+            }
+            ForwardEvent::ChunkDone { index, total } => {
+                self.etat.segments_faits = index + 1;
+                self.etat.segments_total = total;
+                (self.rappel)(&self.etat);
+            }
+            // Variante affinée : un réseau par stem, dans l'ordre de `stems`.
+            // Celui qui vient de finir porte `index` ; le suivant démarre.
+            ForwardEvent::StemDone { index, total } if self.affinee => {
+                self.etat.stem = self.stems.get((index + 1) % total).map(|s| s.as_str());
+                (self.rappel)(&self.etat);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Écrit un jeu de stems dans `dossier`, un WAV par piste.
+///
+/// Les fichiers portent le nom du morceau suivi du stem, pour qu'un dossier
+/// contenant plusieurs séparations reste lisible.
+fn ecrire_pistes(entree: &Path, dossier: &Path, pistes: &[Piste]) -> Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dossier)?;
+    let base = entree
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "morceau".into());
+
+    let mut ecrits = Vec::with_capacity(pistes.len());
+    for p in pistes {
+        let sortie = dossier.join(format!("{base} — {}.wav", p.nom));
+        wav::ecrire(&sortie, &p.gauche, &p.droite, SR)?;
+        ecrits.push(sortie);
+    }
+    Ok(ecrits)
+}
+
 /// Le démixeur, modèle chargé en mémoire.
 pub struct Demixeur {
     modele: Demucs<Moteur>,
+    variante: Variante,
 }
 
 impl Demixeur {
@@ -195,7 +269,7 @@ impl Demixeur {
         let octets = std::fs::read(&poids)?;
         let modele = Demucs::<Moteur>::from_bytes(variante.options(), &octets, Default::default())
             .map_err(|e| Error::Modele(e.to_string()))?;
-        Ok(Self { modele })
+        Ok(Self { modele, variante })
     }
 
     /// Fait tourner le modèle une fois à vide.
@@ -222,31 +296,52 @@ impl Demixeur {
     }
 
     /// Sépare un fichier et écrit les stems dans `dossier`.
-    ///
-    /// Les fichiers produits portent le nom du morceau suivi du stem, pour
-    /// qu'un dossier contenant plusieurs séparations reste lisible.
     pub fn separer_fichier(&self, entree: &Path, dossier: &Path) -> Result<Vec<PathBuf>> {
+        self.separer_fichier_suivi(entree, dossier, |_| {})
+    }
+
+    /// Comme [`Demixeur::separer_fichier`], mais rappelle `progres` à chaque
+    /// jalon du calcul (voir [`Progres`]).
+    ///
+    /// L'interface du mode Éditer s'en sert pour la barre de progression : le
+    /// premier appel arrive quand le découpage en segments est connu, donc
+    /// après le décodage et la chauffe.
+    pub fn separer_fichier_suivi(
+        &self,
+        entree: &Path,
+        dossier: &Path,
+        mut progres: impl FnMut(&Progres),
+    ) -> Result<Vec<PathBuf>> {
         let audio = decode::stereo(entree)?;
         tracing::info!(
             secondes = audio.duree(),
             "décodé, séparation sur {}",
             moteur()
         );
-        let pistes = self.separer(&audio)?;
 
-        std::fs::create_dir_all(dossier)?;
-        let base = entree
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "morceau".into());
+        let mut ecouteur = Ecouteur {
+            rappel: &mut progres,
+            etat: Progres::default(),
+            stems: self.variante.stems(),
+            affinee: self.variante == Variante::Affinee,
+        };
+        let stems = attendre(self.modele.separate_with_listener(
+            &audio.gauche,
+            &audio.droite,
+            SR,
+            &mut ecouteur,
+        ))
+        .map_err(|e| Error::Modele(e.to_string()))?;
 
-        let mut ecrits = Vec::with_capacity(pistes.len());
-        for p in &pistes {
-            let sortie = dossier.join(format!("{base} — {}.wav", p.nom));
-            wav::ecrire(&sortie, &p.gauche, &p.droite, SR)?;
-            ecrits.push(sortie);
-        }
-        Ok(ecrits)
+        let pistes: Vec<Piste> = stems
+            .into_iter()
+            .map(|s| Piste {
+                nom: s.id.as_str(),
+                gauche: s.left,
+                droite: s.right,
+            })
+            .collect();
+        ecrire_pistes(entree, dossier, &pistes)
     }
 }
 
