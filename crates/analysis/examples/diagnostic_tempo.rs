@@ -57,6 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 "×2"
                             } else if d.corrige_vers_le_bas {
                                 "÷2"
+                            } else if d.corrige_vers_le_bas_rapide {
+                                "÷2r"
                             } else {
                                 "—"
                             };
@@ -67,8 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 String::new()
                             };
                             println!(
-                                "  fenêtre {i} : grille {:>6.1}  alternance {:.2} (seuil 0,60)  double/brut {:.2} (seuil 1,02)  correction {correction:<2}  -> {:>6.1} BPM{stabilisee}",
-                                d.gagnant_grille, d.alternance, d.brut_double_sur_brut, d.bpm,
+                                "  fenêtre {i} : grille {:>6.1}  alt {:.2} (s.0,60)  brut(g) {:.2} (s.0,50/0,72)  2g/g {:.2} (s.1,02)  g÷2/g {:.2} (s.0,82)  corr {correction:<3}  -> {:>6.1} BPM{stabilisee}",
+                                d.gagnant_grille, d.alternance, d.brut_gagnant, d.brut_double_sur_brut, d.brut_moitie_sur_brut, d.bpm,
                             );
                         }
                         None => println!("  fenêtre {i} : silencieuse"),

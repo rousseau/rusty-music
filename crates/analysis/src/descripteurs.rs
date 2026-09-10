@@ -137,6 +137,52 @@ const SEUIL_SUR_OCTAVE: f32 = 1.02;
 /// l'aurait pas proposée d'emblée.
 const BPM_MAX_CORRECTION: f32 = 266.7;
 
+/// **Garde contre une correction descendante abusive.** La voie descendante par
+/// alternance ([`SEUIL_SOUS_OCTAVE`]) prend le gagnant pour la subdivision d'un
+/// temps deux fois plus lent. Elle se trompe quand le gagnant *est* le vrai
+/// temps mais porte une accentuation forte/faible d'un temps sur deux (grosse
+/// caisse en blanches, caisse claire sur le contretemps — le trip-hop et la pop
+/// lente en sont pleins) : « I'm Yours » de Tricky sortait à 59,8 au lieu de
+/// ~120 sur les cinq fenêtres.
+///
+/// Le tell d'un faux positif : le décalage du gagnant porte lui-même une
+/// énergie récurrente franche — `brut(gagnant)` élevé en valeur absolue — au
+/// lieu d'être un pic fantôme entre deux vrais temps. On saute alors la
+/// correction. Un vrai morceau lent en boom-chick a un `brut(gagnant)` plus
+/// bas : le contretemps qui déclenche l'alternance est un pic isolé, pas une
+/// couche rythmique régulière.
+const BRUT_MIN_POUR_SOUS_OCTAVE: f32 = 0.50;
+
+/// **Seconde voie de correction descendante, pour les gagnants rapides.** Au-delà
+/// de ce BPM, un « tempo principal » est rarement réel : un morceau qui *sonne*
+/// posé mais ressort à 160+ est presque toujours mesuré sur sa subdivision en
+/// croches (métal en demi-temps, jazz swingué, ballade rock). Le prior
+/// log-normal ne le rattrape pas — 163 est plus proche de 120 que 82 en échelle
+/// log — et l'alternance des dents reste sous le seuil de la voie lente sans
+/// l'atteindre quand la subdivision est fournie mais également accentuée
+/// (« Killpop » de Slipknot, « Shape of You » repris par Jamie Cullum, tous
+/// deux sortis à ~163 pour ~82).
+///
+/// Quatre conditions, parce que `brut(gagnant / 2)` seul ne discrimine pas
+/// (comme au sens lent, un train régulier y montre déjà un rapport proche de 1) :
+/// 1. gagnant > [`BPM_SOUS_OCTAVE_RAPIDE`] — un vrai tempo principal y est rare ;
+/// 2. `brut(gagnant / 2) ≥` [`SEUIL_MOITIE_RAPIDE`] `· brut(gagnant)` — la
+///    moitié explique les attaques presque aussi bien ;
+/// 3. `alternance_dents(gagnant) <` [`ALTERNANCE_MAX_RAPIDE`] — il existe au
+///    moins une structure d'accent faible d'un temps sur deux, donc le gagnant
+///    est une subdivision et non un battement nu. Un train parfaitement régulier
+///    (alternance ≈ 1) est préservé, le four-on-the-floor sans accent (house,
+///    gabber) aussi ;
+/// 4. `brut(gagnant) <` [`BRUT_MAX_POUR_RAPIDE`] — le décalage du gagnant n'est
+///    pas *lui-même* une couche rythmique franche. Un vrai morceau rapide et
+///    serré (punk, thrash, gavotte, reel) a un `brut(gagnant)` élevé : c'est son
+///    vrai battement, on n'y touche pas. Symétrique de
+///    [`BRUT_MIN_POUR_SOUS_OCTAVE`].
+const BPM_SOUS_OCTAVE_RAPIDE: f32 = 155.0;
+const SEUIL_MOITIE_RAPIDE: f32 = 0.82;
+const ALTERNANCE_MAX_RAPIDE: f32 = 0.88;
+const BRUT_MAX_POUR_RAPIDE: f32 = 0.72;
+
 /// Chroma de la₂ à do₇. Plus bas, l'écart d'un demi-ton rejoint la largeur
 /// d'une raie ; plus haut, les cymbales alimentent les douze classes.
 const F_MIN: f32 = 110.0;
@@ -495,7 +541,21 @@ pub struct DiagnosticTempo {
     /// `brut(gagnant × 2) / brut(gagnant)` — au-dessus de
     /// [`SEUIL_SUR_OCTAVE`], la correction montante s'applique.
     pub brut_double_sur_brut: f32,
+    /// `brut(gagnant / 2) / brut(gagnant)` — condition de la voie descendante
+    /// rapide ([`SEUIL_MOITIE_RAPIDE`]).
+    pub brut_moitie_sur_brut: f32,
+    /// Évidence brute au décalage du gagnant, en valeur absolue — garde des deux
+    /// voies descendantes ([`BRUT_MIN_POUR_SOUS_OCTAVE`], [`BRUT_MAX_POUR_RAPIDE`]).
+    pub brut_gagnant: f32,
     pub corrige_vers_le_bas: bool,
+    /// Correction descendante par la voie rapide ([`BPM_SOUS_OCTAVE_RAPIDE`])
+    /// plutôt que par l'alternance — non soumise à [`stabiliser_corrections`].
+    pub corrige_vers_le_bas_rapide: bool,
+    /// Gagnant rapide dont la moitié explique les attaques presque aussi bien
+    /// (conditions de la voie rapide hors alternance). [`stabiliser_corrections`]
+    /// s'en sert pour ne pas défaire une correction d'alternance sur un tel
+    /// gagnant.
+    pub rapide_demi_plausible: bool,
     pub corrige_vers_le_haut: bool,
     /// Le tempo rendu par [`tempo`], après correction éventuelle.
     pub bpm: f32,
@@ -530,27 +590,47 @@ pub fn tempo_detaille(env: &[f32]) -> Option<DiagnosticTempo> {
         .max_by(|a, b| a.1.total_cmp(&b.1))
         .filter(|(_, s)| *s > 0.02)?;
 
-    // Correction d'octave. Les deux sens sont mutuellement exclusifs, jamais
-    // chaînés : un gagnant ne descend ou ne monte qu'une fois.
+    // Correction d'octave. Trois voies mutuellement exclusives, jamais
+    // chaînées : un gagnant ne descend ou ne monte qu'une fois.
     //
-    // Ils ne se jugent pas sur la même grandeur, et c'est voulu — voir
-    // `SEUIL_SOUS_OCTAVE` et `SEUIL_SUR_OCTAVE`. Le sens descendant regarde
-    // l'alternance fort/faible d'un temps sur deux ([`alternance_dents`]) ;
-    // `brut(bpm / 2)` ne discriminerait rien, il n'échantillonne que des
-    // pics réels. Le sens montant, lui, peut s'appuyer sur `brut` : le
-    // double échantillonne des creux, un faux double y perd.
+    // Elles ne se jugent pas sur la même grandeur, et c'est voulu — voir
+    // `SEUIL_SOUS_OCTAVE`, `SEUIL_SUR_OCTAVE`, `BPM_SOUS_OCTAVE_RAPIDE`. La voie
+    // descendante par alternance regarde l'accent fort/faible d'un temps sur
+    // deux ([`alternance_dents`]) ; `brut(bpm / 2)` n'y discriminerait rien, il
+    // n'échantillonne que des pics réels. Le sens montant peut s'appuyer sur
+    // `brut` : le double échantillonne des creux, un faux double y perd. La
+    // voie descendante rapide n'agit qu'au-delà de `BPM_SOUS_OCTAVE_RAPIDE`, où
+    // `brut(bpm / 2)` redevient un signe fiable.
     let d = decalage(gagnant_grille);
     let alternance = alternance_dents(env, d);
-    let brut_double_sur_brut = brut(gagnant_grille * 2.0) / brut(gagnant_grille);
-    let corrige_vers_le_bas =
-        gagnant_grille / 2.0 >= BPM_MIN_CORRECTION && alternance < SEUIL_SOUS_OCTAVE;
+    let brut_gagnant = brut(gagnant_grille);
+    let brut_double_sur_brut = brut(gagnant_grille * 2.0) / brut_gagnant;
+    let brut_moitie_sur_brut = brut(gagnant_grille / 2.0) / brut_gagnant;
+
     let corrige_vers_le_haut =
         gagnant_grille * 2.0 <= BPM_MAX_CORRECTION && brut_double_sur_brut >= SEUIL_SUR_OCTAVE;
-    // Le sens montant l'emporte quand les deux qualifient : son test est le
-    // plus rare et le plus spécifique.
+
+    // Voie descendante par alternance. Sautée si le décalage du gagnant porte
+    // lui-même une énergie récurrente franche — c'est alors le vrai temps.
+    let corrige_vers_le_bas = gagnant_grille / 2.0 >= BPM_MIN_CORRECTION
+        && alternance < SEUIL_SOUS_OCTAVE
+        && brut_gagnant < BRUT_MIN_POUR_SOUS_OCTAVE;
+
+    // Voie descendante rapide. `rapide_demi_plausible` isole les conditions qui
+    // ne dépendent pas d'un aléa de fenêtre — `stabiliser_corrections` s'en
+    // sert pour ne *pas* défaire une correction d'alternance sur un tel gagnant.
+    let rapide_demi_plausible = gagnant_grille > BPM_SOUS_OCTAVE_RAPIDE
+        && gagnant_grille / 2.0 >= BPM_MIN_CORRECTION
+        && brut_moitie_sur_brut >= SEUIL_MOITIE_RAPIDE
+        && brut_gagnant < BRUT_MAX_POUR_RAPIDE;
+    let corrige_vers_le_bas_rapide =
+        !corrige_vers_le_haut && rapide_demi_plausible && alternance < ALTERNANCE_MAX_RAPIDE;
+
+    // Le sens montant l'emporte quand plusieurs voies qualifient : son test est
+    // le plus rare et le plus spécifique.
     let bpm = if corrige_vers_le_haut {
         gagnant_grille * 2.0
-    } else if corrige_vers_le_bas {
+    } else if corrige_vers_le_bas || corrige_vers_le_bas_rapide {
         gagnant_grille / 2.0
     } else {
         gagnant_grille
@@ -559,7 +639,11 @@ pub fn tempo_detaille(env: &[f32]) -> Option<DiagnosticTempo> {
         gagnant_grille,
         alternance,
         brut_double_sur_brut,
+        brut_moitie_sur_brut,
+        brut_gagnant,
         corrige_vers_le_bas,
+        corrige_vers_le_bas_rapide,
+        rapide_demi_plausible,
         corrige_vers_le_haut,
         bpm,
     })
@@ -593,10 +677,19 @@ pub fn stabiliser_corrections(diagnostics: &mut [DiagnosticTempo]) {
         if !d.corrige_vers_le_bas {
             continue;
         }
+        // Gagnant rapide dont la moitié explique les attaques presque aussi
+        // bien : la correction n'est pas un aléa d'alternance, on ne la défait
+        // pas même si d'autres fenêtres du même gagnant n'ont pas divisé (leur
+        // alternance a simplement dépassé le seuil — « Shape of You » repris
+        // par Jamie Cullum, 3 fenêtres sur 5 seulement).
+        if original[i].rapide_demi_plausible {
+            continue;
+        }
         let gagnant = original[i].gagnant_grille;
         let desaccord = original.iter().enumerate().any(|(j, o)| {
             j != i
                 && !o.corrige_vers_le_bas
+                && !o.corrige_vers_le_bas_rapide
                 && !o.corrige_vers_le_haut
                 && ((o.gagnant_grille - gagnant).abs() / gagnant) < TOLERANCE_ACCORD_GRILLE
         });
@@ -872,6 +965,14 @@ mod tests {
             ecart * 100.0
         );
     }
+
+    // La voie descendante rapide (`BPM_SOUS_OCTAVE_RAPIDE`) ne se teste pas sur
+    // des clics : son garde-fou `BRUT_MAX_POUR_RAPIDE` écarte délibérément les
+    // trains parfaitement réguliers (un reel, une gavotte), et un clic
+    // synthétique en est un. Elle se vérifie sur de vrais fichiers avec
+    // `examples/diagnostic_tempo` — « Killpop » (Slipknot) et « Shape of You »
+    // repris par Jamie Cullum, ~163 ramenés à ~82 ; « I'm Yours » (Tricky)
+    // garde 119,6 grâce à `BRUT_MIN_POUR_SOUS_OCTAVE`.
 
     /// Le silence n'a pas de tempo. Rendre 120 par défaut colorerait la carte
     /// d'une valeur inventée.

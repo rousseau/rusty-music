@@ -2132,3 +2132,55 @@ rend `(couverts, plus_ancienne_at, perimes)` ; la ligne d'alerte du mode
 Bibliothèque n'apparaît que si de la popularité existe **et** qu'une partie
 dépasse 90 j, avec un bouton « Rafraîchir » qui coche la case et lance la passe
 seule. Rien d'automatique — convention du projet.
+
+### Deux erreurs d'octave que `alternance_dents` ne voyait pas — 10 septembre 2026
+
+Quatre morceaux signalés à l'oreille, tous des erreurs d'octave, en **deux
+mécanismes opposés** que le correctif du 1er septembre ne couvrait pas.
+
+**Sens montant fantôme — un métal en demi-temps, une reprise jazz très
+ralentie.** Gagnant de grille ~163 sur 4 fenêtres sur 5, vrai tempo ~82. Deux
+raisons cumulées : le prior log-normal centré sur 120 (`ÉTALEMENT` 0,9) est
+quasi plat sur l'octave 82→163 et **penche même vers 163** — en échelle log,
+163 est plus près de 120 (ln 163/120 = +0,31) que 82 (ln 82/120 = −0,38), aucun
+prior symétrique ne peut préférer la moitié ; et `alternance_dents` reste entre
+0,65 et 0,93 (seuil 0,60) parce qu'une subdivision *fournie mais également
+accentuée* n'alterne pas franchement fort/faible.
+
+**Sens descendant abusif — un morceau trip-hop lent.** Gagnant 119,6 solide sur
+les 5 fenêtres, mais `corrige_vers_le_bas` divisait à 59,8 : l'alternance
+tombait à 0,31–0,54 (grosse caisse en blanches, caisse claire sur le
+contretemps). `stabiliser_corrections` ne rattrapait pas — les 5 fenêtres
+corrigeaient, aucune ne « désaccordait ».
+
+**Correctif — trois ajouts, aucun ne touche le sens montant `SEUIL_SUR_OCTAVE`.**
+
+1. `BRUT_MIN_POUR_SOUS_OCTAVE` (0,50) — la voie descendante par alternance est
+   sautée si `brut(gagnant)` est élevé en valeur absolue : le décalage du
+   gagnant porte alors une couche rythmique franche, c'est le vrai temps, pas
+   un pic fantôme entre deux temps. Rattrape le trip-hop.
+2. Voie descendante *rapide* — gagnant > 155, `brut(gagnant/2) ≥ 0,82·brut(g)`,
+   `alternance < 0,88`, `brut(gagnant) < 0,72`. La dernière condition écarte
+   délibérément les trains serrés (reel, gavotte, punk) : à ces tempos leur
+   `brut(gagnant)` est haut, c'est leur vrai battement. Non soumise à
+   `stabiliser_corrections`.
+3. `stabiliser_corrections` ne défait plus une correction d'alternance qui
+   tombe sur un gagnant « rapide + moitié plausible » (`rapide_demi_plausible`)
+   — sinon la reprise jazz rebasculait à 162 (3 fenêtres sur 5 seulement sous
+   le seuil).
+
+**Validation — `examples/octave_avant_apres.rs`, 500 morceaux au hasard.**
+Concentration [150, 267] : **15,0 % → 9,2 %**. Concentration [40, 90] :
+27,8 % → 28,0 % (plat — pas de sur-correction vers le lent). 66 morceaux
+déplacés : ~26 montés (garde-fou, ~90 % justes : hip-hop et rock ramenés de
+~48 à ~95), ~40 descendus (voie rapide, ~60 % justes). **Casse assumée** : la
+voie rapide halve une partie des **danses bretonnes** (plinn, fisel — genres
+réellement rapides à accent de mesure) et du rock rapide (CCR *Travelin' Band*
+166→83). Pas de signal trouvé qui les sépare d'une ballade comptée au double —
+au niveau du flux d'attaques c'est le même motif à un tempo absolu différent.
+Décision : on garde, le gain global le vaut. Les 73 tests de
+`rusty-music-analysis` passent.
+
+**Reste à faire** : repasse complète (`rusty-music descripteurs --refaire`,
+nouveau drapeau, ou la case « Refaire ce qui est déjà mesuré » du mode
+Bibliothèque) et vérifier l'histogramme.

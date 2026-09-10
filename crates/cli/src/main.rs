@@ -160,11 +160,17 @@ enum Cmd {
     /// Mesure tempo, tonalité et énergie des morceaux placés sur la carte
     ///
     /// Décode les mêmes cinq fenêtres que l'analyse. Reprenable : relancer ne
-    /// remesure rien.
+    /// remesure rien — sauf avec `--refaire`.
     Descripteurs {
         /// Nombre de morceaux à traiter au plus (0 = tous)
         #[arg(long, default_value_t = 0)]
         limite: i64,
+        /// Efface d'abord toutes les mesures et recommence de zéro.
+        ///
+        /// À utiliser après une correction de l'algorithme : les valeurs en
+        /// base sont celles de l'ancien, pas des trous à combler.
+        #[arg(long)]
+        refaire: bool,
         /// Fils de décodage (0 = tous les cœurs)
         ///
         /// À réduire pour continuer d'écouter pendant la passe : douze fils
@@ -936,12 +942,16 @@ fn main() -> Result<()> {
                 sortie.display()
             );
         }
-        Cmd::Descripteurs { limite, fils } => {
+        Cmd::Descripteurs { limite, refaire, fils } => {
             let fils = if fils > 0 {
                 fils
             } else {
                 std::thread::available_parallelism().map_or(4, |p| p.get())
             };
+            if refaire {
+                let n = lib.effacer_descripteurs()?;
+                println!("{n} mesures effacées — repasse complète");
+            }
             let (faits, total) = lib.compter_descripteurs(rusty_music_analysis::passe::MODELE)?;
             println!("{faits} / {total} morceaux déjà mesurés — {fils} fils");
 

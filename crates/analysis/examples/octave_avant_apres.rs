@@ -87,18 +87,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         deplaces.len(),
         100.0 * deplaces.len() as f64 / avant.len().max(1) as f64
     );
-    let mut tries = deplaces.clone();
-    tries.sort_by(|a, b| (b.2 / b.1).abs().total_cmp(&(a.2 / a.1).abs()));
-    for (chemin, av, ap) in tries.iter().take(20) {
-        let court: String = chemin
+    let court = |chemin: &str| -> String {
+        chemin
             .rsplit('/')
             .take(2)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect::<Vec<_>>()
-            .join("/");
-        println!("  {av:>6.1} -> {ap:>6.1}  {:.2}x  {court}", ap / av);
+            .join("/")
+    };
+    let mut tries = deplaces.clone();
+    tries.sort_by(|a, b| a.1.total_cmp(&b.1));
+    println!("  ↓ descendus :");
+    for (chemin, av, ap) in tries.iter().filter(|(_, av, ap)| ap < av) {
+        println!("  {av:>6.1} -> {ap:>6.1}  {}", court(chemin));
+    }
+    println!("  ↑ montés :");
+    for (chemin, av, ap) in tries.iter().filter(|(_, av, ap)| ap > av) {
+        println!("  {av:>6.1} -> {ap:>6.1}  {:.2}x  {}", ap / av, court(chemin));
     }
     Ok(())
 }
