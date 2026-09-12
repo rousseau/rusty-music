@@ -302,6 +302,21 @@ CREATE TABLE IF NOT EXISTS credits_discogs (
 );
 CREATE INDEX IF NOT EXISTS idx_credits_discogs_release ON credits_discogs(discogs_release_id);
 
+-- Label(s) et numéro(s) de catalogue par édition Discogs, importés depuis les
+-- dumps mensuels CC0 — même pipeline que `credits_discogs` (une passe unique
+-- lit `<extraartists>` et `<labels>` du même fragment `<release>`). Plusieurs
+-- lignes possibles par édition : réédition, ou sous-label + label parent
+-- (ex. Big Dada / Counter Records sous Ninja Tune) — jamais fusionnées en une
+-- seule valeur.
+CREATE TABLE IF NOT EXISTS labels_discogs (
+    discogs_release_id INTEGER NOT NULL,
+    nom                 TEXT NOT NULL,
+    catno               TEXT NOT NULL DEFAULT '',
+    discogs_label_id    INTEGER,
+    PRIMARY KEY (discogs_release_id, nom, catno)
+);
+CREATE INDEX IF NOT EXISTS idx_labels_discogs_release ON labels_discogs(discogs_release_id);
+
 -- Critiques CritiqueBrainz, plusieurs par release-group. Licence CC (BY-SA ou
 -- BY-NC-SA selon la critique, jamais supposée uniforme) : le texte complet
 -- peut être stocké tel quel, à condition d'afficher l'attribution partout où

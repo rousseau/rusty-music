@@ -3418,6 +3418,14 @@ fn credits_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db:
     etat.lib.lock().map_err(echec)?.credits_pour_piste(id).map_err(echec)
 }
 
+/// Les labels (nom + numéro de catalogue) Discogs du morceau `id`, via son
+/// édition MusicBrainz — vide tant que la liaison et l'import mensuel n'ont
+/// pas encore couvert cette édition, jamais une valeur inventée.
+#[tauri::command(async)]
+fn labels_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::LabelDiscogs>, String> {
+    etat.lib.lock().map_err(echec)?.labels_pour_piste(id).map_err(echec)
+}
+
 /// Les collaborateurs d'un artiste — mode Découvrir. Sert du cache s'il y
 /// en a un, sinon interroge MusicBrainz et le remplit.
 ///
@@ -5909,6 +5917,7 @@ fn main() {
             start_discogs_liaison,
             discogs_liaison_state,
             credits_piste,
+            labels_piste,
             popularites,
             artist_links,
             start_decouvrir,

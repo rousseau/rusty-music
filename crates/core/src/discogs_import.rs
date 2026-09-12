@@ -8,13 +8,14 @@
 //! [`crate::popularite`].
 //!
 //! **b) Import** (`importer`) — lourd, mensuel, séparé du scan normal :
-//! télécharge le dump `releases.xml.gz` (CC0) et en extrait les crédits des
-//! éditions déjà reliées. Voir [`crate::discogs`] pour le détail du
-//! téléchargement et de la lecture en flux.
+//! télécharge le dump `releases.xml.gz` (CC0) et en extrait, dans la même
+//! passe, les crédits et les labels des éditions déjà reliées. Voir
+//! [`crate::discogs`] pour le détail du téléchargement et de la lecture en
+//! flux.
 
 use std::path::Path;
 
-use crate::db::{CreditDiscogs, Library};
+use crate::db::{CreditDiscogs, LabelDiscogs, Library};
 use crate::discogs;
 use crate::error::Result;
 use crate::musicbrainz;
@@ -97,12 +98,13 @@ fn bissextile(annee: i32) -> bool {
     (annee % 4 == 0 && annee % 100 != 0) || annee % 400 == 0
 }
 
-/// Importe les crédits des éditions déjà reliées (voir [`lier`]) depuis un
-/// dump `releases.xml.gz` déjà présent sur le disque en `chemin`.
+/// Importe les crédits et les labels des éditions déjà reliées (voir
+/// [`lier`]) depuis un dump `releases.xml.gz` déjà présent sur le disque en
+/// `chemin`.
 ///
 /// N'écrit rien pour une édition reliée mais absente du dump (bibliothèque
-/// vaste, dump réduit à ce qu'on cherche) : ses crédits, s'il y en avait,
-/// restent ceux du dernier import réussi.
+/// vaste, dump réduit à ce qu'on cherche) : ses crédits et labels, s'il y en
+/// avait, restent ceux du dernier import réussi.
 pub fn importer(
     lib: &mut Library,
     chemin: &Path,
@@ -125,6 +127,18 @@ pub fn importer(
                 .collect();
             if let Err(e) = lib.credits_poser(edition.id, &credits) {
                 tracing::warn!(erreur = %e, id = edition.id, "crédits Discogs non rangés");
+            }
+            let labels: Vec<LabelDiscogs> = edition
+                .labels
+                .into_iter()
+                .map(|l| LabelDiscogs {
+                    nom: l.nom,
+                    catno: l.catno,
+                    discogs_label_id: l.discogs_label_id,
+                })
+                .collect();
+            if let Err(e) = lib.labels_poser(edition.id, &labels) {
+                tracing::warn!(erreur = %e, id = edition.id, "labels Discogs non rangés");
             }
         },
         avancer,

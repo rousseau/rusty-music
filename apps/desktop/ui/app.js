@@ -1253,6 +1253,7 @@ async function inspecter(t) {
   montrerNomFamille(t);
   montrerBio(t);
   montrerCredits(t);
+  montrerLabel(t);
   montrerCritiques(t);
 }
 
@@ -1287,13 +1288,14 @@ async function inspecterAlbum(noeud) {
   $("insp-bpm").textContent = "—";
   $("insp-tonalite").textContent = "—";
   $("insp-timbre").textContent = "—";
-  // Famille/biographie/crédits/critiques se demandent par identifiant de
+  // Famille/biographie/crédits/label/critiques se demandent par identifiant de
   // piste — un nœud d'album de l'anneau n'en porte pas (son `id` est celui
   // de l'album). Simplification assumée : ces blocs restent cachés à cette
   // échelle, comme `montrerDescripteurs` le fait déjà pour BPM/tonalité.
   $("bloc-nom-famille").hidden = true;
   $("bloc-bio").hidden = true;
   $("bloc-credits").hidden = true;
+  $("bloc-label").hidden = true;
   $("bloc-critiques").hidden = true;
 
   const img = noeud.path ? await pochette(noeud.path) : null;
@@ -1714,6 +1716,34 @@ async function montrerCredits(t) {
   for (const c of credits) {
     const li = document.createElement("li");
     li.textContent = c.pistes ? `${c.personne} — ${c.role} (${c.pistes})` : `${c.personne} — ${c.role}`;
+    hote.appendChild(li);
+  }
+  bloc.hidden = false;
+}
+
+/// Label et numéro de catalogue par édition (Discogs, dumps CC0) — pure
+/// métadonnée, pas d'entrée vers un mode de navigation par label (décision
+/// utilisateur explicite). Vide tant que la liaison et l'import mensuel
+/// n'ont pas couvert cette édition.
+async function montrerLabel(t) {
+  const bloc = $("bloc-label");
+  const hote = $("insp-label");
+  const vise = t.path;
+  bloc.hidden = true;
+
+  let labels = [];
+  try {
+    labels = await invoke("labels_piste", { id: t.id });
+  } catch (e) {
+    signalerErreurInspecteur(vise, "échec du chargement du label", e, "label");
+    return;
+  }
+  if (labels.length === 0 || $("insp-titre").dataset.path !== vise) return;
+
+  hote.replaceChildren();
+  for (const l of labels) {
+    const li = document.createElement("li");
+    li.textContent = l.catno ? `${l.nom} (${l.catno})` : l.nom;
     hote.appendChild(li);
   }
   bloc.hidden = false;

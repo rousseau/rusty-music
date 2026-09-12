@@ -692,6 +692,15 @@
           <p class="credit-source">source : Discogs</p>
         </div>
 
+        <!-- Label et numéro de catalogue par édition (Discogs, dumps CC0) —
+             pure métadonnée d'affichage, pas de filtrage/navigation par
+             label (décision utilisateur, voir docs/enrichissement-lecteur.md). -->
+        <div id="bloc-label" hidden>
+          <p class="rail__titre" style="margin-top:22px">Label</p>
+          <ul id="insp-label" class="credits"></ul>
+          <p class="credit-source">source : Discogs</p>
+        </div>
+
         <!-- Critiques (CritiqueBrainz) — licence CC (BY-SA ou BY-NC-SA selon
              la critique) : attribution obligatoire, jamais mutualisée. -->
         <div id="bloc-critiques" hidden>

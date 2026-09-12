@@ -9,7 +9,8 @@ en ajoute trois, chacune **best-effort, asynchrone, jamais bloquante**, et
 
 1. **TheAudioDB** — biographies d'artiste (anglais et français).
 2. **Discogs** — crédits détaillés par édition (musicien de session,
-   producteur, ingénieur du son), importés depuis les **dumps mensuels CC0**.
+   producteur, ingénieur du son) et label + numéro de catalogue, importés
+   depuis les **dumps mensuels CC0**.
 3. **CritiqueBrainz** — critiques d'albums, licence Creative Commons.
 
 Une quatrième a suivi, pour un usage différent — voir « 4. Last.fm » plus
@@ -52,14 +53,16 @@ Radiohead), stockés avec leur MBID et la date de récupération.
   TheAudioDB » sous la biographie dans le panneau de droite, par courtoisie —
   même traitement que les crédits Discogs.
 
-## 2. Discogs — crédits par édition, via les dumps CC0
+## 2. Discogs — crédits et label par édition, via les dumps CC0
 
 **Jamais l'API Discogs en direct** — les dumps mensuels sous licence CC0
 (`https://data.discogs.com/`) donnent le même contenu sans authentification ni
 limite de débit, en un seul téléchargement. Un seul fichier est nécessaire :
 `releases.xml.gz` (≈ 11 Go compressé, mesuré 2026 — les dumps `artists`/
-`labels`/`masters` ne sont pas nécessaires, les crédits sont déjà dans
-`releases`).
+`labels`/`masters` ne sont pas nécessaires : les crédits sont déjà dans
+`releases`, et chaque `<release>` y porte aussi son propre `<labels>` — nom et
+numéro de catalogue. Le dump `labels` séparé porterait la fiche complète d'un
+label, filiation et sous-labels compris ; hors de propos ici).
 
 **Deux passes séparées dans le temps :**
 
@@ -89,6 +92,14 @@ Discogs) ne coûte que ses propres crédits, jamais tout l'import ni les
 fragments suivants, puisque le repérage des bornes ne dépend en rien du
 contenu XML lui-même.
 
+**Le label ride la même passe.** `parser_fragment` (`crates/core/src/discogs.rs`)
+lit `<extraartists>` et `<labels>` du même fragment `<release>` en une seule
+traversée : aucun appel réseau ni passe séparée pour le label. **Affichage
+seul, volontairement** : pas de filtre ni de navigation par label dans
+Découvrir — question posée (Ninja Tune comme exemple), tranchée ainsi le
+12 septembre 2026. Rouvrir le sujet demande de relire cette décision, pas
+seulement d'ajouter la table qui, elle, existe déjà.
+
 **Espace disque** : le seul coût est le fichier téléchargé (≈ 11 Go,
 transitoire — à supprimer après un import réussi si l'espace presse). La
 croissance de la base SQLite est négligeable : quelques milliers de lignes
@@ -100,10 +111,12 @@ discrète « source : Discogs » gardée dans l'inspecteur par courtoisie
 
 - Schéma : `editions_discogs` (lien MB → Discogs, mémorise aussi les
   vérifications sans résultat) + `credits_discogs` (personne, rôle, portée-
-  piste — notation Discogs brute, informative, pas résolue vers `track_no`).
+  piste — notation Discogs brute, informative, pas résolue vers `track_no`)
+  + `labels_discogs` (nom, numéro de catalogue — plusieurs lignes possibles
+  par édition : réédition, ou sous-label et label parent).
 - Tauri : `start_discogs_liaison { contact }` / `discogs_liaison_state` /
-  `credits_piste { id }`. **Pas de commande Tauri pour l'import lourd** —
-  CLI/cron uniquement.
+  `credits_piste { id }` / `labels_piste { id }`. **Pas de commande Tauri
+  pour l'import lourd** — CLI/cron uniquement.
 - CLI : `rusty-music discogs-lier [--contact] [--limite]` (liaison),
   `rusty-music import-discogs [--fichier <chemin>]` (import — télécharge le
   dernier dump si `--fichier` est omis).

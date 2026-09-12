@@ -587,6 +587,14 @@ pub struct CreditDiscogs {
     pub discogs_artist_id: Option<i64>,
 }
 
+/// Un label Discogs à ranger — voir `labels_discogs` du schéma.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LabelDiscogs {
+    pub nom: String,
+    pub catno: String,
+    pub discogs_label_id: Option<i64>,
+}
+
 /// Une critique CritiqueBrainz à ranger.
 #[derive(Debug, Clone)]
 pub struct CritiqueBrute {
@@ -3283,6 +3291,51 @@ impl Library {
                     role: r.get(1)?,
                     pistes: r.get(2)?,
                     discogs_artist_id: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// Range les labels d'une édition Discogs — remplace ce qui existait déjà
+    /// pour cette édition (même principe que `credits_poser` : un import
+    /// réécrit, il ne fusionne pas).
+    pub fn labels_poser(&mut self, discogs_release_id: u64, labels: &[LabelDiscogs]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM labels_discogs WHERE discogs_release_id = ?1",
+            params![discogs_release_id as i64],
+        )?;
+        for l in labels {
+            tx.execute(
+                "INSERT OR IGNORE INTO labels_discogs (discogs_release_id, nom, catno, discogs_label_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![discogs_release_id as i64, l.nom, l.catno, l.discogs_label_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les labels (nom + numéro de catalogue) Discogs d'un morceau, via son
+    /// édition MusicBrainz — même jointure que `credits_pour_piste`. Vide
+    /// tant que la liaison et l'import mensuel n'ont pas couvert cette
+    /// édition, jamais une valeur inventée.
+    pub fn labels_pour_piste(&self, track_id: i64) -> Result<Vec<LabelDiscogs>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT l.nom, l.catno, l.discogs_label_id
+               FROM tracks t
+               JOIN editions_discogs e ON e.mb_release_id = t.mb_release_id
+               JOIN labels_discogs l ON l.discogs_release_id = e.discogs_release_id
+              WHERE t.id = ?1
+              ORDER BY l.nom",
+        )?;
+        let out = stmt
+            .query_map(params![track_id], |r| {
+                Ok(LabelDiscogs {
+                    nom: r.get(0)?,
+                    catno: r.get(1)?,
+                    discogs_label_id: r.get(2)?,
                 })
             })?
             .collect::<std::result::Result<_, _>>()?;
@@ -6382,6 +6435,68 @@ mod tests {
         assert_eq!(credits.len(), 1, "l'ancien crédit doit avoir été remplacé");
         assert_eq!(credits[0].personne, "Nouveau");
         assert_eq!(credits[0].pistes, "A1, A2");
+    }
+
+    /// Même structure que `credits_poser_remplace_les_credits_dune_edition` :
+    /// un import réécrit les labels d'une édition plutôt que de les cumuler.
+    #[test]
+    fn labels_poser_remplace_les_labels_dune_edition() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_release_id, added_at)
+                 VALUES (1, '/m/1.flac', 'rel-1', 0)",
+                [],
+            )
+            .unwrap();
+        lib.discogs_lier_edition("rel-1", Some(249_504)).unwrap();
+
+        lib.labels_poser(
+            249_504,
+            &[LabelDiscogs { nom: "Ancien Label".into(), catno: "OLD1".into(), discogs_label_id: None }],
+        )
+        .unwrap();
+        assert_eq!(lib.labels_pour_piste(1).unwrap().len(), 1);
+
+        lib.labels_poser(
+            249_504,
+            &[LabelDiscogs { nom: "Nouveau Label".into(), catno: "NEW1".into(), discogs_label_id: Some(1) }],
+        )
+        .unwrap();
+        let labels = lib.labels_pour_piste(1).unwrap();
+        assert_eq!(labels.len(), 1, "l'ancien label doit avoir été remplacé");
+        assert_eq!(labels[0].nom, "Nouveau Label");
+        assert_eq!(labels[0].catno, "NEW1");
+    }
+
+    /// La justification même de la fonctionnalité : une édition sur un
+    /// sous-label (Big Dada) porte aussi son label parent (Ninja Tune), les
+    /// deux doivent revenir, triés par nom — pas un seul « label principal ».
+    #[test]
+    fn labels_pour_piste_rend_plusieurs_labels_dune_edition() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_release_id, added_at)
+                 VALUES (1, '/m/1.flac', 'rel-1', 0)",
+                [],
+            )
+            .unwrap();
+        lib.discogs_lier_edition("rel-1", Some(249_504)).unwrap();
+
+        lib.labels_poser(
+            249_504,
+            &[
+                LabelDiscogs { nom: "Ninja Tune".into(), catno: "ZEN123".into(), discogs_label_id: Some(222) },
+                LabelDiscogs { nom: "Big Dada".into(), catno: "BD456".into(), discogs_label_id: Some(333) },
+            ],
+        )
+        .unwrap();
+
+        let labels = lib.labels_pour_piste(1).unwrap();
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].nom, "Big Dada");
+        assert_eq!(labels[1].nom, "Ninja Tune");
     }
 
     /// « Aucune critique » se mémorise comme les autres réponses vides du
