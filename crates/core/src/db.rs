@@ -271,6 +271,9 @@ pub struct MapPoint {
     pub album_artist: Option<String>,
     pub album: Option<String>,
     pub track_no: Option<i64>,
+    /// La meilleure date connue, pas la seule colonne `tracks.year` — voir
+    /// le repli documenté sur [`Library::map_view`]. `None` seulement quand
+    /// aucune source ne donne de date, pas seulement le tag.
     pub year: Option<i64>,
     pub duration_ms: Option<i64>,
     /// Descripteurs mesurés. Absents tant que `rusty-music descripteurs` n'est
@@ -3522,6 +3525,15 @@ impl Library {
     /// Une seule requête plutôt qu'un aller-retour par point — à 27 000
     /// morceaux, l'interface les charge tous d'un coup et n'y revient qu'à la
     /// demande de l'utilisateur.
+    ///
+    /// `year` ne vient **pas** de la seule colonne `tracks.year` : c'est la
+    /// même date, à la même fiabilité, que [`Self::ordre_darrivee`] utilise
+    /// pour le placement (MusicBrainz avant tag avant médiane album/artiste).
+    /// Sans ce repli, l'étiquette d'un morceau le disait sans année alors que
+    /// sa position sur la carte avait bien été fondée sur une date connue —
+    /// mesuré : 643 morceaux sans tag contre 314 vraiment sans aucune date.
+    /// `None` reste réservé à ces 314-là (source `ingestion`, voir
+    /// `flux_temporel` qui applique la même règle).
     pub fn map_view(&self, model: &str) -> Result<Vec<MapPoint>> {
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.path, f.x, f.y, COALESCE(f.cluster, -1),
@@ -3534,7 +3546,7 @@ impl Library {
               WHERE f.model = ?1 AND f.x IS NOT NULL
               ORDER BY t.id",
         )?;
-        let rows = stmt
+        let mut rows = stmt
             .query_map(params![model], |r| {
                 Ok(MapPoint {
                     id: r.get(0)?,
@@ -3555,6 +3567,20 @@ impl Library {
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let annees_fiables: HashMap<i64, Option<i64>> = self
+            .ordre_darrivee()?
+            .into_iter()
+            .map(|a| {
+                let annee = (a.source != "ingestion").then(|| (a.date / 10_000) as i64);
+                (a.track_id, annee)
+            })
+            .collect();
+        for p in &mut rows {
+            if let Some(&annee) = annees_fiables.get(&p.id) {
+                p.year = annee;
+            }
+        }
         Ok(rows)
     }
 
