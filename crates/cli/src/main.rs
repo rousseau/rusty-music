@@ -167,8 +167,9 @@ enum Cmd {
         limite: i64,
         /// Efface d'abord toutes les mesures et recommence de zéro.
         ///
-        /// À utiliser après une correction de l'algorithme : les valeurs en
-        /// base sont celles de l'ancien, pas des trous à combler.
+        /// Rarement nécessaire : un correctif de l'algorithme se rattrape
+        /// tout seul (`VERSION_DESCRIPTEURS`), sans ce drapeau. Reste utile
+        /// pour une repasse complète voulue à la main.
         #[arg(long)]
         refaire: bool,
         /// Fils de décodage (0 = tous les cœurs)
@@ -952,7 +953,10 @@ fn main() -> Result<()> {
                 let n = lib.effacer_descripteurs()?;
                 println!("{n} mesures effacées — repasse complète");
             }
-            let (faits, total) = lib.compter_descripteurs(rusty_music_analysis::passe::MODELE)?;
+            let (faits, total) = lib.compter_descripteurs(
+                rusty_music_analysis::passe::MODELE,
+                rusty_music_analysis::passe::VERSION_DESCRIPTEURS,
+            )?;
             println!("{faits} / {total} morceaux déjà mesurés — {fils} fils");
 
             let t = Instant::now();

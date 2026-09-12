@@ -829,6 +829,25 @@ fn migrate(conn: &Connection) -> Result<()> {
         }
     }
 
+    // Version de l'algorithme tempo/tonalité/énergie ayant produit chaque
+    // ligne — voir `rusty_music_analysis::passe::VERSION_DESCRIPTEURS`. `0`
+    // pour toute ligne écrite avant cette colonne : plus bas qu'aucune
+    // version réelle, donc `pending_descripteurs` les considère à remesurer,
+    // comme il se doit pour des mesures dont on ne sait pas si elles datent
+    // d'avant ou d'après un correctif (l'inversion d'octave du tempo, par
+    // exemple). Remplace le bouton « refaire ce qui est déjà mesuré » comme
+    // seul moyen de rattraper un correctif d'algorithme : celui-ci reste,
+    // pour une repasse volontaire, mais n'est plus le seul recours.
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('descriptors')")?;
+    let colonnes: std::collections::HashSet<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    if !colonnes.contains("algo_version") {
+        conn.execute_batch(
+            "ALTER TABLE descriptors ADD COLUMN algo_version INTEGER NOT NULL DEFAULT 0",
+        )?;
+    }
+
     // Le genre gagnant du vote CLAP-texte, par morceau — calculé en lot par
     // `crates/analysis` (le calibrage a besoin du score de tous les morceaux
     // contre tout le vocabulaire avant de prendre l'argmax) et persisté ici
@@ -2150,24 +2169,31 @@ impl Library {
 
     /* --------------------------------------------- descripteurs musicaux */
 
-    /// Les morceaux dont on n'a pas encore mesuré tempo, tonalité et énergie.
+    /// Les morceaux dont on n'a pas encore mesuré tempo, tonalité et énergie
+    /// — ou dont la mesure date d'un algorithme plus ancien que `version`.
     ///
     /// Restreint à ceux qui ont déjà une empreinte : la passe des descripteurs
     /// décode les mêmes fenêtres, et il n'y a pas de sens à mesurer un morceau
     /// que la carte ne montre pas. Exclut aussi les fichiers en échec connu
     /// (`scan_failures`) — même raison que `pending_analysis`.
-    pub fn pending_descripteurs(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
+    ///
+    /// `version` fait qu'un correctif de l'algorithme (l'inversion d'octave du
+    /// tempo, par exemple) se détecte tout seul : il suffit de faire avancer
+    /// `VERSION_DESCRIPTEURS` côté appelant, les lignes plus anciennes
+    /// redeviennent « en attente » sans purge explicite.
+    pub fn pending_descripteurs(&self, model: &str, version: i32, limit: i64) -> Result<Vec<TrackRow>> {
         let sql = format!(
             "SELECT {TRACK_COLS} FROM tracks
               WHERE EXISTS (SELECT 1 FROM features f
                              WHERE f.track_id = tracks.id AND f.model = ?1)
-                AND NOT EXISTS (SELECT 1 FROM descriptors d WHERE d.track_id = tracks.id)
+                AND NOT EXISTS (SELECT 1 FROM descriptors d
+                                 WHERE d.track_id = tracks.id AND d.algo_version >= ?2)
                 AND NOT EXISTS (SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
-              ORDER BY added_at LIMIT ?2"
+              ORDER BY added_at LIMIT ?3"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt
-            .query_map(params![model, limit], track_from_row)?
+            .query_map(params![model, version, limit], track_from_row)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -2178,6 +2204,9 @@ impl Library {
     /// ni de tonalité, et une valeur inventée colorerait la carte d'un
     /// mensonge. La ligne est écrite quand même — c'est elle qui dit que le
     /// morceau a été mesuré, et qu'il ne faut pas y revenir.
+    ///
+    /// `version` est celle de l'algorithme qui a produit la mesure
+    /// (`VERSION_DESCRIPTEURS` côté appelant) — voir [`Self::pending_descripteurs`].
     #[allow(clippy::too_many_arguments)]
     pub fn save_descripteurs(
         &self,
@@ -2193,31 +2222,35 @@ impl Library {
         rolloff_std: Option<f32>,
         flatness_mean: Option<f32>,
         flatness_std: Option<f32>,
+        version: i32,
     ) -> Result<()> {
         self.conn.execute(
             "INSERT INTO descriptors(
                  track_id, bpm, musical_key, energy, loudness,
                  zcr, centroid_mean, centroid_std,
-                 rolloff_mean, rolloff_std, flatness_mean, flatness_std)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+                 rolloff_mean, rolloff_std, flatness_mean, flatness_std, algo_version)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
              ON CONFLICT(track_id) DO UPDATE SET
                bpm=excluded.bpm, musical_key=excluded.musical_key,
                energy=excluded.energy, loudness=excluded.loudness,
                zcr=excluded.zcr,
                centroid_mean=excluded.centroid_mean, centroid_std=excluded.centroid_std,
                rolloff_mean=excluded.rolloff_mean, rolloff_std=excluded.rolloff_std,
-               flatness_mean=excluded.flatness_mean, flatness_std=excluded.flatness_std",
+               flatness_mean=excluded.flatness_mean, flatness_std=excluded.flatness_std,
+               algo_version=excluded.algo_version",
             params![
                 track_id, bpm, musical_key, energy, loudness,
                 zcr, centroid_mean, centroid_std,
-                rolloff_mean, rolloff_std, flatness_mean, flatness_std
+                rolloff_mean, rolloff_std, flatness_mean, flatness_std, version
             ],
         )?;
         Ok(())
     }
 
-    /// Combien de morceaux placés sur la carte ont des descripteurs.
-    pub fn compter_descripteurs(&self, model: &str) -> Result<(i64, i64)> {
+    /// Combien de morceaux placés sur la carte ont des descripteurs à jour
+    /// (`algo_version >= version`) — une mesure faite par un algorithme plus
+    /// ancien compte comme non faite, au même titre qu'une mesure absente.
+    pub fn compter_descripteurs(&self, model: &str, version: i32) -> Result<(i64, i64)> {
         let total: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM features WHERE model = ?1",
             params![model],
@@ -2225,18 +2258,21 @@ impl Library {
         )?;
         let faits: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM descriptors d
-              JOIN features f ON f.track_id = d.track_id AND f.model = ?1",
-            params![model],
+              JOIN features f ON f.track_id = d.track_id AND f.model = ?1
+             WHERE d.algo_version >= ?2",
+            params![model, version],
             |r| r.get(0),
         )?;
         Ok((faits, total))
     }
 
     /// Efface toutes les mesures de tempo/tonalité/énergie, pour les reprendre
-    /// de zéro — sert au bouton « remesurer » du mode Bibliothèque : après une
-    /// correction de l'algorithme, les valeurs déjà en base sont celles de
-    /// l'ancien, pas des trous à combler. `pending_descripteurs` ne les
-    /// reverrait jamais sans ça, une ligne y valant déjà « mesuré ».
+    /// de zéro — sert à la case « refaire ce qui est déjà mesuré » du mode
+    /// Bibliothèque, pour une repasse complète voulue à la main (un nouveau
+    /// descripteur ajouté à la mesure, par exemple, sans que l'algorithme
+    /// tempo/tonalité/énergie lui-même ait changé). Un correctif de cet
+    /// algorithme, lui, n'a plus besoin de ce bouton : voir
+    /// [`Self::pending_descripteurs`] et sa colonne `algo_version`.
     pub fn effacer_descripteurs(&self) -> Result<usize> {
         Ok(self.conn.execute("DELETE FROM descriptors", [])?)
     }
@@ -5767,9 +5803,9 @@ mod tests {
             })
             .unwrap();
         let _ = jamais; // jamais analysé : aucune ligne `descriptors`, exprès.
-        lib.save_descripteurs(sans_tempo, None, None, 0.0, -100.0, None, None, None, None, None, None, None)
+        lib.save_descripteurs(sans_tempo, None, None, 0.0, -100.0, None, None, None, None, None, None, None, 1)
             .unwrap();
-        lib.save_descripteurs(mesure, Some(122.0), None, 0.5, -12.0, None, None, None, None, None, None, None)
+        lib.save_descripteurs(mesure, Some(122.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 1)
             .unwrap();
 
         let h = lib.stats_tempo().unwrap();
@@ -5777,6 +5813,41 @@ mod tests {
         assert_eq!(h.comptes.iter().sum::<i64>(), 1);
         let tranche = ((122.0 - TEMPO_MIN) / TEMPO_PAS) as usize;
         assert_eq!(h.comptes[tranche], 1);
+    }
+
+    /// Une mesure écrite par un algorithme plus ancien redevient « en
+    /// attente » — c'est ce qui permet à un correctif (l'inversion d'octave
+    /// du tempo, par exemple) de se rattraper tout seul, sans bouton
+    /// « refaire ce qui est déjà mesuré ».
+    #[test]
+    fn pending_descripteurs_reprend_une_mesure_perimee() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/perime.mp3".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        lib.save_embedding(id, "modele", &[0.1, 0.2]).unwrap();
+        lib.save_descripteurs(id, Some(90.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 1)
+            .unwrap();
+
+        // Version 1 : déjà mesuré, rien à refaire.
+        assert!(lib.pending_descripteurs("modele", 1, 10).unwrap().is_empty());
+        let (faits, total) = lib.compter_descripteurs("modele", 1).unwrap();
+        assert_eq!((faits, total), (1, 1));
+
+        // Version 2 (l'algorithme a changé) : la mesure d'avant ne compte plus.
+        let pending = lib.pending_descripteurs("modele", 2, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, id);
+        let (faits, total) = lib.compter_descripteurs("modele", 2).unwrap();
+        assert_eq!((faits, total), (0, 1));
+
+        // Remesuré en version 2 : de nouveau à jour.
+        lib.save_descripteurs(id, Some(180.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 2)
+            .unwrap();
+        assert!(lib.pending_descripteurs("modele", 2, 10).unwrap().is_empty());
     }
 
     /// Une famille de huit morceaux, quatre genres — Jazz minoritaire, seul
@@ -5889,7 +5960,7 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
-            lib.save_descripteurs(id, Some(*bpm as f32), None, *energie as f32, -10.0, None, None, None, None, None, None, None)
+            lib.save_descripteurs(id, Some(*bpm as f32), None, *energie as f32, -10.0, None, None, None, None, None, None, None, 1)
                 .unwrap();
         }
         let humeur = lib.stats_humeur().unwrap();

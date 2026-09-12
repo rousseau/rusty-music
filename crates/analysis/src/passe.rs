@@ -27,6 +27,19 @@ use crate::Embedder;
 /// se mélangeraient dans la même carte sans que rien ne le signale.
 pub const MODELE: &str = "clap-htsat-unfused-5f";
 
+/// Version de l'algorithme tempo/tonalité/énergie (`descripteurs::analyser`).
+///
+/// **À incrémenter à chaque correctif qui change la mesure elle-même** —
+/// l'inversion d'octave du tempo (`battements.rs`, sept. 2026) en est
+/// l'exemple qui a motivé cette colonne : sans version, rien ne distingue une
+/// mesure d'avant le correctif d'une mesure d'après, et
+/// `pending_descripteurs` les traite toutes deux comme « déjà faites ». Un
+/// ajout de sortie qui ne change pas les valeurs déjà écrites (un nouveau
+/// descripteur en plus des existants, par exemple) n'a pas besoin de
+/// l'incrément — la case « refaire ce qui est déjà mesuré » du mode
+/// Bibliothèque reste le bon outil pour ce cas-là.
+pub const VERSION_DESCRIPTEURS: i32 = 1;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("base de données : {0}")]
@@ -354,7 +367,7 @@ pub fn descripteurs(
 ) -> Result<RapportDescripteurs, Error> {
     use crate::descripteurs::{analyser, Analyseur, Descripteurs};
 
-    let pistes = lib.pending_descripteurs(MODELE, limite)?;
+    let pistes = lib.pending_descripteurs(MODELE, VERSION_DESCRIPTEURS, limite)?;
     let mut rapport = RapportDescripteurs {
         demandes: pistes.len(),
         ..Default::default()
@@ -427,6 +440,7 @@ pub fn descripteurs(
                         d.rolloff_ecart,
                         d.flatness_moy,
                         d.flatness_ecart,
+                        VERSION_DESCRIPTEURS,
                     ) {
                         Ok(()) => rapport.mesures += 1,
                         Err(e) => {

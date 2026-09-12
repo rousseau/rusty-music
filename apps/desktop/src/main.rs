@@ -2796,13 +2796,18 @@ struct EtatDescripteurs {
     resultat: Option<String>,
 }
 
-/// Combien de morceaux de la carte ont déjà leurs descripteurs.
+/// Combien de morceaux de la carte ont déjà leurs descripteurs à jour — une
+/// mesure d'avant un correctif de l'algorithme compte comme manquante, voir
+/// `VERSION_DESCRIPTEURS`.
 #[tauri::command(async)]
 fn descripteurs_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
     etat.lib
         .lock()
         .map_err(echec)?
-        .compter_descripteurs(rusty_music_analysis::passe::MODELE)
+        .compter_descripteurs(
+            rusty_music_analysis::passe::MODELE,
+            rusty_music_analysis::passe::VERSION_DESCRIPTEURS,
+        )
         .map_err(echec)
 }
 
@@ -5451,18 +5456,22 @@ fn set_amelioration(
     Ok(())
 }
 
-/// Sondé par l'interface : `rodio` ne pousse pas d'évènements.
+/// Précharge la piste suivante dans la file, si la réserve n'est pas pleine.
 ///
-/// Sert aussi à réalimenter la sortie. La file n'est plus chargée d'un bloc —
-/// elle immobilisait le lecteur 17 s sur un album de 157 pistes — et c'est ce
-/// passage régulier qui prépare la piste suivante, un fichier à la fois.
-#[tauri::command(async)]
-fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
-    // En trois temps plutôt qu'un `player.completer()` verrou tenu : la
-    // lecture disque de `ouvrir` peut prendre plusieurs secondes sur la carte
-    // SD, et ce verrou est aussi celui de `toggle_pause` — sondé toutes les
-    // 200 ms, il rendait le bouton lecture/pause silencieusement peu réactif
-    // le temps qu'une piste suivante se précharge.
+/// En trois temps plutôt qu'un `player.completer()` verrou tenu : la lecture
+/// disque de `ouvrir` peut prendre plusieurs secondes sur la carte SD, et ce
+/// verrou est aussi celui de `toggle_pause` — le tenir pendant l'I/O rendrait
+/// le bouton lecture/pause silencieusement peu réactif le temps qu'une piste
+/// suivante se précharge.
+///
+/// Appelée à la fois par [`playback_state`] (sondage de l'interface) et par
+/// le fil de fond démarré dans `main` : la fenêtre en arrière-plan ou
+/// minimisée fait ralentir voire suspendre les temporisateurs JS de la
+/// webview (WKWebView sur macOS), et avec elle le seul sondage — la lecture
+/// s'arrêtait alors en fin de piste jusqu'à ramener l'appli au premier plan.
+/// Le fil de fond n'a pas ce problème : il tourne côté natif, indépendamment
+/// de la visibilité de la fenêtre.
+fn precharger_suivante(etat: &Etat) -> Result<(), String> {
     let a_charger = etat.player.lock().map_err(echec)?.a_precharger();
     if let Some((rang, piste)) = a_charger {
         match rusty_music_player::ouvrir(&piste) {
@@ -5478,6 +5487,13 @@ fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
             }
         }
     }
+    Ok(())
+}
+
+/// Sondé par l'interface : `rodio` ne pousse pas d'évènements.
+#[tauri::command(async)]
+fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
+    precharger_suivante(&etat)?;
     let player = etat.player.lock().map_err(echec)?;
     Ok(EtatLecture {
         current: player.current().map(|p| p.display().to_string()),
@@ -5669,20 +5685,93 @@ fn main() {
             });
             app.manage(tuiles::Archives::default());
 
-            // Surveillance continue de chaque racine déjà connue — c'est elle
-            // qui manquait pour que « scanné puis surveillé automatiquement »
-            // (README) soit vrai dans l'application, pas seulement en CLI.
+            // Réalimente la file indépendamment du sondage de l'interface —
+            // voir `precharger_suivante`. Fil dédié plutôt que raccroché à un
+            // évènement de fenêtre : plus simple, et couvre aussi bien la
+            // minimisation que la perte de focus ou l'occlusion.
+            let etat_arriere_plan = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                if let Some(etat) = etat_arriere_plan.try_state::<Etat>() {
+                    if let Err(e) = precharger_suivante(&etat) {
+                        tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
+                    }
+                }
+            });
+
+            // Rattrapage puis surveillance continue de chaque racine déjà
+            // connue — même patron que `rusty-music watch` en CLI
+            // (`scan_root_jobs` puis `watch_root`). La surveillance seule ne
+            // suffit pas : `notify` ne voit que ce qui bouge pendant qu'elle
+            // tourne, et un dossier ajouté ou modifié pendant que
+            // l'application était fermée resterait invisible jusqu'au
+            // prochain scan manuel. Le rattrapage est incrémental (taille et
+            // mtime inchangées ⇒ sauté), donc bon marché au démarrage normal.
             // Échec toléré par racine : une racine débranchée (clé USB,
             // partage réseau) ne doit pas empêcher les autres de démarrer.
-            let etat = app.state::<Etat>();
-            let racines = etat
+            let racines = app
+                .state::<Etat>()
                 .lib
                 .lock()
                 .map(|l| l.roots().unwrap_or_default())
                 .unwrap_or_default();
-            for r in racines {
-                demarrer_surveillance(&etat, Path::new(&r.path));
-            }
+            let app_rattrapage = app.handle().clone();
+            std::thread::spawn(move || {
+                for r in racines {
+                    let racine = PathBuf::from(&r.path);
+                    let etat = app_rattrapage.state::<Etat>();
+                    let deja_en_cours = {
+                        let mut s = match etat.scan.lock() {
+                            Ok(s) => s,
+                            Err(_) => continue,
+                        };
+                        if s.en_cours {
+                            true
+                        } else {
+                            *s = EtatScan {
+                                en_cours: true,
+                                racine: r.path.clone(),
+                                morceaux: 0,
+                                resultat: None,
+                            };
+                            false
+                        }
+                    };
+                    // Un scan manuel a démarré entre-temps (l'utilisateur n'a
+                    // pas attendu) : on ne le double pas, la surveillance
+                    // seule suffira pour cette racine-ci — un prochain scan,
+                    // manuel ou au prochain lancement, rattrapera le reste.
+                    if deja_en_cours {
+                        demarrer_surveillance(&etat, &racine);
+                        continue;
+                    }
+                    let succes = match Library::open(&etat.db) {
+                        Ok(lib) => {
+                            let jobs = coeurs_arriere_plan();
+                            match rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, false) {
+                                Ok(rep) => {
+                                    tracing::info!(root = %racine.display(), ?rep, "rattrapage au démarrage");
+                                    true
+                                }
+                                Err(e) => {
+                                    tracing::warn!(root = %racine.display(), %e, "rattrapage impossible");
+                                    false
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(%e, "rattrapage : base inaccessible");
+                            false
+                        }
+                    };
+                    if let Ok(mut s) = etat.scan.lock() {
+                        s.en_cours = false;
+                    }
+                    if succes {
+                        demarrer_surveillance(&etat, &racine);
+                    }
+                }
+            });
 
             // La fenêtre est bâtie ici, pas déclarée dans `tauri.conf.json`, pour
             // une seule raison : y accrocher `on_web_resource_request`.
