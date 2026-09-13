@@ -983,6 +983,12 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   vue.retour = retour;
   if (retour === null) sommet = { quoi, titre, lignes };
 
+  // Bandeau « autour de cet artiste » : propre à la grille d'albums d'un
+  // artiste précis (`retour` non nul — voir `ouvrirAlbumsArtiste`), jamais à
+  // la liste « Albums » de toute la bibliothèque. `poser` le masque par
+  // défaut à chaque changement de vue ; seul `majAutourArtiste` le repeuple.
+  masquerAutourArtiste();
+
   // Hors mode Écoute, l'en-tête appartient à l'autre mode (« Découvrir »,
   // « Bibliothèque ») : `poser` met à jour `vue` mais n'y touche pas.
   const horsEcoute = modeCourant !== "ecoute";
@@ -1157,6 +1163,7 @@ async function activer(item) {
     poser("albums", item.name, albums, {
       quoi: "artistes", titre: "Artistes", lignes: vue.lignes, scroll: scrollActuel(),
     });
+    majAutourArtiste(item.name, item.mbid ?? null);
   } else if (vue.quoi === "albums") {
     const pistes = await invoke("tracks_of_album", { album: item.name, artist: item.artist ?? null });
     poser("pistes", item.name, pistes, {
@@ -1342,6 +1349,116 @@ async function ouvrirAlbumsArtiste(artiste, mbid, retour = sommet) {
   // centre montre la carte ou le dock, pas la grille.
   if (modeCourant !== "ecoute") await basculerMode("ecoute");
   poser("albums", artiste, albums, retour);
+  majAutourArtiste(artiste, mbid);
+}
+
+/// Masque le bandeau « autour de cet artiste » — l'état par défaut de
+/// `poser`, repris à chaque changement de vue.
+function masquerAutourArtiste() {
+  $("autour-artiste").hidden = true;
+  $("autour-sonore-bloc").hidden = true;
+  $("autour-collab-bloc").hidden = true;
+}
+
+/// Jeton du dernier artiste demandé — `majAutourCollab` peut retomber sur un
+/// aller-retour MusicBrainz d'environ une seconde ; sans ce garde, cliquer
+/// vite d'un artiste à l'autre laisserait parfois la réponse du premier
+/// écraser l'affichage du second (même principe que `inspectionAlbum`).
+let autourArtisteJeton = 0;
+
+/// Dernier artiste dont le bandeau a été peuplé — `basculerMode` s'en sert
+/// pour le restaurer en revenant à l'Écoute (son `else` rappelle `poser` sans
+/// connaître le mbid, que `vue` ne porte pas — voir `AlbumRow`).
+let dernierArtisteOuvert = { nom: null, mbid: null };
+
+/// Peuple le bandeau sous la grille d'albums d'un artiste : proximité
+/// sonique et collaborations connues, deux sources distinctes affichées côte
+/// à côte plutôt qu'un classement fusionné — l'une est un score continu,
+/// l'autre un fait ponctuel, et les mélanger brouillerait les deux
+/// (`docs/interface-guidelines.md`, Règle 9). Les deux tolèrent l'échec en
+/// silence : un bandeau secondaire ne doit jamais bloquer la grille
+/// principale, déjà posée par l'appelant.
+function majAutourArtiste(artiste, mbid) {
+  dernierArtisteOuvert = { nom: artiste, mbid: mbid ?? null };
+  const jeton = ++autourArtisteJeton;
+  $("autour-artiste").hidden = false;
+  majAutourSonore(artiste, jeton);
+  majAutourCollab(mbid, jeton);
+}
+
+/// « Sonne comme » : les artistes les plus proches par empreinte CLAP
+/// (`artistes_proches`, centroïdes d'album agrégés par artiste côté moteur).
+/// L'opacité de chaque pastille retombe avec l'éloignement, jusqu'à 45 % pour
+/// la plus lointaine montrée — la force du lien, pas sa catégorie.
+async function majAutourSonore(artiste, jeton) {
+  const bloc = $("autour-sonore-bloc");
+  let proches = [];
+  try {
+    proches = await invoke("artistes_proches", { artiste, k: 8 });
+  } catch (e) {
+    remonter(e, "autour de l'artiste");
+  }
+  if (jeton !== autourArtisteJeton) return;
+  if (proches.length === 0) {
+    bloc.hidden = true;
+    return;
+  }
+  const pire = proches[proches.length - 1][1] || 1;
+  const hote = $("autour-sonore");
+  hote.replaceChildren();
+  for (const [nom, distance] of proches) {
+    const el = document.createElement("button");
+    el.className = "proche";
+    el.textContent = nom;
+    el.style.opacity = String(1 - 0.55 * (distance / pire));
+    el.addEventListener("click", () => ouvrirAlbumsArtiste(nom, null));
+    hote.appendChild(el);
+  }
+  bloc.hidden = false;
+}
+
+/// « A aussi joué avec » : les relations MusicBrainz de cet artiste
+/// (`artist_links`, le même cache que le mode Découvrir) restreintes à celles
+/// qui mènent vers un artiste déjà dans la bibliothèque — un clic y conduit
+/// toujours ses propres albums. Le reste (artistes hors bibliothèque) reste
+/// le terrain de Découvrir, pas un doublon ici.
+async function majAutourCollab(mbid, jeton) {
+  const bloc = $("autour-collab-bloc");
+  if (!mbid) {
+    bloc.hidden = true;
+    return;
+  }
+  let liens = [];
+  try {
+    liens = await invoke("artist_links", { mbid, contact: contactMb() });
+  } catch {
+    // Cache vide et pas de contact MusicBrainz renseigné : silence, ce
+    // bandeau est secondaire (voir `majAutourArtiste`).
+    if (jeton === autourArtisteJeton) bloc.hidden = true;
+    return;
+  }
+  await chargerArtistesDecouvrir();
+  if (jeton !== autourArtisteJeton) return;
+  const connus = new Map();
+  for (const [dstMbid, dstNom] of liens) {
+    if (dstMbid !== mbid && artistesDecouvrables.some((a) => a.mbid === dstMbid)) {
+      connus.set(dstMbid, dstNom);
+    }
+  }
+  if (connus.size === 0) {
+    bloc.hidden = true;
+    return;
+  }
+  const hote = $("autour-collab");
+  hote.replaceChildren();
+  for (const [dstMbid, dstNom] of connus) {
+    const el = document.createElement("button");
+    el.className = "proche";
+    el.textContent = dstNom;
+    el.addEventListener("click", () => ouvrirAlbumsArtiste(dstNom, dstMbid));
+    hote.appendChild(el);
+  }
+  bloc.hidden = false;
 }
 
 /// Le nom de l'artiste, dans l'inspecteur, ouvre ses albums au centre — le
@@ -6504,6 +6621,10 @@ async function basculerMode(mode) {
   $("decouvrir-vue").hidden = !decouvrir;
   $("liste").hidden = explorer || bibliotheque || decouvrir || vueEnGrille();
   $("grille").hidden = explorer || bibliotheque || decouvrir || !vueEnGrille();
+  // Propre à l'Écoute : les branches Explorer/Bibliothèque/Découvrir
+  // ci-dessous ne rappellent pas `poser` (qui le masquerait sinon) — sans
+  // cette ligne, le bandeau restait affiché en quittant l'artiste consulté.
+  if (mode !== "ecoute") masquerAutourArtiste();
   // L'ordre de la grille d'albums n'existe qu'en Écoute : `poser` le rétablit
   // en y revenant, mais ne court pas pour les autres modes.
   $("tri-albums").hidden = mode !== "ecoute" || vue.quoi !== "albums";
@@ -6600,6 +6721,12 @@ async function basculerMode(mode) {
       };
       if (famillesParAlbum) rendre();
       else chargerFamillesParAlbum().then(rendre).catch((e) => remonter(e, "familles des albums"));
+      // Revenir à l'Écoute sur la même grille d'artiste restaure son
+      // bandeau — `poser` ci-dessus venait de le masquer sans rien savoir de
+      // l'artiste (voir `dernierArtisteOuvert`).
+      if (vue.quoi === "albums" && vue.retour !== null && vue.titre === dernierArtisteOuvert.nom) {
+        majAutourArtiste(dernierArtisteOuvert.nom, dernierArtisteOuvert.mbid);
+      }
     }
   }
 }
@@ -6733,6 +6860,7 @@ async function afficherArtisteDecouvrir(mbid, nom) {
           const albums = await invoke("albums", { artist: local.name, mbid: local.mbid });
           if (modeCourant !== "ecoute") await basculerMode("ecoute");
           poser("albums", local.name, albums, sommet);
+          majAutourArtiste(local.name, local.mbid);
         });
         item.action = bouton;
       }

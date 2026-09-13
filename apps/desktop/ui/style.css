@@ -469,6 +469,19 @@ html, body {
    DOM. La fenêtre est une grille CSS ordinaire — c'est le nombre de rangées
    qu'elle contient, pas la disposition des colonnes, qui est virtualisé. */
 .grille { flex: 1; overflow-y: auto; position: relative; outline: none; padding: 0 26px; }
+
+/* Bandeaux secondaires sous la grille des albums d'un artiste (mode Écoute) —
+   jamais de hauteur imposée : chacun prend son contenu, `.grille` cède la
+   place (voir `.centre__corps`, flex-colonne). */
+.autour-artiste { flex: 0 0 auto; padding: 4px 26px 18px; border-top: 1px solid var(--line); }
+.autour-artiste__section + .autour-artiste__section { margin-top: 12px; }
+.proches { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; }
+.proche {
+  flex: 0 0 auto; background: none; border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 14px; font: inherit; font-size: 12.5px; color: var(--txt);
+  cursor: pointer; white-space: nowrap;
+}
+.proche:hover { color: var(--accent); border-color: var(--accent); }
 .grille__socle { position: relative; width: 100%; }
 .grille__fenetre {
   position: absolute; left: 0; right: 0; top: 0;

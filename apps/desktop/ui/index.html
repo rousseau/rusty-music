@@ -278,6 +278,23 @@
              d'un album ou une recherche n'a pas d'ordre à indexer. -->
         <nav id="index-alpha" class="index-alpha" aria-label="Aller à la lettre" hidden></nav>
 
+        <!-- Mode Écoute, grille des albums d'un artiste : deux bandeaux
+             secondaires sous la grille — proximité sonique (empreintes CLAP,
+             agrégées par artiste) et collaborations MusicBrainz restreintes
+             aux artistes déjà présents dans la bibliothèque (sinon, direction
+             Découvrir). Masqué pour la liste « Albums » de toute la
+             bibliothèque et pour toute autre vue — voir `poser`/`majAutourArtiste`. -->
+        <div id="autour-artiste" class="autour-artiste" hidden>
+          <div id="autour-sonore-bloc" class="autour-artiste__section" hidden>
+            <p class="rail__titre">Sonne comme</p>
+            <div id="autour-sonore" class="proches"></div>
+          </div>
+          <div id="autour-collab-bloc" class="autour-artiste__section" hidden>
+            <p class="rail__titre">A aussi joué avec</p>
+            <div id="autour-collab" class="proches"></div>
+          </div>
+        </div>
+
         <!-- Mode Éditer, état 2 : la carte de séparation, au centre. Le bloc
              « Démixage » a quitté le rail (`docs/ui-spec-editeur.md`, « Le
              parcours — le centre a trois états »). -->

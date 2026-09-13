@@ -2370,6 +2370,58 @@ fn album_ring(etat: State<Etat>, album_id: String, k: usize) -> Result<AnneauVue
     Ok(AnneauVue { focal: focal.into(), voisins })
 }
 
+/// Centroïde moyen des albums de chaque artiste, à partir des centroïdes
+/// d'album déjà chargés — pas de nouvelle requête SQL, une simple agrégation
+/// d'un cran supplémentaire sur une donnée déjà en cache.
+fn centroides_par_artiste(centroides: &CentroidesAlbums, noeuds: &NoeudsAlbums) -> HashMap<String, Vec<f32>> {
+    let mut cumul: HashMap<String, (Vec<f32>, u32)> = HashMap::new();
+    for (id, v) in centroides {
+        let Some(noeud) = noeuds.get(id) else { continue };
+        let e = cumul
+            .entry(noeud.artist.clone())
+            .or_insert_with(|| (vec![0.0; v.len()], 0));
+        for (a, b) in e.0.iter_mut().zip(v) {
+            *a += b;
+        }
+        e.1 += 1;
+    }
+    cumul
+        .into_iter()
+        .map(|(nom, (somme, n))| {
+            let n = (n.max(1)) as f32;
+            (nom, somme.into_iter().map(|x| x / n).collect())
+        })
+        .collect()
+}
+
+/// Les k artistes les plus proches sonorement d'un artiste donné — panneau
+/// central du mode Écoute, sous la grille d'albums de cet artiste.
+///
+/// Même esprit que [`album_ring`] un cran plus haut : réutilise les
+/// centroïdes d'album déjà en cache, agrégés par artiste, puis un balayage
+/// linéaire — une bibliothèque compte bien moins d'artistes que d'albums,
+/// inutile d'y consacrer un graphe.
+#[tauri::command(async)]
+fn artistes_proches(etat: State<Etat>, artiste: String, k: usize) -> Result<Vec<(String, f32)>, String> {
+    let (centroides, noeuds) = charger_centroides_albums(&etat)?;
+    let par_artiste = centroides_par_artiste(&centroides, &noeuds);
+    let Some(focal) = par_artiste.get(&artiste) else {
+        return Ok(Vec::new());
+    };
+
+    let mut scores: Vec<(String, f32)> = par_artiste
+        .iter()
+        .filter(|(nom, _)| *nom != &artiste)
+        .map(|(nom, v)| {
+            let d = focal.iter().zip(v).map(|(a, b)| (a - b) * (a - b)).sum();
+            (nom.clone(), d)
+        })
+        .collect();
+    scores.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    scores.truncate(k);
+    Ok(scores)
+}
+
 /// Un lien du fond permanent de l'anneau — voir `reseau_albums`. `distance`
 /// sert à trier/plafonner côté moteur ; l'interface s'en sert aussi pour
 /// moduler l'opacité, à l'identique de `AnneauVoisin::distance`.
@@ -6147,6 +6199,7 @@ fn main() {
             temporal_view,
             search_albums,
             album_ring,
+            artistes_proches,
             reseau_albums,
             prepare_graph,
             neighbours,
