@@ -106,7 +106,9 @@ fn bissextile(annee: i32) -> bool {
 ///
 /// N'écrit rien pour une édition reliée mais absente du dump (bibliothèque
 /// vaste, dump réduit à ce qu'on cherche) : ses crédits et labels, s'il y en
-/// avait, restent ceux du dernier import réussi.
+/// avait, restent ceux du dernier import réussi — et elle n'est pas marquée
+/// dans `discogs_importes`, donc redevient candidate tant qu'un import ne
+/// l'a pas réellement rencontrée dans le dump.
 pub fn importer(
     lib: &mut Library,
     chemin: &Path,
@@ -141,6 +143,11 @@ pub fn importer(
                 .collect();
             if let Err(e) = lib.labels_poser(edition.id, &labels) {
                 tracing::warn!(erreur = %e, id = edition.id, "labels Discogs non rangés");
+            }
+            // Après credits_poser/labels_poser, même sans rien à ranger —
+            // voir `discogs_importes` et `Library::discogs_import_utile`.
+            if let Err(e) = lib.discogs_marquer_importe(edition.id) {
+                tracing::warn!(erreur = %e, id = edition.id, "édition Discogs non marquée importée");
             }
         },
         avancer,

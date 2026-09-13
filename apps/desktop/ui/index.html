@@ -363,19 +363,14 @@
             </label>
             <label class="case">
               <input id="discogs-lier-active" type="checkbox" checked>
-              Liaison Discogs (crédits par édition)
+              Discogs (crédits et labels par édition)
             </label>
             <p class="aide">Les trois n'exigent aucune clé et n'interrompent jamais la
-              chaîne — décochez celles dont vous n'avez pas l'usage. La liaison ne
-              fait que retrouver l'édition Discogs correspondante ; crédits et labels
-              eux-mêmes viennent du dump mensuel, à télécharger dans le bloc « Dump
-              Discogs » plus bas. Une fois le dump là, l'import se relance tout seul
-              dès qu'une liaison relie une édition neuve — pas besoin d'y repenser.</p>
-            <p class="aide">
-              <span>Attend le prochain « Scanner », sinon : </span>
-              <button id="discogs-lier-maintenant" class="lien">Lier maintenant</button>
-              <span> (demande l'adresse de contact MusicBrainz ci-dessous).</span>
-            </p>
+              chaîne — décochez celles dont vous n'avez pas l'usage. Demande l'adresse
+              de contact MusicBrainz ci-dessous, comme les genres. Crédits et labels
+              eux-mêmes viennent du dump mensuel (bloc « Dump Discogs » plus bas, à
+              télécharger une fois) — une fois le dump là, chaque « Scanner » relie les
+              éditions neuves et importe ce qui manque encore, tout seul.</p>
             <label class="case">
               <input id="lastfm-active" type="checkbox">
               Tags de genre (Last.fm)
@@ -416,13 +411,12 @@
             <p class="aide">D'où viennent crédits et labels Discogs : la totalité de
               leur catalogue, ≈ 11 Go, aucun filtre possible au téléchargement — voir
               <code>docs/enrichissement-lecteur.md</code>. Mensuel : inutile de le
-              retélécharger à chaque fois. Importer relit le fichier déjà là et
-              remplace crédits et labels des éditions déjà reliées (case « Liaison
-              Discogs » ci-dessus) — sans risque à relancer, rien ne s'accumule.</p>
+              retélécharger à chaque fois. Une fois téléchargé, la case « Discogs »
+              ci-dessus s'occupe du reste à chaque « Scanner » — rien d'autre à faire
+              ici.</p>
             <p id="discogs-dump-etat" class="aide">—</p>
             <div class="ajout__ligne">
               <button id="discogs-dump-telecharger" class="bouton">Télécharger le dernier dump</button>
-              <button id="discogs-dump-importer" class="bouton" disabled>Importer crédits et labels</button>
             </div>
             <progress id="discogs-dump-jauge" class="jauge" hidden max="1" value="0"></progress>
             <p id="discogs-dump-progres" class="scan-etat"></p>

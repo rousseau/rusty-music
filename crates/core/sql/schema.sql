@@ -317,6 +317,20 @@ CREATE TABLE IF NOT EXISTS labels_discogs (
 );
 CREATE INDEX IF NOT EXISTS idx_labels_discogs_release ON labels_discogs(discogs_release_id);
 
+-- Éditions déjà traitées par un import du dump — y compris celles qui s'y
+-- sont révélées sans crédit ni label (rare, mais réel) : l'absence d'une
+-- ligne dans `credits_discogs`/`labels_discogs` ne distingue pas « jamais
+-- importé » de « importé, rien trouvé ». Sans cette marque, une édition
+-- légitimement vide serait reconsidérée comme « à importer » à chaque
+-- vérification, et redéclencherait un import complet (~10 min) pour rien.
+-- Une édition reliée mais absente du dump (bibliothèque vaste, dump réduit à
+-- ce qu'on cherche) n'est en revanche jamais marquée ici : elle doit
+-- redevenir candidate tant qu'un import ne l'a pas réellement vue.
+CREATE TABLE IF NOT EXISTS discogs_importes (
+    discogs_release_id INTEGER PRIMARY KEY,
+    at                  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 -- Critiques CritiqueBrainz, plusieurs par release-group. Licence CC (BY-SA ou
 -- BY-NC-SA selon la critique, jamais supposée uniforme) : le texte complet
 -- peut être stocké tel quel, à condition d'afficher l'attribution partout où

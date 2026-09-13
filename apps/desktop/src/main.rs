@@ -3585,6 +3585,16 @@ fn discogs_import_state(etat: State<Etat>) -> Result<EtatDiscogsImport, String> 
     Ok(etat.discogs_import.lock().map_err(echec)?.clone())
 }
 
+/// Y a-t-il une édition reliée jamais importée ? Sert à décider si relancer
+/// l'import vaut le coût après une liaison — voir `Library::discogs_import_utile`
+/// : le critère n'est jamais « cette liaison-ci a-t-elle relié du neuf »,
+/// pour rattraper aussi une édition reliée avant ce correctif, ou par un
+/// import interrompu.
+#[tauri::command(async)]
+fn discogs_import_utile(etat: State<Etat>) -> Result<bool, String> {
+    etat.lib.lock().map_err(echec)?.discogs_import_utile().map_err(echec)
+}
+
 /// Les crédits Discogs du morceau `id`, via son édition MusicBrainz — vide
 /// tant que la liaison et l'import mensuel n'ont pas encore couvert cette
 /// édition, jamais une valeur inventée.
@@ -6098,6 +6108,7 @@ fn main() {
             discogs_dump_state,
             start_discogs_import,
             discogs_import_state,
+            discogs_import_utile,
             credits_piste,
             labels_piste,
             popularites,

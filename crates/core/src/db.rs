@@ -3369,6 +3369,36 @@ impl Library {
         Ok(out)
     }
 
+    /// Marque une édition comme traitée par un import du dump — voir
+    /// `discogs_importes` du schéma. Appelée pour toute édition réellement
+    /// rencontrée dans le dump, même sans crédit ni label trouvé : c'est ce
+    /// qui distingue « importé, rien trouvé » de « jamais importé ».
+    pub fn discogs_marquer_importe(&self, discogs_release_id: u64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO discogs_importes (discogs_release_id) VALUES (?1)",
+            params![discogs_release_id as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Y a-t-il une édition reliée dont l'import n'a encore jamais été
+    /// tenté ? Sert à décider si relire le dump (~10 min sur 11 Go) vaut le
+    /// coût après une liaison — y compris quand cette liaison-ci n'a rien
+    /// relié de neuf, mais qu'un import précédent avait été interrompu ou
+    /// n'avait jamais eu lieu pour des éditions déjà reliées avant elle.
+    pub fn discogs_import_utile(&self) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM editions_discogs e
+                  WHERE e.discogs_release_id IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM discogs_importes i
+                                     WHERE i.discogs_release_id = e.discogs_release_id)
+             )",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
     /* --------------------------------------- critiques (CritiqueBrainz) */
 
     /// Les release-groups dont les critiques restent à récupérer. Réutilise
@@ -6524,6 +6554,28 @@ mod tests {
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0].nom, "Big Dada");
         assert_eq!(labels[1].nom, "Ninja Tune");
+    }
+
+    /// Le cas qui a motivé `discogs_importes` : une édition reliée mais
+    /// jamais importée (liaison faite sous un binaire d'avant ce correctif,
+    /// ou import interrompu) doit rester détectée comme « utile à importer »
+    /// même si *cette* liaison-ci n'a rien relié de neuf — l'ancien critère
+    /// (« la liaison vient-elle de relier quelque chose ? ») la manquait.
+    #[test]
+    fn discogs_import_utile_detecte_une_edition_reliee_jamais_importee() {
+        let lib = Library::open_in_memory().unwrap();
+        assert!(!lib.discogs_import_utile().unwrap(), "rien de relié : rien à importer");
+
+        lib.discogs_lier_edition("rel-1", Some(249_504)).unwrap();
+        assert!(lib.discogs_import_utile().unwrap(), "reliée, jamais importée");
+
+        lib.discogs_marquer_importe(249_504).unwrap();
+        assert!(!lib.discogs_import_utile().unwrap(), "marquée importée, même sans crédit ni label trouvé");
+
+        // Une deuxième édition reliée, elle, redevient utile — la marque de
+        // la première ne doit pas masquer la nouvelle.
+        lib.discogs_lier_edition("rel-2", Some(300_000)).unwrap();
+        assert!(lib.discogs_import_utile().unwrap());
     }
 
     /// « Aucune critique » se mémorise comme les autres réponses vides du

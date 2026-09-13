@@ -7892,10 +7892,8 @@ async function analyserRacine(chemin) {
     if ($("discogs-lier-active").checked && contact.includes("@")) {
       etat.textContent = `${chemin} — liaison Discogs…`;
       await invoke("start_discogs_liaison", { contact });
-      const bilanLiaison = await attendreFin("discogs_liaison_state", 2000, (d) =>
-        majJauge("scan-jauge", d.en_cours, d.faits, d.total),
-      );
-      await importerDiscogsSiUtile(bilanLiaison, `${chemin} — `);
+      await attendreFin("discogs_liaison_state", 2000, (d) => majJauge("scan-jauge", d.en_cours, d.faits, d.total));
+      await importerDiscogsSiUtile(`${chemin} — `);
     }
     const cleLastfm = $("lastfm-cle").value.trim();
     if ($("lastfm-active").checked && cleLastfm) {
@@ -8092,15 +8090,10 @@ async function passeCritiques(phase) {
 /// MusicBrainz connue) — décochable indépendamment (case « Liaison Discogs »
 /// du rail). Demande un contact MusicBrainz, comme les genres ; sautée sans
 /// adresse plutôt que de faire échouer la chaîne.
-///
-/// Rend l'état final (`EtatDiscogsLiaison`, avec `liees`) : sert à
-/// `importerDiscogsSiUtile`, appelée juste après par chacun des trois
-/// appelants, pour savoir s'il y a du neuf à importer sans qu'on ait à
-/// redemander explicitement.
 async function passeDiscogsLiaison(contact, phase) {
   avancementActu(phase, "liaison Discogs : démarrage…", 0, 0);
   await invoke("start_discogs_liaison", { contact });
-  return attendreFin("discogs_liaison_state", 2000, (d) => {
+  await attendreFin("discogs_liaison_state", 2000, (d) => {
     if (!d.en_cours) return;
     avancementActu(
       phase,
@@ -8113,25 +8106,32 @@ async function passeDiscogsLiaison(contact, phase) {
   });
 }
 
-/// Après une liaison qui a effectivement relié au moins une édition neuve
-/// (`liaisonBilan.liees > 0`) — pas simplement vérifié ce qui l'était déjà —
-/// importe aussitôt crédits et labels si le dump est déjà sur le disque,
-/// pour ne plus exiger un second clic sur « Importer crédits et labels ».
+/// Importe aussitôt crédits et labels si le dump est déjà sur le disque et
+/// qu'une édition reliée n'a encore jamais été importée
+/// (`discogs_import_utile`) — pour ne plus exiger un second clic sur
+/// « Importer crédits et labels » après une liaison.
+///
+/// **Le critère n'est jamais « cette liaison-ci a-t-elle relié du neuf »** :
+/// une édition a pu être reliée par un passage précédent (avant ce
+/// correctif, ou un import interrompu en cours de route) sans jamais avoir
+/// été importée — se fier au seul bilan de la liaison qui vient de tourner
+/// manquerait ce cas-là indéfiniment. `discogs_import_utile` interroge
+/// directement ce qui reste à faire, peu importe quand ça a été relié.
 ///
 /// Relit tout le dump (~10 min sur 11 Go, le format n'a pas d'index — pas de
 /// raccourci possible) : ne se déclenche donc que s'il y a vraiment du neuf
-/// à en tirer, jamais à chaque scan pour rien si rien n'a changé côté
-/// Discogs. Reste silencieuse (ni erreur ni changement d'état) si le dump
-/// n'a jamais été téléchargé — l'import restera alors disponible à la main.
-async function importerDiscogsSiUtile(liaisonBilan, phase) {
-  if (!liaisonBilan || liaisonBilan.liees <= 0) return;
+/// à en tirer, jamais à chaque scan pour rien si tout est déjà importé.
+/// Reste silencieuse (ni erreur ni changement d'état) si le dump n'a jamais
+/// été téléchargé — l'import restera alors disponible à la main.
+async function importerDiscogsSiUtile(phase) {
+  let utile;
   let info;
   try {
-    info = await invoke("discogs_dump_info");
+    [utile, info] = await Promise.all([invoke("discogs_import_utile"), invoke("discogs_dump_info")]);
   } catch {
     return;
   }
-  if (!info) return;
+  if (!utile || !info) return;
 
   avancementActu(phase, "import Discogs (crédits + labels) : démarrage…", 0, 0);
   await invoke("start_discogs_import");
@@ -8146,33 +8146,6 @@ async function importerDiscogsSiUtile(liaisonBilan, phase) {
     );
   });
 }
-
-/// Bouton « Lier maintenant » — lance la liaison Discogs seule, sans
-/// attendre le prochain « Scanner »/« Analyser » complet qui l'embarque.
-/// Même patron que « Rafraîchir » de la popularité : verrouille la chaîne
-/// principale (`verrouillerActualisation`) et partage sa jauge, pour qu'une
-/// action indépendante ne s'exécute jamais en parallèle d'une autre.
-$("discogs-lier-maintenant").addEventListener("click", async () => {
-  if ($("lancer-scan").disabled) return; // une passe tourne déjà
-  const contact = contactMb();
-  verrouillerActualisation(true);
-  try {
-    const bilanLiaison = await passeDiscogsLiaison(contact, "");
-    await importerDiscogsSiUtile(bilanLiaison, "");
-    $("scan-etat").textContent = "Liaison Discogs terminée.";
-    // Rien à recharger dans le bloc « Dump Discogs » lui-même (le fichier
-    // n'a pas bougé), mais le bouton « Importer » a pu être désactivé par
-    // erreur pendant l'import automatique si l'utilisateur avait ce mode
-    // ouvert — remis dans son état correct.
-    if (modeCourant === "bibliotheque") await afficherInfoDumpDiscogs();
-  } catch (e) {
-    remonter(e, "liaison Discogs");
-    $("scan-etat").textContent = String(e);
-  } finally {
-    $("scan-jauge").hidden = true;
-    verrouillerActualisation(false);
-  }
-});
 
 /// Tags de genre Last.fm — vote de nommage des familles
 /// (`docs/nommage-familles.md`), pas la popularité. Décochable indépendamment
@@ -8216,8 +8189,8 @@ async function lancerChaineComplete() {
     if ($("bio-active").checked) await passeBiographies("Biographies — ");
     if ($("critiques-active").checked) await passeCritiques("Critiques — ");
     if ($("discogs-lier-active").checked && contact.includes("@")) {
-      const bilanLiaison = await passeDiscogsLiaison(contact, "Liaison Discogs — ");
-      await importerDiscogsSiUtile(bilanLiaison, "Liaison Discogs — ");
+      await passeDiscogsLiaison(contact, "Liaison Discogs — ");
+      await importerDiscogsSiUtile("Liaison Discogs — ");
     }
     const cleLastfm = $("lastfm-cle").value.trim();
     if ($("lastfm-active").checked && cleLastfm) {
@@ -8259,6 +8232,7 @@ async function reprendreActualisationEnCours() {
     ["biographies_state", "biographies"],
     ["critiques_state", "critiques"],
     ["discogs_liaison_state", "liaison Discogs"],
+    ["discogs_import_state", "import Discogs"],
   ];
   for (const [cmd, nom] of sondes) {
     let s;
@@ -8274,7 +8248,11 @@ async function reprendreActualisationEnCours() {
         $("scan-etat").textContent = `${nom} — terminé.`;
         return;
       }
-      const faits = e.faits ?? e.artistes ?? 0;
+      // `discogs_import_state` n'a ni `faits` ni `total` connu à l'avance
+      // (le nombre d'éditions à parcourir dans le dump ne se sait qu'en le
+      // faisant) — `editions_vues` sert alors de seul repère, comme pour
+      // `EtatScan::morceaux`.
+      const faits = e.faits ?? e.artistes ?? e.editions_vues ?? 0;
       avancementActu(
         "",
         e.total
@@ -8309,16 +8287,16 @@ async function chargerDossierDonnees() {
 }
 
 /// Dump Discogs (`releases.xml.gz`) — affiche la taille et la date du
-/// fichier déjà sur le disque, ou reprend le suivi d'un téléchargement ou
-/// d'un import encore en cours (rechargement de page, changement de mode
-/// pendant qu'il tournait). Pas dans `reprendreActualisationEnCours` : ce
-/// n'est pas une étape de la chaîne « Scanner », ce sont deux actions
-/// indépendantes avec leurs propres boutons.
+/// fichier déjà sur le disque, ou reprend le suivi d'un téléchargement
+/// encore en cours (rechargement de page, changement de mode pendant qu'il
+/// tournait). L'import qui en tire crédits et labels n'a pas de bouton ici :
+/// il fait partie de la chaîne « Scanner » (case « Discogs » du rail,
+/// `importerDiscogsSiUtile`) — un seul bouton pour tout, pas deux à
+/// retenir.
 async function chargerDumpDiscogs() {
   let dl;
-  let imp;
   try {
-    [dl, imp] = await Promise.all([invoke("discogs_dump_state"), invoke("discogs_import_state")]);
+    dl = await invoke("discogs_dump_state");
   } catch (e) {
     remonter(e, "dump Discogs");
     return;
@@ -8327,16 +8305,11 @@ async function chargerDumpDiscogs() {
     suivreTelechargementDump();
     return;
   }
-  if (imp.en_cours) {
-    suivreImportDump();
-    return;
-  }
   await afficherInfoDumpDiscogs();
 }
 
 /// La ligne d'état statique : taille et date du dernier téléchargement
-/// réussi, ou l'absence de dump — jamais de valeur inventée. Active le
-/// bouton d'import seulement si un dump est là pour l'alimenter.
+/// réussi, ou l'absence de dump — jamais de valeur inventée.
 async function afficherInfoDumpDiscogs() {
   let info;
   try {
@@ -8346,7 +8319,6 @@ async function afficherInfoDumpDiscogs() {
     return;
   }
   const el = $("discogs-dump-etat");
-  $("discogs-dump-importer").disabled = !info;
   if (!info) {
     el.textContent = "Aucun dump téléchargé pour l'instant.";
     return;
@@ -8359,12 +8331,9 @@ async function afficherInfoDumpDiscogs() {
 
 /// Sonde `discogs_dump_state` jusqu'à la fin, jauge et texte d'avancement en
 /// octets — même patron que `passeDescripteurs`, avec ses propres éléments
-/// plutôt que la jauge partagée de la chaîne « Scanner ». Les deux boutons
-/// sont désactivés ensemble : télécharger et importer touchent le même
-/// fichier, ne doivent jamais tourner en même temps.
+/// plutôt que la jauge partagée de la chaîne « Scanner ».
 async function suivreTelechargementDump() {
   $("discogs-dump-telecharger").disabled = true;
-  $("discogs-dump-importer").disabled = true;
   $("discogs-dump-etat").textContent = "Téléchargement en cours…";
 
   let fin;
@@ -8394,7 +8363,6 @@ async function suivreTelechargementDump() {
   // dump téléchargé ».
   if (fin?.resultat?.startsWith("échec")) {
     $("discogs-dump-etat").textContent = fin.resultat;
-    $("discogs-dump-importer").disabled = true;
     return;
   }
   await afficherInfoDumpDiscogs();
@@ -8408,46 +8376,6 @@ $("discogs-dump-telecharger").addEventListener("click", async () => {
     return;
   }
   suivreTelechargementDump();
-});
-
-/// Sonde `discogs_import_state` jusqu'à la fin. Pas de jauge — le nombre
-/// total d'éditions du dump ne se sait qu'en le parcourant en entier, un
-/// compte qui monte est la seule mesure d'avancement possible (même
-/// contrainte que le scan, `EtatScan::morceaux`).
-async function suivreImportDump() {
-  $("discogs-dump-telecharger").disabled = true;
-  $("discogs-dump-importer").disabled = true;
-  $("discogs-dump-jauge").hidden = true;
-
-  let fin;
-  try {
-    fin = await attendreFin("discogs_import_state", 1000, (i) => {
-      if (!i.en_cours) return;
-      $("discogs-dump-progres").textContent =
-        `${i.editions_vues.toLocaleString("fr-FR")} éditions parcourues · ` +
-        `${i.editions_retenues.toLocaleString("fr-FR")} retenues…`;
-    });
-  } catch (e) {
-    remonter(e, "import du dump Discogs");
-    fin = null;
-  } finally {
-    $("discogs-dump-telecharger").disabled = false;
-    $("discogs-dump-importer").disabled = false;
-  }
-
-  // Reste affiché tel quel (pas de re-résumé) : le texte du moteur suffit,
-  // en échec comme en succès (« N éditions parcourues, N retenues, … »).
-  $("discogs-dump-progres").textContent = fin?.resultat ?? "";
-}
-
-$("discogs-dump-importer").addEventListener("click", async () => {
-  try {
-    await invoke("start_discogs_import");
-  } catch (e) {
-    remonter(e, "import du dump Discogs");
-    return;
-  }
-  suivreImportDump();
 });
 
 /// Ce que l'audio dérivé occupe sur le disque — stems démixés et rendus HD.
