@@ -2681,6 +2681,9 @@ struct StatsBibliotheque {
     bitrate: rusty_music_core::db::Histogramme,
     sans_mbid: i64,
     humeur: Vec<(String, i64)>,
+    sans_bio: i64,
+    sans_critique: i64,
+    sans_discogs: i64,
 }
 
 #[tauri::command(async)]
@@ -2695,6 +2698,9 @@ fn library_stats(etat: State<Etat>) -> Result<StatsBibliotheque, String> {
         bitrate: lib.stats_bitrate().map_err(echec)?,
         sans_mbid: lib.stats_sans_mbid().map_err(echec)?,
         humeur: lib.stats_humeur().map_err(echec)?,
+        sans_bio: lib.stats_sans_bio().map_err(echec)?,
+        sans_critique: lib.stats_sans_critique().map_err(echec)?,
+        sans_discogs: lib.stats_sans_discogs().map_err(echec)?,
     })
 }
 

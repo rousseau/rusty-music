@@ -1976,6 +1976,83 @@ impl Library {
         )?)
     }
 
+    /// Morceaux dont l'artiste n'a pas de biographie TheAudioDB — même
+    /// résolution par MBID exact que [`Self::theaudiodb_candidats`] (pas de
+    /// séparation d'un `mb_artist_id` à plusieurs valeurs).
+    pub fn stats_sans_bio(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM tracks t
+              WHERE t.mb_artist_id IS NULL OR t.mb_artist_id = ''
+                 OR NOT EXISTS (
+                      SELECT 1 FROM theaudiodb_artistes a
+                       WHERE a.mb_artist_id = t.mb_artist_id
+                         AND (a.biographie_en IS NOT NULL OR a.biographie_fr IS NOT NULL)
+                    )",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Morceaux dont l'édition n'a ni crédit ni label Discogs — résolution
+    /// directe par `mb_release_id`, comme [`Self::credits_pour_piste`].
+    pub fn stats_sans_discogs(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM tracks t
+              WHERE t.mb_release_id IS NULL OR t.mb_release_id = ''
+                 OR NOT EXISTS (
+                      SELECT 1 FROM editions_discogs e
+                       WHERE e.mb_release_id = t.mb_release_id
+                         AND e.discogs_release_id IS NOT NULL
+                         AND (EXISTS (SELECT 1 FROM credits_discogs c
+                                       WHERE c.discogs_release_id = e.discogs_release_id)
+                           OR EXISTS (SELECT 1 FROM labels_discogs l
+                                       WHERE l.discogs_release_id = e.discogs_release_id))
+                    )",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Morceaux dont l'album n'a pas de critique CritiqueBrainz — résolution
+    /// par release-group comme [`Self::critiques_pour_piste`], mais en un
+    /// seul passage plutôt qu'une requête par piste : `mb_albums` et
+    /// l'ensemble des release-groups déjà critiqués sont chacun chargés une
+    /// fois, puis confrontés aux couples (artiste, album) groupés par la
+    /// base elle-même.
+    pub fn stats_sans_critique(&self) -> Result<i64> {
+        let total = self.count()?;
+        let albums = self.mb_albums()?;
+
+        let mut stmt_critiquees = self.conn.prepare(
+            "SELECT DISTINCT mbid_release_group FROM critiques",
+        )?;
+        let critiquees: HashSet<String> = stmt_critiquees
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT mb_artist_id, album, COUNT(*) FROM tracks
+              WHERE mb_artist_id IS NOT NULL AND mb_artist_id <> ''
+                AND album IS NOT NULL AND album <> ''
+              GROUP BY mb_artist_id, album",
+        )?;
+        let lignes = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+        })?;
+        let mut avec_critique = 0i64;
+        for ligne in lignes {
+            let (artiste, album, n) = ligne?;
+            let norme = crate::musicbrainz::normaliser_titre(&album);
+            if albums
+                .get(&(artiste, norme))
+                .is_some_and(|rg| critiquees.contains(rg))
+            {
+                avec_critique += n;
+            }
+        }
+        Ok(total - avec_critique)
+    }
+
     /// Les paramètres du calcul de la carte, une clé absente valant sa
     /// valeur par défaut ([`ParametresCarte::default`]) — voir la table
     /// `parametres_carte`.
@@ -6431,6 +6508,102 @@ mod tests {
         assert_eq!(bios.len(), 1);
         assert_eq!(bios[0].biographie_fr.as_deref(), Some("bio fr"));
         assert!(lib.bio_pour_piste(2).unwrap().is_empty());
+    }
+
+    /// `stats_sans_bio` compte un morceau sans MBID d'artiste comme sans
+    /// biographie, et un morceau dont l'artiste n'a été interrogé qu'à vide
+    /// (marqué « déjà demandé » sans qu'aucune biographie n'ait été posée)
+    /// tout autant — seule une biographie effectivement posée retire un
+    /// morceau du compte.
+    #[test]
+    fn stats_sans_bio_retombe_sur_absence_de_mbid_et_de_biographie() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute_batch(
+                "INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (1, '/m/1.flac', 'art-1', 0);
+                 INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (2, '/m/2.flac', 'art-2', 0);
+                 INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (3, '/m/3.flac', NULL, 0);",
+            )
+            .unwrap();
+        assert_eq!(lib.stats_sans_bio().unwrap(), 3);
+
+        // Interrogé mais sans biographie trouvée : ne compte toujours pas.
+        lib.theaudiodb_poser(&["art-2".to_string()], &[]).unwrap();
+        assert_eq!(lib.stats_sans_bio().unwrap(), 3);
+
+        lib.theaudiodb_poser(
+            &["art-1".to_string()],
+            &[BioBrute {
+                mb_artist_id: "art-1".into(),
+                id_theaudiodb: Some("111".into()),
+                biographie_en: Some("bio en".into()),
+                biographie_fr: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(lib.stats_sans_bio().unwrap(), 2, "seul le morceau 1 a désormais une biographie");
+    }
+
+    /// `stats_sans_discogs` exige un crédit *ou* un label — l'un des deux
+    /// suffit à sortir un morceau du compte, mais une édition liée sans que
+    /// l'import n'ait rien trouvé y reste.
+    #[test]
+    fn stats_sans_discogs_exige_un_credit_ou_un_label() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute_batch(
+                "INSERT INTO tracks (id, path, mb_release_id, added_at) VALUES (1, '/m/1.flac', 'rel-1', 0);
+                 INSERT INTO tracks (id, path, mb_release_id, added_at) VALUES (2, '/m/2.flac', 'rel-2', 0);
+                 INSERT INTO tracks (id, path, mb_release_id, added_at) VALUES (3, '/m/3.flac', NULL, 0);",
+            )
+            .unwrap();
+        assert_eq!(lib.stats_sans_discogs().unwrap(), 3);
+
+        // Édition reliée mais l'import n'y a rien trouvé : compte encore.
+        lib.discogs_lier_edition("rel-2", Some(500)).unwrap();
+        assert_eq!(lib.stats_sans_discogs().unwrap(), 3);
+
+        lib.labels_poser(500, &[LabelDiscogs { nom: "Label".into(), catno: "".into(), discogs_label_id: None }])
+            .unwrap();
+        assert_eq!(lib.stats_sans_discogs().unwrap(), 2, "le morceau 2 a désormais un label");
+    }
+
+    /// `stats_sans_critique` résout le release-group par (artiste, titre
+    /// normalisé) — même appariement que `critiques_pour_piste` — plutôt que
+    /// de compter les critiques une piste à la fois.
+    #[test]
+    fn stats_sans_critique_resout_par_artiste_et_titre_normalise() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute_batch(
+                "INSERT INTO tracks (id, path, mb_artist_id, album, added_at)
+                   VALUES (1, '/m/1.flac', 'art-1', 'Titre', 0);
+                 INSERT INTO tracks (id, path, mb_artist_id, album, added_at)
+                   VALUES (2, '/m/2.flac', 'art-2', 'Autre Album', 0);
+                 INSERT INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+                   VALUES ('rg-1', 'art-1', 'Titre', 'titre');",
+            )
+            .unwrap();
+        // Le morceau 2 n'a pas de release-group connu du tout.
+        assert_eq!(lib.stats_sans_critique().unwrap(), 2);
+
+        lib.critiques_poser("rg-1", &[]).unwrap();
+        assert_eq!(lib.stats_sans_critique().unwrap(), 2, "release-group interrogé, mais rien trouvé");
+
+        lib.critiques_poser(
+            "rg-1",
+            &[CritiqueBrute {
+                id: "crit-1".into(),
+                auteur: None,
+                licence_id: "CC BY-SA 3.0".into(),
+                licence_nom: None,
+                langue: None,
+                texte: "Un album marquant.".into(),
+                url_originale: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(lib.stats_sans_critique().unwrap(), 1, "le morceau 1 a désormais une critique");
     }
 
     /// Le lien Discogs se pose y compris quand il est absent (`None`) — pour

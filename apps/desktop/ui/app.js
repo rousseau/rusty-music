@@ -7337,6 +7337,9 @@ async function chargerStatsBibliotheque() {
     ["Sans MusicBrainz", s.sans_mbid],
     ["Sans genre identifié", s.genres.find(([g]) => g === "—")?.[1] ?? 0],
     ["Sans tempo mesuré", s.tempo.sans_valeur],
+    ["Sans biographie d'artiste", s.sans_bio],
+    ["Sans critique d'album", s.sans_critique],
+    ["Sans crédits Discogs", s.sans_discogs],
   ]) {
     const dt = document.createElement("dt");
     dt.textContent = libelle;
