@@ -2868,6 +2868,33 @@ impl Library {
         Ok(out)
     }
 
+    /// Les release-groups MusicBrainz dont un album de la bibliothèque relève
+    /// réellement — par opposition à `mb_release_groups`, qui porte tout le
+    /// catalogue d'un artiste (nécessaire à [`Self::mb_albums`] pour
+    /// désambiguïser un titre parmi toute la discographie, mais bien plus
+    /// large que ce qu'on possède : sur une grosse bibliothèque, la table
+    /// entière peut compter plusieurs dizaines de milliers de release-groups
+    /// pour quelques milliers d'albums réels). Sert à ne pas interroger une
+    /// source par release-group — CritiqueBrainz en premier lieu — pour des
+    /// albums qu'on n'a jamais et n'affichera jamais.
+    pub fn release_groups_possedes(&self) -> Result<HashSet<String>> {
+        let albums = self.mb_albums()?;
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT mb_artist_id, album FROM tracks
+              WHERE mb_artist_id IS NOT NULL AND album IS NOT NULL",
+        )?;
+        let paires = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(paires
+            .into_iter()
+            .filter_map(|(artiste, album)| {
+                let norme = crate::musicbrainz::normaliser_titre(&album);
+                albums.get(&(artiste, norme)).cloned()
+            })
+            .collect())
+    }
+
     /* --------------------------------------------- popularité générale */
 
     /// Les enregistrements dont la popularité reste à récupérer sur au moins
@@ -6532,6 +6559,34 @@ mod tests {
         let critiques = lib.critiques_pour_release_group("rg-1").unwrap();
         assert_eq!(critiques.len(), 1);
         assert_eq!(critiques[0].auteur.as_deref(), Some("Quelquun"));
+    }
+
+    /// `mb_release_groups` porte toute la discographie d'un artiste (utile à
+    /// `mb_albums` pour désambiguïser un titre), mais un seul des deux albums
+    /// de l'artiste ici est réellement dans la bibliothèque — seul son
+    /// release-group doit ressortir, pas celui du disque qu'on n'a pas. Voir
+    /// `critiques::actualiser`, qui s'en sert pour ne pas interroger
+    /// CritiqueBrainz sur des albums jamais affichés.
+    #[test]
+    fn release_groups_possedes_exclut_le_reste_de_la_discographie() {
+        let lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute_batch(
+                "INSERT INTO mb_release_groups (mbid, artist_mbid, title, title_norm)
+                 VALUES ('rg-possede', 'art-1', 'Album Possédé', 'albumpossede'),
+                        ('rg-absent', 'art-1', 'Autre Album', 'autrealbum')",
+            )
+            .unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            mb_artist_id: Some("art-1".into()),
+            album: Some("Album Possédé".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let possedes = lib.release_groups_possedes().unwrap();
+        assert_eq!(possedes, HashSet::from(["rg-possede".to_string()]));
     }
 
     /// Bout en bout : `familles_votees` combine MusicBrainz, CLAP-texte et

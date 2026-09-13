@@ -33,6 +33,16 @@ pub fn url_ecrire_critique(mbid_rg: &str) -> String {
 /// `depuis` : instant (epoch s) à partir duquel un release-group déjà
 /// interrogé compte comme frais — une critique neuve reste rare, la fenêtre
 /// par défaut est donc plus longue que pour la popularité.
+///
+/// `critiques_candidats` porte sur `mb_release_groups`, qui couvre toute la
+/// discographie de chaque artiste connu — bien plus que ce qu'on possède
+/// réellement. Sans le filtre par [`Library::release_groups_possedes`], la
+/// passe interrogeait CritiqueBrainz (une requête toutes les 500 ms, par
+/// courtoisie) pour des albums jamais affichés : sur une bibliothèque de
+/// 27 000 morceaux / 2 700 albums mais 83 000 release-groups connus, la
+/// passe complète prenait alors près de 9 h au lieu d'une vingtaine de
+/// minutes. `limite` s'applique après ce filtre — il compte des albums
+/// réellement interrogés, pas des lignes de `mb_release_groups` parcourues.
 pub fn actualiser(
     lib: &mut Library,
     client: &critiquebrainz::Client,
@@ -41,7 +51,13 @@ pub fn actualiser(
     mut avancer: impl FnMut(&Bilan),
 ) -> Result<Bilan> {
     let mut bilan = Bilan::default();
-    let a_faire = lib.critiques_candidats(depuis, limite)?;
+    let possedes = lib.release_groups_possedes()?;
+    let a_faire: Vec<String> = lib
+        .critiques_candidats(depuis, usize::MAX)?
+        .into_iter()
+        .filter(|mbid| possedes.contains(mbid))
+        .take(limite)
+        .collect();
     bilan.total = a_faire.len();
     avancer(&bilan);
 
