@@ -30,7 +30,7 @@
 
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 
 use flate2::read::GzDecoder;
@@ -131,13 +131,47 @@ fn chercher_dump(agent: &ureq::Agent, annee: i32) -> Result<Option<String>> {
 
 /// Télécharge `url` dans `dest`, en flux — jamais entièrement en mémoire.
 pub fn telecharger(agent: &ureq::Agent, url: &str, dest: &Path) -> Result<()> {
+    telecharger_avec_avancement(agent, url, dest, |_, _| {})
+}
+
+/// Taille des lots de copie pendant le téléchargement — assez gros pour ne
+/// pas multiplier les appels à `avancer`, assez petit pour qu'un avancement
+/// affiché reste vivant sur un fichier de plusieurs gigaoctets.
+const TAILLE_LOT_TELECHARGEMENT: usize = 4 * 1024 * 1024;
+
+/// Comme [`telecharger`], en rapportant l'avancement en octets déjà écrits —
+/// `avancer(vus, total)`, `total` étant `None` si le serveur n'a pas annoncé
+/// de `Content-Length` (ne devrait pas arriver pour un fichier statique, mais
+/// mieux vaut ne rien y supposer côté appelant).
+pub fn telecharger_avec_avancement(
+    agent: &ureq::Agent,
+    url: &str,
+    dest: &Path,
+    mut avancer: impl FnMut(u64, Option<u64>),
+) -> Result<()> {
     let mut r = agent
         .get(url)
         .call()
         .map_err(|e| Error::Reseau(format!("téléchargement {url} : {e}")))?;
+    let total = r
+        .headers()
+        .get(ureq::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+
     let mut fichier = File::create(dest)?;
     let mut lecteur = r.body_mut().as_reader();
-    std::io::copy(&mut lecteur, &mut fichier)?;
+    let mut tampon = vec![0u8; TAILLE_LOT_TELECHARGEMENT];
+    let mut vus = 0u64;
+    loop {
+        let n = lecteur.read(&mut tampon)?;
+        if n == 0 {
+            break;
+        }
+        fichier.write_all(&tampon[..n])?;
+        vus += n as u64;
+        avancer(vus, total);
+    }
     Ok(())
 }
 

@@ -67,9 +67,14 @@ struct Etat {
     /// familles (`docs/nommage-familles.md`), pas la popularité.
     lastfm: Mutex<EtatLastfm>,
     /// Avancement de la passe de liaison Discogs (légère — retrouve l'édition
-    /// Discogs de chaque édition MusicBrainz connue). L'import lourd du dump
-    /// mensuel n'a pas d'état ici : CLI/cron uniquement, séparé du scan normal.
+    /// Discogs de chaque édition MusicBrainz connue).
     discogs_liaison: Mutex<EtatDiscogsLiaison>,
+    /// Avancement du téléchargement du dump Discogs.
+    discogs_dump: Mutex<EtatDiscogsDump>,
+    /// Avancement de l'import (crédits + labels) depuis le dump téléchargé.
+    /// Séparé du scan normal — déclenché à la main depuis le bloc « Dump
+    /// Discogs » du mode Bibliothèque, pas enchaîné à « Scanner ».
+    discogs_import: Mutex<EtatDiscogsImport>,
     /// Avancement de la passe du mode Découvrir (sorties, collaborations,
     /// voisins), sondé par l'interface.
     decouvrir: Mutex<EtatDecouvrir>,
@@ -3348,11 +3353,17 @@ fn subdiviser_famille(etat: State<Etat>, cluster: i64) -> Result<Vec<rusty_music
 }
 
 /// Avancement de la passe de liaison Discogs, sondé par l'interface.
+///
+/// `liees` (éditions neuves reliées, pas simplement vérifiées) sert de
+/// déclencheur à l'import automatique qui suit une liaison utile — voir
+/// `importerDiscogsSiUtile` côté JS : inutile de relire les ~11 Go du dump
+/// (~10 min) si la liaison n'a rien trouvé de nouveau.
 #[derive(Default, Clone, serde::Serialize)]
 struct EtatDiscogsLiaison {
     en_cours: bool,
     faits: usize,
     total: usize,
+    liees: usize,
     resultat: Option<String>,
 }
 
@@ -3385,6 +3396,7 @@ fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: Stri
                 if let Ok(mut e) = etat.discogs_liaison.lock() {
                     e.faits = b.faits;
                     e.total = b.total;
+                    e.liees = b.liees;
                 }
             })
             .map_err(|e| e.to_string())
@@ -3408,6 +3420,169 @@ fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: Stri
 #[tauri::command(async)]
 fn discogs_liaison_state(etat: State<Etat>) -> Result<EtatDiscogsLiaison, String> {
     Ok(etat.discogs_liaison.lock().map_err(echec)?.clone())
+}
+
+/// Chemin persistant du dump Discogs téléchargé — à côté de la base, comme
+/// `ville-paris.db` (`db.with_file_name`) : un fichier mensuel qu'on garde
+/// d'un lancement à l'autre, pas un fichier temporaire — sinon « dernier
+/// téléchargement » n'aurait pas de sens.
+fn chemin_dump_discogs(etat: &Etat) -> PathBuf {
+    etat.db.with_file_name("discogs-releases.xml.gz")
+}
+
+/// Avancement du téléchargement du dump Discogs, sondé par l'interface.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatDiscogsDump {
+    en_cours: bool,
+    octets: u64,
+    total: Option<u64>,
+    resultat: Option<String>,
+}
+
+/// Ce que dit le fichier déjà sur le disque, sans rien télécharger : sa
+/// taille et la date de dernière écriture (= dernier téléchargement réussi).
+#[derive(Clone, serde::Serialize)]
+struct DumpDiscogsInfo {
+    octets: u64,
+    telecharge_le: i64,
+}
+
+/// `None` tant qu'aucun téléchargement n'a abouti — pas de valeur inventée.
+#[tauri::command(async)]
+fn discogs_dump_info(etat: State<Etat>) -> Result<Option<DumpDiscogsInfo>, String> {
+    let chemin = chemin_dump_discogs(&etat);
+    let Ok(m) = std::fs::metadata(&chemin) else {
+        return Ok(None);
+    };
+    let telecharge_le = m
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    Ok(Some(DumpDiscogsInfo { octets: m.len(), telecharge_le }))
+}
+
+/// Lance le téléchargement du dernier dump Discogs (`releases.xml.gz`, ≈ 11
+/// Go) — remplace un fichier déjà là s'il y en avait un.
+#[tauri::command(async)]
+fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
+    {
+        let mut d = etat.discogs_dump.lock().map_err(echec)?;
+        if d.en_cours {
+            return Err("un téléchargement du dump Discogs est déjà en cours".into());
+        }
+        *d = EtatDiscogsDump { en_cours: true, ..Default::default() };
+    }
+
+    let chemin = chemin_dump_discogs(&etat);
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let issue = rusty_music_core::discogs_import::telecharger_dernier_dump(&chemin, |vus, total| {
+            if let Ok(mut d) = etat.discogs_dump.lock() {
+                d.octets = vus;
+                d.total = total;
+            }
+        });
+
+        let bilan = match issue {
+            Ok(()) => {
+                let go = std::fs::metadata(&chemin).map(|m| m.len()).unwrap_or(0) as f64 / 1e9;
+                format!("dump téléchargé — {go:.1} Go")
+            }
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "téléchargement du dump Discogs terminé");
+
+        let mut fin = etat.discogs_dump.lock();
+        if let Ok(d) = fin.as_mut() {
+            d.en_cours = false;
+            d.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn discogs_dump_state(etat: State<Etat>) -> Result<EtatDiscogsDump, String> {
+    Ok(etat.discogs_dump.lock().map_err(echec)?.clone())
+}
+
+/// Avancement de l'import des crédits/labels depuis le dump Discogs déjà sur
+/// le disque, sondé par l'interface. Pas de total connu à l'avance (combien
+/// d'éditions du dump concernent la bibliothèque ne se sait qu'en le
+/// parcourant) : `editions_vues` sert de seul repère de progression, comme
+/// le fait déjà `EtatScan::morceaux` pour un scan.
+#[derive(Default, Clone, serde::Serialize)]
+struct EtatDiscogsImport {
+    en_cours: bool,
+    editions_vues: u64,
+    editions_retenues: u64,
+    fragments_malformes: u64,
+    resultat: Option<String>,
+}
+
+/// Extrait crédits et labels du dump déjà téléchargé (voir
+/// [`start_discogs_dump`]) vers `credits_discogs`/`labels_discogs`, pour les
+/// éditions déjà reliées par la liaison Discogs.
+///
+/// **Sûr à rejouer** : `credits_poser`/`labels_poser` remplacent toujours ce
+/// qui existait pour une édition, jamais un ajout — un import relancé
+/// n'accumule rien, il rafraîchit. Exposée en commande Tauri comme les
+/// autres passes de fond (popularité, biographies, critiques) plutôt que
+/// réservée au CLI : ni plus ni moins risqué pour la base que celles-ci.
+#[tauri::command(async)]
+fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
+    let chemin = chemin_dump_discogs(&etat);
+    if !chemin.is_file() {
+        return Err("Téléchargez d'abord le dump Discogs.".into());
+    }
+    if etat.discogs_dump.lock().map_err(echec)?.en_cours {
+        return Err("le téléchargement du dump est encore en cours".into());
+    }
+    {
+        let mut i = etat.discogs_import.lock().map_err(echec)?;
+        if i.en_cours {
+            return Err("un import du dump Discogs est déjà en cours".into());
+        }
+        *i = EtatDiscogsImport { en_cours: true, ..Default::default() };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|mut lib| {
+            rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
+                if let Ok(mut i) = etat.discogs_import.lock() {
+                    i.editions_vues = b.editions_vues;
+                    i.editions_retenues = b.editions_retenues;
+                    i.fragments_malformes = b.fragments_malformes;
+                }
+            })
+            .map_err(|e| e.to_string())
+        });
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} éditions parcourues, {} retenues, {} fragments illisibles ignorés",
+                b.editions_vues, b.editions_retenues, b.fragments_malformes
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "import du dump Discogs terminé");
+
+        let mut fin = etat.discogs_import.lock();
+        if let Ok(i) = fin.as_mut() {
+            i.en_cours = false;
+            i.resultat = Some(bilan);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn discogs_import_state(etat: State<Etat>) -> Result<EtatDiscogsImport, String> {
+    Ok(etat.discogs_import.lock().map_err(echec)?.clone())
 }
 
 /// Les crédits Discogs du morceau `id`, via son édition MusicBrainz — vide
@@ -5670,6 +5845,8 @@ fn main() {
                 critiques: Mutex::new(EtatCritiques::default()),
                 lastfm: Mutex::new(EtatLastfm::default()),
                 discogs_liaison: Mutex::new(EtatDiscogsLiaison::default()),
+                discogs_dump: Mutex::new(EtatDiscogsDump::default()),
+                discogs_import: Mutex::new(EtatDiscogsImport::default()),
                 decouvrir: Mutex::new(EtatDecouvrir::default()),
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
@@ -5916,6 +6093,11 @@ fn main() {
             subdiviser_famille,
             start_discogs_liaison,
             discogs_liaison_state,
+            discogs_dump_info,
+            start_discogs_dump,
+            discogs_dump_state,
+            start_discogs_import,
+            discogs_import_state,
             credits_piste,
             labels_piste,
             popularites,

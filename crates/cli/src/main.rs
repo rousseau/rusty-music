@@ -1949,7 +1949,20 @@ fn main() -> Result<()> {
                 None => {
                     let dest = std::env::temp_dir().join("rusty-music-discogs-releases.xml.gz");
                     println!("Téléchargement du dernier dump Discogs (≈ 11 Go)…");
-                    rusty_music_core::discogs_import::telecharger_dernier_dump(&dest)?;
+                    let mut dernier = 0u64;
+                    rusty_music_core::discogs_import::telecharger_dernier_dump(&dest, |vus, total| {
+                        if vus >= dernier + 500_000_000 {
+                            dernier = vus;
+                            let go = vus as f64 / 1e9;
+                            match total {
+                                Some(total) => {
+                                    let total_go = total as f64 / 1e9;
+                                    println!("  {go:.1} / {total_go:.1} Go");
+                                }
+                                None => println!("  {go:.1} Go"),
+                            }
+                        }
+                    })?;
                     dest
                 }
             };

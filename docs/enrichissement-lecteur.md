@@ -114,12 +114,21 @@ discrète « source : Discogs » gardée dans l'inspecteur par courtoisie
   piste — notation Discogs brute, informative, pas résolue vers `track_no`)
   + `labels_discogs` (nom, numéro de catalogue — plusieurs lignes possibles
   par édition : réédition, ou sous-label et label parent).
-- Tauri : `start_discogs_liaison { contact }` / `discogs_liaison_state` /
-  `credits_piste { id }` / `labels_piste { id }`. **Pas de commande Tauri
-  pour l'import lourd** — CLI/cron uniquement.
-- CLI : `rusty-music discogs-lier [--contact] [--limite]` (liaison),
+- Tauri (mode Bibliothèque, bloc « Dump Discogs ») : `start_discogs_liaison
+  { contact }` / `discogs_liaison_state` / `credits_piste { id }` /
+  `labels_piste { id }`, `discogs_dump_info` (taille et date sans rien
+  télécharger) / `start_discogs_dump` / `discogs_dump_state`
+  (téléchargement), `start_discogs_import` / `discogs_import_state`
+  (extraction — **sûre à relancer** : `credits_poser`/`labels_poser`
+  remplacent toujours ce qui existait pour une édition, jamais un ajout ;
+  exposée en commande Tauri comme les autres passes de fond, popularité,
+  biographies, critiques — pas de raison de réserver celle-ci au CLI).
+- CLI, pour qui préfère ne pas passer par l'interface (cron, script) :
+  `rusty-music discogs-lier [--contact] [--limite]` (liaison),
   `rusty-music import-discogs [--fichier <chemin>]` (import — télécharge le
-  dernier dump si `--fichier` est omis).
+  dernier dump si `--fichier` est omis, ou réutilise celui du bloc « Dump
+  Discogs » de l'interface, à côté de la base : même fichier, les deux
+  chemins interopèrent).
 
 ## 3. CritiqueBrainz — critiques d'albums
 
@@ -128,6 +137,18 @@ release-group (`GET critiquebrainz.org/ws/1/review/?entity_id=…
 &entity_type=release_group`, vérifié en direct, sans en-tête spécial) —
 jamais de recherche approximative, `mb_release_groups` le porte déjà (même
 résolution que la popularité et les genres à l'échelon album).
+
+**Bornée à ce qu'on possède, pas à `mb_release_groups`.** Cette table porte
+toute la discographie de chaque artiste connu (nécessaire ailleurs pour
+désambiguïser un titre parmi l'ensemble des albums d'un artiste), bien plus
+large que la bibliothèque réelle — sur un cas mesuré, 83 000 release-groups
+pour 2 700 albums possédés, un facteur ~30. Sans filtre, la passe
+interrogeait CritiqueBrainz pour des albums jamais affichés nulle part,
+gonflant un premier passage complet de ~20 min à ~9 h pour le même résultat
+utile. `critiques::actualiser` restreint désormais les candidats à
+`Library::release_groups_possedes` (intersection de `mb_release_groups` et
+des couples `(artiste, album)` réellement présents dans `tracks`) avant
+d'appliquer `limite`.
 
 **Licence Creative Commons — BY-SA ou BY-NC-SA selon la critique, jamais
 supposée uniforme** : stockée par ligne (`licence_id`, ex. « CC BY-SA 3.0 »,
@@ -183,8 +204,44 @@ popularité… ») : trois cases indépendantes — « Biographies (TheAudioDB) 
 « Critiques (CritiqueBrainz) », « Liaison Discogs » — cochées par défaut,
 aucune clé requise. Décocher l'une n'affecte pas les autres. Une quatrième,
 « Tags de genre (Last.fm) », décochée par défaut le temps qu'une clé
-personnelle soit renseignée. L'import lourd du
-dump Discogs n'y figure pas : CLI/cron uniquement.
+personnelle soit renseignée.
+
+Sous la case « Liaison Discogs », un bouton « Lier maintenant » lance cette
+passe seule (`passeDiscogsLiaison`, même commande `start_discogs_liaison`
+que la chaîne complète), sans attendre un « Scanner »/« Analyser » — sinon
+l'unique façon de peupler `editions_discogs` était de relancer toute la
+chaîne. Verrouille la même jauge que « Rafraîchir » de la popularité
+(`verrouillerActualisation`) : une seule action de ce type à la fois.
+
+**L'import qui suit une liaison utile se déclenche tout seul.** Décidé après
+retour utilisateur — exiger un second clic sur « Importer crédits et
+labels » après chaque liaison ajoutait une interaction inutile.
+`importerDiscogsSiUtile(bilanLiaison, phase)` (`app.js`), appelée par les
+trois chemins qui lancent une liaison (chaîne complète, « Analyser » d'une
+racine, « Lier maintenant ») : si la liaison qui vient de tourner a
+effectivement relié **au moins une édition neuve** (`EtatDiscogsLiaison.liees
+> 0` — pas simplement vérifié ce qui l'était déjà) et qu'un dump est déjà
+sur le disque (`discogs_dump_info`), l'import se lance aussitôt, sans
+attendre. Condition sur `liees > 0` volontaire : relire tout le dump prend
+~10 min sur 11 Go (le format n'a pas d'index, pas de raccourci possible) —
+inutile de repayer ce coût à chaque scan si rien de nouveau n'a été relié
+côté Discogs. Silencieux si aucun dump n'a jamais été téléchargé : l'import
+manuel reste alors la seule voie.
+
+Un bloc séparé, « Dump Discogs », plus bas dans le même mode (après
+« Source de la bibliothèque », avant « Stockage ») : taille et date du
+dernier téléchargement (ou son absence), un bouton « Télécharger le dernier
+dump » avec sa jauge de progression en Go, et un bouton « Importer crédits
+et labels » (actif seulement si un dump est déjà là) qui relit le fichier et
+alimente `credits_discogs`/`labels_discogs` pour les éditions déjà reliées —
+resté disponible pour une repasse volontaire (dump tout juste retéléchargé
+sans passer par une liaison, par exemple), même si l'enchaînement
+automatique ci-dessus couvre le cas courant. Volontairement à l'écart de la
+chaîne « Scanner » — ni l'un ni l'autre n'est une passe bornée par la
+bibliothèque comme les autres (le téléchargement dure ce qu'il dure, et le
+nombre d'éditions à parcourir dans l'import ne se sait qu'en le faisant).
+Les deux boutons se désactivent l'un l'autre pendant qu'un des deux tourne :
+même fichier, jamais les deux à la fois.
 
 Inspecteur (`apps/desktop/ui/app.js`, `montrerBio`/`montrerCredits`/
 `montrerCritiques`, appelées par `inspecter`) : même patron que

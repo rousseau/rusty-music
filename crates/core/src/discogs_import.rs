@@ -65,15 +65,17 @@ pub fn lier(
     Ok(bilan)
 }
 
-/// Télécharge le dernier dump Discogs dans `dest` et rend son chemin —
-/// séparé de [`importer`] pour qu'un import puisse réutiliser un fichier déjà
-/// là (`--fichier`, tests, reprise après coupure).
-pub fn telecharger_dernier_dump(dest: &Path) -> Result<()> {
+/// Télécharge le dernier dump Discogs dans `dest` — séparé de [`importer`]
+/// pour qu'un import puisse réutiliser un fichier déjà là (`--fichier`,
+/// tests, reprise après coupure). `avancer(octets_vus, octets_total)` rapporte
+/// la progression ; `octets_total` est `None` tant que le serveur n'a pas
+/// répondu (ou n'a pas annoncé de taille).
+pub fn telecharger_dernier_dump(dest: &Path, avancer: impl FnMut(u64, Option<u64>)) -> Result<()> {
     let agent = discogs::agent();
     let annee = annee_courante();
     let url = discogs::derniere_url_dump(&agent, annee)?;
     tracing::info!(%url, "téléchargement du dump Discogs");
-    discogs::telecharger(&agent, &url, dest)
+    discogs::telecharger_avec_avancement(&agent, &url, dest, avancer)
 }
 
 /// Année civile courante (UTC), sans dépendance de calendrier — juste de quoi
