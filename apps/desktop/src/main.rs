@@ -4029,6 +4029,47 @@ fn dossier_donnees(etat: State<Etat>) -> Result<String, String> {
     Ok(d.display().to_string())
 }
 
+/// Poids du logiciel lui-même — pas ce qu'il produit (stems, HD), mais ce
+/// qu'il faut avoir sur le disque pour qu'il tourne : l'exécutable, les
+/// modèles ML qu'il charge, la base locale et le plan de ville s'il est
+/// importé. Complète `stems_cache`/`superres_cache` pour une trace complète
+/// de l'empreinte disque du logiciel.
+#[derive(Clone, serde::Serialize)]
+struct StockageLogiciel {
+    executable: u64,
+    modeles: u64,
+    base: u64,
+    ville: u64,
+}
+
+#[tauri::command(async)]
+fn stockage_logiciel(etat: State<Etat>) -> Result<StockageLogiciel, String> {
+    let executable = std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let modeles = rusty_music_core::modeles::dossiers()
+        .into_iter()
+        .find(|d| d.is_dir())
+        .map(|d| poids(&d))
+        .unwrap_or(0);
+
+    let mut base = std::fs::metadata(&etat.db).map(|m| m.len()).unwrap_or(0);
+    for suffixe in ["-wal", "-shm"] {
+        let mut chemin = etat.db.clone().into_os_string();
+        chemin.push(suffixe);
+        base += std::fs::metadata(chemin).map(|m| m.len()).unwrap_or(0);
+    }
+
+    let ville = plan_de_ville(&etat.db)
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    Ok(StockageLogiciel { executable, modeles, base, ville })
+}
+
 /// Vitesse de lecture des stems, appliquée immédiatement.
 ///
 /// **Rien n'est rechargé** : la vitesse est un flottant que la lecture relit à
@@ -6220,6 +6261,7 @@ fn main() {
             superres_cache,
             vider_cache_hd,
             dossier_donnees,
+            stockage_logiciel,
             play,
             set_queue,
             remplacer_file,

@@ -6681,6 +6681,7 @@ async function basculerMode(mode) {
     await dessinerRacines();
     majCache().catch((e) => remonter(e, "cache"));
     chargerDossierDonnees().catch((e) => remonter(e, "dossier de données"));
+    majStockageLogiciel().catch((e) => remonter(e, "stockage du logiciel"));
     chargerDumpDiscogs().catch((e) => remonter(e, "dump Discogs"));
     chargerStatsBibliotheque().catch((e) => remonter(e, "statistiques"));
     reprendreActualisationEnCours().catch((e) => remonter(e, "actualisation"));
@@ -8415,6 +8416,29 @@ async function reprendreActualisationEnCours() {
 /// purger.
 async function chargerDossierDonnees() {
   $("dossier-donnees").textContent = await invoke("dossier_donnees");
+}
+
+/// Ce que le logiciel lui-même pèse — pas ce qu'il produit (stems, HD, plus
+/// haut dans le rail), mais ce qu'il faut garder sur le disque pour qu'il
+/// tourne : l'exécutable, les modèles ML, les bases nécessaires (la
+/// bibliothèque, le plan de ville s'il est importé), et le dump Discogs s'il
+/// en reste un — ≈ 11 Go à lui seul, sans quoi le total sous-estimerait
+/// grossièrement la trace réelle du logiciel.
+async function majStockageLogiciel() {
+  const [s, dump] = await Promise.all([
+    invoke("stockage_logiciel"),
+    invoke("discogs_dump_info"),
+  ]);
+  const go = (o) => (o / 1e9).toFixed(2).replace(".", ",");
+  const bases = s.ville
+    ? `${go(s.base + s.ville)} Go (bibliothèque + plan de ville)`
+    : `${go(s.base)} Go (bibliothèque)`;
+  const bouts = [
+    `Logiciel : ${go(s.executable + s.modeles)} Go (exécutable + modèles)`,
+    `Bases nécessaires : ${bases}`,
+  ];
+  if (dump) bouts.push(`Dump Discogs conservé : ${go(dump.octets)} Go`);
+  $("stockage-logiciel").textContent = `${bouts.join(". ")}.`;
 }
 
 /// Dump Discogs (`releases.xml.gz`) — affiche la taille et la date du
