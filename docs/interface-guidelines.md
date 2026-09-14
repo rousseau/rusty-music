@@ -67,6 +67,21 @@ propre composant pochette/métadonnées/bio/critiques : c'est le même arbre DOM
 que la sélection vienne d'un morceau de la grille, d'un point du nuage ou
 d'un album de l'anneau.
 
+**Sélectionner n'est pas écouter — le même geste doit produire le même effet
+dans les quatre visualisations d'Explorer.** Décidé le 14 septembre 2026 après
+audit : le clic jouait un morceau directement sur Nuage/Carte, mais se
+contentait de sélectionner sur Anneau/Temps (« marcher » dans le graphe
+d'albums sans interrompre l'écoute en cours) — deux modes muets, deux modes
+bruyants, pour le même geste. Choix retenu : le clic reste **silencieux
+partout** (sélection, inspecteur, éventuellement départ de chemin sur
+Nuage/Carte), et l'écoute passe par un geste à part, le bouton ▶ de
+l'inspecteur (`insp-lecture`, joue le morceau ou l'album selon ce qui est
+affiché — `inspectionAlbum`/`inspectionPiste`). Ce bouton et son voisin ✦
+(`insp-alchimie`) restent **en permanence visibles** sur la pochette — plus
+seulement au survol comme leur équivalent `.album__lecture`/`.album__alchimie`
+de la grille — pour que le geste qui lance l'écoute se devine, pas seulement
+depuis l'Anneau/la Frise où il est le seul recours.
+
 ### 2. Estomper, jamais masquer
 Un filtre ou une recherche laisse le contexte visible, atténué — il ne
 retire jamais des éléments du rendu. Vaut pour un filtre sur la carte comme
@@ -165,7 +180,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | Même `inspecter()` que partout ailleurs. |
+| 1 | Inspecteur unique | ✅ | Même `inspecter()` que partout ailleurs. **Corrigé** : le clic sur un point jouait le morceau directement (`cnv` → `click`), contrairement au clic sur l'Anneau/la Frise qui ne fait que sélectionner — même geste, deux effets différents. Le clic est maintenant silencieux ici aussi (sélectionne, peuple l'inspecteur, devient le départ de chemin), et le bouton ▶ de l'inspecteur (`insp-lecture`) reste en permanence visible sur la pochette, plus seulement au survol — c'est lui qui lance l'écoute, dans les quatre visualisations. |
 | 2 | Estomper, jamais masquer | ✅ | Trois mécanismes distincts et tous conformes : isolement de famille (`app.js:3542-3563`, `globalAlpha` réduit), filtre texte (`app.js:1493-1503`, commentaire explicite « les morceaux qui ne correspondent pas s'estompent »), intervalle d'années (`app.js:3591-3599`, voile semi-opaque plutôt que masquage). |
 | 3 | Palette unique | ✅ | Voir Règle 3 : `palette.rs` recalibre par thème de fond, exception documentée et actée dans `CLAUDE.md`. |
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
@@ -179,13 +194,13 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | `inspecterAlbum()` (`app.js:1058-1094`) réutilise explicitement le même composant : commentaire « le même composant que pour un morceau (`inspecter`), généralisé plutôt que dupliqué » (`app.js:1051-1053`). Cas exemplaire de la règle bien appliquée. |
+| 1 | Inspecteur unique | ✅ | `inspecterAlbum()` (`app.js:1058-1094`) réutilise explicitement le même composant : commentaire « le même composant que pour un morceau (`inspecter`), généralisé plutôt que dupliqué » (`app.js:1051-1053`). Cas exemplaire de la règle bien appliquée. Manquait un geste pour être *utile*, pas seulement unique : cliquer un album de l'anneau le rend focal (`chargerAnneau`) sans le jouer, et le panneau n'offrait aucun moyen de l'écouter — corrigé par un bouton ▶ (`insp-lecture`) posé sur la pochette, symétrique du ✦ existant, qui appelle `lireAlbum()` pour un album ou joue directement le morceau affiché sinon (même composant, même geste, dans les deux cas). |
 | 2 | Estomper, jamais masquer | ✅ | `app.js:3691-3717` : fond permanent de liens en trace ténue (`globalAlpha` 0,15) et sélection qui fait ressortir sans jamais faire disparaître le reste — corrige explicitement le premier défaut relevé dans `carto-anneau.md` (« seuls les voisins du focal sont visibles »). |
 | 3 | Palette unique | ✅ | Même lecture de `--familles`. |
 | 4 | Stabilité des positions | ✅ | Décidé et implémenté conformément à `carto-anneau.md` (« la position d'un album sur l'anneau ne dépend jamais du focal sélectionné »). |
 | 5 | Sobriété stricte | ✅ | Pas de contrôle superflu ; `k`/`beta` du bundling sont deux réglettes, pas un panneau. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
-| 7 | Zoom/pan cohérents | ✅ | Exception documentée et cohérente avec la règle plutôt qu'une entorse : `modeAnneau()` court-circuite `zoomer()` (`app.js:4667`, « un cercle de rayon fixe n'a rien à agrandir »). L'absence de zoom est justifiée par la géométrie, pas par un oubli — pas de bouton `+`/`−` qui ne ferait rien. |
+| 7 | Zoom/pan cohérents | ✅ | Corrigé : l'exception (« un cercle de rayon fixe n'a rien à agrandir ») ne tenait plus dès lors que l'anneau grandit à l'usage — familles denses, noms serrés — sans que rien n'empêchait de l'agrandir à l'écran. `zoomerAnneau()` reprend le principe du repli sans MapLibre du nuage (un seul facteur `anneau.vue.k`, `dx`/`dy` pour glisser), branché sur `zoomer()` comme les autres sous-modes ; `#bloc-zoom` n'est plus masqué en Anneau. |
 | 8 | Révélation par échelle | ✅ | Noms au survol, pas en permanence sur chaque segment — conforme à `carto-anneau.md`. |
 | 9 | Langage de force unique | ✅ | `setLineDash` n'est jamais utilisé pour coder la force d'un lien (seulement pour le lasso, le tracé en cours, la colonne « incertain ») ; force = largeur + opacité par sélection (`app.js:3626-3629`), exactement la correction actée dans `carto-anneau.md` (« un seul style de trait, force = largeur + opacité »). |
 
@@ -193,7 +208,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | Même mécanisme que l'Anneau (le clic sur un album de la frise appelle la même voie d'inspection). |
+| 1 | Inspecteur unique | ✅ | Même mécanisme que l'Anneau (le clic sur un album de la frise appelle la même voie d'inspection) — hérite donc aussi du bouton ▶ ajouté là-bas (`insp-lecture`), même geste, même composant. |
 | 2 | Estomper, jamais masquer | ✅ | Colonne « dates incertaines » en trait pointillé atténué plutôt que morceaux exclus (`app.js:3601-3618`) ; intervalle d'années : voile, pas masquage (même mécanisme que Carte). |
 | 3 | Palette unique | ✅ | Bandes colorées par la même famille/`--familles`. |
 | 4 | Stabilité des positions | ✅ | Par construction : `frise-filiations.md` § 1 retient les bandes par famille comme mode par défaut précisément parce qu'« une bande est une structure stable [qui] accueille les nouveaux albums sans redistribuer l'existant » — writen avant l'implémentation, respecté dedans. |

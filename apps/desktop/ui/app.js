@@ -1463,11 +1463,18 @@ $("editer-candidat").addEventListener("click", async () => {
 
 /// L'album affiché dans l'inspecteur (`inspecterAlbum`), ou `null` si c'est
 /// un morceau (`inspecter`) — l'un exclut l'autre. Sert au bouton ✦, qui n'a
-/// pas la même source de chemin selon le cas (voir son gestionnaire de clic).
+/// pas la même source de chemin selon le cas (voir son gestionnaire de clic),
+/// et au bouton ▶ juste à côté (`insp-lecture`), même principe.
 let inspectionAlbum = null;
+
+/// Le morceau affiché dans l'inspecteur (`inspecter`), ou `null` si c'est un
+/// album de l'anneau/la frise (`inspecterAlbum`) — jumelle d'`inspectionAlbum`,
+/// pour le même bouton ▶.
+let inspectionPiste = null;
 
 async function inspecter(t) {
   inspectionAlbum = null;
+  inspectionPiste = t;
   $("insp-vide").hidden = true;
   $("insp").hidden = false;
   $("insp-erreur").hidden = true;
@@ -1516,6 +1523,7 @@ async function inspecter(t) {
 /// appel au moteur.
 async function inspecterAlbum(noeud) {
   inspectionAlbum = noeud;
+  inspectionPiste = null;
   $("insp-vide").hidden = true;
   $("insp").hidden = false;
   $("insp-erreur").hidden = true;
@@ -1737,6 +1745,26 @@ $("np-titre").addEventListener("click", () => {
 $("np-artiste").addEventListener("click", () =>
   ouvrirAlbumsArtiste($("np-artiste").dataset.artiste, $("np-artiste").dataset.mbid),
 );
+
+/// Bouton ▶ de l'inspecteur : joue le morceau ou l'album affiché — même
+/// principe que le bouton ✦ juste en dessous (`inspectionAlbum` tranche entre
+/// les deux). C'est le seul geste qui lance l'écoute depuis les quatre
+/// visualisations d'Explorer (Nuage/Carte inclus) : cliquer un point ou un
+/// album n'y fait plus que sélectionner/naviguer, jamais jouer — cohérence
+/// voulue entre les quatre modes plutôt qu'un clic qui coupe la lecture en
+/// cours ici et pas là (voir le clic du canevas, `cnv` → `click`). Toujours
+/// visible sur la pochette, pas seulement au survol (`style.css`), pour que
+/// ce geste reste devinable.
+$("insp-lecture").addEventListener("click", async () => {
+  if (inspectionAlbum) {
+    await lireAlbum(inspectionAlbum).catch((err) => remonter(err, "lireAlbum (inspecteur)"));
+    return;
+  }
+  if (!inspectionPiste) return;
+  fileCourante = [inspectionPiste];
+  tracerRouteSurCarte(fileCourante);
+  await demarrerLecture(() => invoke("play", { paths: [inspectionPiste.path] }));
+});
 
 /// Playlist « dans l'esprit de ce morceau » — même mécanisme que le bouton ✦
 /// d'une case d'album (`genererAlchimie`), mais partie d'un seul morceau déjà
@@ -3348,7 +3376,10 @@ async function chargerTemps() {
 ///
 /// Coordonnées propres — un cercle centré sur le canevas — jamais mêlées à
 /// `carte.points`/`carte.vue` ni à `temps.*` : ni un embedding, ni un axe du
-/// temps. Pas de zoom : un cercle de rayon fixe n'a rien à agrandir.
+/// temps. Zoom/glisser malgré tout : même principe qu'un cercle qu'on
+/// grossirait et déplacerait à l'écran, un seul facteur `k` (voir `carte.vue`
+/// sur le nuage) plutôt que deux comme la frise (pas de second axe à
+/// préserver ici).
 const anneau = {
   focal: null, // {id, name, artist, famille, path}, ou null tant que rien n'est choisi
   voisins: [], // [{id, name, artist, famille, path, avant}]
@@ -3356,6 +3387,7 @@ const anneau = {
   // Tension du bundling hiérarchique (Holten) — voir `courbeBundle`. 1 :
   // suit exactement la hiérarchie genre/album ; 0 : droite directe.
   beta: 0.8,
+  vue: { k: 1, dx: 0, dy: 0 }, // zoom/glisser — voir `zoomerAnneau`
   resultats: [], // dernier résultat de recherche d'album, pour la barre #q
   // Un point par nœud dessiné à la dernière image, en coordonnées écran —
   // reconstruit à chaque `dessinerAnneau`, c'est sur lui que `survolerAnneau`
@@ -4810,7 +4842,6 @@ function dessinerTemps(r, encre, accent) {
 /// racine, pas besoin d'ancêtre commun intermédiaire) dont l'**épaisseur ∝
 /// la proximité d'empreinte** (`v.distance`, normalisée parmi les voisins
 /// affichés — l'échelle absolue d'une distance CLAP n'a pas de sens en soi).
-/// Rayon fixe, pas de zoom.
 /// Chemin dans la hiérarchie genre/album entre deux feuilles — voir
 /// `docs/carto-anneau.md` § diagnostic. Deux niveaux seulement (racine →
 /// famille → album), mais suffisants pour un vrai bundling hiérarchique :
@@ -4913,11 +4944,14 @@ function dessinerAnneau(r, encre, accent) {
   }
 
   const teintes = couleursFamilles();
-  const cx = r.width / 2;
-  const cy = r.height / 2;
+  const cx = r.width / 2 + anneau.vue.dx;
+  const cy = r.height / 2 + anneau.vue.dy;
   // Marge plus large qu'un simple anneau : les noms de famille et les
-  // étiquettes de rappel débordent au dehors de `rayonExt`.
-  const rayonExt = Math.min(r.width, r.height) / 2 - 54;
+  // étiquettes de rappel débordent au dehors de `rayonExt`. Mise à l'échelle
+  // par `anneau.vue.k` : tous les rayons qui en découlent (album, hub) grossissent
+  // avec elle, comme un cercle qu'on zoome — les épaisseurs de trait restent
+  // fixes, en pixels écran, lisibles à tout niveau de zoom.
+  const rayonExt = (Math.min(r.width, r.height) / 2 - 54) * anneau.vue.k;
   const epaisseurFamille = 10;
   const rayonAlbum = rayonExt - epaisseurFamille - 20;
   // Le nœud de famille du bundling hiérarchique — entre l'anneau des albums
@@ -5493,6 +5527,9 @@ cnv.addEventListener("mousemove", (e) => {
       // prochain dessin, voir `temps.vue`.
       temps.vue.dx += e.movementX;
       temps.vue.dy += e.movementY;
+    } else if (modeAnneau()) {
+      anneau.vue.dx += e.movementX;
+      anneau.vue.dy += e.movementY;
     } else {
       carte.vue.dx += e.movementX;
       carte.vue.dy += e.movementY;
@@ -5554,10 +5591,14 @@ cnv.addEventListener("mousedown", (e) => {
     return;
   }
 
-  // L'anneau n'a ni lasso, ni tracé, ni glisser — un cercle de rayon fixe,
-  // centré d'office. Le seul geste est le clic (voir le gestionnaire `click`
-  // plus bas) : chercher un album, ou en cliquer un déjà affiché.
-  if (modeAnneau()) return;
+  // L'anneau n'a ni lasso, ni tracé — juste zoomer/glisser (comme le nuage,
+  // voir `zoomerAnneau`) et le clic (voir le gestionnaire `click` plus bas) :
+  // chercher un album, ou en cliquer un déjà affiché.
+  if (modeAnneau()) {
+    glisse = true;
+    departGlisse = [e.clientX, e.clientY];
+    return;
+  }
 
   // Alt+glisser : lasso. Disponible dans tous les modes de chemin — c'est une
   // sélection, pas un chemin, et rien ne justifie de la cacher derrière un
@@ -5645,14 +5686,32 @@ function zoomerTemps(f, cx, cy) {
   dessinerCarte();
 }
 
+/// Zoom de l'anneau — même principe que le repli sans MapLibre du nuage
+/// (`carte.vue.k` juste plus bas) : on retrouve le point sous le curseur
+/// avant le geste, on change d'échelle, puis on décale pour l'y remettre.
+function zoomerAnneau(f, cx, cy) {
+  const r = cnv.getBoundingClientRect();
+  const mx = (cx ?? r.width / 2) - r.width / 2;
+  const my = (cy ?? r.height / 2) - r.height / 2;
+  const avant = anneau.vue.k;
+  anneau.vue.k = Math.min(6, Math.max(0.5, anneau.vue.k * f));
+  const reel = anneau.vue.k / avant;
+  anneau.vue.dx = mx - (mx - anneau.vue.dx) * reel;
+  anneau.vue.dy = my - (my - anneau.vue.dy) * reel;
+  $("zoom-val").textContent = `×${anneau.vue.k.toFixed(1).replace(".", ",")}`;
+  dessinerCarte();
+}
+
 function zoomer(f, cx, cy) {
   if (modeTemps()) {
     const r = cnv.getBoundingClientRect();
     zoomerTemps(f, cx ?? r.width / 2, cy ?? r.height / 2);
     return;
   }
-  // Pas de zoom sur l'anneau : un cercle de rayon fixe n'a rien à agrandir.
-  if (modeAnneau()) return;
+  if (modeAnneau()) {
+    zoomerAnneau(f, cx, cy);
+    return;
+  }
   const g = carteGL();
   if (g) {
     // Zoomer autour du curseur : on note le point du monde qui s'y trouve,
@@ -5714,6 +5773,12 @@ $("zoom-moins").addEventListener("click", () => zoomer(1 / 1.4));
 $("zoom-reset").addEventListener("click", () => {
   if (modeTemps()) {
     temps.vue = { k: 1, dx: 0, dy: 0 };
+    $("zoom-val").textContent = "×1,0";
+    dessinerCarte();
+    return;
+  }
+  if (modeAnneau()) {
+    anneau.vue = { k: 1, dx: 0, dy: 0 };
     $("zoom-val").textContent = "×1,0";
     dessinerCarte();
     return;
@@ -5788,14 +5853,18 @@ cnv.addEventListener("click", async (e) => {
     return;
   }
 
-  // Sans modificateur : on écoute, et le morceau devient le départ proposé.
+  // Sans modificateur : le morceau devient le départ proposé et peuple
+  // l'inspecteur — silencieux, jamais un `play` direct. Même geste que le
+  // clic sur l'Anneau/la Frise (`chargerAnneau`, qui ne joue pas non plus) :
+  // cliquer navigue/sélectionne, écouter est un geste à part (bouton ▶ de
+  // l'inspecteur, `insp-lecture`) — cohérence voulue entre les quatre
+  // visualisations plutôt qu'un clic qui coupe la lecture en cours ici et pas
+  // là (`docs/interface-guidelines.md` § 1).
   carte.depart = p;
   carte.arrivee = null;
   carte.route = null;
   dessinerBornes();
   inspecter(p);
-  fileCourante = [p];
-  await demarrerLecture(() => invoke("play", { paths: [p.path] }));
   dessinerCarte();
 });
 
@@ -6454,19 +6523,19 @@ function majAffichageTemps() {
   }
 }
 
-/// Montre/cache ce qui n'a de sens que sur l'anneau — le curseur « voisins »
-/// — et cache le zoom (un cercle de rayon fixe n'a rien à agrandir). Jumelle
-/// de `majAffichageTemps`, appelée au même endroit.
+/// Montre/cache ce qui n'a de sens que sur l'anneau — le curseur « voisins ».
+/// Le zoom, lui, reste visible : voir `zoomerAnneau`. Jumelle de
+/// `majAffichageTemps`, appelée au même endroit.
 function majAffichageAnneau() {
   const a = modeAnneau();
   $("bloc-colorer-par").hidden = a || modeTemps();
   $("bloc-anneau").hidden = !a;
-  $("bloc-zoom").hidden = a;
   if (a) {
     $("anneau-k").value = anneau.k;
     $("anneau-k-val").textContent = String(anneau.k);
     $("anneau-beta").value = anneau.beta;
     $("anneau-beta-val").textContent = anneau.beta.toFixed(2).replace(".", ",");
+    $("zoom-val").textContent = `×${anneau.vue.k.toFixed(1).replace(".", ",")}`;
     chargerReseauAnneau().then(() => {
       dessinerCarte();
       suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (anneau)"));
@@ -6521,11 +6590,11 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
 /// glisser horizontaux, mais ni clic (rien à écouter directement dessus) ni
 /// lasso (pas de sélection de zone sur un axe temporel).
 function aideCourante() {
-  // L'anneau n'a ni zoom, ni glisser, ni lasso, ni chemin — juste un clic
-  // pour changer d'album focal. `carte.chemin` peut porter n'importe quelle
-  // valeur laissée par le dernier affichage à en avoir eu un ; inutile d'y
-  // toucher ici.
-  if (modeAnneau()) return "clic sur un voisin : nouvel album focal";
+  // L'anneau n'a ni lasso, ni chemin — mais zoome et se glisse comme le
+  // nuage (voir `zoomerAnneau`), en plus du clic pour changer d'album focal.
+  // `carte.chemin` peut porter n'importe quelle valeur laissée par le
+  // dernier affichage à en avoir eu un ; inutile d'y toucher ici.
+  if (modeAnneau()) return "clic sur un voisin : nouvel album focal · glisser pour déplacer, molette pour zoomer";
   const [, court] = AIDE_CHEMIN[carte.chemin];
   return modeTemps()
     ? `molette : zoom · glisser : déplacer · ${court}`

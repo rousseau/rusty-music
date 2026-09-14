@@ -7,7 +7,7 @@ L'interface d'AudioMuse-AI est jugée trop lourde / orientée « panneau serveur
 
 ## Vue principale : nuage de points 2D
 - Chaque point = un morceau, positionné selon la similarité audio (embedding réduit en 2D).
-- Interactions attendues : zoom/pan, survol = tooltip (titre/artiste), clic = sélection/lecture.
+- Interactions attendues : zoom/pan, survol = tooltip (titre/artiste), clic = sélection (peuple l'inspecteur, devient le départ proposé). **Révisé** : le clic ne joue plus directement — silencieux, comme sur l'Anneau et la Frise, pour que le même geste ait le même effet dans les quatre visualisations d'Explorer. Écouter est un geste à part, le bouton ▶ de l'inspecteur (toujours visible, pas seulement au survol).
 - Sélection multiple au lasso pour générer une playlist à partir d'une zone. **Décidé et implémenté** — voir « Tranché le 17 août » plus bas.
 
 ## Code couleur
