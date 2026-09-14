@@ -455,6 +455,10 @@ const ALBUM_HAUT = ALBUM_LARG + ALBUM_TXT + ALBUM_ECART;
 const GRILLE_PAD = 26; // `padding` horizontal de `.grille`
 
 const grille = $("grille");
+// Parent flex de `.grille`/`.liste`/`#autour-artiste` — sa classe modificatrice
+// (voir `majAutourArtiste`) fait défiler grille et bandeau comme une seule
+// colonne, plutôt que le bandeau plaqué au bas de la fenêtre derrière un vide.
+const centreCorps = document.querySelector(".centre__corps");
 const grilleSocle = document.createElement("div");
 grilleSocle.className = "grille__socle";
 const grilleFenetre = document.createElement("div");
@@ -1609,6 +1613,7 @@ function masquerAutourArtiste() {
   $("autour-artiste").hidden = true;
   $("autour-sonore-bloc").hidden = true;
   $("autour-collab-bloc").hidden = true;
+  centreCorps.classList.remove("centre__corps--artiste");
 }
 
 /// Jeton du dernier artiste demandé — `majAutourCollab` peut retomber sur un
@@ -1633,6 +1638,14 @@ function majAutourArtiste(artiste, mbid) {
   dernierArtisteOuvert = { nom: artiste, mbid: mbid ?? null };
   const jeton = ++autourArtisteJeton;
   $("autour-artiste").hidden = false;
+  centreCorps.classList.add("centre__corps--artiste");
+  // `.grille` passe de « bornée par la fenêtre, défilée pour son compte » à
+  // « prend toute sa hauteur de contenu » (voir la classe dans le CSS) : son
+  // `clientHeight` change, donc la fenêtre de rangées déjà posée par `poser`
+  // (calculée sous l'ancien mode) doit être redessinée pour couvrir tous les
+  // albums, pas seulement ceux qui tenaient dans l'ancienne fenêtre bornée.
+  grilleDernierRang = -1;
+  dessinerGrille();
   majAutourSonore(artiste, jeton);
   majAutourCollab(mbid, jeton);
 }

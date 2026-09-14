@@ -521,6 +521,18 @@ html, body {
    qu'elle contient, pas la disposition des colonnes, qui est virtualisé. */
 .grille { flex: 1; overflow-y: auto; position: relative; outline: none; padding: 0 26px; }
 
+/* Grille des albums d'un artiste précis (mode Écoute, bandeau « autour de cet
+   artiste » visible — voir `majAutourArtiste`) : `.grille` cesse d'être son
+   propre conteneur de défilement borné à la fenêtre et prend toute la
+   hauteur de son contenu (celle du socle de virtualisation, posée en JS) ;
+   c'est `.centre__corps` qui défile, grille et bandeau ensemble. Sans ça, le
+   bandeau restait plaqué au ras du bas de la fenêtre derrière un vide chaque
+   fois qu'un artiste a peu d'albums — la grille ne s'y arrêtait pas plus tôt
+   pour laisser un vide *avant* le bandeau, elle remplissait `flex: 1` jusqu'au
+   bord quel que soit son contenu. */
+.centre__corps--artiste { overflow-y: auto; }
+.centre__corps--artiste > .grille { flex: 0 0 auto; overflow: visible; }
+
 /* Bandeaux secondaires sous la grille des albums d'un artiste (mode Écoute) —
    jamais de hauteur imposée : chacun prend son contenu, `.grille` cède la
    place (voir `.centre__corps`, flex-colonne). */
