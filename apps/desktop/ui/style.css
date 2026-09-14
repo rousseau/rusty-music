@@ -355,20 +355,23 @@ html, body {
 .intention__ollama--actif { border-color: var(--accent); }
 /* Le lama marche pendant qu'Ollama réfléchit (jusqu'à la minute, mesuré) —
    sur son `span`, pas sur le bouton : la bordure reste immobile, le geste de
-   clic aussi. Un déhanché net (rotation large, bond marqué), pas une nuance
-   à repérer : à cette taille d'icône, un mouvement discret ne se voit pas. */
+   clic aussi.
+   Une rotation ample lue comme un balancement, pas une marche (retour
+   utilisateur) : repris sans rotation, deux bonds par cycle (un par « pied »),
+   chacun avec l'écrasement à l'atterrissage d'un pas — pas un pendule. */
 #intention-ollama-lama {
   display: inline-block;
-  transform-origin: 50% 85%;
+  transform-origin: 50% 100%;
 }
-/* Même patron que `file-compo-navette` (va-et-vient `alternate`), déjà
-   éprouvé dans ce fichier — plutôt que d'inventer un minutage nouveau. */
 .intention__ollama--travail #intention-ollama-lama {
-  animation: intention-ollama-marche .5s ease-in-out infinite alternate;
+  animation: intention-ollama-marche .7s linear infinite;
 }
 @keyframes intention-ollama-marche {
-  from { transform: rotate(-20deg) translateY(0)    scale(1.2); }
-  to   { transform: rotate(20deg)  translateY(-3px) scale(1.2); }
+  0%, 50%, 100% { transform: translate(0, 0)     scale(1, 1); }
+  15%           { transform: translate(-1px, -5px) scale(.92, 1.1); }
+  30%           { transform: translate(-1px, 0)    scale(1.08, .9); }
+  65%           { transform: translate(1px, -5px)  scale(.92, 1.1); }
+  80%           { transform: translate(1px, 0)     scale(1.08, .9); }
 }
 .fil h1 { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -.01em; margin: 0; }
 .fil__compte { font-family: var(--mono); font-size: 10.5px; color: var(--mut); margin-left: auto; }
