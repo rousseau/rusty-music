@@ -29,9 +29,14 @@ pub struct TrackRow {
     pub track_no: Option<i64>,
     pub year: Option<i64>,
     pub duration_ms: Option<i64>,
-    /// Identifiant MusicBrainz d'artiste d'album, comme [`ArtistRow::mbid`] —
-    /// sert à retrouver ses albums (`Library::albums_of_artist`) depuis un
-    /// morceau, sans passer par la liste des artistes.
+    /// Identifiant MusicBrainz de **l'artiste du morceau** (`mb_artist_id`),
+    /// pas de l'artiste d'album — sert à retrouver ses albums
+    /// (`Library::albums_of_artist`) depuis un morceau, sans passer par la
+    /// liste des artistes. Doit rester l'identifiant du nom porté par
+    /// `artist` : sur une compilation « Various Artists », l'artiste d'album
+    /// (`mb_album_artist_id`) est le fourre-tout, pas le morceau — l'utiliser
+    /// ici ferait cliquer « Helmet » et ouvrir les albums d'autres artistes
+    /// que la seule compilation a en commun.
     pub artist_mbid: Option<String>,
 }
 
@@ -673,7 +678,7 @@ fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> HashMap<i64, f
 /// Colonnes projetées pour un [`TrackRow`], partagées par toutes les requêtes
 /// de consultation pour que l'ordre reste aligné sur [`track_from_row`].
 const TRACK_COLS: &str =
-    "id, path, title, artist, album, track_no, year, duration_ms, mb_album_artist_id";
+    "id, path, title, artist, album, track_no, year, duration_ms, mb_artist_id";
 
 /// Met à niveau une base créée par une version antérieure.
 ///
