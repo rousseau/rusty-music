@@ -1325,11 +1325,18 @@ html, body {
 .file__ligne--graine .file__rang { color: var(--accent); }
 .file__ligne--graine .file__txt span { color: var(--accent); }
 
+/* Le lama de l'icône Ollama (`.intention__ollama--travail
+   #intention-ollama-lama`, plus haut) est délibérément absent de la liste
+   ci-dessous : exception à « Réduire les animations » — un déhanché en
+   place sur 16 px, pas le genre de mouvement (défilement, parallaxe) que ce
+   réglage vise. Sans l'exception il ne marche jamais sur une machine où le
+   réglage est actif (observé en pratique), alors que les jauges et l'icône
+   ✦ ci-dessous, qui portent une vraie information de progression, continuent
+   de le respecter. */
 @media (prefers-reduced-motion: reduce) {
   .album__alchimie.alchimie--travail,
   .insp__alchimie.alchimie--travail,
   .file__compo-jauge i.file__compo-barre--indetermine,
-  .intention__ollama--travail #intention-ollama-lama,
   .file__ligne--pose { animation: none; }
   .file__ligne--pose { opacity: 1; transform: none; }
 }
