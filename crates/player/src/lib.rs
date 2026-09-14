@@ -181,7 +181,18 @@ pub const RETOUR_DEBUT: Duration = Duration::from_secs(3);
 /// charger une file entière d'avance immobilisait le lecteur 17 s sur un album
 /// de 157 pistes, et tout clic sur pause attendait d'autant. On n'en prépare
 /// donc que quelques-unes, complétées au fil de la lecture.
-const PRECHARGE: usize = 3;
+///
+/// Baissé de 3 à 2 le 14 septembre 2026 : depuis [`decoder_en_memoire`],
+/// chaque piste prête pèse ~60-140 Mo de PCM décodé (pas juste un en-tête lu),
+/// et `PRECHARGE` en tient plusieurs à la fois — mesuré en pratique, la seule
+/// lecture d'un album (rien d'autre en cours) faisait grimper le processus à
+/// plus de 400 Mo. Deux pistes prêtes (celle en cours, une d'avance) restent
+/// la même marge contre un disque lent au moment du changement de piste ;
+/// la troisième n'ajoutait qu'une garantie contre un imprévu déjà rare
+/// (précharger la 3ᵉ pendant que la 2ᵉ tarde) pour le prix d'une piste entière
+/// en RAM. À resurveiller si des coupures réapparaissent sur un support très
+/// lent.
+const PRECHARGE: usize = 2;
 
 /// Mode de répétition de la file — panneau « file d'attente » du mode
 /// Écouter.

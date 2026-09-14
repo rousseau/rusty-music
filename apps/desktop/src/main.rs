@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, FluxTemporel, MapPoint, RootRow, TrackRow};
@@ -46,8 +47,13 @@ struct Etat {
     hd: PathBuf,
     /// Avancement d'une régénération HD, sondé par l'interface.
     superres: Mutex<EtatSuperres>,
-    /// Le modèle AERO, chargé à la première régénération puis gardé (~156 Mo).
+    /// Le modèle AERO, chargé à la première régénération puis gardé (~156 Mo)
+    /// — jusqu'à ce que [`liberer_si_inactif`] le décharge faute d'usage
+    /// récent (`superres_modele_touche`).
     superres_modele: Mutex<Option<rusty_music_superres::Modele>>,
+    /// Dernière régénération HD, pour l'éviction par inactivité de
+    /// `superres_modele` — voir sa documentation.
+    superres_modele_touche: Mutex<Option<Instant>>,
     scan: Mutex<EtatScan>,
     /// Une surveillance continue par racine (`notify`), démarrée au lancement
     /// pour chaque racine connue et à l'ajout d'une nouvelle ([`demarrer_surveillance`]).
@@ -95,11 +101,18 @@ struct Etat {
     /// pointeur, verrou relâché : construire le graphe prend une dizaine de
     /// secondes, pendant lesquelles l'inspecteur doit rester servi.
     vecteurs: Mutex<Arc<Vec<Empreinte>>>,
+    /// Dernier `charger_vecteurs`, pour l'éviction par inactivité (voir
+    /// `liberer_si_inactif` et `SEUIL_EVICTION_POIDS`) — la continuation
+    /// automatique (errance/sonique) charge ces 55 Mo puis n'y retouche plus
+    /// une fois la playlist composée, tout comme `texte_modele`.
+    vecteurs_touche: Mutex<Option<Instant>>,
     /// Graphe des plus proches voisins, avec le nombre d'empreintes qui l'a
     /// produit. Le construire est un balayage complet : on ne le refait que
     /// lorsque ce nombre a bougé, et seulement pour les modes qui en ont
     /// besoin (sonique et errance).
     graphe: Mutex<Option<(usize, Arc<Graphe>)>>,
+    /// Dernier `construire_graphe`, même éviction que `vecteurs_touche`.
+    graphe_touche: Mutex<Option<Instant>>,
     /// Verrou pris pour toute la durée d'une construction de `graphe`.
     ///
     /// `graphe` lui-même n'est tenu que le temps de lire ou d'écrire le cache,
@@ -129,12 +142,17 @@ struct Etat {
     /// même invalidation que `album_centroides` — les deux sont toujours
     /// recalculés ensemble.
     album_noeuds: Mutex<Option<(usize, Arc<NoeudsAlbums>)>>,
+    /// Dernier `charger_centroides_albums`, éviction commune aux deux champs
+    /// ci-dessus (toujours recalculés ensemble).
+    album_touche: Mutex<Option<Instant>>,
     /// Graphe des k plus proches albums par empreinte — le fond permanent du
     /// mode Explorer → Anneau (voir `reseau_albums`), distinct du graphe des
     /// morceaux (`graphe` ci-dessus). `k` couvre déjà le maximum du curseur
     /// « voisins » du rail : pas la peine de le reconstruire quand l'anneau
     /// en redemande simplement plus large.
     album_graphe: Mutex<Option<(usize, Arc<Graphe>)>>,
+    /// Dernier `charger_graphe_albums`, même éviction que `graphe_touche`.
+    album_graphe_touche: Mutex<Option<Instant>>,
     /// Nappe de densité de la carte — polygones prêts à remplir. Recalculée
     /// seulement après une projection/clustering réussi ([`recalculer_densite`]),
     /// jamais par image ni au zoom : c'est tout l'intérêt de la garder ici
@@ -172,8 +190,81 @@ struct Etat {
     agrement_voirie: Mutex<Option<Arc<rusty_music_carto::cout_itineraire::ProximiteAgrement>>>,
     /// L'encodeur texte de CLAP (champ d'intention d'Explorer), chargé à la
     /// première requête puis gardé — 478 Mo de poids, pas question de les
-    /// relire à chaque prompt. Même patron que `superres_modele`.
+    /// relire à chaque prompt (un « Recomposer » rejoue le même plan sans
+    /// repasser par Ollama). Même patron que `superres_modele`, y compris
+    /// pour l'éviction par inactivité.
     texte_modele: Mutex<Option<rusty_music_analysis::EmbedderTexte>>,
+    /// Dernier `path_texte`, pour l'éviction par inactivité de `texte_modele`
+    /// — voir sa documentation.
+    texte_modele_touche: Mutex<Option<Instant>>,
+}
+
+/// Délai d'inactivité au-delà duquel un poids lourd chargé à la demande
+/// (`texte_modele`, `superres_modele`) est déchargé — voir le fil lancé dans
+/// `main`. Choisi assez long pour ne jamais gêner un « Recomposer » qui
+/// rejoue le même plan coup sur coup (quelques secondes entre deux clics),
+/// assez court pour rendre la mémoire une fois qu'on est passé à l'écoute :
+/// mesuré en pratique, le champ d'intention à lui seul faisait grimper le
+/// processus de 76 Mo à 938 Mo, l'essentiel restant en mémoire sans plus
+/// jamais servir une fois la playlist composée.
+const SEUIL_EVICTION_POIDS: Duration = Duration::from_secs(3 * 60);
+
+/// Décharge `contenu` si `touche` indique plus de [`SEUIL_EVICTION_POIDS`]
+/// d'inactivité — appelé périodiquement par le fil d'éviction lancé dans
+/// `main`. Le prochain usage recharge simplement depuis le disque.
+fn liberer_si_inactif<T>(contenu: &Mutex<Option<T>>, touche: &Mutex<Option<Instant>>, nom: &str) {
+    let Ok(mut t) = touche.lock() else { return };
+    let Some(dernier) = *t else { return };
+    if dernier.elapsed() < SEUIL_EVICTION_POIDS {
+        return;
+    }
+    if let Ok(mut c) = contenu.lock() {
+        if c.take().is_some() {
+            tracing::info!(nom, "mémoire : poids déchargés après inactivité");
+        }
+    }
+    *t = None;
+}
+
+/// Variante de [`liberer_si_inactif`] pour `vecteurs`, qui n'est pas un
+/// `Option` (un cache vide est simplement un `Vec` vide, jamais absent) —
+/// `charger_vecteurs` recharge dès que sa taille ne correspond plus au compte
+/// de la base, donc le vider suffit à forcer la relecture au prochain besoin.
+fn liberer_vecteurs_si_inactif(etat: &Etat) {
+    let Ok(mut t) = etat.vecteurs_touche.lock() else { return };
+    let Some(dernier) = *t else { return };
+    if dernier.elapsed() < SEUIL_EVICTION_POIDS {
+        return;
+    }
+    if let Ok(mut c) = etat.vecteurs.lock() {
+        if !c.is_empty() {
+            *c = Arc::new(Vec::new());
+            tracing::info!("mémoire : empreintes déchargées après inactivité");
+        }
+    }
+    *t = None;
+}
+
+/// Variante de [`liberer_si_inactif`] pour `album_centroides`/`album_noeuds`,
+/// toujours reconstruits ensemble par `charger_centroides_albums` et donc
+/// déchargés ensemble ici.
+fn liberer_albums_si_inactif(etat: &Etat) {
+    let Ok(mut t) = etat.album_touche.lock() else { return };
+    let Some(dernier) = *t else { return };
+    if dernier.elapsed() < SEUIL_EVICTION_POIDS {
+        return;
+    }
+    let mut libere = false;
+    if let Ok(mut c) = etat.album_centroides.lock() {
+        libere |= c.take().is_some();
+    }
+    if let Ok(mut n) = etat.album_noeuds.lock() {
+        libere |= n.take().is_some();
+    }
+    if libere {
+        tracing::info!("mémoire : centroïdes d'albums déchargés après inactivité");
+    }
+    *t = None;
 }
 
 /// Chaque morceau accroché au sommet de voirie le plus proche, dans les deux
@@ -1869,7 +1960,12 @@ fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<G
             .filter(|(taille, _)| *taille == n)
             .map(|(_, g)| Arc::clone(g)))
     };
+    // Touche aussi sur un coup au but : sans ça, un `graphe` très sollicité
+    // mais jamais reconstruit (la taille ne bouge plus) semblerait inactif à
+    // `liberer_si_inactif` après `SEUIL_EVICTION_POIDS`, alors qu'il sert en
+    // continu — voir sa documentation.
     if let Some(g) = en_cache(etat)? {
+        *etat.graphe_touche.lock().map_err(echec)? = Some(Instant::now());
         return Ok(g);
     }
 
@@ -1878,6 +1974,7 @@ fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<G
     // vérification avant de se lancer à son tour.
     let _construction = etat.graphe_construction.lock().map_err(echec)?;
     if let Some(g) = en_cache(etat)? {
+        *etat.graphe_touche.lock().map_err(echec)? = Some(Instant::now());
         return Ok(g);
     }
 
@@ -1893,6 +1990,7 @@ fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<G
     etat.graphe_total.store(0, Ordering::Relaxed);
     tracing::info!(n, ms = debut.elapsed().as_millis(), "graphe des voisins");
     *etat.graphe.lock().map_err(echec)? = Some((n, Arc::clone(&neuf)));
+    *etat.graphe_touche.lock().map_err(echec)? = Some(Instant::now());
     Ok(neuf)
 }
 
@@ -2741,10 +2839,13 @@ fn path_texte(
             *garde = Some(rusty_music_analysis::EmbedderTexte::charger(None).map_err(echec)?);
         }
         let encodeur = garde.as_ref().expect("encodeur texte chargé");
-        plan.etapes
+        let cibles = plan
+            .etapes
             .iter()
             .map(|phrase| encodeur.embed(phrase).map_err(echec))
-            .collect::<Result<_, String>>()?
+            .collect::<Result<_, String>>()?;
+        *etat.texte_modele_touche.lock().map_err(echec)? = Some(Instant::now());
+        cibles
     };
 
     let vecteurs = charger_vecteurs(&etat)?;
@@ -2826,6 +2927,7 @@ fn charger_vecteurs(etat: &State<Etat>) -> Result<Arc<Vec<Empreinte>>, String> {
         );
         tracing::info!(n = cache.len(), "empreintes chargées");
     }
+    *etat.vecteurs_touche.lock().map_err(echec)? = Some(Instant::now());
     Ok(Arc::clone(&cache))
 }
 
@@ -2871,6 +2973,10 @@ fn charger_centroides_albums(
     }
     let c = Arc::clone(&cache_c.as_ref().unwrap().1);
     let no = Arc::clone(&cache_n.as_ref().unwrap().1);
+    // Touché à chaque appel, coup au but compris — même raison que
+    // `construire_graphe` : un cache très sollicité mais jamais reconstruit
+    // ne doit pas sembler inactif à `liberer_albums_si_inactif`.
+    *etat.album_touche.lock().map_err(echec)? = Some(Instant::now());
     Ok((c, no))
 }
 
@@ -2892,13 +2998,18 @@ fn charger_graphe_albums(
     let mut cache = etat.album_graphe.lock().map_err(echec)?;
     if let Some((taille, g)) = cache.as_ref() {
         if *taille == n {
-            return Ok(Arc::clone(g));
+            let g = Arc::clone(g);
+            drop(cache);
+            *etat.album_graphe_touche.lock().map_err(echec)? = Some(Instant::now());
+            return Ok(g);
         }
     }
     let debut = std::time::Instant::now();
     let g = Arc::new(Graphe::construire(centroides, ANNEAU_K_MAX, coeurs_arriere_plan()));
     tracing::info!(albums = n, ms = debut.elapsed().as_millis(), "graphe des albums");
     *cache = Some((n, Arc::clone(&g)));
+    drop(cache);
+    *etat.album_graphe_touche.lock().map_err(echec)? = Some(Instant::now());
     Ok(g)
 }
 
@@ -4192,7 +4303,12 @@ fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Res
                 *garde = Some(rusty_music_superres::Modele::charger(&modele_onnx)?);
             }
             let modele = garde.as_mut().expect("modèle chargé");
-            rusty_music_superres::regenerer(&source, &cible, modele, progres)
+            let resultat = rusty_music_superres::regenerer(&source, &cible, modele, progres);
+            drop(garde);
+            if let Ok(mut t) = etat.superres_modele_touche.lock() {
+                *t = Some(Instant::now());
+            }
+            resultat
         })();
 
         let bilan = match issue {
@@ -6215,6 +6331,7 @@ fn main() {
                 hd,
                 superres: Mutex::new(EtatSuperres::default()),
                 superres_modele: Mutex::new(None),
+                superres_modele_touche: Mutex::new(None),
                 scan: Mutex::new(EtatScan::default()),
                 surveillances: Mutex::new(std::collections::HashMap::new()),
                 analyse: Mutex::new(EtatAnalyse::default()),
@@ -6233,13 +6350,17 @@ fn main() {
                 stems: Mutex::new(None),
                 ondes: Mutex::new(Default::default()),
                 vecteurs: Mutex::new(Arc::new(Vec::new())),
+                vecteurs_touche: Mutex::new(None),
                 graphe: Mutex::new(None),
+                graphe_touche: Mutex::new(None),
                 graphe_construction: Mutex::new(()),
                 graphe_fait: AtomicUsize::new(0),
                 graphe_total: AtomicUsize::new(0),
                 album_centroides: Mutex::new(None),
                 album_noeuds: Mutex::new(None),
+                album_touche: Mutex::new(None),
                 album_graphe: Mutex::new(None),
+                album_graphe_touche: Mutex::new(None),
                 reseau: Mutex::new(None),
                 densite: Mutex::new(None),
                 ville: Mutex::new(None),
@@ -6248,6 +6369,7 @@ fn main() {
                 graphes_voirie: Mutex::new(std::collections::HashMap::new()),
                 agrement_voirie: Mutex::new(None),
                 texte_modele: Mutex::new(None),
+                texte_modele_touche: Mutex::new(None),
             });
             app.manage(tuiles::Archives::default());
 
@@ -6262,6 +6384,41 @@ fn main() {
                     if let Err(e) = precharger_suivante(&etat) {
                         tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                     }
+                }
+            });
+
+            // Décharge l'encodeur texte CLAP (478 Mo) et le modèle AERO
+            // (156 Mo) une fois qu'ils n'ont plus servi depuis
+            // `SEUIL_EVICTION_POIDS` — voir sa documentation. Un intervalle
+            // large (une minute) : ce n'est pas une horloge à respecter au
+            // Mo près, juste rendre la mémoire pendant qu'on écoute la
+            // playlist plutôt qu'un déclencheur ponctuel.
+            let etat_eviction = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(60));
+                if let Some(etat) = etat_eviction.try_state::<Etat>() {
+                    liberer_si_inactif(
+                        &etat.texte_modele,
+                        &etat.texte_modele_touche,
+                        "encodeur texte CLAP",
+                    );
+                    liberer_si_inactif(
+                        &etat.superres_modele,
+                        &etat.superres_modele_touche,
+                        "modèle AERO",
+                    );
+                    // Même patron pour la continuation automatique (errance/
+                    // sonique) : ses caches survivent, eux aussi, bien après
+                    // qu'une playlist a été composée — voir la documentation
+                    // de `vecteurs_touche`.
+                    liberer_vecteurs_si_inactif(&etat);
+                    liberer_si_inactif(&etat.graphe, &etat.graphe_touche, "graphe des voisins");
+                    liberer_albums_si_inactif(&etat);
+                    liberer_si_inactif(
+                        &etat.album_graphe,
+                        &etat.album_graphe_touche,
+                        "graphe des albums",
+                    );
                 }
             });
 
