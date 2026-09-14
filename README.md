@@ -70,66 +70,21 @@ ui/prototype/          maquette HTML du modèle de navigation retenu
 experiments/           sondages jetables, hors du workspace
 ```
 
-## Démarrer
+## Développement
 
-### Prérequis
-
-- **Rust 1.82+** et un **compilateur C** (`rusqlite` compile SQLite depuis les
-  sources au premier build).
-- **Les modèles** ne sont pas dans le dépôt (~0,83 Go, `.gitignore`). Le
-  `build.rs` de `crates/analysis` traduit au moment du build **deux**
-  encodeurs CLAP depuis l'ONNX — l'audio (`clap-audio-encoder-b5.onnx`,
-  112 Mo) et le texte (`clap-text-encoder.onnx`, 478 Mo, champ d'intention
-  d'Explorer) : **sans les deux, rien ne compile.**
-
-  ```bash
-  ./scripts/telecharger-modeles.sh        # depuis les release assets
-  ./scripts/telecharger-modeles.sh clap   # suffit pour `cargo build -p rusty-music-cli`
-  ```
-
-  Le script vérifie les empreintes SHA-256. Pour reconstruire les modèles
-  depuis les sources plutôt que de les télécharger (`torch`, `transformers`,
-  `onnx`, `onnxruntime` dans un venv jetable) : `scripts/preparer-modele.sh`
-  (CLAP audio), `scripts/preparer-clap-texte.sh` (CLAP texte — nécessite en
-  plus `torch`/`transformers`, voir son en-tête), `scripts/preparer-demucs.sh`
-  (HTDemucs), `scripts/preparer-aero.sh` (AERO). Détail par modèle :
-  `models/README.md`.
-
-  > **La tour texte n'est pour l'instant pas dans les release assets de
-  > `telecharger-modeles.sh`** (478 Mo, pas encore publiée) — la préparer
-  > depuis les sources (`scripts/preparer-clap-texte.sh`) est donc le seul
-  > chemin tant qu'elle n'y a pas été ajoutée.
-
-### Le moteur en ligne de commande
+Pour itérer sans repasser par `release.sh` à chaque fois : les trois modèles
+sont nécessaires (`tauri-build` vérifie les ressources), la carte affiche le
+plan de Paris si `ville-paris.db` est présent.
 
 ```bash
-cargo run -p rusty-music-cli -- scan  ~/Musique   # ingestion initiale
-cargo run -p rusty-music-cli -- watch ~/Musique   # scan puis surveillance continue
-cargo run -p rusty-music-cli -- stats             # état de la bibliothèque
-cargo run -p rusty-music-cli -- analyze --project # empreintes + projection sur la carte
-cargo run -p rusty-music-cli -- --help            # les ~30 sous-commandes
-```
-
-La base est créée dans `./rusty-music.db` (modifiable avec `--db`).
-
-### L'application de bureau
-
-Pour un paquet prêt à l'emploi, voir « Installer » plus haut. En développement,
-les trois modèles sont nécessaires (`tauri-build` vérifie les ressources) ;
-la carte affiche le plan de Paris si `ville-paris.db` est présent :
-
-```bash
-./scripts/telecharger-modeles.sh        # les trois modèles
+./scripts/telecharger-modeles.sh        # les trois modèles (~0,83 Go)
 ./scripts/telecharger-ville.sh          # le plan de Paris (~56 Mo)
-cargo run -p rusty-music-desktop
+cargo run --release -p rusty-music-desktop
 ```
 
 L'application tient sa propre base dans le dossier de données du système
 (`app_data_dir()/rusty-music.db`) et propose un sélecteur de dossier au premier
-lancement. Le plan de Paris est installé du paquet au premier lancement d'un
-`.app` construit par `release.sh` ; `carto ville` permet d'en importer un autre.
-
-### Vérifier
+lancement.
 
 ```bash
 cargo test --workspace
