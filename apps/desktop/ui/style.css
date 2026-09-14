@@ -322,6 +322,54 @@ html, body {
   border-bottom: 1px solid var(--line);
   flex: none;
 }
+
+/* Champ d'intention : une ligne partagée entre les modes (voir
+   `docs/interface-guidelines.md`), révélée seulement là où un comportement
+   est branché — Explorer pour l'instant. Peau `.chercher` reprise telle
+   quelle : même langage visuel que la recherche du rail, `#intention-texte`
+   n'a besoin que d'un placeholder distinct pour ne pas s'y confondre. */
+.intention {
+  padding: 14px 26px 14px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.intention__ligne { display: flex; gap: 8px; }
+.intention .chercher { padding: 9px 11px; }
+.intention__ligne .chercher { flex: 1; min-width: 0; }
+#intention-modele-liste { width: 100%; margin-top: 8px; }
+#intention-modele-etat { margin-top: 8px; }
+/* `.file__compo` porte déjà son propre cadre (bordure, padding) pour vivre
+   seule en tête du panneau file — ici elle est imbriquée dans `.intention`,
+   qui a le sien : pas de bordure ni de padding latéral en double. */
+#intention-progres.file__compo { padding: 8px 0 0; border-bottom: none; }
+
+/* Icône du modèle Ollama : même sobriété que les autres boutons icône du
+   rail (`.borne__x`) — pas de fond, un accent seulement au survol/actif. */
+.intention__ollama {
+  flex: none; width: 34px;
+  font-size: 16px; line-height: 1;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 2px;
+  cursor: pointer; overflow: visible;
+}
+.intention__ollama:hover { border-color: var(--accent); }
+.intention__ollama--actif { border-color: var(--accent); }
+/* Le lama marche pendant qu'Ollama réfléchit (jusqu'à la minute, mesuré) —
+   sur son `span`, pas sur le bouton : la bordure reste immobile, le geste de
+   clic aussi. Un déhanché net (rotation large, bond marqué), pas une nuance
+   à repérer : à cette taille d'icône, un mouvement discret ne se voit pas. */
+#intention-ollama-lama {
+  display: inline-block;
+  transform-origin: 50% 85%;
+}
+/* Même patron que `file-compo-navette` (va-et-vient `alternate`), déjà
+   éprouvé dans ce fichier — plutôt que d'inventer un minutage nouveau. */
+.intention__ollama--travail #intention-ollama-lama {
+  animation: intention-ollama-marche .5s ease-in-out infinite alternate;
+}
+@keyframes intention-ollama-marche {
+  from { transform: rotate(-20deg) translateY(0)    scale(1.2); }
+  to   { transform: rotate(20deg)  translateY(-3px) scale(1.2); }
+}
 .fil h1 { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -.01em; margin: 0; }
 .fil__compte { font-family: var(--mono); font-size: 10.5px; color: var(--mut); margin-left: auto; }
 .fil__retour {
@@ -637,6 +685,11 @@ html, body {
   padding: 4px 7px; border: 1px solid var(--line); background: var(--panel2);
 }
 .borne--pose { border-color: var(--accent); }
+/* Arrivée demandée par le champ d'intention mais introuvable dans la
+   bibliothèque — même couleur d'alerte que `.bouton--danger`, pour que
+   l'échec de résolution ne se confonde pas avec une arrivée bien posée. */
+.borne--introuvable { border-color: #C0503A; }
+.borne--introuvable .borne__nom { color: #C0503A; }
 .borne__role {
   font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
   text-transform: uppercase; color: var(--mut); flex: none; width: 44px;
@@ -650,6 +703,18 @@ html, body {
   background: none; border: none; color: var(--mut); cursor: pointer; flex: none;
 }
 .borne__x:hover { color: var(--accent); }
+
+/* Champ d'intention (Explorer) : plan interprété, dans l'inspecteur. */
+/* En tête de l'inspecteur (voir index.html) : une bordure basse le sépare
+   nettement de la pochette qui suit, comme le fait déjà `.fil` pour l'entête
+   du centre. */
+#bloc-plan-texte {
+  padding-bottom: 16px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.plan-texte__etapes { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+#plan-texte-n { width: 100%; margin-bottom: 12px; }
+#plan-texte-composer { width: 100%; }
 
 /* Le geste attendu change avec le mode : il est écrit sous les boutons plutôt
    qu'appris. */
@@ -1264,6 +1329,7 @@ html, body {
   .album__alchimie.alchimie--travail,
   .insp__alchimie.alchimie--travail,
   .file__compo-jauge i.file__compo-barre--indetermine,
+  .intention__ollama--travail #intention-ollama-lama,
   .file__ligne--pose { animation: none; }
   .file__ligne--pose { opacity: 1; transform: none; }
 }

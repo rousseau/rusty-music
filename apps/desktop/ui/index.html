@@ -271,6 +271,40 @@
           <button class="tri__opt" data-tri="alea">Aléatoire</button>
         </div>
       </header>
+      <!-- Champ d'intention : un seul champ, partagé entre les modes, jamais
+           recréé par `basculerMode()` — même principe que l'inspecteur
+           unique. Révélé pour l'instant seulement en Explorer, où il
+           interprète un prompt de playlist en texte libre (voir
+           `docs/interface-guidelines.md`, squelette à zones). -->
+      <div class="intention" id="bloc-intention" hidden>
+        <div class="intention__ligne">
+          <!-- Le modèle Ollama à interroger : un choix de machine (quels
+               modèles sont installés), pas une préférence à exposer en
+               permanence — replié derrière cette icône (Règle 5, sobriété),
+               dépliée sur clic (Règle 8, révélation progressive). -->
+          <button id="intention-ollama" type="button" class="intention__ollama"
+                  title="Choisir le modèle Ollama" aria-label="Choisir le modèle Ollama">
+            <!-- Marche (`.intention__ollama--travail`) le temps de
+                 l'interrogation d'Ollama — voir `interpreterIntention`. Sur
+                 son propre `span` : le bouton reste immobile, seul le lama
+                 anime. -->
+            <span id="intention-ollama-lama" aria-hidden="true">🦙</span>
+          </button>
+          <input id="intention-texte" class="chercher" type="text"
+                 placeholder="Décrivez la playlist voulue…" autocomplete="off">
+        </div>
+        <select id="intention-modele-liste" class="chercher" hidden></select>
+        <p id="intention-modele-etat" class="aide" hidden></p>
+        <!-- Pendant l'interrogation d'Ollama (de quelques secondes à plus
+             d'une minute selon le modèle, mesuré) : sans indice visible,
+             l'attente se lit comme un blocage. Même jauge indéterminée que
+             la composition de la file (`.file__compo-*`), pas une nouvelle
+             à inventer. -->
+        <div id="intention-progres" class="file__compo" hidden>
+          <span id="intention-progres-phase" class="file__compo-phase"></span>
+          <div class="file__compo-jauge"><i id="intention-progres-barre"></i></div>
+        </div>
+      </div>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
         <div id="grille" class="grille" tabindex="0"></div>
@@ -672,6 +706,38 @@
 
     <!-- Inspecteur droit -->
     <aside class="inspecteur">
+      <!-- Champ d'intention (Explorer) : le plan qu'Ollama a interprété.
+           **En tête de l'inspecteur, pas en pied** — la composition
+           s'enchaîne aussitôt et peuple `#insp` avec le premier morceau de la
+           playlist (bio, crédits, critiques...), qui ferait défiler ce bloc
+           hors champ si l'un poussait l'autre au lieu de le précéder. Reste
+           un bloc de plus du même inspecteur unique (`interface-
+           guidelines.md` Règle 1), pas une prévisualisation à part. -->
+      <div id="bloc-plan-texte" hidden>
+        <p class="rail__titre">Playlist interprétée</p>
+        <p class="aide">Départ</p>
+        <p id="plan-texte-depart" class="borne">
+          <span id="plan-texte-depart-nom" class="borne__nom">par description</span>
+          <button id="plan-texte-depart-effacer" class="borne__x" hidden title="Repartir d'un départ choisi par description">×</button>
+        </p>
+        <!-- Absent d'une simple dérive (« pars de X et dérive vers Y ») — ne
+             s'affiche que si le prompt demandait une arrivée précise
+             (« arriver à X »), voir `montrerPlanTexte`. -->
+        <p class="aide" id="plan-texte-arrivee-titre" hidden>Arrivée</p>
+        <p id="plan-texte-arrivee" class="borne" hidden>
+          <span id="plan-texte-arrivee-nom" class="borne__nom"></span>
+          <button id="plan-texte-arrivee-effacer" class="borne__x" title="Ne plus viser d'arrivée précise">×</button>
+        </p>
+        <p class="aide">Étapes</p>
+        <ul id="plan-texte-etapes" class="plan-texte__etapes"></ul>
+        <label class="aide" for="plan-texte-n">Morceaux</label>
+        <input id="plan-texte-n" class="chercher" type="number" min="1" max="200">
+        <!-- La composition se lance seule dès que l'interprétation est
+             confirmée (voir `interpreterIntention`) — ce bouton ne sert plus
+             qu'à recomposer après une modification du plan ci-dessus. -->
+        <button id="plan-texte-composer" class="bouton">Recomposer</button>
+      </div>
+
       <div class="pochette" id="pochette">
         <span>pochette</span>
         <button class="insp__alchimie" id="insp-alchimie" aria-label="Playlist dans l'esprit de ce morceau" title="Playlist dans l'esprit de ce morceau">✦</button>

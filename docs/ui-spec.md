@@ -127,6 +127,108 @@ texte-vers-audio et nous n'en avons exporté que la tour audio.** Exporter la
 tour texte permettrait de nommer les familles en comparant leurs empreintes à
 des mots, sans passer par les tags. Voir `docs/suite.md`.
 
+## Tranché le 14 septembre
+
+### Texte → playlist. **Décidé, implémenté.**
+La question restée ouverte plus haut (« exporter la tour texte permettrait de
+nommer les familles… ») trouve une seconde réponse, plus directe : décrire en
+texte libre la playlist voulue, pas seulement nommer une famille.
+
+- **Champ d'intention, pas un 7ᵉ bouton de chemin.** Une ligne partagée entre
+  les modes (`#bloc-intention`), sous l'entête du panneau central — révélée
+  pour l'instant seulement en Explorer. Un sous-panneau du rail (calqué sur
+  `#bloc-itineraire`) a été écarté : trop étroit pour un prompt de plusieurs
+  phrases, et l'idée d'un champ unique qui s'adapte au mode plutôt qu'un de
+  plus par mode l'a emporté.
+- **Un LLM local (Ollama) interprète le prompt**, jamais le texte brut : il en
+  extrait un morceau ou artiste de départ (résolu dans la bibliothèque), une
+  suite ordonnée de descripteurs anglais (CLAP a été entraîné sur des
+  légendes, pas des mots nus) et un nombre de morceaux. Sans artiste ni
+  morceau cité, le départ se choisit par similarité au premier descripteur —
+  la recherche par description validée dans `experiments/clap-texte/`.
+- **Le modèle Ollama se choisit, ne se devine pas.** Un nom fixe en repli
+  (`qwen2.5:3b`, celui de `preparer_vocabulaire.py`) échoue dès que la machine
+  ne l'a pas installé — Ollama rend alors un 404 sur `/api/generate`
+  qu'aucun message ne distingue d'un serveur injoignable (bogue observé et
+  corrigé lors du premier essai réel). Retenu : une icône 🦙 à gauche du champ
+  déplie la liste des modèles déjà installés (`ollama::modeles`, `GET
+  /api/tags`) ; le choix est mémorisé (`localStorage`) et, faute de choix,
+  `ollama::modele_par_defaut` prend le premier modèle installé plutôt qu'un
+  nom deviné. Un modèle « qui réfléchit » (capacité `thinking`, ex.
+  qwen3.8:27b-mlx) répond dans son champ `thinking` plutôt que `response`
+  quand `"think": false` n'est pas honoré : `ollama::interpreter` lit l'un ou
+  l'autre.
+- **Confirmation affichée, mais composition enchaînée sans second geste
+  (révisé le 14 septembre).** Le premier jet demandait un clic sur
+  « Composer » après l'interprétation, pour qu'une résolution erronée
+  (artiste homonyme, par exemple) ne surprenne pas en pleine écoute. À
+  l'usage, ce clic supplémentaire alourdissait plus qu'il ne protégeait — la
+  résolution s'est révélée fiable, et l'attente d'Ollama (déjà longue,
+  jusqu'à la minute sur un gros modèle) rendait le second geste d'autant plus
+  sensible. Retenu : l'interprétation **s'affiche toujours** dans
+  l'inspecteur (départ, étapes éditables, nombre de morceaux) — l'utilisateur
+  voit ce qu'Ollama a compris — puis la composition s'enchaîne aussitôt,
+  sans attendre de clic. Le bouton, renommé « Recomposer », reste disponible
+  pour rejouer la composition seule après une modification du plan affiché
+  (étape reformulée, départ effacé, nombre changé) — sans repasser par
+  Ollama.
+- **La tour texte de CLAP tourne enfin en direct**, mais seulement pour cet
+  usage ponctuel : un appel par prompt, en CPU, indépendant du backend choisi
+  pour la tour audio. Voir `crates/analysis/src/encodeur_texte.rs` et
+  `docs/rust-audio-stack.md`.
+- **`Graphe::guidee`**, nouvelle marche dans `crates/analysis/src/chemin.rs` :
+  comme l'errance, une marche auto-évitante pondérée par la proximité sonore
+  locale, mais qui dérive vers chaque cible textuelle en séquence plutôt que
+  sans direction.
+- **Arrivée précise, ajoutée le 14 septembre après un essai réel.** « Partir
+  de Shootyz Groove. Arriver à RATM. En passant par du hip hop » révèle un
+  angle mort du premier jet : rien dans le schéma ne distinguait un départ
+  d'une arrivée, si bien qu'un modèle mettait l'arrivée dans `seed_artiste`
+  (le seul champ « artiste » qu'il connaissait) et un autre l'abandonnait —
+  et même bien reconnue, une arrivée n'avait nulle part où aller : `guidee`
+  ne fait que dériver vers des cibles textuelles, des régions de l'espace, pas
+  des points précis. Deux correctifs : `arrivee_artiste`/`arrivee_morceau`
+  dans le schéma Ollama, avec un exemple à départ **et** arrivée dans la
+  consigne système (déterminant en pratique — sans lui, la confusion revenait
+  y compris sur le modèle recommandé) ; et, côté moteur, un raccordement exact
+  par `Graphe::sonique` depuis là où `guidee` s'arrête vers le morceau
+  d'arrivée résolu, plutôt que de compter sur la dérive textuelle pour y
+  atterrir seule. L'arrivée s'affiche et s'efface dans l'inspecteur comme le
+  départ.
+
+  **Round 2, même jour** : le correctif ci-dessus a presque marché — départ
+  correct, mais arrivée sur un morceau sans rapport (« Tetra Hydro » au lieu
+  de RATM). Cause distincte : le modèle rendait bien `arrivee_artiste`, mais
+  tel quel — « RATM », pas « Rage Against The Machine ». Or
+  `resoudre_piste_nommee` cherche un nom **littéral** dans la bibliothèque
+  (préfixe FTS5, `crates/core/src/db.rs::requete_fts`) : un sigle n'y trouve
+  jamais le nom complet, faute de mot commun. La recherche rendait donc zéro
+  résultat, l'arrivée résolue restait `None` **sans que rien ne le signale** —
+  la marche guidée dérivait alors normalement, sans arrivée forcée, jusqu'à un
+  morceau quelconque. Deux correctifs : la consigne système demande
+  maintenant explicitement le nom complet et usuel (« RATM » → "Rage Against
+  The Machine", exemples à l'appui) — vérifié contre les deux modèles
+  installés, les deux corrigent correctement une fois la consigne changée ;
+  et, pour ne plus jamais rater un cas en silence, `PlanTexte` porte
+  désormais aussi `arrivee_demandee` (le nom cru reconnu, trouvé ou non) —
+  l'inspecteur affiche « introuvable dans la bibliothèque » en rouge plutôt
+  que de faire disparaître l'arrivée sans explication.
+
+  **Round 3, même jour** : une fois l'arrivée bien résolue, un même prompt
+  ouvrait toujours sur le même morceau de l'artiste de départ. Cause : un
+  artiste sans titre précis se résolvait via `chemin::parcours`, qui retient
+  toujours le morceau le plus proche du centroïde — déterministe par
+  construction, comme pour le pivot d'album de `path_album`. Or le but
+  affiché de l'application est la **redécouverte** de la bibliothèque, pas un
+  détour toujours identique par les mêmes pivots. `resoudre_piste_nommee`
+  choisit désormais au hasard (`Alea::categorique`, poids uniformes) parmi
+  les morceaux trouvés pour un artiste — plus de similarité audio ni de
+  centroïde dans cette résolution-là. La graine vient d'un tirage frais côté
+  interface à chaque **interprétation** (pas à chaque « Recomposer », qui
+  rejoue le plan déjà résolu) : redemander le même prompt peut ouvrir sur un
+  autre morceau du même artiste, mais recomposer un plan affiché garde son
+  départ.
+
 ## Questions encore ouvertes
 - Recherche unique avec autocomplétion multi-type vs filtres facettés séparés (la maquette utilise une recherche unique). **Tranché de fait** : recherche unique, qui filtre la carte en mode Explorer et pose une borne sur Entrée. L'autocomplétion multi-type reste à faire si le besoin s'en fait sentir.
 - ~~Spec d'interface du module 3~~ — écrite : `docs/ui-spec-editeur.md`. Les trois modules ont désormais la leur.

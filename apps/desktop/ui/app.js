@@ -769,7 +769,12 @@ function genererAlchimie(item, bouton) {
 /// `chemin()` rend la promesse des pistes (le trajet), `demarrer(pistes)`
 /// celle de l'envoi au lecteur. La lecture part dès que le trajet est là ;
 /// le défilement qui suit n'est qu'un habillage.
-async function composerAlchimie({ bouton, chemin, demarrer }) {
+///
+/// `cible` : la longueur annoncée dans le panneau pendant le calcul — les
+/// trois boutons ✦ visent toujours `ALCHIMIE_PISTES`, mais le champ
+/// d'intention d'Explorer (`composerPlanTexte`) laisse l'utilisateur choisir
+/// son propre nombre de morceaux.
+async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES }) {
   if (alchimieEnCours) return;
   alchimieEnCours = true;
   const fileEtaitOuverte = !$("file").hidden;
@@ -778,7 +783,7 @@ async function composerAlchimie({ bouton, chemin, demarrer }) {
 
   bouton.disabled = true;
   bouton.classList.add("alchimie--travail");
-  demarrerCompositionFile(ALCHIMIE_PISTES);
+  demarrerCompositionFile(cible);
   basculerFile(true);
   const jauge = sonderGrapheProgres();
 
@@ -825,6 +830,244 @@ async function composerAlchimie({ bouton, chemin, demarrer }) {
     }
   }
 }
+
+/* --------------------------------------------- champ d'intention (Explorer) */
+
+/// Le dernier plan interprété par Ollama, affiché dans `#bloc-plan-texte`
+/// pour correction — `null` tant qu'aucune interprétation n'a réussi.
+let planTexte = null;
+
+/// Interprète le prompt du champ d'intention via Ollama, affiche ce qui a
+/// été compris, puis enchaîne aussitôt sur la composition
+/// (`composerPlanTexte`) — l'utilisateur voit les deux étapes se dérouler
+/// l'une après l'autre (l'interprétation d'abord, puis comment la playlist
+/// en est sortie) sans avoir de second geste à faire. Le bouton
+/// « Recomposer » sert à rejouer la seconde étape seule, après une
+/// modification du plan affiché.
+async function interpreterIntention() {
+  const champ = $("intention-texte");
+  const prompt = champ.value.trim();
+  if (!prompt) return;
+
+  $("chemin-aide").textContent = "";
+  champ.disabled = true;
+  const minuteur = demarrerProgresIntention(
+    modeleOllama ? `Interrogation d'Ollama (${modeleOllama})…` : "Interrogation d'Ollama…",
+  );
+  let interprete = false;
+  try {
+    planTexte = await invoke("path_texte_interpreter", {
+      prompt,
+      nDefaut: longueurChemin(),
+      modele: modeleOllama,
+      // Un tirage frais par interprétation : un artiste sans titre précis
+      // (« un morceau de Shootyz Groove ») en choisit un au hasard parmi les
+      // siens, pas toujours le même — la redécouverte, but de l'application,
+      // veut une entrée différente à chaque essai plutôt qu'un pivot figé.
+      seed: Math.floor(Math.random() * 2 ** 31),
+    });
+    montrerPlanTexte(planTexte);
+    interprete = true;
+  } catch (e) {
+    // Le message vient du moteur (`ollama::interpreter`/`error.rs`) — il
+    // distingue déjà « serveur injoignable » de « modèle absent », pas la
+    // peine de le remplacer par un texte fixe qui les confondrait.
+    signalerErreur("chemin-aide", String(e), e, "path_texte_interpreter");
+  } finally {
+    champ.disabled = false;
+    arreterProgresIntention(minuteur);
+  }
+  // Hors du `try` : `composerPlanTexte` a sa propre gestion d'erreur
+  // (`composerAlchimie`), pas la peine de la faire remonter ici aussi.
+  if (interprete) composerPlanTexte();
+}
+
+/// Affiche la jauge indéterminée du champ d'intention avec `texte`, complété
+/// d'un compteur de secondes écoulées — sans lui, une réponse qui prend
+/// plus d'une minute (mesuré sur un gros modèle « qui réfléchit ») se lit
+/// comme un blocage plutôt qu'un calcul en cours. Rend l'identifiant du
+/// minuteur, à couper par `arreterProgresIntention`.
+function demarrerProgresIntention(texte) {
+  $("intention-progres-barre").classList.add("file__compo-barre--indetermine");
+  $("intention-progres").hidden = false;
+  // Le lama de l'icône marche pendant le calcul — pas un lama de plus ajouté
+  // ailleurs, celui qui sert déjà à choisir le modèle.
+  $("intention-ollama").classList.add("intention__ollama--travail");
+  const debut = Date.now();
+  const majTexte = () => {
+    const s = Math.round((Date.now() - debut) / 1000);
+    $("intention-progres-phase").textContent = s > 0 ? `${texte} (${s} s)` : texte;
+  };
+  majTexte();
+  return setInterval(majTexte, 1000);
+}
+
+function arreterProgresIntention(minuteur) {
+  clearInterval(minuteur);
+  $("intention-progres").hidden = true;
+  $("intention-ollama").classList.remove("intention__ollama--travail");
+}
+
+$("intention-texte").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") interpreterIntention();
+});
+
+/// Le modèle Ollama choisi par l'utilisateur (icône 🦙) — mémorisé d'une
+/// session à l'autre. `null` tant qu'aucun choix n'a été fait : le moteur
+/// retombe alors sur le premier modèle installé (`ollama::modele_par_defaut`),
+/// pas sur un nom fixe qui n'existe peut-être pas sur cette machine (observé :
+/// `qwen2.5:3b` absent rend un 404 qu'Ollama ne distingue pas clairement d'un
+/// serveur injoignable).
+const CLE_MODELE_OLLAMA = "ollama-modele";
+let modeleOllama = localStorage.getItem(CLE_MODELE_OLLAMA) || null;
+
+/// Icône 🦙 : déplie la liste des modèles déjà installés (`ollama list`),
+/// repliée par défaut (Règle 5, sobriété) — pas un réglage à garder ouvert en
+/// permanence pour un choix qui change rarement.
+$("intention-ollama").addEventListener("click", async () => {
+  const liste = $("intention-modele-liste");
+  $("intention-ollama").classList.toggle("intention__ollama--actif", liste.hidden);
+  if (!liste.hidden) {
+    liste.hidden = true;
+    return;
+  }
+
+  $("intention-modele-etat").hidden = true;
+  try {
+    const modeles = await invoke("ollama_modeles");
+    if (modeles.length === 0) {
+      $("intention-modele-etat").textContent =
+        "Aucun modèle Ollama installé — « ollama pull <modèle> »";
+      $("intention-modele-etat").hidden = false;
+      $("intention-ollama").classList.remove("intention__ollama--actif");
+      return;
+    }
+    liste.replaceChildren(
+      ...modeles.map((m) => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = m;
+        return opt;
+      }),
+    );
+    if (!modeleOllama || !modeles.includes(modeleOllama)) modeleOllama = modeles[0];
+    liste.value = modeleOllama;
+    liste.hidden = false;
+    liste.focus();
+  } catch (e) {
+    signalerErreur("chemin-aide", String(e), e, "ollama_modeles");
+    $("intention-ollama").classList.remove("intention__ollama--actif");
+  }
+});
+
+$("intention-modele-liste").addEventListener("change", () => {
+  modeleOllama = $("intention-modele-liste").value;
+  localStorage.setItem(CLE_MODELE_OLLAMA, modeleOllama);
+  $("intention-modele-liste").hidden = true;
+  $("intention-ollama").classList.remove("intention__ollama--actif");
+});
+
+/// Affiche le plan interprété dans l'inspecteur — un bloc de plus
+/// (`#bloc-plan-texte`), pas une prévisualisation à part (`interface-
+/// guidelines.md` Règle 1 : un seul inspecteur).
+function montrerPlanTexte(plan) {
+  $("bloc-plan-texte").hidden = false;
+  // En tête de l'inspecteur (voir index.html), mais l'inspecteur défile : un
+  // ancien morceau consulté plus bas dans la page laisserait le plan hors
+  // champ sans ce reset.
+  document.querySelector(".inspecteur").scrollTop = 0;
+  $("plan-texte-depart-nom").textContent = plan.depart
+    ? `${txt(plan.depart.title, "(sans titre)")} — ${txt(plan.depart.artist, "(sans artiste)")}`
+    : "par description (aucun départ nommé)";
+  $("plan-texte-depart-effacer").hidden = !plan.depart;
+
+  // Absente d'une simple dérive : ne s'affiche que si une arrivée a été
+  // demandée (« arriver à X »), résolue ou non — une arrivée demandée mais
+  // introuvable (régression du 14 septembre : « RATM » cherché tel quel,
+  // jamais trouvé, la playlist dérivait quand même sans que rien ne le
+  // dise) doit rester visible, pas disparaître comme si de rien n'était.
+  const arriveeDemandee = plan.arrivee || plan.arrivee_demandee;
+  $("plan-texte-arrivee-titre").hidden = !arriveeDemandee;
+  $("plan-texte-arrivee").hidden = !arriveeDemandee;
+  $("plan-texte-arrivee-effacer").hidden = !plan.arrivee;
+  if (plan.arrivee) {
+    $("plan-texte-arrivee").classList.remove("borne--introuvable");
+    $("plan-texte-arrivee-nom").textContent =
+      `${txt(plan.arrivee.title, "(sans titre)")} — ${txt(plan.arrivee.artist, "(sans artiste)")}`;
+  } else if (plan.arrivee_demandee) {
+    $("plan-texte-arrivee").classList.add("borne--introuvable");
+    $("plan-texte-arrivee-nom").textContent =
+      `« ${plan.arrivee_demandee} » introuvable dans la bibliothèque`;
+  }
+
+  const liste = $("plan-texte-etapes");
+  liste.replaceChildren();
+  plan.etapes.forEach((etape, i) => {
+    const li = document.createElement("li");
+    const champ = document.createElement("input");
+    champ.type = "text";
+    champ.className = "chercher";
+    champ.value = etape;
+    // Édition directe dans la liste plutôt qu'un aller-retour par Ollama :
+    // une étape reformulée par l'utilisateur n'a pas besoin d'une nouvelle
+    // interprétation, seulement d'une nouvelle empreinte CLAP-texte, que
+    // `composerPlanTexte` calcule de toute façon à la composition.
+    champ.addEventListener("change", () => {
+      planTexte.etapes[i] = champ.value;
+    });
+    li.appendChild(champ);
+    liste.appendChild(li);
+  });
+
+  $("plan-texte-n").value = plan.n;
+}
+
+$("plan-texte-depart-effacer").addEventListener("click", () => {
+  if (!planTexte) return;
+  planTexte.depart = null;
+  montrerPlanTexte(planTexte);
+});
+
+$("plan-texte-arrivee-effacer").addEventListener("click", () => {
+  if (!planTexte) return;
+  // Revient à une simple dérive, sans arrivée visée — `path_texte` ne fait
+  // alors plus le raccordement exact (`Graphe::sonique`) en fin de marche.
+  planTexte.arrivee = null;
+  montrerPlanTexte(planTexte);
+});
+
+$("plan-texte-n").addEventListener("change", () => {
+  if (!planTexte) return;
+  const n = Number.parseInt($("plan-texte-n").value, 10);
+  planTexte.n = Number.isFinite(n) ? Math.min(200, Math.max(1, n)) : planTexte.n;
+});
+
+/// Compose la playlist du plan courant : une empreinte CLAP-texte par étape
+/// puis une marche guidée dans le graphe des voisins (`chemin::guidee`) —
+/// même jauge de composition que les boutons ✦ (`composerAlchimie`).
+///
+/// Déclenchée automatiquement dès que l'interprétation est confirmée
+/// (`interpreterIntention`), pas seulement sur clic : l'utilisateur voit ce
+/// qu'Ollama a compris, puis voit tout de suite la playlist s'assembler à
+/// partir de là, sans geste de plus à faire. Le bouton « Recomposer » reste
+/// disponible pour relancer après une modification du plan (étape
+/// reformulée, nombre de morceaux changé, départ effacé).
+function composerPlanTexte() {
+  if (!planTexte || planTexte.etapes.length === 0) return;
+  composerAlchimie({
+    bouton: $("plan-texte-composer"),
+    cible: planTexte.n,
+    chemin: () =>
+      invoke("path_texte", {
+        plan: planTexte,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        bruit: bruitChemin,
+      }),
+    demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
+  });
+}
+
+$("plan-texte-composer").addEventListener("click", composerPlanTexte);
 
 /// Ouvre la file sur la longueur cible : autant d'emplacements vides que de
 /// pistes attendues, la phase en cours au-dessus. `revelerFile` viendra
@@ -6657,6 +6900,11 @@ async function basculerMode(mode) {
   $("bloc-chercher").hidden = bibliotheque || decouvrir;
   $("bloc-colorer").hidden = !explorer;
   $("bloc-chemin").hidden = !explorer;
+  // Champ d'intention : composant unique et partagé (voir `index.html`),
+  // révélé seulement là où un comportement LLM est branché — Explorer pour
+  // l'instant. Un futur mode l'étendrait ici même, pas en dupliquant le champ.
+  $("bloc-intention").hidden = !explorer;
+  if (!explorer) $("bloc-plan-texte").hidden = true;
   $("bloc-familles").hidden = !explorer || carte.couleur !== "famille";
   // Le filtre par famille de l'Écoute : `majBlocFamillesEcoute` le rallume si
   // la grille d'albums est à l'écran et la carte calculée.

@@ -84,6 +84,7 @@ rééchantillonnant du même rapport (`rubato`). Un vocodeur de phase maison
 | `ort` (+ `ort-sys`) | bindings ONNX Runtime — voie la plus courte pour un modèle pré-entraîné | MIT **ou** Apache-2.0 | ✔ (module 1 : super-résolution AERO, `docs/module3-superresolution.md`) |
 | `tract` | inférence ONNX **pur Rust** | MIT **ou** Apache-2.0 | ✘ — charge le graphe AERO mais le calcule **faux** (cos 0,68), comme wgpu sur demucs (`experiments/burn-aero/`) |
 | `candle` / `candle-onnx` | alternative Hugging Face, pur Rust | MIT **ou** Apache-2.0 | ✔ |
+| `tokenizers` | tokeniseur RoBERTa de la tour texte de CLAP (`crates/analysis/src/encodeur_texte.rs`, champ d'intention d'Explorer) — Hugging Face, pur Rust | MIT **ou** Apache-2.0 | ✔ (cosinus 0,9999999 contre le tokeniseur Python de référence) |
 
 `ort` lie ONNX Runtime (C++). L'objectif « 100 % Rust » est abandonné au profit de « ne pas réécrire » : lier du C++ éprouvé est préférable à réimplémenter. Deux sondages le confirment sur des modèles audio réels — HTDemucs (`experiments/burn-demucs/` : wgpu faux) et AERO (`experiments/burn-aero/` : `tract` faux, `ort` exact à ×7 le temps réel).
 

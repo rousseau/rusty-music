@@ -26,7 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "poids   : {}",
-        modele.map_or(env!("RM_POIDS"), |p| p.to_str().unwrap_or("?"))
+        modele.map_or(env!("RM_POIDS_CLAP_AUDIO_ENCODER_B5"), |p| {
+            p.to_str().unwrap_or("?")
+        })
     );
     println!("backend : {}", rusty_music_analysis::encodeur::moteur());
     println!("entrée  : [n, 1, {TRAMES}, {MELS}]  ({FENETRE_S} s par fenêtre)");

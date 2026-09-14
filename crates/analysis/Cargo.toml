@@ -22,8 +22,11 @@ burn-onnx.workspace = true
 [dev-dependencies]
 anyhow.workspace = true
 
+# `ndarray` toujours actif, en plus de `wgpu`/`ndarray` choisi par `gpu`/`cpu`
+# ci-dessus : la tour texte de CLAP (`encodeur_texte.rs`) tourne toujours en
+# CPU, même quand l'audio tourne en `wgpu` — voir sa documentation de module.
 [dependencies]
-burn.workspace      = true
+burn                = { workspace = true, features = ["ndarray"] }
 burn-store.workspace = true
 rustfft.workspace   = true
 rodio.workspace     = true
@@ -35,3 +38,4 @@ rustworkx-core.workspace = true
 rusty-music-core = { path = "../core" }
 thiserror.workspace = true
 tracing.workspace   = true
+tokenizers.workspace = true

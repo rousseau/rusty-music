@@ -68,15 +68,16 @@ impl Embedder {
     /// Charge les poids.
     ///
     /// Ordre de recherche, et **cet ordre compte** : le chemin explicite s'il
-    /// est donné, puis les poids que *ce* build vient de produire (`RM_POIDS`),
-    /// puis seulement les dossiers de `rusty_music_core::modeles`.
+    /// est donné, puis les poids que *ce* build vient de produire
+    /// (`RM_POIDS_CLAP_AUDIO_ENCODER_B5`), puis seulement les dossiers de
+    /// `rusty_music_core::modeles`.
     ///
     /// Chercher `models/` en premier serait le bogue d'hier : chaque profil de
     /// compilation régénère code **et** poids, et charger ceux d'un autre
     /// profil ne provoque aucune erreur — seulement des empreintes fausses.
-    /// `RM_POIDS` désigne toujours ceux qui vont avec le code exécuté ; il
-    /// n'existe que sur la machine de build, donc une application installée
-    /// tombe naturellement sur ses ressources.
+    /// `RM_POIDS_CLAP_AUDIO_ENCODER_B5` désigne toujours ceux qui vont avec le
+    /// code exécuté ; il n'existe que sur la machine de build, donc une
+    /// application installée tombe naturellement sur ses ressources.
     ///
     /// **Des poids venus d'un autre build ne provoquent aucune erreur** — Burn
     /// charge ce qu'il reconnaît et laisse le reste à l'initialisation, d'où
@@ -89,7 +90,7 @@ impl Embedder {
         let poids = match poids {
             Some(p) => p,
             None => {
-                let du_build = std::path::PathBuf::from(env!("RM_POIDS"));
+                let du_build = std::path::PathBuf::from(env!("RM_POIDS_CLAP_AUDIO_ENCODER_B5"));
                 trouve = if du_build.is_file() {
                     du_build
                 } else {

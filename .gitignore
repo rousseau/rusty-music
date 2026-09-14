@@ -1,6 +1,7 @@
 # Artéfacts de compilation.
 target/
 experiments/*/target/
+__pycache__/
 
 # Poids de modèles — récupérés par scripts/telecharger-modeles.sh, ou
 # reconstruits par scripts/preparer-*.sh. Voir models/README.md.

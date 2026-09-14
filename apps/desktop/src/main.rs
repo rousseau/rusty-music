@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rusty_music_analysis::chemin::{Empreinte, Graphe};
+use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, FluxTemporel, MapPoint, RootRow, TrackRow};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
@@ -170,6 +170,10 @@ struct Etat {
     /// La grille « aux abords d'un parc ou de l'eau », pour le profil
     /// panoramique — ne dépend que de l'extrait.
     agrement_voirie: Mutex<Option<Arc<rusty_music_carto::cout_itineraire::ProximiteAgrement>>>,
+    /// L'encodeur texte de CLAP (champ d'intention d'Explorer), chargé à la
+    /// première requête puis gardé — 478 Mo de poids, pas question de les
+    /// relire à chaque prompt. Même patron que `superres_modele`.
+    texte_modele: Mutex<Option<rusty_music_analysis::EmbedderTexte>>,
 }
 
 /// Chaque morceau accroché au sommet de voirie le plus proche, dans les deux
@@ -2536,6 +2540,269 @@ fn path_album(
         bruit.unwrap_or(BRUIT_DEFAUT),
     );
     pistes_de(&etat, &route)
+}
+
+/// Interprétation d'un prompt de playlist en texte libre (champ d'intention
+/// d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
+/// voir `path_texte_interpreter` puis `path_texte`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct PlanTexte {
+    /// `None` si le prompt ne nomme aucun morceau ni artiste identifiable :
+    /// `path_texte` choisit alors un départ par similarité à la première
+    /// étape plutôt qu'un morceau arbitraire.
+    depart: Option<TrackRow>,
+    /// `None` si le prompt ne demande pas d'arrivée précise (cas le plus
+    /// courant : une simple dérive depuis `depart`) — `path_texte` dérive
+    /// alors sans viser de point d'arrivée, comme avant l'ajout de ce champ.
+    /// Présent, `path_texte` termine la marche guidée par un raccordement
+    /// exact vers ce morceau (`Graphe::sonique`), pour qu'un « arriver à X »
+    /// explicite dans le prompt tienne sa promesse plutôt que de rester une
+    /// simple étape textuelle diluée parmi d'autres.
+    arrivee: Option<TrackRow>,
+    /// Le nom que le LLM a cru reconnaître comme arrivée, **que la recherche
+    /// l'ait trouvé ou non** — `None` seulement si le prompt ne demandait
+    /// aucune arrivée. Sert à distinguer, dans l'inspecteur, « pas d'arrivée
+    /// demandée » de « arrivée demandée mais introuvable » : régression du 14
+    /// septembre (« RATM » cherché tel quel, jamais trouvé, la playlist
+    /// dérivait quand même sans arrivée sans que rien ne le montre) —
+    /// `arrivee` seul à `None` ne disait pas lequel des deux cas s'était
+    /// produit.
+    arrivee_demandee: Option<String>,
+    /// Toujours au moins une étape — `ollama::interpreter` le garantit déjà.
+    etapes: Vec<String>,
+    n: usize,
+}
+
+/// Interprète un prompt de playlist en texte libre via Ollama, et résout son
+/// morceau ou artiste de départ dans la bibliothèque — sans encore calculer
+/// d'empreinte CLAP-texte ni construire de trajet, pour rester rapide :
+/// l'utilisateur doit pouvoir corriger l'interprétation dans l'inspecteur
+/// avant qu'elle ne remplace sa file d'écoute (`path_texte` fait le reste).
+///
+/// `modele` : celui choisi par l'utilisateur via l'icône 🦙 (mémorisé côté
+/// interface). `None` — rien choisi encore — retombe sur
+/// `ollama::modele_par_defaut`, pas sur un nom fixe : deviner un modèle qui
+/// n'est pas installé rend un 404 qu'Ollama ne distingue pas clairement d'un
+/// serveur injoignable (observé en pratique).
+///
+/// `seed` : un tirage frais côté interface à chaque interprétation, jamais
+/// réutilisé — voir la documentation de [`resoudre_piste_nommee`] sur
+/// pourquoi le départ/l'arrivée d'un artiste sans titre précis en a besoin.
+#[tauri::command(async)]
+fn path_texte_interpreter(
+    etat: State<Etat>,
+    prompt: String,
+    n_defaut: usize,
+    modele: Option<String>,
+    seed: u64,
+) -> Result<PlanTexte, String> {
+    let modele = match modele.filter(|m| !m.is_empty()) {
+        Some(m) => m,
+        None => rusty_music_core::ollama::modele_par_defaut(rusty_music_core::ollama::HOTE_DEFAUT)
+            .map_err(echec)?,
+    };
+    let interpretation =
+        rusty_music_core::ollama::interpreter(rusty_music_core::ollama::HOTE_DEFAUT, &modele, &prompt)
+            .map_err(echec)?;
+
+    let n = interpretation.n.map(|n| n as usize).unwrap_or(n_defaut).max(1);
+    let depart = resoudre_piste_nommee(
+        &etat,
+        "départ",
+        interpretation.seed_morceau.as_deref(),
+        interpretation.seed_artiste.as_deref(),
+        seed,
+    )?;
+    let arrivee_demandee = interpretation
+        .arrivee_morceau
+        .clone()
+        .or_else(|| interpretation.arrivee_artiste.clone());
+    // Graine décorrélée de celle du départ : sans ça, quand les deux listes
+    // de candidats ont la même taille, les deux tirages `categorique`
+    // choisiraient le même rang et retomberaient sur le même biais.
+    let arrivee = resoudre_piste_nommee(
+        &etat,
+        "arrivée",
+        interpretation.arrivee_morceau.as_deref(),
+        interpretation.arrivee_artiste.as_deref(),
+        seed.wrapping_add(1),
+    )?;
+    tracing::info!(
+        depart = ?depart.as_ref().map(|t| (&t.title, &t.artist)),
+        ?arrivee_demandee,
+        arrivee = ?arrivee.as_ref().map(|t| (&t.title, &t.artist)),
+        etapes = ?interpretation.etapes,
+        n,
+        "champ d'intention : plan prêt pour l'inspecteur",
+    );
+    if arrivee_demandee.is_some() && arrivee.is_none() {
+        tracing::warn!(
+            ?arrivee_demandee,
+            "champ d'intention : arrivée demandée mais introuvable dans la bibliothèque",
+        );
+    }
+
+    Ok(PlanTexte { depart, arrivee, arrivee_demandee, etapes: interpretation.etapes, n })
+}
+
+/// Modèles Ollama déjà installés localement — sélecteur du champ d'intention
+/// (icône 🦙).
+#[tauri::command(async)]
+fn ollama_modeles() -> Result<Vec<String>, String> {
+    rusty_music_core::ollama::modeles(rusty_music_core::ollama::HOTE_DEFAUT).map_err(echec)
+}
+
+/// Retrouve dans la bibliothèque le morceau ou l'artiste que l'interprétation
+/// a cru reconnaître pour un rôle (« départ » ou « arrivée », pour les
+/// journaux seulement) — `None` si rien n'a été cité ou rien n'a été trouvé.
+/// Partagée entre `depart` et `arrivee` : même ambiguïté à lever dans les deux
+/// cas (un artiste sans titre précis résolu à l'un de ses morceaux).
+///
+/// **Choix au hasard parmi les morceaux trouvés, pas le plus central.**
+/// Revu le 14 septembre : `chemin::parcours` retenait toujours le même pivot
+/// (le morceau le plus proche du centroïde de l'artiste), donc un même
+/// prompt ouvrait chaque fois sur le même morceau — contraire au but affiché
+/// de l'application, redécouvrir la bibliothèque plutôt que la parcourir
+/// toujours pareil. `graine` vient d'un tirage frais côté interface à chaque
+/// interprétation (pas à chaque « Recomposer », qui rejoue le même plan) :
+/// deux envois du même prompt peuvent donc ouvrir sur deux morceaux
+/// différents du même artiste, mais rejouer un plan déjà interprété ne
+/// change pas son départ.
+fn resoudre_piste_nommee(
+    etat: &State<Etat>,
+    role: &str,
+    morceau: Option<&str>,
+    artiste: Option<&str>,
+    graine: u64,
+) -> Result<Option<TrackRow>, String> {
+    let Some(requete) = morceau.or(artiste) else {
+        return Ok(None);
+    };
+
+    let resultats = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        lib.search(requete, 50).map_err(echec)?
+    };
+    tracing::info!(
+        %role,
+        %requete,
+        resultats = resultats.len(),
+        "champ d'intention : recherche dans la bibliothèque",
+    );
+
+    let mut alea = rusty_music_analysis::alea::Alea::depuis(graine);
+
+    if let Some(artiste) = artiste {
+        let ids: Vec<i64> = resultats
+            .iter()
+            .filter(|t| {
+                t.artist
+                    .as_deref()
+                    .is_some_and(|a| a.eq_ignore_ascii_case(artiste))
+            })
+            .map(|t| t.id)
+            .collect();
+        tracing::info!(
+            %role,
+            %artiste,
+            morceaux_de_lartiste = ids.len(),
+            "champ d'intention : filtrage par artiste cité",
+        );
+        if !ids.is_empty() {
+            let id = ids[alea.categorique(&vec![1.0; ids.len()])];
+            return Ok(pistes_de(etat, &[id])?.into_iter().next());
+        }
+    }
+    if resultats.is_empty() {
+        return Ok(None);
+    }
+    let i = alea.categorique(&vec![1.0; resultats.len()]);
+    Ok(resultats.into_iter().nth(i))
+}
+
+/// Compose la playlist : une empreinte CLAP-texte par étape du plan, puis une
+/// marche guidée dans le graphe des voisins (`chemin::guidee`). Séparée de
+/// l'interprétation LLM (`path_texte_interpreter`) : ce calcul-ci ne se relance
+/// que si l'utilisateur confirme le plan affiché dans l'inspecteur.
+#[tauri::command(async)]
+fn path_texte(
+    etat: State<Etat>,
+    plan: PlanTexte,
+    seed: u64,
+    bruit: Option<f32>,
+) -> Result<Vec<TrackRow>, String> {
+    if plan.etapes.is_empty() {
+        return Err("aucune étape à composer".into());
+    }
+
+    let cibles: Vec<Vec<f32>> = {
+        let mut garde = etat.texte_modele.lock().map_err(echec)?;
+        if garde.is_none() {
+            *garde = Some(rusty_music_analysis::EmbedderTexte::charger(None).map_err(echec)?);
+        }
+        let encodeur = garde.as_ref().expect("encodeur texte chargé");
+        plan.etapes
+            .iter()
+            .map(|phrase| encodeur.embed(phrase).map_err(echec))
+            .collect::<Result<_, String>>()?
+    };
+
+    let vecteurs = charger_vecteurs(&etat)?;
+    let depart = match &plan.depart {
+        Some(t) => t.id,
+        None => meilleur_depart_par_description(&vecteurs, &cibles[0])
+            .ok_or("bibliothèque vide : aucun départ possible")?,
+    };
+    let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
+    let graphe = construire_graphe(&etat, &vecteurs)?;
+
+    let mut route = graphe.guidee(&vecteurs, depart, &cibles, plan.n, seed, bruit);
+
+    // Une arrivée précise a été demandée (« arriver à X ») : la marche guidée
+    // ne fait que dériver vers ses cibles textuelles, qui sont des régions,
+    // pas des points — elle ne garantit pas d'atterrir exactement sur un
+    // morceau donné. Un raccordement dans le graphe des voisins, depuis là où
+    // la dérive s'est arrêtée, tient la promesse là où `guidee` seule ne le
+    // pouvait pas.
+    if let Some(arrivee) = &plan.arrivee {
+        if route.last() != Some(&arrivee.id) {
+            let dernier = *route.last().unwrap_or(&depart);
+            let jonction = graphe.sonique(dernier, arrivee.id, seed, bruit);
+            match jonction.split_first() {
+                Some((_, reste)) => route.extend_from_slice(reste),
+                // Composantes non reliées dans le graphe des voisins (rare) :
+                // l'arrivée est posée telle quelle plutôt que silencieusement
+                // ignorée — une transition brutale tient mieux une demande
+                // explicite qu'un « arriver à X » qui n'arrive nulle part.
+                None => route.push(arrivee.id),
+            }
+        }
+        // Le raccordement peut avoir dépassé la longueur demandée : on
+        // rééchantillonne en gardant les deux extrémités (même fonction que
+        // pour un plus court chemin entre amas éloignés, voir sa doc).
+        route = echantillonner(&route, plan.n);
+    }
+
+    pistes_de(&etat, &route)
+}
+
+/// Le morceau dont l'empreinte est la plus proche d'une cible — départ « par
+/// description » quand le prompt ne nomme ni morceau ni artiste, même
+/// principe que la recherche par description sondée dans
+/// `experiments/clap-texte`.
+fn meilleur_depart_par_description(vecteurs: &[Empreinte], cible: &[f32]) -> Option<i64> {
+    vecteurs
+        .iter()
+        .max_by(|(_, a), (_, b)| {
+            produit_scalaire(a, cible)
+                .partial_cmp(&produit_scalaire(b, cible))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(id, _)| *id)
+}
+
+fn produit_scalaire(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
 /// Charge les empreintes si leur nombre a changé depuis la dernière fois.
@@ -5980,6 +6247,7 @@ fn main() {
                 accrochage_voirie: Mutex::new(None),
                 graphes_voirie: Mutex::new(std::collections::HashMap::new()),
                 agrement_voirie: Mutex::new(None),
+                texte_modele: Mutex::new(None),
             });
             app.manage(tuiles::Archives::default());
 
@@ -6242,6 +6510,9 @@ fn main() {
             path,
             path_drawn,
             path_album,
+            path_texte_interpreter,
+            path_texte,
+            ollama_modeles,
             voyage,
             selection,
             families,

@@ -14,7 +14,12 @@ pub struct Library {
 }
 
 /// Résumé d'un morceau tel que servi à l'interface.
-#[derive(Debug, Clone, serde::Serialize)]
+///
+/// `Deserialize` en plus de `Serialize` : le plan interprété du champ
+/// d'intention d'Explorer (`PlanTexte`, `apps/desktop/src/main.rs`) en
+/// embarque un pour l'afficher, et le reçoit de retour une fois l'utilisateur
+/// passé par l'inspecteur — le seul aller-retour JS de ce genre à ce jour.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrackRow {
     pub id: i64,
     pub path: String,

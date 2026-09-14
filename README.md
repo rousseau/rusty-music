@@ -76,20 +76,29 @@ experiments/           sondages jetables, hors du workspace
 
 - **Rust 1.82+** et un **compilateur C** (`rusqlite` compile SQLite depuis les
   sources au premier build).
-- **Les modèles** ne sont pas dans le dépôt (~0,35 Go, `.gitignore`). Le
-  `build.rs` de `crates/analysis` traduit l'encodeur CLAP depuis l'ONNX au
-  moment du build : **sans au moins ce modèle, rien ne compile.**
+- **Les modèles** ne sont pas dans le dépôt (~0,83 Go, `.gitignore`). Le
+  `build.rs` de `crates/analysis` traduit au moment du build **deux**
+  encodeurs CLAP depuis l'ONNX — l'audio (`clap-audio-encoder-b5.onnx`,
+  112 Mo) et le texte (`clap-text-encoder.onnx`, 478 Mo, champ d'intention
+  d'Explorer) : **sans les deux, rien ne compile.**
 
   ```bash
-  ./scripts/telecharger-modeles.sh        # les trois, depuis les release assets
+  ./scripts/telecharger-modeles.sh        # depuis les release assets
   ./scripts/telecharger-modeles.sh clap   # suffit pour `cargo build -p rusty-music-cli`
   ```
 
   Le script vérifie les empreintes SHA-256. Pour reconstruire les modèles
-  depuis les sources plutôt que de les télécharger (`onnx`, `onnxruntime` dans
-  un venv jetable) : `scripts/preparer-modele.sh` (CLAP),
-  `scripts/preparer-demucs.sh` (HTDemucs), `scripts/preparer-aero.sh` (AERO).
-  Détail par modèle : `models/README.md`.
+  depuis les sources plutôt que de les télécharger (`torch`, `transformers`,
+  `onnx`, `onnxruntime` dans un venv jetable) : `scripts/preparer-modele.sh`
+  (CLAP audio), `scripts/preparer-clap-texte.sh` (CLAP texte — nécessite en
+  plus `torch`/`transformers`, voir son en-tête), `scripts/preparer-demucs.sh`
+  (HTDemucs), `scripts/preparer-aero.sh` (AERO). Détail par modèle :
+  `models/README.md`.
+
+  > **La tour texte n'est pour l'instant pas dans les release assets de
+  > `telecharger-modeles.sh`** (478 Mo, pas encore publiée) — la préparer
+  > depuis les sources (`scripts/preparer-clap-texte.sh`) est donc le seul
+  > chemin tant qu'elle n'y a pas été ajoutée.
 
 ### Le moteur en ligne de commande
 

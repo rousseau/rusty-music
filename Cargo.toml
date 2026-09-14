@@ -147,6 +147,11 @@ burn       = { version = "0.21", default-features = false, features = [
 ] }
 burn-store = "0.21"
 burn-onnx  = "0.21"
+# Tokeniseur RoBERTa de la tour texte de CLAP (`crates/analysis/src/
+# encodeur_texte.rs`) — Hugging Face, Apache-2.0. Aucun tokeniseur Rust
+# n'existait pour ce modèle avant : c'est la brique éprouvée à réutiliser
+# plutôt qu'en écrire un (`CLAUDE.md`, principe directeur des dépendances).
+tokenizers = "0.21"
 # Transformée de Fourier pour les spectrogrammes log-mel. MIT/Apache-2.0.
 rustfft = "6"
 # Projection 2D (t-SNE Barnes-Hut) pour la carte du module 2. Licence MIT.

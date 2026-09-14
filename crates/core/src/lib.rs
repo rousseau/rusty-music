@@ -22,6 +22,7 @@ pub mod lastfm_pass;
 pub mod listenbrainz;
 pub mod modeles;
 pub mod musicbrainz;
+pub mod ollama;
 pub mod pochette;
 pub mod opus;
 pub mod popularite;

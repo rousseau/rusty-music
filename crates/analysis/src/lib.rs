@@ -18,6 +18,7 @@ pub mod cluster;
 pub mod decode;
 pub mod descripteurs;
 pub mod encodeur;
+pub mod encodeur_texte;
 pub mod mel;
 pub mod passe;
 pub mod projection;
@@ -25,6 +26,7 @@ pub mod reseau;
 pub mod vocabulaire_texte;
 
 pub use encodeur::{Embedder, LOT};
+pub use encodeur_texte::EmbedderTexte;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

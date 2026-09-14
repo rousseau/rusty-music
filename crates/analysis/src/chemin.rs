@@ -750,6 +750,125 @@ impl Graphe {
         }
         route.into_iter().map(|r| self.ids[r as usize]).collect()
     }
+
+    /// Marche guidée : comme [`Self::errance`], une marche auto-évitante
+    /// pondérée par la proximité sonore locale, mais qui dérive vers une
+    /// suite ordonnée de cibles textuelles au lieu de dériver sans direction —
+    /// le mécanisme derrière le champ d'intention d'Explorer
+    /// (« texte → playlist »).
+    ///
+    /// `cibles` : une empreinte CLAP-texte par étape narrative extraite du
+    /// prompt (`EmbedderTexte::embed`), dans le même espace que les
+    /// empreintes audio — c'est tout l'intérêt d'un espace joint texte/audio.
+    /// Vide, retombe sur [`Self::errance`].
+    ///
+    /// `empreintes` sert à lire l'empreinte de chaque candidat : le graphe ne
+    /// stocke que des distances d'arêtes déjà calculées, pas les vecteurs
+    /// eux-mêmes, et comparer un candidat à une cible hors-graphe en a
+    /// besoin.
+    ///
+    /// Les `pas - 1` morceaux après le départ se répartissent en autant de
+    /// segments que de cibles. Dans un segment, `t` glisse de 0 à 1 — au
+    /// début on reste proche du morceau courant (cohérence locale), en fin de
+    /// segment on privilégie la cible, pour *arriver* dessus plutôt que
+    /// seulement y passer. C'est une rampe, pas une cloche comme le pont
+    /// brownien de [`direct`] : ce dernier doit repasser près du point visé au
+    /// milieu, celui-ci doit y être rendu à la fin.
+    ///
+    /// Comme `errance`, ne cherche que parmi les voisins du morceau courant
+    /// (pas de saut direct vers la cible hors du graphe k-NN) : la cohérence
+    /// sonore locale prime, la cible ne fait qu'orienter le choix parmi des
+    /// transitions déjà proches. S'arrête tôt si les voisins libres
+    /// s'épuisent avant la fin d'un segment — une impasse locale légitime,
+    /// pas une erreur, même comportement dégradé que `errance`/`voyage`.
+    /// Même graine, même bruit, mêmes cibles : même trajet.
+    pub fn guidee(
+        &self,
+        empreintes: &[Empreinte],
+        depart: i64,
+        cibles: &[Vec<f32>],
+        pas: usize,
+        graine: u64,
+        bruit: f32,
+    ) -> Vec<i64> {
+        if !self.rang.contains_key(&depart) {
+            return Vec::new();
+        }
+        if cibles.is_empty() {
+            return self.errance(depart, pas, graine, bruit);
+        }
+        let debut = self.rang[&depart];
+
+        let par_id: HashMap<i64, &[f32]> = empreintes
+            .iter()
+            .map(|(id, v)| (*id, v.as_slice()))
+            .collect();
+
+        let temperature = (bruit.clamp(0.0, 1.0) * TEMPERATURE_ECHELLE).max(1e-3);
+        let mut alea = Alea::depuis(graine);
+        let mut vus: HashSet<u32> = HashSet::from([debut]);
+        let mut route = vec![debut];
+
+        let objectif = pas.max(1);
+        let restants = objectif.saturating_sub(1);
+        let pas_par_etape = restants.div_ceil(cibles.len()).max(1);
+
+        'etapes: for cible in cibles {
+            for s in 0..pas_par_etape {
+                if route.len() >= objectif {
+                    break 'etapes;
+                }
+                let courant = *route.last().unwrap();
+                let libres: Vec<(u32, f32)> = self.aretes[courant as usize]
+                    .iter()
+                    .copied()
+                    .filter(|(j, _)| !vus.contains(j))
+                    .collect();
+                if libres.is_empty() {
+                    break 'etapes;
+                }
+
+                let d_min_locale = libres
+                    .iter()
+                    .map(|&(_, d)| d)
+                    .fold(f32::INFINITY, f32::min);
+                let echelle_locale = (libres.iter().map(|&(_, d)| d - d_min_locale).sum::<f32>()
+                    / libres.len() as f32)
+                    .max(1e-6);
+
+                let d_cible: Vec<f32> = libres
+                    .iter()
+                    .map(|&(j, _)| {
+                        let id = self.ids[j as usize];
+                        par_id
+                            .get(&id)
+                            .map_or(f32::INFINITY, |v| distance2(v, cible))
+                    })
+                    .collect();
+                let d_min_cible = d_cible.iter().copied().fold(f32::INFINITY, f32::min);
+                let echelle_cible = (d_cible.iter().map(|&d| d - d_min_cible).sum::<f32>()
+                    / d_cible.len() as f32)
+                    .max(1e-6);
+
+                let t = s as f32 / pas_par_etape as f32;
+                let poids: Vec<f32> = libres
+                    .iter()
+                    .zip(&d_cible)
+                    .map(|(&(_, d_locale), &d_c)| {
+                        let cout_local = (d_locale - d_min_locale) / echelle_locale;
+                        let cout_cible = (d_c - d_min_cible) / echelle_cible;
+                        let melange = (1.0 - t) * cout_local + t * cout_cible;
+                        (-melange / temperature).exp()
+                    })
+                    .collect();
+
+                let choisi = libres[alea.categorique(&poids)].0;
+                vus.insert(choisi);
+                route.push(choisi);
+            }
+        }
+        route.into_iter().map(|r| self.ids[r as usize]).collect()
+    }
 }
 
 /// Ordonne un ensemble de morceaux en un parcours de proche en proche.
@@ -1245,6 +1364,107 @@ mod tests {
         // Plus de voisins demandés que de morceaux disponibles.
         let deux = Graphe::construire(&arc(2), 40, 2);
         assert_eq!(deux.voisins(0, 40), vec![1]);
+    }
+
+    /* ------------------------------------------------------------ guidée */
+
+    fn empreinte_de(e: &[Empreinte], id: i64) -> Vec<f32> {
+        e.iter().find(|(i, _)| *i == id).unwrap().1.clone()
+    }
+
+    /// Sans cible, `guidee` doit rendre exactement ce que rendrait `errance`
+    /// avec les mêmes paramètres — c'est le repli documenté, pas une
+    /// coïncidence à vérifier une fois puis oublier.
+    #[test]
+    fn la_marche_guidee_sans_cible_retombe_sur_lerrance() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 8, 2);
+        assert_eq!(
+            g.guidee(&e, 30, &[], 15, 42, 0.333),
+            g.errance(30, 15, 42, 0.333)
+        );
+    }
+
+    /// Partie d'un bout de l'arc, guidée vers l'empreinte de l'autre bout,
+    /// elle doit finir nettement plus près de la cible qu'elle n'a commencé.
+    #[test]
+    fn la_marche_guidee_se_rapproche_de_sa_cible() {
+        let e = arc(60);
+        // Assez de voisins pour qu'une marche de 20 pas ne s'épuise pas en
+        // route sur un simple arc — une bibliothèque réelle, bien plus dense,
+        // n'a pas ce problème à `K_VOISINS` (voir la note de dégradation dans
+        // la documentation de `guidee`).
+        let g = Graphe::construire(&e, 20, 6);
+        let cible = empreinte_de(&e, 59);
+
+        let route = g.guidee(&e, 0, &[cible.clone()], 20, 1, 0.2);
+        assert_eq!(route.first(), Some(&0));
+        assert_eq!(route.len(), 20, "la marche s'est arrêtée tôt : {route:?}");
+
+        let depart_dist = distance2(&empreinte_de(&e, 0), &cible);
+        let arrivee_dist = distance2(&empreinte_de(&e, *route.last().unwrap()), &cible);
+        assert!(
+            arrivee_dist < depart_dist * 0.5,
+            "la marche ne s'est pas rapprochée de la cible : \
+             départ {depart_dist:.3} → arrivée {arrivee_dist:.3} ({route:?})"
+        );
+    }
+
+    /// Auto-évitante comme `errance` : aucun morceau repris deux fois.
+    #[test]
+    fn la_marche_guidee_ne_repasse_pas() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 6, 3);
+        let cible = empreinte_de(&e, 40);
+        let route = g.guidee(&e, 5, &[cible], 25, 3, 0.4);
+        let uniques: HashSet<_> = route.iter().collect();
+        assert_eq!(uniques.len(), route.len(), "la marche repasse : {route:?}");
+    }
+
+    /// Même graine, même bruit, mêmes cibles : même trajet. Une autre graine
+    /// dévie — même exigence que pour `errance`/`voyage`.
+    #[test]
+    fn la_marche_guidee_est_reproductible() {
+        let e = arc(60);
+        let g = Graphe::construire(&e, 8, 2);
+        let cible = empreinte_de(&e, 55);
+
+        let a = g.guidee(&e, 10, &[cible.clone()], 15, 42, 0.333);
+        assert_eq!(
+            a,
+            g.guidee(&e, 10, &[cible.clone()], 15, 42, 0.333),
+            "même graine, même bruit, même marche"
+        );
+        assert_ne!(
+            a,
+            g.guidee(&e, 10, &[cible], 15, 43, 0.333),
+            "une autre graine doit dévier"
+        );
+    }
+
+    /// Deux cibles : la marche doit finir plus près de la seconde (la
+    /// dernière étape) qu'elle n'a commencé — la progression par étapes
+    /// fonctionne, pas seulement une cible unique.
+    #[test]
+    fn la_marche_guidee_finit_pres_de_sa_derniere_cible() {
+        let e = arc(90);
+        let g = Graphe::construire(&e, 20, 6);
+        let cible_a = empreinte_de(&e, 30);
+        let cible_b = empreinte_de(&e, 85);
+
+        let route = g.guidee(&e, 0, &[cible_a, cible_b.clone()], 30, 1, 0.1);
+        let fin = empreinte_de(&e, *route.last().unwrap());
+        let depart = empreinte_de(&e, 0);
+        assert!(
+            distance2(&fin, &cible_b) < distance2(&depart, &cible_b),
+            "la marche ne finit pas plus près de sa dernière cible : {route:?}"
+        );
+    }
+
+    #[test]
+    fn la_marche_guidee_gere_les_cas_degeneres() {
+        let g = Graphe::construire(&[], 4, 2);
+        assert!(g.guidee(&[], 0, &[vec![0.0]], 5, 1, 0.5).is_empty());
     }
 
     /* ------------------------------------------------------------ dessin */

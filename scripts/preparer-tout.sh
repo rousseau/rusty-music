@@ -11,8 +11,12 @@ set -euo pipefail
 
 ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "═══ CLAP ═══"
+echo "═══ CLAP (audio) ═══"
 "$ICI/preparer-modele.sh"
+
+echo
+echo "═══ CLAP (texte) ═══"
+"$ICI/preparer-clap-texte.sh"
 
 echo
 echo "═══ HTDemucs ═══"

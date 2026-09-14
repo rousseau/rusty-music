@@ -51,7 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let poids = poids.as_deref().map(std::path::Path::new);
     println!(
         "poids   : {}",
-        poids.map_or(env!("RM_POIDS"), |p| p.to_str().unwrap_or("?"))
+        poids.map_or(env!("RM_POIDS_CLAP_AUDIO_ENCODER_B5"), |p| {
+            p.to_str().unwrap_or("?")
+        })
     );
     println!("backend : {}", encodeur::moteur());
 

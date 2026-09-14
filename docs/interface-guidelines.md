@@ -46,6 +46,18 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   compris Bibliothèque et Découvrir où on ne s'y attend pas forcément.
 - **Dock optionnel** — `#dock` (`index.html:661`), réservé à Éditer, pousse le
   centre vers le haut sans reproduire la mécanique du rail ou de l'inspecteur.
+- **Champ d'intention, partagé** (ajouté le 14 septembre 2026) —
+  `#bloc-intention`, une ligne en tête de `<main class="centre">`, entre
+  `.fil` et `.centre__corps` — donc hors de tout conteneur que
+  `basculerMode()` bascule par ailleurs, sur le même principe que
+  l'inspecteur unique (Règle 1) : un seul champ, jamais dupliqué par mode,
+  dont `basculerMode()` ajuste seulement la visibilité et le placeholder
+  (comme il le fait déjà pour `#fil-titre`). Interroge un LLM local (Ollama)
+  pour traduire un prompt en texte libre en action dans le mode courant —
+  aujourd'hui seulement en Explorer (« texte → playlist »,
+  `docs/ui-spec.md`, § « Tranché le 14 septembre »), révélé ailleurs le jour
+  où un autre mode y gagne un comportement. Ni généraliste ni permanent
+  partout : révélé seulement là où un comportement est branché (Règle 8).
 
 ## Règles universelles — dans les cinq écrans, sans exception
 
