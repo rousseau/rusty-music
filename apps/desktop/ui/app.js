@@ -2739,7 +2739,7 @@ const carte = {
   // sur le monde fictif. Voir `villeReelle` et `chargerCarte`.
   positionsReelles: new Map(),
   vue: { k: 1, dx: 0, dy: 0 },
-  isolee: null, // famille mise en avant, ou null
+  isolees: new Set(), // familles mises en avant (multi-sélection), vide = tout
   survole: null,
   depart: null, // borne de départ d'un chemin
   arrivee: null, // borne d'arrivée
@@ -3796,7 +3796,7 @@ function majCouleurGL() {
 /// famille mise en avant ressort, la trame de la ville reste lisible autour).
 const GRIS_BATI = "#DEDAD2";
 
-/// Couches que l'isolement d'une famille (`carte.isolee`) masque par un
+/// Couches que l'isolement de familles (`carte.isolees`) masque par un
 /// **filtre**, avec le champ MVT qui porte la famille sur chacune (la plupart
 /// `famille`, le bâti et les territoires réels la portent dans `palier`).
 ///
@@ -3858,7 +3858,8 @@ function couleurBatimentsMorceaux() {
   teintes.forEach((t, i) => parPalier.push(i, t));
   parPalier.push(gris);
   const conditions = [];
-  if (carte.isolee !== null) conditions.push(["!=", ["get", "palier"], carte.isolee]);
+  if (carte.isolees.size > 0)
+    conditions.push(["!", ["in", ["get", "palier"], ["literal", [...carte.isolees]]]]);
   const hors = clauseAnneeHorsIntervalle();
   if (hors) conditions.push(hors);
   if (!conditions.length) return parPalier;
@@ -3892,7 +3893,8 @@ function majFiltreGL() {
     if (!gl.getLayer(layer)) continue;
     const base = filtreBase(layer);
     const clauses = base ? [base] : [];
-    if (carte.isolee !== null) clauses.push(["==", ["get", champ], carte.isolee]);
+    if (carte.isolees.size > 0)
+      clauses.push(["in", ["get", champ], ["literal", [...carte.isolees]]]);
     if (dansIntervalle && CIBLES_FILTRE_ANNEE_GL.includes(layer)) clauses.push(dansIntervalle);
     gl.setFilter(layer, clauses.length === 0 ? null : clauses.length === 1 ? clauses[0] : ["all", ...clauses]);
   }
@@ -4094,11 +4096,11 @@ function dessinerNuage(r) {
   const teintes = couleursFamilles();
   const continu = CONTINUES[carte.couleur];
   const [v0, v1] = carte.bornes[carte.couleur] ?? [0, 0];
-  const neutre = carte.isolee === null && !carte.filtre;
+  const neutre = carte.isolees.size === 0 && !carte.filtre;
 
   for (const avant of [false, true]) {
     for (const p of carte.points) {
-      const vise = (carte.isolee === null || p.cluster === carte.isolee) && retenu(p);
+      const vise = (carte.isolees.size === 0 || carte.isolees.has(p.cluster)) && retenu(p);
       if (vise !== avant) continue;
 
       const [x, y] = versEcran(p, r);
@@ -4311,7 +4313,7 @@ function dessinerTemps(r, encre, accent) {
   // situer les groupes, un séparateur entre chacune, son nom en bordure
   // droite (hors zone de zoom horizontal, l'axe des bandes ne bouge jamais).
   temps.bandes.forEach((f, i) => {
-    const estompee = carte.isolee !== null && carte.isolee !== f;
+    const estompee = carte.isolees.size > 0 && !carte.isolees.has(f);
     ctx.fillStyle = teintes[f % teintes.length] ?? accent;
     ctx.globalAlpha = estompee ? 0.02 : 0.06;
     ctx.fillRect(xDeb - 4, y0Bandes[i], xFin - xDeb + 8, hauteursBandes[i]);
@@ -4330,7 +4332,7 @@ function dessinerTemps(r, encre, accent) {
   ctx.textAlign = "left";
   ctx.font = "11px system-ui";
   temps.bandes.forEach((f, i) => {
-    const estompee = carte.isolee !== null && carte.isolee !== f;
+    const estompee = carte.isolees.size > 0 && !carte.isolees.has(f);
     ctx.fillStyle = teintes[f % teintes.length] ?? encre;
     ctx.globalAlpha = estompee ? 0.25 : 0.85;
     ctx.fillText(noms.get(f) || `famille ${f + 1}`, xFin + 8, y0Bandes[i] + hauteursBandes[i] / 2 + 4);
@@ -4474,7 +4476,7 @@ function dessinerTemps(r, encre, accent) {
     const estFocal = !!focal && a.id === focal.id;
     const estompee =
       !estFocal &&
-      ((carte.isolee !== null && carte.isolee !== a.famille) ||
+      ((carte.isolees.size > 0 && !carte.isolees.has(a.famille)) ||
         !dansIntervalleAnnee(a.annee) ||
         (!!filtre && !correspond(a)));
     const hub = a.sortants >= temps.seuilHub;
@@ -5137,7 +5139,7 @@ function pointSous(mx, my) {
   if (g && villeReelle && g.getLayer("batiments-morceaux")) {
     const feats = g.queryRenderedFeatures([mx, my], { layers: ["batiments-morceaux"] });
     const id = feats[0]?.properties?.morceau;
-    if (id != null && id >= 0 && (carte.isolee === null || feats[0].properties.palier === carte.isolee)) {
+    if (id != null && id >= 0 && (carte.isolees.size === 0 || carte.isolees.has(feats[0].properties.palier))) {
       const p = carte.points.find((pt) => pt.id === id);
       if (p) return p;
     }
@@ -5147,7 +5149,7 @@ function pointSous(mx, my) {
   let meilleur = null;
   let d2min = 14 * 14;
   for (const p of carte.points) {
-    if (carte.isolee !== null && p.cluster !== carte.isolee) continue;
+    if (carte.isolees.size > 0 && !carte.isolees.has(p.cluster)) continue;
     const [x, y] = versEcran(p, r);
     const d2 = (x - mx) ** 2 + (y - my) ** 2;
     if (d2 < d2min) {
@@ -5570,7 +5572,7 @@ async function tracerChemin(spec) {
   patienter("calcul du chemin…");
   let pistes;
   try {
-    // Le voyage n'a ni arrivée ni notion de famille isolée ou de plan de
+    // Le voyage n'a ni arrivée ni notion de familles isolées ou de plan de
     // ville — un axe temporel, pas un espace à filtrer — d'où une commande
     // à lui, plutôt qu'un mode de plus dans `path`.
     pistes =
@@ -5587,7 +5589,7 @@ async function tracerChemin(spec) {
             seed: carte.graine,
             bruit: bruitChemin,
             reel: carteReelle(),
-            famille: carte.isolee,
+            familles: [...carte.isolees],
           });
   } catch (e) {
     // Sans ce catch, l'échec ne laissait qu'un rappel de gestes générique en
@@ -5627,7 +5629,7 @@ async function tracerDessin(trace) {
       seed: carte.graine,
       bruit: bruitChemin,
       reel: carteReelle(),
-      famille: carte.isolee,
+      familles: [...carte.isolees],
     });
   } finally {
     patienter(null);
@@ -5656,6 +5658,7 @@ async function rejouerChemin() {
         seed: carte.graine,
         bruit: bruitChemin,
         reel: carteReelle(),
+        familles: [...carte.isolees],
       });
     } catch (e) {
       remonter(e, "chemin dessiné");
@@ -5679,7 +5682,11 @@ async function jouerSelection(contour) {
   patienter("sélection…");
   let pistes;
   try {
-    pistes = await invoke("selection", { trace: contour, reel: carteReelle(), famille: carte.isolee });
+    pistes = await invoke("selection", {
+      trace: contour,
+      reel: carteReelle(),
+      familles: [...carte.isolees],
+    });
   } finally {
     patienter(null);
   }
@@ -5827,8 +5834,11 @@ async function chargerFamilles() {
 
 /// Rendu commun de la légende des familles : une pastille teintée, un nom, un
 /// effectif par famille. `estActive(cluster)` décide du filet d'accent,
-/// `auClic(cluster)` réagit au clic. Explorer isole une famille sur la carte ;
-/// l'Écoute coche/décoche une famille du filtre de la grille de pochettes.
+/// `auClic(cluster)` réagit au clic. Même geste de multi-sélection (cocher/
+/// décocher) dans les trois modes : Explorer isole un ensemble de familles
+/// sur la carte, l'Écoute et Découvrir cochent/décochent une famille de leur
+/// filtre — cohérence d'interface (`docs/interface-guidelines.md`, principe
+/// Nielsen).
 ///
 /// `extension`, optionnel : sur la frise des filiations seulement (§ 3), un
 /// second contrôle par ligne — étendre/réduire cette bande verticalement
@@ -5873,14 +5883,15 @@ async function dessinerFamilles() {
   await chargerFamilles();
   rendreFamilles(
     $("familles"),
-    (c) => carte.isolee === c,
+    (c) => carte.isolees.has(c),
     (c) => {
-      carte.isolee = carte.isolee === c ? null : c;
+      if (carte.isolees.has(c)) carte.isolees.delete(c);
+      else carte.isolees.add(c);
       dessinerFamilles();
       dessinerCarte();
       majFiltreGL();
       // Le filtre par famille borne aussi le chemin : un chemin déjà tracé se
-      // recalcule pour ne garder que la famille isolée (ou la relâcher).
+      // recalcule pour ne garder que les familles isolées (ou les relâcher).
       if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
     },
     // Zoom vertical ciblé (§ 3) : seulement sur la frise, où une bande peut
@@ -5897,7 +5908,16 @@ async function dessinerFamilles() {
         }
       : undefined,
   );
+  $("familles-tout").hidden = carte.isolees.size === 0;
 }
+
+$("familles-tout").addEventListener("click", () => {
+  carte.isolees.clear();
+  dessinerFamilles();
+  dessinerCarte();
+  majFiltreGL();
+  if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
+});
 
 /* ------------------------------------------- filtre par famille — mode Écoute
  *
@@ -10191,7 +10211,7 @@ async function tracerItineraire() {
       arrivee: carte.arrivee ? carte.arrivee.id : null,
       profil: itinProfil,
       minutes: minutes > 0 ? minutes : null,
-      famille: carte.isolee,
+      familles: [...carte.isolees],
       rayonM: null,
     });
     if (reponse.repli) {

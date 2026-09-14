@@ -261,6 +261,26 @@ l'utilisateur — personne ne peut l'atteindre depuis l'application. Non
 conforme, sur la moitié « accessible » de la règle plutôt que sur la moitié
 « dessinée ».
 
+### Constat transversal — légende des familles, résolu le 13 septembre 2026
+
+Aucune des neuf règles numérotées ne le nommait (la Règle 2 d'Explorer → Carte
+jugeait seulement l'isolement lui-même, pas son mode de sélection), mais le
+principe de cohérence (Nielsen) tranchait : `rendreFamilles()` sert la **même**
+légende aux trois modes (Écouter, Explorer, Découvrir), et jusqu'ici seuls
+Écouter et Découvrir permettaient de cocher plusieurs familles à la fois
+(`filtreFamilles`/`filtreFamillesDecouvrir`, deux `Set`) — Explorer n'isolait
+qu'une seule famille en bascule exclusive (`carte.isolee`, une valeur
+unique). Le même bouton, dans le même composant, ne se comportait pas pareil
+selon l'écran. Unifié en multi-sélection partout : `carte.isolee` devient
+`carte.isolees` (un `Set`, comme les deux autres modes), avec son propre lien
+« Toutes les familles » (`#familles-tout`) à côté de la légende d'Explorer,
+et les commandes du moteur qui bornent un calcul par famille (`path`,
+`path_drawn`, `selection`, `itineraire_voirie`) prennent maintenant
+`familles: Option<Vec<i64>>` plutôt qu'un `famille: Option<i64>` unique
+(`morceaux_des_familles`, `apps/desktop/src/main.rs`). Le mécanisme
+d'estompage d'Explorer (Règle 2, dimming plutôt que masquage) est inchangé —
+seul le nombre de familles qu'on peut isoler à la fois a changé.
+
 ## Checklist de fin de tâche
 
 À revérifier explicitement, règle par règle, avant de considérer un écran

@@ -1004,18 +1004,22 @@ l'application reste le seul essai qui compte.
 **Le filtre par famille borne aussi le calcul d'un chemin.** Jusqu'ici,
 isoler une famille dans le panneau « Familles » ne changeait que
 l'affichage ; la playlist d'un chemin pouvait traverser toutes les
-familles. Désormais, quand `carte.isolee` n'est pas `null`, `app.js` le
-passe (`famille`) aux commandes `path`, `path_drawn` et `selection`. Côté
-Rust, `morceaux_de_famille` liste les identifiants du cluster ; le nuage
-passé à `chemin::direct`/`dessine` en est amputé, et le graphe sonique est
+familles. Désormais, quand `carte.isolees` n'est pas vide, `app.js` le
+passe (`familles`) aux commandes `path`, `path_drawn` et `selection`.
+**Multi-sélection depuis le 13 septembre 2026** (`docs/interface-guidelines.md`,
+constat légende des familles) : `carte.isolees` est un `Set`, plusieurs
+familles à la fois plutôt qu'une seule. Côté Rust, `morceaux_des_familles`
+liste les identifiants réunis des clusters demandés ; le nuage passé à
+`chemin::direct`/`dessine` en est amputé, et le graphe sonique est
 remplacé par `Graphe::restreint(&permis)` — mêmes arêtes, mais seules
-celles dont les deux extrémités restent dans la famille. Un sous-graphe
-disjoint fait retomber le sonique sur le direct (lui aussi filtré).
-Changer de famille recalcule le chemin déjà tracé (`rejouerChemin`, même
+celles dont les deux extrémités restent dans une famille isolée. Un
+sous-graphe disjoint fait retomber le sonique sur le direct (lui aussi
+filtré). Changer les familles isolées recalcule le chemin déjà tracé
+(`rejouerChemin`, même
 graine). L'itinéraire *musical* (`reseau.rs`) reste non couvert ; l'itinéraire
-*sur voirie* (`itineraire_voirie`), lui, l'est — `famille` est passé à la
-commande et `morceaux_le_long` écarte les morceaux hors famille du couloir (le
-départ et l'arrivée passent toujours). Test :
+*sur voirie* (`itineraire_voirie`), lui, l'est — `familles` est passé à la
+commande et `morceaux_le_long` écarte les morceaux hors des familles isolées
+du couloir (le départ et l'arrivée passent toujours). Test :
 `le_sous_graphe_restreint_ne_traverse_que_les_permis` et
 `morceaux_le_long_ordonne_dedoublonne_et_borne_la_famille`.
 

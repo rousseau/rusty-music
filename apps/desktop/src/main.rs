@@ -947,7 +947,7 @@ fn itineraire_voirie(
     arrivee: Option<i64>,
     profil: String,
     minutes: Option<u64>,
-    famille: Option<i64>,
+    familles: Option<Vec<i64>>,
     rayon_m: Option<f64>,
 ) -> Result<ReponseItineraireVoirie, String> {
     use rusty_music_carto::cout_itineraire::ProfilVoirie;
@@ -992,8 +992,10 @@ fn itineraire_voirie(
         None => None,
     };
 
-    let permis: Option<HashSet<i64>> =
-        famille.map(|f| morceaux_de_famille(&etat, f)).transpose()?;
+    let permis: Option<HashSet<i64>> = match familles.as_deref() {
+        Some(fs) if !fs.is_empty() => Some(morceaux_des_familles(&etat, fs)?),
+        _ => None,
+    };
 
     // `map_view` une fois : hydratation, durées, popularité.
     let modele = rusty_music_analysis::passe::MODELE;
@@ -1473,7 +1475,7 @@ fn path(
     seed: Option<u64>,
     bruit: Option<f32>,
     reel: Option<bool>,
-    famille: Option<i64>,
+    familles: Option<Vec<i64>>,
 ) -> Result<Vec<TrackRow>, String> {
     use rusty_music_analysis::chemin;
     let mode = mode.unwrap_or_else(|| "direct".into());
@@ -1482,12 +1484,12 @@ fn path(
     let reel = reel.unwrap_or(false);
     let debut = std::time::Instant::now();
 
-    // Filtre par famille : quand une famille est isolée dans Explorer, le
-    // chemin ne doit traverser qu'elle. Le nuage passé au mode direct est
+    // Filtre par famille : quand des familles sont isolées dans Explorer, le
+    // chemin ne doit traverser qu'elles. Le nuage passé au mode direct est
     // amputé des autres familles ; le graphe sonique est restreint.
-    let permis = match famille {
-        Some(f) => Some(morceaux_de_famille(&etat, f)?),
-        None => None,
+    let permis = match familles.as_deref() {
+        Some(fs) if !fs.is_empty() => Some(morceaux_des_familles(&etat, fs)?),
+        _ => None,
     };
     let carte_filtree = |etat: &State<Etat>, app: &tauri::AppHandle| -> Result<Vec<(i64, f32, f32)>, String> {
         let mut p = points_de_carte_effectifs(etat, app, reel)?;
@@ -1626,7 +1628,7 @@ fn path_drawn(
     seed: Option<u64>,
     bruit: Option<f32>,
     reel: Option<bool>,
-    famille: Option<i64>,
+    familles: Option<Vec<i64>>,
 ) -> Result<Vec<TrackRow>, String> {
     let reel = reel.unwrap_or(false);
     let mut points = points_de_carte_effectifs(&etat, &app, reel)?;
@@ -1645,9 +1647,9 @@ fn path_drawn(
             *t = (x, y);
         }
     }
-    // Filtre par famille : le trait ne cueille que dans la famille isolée.
-    if let Some(f) = famille {
-        let ids = morceaux_de_famille(&etat, f)?;
+    // Filtre par famille : le trait ne cueille que dans les familles isolées.
+    if let Some(fs) = familles.as_deref().filter(|fs| !fs.is_empty()) {
+        let ids = morceaux_des_familles(&etat, fs)?;
         points.retain(|(id, _, _)| ids.contains(id));
     }
     let route = rusty_music_analysis::chemin::dessine(
@@ -1773,20 +1775,22 @@ fn points_de_carte(etat: &State<Etat>) -> Result<Vec<(i64, f32, f32)>, String> {
         .collect())
 }
 
-/// Les identifiants des morceaux d'une famille (cluster de la carte).
+/// Les identifiants des morceaux d'une ou plusieurs familles (clusters de la
+/// carte).
 ///
-/// Le filtre par famille du mode Explorer (`carte.isolee`, `app.js`) borne
-/// aussi le calcul d'un chemin : quand une famille est isolée, la playlist ne
-/// doit contenir que des morceaux de cette famille — les points hors famille
-/// sont retirés du nuage avant `chemin::direct`/`dessine`, et le graphe
-/// sonique est restreint (voir [`Graphe::restreint`]).
-fn morceaux_de_famille(etat: &State<Etat>, famille: i64) -> Result<HashSet<i64>, String> {
+/// Le filtre par famille du mode Explorer (`carte.isolees`, `app.js`) borne
+/// aussi le calcul d'un chemin : quand des familles sont isolées, la
+/// playlist ne doit contenir que des morceaux de ces familles — les points
+/// hors familles sont retirés du nuage avant `chemin::direct`/`dessine`, et
+/// le graphe sonique est restreint (voir [`Graphe::restreint`]).
+fn morceaux_des_familles(etat: &State<Etat>, familles: &[i64]) -> Result<HashSet<i64>, String> {
+    let voulues: HashSet<i64> = familles.iter().copied().collect();
     let lib = etat.lib.lock().map_err(echec)?;
     Ok(lib
         .map_points(rusty_music_analysis::passe::MODELE)
         .map_err(echec)?
         .into_iter()
-        .filter(|(_, _, _, f)| *f == famille)
+        .filter(|(_, _, _, f)| voulues.contains(f))
         .map(|(id, _, _, _)| id)
         .collect())
 }
@@ -2184,15 +2188,15 @@ fn selection(
     etat: State<Etat>,
     trace: Vec<(f32, f32)>,
     reel: Option<bool>,
-    famille: Option<i64>,
+    familles: Option<Vec<i64>>,
 ) -> Result<Vec<TrackRow>, String> {
     if trace.len() < 3 {
         return Ok(Vec::new());
     }
     let points = points_de_carte_effectifs(&etat, &app, reel.unwrap_or(false))?;
-    let permis = match famille {
-        Some(f) => Some(morceaux_de_famille(&etat, f)?),
-        None => None,
+    let permis = match familles.as_deref() {
+        Some(fs) if !fs.is_empty() => Some(morceaux_des_familles(&etat, fs)?),
+        _ => None,
     };
 
     let dedans: Vec<i64> = points
