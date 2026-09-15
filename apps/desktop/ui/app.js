@@ -424,7 +424,7 @@ async function chargerPopulariteFraicheur() {
 }
 
 $("popularite-rafraichir").addEventListener("click", async () => {
-  if ($("lancer-scan").disabled) return; // une passe tourne déjà
+  if ($("tout-rafraichir").disabled) return; // une passe tourne déjà
   $("pop-rafraichir").checked = true;
   verrouillerActualisation(true);
   try {
@@ -7689,6 +7689,8 @@ $("decouvrir-vu-tout").addEventListener("click", async () => {
 /// mesure rien.
 async function chargerStatsBibliotheque() {
   const s = await invoke("library_stats");
+  dernierTotalBiblio = s.total;
+  resumeChaine();
   $("stats-total").textContent = `${s.total.toLocaleString("fr-FR")} morceaux.`;
   dessinerBarresGenres(s.genres);
   dessinerHistogramme("stats-tempo", s.tempo, (i) => `${s.tempo.min + i * s.tempo.pas}–${s.tempo.min + (i + 1) * s.tempo.pas} BPM`);
@@ -8215,37 +8217,36 @@ async function dessinerRacines() {
   }
 }
 
-// Sélecteur natif : on ne demande pas à l'utilisateur de connaître ses chemins.
+/// « Ajouter un dossier » : sélecteur natif — on ne demande pas à
+/// l'utilisateur de connaître ses chemins — puis ajout et lancement
+/// immédiats de toute la chaîne dessus ([`analyserRacine`] : scan, loudness,
+/// empreintes, mesures, genres, popularité). Un seul geste, pas de champ à
+/// remplir ni de second clic.
 $("parcourir").addEventListener("click", async () => {
   const choisi = await window.__TAURI__.dialog.open({
     directory: true,
     multiple: false,
     title: "Choisir le dossier de musique",
   });
-  if (choisi) $("nouveau-dossier").value = choisi;
-});
-
-/// « Scanner » : le point de départ du mode. Avec un dossier saisi, il
-/// l'ajoute et lui fait faire toute la chaîne ([`analyserRacine`] — scan,
-/// empreintes, tempo/tonalité/énergie, genres) ; sans, il rattrape ce qui
-/// manque sur toutes les racines déjà surveillées (`lancerChaineComplete`).
-/// Les deux chaînes reprennent où elles s'étaient arrêtées, et se grisent
-/// elles-mêmes le temps de tourner (`verrouillerActualisation`).
-$("lancer-scan").addEventListener("click", async () => {
-  const chemin = $("nouveau-dossier").value.trim();
+  if (!choisi) return;
   try {
-    if (chemin) {
-      $("nouveau-dossier").value = "";
-      await analyserRacine(chemin);
-    } else if ((await invoke("roots")).length === 0) {
-      $("scan-etat").textContent = "Choisissez d'abord un dossier de musique.";
-    } else {
-      await lancerChaineComplete();
-    }
+    await analyserRacine(choisi);
   } catch (e) {
     remonter(e, "scan");
     $("scan-etat").textContent = String(e);
   }
+});
+
+/// « Tout rafraîchir » : rejoue la même chaîne que « Ajouter un dossier »/
+/// « Analyser », mais sur toutes les racines déjà surveillées d'un coup
+/// (`lancerChaineComplete`) — pour rattraper ce qui manque sans les
+/// reparcourir une à une. Reprend où elle s'était arrêtée, comme les autres.
+$("tout-rafraichir").addEventListener("click", async () => {
+  if ((await invoke("roots")).length === 0) {
+    $("scan-etat").textContent = "Ajoutez d'abord un dossier de musique.";
+    return;
+  }
+  await lancerChaineComplete();
 });
 
 /* ---------------------------------------------------------- analyse */
@@ -8274,6 +8275,61 @@ function dureeLongue(s) {
   if (s < 5400) return `${Math.round(s / 60)} min`;
   return `${(s / 3600).toFixed(1)} h`.replace(".", ",");
 }
+
+/// Nombre de morceaux de la bibliothèque, mis à jour par
+/// `chargerStatsBibliotheque` — sert de base à `resumeChaine`, qui ne relance
+/// pas de requête à chaque frappe dans le rail.
+let dernierTotalBiblio = 0;
+
+/// Ce que « Scanner »/« Analyser » va effectivement enchaîner, calculé à
+/// partir des cases cochées, affiché juste au-dessus du bouton. Sans cette
+/// ligne, la liste de réglages du rail (force, popularité, biographies,
+/// critiques, Discogs, Last.fm…) ne dit rien de ce qui va tourner ni combien
+/// de temps — on ne le découvrait qu'en cliquant. La durée reste un ordre de
+/// grandeur : mêmes constantes que les « reste » affichés pendant chaque
+/// passe (`SECONDES_PAR_MORCEAU`), et le coût Deezer mesuré de la popularité
+/// (`docs/popularite.md`, ~7 requêtes/s, une par morceau, sans lot possible).
+function resumeChaine() {
+  const cible = $("resume-chaine");
+  if (!cible) return;
+  const contact = contactMb();
+  const total = dernierTotalBiblio;
+  const rafraichirPop = $("pop-rafraichir").checked;
+
+  const etapes = ["scan", "loudness", "empreintes", "mesures"];
+  // Les trois décodent le fichier (empreintes en fenêtres, loudness en
+  // entier) ou en dérivent — même ordre de grandeur que la mesure retenue
+  // pour les empreintes, faute de mieux pour la loudness à ce jour.
+  let secondes = total * SECONDES_PAR_MORCEAU * 3;
+
+  if (contact.includes("@")) etapes.push("genres");
+  etapes.push(rafraichirPop ? "popularité (rafraîchie)" : "popularité");
+  if (rafraichirPop) secondes += total / 7;
+
+  const extras = [];
+  if ($("bio-active").checked) extras.push("biographies");
+  if ($("critiques-active").checked) extras.push("critiques");
+  if ($("discogs-lier-active").checked && contact.includes("@")) extras.push("Discogs");
+  if ($("lastfm-active").checked && $("lastfm-cle").value.trim()) extras.push("tags Last.fm");
+
+  let texte = etapes.join(" → ");
+  if (extras.length) texte += " + " + extras.join(" + ");
+  if ($("analyse-force").checked) texte += " · refait aussi ce qui est déjà mesuré";
+  if (total) {
+    texte += ` — ≈ ${dureeLongue(secondes)}`;
+    if (rafraichirPop) texte += " (popularité : Deezer, le plus long)";
+  }
+  cible.textContent = texte;
+}
+resumeChaine();
+for (const id of [
+  "analyse-force", "pop-rafraichir", "bio-active", "critiques-active",
+  "discogs-lier-active", "lastfm-active",
+]) {
+  $(id).addEventListener("change", resumeChaine);
+}
+$("lastfm-cle").addEventListener("input", resumeChaine);
+$("analyse-contact").addEventListener("change", resumeChaine);
 
 /// Sonde `invoke(commande)` jusqu'à ce que `.en_cours` devienne faux, en
 /// laissant `surProgres` mettre à jour l'affichage à chaque tour. Factorise
@@ -8766,7 +8822,7 @@ async function lancerChaineComplete() {
 /// « Analyser » des racines.
 function verrouillerActualisation(occupe) {
   document
-    .querySelectorAll("#lancer-scan, .racine__analyser")
+    .querySelectorAll("#parcourir, #tout-rafraichir, .racine__analyser")
     .forEach((b) => (b.disabled = occupe));
 }
 

@@ -382,18 +382,18 @@
                groupé avant les statistiques. -->
           <p class="rail__titre">Source de la bibliothèque</p>
           <div class="ajout">
-            <p class="aide">Le point de départ. Choisissez le dossier où vit votre
-              musique, puis « Scanner » : il relit les fichiers et enchaîne tous les
-              calculs — empreintes, tempo / tonalité / énergie, genres MusicBrainz,
-              puis popularité générale — dans cet ordre. Chaque passe reprend où
-              elle s'était arrêtée ; relancer ne refait que ce qui manque. Le bouton
-              « Analyser » d'une racine fait la même chaîne, sur elle seule.</p>
+            <p class="aide">Le point de départ. « Ajouter un dossier » choisit et
+              lance aussitôt toute la chaîne qu'annonce la ligne ci-dessous —
+              inutile de cliquer deux fois. Chaque racine déjà surveillée garde son
+              bouton « Analyser » pour la rejouer seule ; « Tout rafraîchir » rejoue
+              la chaîne sur toutes les racines à la fois, pour rattraper ce qui
+              manque sans avoir à les reparcourir une à une. Toutes reprennent où
+              elles s'étaient arrêtées.</p>
             <div id="racines" class="racines"></div>
+            <p id="resume-chaine" class="aide" aria-live="polite"></p>
             <div class="ajout__ligne" style="margin-top:14px">
-              <input id="nouveau-dossier" class="chercher" type="text"
-                     placeholder="Aucun dossier choisi" spellcheck="false">
-              <button id="parcourir" class="bouton">Parcourir…</button>
-              <button id="lancer-scan" class="bouton">Scanner</button>
+              <button id="parcourir" class="bouton">Ajouter un dossier…</button>
+              <button id="tout-rafraichir" class="bouton">Tout rafraîchir</button>
             </div>
             <label class="case">
               <input id="analyse-force" type="checkbox">
