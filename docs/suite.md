@@ -12,7 +12,7 @@ l'ordre et les raisons.
 | Module 1 — Lecteur | v1 livrée ; **file d'attente retravaillée — aléatoire, répétition (aucune/toutes/une), réordonnancement par glisser-déposer** |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie** |
 | Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
-| Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; restent pochettes et bios |
+| Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli Cover Art Archive pour les pochettes manquantes livré** |
 
 ## Les dettes connues
 

@@ -5843,12 +5843,13 @@ fn scan_state(etat: State<Etat>) -> Result<EtatScan, String> {
 #[tauri::command]
 async fn cover(etat: State<'_, Etat>, path: String) -> Result<Option<String>, String> {
     let dossier_cache = etat.db.with_file_name("pochettes");
-    tauri::async_runtime::spawn_blocking(move || cover_extraire(&dossier_cache, &path))
+    let db_path = etat.db.clone();
+    tauri::async_runtime::spawn_blocking(move || cover_extraire(&dossier_cache, &db_path, &path))
         .await
         .map_err(echec)?
 }
 
-fn cover_extraire(dossier_cache: &Path, path: &str) -> Result<Option<String>, String> {
+fn cover_extraire(dossier_cache: &Path, db_path: &Path, path: &str) -> Result<Option<String>, String> {
     let chemin = Path::new(path);
 
     // Sans métadonnées lisibles (fichier disparu, permission refusée), pas de
@@ -5863,14 +5864,43 @@ fn cover_extraire(dossier_cache: &Path, path: &str) -> Result<Option<String>, St
     }
 
     let cover = rusty_music_core::tags::read_cover(chemin).map_err(echec)?;
-    let valeur = cover.map(|c| {
-        let mime = c.mime.as_deref().unwrap_or("image/jpeg");
-        format!("data:{mime};base64,{}", base64(&c.data))
-    });
+    let valeur = match cover {
+        Some(c) => {
+            let mime = c.mime.as_deref().unwrap_or("image/jpeg");
+            Some(format!("data:{mime};base64,{}", base64(&c.data)))
+        }
+        None => cover_depuis_caa(dossier_cache, db_path, chemin),
+    };
     if let Some(cle) = &cle {
         ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
     }
     Ok(valeur)
+}
+
+/// Repli quand ni les tags ni le dossier n'ont de pochette (`docs/suite.md`,
+/// dette « restent pochettes ») : cherche le release-group MusicBrainz du
+/// morceau et l'interroge sur Cover Art Archive, avec le même cache disque
+/// que `decouvrir_pochette` (clé `caa-<mbid>`, partagée entre tous les
+/// morceaux d'un même album) — un album sans pochette connue n'est donc
+/// redemandé au réseau qu'une fois, jamais par morceau.
+///
+/// Avale toute erreur (pas de connexion MusicBrainz en base, panne réseau) :
+/// une pochette manquante n'est pas grave, comme documenté dans `pochette.rs`.
+/// Ouvre sa propre connexion à la base plutôt que de faire remonter `Library`
+/// jusqu'ici — même raison que le scan (voir le champ `db` de `Etat`).
+fn cover_depuis_caa(dossier_cache: &Path, db_path: &Path, chemin: &Path) -> Option<String> {
+    let lib = rusty_music_core::db::Library::open(db_path).ok()?;
+    let rg_mbid = lib.release_group_pour_path(chemin).ok()??;
+    let cle = format!("caa-{rg_mbid}");
+    if let Some(valeur) = lire_cache_pochette(dossier_cache, &cle) {
+        return valeur;
+    }
+    let valeur = rusty_music_core::pochette::release_group(&rg_mbid)
+        .ok()
+        .flatten()
+        .map(|octets| format!("data:image/jpeg;base64,{}", base64(&octets)));
+    ecrire_cache_pochette(dossier_cache, &cle, valeur.as_deref());
+    valeur
 }
 
 /// Les chemins de piste d'au plus `max` albums d'un artiste qui portent une
@@ -5897,13 +5927,14 @@ async fn artist_covers(
     // cent albums pour une vignette qui n'en montre que quatre.
     let max = max.min(9);
     let dossier_cache = etat.db.with_file_name("pochettes");
+    let db_path = etat.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut chemins: Vec<String> = Vec::new();
         for album in albums {
             if chemins.len() >= max {
                 break;
             }
-            if let Ok(Some(_)) = cover_extraire(&dossier_cache, &album.path) {
+            if let Ok(Some(_)) = cover_extraire(&dossier_cache, &db_path, &album.path) {
                 chemins.push(album.path);
             }
         }

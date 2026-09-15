@@ -3743,16 +3743,38 @@ impl Library {
     /// Le release-group MusicBrainz d'un morceau, s'il est connu — même
     /// résolution que la popularité et les genres à l'échelon album.
     pub fn release_group_pour_piste(&self, track_id: i64) -> Result<Option<String>> {
-        let Some((artiste, album)) = self
+        let paire = self
             .conn
             .query_row(
                 "SELECT mb_artist_id, album FROM tracks WHERE id = ?1",
                 params![track_id],
                 |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
             )
-            .optional()?
-            .and_then(|(a, b)| Some((a?, b?)))
-        else {
+            .optional()?;
+        self.release_group_depuis_paire(paire)
+    }
+
+    /// Le release-group MusicBrainz du morceau au chemin `path`, s'il est
+    /// connu — même résolution que [`Self::release_group_pour_piste`], pour
+    /// les appelants qui n'ont qu'un chemin de fichier (le repli pochette).
+    pub fn release_group_pour_path(&self, path: &Path) -> Result<Option<String>> {
+        let chemin = path.to_string_lossy();
+        let paire = self
+            .conn
+            .query_row(
+                "SELECT mb_artist_id, album FROM tracks WHERE path = ?1",
+                params![chemin],
+                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+            )
+            .optional()?;
+        self.release_group_depuis_paire(paire)
+    }
+
+    fn release_group_depuis_paire(
+        &self,
+        paire: Option<(Option<String>, Option<String>)>,
+    ) -> Result<Option<String>> {
+        let Some((artiste, album)) = paire.and_then(|(a, b)| Some((a?, b?))) else {
             return Ok(None);
         };
         let albums = self.mb_albums()?;
