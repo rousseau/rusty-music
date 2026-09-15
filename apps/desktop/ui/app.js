@@ -2186,7 +2186,7 @@ async function montrerCritiques(t) {
       /* pas de release-group connu : ni critique ni invitation à en écrire */
     }
     if (lien && $("insp-titre").dataset.path === vise) {
-      $("insp-lien-critique").href = lien;
+      $("insp-lien-critique").dataset.url = lien;
       lienBloc.hidden = false;
       bloc.hidden = false;
     }
@@ -2201,15 +2201,26 @@ async function montrerCritiques(t) {
     texte.textContent = c.texte;
     const attribution = document.createElement("p");
     attribution.className = "critique-attribution";
-    const lienLicence = c.url_originale
-      ? `<a class="lien lien--inline" href="${c.url_originale}" target="_blank" rel="noopener noreferrer">CritiqueBrainz</a>`
-      : "CritiqueBrainz";
-    attribution.innerHTML = `${txt(c.auteur, "auteur inconnu")} · ${lienLicence} · ${txt(c.licence_nom, c.licence_id)}`;
+    attribution.append(`${txt(c.auteur, "auteur inconnu")} · `);
+    if (c.url_originale) {
+      const lien = boutonLien("CritiqueBrainz", () => ouvrirLien(c.url_originale));
+      lien.classList.add("lien--inline");
+      attribution.append(lien);
+    } else {
+      attribution.append("CritiqueBrainz");
+    }
+    attribution.append(` · ${txt(c.licence_nom, c.licence_id)}`);
     el.append(texte, attribution);
     hote.appendChild(el);
   }
   bloc.hidden = false;
 }
+
+$("insp-lien-critique").addEventListener("click", (e) => {
+  e.preventDefault();
+  const url = e.currentTarget.dataset.url;
+  if (url) ouvrirLien(url);
+});
 
 /* ---------------------------------------------------------- recherche */
 
