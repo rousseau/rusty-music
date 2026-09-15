@@ -138,11 +138,47 @@ figeage + repliage par ORT — recette `preparer-modele.sh`). Il attend un
 checkpoint : les poids `4-16` (VCTK, CC BY) servent à roder le pipeline, la
 musique demande le ré-entraînement (§ ci-dessus).
 
-## Hors périmètre — normalisation de loudness (EBU R128)
+## Normalisation de loudness (EBU R128) — livré
 
 Une normalisation (volume constant d'un morceau à l'autre) n'est pas une
-amélioration : elle ira comme option du mode Bibliothèque (crate `ebur128`),
-appliquée à l'ingestion ou à la lecture. Distincte de « E ».
+amélioration comme « E » : c'est une option du mode Bibliothèque, distincte
+et indépendante.
+
+**Mesure, hors ligne.** `crates/core/src/loudness.rs` — crate `ebur128`
+(portage pur Rust de libebur128, MIT). Une passe de fond (patron de
+`popularite.rs`) décode le fichier **entier** à sa fréquence et ses canaux
+d'origine (`crates/core/src/decode.rs`, distinct des décodages partiels
+d'`analysis`/`editor`) et mesure la loudness intégrée (LUFS) et le pic vrai
+(dBTP) par morceau (`track_loudness`), puis la loudness d'album combinée —
+le vrai programme EBU R128 combiné (`EbuR128::loudness_global_multiple`),
+pas une moyenne — pour les albums touchés (`album_loudness`). Reprenable,
+gating par `algo_version` (`VERSION_LOUDNESS`) plutôt que par péremption
+temporelle : la loudness d'un fichier ne change jamais. Tourne toujours,
+sans case à cocher (aucune clé, aucun compte), à l'étape 2/6 de la chaîne
+d'analyse — avant les empreintes, dont elle ne dépend pas.
+
+**Gain, à la lecture.** On stocke la mesure brute, pas un gain figé : le
+gain effectif (`loudness::gain_effectif_db`) ramène la piste vers une cible
+fixe (`CIBLE_LUFS = -18`), plafonné pour ne jamais écrêter (`true_peak_dbtp`
+de la piste réellement jouée). Appliqué en tout premier dans
+`amelioration::traiter`, avant le rééchantillonnage et l'excitation « E » —
+le clamp final de l'excitation reste ainsi le dernier filet de sécurité,
+normalisation comprise. `crates/player` reste ignorant de la base : le gain
+lui est fourni soit en paramètre direct de `ouvrir()` (bascules « E »/HD,
+préchargement côté desktop), soit via un résolveur installé une fois
+(`Player::set_gain_resolveur`, même principe que `set_resolveur` pour le
+cache HD) pour les ouvertures internes (`Player::completer`).
+
+**Réglage** : case « Normaliser le volume à la lecture » + choix « par
+morceau » / « par album » dans le rail Bibliothèque (pas dans le transport —
+réglage correctif, pas un effet à essayer). Un morceau pas encore mesuré
+joue sans normalisation, jamais bloqué ; le mode album replie sur le gain
+piste tant que l'album n'a pas de ligne `album_loudness`.
+
+Coût mesuré de l'ordre de la passe de descripteurs sur une bibliothèque de
+milliers de morceaux (décodage complet, borné par le disque sur un support
+lent) ; stockage négligeable (deux tables, quelques dizaines d'octets par
+morceau/album).
 
 ## Références
 

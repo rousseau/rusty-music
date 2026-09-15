@@ -68,7 +68,10 @@ pub enum Error {
 /// **Le morceau entier tient en mémoire** — une soixantaine de mégaoctets pour
 /// quatre minutes en stéréo. C'est le prix d'un format que la chaîne de
 /// décodage en flux ne sait pas ouvrir, et il ne concerne que ces fichiers.
-pub(crate) fn opus_en_memoire(path: &Path) -> Result<Option<rodio::buffer::SamplesBuffer>> {
+pub(crate) fn opus_en_memoire(
+    path: &Path,
+    gain_lineaire: f32,
+) -> Result<Option<rodio::buffer::SamplesBuffer>> {
     if !path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("opus"))
@@ -81,18 +84,21 @@ pub(crate) fn opus_en_memoire(path: &Path) -> Result<Option<rodio::buffer::Sampl
         piste.echantillons,
         rusty_music_core::opus::SR,
         canaux,
+        gain_lineaire,
     )))
 }
 
-/// Applique la chaîne d'amélioration (rééchantillonnage vers la sortie,
-/// excitation si « E » est actif) au tampon décodé, puis le remet en source
-/// `rodio`. Point de passage unique des deux branches de [`ouvrir`].
+/// Applique la chaîne d'amélioration (gain de normalisation, rééchantillonnage
+/// vers la sortie, excitation si « E » est actif) au tampon décodé, puis le
+/// remet en source `rodio`. Point de passage unique des deux branches de
+/// [`ouvrir`].
 fn tampon_traite(
     mut echantillons: Vec<f32>,
     taux: u32,
     canaux: u16,
+    gain_lineaire: f32,
 ) -> rodio::buffer::SamplesBuffer {
-    let taux = amelioration::traiter(&mut echantillons, taux, canaux);
+    let taux = amelioration::traiter(&mut echantillons, taux, canaux, gain_lineaire);
     rodio::buffer::SamplesBuffer::new(
         canaux.try_into().expect("au moins un canal"),
         taux.try_into().expect("fréquence non nulle"),
@@ -119,21 +125,29 @@ fn tampon_traite(
 /// en stéréo) et en temps de préchargement — mais `ouvrir` n'est appelée que
 /// par le préchargement (voir [`Player::completer`] et son commentaire côté
 /// appli desktop), déjà conçu pour tolérer un disque lent.
-fn decoder_en_memoire(source: Box<dyn rodio::Source + Send>) -> rodio::buffer::SamplesBuffer {
+fn decoder_en_memoire(
+    source: Box<dyn rodio::Source + Send>,
+    gain_lineaire: f32,
+) -> rodio::buffer::SamplesBuffer {
     let canaux = source.channels().get();
     let taux = source.sample_rate().get();
     let echantillons: Vec<rodio::Sample> = source.collect();
-    tampon_traite(echantillons, taux, canaux)
+    tampon_traite(echantillons, taux, canaux, gain_lineaire)
 }
 
 /// Ouvre `track` et rend une source jouable, entièrement décodée en mémoire —
 /// voir [`decoder_en_memoire`].
 ///
+/// `gain_lineaire` (1.0 = neutre) est le gain de normalisation de volume
+/// (`rusty_music_core::loudness`) à appliquer à cette piste précise — voir
+/// [`Player::set_gain_resolveur`] pour la voie interne (`completer`) et le
+/// commentaire de `amelioration::traiter` pour l'ordre d'application.
+///
 /// Fonction libre plutôt que méthode : elle peut donc s'exécuter hors du
 /// verrou qui protège `Player`, entre [`Player::a_precharger`] et
 /// [`Player::charger_precharge`] — c'est tout l'intérêt de la séparation.
-pub fn ouvrir(track: &Path) -> Result<Box<dyn rodio::Source + Send>> {
-    if let Some(buf) = opus_en_memoire(track)? {
+pub fn ouvrir(track: &Path, gain_lineaire: f32) -> Result<Box<dyn rodio::Source + Send>> {
+    if let Some(buf) = opus_en_memoire(track, gain_lineaire)? {
         debug!(path = %track.display(), "piste Opus ouverte");
         return Ok(Box::new(buf));
     }
@@ -145,7 +159,7 @@ pub fn ouvrir(track: &Path) -> Result<Box<dyn rodio::Source + Send>> {
         path: track.to_path_buf(),
         source,
     })?;
-    let tampon = decoder_en_memoire(Box::new(decoder));
+    let tampon = decoder_en_memoire(Box::new(decoder), gain_lineaire);
     debug!(path = %track.display(), "piste décodée en mémoire");
     Ok(Box::new(tampon))
 }
@@ -154,7 +168,9 @@ pub fn ouvrir(track: &Path) -> Result<Box<dyn rodio::Source + Send>> {
 /// l'excitateur « E » appliqué s'il est actif. Sert à montrer dans l'interface
 /// ce que « E » ajoute, sans avoir à écrire un fichier.
 pub fn spectre_ameliore(chemin: &Path, largeur: usize, hauteur: usize) -> Result<Spectre> {
-    let source = ouvrir(chemin)?;
+    // Aperçu de ce que « E » ajoute, pas une lecture réelle : la
+    // normalisation de volume n'a pas de sens hors contexte de lecture.
+    let source = ouvrir(chemin, 1.0)?;
     let mono: Vec<rodio::Sample> = rodio::source::UniformSourceIterator::new(
         source,
         1.try_into().expect("1 canal"),
@@ -309,6 +325,15 @@ pub struct Player {
     /// application. `queue` garde toujours les chemins d'origine : c'est eux
     /// que `current` rend, et l'interface s'y repère.
     resoudre: Box<dyn Fn(&Path) -> PathBuf + Send + Sync>,
+    /// Traduit un chemin de la file (**avant** résolution du cache HD) en
+    /// gain de normalisation de volume (linéaire, 1.0 = neutre) — l'identité
+    /// par défaut. Sert [`Self::completer`], seul point d'ouverture interne
+    /// au lecteur ; les ouvertures pilotées depuis l'application (bascule
+    /// « E »/HD, préchargement manuel côté desktop) reçoivent leur gain en
+    /// paramètre direct de [`ouvrir`]. Comme `resoudre`, le lecteur reste
+    /// ignorant de la base — c'est l'application qui, côté closure, sait
+    /// traduire un chemin en gain (`rusty_music_core::loudness`).
+    gain: Box<dyn Fn(&Path) -> f32 + Send + Sync>,
     /// Répétition demandée par le panneau « file d'attente ».
     repetition: Repetition,
     /// Aléatoire demandé par le panneau « file d'attente ».
@@ -342,6 +367,7 @@ impl Player {
             prochain: 0,
             charges: Vec::new(),
             resoudre: Box::new(|p| p.to_path_buf()),
+            gain: Box::new(|_| 1.0),
             repetition: Repetition::default(),
             alea: false,
             avant_melange: Vec::new(),
@@ -447,7 +473,12 @@ impl Player {
         let Some((rang, piste)) = self.a_precharger() else {
             return Ok(());
         };
-        let source = ouvrir(&piste)?;
+        // Le gain se calcule sur le chemin de bibliothèque (`queue[rang]`),
+        // pas `piste` (déjà résolue vers le cache HD s'il y a lieu) : la
+        // loudness normalisée est une propriété du morceau, indépendante de
+        // la version effectivement lue.
+        let gain = (self.gain)(&self.queue[rang]);
+        let source = ouvrir(&piste, gain)?;
         self.charger_precharge(rang, source);
         Ok(())
     }
@@ -456,6 +487,13 @@ impl Player {
     /// HD). Voir le champ `resoudre`.
     pub fn set_resolveur(&mut self, f: impl Fn(&Path) -> PathBuf + Send + Sync + 'static) {
         self.resoudre = Box::new(f);
+    }
+
+    /// Installe l'aiguillage chemin de bibliothèque → gain de normalisation
+    /// de volume, pour les ouvertures internes ([`Self::completer`]). Voir
+    /// le champ `gain`.
+    pub fn set_gain_resolveur(&mut self, f: impl Fn(&Path) -> f32 + Send + Sync + 'static) {
+        self.gain = Box::new(f);
     }
 
     /// Piste à précharger, si la réserve n'est pas pleine — ou `None`. Ne

@@ -73,6 +73,31 @@ CREATE TABLE IF NOT EXISTS descriptors (
     flatness_std    REAL
 );
 
+-- Loudness EBU R128 / BS.1770, calculée hors ligne par crate::loudness sur
+-- le fichier entier (pas un extrait) — distincte de descriptors.loudness,
+-- un RMS perceptif sur 50 s utilisé pour la couleur de la carte, sans
+-- pondération K ni gating, impropre à égaliser un volume perçu.
+CREATE TABLE IF NOT EXISTS track_loudness (
+    track_id        INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    integrated_lufs REAL    NOT NULL,   -- loudness intégrée gated (LUFS)
+    true_peak_dbtp  REAL    NOT NULL,   -- pic vrai, max tous canaux (dBTP)
+    algo_version    INTEGER NOT NULL,   -- voir crate::loudness::VERSION_LOUDNESS
+    mesure_le       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+-- Loudness d'album — programme combiné EBU R128 (les pistes comme si elles
+-- étaient concaténées), pas une moyenne des lignes ci-dessus : le gating
+-- relatif de BS.1770 se calcule sur l'ensemble du programme.
+CREATE TABLE IF NOT EXISTS album_loudness (
+    album           TEXT    NOT NULL,
+    album_artist    TEXT    NOT NULL,   -- COALESCE(album_artist, artist)
+    integrated_lufs REAL    NOT NULL,
+    pistes          INTEGER NOT NULL,   -- nombre de pistes agrégées (audit)
+    algo_version    INTEGER NOT NULL,
+    calcule_le      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (album, album_artist)
+);
+
 -- Graphe des collaborations entre artistes (MusicBrainz), mode Découvrir.
 CREATE TABLE IF NOT EXISTS artist_links (
     src_mbid  TEXT NOT NULL,

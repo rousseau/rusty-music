@@ -35,6 +35,15 @@ pub enum Error {
     #[error("fichier Opus illisible : {0}")]
     Opus(String),
 
+    /// Décodage pleine piste (`crate::decode`), tout format hors Opus — voir
+    /// [`Error::Opus`] pour ce cas-là.
+    #[error("format audio non décodable pour {path} : {source}")]
+    Decode {
+        path: PathBuf,
+        #[source]
+        source: rodio::decoder::DecoderError,
+    },
+
     /// Donnée locale illisible — un fragment XML du dump Discogs, par
     /// exemple. Distinct de [`Error::Reseau`] : ce n'est pas une source
     /// distante injoignable, c'est un contenu déjà en main mais malformé.

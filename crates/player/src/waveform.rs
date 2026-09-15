@@ -36,7 +36,9 @@ pub fn compute(path: &Path, tranches: usize, duree_ms: Option<u64>) -> Result<Wa
 
     // Opus ne passe pas par rodio : le cœur le décode, `SamplesBuffer` le rend
     // mesurable comme n'importe quelle autre source. Voir `opus_en_memoire`.
-    if let Some(buf) = crate::opus_en_memoire(path)? {
+    // Gain neutre : l'enveloppe représente le fichier tel quel, pas son rendu
+    // normalisé à la lecture.
+    if let Some(buf) = crate::opus_en_memoire(path, 1.0)? {
         return tailler(buf, tranches, duree_ms, path);
     }
     let file = std::fs::File::open(path).map_err(|source| Error::Open {

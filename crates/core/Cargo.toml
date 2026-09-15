@@ -24,3 +24,7 @@ contour.workspace   = true
 geo-types.workspace = true
 flate2.workspace    = true
 quick-xml.workspace = true
+# Décodage pleine piste natif pour la passe de loudness (crate::decode) —
+# déjà utilisé par les trois autres crates, mêmes features qu'ailleurs.
+rodio.workspace     = true
+ebur128.workspace   = true

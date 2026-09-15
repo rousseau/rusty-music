@@ -2622,6 +2622,41 @@ forceAmeliorer.addEventListener("change", () => {
   if (ameliorationActive) poserAmelioration();
 });
 
+// Normalisation de volume à la lecture (EBU R128) : réglage de bibliothèque,
+// pas une commande du transport — voir docs/amelioration-audio.md. Choix
+// retenu entre deux lancements, comme « E ».
+const caseNormaliser = $("normaliser-active");
+const ligneNormaliserMode = $("normaliser-mode-ligne");
+const selectNormaliserMode = $("normaliser-mode");
+let normaliserActif = localStorage.getItem("normaliser") === "1";
+let normaliserMode = localStorage.getItem("normaliser-mode") === "album" ? "album" : "piste";
+caseNormaliser.checked = normaliserActif;
+selectNormaliserMode.value = normaliserMode;
+ligneNormaliserMode.hidden = !normaliserActif;
+
+// Même recette que `poserAmelioration` : le moteur réouvre le morceau en
+// cours en tâche de fond, sans qu'on ait à s'en soucier ici.
+function poserNormalisation() {
+  invoke("set_normalisation", {
+    actif: normaliserActif,
+    album: normaliserMode === "album",
+  }).catch((e) => remonter(e, "normalisation"));
+}
+poserNormalisation();
+
+caseNormaliser.addEventListener("change", () => {
+  normaliserActif = caseNormaliser.checked;
+  localStorage.setItem("normaliser", normaliserActif ? "1" : "0");
+  ligneNormaliserMode.hidden = !normaliserActif;
+  poserNormalisation();
+});
+
+selectNormaliserMode.addEventListener("change", () => {
+  normaliserMode = selectNormaliserMode.value === "album" ? "album" : "piste";
+  localStorage.setItem("normaliser-mode", normaliserMode);
+  if (normaliserActif) poserNormalisation();
+});
+
 // Bouton « HD » : super-résolution neuronale (AERO), rendue hors ligne.
 const btnHd = $("hd");
 let lectureHd = localStorage.getItem("lecture-hd") === "1";
@@ -8293,6 +8328,17 @@ async function analyserRacine(chemin) {
         : (etat.textContent = s.resultat ?? "");
     });
 
+    etat.textContent = `${chemin} — loudness…`;
+    await invoke("start_loudness", { force });
+    await attendreFin("loudness_state", 2000, (l) => {
+      majJauge("scan-jauge", l.en_cours, l.faits, l.total);
+      if (l.en_cours) {
+        etat.textContent = l.total
+          ? `${chemin} — loudness : ${l.faits.toLocaleString("fr-FR")} / ${l.total.toLocaleString("fr-FR")}`
+          : `${chemin} — loudness…`;
+      }
+    });
+
     etat.textContent = `${chemin} — empreintes…`;
     await invoke("start_analysis");
     await attendreFin("analysis_state", 2000, (a) => {
@@ -8483,6 +8529,28 @@ async function passeDescripteurs(force, phase) {
   });
 }
 
+/// Loudness EBU R128 (piste + album), pour la normalisation de volume à la
+/// lecture. Ne dépend d'aucune autre passe — pas besoin d'empreinte ni de
+/// descripteur — donc placée tôt : si l'utilisateur écoute pendant qu'une
+/// chaîne plus longue (genres, popularité) tourne encore, la normalisation
+/// est déjà disponible.
+async function passeLoudness(force, phase) {
+  avancementActu(phase, "loudness : démarrage…", 0, 0);
+  await invoke("start_loudness", { force });
+  await attendreFin("loudness_state", 2000, (l) => {
+    if (!l.en_cours) return;
+    const reste = Math.max(0, l.total - l.faits);
+    avancementActu(
+      phase,
+      l.total
+        ? `loudness : ${l.faits.toLocaleString("fr-FR")} / ${l.total.toLocaleString("fr-FR")}${pourcent(l.faits, l.total)}`
+        : "loudness : démarrage…",
+      l.faits,
+      l.total,
+    );
+  });
+}
+
 async function passeGenres(contact, phase) {
   avancementActu(phase, "genres : démarrage…", 0, 0);
   await invoke("start_enrichment", { contact });
@@ -8662,12 +8730,13 @@ async function lancerChaineComplete() {
   const etat = $("scan-etat");
   verrouillerActualisation(true);
   try {
-    await passeScan(force, "Étape 1/5 — ");
-    await passeEmpreintes("Étape 2/5 — ");
-    await passeDescripteurs(force, "Étape 3/5 — ");
-    if (contact.includes("@")) await passeGenres(contact, "Étape 4/5 — ");
-    else etat.textContent = "Étape 4/5 — genres sautés (pas d'adresse de contact MusicBrainz)";
-    await passePopularite(contact, "Étape 5/5 — ", $("pop-rafraichir").checked);
+    await passeScan(force, "Étape 1/6 — ");
+    await passeLoudness(force, "Étape 2/6 — ");
+    await passeEmpreintes("Étape 3/6 — ");
+    await passeDescripteurs(force, "Étape 4/6 — ");
+    if (contact.includes("@")) await passeGenres(contact, "Étape 5/6 — ");
+    else etat.textContent = "Étape 5/6 — genres sautés (pas d'adresse de contact MusicBrainz)";
+    await passePopularite(contact, "Étape 6/6 — ", $("pop-rafraichir").checked);
     if ($("bio-active").checked) await passeBiographies("Biographies — ");
     if ($("critiques-active").checked) await passeCritiques("Critiques — ");
     if ($("discogs-lier-active").checked && contact.includes("@")) {
@@ -8707,6 +8776,7 @@ function verrouillerActualisation(occupe) {
 async function reprendreActualisationEnCours() {
   const sondes = [
     ["scan_state", "scan"],
+    ["loudness_state", "loudness"],
     ["analysis_state", "empreintes"],
     ["descripteurs_state", "tempo, tonalité, énergie"],
     ["enrichment_state", "genres"],

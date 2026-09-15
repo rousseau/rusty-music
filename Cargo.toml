@@ -119,6 +119,15 @@ rubato = "5"
 ogg = "0.9"
 opus-decoder = "0.1"
 
+# Loudness EBU R128 / BS.1770 (normalisation de volume, mode Bibliothèque) —
+# `docs/amelioration-audio.md` § « Hors périmètre — normalisation de
+# loudness ». Portage **pur Rust** de libebur128 par le mainteneur de
+# GStreamer (mêmes résultats, performance comparable) : ni FFI, ni `cmake`,
+# ni bibliothèque système — mêmes garanties que `wsola`/`opus-decoder`.
+# Licence MIT ; dépendances transitives (bitflags, smallvec, dasp_sample,
+# dasp_frame) toutes MIT OR Apache-2.0.
+ebur128 = "0.1"
+
 # Client HTTP pour MusicBrainz (genres des artistes et des albums). `ureq` et
 # non `reqwest` : bloquant et pur Rust, **31 crates transitifs contre 106** —
 # un fil de fond qui émet une requête par seconde n'a que faire d'un runtime

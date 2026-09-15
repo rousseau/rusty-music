@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -62,6 +62,13 @@ struct Etat {
     surveillances: Mutex<std::collections::HashMap<PathBuf, rusty_music_core::watch::Surveillance>>,
     analyse: Mutex<EtatAnalyse>,
     descripteurs: Mutex<EtatDescripteurs>,
+    /// Avancement de la passe de loudness EBU R128 (piste + album).
+    loudness: Mutex<EtatLoudness>,
+    /// Normalisation de volume à la lecture : activation et référence
+    /// (piste ou album) — réglage du mode Bibliothèque, lu par le résolveur
+    /// de gain installé sur `player` ([`Player::set_gain_resolveur`]) et par
+    /// [`gain_pour`] aux quelques sites qui rouvrent la piste en cours.
+    normalisation: Arc<ReglagesNormalisation>,
     enrichissement: Mutex<EtatEnrichissement>,
     /// Avancement de la passe de popularité générale (ListenBrainz + Deezer).
     popularite: Mutex<EtatPopularite>,
@@ -3320,6 +3327,160 @@ fn descripteurs_state(etat: State<Etat>) -> Result<EtatDescripteurs, String> {
     Ok(etat.descripteurs.lock().map_err(echec)?.clone())
 }
 
+/// Normalisation de volume à la lecture (mode Bibliothèque) : activée ou
+/// non, et sur quelle référence — voir `crate::normalisation`'s absence :
+/// deux `AtomicBool` suffisent, pas besoin d'un `Mutex` pour un si petit
+/// état lu à chaque ouverture de piste.
+#[derive(Default)]
+struct ReglagesNormalisation {
+    actif: AtomicBool,
+    /// `false` = gain de piste, `true` = gain d'album.
+    album: AtomicBool,
+}
+
+/// Avancement de la passe de loudness EBU R128, sondé par l'interface.
+#[derive(Clone, Default, serde::Serialize)]
+struct EtatLoudness {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Combien de morceaux ont déjà une loudness à jour — une mesure d'avant un
+/// changement de méthode (`VERSION_LOUDNESS`) compte comme manquante.
+#[tauri::command(async)]
+fn loudness_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
+    etat.lib
+        .lock()
+        .map_err(echec)?
+        .compter_loudness(rusty_music_core::loudness::VERSION_LOUDNESS)
+        .map_err(echec)
+}
+
+/// Mesure la loudness EBU R128 (piste + album) des morceaux en attente — ou
+/// de tous, `force` effaçant d'abord ce qui est déjà mesuré. Même patron que
+/// [`start_descripteurs`] : décode le fichier entier (le seul coût de cette
+/// passe), reprenable, tourne sur son propre fil et sa propre connexion.
+#[tauri::command(async)]
+fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>) -> Result<(), String> {
+    let force = force.unwrap_or(false);
+    {
+        let mut l = etat.loudness.lock().map_err(echec)?;
+        if l.en_cours {
+            return Err("une mesure est déjà en cours".into());
+        }
+        *l = EtatLoudness {
+            en_cours: true,
+            ..Default::default()
+        };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+
+        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
+            let fils = fils_pour_passe(&lib);
+            if force {
+                lib.effacer_loudness().map_err(|e| e.to_string())?;
+            }
+            rusty_music_core::loudness::actualiser(&lib, i64::MAX, fils, |faits, total| {
+                if let Ok(mut l) = etat.loudness.lock() {
+                    l.faits = faits;
+                    l.total = total;
+                }
+            })
+            .map_err(|e| e.to_string())
+        });
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} mesurés · {} albums recalculés · {} en échec",
+                b.mesures, b.albums, b.echecs
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "mesure de loudness terminée");
+
+        let verrou = etat.loudness.lock();
+        if let Ok(mut l) = verrou {
+            l.en_cours = false;
+            l.resultat = Some(bilan);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn loudness_state(etat: State<Etat>) -> Result<EtatLoudness, String> {
+    Ok(etat.loudness.lock().map_err(echec)?.clone())
+}
+
+/// Gain de normalisation de volume (linéaire, 1.0 = neutre) pour `chemin`,
+/// selon le réglage courant — jamais un blocage : coupé, ou morceau pas
+/// encore mesuré, rendent 1.0.
+fn gain_pour(etat: &Etat, chemin: &Path) -> f32 {
+    if !etat.normalisation.actif.load(Ordering::Relaxed) {
+        return 1.0;
+    }
+    let mode = if etat.normalisation.album.load(Ordering::Relaxed) {
+        rusty_music_core::loudness::ModeGain::Album
+    } else {
+        rusty_music_core::loudness::ModeGain::Piste
+    };
+    etat.lib
+        .lock()
+        .ok()
+        .and_then(|lib| {
+            lib.gain_lecture(chemin, mode, rusty_music_core::loudness::CIBLE_LUFS)
+                .ok()
+                .flatten()
+        })
+        .unwrap_or(1.0)
+}
+
+/// Active/coupe la normalisation de volume et choisit sa référence (piste ou
+/// album). Réouvre le morceau en cours en tâche de fond à la même position —
+/// même recette que `set_amelioration`.
+#[tauri::command(async)]
+fn set_normalisation(app: tauri::AppHandle, etat: State<Etat>, actif: bool, album: bool) -> Result<(), String> {
+    etat.normalisation.actif.store(actif, Ordering::Relaxed);
+    etat.normalisation.album.store(album, Ordering::Relaxed);
+
+    let courant = etat
+        .player
+        .lock()
+        .map_err(echec)?
+        .current()
+        .map(std::path::Path::to_path_buf);
+    let Some(chemin) = courant else {
+        return Ok(());
+    };
+
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let gain = gain_pour(&etat, &chemin);
+        let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
+        let source = match rusty_music_player::ouvrir(&ouvert, gain) {
+            Ok(source) => source,
+            Err(e) => {
+                tracing::warn!(error = %e, "réouverture pour normalisation impossible");
+                return;
+            }
+        };
+        let mut player = match etat.player.lock() {
+            Ok(player) => player,
+            Err(_) => return,
+        };
+        if let Err(e) = player.remplacer_courant(&chemin, source) {
+            tracing::warn!(error = %e, "bascule de normalisation impossible");
+        }
+    });
+    Ok(())
+}
+
 /// Lance l'aspiration des genres MusicBrainz.
 ///
 /// Comme l'analyse : déclenchée à la main, sur son propre fil, avec sa propre
@@ -4364,8 +4525,9 @@ fn set_lecture_hd(app: tauri::AppHandle, etat: State<Etat>, actif: bool) -> Resu
     };
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let gain = gain_pour(&etat, &chemin);
         let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
-        match rusty_music_player::ouvrir(&ouvert) {
+        match rusty_music_player::ouvrir(&ouvert, gain) {
             Ok(source) => {
                 let verrou = etat.player.lock();
                 if let Ok(mut player) = verrou {
@@ -5978,8 +6140,9 @@ fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     // Hors du verrou `player` : `ouvrir` peut lire le disque plusieurs
     // secondes. Même précaution que la bascule d'amélioration et le
     // préchargement.
+    let gain = gain_pour(&etat, &chemin);
     let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
-    let source = rusty_music_player::ouvrir(&ouvert).map_err(echec)?;
+    let source = rusty_music_player::ouvrir(&ouvert, gain).map_err(echec)?;
     etat.player
         .lock()
         .map_err(echec)?
@@ -6116,8 +6279,9 @@ fn set_amelioration(
         // Hors du verrou `player` : `ouvrir` lit le drapeau global qu'on vient
         // de poser et applique (ou non) l'amélioration. Le chemin est résolu
         // vers le cache HD s'il y a lieu, comme dans le préchargement.
+        let gain = gain_pour(&etat, &chemin);
         let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
-        let source = match rusty_music_player::ouvrir(&ouvert) {
+        let source = match rusty_music_player::ouvrir(&ouvert, gain) {
             Ok(source) => source,
             Err(e) => {
                 tracing::warn!(error = %e, "réouverture pour amélioration impossible");
@@ -6151,9 +6315,18 @@ fn set_amelioration(
 /// Le fil de fond n'a pas ce problème : il tourne côté natif, indépendamment
 /// de la visibilité de la fenêtre.
 fn precharger_suivante(etat: &Etat) -> Result<(), String> {
-    let a_charger = etat.player.lock().map_err(echec)?.a_precharger();
-    if let Some((rang, piste)) = a_charger {
-        match rusty_music_player::ouvrir(&piste) {
+    let a_charger = {
+        let mut player = etat.player.lock().map_err(echec)?;
+        player.a_precharger().map(|(rang, piste)| {
+            // Chemin de bibliothèque (avant résolution HD), pour le gain de
+            // normalisation — voir `gain_pour` et `Player::completer`.
+            let original = player.queue().get(rang).cloned().unwrap_or_else(|| piste.clone());
+            (rang, piste, original)
+        })
+    };
+    if let Some((rang, piste, original)) = a_charger {
+        let gain = gain_pour(etat, &original);
+        match rusty_music_player::ouvrir(&piste, gain) {
             Ok(source) => etat
                 .player
                 .lock()
@@ -6324,11 +6497,43 @@ fn main() {
             let hd_pour_lecteur = hd.clone();
             player.set_resolveur(move |p| rusty_music_superres::resoudre(&hd_pour_lecteur, p));
 
+            // Normalisation de volume (mode Bibliothèque) : activation et
+            // référence poussées par l'interface (`set_normalisation`), lues
+            // à chaque ouverture interne de piste ([`Player::completer`]).
+            // Connexion dédiée, sur le principe de `resoudre` pour le cache
+            // HD : le lecteur ignore tout de la base par ailleurs (voir son
+            // en-tête), et SQLite en WAL tolère ce second lecteur sans se
+            // disputer avec `Etat.lib`.
+            let normalisation = Arc::new(ReglagesNormalisation::default());
+            let normalisation_pour_gain = normalisation.clone();
+            let lib_pour_gain = Mutex::new(Library::open(&db)?);
+            player.set_gain_resolveur(move |chemin| {
+                if !normalisation_pour_gain.actif.load(Ordering::Relaxed) {
+                    return 1.0;
+                }
+                let mode = if normalisation_pour_gain.album.load(Ordering::Relaxed) {
+                    rusty_music_core::loudness::ModeGain::Album
+                } else {
+                    rusty_music_core::loudness::ModeGain::Piste
+                };
+                lib_pour_gain
+                    .lock()
+                    .ok()
+                    .and_then(|lib| {
+                        lib.gain_lecture(chemin, mode, rusty_music_core::loudness::CIBLE_LUFS)
+                            .ok()
+                            .flatten()
+                    })
+                    .unwrap_or(1.0)
+            });
+
             app.manage(Etat {
                 lib: Mutex::new(Library::open(&db)?),
                 player: Mutex::new(player),
                 db,
                 hd,
+                loudness: Mutex::new(EtatLoudness::default()),
+                normalisation,
                 superres: Mutex::new(EtatSuperres::default()),
                 superres_modele: Mutex::new(None),
                 superres_modele_touche: Mutex::new(None),
@@ -6612,6 +6817,10 @@ fn main() {
             start_descripteurs,
             descripteurs_state,
             descripteurs_progress,
+            start_loudness,
+            loudness_state,
+            loudness_progress,
+            set_normalisation,
             start_enrichment,
             enrichment_state,
             start_popularite,

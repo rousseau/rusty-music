@@ -106,13 +106,28 @@ const GAIN_H3_MAX: f32 = 0.28;
 
 /// Traite le tampon entrelacé `ech` (`canaux` canaux entrelacés, `taux` Hz).
 ///
+/// `gain_lineaire` est le gain de normalisation de volume (1.0 = neutre,
+/// `rusty_music_core::loudness`) — spécifique à la piste en cours, donc
+/// passé en paramètre plutôt que tenu en état global comme « E » (réglage
+/// subjectif, indépendant du morceau). Appliqué **en tout premier** : le
+/// clamp final de l'étape 2 doit rester le dernier filet de sécurité contre
+/// l'écrêtage, gain de normalisation compris — l'appliquer après rouvrirait
+/// un dépassement que ce clamp vient de fermer.
+///
 /// Peut réallouer `ech` (rééchantillonnage) ; renvoie le taux effectif du
 /// tampon après traitement — c'est lui qu'il faut donner à `SamplesBuffer`.
-pub fn traiter(ech: &mut Vec<f32>, taux: u32, canaux: u16) -> u32 {
+pub fn traiter(ech: &mut Vec<f32>, taux: u32, canaux: u16, gain_lineaire: f32) -> u32 {
     let mut taux = taux;
 
     if canaux == 0 || ech.is_empty() {
         return taux;
+    }
+
+    // 0. Gain de normalisation de volume.
+    if gain_lineaire != 1.0 {
+        for s in ech.iter_mut() {
+            *s *= gain_lineaire;
+        }
     }
 
     // 1. Rééchantillonnage vers la sortie.

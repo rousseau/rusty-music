@@ -40,6 +40,16 @@ pub struct TrackRow {
     pub artist_mbid: Option<String>,
 }
 
+/// Une piste en attente de mesure de loudness — chemin et clé d'album
+/// (normalisée comme `album_loudness` : chaîne vide si absente) pour que
+/// `crate::loudness::actualiser` sache quels albums une passe touche.
+pub struct PisteLoudness {
+    pub id: i64,
+    pub path: String,
+    pub album: String,
+    pub album_artist: String,
+}
+
 /// Répartition d'une valeur continue en tranches régulières (mode
 /// Bibliothèque). `comptes[i]` couvre `[min + i*pas, min + (i+1)*pas)` ; ce
 /// qui déborde par le haut tombe dans `hors_gamme`, ce qui manque dans
@@ -2370,6 +2380,171 @@ impl Library {
     /// [`Self::pending_descripteurs`] et sa colonne `algo_version`.
     pub fn effacer_descripteurs(&self) -> Result<usize> {
         Ok(self.conn.execute("DELETE FROM descriptors", [])?)
+    }
+
+    /* --------------------------------------------- loudness (EBU R128) */
+
+    /// Les morceaux dont la loudness (EBU R128 / BS.1770) reste à mesurer —
+    /// ou dont la mesure date d'un algorithme plus ancien que `version`.
+    ///
+    /// Triée par album : `crate::loudness::actualiser` en déduit, une fois
+    /// une piste mesurée, les albums que cette passe touche, pour recalculer
+    /// leur gain d'album ensuite.
+    pub fn pending_loudness(&self, version: i32, limit: i64) -> Result<Vec<PisteLoudness>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, COALESCE(album, ''), COALESCE(album_artist, artist, '')
+               FROM tracks
+              WHERE NOT EXISTS (SELECT 1 FROM track_loudness tl
+                                 WHERE tl.track_id = tracks.id AND tl.algo_version >= ?1)
+                AND NOT EXISTS (SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
+              ORDER BY 4, 3, track_no
+              LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![version, limit], |r| {
+                Ok(PisteLoudness {
+                    id: r.get(0)?,
+                    path: r.get(1)?,
+                    album: r.get(2)?,
+                    album_artist: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Enregistre la loudness mesurée d'un morceau.
+    pub fn save_loudness(
+        &self,
+        track_id: i64,
+        integrated_lufs: f64,
+        true_peak_dbtp: f64,
+        version: i32,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO track_loudness(track_id, integrated_lufs, true_peak_dbtp, algo_version)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(track_id) DO UPDATE SET
+               integrated_lufs=excluded.integrated_lufs,
+               true_peak_dbtp=excluded.true_peak_dbtp,
+               algo_version=excluded.algo_version,
+               mesure_le=strftime('%s','now')",
+            params![track_id, integrated_lufs, true_peak_dbtp, version],
+        )?;
+        Ok(())
+    }
+
+    /// Tous les morceaux d'un album (même identité que [`Self::pending_loudness`] :
+    /// `album`/`album_artist` normalisés en chaîne vide si absents) — pour
+    /// recalculer sa loudness combinée quand l'un de ses morceaux vient
+    /// d'être mesuré.
+    pub fn pistes_de_lalbum(&self, album: &str, album_artist: &str) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path FROM tracks
+              WHERE COALESCE(album, '') = ?1 AND COALESCE(album_artist, artist, '') = ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![album, album_artist], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Enregistre la loudness combinée d'un album — programme EBU R128
+    /// combiné, pas une moyenne (voir `crate::loudness::actualiser`).
+    pub fn save_album_loudness(
+        &self,
+        album: &str,
+        album_artist: &str,
+        integrated_lufs: f64,
+        pistes: usize,
+        version: i32,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO album_loudness(album, album_artist, integrated_lufs, pistes, algo_version)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(album, album_artist) DO UPDATE SET
+               integrated_lufs=excluded.integrated_lufs,
+               pistes=excluded.pistes,
+               algo_version=excluded.algo_version,
+               calcule_le=strftime('%s','now')",
+            params![album, album_artist, integrated_lufs, pistes as i64, version],
+        )?;
+        Ok(())
+    }
+
+    /// Combien de morceaux ont une loudness à jour (`algo_version >= version`)
+    /// — pour une ligne d'état du rail, comme [`Self::compter_descripteurs`].
+    pub fn compter_loudness(&self, version: i32) -> Result<(i64, i64)> {
+        let total: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0))?;
+        let faits: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM track_loudness WHERE algo_version >= ?1",
+            params![version],
+            |r| r.get(0),
+        )?;
+        Ok((faits, total))
+    }
+
+    /// Efface toutes les mesures de loudness (piste et album), pour la case
+    /// « refaire ce qui est déjà mesuré » du mode Bibliothèque.
+    pub fn effacer_loudness(&self) -> Result<usize> {
+        self.conn.execute("DELETE FROM album_loudness", [])?;
+        Ok(self.conn.execute("DELETE FROM track_loudness", [])?)
+    }
+
+    /// Gain linéaire (1.0 = neutre) à appliquer à la lecture de `chemin`, ou
+    /// `None` si sa loudness n'est pas encore mesurée — jamais un blocage,
+    /// un morceau non mesuré joue simplement sans normalisation.
+    ///
+    /// En mode album, replie sur le gain piste si l'album n'a pas (encore)
+    /// de ligne `album_loudness` ; le plafond anti-écrêtage utilise toujours
+    /// le pic **de la piste**, jamais un pic d'album — la piste réellement
+    /// jouée ne doit jamais écrêter, quel que soit le mode choisi.
+    pub fn gain_lecture(
+        &self,
+        chemin: &Path,
+        mode: crate::loudness::ModeGain,
+        cible: f64,
+    ) -> Result<Option<f32>> {
+        let chemin_str = chemin.to_string_lossy();
+        let trouve = self
+            .conn
+            .query_row(
+                "SELECT tl.true_peak_dbtp, tl.integrated_lufs,
+                        COALESCE(tracks.album, ''), COALESCE(tracks.album_artist, tracks.artist, '')
+                   FROM tracks JOIN track_loudness tl ON tl.track_id = tracks.id
+                  WHERE tracks.path = ?1",
+                params![chemin_str],
+                |r| {
+                    Ok((
+                        r.get::<_, f64>(0)?,
+                        r.get::<_, f64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((true_peak_dbtp, piste_lufs, album, album_artist)) = trouve else {
+            return Ok(None);
+        };
+        let lufs = match mode {
+            crate::loudness::ModeGain::Piste => piste_lufs,
+            crate::loudness::ModeGain::Album if !album.is_empty() => self
+                .conn
+                .query_row(
+                    "SELECT integrated_lufs FROM album_loudness WHERE album = ?1 AND album_artist = ?2",
+                    params![album, album_artist],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .unwrap_or(piste_lufs),
+            crate::loudness::ModeGain::Album => piste_lufs,
+        };
+        Ok(Some(crate::loudness::db_vers_lineaire(
+            crate::loudness::gain_effectif_db(lufs, true_peak_dbtp, cible),
+        )))
     }
 
     /// Tempo mesuré de morceaux donnés, ceux qui en ont.
@@ -6045,6 +6220,130 @@ mod tests {
         lib.save_descripteurs(id, Some(180.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 2)
             .unwrap();
         assert!(lib.pending_descripteurs("modele", 2, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn pending_loudness_reprend_une_mesure_perimee() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/perime.flac".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        lib.save_loudness(id, -14.0, -1.0, 1).unwrap();
+
+        // Version 1 : déjà mesuré, rien à refaire.
+        assert!(lib.pending_loudness(1, 10).unwrap().is_empty());
+        let (faits, total) = lib.compter_loudness(1).unwrap();
+        assert_eq!((faits, total), (1, 1));
+
+        // Version 2 (la méthode de mesure a changé) : la mesure d'avant ne
+        // compte plus.
+        let pending = lib.pending_loudness(2, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, id);
+        let (faits, total) = lib.compter_loudness(2).unwrap();
+        assert_eq!((faits, total), (0, 1));
+
+        // Remesuré en version 2 : de nouveau à jour.
+        lib.save_loudness(id, -14.0, -1.0, 2).unwrap();
+        assert!(lib.pending_loudness(2, 10).unwrap().is_empty());
+    }
+
+    /// Un morceau jamais passé dans la passe de loudness doit jouer sans
+    /// normalisation, jamais bloquer la lecture.
+    #[test]
+    fn gain_lecture_absent_ne_bloque_rien() {
+        let lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/pasmesure.flac".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        let gain = lib
+            .gain_lecture(
+                Path::new("/m/pasmesure.flac"),
+                crate::loudness::ModeGain::Piste,
+                crate::loudness::CIBLE_LUFS,
+            )
+            .unwrap();
+        assert!(gain.is_none());
+    }
+
+    /// En mode album, le plafond anti-écrêtage reste calculé sur le pic
+    /// **de la piste réellement jouée** — jamais un pic d'album, qui
+    /// n'existe pas et n'aurait pas de sens (chaque piste peut écrêter
+    /// indépendamment des autres).
+    #[test]
+    fn gain_lecture_mode_album_utilise_le_pic_de_la_piste() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/piste-forte.flac".into(),
+                album: Some("Album".into()),
+                album_artist: Some("Artiste".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        // Piste déjà proche de 0 dBTP : toute normalisation généreuse doit
+        // être plafonnée.
+        lib.save_loudness(id, -25.0, -0.2, crate::loudness::VERSION_LOUDNESS)
+            .unwrap();
+        lib.save_album_loudness(
+            "Album",
+            "Artiste",
+            -25.0,
+            1,
+            crate::loudness::VERSION_LOUDNESS,
+        )
+        .unwrap();
+
+        let gain = lib
+            .gain_lecture(
+                Path::new("/m/piste-forte.flac"),
+                crate::loudness::ModeGain::Album,
+                crate::loudness::CIBLE_LUFS,
+            )
+            .unwrap()
+            .expect("mesurée");
+        let attendu = crate::loudness::db_vers_lineaire(0.2); // plafond, pas le naïf (+7 dB)
+        assert!((gain - attendu).abs() < 1e-6, "gain = {gain}, attendu {attendu}");
+    }
+
+    /// Mode album choisi, mais l'album n'a pas encore de ligne
+    /// `album_loudness` (pas assez de pistes mesurées pour le recalculer) :
+    /// on rejoue le gain piste plutôt que de bloquer ou d'inventer une
+    /// valeur d'album.
+    #[test]
+    fn gain_lecture_mode_album_replie_sur_la_piste_si_lalbum_manque() {
+        let lib = Library::open_in_memory().unwrap();
+        let id = lib
+            .upsert(&TrackMeta {
+                path: "/m/orphelin.flac".into(),
+                album: Some("Album inachevé".into()),
+                album_artist: Some("Artiste".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        lib.save_loudness(id, -20.0, -1.0, crate::loudness::VERSION_LOUDNESS)
+            .unwrap();
+
+        let piste = lib
+            .gain_lecture(
+                Path::new("/m/orphelin.flac"),
+                crate::loudness::ModeGain::Piste,
+                crate::loudness::CIBLE_LUFS,
+            )
+            .unwrap();
+        let album = lib
+            .gain_lecture(
+                Path::new("/m/orphelin.flac"),
+                crate::loudness::ModeGain::Album,
+                crate::loudness::CIBLE_LUFS,
+            )
+            .unwrap();
+        assert_eq!(piste, album);
     }
 
     /// Une famille de huit morceaux, quatre genres — Jazz minoritaire, seul

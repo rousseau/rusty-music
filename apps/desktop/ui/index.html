@@ -404,6 +404,23 @@
               Rafraîchir aussi la popularité de plus de 90 jours
             </label>
             <label class="case">
+              <input id="normaliser-active" type="checkbox">
+              Normaliser le volume à la lecture (EBU R128)
+            </label>
+            <label class="reglette" id="normaliser-mode-ligne" hidden>
+              <span>Référence</span>
+              <select id="normaliser-mode">
+                <option value="piste">Par morceau</option>
+                <option value="album">Par album</option>
+              </select>
+            </label>
+            <p class="aide">Ramène chaque morceau à un niveau sonore comparable —
+              mesuré une fois pour toutes par la passe de loudness ci-dessus (elle
+              tourne à chaque « Scanner », sans case à cocher : aucune clé, aucun
+              compte). Un morceau pas encore mesuré joue sans normalisation, jamais
+              bloqué. « Par album » garde les écarts de niveau voulus entre les pistes
+              d'un même disque ; « par morceau » égalise chacune.</p>
+            <label class="case">
               <input id="bio-active" type="checkbox" checked>
               Biographies (TheAudioDB)
             </label>

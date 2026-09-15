@@ -179,6 +179,26 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         fils: usize,
     },
+    /// Mesure la loudness EBU R128 des morceaux (piste et album)
+    ///
+    /// Décode le fichier entier, contrairement aux descripteurs qui n'en
+    /// lisent que cinq fenêtres — c'est le seul coût de cette passe. Sert au
+    /// gain de normalisation appliqué à la lecture (mode Bibliothèque).
+    /// Reprenable : relancer ne remesure rien — sauf avec `--force`.
+    Loudness {
+        /// Nombre de morceaux à traiter au plus (0 = tous)
+        #[arg(long, default_value_t = 0)]
+        limite: i64,
+        /// Efface d'abord toutes les mesures et recommence de zéro.
+        ///
+        /// Rarement nécessaire : un changement de méthode de mesure se
+        /// rattrape tout seul (`VERSION_LOUDNESS`), sans ce drapeau.
+        #[arg(long)]
+        force: bool,
+        /// Fils de décodage (0 = tous les cœurs)
+        #[arg(long, default_value_t = 0)]
+        fils: usize,
+    },
     /// Trace un itinéraire dans le réseau de circulation
     Itineraire {
         /// Morceau de départ (identifiant)
@@ -986,6 +1006,45 @@ fn main() -> Result<()> {
                 "{} sans pulsation décelable, {} sans tonalité, {} en échec",
                 r.sans_tempo, r.sans_tonalite, r.echecs
             );
+        }
+        Cmd::Loudness { limite, force, fils } => {
+            let fils = if fils > 0 {
+                fils
+            } else {
+                std::thread::available_parallelism().map_or(4, |p| p.get())
+            };
+            if force {
+                let n = lib.effacer_loudness()?;
+                println!("{n} mesures effacées — repasse complète");
+            }
+            let (faits, total) = lib.compter_loudness(rusty_music_core::loudness::VERSION_LOUDNESS)?;
+            println!("{faits} / {total} morceaux déjà mesurés — {fils} fils");
+
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::loudness::actualiser(
+                &lib,
+                if limite == 0 { i64::MAX } else { limite },
+                fils,
+                |vus, total| {
+                    if vus >= dernier + 200 {
+                        dernier = vus;
+                        println!(
+                            "  {vus} / {total} — {:.1} min",
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                },
+            )?;
+            println!(
+                "\n{} mesurés sur {} demandés, {} albums recalculés — {:.1} min ({:.2} s/morceau)",
+                bilan.mesures,
+                bilan.demandes,
+                bilan.albums,
+                t.elapsed().as_secs_f64() / 60.0,
+                t.elapsed().as_secs_f64() / bilan.mesures.max(1) as f64
+            );
+            println!("{} en échec", bilan.echecs);
         }
         Cmd::Itineraire {
             depart,
