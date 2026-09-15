@@ -945,6 +945,13 @@
                aria-label="Intensité de l'amélioration"
                title="Intensité de l'amélioration">
       </span>
+      <!-- « N » : normalisation de volume (EBU R128). Même réglage que la
+           case « Normaliser » de la Bibliothèque (actif + mode piste/album,
+           `set_normalisation`) — un raccourci pour l'essayer au vol, pas un
+           second état. -->
+      <button id="normaliser" class="transport__e" aria-pressed="false"
+              aria-label="Normaliser le volume à la lecture"
+              title="Aligne le volume sur une cible constante (EBU R128). Réouvre le morceau en cours, sans coupure. Mode piste/album réglable dans la Bibliothèque.">N</button>
       <label class="vol">
         <span>vol</span>
         <input id="volume" type="range" min="0" max="100" value="100">

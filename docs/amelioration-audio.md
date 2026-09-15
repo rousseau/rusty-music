@@ -170,10 +170,17 @@ préchargement côté desktop), soit via un résolveur installé une fois
 cache HD) pour les ouvertures internes (`Player::completer`).
 
 **Réglage** : case « Normaliser le volume à la lecture » + choix « par
-morceau » / « par album » dans le rail Bibliothèque (pas dans le transport —
-réglage correctif, pas un effet à essayer). Un morceau pas encore mesuré
-joue sans normalisation, jamais bloqué ; le mode album replie sur le gain
-piste tant que l'album n'a pas de ligne `album_loudness`.
+morceau » / « par album » dans le rail Bibliothèque, doublés d'un bouton
+« N » dans le transport (même carré que « E »/« HD », même commande
+`set_normalisation`, un seul état partagé — jamais deux réglages qui
+pourraient diverger). Revient sur la décision initiale (« pas dans le
+transport — réglage correctif, pas un effet à essayer ») : le bouton sert à
+comparer la qualité au vol, piste en cours, le temps de vérifier que la
+normalisation ne dégrade rien — un usage de bascule d'essai, pas seulement
+correctif. Le mode piste/album reste un réglage de fond, choisi dans la
+Bibliothèque seulement. Un morceau pas encore mesuré joue sans
+normalisation, jamais bloqué ; le mode album replie sur le gain piste tant
+que l'album n'a pas de ligne `album_loudness`.
 
 Coût mesuré de l'ordre de la passe de descripteurs sur une bibliothèque de
 milliers de morceaux (décodage complet, borné par le disque sur un support

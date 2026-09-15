@@ -2639,17 +2639,27 @@ forceAmeliorer.addEventListener("change", () => {
   if (ameliorationActive) poserAmelioration();
 });
 
-// Normalisation de volume à la lecture (EBU R128) : réglage de bibliothèque,
-// pas une commande du transport — voir docs/amelioration-audio.md. Choix
-// retenu entre deux lancements, comme « E ».
+// Normalisation de volume à la lecture (EBU R128) : réglage de bibliothèque
+// (case + mode piste/album), doublé d'un raccourci « N » dans le transport
+// pour l'essayer au vol sans rouvrir la Bibliothèque — voir
+// docs/amelioration-audio.md. Un seul état (`normaliserActif`/`normaliserMode`,
+// une seule commande `set_normalisation`) : case et bouton ne font que le
+// refléter, jamais deux réglages qui pourraient diverger. Choix retenu entre
+// deux lancements, comme « E ».
 const caseNormaliser = $("normaliser-active");
 const ligneNormaliserMode = $("normaliser-mode-ligne");
 const selectNormaliserMode = $("normaliser-mode");
+const btnNormaliser = $("normaliser");
 let normaliserActif = localStorage.getItem("normaliser") === "1";
 let normaliserMode = localStorage.getItem("normaliser-mode") === "album" ? "album" : "piste";
-caseNormaliser.checked = normaliserActif;
-selectNormaliserMode.value = normaliserMode;
-ligneNormaliserMode.hidden = !normaliserActif;
+
+function refletNormaliser() {
+  caseNormaliser.checked = normaliserActif;
+  selectNormaliserMode.value = normaliserMode;
+  ligneNormaliserMode.hidden = !normaliserActif;
+  btnNormaliser.setAttribute("aria-pressed", String(normaliserActif));
+}
+refletNormaliser();
 
 // Même recette que `poserAmelioration` : le moteur réouvre le morceau en
 // cours en tâche de fond, sans qu'on ait à s'en soucier ici.
@@ -2664,7 +2674,7 @@ poserNormalisation();
 caseNormaliser.addEventListener("change", () => {
   normaliserActif = caseNormaliser.checked;
   localStorage.setItem("normaliser", normaliserActif ? "1" : "0");
-  ligneNormaliserMode.hidden = !normaliserActif;
+  refletNormaliser();
   poserNormalisation();
 });
 
@@ -2672,6 +2682,13 @@ selectNormaliserMode.addEventListener("change", () => {
   normaliserMode = selectNormaliserMode.value === "album" ? "album" : "piste";
   localStorage.setItem("normaliser-mode", normaliserMode);
   if (normaliserActif) poserNormalisation();
+});
+
+btnNormaliser.addEventListener("click", () => {
+  normaliserActif = !normaliserActif;
+  localStorage.setItem("normaliser", normaliserActif ? "1" : "0");
+  refletNormaliser();
+  poserNormalisation();
 });
 
 // Bouton « HD » : super-résolution neuronale (AERO), rendue hors ligne.
