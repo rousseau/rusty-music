@@ -311,13 +311,22 @@
              d'un album ou une recherche n'a pas d'ordre à indexer. -->
         <nav id="index-alpha" class="index-alpha" aria-label="Aller à la lettre" hidden></nav>
 
-        <!-- Mode Écoute, grille des albums d'un artiste : deux bandeaux
-             secondaires sous la grille — proximité sonique (empreintes CLAP,
-             agrégées par artiste) et collaborations MusicBrainz restreintes
-             aux artistes déjà présents dans la bibliothèque (sinon, direction
-             Découvrir). Masqué pour la liste « Albums » de toute la
-             bibliothèque et pour toute autre vue — voir `poser`/`majAutourArtiste`. -->
+        <!-- Mode Écoute, grille des albums d'un artiste : la biographie puis
+             deux bandeaux secondaires sous la grille — proximité sonique
+             (empreintes CLAP, agrégées par artiste) et collaborations
+             MusicBrainz restreintes aux artistes déjà présents dans la
+             bibliothèque (sinon, direction Découvrir). Masqué pour la liste
+             « Albums » de toute la bibliothèque et pour toute autre vue —
+             voir `poser`/`majAutourArtiste`. La bio a quitté l'inspecteur
+             (`docs/interface-guidelines.md`, Règle 1, exception du 15
+             septembre 2026) : elle dépend de l'artiste ouvert au centre, pas
+             du morceau en cours d'écoute. -->
         <div id="autour-artiste" class="autour-artiste" hidden>
+          <div id="autour-bio-bloc" class="autour-artiste__section" hidden>
+            <p class="rail__titre">Biographie</p>
+            <p id="autour-bio" class="insp__bio"></p>
+            <p class="credit-source">source : TheAudioDB</p>
+          </div>
           <div id="autour-sonore-bloc" class="autour-artiste__section" hidden>
             <p class="rail__titre">Sonne comme</p>
             <div id="autour-sonore" class="proches"></div>
@@ -792,15 +801,6 @@
             <button id="insp-famille-affiner" class="lien">Affiner cette famille ?</button>
             <div id="insp-famille-affinage" hidden></div>
           </div>
-        </div>
-
-        <!-- Biographie (TheAudioDB) — résolue par MBID d'artiste seulement,
-             jamais par nom : voir `docs/enrichissement-lecteur.md`. Mention
-             de source discrète, comme pour les crédits Discogs. -->
-        <div id="bloc-bio" hidden>
-          <p class="rail__titre" style="margin-top:22px">Biographie</p>
-          <p id="insp-bio" class="insp__bio"></p>
-          <p class="credit-source">source : TheAudioDB</p>
         </div>
 
         <!-- Crédits par édition (Discogs, dumps CC0) — mention de source

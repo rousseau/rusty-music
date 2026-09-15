@@ -538,6 +538,10 @@ html, body {
    place (voir `.centre__corps`, flex-colonne). */
 .autour-artiste { flex: 0 0 auto; padding: 4px 26px 18px; border-top: 1px solid var(--line); }
 .autour-artiste__section + .autour-artiste__section { margin-top: 12px; }
+/* La bio réutilise .insp__bio (typo de l'inspecteur) mais le centre est bien
+   plus large que l'aside : une ligne de mesure raisonnable plutôt qu'un
+   paragraphe qui file d'un bord à l'autre. */
+#autour-bio-bloc .insp__bio { max-width: 70ch; }
 .proches { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; }
 .proche {
   flex: 0 0 auto; background: none; border: 1px solid var(--line); border-radius: 999px;

@@ -67,6 +67,24 @@ propre composant pochette/métadonnées/bio/critiques : c'est le même arbre DOM
 que la sélection vienne d'un morceau de la grille, d'un point du nuage ou
 d'un album de l'anneau.
 
+**Exception — bio d'artiste au centre, tranchée le 15 septembre 2026.**
+L'inspecteur reste dédié à ce qui **s'écoute** (piste ou album en cours,
+transport bas) : pochette, métadonnées, famille, crédits d'édition, label,
+critiques, voisins soniques — rien de tout ça ne dépend de la sélection
+centrale. La biographie (TheAudioDB) est différente : elle dépend de
+**quel artiste est ouvert au centre** (`ouvrirAlbumsArtiste`), pas de quel
+morceau joue, et alourdissait l'inspecteur sans rapport avec l'écoute en
+cours. Elle quitte donc `#insp` pour la zone centrale d'Écouter, affichée
+avec la grille d'albums de l'artiste ouvert. Ça ne rouvre pas la règle : la
+bio reste un contenu unique à la fois, jamais dupliqué entre centre et
+inspecteur — elle vit dans un seul arbre DOM selon le contexte (« quel
+artiste j'explore » vs « quel morceau j'écoute »), exactement comme la
+Règle « Sélectionner n'est pas écouter » sépare déjà le clic silencieux du
+geste ▶. Chantier de code ouvert : `bio_piste` résout aujourd'hui la bio
+par MBID de piste (`app.js:1993-2010`), pas par MBID d'artiste indépendant
+d'une piste sélectionnée — il faut une route côté moteur qui prenne
+directement l'artiste ouvert au centre.
+
 **Sélectionner n'est pas écouter — le même geste doit produire le même effet
 dans les quatre visualisations d'Explorer.** Décidé le 14 septembre 2026 après
 audit : le clic jouait un morceau directement sur Nuage/Carte, mais se
@@ -166,7 +184,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | `inspecter()` (`app.js:1017`) peuple `#insp` ; aucun panneau pochette/bio/critique séparé dans la zone centrale (`index.html:266-306` ne contient que `#liste`/`#grille`). |
+| 1 | Inspecteur unique | 🔧 | `inspecter()` (`app.js:1017`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
 | 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : numéro → lecture, titre/album/artiste → navigation). Dans les pistes d'un album (`lignePiste`), la ligne joue toujours, mais deux zones se signalent au survol : le titre (passe à l'accent, le n° de piste devient ▶) rappelle que le clic lance l'écoute, tandis que le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `app.js` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `app.js:814`), jamais par une sélection. |

@@ -1512,7 +1512,6 @@ async function inspecter(t) {
   montrerDescripteurs(t);
   montrerVoisins(t);
   montrerNomFamille(t);
-  montrerBio(t);
   montrerCredits(t);
   montrerLabel(t);
   montrerCritiques(t);
@@ -1550,12 +1549,13 @@ async function inspecterAlbum(noeud) {
   $("insp-bpm").textContent = "—";
   $("insp-tonalite").textContent = "—";
   $("insp-timbre").textContent = "—";
-  // Famille/biographie/crédits/label/critiques se demandent par identifiant de
-  // piste — un nœud d'album de l'anneau n'en porte pas (son `id` est celui
-  // de l'album). Simplification assumée : ces blocs restent cachés à cette
-  // échelle, comme `montrerDescripteurs` le fait déjà pour BPM/tonalité.
+  // Famille/crédits/label/critiques se demandent par identifiant de piste —
+  // un nœud d'album de l'anneau n'en porte pas (son `id` est celui de
+  // l'album). Simplification assumée : ces blocs restent cachés à cette
+  // échelle, comme `montrerDescripteurs` le fait déjà pour BPM/tonalité. La
+  // bio n'est plus de ceux-là : elle vit dans le bandeau centre de l'artiste
+  // ouvert, pas dans l'inspecteur (Règle 1, exception du 15 septembre 2026).
   $("bloc-nom-famille").hidden = true;
-  $("bloc-bio").hidden = true;
   $("bloc-credits").hidden = true;
   $("bloc-label").hidden = true;
   $("bloc-critiques").hidden = true;
@@ -1611,6 +1611,7 @@ async function ouvrirAlbumsArtiste(artiste, mbid, retour = sommet) {
 /// `poser`, repris à chaque changement de vue.
 function masquerAutourArtiste() {
   $("autour-artiste").hidden = true;
+  $("autour-bio-bloc").hidden = true;
   $("autour-sonore-bloc").hidden = true;
   $("autour-collab-bloc").hidden = true;
   centreCorps.classList.remove("centre__corps--artiste");
@@ -1646,6 +1647,7 @@ function majAutourArtiste(artiste, mbid) {
   // albums, pas seulement ceux qui tenaient dans l'ancienne fenêtre bornée.
   grilleDernierRang = -1;
   dessinerGrille();
+  montrerBio(mbid, jeton);
   majAutourSonore(artiste, jeton);
   majAutourCollab(mbid, jeton);
 }
@@ -1990,22 +1992,26 @@ async function montrerVoisins(t) {
 /// Biographie d'artiste (TheAudioDB) — résolue par MBID seulement, jamais par
 /// nom (`docs/enrichissement-lecteur.md`). FR si connue, sinon EN ; le bloc
 /// reste caché si aucune des deux n'est disponible — jamais de texte inventé.
-async function montrerBio(t) {
-  const bloc = $("bloc-bio");
-  const vise = t.path;
+/// Vit dans le bandeau « autour de l'artiste » au centre, pas dans
+/// l'inspecteur (`docs/interface-guidelines.md`, Règle 1, exception du 15
+/// septembre 2026) : elle dépend de l'artiste ouvert au centre, pas du
+/// morceau en cours d'écoute — même garde de jeton que `majAutourSonore`.
+async function montrerBio(mbid, jeton) {
+  const bloc = $("autour-bio-bloc");
   bloc.hidden = true;
+  if (!mbid) return;
 
-  let bios = [];
+  let bio = null;
   try {
-    bios = await invoke("bio_piste", { id: t.id });
+    bio = await invoke("bio_artiste", { mbid });
   } catch (e) {
-    signalerErreurInspecteur(vise, "échec du chargement de la biographie", e, "biographie");
+    remonter(e, "biographie de l'artiste");
     return;
   }
-  if ($("insp-titre").dataset.path !== vise) return;
-  const texte = bios.map((b) => b.biographie_fr || b.biographie_en).find(Boolean);
+  if (jeton !== autourArtisteJeton || !bio) return;
+  const texte = bio.biographie_fr || bio.biographie_en;
   if (!texte) return;
-  $("insp-bio").textContent = texte;
+  $("autour-bio").textContent = texte;
   bloc.hidden = false;
 }
 

@@ -3731,6 +3731,14 @@ fn bio_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::Bio
     etat.lib.lock().map_err(echec)?.bio_pour_piste(id).map_err(echec)
 }
 
+/// La biographie d'un artiste par MBID direct, chargée à l'ouverture de sa
+/// grille d'albums au centre (`docs/interface-guidelines.md`, Règle 1,
+/// exception du 15 septembre 2026) — pas de MBID, pas d'appel côté UI.
+#[tauri::command(async)]
+fn bio_artiste(etat: State<Etat>, mbid: String) -> Result<Option<rusty_music_core::db::BioArtiste>, String> {
+    etat.lib.lock().map_err(echec)?.bio_pour_artiste(&mbid).map_err(echec)
+}
+
 /// Avancement de la passe de critiques CritiqueBrainz, sondé par l'interface.
 #[derive(Default, Clone, serde::Serialize)]
 struct EtatCritiques {
@@ -6829,6 +6837,7 @@ fn main() {
             start_biographies,
             biographies_state,
             bio_piste,
+            bio_artiste,
             start_critiques,
             critiques_state,
             critiques_piste,

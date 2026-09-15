@@ -3494,6 +3494,26 @@ impl Library {
         Ok(out)
     }
 
+    /// La biographie connue pour un artiste, par MBID direct — pour la vue
+    /// centrale « albums de cet artiste » (mode Écoute), indépendante de
+    /// toute piste sélectionnée. `bio_pour_piste` reste la voie de
+    /// l'inspecteur, qui part d'une piste et résout son/ses MBID d'artiste.
+    pub fn bio_pour_artiste(&self, mbid: &str) -> Result<Option<BioArtiste>> {
+        let row = self.conn.query_row(
+            "SELECT mb_artist_id, biographie_en, biographie_fr
+               FROM theaudiodb_artistes WHERE mb_artist_id = ?1",
+            params![mbid],
+            |r| {
+                Ok(BioArtiste {
+                    mb_artist_id: r.get(0)?,
+                    biographie_en: r.get(1)?,
+                    biographie_fr: r.get(2)?,
+                })
+            },
+        ).optional()?;
+        Ok(row)
+    }
+
     /* --------------------------------------- crédits Discogs (dumps CC0) */
 
     /// Les MBID d'édition (`tracks.mb_release_id`) dont le lien Discogs reste
