@@ -1653,9 +1653,12 @@ function majAutourArtiste(artiste, mbid) {
 }
 
 /// « Sonne comme » : les artistes les plus proches par empreinte CLAP
-/// (`artistes_proches`, centroïdes d'album agrégés par artiste côté moteur).
-/// L'opacité de chaque pastille retombe avec l'éloignement, jusqu'à 45 % pour
-/// la plus lointaine montrée — la force du lien, pas sa catégorie.
+/// (`artistes_proches`, centroïdes d'album agrégés par artiste côté moteur),
+/// montrés par une pochette suggérée (`artist_covers`, comme la mosaïque de
+/// `carteArtiste`) plutôt qu'un simple nom — plus agréable à l'œil, et une
+/// invitation à découvrir plus explicite qu'une pastille de texte. L'opacité
+/// de chaque tuile retombe avec l'éloignement, jusqu'à 45 % pour la plus
+/// lointaine montrée — la force du lien, pas sa catégorie.
 async function majAutourSonore(artiste, jeton) {
   const bloc = $("autour-sonore-bloc");
   let proches = [];
@@ -1674,11 +1677,29 @@ async function majAutourSonore(artiste, jeton) {
   hote.replaceChildren();
   for (const [nom, distance] of proches) {
     const el = document.createElement("button");
-    el.className = "proche";
-    el.textContent = nom;
+    el.className = "proche-pochette";
     el.style.opacity = String(1 - 0.55 * (distance / pire));
+    el.innerHTML = `<div class="proche-pochette__image"><span></span></div>
+                     <span class="proche-pochette__nom"></span>`;
+    el.querySelector(".proche-pochette__nom").textContent = nom;
     el.addEventListener("click", () => ouvrirAlbumsArtiste(nom, null));
     hote.appendChild(el);
+
+    const image = el.querySelector(".proche-pochette__image");
+    const repli = () => {
+      if (!el.isConnected) return;
+      image.classList.add("proche-pochette__image--vide");
+      image.style.setProperty("--teinte", teinteNom(nom));
+      image.querySelector("span").textContent = initiales(nom);
+    };
+    invoke("artist_covers", { name: nom, mbid: null, max: 1 })
+      .then((chemins) => (chemins.length > 0 ? pochette(chemins[0]) : null))
+      .then((img) => {
+        if (!el.isConnected) return;
+        if (img) image.style.backgroundImage = `url("${img}")`;
+        else repli();
+      })
+      .catch(repli);
   }
   bloc.hidden = false;
 }
@@ -1726,6 +1747,28 @@ async function majAutourCollab(mbid, jeton) {
   }
   bloc.hidden = false;
 }
+
+/// Radio « dans l'esprit de cet artiste » — même mécanisme que le ✦ d'une
+/// case d'album ou de l'inspecteur (`genererAlchimie`/`insp-alchimie`), mais
+/// le pivot (`path_artist`, côté moteur) est cherché sur l'ensemble des
+/// morceaux de l'artiste plutôt qu'un seul album : l'équivalent de
+/// « Sonne comme » mais pour écouter tout de suite plutôt que naviguer.
+$("autour-radio").addEventListener("click", () => {
+  const { nom, mbid } = dernierArtisteOuvert;
+  if (!nom) return;
+  composerAlchimie({
+    bouton: $("autour-radio"),
+    chemin: () =>
+      invoke("path_artist", {
+        artist: nom,
+        mbid: mbid || null,
+        steps: ALCHIMIE_PISTES,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        bruit: bruitChemin,
+      }),
+    demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
+  });
+});
 
 /// Le nom de l'artiste, dans l'inspecteur, ouvre ses albums au centre — le
 /// même geste que cliquer l'artiste depuis la liste « Artistes », mais depuis

@@ -322,6 +322,16 @@
              septembre 2026) : elle dépend de l'artiste ouvert au centre, pas
              du morceau en cours d'écoute. -->
         <div id="autour-artiste" class="autour-artiste" hidden>
+          <!-- Radio « dans l'esprit de cet artiste » — même mécanisme que le
+               ✦ d'un album ou d'un morceau (`composerAlchimie`), mais le
+               pivot est cherché sur l'ensemble des morceaux de l'artiste
+               (`path_artist`). Toujours visible : ne dépend ni de la bio ni
+               de « Sonne comme », seulement d'un artiste ouvert. -->
+          <button id="autour-radio" class="bouton autour-artiste__radio" type="button"
+                  title="Playlist dans l'esprit de cet artiste">
+            <span class="autour-artiste__radio-glyphe" aria-hidden="true">✦</span>
+            Radio à partir de cet artiste
+          </button>
           <div id="autour-bio-bloc" class="autour-artiste__section" hidden>
             <p class="rail__titre">Biographie</p>
             <p id="autour-bio" class="insp__bio"></p>
@@ -329,7 +339,7 @@
           </div>
           <div id="autour-sonore-bloc" class="autour-artiste__section" hidden>
             <p class="rail__titre">Sonne comme</p>
-            <div id="autour-sonore" class="proches"></div>
+            <div id="autour-sonore" class="proches proches--pochettes"></div>
           </div>
           <div id="autour-collab-bloc" class="autour-artiste__section" hidden>
             <p class="rail__titre">A aussi joué avec</p>

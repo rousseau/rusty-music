@@ -549,6 +549,45 @@ html, body {
   cursor: pointer; white-space: nowrap;
 }
 .proche:hover { color: var(--accent); border-color: var(--accent); }
+
+/* « Sonne comme » : une pochette d'un album suggéré plutôt qu'un simple nom
+   (`majAutourSonore`) — plus agréable à l'œil, et amorce déjà la tuile
+   d'artiste (`carteArtiste`) qu'on retrouve en ouvrant cet artiste suggéré.
+   Repli sans pochette : mêmes initiales sur aplat teinté que `.mosaique--vide`. */
+.proches--pochettes { gap: 12px; padding: 2px 2px 6px; }
+.proche-pochette {
+  flex: 0 0 auto; width: 76px; background: none; border: none; padding: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font: inherit; color: var(--txt); cursor: pointer;
+}
+.proche-pochette__image {
+  width: 76px; height: 76px; border-radius: 6px; overflow: hidden;
+  background: var(--panel2) center/cover; border: 1px solid var(--line);
+  display: grid; place-items: center; transition: border-color .15s ease;
+}
+.proche-pochette:hover .proche-pochette__image { border-color: var(--accent); }
+.proche-pochette__image--vide {
+  background: hsl(var(--teinte, 220) 22% 30%);
+  color: hsl(var(--teinte, 220) 30% 82%);
+  font-size: 20px; font-weight: 600; letter-spacing: .5px;
+}
+.proche-pochette__nom {
+  max-width: 76px; font-size: 11.5px; line-height: 1.25; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.proche-pochette:hover .proche-pochette__nom { color: var(--accent); }
+
+/* Bouton « radio », en tête du bandeau « autour de cet artiste » — même
+   glyphe ✦ que les boutons alchimie de la grille/l'inspecteur, mais en pilule
+   étiquetée : ce bandeau n'a pas de pochette unique sur laquelle le poser en
+   icône flottante. */
+.autour-artiste__radio {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px;
+}
+.autour-artiste__radio.alchimie--travail { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.autour-artiste__radio.alchimie--travail .autour-artiste__radio-glyphe {
+  display: inline-block; animation: alchimie-tourne 1.5s linear infinite;
+}
 .grille__socle { position: relative; width: 100%; }
 .grille__fenetre {
   position: absolute; left: 0; right: 0; top: 0;

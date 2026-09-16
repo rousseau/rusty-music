@@ -2647,6 +2647,48 @@ fn path_album(
     pistes_de(&etat, &route)
 }
 
+/// Playlist « dans l'esprit de l'artiste » — même principe que [`path_album`],
+/// mais le pivot est cherché sur l'ensemble des morceaux de l'artiste plutôt
+/// qu'un seul album : le bouton « radio » du bandeau « autour de cet artiste »
+/// (panneau central du mode Écoute), à côté de « Sonne comme ».
+#[tauri::command(async)]
+fn path_artist(
+    etat: State<Etat>,
+    artist: String,
+    mbid: Option<String>,
+    steps: usize,
+    seed: u64,
+    bruit: Option<f32>,
+) -> Result<Vec<TrackRow>, String> {
+    let ids: Vec<i64> = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        let albums = lib.albums_of_artist(mbid.as_deref(), &artist).map_err(echec)?;
+        let mut ids = Vec::new();
+        for album in albums {
+            ids.extend(
+                lib.tracks_of_album(&album.name, album.artist.as_deref())
+                    .map_err(echec)?
+                    .into_iter()
+                    .map(|t| t.id),
+            );
+        }
+        ids
+    };
+
+    let vecteurs = charger_vecteurs(&etat)?;
+    let pivot = *rusty_music_analysis::chemin::parcours(&vecteurs, &ids)
+        .first()
+        .ok_or("aucun morceau analysé pour cet artiste")?;
+
+    let route = construire_graphe(&etat, &vecteurs)?.errance(
+        pivot,
+        steps,
+        seed,
+        bruit.unwrap_or(BRUIT_DEFAUT),
+    );
+    pistes_de(&etat, &route)
+}
+
 /// Interprétation d'un prompt de playlist en texte libre (champ d'intention
 /// d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
 /// voir `path_texte_interpreter` puis `path_texte`.
@@ -6916,6 +6958,7 @@ fn main() {
             path,
             path_drawn,
             path_album,
+            path_artist,
             path_texte_interpreter,
             path_texte,
             ollama_modeles,
