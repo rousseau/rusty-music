@@ -59,7 +59,7 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 anyhow    = "1"
 thiserror = "2"
-rusqlite  = { version = "0.32", features = ["bundled"] }
+rusqlite  = { version = "0.32", features = ["bundled", "functions"] }
 lofty     = "0.22"
 notify    = "8"
 walkdir   = "2"

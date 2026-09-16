@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
@@ -11,6 +12,25 @@ use crate::tags::TrackMeta;
 
 pub struct Library {
     pub conn: Connection,
+}
+
+/// Enregistre `titre_normalise(t)` côté SQLite, pour que les jointures vers
+/// `mb_release_groups.title_norm` appliquent exactement la même normalisation
+/// que celle qui a rempli cette colonne ([`crate::musicbrainz::normaliser_titre`]).
+/// Sans ça, `title_norm` retire les espaces (« temple of the dog » →
+/// « templeofthedog ») mais une jointure en `lower(trim(...))` les garde : la
+/// jointure ne matche jamais pour un titre à plusieurs mots, et l'année
+/// bascule silencieusement sur celle du tag.
+fn enregistrer_fonctions(conn: &Connection) -> rusqlite::Result<()> {
+    conn.create_scalar_function(
+        "titre_normalise",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let titre: String = ctx.get::<Option<String>>(0)?.unwrap_or_default();
+            Ok(crate::musicbrainz::normaliser_titre(&titre))
+        },
+    )
 }
 
 /// Résumé d'un morceau tel que servi à l'interface.
@@ -946,6 +966,7 @@ impl Library {
         let conn = Connection::open(db_path)?;
         conn.execute_batch(include_str!("../sql/schema.sql"))?;
         migrate(&conn)?;
+        enregistrer_fonctions(&conn)?;
         Ok(Self { conn })
     }
 
@@ -954,6 +975,7 @@ impl Library {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(include_str!("../sql/schema.sql"))?;
         migrate(&conn)?;
+        enregistrer_fonctions(&conn)?;
         Ok(Self { conn })
     }
 
@@ -4022,7 +4044,7 @@ impl Library {
             .ordre_darrivee()?
             .into_iter()
             .map(|a| {
-                let annee = (a.source != "ingestion").then(|| (a.date / 10_000) as i64);
+                let annee = (a.source != "ingestion").then_some((a.date / 10_000) as i64);
                 (a.track_id, annee)
             })
             .collect();
@@ -4069,7 +4091,7 @@ impl Library {
                FROM tracks t
                LEFT JOIN mb_release_groups r
                       ON r.artist_mbid = t.mb_album_artist_id
-                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+                     AND r.title_norm = titre_normalise(t.album)
               GROUP BY t.id
               ORDER BY t.id",
         )?;
@@ -4490,7 +4512,7 @@ impl Library {
                FROM tracks t
                LEFT JOIN mb_release_groups r
                       ON r.artist_mbid = t.mb_album_artist_id
-                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+                     AND r.title_norm = titre_normalise(t.album)
               WHERE t.album IS NOT NULL
                 AND ( (COALESCE(?1, (SELECT mbid FROM resolu)) IS NOT NULL
                        AND t.mb_album_artist_id = COALESCE(?1, (SELECT mbid FROM resolu)))
@@ -4519,7 +4541,7 @@ impl Library {
                FROM tracks t
                LEFT JOIN mb_release_groups r
                       ON r.artist_mbid = t.mb_album_artist_id
-                     AND r.title_norm = lower(trim(COALESCE(t.album, '')))
+                     AND r.title_norm = titre_normalise(t.album)
               WHERE t.album IS NOT NULL
                 AND (?1 IS NULL OR t.album_artist = ?1 OR t.artist = ?1)
               GROUP BY t.album, COALESCE(t.album_artist, t.artist)
@@ -7430,6 +7452,47 @@ mod tests_ordre {
             albums[0].year,
             Some(1973),
             "l'année de l'album doit suivre MusicBrainz, pas le seul tag"
+        );
+    }
+
+    /// Un titre à plusieurs mots doit rejoindre son release-group tout
+    /// autant qu'un titre d'un seul mot. `title_norm` retire les espaces
+    /// (`normaliser_titre`) : la jointure doit appliquer la même
+    /// normalisation, pas un simple `lower(trim(...))` qui les garde — sinon
+    /// la jointure ne matche jamais et l'année retombe silencieusement sur
+    /// celle du tag (ex. réédition 2016 au lieu de la sortie 1991).
+    #[test]
+    fn mb_poser_albums_rejoint_un_titre_a_plusieurs_mots() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Temple of the Dog".into()),
+            album_artist: Some("Temple of the Dog".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(2016), // année de la réédition 25e anniversaire
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Temple of the Dog".into(),
+                crate::musicbrainz::normaliser_titre("Temple of the Dog"),
+                Vec::new(),
+                Some("1991-04-16".into()),
+                None,
+            )],
+        )
+        .unwrap();
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(
+            albums[0].year,
+            Some(1991),
+            "l'année doit suivre MusicBrainz (sortie d'origine), pas le tag (réédition)"
         );
     }
 

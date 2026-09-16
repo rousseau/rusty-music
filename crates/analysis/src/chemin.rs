@@ -1397,7 +1397,7 @@ mod tests {
         let g = Graphe::construire(&e, 20, 6);
         let cible = empreinte_de(&e, 59);
 
-        let route = g.guidee(&e, 0, &[cible.clone()], 20, 1, 0.2);
+        let route = g.guidee(&e, 0, std::slice::from_ref(&cible), 20, 1, 0.2);
         assert_eq!(route.first(), Some(&0));
         assert_eq!(route.len(), 20, "la marche s'est arrêtée tôt : {route:?}");
 
@@ -1429,10 +1429,10 @@ mod tests {
         let g = Graphe::construire(&e, 8, 2);
         let cible = empreinte_de(&e, 55);
 
-        let a = g.guidee(&e, 10, &[cible.clone()], 15, 42, 0.333);
+        let a = g.guidee(&e, 10, std::slice::from_ref(&cible), 15, 42, 0.333);
         assert_eq!(
             a,
-            g.guidee(&e, 10, &[cible.clone()], 15, 42, 0.333),
+            g.guidee(&e, 10, std::slice::from_ref(&cible), 15, 42, 0.333),
             "même graine, même bruit, même marche"
         );
         assert_ne!(
