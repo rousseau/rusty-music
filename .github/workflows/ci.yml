@@ -48,6 +48,7 @@ jobs:
         with:
           path: |
             models/clap-audio-encoder-b5.onnx
+            models/clap-text-encoder.onnx
             models/htdemucs.safetensors
             models/aero-11025-44100.onnx
           key: modeles-${{ hashFiles('scripts/telecharger-modeles.sh') }}
