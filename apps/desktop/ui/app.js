@@ -2211,6 +2211,10 @@ async function montrerCritiques(t) {
   const vise = t.path;
   bloc.hidden = true;
   lienBloc.hidden = true;
+  // Vidé ici, pas seulement dans la branche « critiques trouvées » plus bas :
+  // sinon une critique de l'ancien morceau reste dans le DOM et réapparaît
+  // dès que le bloc redevient visible pour l'invite « écrire une critique ».
+  hote.replaceChildren();
 
   let critiques = [];
   try {
@@ -2236,7 +2240,6 @@ async function montrerCritiques(t) {
     return;
   }
 
-  hote.replaceChildren();
   for (const c of critiques) {
     const el = document.createElement("article");
     el.className = "critique";
