@@ -325,13 +325,23 @@
           <!-- Radio « dans l'esprit de cet artiste » — même mécanisme que le
                ✦ d'un album ou d'un morceau (`composerAlchimie`), mais le
                pivot est cherché sur l'ensemble des morceaux de l'artiste
-               (`path_artist`). Toujours visible : ne dépend ni de la bio ni
-               de « Sonne comme », seulement d'un artiste ouvert. -->
-          <button id="autour-radio" class="bouton autour-artiste__radio" type="button"
-                  title="Playlist dans l'esprit de cet artiste">
-            <span class="autour-artiste__radio-glyphe" aria-hidden="true">✦</span>
-            Radio à partir de cet artiste
-          </button>
+               (`path_artist`). Playlist — juste ses morceaux à lui, mélangés
+               (`shuffle_artist`), sans graphe ni route sur la carte
+               (`composerAlchimie({graphe: false})`). Toujours visibles : ne
+               dépendent ni de la bio ni de « Sonne comme », seulement d'un
+               artiste ouvert. -->
+          <div class="autour-artiste__actions">
+            <button id="autour-radio" class="bouton autour-artiste__radio" type="button"
+                    title="Playlist dans l'esprit de cet artiste">
+              <span class="autour-artiste__radio-glyphe" aria-hidden="true">✦</span>
+              Radio à partir de cet artiste
+            </button>
+            <button id="autour-playlist" class="bouton autour-artiste__radio" type="button"
+                    title="Playlist mélangée de tous les morceaux de cet artiste">
+              <span class="autour-artiste__radio-glyphe" aria-hidden="true">⇄</span>
+              Playlist de cet artiste
+            </button>
+          </div>
           <div id="autour-bio-bloc" class="autour-artiste__section" hidden>
             <p class="rail__titre">Biographie</p>
             <p id="autour-bio" class="insp__bio"></p>

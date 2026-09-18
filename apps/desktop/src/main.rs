@@ -1950,6 +1950,28 @@ fn pistes_de(etat: &State<Etat>, route: &[i64]) -> Result<Vec<TrackRow>, String>
     Ok(pistes)
 }
 
+/// Mélange en place, tirage non-déterministe (graine tirée de l'horloge à
+/// chaque appel) — même principe que le xorshift64* de `crates/player`,
+/// dupliqué ici faute d'être exporté, pour rester sans dépendance nouvelle.
+fn melanger_non_deterministe<T>(tranche: &mut [T]) {
+    let graine = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0x9E3779B97F4A7C15)
+        | 1;
+    let mut etat = graine;
+    let mut suivant = || {
+        etat ^= etat << 13;
+        etat ^= etat >> 7;
+        etat ^= etat << 17;
+        etat
+    };
+    for i in (1..tranche.len()).rev() {
+        let j = (suivant() % (i as u64 + 1)) as usize;
+        tranche.swap(i, j);
+    }
+}
+
 /// Construit le graphe des voisins si le nombre d'empreintes a changé.
 ///
 /// Le balayage est complet — une dizaine de secondes sur la bibliothèque
@@ -2687,6 +2709,33 @@ fn path_artist(
         bruit.unwrap_or(BRUIT_DEFAUT),
     );
     pistes_de(&etat, &route)
+}
+
+/// Playlist mélangée de tous les morceaux d'un artiste — un vrai tirage
+/// aléatoire, renouvelé à chaque appel, pas une dérive sonique comme
+/// `path_artist` : aucun besoin de vecteurs CLAP, fonctionne même pour un
+/// artiste non analysé. Bouton « Playlist de cet artiste » du bandeau
+/// « autour de cet artiste » (panneau central du mode Écoute).
+#[tauri::command(async)]
+fn shuffle_artist(
+    etat: State<Etat>,
+    artist: String,
+    mbid: Option<String>,
+) -> Result<Vec<TrackRow>, String> {
+    let mut pistes = {
+        let lib = etat.lib.lock().map_err(echec)?;
+        let albums = lib.albums_of_artist(mbid.as_deref(), &artist).map_err(echec)?;
+        let mut pistes = Vec::new();
+        for album in albums {
+            pistes.extend(
+                lib.tracks_of_album(&album.name, album.artist.as_deref())
+                    .map_err(echec)?,
+            );
+        }
+        pistes
+    };
+    melanger_non_deterministe(&mut pistes);
+    Ok(pistes)
 }
 
 /// Interprétation d'un prompt de playlist en texte libre (champ d'intention
@@ -6959,6 +7008,7 @@ fn main() {
             path_drawn,
             path_album,
             path_artist,
+            shuffle_artist,
             path_texte_interpreter,
             path_texte,
             ollama_modeles,

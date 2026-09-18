@@ -778,7 +778,12 @@ function genererAlchimie(item, bouton) {
 /// trois boutons ✦ visent toujours `ALCHIMIE_PISTES`, mais le champ
 /// d'intention d'Explorer (`composerPlanTexte`) laisse l'utilisateur choisir
 /// son propre nombre de morceaux.
-async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES }) {
+///
+/// `graphe` : `false` pour une simple playlist mélangée (« Playlist de cet
+/// artiste », `shuffle_artist`) — pas de dérive sonique, donc ni préparation
+/// du graphe de voisins ni route sur la carte, et pas de piste « graine »
+/// dans la file (aucun pivot, juste un mélange).
+async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES, graphe = true }) {
   if (alchimieEnCours) return;
   alchimieEnCours = true;
   const fileEtaitOuverte = !$("file").hidden;
@@ -789,11 +794,13 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
   bouton.classList.add("alchimie--travail");
   demarrerCompositionFile(cible);
   basculerFile(true);
-  const jauge = sonderGrapheProgres();
+  const jauge = graphe ? sonderGrapheProgres() : null;
 
   try {
-    await preparerGraphe();
-    clearInterval(jauge);
+    if (graphe) {
+      await preparerGraphe();
+      clearInterval(jauge);
+    }
     phaseCompositionFile("Composition de la playlist…");
 
     pistes = await chemin();
@@ -801,19 +808,19 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
 
     inspecter(pistes[0]);
     fileCourante = pistes;
-    tracerRouteSurCarte(pistes);
+    if (graphe) tracerRouteSurCarte(pistes);
     // Lecture tout de suite ; le sondage d'état qui démarre avec elle
     // voudra redessiner la file, `fileCompositionActive` l'en empêche
     // jusqu'à la fin du défilement.
     demarrerLecture(() => demarrer(pistes)).catch((e) => remonter(e, "composerAlchimie"));
-    await revelerFile(pistes);
+    await revelerFile(pistes, { graine: graphe });
   } catch (e) {
     echec = true;
     // Auparavant : la file se refermait ou restait vide sans indice — un clic
     // sur ✦ suivi d'une jauge qui tourne puis de rien.
     signalerErreur("file-compo-phase", "échec de la composition de la playlist", e, "composerAlchimie");
   } finally {
-    clearInterval(jauge);
+    if (jauge) clearInterval(jauge);
     bouton.disabled = false;
     bouton.classList.remove("alchimie--travail");
     alchimieEnCours = false;
@@ -1140,20 +1147,22 @@ function ligneSquelette(i) {
 
 /// Une piste posée dans la file en composition — même gabarit que
 /// `dessinerFile`, avec l'animation d'entrée et, pour la première, la marque
-/// « graine » : c'est le morceau d'où part la dérive.
-function ligneComposee(t, i) {
+/// « graine » : c'est le morceau d'où part la dérive. `graine = false` pour
+/// une playlist mélangée (`shuffle_artist`) : pas de pivot, la première
+/// piste n'a rien de spécial.
+function ligneComposee(t, i, graine = true) {
+  const estGraine = graine && i === 0;
   const el = document.createElement("div");
   el.className = "file__ligne file__ligne--pose";
-  if (i === 0) el.classList.add("file__ligne--graine");
+  if (estGraine) el.classList.add("file__ligne--graine");
   el.innerHTML = `<span class="file__rang"></span>
                   <span class="file__txt"><b></b><span></span></span>
                   <span class="file__duree"></span>`;
-  el.children[0].textContent = i === 0 ? "✦" : i + 1;
+  el.children[0].textContent = estGraine ? "✦" : i + 1;
   el.children[1].children[0].textContent = txt(t.title, "(sans titre)");
-  el.children[1].children[1].textContent =
-    i === 0
-      ? `graine · ${txt(t.artist, "(sans artiste)")}`
-      : txt(t.artist, "(sans artiste)");
+  el.children[1].children[1].textContent = estGraine
+    ? `graine · ${txt(t.artist, "(sans artiste)")}`
+    : txt(t.artist, "(sans artiste)");
   el.children[2].textContent = duree(t.duration_ms);
   el.addEventListener("click", async () => {
     await demarrerLecture(() => invoke("jump_to", { index: i }));
@@ -1164,8 +1173,8 @@ function ligneComposee(t, i) {
 /// Remplace les emplacements vides par les vraies pistes, une par battement,
 /// pour donner à voir la playlist se construire. Le trajet est déjà entier —
 /// l'errance est instantanée — c'est un rythme d'affichage, pas de calcul, et
-/// l'ordre est le vrai ordre de la dérive.
-async function revelerFile(pistes) {
+/// l'ordre est le vrai ordre de la dérive (ou du mélange, voir `graine`).
+async function revelerFile(pistes, { graine = true } = {}) {
   const hote = $("file-liste");
   // La longueur cible affichée d'emblée peut différer du trajet rendu
   // (échantillonnage côté moteur) : on réajuste les emplacements.
@@ -1174,7 +1183,7 @@ async function revelerFile(pistes) {
   while (hote.children.length > pistes.length) hote.lastChild.remove();
 
   for (let i = 0; i < pistes.length; i++) {
-    hote.replaceChild(ligneComposee(pistes[i], i), hote.children[i]);
+    hote.replaceChild(ligneComposee(pistes[i], i, graine), hote.children[i]);
     $("file-compte").textContent = `${i + 1} / ${pistes.length}`;
     majBarreCompo(i + 1, pistes.length);
     await new Promise((r) => setTimeout(r, 55));
@@ -1766,6 +1775,21 @@ $("autour-radio").addEventListener("click", () => {
         seed: Math.floor(Math.random() * 2 ** 31),
         bruit: bruitChemin,
       }),
+    demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
+  });
+});
+
+/// Playlist de cet artiste — uniquement ses propres morceaux, mélangés côté
+/// moteur (`shuffle_artist`) à chaque clic : pas une dérive sonique comme
+/// « Radio à partir de cet artiste », donc pas de graphe à préparer ni de
+/// route à tracer sur la carte (`composerAlchimie({graphe: false})`).
+$("autour-playlist").addEventListener("click", () => {
+  const { nom, mbid } = dernierArtisteOuvert;
+  if (!nom) return;
+  composerAlchimie({
+    bouton: $("autour-playlist"),
+    graphe: false,
+    chemin: () => invoke("shuffle_artist", { artist: nom, mbid: mbid || null }),
     demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
   });
 });

@@ -577,13 +577,17 @@ html, body {
 }
 .proche-pochette:hover .proche-pochette__nom { color: var(--accent); }
 
-/* Bouton « radio », en tête du bandeau « autour de cet artiste » — même
-   glyphe ✦ que les boutons alchimie de la grille/l'inspecteur, mais en pilule
-   étiquetée : ce bandeau n'a pas de pochette unique sur laquelle le poser en
-   icône flottante. */
-.autour-artiste__radio {
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px;
+/* Rangée « radio » + « playlist », en tête du bandeau « autour de cet
+   artiste » — même glyphe ✦ que les boutons alchimie de la grille/
+   l'inspecteur, mais en pilules étiquetées : ce bandeau n'a pas de pochette
+   unique sur laquelle les poser en icône flottante. */
+.autour-artiste__actions {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
 }
+.autour-artiste__radio {
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.autour-artiste__radio-glyphe { font-size: 15px; line-height: 1; }
 .autour-artiste__radio.alchimie--travail { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .autour-artiste__radio.alchimie--travail .autour-artiste__radio-glyphe {
   display: inline-block; animation: alchimie-tourne 1.5s linear infinite;
