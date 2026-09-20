@@ -52,6 +52,12 @@ Radiohead), stockés avec leur MBID et la date de récupération.
 - Attribution : aucune obligation, mais mention discrète « source :
   TheAudioDB » sous la biographie dans le panneau de droite, par courtoisie —
   même traitement que les crédits Discogs.
+- **Photo d'artiste (mode Découvrir).** La même réponse porte `strArtistThumb` ;
+  `Client::vignette_par_mbid` la télécharge, sous la même vérification du
+  `strMusicBrainzID`. Elle sert de **repli** aux photos des artistes voisins
+  (`decouvrir_photo_artiste`), après la recherche d'artiste Deezer — par nom, donc
+  filtrée : nom normalisé identique, image non vide, artiste le plus suivi. Voir
+  `docs/journal.md`, « Découvrir : du fil en lignes à une grille de pochettes ».
 
 ## 2. Discogs — crédits et label par édition, via les dumps CC0
 

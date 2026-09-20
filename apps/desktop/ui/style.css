@@ -1173,46 +1173,92 @@ html, body {
 #decouvrir-avancement {
   font-family: var(--mono); font-size: 11px; margin: 4px 0 0; min-height: 1.4em;
 }
-/* Onglets du panneau central — collants, pour rester en vue au défilement. */
+/* Onglets du panneau central — collants, pour rester en vue au défilement.
+   Les marges de part et d'autre sont peintes du fond (ombres pleines), sinon
+   les titres des cartes défilent visibles dans ces interstices ; `top: -10px`
+   = le padding haut de `.bibliotheque` (24px) moins la marge peinte (14px),
+   pour que la bande peinte touche le bord haut du panneau. */
 #decouvrir-onglets {
-  position: sticky; top: 0; z-index: 2; background: var(--bg);
+  position: sticky; top: -10px; z-index: 2; background: var(--bg);
   margin: 14px 0 12px;
+  box-shadow: 0 -14px 0 var(--bg), 0 12px 0 var(--bg);
 }
 .segment__n {
   font-family: var(--mono); font-size: 9.5px; opacity: .7; margin-left: 4px;
 }
 .decouvrir-panneau { min-height: 60px; }
 
-/* Une ligne du fil : pochette · corps · liens. */
-.decouvrir-liste { display: flex; flex-direction: column; }
-.decouvrir-ligne {
-  display: flex; align-items: center; gap: 11px;
-  padding: 7px 4px; border-bottom: 1px solid var(--line);
+/* Le fil en grille : les cases d'album d'Écouter (`.album`), non virtualisées —
+   ~60 cartes au plus, à la même largeur fixe (`--album-larg`, posée depuis
+   `ALBUM_LARG` dans `app.js`) et aux mêmes marges latérales que la grille
+   d'Écouter. Pleine largeur ; seul l'explorateur du bas garde une mesure de
+   lecture. Les cartes ont des hauteurs variables (ligne « avec X »),
+   d'où `align-items: start`. */
+#decouvrir-vue.bibliotheque { max-width: none; padding-left: 26px; padding-right: 26px; }
+#decouvrir-fil, #decouvrir-vide, #decouvrir-centre { max-width: 760px; }
+#decouvrir-centre { scroll-margin-top: 12px; }
+
+.decouvrir-periode + .decouvrir-periode { margin-top: 22px; }
+.decouvrir-periode__titre {
+  font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--mut); margin: 0 0 10px;
 }
-.decouvrir-ligne--nouveau { box-shadow: inset 2px 0 0 var(--accent); }
-.decouvrir-ligne__pochette {
-  width: 44px; height: 44px; flex: none; border-radius: 3px;
-  background: repeating-linear-gradient(135deg, var(--panel2) 0 7px, var(--panel) 7px 14px);
+.decouvrir-grille {
+  display: grid; gap: 18px 14px; align-items: start;
+  grid-template-columns: repeat(auto-fill, var(--album-larg, 140px)); justify-content: start;
 }
-.decouvrir-ligne__pochette--pleine { background: none; }
-.decouvrir-ligne__pochette img {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 3px; display: block;
+
+.album--decouvrir { min-width: 0; transition: opacity .15s ease; }
+.album--decouvrir:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+/* Hors filtre par famille : estompée, pas retirée (R2) — la grille ne bouge pas. */
+.album--estompe { opacity: .25; }
+.album--estompe:hover, .album--estompe:focus-within { opacity: 1; }
+/* Le repli `.mosaique--vide` et le bandeau de survol suivent l'arrondi de la pochette. */
+.album--decouvrir .album__pochette { overflow: hidden; }
+
+/* Portrait d'artiste (voisins) : cadré vers le haut, pour ne pas couper les visages. */
+.album__pochette--photo { background-position: center 25%; }
+
+.album__meta {
+  font-family: var(--mono); font-size: 10.5px; line-height: 14px; color: var(--mut);
+  margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.decouvrir-ligne__corps { flex: 1; min-width: 0; }
-.decouvrir-ligne__titre {
-  font-size: 12.5px; color: var(--txt);
+.album__collab {
+  font-size: 11px; line-height: 14px; font-style: italic; color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.decouvrir-ligne__sous,
-.decouvrir-ligne__collab {
-  font-size: 11px; color: var(--mut);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+
+/* « Nouveau » : un point d'accent sur la pochette, sans toucher aux hauteurs. */
+.album--nouveau .album__pochette::after {
+  content: ""; position: absolute; top: 7px; right: 7px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg);
 }
-.decouvrir-ligne__collab { font-style: italic; }
-.decouvrir-ligne__liens {
-  flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+/* EP / Single ; l'album, cas courant, n'a pas de pastille. */
+.album__type {
+  position: absolute; top: 7px; left: 7px; z-index: 1;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+  background: var(--bg); color: var(--txt); padding: 2px 6px; border-radius: 2px;
 }
-.decouvrir-ligne__liens .lien { font-size: 11px; }
+/* Liens sortants, étiquetés en toutes lettres, révélés au survol ou au clavier
+   comme les boutons ▶ / ✦ de la grille d'Écouter (60 cartes = 120 cibles). */
+.album__actions {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px;
+  padding: 22px 4px 6px; border-radius: 0 0 3px 3px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .7));
+  opacity: 0; transform: translateY(3px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.album--decouvrir:hover .album__actions,
+.album--decouvrir:focus-within .album__actions { opacity: 1; transform: translateY(0); }
+.album__action {
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--txt); color: var(--bg); font: inherit; font-size: 10px;
+  padding: 3px 7px; transition: background .15s ease;
+}
+.album__action:hover:not(:disabled), .album__action:focus-visible { background: var(--accent); }
+.album__action:disabled { opacity: .6; cursor: wait; }
 .lien--inline { padding: 0; font-size: inherit; color: var(--mut); }
 .lien--inline:hover { color: var(--accent); }
 .decouvrir-separateur {

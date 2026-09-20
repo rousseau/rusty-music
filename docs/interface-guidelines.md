@@ -277,9 +277,9 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | `#decouvrir-centre` (nom d'artiste, fil de collaborations) n'est pas un inspecteur de morceau redondant : c'est le contenu central propre à ce mode, au même titre que la grille d'albums l'est pour Écouter. Aucune métadonnée de morceau (pochette, tempo, durée…) n'y est dupliquée. |
-| 2 | Estomper, jamais masquer | ❌ | Le filtre par famille du fil d'actualité retire réellement les entrées : `rendreFilDecouvrir()` calcule `sorties`/`collaborations`/`voisins` via `.filter(sortiePasseFamille)` / `.filter(voisinPasseFamille)` (`app.js:6217-6219`) **avant** de les passer au rendu — les entrées écartées ne sont jamais construites dans le DOM, encore moins atténuées. Même mécanisme et même bloc de légende que `dessinerFamillesDecouvrir` (`app.js:6265-6278`), qui pourtant se réclame en commentaire de « même légende que le mode Explorer » sans en reprendre le comportement de fondu. |
+| 2 | Estomper, jamais masquer | ✅ | **Résolu le 20 septembre 2026** avec le passage du fil en grille de pochettes : `rendreFilDecouvrir()` construit toutes les cartes, et celles hors du filtre par famille (`sortiePasseFamille` / `voisinPasseFamille`) reçoivent `.album--estompe` (opacité .25, pleine au survol) au lieu d'être retirées. La grille ne se recompose donc pas ; seuls les compteurs d'onglets suivent le filtre. |
 | 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `app.js:6266`). |
-| 4 | Stabilité des positions | ✅ | Naviguer entre artistes pousse sur un fil d'Ariane (`decouvrirFil`) sans réordonner la liste de collaborations déjà affichée. |
+| 4 | Stabilité des positions | ✅ | Naviguer entre artistes pousse sur un fil d'Ariane (`decouvrirFil`) sans réordonner la liste de collaborations déjà affichée ; le filtre par famille estompe sans recomposer la grille. |
 | 5 | Sobriété stricte | ✅ | Trois onglets (Sorties/Collaborations/À écouter ailleurs), un fil, une légende de familles repliable — pas d'empilement. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
 | 7 | Zoom/pan cohérents | — | Pas de zoom dans ce mode. |

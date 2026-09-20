@@ -4381,13 +4381,20 @@ fn decouvrir_tout_vu(etat: State<Etat>) -> Result<(), String> {
 /// mais servie depuis Cover Art Archive plutôt que des tags d'un fichier local.
 ///
 /// Cache disque partagé avec les pochettes locales (`<données app>/pochettes/`,
-/// clé `caa-<mbid>`) : une vignette déjà récupérée ne repart pas sur le réseau,
-/// et un album sans pochette (fréquent le mois de sa sortie) n'est pas
-/// redemandé. Le cache mémoire côté interface fait le reste pendant la session.
+/// clés `caa-<mbid>` puis `dz-…`, les mêmes que le repli de `cover`) : une
+/// vignette déjà récupérée ne repart pas sur le réseau, et un album sans
+/// pochette (fréquent le mois de sa sortie) n'est pas redemandé. Le cache
+/// mémoire côté interface fait le reste pendant la session.
+///
+/// Cover Art Archive d'abord ; si elle n'a rien, Deezer (recherche par
+/// artiste et titre) — les sorties toutes fraîches y sont souvent avant d'être
+/// sur CAA. `Err` = panne réseau, jamais écrite : l'interface pourra redemander.
 #[tauri::command]
 async fn decouvrir_pochette(
     etat: State<'_, Etat>,
     rg_mbid: String,
+    artiste: String,
+    titre: String,
 ) -> Result<Option<String>, String> {
     // L'identifiant vient du fil, mais on le vérifie : il sert de nom de
     // fichier de cache et part dans une URL.
@@ -4396,18 +4403,87 @@ async fn decouvrir_pochette(
     }
     let dossier_cache = etat.db.with_file_name("pochettes");
     tauri::async_runtime::spawn_blocking(move || {
-        let cle = format!("caa-{rg_mbid}");
-        if let Some(valeur) = lire_cache_pochette(&dossier_cache, &cle) {
-            return Ok(valeur);
+        let mut panne = false;
+        let r = source_de_pochette(&dossier_cache, &format!("caa-{rg_mbid}"), || {
+            rusty_music_core::pochette::release_group(&rg_mbid)
+        });
+        match r {
+            Reponse::Image(v) => return Ok(Some(v)),
+            Reponse::Non => {}
+            Reponse::Panne => panne = true,
         }
-        let valeur = rusty_music_core::pochette::release_group(&rg_mbid)
-            .map_err(echec)?
-            .map(|octets| format!("data:image/jpeg;base64,{}", base64(&octets)));
-        ecrire_cache_pochette(&dossier_cache, &cle, valeur.as_deref());
-        Ok(valeur)
+        let r = source_de_pochette(&dossier_cache, &cle_pochette_deezer(&artiste, &titre), || {
+            deezer().pochette_album(&artiste, &titre)
+        });
+        match r {
+            Reponse::Image(v) => Ok(Some(v)),
+            Reponse::Non if !panne => Ok(None),
+            Reponse::Non | Reponse::Panne => Err("pochette indisponible (panne réseau)".to_string()),
+        }
     })
     .await
     .map_err(echec)?
+}
+
+/// La photo d'un artiste voisin du fil Découvrir, en `data:` URI — les voisins
+/// n'ont qu'un nom et un MBID, aucune pochette.
+///
+/// Deezer d'abord (par nom, avec garde-fous d'identité : voir
+/// `deezer::url_photo_artiste`), rapide ; puis, si Deezer n'en a pas,
+/// TheAudioDB par MBID (fiable, mais une requête toutes les 2 s). Deux clés de
+/// cache distinctes, pour qu'un « non » de Deezer n'écrase pas la seconde
+/// source. `Ok(None)` : aucune des deux n'a de photo — l'interface montre des
+/// initiales. `Err` : panne réseau, jamais écrite, à redemander.
+#[tauri::command]
+async fn decouvrir_photo_artiste(
+    etat: State<'_, Etat>,
+    mbid: String,
+    nom: String,
+) -> Result<Option<String>, String> {
+    if mbid.len() != 36 || !mbid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+        return Err("identifiant d'artiste invalide".into());
+    }
+    let dossier_cache = etat.db.with_file_name("pochettes");
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut panne = false;
+        let cle_deezer = format!(
+            "dza-{:016x}",
+            empreinte(rusty_music_core::musicbrainz::cle_artiste(&nom).as_bytes())
+        );
+        match source_de_pochette(&dossier_cache, &cle_deezer, || deezer().photo_artiste(&nom)) {
+            Reponse::Image(v) => return Ok(Some(v)),
+            Reponse::Non => {}
+            Reponse::Panne => panne = true,
+        }
+        match source_de_pochette(&dossier_cache, &format!("tadb-{mbid}"), || {
+            theaudiodb().vignette_par_mbid(&mbid)
+        }) {
+            Reponse::Image(v) => Ok(Some(v)),
+            Reponse::Non if !panne => Ok(None),
+            Reponse::Non | Reponse::Panne => Err("photo indisponible (panne réseau)".to_string()),
+        }
+    })
+    .await
+    .map_err(echec)?
+}
+
+/// L'adresse de la page Deezer d'un album (`titre` donné) ou d'un artiste
+/// (`titre` absent) du fil Découvrir — le bouton « Deezer » d'une carte, qui
+/// l'ouvre dans le navigateur. Même recherche et mêmes règles de concordance
+/// que pour les pochettes et les photos.
+///
+/// Résolue au clic, sans cache disque : une requête isolée. `Ok(None)` : Deezer
+/// ne connaît pas (l'interface se rabat sur sa page de recherche). `Err` :
+/// panne réseau.
+#[tauri::command]
+async fn decouvrir_lien_deezer(artiste: String, titre: Option<String>) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || match titre {
+        Some(titre) => deezer().lien_album(&artiste, &titre),
+        None => deezer().lien_artiste(&artiste),
+    })
+    .await
+    .map_err(echec)?
+    .map_err(echec)
 }
 
 /// Lance l'actualisation du fil Découvrir : sorties récentes (ListenBrainz
@@ -6040,6 +6116,22 @@ fn source_de_pochette(
     }
 }
 
+/// Clé de cache disque d'une pochette Deezer : par album (artiste et titre
+/// normalisés), partagée par la grille d'Écouter et le fil Découvrir.
+fn cle_pochette_deezer(artiste: &str, album: &str) -> String {
+    format!(
+        "dz-{:016x}",
+        empreinte(
+            format!(
+                "{}\0{}",
+                rusty_music_core::musicbrainz::cle_artiste(artiste),
+                rusty_music_core::musicbrainz::normaliser_titre(album)
+            )
+            .as_bytes(),
+        )
+    )
+}
+
 /// Le client Deezer du processus : sa cadence (150 ms entre requêtes) n'a de
 /// sens que partagée, la grille d'albums demande des dizaines de pochettes d'un
 /// coup.
@@ -6047,6 +6139,16 @@ fn deezer() -> &'static rusty_music_core::deezer::Client {
     static CLIENT: std::sync::OnceLock<rusty_music_core::deezer::Client> =
         std::sync::OnceLock::new();
     CLIENT.get_or_init(rusty_music_core::deezer::Client::new)
+}
+
+/// Le client TheAudioDB (clé partagée) des photos d'artiste : sa cadence
+/// (2,1 s entre requêtes, 30/min pour la clé partagée) n'a de sens que partagée
+/// par tous les appels. Distinct du client de la passe « biographies », qui
+/// porte la clé personnelle de l'utilisateur.
+fn theaudiodb() -> &'static rusty_music_core::theaudiodb::Client {
+    static CLIENT: std::sync::OnceLock<rusty_music_core::theaudiodb::Client> =
+        std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| rusty_music_core::theaudiodb::Client::new(None))
 }
 
 /// Repli quand ni les tags ni le dossier n'ont de pochette (`docs/suite.md`,
@@ -6101,14 +6203,7 @@ fn cover_depuis_reseau(dossier_cache: &Path, db_path: &Path, chemin: &Path) -> R
         }
     }
     if let Some((artiste, album)) = &artiste_album {
-        let cle = format!("dz-{:016x}", empreinte(
-            format!(
-                "{}\0{}",
-                rusty_music_core::musicbrainz::cle_artiste(artiste),
-                rusty_music_core::musicbrainz::normaliser_titre(album)
-            )
-            .as_bytes(),
-        ));
+        let cle = cle_pochette_deezer(artiste, album);
         let r = source_de_pochette(dossier_cache, &cle, || {
             deezer().pochette_album(artiste, album)
         });
@@ -7159,6 +7254,8 @@ fn main() {
             decouvrir_feed,
             decouvrir_tout_vu,
             decouvrir_pochette,
+            decouvrir_photo_artiste,
+            decouvrir_lien_deezer,
             start_demix,
             demix_state,
             stems_existants,

@@ -453,6 +453,9 @@ const ALBUM_TXT = 40; // `.album__pochette` margin-bottom(8) + nom(16) + sec mar
 const ALBUM_ECART = 14; // `gap` de `.grille__fenetre`
 const ALBUM_HAUT = ALBUM_LARG + ALBUM_TXT + ALBUM_ECART;
 const GRILLE_PAD = 26; // `padding` horizontal de `.grille`
+// Une seule largeur de case pour Écouter (virtualisée, ci-dessus) et pour la
+// grille de Découvrir (CSS pur, `.decouvrir-grille`) : la constante fait foi.
+document.documentElement.style.setProperty("--album-larg", `${ALBUM_LARG}px`);
 
 const grille = $("grille");
 // Parent flex de `.grille`/`.liste`/`#autour-artiste` — sa classe modificatrice
@@ -7468,22 +7471,75 @@ try {
 
 /// Pochettes du fil, par identifiant de release-group. Bornées de fait par le
 /// nombre de sorties d'une passe (~60), pas d'éviction à prévoir. `null` =
-/// pas de pochette connue, pour ne pas la redemander à chaque rendu.
+/// pas de pochette connue (réponse définitive), pour ne pas la redemander à
+/// chaque rendu. Une panne, elle, n'est pas mémorisée : le prochain rendu
+/// redemande, comme le repli de `cover` côté Rust.
 const pochettesCaa = new Map();
-function pochetteDecouvrir(rgMbid) {
+function pochetteDecouvrir({ rg_mbid: rgMbid, artiste_nom: artiste, titre }) {
   let p = pochettesCaa.get(rgMbid);
   if (!p) {
-    p = invoke("decouvrir_pochette", { rgMbid }).catch(() => null);
+    p = invoke("decouvrir_pochette", { rgMbid, artiste, titre }).catch(() => {
+      pochettesCaa.delete(rgMbid);
+      return null;
+    });
     pochettesCaa.set(rgMbid, p);
   }
   return p;
 }
+
+/// Photos des artistes voisins, par MBID : Deezer puis TheAudioDB côté Rust
+/// (`decouvrir_photo_artiste`). Mêmes règles que les pochettes : `null` est une
+/// réponse définitive et se mémorise, une panne non.
+const photosArtistes = new Map();
+function photoArtisteDecouvrir({ dst_mbid: mbid, dst_nom: nom }) {
+  let p = photosArtistes.get(mbid);
+  if (!p) {
+    p = invoke("decouvrir_photo_artiste", { mbid, nom }).catch(() => {
+      photosArtistes.delete(mbid);
+      return null;
+    });
+    photosArtistes.set(mbid, p);
+  }
+  return p;
+}
+
+/// Charge l'image d'une carte à sa première entrée dans le viewport (avec 200 px
+/// d'avance), pas à sa création : les cartes d'un onglet caché, ou tout en bas
+/// d'une longue grille, ne lancent aucune requête réseau tant qu'on ne les voit
+/// pas. `disconnect` à chaque rendu : les cartes remplacées ne s'y accumulent pas.
+const chargeursPochettes = new WeakMap();
+const observateurPochettes = new IntersectionObserver(
+  (entrees) => {
+    for (const e of entrees) {
+      if (!e.isIntersecting) continue;
+      observateurPochettes.unobserve(e.target);
+      chargeursPochettes.get(e.target)?.();
+    }
+  },
+  { rootMargin: "200px" },
+);
 
 /// URL d'une page Last.fm — les espaces en `+`, le reste encodé. Un album
 /// inconnu y tombe sur une page « introuvable » avec une recherche : acceptable.
 function lienLastfm(...segments) {
   const enc = (s) => encodeURIComponent(s).replace(/%20/g, "+");
   return "https://www.last.fm/music/" + segments.map(enc).join("/");
+}
+
+/// Ouvre la page Deezer d'un album (`titre` donné) ou d'un artiste, dans le
+/// navigateur — c'est là qu'on l'écoute. Le lien est résolu côté Rust par la même
+/// recherche que les pochettes ; si Deezer ne connaît pas ou ne répond pas, on
+/// ouvre sa page de recherche plutôt que rien.
+async function ouvrirDeezer(artiste, titre = null) {
+  let url = null;
+  try {
+    url = await invoke("decouvrir_lien_deezer", { artiste, titre });
+  } catch (e) {
+    remonter(e, "lien Deezer");
+  }
+  ouvrirLien(
+    url ?? `https://www.deezer.com/search/${encodeURIComponent(titre ? `${artiste} ${titre}` : artiste)}`,
+  );
 }
 
 /// Entrée dans le mode : on affiche le fil tel qu'il est, puis on lance une
@@ -7529,26 +7585,22 @@ function voisinPasseFamille(v) {
   return (v.src_mbids ?? []).some((m) => filtreFamillesDecouvrir.has(famillesParArtiste.get(m)));
 }
 
-/// Applique le filtre par famille au fil courant et redessine les trois
-/// onglets. Les compteurs suivent le filtre ; « Pas encore de nouveautés » et
-/// « Tout marquer comme vu » restent calés sur le fil brut — ce qui est masqué
-/// par un filtre reste du contenu.
+/// Redessine les trois onglets. Le filtre par famille n'ôte rien : les cartes
+/// hors filtre sont estompées (`carteDecouvrir`), la grille ne bouge pas. Les
+/// compteurs, eux, comptent les cartes qui passent le filtre.
 function rendreFilDecouvrir() {
   const fil = filDecouvrir;
   if (!fil) return;
 
-  const sorties = fil.sorties.filter(sortiePasseFamille);
-  const collaborations = fil.collaborations.filter(sortiePasseFamille);
-  const voisins = fil.voisins.filter(voisinPasseFamille);
-
-  rendreListeSorties("decouvrir-sorties", "decouvrir-vide-sorties", sorties);
-  rendreListeSorties("decouvrir-collabs", "decouvrir-vide-collabs", collaborations);
-  rendreListeVoisins(voisins);
+  observateurPochettes.disconnect();
+  rendreListeSorties("decouvrir-sorties", "decouvrir-vide-sorties", fil.sorties);
+  rendreListeSorties("decouvrir-collabs", "decouvrir-vide-collabs", fil.collaborations);
+  rendreListeVoisins(fil.voisins);
 
   const n = (id, v) => ($(id).textContent = v ? ` ${v}` : "");
-  n("decouvrir-n-sorties", sorties.length);
-  n("decouvrir-n-collabs", collaborations.length);
-  n("decouvrir-n-voisins", voisins.length);
+  n("decouvrir-n-sorties", fil.sorties.filter(sortiePasseFamille).length);
+  n("decouvrir-n-collabs", fil.collaborations.filter(sortiePasseFamille).length);
+  n("decouvrir-n-voisins", fil.voisins.filter(voisinPasseFamille).length);
 
   const vide =
     fil.sorties.length === 0 && fil.collaborations.length === 0 && fil.voisins.length === 0;
@@ -7646,127 +7698,205 @@ function depuisTexte(epochS) {
   return j <= 1 ? "hier" : `il y a ${j} jours`;
 }
 
-/// Badge de type + « il y a N jours » à partir d'une date 'YYYY-MM-DD' partielle.
-function ageSortie(date) {
-  if (!date) return "";
+/// Nombre de jours écoulés depuis une date 'YYYY-MM-DD' (ou 'YYYY-MM', 'YYYY',
+/// complétée au premier jour) ; `null` si elle manque ou est illisible.
+function joursDepuisSortie(date) {
+  if (!date) return null;
   const complet = date.length === 4 ? `${date}-01-01` : date.length === 7 ? `${date}-01` : date;
   const j = Math.round((Date.now() - new Date(complet).getTime()) / 86400000);
-  if (!Number.isFinite(j)) return date;
+  return Number.isFinite(j) ? j : null;
+}
+
+/// « il y a N jours » à partir d'une date 'YYYY-MM-DD' partielle.
+function ageSortie(date) {
+  if (!date) return "";
+  const j = joursDepuisSortie(date);
+  if (j === null) return date;
   if (j <= 0) return "aujourd'hui";
   if (j === 1) return "hier";
   if (j < 31) return `il y a ${j} jours`;
   return date;
 }
 
-/// Ouvre l'explorateur de collaborations sur un artiste, depuis le fil.
+/// Ouvre l'explorateur de collaborations sur un artiste, depuis le fil, et
+/// l'amène à l'écran : il est sous la grille, un clic sans effet visible
+/// passerait pour un clic raté.
 function explorerDepuisFil(mbid, nom) {
   decouvrirFil = [];
   naviguerDecouvrir(mbid, nom).catch((e) => remonter(e, "découvrir"));
+  const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  $("decouvrir-centre").scrollIntoView({ behavior: reduit ? "auto" : "smooth", block: "start" });
 }
 
-/// Une ligne du fil : pochette (facultative, chargée à la volée), un corps
-/// texte, une colonne de liens. Compacte — plusieurs par écran.
-function ligneDecouvrir({ nouveau, rgMbid, titre, sous, collab, liens }) {
-  const ligne = document.createElement("div");
-  ligne.className = "decouvrir-ligne" + (nouveau ? " decouvrir-ligne--nouveau" : "");
+/// Une carte du fil, sur le gabarit des cases d'album d'Écouter : pochette
+/// carrée (image chargée à la demande, ou repli initiales teintées de
+/// `initialesDe`), titre, une
+/// ligne d'artiste, une ligne de méta, et au survol un bandeau de liens
+/// étiquetés. Le clic sur la carte (ou Entrée) ouvre l'explorateur.
+///
+/// Hors filtre par famille (`estompe`), la carte reste là, à 25 % — un filtre
+/// ne doit pas faire recouler la page (R2/R4 de `interface-guidelines.md`).
+function carteDecouvrir({
+  nouveau, estompe, pochette, photo, initialesDe, type, nom, sec, secTitre, meta, collab, liens, ouvrir,
+}) {
+  const el = document.createElement("div");
+  el.className =
+    "album album--decouvrir" +
+    (nouveau ? " album--nouveau" : "") +
+    (estompe ? " album--estompe" : "");
+  el.tabIndex = 0;
 
-  if (rgMbid !== undefined) {
-    const pochette = document.createElement("div");
-    pochette.className = "decouvrir-ligne__pochette";
-    ligne.appendChild(pochette);
-    pochetteDecouvrir(rgMbid).then((uri) => {
-      if (!uri) return;
-      const img = document.createElement("img");
-      img.src = uri;
-      img.alt = "";
-      pochette.appendChild(img);
-      pochette.classList.add("decouvrir-ligne__pochette--pleine");
+  const image = document.createElement("div");
+  image.className = "album__pochette";
+  // Repli sans pochette : initiales sur aplat teinté, comme la tuile d'artiste
+  // d'Écouter. Posé seulement quand on sait qu'il n'y a pas d'image — pendant
+  // le chargement, on garde le placeholder rayé de `.album__pochette`.
+  const initialesTeintees = () => {
+    const mos = document.createElement("div");
+    mos.className = "mosaique mosaique--vide";
+    mos.style.setProperty("--teinte", teinteNom(initialesDe));
+    mos.textContent = initiales(initialesDe);
+    image.prepend(mos);
+  };
+  // `pochette` est un thunk, appelé à la première entrée dans le viewport.
+  // `photo` : un portrait d'artiste (cadré vers le haut), pas une pochette.
+  chargeursPochettes.set(image, () =>
+    pochette().then((uri) => {
+      if (!uri) return initialesTeintees();
+      image.style.backgroundImage = `url("${uri}")`;
+      if (photo) image.classList.add("album__pochette--photo");
+    }),
+  );
+  observateurPochettes.observe(image);
+  if (type) {
+    const pastille = document.createElement("span");
+    pastille.className = "album__type";
+    pastille.textContent = type;
+    image.appendChild(pastille);
+  }
+  const actions = document.createElement("div");
+  actions.className = "album__actions";
+  for (const [texte, action] of liens) {
+    const b = document.createElement("button");
+    b.className = "album__action";
+    b.textContent = texte;
+    // Une action peut être asynchrone (résolution d'un lien) : le bouton reste
+    // désactivé le temps qu'elle aboutisse — pas de double clic.
+    b.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      b.disabled = true;
+      try {
+        await action();
+      } finally {
+        b.disabled = false;
+      }
     });
+    actions.appendChild(b);
   }
+  image.appendChild(actions);
+  el.appendChild(image);
 
-  const corps = document.createElement("div");
-  corps.className = "decouvrir-ligne__corps";
-  const t = document.createElement("div");
-  t.className = "decouvrir-ligne__titre";
-  t.textContent = titre;
-  t.title = titre;
-  corps.appendChild(t);
-  corps.appendChild(sous);
-  if (collab) {
-    const c = document.createElement("div");
-    c.className = "decouvrir-ligne__collab";
-    c.textContent = `avec ${collab}`;
-    c.title = collab;
-    corps.appendChild(c);
-  }
-  ligne.appendChild(corps);
+  const ligne = (classe, texte, titre = texte) => {
+    const d = document.createElement("div");
+    d.className = classe;
+    d.textContent = texte;
+    d.title = titre;
+    el.appendChild(d);
+  };
+  ligne("album__nom", nom);
+  ligne("album__sec", sec, secTitre ?? sec);
+  if (meta) ligne("album__meta", meta);
+  if (collab) ligne("album__collab", `avec ${collab}`);
 
-  const col = document.createElement("div");
-  col.className = "decouvrir-ligne__liens";
-  for (const l of liens) col.appendChild(l);
-  ligne.appendChild(col);
-
-  return ligne;
+  el.addEventListener("click", ouvrir);
+  el.addEventListener("keydown", (e) => {
+    if (e.target === el && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      ouvrir();
+    }
+  });
+  return el;
 }
 
-function rendreListeSorties(idListe, idVide, sorties) {
-  const hote = $(idListe);
-  hote.replaceChildren();
-  $(idVide).hidden = sorties.length > 0;
-  for (const s of sorties) {
-    const sous = document.createElement("div");
-    sous.className = "decouvrir-ligne__sous";
-    const artiste = boutonLien(s.artiste_nom, () =>
-      explorerDepuisFil(s.artiste_mbid, s.artiste_nom),
-    );
-    artiste.classList.add("lien--inline");
-    sous.append(artiste, document.createTextNode(
-      [s.type_primaire, ageSortie(s.date_sortie)].filter(Boolean).map((x) => ` · ${x}`).join(""),
-    ));
+const PERIODES = ["Cette semaine", "Ce mois-ci", "Plus ancien", "Sans date"];
 
-    hote.appendChild(
-      ligneDecouvrir({
-        nouveau: !s.vu,
-        rgMbid: s.rg_mbid,
-        titre: s.titre,
-        sous,
-        collab: s.collaborateurs,
-        liens: [
-          boutonLien("MusicBrainz", () =>
-            ouvrirLien(`https://musicbrainz.org/release-group/${s.rg_mbid}`),
-          ),
-          boutonLien("Last.fm", () => ouvrirLien(lienLastfm(s.artiste_nom, s.titre))),
-        ],
-      }),
-    );
+/// Range les sorties par période sans changer leur ordre (le fil arrive trié
+/// par date décroissante). Les périodes vides sont omises.
+function grouperParPeriode(sorties) {
+  const groupes = PERIODES.map(() => []);
+  for (const s of sorties) {
+    const j = joursDepuisSortie(s.date_sortie);
+    groupes[j === null ? 3 : j <= 7 ? 0 : j <= 31 ? 1 : 2].push(s);
   }
+  return PERIODES.map((titre, i) => ({ titre, items: groupes[i] })).filter((g) => g.items.length);
+}
+
+/// Une section de période : son intertitre, puis sa grille de cartes.
+function periodeDecouvrir(titre, cartes) {
+  const section = document.createElement("section");
+  section.className = "decouvrir-periode";
+  if (titre) {
+    const h = document.createElement("h3");
+    h.className = "decouvrir-periode__titre";
+    h.textContent = titre;
+    section.appendChild(h);
+  }
+  const grille = document.createElement("div");
+  grille.className = "decouvrir-grille";
+  grille.append(...cartes);
+  section.appendChild(grille);
+  return section;
+}
+
+function rendreListeSorties(idHote, idVide, sorties) {
+  $(idVide).hidden = sorties.length > 0;
+  $(idHote).replaceChildren(
+    ...grouperParPeriode(sorties).map(({ titre, items }) =>
+      periodeDecouvrir(
+        titre,
+        items.map((s) =>
+          carteDecouvrir({
+            nouveau: !s.vu,
+            estompe: !sortiePasseFamille(s),
+            pochette: () => pochetteDecouvrir(s),
+            initialesDe: s.artiste_nom,
+            type: s.type_primaire && s.type_primaire !== "Album" ? s.type_primaire : "",
+            nom: s.titre,
+            sec: s.artiste_nom,
+            meta: ageSortie(s.date_sortie),
+            collab: s.collaborateurs,
+            liens: [
+              ["Deezer", () => ouvrirDeezer(s.artiste_nom, s.titre)],
+              ["Last.fm", () => ouvrirLien(lienLastfm(s.artiste_nom, s.titre))],
+            ],
+            ouvrir: () => explorerDepuisFil(s.artiste_mbid, s.artiste_nom),
+          }),
+        ),
+      ),
+    ),
+  );
 }
 
 function rendreListeVoisins(voisins) {
-  const hote = $("decouvrir-voisins");
-  hote.replaceChildren();
   $("decouvrir-vide-voisins").hidden = voisins.length > 0;
-  for (const v of voisins) {
-    const sous = document.createElement("div");
-    sous.className = "decouvrir-ligne__sous";
-    sous.textContent = v.portes.length
-      ? `proche de ${v.portes.slice(0, 3).join(", ")}`
-      : "artiste voisin";
-
-    hote.appendChild(
-      ligneDecouvrir({
-        nouveau: !v.vu,
-        titre: v.dst_nom,
-        sous,
-        liens: [
-          boutonLien("MusicBrainz", () =>
-            ouvrirLien(`https://musicbrainz.org/artist/${v.dst_mbid}`),
-          ),
-          boutonLien("Explorer ▸", () => explorerDepuisFil(v.dst_mbid, v.dst_nom)),
-        ],
-      }),
-    );
-  }
+  const cartes = voisins.map((v) =>
+    carteDecouvrir({
+      nouveau: !v.vu,
+      estompe: !voisinPasseFamille(v),
+      pochette: () => photoArtisteDecouvrir(v),
+      photo: true,
+      initialesDe: v.dst_nom,
+      nom: v.dst_nom,
+      sec: v.portes.length ? `proche de ${v.portes.slice(0, 2).join(", ")}` : "artiste voisin",
+      secTitre: v.portes.length ? `proche de ${v.portes.join(", ")}` : "artiste voisin",
+      liens: [
+        ["Deezer", () => ouvrirDeezer(v.dst_nom)],
+        ["Explorer ▸", () => explorerDepuisFil(v.dst_mbid, v.dst_nom)],
+      ],
+      ouvrir: () => explorerDepuisFil(v.dst_mbid, v.dst_nom),
+    }),
+  );
+  $("decouvrir-voisins").replaceChildren(...(cartes.length ? [periodeDecouvrir("", cartes)] : []));
 }
 
 /// Lance la passe et suit son avancement (barre + texte), puis rafraîchit le fil.

@@ -118,6 +118,22 @@ impl Client {
         let Some(v) = self.json(&url)? else { return Ok(None) };
         Ok(artiste_de(&v, mbid))
     }
+
+    /// La vignette d'artiste (`strArtistThumb`, JPEG) de `mbid`, si TheAudioDB
+    /// connaît l'artiste et en a une. Même résolution par MBID, même
+    /// vérification de l'identifiant que [`Client::artiste_par_mbid`] : jamais
+    /// la photo d'un homonyme.
+    ///
+    /// `Ok(None)` : pas de photo (réponse définitive). `Err` : panne réseau ou
+    /// image illisible — à ne pas mettre en cache.
+    pub fn vignette_par_mbid(&self, mbid: &str) -> Result<Option<Vec<u8>>> {
+        let url = format!("https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}", self.cle);
+        let Some(v) = self.json(&url)? else { return Ok(None) };
+        match vignette_de(&v, mbid) {
+            Some(image) => crate::pochette::telecharger(&image),
+            None => Ok(None),
+        }
+    }
 }
 
 /// Extrait le premier artiste d'une réponse `artist-mb.php`, en vérifiant que
@@ -133,6 +149,16 @@ fn artiste_de(v: &Value, mbid_demande: &str) -> Option<Artiste> {
         biographie_en: texte("strBiography"),
         biographie_fr: texte("strBiographyFR"),
     })
+}
+
+/// L'URL de `strArtistThumb` d'une réponse `artist-mb.php`, sous la même
+/// condition que [`artiste_de`] : le `strMusicBrainzID` doit être celui demandé.
+fn vignette_de(v: &Value, mbid_demande: &str) -> Option<String> {
+    let a = v["artists"].as_array()?.first()?;
+    if a["strMusicBrainzID"].as_str() != Some(mbid_demande) {
+        return None;
+    }
+    a["strArtistThumb"].as_str().filter(|s| !s.is_empty()).map(str::to_string)
 }
 
 #[cfg(test)]
@@ -173,5 +199,32 @@ mod tests {
     fn artiste_de_sans_resultat_rend_rien() {
         let v: Value = serde_json::from_str(r#"{"artists":null}"#).expect("JSON de test");
         assert!(artiste_de(&v, "x").is_none());
+    }
+
+    #[test]
+    fn vignette_de_lit_la_vignette_et_verifie_le_mbid() {
+        let v: Value = serde_json::from_str(
+            r#"{"artists":[{
+                "strMusicBrainzID":"a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                "strArtistThumb":"https://r2.theaudiodb.com/images/media/artist/thumb/x.jpg"
+            }]}"#,
+        )
+        .expect("JSON de test");
+        assert_eq!(
+            vignette_de(&v, "a74b1b7f-71a5-4011-9441-d0b5e4122711").as_deref(),
+            Some("https://r2.theaudiodb.com/images/media/artist/thumb/x.jpg")
+        );
+        assert_eq!(vignette_de(&v, "autre-mbid"), None);
+    }
+
+    #[test]
+    fn vignette_de_sans_image_ou_sans_resultat_rend_rien() {
+        let vide: Value = serde_json::from_str(
+            r#"{"artists":[{"strMusicBrainzID":"m","strArtistThumb":""}]}"#,
+        )
+        .expect("JSON de test");
+        assert_eq!(vignette_de(&vide, "m"), None);
+        let nul: Value = serde_json::from_str(r#"{"artists":null}"#).expect("JSON de test");
+        assert_eq!(vignette_de(&nul, "m"), None);
     }
 }

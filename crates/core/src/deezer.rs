@@ -142,6 +142,97 @@ impl Client {
         }
         Ok(None)
     }
+
+    /// L'URL de la page Deezer de l'album `album` de `artiste`, si la
+    /// recherche rend un album qui concorde (voir [`url_lien_album`]).
+    ///
+    /// `Ok(None)` : Deezer ne connaît pas cet album. `Err` : panne réseau.
+    pub fn lien_album(&self, artiste: &str, album: &str) -> Result<Option<String>> {
+        for q in requetes_album(artiste, album) {
+            let Some(v) = self.chercher("album", &q)? else {
+                continue;
+            };
+            if let Some(url) = url_lien_album(&v, artiste, album) {
+                return Ok(Some(url));
+            }
+        }
+        Ok(None)
+    }
+
+    /// L'URL de la page Deezer de l'artiste `nom` (voir [`url_lien_artiste`]).
+    ///
+    /// `Ok(None)` : Deezer ne connaît pas cet artiste. `Err` : panne réseau.
+    pub fn lien_artiste(&self, nom: &str) -> Result<Option<String>> {
+        let Some(v) = self.chercher("artist", &echapper(nom))? else {
+            return Ok(None);
+        };
+        Ok(url_lien_artiste(&v, nom))
+    }
+
+    /// La photo (500 px, JPEG) de l'artiste `nom`, si la recherche rend un
+    /// artiste de **même nom** avec une image (voir [`url_photo_artiste`]).
+    ///
+    /// `Ok(None)` : Deezer ne connaît pas cet artiste, ou seulement des
+    /// homonymes sans image (réponse définitive). `Err` : panne réseau —
+    /// l'appelant ne doit pas la mettre en cache.
+    pub fn photo_artiste(&self, nom: &str) -> Result<Option<Vec<u8>>> {
+        let Some(v) = self.chercher("artist", &echapper(nom))? else {
+            return Ok(None);
+        };
+        match url_photo_artiste(&v, nom) {
+            Some(url) => {
+                self.cadencer();
+                crate::pochette::telecharger(&url)
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+/// L'URL de la photo (`picture_big`, 500 px) de l'artiste `nom` dans une
+/// réponse `search/artist`.
+///
+/// Un nom d'artiste n'est pas un identifiant : Deezer rend des homonymes, et
+/// les comptes vides ont une URL d'image au segment vide (`…/artist//250x250…`).
+/// On ne garde donc que les candidats **de même nom normalisé** (égalité, pas
+/// inclusion — « Air » n'est pas « Air Supply ») dont l'image n'est pas vide,
+/// et parmi eux le plus suivi (`nb_fan`).
+fn url_photo_artiste(v: &Value, nom: &str) -> Option<String> {
+    let attendu = cle_artiste(nom);
+    if attendu.is_empty() {
+        return None;
+    }
+    v["data"]
+        .as_array()?
+        .iter()
+        .filter(|d| cle_artiste(d["name"].as_str().unwrap_or("")) == attendu)
+        .filter_map(|d| {
+            let url = d["picture_big"].as_str().filter(|u| !u.is_empty() && !u.contains("/artist//"))?;
+            Some((d["nb_fan"].as_i64().unwrap_or(0), url))
+        })
+        .max_by_key(|(fans, _)| *fans)
+        .map(|(_, url)| url.to_owned())
+}
+
+/// L'URL de la page Deezer de l'artiste `nom` dans une réponse `search/artist` :
+/// même garde-fou d'homonymie que [`url_photo_artiste`] (nom normalisé
+/// **identique**, le plus suivi), mais sans exiger d'image — on veut la page,
+/// pas la photo.
+fn url_lien_artiste(v: &Value, nom: &str) -> Option<String> {
+    let attendu = cle_artiste(nom);
+    if attendu.is_empty() {
+        return None;
+    }
+    v["data"]
+        .as_array()?
+        .iter()
+        .filter(|d| cle_artiste(d["name"].as_str().unwrap_or("")) == attendu)
+        .filter_map(|d| {
+            let url = d["link"].as_str().filter(|u| est_lien_deezer(u))?;
+            Some((d["nb_fan"].as_i64().unwrap_or(0), url))
+        })
+        .max_by_key(|(fans, _)| *fans)
+        .map(|(_, url)| url.to_owned())
 }
 
 /// Artiste d'album « fourre-tout » des compilations : il ne dit rien de
@@ -201,10 +292,29 @@ fn titres_concordent(a: &str, b: &str) -> bool {
 }
 
 /// L'URL de la pochette du premier album de la réponse Deezer `v` qui
-/// concorde avec la demande : titre concordant **et** artiste concordant —
-/// sauf compilation, où l'artiste ne prouve rien et où le titre doit alors
-/// être **égal**.
+/// concorde avec la demande (voir [`champ_album`]).
 fn url_pochette_album(v: &Value, artiste: &str, album: &str) -> Option<String> {
+    champ_album(v, artiste, album, "cover_big")
+}
+
+/// L'URL de la page Deezer du premier album de la réponse `v` qui concorde
+/// avec la demande — mêmes règles que la pochette. Seul un lien Deezer est
+/// rendu : l'interface l'ouvre dans le navigateur, on n'y envoie pas une URL
+/// arbitraire venue d'une réponse d'API.
+fn url_lien_album(v: &Value, artiste: &str, album: &str) -> Option<String> {
+    champ_album(v, artiste, album, "link").filter(|u| est_lien_deezer(u))
+}
+
+/// Un lien de page Deezer (et pas un hôte étranger glissé dans une réponse).
+fn est_lien_deezer(url: &str) -> bool {
+    url.starts_with("https://www.deezer.com/")
+}
+
+/// Le champ `champ` du premier album de la réponse Deezer `v` qui concorde
+/// avec la demande : titre concordant **et** artiste concordant — sauf
+/// compilation, où l'artiste ne prouve rien et où le titre doit alors être
+/// **égal**. Un champ vide ne concorde pas : on passe à l'album suivant.
+fn champ_album(v: &Value, artiste: &str, album: &str, champ: &str) -> Option<String> {
     let divers = est_artiste_divers(artiste);
     let art_attendu = cle_artiste(artiste);
     let tit_attendu = normaliser_titre(album);
@@ -219,7 +329,7 @@ fn url_pochette_album(v: &Value, artiste: &str, album: &str) -> Option<String> {
         if !concorde_album {
             return None;
         }
-        d["cover_big"]
+        d[champ]
             .as_str()
             .filter(|u| !u.is_empty())
             .map(str::to_owned)
@@ -341,5 +451,90 @@ mod tests {
     #[test]
     fn pochette_album_ignore_une_url_vide() {
         assert_eq!(url_pochette_album(&reponse(), "Nirvana", "In Utero"), None);
+    }
+
+    /// Forme réelle d'une réponse `search/artist` (Khruangbin) : le vrai
+    /// artiste, puis des homonymes sans fans dont l'image est vide.
+    fn reponse_artistes() -> Value {
+        serde_json::json!({ "data": [
+            { "name": "Khruangbin", "nb_fan": 0,
+              "picture_big": "https://cdn/images/artist//500x500-000000-80-0-0.jpg" },
+            { "name": "Khruangbin", "nb_fan": 97949,
+              "picture_big": "https://cdn/images/artist/1f18/500x500-000000-80-0-0.jpg" },
+            { "name": "Childish Gambino & Khruangbin", "nb_fan": 2,
+              "picture_big": "https://cdn/images/artist//500x500-000000-80-0-0.jpg" },
+        ]})
+    }
+
+    #[test]
+    fn photo_artiste_prend_le_plus_suivi_parmi_les_homonymes_avec_image() {
+        assert_eq!(
+            url_photo_artiste(&reponse_artistes(), "Khruangbin").as_deref(),
+            Some("https://cdn/images/artist/1f18/500x500-000000-80-0-0.jpg")
+        );
+    }
+
+    #[test]
+    fn photo_artiste_ignore_un_homonyme_dont_l_image_est_vide() {
+        let v = serde_json::json!({ "data": [
+            { "name": "Khruangbin", "nb_fan": 12,
+              "picture_big": "https://cdn/images/artist//500x500-000000-80-0-0.jpg" },
+        ]});
+        assert_eq!(url_photo_artiste(&v, "Khruangbin"), None);
+    }
+
+    #[test]
+    fn photo_artiste_exige_le_meme_nom_pas_une_inclusion() {
+        let v = serde_json::json!({ "data": [
+            { "name": "Air Supply", "nb_fan": 500000, "picture_big": "https://cdn/air-supply.jpg" },
+        ]});
+        assert_eq!(url_photo_artiste(&v, "Air"), None);
+        assert_eq!(url_photo_artiste(&v, "Air Supply").as_deref(), Some("https://cdn/air-supply.jpg"));
+        assert_eq!(url_photo_artiste(&serde_json::json!({ "data": [] }), "Air"), None);
+        assert_eq!(url_photo_artiste(&v, ""), None);
+    }
+
+    #[test]
+    fn lien_album_rend_la_page_de_l_album_de_l_artiste() {
+        let v = serde_json::json!({ "data": [
+            { "title": "Mordechai", "artist": { "name": "Khruangbin" },
+              "link": "https://www.deezer.com/album/135203602" },
+            { "title": "Mordechai", "artist": { "name": "Un autre" },
+              "link": "https://www.deezer.com/album/1" },
+        ]});
+        assert_eq!(
+            url_lien_album(&v, "Khruangbin", "Mordechai").as_deref(),
+            Some("https://www.deezer.com/album/135203602")
+        );
+        assert_eq!(url_lien_album(&v, "Pearl Jam", "Mordechai"), None);
+        assert_eq!(url_lien_album(&v, "Khruangbin", "Con Todo El Mundo"), None);
+    }
+
+    #[test]
+    fn lien_album_et_artiste_refusent_un_hote_etranger() {
+        let album = serde_json::json!({ "data": [
+            { "title": "Mordechai", "artist": { "name": "Khruangbin" },
+              "link": "https://example.org/phishing" },
+        ]});
+        assert_eq!(url_lien_album(&album, "Khruangbin", "Mordechai"), None);
+        let artiste = serde_json::json!({ "data": [
+            { "name": "Khruangbin", "nb_fan": 9, "link": "http://www.deezer.com/artist/1" },
+        ]});
+        assert_eq!(url_lien_artiste(&artiste, "Khruangbin"), None);
+    }
+
+    #[test]
+    fn lien_artiste_prefere_le_plus_suivi_et_exige_le_meme_nom() {
+        let v = serde_json::json!({ "data": [
+            { "name": "Khruangbin", "nb_fan": 0, "link": "https://www.deezer.com/artist/2" },
+            { "name": "Khruangbin", "nb_fan": 97949, "link": "https://www.deezer.com/artist/5328540" },
+            { "name": "Air Supply", "nb_fan": 500000, "link": "https://www.deezer.com/artist/3" },
+        ]});
+        assert_eq!(
+            url_lien_artiste(&v, "Khruangbin").as_deref(),
+            Some("https://www.deezer.com/artist/5328540")
+        );
+        assert_eq!(url_lien_artiste(&v, "Air"), None);
+        assert_eq!(url_lien_artiste(&v, ""), None);
     }
 }

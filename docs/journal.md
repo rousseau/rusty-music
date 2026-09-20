@@ -2184,3 +2184,108 @@ Décision : on garde, le gain global le vaut. Les 73 tests de
 **Reste à faire** : repasse complète (`rusty-music descripteurs --refaire`,
 nouveau drapeau, ou la case « Refaire ce qui est déjà mesuré » du mode
 Bibliothèque) et vérifier l'histogramme.
+
+### Découvrir : du fil en lignes à une grille de pochettes — 20 septembre 2026
+
+Le fil d'actualité (voir « Mode Découvrir — le fil d'actualité », 30 août)
+était une liste de lignes de 44 px, confinée dans les 760 px de
+`.bibliotheque` : juste, mais dense en texte et pauvre en image. Il passe à une
+**grille de pochettes pleine largeur**, sur le gabarit des cases d'Écouter
+(`.album`), dans les trois onglets.
+
+**Décisions.**
+- **Groupement par période** dans Sorties et Collaborations : « Cette semaine »
+  (≤ 7 j), « Ce mois-ci » (≤ 31 j), « Plus ancien », « Sans date » ; l'ordre
+  du fil (date décroissante) est conservé dans chaque groupe, les groupes vides
+  sont omis. Les voisins ne sont pas groupés.
+- **Une carte = une action principale** : clic ou Entrée ouvre l'explorateur de
+  collaborations de l'artiste (et l'amène à l'écran, il est sous la grille).
+  Au survol ou au clavier, un bandeau propose les liens sortants, **étiquetés**
+  (« Last.fm », « MusicBrainz » — remplacé ensuite par « Deezer », voir plus bas —, « Explorer ▸ ») plutôt que des glyphes : ▶ n'a
+  pas de sens pour une sortie qui n'est pas dans la bibliothèque. Le nom d'artiste
+  n'est plus un bouton séparé (même geste que la carte, une cible de moins).
+- **Pastille EP / Single** sur la pochette (l'album, cas courant, n'en a pas) ;
+  **point d'accent** pour « nouveau », qui remplace le liseré latéral de la ligne
+  sans changer de hauteur.
+- **Voisins** : pas de pochette, donc initiales sur aplat teinté par le nom
+  (`.mosaique--vide`, comme la tuile d'artiste d'Écouter). Pas de photo
+  d'artiste : autre source réseau, hors périmètre pour l'instant.
+- **Filtre par famille** : les cartes hors filtre sont estompées, plus retirées
+  (règle R2 ; voir `interface-guidelines.md`).
+
+**Pochettes.** Deux défauts qui se voyaient à peine sur 44 px et pas du tout en
+grille : `decouvrir_pochette` ne connaissait que Cover Art Archive alors que les
+sorties récentes y manquent souvent — elle prend maintenant l'artiste et le
+titre et retombe sur Deezer (clé de cache `dz-…`, la même que le repli de
+`cover`, factorisée en `cle_pochette_deezer`) ; et `pochetteDecouvrir`
+mémorisait une panne réseau passagère comme « pas de pochette » jusqu'au
+redémarrage, elle ne mémorise plus que les réponses définitives. CAA reste en
+`front-250` : à 140 px de large (voir « Alignement sur Écouter » plus bas), c'est
+à peu près net sur écran Retina.
+
+**Piège en passant.** Les onglets collants laissaient défiler les titres des
+cartes dans leurs marges ; elles sont maintenant peintes du fond (ombres pleines)
+et `top` compense le padding de `.bibliotheque`.
+
+**Vérifié** sur un banc d'essai statique (Tauri simulé, Chrome headless) : trois
+onglets, groupes, pastilles, survol, repli d'initiales, filtre estompé, thème
+clair forcé, clic qui amène l'explorateur. **Pas encore vu dans l'app réelle**
+avec un vrai fil ni le repli Deezer (pas de réseau côté banc d'essai).
+
+**Alignement sur Écouter, et photos pour les voisins (même jour).** Premier
+retour à l'usage : les cartes étaient un peu plus grandes que dans Écouter.
+Pas voulu — `minmax(150px, 1fr)` étirait les colonnes à ~170 px là où Écouter a
+des colonnes fixes de 140 px. La grille de Découvrir prend maintenant les mêmes
+colonnes fixes alignées à gauche, via `--album-larg` posée depuis `ALBUM_LARG`
+(une seule constante fait foi pour les deux vues), et les mêmes marges de 26 px.
+Second retour : « À écouter ailleurs » n'avait aucune illustration — un voisin
+n'a qu'un nom et un MBID, et les initiales teintées étaient un repli, pas une
+réponse. `decouvrir_photo_artiste` cherche donc une photo :
+1. **Deezer**, par nom (`search/artist`), avec garde-fous d'identité — nom
+   normalisé **identique** (pas inclus : « Air » n'est pas « Air Supply »),
+   image non vide (les comptes homonymes vides ont une URL au segment
+   `/artist//`), et le plus suivi (`nb_fan`) parmi les candidats ;
+2. **TheAudioDB** par MBID (`strArtistThumb`, identifiant vérifié comme pour les
+   biographies), seulement pour ceux que Deezer n'a pas — sa cadence de 2,1 s
+   (clé partagée, 30 req/min) le réserve au repli ;
+3. sinon, initiales.
+Caches disque `dza-…` (Deezer, par nom normalisé) et `tadb-<mbid>`, distincts
+pour qu'un « non » de Deezer n'écrase pas TheAudioDB ; une panne n'est jamais
+écrite. Les images (pochettes de sorties comprises) ne se chargent plus qu'à la
+première entrée de la carte dans le viewport (`IntersectionObserver`, 200 px
+d'avance) : un onglet caché ou le bas d'une longue grille ne lancent aucune
+requête. Portraits cadrés vers le haut (`album__pochette--photo`).
+
+**Vérifié** : tests unitaires sur JSON figé (homonymes, inclusion refusée, MBID
+qui ne correspond pas) ; banc d'essai Chrome headless (largeur 140 px mesurée,
+onglet caché sans requête, photos simulées puis repli d'initiales). **Pas vu
+avec de vraies photos** : couverture réelle de TheAudioDB sur des artistes
+confidentiels, cadence sur ~60 voisins, et absence de photo d'homonyme sur un
+nom générique restent à observer dans l'app.
+
+**Bouton Deezer à la place du lien MusicBrainz (même jour).** Le bandeau de
+survol des cartes proposait « MusicBrainz » : la fiche technique de la sortie
+(`/release-group/<rg_mbid>`, ou `/artist/<mbid>` pour un voisin) — pistes,
+éditions, label. C'est la source d'identité du fil, utile pour vérifier une
+donnée, pas un geste de découverte ni d'écoute. Il est remplacé par **« Deezer »**,
+qui ouvre dans le navigateur la page de l'album (de l'artiste, pour un voisin) :
+c'est là qu'on l'écoute. Les cartes gardent deux boutons — « Deezer » + « Last.fm »
+(« Deezer » + « Explorer ▸ » pour les voisins) —, qui tiennent sur une ligne à
+140 px.
+- **Résolution au clic** (`decouvrir_lien_deezer`), sans cache disque : une
+  requête isolée, avec la même recherche et les mêmes règles de concordance que
+  les pochettes (`champ_album`, factorisé) et les photos (nom identique, le plus
+  suivi). Le bouton est désactivé le temps de la requête.
+- **Garde-fou** : seul un lien commençant par `https://www.deezer.com/` est
+  rendu ; on ne fait pas ouvrir au navigateur une URL venue d'une réponse d'API.
+- **Repli** : si Deezer ne connaît pas l'album, ou ne répond pas, on ouvre sa
+  page de recherche (`/search/<artiste titre>`) plutôt que rien.
+- **Écarté** : lire les extraits de 30 s dans l'app (API d'extraits non vérifiée ;
+  file et transport supposent des morceaux de la bibliothèque) et le lien profond
+  `deezer://` (non autorisé par `opener:allow-default-urls`).
+**Vérifié** : tests unitaires (lien retenu, autre artiste refusé, hôte étranger
+refusé, homonyme, « Air » ≠ « Air Supply » ; tests de pochettes inchangés) et
+banc d'essai (lien trouvé, repli sur la recherche, bouton réactivé). **Pas vu
+dans l'app réelle** : ouverture effective dans le navigateur et justesse de la
+page sur une sortie très récente.
+
