@@ -91,8 +91,13 @@ volumes réels de la bibliothèque de test les contraignent fortement :
 
 ## Pochettes
 
-- Deux origines, transparentes pour l'interface : image embarquée, sinon
-  fichier du dossier. `Cover::source` le dit si l'on veut l'afficher.
+- Deux origines locales, transparentes pour l'interface : image embarquée,
+  sinon fichier du dossier. `Cover::source` le dit si l'on veut l'afficher.
+  Sans l'une ni l'autre sur la première piste (celle que la grille retient),
+  on essaie huit pistes sœurs de l'album, puis le repli réseau (`cover_depuis_reseau`, `main.rs`) :
+  Cover Art Archive par release, puis par release-group, puis Deezer. Cache
+  disque par album ; un « pas de pochette » périme après 30 jours, une panne
+  réseau n'est jamais mémorisée.
 - Tailles utiles : 38 px (transport), ~140 px (grille d'albums — resserré
   depuis le 180 px initial pour en montrer plus à l'écran), ~320 px
   (inspecteur). Carrées, recadrage centré — les pochettes réelles vont de

@@ -24,7 +24,7 @@
 - Plex n'est qu'une **source de test** au démarrage ; la version cible ingère directement depuis le dossier.
 
 ## Enrichissement métadonnées (module 1 — Lecteur)
-- **Pochettes** : Cover Art Archive (liée à MusicBrainz, gratuite, propre) via identifiant MusicBrainz de l'album.
+- **Pochettes** : Cover Art Archive (liée à MusicBrainz, gratuite, propre) via identifiant MusicBrainz de l'album. Repli à quatre étages quand ni les tags ni le dossier n'en ont : CAA par **release** (`MUSICBRAINZ_ALBUMID`), CAA par **release-group** (artiste MBID + titre), puis **Deezer** (API publique sans clé, artiste + album qui doivent concorder) pour les albums sans identifiant MusicBrainz. Les images Deezer ne servent qu'à l'affichage, en cache local ; rien n'est écrit dans la bibliothèque.
 - **Bio / genre / crédits** : Wikidata et Wikipédia, résolus par identifiant MusicBrainz de l'artiste.
 - **Biographies d'artiste** : TheAudioDB, résolu **exclusivement par MBID** (`artist-mb.php?i=`), jamais par nom — voir `docs/enrichissement-lecteur.md`. Biographie anglaise et française (`strBiographyFR`), quand disponibles.
 - **Crédits détaillés par édition** (musicien de session, producteur, ingénieur du son) **et label + numéro de catalogue** : Discogs, via ses **dumps mensuels CC0** (`data.discogs.com`) — jamais l'API en direct, une seule passe pour les deux. Lien retrouvé par la relation d'URL que MusicBrainz porte vers Discogs, jamais une recherche par nom. Le label est affiché seul, sans navigation/filtrage par label (décision explicite) — détail : `docs/enrichissement-lecteur.md`.

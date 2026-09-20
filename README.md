@@ -47,7 +47,7 @@ le plan de Paris (~0,4 Go, empreintes vérifiées), puis construit `.app` et
 | Module 2 — Exploration (carte 2D, chemins, familles, filtres tempo/énergie) | livré ; carte sur plan de ville réel (Paris/OpenStreetMap) en cours |
 | Module 3 — Éditeur (démixage, vitesse, hauteur, greffe calée sur les temps, export) | périmètre de `docs/ui-spec-editeur.md` couvert |
 | Super-résolution audio hors ligne (bouton « HD ») | livré (`crates/superres`) |
-| Métadonnées enrichies | genres MusicBrainz + descripteurs audio + popularité livrés ; restent pochettes et bios |
+| Métadonnées enrichies | genres MusicBrainz + descripteurs audio + popularité + pochettes de repli (Cover Art Archive, Deezer) livrés ; restent les bios |
 
 `docs/suite.md` tient le détail de ce qui reste et dans quel ordre.
 

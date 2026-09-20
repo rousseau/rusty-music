@@ -2,7 +2,7 @@
 //! Base locale SQLite : la seule source de vérité pour les trois modules.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rusqlite::functions::FunctionFlags;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -3792,6 +3792,67 @@ impl Library {
         self.release_group_depuis_paire(paire)
     }
 
+    /// La release MusicBrainz (`MUSICBRAINZ_ALBUMID`) du morceau au chemin
+    /// `path`, telle que portée par ses tags — sans jointure de titre, donc
+    /// exacte là où [`Self::release_group_pour_path`] peut rater une édition.
+    pub fn release_pour_path(&self, path: &Path) -> Result<Option<String>> {
+        let chemin = path.to_string_lossy();
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT mb_release_id FROM tracks WHERE path = ?1",
+                params![chemin],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .filter(|id| !id.is_empty()))
+    }
+
+    /// Chemins de `limite` autres pistes du même album que `path`, dans l'ordre
+    /// des chemins. Même regroupement que [`Self::albums`] (album + artiste
+    /// d'album, à défaut artiste de la piste).
+    ///
+    /// La grille d'albums ne retient que la première piste pour la pochette :
+    /// si c'est justement celle dont l'image manque (retaguée à part), les
+    /// autres peuvent la porter.
+    pub fn pistes_soeurs(&self, path: &Path, limite: usize) -> Result<Vec<PathBuf>> {
+        let chemin = path.to_string_lossy();
+        let mut stmt = self.conn.prepare(
+            "SELECT t2.path FROM tracks t1
+               JOIN tracks t2
+                 ON t2.album = t1.album
+                AND COALESCE(t2.album_artist, t2.artist) IS COALESCE(t1.album_artist, t1.artist)
+                AND t2.path <> t1.path
+              WHERE t1.path = ?1
+              ORDER BY t2.path
+              LIMIT ?2",
+        )?;
+        let out = stmt
+            .query_map(params![chemin, limite as i64], |r| r.get::<_, String>(0))?
+            .map(|p| p.map(PathBuf::from))
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(out)
+    }
+
+    /// `(artiste de l'album, album)` du morceau au chemin `path` — la clé de
+    /// recherche des sources sans identifiant MusicBrainz (Deezer).
+    pub fn artiste_album_pour_path(&self, path: &Path) -> Result<Option<(String, String)>> {
+        let chemin = path.to_string_lossy();
+        let paire = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(NULLIF(album_artist, ''), artist), album
+                   FROM tracks WHERE path = ?1",
+                params![chemin],
+                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+            )
+            .optional()?;
+        Ok(paire
+            .and_then(|(a, b)| Some((a?, b?)))
+            .filter(|(a, b)| !a.is_empty() && !b.is_empty()))
+    }
+
     fn release_group_depuis_paire(
         &self,
         paire: Option<(Option<String>, Option<String>)>,
@@ -7122,6 +7183,48 @@ mod tests {
         // la première ne doit pas masquer la nouvelle.
         lib.discogs_lier_edition("rel-2", Some(300_000)).unwrap();
         assert!(lib.discogs_import_utile().unwrap());
+    }
+
+    /// Le repli pochette ne dépend que des tags de la piste : release MBID
+    /// telle quelle, et artiste d'album de préférence à l'artiste de la piste.
+    #[test]
+    fn repli_pochette_lit_release_et_artiste_album_depuis_les_tags() {
+        let lib = Library::open_in_memory().unwrap();
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (path, artist, album, album_artist, mb_release_id)
+                 VALUES ('/m/a.mp3', 'Invité', 'Album', 'Groupe', 'rel-1'),
+                        ('/m/b.mp3', 'Solo', 'Autre', '', NULL)",
+                [],
+            )
+            .unwrap();
+        let a = Path::new("/m/a.mp3");
+        let b = Path::new("/m/b.mp3");
+        assert_eq!(lib.release_pour_path(a).unwrap().as_deref(), Some("rel-1"));
+        assert_eq!(lib.release_pour_path(b).unwrap(), None);
+        assert_eq!(lib.release_pour_path(Path::new("/m/inconnu.mp3")).unwrap(), None);
+        assert_eq!(
+            lib.artiste_album_pour_path(a).unwrap(),
+            Some(("Groupe".to_string(), "Album".to_string()))
+        );
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (path, artist, album, album_artist)
+                 VALUES ('/m/a2.mp3', 'Autre invité', 'Album', 'Groupe'),
+                        ('/m/a3.mp3', 'Groupe', 'Album', 'Autre groupe')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            lib.pistes_soeurs(a, 8).unwrap(),
+            [PathBuf::from("/m/a2.mp3")],
+            "même album et même artiste d'album, sans la piste elle-même ni un homonyme"
+        );
+        assert_eq!(
+            lib.artiste_album_pour_path(b).unwrap(),
+            Some(("Solo".to_string(), "Autre".to_string())),
+            "album_artist vide : repli sur l'artiste de la piste"
+        );
     }
 
     /// « Aucune critique » se mémorise comme les autres réponses vides du

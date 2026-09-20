@@ -5954,44 +5954,173 @@ fn cover_extraire(dossier_cache: &Path, db_path: &Path, path: &str) -> Result<Op
         }
     }
 
-    let cover = rusty_music_core::tags::read_cover(chemin).map_err(echec)?;
-    let valeur = match cover {
+    let cover = cover_locale(db_path, chemin);
+    let (valeur, definitif) = match cover {
         Some(c) => {
             let mime = c.mime.as_deref().unwrap_or("image/jpeg");
-            Some(format!("data:{mime};base64,{}", base64(&c.data)))
+            (Some(format!("data:{mime};base64,{}", base64(&c.data))), true)
         }
-        None => cover_depuis_caa(dossier_cache, db_path, chemin),
+        None => match cover_depuis_reseau(dossier_cache, db_path, chemin) {
+            Repli::Trouvee(v) => (Some(v), true),
+            Repli::Absente => (None, true),
+            // Une panne réseau n'est pas une réponse : ne rien écrire, le
+            // prochain affichage réessaiera.
+            Repli::Indeterminee => (None, false),
+        },
     };
-    if let Some(cle) = &cle {
-        ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
+    if definitif {
+        if let Some(cle) = &cle {
+            ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
+        }
     }
     Ok(valeur)
 }
 
-/// Repli quand ni les tags ni le dossier n'ont de pochette (`docs/suite.md`,
-/// dette « restent pochettes ») : cherche le release-group MusicBrainz du
-/// morceau et l'interroge sur Cover Art Archive, avec le même cache disque
-/// que `decouvrir_pochette` (clé `caa-<mbid>`, partagée entre tous les
-/// morceaux d'un même album) — un album sans pochette connue n'est donc
-/// redemandé au réseau qu'une fois, jamais par morceau.
+/// Combien de pistes sœurs tenter avant de passer au réseau. Sur la
+/// bibliothèque de test, quand la première piste n'a pas d'image, la
+/// deuxième la porte (4 albums sur 4) : huit est large sans relire un album
+/// de 55 pistes en entier.
+const PISTES_SOEURS_MAX: usize = 8;
+
+/// La pochette locale d'un morceau : ses tags, son dossier, puis celles des
+/// autres pistes de l'album — la grille n'en présente qu'une (la première par
+/// chemin), et c'est parfois précisément celle qui n'a pas d'image.
 ///
-/// Avale toute erreur (pas de connexion MusicBrainz en base, panne réseau) :
-/// une pochette manquante n'est pas grave, comme documenté dans `pochette.rs`.
+/// Un fichier dont les tags ne se lisent pas compte comme « sans pochette »
+/// plutôt que d'échouer : il passe alors au repli réseau au lieu de
+/// disparaître en silence (l'interface avale l'erreur de `cover`).
+fn cover_locale(db_path: &Path, chemin: &Path) -> Option<rusty_music_core::Cover> {
+    if let Ok(Some(c)) = rusty_music_core::tags::read_cover(chemin) {
+        return Some(c);
+    }
+    let lib = rusty_music_core::db::Library::open(db_path).ok()?;
+    lib.pistes_soeurs(chemin, PISTES_SOEURS_MAX)
+        .ok()?
+        .iter()
+        .find_map(|p| rusty_music_core::tags::read_cover(p).ok().flatten())
+}
+
+/// Issue du repli réseau quand ni les tags ni le dossier n'ont de pochette.
+enum Repli {
+    Trouvee(String),
+    /// Toutes les sources interrogées ont répondu « pas de pochette ».
+    Absente,
+    /// Au moins une source n'a pas pu répondre (panne réseau, base illisible).
+    Indeterminee,
+}
+
+/// Réponse d'une source, avant agrégation.
+enum Reponse {
+    Image(String),
+    Non,
+    Panne,
+}
+
+/// Une source du repli, avec son cache **d'album** (`cle`, partagée par tous
+/// les morceaux de l'album) : un hit ou un 404 déjà connu ne repart pas sur le
+/// réseau ; une panne n'est jamais écrite.
+fn source_de_pochette(
+    dossier_cache: &Path,
+    cle: &str,
+    appel: impl FnOnce() -> rusty_music_core::error::Result<Option<Vec<u8>>>,
+) -> Reponse {
+    match lire_cache_pochette(dossier_cache, cle) {
+        Some(Some(v)) => return Reponse::Image(v),
+        Some(None) => return Reponse::Non,
+        None => {}
+    }
+    match appel() {
+        Ok(octets) => {
+            let valeur =
+                octets.map(|o| format!("data:image/jpeg;base64,{}", base64(&o)));
+            ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
+            valeur.map_or(Reponse::Non, Reponse::Image)
+        }
+        Err(_) => Reponse::Panne,
+    }
+}
+
+/// Le client Deezer du processus : sa cadence (150 ms entre requêtes) n'a de
+/// sens que partagée, la grille d'albums demande des dizaines de pochettes d'un
+/// coup.
+fn deezer() -> &'static rusty_music_core::deezer::Client {
+    static CLIENT: std::sync::OnceLock<rusty_music_core::deezer::Client> =
+        std::sync::OnceLock::new();
+    CLIENT.get_or_init(rusty_music_core::deezer::Client::new)
+}
+
+/// Repli quand ni les tags ni le dossier n'ont de pochette (`docs/suite.md`,
+/// dette « restent pochettes »), du plus fiable au plus flou :
+///
+/// 1. Cover Art Archive par **release** (`MUSICBRAINZ_ALBUMID` des tags) —
+///    exacte, sans jointure de titre ;
+/// 2. Cover Art Archive par **release-group** (artiste MBID + titre normalisé) ;
+/// 3. Deezer par artiste + album, pour ce qui n'a aucun identifiant
+///    MusicBrainz (~11 % de la bibliothèque) ou que CAA ne connaît pas.
+///
+/// Chaque étape ne passe à la suivante que sur « pas de pochette » ou panne.
+/// Les clés de cache sont par album (`caar-`, `caa-` — partagée avec
+/// `decouvrir_pochette` —, `dz-`) : un album nu n'est redemandé qu'une fois,
+/// jamais par morceau. Rien n'est écrit dans la bibliothèque de l'utilisateur.
+///
 /// Ouvre sa propre connexion à la base plutôt que de faire remonter `Library`
 /// jusqu'ici — même raison que le scan (voir le champ `db` de `Etat`).
-fn cover_depuis_caa(dossier_cache: &Path, db_path: &Path, chemin: &Path) -> Option<String> {
-    let lib = rusty_music_core::db::Library::open(db_path).ok()?;
-    let rg_mbid = lib.release_group_pour_path(chemin).ok()??;
-    let cle = format!("caa-{rg_mbid}");
-    if let Some(valeur) = lire_cache_pochette(dossier_cache, &cle) {
-        return valeur;
+fn cover_depuis_reseau(dossier_cache: &Path, db_path: &Path, chemin: &Path) -> Repli {
+    let Ok(lib) = rusty_music_core::db::Library::open(db_path) else {
+        return Repli::Indeterminee;
+    };
+    let release = lib.release_pour_path(chemin).ok().flatten();
+    let rg_mbid = lib.release_group_pour_path(chemin).ok().flatten();
+    let artiste_album = lib.artiste_album_pour_path(chemin).ok().flatten();
+    drop(lib);
+
+    let mut panne = false;
+    let mut essayer = |reponse: Reponse| match reponse {
+        Reponse::Image(v) => Some(v),
+        Reponse::Non => None,
+        Reponse::Panne => {
+            panne = true;
+            None
+        }
+    };
+
+    if let Some(id) = &release {
+        let r = source_de_pochette(dossier_cache, &format!("caar-{id}"), || {
+            rusty_music_core::pochette::release(id)
+        });
+        if let Some(v) = essayer(r) {
+            return Repli::Trouvee(v);
+        }
     }
-    let valeur = rusty_music_core::pochette::release_group(&rg_mbid)
-        .ok()
-        .flatten()
-        .map(|octets| format!("data:image/jpeg;base64,{}", base64(&octets)));
-    ecrire_cache_pochette(dossier_cache, &cle, valeur.as_deref());
-    valeur
+    if let Some(rg) = &rg_mbid {
+        let r = source_de_pochette(dossier_cache, &format!("caa-{rg}"), || {
+            rusty_music_core::pochette::release_group(rg)
+        });
+        if let Some(v) = essayer(r) {
+            return Repli::Trouvee(v);
+        }
+    }
+    if let Some((artiste, album)) = &artiste_album {
+        let cle = format!("dz-{:016x}", empreinte(
+            format!(
+                "{}\0{}",
+                rusty_music_core::musicbrainz::cle_artiste(artiste),
+                rusty_music_core::musicbrainz::normaliser_titre(album)
+            )
+            .as_bytes(),
+        ));
+        let r = source_de_pochette(dossier_cache, &cle, || {
+            deezer().pochette_album(artiste, album)
+        });
+        if let Some(v) = essayer(r) {
+            return Repli::Trouvee(v);
+        }
+    }
+    if panne {
+        Repli::Indeterminee
+    } else {
+        Repli::Absente
+    }
 }
 
 /// Les chemins de piste d'au plus `max` albums d'un artiste qui portent une
@@ -6053,28 +6182,67 @@ fn cle_pochette(path: &Path, mtime: std::time::SystemTime) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let mut octets = path.to_string_lossy().into_owned().into_bytes();
+    octets.extend_from_slice(&epoch.to_le_bytes());
+    format!("{:016x}", empreinte(&octets))
+}
+
+/// Hachage FNV-1a 64 bits.
+fn empreinte(octets: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for octet in path
-        .to_string_lossy()
-        .as_bytes()
-        .iter()
-        .chain(&epoch.to_le_bytes())
-    {
+    for octet in octets {
         h ^= *octet as u64;
         h = h.wrapping_mul(0x1000_0000_01b3);
     }
-    format!("{h:016x}")
+    h
 }
 
+/// Durée de validité d'une entrée « pas de pochette » : passé ce délai elle
+/// est redemandée — CAA et Deezer s'enrichissent, et l'enrichissement
+/// MusicBrainz local peut arriver après le premier affichage. Les pochettes
+/// trouvées, elles, ne périment pas.
+const NEGATIF_VALIDITE: Duration = Duration::from_secs(30 * 24 * 3600);
+
 /// Lit une entrée du cache. `None` extérieur = pas en cache (à calculer),
-/// `Some(None)` intérieur = en cache et confirmé sans pochette.
+/// `Some(None)` intérieur = en cache et confirmé sans pochette (depuis moins
+/// de [`NEGATIF_VALIDITE`]).
 fn lire_cache_pochette(dossier: &Path, cle: &str) -> Option<Option<String>> {
-    let octets = std::fs::read(dossier.join(cle)).ok()?;
+    lire_cache_pochette_avec(dossier, cle, NEGATIF_VALIDITE)
+}
+
+fn lire_cache_pochette_avec(dossier: &Path, cle: &str, validite: Duration) -> Option<Option<String>> {
+    let chemin = dossier.join(cle);
+    let octets = std::fs::read(&chemin).ok()?;
     if octets == SANS_POCHETTE {
-        Some(None)
-    } else {
-        Some(String::from_utf8(octets).ok())
+        let age = std::fs::metadata(&chemin)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok());
+        // Âge illisible : mieux vaut redemander qu'enterrer l'album.
+        return match age {
+            Some(a) if a <= validite => Some(None),
+            _ => None,
+        };
     }
+    Some(String::from_utf8(octets).ok())
+}
+
+/// Efface les entrées « pas de pochette » d'avant la distinction entre
+/// « 404 » et « panne réseau » : elles peuvent être des pannes gravées.
+/// Une seule fois (marqueur à côté du cache).
+fn purger_negatifs_pochettes(dossier: &Path) {
+    let marqueur = dossier.join(".negatifs-purges-v1");
+    if marqueur.exists() {
+        return;
+    }
+    if let Ok(entrees) = std::fs::read_dir(dossier) {
+        for e in entrees.flatten() {
+            if std::fs::read(e.path()).is_ok_and(|o| o == SANS_POCHETTE) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let _ = std::fs::write(&marqueur, b"1");
 }
 
 /// Écrit une entrée. Une erreur d'écriture (disque plein, dossier en lecture
@@ -6884,6 +7052,11 @@ fn main() {
                 let _ = std::fs::write(&marqueur, b"1");
             }
 
+            let cache_pochettes = dossier.join("pochettes");
+            if cache_pochettes.is_dir() {
+                purger_negatifs_pochettes(&cache_pochettes);
+            }
+
             // Sans cela, la fenêtre s'ouvre parfois sans être le répondeur
             // clavier : les raccourcis (espace, flèches) n'arrivent alors
             // jamais au JS tant qu'on n'a pas cliqué une première fois dans
@@ -7058,10 +7231,12 @@ fn main() {
 mod tests {
     use super::{
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
-        fin_de_trace, morceaux_le_long, sous_une_racine, AccrochageVoirie, RepereLocal,
+        fin_de_trace, morceaux_le_long, purger_negatifs_pochettes, sous_une_racine,
+        AccrochageVoirie, RepereLocal,
     };
     use std::collections::{HashMap, HashSet};
     use std::path::Path;
+    use std::time::Duration;
 
     /// Un rendu ne doit jamais atterrir sous une racine surveillée : il y
     /// serait ingéré, analysé et placé sur la carte alors que ce n'est pas un
@@ -7173,6 +7348,40 @@ mod tests {
             Some(None),
             "en cache, confirmé sans pochette"
         );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn un_negatif_perime_est_redemande_pas_une_pochette_trouvee() {
+        let dossier = dossier_de_test("negatif-perime");
+        ecrire_cache_pochette(&dossier, "sans", None);
+        ecrire_cache_pochette(&dossier, "avec", Some("data:image/jpeg;base64,zzz"));
+        for cle in ["sans", "avec"] {
+            let f = std::fs::File::options().write(true).open(dossier.join(cle)).unwrap();
+            f.set_modified(std::time::SystemTime::now() - Duration::from_secs(40 * 24 * 3600))
+                .unwrap();
+        }
+        assert_eq!(lire_cache_pochette(&dossier, "sans"), None, "négatif de 40 j : à redemander");
+        assert_eq!(
+            lire_cache_pochette(&dossier, "avec"),
+            Some(Some("data:image/jpeg;base64,zzz".to_string())),
+            "une pochette trouvée ne périme pas"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn la_purge_efface_les_negatifs_une_seule_fois() {
+        let dossier = dossier_de_test("purge");
+        ecrire_cache_pochette(&dossier, "sans", None);
+        ecrire_cache_pochette(&dossier, "avec", Some("data:image/jpeg;base64,zzz"));
+        purger_negatifs_pochettes(&dossier);
+        assert!(!dossier.join("sans").exists());
+        assert!(dossier.join("avec").exists());
+        // Un négatif écrit après la purge est un vrai 404 : on le garde.
+        ecrire_cache_pochette(&dossier, "sans2", None);
+        purger_negatifs_pochettes(&dossier);
+        assert!(dossier.join("sans2").exists());
         std::fs::remove_dir_all(&dossier).ok();
     }
 

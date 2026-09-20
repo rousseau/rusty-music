@@ -124,6 +124,106 @@ impl Client {
         }
         Ok(None)
     }
+
+    /// La pochette (500 px, JPEG) de l'album `album` de `artiste`, si la
+    /// recherche rend un album qui concorde (voir [`url_pochette_album`]).
+    ///
+    /// `Ok(None)` : Deezer ne connaît pas cet album (réponse définitive).
+    /// `Err` : panne réseau — l'appelant ne doit pas la mettre en cache.
+    pub fn pochette_album(&self, artiste: &str, album: &str) -> Result<Option<Vec<u8>>> {
+        for q in requetes_album(artiste, album) {
+            let Some(v) = self.chercher("album", &q)? else {
+                continue;
+            };
+            if let Some(url) = url_pochette_album(&v, artiste, album) {
+                self.cadencer();
+                return crate::pochette::telecharger(&url);
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// Artiste d'album « fourre-tout » des compilations : il ne dit rien de
+/// l'album, et Deezer range souvent la compilation sous un éditeur.
+fn est_artiste_divers(artiste: &str) -> bool {
+    matches!(
+        cle_artiste(artiste).as_str(),
+        "variousartists" | "variousartist" | "artistesdivers" | "artistesvaries" | "variosartistas"
+    )
+}
+
+/// Le titre débarrassé de sa mention d'édition : « Keep It Unreal - 10th
+/// Anniversary Edition (Bonus Disc) » → « Keep It Unreal ». Rend le titre tel
+/// quel s'il n'y a rien à retirer.
+fn titre_court(album: &str) -> &str {
+    let coupe = [" - ", " – ", " (", " ["]
+        .iter()
+        .filter_map(|m| album.find(m))
+        .filter(|&i| i > 0)
+        .min();
+    coupe.map_or(album, |i| album[..i].trim())
+}
+
+/// Les recherches à tenter, de la plus précise à la plus large : le titre
+/// tel quel, sans ses points (« Vol.1 » ne trouve rien chez Deezer, « Vol 1 »
+/// trouve « Vol. 1 »), puis sans sa mention d'édition. Pour une compilation
+/// (« Various Artists »), on cherche par titre seul.
+fn requetes_album(artiste: &str, album: &str) -> Vec<String> {
+    let mut titres = vec![album.to_string()];
+    for t in [album.replace('.', " "), titre_court(album).to_string()] {
+        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !titres.contains(&t) {
+            titres.push(t);
+        }
+    }
+    titres
+        .iter()
+        .map(|t| {
+            if est_artiste_divers(artiste) {
+                format!("album:\"{}\"", echapper(t))
+            } else {
+                format!("artist:\"{}\" album:\"{}\"", echapper(artiste), echapper(t))
+            }
+        })
+        .collect()
+}
+
+/// Deux titres d'album normalisés concordent s'ils sont égaux, ou si l'un
+/// commence par l'autre (« keepitunreal » ↔ « keepitunreal10thanniversary… »)
+/// et que le plus court garde de quoi distinguer — sans quoi « G » recevrait
+/// la pochette de n'importe quel album du même artiste qui commence par g.
+fn titres_concordent(a: &str, b: &str) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    a == b || (a.len().min(b.len()) >= 5 && (a.starts_with(b) || b.starts_with(a)))
+}
+
+/// L'URL de la pochette du premier album de la réponse Deezer `v` qui
+/// concorde avec la demande : titre concordant **et** artiste concordant —
+/// sauf compilation, où l'artiste ne prouve rien et où le titre doit alors
+/// être **égal**.
+fn url_pochette_album(v: &Value, artiste: &str, album: &str) -> Option<String> {
+    let divers = est_artiste_divers(artiste);
+    let art_attendu = cle_artiste(artiste);
+    let tit_attendu = normaliser_titre(album);
+    v["data"].as_array()?.iter().find_map(|d| {
+        let art = cle_artiste(d["artist"]["name"].as_str().unwrap_or(""));
+        let tit = normaliser_titre(d["title"].as_str().unwrap_or(""));
+        let concorde_album = if divers {
+            !tit.is_empty() && tit == tit_attendu
+        } else {
+            concorde(&art, &art_attendu) && titres_concordent(&tit, &tit_attendu)
+        };
+        if !concorde_album {
+            return None;
+        }
+        d["cover_big"]
+            .as_str()
+            .filter(|u| !u.is_empty())
+            .map(str::to_owned)
+    })
 }
 
 /// Deux chaînes normalisées concordent si elles sont égales ou si l'une
@@ -150,5 +250,96 @@ mod tests {
         assert!(concorde("neverforget", "neverforgetinstrumentalversion"));
         assert!(!concorde("nirvana", "nirwana"));
         assert!(!concorde("", "nirvana"));
+    }
+
+    fn reponse() -> Value {
+        serde_json::json!({ "data": [
+            { "title": "Nevermind (Deluxe)", "artist": { "name": "Nirvana" },
+              "cover_big": "https://cdn/nevermind.jpg" },
+            { "title": "Nevermind", "artist": { "name": "Nirvana Tribute Band" },
+              "cover_big": "https://cdn/tribute.jpg" },
+            { "title": "In Utero", "artist": { "name": "Nirvana" },
+              "cover_big": "" },
+        ]})
+    }
+
+    #[test]
+    fn pochette_album_retient_l_album_de_l_artiste() {
+        assert_eq!(
+            url_pochette_album(&reponse(), "Nirvana", "Nevermind").as_deref(),
+            Some("https://cdn/nevermind.jpg")
+        );
+    }
+
+    #[test]
+    fn pochette_album_rejette_un_autre_artiste_ou_un_autre_album() {
+        assert_eq!(url_pochette_album(&reponse(), "Pearl Jam", "Nevermind"), None);
+        assert_eq!(url_pochette_album(&reponse(), "Nirvana", "Bleach"), None);
+    }
+
+    #[test]
+    fn pochette_album_accepte_un_titre_a_rallonge_qui_commence_comme_celui_de_deezer() {
+        let v = serde_json::json!({ "data": [
+            { "title": "Keep It Unreal (10th Anniversary Analogue Remaster Edition)",
+              "artist": { "name": "Mr. Scruff" }, "cover_big": "https://cdn/kiu.jpg" },
+        ]});
+        assert_eq!(
+            url_pochette_album(
+                &v,
+                "Mr. Scruff",
+                "Keep It Unreal - 10th Anniversary Analogue Remaster Edition (Bonus Disc)"
+            )
+            .as_deref(),
+            Some("https://cdn/kiu.jpg")
+        );
+    }
+
+    #[test]
+    fn pochette_album_un_titre_court_ne_prend_pas_n_importe_quel_album_de_l_artiste() {
+        let v = serde_json::json!({ "data": [
+            { "title": "Greatest Hits", "artist": { "name": "Fingathing" },
+              "cover_big": "https://cdn/gh.jpg" },
+        ]});
+        assert_eq!(url_pochette_album(&v, "Fingathing", "G"), None);
+    }
+
+    #[test]
+    fn compilation_cherche_par_titre_seul_et_exige_l_egalite() {
+        assert_eq!(
+            requetes_album("Various Artists", "Nova Rare Grooves Reggae Vol.1"),
+            [
+                "album:\"Nova Rare Grooves Reggae Vol.1\"",
+                "album:\"Nova Rare Grooves Reggae Vol 1\"",
+            ]
+        );
+        let v = serde_json::json!({ "data": [
+            { "title": "Nova Rare Grooves Reggae, Vol. 1", "artist": { "name": "Nova Tunes" },
+              "cover_big": "https://cdn/nova.jpg" },
+            { "title": "Nova Rare Grooves Reggae, Vol. 2", "artist": { "name": "Nova Tunes" },
+              "cover_big": "https://cdn/nova2.jpg" },
+        ]});
+        assert_eq!(
+            url_pochette_album(&v, "Various Artists", "Nova Rare Grooves Reggae Vol.1").as_deref(),
+            Some("https://cdn/nova.jpg")
+        );
+        // Un préfixe ne suffit pas quand l'artiste ne garantit rien.
+        assert_eq!(url_pochette_album(&v, "Various Artists", "Nova Rare Grooves"), None);
+    }
+
+    #[test]
+    fn requetes_album_ajoute_le_titre_court_apres_le_titre_complet() {
+        assert_eq!(
+            requetes_album("Mr. Scruff", "Keep It Unreal - 10th Anniversary (Bonus Disc)"),
+            [
+                "artist:\"Mr. Scruff\" album:\"Keep It Unreal - 10th Anniversary (Bonus Disc)\"",
+                "artist:\"Mr. Scruff\" album:\"Keep It Unreal\"",
+            ]
+        );
+        assert_eq!(requetes_album("Nirvana", "Nevermind").len(), 1);
+    }
+
+    #[test]
+    fn pochette_album_ignore_une_url_vide() {
+        assert_eq!(url_pochette_album(&reponse(), "Nirvana", "In Utero"), None);
     }
 }
