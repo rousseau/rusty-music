@@ -471,6 +471,21 @@ function colonnesGrille() {
   return Math.max(1, Math.floor((larg + ALBUM_ECART) / (ALBUM_LARG + ALBUM_ECART)));
 }
 
+// Cases déjà construites, par clé d'identité de l'item (chemin d'album ou
+// mbid|nom d'artiste) — réutilisées d'un redessin à l'autre pour qu'une case
+// déjà visible, pochette déjà posée, ne disparaisse jamais le temps d'un
+// nouveau `carteAlbum`/`carteArtiste` : sans ça, chaque cran de défilement
+// vidait puis reconstruisait toute la bande visible, et le placeholder rayé
+// de `.album__pochette` clignotait même sur des cases inchangées. Vidée à la
+// bascule albums ↔ artistes : les deux balisages ne doivent jamais se
+// répondre sur une collision de clé fortuite.
+const grilleCartes = new Map();
+let grilleCartesQuoi = null;
+
+function cleCarteGrille(item) {
+  return vue.quoi === "artistes" ? `${item.mbid ?? ""}|${item.name}` : cleAlbum(item);
+}
+
 function dessinerGrille() {
   const lignes = lignesCourantes();
   const n = lignes.length;
@@ -483,12 +498,35 @@ function dessinerGrille() {
 
   grilleFenetre.style.transform = `translateY(${rangHaut * ALBUM_HAUT}px)`;
   grilleFenetre.style.gridTemplateColumns = `repeat(${cols}, ${ALBUM_LARG}px)`;
-  grilleFenetre.replaceChildren();
+
+  if (vue.quoi !== grilleCartesQuoi) {
+    grilleCartes.clear();
+    grilleCartesQuoi = vue.quoi;
+  }
 
   const carte = vue.quoi === "artistes" ? carteArtiste : carteAlbum;
+  const vus = new Set();
   for (let i = rangHaut * cols; i < Math.min(n, rangBas * cols); i++) {
-    grilleFenetre.appendChild(carte(lignes[i]));
+    const item = lignes[i];
+    const cle = cleCarteGrille(item);
+    vus.add(cle);
+    let el = grilleCartes.get(cle);
+    if (!el) {
+      el = carte(item);
+      grilleCartes.set(cle, el);
+    }
+    // Déplace le nœud à sa place dans l'ordre voulu s'il y est déjà — pas de
+    // retrait/réinsertion, donc pas de repeinture parasite.
+    grilleFenetre.appendChild(el);
   }
+
+  for (const [cle, el] of grilleCartes) {
+    if (!vus.has(cle)) {
+      el.remove();
+      grilleCartes.delete(cle);
+    }
+  }
+
   majIndexActif();
 }
 
