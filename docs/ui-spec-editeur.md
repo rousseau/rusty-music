@@ -102,6 +102,16 @@ séparation du morceau en cours de lecture ; il reste utilisable dans l'établi
 pour refaire une séparation avec une autre variante. Un morceau déjà séparé saute
 l'état 2 : il s'ouvre directement dans l'établi, sans recalcul.
 
+**Poids absents : téléchargés automatiquement (21 septembre).** Choisir une
+variante dont les poids ne sont pas sur la machine — la variante affinée surtout,
+336 Mo — ne renvoie plus à un script. Le coût est annoncé **avant** le clic, sur
+la variante (« · 336 Mo à télécharger ») et sur le bouton (« Télécharger et
+séparer ») ; le clic lance le téléchargement, avec sa barre graduée (la taille est
+connue d'avance) et le message « téléchargement du modèle : x / y Mo — une seule
+fois, puis la séparation », puis la séparation enchaîne sans autre geste. Un
+téléchargement interrompu ou tronqué ne laisse aucun fichier que le moteur
+prendrait pour un modèle.
+
 **Fait le 10 septembre.** Une barre de progression sous le bouton, alimentée
 par les évènements de `demucs-core` : indéterminée le temps du décodage et de
 la chauffe du modèle (aucun segment connu), puis graduée segment par segment —
@@ -273,6 +283,37 @@ dossier fautif. Un rendu y serait ingéré, analysé et placé sur la carte alor
 que ce n'est pas un morceau. La comparaison se fait composant par composant :
 `/Musique2` n'est pas dans `/Musique`, ce qu'un `starts_with` textuel aurait
 prétendu. Testé.
+
+## Cohérence de la lecture — **posé le 21 septembre**
+
+Deux défauts entendus à l'usage : le morceau d'origine sonnant **en même
+temps** que ses stems, et la batterie audible **malgré son muet**. Les règles
+ci-dessous les rendent impossibles par construction, côté moteur d'abord — une
+règle tenue seulement par l'interface finit toujours par avoir un chemin qui
+la contourne (⏮, ⏭, touches média).
+
+1. **Une seule source sonne : le lecteur ordinaire ou les stems, jamais les
+   deux.** `stems_play` met le lecteur en pause ; chaque commande qui le fait
+   sonner (`play`, `set_queue`, `remplacer_file`, `jump_to`, `previous`, `skip`,
+   `toggle_pause`) coupe d'abord les stems (`couper_stems`, `main.rs`) et
+   relance le lecteur si sa commande ne le fait pas déjà. Dernière commande
+   gagnante. Filet : `stems_state` remet le lecteur en pause s'il le voit sonner
+   pendant que des stems sonnent.
+2. **Un jeu de stems naît en pause, à ses niveaux.** Il sonnait dès le
+   chargement, tous stems à 1,0 : muet et solo ne s'appliquaient qu'après les
+   allers-retours de l'interface, et à chaque rechargement (hauteur, greffe).
+   `Multipiste::preparer` charge en pause avec les niveaux ; l'interface pose
+   vitesses et position, puis donne l'ordre de sonner (`reprendre`).
+3. **Les réglages de l'écran font foi.** Les niveaux partent un envoi à la fois
+   (le dernier état l'emporte — les commandes asynchrones ne s'ordonnent pas
+   toutes seules), et **chaque battement du sondage compare** stems chargés et
+   niveaux du moteur à ceux de l'écran (`reconcilierStems`) : un écart est
+   renvoyé, un jeu de stems différent de celui affiché est rechargé.
+   `stems_gain` refuse un nombre de niveaux qui ne correspond pas au jeu chargé
+   plutôt que de muter le mauvais stem.
+4. **Un chargement à la fois** (`enSerie`), et abandonné si l'on a changé de
+   morceau ou quitté Éditer pendant le calcul — sinon les stems d'un autre
+   morceau prenaient la main sur l'écran.
 
 ## Le coût disque, à montrer
 

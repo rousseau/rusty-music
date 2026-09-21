@@ -4554,6 +4554,13 @@ struct EtatDemix {
     /// Le morceau en cours de traitement, pour que l'interface sache si les
     /// stems affichés sont bien les siens.
     source: String,
+    /// Où en est le travail : « telechargement » (poids de la variante absents,
+    /// récupérés d'abord) puis « separation ». Vide hors traitement.
+    phase: String,
+    /// Téléchargement des poids : octets reçus et attendus (taille connue
+    /// d'avance, la barre est donc toujours graduée).
+    octets_faits: u64,
+    octets_total: u64,
     /// Segments audio traités et total, pour la barre de progression. `total`
     /// reste à zéro tant que le découpage n'est pas connu (décodage puis
     /// chauffe du modèle, ou morceau trop court pour être découpé) : la barre
@@ -4773,11 +4780,17 @@ fn stockage_logiciel(etat: State<Etat>) -> Result<StockageLogiciel, String> {
         .map(|m| m.len())
         .unwrap_or(0);
 
-    let modeles = rusty_music_core::modeles::dossiers()
+    // Tous les dossiers de poids qui existent, chacun une fois : les poids
+    // téléchargés par l'application (données utilisateur) s'ajoutent à ceux du
+    // paquet ou du dépôt. Deux chemins vers le même dossier ne comptent qu'une
+    // fois.
+    let mut vus = std::collections::HashSet::new();
+    let modeles: u64 = rusty_music_core::modeles::dossiers()
         .into_iter()
-        .find(|d| d.is_dir())
+        .filter_map(|d| d.canonicalize().ok())
+        .filter(|d| d.is_dir() && vus.insert(d.clone()))
         .map(|d| poids(&d))
-        .unwrap_or(0);
+        .sum();
 
     let mut base = std::fs::metadata(&etat.db).map(|m| m.len()).unwrap_or(0);
     for suffixe in ["-wal", "-shm"] {
@@ -5252,16 +5265,42 @@ fn start_demix(
     let sortie = dossier_stems(&etat, &source);
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
-        let issue = rusty_music_editor::Demixeur::charger(None, variante).and_then(|d| {
-            d.chauffer();
-            d.separer_fichier_suivi(&source, &sortie, |p| {
-                if let Ok(mut e) = etat.demix.lock() {
-                    e.segments_faits = p.segments_faits;
-                    e.segments_total = p.segments_total;
-                    e.stem = p.stem.map(str::to_string);
-                }
-            })
+
+        // Les poids de la variante manquent (la première fois, typiquement pour
+        // la variante affinée, 336 Mo) : on les télécharge, plutôt que de
+        // renvoyer l'utilisateur à un script. La phase et la progression sont
+        // posées **avant** la première réponse du serveur, pour que
+        // l'interface annonce le téléchargement tout de suite.
+        if !variante.presente() {
+            if let Ok(mut e) = etat.demix.lock() {
+                e.phase = "telechargement".into();
+                e.octets_total = variante.octets();
+            }
+        }
+        let poids = rusty_music_editor::Demixeur::assurer_poids(variante, |vus, total| {
+            if let Ok(mut e) = etat.demix.lock() {
+                e.octets_faits = vus;
+                e.octets_total = total.unwrap_or_else(|| variante.octets());
+            }
         });
+        if let Ok(mut e) = etat.demix.lock() {
+            e.phase = "separation".into();
+            e.octets_faits = 0;
+            e.octets_total = 0;
+        }
+
+        let issue = poids
+            .and_then(|_| rusty_music_editor::Demixeur::charger(None, variante))
+            .and_then(|d| {
+                d.chauffer();
+                d.separer_fichier_suivi(&source, &sortie, |p| {
+                    if let Ok(mut e) = etat.demix.lock() {
+                        e.segments_faits = p.segments_faits;
+                        e.segments_total = p.segments_total;
+                        e.stem = p.stem.map(str::to_string);
+                    }
+                })
+            });
 
         let (stems, bilan) = match issue {
             Ok(fichiers) => {
@@ -5292,6 +5331,7 @@ fn start_demix(
         let verrou = etat.demix.lock();
         if let Ok(mut d) = verrou {
             d.en_cours = false;
+            d.phase = String::new();
             d.stem = None;
             d.stems = stems;
             d.resultat = Some(bilan);
@@ -5301,23 +5341,81 @@ fn start_demix(
     Ok(())
 }
 
+/// Ce que l'interface doit savoir d'une variante avant d'en proposer le bouton.
+#[derive(serde::Serialize)]
+struct VarianteDispo {
+    nom: &'static str,
+    /// Poids déjà sur la machine : sinon le premier démixage les télécharge.
+    presente: bool,
+    megaoctets: u32,
+}
+
+/// Les variantes de séparation et leur disponibilité locale — pour annoncer le
+/// téléchargement **avant** le clic, comme l'analyse annonce son coût.
+#[tauri::command(async)]
+fn demix_variantes() -> Vec<VarianteDispo> {
+    use rusty_music_editor::Variante;
+    [Variante::Standard, Variante::SixStems, Variante::Affinee]
+        .into_iter()
+        .map(|v| VarianteDispo {
+            nom: v.nom(),
+            presente: v.presente(),
+            megaoctets: v.megaoctets(),
+        })
+        .collect()
+}
+
 /// Avancement du démixage. L'interface sonde, faute de rapport intermédiaire.
 #[tauri::command(async)]
 fn demix_state(etat: State<Etat>) -> Result<EtatDemix, String> {
     Ok(etat.demix.lock().map_err(echec)?.clone())
 }
 
-/// Charge un jeu de stems et les met en lecture simultanée.
+/// Lecture ordinaire et lecture des stems s'excluent : une seule des deux
+/// sonne. Cette fonction est le côté « le lecteur reprend la main » — à appeler
+/// par toute commande qui fait sonner le lecteur du module 1.
+///
+/// Rend vrai si des stems jouaient. Dans ce cas `stems_play` avait mis le
+/// lecteur en pause : à l'appelant de le relancer si sa commande ne le fait pas
+/// déjà (`Player::play` et `previous` le font, `skip` non).
+///
+/// **Garantie posée côté moteur, pas seulement par l'interface.** L'interface
+/// arrêtait bien les stems avant de lancer un morceau, mais ⏮ (`previous`),
+/// ⏭ et les touches média ne passaient pas par là : le morceau d'origine
+/// repartait par-dessus ses stems. Un verrou à la fois, jamais les deux — pas
+/// d'inversion possible avec `stems_play`, qui ne tient pas `stems` en même
+/// temps que `player`.
+fn couper_stems(etat: &Etat) -> bool {
+    match etat.stems.lock() {
+        Ok(mut g) => g.take().is_some(),
+        Err(_) => false,
+    }
+}
+
+/// Charge un jeu de stems, **en pause**, à leurs niveaux.
 ///
 /// Remplace le multipiste précédent s'il y en avait un : deux jeux de stems à
 /// la fois n'auraient aucun sens, et chacun tient une sortie audio.
+///
+/// **Né silencieux, avec ses niveaux.** Il sonnait dès le chargement, tous
+/// stems à pleine échelle : un muet (la batterie, en pratique) ne s'appliquait
+/// qu'une fois vitesses et niveaux envoyés par l'interface, et le jeu entier
+/// s'entendait entre-temps — à chaque chargement, donc aussi à chaque
+/// changement de hauteur. `niveaux` porte le solo et les coupures dès la
+/// première trame, et l'interface donne l'ordre de sonner (`reprendre`) quand
+/// tout est en place.
 #[tauri::command(async)]
-fn stems_play(etat: State<Etat>, stems: Vec<(String, String)>) -> Result<Vec<String>, String> {
+fn stems_play(
+    etat: State<Etat>,
+    stems: Vec<(String, String)>,
+    niveaux: Option<Vec<f32>>,
+) -> Result<Vec<String>, String> {
     let pistes: Vec<(String, PathBuf)> = stems
         .into_iter()
         .map(|(nom, chemin)| (nom, PathBuf::from(chemin)))
         .collect();
-    let multi = rusty_music_player::Multipiste::charger(&pistes).map_err(echec)?;
+    let niveaux = niveaux.unwrap_or_default();
+    let multi = rusty_music_player::Multipiste::preparer(&pistes, &niveaux).map_err(echec)?;
     let noms = multi.noms().to_vec();
 
     // Le lecteur du module 1 se tait : deux sorties audio superposées, ce
@@ -5329,15 +5427,26 @@ fn stems_play(etat: State<Etat>, stems: Vec<(String, String)>) -> Result<Vec<Str
         p.pause();
     }
     *etat.stems.lock().map_err(echec)? = Some(multi);
-    tracing::info!(n = noms.len(), "stems en lecture");
+    tracing::info!(n = noms.len(), "stems chargés");
     Ok(noms)
 }
 
-/// Règle le niveau d'une piste — c'est ce que font solo et coupure.
+/// Règle le niveau de chaque piste — c'est ce que font solo et coupure.
+///
+/// **Refuse un compte qui ne correspond pas** au jeu chargé plutôt que
+/// d'appliquer ce qui tombe juste : les niveaux sont posés par rang, et un
+/// décalage muterait le mauvais stem sans rien dire.
 #[tauri::command(async)]
 fn stems_gain(etat: State<Etat>, levels: Vec<f32>) -> Result<(), String> {
     let garde = etat.stems.lock().map_err(echec)?;
     if let Some(m) = garde.as_ref() {
+        if levels.len() != m.noms().len() {
+            return Err(format!(
+                "{} niveaux pour {} stems chargés",
+                levels.len(),
+                m.noms().len()
+            ));
+        }
         for (i, n) in levels.iter().enumerate() {
             m.regler(i, *n);
         }
@@ -5376,6 +5485,9 @@ struct EtatStems {
     en_pause: bool,
     position_ms: u64,
     duree_ms: u64,
+    /// Noms des stems chargés, dans l'ordre des niveaux : de quoi vérifier que
+    /// l'interface et le moteur parlent du même jeu.
+    noms: Vec<String>,
     niveaux: Vec<f32>,
     /// Vitesse de chaque stem. L'interface les tient déjà, mais c'est le
     /// moteur qui les borne : les relire évite d'afficher une valeur que la
@@ -5389,19 +5501,36 @@ struct EtatStems {
 
 #[tauri::command(async)]
 fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
-    let garde = etat.stems.lock().map_err(echec)?;
-    Ok(match garde.as_ref() {
-        Some(m) => EtatStems {
-            actif: !m.fini(),
-            en_pause: m.en_pause(),
-            position_ms: m.position().as_millis() as u64,
-            duree_ms: m.duree().as_millis() as u64,
-            niveaux: m.niveaux(),
-            vitesses: m.vitesses(),
-            derive_ms: m.derive().as_millis() as u64,
-        },
-        None => EtatStems::default(),
-    })
+    let etat_stems = {
+        let garde = etat.stems.lock().map_err(echec)?;
+        match garde.as_ref() {
+            Some(m) => EtatStems {
+                actif: !m.fini(),
+                en_pause: m.en_pause(),
+                position_ms: m.position().as_millis() as u64,
+                duree_ms: m.duree().as_millis() as u64,
+                noms: m.noms().to_vec(),
+                niveaux: m.niveaux(),
+                vitesses: m.vitesses(),
+                derive_ms: m.derive().as_millis() as u64,
+            },
+            None => EtatStems::default(),
+        }
+    };
+    // Filet de sécurité de l'exclusion (voir `couper_stems`) : des stems qui
+    // sonnent et le morceau d'origine aussi, c'est le défaut qu'on ne veut plus
+    // entendre, quelle qu'en soit la cause. Le sondage y veille à chaque
+    // battement. `try_lock` : le lecteur peut être tenu par un préchargement,
+    // le sondage n'a pas à attendre — le prochain battement reviendra.
+    if etat_stems.actif && !etat_stems.en_pause {
+        if let Ok(p) = etat.player.try_lock() {
+            if !p.is_paused() {
+                p.pause();
+                tracing::warn!("morceau d'origine relancé pendant les stems : remis en pause");
+            }
+        }
+    }
+    Ok(etat_stems)
 }
 
 /// Spectrogramme d'un stem, en intensités sur un octet.
@@ -6482,6 +6611,7 @@ struct EtatLecture {
 #[tauri::command(async)]
 fn play(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    couper_stems(&etat);
     etat.player
         .lock()
         .map_err(echec)?
@@ -6494,11 +6624,15 @@ fn play(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_queue(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    etat.player
-        .lock()
-        .map_err(echec)?
-        .set_queue(&chemins)
-        .map_err(echec)
+    let stems_coupes = couper_stems(&etat);
+    let mut player = etat.player.lock().map_err(echec)?;
+    player.set_queue(&chemins).map_err(echec)?;
+    // Même départ que la file en cours : `set_queue` ne redémarre rien, et le
+    // lecteur est resté en pause là où `stems_play` l'avait laissé.
+    if stems_coupes {
+        player.resume();
+    }
+    Ok(())
 }
 
 /// Remplace la file par `paths` en gardant la piste écoutée sans coupure.
@@ -6510,6 +6644,7 @@ fn set_queue(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
 #[tauri::command(async)]
 fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let stems_coupes = couper_stems(&etat);
 
     let courant = etat
         .player
@@ -6536,17 +6671,23 @@ fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let gain = gain_pour(&etat, &chemin);
     let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
     let source = rusty_music_player::ouvrir(&ouvert, gain).map_err(echec)?;
-    etat.player
-        .lock()
-        .map_err(echec)?
-        .rebrancher_file(&chemins, source)
-        .map_err(echec)
+    let mut player = etat.player.lock().map_err(echec)?;
+    player.rebrancher_file(&chemins, source).map_err(echec)?;
+    // `rebrancher_file` garde l'état de pause : après des stems, le lecteur est
+    // en pause, et « jouer cette playlist » doit sonner.
+    if stems_coupes {
+        player.resume();
+    }
+    Ok(())
 }
 
 #[tauri::command(async)]
 fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
+    let stems_coupes = couper_stems(&etat);
     let player = etat.player.lock().map_err(echec)?;
-    if player.is_paused() {
+    // Des stems chargés, c'est le lecteur en pause : demander la lecture au
+    // lecteur ordinaire, c'est lui rendre la main, pas alterner.
+    if stems_coupes || player.is_paused() {
         player.resume();
     } else {
         player.pause();
@@ -6556,17 +6697,28 @@ fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
 
 #[tauri::command(async)]
 fn skip(etat: State<Etat>) -> Result<(), String> {
-    etat.player.lock().map_err(echec)?.skip();
+    let stems_coupes = couper_stems(&etat);
+    let player = etat.player.lock().map_err(echec)?;
+    player.skip();
+    // ⏭ pendant des stems : le lecteur est en pause depuis `stems_play`, et
+    // passer au suivant ne le relance pas.
+    if stems_coupes {
+        player.resume();
+    }
     Ok(())
 }
 
 #[tauri::command(async)]
 fn previous(etat: State<Etat>) -> Result<(), String> {
+    // `previous` recharge la file et relance le lecteur : sans couper les
+    // stems avant, le morceau d'origine sonnait par-dessus eux.
+    couper_stems(&etat);
     etat.player.lock().map_err(echec)?.previous().map_err(echec)
 }
 
 #[tauri::command(async)]
 fn jump_to(etat: State<Etat>, index: usize) -> Result<(), String> {
+    couper_stems(&etat);
     etat.player
         .lock()
         .map_err(echec)?
@@ -6828,6 +6980,10 @@ fn main() {
             let dossier = app.path().app_data_dir()?;
             let db = dossier.join("rusty-music.db");
             let hd = dossier.join("hd");
+            // Les poids téléchargés par l'application (variantes de démixage
+            // absentes) vont ici : c'est le seul endroit inscriptible d'une
+            // application empaquetée.
+            rusty_music_core::modeles::definir_dossier_utilisateur(dossier.join("models"));
 
             // Le journal console seul ne survit pas à un plantage qui emporte
             // la machine — rencontré en pratique pendant une analyse. Un
@@ -7266,6 +7422,7 @@ fn main() {
             etirer_state,
             stems_cache,
             stems_cache_vider,
+            demix_variantes,
             stems_play,
             stems_gain,
             stems_transport,

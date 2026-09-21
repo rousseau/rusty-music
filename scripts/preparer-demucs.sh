@@ -16,8 +16,8 @@ VARIANTE="${1:-htdemucs}"
 
 case "$VARIANTE" in
   htdemucs)     POIDS="84 Mo · 4 stems, un réseau généraliste" ;;
-  htdemucs_6s)  POIDS="84 Mo · 6 stems, ajoute guitare et piano" ;;
-  htdemucs_ft)  POIDS="333 Mo · 4 stems, un réseau par stem — plus lent, meilleur" ;;
+  htdemucs_6s)  POIDS="55 Mo · 6 stems, ajoute guitare et piano" ;;
+  htdemucs_ft)  POIDS="336 Mo · 4 stems, un réseau par stem — plus lent, meilleur" ;;
   *)
     echo "Variante inconnue : $VARIANTE" >&2
     echo "Au choix : htdemucs (défaut) · htdemucs_6s · htdemucs_ft" >&2

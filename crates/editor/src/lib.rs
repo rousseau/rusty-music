@@ -47,6 +47,9 @@ pub enum Error {
     #[error("poids du modèle introuvables : {0} — voir scripts/preparer-demucs.sh")]
     PoidsAbsents(String),
 
+    #[error("téléchargement des poids : {0}")]
+    Telechargement(String),
+
     #[error("lecture des poids : {0}")]
     Poids(#[from] std::io::Error),
 
@@ -109,6 +112,9 @@ pub enum Variante {
     Affinee,
 }
 
+/// Dépôt des poids safetensors — voir [`Variante::url`].
+const DEPOT_POIDS: &str = "https://huggingface.co/set-soft/audio_separation/resolve/main/Demucs";
+
 impl Variante {
     /// Nom en ligne de commande, et nom du fichier de poids.
     pub fn nom(self) -> &'static str {
@@ -141,9 +147,32 @@ impl Variante {
         self.infos().filename
     }
 
-    /// Poids du téléchargement, en mégaoctets.
+    /// Taille exacte du fichier de poids, en octets — celle que sert le dépôt
+    /// (`Content-Length`, mesurée). **Pas `size_mb` de `demucs-core`** : il
+    /// annonce 84 Mo pour la variante à six stems, qui en pèse 55.
+    pub fn octets(self) -> u64 {
+        match self {
+            Variante::Standard => 84_030_696,
+            Variante::SixStems => 54_890_960,
+            Variante::Affinee => 336_125_008,
+        }
+    }
+
+    /// Poids du téléchargement, en mégaoctets (décimaux), arrondi.
     pub fn megaoctets(self) -> u32 {
-        self.infos().size_mb
+        (self.octets() as f64 / 1e6).round() as u32
+    }
+
+    /// Où les poids se téléchargent : ceux de Meta (MIT) en safetensors,
+    /// redistribués par set-soft — la source de `scripts/preparer-demucs.sh`
+    /// et de `demucs-rs`.
+    pub fn url(self) -> String {
+        format!("{DEPOT_POIDS}/{}", self.fichier())
+    }
+
+    /// Les poids sont-ils déjà sur cette machine ?
+    pub fn presente(self) -> bool {
+        rusty_music_core::modeles::trouver(self.fichier()).is_some()
     }
 
     /// Les stems que cette variante produit.
@@ -248,6 +277,33 @@ pub struct Demixeur {
 }
 
 impl Demixeur {
+    /// Fait en sorte que les poids d'une variante soient sur la machine : rien
+    /// si elles y sont déjà, sinon le téléchargement, une fois pour toutes.
+    ///
+    /// C'est ce qui évite d'avoir à lancer `scripts/preparer-demucs.sh` à la
+    /// main : choisir la variante affinée (333 Mo) suffit à la demander.
+    /// `avancer(octets_reçus, octets_attendus)` n'est appelé que s'il y a
+    /// quelque chose à télécharger. Rend vrai si un téléchargement a eu lieu.
+    pub fn assurer_poids(
+        variante: Variante,
+        avancer: impl FnMut(u64, Option<u64>),
+    ) -> Result<bool> {
+        if variante.presente() {
+            return Ok(false);
+        }
+        // Une réponse bien en dessous du poids attendu n'est pas un modèle
+        // (page d'erreur, tronqué) : on exige au moins 90 % de sa taille.
+        let minimum = variante.octets() / 10 * 9;
+        rusty_music_core::modeles::telecharger(
+            variante.fichier(),
+            &variante.url(),
+            minimum,
+            avancer,
+        )
+        .map_err(|e| Error::Telechargement(e.to_string()))?;
+        Ok(true)
+    }
+
     /// Charge les poids d'une variante.
     ///
     /// `dossier` vaut `None` dans le cas courant : les poids sont cherchés là
@@ -407,5 +463,38 @@ mod tests {
         assert_eq!(Variante::SixStems.stems().len(), 6);
         assert_eq!(Variante::Standard.stems().len(), 4);
         assert!(Variante::Affinee.megaoctets() > Variante::Standard.megaoctets());
+        // L'adresse doit désigner le fichier que la recherche attend, sinon le
+        // poids téléchargé ne serait jamais retrouvé.
+        for v in [Variante::Standard, Variante::SixStems, Variante::Affinee] {
+            assert!(v.url().starts_with("https://"));
+            assert!(
+                v.url().ends_with(&format!("/{}", v.fichier())),
+                "{}",
+                v.url()
+            );
+        }
+    }
+    /// Le vrai dépôt, la vraie redirection vers le CDN : la variante à six
+    /// stems (55 Mo) arrive complète, à la taille de notre table.
+    ///
+    /// Sort sur le réseau : hors de la CI (`cargo test -- --ignored`).
+    #[test]
+    #[ignore = "télécharge 55 Mo"]
+    fn le_depot_sert_les_poids_a_la_taille_attendue() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-poids-reels");
+        let _ = std::fs::remove_dir_all(&dossier);
+        let v = Variante::SixStems;
+        let mut dernier = (0, None);
+        let chemin = rusty_music_core::modeles::telecharger_dans(
+            &dossier,
+            v.fichier(),
+            &v.url(),
+            v.octets() / 10 * 9,
+            |vus, total| dernier = (vus, total),
+        )
+        .expect("téléchargement");
+        assert_eq!(std::fs::metadata(&chemin).unwrap().len(), v.octets());
+        assert_eq!(dernier, (v.octets(), Some(v.octets())));
+        let _ = std::fs::remove_dir_all(&dossier);
     }
 }

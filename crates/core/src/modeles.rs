@@ -15,6 +15,9 @@
 //! l'appelant reçoit `None` et peut dire précisément ce qui manque.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use crate::error::{Error, Result};
 
 /// Variable d'environnement qui l'emporte sur tout le reste.
 ///
@@ -22,12 +25,40 @@ use std::path::{Path, PathBuf};
 /// ailleurs, sans la reconstruire.
 pub const VARIABLE: &str = "RUSTY_MUSIC_MODELS";
 
+/// Le dossier des poids **téléchargés par l'application** — sous ses données
+/// utilisateur, seul endroit où une application empaquetée peut écrire. Posé une
+/// fois au démarrage par l'application ; absent en ligne de commande.
+static DOSSIER_UTILISATEUR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Désigne le dossier où ranger les poids qu'on télécharge. Sans effet au
+/// second appel : il ne change pas en cours de route.
+pub fn definir_dossier_utilisateur(dossier: PathBuf) {
+    let _ = DOSSIER_UTILISATEUR.set(dossier);
+}
+
+/// Où écrire un poids téléchargé : le dossier forcé par [`VARIABLE`], sinon
+/// celui de l'application, sinon `models/` — le dépôt, en ligne de commande, là
+/// où `scripts/preparer-*.sh` les range aussi.
+pub fn dossier_telechargement() -> PathBuf {
+    if let Some(force) = std::env::var_os(VARIABLE) {
+        return PathBuf::from(force);
+    }
+    DOSSIER_UTILISATEUR
+        .get()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("models"))
+}
+
 /// Les dossiers où chercher, dans l'ordre de priorité.
 pub fn dossiers() -> Vec<PathBuf> {
     let mut candidats = Vec::new();
 
     if let Some(force) = std::env::var_os(VARIABLE) {
         candidats.push(PathBuf::from(force));
+    }
+
+    if let Some(utilisateur) = DOSSIER_UTILISATEUR.get() {
+        candidats.push(utilisateur.clone());
     }
 
     if let Ok(exe) = std::env::current_exe() {
@@ -51,6 +82,61 @@ pub fn trouver(nom: &str) -> Option<PathBuf> {
         .into_iter()
         .map(|d| d.join(nom))
         .find(|p| p.is_file())
+}
+
+/// Télécharge un poids dans [`dossier_telechargement`] et rend son chemin.
+///
+/// En flux vers un fichier `.partiel`, renommé seulement **quand tout est
+/// arrivé et vérifié** : un téléchargement interrompu ne laisse jamais un
+/// fichier tronqué que la recherche prendrait pour un modèle (`trouver` ne
+/// regarde que le nom final). Deux garde-fous sur la taille — celle annoncée
+/// par le serveur, et `octets_minimum` quand il n'en annonce pas — car un poids
+/// tronqué ne se plaint qu'au chargement, avec un message qui n'en dit pas la
+/// cause.
+///
+/// `avancer(octets_reçus, octets_attendus)` est rappelé à chaque lot.
+pub fn telecharger(
+    nom: &str,
+    url: &str,
+    octets_minimum: u64,
+    avancer: impl FnMut(u64, Option<u64>),
+) -> Result<PathBuf> {
+    telecharger_dans(&dossier_telechargement(), nom, url, octets_minimum, avancer)
+}
+
+/// [`telecharger`] vers un dossier explicite.
+pub fn telecharger_dans(
+    dossier: &Path,
+    nom: &str,
+    url: &str,
+    octets_minimum: u64,
+    mut avancer: impl FnMut(u64, Option<u64>),
+) -> Result<PathBuf> {
+    std::fs::create_dir_all(dossier)?;
+    let destination = dossier.join(nom);
+    let partiel = dossier.join(format!("{nom}.partiel"));
+
+    let (mut recus, mut attendus) = (0u64, None);
+    let agent = crate::discogs::agent();
+    let issue = crate::discogs::telecharger_avec_avancement(&agent, url, &partiel, |vus, total| {
+        (recus, attendus) = (vus, total);
+        avancer(vus, total);
+    });
+    let verifie = issue.and_then(|()| match attendus {
+        Some(total) if recus != total => Err(Error::Reseau(format!(
+            "téléchargement de {nom} interrompu : {recus} octets sur {total}"
+        ))),
+        _ if recus < octets_minimum => Err(Error::Reseau(format!(
+            "téléchargement de {nom} incomplet : {recus} octets, {octets_minimum} au moins attendus"
+        ))),
+        _ => Ok(()),
+    });
+    if let Err(e) = verifie {
+        let _ = std::fs::remove_file(&partiel);
+        return Err(e);
+    }
+    std::fs::rename(&partiel, &destination)?;
+    Ok(destination)
 }
 
 /// Message d'erreur qui dit où l'on a regardé.
@@ -92,6 +178,84 @@ mod tests {
             sans.iter().any(|d| d.ends_with("Resources/models")),
             "la disposition d'un paquet doit être tentée : {sans:?}"
         );
+    }
+
+    #[test]
+    fn un_telechargement_impossible_ne_laisse_aucun_fichier() {
+        // Adresse qui ne répond pas : l'échec doit être net, et ni le poids ni
+        // son `.partiel` ne doivent rester — sinon `trouver` ou une reprise
+        // naïve prendrait un débris pour un modèle.
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles");
+        let _ = std::fs::remove_dir_all(&dossier);
+        let r = telecharger_dans(
+            &dossier,
+            "essai.safetensors",
+            "http://127.0.0.1:9/absent",
+            1,
+            |_, _| {},
+        );
+        assert!(r.is_err());
+        assert!(!dossier.join("essai.safetensors").exists());
+        assert!(!dossier.join("essai.safetensors.partiel").exists());
+    }
+
+    /// Un serveur d'une seule réponse, sur un port libre de la boucle locale.
+    fn serveur(reponse: &'static [u8]) -> String {
+        use std::io::{Read, Write};
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ecoute.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut flux, _)) = ecoute.accept() {
+                let mut requete = [0u8; 2048];
+                let _ = flux.read(&mut requete);
+                let _ = flux.write_all(reponse);
+            }
+        });
+        format!("http://127.0.0.1:{port}/poids")
+    }
+
+    #[test]
+    fn un_telechargement_complet_arrive_sous_son_nom_final() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-ok");
+        let _ = std::fs::remove_dir_all(&dossier);
+        let url = serveur(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        );
+        let mut dernier = (0, None);
+        let chemin = telecharger_dans(&dossier, "ok.safetensors", &url, 10, |v, t| {
+            dernier = (v, t)
+        })
+        .expect("téléchargement");
+        assert_eq!(chemin, dossier.join("ok.safetensors"));
+        assert_eq!(std::fs::read(&chemin).unwrap(), b"0123456789");
+        assert_eq!(dernier, (10, Some(10)), "l'avancement va jusqu'au bout");
+        assert!(!dossier.join("ok.safetensors.partiel").exists());
+    }
+
+    #[test]
+    fn un_telechargement_tronque_est_refuse() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-tronque");
+        let _ = std::fs::remove_dir_all(&dossier);
+        // Annonce 10 octets, en livre 5 puis ferme.
+        let url =
+            serveur(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n01234");
+        assert!(telecharger_dans(&dossier, "coupe.safetensors", &url, 1, |_, _| {}).is_err());
+        assert!(
+            !dossier.join("coupe.safetensors").exists(),
+            "pas de poids tronqué"
+        );
+        assert!(!dossier.join("coupe.safetensors.partiel").exists());
+    }
+
+    #[test]
+    fn un_poids_trop_petit_est_refuse_meme_sans_taille_annoncee() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-petit");
+        let _ = std::fs::remove_dir_all(&dossier);
+        // Page d'erreur servie en 200, sans `Content-Length` : le corps se lit
+        // jusqu'à la fermeture.
+        let url = serveur(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n<html>oups</html>");
+        assert!(telecharger_dans(&dossier, "petit.safetensors", &url, 1000, |_, _| {}).is_err());
+        assert!(!dossier.join("petit.safetensors").exists());
     }
 
     #[test]

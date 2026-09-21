@@ -22,6 +22,15 @@ Les fichiers téléchargés sont les *release assets* de la balise `modeles-v1`.
 
 La licence des poids est **distincte** de celle du code (GPL-3.0-or-later).
 
+**Les variantes de démixage supplémentaires se téléchargent toutes seules.** Dans
+l'application, choisir « 6 stems » (55 Mo) ou « 4 stems affinés » (336 Mo) puis
+« Séparer » récupère les poids manquants avant de séparer — message et barre de
+progression dans le rail, une seule fois. Ils sont rangés dans les données de
+l'application (`~/Library/Application Support/fm.rustymusic.desktop/models/` sur
+macOS), qui font partie des dossiers cherchés (`crates/core/src/modeles.rs`) ;
+`RUSTY_MUSIC_MODELS` les redirige. `scripts/preparer-demucs.sh` reste la voie
+pour la ligne de commande.
+
 Autres fichiers possibles ici, non requis :
 
 - `clap-audio-encoder-b5.bpk` — poids de CLAP au format Burn, **régénérés** par

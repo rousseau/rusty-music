@@ -334,11 +334,30 @@ pub struct Multipiste {
 }
 
 impl Multipiste {
-    /// Charge des stems et prépare leur lecture simultanée.
+    /// Charge des stems et les met en lecture, tous à pleine échelle.
+    ///
+    /// Pour un usage interactif, préférer [`Multipiste::preparer`] : celui-ci
+    /// sonne dès le retour, avant que le moindre réglage ait pu être posé.
+    pub fn charger(stems: &[(String, std::path::PathBuf)]) -> Result<Self> {
+        let m = Self::preparer(stems, &[])?;
+        m.reprendre();
+        Ok(m)
+    }
+
+    /// Charge des stems **en pause**, avec leurs niveaux déjà posés.
+    ///
+    /// C'est ce qui rend un muet fiable. Le multipiste sonnait dès sa création,
+    /// tous les stems à 1,0 : la batterie s'entendait jusqu'à ce que
+    /// l'interface ait fini d'envoyer niveaux, vitesses et position — et
+    /// autant de fois que le jeu était rechargé (transposition, greffe). Né
+    /// silencieux, il ne sonne qu'à l'ordre de [`Multipiste::reprendre`], donné
+    /// une fois les réglages en place.
+    ///
+    /// `niveaux` est dans l'ordre de `stems` ; un niveau manquant vaut 1,0.
     ///
     /// `stems` associe un nom au chemin de son WAV. L'ordre est conservé :
     /// c'est celui dans lequel l'interface affichera les pistes.
-    pub fn charger(stems: &[(String, std::path::PathBuf)]) -> Result<Self> {
+    pub fn preparer(stems: &[(String, std::path::PathBuf)], niveaux: &[f32]) -> Result<Self> {
         if stems.is_empty() {
             return Err(Error::Vide);
         }
@@ -354,7 +373,7 @@ impl Multipiste {
         // plutôt que d'arrêter tout le monde.
         let fins: Vec<usize> = pistes.iter().map(|p| p.len() / CANAUX as usize).collect();
         let trames = fins.iter().copied().max().unwrap_or(0);
-        let niveaux: Vec<Niveau> = stems.iter().map(|_| Niveau::nouveau(1.0)).collect();
+        let niveaux = niveaux_initiaux(stems.len(), niveaux);
         let vitesses: Vec<Vitesse> = stems.iter().map(|_| Vitesse::nouveau(1.0)).collect();
         let curseurs: Vec<Arc<AtomicU64>> =
             stems.iter().map(|_| Arc::new(AtomicU64::new(0))).collect();
@@ -384,6 +403,9 @@ impl Multipiste {
         // n'apprend rien et pollue la sortie.
         sortie.log_on_drop(false);
         let lecteur = rodio::Player::connect_new(sortie.mixer());
+        // En pause **avant** d'ajouter la source : sinon elle sonne pendant
+        // l'intervalle entre l'ajout et la pause.
+        lecteur.pause();
         lecteur.append(Melange {
             voix,
             maitre: Arc::clone(&maitre),
@@ -559,6 +581,13 @@ impl Multipiste {
     }
 }
 
+/// Les niveaux de départ : ceux demandés, sinon pleine échelle.
+fn niveaux_initiaux(n: usize, demandes: &[f32]) -> Vec<Niveau> {
+    (0..n)
+        .map(|i| Niveau::nouveau(demandes.get(i).copied().unwrap_or(1.0)))
+        .collect()
+}
+
 /// Décode un WAV en `i16` entrelacé stéréo 44,1 kHz.
 fn lire_entrelace(chemin: &Path) -> Result<Vec<i16>> {
     let fichier = std::fs::File::open(chemin).map_err(|source| Error::Open {
@@ -582,6 +611,73 @@ fn lire_entrelace(chemin: &Path) -> Result<Vec<i16>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn les_niveaux_de_depart_sont_ceux_demandes() {
+        // Un stem coupé doit naître à zéro, pas à 1,0 en attendant un réglage.
+        let n = niveaux_initiaux(4, &[1.0, 0.0, 0.5]);
+        let lus: Vec<f32> = n.iter().map(Niveau::lire).collect();
+        assert_eq!(lus, vec![1.0, 0.0, 0.5, 1.0], "manquant = pleine échelle");
+        assert_eq!(
+            niveaux_initiaux(2, &[9.0, -3.0])
+                .iter()
+                .map(Niveau::lire)
+                .collect::<Vec<_>>(),
+            vec![1.0, 0.0],
+            "borné"
+        );
+    }
+
+    /// Écrit un WAV 16 bits stéréo 44,1 kHz de `trames` trames, à valeur constante.
+    fn ecrire_wav(chemin: &std::path::Path, trames: u32) {
+        let octets = trames * 4;
+        let mut w = Vec::new();
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + octets).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        w.extend_from_slice(&16u32.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        w.extend_from_slice(&2u16.to_le_bytes());
+        w.extend_from_slice(&SR.to_le_bytes());
+        w.extend_from_slice(&(SR * 4).to_le_bytes());
+        w.extend_from_slice(&4u16.to_le_bytes());
+        w.extend_from_slice(&16u16.to_le_bytes());
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&octets.to_le_bytes());
+        for _ in 0..trames * 2 {
+            w.extend_from_slice(&8000i16.to_le_bytes());
+        }
+        std::fs::write(chemin, w).expect("écriture du WAV de test");
+    }
+
+    /// **Un jeu de stems né en pause ne sonne pas, et naît à ses niveaux.**
+    /// C'est ce qui empêchait la batterie d'être audible malgré le muet : le
+    /// multipiste sonnait dès sa création, tous stems à 1,0.
+    ///
+    /// Ouvre la sortie audio par défaut : hors de la CI
+    /// (`cargo test -- --ignored`).
+    #[test]
+    #[ignore = "ouvre la sortie audio de la machine"]
+    fn un_jeu_prepare_nait_en_pause_et_a_ses_niveaux() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-multipiste");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let (a, b) = (dossier.join("drums.wav"), dossier.join("bass.wav"));
+        ecrire_wav(&a, SR * 2);
+        ecrire_wav(&b, SR * 2);
+
+        let m = Multipiste::preparer(&[("drums".into(), a), ("bass".into(), b)], &[0.0, 1.0])
+            .expect("chargement");
+
+        assert!(m.en_pause(), "né en pause");
+        assert_eq!(m.niveaux(), vec![0.0, 1.0], "la batterie naît coupée");
+        std::thread::sleep(Duration::from_millis(250));
+        assert_eq!(m.position(), Duration::ZERO, "en pause, rien n'avance");
+
+        m.reprendre();
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(m.position() > Duration::ZERO, "après reprendre, ça avance");
+        assert_eq!(m.niveaux(), vec![0.0, 1.0], "les niveaux ont tenu");
+    }
 
     #[test]
     fn le_niveau_borne_et_survit_au_partage() {
