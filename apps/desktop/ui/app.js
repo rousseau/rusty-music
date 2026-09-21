@@ -162,13 +162,16 @@ function ligne(item, index) {
   el.className = "ligne";
   el.dataset.index = index;
   if (item.path === enLecture) el.classList.add("ligne--joue");
+  if (item.path === pisteSelectionnee?.path) el.classList.add("ligne--select");
   return vue.quoi === "recherche" ? ligneRecherche(el, item) : lignePiste(el, item);
 }
 
-/// Une ligne de la liste des pistes d'un album. Deux zones se répondent : le
-/// numéro (→ ▶ au survol ou au survol du titre) et le titre lancent la lecture
-/// depuis cette piste, le nom d'artiste ouvre ses albums. Le clic de la ligne
-/// elle-même joue aussi — le titre n'est qu'un repère visuel de ce geste.
+/// Une ligne de la liste des pistes d'un album. **Un clic sélectionne, il ne
+/// lit pas** (`docs/interface-guidelines.md`, Règle 1 : « Sélectionner n'est pas
+/// écouter ») : le morceau peuple l'inspecteur, s'affiche dans le transport s'il
+/// n'y a rien en lecture, et devient la source d'Éditer. La lecture depuis cette
+/// piste est un geste à part : le numéro (→ ▶ au survol) ou le double-clic. Le
+/// nom d'artiste ouvre ses albums.
 function lignePiste(el, item) {
   el.classList.add("ligne--pistes");
 
@@ -177,12 +180,12 @@ function lignePiste(el, item) {
   const titre = document.createElement("span");
   titre.className = "ligne__nom";
   titre.textContent = txt(item.title, "(sans titre)");
-  titre.title = "Lire ce morceau";
+  titre.title = "Sélectionner · double-clic pour lire";
   el.appendChild(titre);
 
-  // Le nom d'artiste mène à ses albums, sans lancer la piste — même geste que
-  // dans les résultats de recherche et l'inspecteur. `stopPropagation` (dans
-  // `lienLigne`) le sépare du clic de la ligne, qui lui joue le morceau.
+  // Le nom d'artiste mène à ses albums, sans sélectionner la piste — même geste
+  // que dans les résultats de recherche et l'inspecteur. `stopPropagation` (dans
+  // `lienLigne`) le sépare du clic de la ligne, qui sélectionne.
   if (item.artist) {
     el.appendChild(
       lienLigne(item.artist, "ligne__sec", () =>
@@ -196,24 +199,25 @@ function lignePiste(el, item) {
   }
 
   ajouterPopEtDuree(el, item);
-  el.addEventListener("click", () => activer(item));
+  cablerSelection(el, item);
   return el;
 }
 
-/// Une ligne de résultat de recherche. Ici la ligne n'est pas cliquable : seul
-/// le numéro (→ ▶ au survol) lance la lecture (la file se forme avec la suite
-/// des résultats, comme `activer`), tandis que le titre et l'album mènent à
-/// l'album et le nom d'artiste à ses albums, sans rien lancer.
+/// Une ligne de résultat de recherche. Le clic sur la ligne (titre compris)
+/// **sélectionne** le morceau sans le lire ; le numéro (→ ▶ au survol) ou le
+/// double-clic lance la lecture (la file se forme avec la suite des résultats,
+/// comme `activer`). L'album et le nom d'artiste restent des liens : ils mènent
+/// à l'album et à ses albums, sans rien sélectionner ni lancer.
 function ligneRecherche(el, item) {
   el.classList.add("ligne--recherche");
 
   el.appendChild(boutonJouer(item, "·"));
 
-  el.appendChild(
-    lienLigne(txt(item.title, "(sans titre)"), "ligne__nom", () =>
-      ouvrirAlbumDePiste(item),
-    ),
-  );
+  const titre = document.createElement("span");
+  titre.className = "ligne__nom";
+  titre.textContent = txt(item.title, "(sans titre)");
+  titre.title = "Sélectionner · double-clic pour lire";
+  el.appendChild(titre);
   if (item.album) {
     el.appendChild(
       lienLigne(item.album, "ligne__meta", () => ouvrirAlbumDePiste(item)),
@@ -228,7 +232,18 @@ function ligneRecherche(el, item) {
   }
 
   ajouterPopEtDuree(el, item);
+  cablerSelection(el, item);
   return el;
+}
+
+/// Le geste des lignes de morceau : un clic sélectionne (silencieux), un
+/// double-clic lit depuis ce morceau. Le double-clic passe d'abord par deux
+/// clics : la sélection a déjà eu lieu, `lancerLecture` la reconfirme.
+function cablerSelection(el, item) {
+  el.addEventListener("click", () => selectionner(item));
+  el.addEventListener("dblclick", () => {
+    lancerLecture(item).catch((e) => remonter(e, "lecture"));
+  });
 }
 
 /// Le n° de piste sous forme de bouton de lecture : il montre le numéro (ou
@@ -298,7 +313,7 @@ function snapVue() {
 /// (résultat sans métadonnée d'album), retombe sur l'inspecteur du morceau.
 async function ouvrirAlbumDePiste(item) {
   if (!item.album) {
-    inspecter(item);
+    selectionner(item);
     return;
   }
   const retour = snapVue();
@@ -770,7 +785,7 @@ function carteArtiste(item) {
 async function lireAlbum(item) {
   const pistes = await invoke("tracks_of_album", { album: item.name, artist: item.artist ?? null });
   if (pistes.length === 0) return;
-  inspecter(pistes[0]);
+  selectionner(pistes[0]);
   fileCourante = pistes;
   tracerRouteSurCarte(pistes);
   await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
@@ -847,7 +862,7 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
     pistes = await chemin();
     if (!pistes || pistes.length === 0) return;
 
-    inspecter(pistes[0]);
+    selectionner(pistes[0]);
     fileCourante = pistes;
     if (graphe) tracerRouteSurCarte(pistes);
     // Lecture tout de suite ; le sondage d'état qui démarre avec elle
@@ -1206,6 +1221,7 @@ function ligneComposee(t, i, graine = true) {
     : txt(t.artist, "(sans artiste)");
   el.children[2].textContent = duree(t.duration_ms);
   el.addEventListener("click", async () => {
+    selectionner(t);
     await demarrerLecture(() => invoke("jump_to", { index: i }));
   });
   return el;
@@ -1467,20 +1483,57 @@ async function activer(item) {
       quoi: vue.quoi, titre: vue.titre, lignes: vue.lignes, retour: vue.retour, scroll: scrollActuel(),
     });
   } else {
-    inspecter(item);
-    // Lire depuis la piste choisie : la suite de la liste forme la file.
-    const depart = vue.lignes.indexOf(item);
-    fileCourante = vue.lignes.slice(depart);
-    tracerRouteSurCarte(fileCourante);
-    await demarrerLecture(() => invoke("play", { paths: fileCourante.map((t) => t.path) }));
-    // En Éditer, choisir une piste dans la liste, c'est choisir le morceau à
-    // travailler : on passe de l'état « choisir » à « séparer / retoucher ».
-    if (modeCourant === "editer") {
-      edition.montrerChoix = false;
-      edition.sourceChoisie = true;
-      await poserSourceEdition();
-    }
+    await lancerLecture(item);
   }
+}
+
+/// Lit `item` : la suite de la liste affichée forme la file (un morceau absent
+/// de la liste — voisin, carte — joue seul). Lancer la lecture d'un morceau, c'est
+/// aussi le choisir : il devient la sélection (et, en Éditer, la source).
+async function lancerLecture(item) {
+  const depart = vue.lignes.indexOf(item);
+  // Non attendue : le son ne doit pas patienter derrière la pochette de
+  // l'inspecteur (`demarrerLecture` existe pour que le clic réponde vite).
+  const choix = selectionner(item);
+  fileCourante = depart >= 0 ? vue.lignes.slice(depart) : [item];
+  tracerRouteSurCarte(fileCourante);
+  await demarrerLecture(() => invoke("play", { paths: fileCourante.map((t) => t.path) }));
+  await choix;
+}
+
+/// Le morceau **choisi**, distinct de celui qu'on écoute : un clic dans une
+/// liste, un point de la carte. Ni lecture ni file — `morceauAEditer` le prend
+/// pour source d'Éditer, `majApercuTransport` l'affiche dans le transport quand
+/// rien n'est chargé. `inspecter` ne le pose pas : il suit aussi la lecture
+/// (`battement`), qui n'a pas à écraser un choix explicite.
+let pisteSelectionnee = null;
+
+/// Surligne la ligne choisie **en place**, sans reconstruire la fenêtre
+/// virtualisée : un `dessiner()` remplacerait les nœuds entre les deux clics
+/// d'un double-clic, et le second tomberait sur une ligne toute neuve.
+function majSurlignageSelection() {
+  for (const el of fenetre.children) {
+    const item = vue.lignes[Number(el.dataset.index)];
+    el.classList.toggle("ligne--select", !!item && item.path === pisteSelectionnee?.path);
+  }
+}
+
+async function selectionner(t) {
+  pisteSelectionnee = t;
+  // Le clic puis le double-clic d'une même ligne ne relancent pas les cinq
+  // requêtes de l'inspecteur (crédits, critiques, voisins…) pour rien.
+  const inspection =
+    $("insp-titre").dataset.path === t.path && !inspectionAlbum ? null : inspecter(t);
+  majSurlignageSelection();
+  majApercuTransport();
+  // En Éditer, choisir une piste, c'est choisir le morceau à travailler : on
+  // passe de l'état « choisir » à « séparer / retoucher » — sans lecture.
+  if (modeCourant === "editer") {
+    edition.montrerChoix = false;
+    edition.sourceChoisie = true;
+    await poserSourceEdition();
+  }
+  await inspection;
 }
 
 $("retour").addEventListener("click", () => {
@@ -1507,10 +1560,7 @@ $("retour").addEventListener("click", () => {
 $("editer-candidat").addEventListener("click", async () => {
   const cand = fileCourante.find((t) => t.path === enLecture);
   if (!cand) return;
-  await inspecter(cand);
-  edition.montrerChoix = false;
-  edition.sourceChoisie = true;
-  await poserSourceEdition();
+  await selectionner(cand);
 });
 
 /* ---------------------------------------------------------- inspecteur */
@@ -1884,6 +1934,7 @@ $("insp-lecture").addEventListener("click", async () => {
     return;
   }
   if (!inspectionPiste) return;
+  selectionner(inspectionPiste);
   fileCourante = [inspectionPiste];
   tracerRouteSurCarte(fileCourante);
   await demarrerLecture(() => invoke("play", { paths: [inspectionPiste.path] }));
@@ -1947,7 +1998,7 @@ async function mesuresDuTransport(t) {
   } catch {
     return;
   }
-  if (!d || enLecture !== vise) return;
+  if (!d || !estAffiche(vise)) return;
   const bouts = [];
   if (d.bpm) bouts.push(`${Math.round(d.bpm)} BPM`);
   const ton = tonaliteFr(d.tonalite);
@@ -1989,7 +2040,7 @@ async function qualiteDuTransport(t) {
   } catch {
     return;
   }
-  if (!q || enLecture !== vise) return;
+  if (!q || !estAffiche(vise)) return;
   $("np-qualite").textContent = formatQualite(q);
 }
 
@@ -2087,7 +2138,7 @@ async function montrerVoisins(t) {
     el.children[0].textContent = txt(v.title, "(sans titre)");
     el.children[1].textContent = txt(v.artist, "(sans artiste)");
     el.addEventListener("click", async () => {
-      inspecter(v);
+      selectionner(v);
       fileCourante = [v];
       tracerRouteSurCarte(fileCourante);
       await demarrerLecture(() => invoke("play", { paths: [v.path] }));
@@ -2368,7 +2419,7 @@ $("q").addEventListener("keydown", async (e) => {
     a.x * a.x + a.y * a.y <= b.x * b.x + b.y * b.y ? a : b,
   );
   await poserBorne(t);
-  inspecter(t);
+  selectionner(t);
 });
 
 $("q").addEventListener("input", (e) => {
@@ -2548,6 +2599,7 @@ function dessinerFile() {
 
     // Sauter conserve les pistes précédentes : on peut revenir en arrière.
     el.addEventListener("click", async () => {
+      selectionner(t);
       await demarrerLecture(() => invoke("jump_to", { index: i }));
     });
     hote.appendChild(el);
@@ -2604,6 +2656,73 @@ function poserLecture(joue) {
   $("lecture").textContent = joue ? "⏸" : "▶";
 }
 
+/// L'aperçu du transport : le morceau **sélectionné**, affiché quand rien n'est
+/// chargé (ni lecture, ni pause, ni stems) — « prêt à lire », sans qu'aucun son
+/// ne parte. Purement interface : le moteur n'a rien chargé, ▶ lance alors la
+/// lecture de la sélection (`basculerLecture`). Un morceau en cours, lui, garde
+/// le transport : choisir autre chose ne coupe rien et ne perd aucune position.
+let apercuActif = false;
+// Dernier état vu par `battement` : la file est épuisée, plus rien à reprendre.
+let derniereLectureFinie = false;
+
+// `veutJouer` : une lecture vient d'être demandée, le moteur n'a juste pas encore
+// répondu (`enLecture` est encore vide) — ce n'est pas « rien de chargé ».
+const rienDeCharge = () => (!enLecture || derniereLectureFinie) && !edition.enLecture && !veutJouer;
+
+/// Ce que le transport montre à cet instant : le morceau joué, l'aperçu, ou —
+/// quand les stems ont pris la main — le morceau qu'on est en train d'éditer.
+const estAffiche = (chemin) =>
+  enLecture === chemin ||
+  (apercuActif && pisteSelectionnee?.path === chemin) ||
+  (edition.enLecture && edition.source?.path === chemin);
+
+function majApercuTransport() {
+  const t = pisteSelectionnee;
+  if (!t || !rienDeCharge()) return;
+  apercuActif = true;
+  document.querySelector(".transport").classList.add("transport--apercu");
+  $("np-titre").textContent = txt(t.title, "(sans titre)");
+  // Sans chemin : le clic sur le titre (navigation vers l'album) ne trouve
+  // rien dans la file, no-op — l'aperçu n'est pas encore un morceau joué.
+  $("np-titre").dataset.path = "";
+  $("np-artiste").textContent = txt(t.artist, "(sans artiste)");
+  $("np-artiste").dataset.artiste = t.artist ?? "";
+  $("np-artiste").dataset.mbid = t.artist_mbid ?? "";
+  $("np-mesures").textContent = "";
+  $("np-qualite").textContent = "";
+  mesuresDuTransport(t);
+  qualiteDuTransport(t);
+  $("tc").textContent = `${horloge(0)} / ${horloge(t.duration_ms)}`;
+  $("transport-art").style.backgroundImage = "";
+  pochette(t.path).then((img) => {
+    // La sélection a pu changer, ou une lecture démarrer, entre-temps.
+    if (img && apercuActif && pisteSelectionnee?.path === t.path) {
+      $("transport-art").style.backgroundImage = `url("${img}")`;
+    }
+  });
+  // Le spectrogramme de la sélection, comme pour un morceau chargé — et déjà en
+  // cache quand la lecture démarre. Après un court délai : le calcul décode le
+  // fichier entier, on ne le lance pas pour chaque ligne survolée au clic.
+  chargerSpectreTransport(null);
+  peindreTransport(0);
+  clearTimeout(minuteurSpectreApercu);
+  minuteurSpectreApercu = setTimeout(() => {
+    if (apercuActif && pisteSelectionnee?.path === t.path) chargerSpectreTransport(t);
+  }, 400);
+}
+let minuteurSpectreApercu = null;
+
+/// Quitte l'aperçu : une lecture démarre. `enLecture` retombe à `null` pour que
+/// le prochain battement réécrive tout le transport, même si le moteur rejoue le
+/// morceau qu'il avait fini.
+function finApercuTransport() {
+  if (!apercuActif) return;
+  apercuActif = false;
+  enLecture = null;
+  clearTimeout(minuteurSpectreApercu);
+  document.querySelector(".transport").classList.remove("transport--apercu");
+}
+
 /// Lance une lecture en affichant l'intention **avant** que le moteur réponde.
 ///
 /// `demarrer` renvoie la promesse de l'`invoke("play")` / `invoke("set_queue")`.
@@ -2631,6 +2750,8 @@ async function demarrerLecture(demarrer) {
   // un « arrêter » d'abord ne changeait rien à l'exclusion, mais laissait
   // `remplacer_file` sur la même piste sans personne pour relancer le lecteur.
   oublierStems();
+  finApercuTransport();
+  derniereLectureFinie = false;
   poserLecture(true);
   ignorerEtatJusqua = Date.now() + 2000;
   try {
@@ -2658,6 +2779,12 @@ async function lireOuPauser() {
 $("lecture").addEventListener("click", lireOuPauser);
 
 async function basculerLecture() {
+  // Rien de chargé, un morceau seulement sélectionné : ▶ le lit — depuis sa
+  // liste s'il en fait partie (la suite forme la file), seul sinon.
+  if (apercuActif && pisteSelectionnee && rienDeCharge()) {
+    await lancerLecture(pisteSelectionnee);
+    return;
+  }
   const versPause = veutJouer;
   poserLecture(!versPause);
   ignorerEtatJusqua = Date.now() + 400;
@@ -3024,7 +3151,7 @@ function composerSpectre(s) {
 
 /// Demande le spectrogramme du son joué ; le fichier décodé prend quelques
 /// secondes, on réessaie sans marteler.
-async function chargerSpectreTransport(t) {
+async function chargerSpectreTransport(t, reessai = true) {
   spectreCourant = null;
   peindreTransport(teteCourante);
   if (!t) return;
@@ -3041,28 +3168,50 @@ async function chargerSpectreTransport(t) {
   }
 
   const vise = t.path;
+  // Un seul calcul par morceau : l'aperçu peut l'avoir lancé quand la lecture
+  // démarre, le refaire décoderait le fichier deux fois.
+  let calcul = spectresEnCours.get(cle);
+  if (!calcul) {
+    calcul = calculerSpectre(vise, largeur, cle).finally(() => spectresEnCours.delete(cle));
+    spectresEnCours.set(cle, calcul);
+  }
+  const compose = await calcul;
+  if (compose && estAffiche(vise)) {
+    spectreCourant = compose;
+    peindreTransport(teteCourante);
+  } else if (compose === null && reessai && estAffiche(vise)) {
+    // Le calcul partagé s'est arrêté parce que le morceau n'était plus affiché
+    // à ce moment-là (l'aperçu, avant que la lecture ne démarre) : il l'est
+    // maintenant, on le relance une fois.
+    chargerSpectreTransport(t, false);
+  }
+}
+
+const spectresEnCours = new Map(); // clé → promesse du { fond } en calcul
+
+/// Le calcul lui-même, avec ses reprises : rend le `{ fond }` composé (et le met
+/// en cache) ; `null` si le morceau a cessé d'être affiché en cours de route,
+/// `false` si le moteur a échoué.
+async function calculerSpectre(vise, largeur, cle) {
   const echeance = Date.now() + 120_000;
   let attente = 250;
-  while (Date.now() < echeance && enLecture === vise) {
+  while (Date.now() < echeance && estAffiche(vise)) {
     let s;
     try {
       s = await invoke("spectre_transport", { path: vise, width: largeur, height: HAUT_SPECTRE });
     } catch (e) {
       remonter(e, "spectre_transport");
-      return;
+      return false; // échec du moteur : pas de nouvel essai
     }
     if (s && s.pixels && s.pixels.length) {
       const compose = composerSpectre(s);
       spectres.set(cle, compose);
-      if (enLecture === vise) {
-        spectreCourant = compose;
-        peindreTransport(teteCourante);
-      }
-      return;
+      return compose;
     }
     await new Promise((r) => setTimeout(r, attente));
     attente = Math.min(attente * 1.4, 3000);
   }
+  return null;
 }
 
 /// À rappeler quand le son joué change sans changer de morceau (E ou HD).
@@ -3130,7 +3279,11 @@ async function battement() {
     refletRepetition();
   }
 
+  derniereLectureFinie = e.finished;
   if (e.current !== enLecture) {
+    // Un morceau joué reprend le transport, l'aperçu s'efface.
+    apercuActif = false;
+    document.querySelector(".transport").classList.remove("transport--apercu");
     enLecture = e.current;
     const t = fileCourante.find((x) => x.path === enLecture);
     $("np-titre").textContent = t ? txt(t.title, "(sans titre)") : "Rien en lecture";
@@ -6076,7 +6229,7 @@ cnv.addEventListener("click", async (e) => {
   carte.arrivee = null;
   carte.route = null;
   dessinerBornes();
-  inspecter(p);
+  selectionner(p);
   dessinerCarte();
 });
 
@@ -6306,7 +6459,7 @@ async function poserChemin(pistes, vide = "aucun chemin trouvé", polyligne = nu
   // simple réglage du curseur de bruit ou « Autre tirage » sur le même
   // départ —, la lecture en cours n'a aucune raison de repartir de zéro.
   await demarrerLecture(() => invoke("set_queue", { paths: pistes.map((t) => t.path) }));
-  inspecter(pistes[0]);
+  selectionner(pistes[0]);
   dessinerCarte();
   $("fil-compte").textContent = `chemin de ${pistes.length} morceaux`;
   $("chemin-rejouer").hidden = !carte.refaire;
@@ -7206,8 +7359,11 @@ async function basculerMode(mode) {
   } else {
     // Entrer dans le mode : on repart du sélecteur (ou de l'établi si des
     // stems sont déjà chargés — `majEtatEditer` le voit).
+    // Un morceau déjà sélectionné (dans Écouter, sur la carte…) est la source :
+    // on entre directement en « séparer », sans avoir à le lire ni à le
+    // re-choisir. Sans sélection, on repart du sélecteur.
     edition.montrerChoix = false;
-    edition.sourceChoisie = false;
+    edition.sourceChoisie = pisteSelectionnee !== null;
   }
 
   // Sortir de l'édition rend la sortie au lecteur ordinaire : garder les
@@ -9423,6 +9579,11 @@ async function battementStems() {
   // sondages par seconde s'empilent sur le verrou des stems et tout ce qui
   // arrive après — un clic, par exemple — attend son tour.
   if (battementStemsEnVol) return;
+  // Les stems ont pris le transport : l'aperçu d'un morceau sélectionné s'efface.
+  if (apercuActif) {
+    apercuActif = false;
+    document.querySelector(".transport").classList.remove("transport--apercu");
+  }
   battementStemsEnVol = true;
   let e;
   try {
@@ -9902,10 +10063,13 @@ $("realigner").addEventListener("click", async () => {
   }
 });
 
-/// Le morceau sur lequel travailler : celui de l'inspecteur, sinon celui en
-/// lecture. L'inspecteur suit la sélection, c'est donc lui qui exprime
-/// l'intention la plus récente.
+/// Le morceau sur lequel travailler : le morceau sélectionné
+/// (`pisteSelectionnee`), sinon celui de l'inspecteur ou celui en lecture.
 function morceauAEditer() {
+  // La sélection d'abord, sans passer par la file de lecture : un morceau
+  // simplement choisi (recherche, carte) n'y est pas, et il faudrait le lire
+  // pour pouvoir le séparer. À défaut de sélection, le morceau en lecture.
+  if (pisteSelectionnee) return pisteSelectionnee;
   const path = $("insp-titre").dataset.path || enLecture;
   return fileCourante.find((t) => t.path === path) ?? null;
 }
@@ -9988,8 +10152,10 @@ function majEtatEditer() {
     }`;
     $("retour").hidden = vue.retour === null;
     $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
-    // Raccourci vers la séparation du morceau en lecture.
-    const cand = fileCourante.find((t) => t.path === enLecture) ?? null;
+    // Raccourci vers la séparation du morceau en lecture — seulement s'il
+    // diffère de la sélection (qui, elle, ouvre directement « séparer »).
+    const jouee = fileCourante.find((t) => t.path === enLecture) ?? null;
+    const cand = jouee && jouee.path !== pisteSelectionnee?.path ? jouee : null;
     $("editer-candidat").hidden = !cand;
     if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
   } else {
@@ -10215,6 +10381,9 @@ let sondageDemix = null;
 $("lancer-demix").addEventListener("click", async () => {
   const t = edition.source;
   if (!t) return;
+  // Le morceau **séparé** : la sélection est libre (aucune lecture à lancer
+  // pour la changer), elle peut donc bouger pendant les ~30 s de calcul.
+  const cible = t.path;
   try {
     await invoke("start_demix", { path: t.path, variant: edition.variante });
   } catch (e) {
@@ -10249,6 +10418,10 @@ $("lancer-demix").addEventListener("click", async () => {
     $("demix-etat").textContent = d.resultat ?? "";
     // Les poids sont peut-être arrivés : la variante n'est plus « à télécharger ».
     majVariantes();
+    // Une autre source a été choisie entre-temps : ces stems sont ceux du
+    // précédent, on ne les pose pas sur le nouveau. Ils restent calculés —
+    // `stems_existants` les retrouvera si on y revient.
+    if (edition.source?.path !== cible) return;
     if (edition.enLecture) await arreterStems();
     edition.stems = d.stems.map(stemNeuf);
     edition.solo = null;
@@ -10968,6 +11141,10 @@ async function lireStems() {
   }
   await appliquerNiveaux();
   $("dock-aide").textContent = "clic sur un spectrogramme : se déplacer";
+  // La barre du bas garde le spectrogramme du morceau édité. Il lui venait
+  // jusqu'ici de la lecture ordinaire, écoutée avant d'entrer en Éditer ; sans
+  // lecture préalable (morceau seulement sélectionné), rien ne le chargeait.
+  chargerSpectreTransport(edition.source);
   sonder(true);
   return true;
 }

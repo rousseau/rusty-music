@@ -79,9 +79,14 @@ mode ; l'inspecteur de droite reste l'inspecteur commun
 Pas de morceau ouvert, ou on veut en changer. Le centre montre la grille
 d'albums / liste d'artistes — le même composant qu'Écouter, réutilisé tel quel :
 c'est là qu'on choisit quoi ouvrir, depuis la carte, la file d'attente ou la
-vue Écoute. **Le morceau en cours de lecture est le candidat par défaut** et
-s'affiche mis en avant : passer en mode Éditer sans rien choisir ne donne
-jamais un écran vide.
+vue Écoute. **Le morceau sélectionné est la source** (clic dans une liste ou sur
+la carte, sans lecture : `docs/interface-guidelines.md`, Règle 1) : entrer en
+Éditer avec une sélection ouvre directement l'état 2, et cliquer un morceau dans
+le sélecteur y mène aussi, sans jamais lancer la lecture (revu le 21 septembre —
+il fallait auparavant lire le morceau pour pouvoir le séparer). **Le morceau en
+cours de lecture** reste proposé en raccourci (« Séparer « … » ») quand il diffère
+de la sélection, et sert de source à défaut de sélection : passer en mode Éditer
+sans rien choisir ne donne jamais un écran vide.
 
 En-tête : « Choisir un morceau ».
 

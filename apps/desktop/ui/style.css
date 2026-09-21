@@ -436,6 +436,10 @@ html, body {
 }
 .ligne:hover { background: var(--panel); }
 .ligne--joue { color: var(--accent); }
+/* Morceau sélectionné (clic) : distinct de « joue » — on peut choisir sans
+   lire, et le filet d'accent à gauche ne bouge pas la mise en page. */
+.ligne--select { background: var(--panel); box-shadow: inset 2px 0 0 var(--accent); }
+.ligne--recherche .ligne__nom { cursor: pointer; }
 .ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Pistes d'un album : deux zones distinctes se signalent séparément. Survoler
    le titre le passe à l'accent et change le n° de piste en ▶ (le clic lance
@@ -1026,6 +1030,10 @@ html, body {
    l'accent. `#np-mesures` est un `span` voisin mais pas cliquable, d'où un
    sélecteur d'id plutôt que `.transport__now span` qui l'aurait inclus. */
 #np-titre, #np-artiste { cursor: pointer; }
+/* Aperçu : un morceau sélectionné mais pas chargé — le titre s'atténue et se
+   qualifie, l'icône ▶ dit qu'il reste à lancer. */
+.transport--apercu #np-titre { color: var(--mut); }
+.transport--apercu #np-titre::before { content: "sélectionné · "; color: var(--accent); font-weight: 400; }
 #np-titre:hover, #np-artiste:hover { color: var(--accent); }
 
 /* Barre de progression : spectrogramme du son réellement joué, cliquable pour

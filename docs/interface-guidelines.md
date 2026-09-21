@@ -100,6 +100,27 @@ seulement au survol comme leur équivalent `.album__lecture`/`.album__alchimie`
 de la grille — pour que le geste qui lance l'écoute se devine, pas seulement
 depuis l'Anneau/la Frise où il est le seul recours.
 
+**Étendu à Écouter et à Éditer le 21 septembre 2026.** Dans une liste de
+morceaux (résultats de recherche, pistes d'un album), le clic sur la ligne
+**sélectionne** (`selectionner`, `pisteSelectionnee` dans `app.js`) : filet
+d'accent à gauche (`ligne--select`), inspecteur peuplé, rien ne sonne. La
+lecture est un geste à part : le numéro (→ ▶ au survol) ou le double-clic. La
+sélection est un état propre, **distinct de la lecture** : `inspecter` suit
+aussi le morceau joué (`battement`), il ne la pose pas, et une file qui avance
+ne l'écrase pas ; lancer une lecture explicitement (▶, double-clic, clic dans la
+file, bouton ▶ de l'inspecteur) la pose. Deux conséquences :
+- **Le transport** montre la sélection en *aperçu* (« sélectionné · titre »,
+  atténué) **seulement si rien n'est chargé** — ni lecture, ni pause, ni stems.
+  Un morceau en cours garde le transport : choisir autre chose ne coupe rien.
+  ▶ (ou Espace) lit alors la sélection. Purement interface : le moteur ne charge
+  rien tant qu'on ne lit pas. Le spectrogramme de la barre suit ce qui est
+  affiché — morceau joué, aperçu (calculé après 400 ms, donc déjà en cache au
+  départ de la lecture) ou, quand les stems ont la main, morceau édité
+  (`estAffiche` dans `app.js`).
+- **Éditer** prend la sélection pour source (`morceauAEditer`), sans passer par la
+  file de lecture : sélectionner puis entrer en Éditer ouvre directement
+  l'état « séparer », sans lecture préalable.
+
 ### 2. Estomper, jamais masquer
 Un filtre ou une recherche laisse le contexte visible, atténué — il ne
 retire jamais des éléments du rendu. Vaut pour un filtre sur la carte comme
@@ -185,7 +206,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | 🔧 | `inspecter()` (`app.js:1017`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
-| 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : numéro → lecture, titre/album/artiste → navigation). Dans les pistes d'un album (`lignePiste`), la ligne joue toujours, mais deux zones se signalent au survol : le titre (passe à l'accent, le n° de piste devient ▶) rappelle que le clic lance l'écoute, tandis que le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
+| 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : clic sur la ligne → sélection silencieuse, numéro ou double-clic → lecture, album/artiste → navigation). Les pistes d'un album (`lignePiste`) suivent le même geste depuis le 21 septembre (clic = sélection, ▶ / double-clic = lecture, voir Règle 1) ; le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `app.js` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `app.js:814`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
