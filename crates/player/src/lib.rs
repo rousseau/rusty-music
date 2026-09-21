@@ -348,17 +348,23 @@ pub struct Player {
     avant_melange: Vec<PathBuf>,
 }
 
+/// Ouvre la sortie audio par défaut du système et retient sa fréquence.
+fn ouvrir_sortie() -> Result<MixerDeviceSink> {
+    let mut output = DeviceSinkBuilder::open_default_sink()?;
+    // On ferme la sortie sciemment en fin de processus : le message que
+    // `rodio` émet alors sur stderr n'apprend rien et pollue la CLI.
+    output.log_on_drop(false);
+    // La fréquence de la carte son : `ouvrir` rééchantillonne le tampon
+    // décodé vers elle (sinc propre), plutôt que de laisser `rodio` faire
+    // son interpolation linéaire au mélangeur.
+    amelioration::enregistrer_taux_sortie(output.config().sample_rate().get());
+    Ok(output)
+}
+
 impl Player {
     /// Ouvre la sortie audio par défaut du système.
     pub fn new() -> Result<Self> {
-        let mut output = DeviceSinkBuilder::open_default_sink()?;
-        // On ferme la sortie sciemment en fin de processus : le message que
-        // `rodio` émet alors sur stderr n'apprend rien et pollue la CLI.
-        output.log_on_drop(false);
-        // La fréquence de la carte son : `ouvrir` rééchantillonne le tampon
-        // décodé vers elle (sinc propre), plutôt que de laisser `rodio` faire
-        // son interpolation linéaire au mélangeur.
-        amelioration::enregistrer_taux_sortie(output.config().sample_rate().get());
+        let output = ouvrir_sortie()?;
         let inner = rodio::Player::connect_new(output.mixer());
         Ok(Self {
             inner,
@@ -672,6 +678,7 @@ impl Player {
     /// regarnir. `self.queue` n'est pas touchée — sans quoi on perdrait
     /// l'historique et un second retour en arrière serait impossible.
     fn charger(&mut self, depart: usize) -> Result<()> {
+        self.rouvrir_sortie();
         self.inner.clear();
         self.prochain = depart;
         self.charges.clear();
@@ -686,6 +693,30 @@ impl Player {
         // `clear()` laisse le lecteur en pause : sans ça, rien ne sortirait.
         self.inner.play();
         Ok(())
+    }
+
+    /// Rouvre la sortie par défaut du système, file et volume conservés.
+    ///
+    /// Le flux ouvert au démarrage ne survit pas à une veille de la machine
+    /// (CoreAudio l'invalide sans que `rodio` ne le rouvre) ni à un
+    /// changement de périphérique par défaut : toute lecture lancée ensuite
+    /// partait dans le vide. Chaque nouveau départ de lecture repart donc d'un
+    /// flux neuf — quelques millisecondes, sur un `clear` qui coupait déjà le
+    /// son. Si la réouverture échoue, on garde l'ancien flux plutôt que de
+    /// perdre une sortie qui marche peut-être encore.
+    fn rouvrir_sortie(&mut self) {
+        let output = match ouvrir_sortie() {
+            Ok(output) => output,
+            Err(e) => {
+                tracing::warn!(erreur = %e, "réouverture de la sortie audio impossible");
+                return;
+            }
+        };
+        let inner = rodio::Player::connect_new(output.mixer());
+        inner.set_volume(self.inner.volume());
+        // Le lecteur tombe avant la sortie à laquelle il était raccordé.
+        self.inner = inner;
+        self._output = output;
     }
 
     /// Rang de la piste en cours dans la file.
