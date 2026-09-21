@@ -132,13 +132,9 @@ html, body {
   background: var(--accent); opacity: .55; pointer-events: none;
 }
 
-/* ---------- état 2 : la carte de séparation, au centre ---------- */
-.editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px; display: flex; justify-content: center; }
-.demix-carte {
-  width: min(520px, 100%); align-self: flex-start;
-  border: 1px solid var(--line); background: var(--panel); padding: 24px;
-}
-.demix-carte .segments { margin: 12px 0; }
+/* ---------- état 2 : le morceau visé, au centre (l'action est dans le rail) ---------- */
+.editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px; display: flex; justify-content: center; align-items: flex-start; }
+.editer-separer .aide { max-width: 520px; margin: 0; }
 
 /* Une piste de stem, façon en-tête de piste d'un séquenceur (GarageBand) :
    colonne de commande étroite à gauche, le spectrogramme prend tout le reste

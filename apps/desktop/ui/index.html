@@ -182,9 +182,22 @@
         <button id="familles-tout" class="lien" hidden>Toutes les familles</button>
       </div>
 
-      <!-- Mode Éditer : le bloc « Démixage » ne vit plus dans le rail — il
-           descend au centre en état 2 (« carte de séparation »,
-           `docs/ui-spec-editeur.md`). Le rail ne garde que le permanent. -->
+      <!-- Mode Éditer : le démixage vit dans le rail, là où on cherche une
+           action sur le morceau en cours — le centre garde l'établi. -->
+      <div class="bloc" id="bloc-demix" hidden>
+        <p class="rail__titre">Démixage</p>
+        <p class="aide" id="demix-source">Aucun morceau choisi.</p>
+        <div class="segments segments--colonne" id="variantes">
+          <button class="segment segment--actif" data-variante="htdemucs">4 stems</button>
+          <button class="segment" data-variante="htdemucs_6s">6 stems — + guitare, piano</button>
+          <button class="segment" data-variante="htdemucs_ft">4 stems affinés — plus lent</button>
+        </div>
+        <div class="ajout__ligne" style="margin-top:10px">
+          <button id="lancer-demix" class="bouton">Séparer</button>
+        </div>
+        <progress id="demix-jauge" class="jauge" hidden max="1" value="0"></progress>
+        <p id="demix-etat" class="scan-etat"></p>
+      </div>
 
       <div class="bloc" id="bloc-chemin" hidden>
         <p class="rail__titre">Chemin</p>
@@ -357,24 +370,10 @@
           </div>
         </div>
 
-        <!-- Mode Éditer, état 2 : la carte de séparation, au centre. Le bloc
-             « Démixage » a quitté le rail (`docs/ui-spec-editeur.md`, « Le
-             parcours — le centre a trois états »). -->
+        <!-- Mode Éditer, état 2 : la séparation se lance depuis le rail
+             (`#bloc-demix`) ; le centre montre le morceau visé. -->
         <div id="editer-separer" class="editer-separer" hidden>
-          <div id="bloc-demix" class="demix-carte">
-            <p class="rail__titre">Démixage</p>
-            <p class="aide" id="demix-source">Aucun morceau choisi.</p>
-            <div class="segments segments--colonne" id="variantes">
-              <button class="segment segment--actif" data-variante="htdemucs">4 stems</button>
-              <button class="segment" data-variante="htdemucs_6s">6 stems — + guitare, piano</button>
-              <button class="segment" data-variante="htdemucs_ft">4 stems affinés — plus lent</button>
-            </div>
-            <div class="ajout__ligne" style="margin-top:10px">
-              <button id="lancer-demix" class="bouton">Séparer</button>
-            </div>
-            <progress id="demix-jauge" class="jauge" hidden max="1" value="0"></progress>
-            <p id="demix-etat" class="scan-etat"></p>
-          </div>
+          <p class="aide" id="separer-titre"></p>
         </div>
 
         <!-- Mode Éditer, état 3 : l'établi. La pile de stems occupe le centre,

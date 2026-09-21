@@ -87,16 +87,20 @@ En-tête : « Choisir un morceau ».
 
 ### État 2 — Séparer
 
-Morceau choisi, pas encore de stems. Le centre montre **une carte de
-séparation** : pochette et titre du morceau, les trois variantes avec leur coût
-annoncé *avant* le bouton (comme l'analyse le fait — une séparation demande une
-trentaine de secondes, la variante affinée plusieurs minutes), le bouton
-Séparer, la barre de progression.
+Morceau choisi, pas encore de stems. Le centre nomme le morceau visé ; **l'action
+elle-même vit dans le rail** (bloc « Démixage » : les trois variantes avec leur
+coût annoncé *avant* le bouton — une séparation demande une trentaine de
+secondes, la variante affinée plusieurs minutes —, le bouton Séparer, la barre
+de progression).
 
-C'est l'ancien bloc « Démixage » du rail **sorti du rail et posé au centre** :
-l'action ponctuelle va là où se fait la tâche, le rail garde ce qui est
-permanent. Un morceau déjà séparé saute cet état — il s'ouvre directement dans
-l'établi, sans recalcul.
+**Revu le 21 septembre : le bloc est revenu dans le rail.** Le 10 septembre on
+l'avait posé au centre (« l'action ponctuelle va là où se fait la tâche ») ;
+à l'usage, en écoutant un morceau et en passant en Éditer, on cherche le
+démixage dans le panneau de gauche, pas en haut du centre. Le rail le montre
+dès qu'on est en Éditer — sans passer par l'état « séparer » — et lance la
+séparation du morceau en cours de lecture ; il reste utilisable dans l'établi
+pour refaire une séparation avec une autre variante. Un morceau déjà séparé saute
+l'état 2 : il s'ouvre directement dans l'établi, sans recalcul.
 
 **Fait le 10 septembre.** Une barre de progression sous le bouton, alimentée
 par les évènements de `demucs-core` : indéterminée le temps du décodage et de

@@ -7161,6 +7161,7 @@ async function basculerMode(mode) {
   // Explorer il change de rôle (filtre de la carte), on le garde.
   $("bloc-chercher").hidden = bibliotheque || decouvrir;
   $("bloc-colorer").hidden = !explorer;
+  $("bloc-demix").hidden = !editer;
   $("bloc-chemin").hidden = !explorer;
   // Champ d'intention : composant unique et partagé (voir `index.html`),
   // révélé seulement là où un comportement LLM est branché — Explorer pour
@@ -9882,6 +9883,9 @@ async function poserSourceEdition() {
     ? `${txt(t.artist, "?")} — ${txt(t.title, "?")}`
     : "Choisis un morceau dans la liste ou sur la carte.";
   $("lancer-demix").disabled = !t;
+  $("separer-titre").textContent = t
+    ? `« ${txt(t.title, "?")} » — choisis une variante et lance « Séparer » dans le panneau de gauche.`
+    : "";
   // Revenir sur le même morceau (simple ré-entrée dans le mode) garde
   // l'établi et ses réglages en place.
   if (change) {
@@ -10124,6 +10128,11 @@ $("lancer-demix").addEventListener("click", async () => {
     return;
   }
   $("lancer-demix").disabled = true;
+  // Lancée depuis le rail, quel que soit l'état du centre : on y montre le
+  // morceau en cours de séparation plutôt que le sélecteur.
+  edition.montrerChoix = false;
+  edition.sourceChoisie = true;
+  majEtatEditer();
   $("demix-etat").textContent = "séparation en cours… (compter ~30 s par morceau)";
   $("demix-jauge").hidden = false;
   $("demix-jauge").removeAttribute("value"); // indéterminée le temps du décodage et de la chauffe
