@@ -17,12 +17,12 @@
 //! même dans son `User-Agent`, par courtoisie et pour être joignable en cas
 //! d'abus — même politesse qu'envers MusicBrainz.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::http::ClientCadence;
 
 /// Un artiste proche, tel que ListenBrainz le classe.
 #[derive(Debug, Clone, PartialEq)]
@@ -73,14 +73,10 @@ const ALGO_SIMILARITE: &str =
 /// une seconde de marge garde le client largement sous la barre.
 const CADENCE: Duration = Duration::from_millis(1_100);
 
-/// Combien de fois réessayer avant d'abandonner une requête.
-const ESSAIS: u32 = 4;
-
 /// Client ListenBrainz, cadencé. Un seul pour tout le processus : c'est lui qui
 /// porte l'horloge du débit.
 pub struct Client {
-    agent: ureq::Agent,
-    dernier: Mutex<Option<Instant>>,
+    http: ClientCadence,
 }
 
 impl Client {
@@ -93,22 +89,7 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self {
-            agent,
-            dernier: Mutex::new(None),
-        }
-    }
-
-    /// Patiente le temps qu'il faut pour ne pas dépasser la cadence.
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
+        Self { http: ClientCadence::new(agent, CADENCE) }
     }
 
     /// Une requête GET rendant du JSON, réessayée sur échec temporaire.
@@ -116,65 +97,14 @@ impl Client {
     /// `404` est une réponse : la ressource n'existe pas, on rend `None`. Tout
     /// le reste — coupure réseau, `429`, `503` — est traité comme temporaire,
     /// l'attente doublant à chaque tentative.
-    fn json(&self, url: &str) -> Result<Option<Value>> {
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self.agent.get(url).call() {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+    fn json(&self, url: &str, ctx: &str) -> Result<Option<Value>> {
+        self.http.get_json(url, ctx)
     }
 
     /// Une requête POST rendant du JSON, réessayée sur échec temporaire —
     /// même politique que [`Self::json`], mais avec un corps.
-    fn post_json(&self, url: &str, corps: &Value) -> Result<Option<Value>> {
-        let corps = serde_json::to_string(corps)
-            .map_err(|e| Error::Reseau(format!("encodage JSON : {e}")))?;
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self
-                .agent
-                .post(url)
-                .content_type("application/json")
-                .send(corps.as_str())
-            {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+    fn post_json(&self, url: &str, corps: &Value, ctx: &str) -> Result<Option<Value>> {
+        self.http.post_json(url, corps, ctx)
     }
 
     /// Popularité agrégée d'une liste d'enregistrements. Seuls les MBID connus
@@ -206,7 +136,7 @@ impl Client {
         }
         let url = format!("https://api.listenbrainz.org/1/popularity/{chemin}");
         let v = self
-            .post_json(&url, &serde_json::json!({ champ_requete: mbids }))?
+            .post_json(&url, &serde_json::json!({ champ_requete: mbids }), "popularity")?
             .unwrap_or(Value::Null);
         Ok(v.as_array()
             .map(|a| {
@@ -233,7 +163,7 @@ impl Client {
              ?artist_mbids={mbid}&algorithm={ALGO_SIMILARITE}"
         );
         Ok(self
-            .json(&url)?
+            .json(&url, "similar-artists")?
             .map(|v| voisins_de(&v))
             .unwrap_or_default())
     }
@@ -249,7 +179,7 @@ impl Client {
              ?days={jours}&past=true&future=false&sort=release_date"
         );
         Ok(self
-            .json(&url)?
+            .json(&url, "fresh-releases")?
             .map(|v| sorties_de(&v))
             .unwrap_or_default())
     }
