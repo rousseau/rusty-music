@@ -16,12 +16,12 @@
 //! **Aucune clé requise.** La clé de test partagée `123` suffit (30 requêtes
 //! par minute) ; une clé personnelle, si l'utilisateur en a une, l'accélère.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::http::ClientCadence;
 
 /// Clé de test partagée, publique — documentée par TheAudioDB pour un usage
 /// à faible volume.
@@ -31,9 +31,6 @@ const CLE_PARTAGEE: &str = "123";
 /// (documentation TheAudioDB) et partagée entre tous ses utilisateurs : plus
 /// prudent qu'avec une clé personnelle.
 const CADENCE: Duration = Duration::from_millis(2_100);
-
-/// Combien de fois réessayer avant d'abandonner un identifiant.
-const ESSAIS: u32 = 4;
 
 /// Une biographie d'artiste, telle que TheAudioDB la rend.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +42,8 @@ pub struct Artiste {
 
 /// Client TheAudioDB, cadencé.
 pub struct Client {
-    agent: ureq::Agent,
+    http: ClientCadence,
     cle: String,
-    dernier: Mutex<Option<Instant>>,
 }
 
 impl Client {
@@ -60,51 +56,20 @@ impl Client {
             .build()
             .into();
         Self {
-            agent,
+            http: ClientCadence::new(agent, CADENCE),
             cle: cle
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .unwrap_or(CLE_PARTAGEE)
                 .to_string(),
-            dernier: Mutex::new(None),
         }
     }
 
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
-    }
-
+    /// `ctx` ne porte jamais `self.cle` : contrairement à `url`, qui la
+    /// contient (`.../json/{cle}/artist-mb.php`), un message d'erreur ne doit
+    /// jamais la répéter — voir `crate::http::ClientCadence`.
     fn json(&self, url: &str) -> Result<Option<Value>> {
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self.agent.get(url).call() {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+        self.http.get_json(url, "artist-mb.php")
     }
 
     /// L'artiste MusicBrainz `mbid`, s'il est connu de TheAudioDB. `None` est
