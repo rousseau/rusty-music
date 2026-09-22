@@ -141,9 +141,16 @@ fn lire_et_ingerer(lib: &Library, a_lire: Vec<PathBuf>, jobs: usize, rep: &mut S
             pool.spawn(move || loop {
                 let i = curseur.fetch_add(1, Ordering::Relaxed);
                 let Some(path) = a_lire.get(i) else { break };
+                // Un fichier dont la lecture des tags panique (lofty sur un
+                // conteneur malformé) ne doit pas emporter tout le scan avec
+                // lui — voir `crate::panique`.
+                let resultat = match crate::panique::sans_panique(|| tags::read(path)) {
+                    Ok(r) => r,
+                    Err(message) => Err(Error::Panique { path: path.clone(), message }),
+                };
                 // Le récepteur est parti (impossible ici, mais évite de tourner
                 // dans le vide si la boucle d'écriture s'arrêtait un jour).
-                if tx.send((path.clone(), tags::read(path))).is_err() {
+                if tx.send((path.clone(), resultat)).is_err() {
                     break;
                 }
             });

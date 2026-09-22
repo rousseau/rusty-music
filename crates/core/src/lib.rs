@@ -25,6 +25,7 @@ pub mod loudness;
 pub mod modeles;
 pub mod musicbrainz;
 pub mod ollama;
+pub mod panique;
 pub mod pochette;
 pub mod opus;
 pub mod popularite;

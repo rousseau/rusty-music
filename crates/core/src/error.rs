@@ -51,4 +51,12 @@ pub enum Error {
     /// `crate::discogs`.
     #[error("donnée illisible : {0}")]
     Parsing(String),
+
+    /// Un fichier a fait paniquer son traitement (décodage hasardeux d'un
+    /// format mal formé, typiquement) — voir `crate::panique::sans_panique`.
+    /// Converti en échec de ce seul fichier plutôt que de laisser la panique
+    /// dérouler et avorter toute une passe qui en traite des milliers
+    /// d'autres.
+    #[error("panique interne pendant le traitement de {path} : {message}")]
+    Panique { path: PathBuf, message: String },
 }

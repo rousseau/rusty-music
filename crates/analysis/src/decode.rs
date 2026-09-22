@@ -105,6 +105,12 @@ pub enum Error {
     },
     #[error(transparent)]
     Opus(#[from] rusty_music_core::Error),
+
+    /// Le décodage a paniqué (rodio/symphonia sur un fichier hasardeux) —
+    /// voir `rusty_music_core::panique`. Converti en échec de ce seul
+    /// morceau plutôt que de laisser la panique avorter toute la passe.
+    #[error("panique interne pendant le décodage de {path} : {message}")]
+    Panique { path: PathBuf, message: String },
 }
 
 /// Positions relatives des `n` fenêtres dans la plage utile.

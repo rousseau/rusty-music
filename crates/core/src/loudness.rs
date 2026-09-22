@@ -161,7 +161,13 @@ pub fn actualiser(
                 let Some((id, chemin)) = file.get(i) else {
                     break;
                 };
-                let mesure = match mesurer(chemin) {
+                // Un décodage qui panique (fichier hasardeux) ne doit pas
+                // emporter toute la passe — voir `crate::panique`.
+                let issue = match crate::panique::sans_panique(|| mesurer(chemin)) {
+                    Ok(r) => r,
+                    Err(message) => Err(Error::Panique { path: chemin.clone(), message }),
+                };
+                let mesure = match issue {
                     Ok(m) => Some(m),
                     Err(e) => {
                         warn!(path = %chemin.display(), error = %e, "loudness impossible");

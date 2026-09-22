@@ -119,7 +119,19 @@ pub fn empreintes(
                     let Some((id, chemin)) = file.get(i) else {
                         break;
                     };
-                    let issue = match spectrogramme(&mel, chemin, FENETRES) {
+                    // Un décodage qui panique (rodio/symphonia sur un
+                    // fichier hasardeux) ne doit pas emporter toute la passe
+                    // — voir `rusty_music_core::panique`.
+                    let resultat = match rusty_music_core::panique::sans_panique(|| {
+                        spectrogramme(&mel, chemin, FENETRES)
+                    }) {
+                        Ok(r) => r,
+                        Err(message) => Err(Error::Decodage(crate::decode::Error::Panique {
+                            path: chemin.clone(),
+                            message,
+                        })),
+                    };
+                    let issue = match resultat {
                         Ok(s) => Some(s),
                         Err(e) => {
                             warn!(path = %chemin.display(), error = %e, "décodage impossible");
@@ -402,7 +414,17 @@ pub fn descripteurs(
                     let Some((id, chemin)) = file.get(i) else {
                         break;
                     };
-                    let issue = match analyser(chemin, &a) {
+                    // Même précaution que dans `empreintes` : un décodage qui
+                    // panique ne doit pas emporter toute la passe.
+                    let resultat = match rusty_music_core::panique::sans_panique(|| {
+                        analyser(chemin, &a)
+                    }) {
+                        Ok(r) => r,
+                        Err(message) => {
+                            Err(crate::decode::Error::Panique { path: chemin.clone(), message })
+                        }
+                    };
+                    let issue = match resultat {
                         Ok(d) => Some(d),
                         Err(e) => {
                             warn!(path = %chemin.display(), error = %e, "descripteurs impossibles");
