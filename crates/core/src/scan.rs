@@ -104,7 +104,21 @@ pub fn scan_root_jobs(lib: &Library, root: &Path, jobs: usize, force: bool) -> R
     // 2e passage : lecture des tags en parallèle, insertions sérialisées.
     lire_et_ingerer(lib, a_lire, jobs, &mut rep);
 
-    rep.removed = lib.prune_missing(root)?;
+    // Aucun fichier vu du tout : un montage vide mais toujours là (volume
+    // débranché, partage réseau qui répond mais ne sert plus rien) est
+    // indiscernable d'une racine réellement vidée par l'utilisateur, et
+    // `WalkDir` (`filter_map(|e| e.ok())` ci-dessus) avale ses propres erreurs
+    // sans les compter. Élaguer ici prendrait un incident de montage pour un
+    // grand ménage et viderait toute la racine d'un coup. On saute l'élagage
+    // par prudence plutôt que de risquer ça — au prix, en échange, de ne
+    // rattraper une racine réellement vidée qu'au prochain fichier qui y
+    // réapparaît.
+    rep.removed = if rep.seen == 0 {
+        debug!(root = %root.display(), "aucun fichier vu : élagage sauté par prudence");
+        0
+    } else {
+        lib.prune_missing(root)?
+    };
     if rep.removed > 0 {
         debug!(count = rep.removed, "morceaux disparus retirés de la base");
     }
@@ -184,4 +198,65 @@ fn lire_et_ingerer(lib: &Library, a_lire: Vec<PathBuf>, jobs: usize, rep: &mut S
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un WAV PCM16 mono minimal, écrit à la main — même patron que
+    /// `loudness::tests::wav_sinus`, sans le sinus : un scan ne lit que les
+    /// tags, pas le contenu.
+    fn wav_minimal(chemin: &Path) {
+        let donnees = vec![0u8; 4410 * 2];
+        let octets_data = donnees.len() as u32;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + octets_data).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+        wav.extend_from_slice(&44_100u32.to_le_bytes());
+        wav.extend_from_slice(&88_200u32.to_le_bytes()); // octets/s
+        wav.extend_from_slice(&2u16.to_le_bytes()); // alignement bloc
+        wav.extend_from_slice(&16u16.to_le_bytes()); // bits/échantillon
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&octets_data.to_le_bytes());
+        wav.extend_from_slice(&donnees);
+        std::fs::write(chemin, wav).expect("écriture wav");
+    }
+
+    /// Une racine vidée mais toujours là (montage débranché, partage réseau
+    /// en panne) ne doit pas faire disparaître les pistes qu'on y connaissait
+    /// — voir la garde de `scan_root_jobs` : sans fichier vu du tout, on ne
+    /// tente pas l'élagage plutôt que de risquer de le confondre avec un vrai
+    /// grand ménage.
+    #[test]
+    fn scan_root_jobs_ne_purge_pas_si_rien_vu() {
+        let racine = std::env::temp_dir().join(format!(
+            "rusty-music-scan-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&racine);
+        std::fs::create_dir_all(&racine).expect("dossier de test");
+        let fichier = racine.join("piste.wav");
+        wav_minimal(&fichier);
+
+        let lib = crate::db::Library::open_in_memory().expect("base en mémoire");
+        let rep = scan_root_jobs(&lib, &racine, 1, false).expect("premier scan");
+        assert_eq!(rep.seen, 1);
+        assert_eq!(rep.inserted, 1);
+        assert_eq!(lib.count().unwrap(), 1);
+
+        // La racine « disparaît » : vidée sans que le dossier lui-même ne
+        // s'efface — le cas d'un support débranché en cours de route.
+        std::fs::remove_file(&fichier).expect("retrait du fichier");
+        let rep2 = scan_root_jobs(&lib, &racine, 1, false).expect("second scan");
+        assert_eq!(rep2.seen, 0, "aucun fichier audio vu cette fois");
+        assert_eq!(rep2.removed, 0, "l'élagage est sauté, pas déclenché");
+        assert_eq!(lib.count().unwrap(), 1, "la piste reste en base par prudence");
+
+        let _ = std::fs::remove_dir_all(&racine);
+    }
 }

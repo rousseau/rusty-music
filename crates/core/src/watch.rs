@@ -91,16 +91,23 @@ pub fn watch_root(lib: &Library, root: &Path) -> Result<()> {
 /// apparition.
 fn flush(lib: &Library, pending: &mut HashSet<PathBuf>) {
     for path in pending.drain() {
-        if path.exists() {
-            match tags::read(&path).and_then(|m| lib.upsert(&m)) {
+        // `Path::exists` renvoie faux aussi bien sur une absence avérée que
+        // sur une erreur de permission ou d'E/S transitoire (support qui se
+        // fait attendre) — la distinction compte : la première seule justifie
+        // un retrait, dont la cascade emporterait des heures d'analyse sur un
+        // simple incident de lecture. Même réflexe que `db::prune_missing`.
+        match std::fs::symlink_metadata(&path) {
+            Ok(_) => match tags::read(&path).and_then(|m| lib.upsert(&m)) {
                 Ok(_) => info!(path = %path.display(), "ajouté ou mis à jour"),
                 Err(e) => warn!(path = %path.display(), error = %e, "ingestion impossible"),
-            }
-        } else {
-            match lib.remove_path(&path) {
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => match lib.remove_path(&path) {
                 Ok(n) if n > 0 => info!(path = %path.display(), "retiré de la bibliothèque"),
                 Ok(_) => {}
                 Err(e) => warn!(path = %path.display(), error = %e, "suppression impossible"),
+            },
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "métadonnées illisibles, morceau conservé par prudence");
             }
         }
     }
