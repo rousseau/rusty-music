@@ -233,6 +233,95 @@ fn verrou<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Ce que toute struct `EtatXxx` de passe de fond expose à la garde
+/// anti-panique [`GardePasse`] : le signal d'avancement (`en_cours`) que
+/// l'interface sonde, et comment le clore proprement si la passe s'arrête
+/// autrement qu'en l'écrivant elle-même.
+trait EtatPasse {
+    fn en_cours(&self) -> bool;
+    /// Repositionne l'état comme si la passe avait échoué en interne —
+    /// appelé uniquement quand `en_cours` est encore vrai à la destruction de
+    /// la garde, c'est-à-dire seulement si le fil s'est arrêté (panique)
+    /// avant d'avoir écrit son résultat par le chemin normal.
+    fn marquer_echec_interne(&mut self);
+}
+
+/// Implémente [`EtatPasse`] pour les structs `EtatXxx` qui suivent toutes le
+/// même patron (`en_cours: bool`, `resultat: Option<String>`) — évite de
+/// répéter le même corps quinze fois.
+macro_rules! impl_etat_passe {
+    ($($t:ty),+ $(,)?) => {$(
+        impl EtatPasse for $t {
+            fn en_cours(&self) -> bool {
+                self.en_cours
+            }
+            fn marquer_echec_interne(&mut self) {
+                self.en_cours = false;
+                self.resultat = Some("échec : panique interne".to_string());
+            }
+        }
+    )+};
+}
+impl_etat_passe!(
+    EtatScan,
+    EtatAnalyse,
+    EtatDescripteurs,
+    EtatLoudness,
+    EtatPopularite,
+    EtatBio,
+    EtatCritiques,
+    EtatLastfm,
+    EtatDiscogsLiaison,
+    EtatDiscogsDump,
+    EtatDiscogsImport,
+    EtatDecouvrir,
+    EtatDemix,
+    EtatSuperres,
+    EtatEnrichissement,
+);
+
+// `EtatTranspose` porte `erreur`, pas `resultat` — hors du patron commun,
+// implémentation à la main.
+impl EtatPasse for EtatTranspose {
+    fn en_cours(&self) -> bool {
+        self.en_cours
+    }
+    fn marquer_echec_interne(&mut self) {
+        self.en_cours = false;
+        self.erreur = Some("échec : panique interne".to_string());
+    }
+}
+
+/// Posée en tête d'un fil de passe de fond (juste après avoir récupéré
+/// `etat`) : si le fil se termine — panique comprise — sans avoir écrit son
+/// résultat par le chemin normal, `en_cours` redescend quand même à `false`
+/// avec un résultat par défaut. Sans elle, une panique dans le travail
+/// (décodage, inférence…) laissait la passe « en cours » à vie côté
+/// interface, `start_*` refusant tout relancement jusqu'au redémarrage.
+///
+/// Silencieuse sur le chemin normal : celui-ci écrit déjà `en_cours = false`
+/// avant que le fil ne se termine, donc `en_cours()` rend faux à la
+/// destruction et la garde ne fait rien.
+struct GardePasse<'a, T: EtatPasse> {
+    etat: &'a Mutex<T>,
+}
+
+impl<'a, T: EtatPasse> GardePasse<'a, T> {
+    fn nouvelle(etat: &'a Mutex<T>) -> Self {
+        Self { etat }
+    }
+}
+
+impl<T: EtatPasse> Drop for GardePasse<'_, T> {
+    fn drop(&mut self) {
+        let mut g = verrou(self.etat);
+        if g.en_cours() {
+            g.marquer_echec_interne();
+            tracing::warn!("passe de fond interrompue par une panique interne");
+        }
+    }
+}
+
 /// Décharge `cache.valeur` si `cache.touche` indique plus de
 /// [`SEUIL_EVICTION_POIDS`] d'inactivité — appelé périodiquement par le fil
 /// d'éviction lancé dans `main`. Le prochain usage recharge simplement depuis
@@ -3215,6 +3304,7 @@ fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.analyse);
 
         let issue = Library::open(&db)
             .map_err(|e| e.to_string())
@@ -3316,6 +3406,7 @@ fn start_descripteurs(app: tauri::AppHandle, etat: State<Etat>, force: Option<bo
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.descripteurs);
 
         let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
             let fils = fils_pour_passe(&lib);
@@ -3403,6 +3494,7 @@ fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>)
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.loudness);
 
         let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
             let fils = fils_pour_passe(&lib);
@@ -3530,6 +3622,7 @@ fn start_enrichment(
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.enrichissement);
         let client = rusty_music_core::musicbrainz::Client::new(&contact);
         // Ouverture et passe dans un même bloc plutôt qu'en chaîne : la
         // fermeture de progression emprunte `etat`, et l'imbriquer dans un
@@ -3608,6 +3701,7 @@ fn start_popularite(
     let contact = contact.trim().to_string();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.popularite);
         let lb = rusty_music_core::listenbrainz::Client::new(&contact);
         let dz = rusty_music_core::deezer::Client::new();
         // `depuis` : instant avant lequel une entité déjà interrogée redevient
@@ -3696,6 +3790,7 @@ fn start_biographies(app: tauri::AppHandle, etat: State<Etat>, cle: Option<Strin
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.biographies);
         let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
@@ -3775,6 +3870,7 @@ fn start_critiques(app: tauri::AppHandle, etat: State<Etat>, rafraichir: bool) -
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.critiques);
         let client = rusty_music_core::critiquebrainz::Client::new();
         let depuis = if rafraichir {
             std::time::SystemTime::now()
@@ -3859,6 +3955,7 @@ fn start_lastfm(app: tauri::AppHandle, etat: State<Etat>, cle: String, rafraichi
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.lastfm);
         let client = rusty_music_core::lastfm::Client::new(cle);
         let depuis = if rafraichir {
             std::time::SystemTime::now()
@@ -3993,6 +4090,7 @@ fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: Stri
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.discogs_liaison);
         let client = rusty_music_core::musicbrainz::Client::new(&contact);
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
@@ -4080,6 +4178,7 @@ fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), St
     let chemin = chemin_dump_discogs(&etat);
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.discogs_dump);
         let issue = rusty_music_core::discogs_import::telecharger_dernier_dump(&chemin, |vus, total| {
             { let mut d = verrou(&etat.discogs_dump);
                 d.octets = vus;
@@ -4151,6 +4250,7 @@ fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), 
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.discogs_import);
         let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|mut lib| {
             rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
                 { let mut i = verrou(&etat.discogs_import);
@@ -4411,6 +4511,7 @@ fn start_decouvrir(app: tauri::AppHandle, etat: State<Etat>, contact: String) ->
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.decouvrir);
         let lb = rusty_music_core::listenbrainz::Client::new(&contact);
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
@@ -4524,6 +4625,7 @@ fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Res
     let cible = rusty_music_superres::chemin_cache(&etat.hd, &source);
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.superres);
         let _ = std::fs::create_dir_all(&etat.hd);
         rusty_music_superres::purger_anciens(&etat.hd);
 
@@ -4875,6 +4977,7 @@ fn start_etirer(
     let depart = verrou(&etat.transpose).clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.transpose);
 
         // **Un fil par stem.** Mesuré sur un morceau de 272 s : 92,0 s en file
         // contre 23,5 s en parallèle, soit 3,9× — l'étirement est le seul poste
@@ -5145,6 +5248,7 @@ fn start_demix(
     let sortie = dossier_stems(&etat, &source);
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.demix);
 
         // Les poids de la variante manquent (la première fois, typiquement pour
         // la variante affinée, 336 Mo) : on les télécharge, plutôt que de
@@ -5939,6 +6043,12 @@ fn start_scan(
 
     let db = etat.db.clone();
     std::thread::spawn(move || {
+        // Posée avant `scan_root_jobs`, pas après : c'est là qu'est le
+        // travail susceptible de paniquer (décodage des tags d'un fichier
+        // arbitraire), et la garde ne protège que ce qu'elle a vu commencer.
+        let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.scan);
+
         let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
             let jobs = coeurs_arriere_plan();
             rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, force)
@@ -5955,9 +6065,6 @@ fn start_scan(
         };
         tracing::info!(%bilan, "scan terminé");
 
-        // Le garde est nommé : dans un `if let`, son temporaire vivrait plus
-        // longtemps que le `State` dont il emprunte.
-        let etat = app.state::<Etat>();
         // Une racine qui vient d'être scannée avec succès — nouvelle ou déjà
         // connue — doit être surveillée en continu ; `demarrer_surveillance`
         // ne fait rien si elle l'est déjà.
@@ -7299,7 +7406,8 @@ mod tests {
     use super::{
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
         fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
-        sous_une_racine, verrou, AccrochageVoirie, Cache, RepereLocal,
+        sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
+        RepereLocal,
     };
     use std::collections::{HashMap, HashSet};
     use std::path::Path;
@@ -7330,6 +7438,39 @@ mod tests {
         let cache: Mutex<Cache<i32>> = Mutex::new(Cache::default());
         liberer_si_inactif(&cache, "essai");
         assert_eq!(verrou(&cache).valeur, None);
+    }
+
+    /// Une panique survenue pendant qu'une `GardePasse` est en vie doit
+    /// laisser `en_cours` à `false` et un résultat posé — sans quoi la passe
+    /// resterait « en cours » à vie côté interface. Le chemin normal (pas de
+    /// panique) doit rester sans effet, la garde restant silencieuse.
+    #[test]
+    fn garde_passe_cloture_en_cours_apres_une_panique() {
+        let etat = Mutex::new(EtatScan { en_cours: true, ..Default::default() });
+        let issue = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _garde = GardePasse::nouvelle(&etat);
+            panic!("simulation d'un décodage qui tourne mal");
+        }));
+        assert!(issue.is_err(), "la panique doit bien traverser le test");
+        let s = verrou(&etat);
+        assert!(!s.en_cours, "la garde doit clore la passe malgré la panique");
+        assert_eq!(s.resultat.as_deref(), Some("échec : panique interne"));
+    }
+
+    /// Sur le chemin normal, la garde ne doit rien écraser : le résultat posé
+    /// explicitement avant sa destruction doit survivre.
+    #[test]
+    fn garde_passe_silencieuse_sur_le_chemin_normal() {
+        let etat = Mutex::new(EtatScan { en_cours: true, ..Default::default() });
+        {
+            let _garde = GardePasse::nouvelle(&etat);
+            let mut s = verrou(&etat);
+            s.en_cours = false;
+            s.resultat = Some("terminé normalement".to_string());
+        }
+        let s = verrou(&etat);
+        assert!(!s.en_cours);
+        assert_eq!(s.resultat.as_deref(), Some("terminé normalement"));
     }
 
     /// Un rendu ne doit jamais atterrir sous une racine surveillée : il y
