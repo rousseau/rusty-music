@@ -632,7 +632,7 @@
           <p class="rail__titre" style="margin-top:32px">Nappe de densité</p>
           <div class="ajout">
             <p class="aide">À part de la projection et du clustering ci-dessus :
-              un réglage ici ne rejoue que la nappe, pas la carte entière.</p>
+              pris en compte au prochain « Régénérer les tuiles », pas avant.</p>
             <label class="reglette">
               <span>résolution de grille</span>
               <select id="densite-resolution">
@@ -651,10 +651,6 @@
               <input id="densite-bandes" type="range" min="4" max="10" step="1">
               <span id="densite-bandes-valeur" class="reglette__val"></span>
             </label>
-            <div class="ajout__ligne" style="margin-top:14px">
-              <button id="recalculer-densite" class="bouton">Recalculer la densité</button>
-            </div>
-            <p id="densite-parametres-etat" class="scan-etat"></p>
           </div>
 
           <p class="rail__titre" style="margin-top:32px">Vérifications</p>

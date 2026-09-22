@@ -151,15 +151,10 @@ struct Etat {
     /// « voisins » du rail : pas la peine de le reconstruire quand l'anneau
     /// en redemande simplement plus large. Éviction par inactivité, voir [`Cache`].
     album_graphe: Mutex<Cache<(usize, Arc<Graphe>)>>,
-    /// Nappe de densité de la carte — polygones prêts à remplir. Recalculée
-    /// seulement après une projection/clustering réussi ([`recalculer_densite`]),
-    /// jamais par image ni au zoom : c'est tout l'intérêt de la garder ici
-    /// plutôt que de la refaire côté interface à chaque geste.
     /// Le réseau de circulation, bâti à la première demande d'itinéraire.
     /// Une trentaine de secondes, dominées par le graphe des voisins — comme
     /// `graphe`, on ne le refait pas à chaque trajet.
     reseau: Mutex<Option<rusty_music_analysis::reseau::Reseau>>,
-    densite: Mutex<Option<rusty_music_core::density::ResultatDensite>>,
     /// Le plan de ville importé (`carto ville`), chargé une fois puis gardé —
     /// `ville-paris.db` fait une vingtaine de mégaoctets, pas question de la
     /// relire à chaque « refaire les tuiles ». `None` tant qu'aucune ville
@@ -2183,40 +2178,6 @@ fn definir_vocabulaire_familles(
         .map_err(echec)
 }
 
-/// Recalcule la nappe de densité depuis les positions actuellement en base
-/// et la met en cache. À rappeler après toute projection/clustering réussi
-/// — et seulement alors : jamais par image, jamais au zoom, c'est tout
-/// l'intérêt du cache (voir `rusty_music_core::density`).
-fn recalculer_densite(etat: &Etat, lib: &Library) -> Result<(), String> {
-    let parametres = lib.parametres_carte().map_err(echec)?.parametres_densite();
-    let points = lib
-        .map_points(rusty_music_analysis::passe::MODELE)
-        .map_err(echec)?;
-    let resultat = rusty_music_core::density::calculer(&points, &parametres);
-    *verrou(&etat.densite) = Some(resultat);
-    Ok(())
-}
-
-/// La nappe de densité de la carte — polygones prêts à remplir, une teinte
-/// par famille plus une nappe globale (voir `rusty_music_core::density`).
-///
-/// Servie depuis le cache, rempli après chaque projection/clustering
-/// ([`recompute_map`] et la passe complète d'analyse). Calculée à la volée
-/// seulement au tout premier appel d'une session dont la carte porte déjà
-/// des positions — l'appli vient de (re)démarrer sans repasser par
-/// « Recalculer la carte ».
-#[tauri::command(async)]
-fn density_view(etat: State<Etat>) -> Result<rusty_music_core::density::ResultatDensite, String> {
-    if let Some(r) = verrou(&etat.densite).as_ref() {
-        return Ok(r.clone());
-    }
-    let lib = verrou(&etat.lib);
-    recalculer_densite(&etat, &lib)?;
-    Ok(verrou(&etat.densite)
-        .clone()
-        .expect("recalculée juste au-dessus"))
-}
-
 /// `passe::Rapport` ne dérive pas `Serialize` — `rusty-music-analysis` ne
 /// dépend pas de `serde`, et ce n'est pas ce seul retour de commande qui
 /// justifie de le lui ajouter.
@@ -2235,22 +2196,10 @@ struct RapportCarte {
 fn recompute_map(etat: State<Etat>) -> Result<RapportCarte, String> {
     let lib = verrou(&etat.lib);
     let r = rusty_music_analysis::passe::projeter_tout(&lib, None).map_err(|e| e.to_string())?;
-    recalculer_densite(&etat, &lib)?;
     Ok(RapportCarte {
         empreintes: r.empreintes,
         familles: r.familles,
     })
-}
-
-/// Rejoue seulement la nappe de densité, sur les positions et familles
-/// déjà en base — pas la projection t-SNE ni le clustering, qui n'en
-/// dépendent pas. C'est cette commande que le rail appelle quand on ajuste
-/// la résolution, le noyau ou le nombre de bandes : quelques centaines de
-/// millisecondes plutôt que de rejouer `recompute_map` en entier.
-#[tauri::command(async)]
-fn recompute_density(etat: State<Etat>) -> Result<(), String> {
-    let lib = verrou(&etat.lib);
-    recalculer_densite(&etat, &lib)
 }
 
 /// Sous ce carré de distance entre empreintes CLAP, deux morceaux sonnent au
@@ -3330,9 +3279,7 @@ fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String
                 .and_then(|r| {
                     rusty_music_analysis::passe::projeter_tout(&lib, None)
                         .map_err(|e| e.to_string())
-                        .and_then(|p| {
-                            recalculer_densite(&etat, &lib).map(|()| (r, p))
-                        })
+                        .map(|p| (r, p))
                 })
             });
 
@@ -7057,7 +7004,6 @@ fn main() {
                 album_centroides: Mutex::new(Cache::default()),
                 album_graphe: Mutex::new(Cache::default()),
                 reseau: Mutex::new(None),
-                densite: Mutex::new(None),
                 ville: Mutex::new(None),
                 graphe_reel: Mutex::new(None),
                 accrochage_voirie: Mutex::new(None),
@@ -7272,7 +7218,6 @@ fn main() {
             tuile,
             map_progress,
             graphe_progress,
-            density_view,
             library_stats,
             probable_duplicates,
             isolated_points,
@@ -7285,7 +7230,6 @@ fn main() {
             vocabulaire_familles,
             definir_vocabulaire_familles,
             recompute_map,
-            recompute_density,
             start_analysis,
             analysis_state,
             start_descripteurs,

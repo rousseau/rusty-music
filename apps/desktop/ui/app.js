@@ -4763,43 +4763,13 @@ function dessinerNuage(r) {
   }
 }
 
-/* ---------------------------------------------------- carte, densité */
-
-// Alternative au nuage : une nappe de densité, comme un relevé topographique
-// — teinte par famille (ou par la rampe continue), lignes de niveau
-// par-dessus. Elle rend lisibles deux choses que le nuage noie sous 27 000
-// points : les creux à faible densité, où tracer un chemin ne croise
-// personne, et les cols entre deux modes d'une distribution, où deux familles
-// se touchent sans se confondre.
-//
-// Calculée sur une grille basse résolution dans le repère de la carte
-// (indépendante du zoom), mise en cache tant que les points, le regroupement
-// ou la variable de coloration ne changent pas. Le tracé par image se contente
-// ensuite d'un `drawImage` mis à l'échelle de la vue courante — le panoramique
-// et le zoom sont donc gratuits, sans reconstruire la grille à chaque geste.
-
-// Le regroupement par famille (genre) a migré côté Rust
-// (`crates/core::density`) : noyau gaussien par famille + carré marchant →
-// isobandes, densité maximale gagnante entre familles avant même d'en
-// extraire les bandes — les territoires se pavent sans se recouvrir, plutôt
-// que d'être contourés séparément puis mélangés à l'affichage. Ce fichier ne
-// refait plus ce calcul : il construit les tracés vectoriels une fois par
-// résultat reçu, les peint une fois dans une image hors-écran (relief +
-// ombre portée courte, comme du papier découpé), puis recopie cette image à
-// l'échelle de la vue à chaque image — zoom et panoramique restent gratuits.
-//
-// La coloration par variable continue (année/tempo/énergie) n'entre pas
-// dans ce chantier : elle reste calculée ici, en JS, comme avant — une seule
-// nappe, pas de recouvrement entre familles à résoudre, donc aucun besoin du
-// vecteur Rust.
-
-
-/* ---------------------------------------- densité, variable continue */
-
-// Hors chantier : la coloration par année/tempo/énergie garde son ancien
-// calcul, entièrement en JS — une seule nappe, jamais de recouvrement entre
-// familles à résoudre, donc aucun besoin du pavage vectoriel ci-dessus.
-
+// Les tuiles vectorielles remplacent le nuage et la nappe de densité
+// dessinés à la main (§ plus haut, `regenerer-tuiles`) : le pavage par
+// famille et la coloration continue s'engendrent désormais côté Rust
+// (`crates/core::density`, `crates/carto`) et arrivent déjà peints dans les
+// tuiles que MapLibre affiche. Les helpers de couleur qui suivent
+// (`hexRGB`/`hexHSL`/`hslRGB`) restent utilisés ailleurs (`desature`, mode
+// Explorer → Anneau), sans rapport avec la densité.
 
 function hexRGB(hex) {
   const n = parseInt((hex || "#9A9284").replace("#", ""), 16);
@@ -4807,8 +4777,7 @@ function hexRGB(hex) {
 }
 
 /// Teinte → HSL, pour faire varier la clarté et la saturation avec la
-/// densité plutôt que la seule opacité — utilisé aussi bien par le pavage
-/// par famille ci-dessus que par la nappe continue ci-dessous.
+/// densité plutôt que la seule opacité.
 function hexHSL(hex) {
   const [r, g, b] = hexRGB(hex).map((v) => v / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -8469,9 +8438,9 @@ $("regenerer-tuiles").addEventListener("click", async () => {
 /* ------------------------------------------------- paramètres de densité */
 
 // Résolution, noyau, bandes : mêmes principe que les réglages de la carte
-// juste au-dessus — un changement n'écrit que la valeur, `recalculer-densite`
-// rejoue. Automatiser le recalcul à chaque cran de curseur bombarderait le
-// moteur (150 à 550 ms par appel, mesuré) sans que rien ne le demande.
+// juste au-dessus — un changement n'écrit que la valeur, prise en compte au
+// prochain « Régénérer les tuiles » (pas de recalcul à la volée : le
+// pipeline de tuiles la relit à chaque génération, voir `main.rs::rassembler`).
 const CHAMPS_PARAMETRES_DENSITE = {
   "densite-resolution": "densite_resolution",
   "densite-noyau": "densite_noyau",
@@ -8497,24 +8466,6 @@ $("densite-noyau").addEventListener("input", (e) => {
 });
 $("densite-bandes").addEventListener("input", (e) => {
   $("densite-bandes-valeur").textContent = e.target.value;
-});
-
-$("recalculer-densite").addEventListener("click", async () => {
-  const bouton = $("recalculer-densite");
-  bouton.disabled = true;
-  $("densite-parametres-etat").textContent = "Recalcul en cours…";
-  try {
-    await invoke("recompute_density");
-    $("densite-parametres-etat").textContent = "Nappe de densité à jour.";
-    if (modeCourant === "explorer") {
-          dessinerCarte();
-    }
-  } catch (e) {
-    remonter(e, "recalcul de la densité");
-    $("densite-parametres-etat").textContent = String(e);
-  } finally {
-    bouton.disabled = false;
-  }
 });
 
 
