@@ -380,11 +380,6 @@ fn coupure_estimee(x: &[f32], sr: u32) -> f32 {
     sr as f32 / 2.0
 }
 
-#[doc(hidden)]
-pub fn reech_test(x: &[f32], de: u32, vers: u32) -> Vec<f32> {
-    reechantillonner(x, de, vers).unwrap()
-}
-
 /// Rééchantillonnage sinc (FFT) d'un canal, `de` → `vers` Hz.
 ///
 /// Deux réglages contre-intuitifs, tous deux payés d'un bug :

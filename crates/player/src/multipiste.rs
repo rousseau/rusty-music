@@ -522,10 +522,6 @@ impl Multipiste {
         self.vitesses.iter().map(Vitesse::lire).collect()
     }
 
-    pub fn vitesse_courante(&self) -> f32 {
-        self.vitesse_maitre.lire()
-    }
-
     /// De combien le stem le plus éloigné s'est écarté de la référence.
     ///
     /// C'est la dérive, et elle se mesure plutôt qu'elle ne se devine : « les

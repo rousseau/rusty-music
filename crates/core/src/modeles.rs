@@ -194,11 +194,6 @@ pub fn introuvable(nom: &str) -> String {
     )
 }
 
-/// Le dossier retenu pour un fichier donné, s'il existe.
-pub fn dossier_de(nom: &str) -> Option<PathBuf> {
-    trouver(nom).and_then(|p| p.parent().map(Path::to_path_buf))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

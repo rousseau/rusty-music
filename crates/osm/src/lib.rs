@@ -641,31 +641,6 @@ impl Extrait {
         par_nom
     }
 
-    /// Le rectangle englobant de l'extrait, en degrés : la frontière communale
-    /// si elle a été résolue, sinon les tronçons — la même règle que
-    /// [`base::ecrire`] applique pour remplir la table `ville`.
-    ///
-    /// Rend `(ouest, sud, est, nord)`. `None` si l'extrait est vide.
-    pub fn bbox(&self) -> Option<(f64, f64, f64, f64)> {
-        let (mut ouest, mut sud, mut est, mut nord) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        let mut voir = |p: &[f64; 2]| {
-            ouest = ouest.min(p[0]);
-            est = est.max(p[0]);
-            sud = sud.min(p[1]);
-            nord = nord.max(p[1]);
-        };
-        if let Some(frontiere) = &self.frontiere {
-            for anneau in &frontiere.anneaux {
-                anneau.iter().for_each(&mut voir);
-            }
-        } else {
-            for t in &self.troncons {
-                t.points.iter().for_each(&mut voir);
-            }
-        }
-        (ouest <= est).then_some((ouest, sud, est, nord))
-    }
-
     pub fn resume(&self) -> Resume {
         let mut par_classe: HashMap<Classe, (usize, f64)> = HashMap::new();
         let mut longueur = 0.0;

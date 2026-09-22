@@ -16,10 +16,6 @@
 //! s'obtient en étirant puis en rééchantillonnant du même rapport — la durée
 //! revient à sa valeur d'origine, et c'est la hauteur qui a bougé.
 
-use std::path::Path;
-
-use crate::decode;
-
 /// Fréquence de travail de l'éditeur.
 const SR: u32 = 44_100;
 
@@ -98,27 +94,6 @@ fn reechantillonner_entrelace(signal: &[f32], canaux: usize, rapport: f32) -> Ve
         }
     }
     out
-}
-
-/// Étire un fichier et rend le résultat entrelacé. Utilitaire pour la ligne de
-/// commande, qui décode puis traite.
-pub fn etirer_fichier(
-    chemin: &Path,
-    facteur: f32,
-    demi_tons: f32,
-) -> Result<Vec<f32>, decode::Error> {
-    let s = decode::stereo(chemin)?;
-    let entrelace: Vec<f32> = s
-        .gauche
-        .iter()
-        .zip(&s.droite)
-        .flat_map(|(g, d)| [*g, *d])
-        .collect();
-    let mut out = etirer(&entrelace, 2, facteur);
-    if demi_tons.abs() > 1e-6 {
-        out = transposer(&out, 2, demi_tons);
-    }
-    Ok(out)
 }
 
 /// Sépare un signal entrelacé en canaux. **Réservé aux tests** depuis que la

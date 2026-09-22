@@ -38,7 +38,8 @@ pub struct ScanReport {
     pub removed: usize,
 }
 
-/// Parcourt `root` et ingère tous les fichiers musicaux.
+/// Parcourt `root` et ingère tous les fichiers musicaux, sur `jobs` threads
+/// de lecture.
 ///
 /// Les fichiers déjà en base et inchangés (même taille, même mtime) sont
 /// sautés sans relire les tags. Un fichier illisible n'interrompt pas le
@@ -47,11 +48,6 @@ pub struct ScanReport {
 /// En fin de parcours, les morceaux de `root` dont le fichier a disparu sont
 /// retirés : c'est ce qui rattrape les suppressions faites pendant que rien ne
 /// surveillait le dossier.
-pub fn scan_root(lib: &Library, root: &Path) -> Result<ScanReport> {
-    scan_root_jobs(lib, root, default_jobs(), false)
-}
-
-/// Comme [`scan_root`], en choisissant le nombre de threads de lecture.
 ///
 /// `force` relit les tags de tous les fichiers, y compris ceux que la taille et
 /// la mtime disent inchangés. C'est ce qu'il faut après avoir enrichi ce que

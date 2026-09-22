@@ -374,13 +374,8 @@ impl Demixeur {
             .collect())
     }
 
-    /// Sépare un fichier et écrit les stems dans `dossier`.
-    pub fn separer_fichier(&self, entree: &Path, dossier: &Path) -> Result<Vec<PathBuf>> {
-        self.separer_fichier_suivi(entree, dossier, |_| {})
-    }
-
-    /// Comme [`Demixeur::separer_fichier`], mais rappelle `progres` à chaque
-    /// jalon du calcul (voir [`Progres`]).
+    /// Sépare un fichier et écrit les stems dans `dossier`, en rappelant
+    /// `progres` à chaque jalon du calcul (voir [`Progres`]).
     ///
     /// L'interface du mode Éditer s'en sert pour la barre de progression : le
     /// premier appel arrive quand le découpage en segments est connu, donc

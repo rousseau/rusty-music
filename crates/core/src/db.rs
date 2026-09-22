@@ -2780,8 +2780,8 @@ impl Library {
     ///
     /// `decouvrir_poser_sorties` / `_voisins` le font déjà par artiste ; celle-ci
     /// sert à l'étape « sorties » qui n'a pas d'artiste (une seule requête
-    /// ListenBrainz pour toute la bibliothèque), pour que `decouvrir_derniere_passe`
-    /// la voie même quand il n'y a aucun voisin à interroger.
+    /// ListenBrainz pour toute la bibliothèque), pour que la dernière passe
+    /// Découvrir se voie même quand il n'y a aucun voisin à interroger.
     pub fn decouvrir_marquer_passe(&self, etape: &str) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO decouvrir_suivi (mbid, kind) VALUES ('@passe', ?1)",
@@ -2986,14 +2986,6 @@ impl Library {
             params![format!("-{jours} days")],
             |r| r.get(0),
         )?)
-    }
-
-    /// La date (epoch s) de la dernière passe Découvrir, ou `None` si aucune —
-    /// l'interface s'en sert pour décider s'il faut relancer à l'ouverture.
-    pub fn decouvrir_derniere_passe(&self) -> Result<Option<i64>> {
-        Ok(self
-            .conn
-            .query_row("SELECT MAX(at) FROM decouvrir_suivi", [], |r| r.get(0))?)
     }
 
     /// Marque tout le fil comme vu — les pastilles « nouveau » s'éteignent.

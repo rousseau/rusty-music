@@ -352,15 +352,6 @@ impl Graphe {
         self.rang.get(&id).copied()
     }
 
-    /// Le voisinage d'un rang, tel qu'il est rangé — arcs retour compris, donc
-    /// pas trié par distance croissante (voir [`Self::voisins`]).
-    pub fn voisinage(&self, rang: u32) -> &[(u32, f32)] {
-        self.aretes
-            .get(rang as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-
     /// Les arêtes vues comme non orientées : une seule fois par paire.
     ///
     /// Le voisinage des *k* plus proches n'est pas symétrique, et

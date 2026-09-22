@@ -384,12 +384,6 @@ impl Player {
         self.charger(0)
     }
 
-    /// Ajoute une piste en fin de file, sans interrompre la lecture en cours.
-    pub fn enqueue(&mut self, track: &Path) -> Result<()> {
-        self.queue.push(track.to_path_buf());
-        self.completer()
-    }
-
     /// Remplace la file par `tracks`, sans couper la lecture en cours si le
     /// premier morceau ne change pas.
     ///
