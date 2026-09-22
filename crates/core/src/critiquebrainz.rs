@@ -16,12 +16,12 @@
 //! de release-group — jamais de recherche approximative, nos morceaux le
 //! portent déjà (`mb_release_groups`).
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::http::ClientCadence;
 
 /// Critiques par page. 50 est confortable ; peu d'albums en portent plus.
 const PAR_PAGE: usize = 50;
@@ -29,9 +29,6 @@ const PAR_PAGE: usize = 50;
 /// Délai minimal entre deux requêtes — API publique, pas de limite annoncée,
 /// mais la même politesse qu'envers les autres sources.
 const CADENCE: Duration = Duration::from_millis(500);
-
-/// Combien de fois réessayer avant d'abandonner un identifiant.
-const ESSAIS: u32 = 4;
 
 /// Une critique, telle que CritiqueBrainz la rend.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,8 +46,7 @@ pub struct Critique {
 
 /// Client CritiqueBrainz, cadencé.
 pub struct Client {
-    agent: ureq::Agent,
-    dernier: Mutex<Option<Instant>>,
+    http: ClientCadence,
 }
 
 impl Default for Client {
@@ -66,47 +62,11 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self {
-            agent,
-            dernier: Mutex::new(None),
-        }
-    }
-
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
+        Self { http: ClientCadence::new(agent, CADENCE) }
     }
 
     fn json(&self, url: &str) -> Result<Option<Value>> {
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self.agent.get(url).call() {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+        self.http.get_json(url, "review")
     }
 
     /// Toutes les critiques du release-group `mbid`. Une liste vide est une

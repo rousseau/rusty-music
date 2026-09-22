@@ -17,12 +17,12 @@
 //! récolte des 503. Les deux sont tenues ici, dans le client, pour qu'aucun
 //! appelant n'ait à y penser.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::http::ClientCadence;
 
 /// Un genre et le nombre de votes qui l'appuient.
 ///
@@ -84,17 +84,12 @@ const PAR_PAGE: usize = 100;
 /// heures, une requête par seconde.
 const MAX_PAGES: usize = 6;
 
-/// Combien de fois réessayer avant d'abandonner un identifiant.
-const ESSAIS: u32 = 4;
-
 /// Client MusicBrainz, cadencé.
 ///
 /// Un seul suffit pour tout le processus : c'est lui qui porte l'horloge du
 /// débit. En créer deux reviendrait à doubler la cadence sans le vouloir.
 pub struct Client {
-    agent: ureq::Agent,
-    /// Instant du dernier départ de requête, partagé entre fils.
-    dernier: Mutex<Option<Instant>>,
+    http: ClientCadence,
 }
 
 impl Client {
@@ -109,55 +104,17 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self {
-            agent,
-            dernier: Mutex::new(None),
-        }
-    }
-
-    /// Patiente le temps qu'il faut pour ne pas dépasser une requête/seconde.
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
+        Self { http: ClientCadence::new(agent, CADENCE) }
     }
 
     /// Une requête, réessayée sur échec temporaire.
     ///
     /// `404` est une réponse, pas une panne : l'identifiant est inconnu, on
     /// rend `None` et on n'y revient pas. `503` est le signal de débit de
-    /// MusicBrainz — on patiente en doublant l'attente. Tout le reste est
-    /// traité comme temporaire : le réseau d'un poste local coupe et revient.
+    /// MusicBrainz — on patiente en doublant l'attente, comme toute autre
+    /// panne temporaire (voir [`crate::http::ClientCadence`]).
     fn json(&self, url: &str) -> Result<Option<Value>> {
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self.agent.get(url).call() {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    // 1 s, 2 s, 4 s : le temps que la fenêtre de débit passe.
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+        self.http.get_json(url, "ws/2")
     }
 
     /// Les genres d'un artiste, du plus voté au moins voté.
