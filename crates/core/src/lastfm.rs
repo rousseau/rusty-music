@@ -13,12 +13,12 @@
 //! mesurent aucune écoute. Interrogation **exclusivement par MBID** — jamais
 //! de recherche par nom, même discipline que TheAudioDB.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
 use crate::error::Error;
+use crate::http::{ClientCadence, Reponse};
 
 /// Délai minimal entre deux requêtes — API publique sans limite annoncée,
 /// même politesse qu'envers les autres sources.
@@ -41,9 +41,6 @@ pub enum EchecTags {
     Ponctuel(#[source] Error),
 }
 
-/// Combien de fois réessayer avant d'abandonner un identifiant.
-const ESSAIS: u32 = 4;
-
 /// Un tag communautaire et son poids relatif (0-100, tel que Last.fm le rend).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
@@ -53,8 +50,7 @@ pub struct Tag {
 
 /// Client Last.fm, cadencé.
 pub struct Client {
-    agent: ureq::Agent,
-    dernier: Mutex<Option<Instant>>,
+    http: ClientCadence,
     cle: String,
 }
 
@@ -65,58 +61,27 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self {
-            agent,
-            dernier: Mutex::new(None),
-            cle,
-        }
+        Self { http: ClientCadence::new(agent, CADENCE), cle }
     }
 
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
-    }
-
+    /// Une clé refusée (bogue, révoquée) rend 401/403 — vérifié en direct sur
+    /// `ws.audioscrobbler.com`. Insister ne changera rien : quatre tentatives
+    /// avec attente croissante (15 s) pour échouer pareil au bout du compte
+    /// ne feraient que ralentir le diagnostic, artiste après artiste — d'où
+    /// `Bloquant`, qui arrête la passe et revient aussitôt, sans épuiser les
+    /// tentatives comme le ferait un [`crate::error::Error::Reseau`] ordinaire.
+    ///
+    /// `ctx` (jamais l'url, qui porte la clé) est ce qu'un message d'erreur
+    /// éventuel garde du site interrogé.
     fn json(&self, url: &str) -> std::result::Result<Value, EchecTags> {
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self.agent.get(url).call() {
-                Ok(mut r) => {
-                    let corps = r.body_mut().read_to_string().map_err(|e| {
-                        EchecTags::Ponctuel(Error::Reseau(format!("lecture du corps : {e}")))
-                    })?;
-                    return serde_json::from_str(&corps).map_err(|e| {
-                        EchecTags::Ponctuel(Error::Reseau(format!("JSON illisible : {e}")))
-                    });
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(Value::Null),
-                // Une clé refusée (bogue, révoquée) rend 401/403 — vérifié en
-                // direct sur `ws.audioscrobbler.com`. Insister ne changera
-                // rien : quatre tentatives avec attente croissante (15 s)
-                // pour échouer pareil au bout du compte ne feraient que
-                // ralentir le diagnostic, artiste après artiste — d'où
-                // `Bloquant`, qui arrête la passe.
-                Err(ureq::Error::StatusCode(code @ (401 | 403))) => {
-                    return Err(EchecTags::Bloquant(Error::Reseau(format!(
-                        "clé Last.fm refusée (HTTP {code}) sur {url}"
-                    ))))
-                }
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
+        match self.http.get_json_avec(url, "artist.gettoptags", |code| matches!(code, 401 | 403)) {
+            Ok(Reponse::Trouvee(v)) => Ok(v),
+            Ok(Reponse::Absente) => Ok(Value::Null),
+            Ok(Reponse::ArretImmediat(code)) => Err(EchecTags::Bloquant(Error::Reseau(format!(
+                "clé Last.fm refusée (HTTP {code})"
+            )))),
+            Err(e) => Err(EchecTags::Ponctuel(e)),
         }
-        Err(EchecTags::Ponctuel(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        ))))
     }
 
     /// Les tags de genre les mieux votés pour l'artiste `mbid`. Une liste vide
@@ -178,6 +143,7 @@ fn tag_de(t: &Value) -> Option<Tag> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn tag_de_lit_nom_et_poids() {
@@ -247,5 +213,39 @@ mod tests {
                 "code {code} devrait arrêter la passe"
             );
         }
+    }
+
+    /// Un serveur d'une seule réponse HTTP, sur un port libre de la boucle
+    /// locale — même patron que `modeles::tests::serveur`.
+    fn serveur(reponse: &'static [u8]) -> String {
+        use std::io::{Read, Write};
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ecoute.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut flux, _)) = ecoute.accept() {
+                let mut requete = [0u8; 2048];
+                let _ = flux.read(&mut requete);
+                let _ = flux.write_all(reponse);
+            }
+        });
+        format!("http://127.0.0.1:{port}/2.0/")
+    }
+
+    /// Régression : c'est `Client::json`, pas `tags_de`, qui doit traduire un
+    /// vrai 401/403 HTTP en `Bloquant` sans épuiser les tentatives — le test
+    /// ci-dessus ne couvre que le cas où Last.fm rend le code d'erreur dans
+    /// un corps 200, jamais le chemin HTTP réel emprunté par
+    /// `ClientCadence::get_json_avec`.
+    #[test]
+    fn json_traduit_un_401_http_en_bloquant_sans_epuiser_les_tentatives() {
+        let url = serveur(b"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+        let client = Client::new("peu-importe".to_string());
+        let debut = Instant::now();
+        let e = client.json(&url).expect_err("401 doit remonter en erreur");
+        assert!(matches!(e, EchecTags::Bloquant(_)), "doit arrêter la passe : {e}");
+        assert!(
+            debut.elapsed() < Duration::from_secs(2),
+            "ne doit pas épuiser les tentatives (attente exponentielle) sur un arrêt immédiat"
+        );
     }
 }
