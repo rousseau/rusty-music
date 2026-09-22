@@ -40,14 +40,6 @@ use tracing::warn;
 
 use crate::mel::{FENETRE_N, SR};
 
-/// Taille de fichier au-delà de laquelle on refuse de le charger en mémoire.
-///
-/// Une piste ne pèse jamais ça : c'est le signe d'un fichier corrompu, ou
-/// d'autre chose que de la musique rangé sous une extension audio (voir
-/// `AUDIO_EXTS`). Sans ce plafond, `std::fs::read` en charge l'intégralité
-/// avant même que le décodeur ne se prononce.
-const TAILLE_MAX: u64 = 1_000_000_000;
-
 /// Échantillons au-delà desquels le repli "tout décoder" s'arrête, même si le
 /// flux continue d'en produire.
 ///
@@ -57,24 +49,6 @@ const TAILLE_MAX: u64 = 1_000_000_000;
 /// d'échantillons sans rapport avec la durée réelle du fichier et épuiser la
 /// mémoire avant qu'on s'en aperçoive.
 const ECHANTILLONS_MAX: usize = SR as usize * 4 * 3600;
-
-/// Pause imposée après un délai dépassé qui a survécu à toutes ses tentatives.
-///
-/// Rencontré en pratique — à deux reprises — sous la forme d'une véritable
-/// panique noyau (`pcie-sdreader`, timeout de complétion PCIe) plutôt que
-/// d'une simple erreur applicative : le contrôleur montrait déjà des signes
-/// de détresse avant l'échec final. Enchainer aussitôt sur le fichier suivant
-/// le sollicite à nouveau au pire moment ; cette pause lui laisse le temps de
-/// se stabiliser avant la prochaine lecture.
-const REPOS_APRES_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Temps maximal accordé à une tentative de lecture avant de l'abandonner.
-///
-/// Rencontré en pratique : `std::fs::read` peut rester bloqué **deux heures**
-/// sans jamais renvoyer d'erreur, jusqu'à ce que le noyau lui-même panique. Ce
-/// délai n'est donc pas un raffinement — sans lui, aucune reprise ni aucune
-/// pause n'a jamais la main : l'appel ne revient tout simplement pas.
-const DELAI_LECTURE: Duration = Duration::from_secs(45);
 
 /// Nombre de fenêtres par morceau retenu pour la passe.
 ///
@@ -91,20 +65,17 @@ const FIN: f64 = 0.85;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("ouverture impossible de {path} : {source}")]
-    Open {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("format non décodable pour {path} : {source}")]
     Decode {
         path: PathBuf,
         #[source]
         source: rodio::decoder::DecoderError,
     },
+    /// Toute erreur du cœur remontée telle quelle — Opus
+    /// (`rusty_music_core::opus`) comme la lecture bornée partagée
+    /// (`rusty_music_core::decode::lire_borne`, réutilisée par [`ouvrir`]).
     #[error(transparent)]
-    Opus(#[from] rusty_music_core::Error),
+    Core(#[from] rusty_music_core::Error),
 
     /// Le décodage a paniqué (rodio/symphonia sur un fichier hasardeux) —
     /// voir `rusty_music_core::panique`. Converti en échec de ce seul
@@ -136,86 +107,14 @@ type Lecteur = Decoder<std::io::Cursor<Vec<u8>>>;
 /// c'était de laisser le décodeur réclamer ses octets au support au fil de ses
 /// positionnements — mesuré 26 % plus lent sur la carte.
 fn ouvrir(path: &Path) -> Result<Lecteur, Error> {
-    let octets = lire_borne(path)?;
+    // Plafond de taille, délai et reprise sur un support qui se fait
+    // attendre : partagés avec `rusty_music_core::decode`, qui rencontre les
+    // mêmes mésaventures (voir sa doc — panique noyau `pcie-sdreader`).
+    let octets = rusty_music_core::decode::lire_borne(path)?;
     Decoder::try_from(std::io::Cursor::new(octets)).map_err(|source| Error::Decode {
         path: path.to_path_buf(),
         source,
     })
-}
-
-/// Vérifie la taille avant de charger, puis lit — avec reprise sur un support
-/// qui s'est fait attendre.
-///
-/// Une carte SD ou un partage réseau sous forte charge concurrente peut
-/// renvoyer un délai dépassé (`ETIMEDOUT`) sans que le fichier soit en cause :
-/// deux nouvelles tentatives, espacées, suffisent le plus souvent à passer un
-/// engorgement passager plutôt que de compter le morceau en échec pour rien.
-fn lire_borne(path: &Path) -> Result<Vec<u8>, Error> {
-    let taille = std::fs::metadata(path)
-        .map_err(|source| Error::Open {
-            path: path.to_path_buf(),
-            source,
-        })?
-        .len();
-    if taille > TAILLE_MAX {
-        return Err(Error::Open {
-            path: path.to_path_buf(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("{taille} octets, plafond {TAILLE_MAX}"),
-            ),
-        });
-    }
-
-    const TENTATIVES: u32 = 3;
-    for tentative in 0..TENTATIVES {
-        match lire_avec_delai(path, DELAI_LECTURE) {
-            Ok(octets) => return Ok(octets),
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut && tentative + 1 < TENTATIVES => {
-                warn!(path = %path.display(), tentative, "lecture en délai dépassé, nouvel essai");
-                std::thread::sleep(Duration::from_millis(300 * (tentative as u64 + 1)));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                warn!(
-                    path = %path.display(),
-                    "délai dépassé à bout de tentatives, pause avant de continuer"
-                );
-                std::thread::sleep(REPOS_APRES_TIMEOUT);
-                return Err(Error::Open {
-                    path: path.to_path_buf(),
-                    source: e,
-                });
-            }
-            Err(source) => {
-                return Err(Error::Open {
-                    path: path.to_path_buf(),
-                    source,
-                })
-            }
-        }
-    }
-    unreachable!("la boucle rend toujours avant d'épuiser ses tentatives")
-}
-
-/// Lit `path`, sans jamais attendre `std::fs::read` plus que [`DELAI_LECTURE`].
-///
-/// Rencontré en pratique : un support en détresse peut laisser l'appel bloqué
-/// des **heures** sans jamais renvoyer d'erreur — le noyau lui-même finit par
-/// paniquer plutôt que de rendre la main. Aucune reprise ne peut aider si
-/// l'appel ne revient jamais ; la lecture part donc sur un fil à part, et on
-/// ne l'attend qu'un temps fixe. Le fil oublié au-delà du délai continue
-/// d'exister, bloqué dans le noyau comme il l'aurait été de toute façon — mais
-/// il ne bloque plus, lui, l'avancement de la passe.
-fn lire_avec_delai(path: &Path, delai: Duration) -> std::io::Result<Vec<u8>> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let chemin = path.to_path_buf();
-    std::thread::spawn(move || {
-        // Le récepteur peut être parti (délai déjà expiré côté appelant) :
-        // l'envoi échoue alors silencieusement, ce qui est très bien.
-        let _ = tx.send(std::fs::read(&chemin));
-    });
-    rx.recv_timeout(delai)
-        .unwrap_or_else(|_| Err(std::io::Error::from(std::io::ErrorKind::TimedOut)))
 }
 
 fn uniforme(d: Lecteur) -> UniformSourceIterator<Lecteur> {
