@@ -18,11 +18,9 @@ use tracing::debug;
 pub mod amelioration;
 pub mod multipiste;
 pub mod spectre;
-pub mod waveform;
 pub use amelioration::{amelioration, enregistrer_taux_sortie, Amelioration};
 pub use multipiste::Multipiste;
 pub use spectre::Spectre;
-pub use waveform::Waveform;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

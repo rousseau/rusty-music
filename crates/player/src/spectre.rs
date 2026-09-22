@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Spectrogramme d'un fichier, pour l'affichage.
 //!
-//! L'onde (`waveform.rs`) montre *combien* il y a de son au fil du temps ; le
-//! spectrogramme montre *quoi*. Sur des stems séparés c'est ce qui compte :
+//! Une simple enveloppe (crête/RMS) montre *combien* il y a de son au fil du
+//! temps ; le spectrogramme montre *quoi*. Sur des stems séparés c'est ce qui
+//! compte :
 //! une basse et une batterie ont des enveloppes voisines et des spectres qui
 //! n'ont rien à voir. On voit d'un coup d'œil si la séparation a fait son
 //! travail.

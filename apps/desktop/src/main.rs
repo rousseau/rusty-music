@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
-use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, FluxTemporel, MapPoint, RootRow, TrackRow};
+use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -99,9 +99,6 @@ struct Etat {
     /// Le jeu de stems en écoute, s'il y en a un. Il tient sa propre sortie
     /// audio : le lecteur du module 1 se tait pendant ce temps.
     stems: Mutex<Option<rusty_music_player::Multipiste>>,
-    /// Enveloppes déjà calculées. Le calcul décode tout le fichier : quelques
-    /// secondes par piste sur la carte SD, à ne pas refaire à chaque affichage.
-    ondes: Mutex<rusty_music_player::waveform::Cache>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -439,8 +436,8 @@ fn fils_pour_passe(lib: &Library) -> usize {
 /// attendait le disque.
 ///
 /// La règle est uniforme parce que la frontière ne l'est pas : `skip` ouvre la
-/// piste suivante, `waveform` décode le morceau entier, et même un simple
-/// lecteur d'état prend un verrou que ces opérations détiennent. Aucune
+/// piste suivante, `spectre_transport` décode le morceau entier, et même un
+/// simple lecteur d'état prend un verrou que ces opérations détiennent. Aucune
 /// commande d'ici n'a besoin du fil principal — aucune ne touche la fenêtre.
 
 #[tauri::command(async)]
@@ -502,54 +499,6 @@ fn map_view(etat: State<Etat>) -> Result<Vec<MapPoint>, String> {
         .map_err(echec)?;
     tracing::info!(n = pts.len(), "map_view");
     Ok(pts)
-}
-
-/// Ce que la webview doit savoir avant d'ouvrir la carte MapLibre.
-#[derive(serde::Serialize)]
-struct EtatTuiles {
-    pretes: bool,
-    carte: String,
-    relief: String,
-    octets: u64,
-    /// Vraies si l'archive est plus vieille que la dernière projection : la
-    /// carte a bougé sous les tuiles, il faut les refaire.
-    perimees: bool,
-}
-
-#[tauri::command(async)]
-fn tuiles_etat(app: tauri::AppHandle, etat: State<Etat>) -> Result<EtatTuiles, String> {
-    let carte = tuiles::chemin_carte(&app).map_err(echec)?;
-    let relief = tuiles::chemin_relief(&app).map_err(echec)?;
-    let meta = std::fs::metadata(&carte).ok();
-    let octets = meta.as_ref().map(|m| m.len()).unwrap_or(0)
-        + std::fs::metadata(&relief).map(|m| m.len()).unwrap_or(0);
-
-    // La projection la plus récente fait foi : `features.computed_at` bouge à
-    // chaque recalcul de la carte.
-    let projetee = verrou(&etat.lib)
-        .derniere_projection(rusty_music_analysis::passe::MODELE)
-        .map_err(echec)?;
-    let ecrite = meta
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64);
-
-    Ok(EtatTuiles {
-        pretes: carte.is_file() && relief.is_file() && dossier_style(&app).is_some(),
-        carte: carte.display().to_string(),
-        relief: relief.display().to_string(),
-        octets,
-        perimees: match (ecrite, projetee) {
-            (Some(e), Some(p)) => e < p,
-            (None, _) => true,
-            _ => false,
-        },
-    })
-}
-
-fn dossier_style(app: &tauri::AppHandle) -> Option<PathBuf> {
-    let s = tuiles::dossier(app).ok()?.join("style.json");
-    s.is_file().then_some(s)
 }
 
 /// Le plan de ville à afficher, ou `None` pour retomber sur le monde procédural.
@@ -2100,15 +2049,6 @@ fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, String> {
         .map_err(echec)
 }
 
-/// Bandes et fils du mode Explorer → Temps — voir
-/// [`rusty_music_core::db::Library::flux_temporel`].
-#[tauri::command(async)]
-fn temporal_view(etat: State<Etat>) -> Result<FluxTemporel, String> {
-    verrou(&etat.lib)
-        .flux_temporel(rusty_music_analysis::passe::MODELE)
-        .map_err(echec)
-}
-
 /// La famille sonique dominante de chaque album — le filtre par famille de la
 /// grille de pochettes du mode Écoute (`app.js`), qui réutilise la légende des
 /// familles du mode Explorer.
@@ -3315,19 +3255,6 @@ struct EtatDescripteurs {
     resultat: Option<String>,
 }
 
-/// Combien de morceaux de la carte ont déjà leurs descripteurs à jour — une
-/// mesure d'avant un correctif de l'algorithme compte comme manquante, voir
-/// `VERSION_DESCRIPTEURS`.
-#[tauri::command(async)]
-fn descripteurs_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
-    verrou(&etat.lib)
-        .compter_descripteurs(
-            rusty_music_analysis::passe::MODELE,
-            rusty_music_analysis::passe::VERSION_DESCRIPTEURS,
-        )
-        .map_err(echec)
-}
-
 /// Mesure tempo/tonalité/énergie des morceaux en attente — ou de tous,
 /// `force` effaçant d'abord ce qui est déjà mesuré.
 ///
@@ -3409,15 +3336,6 @@ struct EtatLoudness {
     faits: usize,
     total: usize,
     resultat: Option<String>,
-}
-
-/// Combien de morceaux ont déjà une loudness à jour — une mesure d'avant un
-/// changement de méthode (`VERSION_LOUDNESS`) compte comme manquante.
-#[tauri::command(async)]
-fn loudness_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
-    verrou(&etat.lib)
-        .compter_loudness(rusty_music_core::loudness::VERSION_LOUDNESS)
-        .map_err(echec)
 }
 
 /// Mesure la loudness EBU R128 (piste + album) des morceaux en attente — ou
@@ -3766,14 +3684,6 @@ fn start_biographies(app: tauri::AppHandle, etat: State<Etat>, cle: Option<Strin
 #[tauri::command(async)]
 fn biographies_state(etat: State<Etat>) -> Result<EtatBio, String> {
     Ok(verrou(&etat.biographies).clone())
-}
-
-/// La biographie du morceau `id`, chargée à l'ouverture de l'inspecteur —
-/// commande séparée, comme `descripteurs` : rien n'est chargé tant que rien
-/// ne l'affiche.
-#[tauri::command(async)]
-fn bio_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::BioArtiste>, String> {
-    verrou(&etat.lib).bio_pour_piste(id).map_err(echec)
 }
 
 /// La biographie d'un artiste par MBID direct, chargée à l'ouverture de sa
@@ -6438,43 +6348,6 @@ fn qualite_piste(
     verrou(&etat.lib).qualite_piste(id).map_err(echec)
 }
 
-/// Enveloppe d'une piste : crête et RMS par tranche.
-///
-/// Renvoie `None` tant qu'elle n'est pas prête. Le calcul décode tout le
-/// fichier — plusieurs secondes sur un support lent — et tourne donc dans un
-/// thread : l'interface redemande et affiche l'onde quand elle arrive, plutôt
-/// que de figer en attendant.
-#[tauri::command(async)]
-fn waveform(
-    app: tauri::AppHandle,
-    etat: State<Etat>,
-    path: String,
-    buckets: usize,
-    duration_ms: Option<u64>,
-) -> Result<Option<rusty_music_player::Waveform>, String> {
-    let chemin = PathBuf::from(&path);
-    {
-        let cache = verrou(&etat.ondes);
-        if let Some(w) = cache.get(&chemin) {
-            return Ok(Some(w.clone()));
-        }
-    }
-
-    std::thread::spawn(move || {
-        let t = std::time::Instant::now();
-        match rusty_music_player::waveform::compute(&chemin, buckets, duration_ms) {
-            Ok(w) => {
-                tracing::debug!(path = %chemin.display(), ms = t.elapsed().as_millis(), "onde calculée");
-                let etat = app.state::<Etat>();
-                verrou(&etat.ondes).insert(chemin, w);
-            }
-            Err(e) => tracing::warn!(path = %chemin.display(), error = %e, "onde incalculable"),
-        }
-    });
-
-    Ok(None)
-}
-
 /// Encodage base64 sans dépendance : la seule chose qu'on ait à encoder ici,
 /// ce sont des pochettes, et l'ajouter au projet pour ça ne se justifie pas.
 fn base64(data: &[u8]) -> String {
@@ -6991,7 +6864,6 @@ fn main() {
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
-                ondes: Mutex::new(Default::default()),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un
@@ -7202,10 +7074,8 @@ fn main() {
             start_scan,
             scan_state,
             cover,
-            waveform,
             descripteurs,
             map_view,
-            tuiles_etat,
             engendrer_tuiles,
             style_carte,
             positions_carte,
@@ -7234,10 +7104,8 @@ fn main() {
             analysis_state,
             start_descripteurs,
             descripteurs_state,
-            descripteurs_progress,
             start_loudness,
             loudness_state,
-            loudness_progress,
             set_normalisation,
             start_enrichment,
             enrichment_state,
@@ -7246,7 +7114,6 @@ fn main() {
             popularite_fraicheur,
             start_biographies,
             biographies_state,
-            bio_piste,
             bio_artiste,
             start_critiques,
             critiques_state,
@@ -7308,7 +7175,6 @@ fn main() {
             families,
             album_families,
             artist_families,
-            temporal_view,
             search_albums,
             album_ring,
             artistes_proches,
