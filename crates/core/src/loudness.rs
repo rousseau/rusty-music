@@ -69,19 +69,46 @@ fn erreur_ebur128(e: ebur128::Error) -> Error {
     Error::Parsing(format!("ebur128 : {e}"))
 }
 
-/// Décode `chemin` et lui fait traverser un analyseur `ebur128` neuf dans le
-/// mode demandé — `Mode::I` seul pour la combinaison d'album (moins coûteux,
-/// pas besoin du pic), `Mode::I | Mode::TRUE_PEAK` pour la mesure de piste.
+/// Une seconde d'audio (au débit le plus courant, 44,1/48 kHz) : assez gros
+/// pour ne pas multiplier les appels à `add_frames_f32`, assez petit pour ne
+/// jamais garder tout un morceau décodé en mémoire à la fois — voir
+/// `crate::decode::decoder_natif_par_blocs`, dont c'est tout l'intérêt par
+/// rapport à `decoder_natif` : celui-ci décode un fichier entier avant de le
+/// faire traverser l'analyseur, alors qu'EBU R128 est conçu pour un usage
+/// incrémental (fenêtres glissantes de 400 ms).
+const BLOC_STREAMING: usize = 48_000;
+
+/// Décode `chemin` en flux et lui fait traverser un analyseur `ebur128` neuf
+/// dans le mode demandé — `Mode::I` seul pour la combinaison d'album (moins
+/// coûteux, pas besoin du pic), `Mode::I | Mode::TRUE_PEAK` pour la mesure de
+/// piste.
 fn analyser(chemin: &Path, mode: ebur128::Mode) -> Result<ebur128::EbuR128> {
-    let piste = crate::decode::decoder_natif(chemin)?;
-    if piste.canaux == 0 {
-        return Err(Error::Parsing(format!("{} : aucun canal", chemin.display())));
+    // `EbuR128::new` a besoin de canaux et de fréquence, connus dès le
+    // premier bloc (voir `decoder_natif_par_blocs`) : construit à la volée
+    // plutôt qu'avant, pour ne dépendre que d'une seule source de vérité.
+    let mut etat: Option<ebur128::EbuR128> = None;
+    let mut echec: Option<Error> = None;
+    crate::decode::decoder_natif_par_blocs(chemin, BLOC_STREAMING, |canaux, taux, bloc| {
+        if echec.is_some() {
+            return;
+        }
+        if etat.is_none() {
+            match ebur128::EbuR128::new(canaux as u32, taux, mode) {
+                Ok(e) => etat = Some(e),
+                Err(e) => {
+                    echec = Some(erreur_ebur128(e));
+                    return;
+                }
+            }
+        }
+        if let Err(e) = etat.as_mut().expect("posé juste au-dessus").add_frames_f32(bloc) {
+            echec = Some(erreur_ebur128(e));
+        }
+    })?;
+    if let Some(e) = echec {
+        return Err(e);
     }
-    let mut etat =
-        ebur128::EbuR128::new(piste.canaux as u32, piste.taux, mode).map_err(erreur_ebur128)?;
-    etat.add_frames_f32(&piste.echantillons)
-        .map_err(erreur_ebur128)?;
-    Ok(etat)
+    etat.ok_or_else(|| Error::Parsing(format!("{} : aucun bloc décodé", chemin.display())))
 }
 
 /// Mesure la loudness intégrée et le pic vrai (dBTP) d'un morceau.

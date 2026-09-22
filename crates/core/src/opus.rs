@@ -12,7 +12,6 @@
 //! Vit dans le cœur parce que les trois modules en ont besoin — la carte pour
 //! analyser, le lecteur pour jouer — et qu'ils ne partagent que lui.
 
-use std::fs::File;
 use std::path::Path;
 
 use crate::error::{Error, Result};
@@ -29,9 +28,21 @@ pub struct Piste {
     pub canaux: usize,
 }
 
-/// Décode un fichier Opus entier.
+/// Lit `chemin` de façon bornée (plafond de taille, délai, reprise — voir
+/// `crate::decode::lire_borne`) puis décode l'Opus qu'il contient.
 pub fn decoder(chemin: &Path) -> Result<Piste> {
-    let mut pages = ogg::PacketReader::new(File::open(chemin)?);
+    decoder_depuis(&crate::decode::lire_borne(chemin)?)
+}
+
+/// Décode un flux Opus déjà en mémoire.
+///
+/// Séparée de [`decoder`] pour que la lecture du fichier passe par
+/// `crate::decode::lire_borne` — sans quoi ce module n'avait ni plafond de
+/// taille, ni délai, ni reprise sur un support qui se fait attendre, alors
+/// que c'est justement la panique noyau rencontrée sur ce genre de support
+/// qui a motivé ces garde-fous ailleurs (voir `crate::decode`).
+pub fn decoder_depuis(octets: &[u8]) -> Result<Piste> {
+    let mut pages = ogg::PacketReader::new(std::io::Cursor::new(octets));
     let mut dec = None;
     let (mut canaux, mut a_sauter, mut gain) = (0usize, 0usize, 1.0f32);
     let mut pcm = Vec::new();
