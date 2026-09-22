@@ -136,6 +136,12 @@ ebur128 = "0.1"
 # ISC / BSD), aucun GPL.
 ureq       = { version = "3.4", features = ["rustls"] }
 
+# Empreinte SHA-256 des poids de modèles téléchargés à la demande
+# (`crate::modeles::telecharger_dans`) — même garantie que les scripts
+# `scripts/preparer-*.sh`, qui vérifient déjà un `shasum -a 256` après
+# téléchargement. Licence MIT OR Apache-2.0.
+sha2 = "0.11"
+
 # Inférence (module 2). `CLAUDE.md` retient Burn pour le calcul : le modèle
 # ONNX est traduit en Rust natif au build par `burn-onnx`, puis exécuté par le
 # backend choisi — `wgpu` couvre Metal/Vulkan/DX12 d'un même code. Mesuré

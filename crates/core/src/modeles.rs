@@ -94,14 +94,22 @@ pub fn trouver(nom: &str) -> Option<PathBuf> {
 /// tronqué ne se plaint qu'au chargement, avec un message qui n'en dit pas la
 /// cause.
 ///
+/// `sha256_attendu` vérifie en plus l'intégrité du contenu, pas seulement sa
+/// taille — même garantie que `scripts/preparer-*.sh` (`shasum -a 256`),
+/// jusqu'ici absente de ce chemin de téléchargement à la demande. `None`
+/// quand l'empreinte n'est pas connue (voir `editor::Variante::sha256`) :
+/// mieux vaut télécharger sans cette garantie que refuser une variante
+/// existante faute d'avoir mesuré son empreinte.
+///
 /// `avancer(octets_reçus, octets_attendus)` est rappelé à chaque lot.
 pub fn telecharger(
     nom: &str,
     url: &str,
     octets_minimum: u64,
+    sha256_attendu: Option<&str>,
     avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
-    telecharger_dans(&dossier_telechargement(), nom, url, octets_minimum, avancer)
+    telecharger_dans(&dossier_telechargement(), nom, url, octets_minimum, sha256_attendu, avancer)
 }
 
 /// [`telecharger`] vers un dossier explicite.
@@ -110,6 +118,7 @@ pub fn telecharger_dans(
     nom: &str,
     url: &str,
     octets_minimum: u64,
+    sha256_attendu: Option<&str>,
     mut avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
     std::fs::create_dir_all(dossier)?;
@@ -131,12 +140,42 @@ pub fn telecharger_dans(
         ))),
         _ => Ok(()),
     });
+    let verifie = verifie.and_then(|()| match sha256_attendu {
+        Some(attendu) => {
+            let reel = sha256_fichier(&partiel)?;
+            if reel.eq_ignore_ascii_case(attendu) {
+                Ok(())
+            } else {
+                Err(Error::Reseau(format!(
+                    "{nom} : empreinte SHA-256 inattendue ({reel}, attendu {attendu})"
+                )))
+            }
+        }
+        None => Ok(()),
+    });
     if let Err(e) = verifie {
         let _ = std::fs::remove_file(&partiel);
         return Err(e);
     }
     std::fs::rename(&partiel, &destination)?;
     Ok(destination)
+}
+
+/// Empreinte SHA-256 de `chemin`, en flux (jamais tout le fichier en
+/// mémoire à la fois — les poids pèsent jusqu'à quelques centaines de Mo).
+fn sha256_fichier(chemin: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut fichier = std::fs::File::open(chemin)?;
+    let mut hasheur = Sha256::new();
+    let mut tampon = [0u8; 1024 * 1024];
+    loop {
+        let n = std::io::Read::read(&mut fichier, &mut tampon)?;
+        if n == 0 {
+            break;
+        }
+        hasheur.update(&tampon[..n]);
+    }
+    Ok(hasheur.finalize().iter().map(|o| format!("{o:02x}")).collect())
 }
 
 /// Message d'erreur qui dit où l'on a regardé.
@@ -192,6 +231,7 @@ mod tests {
             "essai.safetensors",
             "http://127.0.0.1:9/absent",
             1,
+            None,
             |_, _| {},
         );
         assert!(r.is_err());
@@ -222,7 +262,7 @@ mod tests {
             b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
         );
         let mut dernier = (0, None);
-        let chemin = telecharger_dans(&dossier, "ok.safetensors", &url, 10, |v, t| {
+        let chemin = telecharger_dans(&dossier, "ok.safetensors", &url, 10, None, |v, t| {
             dernier = (v, t)
         })
         .expect("téléchargement");
@@ -239,7 +279,7 @@ mod tests {
         // Annonce 10 octets, en livre 5 puis ferme.
         let url =
             serveur(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n01234");
-        assert!(telecharger_dans(&dossier, "coupe.safetensors", &url, 1, |_, _| {}).is_err());
+        assert!(telecharger_dans(&dossier, "coupe.safetensors", &url, 1, None, |_, _| {}).is_err());
         assert!(
             !dossier.join("coupe.safetensors").exists(),
             "pas de poids tronqué"
@@ -254,8 +294,54 @@ mod tests {
         // Page d'erreur servie en 200, sans `Content-Length` : le corps se lit
         // jusqu'à la fermeture.
         let url = serveur(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n<html>oups</html>");
-        assert!(telecharger_dans(&dossier, "petit.safetensors", &url, 1000, |_, _| {}).is_err());
+        assert!(
+            telecharger_dans(&dossier, "petit.safetensors", &url, 1000, None, |_, _| {}).is_err()
+        );
         assert!(!dossier.join("petit.safetensors").exists());
+    }
+
+    /// SHA-256 de `0123456789` (10 octets), calculé indépendamment pour ne
+    /// pas retester `sha256_fichier` avec lui-même.
+    const SHA256_0123456789: &str =
+        "84d89877f0d4041efb6bf91a16f0248f2fd573e6af05c19f96bedb9f882f7882";
+
+    #[test]
+    fn une_empreinte_correcte_est_acceptee() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-hash-ok");
+        let _ = std::fs::remove_dir_all(&dossier);
+        let url = serveur(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        );
+        let chemin = telecharger_dans(
+            &dossier,
+            "hash-ok.safetensors",
+            &url,
+            10,
+            Some(SHA256_0123456789),
+            |_, _| {},
+        )
+        .expect("empreinte correcte : le téléchargement doit passer");
+        assert_eq!(std::fs::read(&chemin).unwrap(), b"0123456789");
+    }
+
+    #[test]
+    fn une_empreinte_inattendue_est_refusee_sans_laisser_de_fichier() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-hash-mauvais");
+        let _ = std::fs::remove_dir_all(&dossier);
+        let url = serveur(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        );
+        let r = telecharger_dans(
+            &dossier,
+            "hash-mauvais.safetensors",
+            &url,
+            10,
+            Some("0000000000000000000000000000000000000000000000000000000000000000"),
+            |_, _| {},
+        );
+        assert!(r.is_err(), "empreinte fausse : le téléchargement doit échouer");
+        assert!(!dossier.join("hash-mauvais.safetensors").exists());
+        assert!(!dossier.join("hash-mauvais.safetensors.partiel").exists());
     }
 
     #[test]

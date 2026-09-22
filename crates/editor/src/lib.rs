@@ -170,6 +170,22 @@ impl Variante {
         format!("{DEPOT_POIDS}/{}", self.fichier())
     }
 
+    /// Empreinte SHA-256 connue du dépôt — même valeur que
+    /// `scripts/preparer-demucs.sh`, qui ne vérifie aujourd'hui que la
+    /// variante par défaut (`Standard`). `None` pour les deux autres, faute
+    /// d'avoir été mesurées sur un téléchargement réel : leur téléchargement
+    /// applicatif reste accepté, avec un avertissement, plutôt que refusé
+    /// pour un défaut de données qu'on ne peut pas combler sans les
+    /// télécharger nous-mêmes pour en mesurer l'empreinte.
+    pub fn sha256(self) -> Option<&'static str> {
+        match self {
+            Variante::Standard => {
+                Some("8193504cdfb3943adaf039b8acb524a46e87ebf232c383ac7a32c80a6578423e")
+            }
+            Variante::SixStems | Variante::Affinee => None,
+        }
+    }
+
     /// Les poids sont-ils déjà sur cette machine ?
     pub fn presente(self) -> bool {
         rusty_music_core::modeles::trouver(self.fichier()).is_some()
@@ -294,10 +310,17 @@ impl Demixeur {
         // Une réponse bien en dessous du poids attendu n'est pas un modèle
         // (page d'erreur, tronqué) : on exige au moins 90 % de sa taille.
         let minimum = variante.octets() / 10 * 9;
+        if variante.sha256().is_none() {
+            tracing::warn!(
+                variante = variante.nom(),
+                "poids téléchargés sans vérification d'intégrité (empreinte inconnue)"
+            );
+        }
         rusty_music_core::modeles::telecharger(
             variante.fichier(),
             &variante.url(),
             minimum,
+            variante.sha256(),
             avancer,
         )
         .map_err(|e| Error::Telechargement(e.to_string()))?;
@@ -490,6 +513,7 @@ mod tests {
             v.fichier(),
             &v.url(),
             v.octets() / 10 * 9,
+            v.sha256(),
             |vus, total| dernier = (vus, total),
         )
         .expect("téléchargement");

@@ -28,3 +28,4 @@ quick-xml.workspace = true
 # déjà utilisé par les trois autres crates, mêmes features qu'ailleurs.
 rodio.workspace     = true
 ebur128.workspace   = true
+sha2.workspace      = true
