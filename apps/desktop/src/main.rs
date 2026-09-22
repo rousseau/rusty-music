@@ -3255,13 +3255,9 @@ fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String
         };
         tracing::info!(%bilan, "analyse terminée");
 
-        // Garde nommé : dans un `if let`, son temporaire vivrait plus
-        // longtemps que le `State` dont il emprunte. Même piège que le scan.
-        let verrou = etat.analyse.lock();
-        if let Ok(mut a) = verrou {
-            a.en_cours = false;
-            a.resultat = Some(bilan);
-        }
+        let mut a = verrou(&etat.analyse);
+        a.en_cours = false;
+        a.resultat = Some(bilan);
     });
 
     Ok(())
@@ -3344,11 +3340,9 @@ fn start_descripteurs(app: tauri::AppHandle, etat: State<Etat>, force: Option<bo
         };
         tracing::info!(%bilan, "mesure des descripteurs terminée");
 
-        let verrou = etat.descripteurs.lock();
-        if let Ok(mut d) = verrou {
-            d.en_cours = false;
-            d.resultat = Some(bilan);
-        }
+        let mut d = verrou(&etat.descripteurs);
+        d.en_cours = false;
+        d.resultat = Some(bilan);
     });
 
     Ok(())
@@ -3433,11 +3427,9 @@ fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>)
         };
         tracing::info!(%bilan, "mesure de loudness terminée");
 
-        let verrou = etat.loudness.lock();
-        if let Ok(mut l) = verrou {
-            l.en_cours = false;
-            l.resultat = Some(bilan);
-        }
+        let mut l = verrou(&etat.loudness);
+        l.en_cours = false;
+        l.resultat = Some(bilan);
     });
 
     Ok(())
@@ -4606,11 +4598,9 @@ fn set_lecture_hd(app: tauri::AppHandle, etat: State<Etat>, actif: bool) -> Resu
         let ouvert = rusty_music_superres::resoudre(&etat.hd, &chemin);
         match rusty_music_player::ouvrir(&ouvert, gain) {
             Ok(source) => {
-                let verrou = etat.player.lock();
-                if let Ok(mut player) = verrou {
-                    if let Err(e) = player.remplacer_courant(&chemin, source) {
-                        tracing::warn!(error = %e, "bascule HD impossible");
-                    }
+                let mut player = verrou(&etat.player);
+                if let Err(e) = player.remplacer_courant(&chemin, source) {
+                    tracing::warn!(error = %e, "bascule HD impossible");
                 }
             }
             Err(e) => tracing::warn!(error = %e, "réouverture HD impossible"),
@@ -4934,15 +4924,10 @@ fn start_etirer(
             }
         }
 
-        // Le verrou est nommé plutôt que pris dans le `if let` : un temporaire
-        // en fin de portée vivrait plus longtemps que `etat`. Même précaution
-        // qu'à la fin du démixage.
-        let verrou = etat.transpose.lock();
-        if let Ok(mut t) = verrou {
-            t.en_cours = false;
-            t.stems = if erreur.is_some() { Vec::new() } else { sortie };
-            t.erreur = erreur;
-        }
+        let mut t = verrou(&etat.transpose);
+        t.en_cours = false;
+        t.stems = if erreur.is_some() { Vec::new() } else { sortie };
+        t.erreur = erreur;
     });
 
     Ok(depart)
@@ -5223,14 +5208,12 @@ fn start_demix(
         };
         tracing::info!(%bilan, "démixage terminé");
 
-        let verrou = etat.demix.lock();
-        if let Ok(mut d) = verrou {
-            d.en_cours = false;
-            d.phase = String::new();
-            d.stem = None;
-            d.stems = stems;
-            d.resultat = Some(bilan);
-        }
+        let mut d = verrou(&etat.demix);
+        d.en_cours = false;
+        d.phase = String::new();
+        d.stem = None;
+        d.stems = stems;
+        d.resultat = Some(bilan);
     });
 
     Ok(())
@@ -5981,11 +5964,9 @@ fn start_scan(
         if succes {
             demarrer_surveillance(&etat, &racine);
         }
-        let verrou = etat.scan.lock();
-        if let Ok(mut s) = verrou {
-            s.en_cours = false;
-            s.resultat = Some(bilan);
-        }
+        let mut s = verrou(&etat.scan);
+        s.en_cours = false;
+        s.resultat = Some(bilan);
     });
 
     Ok(())
@@ -6431,10 +6412,7 @@ fn waveform(
             Ok(w) => {
                 tracing::debug!(path = %chemin.display(), ms = t.elapsed().as_millis(), "onde calculée");
                 let etat = app.state::<Etat>();
-                let verrou = etat.ondes.lock();
-                if let Ok(mut c) = verrou {
-                    c.insert(chemin, w);
-                }
+                verrou(&etat.ondes).insert(chemin, w);
             }
             Err(e) => tracing::warn!(path = %chemin.display(), error = %e, "onde incalculable"),
         }
