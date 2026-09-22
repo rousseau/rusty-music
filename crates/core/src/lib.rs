@@ -18,6 +18,7 @@ pub mod discogs;
 pub mod discogs_import;
 pub mod enrichir;
 pub mod error;
+pub mod http;
 pub mod lastfm;
 pub mod lastfm_pass;
 pub mod listenbrainz;

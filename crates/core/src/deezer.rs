@@ -15,25 +15,21 @@
 //! sonde de phase 0 a mesuré ~1 rapprochement sur 40 tombant sur un autre
 //! morceau du même artiste.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::http::ClientCadence;
 use crate::musicbrainz::{cle_artiste, normaliser_titre};
 
 /// Délai minimal entre deux requêtes. Deezer limite à ~50 requêtes par tranche
 /// de 5 secondes ; 150 ms tient largement sous la barre.
 const CADENCE: Duration = Duration::from_millis(150);
 
-/// Combien de fois réessayer avant d'abandonner une recherche.
-const ESSAIS: u32 = 4;
-
 /// Client Deezer, cadencé. Un seul pour tout le processus.
 pub struct Client {
-    agent: ureq::Agent,
-    dernier: Mutex<Option<Instant>>,
+    http: ClientCadence,
 }
 
 impl Default for Client {
@@ -49,55 +45,13 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self {
-            agent,
-            dernier: Mutex::new(None),
-        }
-    }
-
-    fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().expect("horloge du débit");
-        if let Some(precedent) = *dernier {
-            let ecoule = precedent.elapsed();
-            if ecoule < CADENCE {
-                std::thread::sleep(CADENCE - ecoule);
-            }
-        }
-        *dernier = Some(Instant::now());
+        Self { http: ClientCadence::new(agent, CADENCE) }
     }
 
     /// Une recherche GET rendant du JSON, réessayée sur échec temporaire.
     fn chercher(&self, kind: &str, q: &str) -> Result<Option<Value>> {
         let url = format!("https://api.deezer.com/search/{kind}");
-        let mut derniere = String::new();
-        for essai in 0..ESSAIS {
-            self.cadencer();
-            match self
-                .agent
-                .get(&url)
-                .query("q", q)
-                .query("limit", "5")
-                .call()
-            {
-                Ok(mut r) => {
-                    let corps = r
-                        .body_mut()
-                        .read_to_string()
-                        .map_err(|e| Error::Reseau(format!("lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps)
-                        .map(Some)
-                        .map_err(|e| Error::Reseau(format!("JSON illisible : {e}")));
-                }
-                Err(ureq::Error::StatusCode(404)) => return Ok(None),
-                Err(e) => {
-                    derniere = e.to_string();
-                    std::thread::sleep(Duration::from_secs(1 << essai));
-                }
-            }
-        }
-        Err(Error::Reseau(format!(
-            "{ESSAIS} tentatives sans succès sur {url} — {derniere}"
-        )))
+        self.http.get_json_requete(&url, &[("q", q), ("limit", "5")], kind)
     }
 
     /// Le `rank` Deezer de la piste `titre` de `artiste`, si la recherche rend
@@ -136,7 +90,7 @@ impl Client {
                 continue;
             };
             if let Some(url) = url_pochette_album(&v, artiste, album) {
-                self.cadencer();
+                self.http.cadencer();
                 return crate::pochette::telecharger(&url);
             }
         }
@@ -181,7 +135,7 @@ impl Client {
         };
         match url_photo_artiste(&v, nom) {
             Some(url) => {
-                self.cadencer();
+                self.http.cadencer();
                 crate::pochette::telecharger(&url)
             }
             None => Ok(None),
