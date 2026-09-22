@@ -7733,7 +7733,6 @@ dependencies = [
  "rodio",
  "rubato",
  "rustfft",
- "rusty-music-core",
  "thiserror 2.0.20",
  "tracing",
 ]

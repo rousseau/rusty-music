@@ -8,7 +8,6 @@ license.workspace = true
 publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 [dependencies]
-rusty-music-core = { path = "../core" }
 # ONNX Runtime : le seul moteur qui exécute AERO fidèlement (voir
 # `experiments/burn-aero/` : tract donne des nombres faux). Télécharge la
 # bibliothèque au build. Licence du wrapper MIT OR Apache-2.0, ORT lui-même MIT.
