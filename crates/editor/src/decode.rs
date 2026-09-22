@@ -18,12 +18,6 @@ pub const SR: u32 = 44_100;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("ouverture impossible de {path} : {source}")]
-    Open {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
     #[error("format non décodable pour {path} : {source}")]
     Decode {
         path: PathBuf,
@@ -32,6 +26,12 @@ pub enum Error {
     },
     #[error("{path} ne contient aucun échantillon")]
     Vide { path: PathBuf },
+
+    /// Lecture bornée (plafond de taille, délai, reprise) partagée avec
+    /// `rusty_music_core::decode` — voir [`stereo`], qui n'avait jusqu'ici
+    /// aucune de ces protections (`std::fs::read` nu).
+    #[error(transparent)]
+    Core(#[from] rusty_music_core::Error),
 }
 
 /// Un morceau décodé, canaux séparés — la forme que `demucs-core` attend.
@@ -51,12 +51,11 @@ impl Stereo {
 ///
 /// Le fichier est lu d'un bloc puis décodé depuis la mémoire, comme dans
 /// `analysis::decode` et pour la même raison : sur un support lent, c'est le
-/// seul motif d'accès servi au débit nominal.
+/// seul motif d'accès servi au débit nominal. La lecture elle-même passe par
+/// `rusty_music_core::decode::lire_borne` — plafond de taille, délai et
+/// reprise sur un support qui se fait attendre, partagés avec le cœur.
 pub fn stereo(path: &Path) -> Result<Stereo, Error> {
-    let octets = std::fs::read(path).map_err(|source| Error::Open {
-        path: path.to_path_buf(),
-        source,
-    })?;
+    let octets = rusty_music_core::decode::lire_borne(path)?;
     let decodeur =
         Decoder::try_from(std::io::Cursor::new(octets)).map_err(|source| Error::Decode {
             path: path.to_path_buf(),
