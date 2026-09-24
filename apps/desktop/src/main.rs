@@ -6614,6 +6614,28 @@ fn set_amelioration(
     Ok(())
 }
 
+/// Reprend la lecture après une perte de flux de sortie audio — périphérique
+/// débranché, bascule haut-parleurs/écouteurs, veille — signalée par
+/// [`rusty_music_player::Player::a_reprendre`].
+///
+/// Même découpage en trois temps que [`precharger_suivante`], et pour la même
+/// raison : redécoder la piste en cours peut prendre plusieurs secondes, et ce
+/// verrou est aussi celui de `toggle_pause`. Appelée juste avant lui, donc aux
+/// deux mêmes points (sondage de l'interface, fil de fond) — sans ça, la
+/// sortie restait raccordée à un flux mort jusqu'au prochain changement de
+/// piste : play/pause pilotaient un lecteur silencieusement bloqué.
+fn reprendre_apres_perte_sortie(etat: &Etat) {
+    let Some((chemin, piste, gain, pos, en_pause)) = verrou(&etat.player).a_reprendre() else {
+        return;
+    };
+    match rusty_music_player::ouvrir(&piste, gain) {
+        Ok(source) => verrou(&etat.player).reprendre(&chemin, source, pos, en_pause),
+        Err(e) => {
+            tracing::warn!(error = %e, "reprise après perte de sortie audio impossible");
+        }
+    }
+}
+
 /// Précharge la piste suivante dans la file, si la réserve n'est pas pleine.
 ///
 /// En trois temps plutôt qu'un `player.completer()` verrou tenu : la lecture
@@ -6630,6 +6652,7 @@ fn set_amelioration(
 /// Le fil de fond n'a pas ce problème : il tourne côté natif, indépendamment
 /// de la visibilité de la fenêtre.
 fn precharger_suivante(etat: &Etat) -> Result<(), String> {
+    reprendre_apres_perte_sortie(etat);
     let a_charger = {
         let mut player = verrou(&etat.player);
         player.a_precharger().map(|(rang, piste)| {

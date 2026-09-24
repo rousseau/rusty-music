@@ -10,8 +10,11 @@
 //! retenu dans `docs/architecture.md`.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
+use cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink};
 use tracing::debug;
 
@@ -344,11 +347,64 @@ pub struct Player {
     /// accepté plutôt que de retenir un historique complet pour ce cas
     /// marginal.
     avant_melange: Vec<PathBuf>,
+    /// Armé par le `error_callback` de la sortie audio quand le flux `cpal`
+    /// tombe en erreur — périphérique débranché, bascule haut-parleurs/
+    /// écouteurs, veille qui invalide le flux CoreAudio. Consulté par
+    /// [`Self::a_reprendre`]. `Arc` : partagé avec la fermeture du flux, qui
+    /// tourne sur le thread audio de `cpal`, pas celui du `Player`.
+    sortie_perdue: Arc<AtomicBool>,
 }
 
 /// Ouvre la sortie audio par défaut du système et retient sa fréquence.
-fn ouvrir_sortie() -> Result<MixerDeviceSink> {
-    let mut output = DeviceSinkBuilder::open_default_sink()?;
+///
+/// `sortie_perdue` est armé par cpal dès que le flux tombe en erreur — voir
+/// le champ [`Player::sortie_perdue`] et [`Player::a_reprendre`]. Avant
+/// `rodio` 0.22 avec callback d'erreur personnalisé, cette erreur ne faisait
+/// que s'imprimer sur stderr : le mixeur restait raccordé à un flux mort, et
+/// play/pause continuaient de piloter une sortie que plus personne
+/// n'écoutait — un lecteur qui paraissait bloqué après un changement de
+/// sortie en cours de piste, la panne ne se réparant qu'au démarrage de la
+/// piste suivante ([`Player::charger`] rouvre déjà la sortie à chaque
+/// départ, voir plus bas).
+///
+/// Réinitialisé à chaque appel : la sortie qu'on est en train d'ouvrir n'a
+/// encore signalé aucune erreur.
+///
+/// Reproduit la logique de repli de `DeviceSinkBuilder::open_default_sink`
+/// (périphérique par défaut, puis les autres si besoin) — non accessible
+/// telle quelle dès qu'on personnalise le callback d'erreur.
+fn ouvrir_sortie(sortie_perdue: Arc<AtomicBool>) -> Result<MixerDeviceSink> {
+    sortie_perdue.store(false, Ordering::SeqCst);
+    let rappel = move |erreur: cpal::StreamError| {
+        tracing::warn!(erreur = %erreur, "flux de sortie audio interrompu");
+        sortie_perdue.store(true, Ordering::SeqCst);
+    };
+    let mut output = DeviceSinkBuilder::from_default_device()?
+        .with_error_callback(rappel.clone())
+        .open_stream()
+        .or_else(|erreur_initiale| {
+            let peripheriques = match cpal::default_host().output_devices() {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!(erreur = %e, "liste des sorties audio indisponible");
+                    return Err(erreur_initiale);
+                }
+            };
+            peripheriques
+                .filter(|d| {
+                    d.description()
+                        .map(|desc| desc.driver().is_some_and(|driver| driver != "null"))
+                        .unwrap_or(false)
+                })
+                .find_map(|d| {
+                    DeviceSinkBuilder::from_device(d)
+                        .and_then(|b| {
+                            b.with_error_callback(rappel.clone()).open_sink_or_fallback()
+                        })
+                        .ok()
+                })
+                .ok_or(erreur_initiale)
+        })?;
     // On ferme la sortie sciemment en fin de processus : le message que
     // `rodio` émet alors sur stderr n'apprend rien et pollue la CLI.
     output.log_on_drop(false);
@@ -362,7 +418,8 @@ fn ouvrir_sortie() -> Result<MixerDeviceSink> {
 impl Player {
     /// Ouvre la sortie audio par défaut du système.
     pub fn new() -> Result<Self> {
-        let output = ouvrir_sortie()?;
+        let sortie_perdue = Arc::new(AtomicBool::new(false));
+        let output = ouvrir_sortie(sortie_perdue.clone())?;
         let inner = rodio::Player::connect_new(output.mixer());
         Ok(Self {
             inner,
@@ -375,6 +432,7 @@ impl Player {
             repetition: Repetition::default(),
             alea: false,
             avant_melange: Vec::new(),
+            sortie_perdue,
         })
     }
 
@@ -697,7 +755,7 @@ impl Player {
     /// son. Si la réouverture échoue, on garde l'ancien flux plutôt que de
     /// perdre une sortie qui marche peut-être encore.
     fn rouvrir_sortie(&mut self) {
-        let output = match ouvrir_sortie() {
+        let output = match ouvrir_sortie(self.sortie_perdue.clone()) {
             Ok(output) => output,
             Err(e) => {
                 tracing::warn!(erreur = %e, "réouverture de la sortie audio impossible");
@@ -709,6 +767,62 @@ impl Player {
         // Le lecteur tombe avant la sortie à laquelle il était raccordé.
         self.inner = inner;
         self._output = output;
+    }
+
+    /// Piste, gain et position à rouvrir après une perte de flux — voir le
+    /// champ `sortie_perdue`. Vide le drapeau : un seul appelant traite
+    /// l'incident. `None` si rien ne s'est produit, ou si rien ne jouait
+    /// (`charger` remettra une sortie neuve au prochain départ, inutile de
+    /// s'en occuper ici).
+    ///
+    /// Ne fait aucune I/O, sûr à appeler verrou tenu — comme
+    /// [`Self::a_precharger`], à finir par [`ouvrir`] hors verrou puis
+    /// [`Self::reprendre`]. Même découpage en trois temps que le
+    /// préchargement, et pour la même raison : décoder peut prendre plusieurs
+    /// secondes sur un support lent, et ce verrou est aussi celui du bouton
+    /// lecture/pause.
+    pub fn a_reprendre(&mut self) -> Option<(PathBuf, PathBuf, f32, Duration, bool)> {
+        if !self.sortie_perdue.swap(false, Ordering::SeqCst) {
+            return None;
+        }
+        let chemin = self.current()?.to_path_buf();
+        let piste = (self.resoudre)(&chemin);
+        let gain = (self.gain)(&chemin);
+        let pos = self.inner.get_pos();
+        let en_pause = self.inner.is_paused();
+        Some((chemin, piste, gain, pos, en_pause))
+    }
+
+    /// Termine la reprise amorcée par [`Self::a_reprendre`] : reconstruit la
+    /// sortie et y remet `source` (une réouverture de `attendu` par
+    /// [`ouvrir`]) à `pos`.
+    ///
+    /// `attendu` protège d'une course : si la piste en cours a changé pendant
+    /// que `source` se décodait en tâche de fond — l'utilisateur a cliqué
+    /// suivant, ce qui a déjà rouvert la sortie via [`Self::charger`] —
+    /// `source` est ignorée plutôt que d'écraser une lecture qui est déjà
+    /// repartie correctement.
+    pub fn reprendre(
+        &mut self,
+        attendu: &Path,
+        source: Box<dyn rodio::Source + Send>,
+        pos: Duration,
+        en_pause: bool,
+    ) {
+        let Some(i) = self.index() else { return };
+        if self.queue.get(i).map(PathBuf::as_path) != Some(attendu) {
+            return;
+        }
+        self.rouvrir_sortie();
+        self.inner.append(source);
+        self.charges = vec![i];
+        self.prochain = i + 1;
+        let _ = self.inner.try_seek(pos);
+        if en_pause {
+            self.inner.pause();
+        } else {
+            self.inner.play();
+        }
     }
 
     /// Rang de la piste en cours dans la file.
