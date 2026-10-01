@@ -4,7 +4,7 @@
     "href": "index.html",
     "title": "Rusty Music",
     "section": "",
-    "text": "Introduction\nRusty Music est né de la frustration de l’utilisation de lecteur de musique comme iTunes (maintenant Musique).\nL’idée de départ est de simplement indiquer le chemin d’un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.\nLe logiciel se décompose donc en 4 modes : écouter, explorer, éditer et découvrir.\nCe texte n’a pas pour objectif d’être une documentation technique du logiciel. Il s’agit plutôt de fournir le cheminement du développement, des questionnements sur la musique, la visualisation de données, les algorithmes de traitement du signal et d’apprentissage.",
+    "text": "Introduction\nRusty Music est né de la frustration de l’utilisation de lecteur de musique comme iTunes (maintenant Musique).\nL’idée de départ est de simplement indiquer le chemin d’un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.\nLe logiciel se décompose donc en 4 modes : écouter, explorer, éditer et découvrir.\nCe texte n’a pas pour objectif d’être une documentation technique du logiciel. Il s’agit plutôt de fournir le cheminement du développement, des questionnements sur la musique, la visualisation de données, les algorithmes de traitement du signal et d’apprentissage. Ce cheminement a permis des découvertes de l’existant, de questions génériques sur le monde musical.",
     "crumbs": [
       "Introduction"
     ]
