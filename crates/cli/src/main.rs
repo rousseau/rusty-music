@@ -248,15 +248,17 @@ enum Cmd {
         #[arg(long)]
         artistes: bool,
     },
-    /// Étage 1 de l'affectation : répartit les familles musicales sur les
-    /// quartiers d'un plan de ville déjà importé (`ville`)
+    /// Diagnostic de l'ancien placement par familles (étage 1) : répartit les
+    /// familles musicales sur les quartiers d'un plan de ville déjà importé
+    /// (`ville`). L'application ne l'utilise plus — voir `adresses`
     Quartiers {
         /// La base de ville à lire (voir `ville --sortie`)
         #[arg(long, default_value = "ville-paris.db")]
         ville: PathBuf,
     },
-    /// Étage 2 de l'affectation : loge chaque artiste sur une ou plusieurs
-    /// rues de la zone de sa famille (rejoue l'étage 1 au passage)
+    /// Diagnostic de l'ancien placement par familles (étage 2) : loge chaque
+    /// artiste sur une ou plusieurs rues de la zone de sa famille (rejoue
+    /// l'étage 1 au passage). L'application ne l'utilise plus
     Rues {
         /// La base de ville à lire (voir `ville --sortie`)
         #[arg(long, default_value = "ville-paris.db")]
@@ -265,16 +267,13 @@ enum Cmd {
         #[arg(long, default_value_t = 4.0)]
         espacement: f64,
     },
-    /// Étage 3 de l'affectation : sème chaque morceau à une adresse le long
-    /// de la rue de son artiste (rejoue les étages 1 et 2 au passage), puis
-    /// mesure la préservation du voisinage musical → géographique
+    /// Peuplement chronologique de la ville (`croissance`) : chaque morceau
+    /// arrive par date de sortie, l'île de la Cité d'abord, puis mesure la
+    /// préservation du voisinage musical → géographique
     Adresses {
         /// La base de ville à lire (voir `ville --sortie`)
         #[arg(long, default_value = "ville-paris.db")]
         ville: PathBuf,
-        /// Distance entre deux adresses le long d'une rue, en mètres
-        #[arg(long, default_value_t = 4.0)]
-        espacement: f64,
         /// Nombre de morceaux échantillonnés pour la mesure de voisinage
         #[arg(long, default_value_t = 500)]
         echantillon: usize,
@@ -1572,7 +1571,7 @@ fn main() -> Result<()> {
 
             println!("\n  {duree:.2?} pour {} artistes", prep.artistes.len());
         }
-        Cmd::Adresses { ville, espacement, echantillon } => {
+        Cmd::Adresses { ville, echantillon } => {
             let ville = if ville.is_absolute() {
                 ville
             } else {
@@ -1598,21 +1597,18 @@ fn main() -> Result<()> {
                 &extrait,
                 &vue,
                 &noms,
-                espacement,
                 Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
             );
             let duree = depart.elapsed();
 
             println!(
-                "  {} adresses posées, {} sans adresse, {} repli quartier, {} hors zone — {duree:.2?}",
-                r.adresses_posees, r.morceaux_sans_adresse, r.repli_quartier, r.hors_zone,
+                "  {} adresses posées, {} sans adresse, {} cellules dont {} habitées — {duree:.2?}",
+                r.adresses_posees, r.morceaux_sans_adresse, r.cellules, r.cellules_habitees,
             );
             println!(
-                "  {} artistes ancrés aux monuments, {} bâtiments peuplés, erreur quartiers {:.0} %, {} débordements",
+                "  {} artistes ancrés aux monuments, {} bâtiments peuplés",
                 r.artistes_ancres,
                 r.batiments_peuples,
-                100.0 * r.quartiers_erreur_relative,
-                r.debordements,
             );
 
             // --- Objection V1 : le voisinage musical survit-il à l'affectation ? ---

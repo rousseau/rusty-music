@@ -882,6 +882,16 @@ un bâtiment (`palier` n'y porte que la famille), donc un bâtiment garde sa
 couleur de famille par défaut dans ces modes-là plutôt que de virer à une
 teinte plate. Limite connue, pas creusée ici.
 
+> **Levée le 1er oct. 2026.** Le bâtiment habité porte désormais, en plus de
+> `palier` et `annee`, les tags `bpm` et `energie` de son occupant
+> (`source::BatimentReel` → `tuiles::Anneau`, tags **absents** quand le
+> descripteur manque). `couleurBatimentsMorceaux` (`app.js`) colore le bâti sur
+> la rampe de la variable active (`couleurContinueBatiment`, mêmes bornes et
+> même rampe que le nuage), teinte neutre « autres » pour un occupant sans
+> valeur ; l'isolement de famille et l'intervalle d'années grisent toujours le
+> bâtiment par-dessus. Il faut **régénérer les tuiles** pour que les tags
+> existent.
+
 **Vérifié sur la vraie bibliothèque et le vrai `ville-paris.db`** — tuiles et
 style régénérés (`rassembler_paris`, 3 850 tuiles, 49,0 Mo, 2,81 s) et
 **rendus dans un vrai navigateur** (Chrome headless, WebGL logiciel, la même
@@ -962,6 +972,10 @@ coûteux pour un badge secondaire) et fondation (concept du peuplement, sans
 plan réel (un bâtiment ne sait se colorer que par famille), avec un repli
 automatique sur « Famille » si l'un d'eux était actif au moment de la
 bascule — plutôt que de laisser un bouton actif sans aucun effet visible.
+
+> **Retiré le 1er oct. 2026** : année, tempo et énergie colorent maintenant le
+> bâti habité sur le plan réel (voir plus haut) ; `majSegmentsCouleur` ne
+> désactive plus rien.
 
 **Vérifié sur la vraie bibliothèque et le vrai `ville-paris.db`** — tuiles et
 style régénérés (`rassembler_paris` : 3 852 tuiles, 50,5 Mo, 3,51 s ; 26 987

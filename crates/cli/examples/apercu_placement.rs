@@ -59,14 +59,14 @@ fn main() -> anyhow::Result<()> {
     let t = std::time::Instant::now();
     let prep = ville::preparer(&extrait, &vue, ville::ESPACEMENT_PAR_DEFAUT, Some(ILE_DE_LA_CITE));
     let autorises = prep.autorises.clone();
-    let r = ville::rassembler(&extrait, &vue, &noms, ville::ESPACEMENT_PAR_DEFAUT, Some(ILE_DE_LA_CITE));
+    let r = ville::rassembler(&extrait, &vue, &noms, Some(ILE_DE_LA_CITE));
     println!(
-        "affectation : {:.1} s — {} adresses, {} sans, {} repli quartier, {} hors zone, {} ancrés, {} bâtiments peuplés",
+        "croissance : {:.1} s — {} adresses, {} sans, {} cellules ({} habitées), {} ancrés, {} bâtiments peuplés",
         t.elapsed().as_secs_f64(),
         r.adresses_posees,
         r.morceaux_sans_adresse,
-        r.repli_quartier,
-        r.hors_zone,
+        r.cellules,
+        r.cellules_habitees,
         r.artistes_ancres,
         r.batiments_peuples,
     );

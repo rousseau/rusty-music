@@ -476,6 +476,19 @@ pub fn territoires(
         }
     }
 
+    contourer(&gagnante, &ids, bornes, gn)
+}
+
+/// Contoure un champ de familles gagnantes (`gn × gn`, ligne par ligne,
+/// `i64::MIN` = hors territoire) en un polygone par famille de `ids`. Partagé
+/// par le diagramme de puissance ([`territoires`]) et par le peuplement
+/// chronologique, qui dessine les quartiers d'après les habitants réels
+/// (`ville::territoires_des_habitants`).
+pub fn contourer(gagnante: &[i64], ids: &[i64], bornes: [f64; 4], resolution: usize) -> Vec<Territoire> {
+    let gn = resolution.max(2);
+    let [xmin, ymin, xmax, ymax] = bornes;
+    let pas_x = ((xmax - xmin) / gn as f64).max(1e-6);
+    let pas_y = ((ymax - ymin) / gn as f64).max(1e-6);
     let constructeur = contour::ContourBuilder::new(gn, gn, true)
         .x_origin(xmin)
         .y_origin(ymin)
@@ -483,7 +496,7 @@ pub fn territoires(
         .y_step(pas_y);
 
     let mut sortie = Vec::new();
-    for &f in &ids {
+    for &f in ids {
         let champ: Vec<f64> = gagnante.iter().map(|&g| if g == f { 1.0 } else { 0.0 }).collect();
         let Ok(bandes) = constructeur.isobands(&champ, &[0.5, 1.5]) else { continue };
         let polygones: Vec<Vec<Vec<[f64; 2]>>> = bandes

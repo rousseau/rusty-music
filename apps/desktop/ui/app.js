@@ -4412,14 +4412,12 @@ function majCouleurGL() {
     expr = i;
   }
   if (pointMorceaux) gl.setPaintProperty("morceaux-point", "circle-color", expr);
-  // Seule la coloration par famille se transpose au bâtiment : les modes
-  // continus (année, tempo, énergie) n'ont pas d'attribut correspondant sur
-  // un bâtiment (`palier` n'y porte que la famille de l'occupant) — le
-  // bâtiment garde alors sa couleur de famille par défaut plutôt que de
-  // virer à une teinte plate erronée.
-  if (batimentsMorceaux && carte.couleur === "famille") {
-    // Passe par le même constructeur que `majFiltreGL` : la coloration du
-    // bâti et l'isolement d'une famille doivent rester cohérents.
+  // Le bâtiment habité porte les attributs de son occupant (`palier` = famille,
+  // `annee`, `bpm`, `energie` — `tuiles::Anneau`) : il se colore par famille
+  // comme par année, tempo ou énergie. Passe par le même constructeur que
+  // `majFiltreGL` : la coloration du bâti, l'isolement d'une famille et
+  // l'intervalle d'années doivent rester cohérents.
+  if (batimentsMorceaux) {
     gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
   }
   if (gl.getLayer("territoires")) {
@@ -4482,6 +4480,36 @@ function clauseAnneeHorsIntervalle() {
   return ["any", ["<", v, filtreAnnee.debut], [">", v, filtreAnnee.fin]];
 }
 
+/// Le bâti habité coloré par famille : la teinte de l'occupant (champ `palier`).
+function couleurFamilleBatiment(gris) {
+  const m = ["match", ["get", "palier"]];
+  couleursFamillesCarte().forEach((t, i) => m.push(i, t));
+  m.push(gris);
+  return m;
+}
+
+/// Champ des tuiles qui porte, sur un bâtiment, la variable continue de
+/// `CONTINUES` (`champ` y désigne le champ du *morceau* : `year`, `bpm`,
+/// `energy`).
+const CHAMP_TUILE_BATIMENT = { annee: "annee", tempo: "bpm", energie: "energie" };
+
+/// Le bâti habité coloré sur la rampe de la variable continue active, avec les
+/// mêmes bornes (`carte.bornes`) et la même rampe que les points du nuage. Un
+/// occupant sans valeur (année inconnue = -1, tag de tempo/énergie absent)
+/// prend la teinte neutre « autres », jamais une extrémité de la rampe.
+function couleurContinueBatiment() {
+  const champ = CHAMP_TUILE_BATIMENT[carte.couleur];
+  const [v0, v1] = carte.bornes[carte.couleur] ?? [0, 1];
+  if (!champ || !(v1 > v0)) return autresCarte();
+  const valeur = ["coalesce", ["get", champ], -1];
+  const etapes = rampe();
+  const rampeExpr = ["interpolate", ["linear"], valeur];
+  etapes.forEach((t, n) => rampeExpr.push(v0 + ((v1 - v0) * n) / (etapes.length - 1), t));
+  // `-1` marque l'absence de valeur : aucune année, tempo ou énergie réels n'y
+  // tombent (`valide` écarte les années ≤ 0 des bornes).
+  return ["case", ["<", valeur, 0], autresCarte(), rampeExpr];
+}
+
 /// Couleur de remplissage du bâti habité (`batiments-morceaux`) : la teinte
 /// de la famille de l'occupant (champ `palier`), sauf quand une famille est
 /// isolée — les autres reviennent alors au gris du bâti vacant — ou quand
@@ -4492,11 +4520,8 @@ function clauseAnneeHorsIntervalle() {
 /// Un bâtiment n'a pas d'année propre ; c'est celle du morceau qui l'habite
 /// (`crates/carto/src/tuiles.rs`, tag `annee`).
 function couleurBatimentsMorceaux() {
-  const teintes = couleursFamillesCarte();
   const gris = grisBatiCarte();
-  const parPalier = ["match", ["get", "palier"]];
-  teintes.forEach((t, i) => parPalier.push(i, t));
-  parPalier.push(gris);
+  const parPalier = carte.couleur === "famille" ? couleurFamilleBatiment(gris) : couleurContinueBatiment();
   const conditions = [];
   if (carte.isolees.size > 0)
     conditions.push(["!", ["in", ["get", "palier"], ["literal", [...carte.isolees]]]]);
@@ -6704,21 +6729,16 @@ async function familleARecalculee() {
   }
 }
 
-/// Sur le plan de ville réel, un bâtiment ne sait se colorer que par famille
-/// (`majCouleurGL`) — les modes continus (année/tempo/énergie) resteraient
-/// des boutons actifs sans aucun effet visible, une incohérence plutôt
-/// qu'une limite honnête. Désactivés dans ce cas, avec un repli sur
-/// « Famille » si l'un d'eux était choisi au moment de la bascule.
+/// Les trois colorations continues (année, tempo, énergie) sont disponibles sur
+/// le plan de ville réel comme sur le nuage : le bâtiment habité porte les
+/// attributs de son occupant (`couleurContinueBatiment`). Gardée comme point
+/// d'entrée (appelée à chaque bascule d'affichage) pour réactiver les boutons
+/// qu'une ancienne session aurait laissés désactivés.
 function majSegmentsCouleur() {
-  const desactives = carte.affichage === "carte" && villeReelle;
-  let bascule = false;
   document.querySelectorAll("[data-couleur]").forEach((b) => {
-    const continu = b.dataset.couleur !== "famille";
-    b.disabled = desactives && continu;
-    b.title = b.disabled ? "Un bâtiment ne sait se colorer que par famille sur le plan de ville réel" : "";
-    if (b.disabled && b.classList.contains("segment--actif")) bascule = true;
+    b.disabled = false;
+    b.title = "";
   });
-  if (bascule) document.querySelector('[data-couleur="famille"]')?.click();
 }
 
 document.querySelectorAll("[data-couleur]").forEach((b) =>

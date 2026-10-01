@@ -785,7 +785,6 @@ fn rassembler_ville(
         extrait,
         &vue,
         &noms_famille,
-        rusty_music_carto::ville::ESPACEMENT_PAR_DEFAUT,
         Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
     );
     // Pas de `curiosites` sur le plan de ville : `style::couches_ville` ne les
@@ -794,12 +793,10 @@ fn rassembler_ville(
     tracing::info!(
         adresses = r.adresses_posees,
         sans_adresse = r.morceaux_sans_adresse,
-        repli_quartier = r.repli_quartier,
-        hors_zone = r.hors_zone,
-        debordements = r.debordements,
         artistes_ancres = r.artistes_ancres,
         batiments_peuples = r.batiments_peuples,
-        erreur_quartiers = r.quartiers_erreur_relative,
+        cellules = r.cellules,
+        cellules_habitees = r.cellules_habitees,
         albums = r.source.albums.len(),
         "plan de ville réel assemblé"
     );

@@ -192,6 +192,11 @@ pub struct BatimentReel {
     /// bâtiment reste occupé quel que soit le curseur — un morceau non daté
     /// n'attend pas son tour).
     pub annee: Option<i32>,
+    /// Tempo (BPM) et énergie mesurés du morceau qui l'habite, `None` si vacant
+    /// ou sans descripteurs — ce qui permet de colorer le bâti par tempo ou
+    /// énergie comme par année (`tuiles::Anneau`).
+    pub bpm: Option<f32>,
+    pub energie: Option<f32>,
 }
 
 /// Un repère réel notable — musée, monument, lieu de culte — en `[lon, lat]`,

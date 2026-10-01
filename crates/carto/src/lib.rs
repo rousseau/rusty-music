@@ -13,6 +13,8 @@ pub mod ancrage;
 pub mod batiments;
 pub mod cout_itineraire;
 pub mod cout_voirie;
+pub mod croissance;
+pub mod facades;
 pub mod hydro;
 pub mod palette;
 pub mod peuplement;

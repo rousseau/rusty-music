@@ -29,9 +29,13 @@ use crate::batiments::{Batiment, GrilleBatiments};
 /// Liste **curatée** à dessein : le tag OSM `wikidata` est quasi universel sur
 /// les monuments parisiens et ne les hiérarchise pas ; au-delà d'une trentaine,
 /// un appariement par rang n'a plus de sens perceptif (`docs/carto-ville.md`).
+///
+/// **Les monuments de l'île de la Cité en sont exclus** (Notre-Dame,
+/// Sainte-Chapelle, Conciergerie) : l'île est le berceau de la ville, réservée
+/// par la croissance chronologique aux morceaux les plus anciens
+/// (`crate::croissance`) — un artiste de 2013 n'a rien à y faire.
 const MONUMENTS: &[&str] = &[
     "Tour Eiffel",
-    "Notre-Dame",
     "Sacré-Cœur",
     "Arc de triomphe",
     "Louvre",
@@ -41,8 +45,6 @@ const MONUMENTS: &[&str] = &[
     "Invalides",
     "Orsay",
     "Pompidou",
-    "Sainte-Chapelle",
-    "Conciergerie",
     "Luxembourg",
     "Hôtel de Ville",
     "Grand Palais",

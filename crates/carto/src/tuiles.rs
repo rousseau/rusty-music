@@ -251,6 +251,14 @@ struct Anneau {
     /// occupant sans année reste donc occupé quel que soit le curseur, au
     /// lieu d'attendre une date qu'on ne connaît pas.
     annee: i64,
+    /// Tempo (BPM) et énergie mesurés du morceau qui habite ce bâtiment, `None`
+    /// si vacant ou si les descripteurs manquent. Contrairement à `annee`, le
+    /// tag est **absent** (pas -1) quand la valeur manque : la peinture le lit
+    /// par `coalesce` et rend alors la teinte neutre
+    /// (`app.js::couleurBatimentsMorceaux`) — la coloration par tempo et par
+    /// énergie sur le plan de ville réel.
+    bpm: Option<f32>,
+    energie: Option<f32>,
     /// Identifiant du polygone d'origine. Un trou doit être encodé dans la
     /// même entité que son contour extérieur, sinon il se remplit.
     groupe: u32,
@@ -597,6 +605,8 @@ pub fn ecrire_avec(
                     palier: bande.palier as i64,
                     morceau: -1,
                     annee: -1,
+                bpm: None,
+                energie: None,
                     groupe,
                     bornes: b,
                 });
@@ -633,6 +643,8 @@ pub fn ecrire_avec(
             palier: crate::peuplement::Rang::depuis_population(e.population).indice(),
             morceau: -1,
             annee: -1,
+            bpm: None,
+            energie: None,
             groupe: 1_000_000 + n as u32,
             bornes: b,
         });
@@ -747,6 +759,8 @@ pub fn ecrire_avec(
                 palier: 0,
                 morceau: -1,
                 annee: -1,
+                bpm: None,
+                energie: None,
                 groupe: groupe_debut + n as u32,
                 bornes,
             });
@@ -777,6 +791,8 @@ pub fn ecrire_avec(
             palier: b.famille.unwrap_or(-1),
             morceau: b.morceau_id.unwrap_or(-1),
             annee: b.annee.map(|a| a as i64).unwrap_or(-1),
+            bpm: b.bpm,
+            energie: b.energie,
             groupe: 2_000_000 + n as u32,
             bornes,
         });
@@ -807,6 +823,8 @@ pub fn ecrire_avec(
                     palier: terr.famille,
                     morceau: -1,
                     annee: -1,
+                bpm: None,
+                energie: None,
                     groupe: groupe_territoire,
                     bornes,
                 });
@@ -1217,6 +1235,7 @@ fn couche_polygones(
             let palier = ctx.anneaux[indices[i]].palier;
             let morceau = ctx.anneaux[indices[i]].morceau;
             let annee = ctx.anneaux[indices[i]].annee;
+            let (bpm, energie) = (ctx.anneaux[indices[i]].bpm, ctx.anneaux[indices[i]].energie);
             let mut geom = GeomEncoder::new(GeomType::Polygon);
             for (mut anneau, trou) in anneaux_coupes {
                 orienter(&mut anneau, trou);
@@ -1236,6 +1255,12 @@ fn couche_polygones(
             // ici — quelques octets par entité, jamais consultés ailleurs.
             entite.add_tag_int("morceau", morceau);
             entite.add_tag_int("annee", annee);
+            if let Some(b) = bpm {
+                entite.add_tag_double("bpm", b as f64);
+            }
+            if let Some(e) = energie {
+                entite.add_tag_double("energie", e as f64);
+            }
             if let Some(n) = noms.get(&famille) {
                 entite.add_tag_string("nom", n);
             }
@@ -1795,7 +1820,7 @@ mod tests {
                 famille: Some(0),
                 artiste: Some("Nina Simone".into()),
             }],
-            batiments: vec![BatimentReel { points: carre(2.340, 48.850, 0.0005), morceau_id: None, famille: None, annee: None }],
+            batiments: vec![BatimentReel { points: carre(2.340, 48.850, 0.0005), morceau_id: None, famille: None, annee: None, bpm: None, energie: None }],
             eaux: vec![ContourReel { points: carre(2.350, 48.860, 0.001) }],
             verts: vec![ContourReel { points: carre(2.330, 48.840, 0.001) }],
             frontiere: Some(vec![carre(2.30, 48.80, 0.1)]),

@@ -128,6 +128,93 @@ réparties en effectif). La mesure de voisinage (objection V1 plus bas) ne
 bouge en revanche pas — 7 % contre 8 % — ce qui confirme que ce nombre ne
 dépendait pas de la façon dont les familles étaient choisies.
 
+## La croissance — le placement retenu (1er oct. 2026)
+
+> **Cette section remplace les étages 1-3 décrits plus bas dans l'application.**
+> Ils restent ci-dessous comme historique (et `carto quartiers`/`carto rues`
+> en gardent le diagnostic), mais `ville::rassembler` ne les appelle plus.
+> Raison, mesurée : le placement par familles et par artistes ne regardait
+> **jamais la date** — le « centre ancien, périphérie récente » promis par
+> `carto-peuplement.md` n'existait que pour la carte fictive de repli.
+
+Le principe, tel que François l'a posé : *les morceaux sont des habitants qui
+s'installent petit à petit ; les plus anciens fondent la partie la plus vieille
+de la ville (l'île de la Cité), les artères accélèrent le développement et
+portent les morceaux populaires, les petits quartiers abritent les morceaux
+confidentiels, regroupés par style.* Implémenté par `crates/carto/src/
+croissance.rs` (pur : parcelles + arrivants, sans OSM ni SQLite),
+`facades.rs` (voie qui borde chaque bâtiment) et `ville::rassembler`.
+
+**Le temps de la ville est le coût de voirie.** Chaque bâtiment de la zone
+peuplée porte son coût de déplacement depuis l'île de la Cité
+(`cout_voirie`, avenue ≈ 0,18 par mètre, rue ≈ 1,0) : c'est son « âge ». Une
+avenue porte donc la ville très loin très tôt — l'accélération n'est pas
+ajoutée, elle est dans la métrique.
+
+**Les cellules.** La zone est découpée une fois en cellules par bissection
+récursive équilibrée en bâtiments : des **couloirs** (~45 bâtiments qui bordent
+un grand axe à moins de 35 m — primaire/secondaire) et des **petits quartiers**
+(~90 bâtiments, le reste). ~500 cellules pour 27 000 morceaux.
+
+**L'arrivée.** Les morceaux sont regroupés en *arrivées* — un album sorti une
+année donnée, en bloc (une compilation de plusieurs décennies se scinde par
+année) — triées par (année, hachage stable de l'album). Les morceaux sans date
+fiable arrivent en dernier et vont là où la ville s'étend encore.
+
+- **Front.** À chaque arrivée la ville ouvre, par coût croissant, assez de
+  cellules pour loger les morceaux déjà arrivés × (1 + `marge_ouverture`) +
+  `base_ouverture`. Le front ne recule jamais ; c'est lui qui fait que
+  l'étendue suit la population.
+- **Choix de la cellule** : un score sur les cellules ouvertes qui ont de la
+  place — ressemblance de style (distance t-SNE au barycentre des habitants
+  de la cellule, plus la part de la famille), appariement **popularité ↔
+  artère** (`w_artere`), préférence pour les cellules proches du cœur
+  (`w_proche`), bonus à la cellule qui loge déjà l'artiste, coût de couper un
+  album en deux. Une cellule vierge emprunte le style de ses voisines
+  habitées : c'est ce qui dessine des **gradients** plutôt que des frontières
+  nettes. Fonder une cellule vierge coûte `w_fondation`.
+- **Dans la cellule**, le premier morceau prend le bâtiment de plus bas coût
+  (côté intérieur), chaque suivant le plus proche du précédent : un album est
+  un bloc contigu.
+
+Les rues sont nommées d'après l'artiste dominant des bâtiments qui les bordent
+(plus une rue par artiste) ; les aplats de quartier sont contourés d'après la
+famille majoritaire des habitants dans 130 m (`ville::territoires_des_habitants`,
+plus de diagramme de puissance). L'étage 0 (monuments) est inchangé : les
+artistes ancrés sont retirés de la croissance.
+
+**Mesuré** (`cargo run --release -p rusty-music-carto --example
+croissance_apercu`, 27 385 morceaux, 1,3 s ; l'exemple écrit `evaluation.md` et
+des SVG année / popularité / famille / quartiers, et accepte `CR_MARGE=…
+CR_W_ARTERE=…` pour comparer des réglages) :
+
+| | résultat |
+|---|---|
+| année ↔ coût de voirie (Spearman) | **ρ = 0,83** (distance à vol d'oiseau : 0,73) |
+| distance médiane au cœur, 1980s → 2020s | 600 m → 1 200 → 2 100 → 2 900 → 3 200 m |
+| les 100 plus anciens | 99 à moins de 600 m de l'île de la Cité |
+| popularité moyenne | artères 0,69, petits quartiers 0,41 |
+| 10 % les plus populaires / 10 % les moins | 53 % / 6 % sur une artère |
+| 8 voisins de même famille | **64 %** (hasard : 15 %) — l'ancien placement faisait du confetti |
+
+**Limites connues.**
+- Les artères restent une minorité (~24 % des bâtiments sont riverains d'un
+  grand axe à 35 m) ; la popularité n'y est pas exclusive, elle y est
+  *préférée*.
+- Le millésime n'a que la granularité de l'année : l'ordre de deux albums de
+  la même année est arbitraire mais stable.
+- Les ~22 artistes ancrés sur monuments échappent à la chronologie (un Led
+  Zeppelin de 1969 est à la Fondation Louis Vuitton, pas au centre). **Les
+  monuments de l'île de la Cité (Notre-Dame, Sainte-Chapelle, Conciergerie)
+  ne sont plus ancrables** (décision du 1er oct. 2026, après avoir vu Arctic
+  Monkeys 2013 sur l'île) : elle est réservée aux morceaux les plus anciens
+  (les 100 plus anciens : 99 à moins de 600 m).
+- Les dernières arrivées (années 2020, non datés) comblent les trous
+  restants, y compris dans le vieux centre, faute d'autre place.
+- Rien de ce chantier n'est vérifié **dans l'application** : l'aperçu
+  MapLibre (`rassembler_paris`) n'a pas pu être regardé ; seuls les SVG et les
+  tuiles générées (10 710 tuiles) l'ont été.
+
 ## L'affectation — le vrai travail
 
 > **Peuplement dense du centre vers l'extérieur + ancrage aux monuments
@@ -553,7 +640,9 @@ documentée dans le README.
 | `crates/osm/` | lecture du `.osm.pbf`, découpe sur la commune, persistance |
 | `carto ville <fichier.osm.pbf> --commune Paris` | l'import, une fois |
 | `ville-paris.db` (à côté de la base de la bibliothèque) | le plan, 40,9 Mo |
-| `crates/carto/src/ville.rs` | assemble une `Source` depuis `ville-paris.db` + l'affectation ; `preparer` (étages 0-2, partagé avec le CLI) puis `rassembler` (étage 3 + `Source`) |
+| `crates/carto/src/ville.rs` | assemble une `Source` depuis `ville-paris.db` : `zone_peuplee` (étage 0 + zone), puis `rassembler` (croissance + `Source`) ; `preparer` ne sert plus qu'aux diagnostics `carto quartiers`/`rues` |
+| `crates/carto/src/croissance.rs` | **le placement** : cellules, front, arrivées chronologiques (`examples/croissance_apercu.rs` pour l'évaluer) |
+| `crates/carto/src/facades.rs` | voie la plus proche de chaque bâtiment, importance d'artère |
 | `crates/carto/src/ancrage.rs` | étage 0 : artistes les plus populaires → monuments iconiques |
 
 `osmpbf` lui-même ne sert qu'à l'import, une fois — mais le crate `osm` **est**

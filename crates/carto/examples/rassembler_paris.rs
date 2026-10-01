@@ -68,22 +68,17 @@ fn main() -> anyhow::Result<()> {
         &extrait,
         &vue,
         &noms_famille,
-        rusty_music_carto::ville::ESPACEMENT_PAR_DEFAUT,
         Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
     );
     // Pas de `curiosites` : `style::couches_ville` ne les rend pas (pastilles
     // brunes sur un plan de ville, cf. plan « rendu par couche »).
     println!(
-        "affectation : {:.2} s — {} adresses posées, {} sans adresse, {} repli quartier ({:.0} %), {} hors zone ({:.0} %), {} débordements, erreur quartiers {:.1} %",
+        "croissance : {:.2} s — {} adresses posées, {} sans adresse, {} cellules dont {} habitées",
         t.elapsed().as_secs_f64(),
         r.adresses_posees,
         r.morceaux_sans_adresse,
-        r.repli_quartier,
-        100.0 * r.repli_quartier as f64 / r.adresses_posees.max(1) as f64,
-        r.hors_zone,
-        100.0 * r.hors_zone as f64 / r.adresses_posees.max(1) as f64,
-        r.debordements,
-        100.0 * r.quartiers_erreur_relative,
+        r.cellules,
+        r.cellules_habitees,
     );
     println!(
         "             {} artistes ancrés aux monuments, {} bâtiments peuplés",

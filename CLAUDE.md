@@ -51,6 +51,9 @@ Piège : projeter l'espace d'embedding dans un « monde » de coordonnées géog
 **Fond de plan : plusieurs palettes au choix** (`crates/carto/src/palette.rs`, portées de *maptoposter*, MIT) — `osm-clair` par défaut plus `sepia`/`encre`/`nuit`/`bleu-plan`. Chaque `Palette` porte fond **et** ses 12 teintes de familles *sur la carte* (calées sur le fond) ; le nuage et la légende gardent `--familles`. `engendrer_tuiles` écrit un `style-<id>.json` par palette ; l'interface bascule sans régénérer les tuiles (`gl.setStyle`).
 Détail : `docs/carto-ville.md` (le plan réel, chemin par défaut) ; `docs/carto-direction.md` (direction du monde fictif, chemin de repli) ; `docs/carto-etat-de-lart.md` (thèmes de fond de plan).
 
+## Placement des morceaux sur Paris — DÉCIDÉ (1er oct. 2026)
+**Peuplement chronologique** (`crates/carto/src/croissance.rs`, `docs/carto-ville.md` § « La croissance ») : les morceaux arrivent par date de sortie, l'île de la Cité d'abord ; le « temps » est le coût de voirie (les artères portent la ville plus loin) ; les artères accueillent les morceaux populaires, les petits quartiers les confidentiels, regroupés par style. Remplace l'ancien placement par familles/artistes (étages 1-3), qui ne regardait pas la date.
+
 ## Décisions d'architecture clés
 - Cœur d'ingestion partagé : une seule base alimentée par le dossier surveillé, consommée par les 3 modules.
 - Découplage strict moteur (Rust) / interface (HTML+WebGL) : rerun = diagnostic, pas UI finale (chrome peu personnalisable, API d'extension instable).
