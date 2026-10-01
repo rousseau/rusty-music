@@ -1,6 +1,8 @@
 # Écouter
 
-Ce mode donne un accès direct à la bibliothèque, par Albums ou par Artistes, avec pour seule idée directrice la simplicité de navigation.
+La première question a été : quelle interface ? Pourquoi un tel choix ? Comment faire ? etc. L'interface est divisée en 4 parties : un panneau de gauche, un panneau central, un panneau de droite et une barre de lecture. Le panneau de gauche permet de sélectionner un mode spécifique, et notamment, le plus important : écouter de la musique !
+
+Ce mode "Écouter" donne un accès direct à la bibliothèque, par Albums ou par Artistes, avec pour seule idée directrice la simplicité de navigation.
 
 L'affichage par Album sert à redécouvrir sa collection : tri alphabétique, par année de sortie ou aléatoire. Un ou deux clics sur « aléatoire » suffisent à faire remonter des albums qui attirent l'œil, par la pochette ou l'artiste. L'affichage par Artiste regroupe les albums par artiste ; il est plus compact.
 
