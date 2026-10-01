@@ -49,8 +49,41 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
         .unwrap_or_default();
     let strict = cas.get("strict").and_then(Value::as_bool).unwrap_or(true);
 
+    // Reformulation : le premier champ du schéma, jamais vide.
+    if spec.get("reformulation").is_some_and(|r| r.as_str().is_none_or(|r| r.trim().is_empty())) {
+        ecarts.push("reformulation vide".into());
+    }
+    // Parties : même nombre, dans l'ordre, chacune avec ses champs attendus ;
+    // non annoncées, la liste doit être vide (sinon : parties inventées).
+    let rendues = spec["parties"].as_array().cloned().unwrap_or_default();
+    // Cas ambigu : une progression (aucune partie, au moins deux étapes) vaut
+    // autant que des parties conformes.
+    let progression = cas.get("ou_progression").and_then(Value::as_bool).unwrap_or(false)
+        && rendues.is_empty()
+        && spec["etapes"].as_array().is_some_and(|e| e.len() >= 2);
+    match attendu.get("parties").and_then(Value::as_array).filter(|_| !progression) {
+        None if strict && !rendues.is_empty() => {
+            ecarts.push(format!("parties inventées : {} partie(s)", rendues.len()));
+        }
+        None => {}
+        Some(voulues) => {
+            if voulues.len() != rendues.len() {
+                ecarts.push(format!("parties : {} rendue(s), {} attendue(s)", rendues.len(), voulues.len()));
+            } else {
+                for (i, (v, r)) in voulues.iter().zip(&rendues).enumerate() {
+                    let sous = json!({"attendu": v, "strict": false});
+                    for e in verifier(&sous, r) {
+                        if !e.starts_with("reformulation") {
+                            ecarts.push(format!("parties[{i}].{e}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for champ in FILTRES {
-        if libre.contains(champ) {
+        if libre.contains(champ) || (progression && matches!(*champ, "duree_minutes" | "n" | "genres" | "energie")) {
             continue;
         }
         let rendu = &spec[*champ];

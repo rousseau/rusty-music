@@ -46,18 +46,24 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   compris Bibliothèque et Découvrir où on ne s'y attend pas forcément.
 - **Dock optionnel** — `#dock` (`index.html:661`), réservé à Éditer, pousse le
   centre vers le haut sans reproduire la mécanique du rail ou de l'inspecteur.
-- **Champ d'intention, partagé** (ajouté le 14 septembre 2026) —
-  `#bloc-intention`, une ligne en tête de `<main class="centre">`, entre
-  `.fil` et `.centre__corps` — donc hors de tout conteneur que
-  `basculerMode()` bascule par ailleurs, sur le même principe que
-  l'inspecteur unique (Règle 1) : un seul champ, jamais dupliqué par mode,
-  dont `basculerMode()` ajuste seulement la visibilité et le placeholder
-  (comme il le fait déjà pour `#fil-titre`). Interroge un LLM local (Ollama)
-  pour traduire un prompt en texte libre en action dans le mode courant —
-  aujourd'hui seulement en Explorer (« texte → playlist »,
-  `docs/ui-spec.md`, § « Tranché le 14 septembre »), révélé ailleurs le jour
-  où un autre mode y gagne un comportement. Ni généraliste ni permanent
-  partout : révélé seulement là où un comportement est branché (Règle 8).
+- **Champ d'intention — dans l'affichage « Lama » d'Explorer** (déplacé le
+  1ᵉʳ octobre 2026). Posé le 14 septembre comme une ligne partagée entre les
+  modes (`#bloc-intention`, en tête de `<main class="centre">`), il vivait sous
+  les quatre affichages d'Explorer (Nuage, Carte, Temps, Anneau) **sans aucun
+  lien avec eux** : on y décrivait une playlist, la route n'apparaissait que sur
+  deux d'entre eux, et rien n'expliquait le résultat. Il vit désormais dans un
+  cinquième affichage, **Lama** (`data-affichage="lama"`, `#lama-vue`), dont le
+  panneau central est dédié à l'interprète : le champ, un accueil avec des
+  exemples de prompts, puis — sans cadres, des filets — la carte (un mini-nuage
+  où la demande et la bibliothèque se répondent) en tête à côté de ce qu'Ollama
+  a compris, et dessous ce que Rusty Music a cherché et ce qui en sort. Le rail
+  n'y garde que le sélecteur d'Affichage (en colonne). Le lama reste **dans Explorer** :
+  demander une playlist en mots est une façon d'explorer la bibliothèque, pas
+  un sixième écran du rail. Le plan interprété quitte l'inspecteur (le dernier
+  bloc qu'il avait de plus que « ce qui s'écoute ») pour la carte « Ollama a
+  compris » — même précédent que la bio d'artiste au centre (Règle 1). Les
+  autres affichages n'ont plus de champ ; la route de la playlist y garde sa
+  couleur par partie.
 
 ## Règles universelles — dans les cinq écrans, sans exception
 
@@ -173,6 +179,37 @@ aujourd'hui à Explorer → Anneau et Explorer → Temps. Ne s'écarte pas par
 défaut pour Éditer : si la génération s'appuyant sur toute la bibliothèque en
 vient à afficher ses propres sources un jour, la même règle s'applique.
 
+## Règle de gabarit — mesurée, pas regardée
+
+### 10. Un seul gabarit
+Les largeurs, marges et hauteurs que plusieurs règles CSS doivent partager sont
+des **jetons** de `:root` (`style.css`), jamais des nombres recopiés :
+`--largeur-rail` (232), `--largeur-droite` (300, inspecteur **et** file),
+`--hauteur-transport` (64), `--gouttiere` (26, marge du contenu du panneau
+central), `--gouttiere-panneau` (18, marge intérieure des panneaux),
+`--colonne-lecture` (760). Quatre conséquences :
+- **Une surimpression recouvre exactement le panneau qu'elle recouvre.** La file
+  d'attente (`position: fixed`) fait la largeur de l'inspecteur, pas 20 px de
+  plus : elle empiétait sur le centre, dans **tous** les modes, et lui volait sa
+  marge de droite dès qu'une playlist s'ouvrait (relevé le 1ᵉʳ octobre 2026,
+  d'abord à l'œil — « ce n'est plus symétrique quand la playlist est générée » —
+  puis à la mesure).
+- **Les marges sont symétriques**, la droite mesurée jusqu'au panneau droit
+  *visible le plus proche* (inspecteur, ou file si elle est ouverte), pas jusqu'au
+  bord de la fenêtre ni jusqu'à l'inspecteur seul.
+- **Une colonne de lecture à largeur limitée est centrée** (Bibliothèque ; accueil
+  du Lama) : le conteneur reste pleine largeur — la barre de défilement reste au
+  bord du panneau — et c'est le padding qui centre.
+- **Deux colonnes seulement si chacune a la place** : `auto-fit` plutôt qu'un
+  rapport fixe (le Lama s'empile dans une fenêtre étroite au lieu de déborder).
+
+Cette règle se **vérifie par `scripts/audit-interface.sh`** (`apps/desktop/ui/audit.js`) :
+l'application, lancée en mode d'essai sur une copie de la base, parcourt écrans
+× états (de base, file ouverte, morceau sélectionné) × thèmes × tailles de
+fenêtre (960×620, 1 400×900, 1 920×1080) et contrôle G1 jetons, G2 symétrie des
+marges, G3 absence de débordement, G4 aucun contrôle recouvert, G5 repère A–Z
+réservé à l'Écoute. À lancer après toute modification de la mise en page.
+
 ## Principes généraux
 
 Les huit règles ne couvrent pas tous les cas. Deux principes tranchent le
@@ -228,6 +265,27 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`app.js:4660-4698`) est la fonction unique appelée par la molette (`app.js:4707-4723`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`, `index.html:135-139`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
+
+### Explorer → Lama
+
+| # | Règle | Verdict | Raison |
+|---|---|---|---|
+| 1 | Inspecteur unique | ✅ | Cliquer un morceau du résultat (liste, point de la route) le sélectionne et peuple le même `#insp` (`selectionner`) ; le plan, lui, vit dans la carte « Ollama a compris » au centre — l'inspecteur ne garde que ce qui s'écoute. |
+| 2 | Estomper, jamais masquer | ✅ | Le mini-nuage dessine toute la bibliothèque, estompée, et colore par-dessus ce que les filtres retiennent ; la partie non survolée s'atténue (`globalAlpha`), jamais ne disparaît. |
+| 3 | Palette unique | ⚠️ | Six teintes de **parties** (`--partie-1..6`), prises dans la même encre que `--familles` mais distinctes d'elles : les parties et les familles ne se lisent pas ensemble (le mini-nuage montre les premières, pas les secondes). Dessinées pour les deux thèmes. |
+| 4 | Stabilité des positions | ✅ | Les points du mini-nuage ne bougent jamais (t-SNE) ; survoler une partie ne réordonne rien. |
+| 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, zoom, Familles et Chercher y sont masqués en bloc (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute d'Ollama repliée, sections séparées par des filets plutôt qu'encadrées. Le modèle Ollama reste derrière l'icône 🦙. |
+| 6 | Deux thèmes sérieux | ✅ | Vérifié sombre et clair le 1ᵉʳ octobre (maquette navigateur, voir ci-dessous) ; le thème clair reste inatteignable par un geste de l'application (constat transversal). |
+| 7 | Zoom/pan cohérents | — | Le mini-nuage n'a ni zoom ni pan : c'est un aperçu, le Nuage et la Carte portent les gestes. |
+| 8 | Révélation par échelle | ✅ | Détails à la demande : survol d'une partie (barre, liste, résultat, route), bulle du morceau au survol d'un point de la route, dépliants. |
+| 9 | Langage de force unique | — | Aucune relation entre morceaux n'est encodée par un trait (la route est un ordre, pas une force). |
+
+Vérification de l'interface : la webview du système ne se pilote pas et ne se
+peint pas hors de son Espace macOS ; le panneau a donc été vérifié dans un
+navigateur, servi avec une fausse API Tauri alimentée de **vraies** données
+exportées du moteur (`exporter_pour_maquette`), puis l'application réelle
+a été lancée (`RUSTY_MUSIC_AFFICHAGE=lama RUSTY_MUSIC_PROMPT=…`) pour contrôler
+dans son journal que la composition va au bout.
 
 ### Explorer → Anneau
 
@@ -307,6 +365,28 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 8 | Révélation par échelle | ✅ | Le bloc Familles ne s'affiche que quand il a un sens (`majBlocFamillesDecouvrir`, carte déjà calculée) plutôt qu'en permanence. |
 | 9 | Langage de force unique | — | Pas de relations graphiques dans ce mode (des listes, pas un anneau ou une frise). |
 
+### Constat transversal — Règle 10, le gabarit (1ᵉʳ octobre 2026)
+
+Première exécution de `scripts/audit-interface.sh` sur l'état d'avant les jetons :
+**290 violations sur 180 cellules.**
+
+| Constat | Écrans | Correction |
+|---|---|---|
+| La file d'attente fait **320 px** pour un inspecteur de **300** : elle empiète de 20 px sur le centre, marge de droite **6 px au lieu de 26** (G1, G2) | tous | `--largeur-droite` partagé par l'inspecteur et la file |
+| Lettres du repère A–Z **recouvertes** par la file ouverte (G4) | Écoute | disparaît avec l'empiétement |
+| Gouttière de **28 px** au lieu de 26 | Bibliothèque | `--gouttiere` |
+| Gouttière de **38 px** au lieu de 26 | Éditer (« séparer ») | `38px var(--gouttiere)` |
+| Colonne de lecture collée à gauche : marge de droite jusqu'à **656 px** (G2) | Bibliothèque | padding centré (`max(--gouttiere, (100 % − --colonne-lecture)/2)`) |
+| Boutons de la carte « Ollama a compris » qui **débordent** du panneau de 7 à 10 px dans une fenêtre de 960 px (G3) | Lama | grille `auto-fit minmax(300px, 1fr)` : la carte et le récit s'empilent |
+| Marges intérieures des panneaux : 16 px (rail) contre 18 (inspecteur, file, transport, dock) | rail | `--gouttiere-panneau` |
+
+Après correction : **0 violation sur 180 cellules** (10 écrans — Nuage, Carte,
+Temps, Anneau, Lama vide, Lama après playlist, Écoute, Éditer, Découvrir,
+Bibliothèque — × 3 états × 2 thèmes × 3 tailles). **Non couvert** : l'établi
+d'Éditer avec des stems chargés (il faut une séparation faite), l'esthétique, les
+contrastes et les polices — l'audit ne mesure que la géométrie, le débordement
+et l'occultation.
+
 ### Constat transversal — Règle 6, les deux thèmes
 
 Le même verdict traverse les sept lignes, il est donc écrit une seule fois
@@ -375,7 +455,9 @@ terminé — dans n'importe lequel des cinq écrans :
 9. **Force d'une relation** (si l'écran affiche des relations entre
    morceaux) — épaisseur + opacité seulement, jamais un style de trait
    différent par valeur ?
+10. **Gabarit** — les dimensions partagées viennent-elles des jetons de `:root`,
+    et `scripts/audit-interface.sh` rend-il 0 violation ?
 
-Et le principe de dernier recours : si aucune des neuf règles ne tranche,
+Et le principe de dernier recours : si aucune des dix règles ne tranche,
 qu'est-ce que ce mot, ce geste ou cette couleur signifient déjà ailleurs dans
 l'application — et l'écran en cours le respecte-t-il ?

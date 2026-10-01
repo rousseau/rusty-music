@@ -1334,6 +1334,51 @@ fn mode_initial() -> Option<String> {
     std::env::var("RUSTY_MUSIC_MODE").ok().filter(|v| !v.is_empty())
 }
 
+/// De quoi conduire le panneau Lama sans clavier ni souris : une webview du
+/// système ne se pilote pas de l'extérieur, et macOS refuse à nos outils le
+/// pilotage des clics. `RUSTY_MUSIC_AFFICHAGE=lama` ouvre l'affichage,
+/// `RUSTY_MUSIC_PROMPT="…"` soumet une demande, `RUSTY_MUSIC_THEME=clair`
+/// force le thème, `RUSTY_MUSIC_AUDIT=1` lance l'audit de gabarit de l'interface
+/// — pour les essais seulement, sans effet en usage normal.
+#[derive(serde::Serialize)]
+struct EssaiLama {
+    affichage: Option<String>,
+    prompt: Option<String>,
+    theme: Option<String>,
+    audit: bool,
+}
+
+#[tauri::command(async)]
+fn essai_lama() -> EssaiLama {
+    let lire = |cle: &str| std::env::var(cle).ok().filter(|v| !v.is_empty());
+    EssaiLama {
+        affichage: lire("RUSTY_MUSIC_AFFICHAGE"),
+        prompt: lire("RUSTY_MUSIC_PROMPT"),
+        theme: lire("RUSTY_MUSIC_THEME"),
+        audit: audit_actif(),
+    }
+}
+
+/// Faut-il laisser l'interface s'auditer ? `RUSTY_MUSIC_AUDIT=1` (voir
+/// `scripts/audit-interface.sh`) : elle parcourt écrans, états, thèmes et tailles
+/// de fenêtre, mesure le gabarit et écrit ses constats au journal.
+fn audit_actif() -> bool {
+    std::env::var("RUSTY_MUSIC_AUDIT").is_ok_and(|v| !v.is_empty() && v != "0")
+}
+
+/// Redimensionne la fenêtre principale pour l'audit d'interface — refusé hors
+/// audit, une application ne se laisse pas redimensionner par son contenu.
+#[tauri::command(async)]
+fn essai_fenetre(app: tauri::AppHandle, largeur: f64, hauteur: f64) -> Result<(), String> {
+    if !audit_actif() {
+        return Err("essai_fenetre n'existe que sous RUSTY_MUSIC_AUDIT".into());
+    }
+    let fenetre = app.get_webview_window("main").ok_or("fenêtre principale introuvable")?;
+    fenetre
+        .set_size(tauri::LogicalSize::new(largeur, hauteur))
+        .map_err(|e| e.to_string())
+}
+
 /// Renvoie au journal du processus ce que la console de la webview dit.
 ///
 /// Une webview du système n'a pas d'inspecteur accessible depuis l'extérieur :
@@ -2709,6 +2754,19 @@ struct PlanTexte {
     /// restreint rien.
     #[serde(default)]
     filtres: FiltresPlaylist,
+    /// Une phrase où Ollama reformule la demande — affichée telle quelle, sous
+    /// « Ollama a compris » : de quoi vérifier d'un coup d'œil qu'il a bien lu.
+    #[serde(default)]
+    reformulation: Option<String>,
+    /// Les parties d'une playlist « X puis Y » (genre, énergie, durée chacune).
+    /// Vide : une seule partie implicite — `etapes` et `filtres`. Éditables
+    /// dans l'interface avant « Recomposer ».
+    #[serde(default)]
+    parties: Vec<rusty_music_core::ollama::PartieLlm>,
+    /// La réponse du modèle, telle qu'il l'a écrite — pour le dépliant « réponse
+    /// brute d'Ollama ».
+    #[serde(default)]
+    brut: String,
 }
 
 /// Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir.
@@ -2722,6 +2780,31 @@ struct CompositionTexte {
     relaches: Vec<String>,
     /// Durée cumulée des pistes rendues.
     duree_ms: i64,
+    /// Ce que le moteur a fait, partie par partie : l'« entonnoir » des filtres,
+    /// le départ choisi et pourquoi, la durée obtenue contre la durée visée.
+    /// Toujours au moins une entrée (une playlist sans partie en a une
+    /// implicite) ; l'interface s'en sert pour expliquer le résultat.
+    parties: Vec<PartieResultat>,
+}
+
+/// Une partie composée : sa place dans la file et ce qui l'a produite.
+#[derive(Debug, Clone, serde::Serialize)]
+struct PartieResultat {
+    libelle: String,
+    /// Indices dans `pistes` : `debut` inclus, `fin` exclu.
+    debut: usize,
+    fin: usize,
+    duree_ms: i64,
+    cible_ms: Option<i64>,
+    /// Morceaux admissibles avant la marche (hors ceux d'une partie précédente).
+    n_admissibles: usize,
+    /// `(critère, morceaux restants)` — voir `filtres_playlist::entonnoir`.
+    entonnoir: Vec<(String, usize)>,
+    depart_pourquoi: String,
+    relaches: Vec<String>,
+    /// Les admissibles, pour estomper le reste sur le mini-nuage. Vide : aucun
+    /// filtre, tout est admissible.
+    ids_admissibles: Vec<i64>,
 }
 
 /// Interprète un prompt de playlist en texte libre via Ollama, et résout son
@@ -2821,6 +2904,9 @@ fn path_texte_interpreter(
         duree_minutes: interpretation.duree_minutes,
         plafond_par_artiste: interpretation.plafond_par_artiste,
         filtres,
+        reformulation: interpretation.reformulation,
+        parties: interpretation.parties,
+        brut: interpretation.brut,
     })
 }
 
@@ -2899,17 +2985,17 @@ fn resoudre_piste_nommee(
     Ok(resultats.into_iter().nth(i))
 }
 
-/// Compose la playlist : une empreinte CLAP-texte par étape du plan, puis une
-/// marche guidée dans le graphe des voisins (`chemin::guidee`). Séparée de
-/// l'interprétation LLM (`path_texte_interpreter`) : ce calcul-ci ne se relance
-/// que si l'utilisateur confirme le plan affiché dans l'inspecteur.
+/// Compose la playlist : filtres, puis une marche guidée dans le graphe des
+/// voisins (`chemin::guidee`) **partie par partie**. Séparée de l'interprétation
+/// LLM (`path_texte_interpreter`) : ce calcul-ci ne se relance que si
+/// l'utilisateur confirme le plan affiché.
 ///
 /// Les **filtres** du plan (genres, exclusions, années, tempo, énergie,
 /// popularité — `filtres_playlist`) restreignent d'abord la bibliothèque ; la
 /// marche ne parcourt que les morceaux admissibles. Départ et arrivée nommés
 /// restent admis même s'ils contreviennent aux filtres : l'utilisateur les a
-/// cités. Puis la route marche un peu plus loin que voulu, est plafonnée par
-/// artiste et ramenée au nombre de morceaux — ou à la **durée** — demandé.
+/// cités. Chaque partie est plafonnée par artiste puis ramenée à **sa** durée
+/// ou à **son** nombre de morceaux.
 #[tauri::command(async)]
 fn path_texte(
     etat: State<Etat>,
@@ -2917,23 +3003,19 @@ fn path_texte(
     seed: u64,
     bruit: Option<f32>,
 ) -> Result<CompositionTexte, String> {
-    if plan.etapes.is_empty() {
+    if plan.etapes.is_empty() && plan.parties.is_empty() {
         return Err("aucune étape à composer".into());
     }
 
-    let cibles: Vec<Vec<f32>> = {
+    let parties = {
         let mut garde = verrou(&etat.texte_modele);
         if garde.valeur.is_none() {
             garde.valeur = Some(rusty_music_analysis::EmbedderTexte::charger(None).map_err(echec)?);
         }
         let encodeur = garde.valeur.as_ref().expect("encodeur texte chargé");
-        let cibles = plan
-            .etapes
-            .iter()
-            .map(|phrase| encodeur.embed(phrase).map_err(echec))
-            .collect::<Result<_, String>>()?;
+        let parties = parties_du_plan(&plan, |phrase| encodeur.embed(phrase).map_err(echec))?;
         garde.touche = Some(Instant::now());
-        cibles
+        parties
     };
 
     let vecteurs = charger_vecteurs(&etat)?;
@@ -2948,63 +3030,271 @@ fn path_texte(
 
     let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
     let base = construire_graphe(&etat, &vecteurs)?;
-    let (route, relaches) =
-        composer_route(&plan, &carac, &vecteurs, &base, &cibles, seed, bruit)?;
+    let composition = composer_route(&plan, &parties, &carac, &vecteurs, &base, seed, bruit)?;
 
-    let pistes = pistes_de(&etat, &route)?;
+    let pistes = pistes_de(&etat, &composition.route)?;
     let duree_ms = pistes.iter().map(|t| t.duration_ms.unwrap_or(0)).sum();
-    for r in &relaches {
+    for r in &composition.relaches {
         tracing::info!(relache = %r, "champ d'intention : contrainte assouplie");
     }
-    Ok(CompositionTexte { pistes, relaches, duree_ms })
+    for p in &composition.parties {
+        tracing::info!(
+            partie = %p.libelle, morceaux = p.fin - p.debut, duree_ms = p.duree_ms,
+            cible_ms = ?p.cible_ms, admissibles = p.n_admissibles, depart = %p.depart_pourquoi,
+            "champ d'intention : partie composée",
+        );
+    }
+    Ok(CompositionTexte {
+        pistes,
+        relaches: composition.relaches,
+        duree_ms,
+        parties: composition.parties,
+    })
 }
 
+/// Une partie à composer, résolue à partir du plan : ses filtres, sa taille et
+/// les cibles CLAP-texte que la marche vise.
+struct PartiePlan {
+    libelle: String,
+    filtres: FiltresPlaylist,
+    cible_ms: Option<i64>,
+    n: Option<usize>,
+    cibles: Vec<Vec<f32>>,
+}
 
-/// Le cœur de `path_texte`, sans `State` : filtres, marche guidée, plafond par
-/// artiste, longueur finale. Rend la route (identifiants, dans l'ordre) et les
-/// critères assouplis. Séparé de la commande pour se tester sur des
-/// empreintes synthétiques.
+/// Ce que `composer_route` rend : la route (identifiants, dans l'ordre), tout
+/// ce qui a été assoupli, et le détail partie par partie.
+struct Composition {
+    route: Vec<i64>,
+    relaches: Vec<String>,
+    parties: Vec<PartieResultat>,
+}
+
+/// Le plan en parties à composer. Sans partie explicite, une seule partie
+/// implicite porte tout le plan (ses filtres, sa durée ou son nombre de
+/// morceaux, toutes ses étapes comme cibles successives de la marche) — le
+/// comportement d'avant les parties. `embed` : l'encodeur CLAP-texte, passé en
+/// fonction pour se tester sans lui.
+fn parties_du_plan(
+    plan: &PlanTexte,
+    embed: impl Fn(&str) -> Result<Vec<f32>, String>,
+) -> Result<Vec<PartiePlan>, String> {
+    use rusty_music_core::filtres_playlist::NiveauEnergie;
+    if plan.parties.is_empty() {
+        let cibles = plan.etapes.iter().map(|e| embed(e)).collect::<Result<Vec<_>, _>>()?;
+        return Ok(vec![PartiePlan {
+            libelle: "Playlist".into(),
+            filtres: plan.filtres.clone(),
+            cible_ms: plan.duree_minutes.map(|m| i64::from(m) * 60_000),
+            n: if plan.duree_minutes.is_some() { None } else { Some(plan.n.max(1)) },
+            cibles,
+        }]);
+    }
+    let k = plan.parties.len();
+    plan.parties
+        .iter()
+        .map(|p| {
+            let mut filtres = plan.filtres.clone();
+            // Le genre et l'énergie de la partie priment sur ceux de la playlist.
+            filtres.genres = p.genres.clone();
+            if let Some(e) = p.energie.as_deref().and_then(NiveauEnergie::depuis_texte) {
+                filtres.energie = Some(e);
+            }
+            let libelle = if p.genres.is_empty() {
+                let mut d: String = p.description.chars().take(40).collect();
+                if let Some(c) = d.get_mut(0..1) {
+                    c.make_ascii_uppercase();
+                }
+                d
+            } else {
+                let mut g = p.genres.join(" / ");
+                if let Some(c) = g.get_mut(0..1) {
+                    c.make_ascii_uppercase();
+                }
+                g
+            };
+            let cible_ms = p.duree_minutes.map(|m| i64::from(m) * 60_000);
+            // Ni durée ni nombre : sa part du nombre de morceaux de la playlist.
+            let n = match (cible_ms, p.n) {
+                (Some(_), _) => None,
+                (None, Some(n)) => Some(n as usize),
+                (None, None) => Some((plan.n / k).max(3)),
+            };
+            Ok(PartiePlan { libelle, filtres, cible_ms, n, cibles: vec![embed(&p.description)?] })
+        })
+        .collect()
+}
+
+/// Ce que `composer_partie` partage entre les parties.
+struct Contexte<'a> {
+    carac: &'a [filtres_playlist::CaracteristiquesPiste],
+    vecteurs: &'a [Empreinte],
+    base: &'a Graphe,
+    par_id: HashMap<i64, &'a [f32]>,
+    artiste_de: HashMap<i64, String>,
+    duree_de: HashMap<i64, i64>,
+    seed: u64,
+    bruit: f32,
+}
+
+/// Le cœur de `path_texte`, sans `State` : pour chaque partie, filtres, marche
+/// guidée, plafond par artiste, longueur finale. Séparé de la commande pour se
+/// tester sur des empreintes synthétiques.
 ///
 /// `carac` ne doit contenir que des morceaux présents dans `vecteurs` : les
 /// percentiles et les durées se calculent sur les morceaux placables.
+///
+/// Une partie ne reprend jamais un morceau d'une partie précédente. Son départ
+/// est, après la première, **le morceau admissible le plus proche de la fin de
+/// la précédente** : la transition la plus douce possible entre deux styles,
+/// jamais un tirage.
 fn composer_route(
     plan: &PlanTexte,
+    parties: &[PartiePlan],
     carac: &[filtres_playlist::CaracteristiquesPiste],
     vecteurs: &[Empreinte],
     base: &Graphe,
-    cibles: &[Vec<f32>],
     seed: u64,
     bruit: f32,
-) -> Result<(Vec<i64>, Vec<String>), String> {
-    let duree_cible_ms = plan.duree_minutes.map(|m| i64::from(m) * 60_000);
-    let moyenne_ms = filtres_playlist::duree_moyenne_ms(carac, None).max(1);
-    let n_voulu = match duree_cible_ms {
-        Some(d) => ((d + moyenne_ms - 1) / moyenne_ms).max(2) as usize,
-        None => plan.n.max(1),
+) -> Result<Composition, String> {
+    let ctx = Contexte {
+        carac,
+        vecteurs,
+        base,
+        par_id: vecteurs.iter().map(|(id, v)| (*id, v.as_slice())).collect(),
+        artiste_de: carac.iter().filter_map(|p| p.artiste.clone().map(|a| (p.id, a))).collect(),
+        duree_de: carac.iter().filter_map(|p| p.duree_ms.map(|d| (p.id, d))).collect(),
+        seed,
+        bruit,
     };
-
+    let multi = parties.len() > 1;
+    let mut route: Vec<i64> = Vec::new();
+    let mut utilises: HashSet<i64> = HashSet::new();
+    let mut resultats: Vec<PartieResultat> = Vec::new();
     let mut relaches: Vec<String> = Vec::new();
-    let permis: Option<HashSet<i64>> =
-        match filtres_playlist::selectionner(carac, &plan.filtres, (n_voulu / 2).clamp(5, 40)) {
-            None => None,
-            Some(selection) => {
-                relaches.extend(selection.relaches);
-                if selection.ids.is_empty() {
-                    return Err("aucun morceau de la bibliothèque ne respecte ces exclusions — \
-                                retirez-en une, ou nommez un artiste ou un genre"
-                        .into());
-                }
-                let mut ids = selection.ids;
-                ids.extend(plan.depart.iter().chain(plan.arrivee.iter()).map(|t| t.id));
-                Some(ids)
-            }
-        };
 
-    let depart = match &plan.depart {
-        Some(t) => t.id,
-        None => meilleur_depart_par_description(vecteurs, permis.as_ref(), &cibles[0])
-            .ok_or("aucun départ possible parmi les morceaux admissibles")?,
+    for (i, partie) in parties.iter().enumerate() {
+        let precedent = route.last().copied();
+        let derniere = i + 1 == parties.len();
+        let (morceaux, mut resultat) =
+            composer_partie(&ctx, plan, partie, i, derniere, precedent, &utilises)?;
+        resultat.debut = route.len();
+        route.extend_from_slice(&morceaux);
+        resultat.fin = route.len();
+        utilises.extend(morceaux);
+        for r in &resultat.relaches {
+            relaches.push(if multi { format!("{} — {r}", partie.libelle) } else { r.clone() });
+        }
+        resultats.push(resultat);
+    }
+    if route.is_empty() {
+        return Err("aucune marche possible avec ces filtres".into());
+    }
+    Ok(Composition { route, relaches, parties: resultats })
+}
+
+/// Compose **une** partie. Rend ses morceaux (éventuellement aucun, si tout ce
+/// qui lui convenait est déjà pris — dit dans `relaches`) et son compte rendu.
+fn composer_partie(
+    ctx: &Contexte,
+    plan: &PlanTexte,
+    partie: &PartiePlan,
+    i: usize,
+    derniere: bool,
+    precedent: Option<i64>,
+    utilises: &HashSet<i64>,
+) -> Result<(Vec<i64>, PartieResultat), String> {
+    let (carac, vecteurs) = (ctx.carac, ctx.vecteurs);
+    let mut relaches: Vec<String> = Vec::new();
+    let entonnoir = filtres_playlist::entonnoir(carac, &partie.filtres);
+
+    // Combien de morceaux faut-il ? D'abord une estimation sur la durée moyenne
+    // de toute la bibliothèque (pour le seuil minimal de la sélection), affinée
+    // plus bas sur la durée moyenne des seuls admissibles.
+    let moyenne_globale = filtres_playlist::duree_moyenne_ms(carac, None).max(1);
+    let estimation = match partie.cible_ms {
+        Some(d) => ((d + moyenne_globale - 1) / moyenne_globale).max(2) as usize,
+        None => partie.n.unwrap_or(plan.n).max(1),
     };
+
+    let selection = filtres_playlist::selectionner(carac, &partie.filtres, (estimation / 2).clamp(5, 40));
+    let mut permis: Option<HashSet<i64>> = match selection {
+        None => None,
+        Some(sel) => {
+            relaches.extend(sel.relaches);
+            if sel.ids.is_empty() {
+                return Err(format!(
+                    "{} : aucun morceau de la bibliothèque ne respecte ces exclusions — \
+                     retirez-en une, ou nommez un artiste ou un genre",
+                    partie.libelle
+                ));
+            }
+            Some(sel.ids)
+        }
+    };
+    // Une partie ne reprend pas un morceau déjà pris — et sans filtre, il faut
+    // quand même l'écrire explicitement pour pouvoir les retirer.
+    if !utilises.is_empty() {
+        let tous = permis.take().unwrap_or_else(|| carac.iter().map(|p| p.id).collect());
+        permis = Some(tous.into_iter().filter(|id| !utilises.contains(id)).collect());
+    }
+    // Départ et arrivée nommés : admis quoi qu'il arrive.
+    if let Some(ids) = permis.as_mut() {
+        if i == 0 {
+            ids.extend(plan.depart.iter().map(|t| t.id));
+        }
+        if derniere {
+            ids.extend(plan.arrivee.iter().map(|t| t.id));
+        }
+    }
+    let n_admissibles = permis.as_ref().map_or(carac.len(), HashSet::len);
+    let resultat = |depart_pourquoi: String, relaches: Vec<String>, permis: &Option<HashSet<i64>>| {
+        let mut ids: Vec<i64> = permis.iter().flatten().copied().collect();
+        ids.sort_unstable();
+        PartieResultat {
+            libelle: partie.libelle.clone(),
+            debut: 0,
+            fin: 0,
+            duree_ms: 0,
+            cible_ms: partie.cible_ms,
+            n_admissibles,
+            entonnoir: entonnoir.clone(),
+            depart_pourquoi,
+            relaches,
+            ids_admissibles: ids,
+        }
+    };
+    if permis.as_ref().is_some_and(HashSet::is_empty) {
+        relaches.push("tout ce qui convenait est déjà pris par une partie précédente".into());
+        return Ok((Vec::new(), resultat("aucun départ possible".into(), relaches, &permis)));
+    }
+
+    let moyenne_ms = filtres_playlist::duree_moyenne_ms(carac, permis.as_ref()).max(1);
+    let n_voulu = match partie.cible_ms {
+        Some(d) => ((d + moyenne_ms - 1) / moyenne_ms).max(2) as usize,
+        None => partie.n.unwrap_or(plan.n).max(1),
+    };
+
+    // Le départ : celui qui a été nommé ; sinon, pour la première partie, le
+    // morceau le plus proche de sa description ; pour les suivantes, le plus
+    // proche de la fin de la précédente — la transition la plus douce.
+    let (depart, depart_pourquoi) = match (i, &plan.depart, precedent) {
+        (0, Some(t), _) => (t.id, "départ nommé dans la demande".to_string()),
+        (_, _, Some(dernier)) if i > 0 => {
+            let v = ctx.par_id.get(&dernier).copied().unwrap_or(&[]);
+            (
+                meilleur_depart_par_description(vecteurs, permis.as_ref(), v)
+                    .ok_or("aucun départ possible parmi les morceaux admissibles")?,
+                "le plus proche de la fin de la partie précédente".to_string(),
+            )
+        }
+        _ => (
+            meilleur_depart_par_description(vecteurs, permis.as_ref(), &partie.cibles[0])
+                .ok_or("aucun départ possible parmi les morceaux admissibles")?,
+            "le plus proche de la description".to_string(),
+        ),
+    };
+
     // Une sélection large se découpe dans le graphe déjà construit (adjacence
     // filtrée, aucune distance recalculée) ; une sélection étroite y serait
     // en miettes — les voisins d'un morceau sont presque tous hors sélection —
@@ -3014,7 +3304,7 @@ fn composer_route(
     let dedie;
     let restreint;
     let graphe: &Graphe = match &permis {
-        None => base,
+        None => ctx.base,
         Some(ids) => {
             let presents = vecteurs.iter().filter(|(id, _)| ids.contains(id)).count();
             if presents * 2 < vecteurs.len() {
@@ -3027,7 +3317,7 @@ fn composer_route(
                 );
                 &dedie
             } else {
-                restreint = base.restreint(ids);
+                restreint = ctx.base.restreint(ids);
                 &restreint
             }
         }
@@ -3035,9 +3325,11 @@ fn composer_route(
 
     // Un peu plus long que voulu : le plafond par artiste en retirera.
     let pas = (n_voulu * 13).div_ceil(10) + 2;
-    let mut route = graphe.guidee(vecteurs, depart, &cibles, pas, seed, bruit);
+    let graine = ctx.seed.wrapping_add(i as u64);
+    let mut route = graphe.guidee(vecteurs, depart, &partie.cibles, pas, graine, ctx.bruit);
     if route.is_empty() {
-        return Err("aucune marche possible depuis ce départ avec ces filtres".into());
+        relaches.push("aucune marche possible depuis ce départ avec ces filtres".into());
+        return Ok((Vec::new(), resultat(depart_pourquoi, relaches, &permis)));
     }
 
     // Une arrivée précise a été demandée (« arriver à X ») : la marche guidée
@@ -3045,16 +3337,16 @@ fn composer_route(
     // pas des points — elle ne garantit pas d'atterrir exactement sur un
     // morceau donné. Un raccordement dans le graphe des voisins, depuis là où
     // la dérive s'est arrêtée, tient la promesse là où `guidee` seule ne le
-    // pouvait pas.
+    // pouvait pas. Seulement à la dernière partie.
     let mut proteges: HashSet<i64> = HashSet::from([depart]);
-    if let Some(arrivee) = &plan.arrivee {
+    if let (true, Some(arrivee)) = (derniere, &plan.arrivee) {
         proteges.insert(arrivee.id);
         if route.last() != Some(&arrivee.id) {
             // La dérive a pu croiser l'arrivée en chemin : elle doit finir la
             // playlist, pas y figurer deux fois.
             route.retain(|id| *id != arrivee.id);
             let dernier = *route.last().unwrap_or(&depart);
-            let jonction = graphe.sonique(dernier, arrivee.id, seed, bruit);
+            let jonction = graphe.sonique(dernier, arrivee.id, graine, ctx.bruit);
             match jonction.split_first() {
                 Some((_, reste)) => route.extend_from_slice(reste),
                 // Composantes non reliées dans le graphe des voisins (rare) :
@@ -3067,10 +3359,8 @@ fn composer_route(
     }
 
     // Plafond par artiste : demandé, il tient ; sinon un défaut (au moins 3,
-    // un huitième de la playlist) qui monte d'un cran tant qu'il manque des
+    // un huitième de la partie) qui monte d'un cran tant qu'il manque des
     // morceaux.
-    let artiste_de: HashMap<i64, String> =
-        carac.iter().filter_map(|p| p.artiste.clone().map(|a| (p.id, a))).collect();
     let plafond_impose = plan.plafond_par_artiste.is_some();
     let plafond = plan
         .plafond_par_artiste
@@ -3079,7 +3369,7 @@ fn composer_route(
     let atteint = route.len();
     route = filtres_playlist::plafonner_par_artiste(
         &route,
-        &artiste_de,
+        &ctx.artiste_de,
         n_voulu,
         plafond,
         plafond_impose,
@@ -3094,16 +3384,16 @@ fn composer_route(
 
     // Longueur finale : la durée visée, ou le nombre de morceaux — en gardant
     // les deux extrémités et l'allure du trajet (`echantillonner`).
-    let duree_de: HashMap<i64, i64> =
-        carac.iter().filter_map(|p| p.duree_ms.map(|d| (p.id, d))).collect();
     let duree_totale = |r: &[i64]| -> i64 {
         r.iter()
-            .map(|id| duree_de.get(id).copied().filter(|d| *d > 0).unwrap_or(filtres_playlist::DUREE_DEFAUT_MS))
+            .map(|id| ctx.duree_de.get(id).copied().filter(|d| *d > 0).unwrap_or(filtres_playlist::DUREE_DEFAUT_MS))
             .sum()
     };
-    let route = match duree_cible_ms {
+    let route = match partie.cible_ms {
         Some(cible) => {
-            let r = filtres_playlist::ajuster_a_duree(&route, &duree_de, cible, echantillonner);
+            // Une arrivée nommée termine la dernière partie : on ne la coupe pas.
+            let garder_fin = derniere && plan.arrivee.is_some();
+            let r = filtres_playlist::ajuster_a_duree(&route, &ctx.duree_de, cible, echantillonner, garder_fin);
             let total = duree_totale(&r);
             if total * 10 < cible * 9 {
                 relaches.push(format!(
@@ -3126,7 +3416,9 @@ fn composer_route(
         }
     };
 
-    Ok((route, relaches))
+    let mut r = resultat(depart_pourquoi, relaches, &permis);
+    r.duree_ms = duree_totale(&route);
+    Ok((route, r))
 }
 
 /// Le morceau dont l'empreinte est la plus proche d'une cible — départ « par
@@ -6963,7 +7255,18 @@ fn main() {
 
             // La base vit à côté des données de l'application, pas dans le
             // répertoire courant : une app de bureau n'a pas de « cwd » stable.
-            let dossier = app.path().app_data_dir()?;
+            // `RUSTY_MUSIC_DONNEES` : un autre dossier de données, pour les essais
+            // (l'audit d'interface travaille sur une **copie** de la base : il
+            // parcourt tous les écrans, dont certains écrivent — « tout vu » de
+            // Découvrir, par exemple). Sans effet en usage normal.
+            let dossier = match std::env::var_os("RUSTY_MUSIC_DONNEES") {
+                Some(d) if !d.is_empty() => {
+                    let d = PathBuf::from(d);
+                    std::fs::create_dir_all(&d)?;
+                    d
+                }
+                _ => app.path().app_data_dir()?,
+            };
             let db = dossier.join("rusty-music.db");
             let hd = dossier.join("hd");
             // Les poids téléchargés par l'application (variantes de démixage
@@ -7389,6 +7692,8 @@ fn main() {
             path_texte_interpreter,
             path_texte,
             ollama_modeles,
+            essai_lama,
+            essai_fenetre,
             voyage,
             selection,
             families,
@@ -7433,7 +7738,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        composer_route, PlanTexte, BRUIT_DEFAUT,
+        composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
         fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
         sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
@@ -7803,6 +8108,20 @@ mod tests {
             duree_minutes: None,
             plafond_par_artiste: None,
             filtres: FiltresPlaylist::default(),
+            reformulation: None,
+            parties: Vec::new(),
+            brut: String::new(),
+        }
+    }
+
+    /// Une partie de test : genre, durée en minutes.
+    fn partie(genre: &str, minutes: u32) -> rusty_music_core::ollama::PartieLlm {
+        rusty_music_core::ollama::PartieLlm {
+            description: format!("{genre} music"),
+            genres: vec![genre.into()],
+            energie: None,
+            duree_minutes: Some(minutes),
+            n: None,
         }
     }
 
@@ -7820,11 +8139,18 @@ mod tests {
         }
     }
 
-    fn composer(plan: &PlanTexte) -> Result<(Vec<i64>, Vec<String>), String> {
+    fn composer_complet(plan: &PlanTexte) -> Result<Composition, String> {
         let (vecteurs, carac, graphe) = bibliotheque_synthetique();
-        // La cible : le bout de l'arc.
-        let cibles = vec![vec![0.0, 1.0, 0.0]];
-        composer_route(plan, &carac, &vecteurs, &graphe, &cibles, 7, BRUIT_DEFAUT)
+        // Un « encodeur » de poche : le rock vise le début de l'arc, tout le
+        // reste (jazz, étapes ordinaires) la fin.
+        let parties = parties_du_plan(plan, |t| {
+            Ok(if t.contains("rock") { vec![1.0, 0.0, 0.0] } else { vec![0.0, 1.0, 0.0] })
+        })?;
+        composer_route(plan, &parties, &carac, &vecteurs, &graphe, 7, BRUIT_DEFAUT)
+    }
+
+    fn composer(plan: &PlanTexte) -> Result<(Vec<i64>, Vec<String>), String> {
+        composer_complet(plan).map(|c| (c.route, c.relaches))
     }
 
     fn doublons(route: &[i64]) -> usize {
@@ -7948,6 +8274,115 @@ mod tests {
         assert!(relaches.iter().any(|r| r.contains("période")), "{relaches:?}");
     }
 
+    // ---- parties : « X pendant 12 minutes, puis Y pendant 20 minutes » ----
+
+    fn genre_de(id: i64) -> &'static str {
+        if id % 2 == 0 { "rock" } else { "jazz" }
+    }
+
+    fn duree_min(route: &[i64]) -> i64 {
+        route.len() as i64 * TROIS_MIN_MS / 60_000
+    }
+
+    /// La demande qui a révélé le défaut : avant les parties, les durées se
+    /// perdaient et « rock, hip hop » devenait un filtre commun.
+    #[test]
+    fn deux_parties_respectent_chacune_leur_genre_et_leur_duree() {
+        let mut plan = plan_de(10);
+        plan.parties = vec![partie("rock", 12), partie("jazz", 21)];
+        let c = composer_complet(&plan).unwrap();
+        assert_eq!(c.parties.len(), 2);
+        let (a, b) = (&c.parties[0], &c.parties[1]);
+        // Chaque partie ne contient que son genre.
+        assert!(c.route[a.debut..a.fin].iter().all(|id| genre_de(*id) == "rock"), "{:?}", &c.route[a.debut..a.fin]);
+        assert!(c.route[b.debut..b.fin].iter().all(|id| genre_de(*id) == "jazz"), "{:?}", &c.route[b.debut..b.fin]);
+        // Les durées visées, à un morceau près.
+        assert!((a.duree_ms / 60_000 - 12).abs() <= 3, "partie 1 : {} min", a.duree_ms / 60_000);
+        assert!((b.duree_ms / 60_000 - 21).abs() <= 3, "partie 2 : {} min", b.duree_ms / 60_000);
+        assert_eq!(a.fin, b.debut, "les parties se suivent sans trou");
+        assert_eq!(b.fin, c.route.len());
+        assert_eq!(doublons(&c.route), 0, "une partie ne reprend pas un morceau d'une autre");
+        assert_eq!(duree_min(&c.route), (a.duree_ms + b.duree_ms) / 60_000);
+    }
+
+    /// La transition entre deux parties est le morceau admissible le plus
+    /// proche de la fin de la précédente — jamais un tirage au hasard.
+    #[test]
+    fn le_depart_dune_partie_est_le_voisin_de_la_fin_de_la_precedente() {
+        let mut plan = plan_de(10);
+        plan.parties = vec![partie("rock", 12), partie("jazz", 12)];
+        let c = composer_complet(&plan).unwrap();
+        let fin_rock = c.route[c.parties[0].fin - 1];
+        let debut_jazz = c.route[c.parties[1].debut];
+        assert!((fin_rock - debut_jazz).abs() <= 2, "fin {fin_rock} → début {debut_jazz}");
+        assert!(c.parties[1].depart_pourquoi.contains("fin de la partie précédente"));
+        assert!(c.parties[0].depart_pourquoi.contains("description"));
+    }
+
+    #[test]
+    fn les_exclusions_globales_valent_pour_chaque_partie() {
+        let mut plan = plan_de(10);
+        plan.parties = vec![partie("rock", 9), partie("jazz", 9)];
+        plan.filtres.exclure_artistes = vec!["artiste 0".into(), "artiste 1".into()]; // ids 0..=7
+        let c = composer_complet(&plan).unwrap();
+        assert!(c.route.iter().all(|id| *id >= 8), "{:?}", c.route);
+    }
+
+    #[test]
+    fn chaque_partie_rend_son_entonnoir_et_ses_admissibles() {
+        let mut plan = plan_de(10);
+        plan.parties = vec![partie("rock", 9), partie("jazz", 9)];
+        plan.filtres.annee_min = Some(1980);
+        let c = composer_complet(&plan).unwrap();
+        for p in &c.parties {
+            assert_eq!(p.entonnoir.first().map(|(l, n)| (l.as_str(), *n)), Some(("Bibliothèque", N)));
+            assert!(p.entonnoir.iter().any(|(l, _)| l.starts_with("genre")), "{:?}", p.entonnoir);
+            assert!(p.n_admissibles > 0 && p.n_admissibles <= N);
+            assert_eq!(p.ids_admissibles.len(), p.n_admissibles);
+        }
+        // Les deux parties admettent des morceaux différents (rock / jazz).
+        assert!(c.parties[0].ids_admissibles.iter().all(|id| genre_de(*id) == "rock"));
+    }
+
+    /// Une partie dont plus rien ne convient (tout est pris, ou aucun morceau)
+    /// n'est pas une erreur : la suivante se compose, le manque est dit.
+    #[test]
+    fn une_partie_sans_morceau_disponible_est_signalee_pas_fatale() {
+        let mut plan = plan_de(10);
+        let mut vide = partie("rock", 12);
+        vide.genres = vec!["rock".into()];
+        plan.parties = vec![partie("jazz", 9), vide];
+        plan.filtres.annee_max = Some(1980); // tous de 1990 : le critère s'assouplit
+        let c = composer_complet(&plan).unwrap();
+        assert!(!c.route.is_empty());
+        assert!(c.relaches.iter().any(|r| r.contains("assoupli") || r.contains("abandonné")), "{:?}", c.relaches);
+    }
+
+    #[test]
+    fn sans_partie_explicite_la_playlist_est_une_seule_partie_implicite() {
+        let mut plan = plan_de(12);
+        plan.depart = Some(piste(0));
+        let c = composer_complet(&plan).unwrap();
+        assert_eq!(c.parties.len(), 1);
+        assert_eq!((c.parties[0].debut, c.parties[0].fin), (0, c.route.len()));
+        assert_eq!(c.parties[0].libelle, "Playlist");
+    }
+
+    /// Les parties sans taille se partagent le nombre de morceaux voulu.
+    #[test]
+    fn des_parties_sans_taille_se_partagent_n() {
+        let mut plan = plan_de(12);
+        let mut a = partie("rock", 0);
+        let mut b = partie("jazz", 0);
+        a.duree_minutes = None;
+        b.duree_minutes = None;
+        plan.parties = vec![a, b];
+        let c = composer_complet(&plan).unwrap();
+        for p in &c.parties {
+            assert!((p.fin - p.debut) as i64 >= 3 && (p.fin - p.debut) <= 8, "{} morceaux", p.fin - p.debut);
+        }
+    }
+
     /// Bout en bout sur la **vraie** bibliothèque (une copie — ouvrir la base
     /// de l'application migrerait son schéma) : vrai Ollama, vrai encodeur
     /// CLAP-texte, vraies empreintes, vrai graphe. Sous-échantillonné pour que
@@ -7995,10 +8430,14 @@ mod tests {
                 duree_minutes: i.duree_minutes,
                 plafond_par_artiste: i.plafond_par_artiste,
                 filtres: i.filtres(),
+                reformulation: i.reformulation.clone(),
+                parties: i.parties.clone(),
+                brut: String::new(),
             };
-            let cibles: Vec<Vec<f32>> = plan.etapes.iter().map(|e| encodeur.embed(e).unwrap()).collect();
+            let parties = parties_du_plan(&plan, |e| Ok(encodeur.embed(e).unwrap())).unwrap();
             let t = Instant::now();
-            let resultat = composer_route(&plan, &carac, &vecteurs, &graphe, &cibles, 3, BRUIT_DEFAUT);
+            let resultat = composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT)
+                .map(|c| (c.route, c.relaches));
             eprintln!("\n« {prompt} »\n  filtres : {:?} · durée {:?} · n {}", plan.filtres, plan.duree_minutes, plan.n);
             match resultat {
                 Err(e) => eprintln!("  ERREUR : {e}"),
@@ -8020,6 +8459,63 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// Exporte de **vraies** données pour vérifier l'interface hors de Tauri
+    /// (une webview du système ne se pilote pas) : pour chaque prompt, le plan
+    /// interprété par Ollama et la composition sur la vraie bibliothèque, tels
+    /// que l'interface les reçoit, plus les points de la carte. Ignoré par
+    /// défaut : `RUSTY_DB=copie.db RUSTY_EXPORT=dossier cargo test -p
+    /// rusty-music-desktop exporter_pour_maquette -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn exporter_pour_maquette() {
+        use rusty_music_core::ollama;
+        let base = std::env::var("RUSTY_DB").expect("RUSTY_DB");
+        let dossier = std::path::PathBuf::from(std::env::var("RUSTY_EXPORT").expect("RUSTY_EXPORT"));
+        let modele = std::env::var("OLLAMA_MODELE").unwrap_or_else(|_| "gemma4:e4b-mlx".into());
+        let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
+        let vecteurs: Vec<Empreinte> = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
+        let mut carac = lib.caracteristiques_pistes().expect("caractéristiques");
+        carac.retain(|p| analyses.contains(&p.id));
+        let graphe = Graphe::construire(&vecteurs, rusty_music_analysis::chemin::K_VOISINS, super::coeurs_arriere_plan());
+        let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
+        let vocab = lib.vocabulaire_genres(usize::MAX).unwrap();
+
+        let points = lib.map_view(rusty_music_analysis::passe::MODELE).expect("map_view");
+        std::fs::write(dossier.join("points.json"), serde_json::to_string(&points).unwrap()).unwrap();
+        let familles = lib.familles(rusty_music_analysis::passe::MODELE).expect("familles");
+        std::fs::write(dossier.join("familles.json"), serde_json::to_string(&familles).unwrap()).unwrap();
+
+        for (nom, prompt) in [
+            ("parties", "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes"),
+            ("duree", "Une playlist calme de 60 minutes, sans rock, années 70"),
+            ("trajet", "Commencer par du Portishead, finir par du Massive Attack, 15 morceaux"),
+        ] {
+            let i = ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
+            let plan = PlanTexte {
+                depart: None,
+                arrivee: None,
+                arrivee_demandee: None,
+                etapes: i.etapes.clone(),
+                n: i.n.map(|n| n as usize).unwrap_or(20),
+                duree_minutes: i.duree_minutes,
+                plafond_par_artiste: i.plafond_par_artiste,
+                filtres: i.filtres(),
+                reformulation: i.reformulation.clone(),
+                parties: i.parties.clone(),
+                brut: i.brut.clone(),
+            };
+            let parties = parties_du_plan(&plan, |e| Ok(encodeur.embed(e).unwrap())).unwrap();
+            let c = composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT).expect("composition");
+            let pistes: Vec<TrackRow> = c.route.iter().filter_map(|id| lib.track(*id).unwrap()).collect();
+            let duree_ms = pistes.iter().map(|t| t.duration_ms.unwrap_or(0)).sum();
+            let r = super::CompositionTexte { pistes, relaches: c.relaches, duree_ms, parties: c.parties };
+            std::fs::write(dossier.join(format!("{nom}-plan.json")), serde_json::to_string(&plan).unwrap()).unwrap();
+            std::fs::write(dossier.join(format!("{nom}-compo.json")), serde_json::to_string(&r).unwrap()).unwrap();
+            eprintln!("{nom} : {} morceaux, {} min", r.pistes.len(), r.duree_ms / 60_000);
         }
     }
 
@@ -8070,15 +8566,19 @@ mod tests {
                 duree_minutes: i.duree_minutes,
                 plafond_par_artiste: i.plafond_par_artiste,
                 filtres: i.filtres(),
+                reformulation: i.reformulation.clone(),
+                parties: i.parties.clone(),
+                brut: String::new(),
             };
             total += 1;
-            let cibles: Vec<Vec<f32>> = plan.etapes.iter().map(|e| encodeur.embed(e).unwrap()).collect();
+            let parties = parties_du_plan(&plan, |e| Ok(encodeur.embed(e).unwrap())).unwrap();
             let t = Instant::now();
             let sortie = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                composer_route(&plan, &carac, &vecteurs, &graphe, &cibles, 3, BRUIT_DEFAUT)
+                composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT)
+                    .map(|c| (c.route, c.relaches, c.parties))
             }));
             let ms = t.elapsed().as_millis();
-            let (route, relaches) = match sortie {
+            let (route, relaches, parties_res) = match sortie {
                 Err(_) => {
                     paniques += 1;
                     eprintln!("✗ {id:<22} PANIQUE");
@@ -8152,10 +8652,58 @@ mod tests {
             if route.len() < 5 {
                 pb.push(format!("seulement {} morceau(x)", route.len()));
             }
+            // Parties : se suivent sans trou, couvrent toute la route, chacune
+            // dans son genre quand elle en a un, et près de sa durée.
+            let mut attendu_debut = 0;
+            for (k, pr) in parties_res.iter().enumerate() {
+                if pr.debut != attendu_debut {
+                    pb.push(format!("partie {k} : début {} au lieu de {attendu_debut}", pr.debut));
+                }
+                attendu_debut = pr.fin;
+                if let Some(partie) = plan.parties.get(k) {
+                    let dit = pr.relaches.iter().any(|r| r.contains("abandonn") || r.contains("déjà pris") || r.contains("durée visée"));
+                    if !partie.genres.is_empty() && !dit {
+                        let hors = route[pr.debut..pr.fin]
+                            .iter()
+                            .filter(|id| {
+                                // Départ nommé exclu : seuls comptent les morceaux choisis.
+                                !par_id.get(id).is_some_and(|p| partie.genres.iter().any(|g| p.genres.iter().any(|pg| pg.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|m| g.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|x| x == m))))
+                                    )
+                            })
+                            .count();
+                        if hors > 0 {
+                            pb.push(format!("partie {k} ({:?}) : {hors} morceau(x) d'un autre genre, sans le dire", partie.genres));
+                        }
+                    }
+                    if let Some(m) = partie.duree_minutes {
+                        let cible = i64::from(m) * 60_000;
+                        let ecart = (pr.duree_ms - cible).abs() as f64 / cible as f64;
+                        if ecart > 0.25 && !dit {
+                            pb.push(format!("partie {k} : {} min pour {m} visées, sans le dire", pr.duree_ms / 60_000));
+                        }
+                    }
+                }
+            }
+            if attendu_debut != route.len() {
+                pb.push(format!("les parties couvrent {attendu_debut} morceaux sur {}", route.len()));
+            }
             if pb.is_empty() {
                 ok += 1;
                 eprintln!("✓ {id:<22} {:>3} morceaux, {:>3} min, {ms} ms{}", route.len(), duree / 60_000,
                     if relaches.is_empty() { String::new() } else { format!(" — assouplis : {}", relaches.len()) });
+                if parties_res.len() > 1 || !relaches.is_empty() {
+                    for pr in &parties_res {
+                        eprintln!(
+                            "      · {:<18} {:>2} morceaux, {:>3} min (visé {}), {} admissibles, départ : {}",
+                            pr.libelle, pr.fin - pr.debut, pr.duree_ms / 60_000,
+                            pr.cible_ms.map_or("—".into(), |c| format!("{} min", c / 60_000)),
+                            pr.n_admissibles, pr.depart_pourquoi
+                        );
+                        for r in &pr.relaches {
+                            eprintln!("          ↳ {r}");
+                        }
+                    }
+                }
             } else {
                 eprintln!("✗ {id:<22} {:>3} morceaux, {:>3} min", route.len(), duree / 60_000);
                 for p in pb {

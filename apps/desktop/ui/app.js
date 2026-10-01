@@ -467,7 +467,9 @@ const ALBUM_LARG = 140; // largeur d'une case = hauteur de la pochette (carrée)
 const ALBUM_TXT = 40; // `.album__pochette` margin-bottom(8) + nom(16) + sec margin-top(2) + sec(14)
 const ALBUM_ECART = 14; // `gap` de `.grille__fenetre`
 const ALBUM_HAUT = ALBUM_LARG + ALBUM_TXT + ALBUM_ECART;
-const GRILLE_PAD = 26; // `padding` horizontal de `.grille`
+// `padding` horizontal de `.grille` : la gouttière du gabarit (`--gouttiere`), lue
+// dans la feuille de style plutôt que recopiée.
+const GRILLE_PAD = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gouttiere")) || 26;
 // Une seule largeur de case pour Écouter (virtualisée, ci-dessus) et pour la
 // grille de Découvrir (CSS pur, `.decouvrir-grille`) : la constante fait foi.
 document.documentElement.style.setProperty("--album-larg", `${ALBUM_LARG}px`);
@@ -902,25 +904,112 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
   }
 }
 
-/* --------------------------------------------- champ d'intention (Explorer) */
+/* ------------------------------------------------ Lama : l'interprète (Explorer) */
 
-/// Le dernier plan interprété par Ollama, affiché dans `#bloc-plan-texte`
-/// pour correction — `null` tant qu'aucune interprétation n'a réussi.
+/// Le dernier plan interprété par Ollama, affiché dans la carte « Ollama a
+/// compris » pour correction — `null` tant qu'aucune interprétation n'a réussi.
 let planTexte = null;
 
-/// Interprète le prompt du champ d'intention via Ollama, affiche ce qui a
-/// été compris, puis enchaîne aussitôt sur la composition
-/// (`composerPlanTexte`) — l'utilisateur voit les deux étapes se dérouler
-/// l'une après l'autre (l'interprétation d'abord, puis comment la playlist
-/// en est sortie) sans avoir de second geste à faire. Le bouton
-/// « Recomposer » sert à rejouer la seconde étape seule, après une
-/// modification du plan affiché.
+/// Ce que le panneau Lama retient de la dernière demande : de quoi redessiner
+/// le mini-nuage, colorer la route par partie sur les autres affichages, et
+/// relier chaque morceau à la partie qui l'a produit.
+const lama = {
+  prompt: "",
+  resultat: null, // le `CompositionTexte` rendu par `path_texte`
+  fileComposee: null, // le tableau de pistes tel que posé dans `fileCourante`
+  partieDeId: new Map(), // id de morceau → rang de sa partie
+  survol: null, // rang de la partie survolée (barre, liste ou route)
+  routeEcran: [], // la route dans le mini-nuage, pour le survol et le clic
+  base: null, // canevas hors écran : tous les morceaux, estompés
+  cleBase: "", // ce qui invalide `base` (taille, nombre de points, thème)
+};
+
+/// Des exemples de demandes, chacun montrant une capacité — tous éprouvés sur
+/// le banc `experiments/prompts-playlist`. Un clic remplit le champ.
+const EXEMPLES_PROMPTS = [
+  { tag: "durée", texte: "Une playlist calme de 60 minutes, sans rock, années 70" },
+  { tag: "parties", texte: "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes" },
+  { tag: "parties", texte: "30 minutes de calme, puis 30 minutes d'énergique" },
+  { tag: "trajet", texte: "Commencer par du Portishead, finir par du Massive Attack, 15 morceaux" },
+  { tag: "exclusion", texte: "Une heure de musique énergique pour courir, sans Prince" },
+  { tag: "redécouverte", texte: "Des perles méconnues de jazz, un seul morceau par artiste" },
+  { tag: "époque", texte: "Du funk des années 70, 20 morceaux, sans James Brown" },
+  { tag: "anglais", texte: "A chill 45 minute playlist, no metal" },
+];
+
+function dessinerExemples() {
+  $("lama-exemples").replaceChildren(
+    ...EXEMPLES_PROMPTS.map((ex) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lama__exemple";
+      const tag = document.createElement("span");
+      tag.className = "lama__exemple-tag";
+      tag.textContent = ex.tag;
+      b.append(tag, document.createTextNode(ex.texte));
+      b.addEventListener("click", () => {
+        $("intention-texte").value = ex.texte;
+        $("intention-texte").focus();
+      });
+      li.appendChild(b);
+      return li;
+    }),
+  );
+}
+dessinerExemples();
+
+/// « Exemples » rouvre (ou referme) l'accueil une fois qu'une demande l'a
+/// effacé : les exemples ne sont pas perdus, ils ne tiennent juste plus la
+/// place du récit.
+$("lama-exemples-lien").addEventListener("click", () => {
+  const accueil = $("lama-accueil");
+  accueil.hidden = !accueil.hidden;
+  if (!accueil.hidden) $("lama-corps").scrollTop = 0;
+});
+
+/// Une erreur du moteur ou d'Ollama, dans le panneau — le bloc « Chemin » du
+/// rail, où `signalerErreur` écrivait avant, est masqué ici.
+function erreurLama(texte, e, source) {
+  signalerErreur("lama-erreur", texte, e, source);
+  $("lama-erreur").hidden = false;
+}
+
+/// Montre une carte du récit avec son entrée (un fondu, rejoué à chaque fois).
+function poserCarte(id, retardMs = 0) {
+  const el = $(id);
+  el.hidden = false;
+  el.classList.remove("lama__carte--pose");
+  el.style.animationDelay = `${retardMs}ms`;
+  void el.offsetWidth; // relance l'animation
+  el.classList.add("lama__carte--pose");
+}
+
+/// Interprète le prompt du champ d'intention via Ollama, montre ce qui a été
+/// compris, puis enchaîne aussitôt sur la composition (`composerPlanTexte`) —
+/// l'utilisateur voit les deux étapes se dérouler l'une après l'autre
+/// (l'interprétation d'abord, puis comment la playlist en est sortie) sans
+/// avoir de second geste à faire. Le bouton « Recomposer » sert à rejouer la
+/// seconde étape seule, après une modification du plan affiché.
 async function interpreterIntention() {
   const champ = $("intention-texte");
   const prompt = champ.value.trim();
   if (!prompt) return;
 
-  $("chemin-aide").textContent = "";
+  $("lama-erreur").hidden = true;
+  lama.prompt = prompt;
+  // Une nouvelle demande efface le récit précédent : on le reconstruit au fil
+  // de l'eau, étape par étape. La carte, elle, reste (elle se vide de la
+  // route) : c'est le point fixe du panneau.
+  for (const id of ["lama-compris", "lama-cherche", "lama-resultat"]) $(id).hidden = true;
+  // L'accueil et ses exemples ont servi : le champ porte déjà la demande, le
+  // récit prend la place (« Exemples » les rouvre).
+  $("lama-accueil").hidden = true;
+  lama.resultat = null;
+  lama.fileComposee = null;
+  lama.partieDeId = new Map();
+  dessinerMiniNuage();
+
   champ.disabled = true;
   const minuteur = demarrerProgresIntention(
     modeleOllama ? `Interrogation d'Ollama (${modeleOllama})…` : "Interrogation d'Ollama…",
@@ -937,14 +1026,13 @@ async function interpreterIntention() {
       // veut une entrée différente à chaque essai plutôt qu'un pivot figé.
       seed: Math.floor(Math.random() * 2 ** 31),
     });
-    montrerRelaches([]);
     montrerPlanTexte(planTexte);
     interprete = true;
   } catch (e) {
     // Le message vient du moteur (`ollama::interpreter`/`error.rs`) — il
     // distingue déjà « serveur injoignable » de « modèle absent », pas la
     // peine de le remplacer par un texte fixe qui les confondrait.
-    signalerErreur("chemin-aide", String(e), e, "path_texte_interpreter");
+    erreurLama(String(e), e, "path_texte_interpreter");
   } finally {
     champ.disabled = false;
     arreterProgresIntention(minuteur);
@@ -1027,7 +1115,7 @@ $("intention-ollama").addEventListener("click", async () => {
     liste.hidden = false;
     liste.focus();
   } catch (e) {
-    signalerErreur("chemin-aide", String(e), e, "ollama_modeles");
+    erreurLama(String(e), e, "ollama_modeles");
     $("intention-ollama").classList.remove("intention__ollama--actif");
   }
 });
@@ -1039,15 +1127,26 @@ $("intention-modele-liste").addEventListener("change", () => {
   $("intention-ollama").classList.remove("intention__ollama--actif");
 });
 
-/// Affiche le plan interprété dans l'inspecteur — un bloc de plus
-/// (`#bloc-plan-texte`), pas une prévisualisation à part (`interface-
-/// guidelines.md` Règle 1 : un seul inspecteur).
+/* ---- ce qu'Ollama a compris ---- */
+
+/// Le nom d'une partie : ses genres, sinon le début de sa description.
+function libellePartie(p) {
+  const g = (p.genres || []).join(" / ");
+  const t = g || p.description || "partie";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/// Montre le plan interprété : la reformulation, les parties (barres
+/// proportionnelles à leur durée, éditables), les contraintes, le départ et
+/// l'arrivée. C'est la carte « Ollama a compris » — tout s'y corrige sans
+/// repasser par Ollama, « Recomposer » rejoue la composition.
 function montrerPlanTexte(plan) {
-  $("bloc-plan-texte").hidden = false;
-  // En tête de l'inspecteur (voir index.html), mais l'inspecteur défile : un
-  // ancien morceau consulté plus bas dans la page laisserait le plan hors
-  // champ sans ce reset.
-  document.querySelector(".inspecteur").scrollTop = 0;
+  $("lama-haut").hidden = false;
+  poserCarte("lama-compris");
+  $("lama-reformulation").textContent = plan.reformulation ? `« ${plan.reformulation} »` : "";
+  $("lama-reformulation").hidden = !plan.reformulation;
+  $("lama-brut").textContent = plan.brut || "(pas de réponse brute conservée)";
+
   $("plan-texte-depart-nom").textContent = plan.depart
     ? `${txt(plan.depart.title, "(sans titre)")} — ${txt(plan.depart.artist, "(sans artiste)")}`
     : "par description (aucun départ nommé)";
@@ -1095,7 +1194,126 @@ function montrerPlanTexte(plan) {
   $("plan-texte-duree").value = plan.duree_minutes ?? "";
   // Une durée posée prime sur le nombre de morceaux.
   $("plan-texte-n").disabled = !!plan.duree_minutes;
+  montrerPartiesPlan(plan);
   montrerFiltresPlan(plan);
+  dessinerMiniNuage(); // la carte vient d'apparaître : elle a enfin une taille
+}
+
+const COULEUR_PARTIE = (k) => `var(--partie-${(k % 6) + 1})`;
+
+/// Les parties d'une playlist « X puis Y » : une barre dont chaque segment est
+/// proportionnel à la durée de sa partie, et dessous chaque partie éditable
+/// (description anglaise, genres retirables, durée). Moins de deux parties :
+/// le plan est une seule partie implicite, montrée par ses étapes.
+function montrerPartiesPlan(plan) {
+  const parties = plan.parties || [];
+  const multi = parties.length >= 2;
+  $("lama-parties-barre").hidden = !multi;
+  $("lama-parties").hidden = !multi;
+  $("lama-sans-partie").hidden = multi;
+  if (!multi) return;
+
+  const poids = parties.map(
+    (p) => p.duree_minutes ?? (p.n ? p.n * 3.5 : Math.max(3, Math.round(plan.n / parties.length)) * 3.5),
+  );
+  const barre = $("lama-parties-barre");
+  barre.replaceChildren();
+  parties.forEach((p, k) => {
+    const seg = document.createElement("div");
+    seg.className = "lama__segment";
+    seg.dataset.partie = k;
+    seg.style.flexGrow = poids[k];
+    seg.style.background = COULEUR_PARTIE(k);
+    const taille = p.duree_minutes ? `${p.duree_minutes} min` : p.n ? `${p.n} morceaux` : "";
+    seg.textContent = taille ? `${libellePartie(p)} · ${taille}` : libellePartie(p);
+    seg.title = p.description || "";
+    seg.addEventListener("mouseenter", () => survolerPartie(k));
+    seg.addEventListener("mouseleave", () => survolerPartie(null));
+    barre.appendChild(seg);
+  });
+
+  const ol = $("lama-parties");
+  ol.replaceChildren();
+  parties.forEach((p, k) => {
+    const li = document.createElement("li");
+    li.className = "lama__partie";
+    li.style.setProperty("--couleur", COULEUR_PARTIE(k));
+    li.addEventListener("mouseenter", () => survolerPartie(k));
+    li.addEventListener("mouseleave", () => survolerPartie(null));
+
+    const nom = document.createElement("span");
+    nom.className = "lama__partie-nom";
+    nom.textContent = `${k + 1}. ${libellePartie(p)}`;
+
+    const desc = document.createElement("input");
+    desc.type = "text";
+    desc.className = "chercher";
+    desc.value = p.description || "";
+    desc.title = "Ce que la marche vise (anglais, pour CLAP)";
+    desc.addEventListener("change", () => {
+      p.description = desc.value;
+      montrerPartiesPlan(plan);
+    });
+
+    const duree = document.createElement("input");
+    duree.type = "number";
+    duree.className = "chercher lama__partie-duree";
+    duree.min = 1;
+    duree.max = 1440;
+    duree.placeholder = "min";
+    duree.value = p.duree_minutes ?? "";
+    duree.title = "Durée de cette partie, en minutes";
+    duree.addEventListener("change", () => {
+      const d = Number.parseInt(duree.value, 10);
+      p.duree_minutes = Number.isFinite(d) && d >= 1 ? Math.min(1440, d) : null;
+      montrerPartiesPlan(plan);
+    });
+
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "borne__x";
+    x.textContent = "×";
+    x.title = "Retirer cette partie";
+    x.addEventListener("click", () => retirerPartie(plan, k));
+
+    const chips = document.createElement("span");
+    chips.className = "lama__partie-genres";
+    (p.genres || []).forEach((g, i) => {
+      const c = document.createElement("button");
+      c.type = "button";
+      c.className = "lama__chip";
+      c.textContent = `${g} ×`;
+      c.title = "Retirer ce genre de la partie";
+      c.addEventListener("click", () => {
+        p.genres.splice(i, 1);
+        montrerPartiesPlan(plan);
+      });
+      chips.appendChild(c);
+    });
+
+    const l1 = document.createElement("div");
+    l1.className = "lama__partie-ligne";
+    l1.append(nom, chips);
+    const l2 = document.createElement("div");
+    l2.className = "lama__partie-ligne";
+    l2.append(desc, duree, x);
+    li.append(l1, l2);
+    ol.appendChild(li);
+  });
+}
+
+/// Retire une partie. Il n'en reste qu'une : ce n'est plus une suite, on la
+/// ramène aux champs du plan entier (comme le fait le moteur).
+function retirerPartie(plan, k) {
+  plan.parties.splice(k, 1);
+  if (plan.parties.length === 1) {
+    const [p] = plan.parties;
+    plan.parties = [];
+    plan.etapes = [p.description || "music"];
+    plan.filtres.genres = p.genres || [];
+    plan.duree_minutes = p.duree_minutes ?? null;
+  }
+  montrerPlanTexte(plan);
 }
 
 const LIBELLE_ENERGIE = { calme: "calme", moyenne: "énergie moyenne", intense: "intense" };
@@ -1159,28 +1377,6 @@ function montrerFiltresPlan(plan) {
   }
 }
 
-/// Ce que la composition a assoupli ou n'a pas tenu, et la durée obtenue.
-/// Jamais tu : une playlist « calme » dont le critère a dû être abandonné
-/// doit le dire. `erreur` : le message du moteur, tel quel.
-function montrerRelaches(relaches, dureeMs = 0, erreur = false) {
-  const hote = $("plan-texte-relaches");
-  hote.replaceChildren();
-  const ajouter = (texte, classe = "") => {
-    const p = document.createElement("p");
-    p.textContent = texte;
-    if (classe) p.className = classe;
-    hote.appendChild(p);
-  };
-  if (erreur) {
-    relaches.forEach((r) => ajouter(r, "relache--erreur"));
-  } else {
-    if (dureeMs > 0 && planTexte?.duree_minutes)
-      ajouter(`Durée obtenue : ${Math.round(dureeMs / 60000)} min (visée : ${planTexte.duree_minutes} min).`);
-    relaches.forEach((r) => ajouter(`Assoupli — ${r}`));
-  }
-  hote.hidden = hote.children.length === 0;
-}
-
 $("plan-texte-depart-effacer").addEventListener("click", () => {
   if (!planTexte) return;
   planTexte.depart = null;
@@ -1210,26 +1406,374 @@ $("plan-texte-duree").addEventListener("change", () => {
   $("plan-texte-n").disabled = !!planTexte.duree_minutes;
 });
 
+/* ---- ce que Rusty Music a cherché, et ce qui en sort ---- */
+
+const dureeMin = (ms) => `${Math.round(ms / 60000)} min`;
+const nombreFr = (n) => n.toLocaleString("fr-FR");
+
+/// L'entonnoir d'une partie : combien de morceaux restent après chaque
+/// critère. Les barres sont proportionnelles à la bibliothèque entière — on
+/// voit d'un coup d'œil ce qui restreint le plus.
+function dessinerEntonnoir(etapes) {
+  const ul = document.createElement("ul");
+  ul.className = "lama__entonnoir";
+  const total = Math.max(1, etapes[0]?.[1] ?? 1);
+  for (const [libelle, n] of etapes) {
+    const li = document.createElement("li");
+    const nom = document.createElement("span");
+    nom.className = "lama__entonnoir-nom";
+    nom.textContent = libelle;
+    const barre = document.createElement("span");
+    barre.className = "lama__entonnoir-barre";
+    const i = document.createElement("i");
+    i.style.width = `${Math.max(1.5, (100 * n) / total)}%`;
+    barre.appendChild(i);
+    const compte = document.createElement("span");
+    compte.className = "lama__entonnoir-n";
+    compte.textContent = nombreFr(n);
+    li.append(nom, barre, compte);
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+/// Les cartes « Rusty Music a cherché » et « Résultat » : ce que le moteur a
+/// fait de la demande, partie par partie, et ce qui en sort. Rien n'y est
+/// inventé — ce sont les comptes et les choix du moteur (`PartieResultat`).
+function montrerComposition(r) {
+  lama.resultat = r;
+  lama.fileComposee = r.pistes;
+  lama.partieDeId = new Map();
+  r.parties.forEach((p, k) => {
+    for (let i = p.debut; i < p.fin; i++) lama.partieDeId.set(r.pistes[i].id, k);
+  });
+
+  const multi = r.parties.length > 1;
+  const corps = $("lama-cherche-corps");
+  corps.replaceChildren();
+  r.parties.forEach((p, k) => {
+    const bloc = document.createElement("div");
+    bloc.className = "lama__cherche-partie";
+    bloc.dataset.partie = k;
+    if (multi) bloc.style.setProperty("--couleur", COULEUR_PARTIE(k));
+    bloc.addEventListener("mouseenter", () => survolerPartie(k));
+    bloc.addEventListener("mouseleave", () => survolerPartie(null));
+    if (multi) {
+      const h = document.createElement("h4");
+      const point = document.createElement("i");
+      point.className = "lama__point";
+      point.style.background = COULEUR_PARTIE(k);
+      h.append(point, `${p.libelle}${p.cible_ms ? ` — ${dureeMin(p.cible_ms)} visées` : ""}`);
+      bloc.appendChild(h);
+    }
+    bloc.appendChild(dessinerEntonnoir(p.entonnoir));
+    const note = (texte, classe = "") => {
+      const el = document.createElement("p");
+      el.className = `aide ${classe}`.trim();
+      el.textContent = texte;
+      bloc.appendChild(el);
+    };
+    if (p.n_admissibles !== (p.entonnoir.at(-1)?.[1] ?? p.n_admissibles))
+      note(`${nombreFr(p.n_admissibles)} admissibles après assouplissement et hors des parties précédentes.`);
+    note(`Départ : ${p.depart_pourquoi}.`);
+    note(
+      `Obtenu : ${p.fin - p.debut} morceau${p.fin - p.debut > 1 ? "x" : ""}, ${dureeMin(p.duree_ms)}` +
+        (p.cible_ms ? ` (visé : ${dureeMin(p.cible_ms)}).` : "."),
+    );
+    for (const rel of p.relaches) note(`Assoupli — ${rel}`, "lama__relache");
+    corps.appendChild(bloc);
+  });
+  poserCarte("lama-cherche", 120);
+
+  // Le résultat : la playlist par parties, cliquable (lecture à partir d'ici).
+  const total = r.pistes.length;
+  $("lama-resultat-resume").textContent =
+    `${total} morceaux · ${dureeMin(r.duree_ms)}` +
+    (planTexte?.duree_minutes ? ` (visé : ${planTexte.duree_minutes} min)` : "") +
+    (multi ? ` · ${r.parties.length} parties` : "");
+  const res = $("lama-resultat-corps");
+  res.replaceChildren();
+  r.parties.forEach((p, k) => {
+    const groupe = document.createElement("div");
+    groupe.className = "lama__groupe";
+    groupe.dataset.partie = k;
+    groupe.addEventListener("mouseenter", () => survolerPartie(k));
+    groupe.addEventListener("mouseleave", () => survolerPartie(null));
+    const tete = document.createElement("div");
+    tete.className = "lama__groupe-tete";
+    if (multi) {
+      const point = document.createElement("i");
+      point.className = "lama__point";
+      point.style.background = COULEUR_PARTIE(k);
+      const nom = document.createElement("b");
+      nom.textContent = p.libelle;
+      tete.append(point, nom);
+    }
+    const info = document.createElement("span");
+    info.className = "aide";
+    info.textContent = `${p.fin - p.debut} morceau${p.fin - p.debut > 1 ? "x" : ""} · ${dureeMin(p.duree_ms)}`;
+    tete.appendChild(info);
+    groupe.appendChild(tete);
+    const ol = document.createElement("ol");
+    ol.className = "lama__pistes";
+    for (let i = p.debut; i < p.fin; i++) {
+      const t = r.pistes[i];
+      const li = document.createElement("li");
+      li.value = i + 1;
+      const titre = document.createElement("span");
+      titre.textContent = `${txt(t.title, "(sans titre)")} — ${txt(t.artist, "(sans artiste)")}`;
+      const d = document.createElement("span");
+      d.className = "lama__piste-duree";
+      d.textContent = duree(t.duration_ms);
+      li.append(titre, d);
+      li.title = "Lire à partir d'ici";
+      li.addEventListener("click", async () => {
+        selectionner(t);
+        await demarrerLecture(() => invoke("jump_to", { index: i }));
+      });
+      ol.appendChild(li);
+    }
+    groupe.appendChild(ol);
+    res.appendChild(groupe);
+  });
+  poserCarte("lama-resultat", 240);
+  dessinerMiniNuage();
+}
+
+/// La composition a échoué : le message du moteur dit pourquoi (exclusions qui
+/// vident la bibliothèque, marche impossible…) — montré dans la carte « a
+/// cherché », pas seulement au journal.
+function montrerErreurComposition(texte) {
+  lama.resultat = null;
+  const corps = $("lama-cherche-corps");
+  corps.replaceChildren();
+  const p = document.createElement("p");
+  p.className = "aide lama__relache lama__relache--erreur";
+  p.textContent = texte;
+  corps.appendChild(p);
+  poserCarte("lama-cherche");
+  $("lama-resultat").hidden = true;
+  dessinerMiniNuage();
+}
+
+/* ---- le mini-nuage : la demande et la bibliothèque se répondent ---- */
+
+/// Met en valeur une partie (barre, liste, résultat ou route) — ou aucune.
+function survolerPartie(k) {
+  lama.survol = k;
+  document.querySelectorAll("[data-partie], .lama__partie").forEach((el) => {
+    const rang = el.dataset.partie != null ? Number(el.dataset.partie) : -1;
+    el.classList.toggle("lama--survol", k != null && rang === k);
+  });
+  dessinerMiniNuage();
+}
+
+/// Le nuage de la bibliothèque, en petit, au service de la demande :
+///  - tous les morceaux, estompés (Règle 2 : estomper, jamais masquer) ;
+///  - ceux que les filtres de chaque partie retiennent, dans la couleur de la
+///    partie (la partie survolée seule, si on en survole une) ;
+///  - la route de la playlist, un trait par partie.
+/// Positions t-SNE (`p.x`, `p.y`) comme le Nuage, jamais celles de la ville.
+function dessinerMiniNuage() {
+  const cv = $("lama-nuage");
+  if (!cv || $("lama-vue").hidden) return;
+  const w = cv.clientWidth;
+  const h = cv.clientHeight;
+  if (!w || !h) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const css = getComputedStyle(document.documentElement);
+  const mut = css.getPropertyValue("--mut").trim() || "#999";
+  const encre = css.getPropertyValue("--txt").trim() || "#fff";
+  const pts = carte.points;
+  $("lama-nuage-legende").textContent = pts.length
+    ? lama.resultat
+      ? "Un point par morceau. En couleur, ce que les filtres retiennent pour chaque partie ; le trait relie la playlist dans l'ordre. Survolez une partie ou un point du trait."
+      : "Chaque point est un morceau de votre bibliothèque, placé par similarité sonore."
+    : "La carte de la bibliothèque se charge…";
+  if (!pts.length) return;
+
+  const c = Math.min(w, h) / 2 - 8;
+  const ecran = (p) => [w / 2 + p.x * c, h / 2 + p.y * c];
+
+  // Fond : tous les morceaux, estompés. Mis en cache (27 000 points).
+  const cle = `${w}x${h}@${dpr}:${pts.length}:${mut}`;
+  if (lama.cleBase !== cle) {
+    const base = document.createElement("canvas");
+    base.width = Math.round(w * dpr);
+    base.height = Math.round(h * dpr);
+    const b = base.getContext("2d");
+    b.setTransform(dpr, 0, 0, dpr, 0, 0);
+    b.fillStyle = mut;
+    b.globalAlpha = 0.28;
+    for (const p of pts) {
+      const [x, y] = ecran(p);
+      b.fillRect(x - 0.5, y - 0.5, 1.1, 1.1);
+    }
+    lama.base = base;
+    lama.cleBase = cle;
+  }
+  ctx.drawImage(lama.base, 0, 0, w, h);
+
+  const r = lama.resultat;
+  lama.routeEcran = [];
+  if (!r) return;
+
+  // Ce que les filtres retiennent : une couleur par partie. Une partie sans
+  // filtre admet tout — rien à mettre en valeur.
+  const parId = new Map(pts.map((p) => [p.id, p]));
+  r.parties.forEach((part, k) => {
+    if (lama.survol != null && lama.survol !== k) return;
+    if (!part.ids_admissibles.length) return;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(`--partie-${(k % 6) + 1}`).trim();
+    ctx.globalAlpha = lama.survol === k ? 0.85 : 0.55;
+    for (const id of part.ids_admissibles) {
+      const p = parId.get(id);
+      if (!p) continue;
+      const [x, y] = ecran(p);
+      ctx.fillRect(x - 0.9, y - 0.9, 1.9, 1.9);
+    }
+  });
+  ctx.globalAlpha = 1;
+
+  // La route : un trait par partie, un halo d'encre dessous pour qu'elle
+  // ressorte sur n'importe quelle couleur.
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const route = r.pistes.map((t, i) => ({ t, i, p: parId.get(t.id) })).filter((e) => e.p);
+  const partieDe = (i) => r.parties.findIndex((q) => i >= q.debut && i < q.fin);
+  lama.routeEcran = route.map((e) => {
+    const [x, y] = ecran(e.p);
+    return { x, y, piste: e.t, index: e.i, partie: partieDe(e.i) };
+  });
+  const tracer = (couleur, largeur, alpha, filtre) => {
+    ctx.strokeStyle = couleur;
+    ctx.lineWidth = largeur;
+    ctx.globalAlpha = alpha;
+    for (let i = 1; i < lama.routeEcran.length; i++) {
+      const a = lama.routeEcran[i - 1];
+      const b = lama.routeEcran[i];
+      if (!filtre(b)) continue;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  };
+  const couleurPartie = (k) =>
+    getComputedStyle(document.documentElement).getPropertyValue(`--partie-${(Math.max(k, 0) % 6) + 1}`).trim();
+  tracer(encre, 4.5, 0.45, () => true);
+  for (let k = 0; k < r.parties.length; k++) {
+    const fort = lama.survol === k;
+    tracer(couleurPartie(k), fort ? 3.4 : 2.2, lama.survol != null && !fort ? 0.45 : 0.98, (b) => b.partie === k);
+  }
+  for (const e of lama.routeEcran) {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, lama.survol === e.partie ? 3.8 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = couleurPartie(e.partie);
+    ctx.globalAlpha = lama.survol != null && lama.survol !== e.partie ? 0.5 : 1;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = encre;
+    ctx.globalAlpha = 0.7;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/// Le point de la route le plus proche du curseur, à moins de 10 px.
+function pointDeRouteSous(ev) {
+  const cv = $("lama-nuage");
+  const rect = cv.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  let meilleur = null;
+  let d2min = 100;
+  for (const e of lama.routeEcran) {
+    const d2 = (e.x - x) ** 2 + (e.y - y) ** 2;
+    if (d2 < d2min) {
+      d2min = d2;
+      meilleur = e;
+    }
+  }
+  return meilleur ? { e: meilleur, x, y } : null;
+}
+
+$("lama-nuage").addEventListener("mousemove", (ev) => {
+  const hit = pointDeRouteSous(ev);
+  const bulle = $("lama-nuage-info");
+  if (!hit) {
+    bulle.hidden = true;
+    $("lama-nuage").style.cursor = "";
+    if (lama.survol != null) survolerPartie(null);
+    return;
+  }
+  $("lama-nuage").style.cursor = "pointer";
+  const { e } = hit;
+  const part = lama.resultat.parties[e.partie];
+  bulle.textContent =
+    `${e.index + 1}. ${txt(e.piste.title, "(sans titre)")} — ${txt(e.piste.artist, "(sans artiste)")}` +
+    (lama.resultat.parties.length > 1 && part ? ` · ${part.libelle}` : "");
+  bulle.style.left = `${Math.min(hit.x + 12, $("lama-nuage").clientWidth - 160)}px`;
+  bulle.style.top = `${hit.y + 12}px`;
+  bulle.hidden = false;
+  if (lama.survol !== e.partie) survolerPartie(e.partie);
+});
+
+$("lama-nuage").addEventListener("mouseleave", () => {
+  $("lama-nuage-info").hidden = true;
+  if (lama.survol != null) survolerPartie(null);
+});
+
+$("lama-nuage").addEventListener("click", async (ev) => {
+  const hit = pointDeRouteSous(ev);
+  if (!hit) return;
+  selectionner(hit.e.piste);
+  await demarrerLecture(() => invoke("jump_to", { index: hit.e.index }));
+});
+
+window.addEventListener("resize", () => {
+  if (!$("lama-vue").hidden) dessinerMiniNuage();
+});
+
+/// La taille à réserver dans la file avant que les vraies pistes n'arrivent :
+/// à 3 min 30 le morceau pour une durée, la somme des parties sinon.
+function cibleDuPlan(plan) {
+  const parties = plan.parties || [];
+  if (parties.length >= 2) {
+    const morceaux = parties.reduce(
+      (t, p) => t + (p.duree_minutes ? p.duree_minutes / 3.5 : p.n || Math.max(3, Math.round(plan.n / parties.length))),
+      0,
+    );
+    return Math.max(2, Math.round(morceaux));
+  }
+  return plan.duree_minutes ? Math.max(2, Math.round(plan.duree_minutes / 3.5)) : plan.n;
+}
+
 /// Compose la playlist du plan courant : une empreinte CLAP-texte par étape
-/// puis une marche guidée dans le graphe des voisins (`chemin::guidee`) —
-/// même jauge de composition que les boutons ✦ (`composerAlchimie`).
+/// ou par partie, puis une marche guidée dans le graphe des voisins
+/// (`chemin::guidee`) — même jauge de composition que les boutons ✦
+/// (`composerAlchimie`).
 ///
 /// Déclenchée automatiquement dès que l'interprétation est confirmée
 /// (`interpreterIntention`), pas seulement sur clic : l'utilisateur voit ce
 /// qu'Ollama a compris, puis voit tout de suite la playlist s'assembler à
 /// partir de là, sans geste de plus à faire. Le bouton « Recomposer » reste
-/// disponible pour relancer après une modification du plan (étape
-/// reformulée, nombre de morceaux changé, départ effacé).
+/// disponible pour relancer après une modification du plan.
 function composerPlanTexte() {
-  if (!planTexte || planTexte.etapes.length === 0) return;
-  montrerRelaches([]);
+  if (!planTexte || (planTexte.etapes.length === 0 && !(planTexte.parties || []).length)) return;
+  $("lama-cherche").hidden = true;
+  $("lama-resultat").hidden = true;
   composerAlchimie({
     bouton: $("plan-texte-composer"),
-    // Une durée n'a pas de nombre de morceaux exact : on réserve des
-    // emplacements à 3 min 30 le morceau, `revelerFile` ajuste ensuite.
-    cible: planTexte.duree_minutes
-      ? Math.max(2, Math.round(planTexte.duree_minutes / 3.5))
-      : planTexte.n,
+    cible: cibleDuPlan(planTexte),
     chemin: async () => {
       try {
         const r = await invoke("path_texte", {
@@ -1237,13 +1781,10 @@ function composerPlanTexte() {
           seed: Math.floor(Math.random() * 2 ** 31),
           bruit: bruitChemin,
         });
-        montrerRelaches(r.relaches, r.duree_ms);
+        montrerComposition(r);
         return r.pistes;
       } catch (e) {
-        // Le message du moteur dit pourquoi (exclusions qui vident la
-        // bibliothèque, marche impossible…) : on le montre dans le plan, pas
-        // seulement dans le journal.
-        montrerRelaches([String(e)], 0, true);
+        montrerErreurComposition(String(e));
         throw e;
       }
     },
@@ -5692,6 +6233,9 @@ function survolerAnneau(mx, my, r) {
 }
 
 function dessinerCarte() {
+  // Le Lama n'a pas de canevas de carte : rien à redessiner (la playlist qui
+  // se compose y appelle `tracerRouteSurCarte`, qui rappelle ceci).
+  if (carte.affichage === "lama") return;
   // En mode carte, les tuiles portent le fond : le canevas ne garde que la
   // surcouche. En mode nuage, il dessine tout, comme avant.
   const g = carteGL();
@@ -5822,16 +6366,39 @@ function surcoucheSur(r, encre, accent) {
     ctx.lineWidth = 4.5;
     tracer();
 
-    ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 2.25;
-    tracer();
+    // Une playlist composée par le Lama garde ses parties : le trait et les
+    // repères y prennent la couleur de leur partie (la même que dans le panneau),
+    // pour retrouver sur la carte ce que le récit a expliqué.
+    const parties = lama.fileComposee && lama.fileComposee === fileCourante && lama.partieDeId.size > 1;
+    const racine = getComputedStyle(document.documentElement);
+    const couleurPartie = (id) =>
+      parties && lama.partieDeId.has(id)
+        ? racine.getPropertyValue(`--partie-${(lama.partieDeId.get(id) % 6) + 1}`).trim() || accent
+        : accent;
+    if (parties && trait === carte.route) {
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2.25;
+      for (let i = 1; i < trait.length; i++) {
+        ctx.strokeStyle = couleurPartie(trait[i].id);
+        ctx.beginPath();
+        const [x0, y0] = versEcran(trait[i - 1], r);
+        const [x1, y1] = versEcran(trait[i], r);
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
+    } else {
+      ctx.strokeStyle = accent;
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2.25;
+      tracer();
+    }
 
     for (const p of carte.route) {
       const [x, y] = versEcran(p, r);
       ctx.beginPath();
       ctx.arc(x, y, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = accent;
+      ctx.fillStyle = couleurPartie(p.id);
       ctx.globalAlpha = 1;
       ctx.fill();
       ctx.lineWidth = 1.2;
@@ -6958,6 +7525,19 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
   }),
 );
 
+/// Ce que le rail montre en Explorer selon l'affichage. Le Lama n'a ni carte
+/// à colorer, ni intervalle d'années, ni familles à isoler, ni filtre de la
+/// carte à saisir : il ne garde que le sélecteur d'affichage. Les autres
+/// affichages retrouvent leurs réglages, chacun avec sa propre logique
+/// (`majAffichageTemps`, `majAffichageAnneau`, `majVisibiliteIntervalleAnnees`).
+function majRailExplorer() {
+  const explorer = modeCourant === "explorer";
+  const enLama = explorer && carte.affichage === "lama";
+  $("reglages-explorer").hidden = enLama;
+  $("bloc-familles").hidden = !explorer || enLama || carte.couleur !== "famille";
+  $("bloc-chercher").hidden = modeCourant === "bibliotheque" || modeCourant === "decouvrir" || enLama;
+}
+
 /// Les modes de chemin qui ont un sens dans chaque affichage.
 ///
 /// L'itinéraire suit de vraies rues — rien à suivre sur un nuage t-SNE.
@@ -6974,6 +7554,8 @@ const MODES_CHEMIN = {
   // L'anneau n'a aucun mode de chemin : ni chronologie à parcourir, ni
   // géométrie d'écran à tracer — juste un album focal et ses voisins.
   anneau: [],
+  // Le Lama compose par la parole : aucun chemin à tracer à la souris.
+  lama: [],
 };
 
 /// Montre/cache les réglages propres à chaque mode de chemin. « morceaux » et
@@ -7058,6 +7640,24 @@ function majAffichageAnneau() {
 document.querySelectorAll("[data-affichage]").forEach((b) =>
   b.addEventListener("click", () => {
     carte.affichage = b.dataset.affichage;
+    // Le Lama a son propre centre, sans canevas : on y entre sans toucher aux
+    // redessins de la carte, et la route de la playlist en cours reste intacte
+    // pour le jour où l'on revient sur le Nuage ou la Carte.
+    const enLama = carte.affichage === "lama";
+    $("carte-vue").hidden = enLama || modeCourant !== "explorer";
+    $("lama-vue").hidden = !enLama || modeCourant !== "explorer";
+    document
+      .querySelectorAll("[data-affichage]")
+      .forEach((s) => s.classList.toggle("segment--actif", s === b));
+    majRailExplorer();
+    if (enLama) {
+      majModesChemin();
+      $("fil-titre").textContent = "Lama";
+      dessinerMiniNuage();
+      $("intention-texte").focus();
+      return;
+    }
+    $("fil-titre").textContent = "Carte";
     // Un chemin *calculé* (le tracé d'un mode direct/sonique/dessiné) vit
     // dans un repère précis (t-SNE, lon-lat, temps) et n'a plus de sens dans
     // un autre : on l'efface plutôt que de rejouer des coordonnées
@@ -7433,8 +8033,14 @@ async function chargerCarte() {
       ? `${carte.points.length.toLocaleString("fr-FR")} placés · ${(total - faits).toLocaleString("fr-FR")} en attente`
       : `${carte.points.length.toLocaleString("fr-FR")} morceaux`;
   dessinerFamilles();
-  majAffichageGL();
-  majModesChemin();
+  // Le Lama n'a pas de canevas de carte à redessiner : seulement son mini-nuage.
+  if (carte.affichage === "lama") {
+    majModesChemin();
+    dessinerMiniNuage();
+  } else {
+    majAffichageGL();
+    majModesChemin();
+  }
   chargerTemps().then(() => {
     if (modeTemps()) dessinerCarte();
   });
@@ -7456,12 +8062,21 @@ async function basculerMode(mode) {
     b.classList.toggle("mode--actif", b.dataset.mode === mode),
   );
   modeCourant = mode;
+  // Le mode courant, lisible par la feuille de style : le repère A–Z (propre aux
+  // listes de l'Écoute) s'y masque par une règle CSS, que le code asynchrone qui
+  // réaffiche `#index-alpha` (rendu de la grille, familles chargées…) ne peut
+  // plus contourner.
+  document.body.dataset.mode = mode;
   majVisibiliteIntervalleAnnees();
   if (editer) majVariantes();
   // Entrer dans l'éditeur avec des stems déjà affichés doit les rendre
   // audibles : c'est ce qu'on vient y faire.
   if (editer) prendreLaMain().catch((e) => remonter(e, "stems"));
-  $("carte-vue").hidden = !explorer;
+  // Explorer a deux centres : la carte (nuage, carte, temps, anneau — un canevas)
+  // et le Lama (le panneau dédié à l'interprète).
+  const enLama = explorer && carte.affichage === "lama";
+  $("carte-vue").hidden = !explorer || enLama;
+  $("lama-vue").hidden = !enLama;
   $("bibliotheque-vue").hidden = !bibliotheque;
   $("decouvrir-vue").hidden = !decouvrir;
   $("liste").hidden = explorer || bibliotheque || decouvrir || vueEnGrille();
@@ -7474,21 +8089,24 @@ async function basculerMode(mode) {
   // en y revenant, mais ne court pas pour les autres modes.
   majBarreTri(mode !== "ecoute");
   $("retour").hidden = explorer || bibliotheque || decouvrir || vue.retour === null;
-  $("index-alpha").hidden = $("index-alpha").hidden || bibliotheque || decouvrir;
+  // Le repère A–Z est celui des listes d'artistes et d'albums de l'Écoute :
+  // resté affiché en passant à Explorer, il se dessinait par-dessus la carte
+  // et le Lama, dans la marge de droite — qui paraissait alors plus étroite que
+  // celle de gauche. `poser` le rétablit en revenant à l'Écoute.
+  $("index-alpha").hidden = $("index-alpha").hidden || explorer || bibliotheque || decouvrir;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir;
   // « Chercher » (recherche globale de la bibliothèque) alimente #liste, masquée
   // en Bibliothèque et Découvrir : le champ n'y ferait rien de visible. En
   // Explorer il change de rôle (filtre de la carte), on le garde.
-  $("bloc-chercher").hidden = bibliotheque || decouvrir;
+  // (`majRailExplorer` cache aussi ce champ dans le Lama.)
+  $("bloc-chercher").hidden = bibliotheque || decouvrir || enLama;
   $("bloc-colorer").hidden = !explorer;
   $("bloc-demix").hidden = !editer;
   $("bloc-chemin").hidden = !explorer;
-  // Champ d'intention : composant unique et partagé (voir `index.html`),
-  // révélé seulement là où un comportement LLM est branché — Explorer pour
-  // l'instant. Un futur mode l'étendrait ici même, pas en dupliquant le champ.
-  $("bloc-intention").hidden = !explorer;
-  if (!explorer) $("bloc-plan-texte").hidden = true;
-  $("bloc-familles").hidden = !explorer || carte.couleur !== "famille";
+  // Le champ d'intention vit dans le panneau Lama (`#lama-vue`) : il n'est
+  // visible qu'avec lui, plus sur les quatre autres affichages où il n'avait
+  // aucun lien avec ce qu'on y voyait.
+  majRailExplorer();
   // Le filtre par famille de l'Écoute : `majBlocFamillesEcoute` le rallume si
   // la grille d'albums est à l'écran et la carte calculée.
   $("bloc-familles-ecoute").hidden = true;
@@ -7529,6 +8147,10 @@ async function basculerMode(mode) {
     // d'Explorer : la carte n'avait alors pas encore ses points pour y
     // tracer quoi que ce soit.
     tracerRouteSurCarte(fileCourante);
+    if (enLama) {
+      $("fil-titre").textContent = "Lama";
+      dessinerMiniNuage();
+    }
   } else if (bibliotheque) {
     $("fil-titre").textContent = "Bibliothèque";
     $("fil-compte").textContent = "";
@@ -11356,8 +11978,25 @@ charger("albums")
 
 // Mode imposé par l'environnement, s'il y en a un. Voir `mode_initial`.
 invoke("mode_initial")
-  .then((m) => {
-    if (m) basculerMode(m);
+  .then(async (m) => {
+    if (m) await basculerMode(m);
+    // Essais sans pilotage clavier (`essai_lama`) : l'affichage, le thème et le
+    // prompt viennent de l'environnement, l'application se conduit seule.
+    const essai = await invoke("essai_lama");
+    if (essai.theme) document.documentElement.dataset.theme = essai.theme;
+    if (essai.affichage) document.querySelector(`[data-affichage="${essai.affichage}"]`)?.click();
+    if (essai.prompt) {
+      $("intention-texte").value = essai.prompt;
+      interpreterIntention();
+    }
+    // Audit de gabarit (`audit.js`, `scripts/audit-interface.sh`) : chargé à la
+    // demande, jamais en usage normal.
+    if (essai.audit) {
+      const script = document.createElement("script");
+      script.src = "audit.js";
+      script.onload = () => auditerInterface().catch((e) => journalCarte("AUDIT ERREUR " + (e?.stack ?? e), "warn"));
+      document.head.appendChild(script);
+    }
   })
   .catch(() => {});
 

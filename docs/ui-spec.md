@@ -189,6 +189,78 @@ texte libre la playlist voulue, pas seulement nommer une famille.
     quelques ms. Reste hors de ce chantier : fusion de plusieurs graines
     (`alchemy`/`subtract`), ordre lissé par tempo/énergie/tonalité,
     redécouverte (aucun historique d'écoute stocké), raffinement multi-tours.
+- **Playlists en plusieurs parties et affichage « Lama » (1ᵉʳ octobre 2026).**
+  « Rock pendant 12 minutes, puis hip hop pendant 20 minutes » a révélé le
+  défaut de fond : le schéma ne savait pas dire *une suite de parties, chacune
+  avec son genre et sa durée* — Ollama rendait une étape « a transition from
+  rock to hip hop », perdait les durées et faisait de « rock, hip hop » un
+  filtre commun. Désormais :
+  - **Spec** : `reformulation` (premier champ du schéma — le modèle écrit sa
+    compréhension avant de remplir le reste) et `parties` (`description`
+    anglaise, `genres`, `energie`, `duree_minutes`, `n`). Les exclusions,
+    années, tempo, popularité et plafond restent globaux. Une partie unique est
+    ramenée aux champs globaux ; avec ≥ 2 parties, le genre commun est vidé et
+    la taille globale se partage également (`normaliser_parties`).
+  - **Garde-fous déterministes** : un genre — voulu ou refusé — que le texte
+    de l'utilisateur ne nomme pas est écarté (`ancrer_genres` : « énergique pour
+    faire du sport » ne devient plus `electronic`, `hard rock`…) ; un « puis »
+    explicite entre deux genres nommés donne des parties même si le modèle les
+    a rendus en filtre commun (`inferer_parties`). « A puis B » sans durée reste
+    ambigu (parties ou progression douce) : les deux lectures se composent.
+  - **Composition par parties** (`composer_route`/`composer_partie`) : filtres
+    propres à la partie, jamais un morceau déjà pris ; départ de la première =
+    départ nommé ou morceau le plus proche de sa description, des suivantes =
+    **le morceau admissible le plus proche de la fin de la précédente** ; durée
+    ajustée sur l'échantillon *et* les préfixes de la marche
+    (`ajuster_a_duree`, 12 min visées → 12:04 obtenues sur la vraie
+    bibliothèque). Le résultat porte, par partie, l'**entonnoir** des filtres
+    (`entonnoir` : 27 385 → 7 922 rock…), le départ et pourquoi, la durée
+    obtenue, les assouplissements.
+  - **Interface** : le champ d'intention quitte la ligne partagée au-dessus des
+    quatre affichages (où il n'avait aucun lien avec ce qu'on y voyait) pour un
+    **cinquième affichage, « 🦙 Lama »**, dans Explorer — le lama reste une façon
+    d'explorer la bibliothèque. Le panneau central, dédié à l'interprète, est un
+    seul conteneur qui défile, **sans cartes encadrées** (des filets) :
+    - **À vide** : un accueil (« Que voulez-vous écouter ? ») et les exemples de
+      prompts en liste (étiquette en accent + texte) ; un clic remplit le champ.
+      Une fois une demande faite, l'accueil s'efface (le champ porte déjà la
+      demande — pas de carte « Vous avez demandé ») ; le lien « Exemples » le
+      rouvre.
+    - **La carte en tête** : le **mini-nuage** (carré, à gauche) — tous les
+      morceaux estompés, ce que les filtres de chaque partie retiennent en
+      couleur, la route par partie, bulle et clic sur un point de la route.
+      C'est l'interaction entre la demande et la bibliothèque ; les boutons
+      « Voir sur le Nuage / la Carte » essayés d'abord ont été retirés (peu
+      utiles). La route d'une playlist composée par le Lama garde pourtant sa
+      couleur par partie si l'on passe à la main sur le Nuage ou la Carte.
+    - **« Ollama a compris »** (à droite de la carte) : la reformulation en
+      serif italique, les parties en barre proportionnelle à leur durée et
+      éditables (nom, genres retirables, description, durée), les contraintes
+      retirables, départ/arrivée, « Recomposer », réponse brute repliée.
+    - **Dessous** : « Rusty Music a cherché » (l'entonnoir de chaque partie,
+      côte à côte) puis « Résultat » par parties (un clic lit à partir d'ici).
+    - **Marges symétriques** (`--gouttiere`, 26 px de chaque côté, mesurées
+      jusqu'au panneau droit visible) : deux défauts les rompaient — le repère A–Z
+      de l'Écoute, resté affiché en Explorer (masqué par le mode : `body[data-mode="explorer"]
+      .index-alpha`, pas seulement par `hidden`, que le rendu de la grille
+      rétablissait), et surtout **la file d'attente, large de 320 px pour un
+      inspecteur de 300**, qui empiétait sur le centre dès qu'une playlist
+      s'ouvrait. Désormais `--largeur-droite` pour les deux (Règle 10).
+    - **Le rail ne garde que le sélecteur d'Affichage** : en Lama, ni Années, ni
+      « Colorer par », ni zoom, ni Familles, ni champ « Chercher » (qui filtre la
+      carte en Explorer) — sans objet (`majRailExplorer`, `#reglages-explorer`).
+      Les cinq affichages sont en **colonne** : en ligne, ils ne tenaient pas dans
+      la largeur du rail.
+    Voir `docs/interface-guidelines.md` (« Explorer → Lama »).
+  - **Essais sans clavier** : `RUSTY_MUSIC_AFFICHAGE=lama`,
+    `RUSTY_MUSIC_PROMPT="…"`, `RUSTY_MUSIC_THEME=clair` (commande `essai_lama`) ;
+    `RUSTY_MUSIC_DONNEES=<dossier>` pour un autre dossier de données ; et
+    **`scripts/audit-interface.sh`** (`RUSTY_MUSIC_AUDIT=1`, `apps/desktop/ui/audit.js`,
+    commande `essai_fenetre`) : la webview ne se capture pas hors de son Espace
+    macOS, on la mesure de l'intérieur — marges, jetons de gabarit, débordements,
+    contrôles recouverts, sur tous les écrans, états, thèmes et tailles de
+    fenêtre, sur une copie de la base. Voir la Règle 10 de
+    `docs/interface-guidelines.md`.
 - **Le modèle Ollama se choisit, ne se devine pas.** Un nom fixe en repli
   (`qwen2.5:3b`, celui de `preparer_vocabulaire.py`) échoue dès que la machine
   ne l'a pas installé — Ollama rend alors un 404 sur `/api/generate`

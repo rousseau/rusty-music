@@ -93,7 +93,9 @@ tauri-plugin-opener = "2"
 # Sérialisation des données du moteur vers l'interface — `architecture.md` :
 # « le moteur expose positions, clusters, métadonnées à l'interface (JSON) ».
 serde      = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order` : l'ordre des clés du schéma JSON passé à Ollama compte (le
+# modèle les écrit dans cet ordre — `reformulation` doit venir en premier).
+serde_json = { version = "1", features = ["preserve_order"] }
 
 # Étirement temporel à hauteur préservée, pour la lecture à vitesse variable et
 # pour l'éditeur. **Vérifié avant d'écrire le nôtre** : `wsola` fait exactement

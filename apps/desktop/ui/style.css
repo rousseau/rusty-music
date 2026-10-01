@@ -10,6 +10,18 @@
   --txt:     #EDE8DC;
   --mut:     #9A9284;
   --accent:  #C07C4A;
+  /* Le gabarit : une seule source pour les largeurs, les marges et les hauteurs
+     que plusieurs règles doivent partager. La file d'attente, en surimpression,
+     **recouvre exactement** l'inspecteur (`--largeur-droite`) : plus large, elle
+     empiétait sur le centre et lui volait sa marge de droite (mesuré par
+     `scripts/audit-interface.sh`). Voir la Règle 10 de
+     `docs/interface-guidelines.md`. */
+  --largeur-rail:       232px;
+  --largeur-droite:     300px;  /* inspecteur ET file d'attente */
+  --hauteur-transport:   64px;
+  --gouttiere:           26px;  /* marge du contenu du panneau central */
+  --gouttiere-panneau:   18px;  /* marge intérieure des panneaux (rail, inspecteur, file, transport) */
+  --colonne-lecture:    760px;  /* largeur d'une colonne de lecture, centrée dans le panneau */
   --serif:   Newsreader, Georgia, "Times New Roman", serif;
   --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
@@ -40,6 +52,14 @@
      légende et le mode « isoler » restent la voie. */
   --familles: #EF8891, #EC9066, #D99E46, #B7AF47, #88BC6A, #4EC497,
               #0CC3C3, #38BBE6, #73AEF8, #A39FF6, #C892E1, #E289BD;
+
+  /* Les parties d'une playlist « X puis Y » (panneau Lama, route sur le Nuage
+     et la Carte) : six teintes bien écartées, prises dans les familles pour
+     rester dans la même encre ; `--partie-texte` est l'encre des libellés
+     posés dessus. */
+  --partie-1: #73AEF8; --partie-2: #EC9066; --partie-3: #4EC497;
+  --partie-4: #C892E1; --partie-5: #D99E46; --partie-6: #E289BD;
+  --partie-texte: #14120E;
 }
 
 :root[data-theme="clair"] {
@@ -59,6 +79,10 @@
   /* Mêmes teintes, assombries pour tenir sur un fond clair. */
   --familles: #B24B58, #B05323, #9E6300, #7E7400, #4C8227, #00895D,
               #00888A, #0080AC, #3472BE, #6B63BC, #8F56A7, #A74D83;
+  /* Mêmes six parties, assombries pour tenir sur un fond clair. */
+  --partie-1: #3472BE; --partie-2: #B05323; --partie-3: #00895D;
+  --partie-4: #8F56A7; --partie-5: #9E6300; --partie-6: #A74D83;
+  --partie-texte: #FBF8F1;
 }
 
 * { box-sizing: border-box; }
@@ -85,12 +109,12 @@ html, body {
 .atelier {
   display: grid;
   height: 100vh;
-  grid-template-columns: 232px 1fr 300px;
+  grid-template-columns: var(--largeur-rail) 1fr var(--largeur-droite);
   /* La barre d'outils des stems (module 3) occupe une rangée à hauteur nulle
      tant qu'elle est masquée. Ce n'est plus un tiroir : la pile de stems vit
      au centre, cette rangée ne porte que les réglages d'ensemble
      (`docs/ui-spec-editeur.md`, « Le parcours — le centre a trois états »). */
-  grid-template-rows: 1fr auto 64px;
+  grid-template-rows: 1fr auto var(--hauteur-transport);
   grid-template-areas:
     "rail centre inspecteur"
     "dock dock dock"
@@ -104,7 +128,7 @@ html, body {
   grid-area: dock;
   background: var(--panel);
   border-top: 1px solid var(--line);
-  padding: 8px 18px;
+  padding: 8px var(--gouttiere-panneau);
 }
 .dock__tete { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .dock__tete .file__fermer { margin-left: auto; }
@@ -120,7 +144,7 @@ html, body {
 /* ---------- l'établi : la pile de stems au centre (état 3) ---------- */
 .etabli {
   flex: 1; min-height: 0; overflow-y: auto;
-  padding: 12px 16px; position: relative;
+  padding: 12px var(--gouttiere); position: relative;
 }
 .etabli .dock__pistes { gap: 4px; }
 /* Un seul playhead vertical en travers de la pile — il rend visible la
@@ -133,7 +157,7 @@ html, body {
 }
 
 /* ---------- état 2 : le morceau visé, au centre (l'action est dans le rail) ---------- */
-.editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px; display: flex; justify-content: center; align-items: flex-start; }
+.editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px var(--gouttiere); display: flex; justify-content: center; align-items: flex-start; }
 .editer-separer .aide { max-width: 520px; margin: 0; }
 
 /* Une piste de stem, façon en-tête de piste d'un séquenceur (GarageBand) :
@@ -252,7 +276,7 @@ html, body {
   grid-area: rail;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 18px 16px;
+  padding: 18px var(--gouttiere-panneau);
   overflow: auto;
 }
 .marque { display: flex; align-items: baseline; gap: 7px; margin-bottom: 26px; }
@@ -314,19 +338,18 @@ html, body {
 
 .fil {
   display: flex; align-items: baseline; gap: 14px;
-  padding: 20px 26px 14px;
+  padding: 20px var(--gouttiere) 14px;
   border-bottom: 1px solid var(--line);
   flex: none;
 }
 
-/* Champ d'intention : une ligne partagée entre les modes (voir
-   `docs/interface-guidelines.md`), révélée seulement là où un comportement
-   est branché — Explorer pour l'instant. Peau `.chercher` reprise telle
-   quelle : même langage visuel que la recherche du rail, `#intention-texte`
-   n'a besoin que d'un placeholder distinct pour ne pas s'y confondre. */
+/* Champ d'intention : vit dans l'en-tête du panneau Lama (Explorer →
+   `#lama-vue`), plus sur une ligne partagée entre les affichages. Peau
+   `.chercher` reprise telle quelle : même langage visuel que la recherche du
+   rail, `#intention-texte` n'a besoin que d'un placeholder distinct pour ne
+   pas s'y confondre. */
 .intention {
-  padding: 14px 26px 14px;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
   flex: none;
 }
 .intention__ligne { display: flex; gap: 8px; }
@@ -413,6 +436,11 @@ html, body {
   display: flex; flex-direction: column;
   z-index: 2;
 }
+/* Le repère A–Z n'a de sens que dans les listes de l'Écoute. En Explorer il se
+   dessinait par-dessus la carte et le Lama, dans la marge de droite, qui
+   paraissait alors plus étroite que celle de gauche : masqué par le mode, pas
+   seulement par `hidden` (que le rendu de la grille rétablit après coup). */
+body[data-mode="explorer"] .index-alpha { display: none; }
 .index-alpha__lettre {
   flex: 1; min-height: 0;
   display: flex; align-items: center; justify-content: center;
@@ -430,7 +458,7 @@ html, body {
    à l'écran. Changer l'un sans l'autre désaligne le rendu silencieusement. */
 .ligne {
   display: flex; align-items: center; gap: 14px;
-  padding: 0 26px; height: 44px;
+  padding: 0 var(--gouttiere); height: 44px;
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
@@ -519,7 +547,7 @@ html, body {
    hauteur totale, une fenêtre de cases translatée qui seule existe dans le
    DOM. La fenêtre est une grille CSS ordinaire — c'est le nombre de rangées
    qu'elle contient, pas la disposition des colonnes, qui est virtualisé. */
-.grille { flex: 1; overflow-y: auto; position: relative; outline: none; padding: 0 26px; }
+.grille { flex: 1; overflow-y: auto; position: relative; outline: none; padding: 0 var(--gouttiere); }
 
 /* Grille des albums d'un artiste précis (mode Écoute, bandeau « autour de cet
    artiste » visible — voir `majAutourArtiste`) : `.grille` cesse d'être son
@@ -536,7 +564,7 @@ html, body {
 /* Bandeaux secondaires sous la grille des albums d'un artiste (mode Écoute) —
    jamais de hauteur imposée : chacun prend son contenu, `.grille` cède la
    place (voir `.centre__corps`, flex-colonne). */
-.autour-artiste { flex: 0 0 auto; padding: 4px 26px 18px; border-top: 1px solid var(--line); }
+.autour-artiste { flex: 0 0 auto; padding: 4px var(--gouttiere) 18px; border-top: 1px solid var(--line); }
 .autour-artiste__section + .autour-artiste__section { margin-top: 12px; }
 /* La bio réutilise .insp__bio (typo de l'inspecteur) mais le centre est bien
    plus large que l'aside : une ligne de mesure raisonnable plutôt qu'un
@@ -698,7 +726,7 @@ html, body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .carte__aide {
-  position: absolute; left: 26px; bottom: 16px; pointer-events: none;
+  position: absolute; left: var(--gouttiere); bottom: 16px; pointer-events: none;
   /* Le texte change avec le mode de chemin : il lui faut de quoi passer à la
      ligne plutôt que de déborder du cadre. */
   max-width: calc(100% - 52px);
@@ -735,6 +763,8 @@ html, body {
    empile, et la séparation passe du côté gauche au côté haut. */
 .segments--colonne { flex-direction: column; }
 .segments--colonne .segment { text-align: left; padding: 6px 9px; }
+/* L'Affichage d'Explorer : cinq lignes, un peu serrées. */
+#bloc-colorer > .segments--colonne .segment { padding: 5px 9px; }
 .segments--colonne .segment + .segment {
   border-left: none; border-top: 1px solid var(--line);
 }
@@ -766,14 +796,7 @@ html, body {
 }
 .borne__x:hover { color: var(--accent); }
 
-/* Champ d'intention (Explorer) : plan interprété, dans l'inspecteur. */
-/* En tête de l'inspecteur (voir index.html) : une bordure basse le sépare
-   nettement de la pochette qui suit, comme le fait déjà `.fil` pour l'entête
-   du centre. */
-#bloc-plan-texte {
-  padding-bottom: 16px; margin-bottom: 16px;
-  border-bottom: 1px solid var(--line);
-}
+/* Plan interprété : dans la carte « Ollama a compris » du panneau Lama. */
 .plan-texte__etapes { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 /* Contraintes extraites du texte : une ligne par contrainte, retirable —
    même gabarit que `.borne`, sans rôle. `--exclu` : un refus (« sans rock »),
@@ -792,10 +815,6 @@ html, body {
 /* Une durée posée prime sur le nombre de morceaux : celui-ci s'estompe, il ne
    disparaît pas (Règle 2). */
 #plan-texte-n:disabled { opacity: .45; }
-.plan-texte__relaches { margin: -4px 0 12px; font-size: 11.5px; line-height: 1.45; color: var(--mut); }
-.plan-texte__relaches p { margin: 0 0 4px; }
-.plan-texte__relaches .relache--erreur { color: #C0503A; }
-#plan-texte-composer { width: 100%; }
 
 /* Le geste attendu change avec le mode : il est écrit sous les boutons plutôt
    qu'appris. */
@@ -894,7 +913,7 @@ html, body {
   grid-area: inspecteur;
   background: var(--panel);
   border-left: 1px solid var(--line);
-  padding: 18px 18px 22px;
+  padding: 18px var(--gouttiere-panneau) 22px;
   overflow: auto;
 }
 .pochette {
@@ -1015,7 +1034,7 @@ html, body {
 .transport {
   grid-area: trans;
   display: flex; align-items: center; gap: 16px;
-  padding: 0 18px;
+  padding: 0 var(--gouttiere-panneau);
   border-top: 1px solid var(--line);
   background: var(--panel);
 }
@@ -1115,7 +1134,13 @@ html, body {
 .lien:visited:hover { color: var(--accent); }
 
 /* ---------- mode Bibliothèque ---------- */
-.bibliotheque { flex: 1; overflow-y: auto; padding: 24px 28px 40px; max-width: 760px; }
+/* Une colonne de lecture (`--colonne-lecture`) **centrée** dans le panneau : le
+   conteneur reste pleine largeur (la barre de défilement reste au bord du
+   panneau), c'est le padding qui centre — jamais moins que la gouttière. */
+.bibliotheque {
+  flex: 1; overflow-y: auto;
+  padding: 24px max(var(--gouttiere), calc((100% - var(--colonne-lecture)) / 2)) 40px;
+}
 
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 10px; }
 .stats__carte {
@@ -1217,7 +1242,7 @@ html, body {
    d'Écouter. Pleine largeur ; seul l'explorateur du bas garde une mesure de
    lecture. Les cartes ont des hauteurs variables (ligne « avec X »),
    d'où `align-items: start`. */
-#decouvrir-vue.bibliotheque { max-width: none; padding-left: 26px; padding-right: 26px; }
+#decouvrir-vue.bibliotheque { max-width: none; padding-left: var(--gouttiere); padding-right: var(--gouttiere); }
 #decouvrir-fil, #decouvrir-vide, #decouvrir-centre { max-width: 760px; }
 #decouvrir-centre { scroll-margin-top: 12px; }
 
@@ -1360,10 +1385,12 @@ html, body {
 
 /* ---------- file d'attente ---------- */
 /* En superposition au-dessus de l'inspecteur : la coquille est déjà dense,
-   un quatrième volet permanent la ferait basculer côté « panneau ». */
+   un quatrième volet permanent la ferait basculer côté « panneau ». Il recouvre
+   **exactement** l'inspecteur — même largeur (`--largeur-droite`), arrêté au
+   transport — et jamais plus : sinon il mord sur la marge de droite du centre. */
 .file {
-  position: fixed; right: 0; bottom: 64px; top: 0;
-  width: 320px; z-index: 10;
+  position: fixed; right: 0; bottom: var(--hauteur-transport); top: 0;
+  width: var(--largeur-droite); z-index: 10;
   background: var(--panel);
   border-left: 1px solid var(--line);
   box-shadow: -14px 0 34px rgba(0, 0, 0, .34);
@@ -1371,7 +1398,7 @@ html, body {
 }
 .file__tete {
   display: flex; align-items: baseline; gap: 10px;
-  padding: 18px 18px 12px; border-bottom: 1px solid var(--line); flex: none;
+  padding: 18px var(--gouttiere-panneau) 12px; border-bottom: 1px solid var(--line); flex: none;
 }
 .file__tete .rail__titre { margin: 0; }
 .file__fermer {
@@ -1385,7 +1412,7 @@ html, body {
    varie ici (« répéter tout »), un carré fixe ne conviendrait pas. */
 .file__transport {
   display: flex; gap: 8px;
-  padding: 10px 18px; border-bottom: 1px solid var(--line); flex: none;
+  padding: 10px var(--gouttiere-panneau); border-bottom: 1px solid var(--line); flex: none;
 }
 .file__bouton {
   flex: 1; padding: 5px 0; border: 1px solid var(--line); border-radius: 5px;
@@ -1399,11 +1426,11 @@ html, body {
 }
 
 .file__liste { flex: 1; overflow-y: auto; }
-.file__vide { padding: 18px; font-size: 12.5px; color: var(--mut); }
+.file__vide { padding: var(--gouttiere-panneau); font-size: 12.5px; color: var(--mut); }
 
 .file__ligne {
   display: flex; align-items: center; gap: 11px;
-  padding: 9px 18px; cursor: pointer;
+  padding: 9px var(--gouttiere-panneau); cursor: pointer;
   border-bottom: 1px solid var(--line);
 }
 .file__ligne:hover { background: var(--panel2); }
@@ -1432,7 +1459,7 @@ html, body {
 /* Bandeau de phase : « Préparation du graphe des voisins… » (~20 s la
    première fois d'une session), puis « Composition… ». */
 .file__compo {
-  padding: 12px 18px 14px; border-bottom: 1px solid var(--line); flex: none;
+  padding: 12px var(--gouttiere-panneau) 14px; border-bottom: 1px solid var(--line); flex: none;
 }
 .file__compo-phase {
   display: block; font-family: var(--mono); font-size: 10.5px; color: var(--mut);
@@ -1607,3 +1634,128 @@ html, body {
    l'échelle de la rue). */
 #carte-vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s; }
 .maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display: none !important; }
+
+/* ------------------------------------------------------------------ Lama
+   Explorer → Lama : le panneau central dédié à l'interprète. Un seul
+   conteneur qui défile : à vide, un accueil et des exemples ; après une
+   demande, la carte en tête (le mini-nuage) à côté de ce qu'Ollama a compris,
+   puis, dessous, ce que Rusty Music a cherché et ce qui en sort. Pas de
+   cartes encadrées : des filets d'un pixel et la typographie (Règle 5). Les
+   parties ont leurs six teintes (`--partie-*`), dessinées pour les deux
+   thèmes (Règle 6). */
+.lama { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lama__tete { flex: none; padding: 14px var(--gouttiere) 10px; border-bottom: 1px solid var(--line); }
+.lama__erreur { color: #C0503A; margin: 8px 0 0; }
+.lama__exemples-lien { display: block; margin-top: 8px; font-size: 11.5px; }
+/* `scrollbar-gutter: stable both-edges` : avec des barres de défilement
+   permanentes (souris externe), la marge de droite ne grossit pas d'une
+   barre — on réserve la même largeur à gauche, pour que le contenu reste
+   centré entre le rail et l'inspecteur. */
+.lama__corps {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--gouttiere) 40px;
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Accueil : le titre, une phrase, puis les exemples en liste — étiquette en
+   accent, filets, rien d'encadré. */
+.lama__accueil { padding: 26px 0 10px; max-width: 66ch; margin-inline: auto; }
+.lama__accueil-titre {
+  font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -.01em;
+  margin: 0 0 8px;
+}
+.lama__accueil-texte { color: var(--mut); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
+.lama__liste-exemples { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.lama__liste-exemples li { border-bottom: 1px solid var(--line); }
+.lama__exemple {
+  display: flex; gap: 14px; align-items: baseline; width: 100%; text-align: left;
+  font: inherit; font-size: 13px; line-height: 1.4; padding: 9px 2px;
+  background: none; border: none; color: var(--txt); cursor: pointer;
+}
+.lama__exemple:hover { color: var(--accent); }
+.lama__exemple-tag {
+  flex: 0 0 96px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent);
+}
+
+/* La carte en tête, ce qu'Ollama a compris à côté. */
+.lama__haut {
+  /* Deux colonnes seulement si chacune a au moins 300 px : dans une fenêtre
+     étroite, la carte puis « Ollama a compris » s'empilent (mesuré à 960 px : la
+     colonne de droite, trop étroite, débordait du panneau). */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px; padding: 20px 0 22px; align-items: start;
+}
+.lama__nuage { position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--bg); border: 1px solid var(--line); }
+.lama__nuage canvas { display: block; width: 100%; height: 100%; }
+.lama__nuage-col .aide { margin-top: 8px; }
+.lama__bulle {
+  position: absolute; pointer-events: none; z-index: 5; max-width: 240px;
+  background: var(--panel); border: 1px solid var(--line); padding: 5px 8px; font-size: 11.5px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+.lama__compris { min-width: 0; }
+.lama__compris.lama__carte--pose, .lama__section.lama__carte--pose { animation: lama-pose .35s ease both; }
+@keyframes lama-pose { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.lama__titre {
+  font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--mut); margin: 0 0 10px;
+}
+.lama__reformulation { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.4; margin: 0 0 14px; }
+
+.lama__barre { display: flex; gap: 2px; height: 32px; margin: 4px 0 12px; }
+.lama__segment {
+  display: flex; align-items: center; min-width: 0; padding: 0 9px; cursor: default;
+  font-size: 11.5px; font-weight: 600; color: var(--partie-texte);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.lama__segment.lama--survol { outline: 2px solid var(--txt); outline-offset: -2px; }
+.lama__parties { list-style: none; margin: 0 0 12px; padding: 0; }
+.lama__partie {
+  padding: 6px 0 6px 10px; margin-bottom: 4px; border-left: 3px solid var(--couleur, var(--accent));
+}
+.lama__partie.lama--survol { background: var(--panel2); }
+.lama__partie-ligne { display: flex; align-items: center; gap: 6px 8px; }
+.lama__partie-ligne + .lama__partie-ligne { margin-top: 5px; }
+.lama__partie-nom { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; }
+.lama__partie-genres { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.lama__partie .chercher { flex: 1 1 0; min-width: 0; padding: 5px 8px; }
+.lama__partie .lama__partie-duree { flex: 0 0 64px; }
+.lama__chip {
+  font: inherit; font-size: 11px; padding: 1px 7px; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 2px; color: var(--txt);
+}
+.lama__chip:hover { border-color: var(--accent); }
+.lama__recomposer { width: 100%; margin-top: 12px; }
+.lama__brut { margin-top: 12px; }
+.lama__brut summary { cursor: pointer; font-size: 11.5px; color: var(--mut); }
+.lama__brut pre {
+  max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 10px;
+  font: 11px/1.45 var(--mono); white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line);
+}
+
+/* Les sections du dessous : un filet, pas un cadre. */
+.lama__section { border-top: 1px solid var(--line); padding: 18px 0 8px; }
+.lama__cherche { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px 30px; }
+.lama__cherche-partie { --couleur: var(--accent); }
+.lama__cherche-partie h4 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.lama__cherche-partie.lama--survol { background: var(--panel2); }
+.lama__entonnoir { list-style: none; margin: 0 0 6px; padding: 0; }
+.lama__entonnoir li { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 54px; gap: 8px; align-items: center; font-size: 11.5px; padding: 2px 0; }
+.lama__entonnoir-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lama__entonnoir-barre { height: 8px; background: var(--panel2); display: block; }
+.lama__entonnoir-barre i { display: block; height: 100%; background: var(--couleur); }
+.lama__entonnoir-n { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.lama__relache { color: var(--accent); }
+.lama__relache--erreur { color: #C0503A; }
+.lama__point { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
+
+.lama__groupe { padding: 4px 0 2px; }
+.lama__groupe.lama--survol { background: var(--panel2); }
+.lama__groupe-tete { display: flex; align-items: center; gap: 8px; }
+.lama__groupe-tete .aide { margin: 0; }
+.lama__pistes { margin: 6px 0 12px; padding-left: 30px; font-size: 12.5px; }
+.lama__pistes li { display: list-item; padding: 2px 4px; cursor: pointer; }
+.lama__pistes li:hover { background: var(--panel2); }
+.lama__pistes li > span:first-child { display: inline; }
+.lama__piste-duree { float: right; font-family: var(--mono); font-size: 11px; color: var(--mut); margin-left: 12px; }

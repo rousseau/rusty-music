@@ -165,7 +165,7 @@ fn artistes_de(mention: &str) -> Vec<String> {
 
 /// Les mots d'un genre ou d'une demande : minuscules, hors ponctuation, de
 /// sorte que « hip-hop », « hip hop » et « rap/hip hop » partagent leurs mots.
-fn mots(s: &str) -> Vec<String> {
+pub(crate) fn mots(s: &str) -> Vec<String> {
     s.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|m| !m.is_empty())
@@ -175,7 +175,7 @@ fn mots(s: &str) -> Vec<String> {
 
 /// Les formulations équivalentes d'une demande de genre : « rap » et « hip
 /// hop » désignent la même chose, et la bibliothèque les range sous les deux.
-fn variantes_de_genre(demande: &str) -> Vec<String> {
+pub(crate) fn variantes_de_genre(demande: &str) -> Vec<String> {
     // Un genre composé (« rap/hip hop », comme la bibliothèque en contient) est
     // une alternative, pas une conjonction : n'exiger que *tous* ses mots
     // laisserait passer le « rap » seul — mesuré en demandant « sans rap ».
@@ -303,6 +303,63 @@ fn filtrer(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> HashSet<i64
         .collect()
 }
 
+/// Combien de morceaux restent après chaque famille de critères, appliquées
+/// l'une après l'autre : la bibliothèque, les genres voulus, les refus, la
+/// période, le tempo, l'énergie, la popularité. Rend `(libellé, restants)`,
+/// une ligne par famille **réellement demandée** — de quoi montrer pourquoi
+/// une sélection est large ou étroite (« 27 385 → 6 340 rock → 5 900 hors
+/// Prince »), sans rien inventer : ce sont les mêmes comptes que [`selectionner`]
+/// avant tout assouplissement.
+pub fn entonnoir(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> Vec<(String, usize)> {
+    let mut etapes = vec![("Bibliothèque".to_string(), pistes.len())];
+    let mut courant = FiltresPlaylist::default();
+    let ajouter = |libelle: String, courant: &FiltresPlaylist, etapes: &mut Vec<(String, usize)>| {
+        etapes.push((libelle, filtrer(pistes, courant).len()));
+    };
+    if !f.genres.is_empty() {
+        courant.genres = f.genres.clone();
+        ajouter(format!("genre : {}", f.genres.join(", ")), &courant, &mut etapes);
+    }
+    if !f.exclure_genres.is_empty() || !f.exclure_artistes.is_empty() {
+        courant.exclure_genres = f.exclure_genres.clone();
+        courant.exclure_artistes = f.exclure_artistes.clone();
+        let refus: Vec<&str> =
+            f.exclure_genres.iter().chain(&f.exclure_artistes).map(String::as_str).collect();
+        ajouter(format!("sans {}", refus.join(", ")), &courant, &mut etapes);
+    }
+    if f.annee_min.is_some() || f.annee_max.is_some() {
+        courant.annee_min = f.annee_min;
+        courant.annee_max = f.annee_max;
+        let texte = match (f.annee_min, f.annee_max) {
+            (Some(a), Some(b)) => format!("{a}–{b}"),
+            (Some(a), None) => format!("depuis {a}"),
+            (None, Some(b)) => format!("jusqu'en {b}"),
+            (None, None) => unreachable!(),
+        };
+        ajouter(format!("période : {texte}"), &courant, &mut etapes);
+    }
+    if f.bpm_min.is_some() || f.bpm_max.is_some() {
+        courant.bpm_min = f.bpm_min;
+        courant.bpm_max = f.bpm_max;
+        let texte = match (f.bpm_min, f.bpm_max) {
+            (Some(a), Some(b)) => format!("{a:.0}–{b:.0} BPM"),
+            (Some(a), None) => format!("≥ {a:.0} BPM"),
+            (None, Some(b)) => format!("≤ {b:.0} BPM"),
+            (None, None) => unreachable!(),
+        };
+        ajouter(format!("tempo : {texte}"), &courant, &mut etapes);
+    }
+    if let Some(e) = f.energie {
+        courant.energie = Some(e);
+        ajouter(format!("énergie : {}", e.libelle()), &courant, &mut etapes);
+    }
+    if let Some(p) = f.popularite {
+        courant.popularite = Some(p);
+        ajouter(format!("popularité : {}", p.libelle()), &courant, &mut etapes);
+    }
+    etapes
+}
+
 /// Lâche le critère désiré le moins essentiel encore posé, dans l'ordre :
 /// popularité, énergie, BPM, années, genres. Les exclusions ne sont jamais
 /// touchées. `None` quand il n'y a plus rien à lâcher.
@@ -409,27 +466,38 @@ pub fn plafonner_par_artiste(
 }
 
 /// Réduit `route` à la longueur dont la durée cumulée approche le mieux
-/// `cible_ms`, en gardant les extrémités et l'allure du trajet (`reduire`,
-/// typiquement `chemin::echantillonner`). Une route trop courte pour
-/// atteindre la cible est rendue telle quelle : la durée est alors un
-/// plafond manqué, que l'appelant signale.
+/// `cible_ms`. Deux familles de candidats : la route **échantillonnée** à n
+/// morceaux (`reduire`, typiquement `chemin::echantillonner`) — elle garde les
+/// deux extrémités et l'allure du trajet — et, sauf `garder_fin`, ses
+/// **préfixes** (les k premiers morceaux de la marche). Les préfixes affinent
+/// la durée : avec des morceaux de 4-6 minutes, l'échantillon n'a que de gros
+/// pas (mesuré : 9 min pour 12 visées sur une partie « rock »). `garder_fin`
+/// quand le dernier morceau est une arrivée nommée, qu'on ne peut pas couper.
+/// Une route trop courte pour atteindre la cible est rendue telle quelle : la
+/// durée est alors manquée, et l'appelant le signale.
 pub fn ajuster_a_duree(
     route: &[i64],
     duree_ms_de: &HashMap<i64, i64>,
     cible_ms: i64,
     reduire: impl Fn(&[i64], usize) -> Vec<i64>,
+    garder_fin: bool,
 ) -> Vec<i64> {
     let total = |r: &[i64]| -> i64 {
         r.iter().map(|id| duree_ms_de.get(id).copied().filter(|d| *d > 0).unwrap_or(DUREE_DEFAUT_MS)).sum()
     };
     let mut meilleur = route.to_vec();
     let mut ecart = (total(&meilleur) - cible_ms).abs();
-    for n in 2..route.len() {
-        let candidat = reduire(route, n);
+    let mut essayer = |candidat: Vec<i64>| {
         let e = (total(&candidat) - cible_ms).abs();
         if e < ecart {
             ecart = e;
             meilleur = candidat;
+        }
+    };
+    for n in 2..route.len() {
+        essayer(reduire(route, n));
+        if !garder_fin {
+            essayer(route[..n].to_vec());
         }
     }
     meilleur
@@ -530,6 +598,28 @@ mod tests {
     }
 
     #[test]
+    fn lentonnoir_decroit_et_ne_montre_que_ce_qui_est_demande() {
+        let c = corpus(); // 9 morceaux : impairs jazz 1962, pairs rock 1975
+        let f = FiltresPlaylist {
+            exclure_genres: vec!["rock".into()],
+            annee_max: Some(1970),
+            energie: Some(NiveauEnergie::Calme),
+            ..Default::default()
+        };
+        let e = entonnoir(&c, &f);
+        let libelles: Vec<&str> = e.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(libelles, ["Bibliothèque", "sans rock", "période : jusqu'en 1970", "énergie : calme"]);
+        let comptes: Vec<usize> = e.iter().map(|(_, n)| *n).collect();
+        assert_eq!(comptes[0], 9);
+        assert!(comptes.windows(2).all(|w| w[0] >= w[1]), "{comptes:?}");
+        // Cohérent avec la sélection elle-même (sans assouplissement).
+        let s = selectionner(&c, &f, 1).unwrap();
+        assert_eq!(*comptes.last().unwrap(), s.ids.len());
+        // Aucun critère : la bibliothèque seule.
+        assert_eq!(entonnoir(&c, &FiltresPlaylist::default()).len(), 1);
+    }
+
+    #[test]
     fn exclure_un_artiste_ignore_larticle_et_la_casse() {
         let f = FiltresPlaylist { exclure_artistes: vec!["rockers".into()], ..Default::default() };
         let s = selectionner(&corpus(), &f, 1).unwrap();
@@ -601,13 +691,23 @@ mod tests {
             (0..max).map(|i| r[i * (r.len() - 1) / (max - 1)]).collect()
         };
         // 30 min à 3 min le morceau → 10 morceaux.
-        let r = ajuster_a_duree(&route, &durees, 30 * 60_000, reduire);
+        let r = ajuster_a_duree(&route, &durees, 30 * 60_000, reduire, true);
         assert_eq!(r.len(), 10);
         assert_eq!(r.first(), Some(&1));
         assert_eq!(r.last(), Some(&20), "les extrémités sont gardées");
         // Cible hors de portée : la route entière.
-        let r = ajuster_a_duree(&route, &durees, 600 * 60_000, reduire);
+        let r = ajuster_a_duree(&route, &durees, 600 * 60_000, reduire, true);
         assert_eq!(r.len(), 20);
+        // Sans `garder_fin`, les préfixes affinent : des morceaux de durées
+        // inégales (4, 5 et 6 min…) tombent plus près de la cible.
+        let inegales: HashMap<i64, i64> =
+            route.iter().map(|id| (*id, if id % 2 == 0 { 300_000 } else { 240_000 })).collect();
+        let cible = 12 * 60_000;
+        let ecart = |r: &[i64]| (r.iter().map(|id| inegales[id]).sum::<i64>() - cible).abs();
+        let avec = ajuster_a_duree(&route, &inegales, cible, reduire, false);
+        let sans = ajuster_a_duree(&route, &inegales, cible, reduire, true);
+        assert!(ecart(&avec) <= ecart(&sans), "préfixes : {} contre {}", ecart(&avec), ecart(&sans));
+        assert_eq!(avec.first(), Some(&1), "le départ reste");
     }
 
     #[test]

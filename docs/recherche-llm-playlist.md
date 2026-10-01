@@ -167,6 +167,19 @@ Quatre défauts trouvés et corrigés grâce à ce banc :
   morceaux placables, sans sous-échantillon) : 53/53 sans problème, 0 panique,
   composition de 10 ms à 1,4 s par playlist (graphe des voisins déjà bâti).
 
+## Parties et réflexion visible (1ᵉʳ octobre 2026)
+
+Banc étendu à **64 prompts** (11 « parties », dont 2 annotés `ou_progression`,
+voir `experiments/prompts-playlist/prompts.json`) sur `gemma4:e4b-mlx` :
+**63/64 conformes**, 0 erreur d'interprétation, parties 11/11 ; composition
+**64/64** sans problème sur la bibliothèque entière (invariants par partie :
+genre, durée, continuité, aucun doublon). L'ajout de la reformulation et des
+parties avait d'abord **fait reculer** l'ancien jeu (47/53, des genres déduits
+de l'ambiance) : corrigé par une règle plus ferme dans la consigne et par
+`ancrer_genres` (un genre que le texte ne nomme pas est écarté, avec tolérance
+aux accents, synonymes français, variantes rap/hip hop et une faute de frappe).
+Reste : « Du metal » → énergie « intense » déduite (1 cas).
+
 ## Redécouverte (pistes, hors chantier actuel)
 
 - `added_at` existe, mais **aucun historique d'écoute** n'est stocké : « morceaux

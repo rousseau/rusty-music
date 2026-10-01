@@ -76,12 +76,23 @@
       <!-- Carte : visible en mode Explorer seulement -->
       <div class="bloc" id="bloc-colorer" hidden>
         <p class="rail__titre">Affichage</p>
-        <div class="segments">
+        <!-- Cinq affichages en colonne : en ligne, ils ne tenaient pas dans la
+             largeur du rail. -->
+        <div class="segments segments--colonne">
           <button class="segment segment--actif" data-affichage="points">Nuage</button>
           <button class="segment" data-affichage="carte">Carte</button>
           <button class="segment" data-affichage="temps">Temps</button>
           <button class="segment" data-affichage="anneau">Anneau</button>
+          <!-- Le lama : le panneau central est dédié à l'interprète (`#lama-vue`) —
+               prompt, réflexion d'Ollama et de Rusty Music, playlist par parties.
+               Reste dans Explorer : demander une playlist en mots est une façon
+               d'explorer la bibliothèque. -->
+          <button class="segment" data-affichage="lama" title="Décrire une playlist en mots">🦙 Lama</button>
         </div>
+        <!-- Tous les réglages des visualisations : sans objet dans le Lama, qui
+             n'a ni carte à colorer, ni années à filtrer, ni familles à isoler —
+             masqués en bloc par `majRailExplorer`. -->
+        <div id="reglages-explorer">
         <!-- Intervalle d'années : commun aux quatre visualisations
              (`filtreAnnee`, `majVisibiliteIntervalleAnnees`) — mêmes bornes
              que « Colorer par : Année » (`carte.bornes.annee`), pas une
@@ -169,6 +180,7 @@
             tension règle le regroupement des liens par famille (bundling
             hiérarchique) — 0 : droites directes, 1 : suit la hiérarchie.</p>
         </div>
+        </div><!-- /#reglages-explorer -->
       </div>
 
       <!-- Juste après Affichage/Colorer par, pas après Chemin : sur la frise,
@@ -282,40 +294,6 @@
           <button class="tri__opt" data-tri="alea">Aléatoire</button>
         </div>
       </header>
-      <!-- Champ d'intention : un seul champ, partagé entre les modes, jamais
-           recréé par `basculerMode()` — même principe que l'inspecteur
-           unique. Révélé pour l'instant seulement en Explorer, où il
-           interprète un prompt de playlist en texte libre (voir
-           `docs/interface-guidelines.md`, squelette à zones). -->
-      <div class="intention" id="bloc-intention" hidden>
-        <div class="intention__ligne">
-          <!-- Le modèle Ollama à interroger : un choix de machine (quels
-               modèles sont installés), pas une préférence à exposer en
-               permanence — replié derrière cette icône (Règle 5, sobriété),
-               dépliée sur clic (Règle 8, révélation progressive). -->
-          <button id="intention-ollama" type="button" class="intention__ollama"
-                  title="Choisir le modèle Ollama" aria-label="Choisir le modèle Ollama">
-            <!-- Marche (`.intention__ollama--travail`) le temps de
-                 l'interrogation d'Ollama — voir `interpreterIntention`. Sur
-                 son propre `span` : le bouton reste immobile, seul le lama
-                 anime. -->
-            <span id="intention-ollama-lama" aria-hidden="true">🦙</span>
-          </button>
-          <input id="intention-texte" class="chercher" type="text"
-                 placeholder="Décrivez la playlist voulue…" autocomplete="off">
-        </div>
-        <select id="intention-modele-liste" class="chercher" hidden></select>
-        <p id="intention-modele-etat" class="aide" hidden></p>
-        <!-- Pendant l'interrogation d'Ollama (de quelques secondes à plus
-             d'une minute selon le modèle, mesuré) : sans indice visible,
-             l'attente se lit comme un blocage. Même jauge indéterminée que
-             la composition de la file (`.file__compo-*`), pas une nouvelle
-             à inventer. -->
-        <div id="intention-progres" class="file__compo" hidden>
-          <span id="intention-progres-phase" class="file__compo-phase"></span>
-          <div class="file__compo-jauge"><i id="intention-progres-barre"></i></div>
-        </div>
-      </div>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
         <div id="grille" class="grille" tabindex="0"></div>
@@ -397,6 +375,130 @@
           <div id="carte-info" class="carte__info" hidden></div>
           <div class="carte__aide" id="carte-aide">
             molette : zoom · glisser : déplacer · clic : écouter
+          </div>
+        </div>
+
+        <!-- Explorer → Lama : le panneau central dédié à l'interprète. Un seul
+             conteneur qui défile : à vide, un accueil et des exemples ; après
+             une demande, la **carte en tête** (le mini-nuage, où la demande et
+             la bibliothèque se répondent) à côté de ce qu'Ollama a compris,
+             puis, dessous et sans cadre, ce que Rusty Music a cherché et ce qui
+             en sort. -->
+        <div id="lama-vue" class="lama" hidden>
+          <div class="lama__tete">
+            <div class="intention" id="bloc-intention">
+              <div class="intention__ligne">
+                <!-- Le modèle Ollama à interroger : un choix de machine (quels
+                     modèles sont installés), pas une préférence à exposer en
+                     permanence — replié derrière cette icône (Règle 5,
+                     sobriété), dépliée sur clic (Règle 8, révélation
+                     progressive). -->
+                <button id="intention-ollama" type="button" class="intention__ollama"
+                        title="Choisir le modèle Ollama" aria-label="Choisir le modèle Ollama">
+                  <!-- Marche (`.intention__ollama--travail`) le temps de
+                       l'interrogation d'Ollama — voir `interpreterIntention`.
+                       Sur son propre `span` : le bouton reste immobile, seul
+                       le lama anime. -->
+                  <span id="intention-ollama-lama" aria-hidden="true">🦙</span>
+                </button>
+                <input id="intention-texte" class="chercher" type="text"
+                       placeholder="Décrivez la playlist voulue…" autocomplete="off">
+              </div>
+              <select id="intention-modele-liste" class="chercher" hidden></select>
+              <p id="intention-modele-etat" class="aide" hidden></p>
+              <!-- Pendant l'interrogation d'Ollama (de quelques secondes à plus
+                   d'une minute selon le modèle, mesuré) : sans indice visible,
+                   l'attente se lit comme un blocage. Même jauge indéterminée
+                   que la composition de la file (`.file__compo-*`). -->
+              <div id="intention-progres" class="file__compo" hidden>
+                <span id="intention-progres-phase" class="file__compo-phase"></span>
+                <div class="file__compo-jauge"><i id="intention-progres-barre"></i></div>
+              </div>
+            </div>
+            <p id="lama-erreur" class="aide lama__erreur" aria-live="polite" hidden></p>
+            <button id="lama-exemples-lien" type="button" class="lien lama__exemples-lien">Exemples</button>
+          </div>
+
+          <div class="lama__corps" id="lama-corps">
+            <!-- À vide, et rouvert par « Exemples ». Un clic sur un exemple
+                 remplit le champ ; Entrée interroge. -->
+            <section id="lama-accueil" class="lama__accueil">
+              <h2 class="lama__accueil-titre">Que voulez-vous écouter ?</h2>
+              <p class="lama__accueil-texte">
+                Décrivez la playlist en français ou en anglais : une durée, des
+                genres, une époque, des artistes à éviter, ou une suite (« du rock
+                pendant 12 minutes, puis du hip hop »). Ollama traduit votre
+                demande ; Rusty Music la compose dans votre bibliothèque — et vous
+                montre ici comment.
+              </p>
+              <ul id="lama-exemples" class="lama__liste-exemples" aria-label="Exemples de demandes"></ul>
+            </section>
+
+            <!-- La carte en tête, ce qu'Ollama a compris à côté. -->
+            <div id="lama-haut" class="lama__haut" hidden>
+              <div class="lama__nuage-col">
+                <div class="lama__nuage">
+                  <canvas id="lama-nuage" aria-label="Mini-nuage de la bibliothèque : filtres et route de la playlist"></canvas>
+                  <div id="lama-nuage-info" class="lama__bulle" hidden></div>
+                </div>
+                <p id="lama-nuage-legende" class="aide"></p>
+              </div>
+
+              <section id="lama-compris" class="lama__compris" hidden>
+                <h3 class="lama__titre">🦙 Ollama a compris</h3>
+                <p id="lama-reformulation" class="lama__reformulation"></p>
+                <div id="lama-parties-barre" class="lama__barre" hidden></div>
+                <ol id="lama-parties" class="lama__parties"></ol>
+                <div id="lama-sans-partie">
+                  <p class="aide">Étapes</p>
+                  <ul id="plan-texte-etapes" class="plan-texte__etapes"></ul>
+                  <div class="plan-texte__taille">
+                    <div>
+                      <label class="aide" for="plan-texte-n">Morceaux</label>
+                      <input id="plan-texte-n" class="chercher" type="number" min="1" max="200">
+                    </div>
+                    <div>
+                      <label class="aide" for="plan-texte-duree">Durée (min)</label>
+                      <input id="plan-texte-duree" class="chercher" type="number" min="1" max="1440" placeholder="—">
+                    </div>
+                  </div>
+                </div>
+                <div id="plan-texte-contraintes" hidden>
+                  <p class="aide">Contraintes (pour toute la playlist)</p>
+                  <ul id="plan-texte-filtres" class="plan-texte__filtres"></ul>
+                </div>
+                <p class="aide" id="plan-texte-depart-titre">Départ</p>
+                <p id="plan-texte-depart" class="borne">
+                  <span id="plan-texte-depart-nom" class="borne__nom">par description</span>
+                  <button id="plan-texte-depart-effacer" class="borne__x" hidden title="Repartir d'un départ choisi par description">×</button>
+                </p>
+                <!-- Absent d'une simple dérive — ne s'affiche que si le prompt
+                     demandait une arrivée précise (voir `montrerPlanTexte`). -->
+                <p class="aide" id="plan-texte-arrivee-titre" hidden>Arrivée</p>
+                <p id="plan-texte-arrivee" class="borne" hidden>
+                  <span id="plan-texte-arrivee-nom" class="borne__nom"></span>
+                  <button id="plan-texte-arrivee-effacer" class="borne__x" title="Ne plus viser d'arrivée précise">×</button>
+                </p>
+                <button id="plan-texte-composer" class="bouton lama__recomposer">Recomposer</button>
+                <details class="lama__brut">
+                  <summary>Réponse brute d'Ollama</summary>
+                  <pre id="lama-brut"></pre>
+                </details>
+              </section>
+            </div>
+
+            <!-- Ce que Rusty Music a cherché — l'entonnoir, partie par partie. -->
+            <section id="lama-cherche" class="lama__section" hidden>
+              <h3 class="lama__titre">Rusty Music a cherché</h3>
+              <div id="lama-cherche-corps" class="lama__cherche"></div>
+            </section>
+
+            <!-- Ce qui en sort — la playlist, par parties. -->
+            <section id="lama-resultat" class="lama__section" hidden>
+              <h3 class="lama__titre">Résultat</h3>
+              <p id="lama-resultat-resume" class="aide"></p>
+              <div id="lama-resultat-corps"></div>
+            </section>
           </div>
         </div>
 
@@ -745,58 +847,6 @@
 
     <!-- Inspecteur droit -->
     <aside class="inspecteur">
-      <!-- Champ d'intention (Explorer) : le plan qu'Ollama a interprété.
-           **En tête de l'inspecteur, pas en pied** — la composition
-           s'enchaîne aussitôt et peuple `#insp` avec le premier morceau de la
-           playlist (bio, crédits, critiques...), qui ferait défiler ce bloc
-           hors champ si l'un poussait l'autre au lieu de le précéder. Reste
-           un bloc de plus du même inspecteur unique (`interface-
-           guidelines.md` Règle 1), pas une prévisualisation à part. -->
-      <div id="bloc-plan-texte" hidden>
-        <p class="rail__titre">Playlist interprétée</p>
-        <p class="aide">Départ</p>
-        <p id="plan-texte-depart" class="borne">
-          <span id="plan-texte-depart-nom" class="borne__nom">par description</span>
-          <button id="plan-texte-depart-effacer" class="borne__x" hidden title="Repartir d'un départ choisi par description">×</button>
-        </p>
-        <!-- Absent d'une simple dérive (« pars de X et dérive vers Y ») — ne
-             s'affiche que si le prompt demandait une arrivée précise
-             (« arriver à X »), voir `montrerPlanTexte`. -->
-        <p class="aide" id="plan-texte-arrivee-titre" hidden>Arrivée</p>
-        <p id="plan-texte-arrivee" class="borne" hidden>
-          <span id="plan-texte-arrivee-nom" class="borne__nom"></span>
-          <button id="plan-texte-arrivee-effacer" class="borne__x" title="Ne plus viser d'arrivée précise">×</button>
-        </p>
-        <p class="aide">Étapes</p>
-        <ul id="plan-texte-etapes" class="plan-texte__etapes"></ul>
-        <!-- Les contraintes que le LLM a extraites du texte (genres voulus ou
-             refusés, années, tempo, énergie, popularité, plafond par
-             artiste) : chacune se retire d'un clic. Absent quand le texte n'en
-             demandait aucune (révélation par contexte, `interface-
-             guidelines.md` Règle 8) — voir `montrerPlanTexte`. -->
-        <div id="plan-texte-contraintes" hidden>
-          <p class="aide">Contraintes</p>
-          <ul id="plan-texte-filtres" class="plan-texte__filtres"></ul>
-        </div>
-        <div class="plan-texte__taille">
-          <div>
-            <label class="aide" for="plan-texte-n">Morceaux</label>
-            <input id="plan-texte-n" class="chercher" type="number" min="1" max="200">
-          </div>
-          <div>
-            <label class="aide" for="plan-texte-duree">Durée (min)</label>
-            <input id="plan-texte-duree" class="chercher" type="number" min="1" max="1440" placeholder="—">
-          </div>
-        </div>
-        <!-- Ce que la composition a dû assouplir ou n'a pas pu tenir, et la
-             durée obtenue — rempli par `composerPlanTexte`. -->
-        <div id="plan-texte-relaches" class="plan-texte__relaches" hidden></div>
-        <!-- La composition se lance seule dès que l'interprétation est
-             confirmée (voir `interpreterIntention`) — ce bouton ne sert plus
-             qu'à recomposer après une modification du plan ci-dessus. -->
-        <button id="plan-texte-composer" class="bouton">Recomposer</button>
-      </div>
-
       <div class="pochette" id="pochette">
         <span>pochette</span>
         <button class="insp__lecture" id="insp-lecture" aria-label="Lire" title="Lire">▶</button>
