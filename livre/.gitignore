@@ -3,3 +3,7 @@
 /.DS_Store
 
 **/*.quarto_ipynb
+
+# Rendus de fichiers isolés (quarto render x.qmd --to html) ; le livre complet va dans _book/
+/*.html
+/explorer/*.html
