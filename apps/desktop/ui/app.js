@@ -7639,7 +7639,16 @@ function majAffichageAnneau() {
 
 document.querySelectorAll("[data-affichage]").forEach((b) =>
   b.addEventListener("click", () => {
+    const avant = carte.affichage;
     carte.affichage = b.dataset.affichage;
+    // Entrer sur le Nuage = vue d'ensemble. `carte.vue` survit d'un affichage
+    // à l'autre : la Carte MapLibre y recopie son zoom (`synchroniserVue`) et
+    // un ancien glissement y laisse son décalage — le nuage s'ouvrait alors
+    // zoomé, ou décentré, au lieu d'englober tous les points.
+    if (carte.affichage === "points" && avant !== "points") {
+      carte.vue = { k: 1, dx: 0, dy: 0 };
+      $("zoom-val").textContent = "×1,0";
+    }
     // Le Lama a son propre centre, sans canevas : on y entre sans toucher aux
     // redessins de la carte, et la route de la playlist en cours reste intacte
     // pour le jour où l'on revient sur le Nuage ou la Carte.
