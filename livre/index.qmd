@@ -6,4 +6,4 @@ L'idée de départ est de simplement indiquer le chemin d'un répertoire contena
 
 Le logiciel se décompose donc en 4 modes : [écouter](ecouter.qmd), [explorer](explorer.qmd), [éditer](editer.qmd) et [découvrir](decouvrir.qmd).
 
-Ce texte n'a pas pour objectif d'être une documentation technique du logiciel. Il s'agit plutôt de fournir le cheminement du développement, des questionnements sur la musique, la visualisation de données, les algorithmes de traitement du signal et d'apprentissage. 
+Ce texte n'a pas pour objectif d'être une documentation technique du logiciel. Il s'agit plutôt de fournir le cheminement du développement, des questionnements sur la musique, la visualisation de données, les algorithmes de traitement du signal et d'apprentissage. Ce cheminement a permis des découvertes de l'existant, de questions génériques sur le monde musical.
