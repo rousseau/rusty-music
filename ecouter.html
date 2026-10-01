@@ -358,9 +358,11 @@ div.csl-indent {
   <ul>
   <li><a href="#panneau-de-droite" id="toc-panneau-de-droite" class="nav-link active" data-scroll-target="#panneau-de-droite"><span class="header-section-number">1.1</span> Panneau de droite</a></li>
   <li><a href="#univers-de-lartiste" id="toc-univers-de-lartiste" class="nav-link" data-scroll-target="#univers-de-lartiste"><span class="header-section-number">1.2</span> Univers de l’artiste</a></li>
-  <li><a href="#barre-de-lecture" id="toc-barre-de-lecture" class="nav-link" data-scroll-target="#barre-de-lecture"><span class="header-section-number">1.3</span> Barre de lecture</a></li>
-  <li><a href="#bouton-n-normaliser-le-volume" id="toc-bouton-n-normaliser-le-volume" class="nav-link" data-scroll-target="#bouton-n-normaliser-le-volume"><span class="header-section-number">1.4</span> Bouton N : normaliser le volume</a></li>
-  <li><a href="#essais-abandonnés-e-et-hd" id="toc-essais-abandonnés-e-et-hd" class="nav-link" data-scroll-target="#essais-abandonnés-e-et-hd"><span class="header-section-number">1.5</span> Essais abandonnés : E et HD</a></li>
+  <li><a href="#barre-de-lecture" id="toc-barre-de-lecture" class="nav-link" data-scroll-target="#barre-de-lecture"><span class="header-section-number">1.3</span> Barre de lecture</a>
+  <ul class="collapse">
+  <li><a href="#bouton-n-normaliser-le-volume" id="toc-bouton-n-normaliser-le-volume" class="nav-link" data-scroll-target="#bouton-n-normaliser-le-volume"><span class="header-section-number">1.3.1</span> Bouton N : normaliser le volume</a></li>
+  <li><a href="#essais-abandonnés-mais-disponibles-e-et-hd" id="toc-essais-abandonnés-mais-disponibles-e-et-hd" class="nav-link" data-scroll-target="#essais-abandonnés-mais-disponibles-e-et-hd"><span class="header-section-number">1.3.2</span> Essais abandonnés (mais disponibles) : E et HD</a></li>
+  </ul></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/rousseau/rusty-music/edit/main/ecouter.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/rousseau/rusty-music/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -398,19 +400,18 @@ div.csl-indent {
 <h2 data-number="1.2" class="anchored" data-anchor-id="univers-de-lartiste"><span class="header-section-number">1.2</span> Univers de l’artiste</h2>
 <p>Un clic sur le nom de l’artiste ou de l’album ouvre l’univers de l’artiste dans le panneau central : ses albums, sa biographie (TheAudioDB) et des artistes similaires. On peut en tirer une playlist, soit de l’artiste seul, soit en mode Radio.</p>
 </section>
-<section id="barre-de-lecture" class="level2" data-number="1.3">
+<section id="barre-de-lecture" class="level2 page-columns page-full" data-number="1.3">
 <h2 data-number="1.3" class="anchored" data-anchor-id="barre-de-lecture"><span class="header-section-number">1.3</span> Barre de lecture</h2>
 <p>Le panneau du bas gère la lecture, affiche le spectrogramme du morceau en cours, règle le volume et donne quelques informations sur le fichier (qualité, tempo, tonalité).</p>
-</section>
-<section id="bouton-n-normaliser-le-volume" class="level2 page-columns page-full" data-number="1.4">
-<h2 data-number="1.4" class="anchored" data-anchor-id="bouton-n-normaliser-le-volume"><span class="header-section-number">1.4</span> Bouton N : normaliser le volume</h2>
+<section id="bouton-n-normaliser-le-volume" class="level3 page-columns page-full" data-number="1.3.1">
+<h3 data-number="1.3.1" class="anchored" data-anchor-id="bouton-n-normaliser-le-volume"><span class="header-section-number">1.3.1</span> Bouton N : normaliser le volume</h3>
 <p>Le bouton N ramène chaque morceau à un même volume perçu (−18 LUFS), ce qui est utile dans une grande bibliothèque variée : le niveau reste constant d’un morceau ou d’un album à l’autre.</p>
 
 <div class="no-row-height column-margin column-container"><div class="">
 <p><strong>Normalisation.</strong> L’intensité perçue est mesurée une fois pour toutes (norme EBU R128, en LUFS), puis un gain est appliqué à la lecture. La mesure suit l’algorithme standardisé de l’UIT, qui pondère le spectre selon la sensibilité de l’oreille et relève aussi le pic vrai du signal <span class="citation" data-cites="itu1770 ebu2020">(<a href="references.html#ref-itu1770" role="doc-biblioref">International Telecommunication Union, n.d.</a>; <a href="references.html#ref-ebu2020" role="doc-biblioref">European Broadcasting Union 2020</a>)</span>. La cible de −18 LUFS est un choix propre à l’application (la recommandation EBU R128 vise −23 LUFS pour la télévision), et le gain est plafonné pour que le pic vrai ne dépasse jamais 0 dBFS.</p>
 </div></div></section>
-<section id="essais-abandonnés-e-et-hd" class="level2 page-columns page-full" data-number="1.5">
-<h2 data-number="1.5" class="anchored" data-anchor-id="essais-abandonnés-e-et-hd"><span class="header-section-number">1.5</span> Essais abandonnés : E et HD</h2>
+<section id="essais-abandonnés-mais-disponibles-e-et-hd" class="level3 page-columns page-full" data-number="1.3.2">
+<h3 data-number="1.3.2" class="anchored" data-anchor-id="essais-abandonnés-mais-disponibles-e-et-hd"><span class="header-section-number">1.3.2</span> Essais abandonnés (mais disponibles) : E et HD</h3>
 <p>Les boutons E et HD cherchaient à améliorer la qualité sonore de fichiers compressés (un MP3 128 kb/s, par exemple). Ils ont été réalisés, mais le résultat n’a pas été concluant.</p>
 
 <div class="no-row-height column-margin column-container"><div class="">
@@ -443,6 +444,7 @@ Mandel, Moshe, Or Tal, and Yossi Adi. 2023. <em><span>AERO</span>: Audio Super R
 Rafii, Zafar, Antoine Liutkus, Fabian-Robert Stöter, Stylianos Ioannis Mimilakis, and Rachel Bittner. 2019. <em><span>MUSDB18-HQ</span>: An Uncompressed Version of <span>MUSDB18</span></em>. Zenodo. <a href="https://doi.org/10.5281/zenodo.3338373">https://doi.org/10.5281/zenodo.3338373</a>.
 </div>
 </div>
+</section>
 </section>
 
 
