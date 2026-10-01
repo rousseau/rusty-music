@@ -146,6 +146,49 @@ texte libre la playlist voulue, pas seulement nommer une famille.
   légendes, pas des mots nus) et un nombre de morceaux. Sans artiste ni
   morceau cité, le départ se choisit par similarité au premier descripteur —
   la recherche par description validée dans `experiments/clap-texte/`.
+- **Le LLM traduit, le code exécute (1ᵉʳ octobre 2026).** Le schéma se
+  limitait à « départ / arrivée / étapes / n » : « une playlist calme de 60 mn,
+  sans rock, années 70 » perdait la durée, l'exclusion, l'époque et le calme.
+  Il porte désormais des **arguments typés** — `duree_minutes`, `genres`,
+  `exclure_genres`, `exclure_artistes`, `annee_min/max`, `bpm_min/max`,
+  `energie` (`calme|moyenne|intense`), `popularite` (`peu_connu|connu`),
+  `plafond_par_artiste` — que `crates/core/src/filtres_playlist.rs` applique à
+  la bibliothèque **avant** la marche CLAP : `Graphe::restreint` si la sélection
+  est large, graphe des voisins des seuls admissibles si elle est étroite.
+  Le LLM ne nomme jamais de morceaux (il en invente). Voir
+  `docs/recherche-llm-playlist.md` pour l'état de l'art qui l'a motivé.
+  - **Schéma JSON passé à Ollama dans `format`** (décodage contraint : clés et
+    types garantis) et température 0 ; la consigne ne décrit plus que les
+    règles de contenu. Elle reçoit les 60 genres les plus représentés de la
+    bibliothèque ; la liste complète sert à écarter ceux qu'un petit modèle
+    inventerait quand même.
+  - **Énergie et popularité sont relatives à la bibliothèque** (tiers de la
+    distribution mesurée ; `track_popularite.relative` est déjà un rang
+    percentile), pas des seuils fixes : « calme » n'a pas le même sens dans une
+    collection de métal et dans une d'ambient.
+  - **Les exclusions sont dures, les désirs s'assouplissent** — dans l'ordre
+    popularité, énergie, tempo, période, genres — **et le plan le dit**
+    (`CompositionTexte.relaches`, affiché sous le plan). Un refus (« sans
+    rock ») n'est jamais relâché ; s'il vide à lui seul la bibliothèque,
+    l'erreur le dit au lieu de fabriquer une playlist sans rapport. Un départ
+    ou une arrivée **nommés** échappent aux filtres : l'utilisateur les a cités.
+  - **Un trajet n'a pas de genre filtrant** : « de X à RATM en passant par du
+    hip hop » met « hip hop » dans les étapes, pas dans `genres` — observé :
+    un petit modèle l'y met quand même, `InterpretationLlm::normaliser` l'en
+    retire dès qu'un départ ou une arrivée est nommé.
+  - **Durée** : prime sur `n`. La marche s'allonge d'un tiers, est plafonnée
+    par artiste (plafond demandé jamais relâché ; défaut relâché d'un cran à la
+    fois, sauf départ et arrivée), puis `ajuster_a_duree` choisit la longueur
+    dont la durée cumulée approche la cible en gardant les extrémités.
+  - **Inspecteur** : un bloc « Contraintes » liste ce que le LLM a extrait, une
+    ligne retirable par contrainte (révélation par contexte : absent quand le
+    texte n'en demandait aucune) ; un champ « Durée (min) » à côté de
+    « Morceaux ».
+  - Vérifié sur la base réelle (27 425 morceaux) : année, durée, tempo, énergie
+    renseignés à 97-100 %, popularité 92 %, genre 98 % ; sélection en
+    quelques ms. Reste hors de ce chantier : fusion de plusieurs graines
+    (`alchemy`/`subtract`), ordre lissé par tempo/énergie/tonalité,
+    redécouverte (aucun historique d'écoute stocké), raffinement multi-tours.
 - **Le modèle Ollama se choisit, ne se devine pas.** Un nom fixe en repli
   (`qwen2.5:3b`, celui de `preparer_vocabulaire.py`) échoue dès que la machine
   ne l'a pas installé — Ollama rend alors un 404 sur `/api/generate`

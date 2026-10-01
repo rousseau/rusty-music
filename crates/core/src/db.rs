@@ -1840,6 +1840,83 @@ impl Library {
         Ok(suspects)
     }
 
+    /// Ce que la bibliothèque sait de chaque morceau pour filtrer une playlist
+    /// demandée en texte libre (`crate::filtres_playlist`) : année, durée,
+    /// tempo, énergie, popularité (rang percentile) et genres résolus — même
+    /// arbitrage que [`Self::stats_genres`], donc mêmes noms que ceux qu'on
+    /// donne au LLM ([`Self::vocabulaire_genres`]). Une ligne par morceau, y
+    /// compris ceux sans descripteurs (valeurs `None`).
+    pub fn caracteristiques_pistes(
+        &self,
+    ) -> Result<Vec<crate::filtres_playlist::CaracteristiquesPiste>> {
+        let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
+        let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
+        let albums = self.mb_albums()?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.artist, t.mb_artist_id, t.album, t.genre, t.year, t.duration_ms,
+                    d.bpm, d.energy, tp.relative
+               FROM tracks t
+               LEFT JOIN descriptors d ON d.track_id = t.id
+               LEFT JOIN track_popularite tp ON tp.track_id = t.id",
+        )?;
+        let lignes = stmt
+            .query_map([], |r| {
+                let mbid: Option<String> = r.get(2)?;
+                let album: Option<String> = r.get(3)?;
+                let tag: Option<String> = r.get(4)?;
+                let annee: Option<i64> = r.get(5)?;
+                Ok((
+                    crate::filtres_playlist::CaracteristiquesPiste {
+                        id: r.get(0)?,
+                        artiste: r.get(1)?,
+                        annee: annee.and_then(|a| i32::try_from(a).ok()),
+                        duree_ms: r.get(6)?,
+                        bpm: r.get(7)?,
+                        energie: r.get(8)?,
+                        popularite: r.get(9)?,
+                        genres: Vec::new(),
+                    },
+                    mbid,
+                    album,
+                    tag,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(lignes
+            .into_iter()
+            .map(|(mut p, mbid, album, tag)| {
+                p.genres = genres_du_morceau(
+                    mbid.as_deref(),
+                    album.as_deref(),
+                    tag.as_deref(),
+                    &albums,
+                    &par_album,
+                    &par_artiste,
+                )
+                .into_iter()
+                .map(|g| g.to_lowercase())
+                .collect();
+                p
+            })
+            .collect())
+    }
+
+    /// Les `n` genres les plus représentés (minuscules, sans le fourre-tout
+    /// « — ») : le vocabulaire **réel** qu'on donne au LLM pour qu'« un truc
+    /// jazzy » devienne un genre qui existe dans cette bibliothèque.
+    pub fn vocabulaire_genres(&self, n: usize) -> Result<Vec<String>> {
+        let mut vus = std::collections::HashSet::new();
+        Ok(self
+            .stats_genres()?
+            .into_iter()
+            .map(|(g, _)| g.to_lowercase())
+            .filter(|g| g != "—" && !g.is_empty() && vus.insert(g.clone()))
+            .take(n)
+            .collect())
+    }
+
     /* ------------------------------- statistiques (mode Bibliothèque) */
 
     /// Répartition de toute la bibliothèque par genre — même arbitrage que

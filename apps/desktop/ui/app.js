@@ -937,6 +937,7 @@ async function interpreterIntention() {
       // veut une entrée différente à chaque essai plutôt qu'un pivot figé.
       seed: Math.floor(Math.random() * 2 ** 31),
     });
+    montrerRelaches([]);
     montrerPlanTexte(planTexte);
     interprete = true;
   } catch (e) {
@@ -1091,6 +1092,93 @@ function montrerPlanTexte(plan) {
   });
 
   $("plan-texte-n").value = plan.n;
+  $("plan-texte-duree").value = plan.duree_minutes ?? "";
+  // Une durée posée prime sur le nombre de morceaux.
+  $("plan-texte-n").disabled = !!plan.duree_minutes;
+  montrerFiltresPlan(plan);
+}
+
+const LIBELLE_ENERGIE = { calme: "calme", moyenne: "énergie moyenne", intense: "intense" };
+const LIBELLE_POPULARITE = { peu_connu: "peu connu", connu: "connu" };
+
+/// Les contraintes du plan, une ligne retirable chacune (`× `) : retirer
+/// n'appelle pas Ollama, ça modifie le plan affiché, que « Recomposer »
+/// rejoue. `exclu` : un refus, signalé par la bordure d'alerte.
+function contraintesDuPlan(plan) {
+  const f = plan.filtres || {};
+  const lignes = [];
+  const ajouter = (texte, retirer, exclu = false) => lignes.push({ texte, retirer, exclu });
+  (f.genres || []).forEach((g, i) => ajouter(`+ ${g}`, () => f.genres.splice(i, 1)));
+  (f.exclure_genres || []).forEach((g, i) => ajouter(`− ${g}`, () => f.exclure_genres.splice(i, 1), true));
+  (f.exclure_artistes || []).forEach((a, i) => ajouter(`− ${a}`, () => f.exclure_artistes.splice(i, 1), true));
+  if (f.annee_min != null || f.annee_max != null) {
+    const texte =
+      f.annee_min != null && f.annee_max != null
+        ? `${f.annee_min}–${f.annee_max}`
+        : f.annee_min != null
+          ? `à partir de ${f.annee_min}`
+          : `jusqu'à ${f.annee_max}`;
+    ajouter(texte, () => { f.annee_min = null; f.annee_max = null; });
+  }
+  if (f.bpm_min != null || f.bpm_max != null) {
+    const texte =
+      f.bpm_min != null && f.bpm_max != null
+        ? `${Math.round(f.bpm_min)}–${Math.round(f.bpm_max)} BPM`
+        : f.bpm_min != null
+          ? `≥ ${Math.round(f.bpm_min)} BPM`
+          : `≤ ${Math.round(f.bpm_max)} BPM`;
+    ajouter(texte, () => { f.bpm_min = null; f.bpm_max = null; });
+  }
+  if (f.energie) ajouter(`énergie : ${LIBELLE_ENERGIE[f.energie] ?? f.energie}`, () => { f.energie = null; });
+  if (f.popularite) ajouter(LIBELLE_POPULARITE[f.popularite] ?? f.popularite, () => { f.popularite = null; });
+  if (plan.plafond_par_artiste)
+    ajouter(`${plan.plafond_par_artiste} morceau(x) max par artiste`, () => { plan.plafond_par_artiste = null; });
+  return lignes;
+}
+
+function montrerFiltresPlan(plan) {
+  const liste = $("plan-texte-filtres");
+  liste.replaceChildren();
+  const lignes = contraintesDuPlan(plan);
+  $("plan-texte-contraintes").hidden = lignes.length === 0;
+  for (const l of lignes) {
+    const li = document.createElement("li");
+    if (l.exclu) li.className = "filtre--exclu";
+    const nom = document.createElement("span");
+    nom.textContent = l.texte;
+    const x = document.createElement("button");
+    x.className = "borne__x";
+    x.textContent = "×";
+    x.title = "Retirer cette contrainte";
+    x.addEventListener("click", () => {
+      l.retirer();
+      montrerFiltresPlan(plan);
+    });
+    li.append(nom, x);
+    liste.appendChild(li);
+  }
+}
+
+/// Ce que la composition a assoupli ou n'a pas tenu, et la durée obtenue.
+/// Jamais tu : une playlist « calme » dont le critère a dû être abandonné
+/// doit le dire. `erreur` : le message du moteur, tel quel.
+function montrerRelaches(relaches, dureeMs = 0, erreur = false) {
+  const hote = $("plan-texte-relaches");
+  hote.replaceChildren();
+  const ajouter = (texte, classe = "") => {
+    const p = document.createElement("p");
+    p.textContent = texte;
+    if (classe) p.className = classe;
+    hote.appendChild(p);
+  };
+  if (erreur) {
+    relaches.forEach((r) => ajouter(r, "relache--erreur"));
+  } else {
+    if (dureeMs > 0 && planTexte?.duree_minutes)
+      ajouter(`Durée obtenue : ${Math.round(dureeMs / 60000)} min (visée : ${planTexte.duree_minutes} min).`);
+    relaches.forEach((r) => ajouter(`Assoupli — ${r}`));
+  }
+  hote.hidden = hote.children.length === 0;
 }
 
 $("plan-texte-depart-effacer").addEventListener("click", () => {
@@ -1113,6 +1201,15 @@ $("plan-texte-n").addEventListener("change", () => {
   planTexte.n = Number.isFinite(n) ? Math.min(200, Math.max(1, n)) : planTexte.n;
 });
 
+$("plan-texte-duree").addEventListener("change", () => {
+  if (!planTexte) return;
+  const d = Number.parseInt($("plan-texte-duree").value, 10);
+  // Vide ou invalide : plus de durée, on revient au nombre de morceaux.
+  planTexte.duree_minutes = Number.isFinite(d) && d >= 1 ? Math.min(1440, d) : null;
+  $("plan-texte-duree").value = planTexte.duree_minutes ?? "";
+  $("plan-texte-n").disabled = !!planTexte.duree_minutes;
+});
+
 /// Compose la playlist du plan courant : une empreinte CLAP-texte par étape
 /// puis une marche guidée dans le graphe des voisins (`chemin::guidee`) —
 /// même jauge de composition que les boutons ✦ (`composerAlchimie`).
@@ -1125,15 +1222,31 @@ $("plan-texte-n").addEventListener("change", () => {
 /// reformulée, nombre de morceaux changé, départ effacé).
 function composerPlanTexte() {
   if (!planTexte || planTexte.etapes.length === 0) return;
+  montrerRelaches([]);
   composerAlchimie({
     bouton: $("plan-texte-composer"),
-    cible: planTexte.n,
-    chemin: () =>
-      invoke("path_texte", {
-        plan: planTexte,
-        seed: Math.floor(Math.random() * 2 ** 31),
-        bruit: bruitChemin,
-      }),
+    // Une durée n'a pas de nombre de morceaux exact : on réserve des
+    // emplacements à 3 min 30 le morceau, `revelerFile` ajuste ensuite.
+    cible: planTexte.duree_minutes
+      ? Math.max(2, Math.round(planTexte.duree_minutes / 3.5))
+      : planTexte.n,
+    chemin: async () => {
+      try {
+        const r = await invoke("path_texte", {
+          plan: planTexte,
+          seed: Math.floor(Math.random() * 2 ** 31),
+          bruit: bruitChemin,
+        });
+        montrerRelaches(r.relaches, r.duree_ms);
+        return r.pistes;
+      } catch (e) {
+        // Le message du moteur dit pourquoi (exclusions qui vident la
+        // bibliothèque, marche impossible…) : on le montre dans le plan, pas
+        // seulement dans le journal.
+        montrerRelaches([String(e)], 0, true);
+        throw e;
+      }
+    },
     demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
   });
 }

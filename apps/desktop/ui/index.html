@@ -769,8 +769,28 @@
         </p>
         <p class="aide">Étapes</p>
         <ul id="plan-texte-etapes" class="plan-texte__etapes"></ul>
-        <label class="aide" for="plan-texte-n">Morceaux</label>
-        <input id="plan-texte-n" class="chercher" type="number" min="1" max="200">
+        <!-- Les contraintes que le LLM a extraites du texte (genres voulus ou
+             refusés, années, tempo, énergie, popularité, plafond par
+             artiste) : chacune se retire d'un clic. Absent quand le texte n'en
+             demandait aucune (révélation par contexte, `interface-
+             guidelines.md` Règle 8) — voir `montrerPlanTexte`. -->
+        <div id="plan-texte-contraintes" hidden>
+          <p class="aide">Contraintes</p>
+          <ul id="plan-texte-filtres" class="plan-texte__filtres"></ul>
+        </div>
+        <div class="plan-texte__taille">
+          <div>
+            <label class="aide" for="plan-texte-n">Morceaux</label>
+            <input id="plan-texte-n" class="chercher" type="number" min="1" max="200">
+          </div>
+          <div>
+            <label class="aide" for="plan-texte-duree">Durée (min)</label>
+            <input id="plan-texte-duree" class="chercher" type="number" min="1" max="1440" placeholder="—">
+          </div>
+        </div>
+        <!-- Ce que la composition a dû assouplir ou n'a pas pu tenir, et la
+             durée obtenue — rempli par `composerPlanTexte`. -->
+        <div id="plan-texte-relaches" class="plan-texte__relaches" hidden></div>
         <!-- La composition se lance seule dès que l'interprétation est
              confirmée (voir `interpreterIntention`) — ce bouton ne sert plus
              qu'à recomposer après une modification du plan ci-dessus. -->

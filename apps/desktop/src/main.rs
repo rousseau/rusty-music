@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
+use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -2694,6 +2695,33 @@ struct PlanTexte {
     /// Toujours au moins une étape — `ollama::interpreter` le garantit déjà.
     etapes: Vec<String>,
     n: usize,
+    /// Durée totale voulue : prime sur `n`, la playlist s'arrête à cette
+    /// durée plutôt qu'à un nombre de morceaux.
+    #[serde(default)]
+    duree_minutes: Option<u32>,
+    /// Plafond de morceaux par artiste **demandé** par l'utilisateur — jamais
+    /// relâché. Absent : un plafond par défaut, lui relâché au besoin
+    /// (`filtres_playlist::plafonner_par_artiste`).
+    #[serde(default)]
+    plafond_par_artiste: Option<u32>,
+    /// Les contraintes typées appliquées à la bibliothèque avant la marche
+    /// (`filtres_playlist`). `#[serde(default)]` : un plan sans ce champ ne
+    /// restreint rien.
+    #[serde(default)]
+    filtres: FiltresPlaylist,
+}
+
+/// Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir.
+#[derive(Debug, serde::Serialize)]
+struct CompositionTexte {
+    pistes: Vec<TrackRow>,
+    /// Une phrase par critère abandonné ou limite rencontrée (trop peu de
+    /// morceaux admissibles, marche écourtée, durée non atteinte) — montrées
+    /// à l'utilisateur, jamais tues : une playlist « calme » qui ne l'est plus
+    /// doit le dire.
+    relaches: Vec<String>,
+    /// Durée cumulée des pistes rendues.
+    duree_ms: i64,
 }
 
 /// Interprète un prompt de playlist en texte libre via Ollama, et résout son
@@ -2724,9 +2752,21 @@ fn path_texte_interpreter(
         None => rusty_music_core::ollama::modele_par_defaut(rusty_music_core::ollama::HOTE_DEFAUT)
             .map_err(echec)?,
     };
-    let interpretation =
-        rusty_music_core::ollama::interpreter(rusty_music_core::ollama::HOTE_DEFAUT, &modele, &prompt)
-            .map_err(echec)?;
+    // Les genres réels de la bibliothèque : montrés au LLM pour qu'il ne parle
+    // que de ce qui existe, puis utilisés pour écarter ce qu'il inventerait
+    // quand même. Illisible : on s'en passe (aucun filtre de genre) plutôt que
+    // de refuser toute interprétation pour cela.
+    let vocabulaire = verrou(&etat.lib).vocabulaire_genres(usize::MAX).unwrap_or_else(|e| {
+        tracing::warn!(erreur = %e, "vocabulaire de genres illisible, interprétation sans");
+        Vec::new()
+    });
+    let interpretation = rusty_music_core::ollama::interpreter(
+        rusty_music_core::ollama::HOTE_DEFAUT,
+        &modele,
+        &prompt,
+        &vocabulaire,
+    )
+    .map_err(echec)?;
 
     let n = interpretation.n.map(|n| n as usize).unwrap_or(n_defaut).max(1);
     let depart = resoudre_piste_nommee(
@@ -2765,7 +2805,23 @@ fn path_texte_interpreter(
         );
     }
 
-    Ok(PlanTexte { depart, arrivee, arrivee_demandee, etapes: interpretation.etapes, n })
+    let filtres = interpretation.filtres();
+    tracing::info!(
+        ?filtres,
+        duree_minutes = ?interpretation.duree_minutes,
+        plafond_par_artiste = ?interpretation.plafond_par_artiste,
+        "champ d'intention : contraintes extraites",
+    );
+    Ok(PlanTexte {
+        depart,
+        arrivee,
+        arrivee_demandee,
+        etapes: interpretation.etapes,
+        n,
+        duree_minutes: interpretation.duree_minutes,
+        plafond_par_artiste: interpretation.plafond_par_artiste,
+        filtres,
+    })
 }
 
 /// Modèles Ollama déjà installés localement — sélecteur du champ d'intention
@@ -2847,13 +2903,20 @@ fn resoudre_piste_nommee(
 /// marche guidée dans le graphe des voisins (`chemin::guidee`). Séparée de
 /// l'interprétation LLM (`path_texte_interpreter`) : ce calcul-ci ne se relance
 /// que si l'utilisateur confirme le plan affiché dans l'inspecteur.
+///
+/// Les **filtres** du plan (genres, exclusions, années, tempo, énergie,
+/// popularité — `filtres_playlist`) restreignent d'abord la bibliothèque ; la
+/// marche ne parcourt que les morceaux admissibles. Départ et arrivée nommés
+/// restent admis même s'ils contreviennent aux filtres : l'utilisateur les a
+/// cités. Puis la route marche un peu plus loin que voulu, est plafonnée par
+/// artiste et ramenée au nombre de morceaux — ou à la **durée** — demandé.
 #[tauri::command(async)]
 fn path_texte(
     etat: State<Etat>,
     plan: PlanTexte,
     seed: u64,
     bruit: Option<f32>,
-) -> Result<Vec<TrackRow>, String> {
+) -> Result<CompositionTexte, String> {
     if plan.etapes.is_empty() {
         return Err("aucune étape à composer".into());
     }
@@ -2874,15 +2937,108 @@ fn path_texte(
     };
 
     let vecteurs = charger_vecteurs(&etat)?;
+    // Seuls les morceaux déjà analysés peuvent être placés : les filtres, leurs
+    // percentiles et les durées se calculent sur ceux-là.
+    let carac = {
+        let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
+        let mut c = verrou(&etat.lib).caracteristiques_pistes().map_err(echec)?;
+        c.retain(|p| analyses.contains(&p.id));
+        c
+    };
+
+    let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
+    let base = construire_graphe(&etat, &vecteurs)?;
+    let (route, relaches) =
+        composer_route(&plan, &carac, &vecteurs, &base, &cibles, seed, bruit)?;
+
+    let pistes = pistes_de(&etat, &route)?;
+    let duree_ms = pistes.iter().map(|t| t.duration_ms.unwrap_or(0)).sum();
+    for r in &relaches {
+        tracing::info!(relache = %r, "champ d'intention : contrainte assouplie");
+    }
+    Ok(CompositionTexte { pistes, relaches, duree_ms })
+}
+
+
+/// Le cœur de `path_texte`, sans `State` : filtres, marche guidée, plafond par
+/// artiste, longueur finale. Rend la route (identifiants, dans l'ordre) et les
+/// critères assouplis. Séparé de la commande pour se tester sur des
+/// empreintes synthétiques.
+///
+/// `carac` ne doit contenir que des morceaux présents dans `vecteurs` : les
+/// percentiles et les durées se calculent sur les morceaux placables.
+fn composer_route(
+    plan: &PlanTexte,
+    carac: &[filtres_playlist::CaracteristiquesPiste],
+    vecteurs: &[Empreinte],
+    base: &Graphe,
+    cibles: &[Vec<f32>],
+    seed: u64,
+    bruit: f32,
+) -> Result<(Vec<i64>, Vec<String>), String> {
+    let duree_cible_ms = plan.duree_minutes.map(|m| i64::from(m) * 60_000);
+    let moyenne_ms = filtres_playlist::duree_moyenne_ms(carac, None).max(1);
+    let n_voulu = match duree_cible_ms {
+        Some(d) => ((d + moyenne_ms - 1) / moyenne_ms).max(2) as usize,
+        None => plan.n.max(1),
+    };
+
+    let mut relaches: Vec<String> = Vec::new();
+    let permis: Option<HashSet<i64>> =
+        match filtres_playlist::selectionner(carac, &plan.filtres, (n_voulu / 2).clamp(5, 40)) {
+            None => None,
+            Some(selection) => {
+                relaches.extend(selection.relaches);
+                if selection.ids.is_empty() {
+                    return Err("aucun morceau de la bibliothèque ne respecte ces exclusions — \
+                                retirez-en une, ou nommez un artiste ou un genre"
+                        .into());
+                }
+                let mut ids = selection.ids;
+                ids.extend(plan.depart.iter().chain(plan.arrivee.iter()).map(|t| t.id));
+                Some(ids)
+            }
+        };
+
     let depart = match &plan.depart {
         Some(t) => t.id,
-        None => meilleur_depart_par_description(&vecteurs, &cibles[0])
-            .ok_or("bibliothèque vide : aucun départ possible")?,
+        None => meilleur_depart_par_description(vecteurs, permis.as_ref(), &cibles[0])
+            .ok_or("aucun départ possible parmi les morceaux admissibles")?,
     };
-    let bruit = bruit.unwrap_or(BRUIT_DEFAUT);
-    let graphe = construire_graphe(&etat, &vecteurs)?;
+    // Une sélection large se découpe dans le graphe déjà construit (adjacence
+    // filtrée, aucune distance recalculée) ; une sélection étroite y serait
+    // en miettes — les voisins d'un morceau sont presque tous hors sélection —
+    // et la marche s'arrêterait aussitôt : on bâtit alors le graphe des
+    // voisins **des seuls morceaux admissibles**, dont le coût (n²) reste
+    // modeste à cette taille.
+    let dedie;
+    let restreint;
+    let graphe: &Graphe = match &permis {
+        None => base,
+        Some(ids) => {
+            let presents = vecteurs.iter().filter(|(id, _)| ids.contains(id)).count();
+            if presents * 2 < vecteurs.len() {
+                let sous: Vec<Empreinte> =
+                    vecteurs.iter().filter(|(id, _)| ids.contains(id)).cloned().collect();
+                dedie = Graphe::construire(
+                    &sous,
+                    rusty_music_analysis::chemin::K_VOISINS,
+                    coeurs_arriere_plan(),
+                );
+                &dedie
+            } else {
+                restreint = base.restreint(ids);
+                &restreint
+            }
+        }
+    };
 
-    let mut route = graphe.guidee(&vecteurs, depart, &cibles, plan.n, seed, bruit);
+    // Un peu plus long que voulu : le plafond par artiste en retirera.
+    let pas = (n_voulu * 13).div_ceil(10) + 2;
+    let mut route = graphe.guidee(vecteurs, depart, &cibles, pas, seed, bruit);
+    if route.is_empty() {
+        return Err("aucune marche possible depuis ce départ avec ces filtres".into());
+    }
 
     // Une arrivée précise a été demandée (« arriver à X ») : la marche guidée
     // ne fait que dériver vers ses cibles textuelles, qui sont des régions,
@@ -2890,8 +3046,13 @@ fn path_texte(
     // morceau donné. Un raccordement dans le graphe des voisins, depuis là où
     // la dérive s'est arrêtée, tient la promesse là où `guidee` seule ne le
     // pouvait pas.
+    let mut proteges: HashSet<i64> = HashSet::from([depart]);
     if let Some(arrivee) = &plan.arrivee {
+        proteges.insert(arrivee.id);
         if route.last() != Some(&arrivee.id) {
+            // La dérive a pu croiser l'arrivée en chemin : elle doit finir la
+            // playlist, pas y figurer deux fois.
+            route.retain(|id| *id != arrivee.id);
             let dernier = *route.last().unwrap_or(&depart);
             let jonction = graphe.sonique(dernier, arrivee.id, seed, bruit);
             match jonction.split_first() {
@@ -2903,22 +3064,83 @@ fn path_texte(
                 None => route.push(arrivee.id),
             }
         }
-        // Le raccordement peut avoir dépassé la longueur demandée : on
-        // rééchantillonne en gardant les deux extrémités (même fonction que
-        // pour un plus court chemin entre amas éloignés, voir sa doc).
-        route = echantillonner(&route, plan.n);
     }
 
-    pistes_de(&etat, &route)
+    // Plafond par artiste : demandé, il tient ; sinon un défaut (au moins 3,
+    // un huitième de la playlist) qui monte d'un cran tant qu'il manque des
+    // morceaux.
+    let artiste_de: HashMap<i64, String> =
+        carac.iter().filter_map(|p| p.artiste.clone().map(|a| (p.id, a))).collect();
+    let plafond_impose = plan.plafond_par_artiste.is_some();
+    let plafond = plan
+        .plafond_par_artiste
+        .map(|p| p as usize)
+        .unwrap_or_else(|| n_voulu.div_ceil(8).max(3));
+    let atteint = route.len();
+    route = filtres_playlist::plafonner_par_artiste(
+        &route,
+        &artiste_de,
+        n_voulu,
+        plafond,
+        plafond_impose,
+        &proteges,
+    );
+    if plafond_impose && route.len() < atteint.min(n_voulu) {
+        relaches.push(format!(
+            "plafond de {plafond} morceau(x) par artiste tenu : {} morceau(x) retiré(s)",
+            atteint - route.len()
+        ));
+    }
+
+    // Longueur finale : la durée visée, ou le nombre de morceaux — en gardant
+    // les deux extrémités et l'allure du trajet (`echantillonner`).
+    let duree_de: HashMap<i64, i64> =
+        carac.iter().filter_map(|p| p.duree_ms.map(|d| (p.id, d))).collect();
+    let duree_totale = |r: &[i64]| -> i64 {
+        r.iter()
+            .map(|id| duree_de.get(id).copied().filter(|d| *d > 0).unwrap_or(filtres_playlist::DUREE_DEFAUT_MS))
+            .sum()
+    };
+    let route = match duree_cible_ms {
+        Some(cible) => {
+            let r = filtres_playlist::ajuster_a_duree(&route, &duree_de, cible, echantillonner);
+            let total = duree_totale(&r);
+            if total * 10 < cible * 9 {
+                relaches.push(format!(
+                    "durée visée {} min, mais la marche n'enchaîne que {} min de morceaux admissibles",
+                    cible / 60_000,
+                    total / 60_000
+                ));
+            }
+            r
+        }
+        None if route.len() > n_voulu => echantillonner(&route, n_voulu),
+        None => {
+            if route.len() * 10 < n_voulu * 7 {
+                relaches.push(format!(
+                    "la marche s'arrête à {} morceau(x) sur {n_voulu} voulus : voisinage sonore trop restreint",
+                    route.len()
+                ));
+            }
+            route
+        }
+    };
+
+    Ok((route, relaches))
 }
 
 /// Le morceau dont l'empreinte est la plus proche d'une cible — départ « par
 /// description » quand le prompt ne nomme ni morceau ni artiste, même
 /// principe que la recherche par description sondée dans
 /// `experiments/clap-texte`.
-fn meilleur_depart_par_description(vecteurs: &[Empreinte], cible: &[f32]) -> Option<i64> {
+fn meilleur_depart_par_description(
+    vecteurs: &[Empreinte],
+    permis: Option<&HashSet<i64>>,
+    cible: &[f32],
+) -> Option<i64> {
     vecteurs
         .iter()
+        .filter(|(id, _)| permis.is_none_or(|p| p.contains(id)))
         .max_by(|(_, a), (_, b)| {
             produit_scalaire(a, cible)
                 .partial_cmp(&produit_scalaire(b, cible))
@@ -7211,6 +7433,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
+        composer_route, PlanTexte, BRUIT_DEFAUT,
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
         fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
         sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
@@ -7531,5 +7754,415 @@ mod tests {
         assert!(d2(0, 1) < d2(0, 2), "après projection, l'est doit être le plus proche");
         let est_m = d2(0, 1).sqrt();
         assert!((est_m - 730.0).abs() < 40.0, "~730 m attendus, obtenu {est_m}");
+    }
+
+    // ---- composition d'une playlist par texte (`composer_route`) ----------
+
+    use rusty_music_analysis::chemin::{Empreinte, Graphe};
+    use rusty_music_core::db::TrackRow;
+    use rusty_music_core::filtres_playlist::{
+        CaracteristiquesPiste, FiltresPlaylist, NiveauEnergie,
+    };
+
+    const N: usize = 300;
+    const TROIS_MIN_MS: i64 = 180_000;
+
+    /// 300 morceaux le long d'un arc de cercle (voisins sonores = indices
+    /// voisins), un artiste pour 4 morceaux consécutifs, énergie croissante,
+    /// rock aux indices pairs et jazz aux impairs, tous de 1990 et de 3 min.
+    fn bibliotheque_synthetique() -> (Vec<Empreinte>, Vec<CaracteristiquesPiste>, Graphe) {
+        let vecteurs: Vec<Empreinte> = (0..N)
+            .map(|i| {
+                let a = std::f32::consts::FRAC_PI_2 * i as f32 / (N - 1) as f32;
+                (i as i64, vec![a.cos(), a.sin(), 0.0])
+            })
+            .collect();
+        let carac = (0..N)
+            .map(|i| CaracteristiquesPiste {
+                id: i as i64,
+                artiste: Some(format!("artiste {}", i / 4)),
+                annee: Some(1990),
+                duree_ms: Some(TROIS_MIN_MS),
+                bpm: Some(100.0),
+                energie: Some(i as f32 / N as f32),
+                popularite: None,
+                genres: vec![if i % 2 == 0 { "rock".into() } else { "jazz".into() }],
+            })
+            .collect();
+        let graphe = Graphe::construire(&vecteurs, 8, 1);
+        (vecteurs, carac, graphe)
+    }
+
+    fn plan_de(n: usize) -> PlanTexte {
+        PlanTexte {
+            depart: None,
+            arrivee: None,
+            arrivee_demandee: None,
+            etapes: vec!["vers la fin de l'arc".into()],
+            n,
+            duree_minutes: None,
+            plafond_par_artiste: None,
+            filtres: FiltresPlaylist::default(),
+        }
+    }
+
+    fn piste(id: i64) -> TrackRow {
+        TrackRow {
+            id,
+            path: format!("/p/{id}.flac"),
+            title: Some(format!("t{id}")),
+            artist: Some(format!("artiste {}", id / 4)),
+            album: None,
+            track_no: None,
+            year: Some(1990),
+            duration_ms: Some(TROIS_MIN_MS),
+            artist_mbid: None,
+        }
+    }
+
+    fn composer(plan: &PlanTexte) -> Result<(Vec<i64>, Vec<String>), String> {
+        let (vecteurs, carac, graphe) = bibliotheque_synthetique();
+        // La cible : le bout de l'arc.
+        let cibles = vec![vec![0.0, 1.0, 0.0]];
+        composer_route(plan, &carac, &vecteurs, &graphe, &cibles, 7, BRUIT_DEFAUT)
+    }
+
+    fn doublons(route: &[i64]) -> usize {
+        route.len() - route.iter().collect::<HashSet<_>>().len()
+    }
+
+    #[test]
+    fn sans_filtre_la_route_a_la_longueur_demandee() {
+        // Départ au début de l'arc, cible à l'autre bout : sans départ nommé,
+        // « le plus proche de la cible » serait le bout de l'arc lui-même, d'où
+        // une marche auto-évitante vite acculée — un artefact de ce décor
+        // unidimensionnel, pas du produit.
+        let mut plan = plan_de(20);
+        plan.depart = Some(piste(0));
+        let (route, relaches) = composer(&plan).unwrap();
+        assert!(route.len() >= 15 && route.len() <= 20, "{} morceaux", route.len());
+        assert_eq!(doublons(&route), 0);
+        assert!(relaches.is_empty(), "{relaches:?}");
+    }
+
+    #[test]
+    fn un_plafond_demande_par_artiste_est_tenu() {
+        let mut plan = plan_de(20);
+        plan.plafond_par_artiste = Some(2);
+        let (route, relaches) = composer(&plan).unwrap();
+        let mut par_artiste: HashMap<i64, usize> = HashMap::new();
+        for id in &route {
+            *par_artiste.entry(id / 4).or_default() += 1;
+        }
+        // Le départ est protégé : il peut seul dépasser le plafond.
+        let depart = route[0] / 4;
+        for (a, n) in &par_artiste {
+            assert!(*n <= 2 || *a == depart, "artiste {a} : {n} morceaux");
+        }
+        assert!(!relaches.is_empty(), "des morceaux ont été retirés : il faut le dire");
+    }
+
+    #[test]
+    fn une_duree_demandee_est_approchee() {
+        let mut plan = plan_de(10);
+        plan.duree_minutes = Some(30); // 10 morceaux de 3 min
+        let (route, relaches) = composer(&plan).unwrap();
+        let total = route.len() as i64 * TROIS_MIN_MS;
+        assert!(
+            (total - 30 * 60_000).abs() <= TROIS_MIN_MS,
+            "{} morceaux, {} min",
+            route.len(),
+            total / 60_000
+        );
+        assert!(relaches.iter().all(|r| !r.contains("durée visée")), "{relaches:?}");
+    }
+
+    #[test]
+    fn une_duree_hors_de_portee_est_signalee() {
+        let mut plan = plan_de(10);
+        plan.duree_minutes = Some(1000); // 333 morceaux : la bibliothèque n'en a que 300
+        let (_, relaches) = composer(&plan).unwrap();
+        assert!(relaches.iter().any(|r| r.contains("durée visée")), "{relaches:?}");
+    }
+
+    /// Large sélection : découpée dans le graphe complet (`restreint`).
+    #[test]
+    fn exclure_un_genre_ne_laisse_aucun_morceau_de_ce_genre() {
+        let mut plan = plan_de(15);
+        plan.filtres.exclure_genres = vec!["rock".into()];
+        let (route, _) = composer(&plan).unwrap();
+        assert!(!route.is_empty());
+        assert!(route.iter().all(|id| id % 2 == 1), "un rock s'est glissé : {route:?}");
+    }
+
+    /// Sélection étroite (un tiers) : graphe des voisins bâti sur les seuls
+    /// admissibles, faute de quoi la marche s'arrêterait aussitôt.
+    #[test]
+    fn un_niveau_denergie_restreint_la_marche_aux_morceaux_calmes() {
+        let mut plan = plan_de(15);
+        plan.filtres.energie = Some(NiveauEnergie::Calme);
+        let (route, relaches) = composer(&plan).unwrap();
+        assert!(route.len() >= 10, "{} morceaux : {relaches:?}", route.len());
+        // Tiers bas des énergies = indices 0..100.
+        assert!(route.iter().all(|id| *id <= 100), "{route:?}");
+    }
+
+    #[test]
+    fn une_arrivee_nommee_termine_la_playlist_sans_doublon() {
+        let mut plan = plan_de(15);
+        plan.arrivee = Some(piste(250));
+        plan.depart = Some(piste(10));
+        let (route, _) = composer(&plan).unwrap();
+        assert_eq!(route.first(), Some(&10));
+        assert_eq!(route.last(), Some(&250));
+        assert_eq!(doublons(&route), 0);
+    }
+
+    /// Le départ nommé reste admis même s'il contrevient aux filtres :
+    /// l'utilisateur l'a cité.
+    #[test]
+    fn un_depart_nomme_echappe_aux_filtres() {
+        let mut plan = plan_de(10);
+        plan.depart = Some(piste(10)); // rock
+        plan.filtres.exclure_genres = vec!["rock".into()];
+        let (route, _) = composer(&plan).unwrap();
+        assert_eq!(route.first(), Some(&10));
+        assert!(route[1..].iter().all(|id| id % 2 == 1));
+    }
+
+    #[test]
+    fn des_exclusions_qui_vident_la_bibliotheque_sont_une_erreur_claire() {
+        let mut plan = plan_de(10);
+        plan.filtres.exclure_genres = vec!["rock".into(), "jazz".into()];
+        let e = composer(&plan).unwrap_err();
+        assert!(e.contains("exclusions"), "{e}");
+    }
+
+    #[test]
+    fn un_critere_desiré_sans_resultat_est_assoupli_et_dit() {
+        let mut plan = plan_de(10);
+        plan.filtres.energie = Some(NiveauEnergie::Calme);
+        plan.filtres.annee_min = Some(2000); // aucun morceau n'est de 2000
+        let (route, relaches) = composer(&plan).unwrap();
+        assert!(!route.is_empty());
+        assert!(relaches.iter().any(|r| r.contains("période")), "{relaches:?}");
+    }
+
+    /// Bout en bout sur la **vraie** bibliothèque (une copie — ouvrir la base
+    /// de l'application migrerait son schéma) : vrai Ollama, vrai encodeur
+    /// CLAP-texte, vraies empreintes, vrai graphe. Sous-échantillonné pour que
+    /// le graphe (n²) reste raisonnable en debug. Ignoré par défaut :
+    /// `RUSTY_DB=copie.db RUSTY_SOUS_ECH=6000 OLLAMA_MODELE=gemma4:e4b-mlx \
+    ///  cargo test -p rusty-music-desktop composition_sur_la_vraie -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn composition_sur_la_vraie_bibliotheque() {
+        use rusty_music_core::ollama;
+        let base = std::env::var("RUSTY_DB").expect("RUSTY_DB=chemin/vers/copie.db");
+        let m: usize = std::env::var("RUSTY_SOUS_ECH").ok().and_then(|v| v.parse().ok()).unwrap_or(6000);
+        let modele = std::env::var("OLLAMA_MODELE").unwrap_or_else(|_| "gemma4:e4b-mlx".into());
+        let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
+
+        let tout = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let pas = (tout.len() / m).max(1);
+        let vecteurs: Vec<Empreinte> = tout.into_iter().step_by(pas).collect();
+        let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
+        let mut carac = lib.caracteristiques_pistes().expect("caractéristiques");
+        carac.retain(|p| analyses.contains(&p.id));
+        let t = Instant::now();
+        let graphe = Graphe::construire(
+            &vecteurs,
+            rusty_music_analysis::chemin::K_VOISINS,
+            super::coeurs_arriere_plan(),
+        );
+        eprintln!("{} morceaux, graphe en {:.1} s", vecteurs.len(), t.elapsed().as_secs_f64());
+        let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
+        let vocab = lib.vocabulaire_genres(usize::MAX).unwrap();
+
+        for prompt in [
+            "Une playlist calme de 60 minutes, sans rock",
+            "Une heure de musique énergique pour courir, pas plus de 2 morceaux par artiste",
+            "Des morceaux de jazz peu connus, 20 morceaux",
+            "Une playlist qui commence doucement et monte vers du rock énergique, 15 morceaux",
+        ] {
+            let i = ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
+            let plan = PlanTexte {
+                depart: None,
+                arrivee: None,
+                arrivee_demandee: None,
+                etapes: i.etapes.clone(),
+                n: i.n.map(|n| n as usize).unwrap_or(20),
+                duree_minutes: i.duree_minutes,
+                plafond_par_artiste: i.plafond_par_artiste,
+                filtres: i.filtres(),
+            };
+            let cibles: Vec<Vec<f32>> = plan.etapes.iter().map(|e| encodeur.embed(e).unwrap()).collect();
+            let t = Instant::now();
+            let resultat = composer_route(&plan, &carac, &vecteurs, &graphe, &cibles, 3, BRUIT_DEFAUT);
+            eprintln!("\n« {prompt} »\n  filtres : {:?} · durée {:?} · n {}", plan.filtres, plan.duree_minutes, plan.n);
+            match resultat {
+                Err(e) => eprintln!("  ERREUR : {e}"),
+                Ok((route, relaches)) => {
+                    let total: i64 = route
+                        .iter()
+                        .map(|id| carac.iter().find(|p| p.id == *id).and_then(|p| p.duree_ms).unwrap_or(0))
+                        .sum();
+                    eprintln!("  {} morceaux, {} min, en {} ms ; assouplis : {relaches:?}", route.len(), total / 60_000, t.elapsed().as_millis());
+                    for id in route.iter().take(12) {
+                        let c = carac.iter().find(|p| p.id == *id).unwrap();
+                        let t = lib.track(*id).unwrap().unwrap();
+                        eprintln!(
+                            "    {:<28} {:<26} énergie {:.2} bpm {:>5.0} {:?}",
+                            t.artist.unwrap_or_default().chars().take(28).collect::<String>(),
+                            t.title.unwrap_or_default().chars().take(26).collect::<String>(),
+                            c.energie.unwrap_or(-1.0), c.bpm.unwrap_or(-1.0), c.genres
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Robustesse de la **composition** : relit les interprétations écrites par
+    /// l'exemple `robustesse` (`RUSTY_RESULTATS=res.json`) et compose chacune
+    /// sur la vraie bibliothèque (une copie), sans Ollama. Vérifie des
+    /// invariants, pas la musique : exclusions respectées, durée, plafond par
+    /// artiste, bornes d'années, absence de doublon, jamais de panique.
+    ///
+    /// `RUSTY_DB=copie.db RUSTY_RESULTATS=res.json RUSTY_SOUS_ECH=6000 \
+    ///  cargo test -p rusty-music-desktop robustesse_de_la_composition -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn robustesse_de_la_composition() {
+        let base = std::env::var("RUSTY_DB").expect("RUSTY_DB");
+        let res = std::env::var("RUSTY_RESULTATS").expect("RUSTY_RESULTATS");
+        let m: usize = std::env::var("RUSTY_SOUS_ECH").ok().and_then(|v| v.parse().ok()).unwrap_or(6000);
+        let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
+        let tout = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let pas = (tout.len() / m).max(1);
+        let vecteurs: Vec<Empreinte> = tout.into_iter().step_by(pas).collect();
+        let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
+        let mut carac = lib.caracteristiques_pistes().expect("caractéristiques");
+        carac.retain(|p| analyses.contains(&p.id));
+        let graphe = Graphe::construire(
+            &vecteurs,
+            rusty_music_analysis::chemin::K_VOISINS,
+            super::coeurs_arriere_plan(),
+        );
+        let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
+        let par_id: HashMap<i64, &CaracteristiquesPiste> = carac.iter().map(|p| (p.id, p)).collect();
+        eprintln!("{} morceaux placables", vecteurs.len());
+
+        let fichier: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(res).expect("résultats")).expect("json");
+        let (mut ok, mut total, mut erreurs_moteur, mut paniques) = (0, 0, 0, 0);
+        for r in fichier["resultats"].as_array().expect("resultats") {
+            let id = r["id"].as_str().unwrap_or("?");
+            let Some(spec) = r.get("spec") else { continue }; // interprétation échouée : rien à composer
+            let i: rusty_music_core::ollama::InterpretationLlm =
+                serde_json::from_value(spec.clone()).expect("spec");
+            let plan = PlanTexte {
+                depart: None,
+                arrivee: None,
+                arrivee_demandee: None,
+                etapes: i.etapes.clone(),
+                n: i.n.map(|n| n as usize).unwrap_or(20),
+                duree_minutes: i.duree_minutes,
+                plafond_par_artiste: i.plafond_par_artiste,
+                filtres: i.filtres(),
+            };
+            total += 1;
+            let cibles: Vec<Vec<f32>> = plan.etapes.iter().map(|e| encodeur.embed(e).unwrap()).collect();
+            let t = Instant::now();
+            let sortie = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                composer_route(&plan, &carac, &vecteurs, &graphe, &cibles, 3, BRUIT_DEFAUT)
+            }));
+            let ms = t.elapsed().as_millis();
+            let (route, relaches) = match sortie {
+                Err(_) => {
+                    paniques += 1;
+                    eprintln!("✗ {id:<22} PANIQUE");
+                    continue;
+                }
+                Ok(Err(e)) => {
+                    erreurs_moteur += 1;
+                    eprintln!("· {id:<22} erreur moteur : {e}");
+                    continue;
+                }
+                Ok(Ok(v)) => v,
+            };
+
+            let mut pb: Vec<String> = Vec::new();
+            let artiste_de = |id: &i64| -> String {
+                par_id.get(id).and_then(|p| p.artiste.clone()).unwrap_or_default().to_lowercase()
+            };
+            // Exclusions dures : aucun genre ni artiste ne contient le mot (mot entier).
+            let mot_dans = |texte: &str, mot: &str| -> bool {
+                texte
+                    .split(|c: char| !c.is_alphanumeric())
+                    .any(|m| m == mot)
+                    || (mot.contains(' ') && texte.contains(mot))
+            };
+            if let Some(mots) = r["exclusions_dures"].as_array() {
+                for mot in mots.iter().filter_map(|m| m.as_str()) {
+                    let n_genre = route
+                        .iter()
+                        .filter(|id| par_id.get(id).is_some_and(|p| p.genres.iter().any(|g| mot_dans(g, mot))))
+                        .count();
+                    let n_art = route.iter().filter(|id| artiste_de(id).contains(mot)).count();
+                    if n_genre + n_art > 0 {
+                        pb.push(format!("« {mot} » : {n_genre} morceau(x) de ce genre, {n_art} de cet artiste"));
+                    }
+                }
+            }
+            let mut vus = HashSet::new();
+            if route.iter().any(|id| !vus.insert(*id)) {
+                pb.push("doublon".into());
+            }
+            let duree: i64 = route.iter().map(|id| par_id.get(id).and_then(|p| p.duree_ms).unwrap_or(0)).sum();
+            if let Some(d) = plan.duree_minutes {
+                let cible = i64::from(d) * 60_000;
+                let ecart = (duree - cible).abs() as f64 / cible as f64;
+                let dit = relaches.iter().any(|r| r.contains("durée visée"));
+                if ecart > 0.12 && !dit {
+                    pb.push(format!("durée {} min pour {d} visées, sans le dire", duree / 60_000));
+                }
+            }
+            if let Some(p) = plan.plafond_par_artiste {
+                let mut compte: HashMap<String, usize> = HashMap::new();
+                for id in &route {
+                    *compte.entry(artiste_de(id)).or_default() += 1;
+                }
+                if let Some((a, n)) = compte.iter().find(|(_, n)| **n > p as usize) {
+                    pb.push(format!("plafond {p} dépassé : {a} ×{n}"));
+                }
+            }
+            if let Some(min) = plan.filtres.annee_min {
+                let hors = route.iter().filter(|id| par_id.get(id).and_then(|p| p.annee).is_some_and(|a| a < min)).count();
+                if hors > 0 && !relaches.iter().any(|r| r.contains("période")) {
+                    pb.push(format!("{hors} morceau(x) avant {min}, sans le dire"));
+                }
+            }
+            if let Some(max) = plan.filtres.annee_max {
+                let hors = route.iter().filter(|id| par_id.get(id).and_then(|p| p.annee).is_some_and(|a| a > max)).count();
+                if hors > 0 && !relaches.iter().any(|r| r.contains("période")) {
+                    pb.push(format!("{hors} morceau(x) après {max}, sans le dire"));
+                }
+            }
+            if route.len() < 5 {
+                pb.push(format!("seulement {} morceau(x)", route.len()));
+            }
+            if pb.is_empty() {
+                ok += 1;
+                eprintln!("✓ {id:<22} {:>3} morceaux, {:>3} min, {ms} ms{}", route.len(), duree / 60_000,
+                    if relaches.is_empty() { String::new() } else { format!(" — assouplis : {}", relaches.len()) });
+            } else {
+                eprintln!("✗ {id:<22} {:>3} morceaux, {:>3} min", route.len(), duree / 60_000);
+                for p in pb {
+                    eprintln!("      {p}");
+                }
+            }
+        }
+        eprintln!("\n== composition : {ok}/{total} sans problème, {erreurs_moteur} refus clairs du moteur, {paniques} paniques");
     }
 }
