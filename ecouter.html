@@ -351,8 +351,18 @@ div.csl-indent {
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#panneau-de-droite" id="toc-panneau-de-droite" class="nav-link active" data-scroll-target="#panneau-de-droite"><span class="header-section-number">1.1</span> Panneau de droite</a></li>
+  <li><a href="#univers-de-lartiste" id="toc-univers-de-lartiste" class="nav-link" data-scroll-target="#univers-de-lartiste"><span class="header-section-number">1.2</span> Univers de l’artiste</a></li>
+  <li><a href="#barre-de-lecture" id="toc-barre-de-lecture" class="nav-link" data-scroll-target="#barre-de-lecture"><span class="header-section-number">1.3</span> Barre de lecture</a></li>
+  <li><a href="#bouton-n-normaliser-le-volume" id="toc-bouton-n-normaliser-le-volume" class="nav-link" data-scroll-target="#bouton-n-normaliser-le-volume"><span class="header-section-number">1.4</span> Bouton N : normaliser le volume</a></li>
+  <li><a href="#essais-abandonnés-e-et-hd" id="toc-essais-abandonnés-e-et-hd" class="nav-link" data-scroll-target="#essais-abandonnés-e-et-hd"><span class="header-section-number">1.5</span> Essais abandonnés : E et HD</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/rousseau/rusty-music/edit/main/ecouter.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/rousseau/rusty-music/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content page-columns page-full" id="quarto-document-content">
@@ -377,20 +387,37 @@ div.csl-indent {
 </header>
 
 
-<p>Ce mode permet d’accéder directement à une bibliothèque musicale. Comme d’autres logiciels, deux modes principaux ont été développés : le classement par Artistes ou par Album.</p>
-<p>L’affichage par Album est celui qui permet simplement de re-découvrir les albums, en utilisant un affichage alphabétique, par année de sortie ou aléatoire . En cliquant une ou deux fois sur le bouton “aléatoire”, on retrouve facilement des albums qui attirent l’attention, par la pochette ou l’artiste. C’est un moyen simple, rapide, efficace de parcourir sa bibliothèque musicale.</p>
-<p>Dans ce mode, le panneau de droite a deux utilité. La première concerne l’affichage d’informations sur le morceau en cours de lecture, comme l’album, l’artiste, la durée, le genre, la tonalité ou le tempo. Il y a également des critiques si disponibles et des voisins soniques reposant sur une similarité des empreintes sonores. Cliquer sur le nom de l’artiste ou de l’album permet de basculer dans l’univers de l’artiste. Le panneau central affichage alors les albums de l’artiste, sa bio, des artistes similaires, mais également la possibilité de générer une playlist à partir de l’artiste (mode Radio) ou uniquement des morceaux de l’artiste. La seconde concerne l’affichage d’une file de morceaux (playlist).</p>
-<p>Le panneau du bas permet une gestion basique de la lecture, de voir le spectrogramme du morceau en cours, de régler le volume. Les boutons E et HD avaient pour but d’essayer d’améliorer la qualité sonore de fichier compressé (MP3 128 kb/s, par exemple), mais le résultat n’a pas été concluant.</p>
-<p>Le bouton N permet de normaliser le volume sonore des morceaux, ce qui a semblé nécessaire pour une grande bibliothèque musicale variée. La normalisation mesure une fois pour toutes l’intensité sonore perçue de chaque morceau (norme EBU R128, en LUFS) puis, à la lecture, applique un gain qui la ramène vers une cible commune (−18 LUFS), sans jamais écrêter, afin que le volume reste constant d’un morceau ou d’un album à l’autre.</p>
+<p>Ce mode donne un accès direct à la bibliothèque, par Albums ou par Artistes, avec pour seule idée directrice la simplicité de navigation.</p>
+<p>L’affichage par Album sert à redécouvrir sa collection : tri alphabétique, par année de sortie ou aléatoire. Un ou deux clics sur « aléatoire » suffisent à faire remonter des albums qui attirent l’œil, par la pochette ou l’artiste. L’affichage par Artiste regroupe les albums par artiste ; il est plus compact.</p>
+<section id="panneau-de-droite" class="level2" data-number="1.1">
+<h2 data-number="1.1" class="anchored" data-anchor-id="panneau-de-droite"><span class="header-section-number">1.1</span> Panneau de droite</h2>
+<p>Il affiche les informations du morceau en cours : album, artiste, durée, genre, tonalité, tempo. S’y ajoutent les critiques (CritiqueBrainz), quand elles existent, et les voisins soniques, fondés sur la similarité des empreintes sonores (voir <a href="./explorer.html">Explorer</a>).</p>
+<p>Il peut aussi afficher la file de lecture (playlist).</p>
+</section>
+<section id="univers-de-lartiste" class="level2" data-number="1.2">
+<h2 data-number="1.2" class="anchored" data-anchor-id="univers-de-lartiste"><span class="header-section-number">1.2</span> Univers de l’artiste</h2>
+<p>Un clic sur le nom de l’artiste ou de l’album ouvre l’univers de l’artiste dans le panneau central : ses albums, sa biographie (TheAudioDB) et des artistes similaires. On peut en tirer une playlist, soit de l’artiste seul, soit en mode Radio.</p>
+</section>
+<section id="barre-de-lecture" class="level2" data-number="1.3">
+<h2 data-number="1.3" class="anchored" data-anchor-id="barre-de-lecture"><span class="header-section-number">1.3</span> Barre de lecture</h2>
+<p>Le panneau du bas gère la lecture, affiche le spectrogramme du morceau en cours, règle le volume et donne quelques informations sur le fichier (qualité, tempo, tonalité).</p>
+</section>
+<section id="bouton-n-normaliser-le-volume" class="level2 page-columns page-full" data-number="1.4">
+<h2 data-number="1.4" class="anchored" data-anchor-id="bouton-n-normaliser-le-volume"><span class="header-section-number">1.4</span> Bouton N : normaliser le volume</h2>
+<p>Le bouton N ramène chaque morceau à un même volume perçu (−18 LUFS), ce qui est utile dans une grande bibliothèque variée : le niveau reste constant d’un morceau ou d’un album à l’autre.</p>
 
 <div class="no-row-height column-margin column-container"><div class="">
-<p><strong>Bouton N : normalisation.</strong> La mesure suit l’algorithme standardisé de l’UIT, qui pondère le spectre selon la sensibilité de l’oreille et relève aussi le pic vrai du signal <span class="citation" data-cites="itu1770 ebu2020">(<a href="references.html#ref-itu1770" role="doc-biblioref">International Telecommunication Union, n.d.</a>; <a href="references.html#ref-ebu2020" role="doc-biblioref">European Broadcasting Union 2020</a>)</span>. La cible de −18 LUFS est un choix propre à l’application (la recommandation EBU R128 vise −23 LUFS pour la télévision), et le gain est plafonné pour que le pic vrai ne dépasse jamais 0 dBFS.</p>
-</div><div class="">
-<p><strong>Bouton E : excitation psychoacoustique.</strong> C’est le principe de l’« exciteur » d’Aphex : à partir de la bande conservée, on engendre des harmoniques d’ordre 2 et 3 que l’on ajoute juste sous et au-dessus de la fréquence de coupure, là où l’oreille perçoit la présence et l’« air » <span class="citation" data-cites="larsen2004">(<a href="references.html#ref-larsen2004" role="doc-biblioref">Larsen and Aarts 2004</a>)</span>. La fréquence de coupure est estimée sur le morceau lui-même ; un FLAC ou un MP3 320 kb/s ressort strictement intact. Le traitement se fait par transformée de Fourier à court terme, en mémoire, au moment de l’ouverture du morceau, avec une intensité réglable. L’idée est voisine de la réplication de bande spectrale utilisée par certains codecs (HE-AAC), qui recopie le bas du spectre vers le haut pour économiser du débit <span class="citation" data-cites="dietz2002">(<a href="references.html#ref-dietz2002" role="doc-biblioref">Dietz et al. 2002</a>)</span>.</p>
-</div><div class="">
-<p><strong>Bouton HD : super-résolution neuronale.</strong> Ici, un réseau de neurones reconstruit un haut du spectre structuré, et non plus seulement dérivé du bas. Le modèle retenu est AERO<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>, un réseau en U (encodeur-décodeur) qui travaille sur le spectrogramme complexe et a été entraîné de façon adversaire pour prédire directement toute la bande de fréquences <span class="citation" data-cites="mandel2023">(<a href="references.html#ref-mandel2023" role="doc-biblioref">Mandel et al. 2023</a>)</span>. Il est exécuté via ONNX Runtime, environ sept fois plus vite que le temps réel sur processeur : le calcul est un rendu de fond d’une trentaine de secondes par morceau, stocké dans un cache, et non un traitement à la volée. Pour ne jamais ternir l’original, la version HD ne fait qu’ajouter du contenu au-dessus de la coupure estimée.</p>
-<div id="fn1"><p><sup>1</sup>&nbsp;Une variante plus rapide, AEROMamba, remplace l’attention et le LSTM par un modèle d’espace d’états (Mamba) : environ 14 fois plus rapide en inférence <span class="citation" data-cites="abreu2024">(<a href="references.html#ref-abreu2024" role="doc-biblioref">Abreu and Biscainho 2024</a>)</span>. Elle n’a pas été retenue car l’exécution de ces opérateurs dans ONNX Runtime n’est pas garantie. Point de licence : les poids « musique » d’AERO et d’AEROMamba sont entraînés sur MUSDB18-HQ <span class="citation" data-cites="rafii2019">(<a href="references.html#ref-rafii2019" role="doc-biblioref">Rafii et al. 2019</a>)</span>, à usage non commercial. Une publication du logiciel imposerait donc de les livrer à part ou de ré-entraîner le modèle sur un corpus libre.</p></div></div></div>
+<p><strong>Normalisation.</strong> L’intensité perçue est mesurée une fois pour toutes (norme EBU R128, en LUFS), puis un gain est appliqué à la lecture. La mesure suit l’algorithme standardisé de l’UIT, qui pondère le spectre selon la sensibilité de l’oreille et relève aussi le pic vrai du signal <span class="citation" data-cites="itu1770 ebu2020">(<a href="references.html#ref-itu1770" role="doc-biblioref">International Telecommunication Union, n.d.</a>; <a href="references.html#ref-ebu2020" role="doc-biblioref">European Broadcasting Union 2020</a>)</span>. La cible de −18 LUFS est un choix propre à l’application (la recommandation EBU R128 vise −23 LUFS pour la télévision), et le gain est plafonné pour que le pic vrai ne dépasse jamais 0 dBFS.</p>
+</div></div></section>
+<section id="essais-abandonnés-e-et-hd" class="level2 page-columns page-full" data-number="1.5">
+<h2 data-number="1.5" class="anchored" data-anchor-id="essais-abandonnés-e-et-hd"><span class="header-section-number">1.5</span> Essais abandonnés : E et HD</h2>
+<p>Les boutons E et HD cherchaient à améliorer la qualité sonore de fichiers compressés (un MP3 128 kb/s, par exemple). Ils ont été réalisés, mais le résultat n’a pas été concluant.</p>
 
+<div class="no-row-height column-margin column-container"><div class="">
+<p><strong>Bouton E : excitation psychoacoustique.</strong> C’est le principe de l’« exciteur » d’Aphex : à partir de la bande conservée, on engendre des harmoniques d’ordre 2 et 3 que l’on ajoute juste sous et au-dessus de la fréquence de coupure, là où l’oreille perçoit la présence et l’« air » <span class="citation" data-cites="larsen2004">(<a href="references.html#ref-larsen2004" role="doc-biblioref">Larsen and Aarts 2004</a>)</span>. La fréquence de coupure est estimée sur le morceau lui-même ; un FLAC ou un MP3 320 kb/s ressort strictement intact. Le traitement se fait par transformée de Fourier à court terme, en mémoire, à l’ouverture du morceau, avec une intensité réglable. L’idée est voisine de la réplication de bande spectrale de certains codecs (HE-AAC), qui recopie le bas du spectre vers le haut pour économiser du débit <span class="citation" data-cites="dietz2002">(<a href="references.html#ref-dietz2002" role="doc-biblioref">Dietz et al. 2002</a>)</span>.</p>
+</div><div class="">
+<p><strong>Bouton HD : super-résolution neuronale.</strong> Ici, un réseau de neurones reconstruit un haut du spectre structuré, et non plus seulement dérivé du bas. Le modèle retenu était AERO<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>, un réseau en U (encodeur-décodeur) qui travaille sur le spectrogramme complexe et a été entraîné de façon adversaire pour prédire toute la bande de fréquences <span class="citation" data-cites="mandel2023">(<a href="references.html#ref-mandel2023" role="doc-biblioref">Mandel et al. 2023</a>)</span>. Il s’exécute via ONNX Runtime, environ sept fois plus vite que le temps réel sur processeur : c’est un rendu de fond d’une trentaine de secondes par morceau, stocké dans un cache, et non un traitement à la volée. Pour ne jamais ternir l’original, la version HD ne fait qu’ajouter du contenu au-dessus de la coupure estimée.</p>
+<div id="fn1"><p><sup>1</sup>&nbsp;Une variante plus rapide, AEROMamba, remplace l’attention et le LSTM par un modèle d’espace d’états (Mamba) : environ 14 fois plus rapide en inférence <span class="citation" data-cites="abreu2024">(<a href="references.html#ref-abreu2024" role="doc-biblioref">Abreu and Biscainho 2024</a>)</span>. Elle n’a pas été retenue car l’exécution de ces opérateurs dans ONNX Runtime n’est pas garantie. Point de licence : les poids « musique » d’AERO et d’AEROMamba sont entraînés sur MUSDB18-HQ <span class="citation" data-cites="rafii2019">(<a href="references.html#ref-rafii2019" role="doc-biblioref">Rafii et al. 2019</a>)</span>, à usage non commercial. Une publication du logiciel imposerait donc de les livrer à part ou de ré-entraîner le modèle sur un corpus libre.</p></div></div></div>
 
 
 <div id="refs" class="references csl-bib-body hanging-indent" role="list" style="display: none">
@@ -416,6 +443,7 @@ Mandel, Moshe, Or Tal, and Yossi Adi. 2023. <em><span>AERO</span>: Audio Super R
 Rafii, Zafar, Antoine Liutkus, Fabian-Robert Stöter, Stylianos Ioannis Mimilakis, and Rachel Bittner. 2019. <em><span>MUSDB18-HQ</span>: An Uncompressed Version of <span>MUSDB18</span></em>. Zenodo. <a href="https://doi.org/10.5281/zenodo.3338373">https://doi.org/10.5281/zenodo.3338373</a>.
 </div>
 </div>
+</section>
 
 
 </main> <!-- /main -->
@@ -849,5 +877,5 @@ Rafii, Zafar, Antoine Liutkus, Fabian-Robert Stöter, Stylianos Ioannis Mimilaki
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/rousseau/rusty-music/edit/main/ecouter.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/rousseau/rusty-music/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></div></div></footer><script src="site_libs/quarto-html/zenscroll-min.js"></script>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/rousseau/rusty-music/edit/main/ecouter.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/rousseau/rusty-music/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></div></div></footer><script src="site_libs/quarto-html/zenscroll-min.js"></script>
 </body></html>
