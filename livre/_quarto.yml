@@ -21,6 +21,8 @@ book:
 bibliography: references.bib
 csl: chicago-author-date.csl
 reference-location: margin
+citations-hover: true
+footnotes-hover: true
 
 format:
   html:
