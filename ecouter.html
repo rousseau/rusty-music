@@ -26,7 +26,26 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-</style>
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
 
 
 <script src="site_libs/quarto-nav/quarto-nav.js"></script>
@@ -49,9 +68,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-c7e68cbf4fd09285039b7e9a23f813c3.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-4c14827e5200f720654d0816307c26ac.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-97b5f4dd766062d47ce7e4e004188425.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-4c14827e5200f720654d0816307c26ac.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-e2408e382095936fb377b9678d5e8526.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-1e7670980335077b2d8d59dac39c2c02.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-e2408e382095936fb377b9678d5e8526.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "sidebar",
   "copy-button": false,
@@ -85,7 +104,7 @@ ul.task-list li input[type="checkbox"] {
 <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="nav-sidebar floating quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+<body class="nav-sidebar floating slimcontent quarto-light"><script id="quarto-html-before-body" type="application/javascript">
     const toggleBodyColorMode = (bsSheetEl) => {
       const mode = bsSheetEl.getAttribute("data-mode");
       const bodyEl = window.document.querySelector("body");
@@ -336,7 +355,7 @@ ul.task-list li input[type="checkbox"] {
         
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content">
+<main class="content page-columns page-full" id="quarto-document-content">
 
 
 <header id="title-block-header" class="quarto-title-block default">
@@ -358,8 +377,45 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<p><em>(à rédiger)</em></p>
+<p>Ce mode permet d’accéder directement à une bibliothèque musicale. Comme d’autres logiciels, deux modes principaux ont été développés : le classement par Artistes ou par Album.</p>
+<p>L’affichage par Album est celui qui permet simplement de re-découvrir les albums, en utilisant un affichage alphabétique, par année de sortie ou aléatoire . En cliquant une ou deux fois sur le bouton “aléatoire”, on retrouve facilement des albums qui attirent l’attention, par la pochette ou l’artiste. C’est un moyen simple, rapide, efficace de parcourir sa bibliothèque musicale.</p>
+<p>Dans ce mode, le panneau de droite a deux utilité. La première concerne l’affichage d’informations sur le morceau en cours de lecture, comme l’album, l’artiste, la durée, le genre, la tonalité ou le tempo. Il y a également des critiques si disponibles et des voisins soniques reposant sur une similarité des empreintes sonores. Cliquer sur le nom de l’artiste ou de l’album permet de basculer dans l’univers de l’artiste. Le panneau central affichage alors les albums de l’artiste, sa bio, des artistes similaires, mais également la possibilité de générer une playlist à partir de l’artiste (mode Radio) ou uniquement des morceaux de l’artiste. La seconde concerne l’affichage d’une file de morceaux (playlist).</p>
+<p>Le panneau du bas permet une gestion basique de la lecture, de voir le spectrogramme du morceau en cours, de régler le volume. Les boutons E et HD avaient pour but d’essayer d’améliorer la qualité sonore de fichier compressé (MP3 128 kb/s, par exemple), mais le résultat n’a pas été concluant.</p>
+<p>Le bouton N permet de normaliser le volume sonore des morceaux, ce qui a semblé nécessaire pour une grande bibliothèque musicale variée. La normalisation mesure une fois pour toutes l’intensité sonore perçue de chaque morceau (norme EBU R128, en LUFS) puis, à la lecture, applique un gain qui la ramène vers une cible commune (−18 LUFS), sans jamais écrêter, afin que le volume reste constant d’un morceau ou d’un album à l’autre.</p>
 
+<div class="no-row-height column-margin column-container"><div class="">
+<p><strong>Bouton N : normalisation.</strong> La mesure suit l’algorithme standardisé de l’UIT, qui pondère le spectre selon la sensibilité de l’oreille et relève aussi le pic vrai du signal <span class="citation" data-cites="itu1770 ebu2020">(<a href="references.html#ref-itu1770" role="doc-biblioref">International Telecommunication Union, n.d.</a>; <a href="references.html#ref-ebu2020" role="doc-biblioref">European Broadcasting Union 2020</a>)</span>. La cible de −18 LUFS est un choix propre à l’application (la recommandation EBU R128 vise −23 LUFS pour la télévision), et le gain est plafonné pour que le pic vrai ne dépasse jamais 0 dBFS.</p>
+</div><div class="">
+<p><strong>Bouton E : excitation psychoacoustique.</strong> C’est le principe de l’« exciteur » d’Aphex : à partir de la bande conservée, on engendre des harmoniques d’ordre 2 et 3 que l’on ajoute juste sous et au-dessus de la fréquence de coupure, là où l’oreille perçoit la présence et l’« air » <span class="citation" data-cites="larsen2004">(<a href="references.html#ref-larsen2004" role="doc-biblioref">Larsen and Aarts 2004</a>)</span>. La fréquence de coupure est estimée sur le morceau lui-même ; un FLAC ou un MP3 320 kb/s ressort strictement intact. Le traitement se fait par transformée de Fourier à court terme, en mémoire, au moment de l’ouverture du morceau, avec une intensité réglable. L’idée est voisine de la réplication de bande spectrale utilisée par certains codecs (HE-AAC), qui recopie le bas du spectre vers le haut pour économiser du débit <span class="citation" data-cites="dietz2002">(<a href="references.html#ref-dietz2002" role="doc-biblioref">Dietz et al. 2002</a>)</span>.</p>
+</div><div class="">
+<p><strong>Bouton HD : super-résolution neuronale.</strong> Ici, un réseau de neurones reconstruit un haut du spectre structuré, et non plus seulement dérivé du bas. Le modèle retenu est AERO<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>, un réseau en U (encodeur-décodeur) qui travaille sur le spectrogramme complexe et a été entraîné de façon adversaire pour prédire directement toute la bande de fréquences <span class="citation" data-cites="mandel2023">(<a href="references.html#ref-mandel2023" role="doc-biblioref">Mandel et al. 2023</a>)</span>. Il est exécuté via ONNX Runtime, environ sept fois plus vite que le temps réel sur processeur : le calcul est un rendu de fond d’une trentaine de secondes par morceau, stocké dans un cache, et non un traitement à la volée. Pour ne jamais ternir l’original, la version HD ne fait qu’ajouter du contenu au-dessus de la coupure estimée.</p>
+<div id="fn1"><p><sup>1</sup>&nbsp;Une variante plus rapide, AEROMamba, remplace l’attention et le LSTM par un modèle d’espace d’états (Mamba) : environ 14 fois plus rapide en inférence <span class="citation" data-cites="abreu2024">(<a href="references.html#ref-abreu2024" role="doc-biblioref">Abreu and Biscainho 2024</a>)</span>. Elle n’a pas été retenue car l’exécution de ces opérateurs dans ONNX Runtime n’est pas garantie. Point de licence : les poids « musique » d’AERO et d’AEROMamba sont entraînés sur MUSDB18-HQ <span class="citation" data-cites="rafii2019">(<a href="references.html#ref-rafii2019" role="doc-biblioref">Rafii et al. 2019</a>)</span>, à usage non commercial. Une publication du logiciel imposerait donc de les livrer à part ou de ré-entraîner le modèle sur un corpus libre.</p></div></div></div>
+
+
+
+<div id="refs" class="references csl-bib-body hanging-indent" role="list" style="display: none">
+<div id="ref-abreu2024" class="csl-entry" role="listitem">
+Abreu, Wallace, and Luiz Wagner Pereira Biscainho. 2024. <em><span>AEROMamba</span>: An Efficient Architecture for Audio Super-Resolution Using Generative Adversarial Networks and State Space Models</em>. <a href="https://doi.org/10.48550/arXiv.2411.07364">https://doi.org/10.48550/arXiv.2411.07364</a>.
+</div>
+<div id="ref-dietz2002" class="csl-entry" role="listitem">
+Dietz, Martin, Lars Liljeryd, Kristofer Kjörling, and Oliver Kunz. 2002. <span>“Spectral Band Replication, a Novel Approach in Audio Coding.”</span> <em>112th Convention of the Audio Engineering Society</em> (Munich).
+</div>
+<div id="ref-ebu2020" class="csl-entry" role="listitem">
+European Broadcasting Union. 2020. <em><span>EBU R 128</span>: Loudness Normalisation and Permitted Maximum Level of Audio Signals</em>. EBU. <a href="https://tech.ebu.ch/docs/r/r128.pdf">https://tech.ebu.ch/docs/r/r128.pdf</a>.
+</div>
+<div id="ref-itu1770" class="csl-entry" role="listitem">
+International Telecommunication Union. n.d. <em>Recommendation <span>ITU-R BS.1770</span>: Algorithms to Measure Audio Programme Loudness and True-Peak Audio Level</em>. ITU-R.
+</div>
+<div id="ref-larsen2004" class="csl-entry" role="listitem">
+Larsen, Erik, and Ronald M. Aarts. 2004. <em>Audio Bandwidth Extension: Application of Psychoacoustics, Signal Processing and Loudspeaker Design</em>. Wiley.
+</div>
+<div id="ref-mandel2023" class="csl-entry" role="listitem">
+Mandel, Moshe, Or Tal, and Yossi Adi. 2023. <em><span>AERO</span>: Audio Super Resolution in the Spectral Domain</em>. <a href="https://doi.org/10.48550/arXiv.2211.12232">https://doi.org/10.48550/arXiv.2211.12232</a>.
+</div>
+<div id="ref-rafii2019" class="csl-entry" role="listitem">
+Rafii, Zafar, Antoine Liutkus, Fabian-Robert Stöter, Stylianos Ioannis Mimilakis, and Rachel Bittner. 2019. <em><span>MUSDB18-HQ</span>: An Uncompressed Version of <span>MUSDB18</span></em>. Zenodo. <a href="https://doi.org/10.5281/zenodo.3338373">https://doi.org/10.5281/zenodo.3338373</a>.
+</div>
+</div>
 
 
 </main> <!-- /main -->
