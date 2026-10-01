@@ -28,26 +28,7 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-/* CSS for citations */
-div.csl-bib-body { }
-div.csl-entry {
-  clear: both;
-}
-.hanging-indent div.csl-entry {
-  margin-left:2em;
-  text-indent:-2em;
-}
-div.csl-left-margin {
-  min-width:2em;
-  float:left;
-}
-div.csl-right-inline {
-  margin-left:2em;
-  padding-left:1em;
-}
-div.csl-indent {
-  margin-left: 2em;
-}</style>
+</style>
 
 
 <script src="site_libs/quarto-nav/quarto-nav.js"></script>
@@ -105,7 +86,7 @@ div.csl-indent {
 <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="nav-sidebar floating slimcontent quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+<body class="nav-sidebar floating quarto-light"><script id="quarto-html-before-body" type="application/javascript">
     const toggleBodyColorMode = (bsSheetEl) => {
       const mode = bsSheetEl.getAttribute("data-mode");
       const bodyEl = window.document.querySelector("body");
@@ -362,7 +343,7 @@ div.csl-indent {
 <div class="toc-actions"><ul><li><a href="https://github.com/rousseau/rusty-music/edit/main/index.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/rousseau/rusty-music/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
-<main class="content page-columns page-full" id="quarto-document-content">
+<main class="content" id="quarto-document-content">
 
 
 <header id="title-block-header" class="quarto-title-block default">
@@ -397,39 +378,14 @@ div.csl-indent {
 </header>
 
 
-<section id="introduction" class="level1 unnumbered page-columns page-full">
+<section id="introduction" class="level1 unnumbered">
 <h1 class="unnumbered">Introduction</h1>
 <p>Rusty Music est né de la frustration de l’utilisation de lecteur de musique comme iTunes (maintenant Musique).</p>
 <p>L’idée de départ est de simplement indiquer le chemin d’un répertoire contenant une bibliothèque musicale et de proposer différentes approches pour écouter et re-découvrir des morceaux un peu oubliés.</p>
-<p>Le logiciel se décompose donc en 4 modes : écouter, explorer, éditer et découvrir.</p>
-<div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-<span class="screen-reader-only">Note</span>Paragraphe de test
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p>Ce paragraphe vérifie la chaîne de rendu — appel de note, citation et bibliographie en fin de chapitre. Le placement des morceaux sur la carte du mode Explorer doit rester contraint par la voirie plutôt que par un espace euclidien libre, un principe proche des cartes de communautés de réseaux <span class="citation" data-cites="rosvall2010">(<a href="references.html#ref-rosvall2010" role="doc-biblioref">Rosvall and Bergstrom 2010</a>)</span> et des cartes thématiques de type GMap <span class="citation" data-cites="gansner2010">(<a href="references.html#ref-gansner2010" role="doc-biblioref">Gansner et al. 2010</a>)</span>. Les travaux fondateurs sur l’organisation visuelle d’archives musicales, comme <em>Islands of Music</em> <span class="citation" data-cites="pampalk2001">(<a href="references.html#ref-pampalk2001" role="doc-biblioref">Pampalk 2001</a>)</span>, restent une référence pour ce mode<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>.</p>
-</div>
-</div>
+<p>Le logiciel se décompose donc en 4 modes : <a href="./ecouter.html">écouter</a>, <a href="./explorer.html">explorer</a>, <a href="./editer.html">éditer</a> et <a href="./decouvrir.html">découvrir</a>.</p>
 
 
-<div class="no-row-height column-margin column-container"><div id="fn1"><p><sup>1</sup>&nbsp;Ce paragraphe et cette note sont un texte de test, à retirer une fois la chaîne de publication vérifiée.</p></div></div><div id="refs" class="references csl-bib-body hanging-indent" role="list" style="display: none">
-<div id="ref-gansner2010" class="csl-entry" role="listitem">
-Gansner, Emden R., Yifan Hu, and Stephen Kobourov. 2010. <span>“<span>GMap</span>: Visualizing Graphs and Clusters as Maps.”</span> <em>IEEE Pacific Visualization Symposium (PacificVis)</em>, 201–8. <a href="https://doi.org/10.1109/PACIFICVIS.2010.5429590">https://doi.org/10.1109/PACIFICVIS.2010.5429590</a>.
-</div>
-<div id="ref-pampalk2001" class="csl-entry" role="listitem">
-Pampalk, Elias. 2001. <span>“Islands of Music: Analysis, Organization, and Visualization of Music Archives.”</span> Master’s thesis, Vienna University of Technology.
-</div>
-<div id="ref-rosvall2010" class="csl-entry" role="listitem">
-Rosvall, Martin, and Carl T. Bergstrom. 2010. <span>“Mapping Change in Large Networks.”</span> <em>PLoS ONE</em> 5 (1): e8694. <a href="https://doi.org/10.1371/journal.pone.0008694">https://doi.org/10.1371/journal.pone.0008694</a>.
-</div>
-</div>
 </section>
-
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
