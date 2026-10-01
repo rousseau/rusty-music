@@ -518,6 +518,10 @@ function dessinerGrille() {
   grilleFenetre.style.gridTemplateColumns = `repeat(${cols}, ${ALBUM_LARG}px)`;
 
   if (vue.quoi !== grilleCartesQuoi) {
+    // Vider la Map ne suffit pas : les nœuds restent dans `grilleFenetre`, et
+    // les cartes de l'ancienne vue s'affichent devant les nouvelles (Artistes
+    // sans effet, tris d'Albums figés derrière des cartes périmées).
+    grilleFenetre.replaceChildren();
     grilleCartes.clear();
     grilleCartesQuoi = vue.quoi;
   }
@@ -1330,8 +1334,8 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // prépare alors les données sans remontrer grille ni liste.
   $("liste").hidden = horsEcoute || enGrille;
   $("grille").hidden = horsEcoute || !enGrille;
-  // Le choix d'ordre ne concerne que la grille d'albums du mode Écoute.
-  $("tri-albums").hidden = horsEcoute || quoi !== "albums";
+  // Le choix d'ordre ne concerne que les grilles (albums, artistes) de l'Écoute.
+  majBarreTri(horsEcoute);
   if (enGrille) {
     // Pas de `preparerGraphe()` ici : la grille est la vue par défaut de
     // l'Écoute, donc ce qu'on construirait à *chaque* lancement de l'appli,
@@ -1352,7 +1356,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // Repère alphabétique : seulement là où l'ordre affiché est celui des
   // noms — pas la liste des pistes d'un album (ordre du disque), ni une
   // recherche (ordre de pertinence).
-  const avecIndex = quoi === "artistes" || (quoi === "albums" && triAlbums === "alpha");
+  const avecIndex = indexAlphaUtile(quoi);
   $("index-alpha").hidden = !avecIndex;
   if (avecIndex) construireIndexAlpha();
 
@@ -1456,12 +1460,11 @@ document.querySelectorAll("[data-tri]").forEach((b) =>
 /// que pour l'ordre `alpha` — masqué pour les deux autres.
 function choisirTriAlbums(tri) {
   if (tri === "alea") rebrasserAlea(vue.lignes);
-  else if (tri === triAlbums) return;
-  triAlbums = tri;
-  document.querySelectorAll("[data-tri]").forEach((b) =>
-    b.classList.toggle("tri__opt--actif", b.dataset.tri === tri),
-  );
-  const avecIndex = vue.quoi === "albums" && tri === "alpha";
+  else if (tri === triCourant()) return;
+  if (vue.quoi === "artistes") triArtistes = tri;
+  else triAlbums = tri;
+  majBarreTri();
+  const avecIndex = indexAlphaUtile();
   $("index-alpha").hidden = !avecIndex;
   if (avecIndex) construireIndexAlpha();
   grille.scrollTop = 0;
@@ -6642,17 +6645,45 @@ function albumsAffiches() {
 /// (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee` et `alea`
 /// retrient une copie côté interface.
 let triAlbums = "alpha";
-// clé d'album → tirage aléatoire, régénéré à chaque clic sur « Aléatoire ».
-// Passer par la clé (et non l'objet) garde l'ordre stable quand le filtre
-// familles réduit la liste affichée.
-let grainesAlea = new Map();
+/// Ordre de la grille d'artistes : `alpha` (celui du moteur) ou `alea` — pas
+/// d'année, un artiste n'en a pas. Mémorisé à part de `triAlbums`.
+let triArtistes = "alpha";
+// clé de carte (voir `cleCarteGrille`) → tirage aléatoire, régénéré à chaque
+// clic sur « Aléatoire ». Passer par la clé (et non l'objet) garde l'ordre
+// stable quand le filtre familles réduit la liste affichée.
+// Une table par grille : rebrasser les albums ne doit pas changer l'ordre
+// aléatoire des artistes quand on y revient.
+const grainesAlea = { artistes: new Map(), albums: new Map() };
+
+/// L'ordre en vigueur pour la vue de premier niveau affichée.
+const triCourant = () => (vue.quoi === "artistes" ? triArtistes : triAlbums);
+
+/// Le repère alphabétique n'a de sens que si l'ordre affiché est celui des noms.
+const indexAlphaUtile = (quoi = vue.quoi) =>
+  (quoi === "artistes" && triArtistes === "alpha") || (quoi === "albums" && triAlbums === "alpha");
 
 function rebrasserAlea(lignes) {
-  grainesAlea = new Map();
-  for (const a of lignes) grainesAlea.set(cleAlbum(a), Math.random());
+  const table = grainesAlea[vue.quoi === "artistes" ? "artistes" : "albums"];
+  table.clear();
+  for (const a of lignes) table.set(cleCarteGrille(a), Math.random());
+}
+
+/// La barre d'ordre sert aux grilles d'albums et d'artistes du mode Écoute ;
+/// « Année » n'a de sens que pour les albums.
+function majBarreTri(horsEcoute = modeCourant !== "ecoute") {
+  $("tri-albums").hidden = horsEcoute || !vueEnGrille();
+  document.querySelector('[data-tri="annee"]').hidden = vue.quoi === "artistes";
+  document.querySelectorAll("[data-tri]").forEach((b) =>
+    b.classList.toggle("tri__opt--actif", b.dataset.tri === triCourant()),
+  );
 }
 
 function trierAlbums(lignes) {
+  if (vue.quoi === "artistes") {
+    if (triArtistes !== "alea") return lignes;
+    const g = grainesAlea.artistes;
+    return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
+  }
   if (triAlbums === "annee") {
     return [...lignes].sort((a, b) => {
       const ya = a.year ?? -Infinity;
@@ -6662,18 +6693,19 @@ function trierAlbums(lignes) {
     });
   }
   if (triAlbums === "alea") {
-    return [...lignes].sort(
-      (a, b) => (grainesAlea.get(cleAlbum(a)) ?? 0) - (grainesAlea.get(cleAlbum(b)) ?? 0),
-    );
+    const g = grainesAlea.albums;
+    return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
   }
   return lignes;
 }
 
 /// Les lignes de la vue courante — la grille d'albums peut être filtrée et
-/// retriée, tout le reste (liste d'artistes, pistes d'un album, recherche)
-/// passe tel quel.
+/// retriée, celle d'artistes retriée ; tout le reste (pistes d'un album,
+/// recherche) passe tel quel.
 function lignesCourantes() {
-  return vue.quoi === "albums" ? trierAlbums(albumsAffiches()) : vue.lignes;
+  if (vue.quoi === "albums") return trierAlbums(albumsAffiches());
+  if (vue.quoi === "artistes") return trierAlbums(vue.lignes);
+  return vue.lignes;
 }
 
 async function dessinerFamillesEcoute() {
@@ -6708,7 +6740,7 @@ function majBlocFamillesEcoute() {
 function rafraichirGrille() {
   majBlocFamillesEcoute();
   if ($("grille").hidden) return;
-  $("fil-compte").textContent = `${lignesCourantes().length} albums`;
+  $("fil-compte").textContent = `${lignesCourantes().length} ${vue.quoi === "artistes" ? "artistes" : "albums"}`;
   construireIndexAlpha();
   grilleDernierRang = -1;
   dessinerGrille();
@@ -7327,7 +7359,7 @@ async function basculerMode(mode) {
   if (mode !== "ecoute") masquerAutourArtiste();
   // L'ordre de la grille d'albums n'existe qu'en Écoute : `poser` le rétablit
   // en y revenant, mais ne court pas pour les autres modes.
-  $("tri-albums").hidden = mode !== "ecoute" || vue.quoi !== "albums";
+  majBarreTri(mode !== "ecoute");
   $("retour").hidden = explorer || bibliotheque || decouvrir || vue.retour === null;
   $("index-alpha").hidden = $("index-alpha").hidden || bibliotheque || decouvrir;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir;
@@ -10126,9 +10158,7 @@ function majEtatEditer() {
     } else {
       dessiner();
     }
-    const avecIndex =
-      vue.quoi === "artistes" || (vue.quoi === "albums" && triAlbums === "alpha");
-    $("index-alpha").hidden = !avecIndex;
+    $("index-alpha").hidden = !indexAlphaUtile();
     $("fil-titre").textContent = vue.titre;
     const compte = vue.quoi === "albums" ? lignesCourantes().length : vue.lignes.length;
     $("fil-compte").textContent = `${compte} ${
