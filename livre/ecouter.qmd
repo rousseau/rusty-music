@@ -18,7 +18,7 @@ Un clic sur le nom de l'artiste ou de l'album ouvre l'univers de l'artiste dans 
 
 Le panneau du bas gère la lecture, affiche le spectrogramme du morceau en cours, règle le volume et donne quelques informations sur le fichier (qualité, tempo, tonalité).
 
-## Bouton N : normaliser le volume
+### Bouton N : normaliser le volume
 
 Le bouton N ramène chaque morceau à un même volume perçu (−18 LUFS), ce qui est utile dans une grande bibliothèque variée : le niveau reste constant d'un morceau ou d'un album à l'autre.
 
@@ -26,7 +26,7 @@ Le bouton N ramène chaque morceau à un même volume perçu (−18 LUFS), ce qu
 **Normalisation.** L'intensité perçue est mesurée une fois pour toutes (norme EBU R128, en LUFS), puis un gain est appliqué à la lecture. La mesure suit l'algorithme standardisé de l'UIT, qui pondère le spectre selon la sensibilité de l'oreille et relève aussi le pic vrai du signal [@itu1770; @ebu2020]. La cible de −18 LUFS est un choix propre à l'application (la recommandation EBU R128 vise −23 LUFS pour la télévision), et le gain est plafonné pour que le pic vrai ne dépasse jamais 0 dBFS.
 :::
 
-## Essais abandonnés : E et HD
+### Essais abandonnés (mais disponibles) : E et HD
 
 Les boutons E et HD cherchaient à améliorer la qualité sonore de fichiers compressés (un MP3 128 kb/s, par exemple). Ils ont été réalisés, mais le résultat n'a pas été concluant.
 
