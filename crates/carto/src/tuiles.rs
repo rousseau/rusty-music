@@ -95,6 +95,13 @@ pub struct Paliers {
     pub albums_des: u8,
     /// Les morceaux ne se révèlent que de près.
     pub morceaux_des: u8,
+    /// Plan de ville réel : à partir de ce zoom, chaque bâtiment habité est
+    /// aussi servi comme un **point** (couche `habites`) — le bâtiment lui-même
+    /// n'est dessiné qu'à partir de `morceaux_des`, trop petit avant pour se
+    /// voir. Le point porte les mêmes attributs (famille, année, tempo,
+    /// énergie) : la ville garde sa couleur, selon la coloration choisie, à
+    /// tous les zooms. Sans effet sur le monde fictif.
+    pub habites_des: u8,
     /// Classe de route la plus basse à dessiner (0 autoroute … 3 sentier).
     ///
     /// À 1, seules les autoroutes et les nationales entrent dans les tuiles —
@@ -132,6 +139,7 @@ impl Default for Paliers {
             artistes_des: 3,
             albums_des: 5, // sans effet : `Source.albums` est toujours vide ici
             morceaux_des: 6,
+            habites_des: 0,
             // Les secondaires entrent : depuis que le réseau relie des lieux et
             // non des morceaux, elles ne sont plus 200 000 brins mais quelques
             // milliers de couloirs — et ce sont elles qui donnent au réseau sa
@@ -189,6 +197,9 @@ impl Paliers {
             // monde fictif (`artistes_des: 3, morceaux_des: 6`, un écart de
             // 3 sur 9 zooms ; ici un écart de 1 sur 17, encore à l'œil.
             morceaux_des: 14,
+            // Paris entier tient dans l'écran vers z10-11 ; en deçà de z9, un
+            // point de 0,7 px n'apprend rien et alourdit deux tuiles de 1,3 Mo.
+            habites_des: 9,
             ..Self::default()
         }
     }
@@ -568,6 +579,32 @@ pub fn ecrire_avec(
         })
         .collect();
 
+    // Un point par bâtiment habité, léger (famille, année, tempo, énergie — ni
+    // titre ni artiste, déjà dans `morceaux`) : la couleur du bâti à l'échelle
+    // où le bâtiment lui-même est invisible. Vide sur le chemin fictif.
+    let habites: Vec<Point> = if reel {
+        source
+            .morceaux
+            .iter()
+            .map(|m| {
+                let p = proj(m.x as f64, m.y as f64);
+                let mut etiquettes = vec![("famille", Valeur::Entier(m.famille))];
+                if let Some(a) = m.annee {
+                    etiquettes.push(("annee", Valeur::Entier(a as i64)));
+                }
+                if let Some(b) = m.bpm {
+                    etiquettes.push(("bpm", Valeur::Reel(b as f64)));
+                }
+                if let Some(e) = m.energie {
+                    etiquettes.push(("energie", Valeur::Reel(e as f64)));
+                }
+                Point { u: p.u, v: p.v, id: m.id as u64, etiquettes }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // --- Les territoires ----------------------------------------------------
     // Seules les nappes par famille deviennent des territoires ; la nappe
     // globale (`famille == None`) servira au relief, pas au pavage.
@@ -605,8 +642,8 @@ pub fn ecrire_avec(
                     palier: bande.palier as i64,
                     morceau: -1,
                     annee: -1,
-                bpm: None,
-                energie: None,
+                    bpm: None,
+                    energie: None,
                     groupe,
                     bornes: b,
                 });
@@ -823,8 +860,8 @@ pub fn ecrire_avec(
                     palier: terr.famille,
                     morceau: -1,
                     annee: -1,
-                bpm: None,
-                energie: None,
+                    bpm: None,
+                    energie: None,
                     groupe: groupe_territoire,
                     bornes,
                 });
@@ -917,6 +954,7 @@ pub fn ecrire_avec(
         frontiere: &frontiere,
         points_remarquables: &points_remarquables,
         albums: &albums,
+        habites: &habites,
     };
 
     let mut rapport = Rapport {
@@ -971,6 +1009,12 @@ pub fn ecrire_avec(
         }
         if z >= paliers.albums_des {
             semer(&mut tuiles, &albums, n, |t| &mut t.albums);
+        }
+        // Les points des bâtiments habités ne servent que tant que le bâtiment
+        // lui-même est trop petit (`morceaux_des`) ; un cran de plus pour le
+        // fondu entre les deux (`style::habites_reels`).
+        if z >= paliers.habites_des && z <= paliers.morceaux_des + 1 {
+            semer(&mut tuiles, &habites, n, |t| &mut t.habites);
         }
 
         // Ordre de Hilbert : c'est celui dans lequel PMTiles range son
@@ -1032,6 +1076,8 @@ struct Tuile {
     points_remarquables: Vec<usize>,
     /// Albums — vide sur le chemin fictif.
     albums: Vec<usize>,
+    /// Un point par bâtiment habité — vide sur le chemin fictif.
+    habites: Vec<usize>,
 }
 
 struct Contexte<'a> {
@@ -1047,6 +1093,7 @@ struct Contexte<'a> {
     frontiere: &'a [Troncon],
     points_remarquables: &'a [Point],
     albums: &'a [Point],
+    habites: &'a [Point],
 }
 
 /// Encode une tuile. Rend `None` si elle est vide — une tuile sans entité n'a
@@ -1105,6 +1152,7 @@ fn encoder_tuile(
         ("morceaux", &t.morceaux, ctx.morceaux),
         ("points-remarquables", &t.points_remarquables, ctx.points_remarquables),
         ("albums", &t.albums, ctx.albums),
+        ("habites", &t.habites, ctx.habites),
     ] {
         if indices.is_empty() {
             continue;
@@ -1636,6 +1684,7 @@ fn metadonnees(source: &Source, paliers: &Paliers) -> String {
             "familles_jusqu_a": paliers.familles_jusqu_a,
             "artistes_des": paliers.artistes_des,
             "morceaux_des": paliers.morceaux_des,
+            "habites_des": paliers.habites_des,
         },
     })
     .to_string()
@@ -1764,6 +1813,7 @@ mod tests {
             artistes_des: 1,
             albums_des: 2,
             morceaux_des: 3,
+            habites_des: 0,
             // Les secondaires entrent : depuis que le réseau relie des lieux et
             // non des morceaux, elles ne sont plus 200 000 brins mais quelques
             // milliers de couloirs — et ce sont elles qui donnent au réseau sa

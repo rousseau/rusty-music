@@ -949,7 +949,8 @@ fn couches_ville(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
     v.extend(bati_reel(p, pal));
     v.extend(bati_morceaux_reel(source, p, pal));
     v.push(voirie_reelle(pal)); // la voirie passe **sur** le bâti
-    v.extend(points_musicaux_reel(source, p, pal));
+    v.push(habites_reels(source, p, pal)); // les points passent sur la voirie : la couleur doit se voir
+    v.extend(points_musicaux_reel(p, pal));
     v
 }
 
@@ -1106,30 +1107,50 @@ fn bati_morceaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value>
     ]
 }
 
+/// 4a'. **La ville garde sa couleur au dézoom.** Un bâtiment de 15 m n'est pas
+/// visible avant le zoom 14 (`morceaux_des`) ; en deçà, chaque bâtiment habité
+/// est un **point** (couche `habites`, `tuiles::Paliers::habites_des`) coloré
+/// comme lui — par famille, ou par année/tempo/énergie
+/// (`app.js::couleurBatimentsMorceaux`, qui remplace cette teinte de départ).
+/// Il s'efface en fondu pendant que le bâtiment apparaît.
+///
+/// Ces points **remplacent** les pastilles d'artiste (grises) et d'album
+/// (couleur de famille) : héritées du temps où un morceau était un point et où
+/// artiste → album → morceau étaient trois échelons d'un même semis, elles
+/// doublaient la couleur du bâti, avec une teinte qui ne suivait pas la
+/// coloration choisie. Les étiquettes (`artistes-etiquette`,
+/// `albums-etiquette`) restent.
+fn habites_reels(source: &Source, p: &Paliers, pal: &Palette) -> Value {
+    let des = p.habites_des as f64;
+    let bati = p.morceaux_des as f64;
+    json!({
+        "id": "habites-point", "type": "circle",
+        "source": "carte", "source-layer": "habites",
+        "minzoom": des,
+        "maxzoom": bati + 1.5,
+        "paint": {
+            "circle-color": couleur_famille_champ(source, "famille", pal, pal.autres),
+            // Quelques pixels : assez pour se lire à la vue d'ensemble sans
+            // masquer la voirie, et se rapprocher de la taille d'un bâtiment
+            // quand celui-ci prend le relais.
+            "circle-radius": ["interpolate", ["linear"], ["zoom"],
+                des, 0.7, bati - 3.0, 1.3, bati - 1.0, 2.2, bati, 3.0, bati + 1.5, 4.0],
+            "circle-opacity": ["interpolate", ["linear"], ["zoom"],
+                des, 0.8, bati - 1.0, 0.85, bati, 0.6, bati + 1.5, 0.0],
+            "circle-stroke-width": 0
+        }
+    })
+}
+
 /// 4b. Points et étiquettes musicaux — artistes, albums, titres. Inchangé
 ///     (retouché étape 3). Ni `curiosites` ni `points-remarquables` ici.
-fn points_musicaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
+fn points_musicaux_reel(p: &Paliers, pal: &Palette) -> Vec<Value> {
     let zmax = p.zoom_max as f64;
     let bande = (p.morceaux_des as f64 - p.artistes_des as f64).max(3.0);
     let art_b2 = p.artistes_des as f64 + bande / 3.0;
     let art_b3 = p.artistes_des as f64 + bande * 2.0 / 3.0;
     let art_b4 = p.artistes_des as f64 + bande;
-    let couleur = couleur_famille(source, pal);
     vec![
-        json!({
-            "id": "artistes-point", "type": "circle",
-            "source": "carte", "source-layer": "artistes",
-            "minzoom": art_b3,
-            "paint": {
-                "circle-radius": ["interpolate", ["linear"], ["zoom"],
-                    art_b3, ["match", ["get", "rang"], 3, 2.4, 2.0],
-                    art_b4, ["match", ["get", "rang"], 3, 5.0, 2, 4.0, 1, 3.2, 2.4],
-                    zmax, ["match", ["get", "rang"], 3, 7.0, 2, 6.0, 1, 5.0, 4.0]],
-                "circle-color": pal.autres,
-                "circle-opacity": ["interpolate", ["linear"], ["zoom"], art_b3, 0.0, art_b4, 0.6],
-                "circle-stroke-width": 0
-            }
-        }),
         json!({
             "id": "artistes-etiquette", "type": "symbol",
             "source": "carte", "source-layer": "artistes",
@@ -1153,31 +1174,6 @@ fn points_musicaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Valu
                     art_b3, ["match", ["get", "rang"], 3, 0.85, 2, 0.8, 0.0],
                     art_b4, ["match", ["get", "rang"], 3, 0.85, 2, 0.8, 1, 0.7, 0.0],
                     zmax, 0.7]
-            }
-        }),
-        // **L'album s'efface une fois le bâti individuel révélé.** Sans
-        // `maxzoom`, le point restait affiché indéfiniment (son opacité
-        // plafonnait à 0,6 au dernier palier de l'`interpolate`, faute de
-        // palier suivant) : à `morceaux_des`, chaque bâtiment se colore déjà
-        // par lui-même, et le point d'album flottant à côté n'apportait plus
-        // rien — juste un doublon visuel pour le même morceau signalé deux
-        // fois (retour d'usage, sept. 2026). Un cran et demi de zoom pour ne
-        // pas couper net l'échelon pendant la transition artiste → bâtiment.
-        json!({
-            "id": "albums-point", "type": "circle",
-            "source": "carte", "source-layer": "albums",
-            "minzoom": p.albums_des as f64,
-            "maxzoom": (p.morceaux_des as f64) + 1.5,
-            "paint": {
-                "circle-radius": ["interpolate", ["linear"], ["zoom"],
-                    p.albums_des as f64, 2.2, p.morceaux_des as f64, 3.6],
-                "circle-color": couleur,
-                "circle-opacity": ["interpolate", ["linear"], ["zoom"],
-                    p.albums_des as f64, 0.0, (p.albums_des as f64) + 0.5, 0.75, p.morceaux_des as f64, 0.6],
-                "circle-stroke-color": pal.halo,
-                "circle-stroke-width": 1.0,
-                "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"],
-                    p.albums_des as f64, 0.0, (p.albums_des as f64) + 0.5, 0.75, p.morceaux_des as f64, 0.6]
             }
         }),
         json!({
@@ -1286,7 +1282,7 @@ mod tests {
         assert!(!ids.contains(&"relief"), "couche « relief » toujours présente");
         for attendu in [
             "terre-reelle", "eaux-reelles", "verts-reels", "routes-reelles",
-            "territoires-reels", "batiments-reels", "batiments-morceaux", "albums-point",
+            "territoires-reels", "batiments-reels", "batiments-morceaux", "habites-point",
         ] {
             assert!(ids.contains(&attendu), "couche « {attendu} » absente du plan de ville réel : {ids:?}");
         }
@@ -1345,7 +1341,8 @@ mod tests {
         assert!(rang("territoires-reels") < rang("batiments-reels"));
         assert!(rang("batiments-reels") < rang("batiments-morceaux"));
         assert!(rang("batiments-morceaux") < rang("routes-reelles"), "la voirie doit passer sur le bâti");
-        assert!(rang("routes-reelles") < rang("artistes-point"));
+        assert!(rang("routes-reelles") < rang("habites-point"), "la couleur des points doit se voir sur la voirie");
+        assert!(rang("habites-point") < rang("artistes-etiquette"));
     }
 
     /// Sans `center`/`zoom` explicites, `app.js` retombe sur le centre du
@@ -1378,7 +1375,7 @@ mod tests {
             "familles", "etablissements", "curiosites", "artistes", "morceaux",
             // Le plan de ville réel.
             "frontiere", "batiments", "eaux", "verts", "routes-reelles", "points-remarquables", "albums",
-            "territoires-reels",
+            "territoires-reels", "habites",
         ];
         let verifier = |s: &Value| {
             for couche in s["layers"].as_array().unwrap() {
@@ -1613,5 +1610,27 @@ mod tests {
         let tab = couleur_territoires(&encre);
         assert_eq!(tab[2], json!(0));
         assert_eq!(tab[3], json!(Palette::encre().familles[0]));
+    }
+}
+
+#[cfg(test)]
+mod tests_habites {
+    use super::*;
+
+    /// Les points des bâtiments habités ne vivent que dans la fenêtre de zoom
+    /// où le bâtiment lui-même est trop petit ou en fondu : les tuiles les
+    /// produisent de `habites_des` à `morceaux_des + 1`, le style ne les montre
+    /// pas au-delà de `morceaux_des + 1,5` (fondu terminé).
+    #[test]
+    fn les_points_habites_relaient_le_bati_au_dezoom() {
+        let p = crate::tuiles::Paliers::ville();
+        let couches = couches_ville(&Source::default(), &p, &Palette::osm_clair());
+        let c = couches.iter().find(|c| c["id"] == "habites-point").expect("couche absente");
+        assert_eq!(c["minzoom"].as_f64().unwrap(), p.habites_des as f64);
+        assert!(c["maxzoom"].as_f64().unwrap() <= (p.morceaux_des + 2) as f64);
+        assert!(p.habites_des < p.morceaux_des);
+        // Plus de pastille d'artiste ni d'album sur le plan réel.
+        let ids: Vec<&str> = couches.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert!(!ids.contains(&"artistes-point") && !ids.contains(&"albums-point"));
     }
 }

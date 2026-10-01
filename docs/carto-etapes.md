@@ -1041,3 +1041,39 @@ Tests ajoutés : `rang_artiste_est_monotone_et_couvre_les_quatre_paliers`
 (quantiles, cas vide). Tous les tests passent, `cargo test -p
 rusty-music-carto -p rusty-music-osm` (71 tests) et `cargo build
 --workspace`.
+
+
+## La ville garde sa couleur au dézoom (1er oct. 2026)
+
+Retour d'usage : « à quoi servent les points ? » ; au dézoom on perdait la
+couleur des bâtiments, des points apparaissaient puis disparaissaient, et la
+ville restait colorée par famille quelle que soit la coloration choisie.
+
+**Ce que c'était.** Sous le zoom 14 (`morceaux_des`) le bâti habité n'est pas
+servi : seuls un lavis de famille (`territoires-reels`, jamais masqué sous une
+coloration continue — d'où la couleur « collée » aux familles), des pastilles
+grises d'artiste (`artistes-point`) et des pastilles d'album couleur de famille
+(`albums-point`, ne suivant pas non plus la coloration) se voyaient. Ces
+pastilles étaient les échelons artiste → album → morceau d'un temps où un
+morceau était un point ; depuis que le bâtiment porte le morceau, elles
+doublaient la couleur du bâti.
+
+**Ce que c'est devenu.**
+- Couche de tuiles **`habites`** : un point par bâtiment habité (famille,
+  année, tempo, énergie — rien d'autre), servie de `Paliers::habites_des` (9)
+  à `morceaux_des + 1` ; couche de style `habites-point` (cercle, fondu sortant
+  pendant que le bâtiment entre), au-dessus de la voirie pour que la couleur se
+  voie. +4 Mo sur l'archive (79 → 84 Mo).
+- `artistes-point` et `albums-point` **supprimés** du plan de ville ; leurs
+  étiquettes restent.
+- `app.js::poserCouleurHabites` applique la **même** expression de couleur au
+  bâtiment et à son point (`couleurBatimentsMorceaux(champFamille)`) : famille,
+  année, tempo ou énergie, isolement de famille et intervalle d'années compris.
+- Les aplats de quartier (`territoires`, `territoires-reels` et leur contour)
+  ne sont visibles qu'en coloration **par famille**.
+
+**Vérifié** dans MapLibre (aperçu `rassembler_paris`, expression d'année posée
+à la main sur les deux couches) : à z11 Paris se lit par année (île bleue,
+avenues rouges), à z13,6 les points relaient, à z14,6 les bâtiments prennent la
+suite sous les points qui s'effacent. **Pas** vérifié dans l'application Tauri
+elle-même (le JS de `majCouleurGL` n'a été que relu et passé à `node --check`).

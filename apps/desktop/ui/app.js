@@ -4417,15 +4417,13 @@ function majCouleurGL() {
   // comme par année, tempo ou énergie. Passe par le même constructeur que
   // `majFiltreGL` : la coloration du bâti, l'isolement d'une famille et
   // l'intervalle d'années doivent rester cohérents.
-  if (batimentsMorceaux) {
-    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
-  }
-  if (gl.getLayer("territoires")) {
-    gl.setLayoutProperty(
-      "territoires",
-      "visibility",
-      carte.couleur === "famille" ? "visible" : "none",
-    );
+  poserCouleurHabites();
+  // Les aplats de quartier sont un lavis **de famille** : sous une coloration
+  // continue (année, tempo, énergie) ils mentiraient sur la couleur de la
+  // ville — la couleur vient alors des bâtiments et de leurs points.
+  for (const couche of ["territoires", "territoires-reels", "territoires-reels-contour"]) {
+    if (gl.getLayer(couche))
+      gl.setLayoutProperty(couche, "visibility", carte.couleur === "famille" ? "visible" : "none");
   }
 }
 
@@ -4480,9 +4478,21 @@ function clauseAnneeHorsIntervalle() {
   return ["any", ["<", v, filtreAnnee.debut], [">", v, filtreAnnee.fin]];
 }
 
+/// Pose la couleur du bâti habité **et** celle de son point de dézoom
+/// (`habites-point`, qui relaie le bâtiment tant qu'il est trop petit pour se
+/// voir — `crates/carto/src/style.rs::habites_reels`) : la ville garde la
+/// coloration choisie (famille, année, tempo, énergie) à tous les zooms.
+function poserCouleurHabites() {
+  if (!gl || !glPret) return;
+  if (gl.getLayer("batiments-morceaux"))
+    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux("palier"));
+  if (gl.getLayer("habites-point"))
+    gl.setPaintProperty("habites-point", "circle-color", couleurBatimentsMorceaux("famille"));
+}
+
 /// Le bâti habité coloré par famille : la teinte de l'occupant (champ `palier`).
-function couleurFamilleBatiment(gris) {
-  const m = ["match", ["get", "palier"]];
+function couleurFamilleBatiment(gris, champ) {
+  const m = ["match", ["get", champ]];
   couleursFamillesCarte().forEach((t, i) => m.push(i, t));
   m.push(gris);
   return m;
@@ -4519,12 +4529,17 @@ function couleurContinueBatiment() {
 ///
 /// Un bâtiment n'a pas d'année propre ; c'est celle du morceau qui l'habite
 /// (`crates/carto/src/tuiles.rs`, tag `annee`).
-function couleurBatimentsMorceaux() {
+///
+/// `champFamille` : `palier` sur le bâtiment, `famille` sur son point de
+/// dézoom (couche `habites`, voir `poserCouleurHabites`) — deux tuiles, même
+/// coloration.
+function couleurBatimentsMorceaux(champFamille = "palier") {
   const gris = grisBatiCarte();
-  const parPalier = carte.couleur === "famille" ? couleurFamilleBatiment(gris) : couleurContinueBatiment();
+  const parPalier =
+    carte.couleur === "famille" ? couleurFamilleBatiment(gris, champFamille) : couleurContinueBatiment();
   const conditions = [];
   if (carte.isolees.size > 0)
-    conditions.push(["!", ["in", ["get", "palier"], ["literal", [...carte.isolees]]]]);
+    conditions.push(["!", ["in", ["get", champFamille], ["literal", [...carte.isolees]]]]);
   const hors = clauseAnneeHorsIntervalle();
   if (hors) conditions.push(hors);
   if (!conditions.length) return parPalier;
@@ -4548,9 +4563,7 @@ function filtreBase(layer) {
 function majFiltreGL() {
   if (!gl || !glPret) return;
 
-  if (gl.getLayer("batiments-morceaux")) {
-    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux());
-  }
+  poserCouleurHabites();
 
   const hors = clauseAnneeHorsIntervalle();
   const dansIntervalle = hors && ["!", hors];
