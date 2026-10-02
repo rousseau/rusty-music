@@ -4,6 +4,7 @@
 //!
 //! `cargo run --release -p rusty-music-core --example robustesse -- \
 //!    <base.db> <modele> [sortie.json]`
+//! (`ROB_CAS=autre.json` pour un autre jeu de prompts, `ROB_IDS=a,b` pour n'en rejouer que quelques-uns.)
 //!
 //! Ouvrir une **copie** de la base. Écrit, pour chaque prompt, la spec rendue,
 //! la latence et le verdict ; `composition_sur_la_vraie_bibliotheque`
@@ -148,9 +149,11 @@ fn main() -> anyhow::Result<()> {
 
     let lib = rusty_music_core::db::Library::open(std::path::Path::new(&base))?;
     let vocab = lib.vocabulaire_genres(usize::MAX)?;
-    let jeu: Value = serde_json::from_str(&std::fs::read_to_string(
-        "experiments/prompts-playlist/prompts.json",
-    )?)?;
+    // `ROB_CAS=fichier.json` : un autre jeu de prompts (même format), par
+    // exemple `experiments/musicrecointent/`.
+    let chemin = std::env::var("ROB_CAS")
+        .unwrap_or_else(|_| "experiments/prompts-playlist/prompts.json".into());
+    let jeu: Value = serde_json::from_str(&std::fs::read_to_string(chemin)?)?;
     let cas = jeu["cas"].as_array().expect("cas");
 
     println!("modèle {modele} — {} prompts, {} genres connus\n", cas.len(), vocab.len());
