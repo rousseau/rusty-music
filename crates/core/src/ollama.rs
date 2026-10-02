@@ -251,12 +251,15 @@ impl InterpretationLlm {
         propre(&mut self.genres);
         propre(&mut self.exclure_genres);
         propre(&mut self.exclure_artistes);
-        // Un départ ou une arrivée nommés font de la playlist un trajet : un
-        // genre cité « en passant par » en est une étape (déjà dans `etapes`),
-        // pas un filtre qui cloisonnerait toute la marche. Observé : même avec
-        // la règle dans la consigne, un petit modèle met « hip hop » dans
+        // Une **arrivée** nommée fait de la playlist un trajet : un genre cité
+        // « en passant par » en est une étape (déjà dans `etapes`), pas un
+        // filtre qui cloisonnerait toute la marche. Observé : même avec la
+        // règle dans la consigne, un petit modèle met « hip hop » dans
         // `genres` pour « de X à RATM en passant par du hip hop ».
-        let est_trajet = [&self.seed_artiste, &self.seed_morceau, &self.arrivee_artiste, &self.arrivee_morceau]
+        // Un départ seul (« du r&b comme Ella Mai ») n'est pas un trajet : le
+        // genre y est une contrainte, et le vider perdait 93 requêtes sur 151
+        // de MusicRecoIntent (`experiments/musicrecointent`).
+        let est_trajet = [&self.arrivee_artiste, &self.arrivee_morceau]
             .iter()
             .any(|c| c.as_deref().is_some_and(|s| !s.trim().is_empty()));
         if est_trajet {
@@ -796,8 +799,9 @@ pub fn interpreter(
     resultat
 }
 
-/// Les modèles déjà installés localement (`ollama list`) — sert le
-/// sélecteur du champ d'intention (icône 🦙) et [`modele_par_defaut`].
+/// Les modèles déjà installés localement (`ollama list`), du **plus petit au
+/// plus gros** — sert le sélecteur du champ d'intention (icône 🦙) et
+/// [`modele_par_defaut`].
 pub fn modeles(hote: &str) -> crate::Result<Vec<String>> {
     let url = format!("{hote}/api/tags");
     let (statut, brut) = requete(&url, TIMEOUT_LISTE, |agent| agent.get(&url).call())?;
@@ -806,17 +810,29 @@ pub fn modeles(hote: &str) -> crate::Result<Vec<String>> {
     }
     let v: Value = serde_json::from_str(&brut)
         .map_err(|e| Error::Parsing(format!("réponse d'Ollama illisible : {e}")))?;
-    Ok(v["models"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|m| m["name"].as_str().map(str::to_string))
-        .collect())
+    Ok(trier_par_taille(
+        v["models"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|m| Some((m["name"].as_str()?.to_string(), m["size"].as_u64()))),
+    ))
 }
 
-/// Le premier modèle installé, faute de choix explicite de l'utilisateur —
-/// voir la documentation de [`MODELE_DEFAUT`] sur pourquoi ce n'est pas un nom
-/// fixe.
+/// Du plus petit au plus gros ; un modèle dont la taille n'est pas annoncée
+/// passe après les autres (on ne le choisit pas par défaut sans savoir ce
+/// qu'il coûte), à taille égale l'ordre d'Ollama est conservé.
+fn trier_par_taille(modeles: impl IntoIterator<Item = (String, Option<u64>)>) -> Vec<String> {
+    let mut v: Vec<(String, Option<u64>)> = modeles.into_iter().collect();
+    v.sort_by_key(|(_, taille)| taille.unwrap_or(u64::MAX));
+    v.into_iter().map(|(nom, _)| nom).collect()
+}
+
+/// Le **plus petit** modèle installé, faute de choix explicite de
+/// l'utilisateur : le plus rapide à répondre, et celui qui tient dans la
+/// mémoire de n'importe quelle machine (un 27 B échoue par manque de mémoire
+/// sur 25 Go). Voir la documentation de [`MODELE_DEFAUT`] sur pourquoi ce
+/// n'est pas un nom fixe.
 pub fn modele_par_defaut(hote: &str) -> crate::Result<String> {
     modeles(hote)?.into_iter().next().ok_or_else(|| {
         Error::Reseau("aucun modèle Ollama installé — `ollama pull <modèle>`".to_string())
@@ -1075,7 +1091,8 @@ mod tests {
     }
 
     /// « De X à RATM en passant par du hip hop » : le genre est une étape du
-    /// trajet, pas un filtre — mais une exclusion tient toujours.
+    /// trajet, pas un filtre — mais une exclusion tient toujours. Seule une
+    /// arrivée fait un trajet.
     #[test]
     fn un_trajet_ne_garde_pas_de_genre_filtrant() {
         let brut = r#"{"seed_artiste": "X", "arrivee_artiste": "Rage Against The Machine",
@@ -1083,9 +1100,21 @@ mod tests {
         let p = interpretation_de(brut).expect("plan valide");
         assert!(p.genres.is_empty());
         assert_eq!(p.exclure_genres, vec!["country".to_string()]);
-        // Sans départ ni arrivée, le genre voulu est gardé.
+        // Sans arrivée, le genre voulu est gardé — avec ou sans départ nommé.
         let q = interpretation_de(r#"{"etapes": ["jazz"], "genres": ["jazz"]}"#).unwrap();
         assert_eq!(q.genres, vec!["jazz".to_string()]);
+        let d = interpretation_de(r#"{"seed_artiste": "Ella Mai", "etapes": ["r&b"], "genres": ["r&b"]}"#).unwrap();
+        assert_eq!(d.genres, vec!["r&b".to_string()], "un départ seul n'est pas un trajet");
+    }
+
+    #[test]
+    fn le_modele_par_defaut_est_le_plus_petit() {
+        let installes = vec![
+            ("gros:27b".to_string(), Some(18_000_000_000)),
+            ("inconnu".to_string(), None),
+            ("petit:4b".to_string(), Some(9_000_000_000)),
+        ];
+        assert_eq!(trier_par_taille(installes), vec!["petit:4b", "gros:27b", "inconnu"]);
     }
 
     /// Mesuré sur gemma4:e4b-mlx : une ambiance ou un usage devenait des

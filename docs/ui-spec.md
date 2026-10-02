@@ -268,7 +268,7 @@ texte libre la playlist voulue, pas seulement nommer une famille.
   corrigé lors du premier essai réel). Retenu : une icône 🦙 à gauche du champ
   déplie la liste des modèles déjà installés (`ollama::modeles`, `GET
   /api/tags`) ; le choix est mémorisé (`localStorage`) et, faute de choix,
-  `ollama::modele_par_defaut` prend le premier modèle installé plutôt qu'un
+  `ollama::modele_par_defaut` prend le plus petit modèle installé plutôt qu'un
   nom deviné. Un modèle « qui réfléchit » (capacité `thinking`, ex.
   qwen3.8:27b-mlx) répond dans son champ `thinking` plutôt que `response`
   quand `"think": false` n'est pas honoré : `ollama::interpreter` lit l'un ou

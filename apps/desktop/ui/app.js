@@ -1074,7 +1074,7 @@ $("intention-texte").addEventListener("keydown", (e) => {
 
 /// Le modèle Ollama choisi par l'utilisateur (icône 🦙) — mémorisé d'une
 /// session à l'autre. `null` tant qu'aucun choix n'a été fait : le moteur
-/// retombe alors sur le premier modèle installé (`ollama::modele_par_defaut`),
+/// retombe alors sur le plus petit modèle installé (`ollama::modele_par_defaut`),
 /// pas sur un nom fixe qui n'existe peut-être pas sur cette machine (observé :
 /// `qwen2.5:3b` absent rend un 404 qu'Ollama ne distingue pas clairement d'un
 /// serveur injoignable).
