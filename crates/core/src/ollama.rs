@@ -201,12 +201,15 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
 
 /// Mots (sans accents) par lesquels un utilisateur **dit** une énergie, en
 /// français et en anglais : une ambiance (« calme », « chill », « détendu »),
-/// un niveau (« énergique », « upbeat », « dynamique ») ou un usage qui en
-/// impose un (« pour faire du sport », « pour m'endormir », « pour le dîner »).
-/// Un mot de 4 lettres ou plus ancre aussi ses dérivés (« detend » → détendue,
-/// « sport » → sportif) ; plus court, il doit être là en entier. Volontairement
-/// absents : « heavy » et « hard » (ils nomment des genres), « course » (« of
-/// course »), « travail » ou « étude » (un usage sans niveau d'énergie net).
+/// une humeur dont la direction d'énergie est nette (« triste », « dreamy »,
+/// « angry »), un niveau (« énergique », « upbeat », « dynamique ») ou un usage
+/// qui en impose un (« pour faire du sport », « pour m'endormir », « pour le
+/// dîner »). Un mot de 4 lettres ou plus ancre aussi ses dérivés (« detend » →
+/// détendue, « sport » → sportif) ; plus court, il doit être là en entier.
+/// Volontairement absents : « heavy » et « hard » (ils nomment des genres),
+/// « course » (« of course »), « travail » ou « étude » (un usage sans niveau
+/// d'énergie net), et les humeurs ambiguës (« romantic », « happy », « dark »,
+/// « sweet »), qui vont aussi bien avec un tempo lent qu'avec un tempo vif.
 const INDICES_ENERGIE: &[&str] = &[
     // calme
     "calm", "calme", "chill", "relax", "detend", "mellow", "soft", "soothing", "quiet",
@@ -214,22 +217,39 @@ const INDICES_ENERGIE: &[&str] = &[
     "tranquill", "apais", "serein", "paisible", "lent", "lente", "lents", "lentes",
     "lentement", "zen", "sleep", "dorm", "sommeil", "endorm", "lullab", "berceuse",
     "meditat", "yoga", "spa", "sieste", "cosy", "cozy", "lofi", "diner", "dinner",
+    // calme — humeurs dont la direction d'énergie est nette
+    "sad", "triste", "melanc", "dreamy", "reveur", "depress", "gloomy", "wistful", "somber",
     // intense
     "energ", "intense", "dynamiq", "dynamic", "upbeat", "lively", "fast", "rapide",
     "aggress", "loud", "puissant", "pump", "workout", "gym", "fitness", "muscu", "sport",
     "run", "running", "courir", "jogging", "cardio", "exercis", "party", "fete", "dance",
     "danse", "danser", "hype", "banger", "motiv", "entrain", "festif", "survolt",
     "punchy", "explosi", "nerveux",
+    // intense — humeurs dont la direction d'énergie est nette
+    "angry", "colere", "furious", "furieux", "rage", "brutal", "euphori",
     // moyenne
     "moyen", "moyenne", "medium", "moderat", "modere", "midtempo",
 ];
 
-/// Le texte dit-il une énergie ? Voir [`INDICES_ENERGIE`].
+/// Négations (sans accents, contractions coupées : « isn't » → « isn », « t »).
+const NEGATIONS: &[&str] = &[
+    "not", "non", "no", "sans", "pas", "never", "without", "less", "t", "isn", "aren",
+    "don", "doesn", "won", "ni", "nor",
+];
+
+/// Le texte dit-il une énergie ? Voir [`INDICES_ENERGIE`]. Un indice précédé
+/// d'une négation dans les deux mots qui le précèdent (« not like sad »,
+/// « pas calme ») ne compte pas : ce que l'utilisateur refuse ne dit pas ce
+/// qu'il veut.
 fn energie_nommee(texte: &[String]) -> bool {
-    texte.iter().any(|t| {
-        INDICES_ENERGIE
+    texte.iter().enumerate().any(|(i, t)| {
+        let indice = INDICES_ENERGIE
             .iter()
-            .any(|i| t == i || (i.len() >= 4 && t.starts_with(i)))
+            .any(|ind| t == ind || (ind.len() >= 4 && t.starts_with(ind)));
+        indice
+            && !texte[i.saturating_sub(2)..i]
+                .iter()
+                .any(|m| NEGATIONS.contains(&m.as_str()))
     })
 }
 
@@ -1199,13 +1219,25 @@ mod tests {
             "j'ai envie de me laisser porter par quelque chose de doux",
             "30 minutes de calme, puis 30 minutes d'énergique",
             "d'abord du calme, puis du dynamique",
+            // Humeurs à direction d'énergie nette.
+            "dreamy music",
+            "des chansons tristes",
+            "anything as angry as this that is not metal",
+            "sans rap mais calme",
         ] {
             let mut p = interpretation_de(brut).unwrap();
             assert!(p.ancrer_energie(texte).is_empty(), "énergie écartée à tort : {texte}");
             assert_eq!(p.energie.as_deref(), Some("intense"), "{texte}");
         }
         // Ni un genre ni une référence ne disent une énergie.
-        for texte in ["heavy metal", "r&b songs like ella mai", "hard rock of course", "Quelques morceaux sympas"] {
+        for texte in [
+            "heavy metal", "r&b songs like ella mai", "hard rock of course", "Quelques morceaux sympas",
+            // Un indice nié ne dit rien de ce qu'on veut.
+            "music that carries a lonely vibe but not like sad",
+            "pas calme", "something that isn't too calm", "non romantic and no sad songs",
+            // Humeurs ambiguës : exclues du lexique.
+            "romantic songs", "something happy", "dark and sweet",
+        ] {
             let mut p = interpretation_de(brut).unwrap();
             assert_eq!(p.ancrer_energie(texte).len(), 3, "énergie gardée à tort : {texte}");
         }

@@ -84,11 +84,29 @@ upbeat, dynamique), usages (sport, dormir, dîner).
 | Ancien banc `prompts-playlist` (64 cas stricts, gemma4) | — | 64/64 |
 | Genres, entités, exclusions, JSON | — | inchangés (± 1, bruit) |
 
-Les 30 énergies écartées « à tort » sont des adjectifs d'humeur sans mot
-d'énergie (« dreamy », « angry », « sad », « depressive », « sweet ») : la
-direction est parfois plausible (dreamy → calme), parfois non (« summer » →
-moyenne, « complex funky jazzy » → moyenne). L'humeur reste dans les étapes
-CLAP-texte. Les 25 énergies gardées le sont toutes par un mot explicite
-(upbeat, slow, chill, workout, calm, aggressive…). Écarts connus du lexique :
-une négation (« not like sad ») ne retire pas l'indice ; « heavy » et « hard »
-(noms de genres) en sont volontairement absents.
+Les 30 énergies écartées « à tort » étaient des adjectifs d'humeur sans mot
+d'énergie (« dreamy », « angry », « sad », « depressive », « sweet »).
+
+### Extension aux humeurs et négation (même jour)
+
+`INDICES_ENERGIE` accueille les humeurs dont la direction d'énergie est nette
+(calme : sad, triste, melancholic, dreamy, depressive, gloomy, wistful,
+somber ; intense : angry, furious, rage, brutal, euphoric). Restent hors
+lexique les humeurs ambiguës (« romantic », « happy », « dark », « sweet »).
+Un indice précédé d'une négation dans les deux mots qui le précèdent (« not
+like sad », « pas calme », « isn't too calm ») ne compte plus.
+
+| | Ancrage seul | + humeurs et négation |
+|---|---|---|
+| Énergie posée sans être dite | 0,7 % (2/300) | 0,7 % (2/300) |
+| Énergie conservée quand l'ambiance est annotée | 43 % (23/53) | **56 % (30/54)** |
+| Ancien banc `prompts-playlist` (gemma4) | 64/64 | 64/64 |
+
+Les 7 énergies regagnées : 5 plausibles (angry → intense, dreamy → calme,
+somber melancholic → calme, sad country → calme, sad rap → calme), 1 qui suit
+le genre plutôt que l'humeur (« sad rock metal metalcore » → intense), 1
+contradictoire : « depressive screamo » → calme alors que le screamo est
+intense. Une humeur ne vérifie pas la **cohérence** du niveau posé par le
+modèle avec le genre ; c'est la limite de cette approche. Les 24 humeurs
+restantes sans énergie gardée n'ont aucun mot du lexique (« sweet »,
+« romantic », « psychedelic »…) : l'humeur reste portée par les étapes CLAP.
