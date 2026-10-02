@@ -199,6 +199,40 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
     })
 }
 
+/// Mots (sans accents) par lesquels un utilisateur **dit** une énergie, en
+/// français et en anglais : une ambiance (« calme », « chill », « détendu »),
+/// un niveau (« énergique », « upbeat », « dynamique ») ou un usage qui en
+/// impose un (« pour faire du sport », « pour m'endormir », « pour le dîner »).
+/// Un mot de 4 lettres ou plus ancre aussi ses dérivés (« detend » → détendue,
+/// « sport » → sportif) ; plus court, il doit être là en entier. Volontairement
+/// absents : « heavy » et « hard » (ils nomment des genres), « course » (« of
+/// course »), « travail » ou « étude » (un usage sans niveau d'énergie net).
+const INDICES_ENERGIE: &[&str] = &[
+    // calme
+    "calm", "calme", "chill", "relax", "detend", "mellow", "soft", "soothing", "quiet",
+    "peaceful", "gentle", "slow", "doux", "douce", "douceur", "douceurs", "doucement",
+    "tranquill", "apais", "serein", "paisible", "lent", "lente", "lents", "lentes",
+    "lentement", "zen", "sleep", "dorm", "sommeil", "endorm", "lullab", "berceuse",
+    "meditat", "yoga", "spa", "sieste", "cosy", "cozy", "lofi", "diner", "dinner",
+    // intense
+    "energ", "intense", "dynamiq", "dynamic", "upbeat", "lively", "fast", "rapide",
+    "aggress", "loud", "puissant", "pump", "workout", "gym", "fitness", "muscu", "sport",
+    "run", "running", "courir", "jogging", "cardio", "exercis", "party", "fete", "dance",
+    "danse", "danser", "hype", "banger", "motiv", "entrain", "festif", "survolt",
+    "punchy", "explosi", "nerveux",
+    // moyenne
+    "moyen", "moyenne", "medium", "moderat", "modere", "midtempo",
+];
+
+/// Le texte dit-il une énergie ? Voir [`INDICES_ENERGIE`].
+fn energie_nommee(texte: &[String]) -> bool {
+    texte.iter().any(|t| {
+        INDICES_ENERGIE
+            .iter()
+            .any(|i| t == i || (i.len() >= 4 && t.starts_with(i)))
+    })
+}
+
 /// Un moment d'une playlist en plusieurs parties. Les exclusions, années,
 /// tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
 /// la partie priment sur ceux de la playlist.
@@ -396,6 +430,23 @@ impl InterpretationLlm {
             *liste = gardes;
             ecartes.extend(perdus);
         }
+        ecartes
+    }
+
+    /// Écarte l'énergie — celle de la playlist et celles des parties — quand
+    /// **le texte de l'utilisateur ne dit aucune énergie** ([`INDICES_ENERGIE`]).
+    /// Même défaut que pour les genres, et même remède : un petit modèle déduit
+    /// d'un nom d'artiste ou d'un genre (« metal comme Lamb of God » →
+    /// `intense`, « comme Norah Jones » → `calme`), et filtrer la bibliothèque
+    /// sur un niveau que l'utilisateur n'a jamais demandé écarte de bons
+    /// morceaux (mesuré sur MusicRecoIntent : 24 % des demandes). Rend les
+    /// niveaux écartés, pour le journal.
+    pub fn ancrer_energie(&mut self, prompt: &str) -> Vec<String> {
+        if energie_nommee(&mots_sans_accent(prompt)) {
+            return Vec::new();
+        }
+        let mut ecartes: Vec<String> = self.energie.take().into_iter().collect();
+        ecartes.extend(self.parties.iter_mut().filter_map(|p| p.energie.take()));
         ecartes
     }
 
@@ -785,6 +836,10 @@ pub fn interpreter(
         if !inventes.is_empty() {
             tracing::info!(?inventes, "champ d'intention : genres que le texte ne nomme pas, écartés");
         }
+        let deduites = p.ancrer_energie(prompt);
+        if !deduites.is_empty() {
+            tracing::info!(?deduites, "champ d'intention : énergie que le texte ne dit pas, écartée");
+        }
         if p.inferer_parties(prompt) {
             tracing::info!("champ d'intention : suite de genres lue comme des parties");
         }
@@ -1115,6 +1170,45 @@ mod tests {
             ("petit:4b".to_string(), Some(9_000_000_000)),
         ];
         assert_eq!(trier_par_taille(installes), vec!["petit:4b", "gros:27b", "inconnu"]);
+    }
+
+    /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 24 % des demandes recevaient
+    /// une énergie que personne n'avait dite (« metal comme Lamb of God » →
+    /// `intense`, « comme Norah Jones » → `calme`).
+    #[test]
+    fn une_energie_que_le_texte_ne_dit_pas_est_ecartee() {
+        let brut = r#"{"etapes": ["x"], "energie": "intense",
+                        "parties": [
+                          {"description": "x", "genres": [], "energie": "calme", "duree_minutes": 5, "n": null},
+                          {"description": "y", "genres": [], "energie": "intense", "duree_minutes": 5, "n": null}]}"#;
+        let mut p = interpretation_de(brut).unwrap();
+        let ecartes = p.ancrer_energie("metal like lamb of god");
+        assert_eq!(p.energie, None);
+        assert!(p.parties.iter().all(|x| x.energie.is_none()), "{p:?}");
+        assert_eq!(ecartes.len(), 3, "la playlist et ses deux parties");
+        // Dite — par une ambiance, un niveau ou un usage —, elle reste.
+        for texte in [
+            "Quelque chose de calme",
+            "A chill 45 minute playlist, no metal",
+            "Upbeat 80s pop",
+            "De la musique énergique pour faire du sport",
+            "Une ambiance détendue pour le dîner",
+            "Pour m'endormir",
+            "Du funk des années 70, énergique, 20 morceaux, sans James Brown",
+            "plylist calm de 1h san roc",
+            "j'ai envie de me laisser porter par quelque chose de doux",
+            "30 minutes de calme, puis 30 minutes d'énergique",
+            "d'abord du calme, puis du dynamique",
+        ] {
+            let mut p = interpretation_de(brut).unwrap();
+            assert!(p.ancrer_energie(texte).is_empty(), "énergie écartée à tort : {texte}");
+            assert_eq!(p.energie.as_deref(), Some("intense"), "{texte}");
+        }
+        // Ni un genre ni une référence ne disent une énergie.
+        for texte in ["heavy metal", "r&b songs like ella mai", "hard rock of course", "Quelques morceaux sympas"] {
+            let mut p = interpretation_de(brut).unwrap();
+            assert_eq!(p.ancrer_energie(texte).len(), 3, "énergie gardée à tort : {texte}");
+        }
     }
 
     /// Mesuré sur gemma4:e4b-mlx : une ambiance ou un usage devenait des

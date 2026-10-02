@@ -60,10 +60,35 @@ désormais seule une **arrivée** nommée en fait un trajet). Sorties :
 - Les genres gagnés sont légitimes (« jazz hip hop comme Ezra Collective »,
   « metal comme Lamb of God »). Quelques-uns viennent d'un départ mal reconnu
   par le modèle (« After Funk », « Adam's Blues » pris pour des artistes).
-- **Énergie** : souvent une déduction plausible (grindcore → intense, Norah
-  Jones → calme), parfois non (R&B → moyenne) ; c'est un filtre dur, non traité.
 - Seule inversion de polarité relevée : « … apart from radiohead » → Radiohead
   en `seed_artiste`.
 - `qwen3.8:27b-mlx` n'a pas pu tourner (Metal « Insufficient Memory » sur
   25,8 Go) : c'est pourquoi le modèle par défaut est désormais le **plus
   petit** installé.
+
+## Énergie : ancrage dans le texte (2 oct. 2026)
+
+Constat : le modèle posait un niveau d'énergie dans 24 % des demandes qui n'en
+disaient aucun (« metal comme Lamb of God » → intense, « comme Norah Jones » →
+calme, parfois sans lien : « R&B comme Ella Mai » → moyenne). Or c'est un
+filtre dur sur les tiers d'énergie de la bibliothèque. Remède, comme pour les
+genres : `InterpretationLlm::ancrer_energie` ne garde l'énergie (de la playlist
+et des parties) que si le texte **dit** une énergie — lexique
+`INDICES_ENERGIE` : ambiances (calme, chill, détendu), niveaux (énergique,
+upbeat, dynamique), usages (sport, dormir, dîner).
+
+| | Avant | Après |
+|---|---|---|
+| Énergie posée sans être dite (300 prompts) | 23 % (70) | **0,7 % (2)** |
+| Énergie conservée quand l'ambiance est annotée (53 cas) | 100 % | 43 % (23/53) |
+| Ancien banc `prompts-playlist` (64 cas stricts, gemma4) | — | 64/64 |
+| Genres, entités, exclusions, JSON | — | inchangés (± 1, bruit) |
+
+Les 30 énergies écartées « à tort » sont des adjectifs d'humeur sans mot
+d'énergie (« dreamy », « angry », « sad », « depressive », « sweet ») : la
+direction est parfois plausible (dreamy → calme), parfois non (« summer » →
+moyenne, « complex funky jazzy » → moyenne). L'humeur reste dans les étapes
+CLAP-texte. Les 25 énergies gardées le sont toutes par un mot explicite
+(upbeat, slow, chill, workout, calm, aggressive…). Écarts connus du lexique :
+une négation (« not like sad ») ne retire pas l'indice ; « heavy » et « hard »
+(noms de genres) en sont volontairement absents.

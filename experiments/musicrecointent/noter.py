@@ -63,9 +63,9 @@ def noter(fichier, annot, source="spec"):
         "NE→seed/étape (≥1)", "NE- dans exclure_artistes", "NE- inversé (en seed)", "NE+~ exclu à tort",
         "décennie exacte (±1)", "décennie partielle",
         "mood/instr./contexte retenu (étapes/genres)",
-        "exclusion inventée", "genre inventé", "seed inventé", "année inventée", "énergie inventée",
+        "exclusion inventée", "genre inventé", "seed inventé", "année inventée", "énergie inventée", "énergie gardée (ambiance annotée)",
         "n/durée inventés", "bpm inventé", "popularité inventée", "reformulation vide"]}
-    erreurs = 0; lat = []; exemples = {"genre- inversé (dans genres)": [], "exclusion inventée": [], "NE- inversé (en seed)": [], "NE+~ exclu à tort": []}
+    erreurs = 0; lat = []; exemples = {"énergie écartée (ambiance annotée)": [], "genre- inversé (dans genres)": [], "exclusion inventée": [], "NE- inversé (en seed)": [], "NE+~ exclu à tort": []}
     for r in res["resultats"]:
         if "spec" not in r: erreurs += 1; continue
         sp, a = r["spec"], annot[r["id"]]; lat.append(r["s"])
@@ -118,6 +118,12 @@ def noter(fichier, annot, source="spec"):
         else: m["genre inventé"].add(False)
         m["seed inventé"].add(bool(seeds) and not any(dans(s, [t for c, t, _ in D if c == "NE"]) for s in seeds))
         m["année inventée"].add((sp.get("annee_min") is not None or sp.get("annee_max") is not None) and not termes("Decade", "+-~"))
+        try: brut_e = json.loads(r["spec"]["brut"]).get("energie")
+        except Exception: brut_e = None
+        if brut_e and any(c in ("Mood", "ListeningContext") for c, _, _ in D):
+            m["énergie gardée (ambiance annotée)"].add(bool(r["spec"].get("energie")))
+            if source == "spec" and not r["spec"].get("energie") and len(exemples["énergie écartée (ambiance annotée)"]) < 12:
+                exemples["énergie écartée (ambiance annotée)"].append((r["prompt"][:110], [t for c, t, _ in D if c in ("Mood", "ListeningContext")], brut_e))
         m["énergie inventée"].add(bool(sp.get("energie")) and not any(c in ("Mood", "ListeningContext") for c, _, _ in D))
         chiffres = bool(re.search(r"\d", r["prompt"]))
         m["n/durée inventés"].add((sp.get("n") or sp.get("duree_minutes")) is not None and not chiffres)
