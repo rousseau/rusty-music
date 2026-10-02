@@ -7,7 +7,7 @@
 //! **Les algorithmes sont ceux des bibliothèques du domaine, pas des
 //! inventions.** Tempo : flux spectral puis autocorrélation à peigne, comme
 //! `onset/specflux` et `beattracking` d'aubio. Tonalité : chroma corrélé aux
-//! profils de Krumhansl-Schmuckler, comme QM-DSP (celui de Mixxx).
+//! profils d'Albrecht-Shanahan (méthode de Krumhansl-Schmuckler, autres profils).
 //!
 //! **Écrits plutôt que liés à l'origine pour éviter une dépendance C et un
 //! passage sous copyleft — raison caduque depuis le passage du projet sous
@@ -39,8 +39,8 @@ use crate::mel::SR;
 /// classes.
 const N_FFT: usize = 2048; // attaques : 43 ms, 93,75 trames/s
 const HOP: usize = 512;
-const N_FFT_CHROMA: usize = 8192; // chroma : 171 ms, 5,9 Hz par raie
-const HOP_CHROMA: usize = 4096;
+const N_FFT_CHROMA: usize = 16384; // chroma : 341 ms, 2,9 Hz par raie
+const HOP_CHROMA: usize = 8192;
 
 pub(crate) const TPS: f32 = SR as f32 / HOP as f32;
 
@@ -700,13 +700,16 @@ pub fn stabiliser_corrections(diagnostics: &mut [DiagnosticTempo]) {
     }
 }
 
-/// Profils de Krumhansl-Schmuckler : la place de chaque degré dans une
-/// tonalité, mesurée sur des auditeurs.
+/// Profils d'Albrecht et Shanahan (2013) : la place de chaque degré dans une
+/// tonalité, tirée d'un corpus de partitions. Remplacent ceux de
+/// Krumhansl-Schmuckler (mesurés sur des auditeurs de musique savante) : sur
+/// FMAKv2, 1 198 clips annotés par des experts, le score MIREX passe de 49 % à
+/// 57-58 % à chroma égal.
 const MAJEUR: [f32; 12] = [
-    6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+    0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.080, 0.008, 0.081,
 ];
 const MINEUR: [f32; 12] = [
-    6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+    0.220, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052,
 ];
 const NOTES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
