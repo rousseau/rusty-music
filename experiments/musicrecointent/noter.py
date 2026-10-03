@@ -29,6 +29,9 @@ def norm(s):
 def proche(a, b):
     a, b = norm(a), norm(b)
     if not a or not b: return False
+    # « rap » ~ « hip hop » ; « bigbeat » ~ « big beat » (graphies collées)
+    a, b = re.sub(r"\bhip hop\b|\bhiphop\b", "rap", a), re.sub(r"\bhip hop\b|\bhiphop\b", "rap", b)
+    if a.replace(" ", "") == b.replace(" ", ""): return True
     if a == b or (len(a) > 2 and a in b) or (len(b) > 2 and b in a): return True
     return difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
 

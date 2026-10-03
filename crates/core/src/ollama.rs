@@ -15,6 +15,8 @@
 
 use std::time::Duration;
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -195,7 +197,10 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
         if mots_genre.len() > 1 {
             mots_genre.retain(|m| m != "music");
         }
-        !mots_genre.is_empty() && mots_genre.iter().all(|m| retrouve(m))
+        // « triphop », « bigbeat » : un genre écrit d'un bloc nomme « trip hop »,
+        // « big beat ».
+        let colle = mots_genre.len() > 1 && texte.iter().any(|t| *t == mots_genre.concat());
+        !mots_genre.is_empty() && (colle || mots_genre.iter().all(|m| retrouve(m)))
     })
 }
 
@@ -251,6 +256,65 @@ fn energie_nommee(texte: &[String]) -> bool {
                 .iter()
                 .any(|m| NEGATIONS.contains(&m.as_str()))
     })
+}
+
+/// `genre` désigne-t-il au moins un genre de la bibliothèque ? Même règle que
+/// le filtre de playlist (`filtres_playlist::genre_correspond`, par **mots**) :
+/// « indie » est connu dès qu'un genre comme « indie rock » existe, alors que
+/// l'égalité stricte le jugeait inconnu. Sans vocabulaire, tout est connu.
+fn genre_connu(genre: &str, vocabulaire: &[String]) -> bool {
+    vocabulaire.is_empty()
+        || vocabulaire
+            .iter()
+            .any(|v| crate::filtres_playlist::genre_correspond(v, genre))
+}
+
+/// Mots de liaison qui ne forment jamais, seuls, un genre.
+const LIAISONS: &[&str] = &["and", "n", "of", "the", "de", "et", "des", "du", "la", "le"];
+
+/// Les sous-ensembles propres des mots d'un genre, du plus grand au plus petit,
+/// dans l'ordre d'origine (« power metal » → « power », « metal »), chacun avec
+/// « garde-t-il le dernier mot ? » : en anglais la **tête** d'un genre est son
+/// dernier mot (« metal » dans « power metal »), le reste le qualifie.
+fn sous_genres(genre: &str) -> Vec<(String, bool)> {
+    let mots: Vec<&str> = genre
+        .split_whitespace()
+        .filter(|m| m.chars().any(char::is_alphanumeric) && !LIAISONS.contains(m))
+        .collect();
+    if mots.len() < 2 || mots.len() > 3 {
+        return Vec::new();
+    }
+    let tete = mots.len() - 1;
+    let mut v: Vec<(usize, String, bool)> = Vec::new();
+    for masque in 1..(1u32 << mots.len()) - 1 {
+        let sel: Vec<&str> =
+            (0..mots.len()).filter(|i| masque & (1 << i) != 0).map(|i| mots[i]).collect();
+        v.push((sel.len(), sel.join(" "), masque & (1 << tete) != 0));
+    }
+    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.into_iter().map(|(_, g, t)| (g, t)).collect()
+}
+
+/// Un qualificatif seul (« indie », « heavy ») peut-il tenir lieu de genre ? Oui
+/// s'il en est un à lui seul dans la bibliothèque, ou s'il en qualifie au moins
+/// deux de têtes différentes (« indie » : rock, pop). « heavy », qui ne
+/// qualifie que « heavy metal », n'en est pas un : « pas trop heavy » est une
+/// ambiance, pas un genre.
+fn qualificatif_generique(mot: &str, vocabulaire: &[String]) -> bool {
+    if vocabulaire.is_empty() {
+        return true;
+    }
+    let mut tetes: HashSet<String> = HashSet::new();
+    for v in vocabulaire {
+        let m = crate::filtres_playlist::mots(v);
+        if m.len() == 1 && m[0] == mot {
+            return true;
+        }
+        if m.len() > 1 && m.iter().any(|x| x == mot) {
+            tetes.insert(m[m.len() - 1].clone());
+        }
+    }
+    tetes.len() >= 2
 }
 
 /// Un moment d'une playlist en plusieurs parties. Les exclusions, années,
@@ -505,6 +569,74 @@ impl InterpretationLlm {
         true
     }
 
+    /// Ramène chaque genre rendu par le modèle à ce que **le texte dit** et que
+    /// **la bibliothèque connaît**. Un petit modèle sur-précise (« indie »
+    /// devient `indie rock`, « metal » devient `heavy metal`) ou invente un
+    /// sous-genre absent de la bibliothèque (`power metal`) : tel quel, le genre
+    /// était écarté, et la demande perdait un filtre que l'utilisateur avait
+    /// pourtant écrit. On cherche donc, parmi les sous-ensembles de ses mots, le
+    /// plus grand qui soit nommé par le texte et connu (« metal »).
+    ///
+    /// Un genre **voulu** peut être élargi ainsi (le parent contient l'enfant).
+    /// Un genre **refusé** ne l'est que s'il n'était pas nommé en entier : élargir
+    /// « sans black metal » en « sans metal » écarterait trop. À appeler **avant**
+    /// [`Self::restreindre_au_vocabulaire`] et [`Self::ancrer_genres`]. Rend les
+    /// remplacements `(avant, après)`, pour le journal.
+    pub fn ramener_genres(&mut self, prompt: &str, vocabulaire: &[String]) -> Vec<(String, String)> {
+        let texte = mots_sans_accent(prompt);
+        let mut remplaces = Vec::new();
+        let ramener = |genre: &String, elargir: bool| -> Option<String> {
+            let nomme = genre_nomme(genre, &texte);
+            if nomme && genre_connu(genre, vocabulaire) {
+                return Some(genre.clone());
+            }
+            if nomme && !elargir {
+                return None;
+            }
+            sous_genres(&genre.to_lowercase())
+                .into_iter()
+                // Un refus n'est ramené qu'à une tête (« metal »), jamais à un
+                // qualificatif ; un genre voulu peut l'être si le qualificatif
+                // est un genre à lui seul (« indie »).
+                .filter(|(c, garde_tete)| {
+                    *garde_tete || (elargir && qualificatif_generique(c, vocabulaire))
+                })
+                .map(|(c, _)| c)
+                .find(|c| genre_nomme(c, &texte) && genre_connu(c, vocabulaire))
+        };
+        let mut traiter = |liste: &mut Vec<String>, elargir: bool| {
+            let mut sortie: Vec<String> = Vec::new();
+            for g in std::mem::take(liste) {
+                match ramener(&g, elargir) {
+                    Some(n) if n == g => sortie.push(g),
+                    Some(n) => {
+                        remplaces.push((g, n.clone()));
+                        sortie.push(n);
+                    }
+                    // Ni nommé ni connu : laissé tel quel, `ancrer_genres` et
+                    // `restreindre_au_vocabulaire` l'écartent et le journalisent.
+                    None => sortie.push(g),
+                }
+            }
+            // Plusieurs sous-genres ramenés au même parent (« heavy metal »,
+            // « nu metal » → « metal ») ne comptent qu'une fois, même séparés
+            // par un genre que la suite écartera.
+            let mut vus: HashSet<String> = HashSet::new();
+            sortie.retain(|g| vus.insert(g.to_lowercase()));
+            *liste = sortie;
+        };
+        traiter(&mut self.genres, true);
+        traiter(&mut self.exclure_genres, false);
+        for p in &mut self.parties {
+            traiter(&mut p.genres, true);
+        }
+        // Un genre voulu ne peut pas être aussi refusé : le rejet l'emporte
+        // (même règle que `normaliser`, après les remplacements).
+        let exclus: Vec<String> = self.exclure_genres.iter().map(|g| g.to_lowercase()).collect();
+        self.genres.retain(|g| !exclus.contains(&g.to_lowercase()));
+        remplaces
+    }
+
     /// Écarte les genres que la bibliothèque ne connaît pas : le LLM a reçu la
     /// liste réelle, mais un petit modèle en invente quand même, et un genre
     /// inventé viderait la sélection. Rend les genres écartés, pour le journal.
@@ -513,7 +645,7 @@ impl InterpretationLlm {
         if vocabulaire.is_empty() {
             return Vec::new();
         }
-        let connu = |g: &String| vocabulaire.iter().any(|v| v.eq_ignore_ascii_case(g));
+        let connu = |g: &String| genre_connu(g, vocabulaire);
         let mut ecartes = Vec::new();
         let mut listes: Vec<&mut Vec<String>> = vec![&mut self.genres, &mut self.exclure_genres];
         listes.extend(self.parties.iter_mut().map(|p| &mut p.genres));
@@ -848,6 +980,10 @@ pub fn interpreter(
             .filter(|l| !l.trim().is_empty())
             .collect::<Vec<_>>()
             .join("\n");
+        let remplaces = p.ramener_genres(prompt, vocabulaire);
+        if !remplaces.is_empty() {
+            tracing::info!(?remplaces, "champ d'intention : genres ramenés à ce que le texte dit");
+        }
         let ecartes = p.restreindre_au_vocabulaire(vocabulaire);
         if !ecartes.is_empty() {
             tracing::info!(?ecartes, "champ d'intention : genres inconnus de la bibliothèque, écartés");
@@ -1190,6 +1326,54 @@ mod tests {
             ("petit:4b".to_string(), Some(9_000_000_000)),
         ];
         assert_eq!(trier_par_taille(installes), vec!["petit:4b", "gros:27b", "inconnu"]);
+    }
+
+    /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 26 genres sur 285 se perdaient
+    /// alors que le texte en nommait un mot (« indie » → `indie rock`, « metal »
+    /// → `heavy metal`, `power metal` absent de la bibliothèque).
+    #[test]
+    fn un_genre_sur_precis_est_ramene_a_ce_que_le_texte_dit() {
+        let vocab: Vec<String> =
+            ["rock", "indie rock", "indie pop", "metal", "heavy metal", "trip hop", "big beat", "hip hop"]
+                .iter().map(|s| s.to_string()).collect();
+        let cas = |genres: &[&str], exclure: &[&str], texte: &str| {
+            let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
+            p.genres = genres.iter().map(|s| s.to_string()).collect();
+            p.exclure_genres = exclure.iter().map(|s| s.to_string()).collect();
+            p.ramener_genres(texte, &vocab);
+            p.restreindre_au_vocabulaire(&vocab);
+            p.ancrer_genres(texte);
+            p
+        };
+        // Le modèle sur-précise : le texte dit « indie », « metal ».
+        assert_eq!(cas(&["indie rock"], &[], "i like indie, not pop").genres, vec!["indie"]);
+        assert_eq!(cas(&["heavy metal", "heavy metal"], &[], "good metal bands").genres, vec!["metal"]);
+        // Doublons non adjacents : « metal », « hard rock » (écarté), « nu metal ».
+        assert_eq!(cas(&["metal", "hard rock", "nu metal"], &[], "good metal bands").genres, vec!["metal"]);
+        // Un sous-genre que la bibliothèque n'a pas : son parent, nommé par le texte.
+        assert_eq!(cas(&["power metal"], &[], "recommend me some power metal").genres, vec!["metal"]);
+        // Graphie collée.
+        assert_eq!(cas(&["trip hop"], &[], "upbeat triphop songs").genres, vec!["trip hop"]);
+        assert_eq!(cas(&["big beat"], &[], "happy bigbeat music").genres, vec!["big beat"]);
+        // Ni nommé ni connu : écarté, comme avant.
+        assert!(cas(&["disco"], &[], "soho disco hold on").genres.is_empty());
+        assert!(cas(&["jazz"], &[], "something that carries a lonely vibe").genres.is_empty());
+        // Un refus n'est pas élargi quand le texte le nomme en entier : « sans
+        // black metal » ne devient pas « sans metal ».
+        assert!(cas(&[], &["black metal"], "metal but no black metal").exclure_genres.is_empty());
+        // …mais un refus sur-précisé est ramené à ce que le texte dit.
+        assert_eq!(cas(&[], &["heavy metal"], "no metal please").exclure_genres, vec!["metal"]);
+        // « pas trop heavy » est une ambiance : ni refus ni filtre « heavy ».
+        assert!(cas(&[], &["heavy metal"], "instrumental beats not too heavy").exclure_genres.is_empty());
+        assert!(cas(&["heavy metal"], &[], "instrumental beats not too heavy").genres.is_empty());
+        // Un « & » n'est pas un mot : « country & folk » donne « country », pas « country & ».
+        let v2: Vec<String> = vec!["country & folk".into(), "country".into()];
+        let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
+        p.genres = vec!["country & folk".into()];
+        p.ramener_genres("some country singers", &v2);
+        assert_eq!(p.genres, vec!["country"]);
+        // Voulu et refusé à la fois : le rejet l'emporte.
+        assert!(cas(&["indie rock"], &["indie"], "indie but no indie").genres.is_empty());
     }
 
     /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 24 % des demandes recevaient

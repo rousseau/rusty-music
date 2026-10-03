@@ -48,15 +48,11 @@ désormais seule une **arrivée** nommée en fait un trajet). Sorties :
 À retenir :
 - **Les négations sont rares** (46 requêtes sur 2 291) : les taux `−` reposent
   sur 18 genres et 4 entités, à lire comme des indices.
-- **Le gain de la correction est modeste** (+12 genres sur 300 requêtes) : la
-  plupart des genres cités n'atteignent pas les filtres à cause de deux autres
-  garde-fous voulus — `ancrer_genres` (un genre que le texte ne nomme pas est
-  écarté) et `restreindre_au_vocabulaire` (un genre inconnu de la
-  bibliothèque viderait la sélection : « power metal », « grindcore »,
-  « disco », « big beat », « trip hop » ne sont pas dans le vocabulaire
-  réel). Un premier constat de ce README (« 93 requêtes sur 151 perdent leurs
-  genres par `est_trajet` ») était exagéré : beaucoup de ces genres auraient été
-  écartés par ces deux garde-fous de toute façon.
+- **Le gain de la correction est modeste** (+12 genres sur 300 requêtes). Le
+  diagnostic détaillé figure plus bas (« Genres ») : la grande majorité des
+  genres cités sont écartés par `ancrer_genres` (le texte ne les nomme pas),
+  pas par le vocabulaire — une première version de ce README l'affirmait à
+  tort.
 - Les genres gagnés sont légitimes (« jazz hip hop comme Ezra Collective »,
   « metal comme Lamb of God »). Quelques-uns viennent d'un départ mal reconnu
   par le modèle (« After Funk », « Adam's Blues » pris pour des artistes).
@@ -110,3 +106,42 @@ intense. Une humeur ne vérifie pas la **cohérence** du niveau posé par le
 modèle avec le genre ; c'est la limite de cette approche. Les 24 humeurs
 restantes sans énergie gardée n'ont aucun mot du lexique (« sweet »,
 « romantic », « psychedelic »…) : l'humeur reste portée par les étapes CLAP.
+
+## Genres : ramener à ce que le texte dit (2 oct. 2026)
+
+Diagnostic des 285 genres cités par gemma4 (avant correction) : **93 gardés,
+184 écartés parce que le texte ne les nomme pas** (`ancrer_genres`, voulu :
+c'est la garde contre les genres déduits d'une ambiance ou d'un artiste), **6
+hors vocabulaire** (disco, power metal, grindcore, black metal, world) et **2
+graphies collées** (« triphop », « bigbeat »). « alternative rock », « heavy
+metal », « nu metal », « trip hop » et « big beat » **sont** dans le
+vocabulaire de la bibliothèque (232 genres) : ils n'étaient pas inconnus.
+
+Deux défauts réels, corrigés dans `ollama.rs` :
+- `genre_nomme` ne reconnaissait pas « trip hop » dans « triphop ».
+- Le modèle sur-précise (« indie » → `indie rock`, « metal » → `heavy metal`)
+  ou invente un sous-genre absent (`power metal`), et le genre était alors
+  perdu bien que le texte en nomme un mot. `ramener_genres` cherche, parmi les
+  sous-ensembles de ses mots, le plus grand qui soit **nommé par le texte** et
+  **connu de la bibliothèque** (mêmes règles de mots que le filtre).
+  Garde-fous : un sous-genre doit garder la **tête** du genre (son dernier mot)
+  — un qualificatif seul n'est admis que s'il est un genre à lui seul ou
+  qualifie au moins deux têtes (« indie » : rock, pop ; pas « heavy », qui ne
+  qualifie que « heavy metal ») ; un **refus** n'est jamais élargi à un
+  qualificatif (« pas trop heavy » est une ambiance, pas `exclure heavy
+  metal`) ni à un parent quand le texte le nomme en entier (« sans black
+  metal » ≠ « sans metal »). Le vocabulaire se teste par mots, comme le
+  filtre, au lieu de l'égalité stricte.
+
+| (gemma4, 300 prompts) | Avant | Après |
+|---|---|---|
+| Genre `+` retrouvé dans `genres` [spec] | 62 % (84/135) | **76 % (103/135)** |
+| Genre `+` retenu quelque part | 90 % | 93 % |
+| Genre inventé [spec] / exclusion inventée | 7 / 1 | 7 / 1 |
+| Genre `−` dans `exclure_genres`, inversions | 12/18, 0 | 12/18, 0 |
+| Ancien banc `prompts-playlist` | 64/64 | 64/64 |
+
+(`noter.py` reconnaît désormais « rap » ≈ « hip hop » et les graphies
+collées : « avant » est rénoté avec la même règle, 58 % → 62 %.) Au rejeu, le
+modèle lui-même varie un peu d'une passe à l'autre (une requête change de
+réponse sans rapport avec le code) : compter ± 1-2 requêtes de bruit.

@@ -201,7 +201,7 @@ pub(crate) fn variantes_de_genre(demande: &str) -> Vec<String> {
 /// pas « rocksteady ». Une exclusion « sans rock » qui n'écartait que le genre
 /// exactement « rock » laissait passer toute la famille (mesuré : 8 morceaux
 /// sur 20 dans une playlist « sans rock » de la bibliothèque réelle).
-fn genre_correspond(genre: &str, demande: &str) -> bool {
+pub(crate) fn genre_correspond(genre: &str, demande: &str) -> bool {
     let g = mots(genre);
     variantes_de_genre(demande).iter().any(|d| {
         let dm = mots(d);
