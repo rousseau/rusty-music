@@ -12,7 +12,7 @@ Le logiciel est autonome et local. Point d'entrée unique : **un répertoire de 
 Objectif : écoute agréable et moderne avec affichage riche.
 - **Lecture audio** : `rodio` par-dessus `cpal`.
 - **Affichage** : pochette, infos artiste, style/genre, année, crédits.
-- **Enrichissement** : Cover Art Archive (pochettes), Wikidata/Wikipédia (bio, genre) — via identifiant MusicBrainz. Depuis `docs/enrichissement-lecteur.md` : biographies TheAudioDB (par MBID d'artiste), crédits par édition Discogs (dumps mensuels CC0), critiques CritiqueBrainz (licence CC, attribution obligatoire). Voir `data-sources.md`.
+- **Enrichissement** : Cover Art Archive (pochettes) via identifiant MusicBrainz. Wikidata/Wikipédia, prévus ici, n'ont **jamais été implémentés** : `docs/enrichissement-lecteur.md` les remplace par biographies TheAudioDB (par MBID d'artiste), crédits par édition Discogs (dumps mensuels CC0), critiques CritiqueBrainz (licence CC, attribution obligatoire). Voir `data-sources.md`.
 - ~~Limite connue — critiques d'albums : pas d'API libre propre~~ — **caduc**, voir `docs/enrichissement-lecteur.md` : CritiqueBrainz couvre ce besoin sous licence Creative Commons.
 - UI à spécifier séparément (pas encore couverte par `ui-spec.md`).
 

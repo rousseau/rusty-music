@@ -1,19 +1,28 @@
 # Brief d'interface — Module 1 (Lecteur)
 
-> **Périmètre : ce document ne couvre que le Module 1 (Lecteur).** Le Module 2
-> (Exploration) est dans `ui-spec.md`, le Module 3 reste à spécifier. Voir
-> `modules.md` pour la décomposition d'ensemble.
+> **Périmètre : ce document ne couvre que le Module 1 (Lecteur), le mode
+> « Écouter » de l'interface.** Le Module 2 (Exploration) est dans `ui-spec.md`,
+> le Module 3 dans `ui-spec-editeur.md`. Voir `modules.md` pour la
+> décomposition d'ensemble.
+>
+> **État (v0.1.0) : tout ce que ce document demandait est livré** — les
+> manques de transport, la file, les trois vues de parcours, les pochettes et
+> leur repli réseau. Ce qui reste est dans « Questions ouvertes » en fin de
+> document. Les sections ci-dessous gardent le raisonnement d'origine ; les
+> points livrés y sont barrés ou marqués.
 
 ## Ce qui est déjà tranché ailleurs — à reprendre tel quel
 
 - **Coquille « Atelier »** (`ui-spec.md`) : rail gauche, carte au centre,
   inspecteur à droite, dock bas, transport pleine largeur persistant dans les
-  trois modes. Le lecteur n'ouvre pas de fenêtre à lui : il vit dans le mode
-  **Écoute** de cette coquille.
+  quatre modes. Le lecteur n'ouvre pas de fenêtre à lui : il vit dans le mode
+  **Écouter** de cette coquille.
 - **Transport** (`ui/prototype/maquette-navigation.html`) : bouton rond 34×34,
   vignette de pochette 38×38 (rayon 6), titre 13 px/600 avec ellipse, artiste
-  12 px atténué, progression en barres verticales, minutage `00:00 / 03:41`.
-  Les dimensions sont bonnes, seuls les **états** manquent (ci-dessous).
+  12 px atténué, minutage `00:00 / 03:41`. La progression en barres verticales
+  de la maquette a été remplacée par le **spectrogramme du son réellement
+  joué** (`spectre_transport`, `main.rs`), avec en HD la teinte de ce que le
+  modèle a ajouté.
 - **Direction visuelle** (`ui/prototype/Directions visuelles - carto.fm.html`) :
   **1a « Relief » retenue** — voir « Décisions » en fin de document. Les écrans
   ci-dessous restent décrits en termes de structure et de hiérarchie ; les
@@ -45,13 +54,11 @@ La maquette ne montre que « ça joue ». À spécifier :
 - **Piste précédente / suivante.** Encadrent le bouton central. *Suivante* est
   disponible (`skip`) ; **précédente n'existe pas encore côté moteur** — voir
   « Ce que l'interface demandera au moteur ».
-- **Déplacement dans la piste.** Les barres de progression sont aujourd'hui
-  décoratives. Elles deviennent cliquables : un clic à la position *x* appelle
-  `Player::seek()`. Survol = curseur fin + minutage de la position visée.
-- **Volume.** Absent de la maquette. `Player` l'expose en linéaire (1.0 =
-  niveau d'origine). Proposition : commande discrète à droite du minutage,
-  repliée par défaut — la contrainte de sobriété stricte d'`ui-spec.md`
-  s'applique ici aussi.
+- **Déplacement dans la piste.** — **livré.** Un clic sur le spectrogramme à
+  la position *x* appelle `seek`.
+- **Volume.** — **livré** (curseur dans le transport, `set_volume`, linéaire,
+  1.0 = niveau d'origine), complété par le bouton « N » (normalisation EBU
+  R128, `docs/amelioration-audio.md`).
 - **Aléatoire / répétition.** — **livré.** Deux boutons dans le transport du
   panneau de file : aléatoire (mélange Fisher-Yates de ce qui n'a pas encore
   été confié à la sortie, l'ordre d'avant est rendu à la désactivation) et
@@ -62,7 +69,7 @@ La maquette ne montre que « ça joue ». À spécifier :
 
 ## File d'attente
 
-Absente de tout ce qui existe. Proposition :
+Livrée. Ce qui avait été proposé :
 
 - Panneau ouvert depuis le transport, en superposition à droite — **pas** un
   quatrième volet permanent, la coquille est déjà dense.
@@ -77,8 +84,9 @@ Absente de tout ce qui existe. Proposition :
 
 ## Vues de parcours
 
-Le mode Écoute a besoin de trois vues que rien ne décrit aujourd'hui. Les
-volumes réels de la bibliothèque de test les contraignent fortement :
+Le mode Écouter a besoin de trois vues. Livrées, plus une quatrième : l'**univers
+de l'artiste** (albums, biographie, artistes similaires, playlist de l'artiste).
+Les volumes réels de la bibliothèque de test les contraignent fortement :
 
 - **Artistes.** Liste virtualisée avec index alphabétique. Le regroupement se
   fait par identifiant MusicBrainz : sans lui, 1 384 des 3 543 entrées sont des
@@ -127,7 +135,8 @@ Chiffres relevés sur la bibliothèque réelle (27 044 morceaux) :
 
 ## Ce que l'interface demandera au moteur
 
-Manques identifiés en écrivant ce document. Les trois premiers sont faits :
+Manques identifiés en écrivant ce document. Les trois premiers sont faits, les
+deux derniers sont des raccourcis de code sans effet visible :
 
 1. ~~**Piste précédente**~~ — fait. `rodio` ne sachant qu'avancer, `previous()`
    reconstruit la sortie à partir du rang visé, sans toucher à la file : sans
@@ -141,9 +150,10 @@ Manques identifiés en écrivant ce document. Les trois premiers sont faits :
    `deplacer`, `verrou` (rang déjà confié à la sortie) ; l'aléatoire retient
    l'ordre d'avant pour le rendre à la désactivation.
 4. **Pistes d'un artiste** : `tracks_of_artist()` n'existe pas ; on passe
-   aujourd'hui par `albums_of_artist()` puis `tracks_of_album()`.
+   par `albums_of_artist()` puis `tracks_of_album()`. Aucun défaut constaté,
+   à ne créer que si un besoin de performance apparaît.
 5. **Durée totale de la file** : à calculer côté interface à partir des
-   `duration_ms` de la base.
+   `duration_ms` de la base. Non affichée aujourd'hui.
 
 ## Regroupement des artistes — une subtilité à connaître
 
@@ -181,9 +191,9 @@ identifiant ferait ouvrir moins d'albums que la ligne n'en annonce.
   datés, les réécrire falsifierait le compte rendu de la phase de design.
   Mention historique : la maquette portait `carto.fm v0.3`, le
   binaire s'appelle `rusty-music`, le projet s'appelle `rusty_music`. À unifier.
-- **Forme d'onde réelle.** Le document de directions visuelles pousse 1a plus
-  loin : l'onde y cesse d'être un motif décoratif pour devenir une enveloppe
-  crête avec noyau RMS, lue à l'identique dans le transport, l'inspecteur et
-  les pistes de stems — même dessin, trois échelles. Cela suppose de décoder
-  chaque piste et de stocker l'enveloppe réduite ; c'est une brique commune
-  avec le module 3. À trancher : barres décoratives en v1, ou vraie onde.
+- ~~**Forme d'onde réelle.**~~ — **tranché : le transport montre un vrai
+  spectrogramme**, calculé à la demande (`spectre_transport`), pas des barres
+  décoratives. L'enveloppe crête/RMS (160 tranches, `docs/journal.md`) existe
+  aussi, côté Éditeur. Le « même dessin, trois échelles » du document de
+  directions visuelles (transport, inspecteur, stems) n'est pas réalisé : le
+  transport et l'établi ont chacun le leur.

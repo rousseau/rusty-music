@@ -1,6 +1,6 @@
 # Ce qui reste, et dans quel ordre
 
-État au 17 août 2026. Ce document remplace la section « Suite » du README dès
+État au 17 août 2026, **registre historique** : plusieurs sections plus bas ont été dépassées (elles portent alors une mention barrée). Pour le mode Écouter, l'état à jour est dans `docs/ui-spec-lecteur.md` et `docs/plan-ecouter-v0.2.md`. Ce document remplace la section « Suite » du README dès
 qu'il s'agit de séquencer ; le README garde les chiffres, celui-ci garde
 l'ordre et les raisons.
 
@@ -9,7 +9,7 @@ l'ordre et les raisons.
 | Brique | État |
 |---|---|
 | Cœur d'ingestion | livré — 27 044 morceaux, scan et surveillance, décodage Opus |
-| Module 1 — Lecteur | v1 livrée ; **file d'attente retravaillée — aléatoire, répétition (aucune/toutes/une), réordonnancement par glisser-déposer** |
+| Module 1 — Lecteur (mode Écouter) | **livré, v0.1.0** : file (aléatoire, répétition, glisser-déposer), univers de l'artiste, bios, critiques, crédits, popularité, spectrogramme, normalisation « N ». Suite : `docs/plan-ecouter-v0.2.md` |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie** |
 | Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
 | Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli pour les pochettes manquantes livré** (CAA release → CAA release-group → Deezer ; cache négatif à péremption 30 j, une panne réseau n'est jamais mise en cache) |
@@ -217,9 +217,11 @@ reste supposé constant.
 ### 6. Genres MusicBrainz — **fait**
 
 De `docs/data-sources.md`, **la part « genres » seulement** : c'est le périmètre
-retenu. Cover Art Archive et Wikidata — les pochettes et les « infos
+retenu. ~~Cover Art Archive et Wikidata — les pochettes et les « infos
 artiste/style » que le module 1 promet et que l'inspecteur n'affiche pas —
-restent à faire, sur la même mécanique (cache local, débit respecté, reprise).
+restent à faire.~~ **Fait depuis** : pochettes (CAA + Deezer en repli), bios
+(TheAudioDB), crédits (Discogs), critiques (CritiqueBrainz) — voir
+`docs/enrichissement-lecteur.md`. Wikidata n'a jamais été implémenté.
 
 **Livré le 17 août.** `crates/core/src/musicbrainz.rs` (le client, cadencé),
 `crates/core/src/enrichir.rs` (la passe, reprenable), l'arbitrage des trois

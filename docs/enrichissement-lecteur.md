@@ -2,7 +2,7 @@
 
 ## Intention
 
-Le Lecteur affiche déjà pochettes, genre et bio (Wikidata/Wikipédia), et une
+Le Lecteur affiche déjà pochettes et genre (la bio Wikidata/Wikipédia prévue à l'origine n'a jamais été écrite : TheAudioDB la remplace, ci-dessous), et une
 jauge de popularité (ListenBrainz + Deezer, `docs/popularite.md`). Ce chantier
 en ajoute trois, chacune **best-effort, asynchrone, jamais bloquante**, et
 **désactivable indépendamment** :

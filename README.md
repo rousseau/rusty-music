@@ -43,11 +43,11 @@ le plan de Paris (~0,4 Go, empreintes vérifiées), puis construit `.app` et
 | Brique | État |
 |---|---|
 | Cœur d'ingestion (dossier surveillé, tags, base SQLite, décodage Opus) | livré |
-| Module 1 — Lecteur | livré ; file d'attente avec aléatoire, répétition et réordonnancement par glisser-déposer |
+| Module 1 — Lecteur (mode Écouter) | livré (v0.1.0) ; file d'attente avec aléatoire, répétition et réordonnancement ; suite : `docs/plan-ecouter-v0.2.md` |
 | Module 2 — Exploration (carte 2D, chemins, familles, filtres tempo/énergie) | livré ; carte sur plan de ville réel (Paris/OpenStreetMap) en cours |
 | Module 3 — Éditeur (démixage, vitesse, hauteur, greffe calée sur les temps, export) | périmètre de `docs/ui-spec-editeur.md` couvert |
 | Super-résolution audio hors ligne (bouton « HD ») | livré (`crates/superres`) |
-| Métadonnées enrichies | genres MusicBrainz + descripteurs audio + popularité + pochettes de repli (Cover Art Archive, Deezer) livrés ; restent les bios |
+| Métadonnées enrichies | genres MusicBrainz + descripteurs audio + popularité + pochettes de repli (Cover Art Archive, Deezer) + bios (TheAudioDB) + crédits (Discogs) + critiques (CritiqueBrainz) livrés |
 
 `docs/suite.md` tient le détail de ce qui reste et dans quel ordre.
 

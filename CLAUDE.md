@@ -82,6 +82,7 @@ et pièges : README, section « Démarrer ».
 ## Documents détaillés
 - `docs/interface-guidelines.md` — **contrat de cohérence d'interface, transversal aux cinq écrans du rail (les quatre modes Écouter/Explorer/Éditer/Découvrir, plus Bibliothèque en point d'entrée au-dessus du sélecteur de mode), plus l'audit complet de l'existant contre ce contrat. À consulter avant toute construction ou modification d'interface, dans n'importe quel écran. Règle 10 (gabarit : jetons `--largeur-droite`, `--gouttiere`…) vérifiée par `scripts/audit-interface.sh` — à lancer après toute modification de mise en page.**
 - `docs/suite.md` — **état d'avancement par brique et ordre de ce qui reste. À lire pour savoir où en est le projet.**
+- `docs/plan-ecouter-v0.2.md` — **mode Écouter : ce qu'il reste pour la v0.2, chantier par chantier, avec options comparées et recommandation. À lire avant de toucher au lecteur.**
 - `docs/modules.md` — décomposition en cœur + 3 modules, périmètre et références par module. Écrit avant la décision de licence : la règle « time-stretch/démixage en Rust pur, sans dépendance » y est **caduque** (voir stack ci-dessus).
 - `docs/architecture.md` — contexte de recherche (Islands of Music, Audio Atlas, AudioMuse-AI), pipeline, alternatives. Registre historique : plusieurs « points à trancher » y sont depuis tranchés (CLAP, t-SNE).
 - `docs/ui-spec.md` — brief d'interface du module 2 (Exploration).
