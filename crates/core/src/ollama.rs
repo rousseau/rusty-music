@@ -317,6 +317,29 @@ fn qualificatif_generique(mot: &str, vocabulaire: &[String]) -> bool {
     tetes.len() >= 2
 }
 
+/// Mots qui, seuls, sont trop courants pour désigner un genre quand le texte les
+/// contient : « dance », « world », « new » (de « new age »), « singer »
+/// (de « singer/songwriter »), « jungle » (aussi un groupe)… Écartés quand ils
+/// sont **seuls** ; en groupe (« new age », « world music ») ils redeviennent
+/// des genres. Voir [`InterpretationLlm::completer_genres`].
+const GENRES_TROP_COURANTS: &[&str] = &[
+    "dance", "beat", "est", "france", "unknown", "divers", "other", "instrumental", "vocal",
+    "experimental", "fusion", "ethnic", "musical", "comedy", "medieval", "general",
+    "alternative", "alternatif", "classic", "jungle", "swing", "contemporary", "acoustic",
+    "oldies", "boogie", "breaks", "singer", "songwriter", "bass", "world", "children", "new",
+];
+
+/// Mots qui refusent ce qui les suit de près (trois mots) : « not grime », « I hate
+/// grime », « outside of jazz », « sans techno ». Plus large que [`NEGATIONS`]
+/// (« but » y retirerait l'énergie de « calm but upbeat ») ; propre aux genres, où
+/// l'inverse (ajouter un genre refusé) est le pire échec.
+const REFUS_GENRE: &[&str] = &[
+    "not", "non", "no", "sans", "pas", "never", "without", "less", "t", "isn", "aren", "don",
+    "doesn", "won", "ni", "nor", "isnt", "arent", "dont", "doesnt", "wont", "outside", "except",
+    "excluding", "exclude", "avoid", "minus", "hate", "hates", "dislike", "unlike", "sauf",
+    "hors", "evite", "but", "other",
+];
+
 /// Un moment d'une playlist en plusieurs parties. Les exclusions, années,
 /// tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
 /// la partie priment sur ceux de la playlist.
@@ -515,6 +538,83 @@ impl InterpretationLlm {
             ecartes.extend(perdus);
         }
         ecartes
+    }
+
+    /// Ajoute les genres **que le texte écrit et que le modèle ne pouvait pas voir**.
+    /// Le prompt ne montre au modèle que les [`GENRES_DANS_LE_PROMPT`] genres les
+    /// plus répandus : « grime », « gospel », « techno » ou « synth pop » (rangs 150
+    /// à 218 sur 232) lui restent invisibles, il répond « hip hop » ou « electronic »,
+    /// que [`Self::ancrer_genres`] écarte faute de les lire dans le texte — et la
+    /// playlist n'a plus aucun filtre de genre (mesuré sur MusicRecoIntent : 10 %
+    /// des demandes de genre). Lui montrer toute la liste faisait pire (étiquettes
+    /// composées rares, filtres sur-contraints) ; on lit donc le texte, pas le modèle.
+    ///
+    /// Garde-fous : seuls les genres de la bibliothèque **au-delà de la coupe** ;
+    /// jamais un mot seul trop courant ([`GENRES_TROP_COURANTS`]) ; jamais un genre
+    /// précédé d'un refus ([`REFUS_GENRE`]) ni déjà refusé ou couvert ; pas de
+    /// partie ni d'arrivée (le trajet a ses étapes). Le genre ajouté est la
+    /// formulation **de l'utilisateur** (« grime »), que le filtre compare par mots.
+    /// À appeler après [`Self::ancrer_genres`]. Rend les genres ajoutés.
+    pub fn completer_genres(&mut self, prompt: &str, vocabulaire: &[String]) -> Vec<String> {
+        let arrivee = [&self.arrivee_artiste, &self.arrivee_morceau]
+            .iter()
+            .any(|c| c.as_deref().is_some_and(|s| !s.trim().is_empty()));
+        if !self.parties.is_empty() || arrivee || vocabulaire.len() <= GENRES_DANS_LE_PROMPT {
+            return Vec::new();
+        }
+        let texte = mots_sans_accent(prompt);
+        let ensemble = |g: &str| -> HashSet<String> { mots_sans_accent(g).into_iter().collect() };
+        let visibles: Vec<HashSet<String>> =
+            vocabulaire.iter().take(GENRES_DANS_LE_PROMPT).map(|g| ensemble(g)).collect();
+
+        // Les formes candidates : les alternatives (« a/b », « a, b ») des genres que
+        // le modèle ne voit pas.
+        let mut candidats: Vec<Vec<String>> = Vec::new();
+        for g in vocabulaire.iter().skip(GENRES_DANS_LE_PROMPT) {
+            for alternative in g.split(['/', ',', ';']) {
+                let mots = mots_sans_accent(alternative);
+                let lettres: usize = mots.iter().map(|m| m.chars().count()).sum();
+                if mots.is_empty()
+                    || lettres < 4
+                    || mots.iter().any(|m| m.chars().any(|c| c.is_ascii_digit()))
+                    || (mots.len() == 1 && GENRES_TROP_COURANTS.contains(&mots[0].as_str()))
+                    || visibles.iter().any(|v| mots.iter().all(|m| v.contains(m)))
+                    || candidats.contains(&mots)
+                {
+                    continue;
+                }
+                candidats.push(mots);
+            }
+        }
+
+        // Ceux que le texte écrit, mot pour mot et de suite, sans refus devant.
+        let mut trouves: Vec<Vec<String>> = Vec::new();
+        for c in &candidats {
+            let n = c.len();
+            let place = (0..=texte.len().saturating_sub(n)).find(|&i| {
+                i + n <= texte.len()
+                    && texte[i..i + n] == c[..]
+                    && !texte[i.saturating_sub(3)..i].iter().any(|m| REFUS_GENRE.contains(&m.as_str()))
+            });
+            if place.is_some() {
+                trouves.push(c.clone());
+            }
+        }
+        // Un genre contenu dans un autre trouvé est redondant (« rock » dans « psychedelic rock »).
+        let ens: Vec<HashSet<&String>> = trouves.iter().map(|t| t.iter().collect()).collect();
+        let deja: Vec<HashSet<String>> = self.genres.iter().map(|g| ensemble(g)).collect();
+        let refuses: Vec<HashSet<String>> = self.exclure_genres.iter().map(|g| ensemble(g)).collect();
+        let mut ajoutes = Vec::new();
+        for (k, t) in trouves.iter().enumerate() {
+            let redondant = ens.iter().enumerate().any(|(j, autre)| j != k && ens[k].is_subset(autre) && ens[k].len() < autre.len());
+            let couvert = deja.iter().any(|d| t.iter().all(|m| d.contains(m)));
+            let refuse = refuses.iter().any(|r| t.iter().all(|m| r.contains(m)));
+            if !redondant && !couvert && !refuse {
+                ajoutes.push(t.join(" "));
+            }
+        }
+        self.genres.extend(ajoutes.iter().cloned());
+        ajoutes
     }
 
     /// Écarte l'énergie — celle de la playlist et celles des parties — quand
@@ -992,6 +1092,10 @@ pub fn interpreter(
         if !inventes.is_empty() {
             tracing::info!(?inventes, "champ d'intention : genres que le texte ne nomme pas, écartés");
         }
+        let ajoutes = p.completer_genres(prompt, vocabulaire);
+        if !ajoutes.is_empty() {
+            tracing::info!(?ajoutes, "champ d'intention : genres écrits par le texte, invisibles du modèle, ajoutés");
+        }
         let deduites = p.ancrer_energie(prompt);
         if !deduites.is_empty() {
             tracing::info!(?deduites, "champ d'intention : énergie que le texte ne dit pas, écartée");
@@ -1374,6 +1478,47 @@ mod tests {
         assert_eq!(p.genres, vec!["country"]);
         // Voulu et refusé à la fois : le rejet l'emporte.
         assert!(cas(&["indie rock"], &["indie"], "indie but no indie").genres.is_empty());
+    }
+
+    /// Mesuré sur MusicRecoIntent : « grime », « gospel », « techno », « synth pop »
+    /// (rangs 150-218) restaient sans filtre de genre.
+    #[test]
+    fn un_genre_ecrit_que_le_modele_ne_voyait_pas_est_ajoute() {
+        let mut vocab: Vec<String> = (0..GENRES_DANS_LE_PROMPT).map(|i| format!("genre{i}")).collect();
+        vocab[0] = "jazz".into();
+        vocab[1] = "rock".into();
+        vocab.extend(
+            ["grime", "gospel", "synth-pop", "electro/techno/house", "singer/songwriter", "2 stars", "dance", "new age", "psychedelic rock", "jazz / soul & funk"]
+                .iter().map(|s| s.to_string()),
+        );
+        let ajoute = |texte: &str| {
+            let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
+            let a = p.completer_genres(texte, &vocab);
+            (a, p.genres)
+        };
+        assert_eq!(ajoute("grime artists needed").0, vec!["grime"]);
+        assert_eq!(ajoute("high quality gospel songs").0, vec!["gospel"]);
+        assert_eq!(ajoute("modern 80s synth pop").0, vec!["synth pop"]);
+        assert_eq!(ajoute("a calm techno I like").0, vec!["techno"], "alternative d'une étiquette composée");
+        assert_eq!(ajoute("healing meditation new age").0, vec!["new age"]);
+        // La formulation de l'utilisateur est celle qui est ajoutée, par mots.
+        assert_eq!(ajoute("some psychedelic rock please").0, vec!["psychedelic rock"], "rock seul est déjà visible");
+        // Jamais un refus.
+        for texte in ["not grime please", "I hate grime", "anything outside of gospel", "sans techno", "something that isn't gospel", "everything but grime"] {
+            assert!(ajoute(texte).0.is_empty(), "refus ajouté : {texte}");
+        }
+        // Jamais un mot trop courant, un genre déjà visible, un numéro, ni du texte sans genre.
+        for texte in ["dance music for the night", "a singer with a nice voice", "some jazz and rock", "I gave it 2 stars", "something calm for the evening"] {
+            assert!(ajoute(texte).0.is_empty(), "ajout à tort : {texte}");
+        }
+        // Déjà couvert par le modèle ; déjà refusé par lui.
+        let mut p = interpretation_de(r#"{"etapes": ["x"], "genres": ["synth-pop"]}"#).unwrap();
+        assert!(p.completer_genres("synth pop", &vocab).is_empty());
+        let mut p = interpretation_de(r#"{"etapes": ["x"], "exclure_genres": ["grime"]}"#).unwrap();
+        assert!(p.completer_genres("grime and rap", &vocab).is_empty());
+        // Une arrivée nommée : le trajet a ses étapes, pas de filtre de genre.
+        let mut p = interpretation_de(r#"{"etapes": ["x"], "arrivee_artiste": "Y"}"#).unwrap();
+        assert!(p.completer_genres("de X à Y en passant par du grime", &vocab).is_empty());
     }
 
     /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 24 % des demandes recevaient

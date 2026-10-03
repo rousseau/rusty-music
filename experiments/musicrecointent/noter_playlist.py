@@ -73,7 +73,7 @@ def main():
 
     m = {k: Taux() for k in [
         "playlist complète (≥ n voulus)", "playlist non vide (≥ 5 morceaux)", "sans assouplissement",
-        "genre+ : précision, genre filtré dur", "genre+ : précision, CLAP seul", "genre+ : ≥ 80 % de morceaux conformes",
+        "genre+ : précision, filtre dur appliqué", "genre+ : filtre posé puis abandonné par le moteur", "genre+ : précision, CLAP seul", "genre+ : ≥ 80 % de morceaux conformes",
         "genre- : exclusion tenue (requêtes)", "genre- : morceaux fautifs",
         "NE- : exclusion tenue (requêtes)",
         "décennie : ≥ 90 % de morceaux dans la plage", "NE+~ : artiste connu de la bibliothèque", "NE+~ : artiste présent dans la playlist",
@@ -101,8 +101,14 @@ def main():
             non_evaluable += 1
         if gp and n:
             prec = sum(a_un_genre(p, gp) for p in route) / n
-            dur = bool(spec.get("genres")) or any(pa.get("genres") for pa in spec.get("parties") or [])
-            m["genre+ : précision, genre filtré dur" if dur else "genre+ : précision, CLAP seul"].add(prec)
+            pose = bool(spec.get("genres")) or any(pa.get("genres") for pa in spec.get("parties") or [])
+            # Un filtre posé par la spec mais abandonné par le moteur (trop peu de morceaux
+            # du genre dans la bibliothèque) ne contraint pas la playlist.
+            abandonne = pose and any("« genres »" in r for r in c["relaches"])
+            dur = pose and not abandonne
+            if pose:
+                m["genre+ : filtre posé puis abandonné par le moteur"].add(abandonne)
+            m["genre+ : précision, filtre dur appliqué" if dur else "genre+ : précision, CLAP seul"].add(prec)
             m["genre+ : ≥ 80 % de morceaux conformes"].add(prec >= 0.8)
             if prec < 0.8 and len(exemples["genre+ : ≥ 80 % de morceaux conformes"]) < 6:
                 exemples["genre+ : ≥ 80 % de morceaux conformes"].append((a["query"][:90], gp, f"{prec:.0%}", bool(dur), c["admissibles"]))

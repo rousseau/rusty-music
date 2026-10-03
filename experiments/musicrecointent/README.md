@@ -205,3 +205,34 @@ Résultats, gemma4:e4b, 300 prompts (graphe complet en 18 s, composition en 2 mi
   Capaldi, Illenium, Alvvays… ne s'y trouvent pas). Le moteur ne peut alors pas
   partir de X : seules les étapes CLAP-texte portent le style demandé.
 
+## Genres écrits par le texte mais invisibles du modèle (3 oct. 2026)
+
+`completer_genres` (`ollama.rs`) ajoute à la spec les genres que le texte écrit et que le modèle
+ne pouvait pas voir (rangs > 60 du vocabulaire) : « grime », « gospel », « techno », « synth pop »…
+Garde-fous : jamais un mot seul trop courant (`GENRES_TROP_COURANTS` : dance, world, singer…),
+jamais un genre précédé d'un refus (`REFUS_GENRE`, trois mots : not, hate, outside of, isnt,
+except, sans…), jamais un genre déjà visible du modèle, déjà couvert ou refusé ; pas de parties
+ni d'arrivée. Simulée d'abord sur les 300 prompts : 14 ajouts conformes sur 16.
+
+| (gemma4, 300 prompts) | Avant | Après |
+|---|---|---|
+| Genre `+` retrouvé dans `genres` [spec] | 76 % (103/135) | **81 % (110/135)** |
+| Genre inventé [spec] / exclusion inventée | 7 / 1 | 8 / 1 |
+| Ancien banc `prompts-playlist` | 64/64 | 64/64 |
+| **Playlist** : précision, filtre de genre dur **appliqué** | 96,4 % (n=69) | 96,3 % (n=69) |
+| **Playlist** : filtre posé puis **abandonné par le moteur** | 0 | 5 requêtes |
+| **Playlist** : genre voulu, CLAP seul | 0,6 % (n=8) | 0,6 % (n=8) |
+
+**La spec progresse, la playlist ne bouge presque pas** (seule « modern 80s synth pop » passe de 0 à
+100 % de morceaux conformes). Cause : la bibliothèque ne compte que **7 morceaux de grime, 1 de
+gospel, 4 de techno**. `filtres_playlist::selectionner` abandonne un critère **en entier** dès qu'il
+reste moins de morceaux admissibles que demandé (« critère genres abandonné : 7 morceaux
+admissibles pour 10 voulus ») : les 7 morceaux de grime sont perdus et la playlist retombe sur
+CLAP seul — en le disant, mais sans les garder. **Le défaut des « 10 % de demandes de genre sans
+filtre » n'est donc pas dans la spec mais dans cette politique de repli.** Piste : garder les
+rares morceaux du genre en tête de playlist, puis compléter par proximité sonore.
+
+(Une première mesure donnait 96 % → 90 % pour la précision « filtre dur » : un artefact, car
+l'indicateur comptait comme « dur » des filtres posés par la spec mais abandonnés par le moteur.
+`noter_playlist.py` sépare maintenant « appliqué » et « posé puis abandonné ».)
+
