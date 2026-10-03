@@ -105,10 +105,8 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
                     .as_array()
                     .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
                     .unwrap_or_default();
-                if voulus.is_empty() {
-                    if !rendus.is_empty() {
-                        ecarts.push(format!("{champ} devait être vide : {rendus:?}"));
-                    }
+                if voulus.is_empty() && !rendus.is_empty() {
+                    ecarts.push(format!("{champ} devait être vide : {rendus:?}"));
                 }
                 for v in voulus.iter().filter_map(Value::as_str) {
                     if !trouve(v, &rendus) {

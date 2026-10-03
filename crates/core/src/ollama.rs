@@ -291,7 +291,7 @@ fn sous_genres(genre: &str) -> Vec<(String, bool)> {
             (0..mots.len()).filter(|i| masque & (1 << i) != 0).map(|i| mots[i]).collect();
         v.push((sel.len(), sel.join(" "), masque & (1 << tete) != 0));
     }
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().map(|(_, g, t)| (g, t)).collect()
 }
 
@@ -1234,10 +1234,8 @@ fn reparer_json_tronque(brut: &str) -> Option<String> {
             sortie = sans.to_string();
         } else if let Some(sans) = t.strip_suffix(':') {
             let sans = sans.trim_end();
-            match sans.rfind('"').and_then(|fin| sans[..fin].rfind('"')) {
-                Some(ouvrante) => sortie = sans[..ouvrante].to_string(),
-                None => return None,
-            }
+            let ouvrante = sans.rfind('"').and_then(|fin| sans[..fin].rfind('"'))?;
+            sortie = sans[..ouvrante].to_string();
         } else {
             sortie = t.to_string();
             break;

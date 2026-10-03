@@ -663,7 +663,8 @@ pub fn rassembler_avec(
     // bâtiments qui donnent sur elle, et la couleur de leur famille dominante.
     // Une rue sans habitant reste « Rue » — mieux qu'un nom vide, et
     // honnête : personne n'y habite.
-    let mut par_rue: HashMap<&str, (HashMap<&str, usize>, HashMap<i64, usize>)> = HashMap::new();
+    type Habitants<'a> = (HashMap<&'a str, usize>, HashMap<i64, usize>);
+    let mut par_rue: HashMap<&str, Habitants> = HashMap::new();
     for a in &croissance.adresses {
         let Some(f) = facades[a.parcelle] else { continue };
         let Some(nom_rue) = extrait.troncons[f.troncon].nom.as_deref() else { continue };
