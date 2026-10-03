@@ -9392,6 +9392,9 @@ async function dessinerRacines() {
   const racines = await invoke("roots");
   const hote = $("racines");
   hote.replaceChildren();
+  // Avec une seule racine, « Tout rafraîchir » ferait la même chose que son
+  // « Analyser » : le bouton n'apparaît qu'à partir de deux.
+  $("tout-rafraichir").hidden = racines.length < 2;
 
   if (racines.length === 0) {
     hote.innerHTML = '<p class="file__vide">Aucun dossier surveillé.</p>';
