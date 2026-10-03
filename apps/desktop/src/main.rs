@@ -8527,6 +8527,11 @@ mod tests {
     ///
     /// `RUSTY_DB=copie.db RUSTY_RESULTATS=res.json RUSTY_SOUS_ECH=6000 \
     ///  cargo test -p rusty-music-desktop robustesse_de_la_composition -- --ignored --nocapture`
+    ///
+    /// `RUSTY_SORTIE=compositions.json` écrit en plus le détail de chaque
+    /// playlist (morceaux, genres, années, énergie, assouplissements, nombre de
+    /// morceaux admissibles) — voir `experiments/musicrecointent/noter_playlist.py`,
+    /// qui la juge contre des annotations.
     #[test]
     #[ignore]
     fn robustesse_de_la_composition() {
@@ -8552,6 +8557,7 @@ mod tests {
         let fichier: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(res).expect("résultats")).expect("json");
         let (mut ok, mut total, mut erreurs_moteur, mut paniques) = (0, 0, 0, 0);
+        let mut sorties: Vec<serde_json::Value> = Vec::new();
         for r in fichier["resultats"].as_array().expect("resultats") {
             let id = r["id"].as_str().unwrap_or("?");
             let Some(spec) = r.get("spec") else { continue }; // interprétation échouée : rien à composer
@@ -8582,15 +8588,27 @@ mod tests {
                 Err(_) => {
                     paniques += 1;
                     eprintln!("✗ {id:<22} PANIQUE");
+                    sorties.push(serde_json::json!({"id": id, "panique": true}));
                     continue;
                 }
                 Ok(Err(e)) => {
                     erreurs_moteur += 1;
                     eprintln!("· {id:<22} erreur moteur : {e}");
+                    sorties.push(serde_json::json!({"id": id, "erreur": e.to_string()}));
                     continue;
                 }
                 Ok(Ok(v)) => v,
             };
+            sorties.push(serde_json::json!({
+                "id": id,
+                "n_voulu": plan.n,
+                "route": route.iter().filter_map(|i| par_id.get(i)).map(|p| serde_json::json!({
+                    "id": p.id, "artiste": p.artiste, "annee": p.annee, "energie": p.energie,
+                    "bpm": p.bpm, "genres": p.genres,
+                })).collect::<Vec<_>>(),
+                "relaches": relaches,
+                "admissibles": parties_res.iter().map(|p| p.n_admissibles).collect::<Vec<_>>(),
+            }));
 
             let mut pb: Vec<String> = Vec::new();
             let artiste_de = |id: &i64| -> String {
@@ -8712,5 +8730,16 @@ mod tests {
             }
         }
         eprintln!("\n== composition : {ok}/{total} sans problème, {erreurs_moteur} refus clairs du moteur, {paniques} paniques");
+        if let Ok(chemin) = std::env::var("RUSTY_SORTIE") {
+            let artistes: std::collections::BTreeSet<&str> =
+                carac.iter().filter_map(|p| p.artiste.as_deref()).collect();
+            let sortie = serde_json::json!({
+                "compositions": sorties,
+                "vocabulaire": lib.vocabulaire_genres(usize::MAX).unwrap_or_default(),
+                "artistes": artistes,
+                "morceaux_placables": carac.len(),
+            });
+            std::fs::write(chemin, serde_json::to_string(&sortie).unwrap()).expect("écriture de RUSTY_SORTIE");
+        }
     }
 }

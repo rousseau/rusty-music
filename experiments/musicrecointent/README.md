@@ -145,3 +145,63 @@ Deux défauts réels, corrigés dans `ollama.rs` :
 collées : « avant » est rénoté avec la même règle, 58 % → 62 %.) Au rejeu, le
 modèle lui-même varie un peu d'une passe à l'autre (une requête change de
 réponse sans rapport avec le code) : compter ± 1-2 requêtes de bruit.
+
+## La playlist obtenue, pas seulement la spec (3 oct. 2026)
+
+Une spec juste ne garantit pas une bonne playlist : on compose chaque spec sur
+**la vraie bibliothèque** (27 385 morceaux, graphe complet, vrai encodeur
+CLAP-texte) et on note ce que l'utilisateur obtient.
+
+```bash
+# 1. les specs (voir plus haut), puis leur composition :
+RUSTY_DB=/chemin/copie.db RUSTY_SOUS_ECH=40000 \
+RUSTY_RESULTATS=$PWD/experiments/musicrecointent/data/sortie-X.json \
+RUSTY_SORTIE=$PWD/experiments/musicrecointent/data/compositions-X.json \
+  cargo test --release -p rusty-music-desktop robustesse_de_la_composition -- --ignored --nocapture
+# 2. la notation (chemins absolus : le test s'exécute depuis apps/desktop)
+python3 experiments/musicrecointent/noter_playlist.py data/compositions-X.json data/sortie-X.json
+```
+
+Résultats, gemma4:e4b, 300 prompts (graphe complet en 18 s, composition en 2 min) :
+
+| Mesure sur la playlist | Résultat |
+|---|---|
+| Invariants du moteur (exclusions dures, durée, plafond, doublons) | 300/300, 0 refus, 0 panique |
+| Playlist complète (≥ n morceaux voulus) / non vide | 99,7 % / 100 % |
+| Sans assouplissement | 99 % ; les 3 autres sont annoncés (« critère période abandonné : 0 morceau admissible ») |
+| Genre voulu, **filtre de genre dur** : morceaux conformes | **96,4 %** (n=69) |
+| Genre voulu, **sans filtre dur** (CLAP seul) | **0,6 %** (n=8) |
+| Genre refusé : exclusion tenue / entité refusée | 12/12 / 4/4 |
+| Décennie : ≥ 90 % de morceaux dans la plage | 6/8 ; les 6 specs justes sont à 100 % |
+| Artiste de référence connu de la bibliothèque | 9 % (n=180, plancher : une entité peut être un titre) |
+| Diversité (artistes distincts / morceaux) | 77 % |
+
+À retenir :
+- **Le moteur tient ses promesses** : exclusions respectées, assouplissements
+  toujours dits. Les deux « décennie » ratées sont une demande d'époque qui
+  vise des accords (« 50s progression chords ») et une année absente de la
+  bibliothèque (annoncée).
+- **Défaut réel : 10 % des demandes de genre n'ont aucun filtre dur** (« grime
+  artists », « modern 80s synth pop », « calm techno », « gospel songs »). Ces
+  genres existent dans la bibliothèque, mais aux **rangs 150-218 sur 232** :
+  le prompt n'en montre que 60. Le modèle dit alors un genre large (« hip hop »,
+  « electronic ») que `ancrer_genres` écarte, faute de le lire dans le texte :
+  la playlist n'a plus que CLAP-texte pour la guider.
+- **Deux remèdes essayés, écartés** (le score de spec monte, la playlist non) :
+
+| Variante | Genre `+` [spec] | Genre `−` exclu [spec] | Précision, filtre dur | Requêtes < 50 admissibles |
+|---|---|---|---|---|
+| 60 genres (actuel) | 76 % | 67 % | **96,4 %** | **3** |
+| les 232 genres | 79 % | 78 % | 89,9 % | 10 |
+| 60 + ceux que le texte nomme | 78 % | 72 % | 84,8 % | 10 |
+
+  Avec toute la liste, le modèle choisit des étiquettes composées rares
+  (« jazz / soul & funk », « r&b / soul », « music ») ou des sous-genres
+  minuscules (« psychedelic rock » : 24 morceaux) qui sur-contraignent le filtre.
+  **Leçon : un meilleur score de spec n'est pas une meilleure playlist** — c'est
+  pourquoi on mesure les deux. (Le modèle varie un peu d'une passe à l'autre, et
+  n ≈ 70 : seul l'ordre de grandeur de ces écarts est fiable.)
+- **« Comme X » : X n'est dans la bibliothèque que dans 9 % des cas** (Lewis
+  Capaldi, Illenium, Alvvays… ne s'y trouvent pas). Le moteur ne peut alors pas
+  partir de X : seules les étapes CLAP-texte portent le style demandé.
+
