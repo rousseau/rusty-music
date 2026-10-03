@@ -32,7 +32,8 @@ pub const MODELE: &str = "clap-htsat-unfused-5f";
 /// **À incrémenter à chaque correctif qui change la mesure elle-même** —
 /// l'inversion d'octave du tempo (`battements.rs`, sept. 2026) en est
 /// l'exemple qui a motivé cette colonne (v2 : tonalité par profils d'Albrecht-
-/// Shanahan et chroma à FFT 16384, oct. 2026) : sans version, rien ne distingue une
+/// Shanahan, chroma à FFT 16384 et séparation harmonique/percussive, oct.
+/// 2026) : sans version, rien ne distingue une
 /// mesure d'avant le correctif d'une mesure d'après, et
 /// `pending_descripteurs` les traite toutes deux comme « déjà faites ». Un
 /// ajout de sortie qui ne change pas les valeurs déjà écrites (un nouveau

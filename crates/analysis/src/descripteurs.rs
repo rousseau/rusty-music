@@ -7,7 +7,8 @@
 //! **Les algorithmes sont ceux des bibliothèques du domaine, pas des
 //! inventions.** Tempo : flux spectral puis autocorrélation à peigne, comme
 //! `onset/specflux` et `beattracking` d'aubio. Tonalité : chroma corrélé aux
-//! profils d'Albrecht-Shanahan (méthode de Krumhansl-Schmuckler, autres profils).
+//! profils d'Albrecht-Shanahan (méthode de Krumhansl-Schmuckler, autres profils),
+//! sur un chroma dont les percussions sont atténuées (HPSS).
 //!
 //! **Écrits plutôt que liés à l'origine pour éviter une dépendance C et un
 //! passage sous copyleft — raison caduque depuis le passage du projet sous
@@ -41,6 +42,19 @@ const N_FFT: usize = 2048; // attaques : 43 ms, 93,75 trames/s
 const HOP: usize = 512;
 const N_FFT_CHROMA: usize = 16384; // chroma : 341 ms, 2,9 Hz par raie
 const HOP_CHROMA: usize = 8192;
+
+/// **Séparation harmonique/percussive** du spectre de chroma (Fitzgerald,
+/// 2010) : un son tenu est une ligne horizontale du spectrogramme (stable dans
+/// le temps), une frappe une ligne verticale (large en fréquence). Le médian
+/// sur [`HPSS_TRAMES`] trames estime la part harmonique, celui sur
+/// [`HPSS_RAIES`] raies la part percussive, et le spectre est multiplié par le
+/// masque souple `H²/(H²+P²)`. Les percussions salissaient le chroma : sur
+/// FMAKv2 (1 198 clips), +1,5 point de MIREX [+0,4 ; +2,6] et +2,0 de tonique
+/// [+0,7 ; +3,3] (bootstrap apparié). Appliqué sur le signal (STFT courte), le
+/// même principe faisait **perdre** 1 à 5 points : la fenêtre de 16 384 échantillons
+/// du chroma est trop longue pour séparer correctement une frappe.
+const HPSS_TRAMES: usize = 5;
+const HPSS_RAIES: usize = 15;
 
 pub(crate) const TPS: f32 = SR as f32 / HOP as f32;
 
@@ -310,15 +324,63 @@ impl Analyseur {
 
     fn chroma(&self, spectres: &[Vec<f32>]) -> [f32; 12] {
         let mut c = [0.0f32; 12];
-        for trame in spectres {
-            for (k, m) in trame.iter().enumerate() {
+        let (Some(k0), Some(k1)) = (
+            self.classes.iter().position(Option::is_some),
+            self.classes.iter().rposition(Option::is_some),
+        ) else {
+            return c;
+        };
+        let harmonique = masque_harmonique(spectres, k0, k1);
+        for (trame, masque) in spectres.iter().zip(&harmonique) {
+            for (k, m) in trame.iter().enumerate().take(k1 + 1).skip(k0) {
                 if let Some(Some((classe, poids))) = self.classes.get(k) {
-                    c[*classe] += m * poids;
+                    c[*classe] += m * masque[k - k0] * poids;
                 }
             }
         }
         c
     }
+}
+
+/// Médiane d'un petit tampon (jamais vide).
+fn mediane(v: &mut [f32]) -> f32 {
+    let milieu = v.len() / 2;
+    *v.select_nth_unstable_by(milieu, f32::total_cmp).1
+}
+
+/// Le masque harmonique `H²/(H²+P²)` de chaque raie `k0..=k1` de chaque
+/// trame — voir [`HPSS_TRAMES`]. Les bords se prolongent par la valeur
+/// voisine (comme `scipy.ndimage.median_filter(mode="nearest")`, avec lequel
+/// le réglage a été mesuré). Seules les raies de la bande utile sont
+/// calculées ; le médian en fréquence lit celles qui l'entourent.
+fn masque_harmonique(spectres: &[Vec<f32>], k0: usize, k1: usize) -> Vec<Vec<f32>> {
+    let nt = spectres.len();
+    let demi_t = HPSS_TRAMES / 2;
+    let demi_f = HPSS_RAIES / 2;
+    let mut tampon_t = [0.0f32; HPSS_TRAMES];
+    let mut tampon_f = [0.0f32; HPSS_RAIES];
+    (0..nt)
+        .map(|t| {
+            let trame = &spectres[t];
+            let dernier = trame.len() - 1;
+            (k0..=k1)
+                .map(|k| {
+                    for (i, v) in tampon_t.iter_mut().enumerate() {
+                        let tt = (t + i).saturating_sub(demi_t).min(nt - 1);
+                        *v = spectres[tt][k];
+                    }
+                    let h = mediane(&mut tampon_t);
+                    for (i, v) in tampon_f.iter_mut().enumerate() {
+                        let kk = (k + i).saturating_sub(demi_f).min(dernier);
+                        *v = trame[kk];
+                    }
+                    let p = mediane(&mut tampon_f);
+                    let (h2, p2) = (h * h, p * p);
+                    h2 / (h2 + p2 + 1e-12)
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Flux spectral : de combien le spectre a grandi. Seules les hausses comptent —
@@ -979,6 +1041,24 @@ mod tests {
 
     /// Le silence n'a pas de tempo. Rendre 120 par défaut colorerait la carte
     /// d'une valeur inventée.
+    /// Une ligne harmonique (un son tenu à la raie 50) et une frappe (une trame
+    /// large bande) : le masque garde l'une et écrase l'autre.
+    #[test]
+    fn le_masque_harmonique_garde_le_son_tenu_et_ecrase_la_frappe() {
+        let (nt, nk) = (9, 100);
+        let mut spectres = vec![vec![0.01f32; nk]; nt];
+        for t in spectres.iter_mut() {
+            t[50] = 1.0;
+        }
+        spectres[4] = vec![1.0; nk]; // la frappe
+        let m = masque_harmonique(&spectres, 20, 80);
+        let au = |t: usize, k: usize| m[t][k - 20];
+        assert!(au(2, 50) > 0.99, "le son tenu passe : {}", au(2, 50));
+        assert!(au(4, 30) < 0.01, "la frappe est écrasée hors de la raie tenue : {}", au(4, 30));
+        // Sur la frappe, la raie tenue garde au moins l'avantage de sa continuité.
+        assert!(au(4, 50) > au(4, 30) * 10.0);
+    }
+
     #[test]
     fn le_silence_na_ni_tempo_ni_tonalite() {
         let d = analyser_fenetres(&[vec![0.0; SR as usize * 10]], &Analyseur::new());
