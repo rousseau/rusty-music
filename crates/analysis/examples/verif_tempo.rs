@@ -26,19 +26,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dossier = PathBuf::from(std::env::args().nth(1).expect("usage: verif_tempo <dossier>"));
     let analyseur = Analyseur::new();
     let mut v = Vec::new();
-    fichiers(&dossier, &mut v)?;
+    // Un fichier texte (un chemin par ligne) à la place d'un dossier : pour rejouer
+    // un échantillon d'une bibliothèque.
+    if dossier.is_file() {
+        v = std::fs::read_to_string(&dossier)?.lines().map(PathBuf::from).collect();
+    } else {
+        fichiers(&dossier, &mut v)?;
+    }
     v.sort();
     println!("chemin,bpm");
-    for p in v {
-        let rel = p.strip_prefix(&dossier).unwrap_or(&p).display().to_string();
-        // symphonia panique sur certains fichiers tronqués : un fichier ne doit
-        // pas arrêter la passe.
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| analyser(&p, &analyseur)));
-        match r {
-            Ok(Ok(d)) => println!("{rel},{}", d.bpm.map_or(String::new(), |b| format!("{b:.3}"))),
-            Ok(Err(e)) => eprintln!("{rel} : {e}"),
-            Err(_) => eprintln!("{rel} : panique du décodeur"),
+    // Parallèle : le banc se rejoue en quelques secondes.
+    let fils = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let (tx, rx) = std::sync::mpsc::channel::<(String, String)>();
+    std::thread::scope(|s| {
+        for k in 0..fils {
+            let (tx, analyseur, dossier, v) = (tx.clone(), &analyseur, &dossier, &v);
+            s.spawn(move || {
+                for p in v.iter().skip(k).step_by(fils) {
+                    let rel = if dossier.is_file() { p.display().to_string() } else { p.strip_prefix(dossier).unwrap_or(p).display().to_string() };
+                    // symphonia panique sur certains fichiers tronqués : un fichier
+                    // ne doit pas arrêter la passe.
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| analyser(p, analyseur)));
+                    match r {
+                        Ok(Ok(d)) => {
+                            let _ = tx.send((rel, d.bpm.map_or(String::new(), |b| format!("{b:.3}"))));
+                        }
+                        Ok(Err(e)) => eprintln!("{rel} : {e}"),
+                        Err(_) => eprintln!("{rel} : panique du décodeur"),
+                    }
+                }
+            });
         }
-    }
+        drop(tx);
+        let mut sorties: Vec<(String, String)> = rx.iter().collect();
+        sorties.sort();
+        for (rel, bpm) in sorties {
+            println!("{rel},{bpm}");
+        }
+    });
     Ok(())
 }

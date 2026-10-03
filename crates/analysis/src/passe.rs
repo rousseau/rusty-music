@@ -33,14 +33,14 @@ pub const MODELE: &str = "clap-htsat-unfused-5f";
 /// l'inversion d'octave du tempo (`battements.rs`, sept. 2026) en est
 /// l'exemple qui a motivé cette colonne (v2 : tonalité par profils d'Albrecht-
 /// Shanahan, chroma à FFT 16384 et séparation harmonique/percussive, oct.
-/// 2026) : sans version, rien ne distingue une
+/// 2026 ; v3 : plafond du double ramené à 200 BPM, calé sur GTZAN) : sans version, rien ne distingue une
 /// mesure d'avant le correctif d'une mesure d'après, et
 /// `pending_descripteurs` les traite toutes deux comme « déjà faites ». Un
 /// ajout de sortie qui ne change pas les valeurs déjà écrites (un nouveau
 /// descripteur en plus des existants, par exemple) n'a pas besoin de
 /// l'incrément — la case « refaire ce qui est déjà mesuré » du mode
 /// Bibliothèque reste le bon outil pour ce cas-là.
-pub const VERSION_DESCRIPTEURS: i32 = 2;
+pub const VERSION_DESCRIPTEURS: i32 = 3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

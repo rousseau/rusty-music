@@ -149,7 +149,23 @@ const SEUIL_SUR_OCTAVE: f32 = 1.02;
 /// de le doubler — une lecture à 267 BPM reste plausible pour un morceau
 /// très rapide (hardcore, speedcore) même si la grille elle-même ne
 /// l'aurait pas proposée d'emblée.
-const BPM_MAX_CORRECTION: f32 = 266.7;
+///
+/// **266,7 → 200 (3 oct. 2026), calé sur GTZAN et la bibliothèque** : un gagnant
+/// déjà rapide (≥ 100 BPM) dont l'évidence au double dépasse la sienne est presque
+/// toujours un temps subdivisé en croches, pas un morceau à plus de 200 BPM. Les
+/// doublements légitimes partent de gagnants lents (« Hard Core 100 % Fluor » :
+/// 92 → 183) et passent toujours. GTZAN, références de 100 à 140 BPM : ×2 fautifs
+/// de 7,9 % à 1,8 % des clips. Bibliothèque (3 000 morceaux) : 2,5 % de tempos
+/// supérieurs à 200 BPM ramenés dans la plage plausible, aucune bascule de 80-100
+/// vers 160-200. Contrepartie assumée : une référence annotée au-delà de 200 BPM
+/// (souvent un battement doublé par l'annotateur, jusqu'à 322 dans GTZAN) n'est
+/// plus atteinte.
+///
+/// Essayé et **écarté** : durcir la garde ci-dessus ([`BRUT_MIN_POUR_SOUS_OCTAVE`],
+/// 0,50 → 0,40) gagne encore 2 points sur GTZAN mais annule d'anciennes corrections
+/// descendantes calées sur la bibliothèque (45 morceaux < 80 BPM redoublés, 5
+/// bascules vers 160-200 dont « Sour Times », ~95 BPM, qui repasse à 188).
+const BPM_MAX_CORRECTION: f32 = 200.0;
 
 /// **Garde contre une correction descendante abusive.** La voie descendante par
 /// alternance ([`SEUIL_SOUS_OCTAVE`]) prend le gagnant pour la subdivision d'un

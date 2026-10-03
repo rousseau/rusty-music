@@ -56,3 +56,41 @@ Par tempo de référence (juste / ÷2 / ×2, en %) :
 - Dans la plage où les deux conventions s'accordent (100-140 BPM), notre moteur se
   trompe d'octave bien plus que librosa (77 % et 84 % de justes contre 91 % et 95 %),
   signe de marge sur les corrections d'octave (surtout le ×2 : 10 % de 100 à 120).
+
+## Réglage du 3 oct. 2026 : le plafond du double (VERSION_DESCRIPTEURS = 3)
+
+Un seul changement retenu dans `descripteurs.rs` : **`BPM_MAX_CORRECTION` 266,7 → 200**
+(plafond du tempo obtenu en doublant le gagnant). Un gagnant déjà rapide (≥ 100 BPM) dont
+l'évidence au double dépasse la sienne est presque toujours un temps subdivisé en croches.
+
+| GTZAN, 998 clips | Avant | Après | Δ apparié (bootstrap, IC 95 %) |
+|---|---|---|---|
+| Acc1 | 62,9 % | 64,2 % | +1,3 [+0,1 ; +2,4] |
+| Acc2 | 88,3 % | 88,3 % | 0,0 [−0,7 ; +0,7] |
+| Références 100-140 BPM, Acc1 | 79,9 % | 85,1 % | **+5,2** [+3,4 ; +7,5] (×2 fautifs : 7,9 → 1,8 %) |
+| Références < 100 BPM, Acc1 | — | — | +0,3 [−0,6 ; +1,5] |
+| Références ≥ 170 BPM, Acc1 | 20,6 % | 10,3 % | −10,3 [−15,9 ; −4,7] (contrepartie assumée) |
+
+Bibliothèque (3 000 morceaux tirés au hasard, comparés à la base mesurée avant) : 94,1 %
+inchangés, 2,8 % divisés par deux (88 % de ceux-là viennent d'anciens tempos ≥ 200 BPM :
+« Come Along » de Morphine 234 → 117, « Only » de Nine Inch Nails 225 → 113), 0,2 % multipliés
+par deux (U2 « Until the End of the World » 51 → 102), 2,9 % d'effets de bord (la médiane des
+cinq fenêtres bouge). **Aucune bascule de 80-100 vers 160-200.** Les morceaux de référence
+du code sont conservés (Hard Core 100 % Fluor 183, Mezzanine 98, Sour Times 94, Killpop 82).
+
+### Essayé et écarté
+
+| Essai | GTZAN | Pourquoi écarté |
+|---|---|---|
+| Compression log du flux, bandes mel, restriction de bande, normalisation locale plus longue ou plus courte, a priori de tempo | Acc2 ± 1 pt | rien de significatif ; Acc1 dégradé (les seuils d'octave sont calés sur un flux linéaire) |
+| Peigne de choix du gagnant à 6 harmoniques (au lieu de 3) | Acc2 +1,5 [+0,2 ; +2,8] | **déstabilise le vote d'octave** : 232 morceaux de 80-100 BPM (« Mezzanine », « Sour Times », « Light It Up ») basculent vers 160-200. Le bon gagnant, trouvé dans plus de fenêtres, doit trancher un doublement au rapport d'évidence marginal (~1,05-1,20) : la majorité bascule |
+| Même peigne long, mais peigne court (3 harmoniques) pour décider l'octave | Acc1 68,4 % | bien meilleur, mais la même bascule persiste via le vote |
+| Garde `BRUT_MIN_POUR_SOUS_OCTAVE` 0,50 → 0,40 | Acc1 +3 pts avec le plafond | **annule d'anciennes corrections descendantes** : sur 3 000 morceaux, 45 tempos < 80 BPM redoublés et 5 bascules vers 160-200 (dont « Sour Times ») |
+
+Leçon : le doublement se joue sur un rapport d'évidence à peine supérieur à 1 que rien ne sépare
+de « Hard Core 100 % Fluor » (rapport 1,03, vrai tempo 183 BPM) ; tout ce qui change le gagnant ou
+la garde fait basculer des morceaux dans un vote à la majorité fragile. Le plafond, lui, n'agit
+que sur les doubles > 200 BPM. Il faut donc mesurer chaque variante sur GTZAN **et** sur un échantillon de la bibliothèque
+(reconstruire, rejouer `verif_tempo` sur GTZAN puis sur un fichier de chemins tiré de la base,
+compter les bascules d'octave contre les anciennes valeurs) : GTZAN seul aurait fait adopter
+les deux changements risqués.
