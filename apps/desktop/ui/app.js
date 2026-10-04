@@ -2412,9 +2412,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // Repère alphabétique : seulement là où l'ordre affiché est celui des
   // noms — pas la liste des pistes d'un album (ordre du disque), ni une
   // recherche (ordre de pertinence).
-  const avecIndex = indexAlphaUtile(quoi);
-  $("index-alpha").hidden = !avecIndex;
-  if (avecIndex) construireIndexAlpha();
+  majIndexLateraux(quoi);
 
   // Liste de morceaux : la popularité se charge en lot, puis on repeint les
   // lignes visibles (la liste est virtualisée, `dessiner` relit le cache).
@@ -2481,6 +2479,7 @@ function rangVisible() {
 }
 
 function majIndexActif() {
+  majIndexAnneesActif();
   if ($("index-alpha").hidden) return;
   const lignes = lignesCourantes();
   const i = Math.min(lignes.length - 1, Math.max(0, rangVisible()));
@@ -2493,6 +2492,11 @@ function majIndexActif() {
 function sauterALettre(l) {
   const rang = indexAlpha[l];
   if (rang === undefined) return;
+  sauterAuRang(rang);
+}
+
+/// Amène la liste ou la grille sur la ligne de rang `rang`.
+function sauterAuRang(rang) {
   if (vueEnGrille()) {
     grille.scrollTop = Math.floor(rang / colonnesGrille()) * ALBUM_HAUT;
     grilleDernierRang = -1;
@@ -2501,6 +2505,79 @@ function sauterALettre(l) {
     liste.scrollTop = rang * LIGNE;
     dessiner();
   }
+}
+
+/// Affiche le repère qui convient à l'ordre en vigueur — les lettres pour A–Z,
+/// les années pour Année, rien pour le reste — et le reconstruit : sa liste, son
+/// sens, ses entrées dépendent de l'ordre et des lignes affichées.
+function majIndexLateraux(quoi = vue.quoi) {
+  const alpha = indexAlphaUtile(quoi);
+  const annees = indexAnneesUtile(quoi);
+  $("index-alpha").hidden = !alpha;
+  $("index-annees").hidden = !annees;
+  if (alpha) {
+    // Z–A : le repère se lit lui aussi de bas en haut, comme la liste.
+    indexAlphaHote.classList.toggle("index-alpha--inverse", sensDe("alpha", quoi) === -1);
+    construireIndexAlpha();
+  }
+  if (annees) construireIndexAnnees();
+}
+
+/* ----------------------------------------------------- repère des années */
+
+const indexAnneesHote = $("index-annees");
+/// Entrées du repère, dans l'ordre de la liste : `{ annee, rang }` (`annee`
+/// `null` pour les albums sans année, toujours en dernier).
+let indexAnnees = [];
+
+/// Une bande par année présente, du haut vers le bas dans l'ordre de la liste.
+/// Quatre chiffres pour 60 années ne tiennent pas dans la hauteur : on n'étiquette
+/// qu'une année sur 2, 5 ou 10 — la plus fine qui laisse au moins 10 px par
+/// étiquette — mais toutes restent cliquables (infobulle), et l'année en tête de
+/// liste reprend son chiffre (`majIndexAnneesActif`).
+function construireIndexAnnees() {
+  const premier = new Map();
+  lignesCourantes().forEach((a, i) => {
+    const annee = a.year ?? null;
+    if (!premier.has(annee)) premier.set(annee, i);
+  });
+  indexAnnees = [...premier].map(([annee, rang]) => ({ annee, rang }));
+
+  const hauteur = indexAnneesHote.clientHeight || grille.clientHeight || 500;
+  const bande = hauteur / Math.max(1, indexAnnees.length);
+  const pas = [1, 2, 5, 10].find((k) => bande * k >= 10) ?? 10;
+
+  // Écart minimal, en bandes, entre deux étiquettes : une année absente de la
+  // bibliothèque rapproche deux années rondes (1990 et 1988 côte à côte), qui
+  // se chevaucheraient.
+  const ecart = Math.ceil(10 / bande);
+  let derniere = -Infinity;
+  indexAnneesHote.replaceChildren(
+    ...indexAnnees.map(({ annee, rang }, i) => {
+      const b = document.createElement("button");
+      b.className = "index-alpha__lettre";
+      b.dataset.annee = annee === null ? "?" : String(annee);
+      b.textContent = annee === null ? "?" : String(annee);
+      b.title = annee === null ? "Sans année" : String(annee);
+      const etiquette = annee !== null && annee % pas === 0 && i - derniere >= ecart;
+      if (etiquette) derniere = i;
+      if (annee !== null && !etiquette) b.classList.add("index-alpha__lettre--muette");
+      b.addEventListener("click", () => sauterAuRang(rang));
+      return b;
+    }),
+  );
+  majIndexAnneesActif();
+}
+
+/// Met en avant l'année de la ligne en tête de la fenêtre visible.
+function majIndexAnneesActif() {
+  if ($("index-annees").hidden) return;
+  const lignes = lignesCourantes();
+  const i = Math.min(lignes.length - 1, Math.max(0, rangVisible()));
+  const annee = lignes[i] ? (lignes[i].year ?? "?") : null;
+  indexAnneesHote.querySelectorAll(".index-alpha__lettre").forEach((b) =>
+    b.classList.toggle("index-alpha__lettre--actif", b.dataset.annee === String(annee)),
+  );
 }
 
 document.querySelectorAll("[data-vuelib]").forEach((b) =>
@@ -2516,17 +2593,20 @@ document.querySelectorAll("[data-tri]").forEach((b) =>
 );
 
 /// Change l'ordre de la grille d'albums. Un clic sur « Aléatoire » rebrasse à
-/// chaque fois, même s'il est déjà actif. Le repère alphabétique n'a de sens
-/// que pour l'ordre `alpha` — masqué pour les deux autres.
+/// chaque fois, même s'il est déjà actif ; un clic sur A–Z, Année ou Ajoutés
+/// déjà actif inverse son sens. Le repère alphabétique n'a de sens que pour
+/// l'ordre `alpha`, celui des années que pour `annee`.
 function choisirTriAlbums(tri) {
+  const etat = sensTri[grilleDeTri()];
   if (tri === "alea") rebrasserAlea(vue.lignes);
-  else if (tri === triCourant()) return;
+  // Un clic sur l'ordre déjà actif l'inverse ; l'atteindre depuis un autre le
+  // remet au sens d'origine.
+  else if (tri === triCourant()) etat[tri] = -sensDe(tri);
+  else etat[tri] = SENS_ORIGINE[tri] ?? 1;
   if (vue.quoi === "artistes") triArtistes = tri;
   else triAlbums = tri;
   majBarreTri();
-  const avecIndex = indexAlphaUtile();
-  $("index-alpha").hidden = !avecIndex;
-  if (avecIndex) construireIndexAlpha();
+  majIndexLateraux();
   grille.scrollTop = 0;
   rafraichirGrille();
 }
@@ -7876,6 +7956,25 @@ let triAlbums = "alpha";
 /// Ordre de la grille d'artistes : `alpha` (celui du moteur) ou `alea` — pas
 /// d'année, un artiste n'en a pas. Mémorisé à part de `triAlbums`.
 let triArtistes = "alpha";
+/// Sens de chaque ordre : `1` = croissant (A→Z, plus ancien d'abord), `-1` =
+/// décroissant. Un second clic sur l'ordre actif l'inverse ; y revenir depuis un
+/// autre le remet au sens d'origine — A–Z croissant, Année et Ajoutés
+/// décroissants (le plus récent d'abord). Un état par grille : inverser les
+/// albums ne touche pas l'ordre des artistes.
+const SENS_ORIGINE = { alpha: 1, annee: -1, ajoutes: -1 };
+const sensTri = { albums: { ...SENS_ORIGINE }, artistes: { alpha: 1 } };
+const grilleDeTri = (quoi = vue.quoi) => (quoi === "artistes" ? "artistes" : "albums");
+const sensDe = (tri, quoi = vue.quoi) => sensTri[grilleDeTri(quoi)][tri] ?? 1;
+
+/// Le libellé d'un bouton d'ordre, qui dit le sens quand il est actif : « Z–A »,
+/// « Année ↑ »… Inactif, il garde son nom simple.
+function libelleTri(tri, actif) {
+  const base = { alpha: "A–Z", annee: "Année", alea: "Aléatoire", ajoutes: "Ajoutés" }[tri];
+  if (!actif || tri === "alea") return base;
+  const sens = sensDe(tri);
+  if (tri === "alpha") return sens === 1 ? "A–Z" : "Z–A";
+  return `${base} ${sens === 1 ? "↑" : "↓"}`;
+}
 // clé de carte (voir `cleCarteGrille`) → tirage aléatoire, régénéré à chaque
 // clic sur « Aléatoire ». Passer par la clé (et non l'objet) garde l'ordre
 // stable quand le filtre familles réduit la liste affichée.
@@ -7890,6 +7989,9 @@ const triCourant = () => (vue.quoi === "artistes" ? triArtistes : triAlbums);
 const indexAlphaUtile = (quoi = vue.quoi) =>
   (quoi === "artistes" && triArtistes === "alpha") || (quoi === "albums" && triAlbums === "alpha");
 
+/// Le repère des années n'a de sens que si l'ordre affiché est celui des années.
+const indexAnneesUtile = (quoi = vue.quoi) => quoi === "albums" && triAlbums === "annee";
+
 function rebrasserAlea(lignes) {
   const table = grainesAlea[vue.quoi === "artistes" ? "artistes" : "albums"];
   table.clear();
@@ -7903,34 +8005,40 @@ function majBarreTri(horsEcoute = modeCourant !== "ecoute") {
   // « Année » et « Ajoutés » n'ont de sens que pour les albums.
   document.querySelector('[data-tri="annee"]').hidden = vue.quoi === "artistes";
   document.querySelector('[data-tri="ajoutes"]').hidden = vue.quoi === "artistes";
-  document.querySelectorAll("[data-tri]").forEach((b) =>
-    b.classList.toggle("tri__opt--actif", b.dataset.tri === triCourant()),
-  );
+  document.querySelectorAll("[data-tri]").forEach((b) => {
+    const actif = b.dataset.tri === triCourant();
+    b.classList.toggle("tri__opt--actif", actif);
+    b.textContent = libelleTri(b.dataset.tri, actif);
+  });
+}
+
+/// Comparateur sur une valeur numérique (année, date d'ajout) dans le sens
+/// `sens`. **Ce qui n'a pas de valeur vient toujours en dernier**, dans les deux
+/// sens : inverser l'ordre ne doit pas faire remonter les albums sans année en
+/// tête. À valeur égale, ordre alphabétique croissant.
+function parValeur(cle, sens) {
+  const nom = (x) => x.name || "";
+  return (a, b) => {
+    const va = cle(a);
+    const vb = cle(b);
+    if (va == null && vb == null) return nom(a).localeCompare(nom(b), "fr", { sensitivity: "base" });
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (va !== vb) return (va - vb) * sens;
+    return nom(a).localeCompare(nom(b), "fr", { sensitivity: "base" });
+  };
 }
 
 function trierAlbums(lignes) {
   if (vue.quoi === "artistes") {
+    if (triArtistes === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
     if (triArtistes !== "alea") return lignes;
     const g = grainesAlea.artistes;
     return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
   }
-  if (triAlbums === "annee") {
-    return [...lignes].sort((a, b) => {
-      const ya = a.year ?? -Infinity;
-      const yb = b.year ?? -Infinity;
-      if (ya !== yb) return yb - ya;
-      return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
-    });
-  }
-  if (triAlbums === "ajoutes") {
-    // Le plus récent d'abord ; un album sans date de fichier va en dernier.
-    return [...lignes].sort((a, b) => {
-      const da = a.ajoute_le ?? -Infinity;
-      const db = b.ajoute_le ?? -Infinity;
-      if (da !== db) return db - da;
-      return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
-    });
-  }
+  if (triAlbums === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
+  if (triAlbums === "annee") return [...lignes].sort(parValeur((a) => a.year, sensDe("annee")));
+  if (triAlbums === "ajoutes") return [...lignes].sort(parValeur((a) => a.ajoute_le, sensDe("ajoutes")));
   if (triAlbums === "alea") {
     const g = grainesAlea.albums;
     return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
@@ -7981,6 +8089,7 @@ function rafraichirGrille() {
   if ($("grille").hidden) return;
   $("fil-compte").textContent = `${lignesCourantes().length} ${vue.quoi === "artistes" ? "artistes" : "albums"}`;
   construireIndexAlpha();
+  if (indexAnneesUtile()) construireIndexAnnees();
   grilleDernierRang = -1;
   dessinerGrille();
 }
@@ -8662,6 +8771,7 @@ async function basculerMode(mode) {
   // et le Lama, dans la marge de droite — qui paraissait alors plus étroite que
   // celle de gauche. `poser` le rétablit en revenant à l'Écoute.
   $("index-alpha").hidden = $("index-alpha").hidden || explorer || bibliotheque || decouvrir;
+  $("index-annees").hidden = $("index-annees").hidden || explorer || bibliotheque || decouvrir;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir;
   // « Chercher » (recherche globale de la bibliothèque) alimente #liste, masquée
   // en Bibliothèque et Découvrir : le champ n'y ferait rien de visible. En
@@ -11465,6 +11575,7 @@ function majEtatEditer() {
       dessiner();
     }
     $("index-alpha").hidden = !indexAlphaUtile();
+    $("index-annees").hidden = !indexAnneesUtile();
     $("fil-titre").textContent = vue.titre;
     const compte = vue.quoi === "albums" ? lignesCourantes().length : vue.lignes.length;
     $("fil-compte").textContent = `${compte} ${
@@ -11482,6 +11593,7 @@ function majEtatEditer() {
     $("liste").hidden = true;
     $("grille").hidden = true;
     $("index-alpha").hidden = true;
+    $("index-annees").hidden = true;
     $("editer-candidat").hidden = true;
     const t = edition.source;
     $("fil-titre").textContent =

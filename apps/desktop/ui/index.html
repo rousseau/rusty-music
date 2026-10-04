@@ -290,6 +290,8 @@
              vient déjà trié du moteur ; « année », « aléatoire » et « ajoutés »
              retrient côté interface. -->
         <div id="tri-albums" class="tri" hidden>
+          <!-- Un second clic sur A–Z, Année ou Ajoutés inverse l'ordre ; le libellé
+               de l'ordre actif le dit (Z–A, ↑, ↓) — voir `majBarreTri`. -->
           <button class="tri__opt tri__opt--actif" data-tri="alpha">A–Z</button>
           <button class="tri__opt" data-tri="annee">Année</button>
           <button class="tri__opt" data-tri="alea">Aléatoire</button>
@@ -305,6 +307,8 @@
         <!-- Repère alphabétique : Artistes et Albums seulement, la liste
              d'un album ou une recherche n'a pas d'ordre à indexer. -->
         <nav id="index-alpha" class="index-alpha" aria-label="Aller à la lettre" hidden></nav>
+        <!-- Même repère, pour l'ordre « Année » : une bande par année présente. -->
+        <nav id="index-annees" class="index-alpha index-annees" aria-label="Aller à l'année" hidden></nav>
 
         <!-- Mode Écoute, grille des albums d'un artiste : la biographie puis
              deux bandeaux secondaires sous la grille — proximité sonique

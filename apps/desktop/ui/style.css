@@ -441,6 +441,11 @@ html, body {
    paraissait alors plus étroite que celle de gauche : masqué par le mode, pas
    seulement par `hidden` (que le rendu de la grille rétablit après coup). */
 body[data-mode="explorer"] .index-alpha { display: none; }
+/* Repère des années : quatre chiffres, donc plus large que celui des lettres —
+   26 px, exactement la gouttière de la grille à sa droite. */
+.index-annees { right: 0; width: 26px; }
+/* Ordre inversé (Z–A) : le repère se lit à l'envers, comme la liste. */
+.index-alpha--inverse { flex-direction: column-reverse; }
 .index-alpha__lettre {
   flex: 1; min-height: 0;
   display: flex; align-items: center; justify-content: center;
@@ -452,6 +457,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .index-alpha__lettre--actif {
   color: var(--accent); font-size: 14px; font-weight: 700;
 }
+/* Année sans étiquette : trop de bandes pour les nommer toutes. Reste cliquable
+   (infobulle) et reprend son chiffre quand elle est en tête de liste — d'où
+   cette règle avant `--actif`, qui l'emporte. */
+.index-annees .index-alpha__lettre--muette { font-size: 0; }
+.index-annees .index-alpha__lettre--actif { font-size: 11px; }
 
 /* `height: 44px` doit rester égal à `LIGNE` dans `app.js` (`const LIGNE =
    44`) : la liste virtualisée s'en sert pour calculer quelles lignes sont

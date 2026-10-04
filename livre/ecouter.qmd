@@ -4,7 +4,7 @@ La première question a été : quelle interface ? Pourquoi un tel choix ? Comme
 
 Ce mode "Écouter" donne un accès direct à la bibliothèque, par Albums ou par Artistes, avec pour seule idée directrice la simplicité de navigation.
 
-L'affichage par Album sert à redécouvrir sa collection : tri alphabétique, par année de sortie, aléatoire, ou par date d'ajout (« Ajoutés », comme dans Plex : les albums arrivés le plus récemment dans la bibliothèque, d'après la date de leurs fichiers, avec cette date affichée sous chaque pochette). Un ou deux clics sur « aléatoire » suffisent à faire remonter des albums qui attirent l'œil, par la pochette ou l'artiste. L'affichage par Artiste regroupe les albums par artiste ; il est plus compact.
+L'affichage par Album sert à redécouvrir sa collection : tri alphabétique, par année de sortie, aléatoire, ou par date d'ajout (« Ajoutés », comme dans Plex : les albums arrivés le plus récemment dans la bibliothèque, d'après la date de leurs fichiers, avec cette date affichée sous chaque pochette). Un second clic sur A–Z, Année ou Ajoutés inverse l'ordre (Z–A, ↑, ↓) ; pour l'ordre par année, un repère à droite de la grille indique les années et permet d'y sauter, comme le repère alphabétique le fait pour les lettres. Un ou deux clics sur « aléatoire » suffisent à faire remonter des albums qui attirent l'œil, par la pochette ou l'artiste. L'affichage par Artiste regroupe les albums par artiste ; il est plus compact.
 
 ## Panneau de droite
 
