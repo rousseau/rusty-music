@@ -285,6 +285,13 @@ function boutonJouer(item, fallback = "") {
 /// Jauge de popularité (si le morceau a un id) puis durée, en fin de ligne —
 /// commun aux pistes d'un album et aux résultats de recherche.
 function ajouterPopEtDuree(el, item) {
+  if (favorisChemins.has(item.path)) {
+    const coeur = document.createElement("span");
+    coeur.className = "ligne__fav";
+    coeur.textContent = "♥";
+    coeur.title = "Favori";
+    el.appendChild(coeur);
+  }
   if (Number.isFinite(item.id)) {
     const cell = document.createElement("span");
     cell.className = "ligne__pop";
@@ -2028,9 +2035,74 @@ $("file-enregistrer-form").addEventListener("submit", async (e) => {
   if (vue.quoi === "playlists") await chargerPlaylists();
 });
 
+/// La vue Playlists : les listes calculées à partir des écoutes d'abord
+/// (récents, plus écoutés, favoris — seulement celles qui ont du contenu), puis
+/// les playlists enregistrées.
 async function chargerPlaylists() {
-  poser("playlists", "Playlists", await invoke("playlists"));
+  const [intelligentes, playlists] = await Promise.all([
+    invoke("listes_intelligentes"),
+    invoke("playlists"),
+  ]);
+  poser("playlists", "Playlists", [
+    ...intelligentes.map((l) => ({ ...l, intelligente: true, id: l.quoi })),
+    ...playlists,
+  ]);
 }
+
+/// Les pistes d'une entrée de la vue Playlists, calculée ou enregistrée.
+function pistesDe(item) {
+  return item.intelligente
+    ? invoke("liste_intelligente", { quoi: item.quoi })
+    : invoke("playlist_pistes", { id: item.id });
+}
+
+/* ----------------------------------------------------------- favoris
+ *
+ * Un favori est un chemin (voir `memoire.rs`). L'interface en tient l'ensemble :
+ * il marque les lignes de pistes (`ajouterPopEtDuree`) et colore le bouton ♥ de
+ * l'inspecteur, qui suit la lecture.
+ */
+let favorisChemins = new Set();
+
+invoke("favoris")
+  .then((l) => {
+    favorisChemins = new Set(l);
+    majFavoriBouton();
+    if (estListePistes()) dessiner();
+  })
+  .catch((e) => remonter(e, "favoris"));
+
+/// Le bouton ♥ suit le morceau inspecté ; caché quand l'inspecteur montre un
+/// album ou rien.
+function majFavoriBouton() {
+  const bouton = $("insp-favori");
+  const path = $("insp-titre").dataset.path;
+  bouton.hidden = !path;
+  if (!path) return;
+  const favori = favorisChemins.has(path);
+  bouton.textContent = favori ? "♥" : "♡";
+  bouton.setAttribute("aria-pressed", String(favori));
+  const titre = favori ? "Retirer des favoris" : "Ajouter aux favoris";
+  bouton.title = titre;
+  bouton.setAttribute("aria-label", titre);
+}
+
+$("insp-favori").addEventListener("click", async () => {
+  const path = $("insp-titre").dataset.path;
+  if (!path) return;
+  try {
+    const favori = await invoke("basculer_favori", { path });
+    if (favori) favorisChemins.add(path);
+    else favorisChemins.delete(path);
+  } catch (e) {
+    remonter(e, "basculer_favori");
+    return;
+  }
+  majFavoriBouton();
+  if (estListePistes()) dessiner();
+  // Les « Favoris » de la vue Playlists changent avec ce geste.
+  if (vue.quoi === "playlists") await chargerPlaylists();
+});
 
 function boutonAction(texte, titre, onClick) {
   const b = document.createElement("button");
@@ -2062,13 +2134,51 @@ function lignePlaylist(el, item) {
   const resume = document.createElement("span");
   resume.className = "ligne__sec";
   const manquantes = item.nb_manquantes > 0 ? ` · ${item.nb_manquantes} introuvable${item.nb_manquantes > 1 ? "s" : ""}` : "";
-  resume.textContent = `${item.nb_pistes} pistes · ${dureeLongue((item.duree_ms || 0) / 1000)}${manquantes}`;
+  resume.textContent = `${item.nb_pistes} piste${item.nb_pistes > 1 ? "s" : ""} · ${dureeLongue((item.duree_ms || 0) / 1000)}${manquantes}`;
   el.appendChild(resume);
 
-  el.appendChild(boutonAction("✎", "Renommer", () => renommerPlaylistEnLigne(el, item)));
-  el.appendChild(boutonAction("✕", "Supprimer", (b) => supprimerPlaylistEnDeuxTemps(b, item)));
+  // Une liste calculée à partir des écoutes se lit et s'ouvre, mais ne se
+  // renomme ni ne se supprime : elle se recalcule d'elle-même.
+  if (item.intelligente) {
+    nom.title = `${item.nom} — calculée à partir de vos écoutes`;
+  } else {
+    el.appendChild(boutonAction("⇩", "Exporter en .m3u8", () => exporterPlaylist(item).catch((e) => remonter(e, "exporter_playlist"))));
+    el.appendChild(boutonAction("✎", "Renommer", () => renommerPlaylistEnLigne(el, item)));
+    el.appendChild(boutonAction("✕", "Supprimer", (b) => supprimerPlaylistEnDeuxTemps(b, item)));
+  }
   el.addEventListener("click", () => ouvrirPlaylist(item).catch((e) => remonter(e, "playlist")));
   return el;
+}
+
+/// Écrit la playlist en `.m3u8` dans un dossier à choisir — le même sélecteur
+/// de dossier que l'export des stems (pas de permission d'écriture de plus). Le
+/// résultat se lit dans l'en-tête de la liste, quelques secondes.
+async function exporterPlaylist(item) {
+  const dossier = await window.__TAURI__.dialog.open({
+    directory: true,
+    multiple: false,
+    title: `Où écrire « ${item.nom} » (.m3u8)`,
+  });
+  if (!dossier) return;
+  // Court dans l'en-tête (sans ellipse ni largeur minimale : un chemin entier
+  // pousserait le titre) ; le détail va dans l'infobulle.
+  let message, detail;
+  try {
+    const fichier = await invoke("exporter_playlist", { id: item.id, dossier });
+    message = `exportée : ${fichier.split(/[\\/]/).pop()}`;
+    detail = fichier;
+  } catch (e) {
+    remonter(e, "exporter_playlist");
+    message = "export impossible";
+    detail = String(e);
+  }
+  const compte = $("fil-compte");
+  compte.textContent = message;
+  compte.title = detail;
+  setTimeout(() => {
+    compte.title = "";
+    if (vue.quoi === "playlists") compte.textContent = `${vue.lignes.length} listes`;
+  }, 8000);
 }
 
 function renommerPlaylistEnLigne(el, item) {
@@ -2129,7 +2239,7 @@ function supprimerPlaylistEnDeuxTemps(bouton, item) {
 
 /// Lit la playlist du début à la fin, comme un album.
 async function jouerPlaylist(item) {
-  const pistes = await invoke("playlist_pistes", { id: item.id });
+  const pistes = await pistesDe(item);
   if (pistes.length === 0) {
     $("fil-compte").textContent = "aucune piste disponible dans cette playlist";
     return;
@@ -2143,7 +2253,7 @@ async function jouerPlaylist(item) {
 /// Montre les pistes de la playlist au centre, comme celles d'un album :
 /// « ← Playlists » revient à la liste.
 async function ouvrirPlaylist(item) {
-  const pistes = await invoke("playlist_pistes", { id: item.id });
+  const pistes = await pistesDe(item);
   poser("pistes", item.nom, pistes, {
     quoi: "playlists", titre: vue.titre, lignes: vue.lignes, scroll: scrollActuel(),
   });
@@ -2179,7 +2289,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     // La grille d'albums peut être filtrée par famille : le compte suit ce qui
     // est réellement montré, pas le total.
     const compte = quoi === "albums" ? lignesCourantes().length : lignes.length;
-    const unite = { artistes: "artistes", albums: "albums", playlists: "playlists" }[quoi] ?? "morceaux";
+    const unite = { artistes: "artistes", albums: "albums", playlists: "listes" }[quoi] ?? "morceaux";
     $("fil-compte").textContent = `${compte} ${unite}`;
   }
   $("retour").hidden = retour === null;
@@ -2459,6 +2569,7 @@ async function inspecter(t) {
   // même morceau.
   $("insp-titre").dataset.path = t.path;
   $("insp-titre").dataset.id = t.id;
+  majFavoriBouton();
   $("insp-titre").textContent = txt(t.title, "(sans titre)");
   $("insp-artiste").textContent = txt(t.artist, "(sans artiste)");
   // Repris par le clic sur le nom, ci-dessous : `artist_mbid` manque pour un
@@ -2509,6 +2620,7 @@ async function inspecterAlbum(noeud) {
   // mais doit tout de même invalider une réponse de morceau encore en vol.
   $("insp-titre").dataset.path = "";
   $("insp-titre").dataset.id = "";
+  majFavoriBouton();
   $("insp-titre").textContent = noeud.name;
   $("insp-artiste").textContent = noeud.artist;
   $("insp-artiste").dataset.artiste = noeud.artist ?? "";

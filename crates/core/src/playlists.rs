@@ -7,6 +7,8 @@
 //! avec son fichier. Le lecteur n'en sait rien : l'application lui passe les
 //! chemins comme pour n'importe quelle file.
 
+use std::path::{Path, PathBuf};
+
 use crate::db::{track_from_row, Library, TrackRow, TRACK_COLS};
 use crate::error::Result;
 
@@ -38,6 +40,62 @@ fn nom_propre(nom: &str) -> String {
     } else {
         nom
     }
+}
+
+/// Le texte d'une playlist M3U8 étendue : `#EXTM3U`, puis pour chaque piste une
+/// ligne `#EXTINF:<secondes>,<artiste> - <titre>` et son chemin. UTF-8, chemins
+/// tels qu'ils sont en base (absolus) : lisible par Plex, VLC, foobar…
+pub fn texte_m3u8(pistes: &[TrackRow]) -> String {
+    // Un titre ne doit jamais casser la ligne : un saut de ligne y ouvrirait
+    // une ligne de chemin parasite.
+    let une_ligne = |t: &str| t.replace(['\r', '\n'], " ");
+    let mut texte = String::from("#EXTM3U\n");
+    for t in pistes {
+        // -1 : durée inconnue, la valeur que la convention réserve à cet usage.
+        let secondes = t.duration_ms.map_or(-1, |ms| (ms + 500) / 1000);
+        let titre = une_ligne(t.title.as_deref().unwrap_or(""));
+        let legende = match t.artist.as_deref().filter(|a| !a.is_empty()) {
+            Some(a) => format!("{} - {titre}", une_ligne(a)),
+            None => titre,
+        };
+        texte.push_str(&format!("#EXTINF:{secondes},{legende}\n{}\n", t.path));
+    }
+    texte
+}
+
+/// Un nom de fichier sûr tiré du nom d'une playlist : les caractères que les
+/// systèmes de fichiers refusent ou interprètent deviennent « _ », les points
+/// de tête sont retirés (pas de fichier caché), jamais vide.
+pub fn nom_de_fichier(nom: &str) -> String {
+    let net: String = nom
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .take(100)
+        .collect();
+    let net = net.trim().trim_start_matches('.').trim().to_string();
+    if net.is_empty() {
+        "playlist".to_string()
+    } else {
+        net
+    }
+}
+
+/// Écrit `pistes` en M3U8 dans `dossier`, sous le nom de la playlist, et rend le
+/// chemin écrit. **N'écrase jamais** : si le fichier existe, « (2) », « (3) »…
+pub fn ecrire_m3u8(dossier: &Path, nom: &str, pistes: &[TrackRow]) -> Result<PathBuf> {
+    let base = nom_de_fichier(nom);
+    let mut cible = dossier.join(format!("{base}.m3u8"));
+    let mut n = 2;
+    while cible.exists() {
+        cible = dossier.join(format!("{base} ({n}).m3u8"));
+        n += 1;
+    }
+    std::fs::write(&cible, texte_m3u8(pistes))?;
+    Ok(cible)
 }
 
 impl Library {
@@ -231,6 +289,69 @@ mod tests {
             .unwrap();
         assert_eq!(restes, 0, "le contenu part avec la playlist");
         assert!(!lib.supprimer_playlist(id).unwrap());
+    }
+
+    fn piste(path: &str, titre: Option<&str>, artiste: Option<&str>, ms: Option<i64>) -> TrackRow {
+        TrackRow {
+            id: 1,
+            path: path.into(),
+            title: titre.map(Into::into),
+            artist: artiste.map(Into::into),
+            album: None,
+            track_no: None,
+            year: None,
+            duration_ms: ms,
+            artist_mbid: None,
+        }
+    }
+
+    #[test]
+    fn le_m3u8_porte_duree_legende_et_chemin() {
+        let texte = texte_m3u8(&[
+            piste("/m/a.mp3", Some("Bus to Beelzebub"), Some("Soul Coughing"), Some(200_499)),
+            piste("/m/b.mp3", Some("Sans artiste"), None, Some(200_500)),
+            piste("/m/c.mp3", None, Some("X"), None),
+        ]);
+        assert_eq!(
+            texte,
+            "#EXTM3U\n\
+             #EXTINF:200,Soul Coughing - Bus to Beelzebub\n/m/a.mp3\n\
+             #EXTINF:201,Sans artiste\n/m/b.mp3\n\
+             #EXTINF:-1,X - \n/m/c.mp3\n"
+        );
+    }
+
+    #[test]
+    fn un_titre_ne_peut_pas_ouvrir_une_ligne_parasite() {
+        let texte = texte_m3u8(&[piste("/m/a.mp3", Some("ligne 1\n/etc/passwd"), Some("A\rB"), Some(1000))]);
+        let lignes: Vec<_> = texte.lines().collect();
+        assert_eq!(lignes.len(), 3, "une seule piste : en-tête, légende, chemin");
+        assert_eq!(lignes[2], "/m/a.mp3");
+    }
+
+    #[test]
+    fn le_nom_de_fichier_est_sur() {
+        assert_eq!(nom_de_fichier("Rock/Metal: le \"best\" ?"), "Rock_Metal_ le _best_ _");
+        assert_eq!(nom_de_fichier("..cache"), "cache");
+        assert_eq!(nom_de_fichier("   "), "playlist");
+        assert_eq!(nom_de_fichier("..."), "playlist");
+        assert_eq!(nom_de_fichier(&"é".repeat(300)).chars().count(), 100);
+    }
+
+    #[test]
+    fn l_export_n_ecrase_jamais_un_fichier_existant() {
+        let dossier = std::env::temp_dir().join(format!("rusty-music-m3u8-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).unwrap();
+        let pistes = [piste("/m/a.mp3", Some("A"), Some("B"), Some(1000))];
+
+        let un = ecrire_m3u8(&dossier, "Ma liste", &pistes).unwrap();
+        let deux = ecrire_m3u8(&dossier, "Ma liste", &pistes).unwrap();
+        let trois = ecrire_m3u8(&dossier, "Ma liste", &pistes).unwrap();
+        assert_eq!(un.file_name().unwrap(), "Ma liste.m3u8");
+        assert_eq!(deux.file_name().unwrap(), "Ma liste (2).m3u8");
+        assert_eq!(trois.file_name().unwrap(), "Ma liste (3).m3u8");
+        assert!(std::fs::read_to_string(&un).unwrap().starts_with("#EXTM3U\n"));
+        let _ = std::fs::remove_dir_all(&dossier);
     }
 
     #[test]

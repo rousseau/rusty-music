@@ -141,7 +141,7 @@ volume (40), aléatoire, répétition et file reprise, sondage arrêté ensuite.
 **Non vérifié** : l'écriture à la fermeture (`RunEvent::Exit`), qui ne se
 déclenche pas sur un arrêt par signal ; la sauvegarde de 5 s est le filet.
 
-### 4. Playlists enregistrées — **fait, sauf l'export M3U8 (4 oct. 2026)**
+### 4. Playlists enregistrées — **fait (4 oct. 2026)**
 
 **Décisions** : tables SQLite ; export M3U8 « ensuite » ; une playlist de Lama
 garde ses morceaux et le **texte de la demande** (pas de spec rejouable) ; vue
@@ -173,36 +173,61 @@ Une piste absente reste dans la liste, comptée « introuvable ».
   seulement si la file n'a pas changé depuis (même longueur, même premier
   morceau).
 
-**Reste** : l'export/import M3U8 (second temps décidé), et tout ce que la
-décision a écarté — éditer une playlist enregistrée, la regénérer.
+**Export M3U8 (fait, import écarté).** Un bouton ⇩ par playlist ouvre le
+sélecteur de dossier déjà utilisé par l'export des stems (aucune permission
+d'écriture ajoutée) et écrit `<nom>.m3u8` : `#EXTM3U`, une ligne `#EXTINF`
+(durée arrondie, « artiste - titre ») et le chemin absolu par piste, UTF-8. Un
+titre ne peut pas ouvrir une ligne parasite (retours à la ligne remplacés), le
+nom de fichier est nettoyé, et **un fichier existant n'est jamais écrasé**
+(« (2) », « (3) »…). Les pistes introuvables n'y figurent pas. L'import n'est
+pas fait : les chemins d'un fichier venu d'une autre machine ne correspondent
+pas à ceux de la bibliothèque. 4 tests.
+
+**Reste** : tout ce que la décision a écarté — éditer une playlist
+enregistrée, la regénérer, l'import M3U8.
 
 **Méthode de test de l'interface.** La fenêtre Tauri ne se capture pas, et
 `node --check` ne voit pas les collisions de noms (JS accepte une fonction
 redéclarée). Un harnais jetable — `ui/` servi par `http.server`, un
-`mock.js` qui remplace `window.__TAURI__` par un backend en mémoire — a permis
-de dérouler les gestes dans Chrome. Il a trouvé **quatre défauts** que les tests
-Rust ne pouvaient pas voir : `dureeLongue` déjà définie plus bas (la mienne
+`mock.js` qui remplace `window.__TAURI__` par un backend en mémoire — permet de
+dérouler les gestes dans Chrome (par l'extension, ou par Playwright et le Chrome
+installé quand l'extension n'est pas connectée). Il a trouvé **quatre défauts**
+que les tests Rust ne pouvaient pas voir : `dureeLongue` déjà définie plus bas (la mienne
 était ignorée : « 222,2 h »), un faux surlignage « sélectionné » des lignes de
 playlist (`undefined === undefined`), la reprise de session invisible, le
 message rouge devenu gris. Le harnais n'est pas versionné ; si l'on veut le
 garder, c'est un candidat pour `scripts/`.
 
-### 5. Mémoire d'écoute : favoris et historique — M
+### 5. Mémoire d'écoute : historique et favoris — **fait (4 oct. 2026)**
 
-**Constaté.** Aucun compteur de lecture, favori ou note n'existe en base.
-Lama et « Sonne comme » ne peuvent donc pas s'appuyer sur ce que l'on écoute
-vraiment.
+**Décisions** : historique **et** favori ♥ ; une écoute compte après 30 s ou la
+moitié de la piste, le premier seuil atteint ; trois listes calculées en tête
+de la vue Playlists ; **tout reste local** — la soumission à ListenBrainz est
+écartée de la 0.2.
 
-| Option | Principe | Réserve |
-|---|---|---|
-| A. Historique local seul | `dernier_lu`, `nb_lectures` incrémentés quand une piste passe un seuil (30 s ou 50 %) ; vues « Récents », « Les plus écoutés » | Pas de geste utilisateur, mais déjà utile |
-| B. Favori ♥ | Un bit par morceau, filtre dans les listes | Geste explicite, simple |
-| C. A + B | | |
-| D. Soumission ListenBrainz | Envoyer les écoutes à un compte (le client ListenBrainz existe déjà, en lecture de popularité) | Sort de la logique « tout local » : opt-in, jeton à gérer |
+**Fait.**
+- Tables `ecoute` (un journal : une ligne par écoute) et `favori`, par
+  **chemin** comme les playlists — un fichier réinséré au même endroit retrouve
+  son historique. `crates/core/src/memoire.rs`, 6 tests.
+- Comptage côté moteur, pas côté page (une fenêtre masquée ralentit les
+  temporisateurs de la webview) : le fil de 500 ms qui précharge compte aussi le
+  **temps réellement joué** (`SuiviEcoute::avancer`). Pause exclue ; **sauter à
+  la fin d'une piste ne la fait pas compter** ; une piste qui recommence
+  (répétition « une ») compte à chaque tour ; un battement très en retard
+  (ordinateur endormi) est plafonné à 2 s. 6 tests.
+- Listes calculées, seulement celles qui ne sont pas vides : « Récemment
+  écoutés » (100, une fois chacun), « Les plus écoutés » (au moins deux
+  écoutes, sinon ce ne serait que « récemment »), « Favoris ». Elles se lisent
+  et s'ouvrent comme des playlists, sans renommer ni supprimer ; l'en-tête de la
+  vue compte désormais des « listes ».
+- ♥ sur la pochette de l'inspecteur (il suit la lecture, donc il vise le morceau
+  qui joue) ; un ♥ discret marque les lignes de pistes favorites.
 
-**Recommandation : C**, D en option activable plus tard. Attention à la
-vie privée : l'historique reste dans la base locale, jamais envoyé sans
-réglage explicite.
+**Écarts et limites** : le ♥ n'est pas dans le transport ni cliquable sur les
+lignes — l'inspecteur seul le bascule. L'historique n'alimente pas encore Lama
+(c'était l'intérêt du journal, `suite.md`/point 5 du plan). Aucune purge ni
+bouton « effacer l'historique » : à ajouter si l'on veut garder la main sur ce
+qui est retenu.
 
 ### 6. Intégration système macOS (« En cours de lecture ») — M
 

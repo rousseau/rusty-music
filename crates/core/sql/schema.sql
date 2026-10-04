@@ -445,3 +445,24 @@ CREATE TABLE IF NOT EXISTS playlist_piste (
 -- La jointure vers `tracks` se fait par chemin : `tracks.path` est déjà indexé
 -- (UNIQUE), il ne manque que de quoi retrouver les pistes d'une playlist.
 CREATE INDEX IF NOT EXISTS idx_playlist_piste_chemin ON playlist_piste(chemin);
+
+-- Mémoire d'écoute (`docs/plan-ecouter-v0.2.md`, point 5) : ce qu'on a vraiment
+-- écouté, et ce qu'on aime. Tout reste dans cette base — rien n'est envoyé
+-- nulle part. Comme les playlists, par **chemin** : un fichier réinséré au même
+-- endroit retrouve son historique et son favori.
+--
+-- Un journal plutôt qu'un compteur : une ligne par écoute (« compte » après 30 s
+-- ou la moitié de la piste, voir `SuiviEcoute` côté application). Le compteur et
+-- la dernière écoute s'en déduisent, et le journal garde de quoi répondre plus
+-- tard à « ce que j'écoutais cet hiver ».
+CREATE TABLE IF NOT EXISTS ecoute (
+    chemin  TEXT    NOT NULL,
+    le      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ecoute_chemin ON ecoute(chemin);
+CREATE INDEX IF NOT EXISTS idx_ecoute_le     ON ecoute(le);
+
+CREATE TABLE IF NOT EXISTS favori (
+    chemin  TEXT    PRIMARY KEY,
+    le      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);

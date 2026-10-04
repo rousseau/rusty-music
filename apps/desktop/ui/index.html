@@ -852,6 +852,10 @@
         <span>pochette</span>
         <button class="insp__lecture" id="insp-lecture" aria-label="Lire" title="Lire">▶</button>
         <button class="insp__alchimie" id="insp-alchimie" aria-label="Playlist dans l'esprit de ce morceau" title="Playlist dans l'esprit de ce morceau">✦</button>
+        <!-- Favori : bascule le morceau inspecté (il suit la lecture). Caché
+             devant un album, qui n'a pas de favori. -->
+        <button class="insp__favori" id="insp-favori" aria-pressed="false" hidden
+                aria-label="Ajouter aux favoris" title="Ajouter aux favoris">♡</button>
       </div>
       <div id="insp-vide" class="insp__vide">Aucun morceau sélectionné.</div>
       <div id="insp" hidden>

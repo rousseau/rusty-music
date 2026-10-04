@@ -25,6 +25,7 @@ pub mod lastfm;
 pub mod lastfm_pass;
 pub mod listenbrainz;
 pub mod loudness;
+pub mod memoire;
 pub mod modeles;
 pub mod musicbrainz;
 pub mod ollama;
