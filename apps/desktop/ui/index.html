@@ -287,12 +287,15 @@
         <button id="editer-candidat" class="fil__candidat" hidden></button>
         <span id="fil-compte" class="fil__compte"></span>
         <!-- Ordre des grilles d'albums et d'artistes (mode Écoute). L'ordre alphabétique
-             vient déjà trié du moteur ; « année » et « aléatoire » retrient
-             côté interface. -->
+             vient déjà trié du moteur ; « année », « aléatoire » et « ajoutés »
+             retrient côté interface. -->
         <div id="tri-albums" class="tri" hidden>
           <button class="tri__opt tri__opt--actif" data-tri="alpha">A–Z</button>
           <button class="tri__opt" data-tri="annee">Année</button>
           <button class="tri__opt" data-tri="alea">Aléatoire</button>
+          <!-- Albums récemment arrivés, d'après la date de leurs fichiers. -->
+          <button class="tri__opt" data-tri="ajoutes"
+                  title="Les albums ajoutés le plus récemment à la bibliothèque, d'après la date de leurs fichiers.">Ajoutés</button>
         </div>
       </header>
       <div class="centre__corps">

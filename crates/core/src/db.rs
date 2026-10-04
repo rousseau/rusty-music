@@ -217,6 +217,13 @@ pub struct AlbumRow {
     // N'importe laquelle convient : c'est la même pochette pour tout l'album,
     // embarquée ou dans le dossier.
     pub path: String,
+    /// Quand l'album est arrivé dans la bibliothèque, en secondes depuis
+    /// l'époque : la **date de modification la plus récente** de ses fichiers.
+    /// Ce n'est pas `added_at` (la date de passage du scan : tout ce qu'un même
+    /// scan trouve y a le même jour) mais celle des fichiers, qui dit quand on
+    /// les a posés là. La plus récente des pistes : un morceau ajouté à un album
+    /// existant le remonte. `None` si aucune piste n'a de date.
+    pub ajoute_le: Option<i64>,
 }
 
 /// Un album annoté pour le mode Explorer → Anneau : identité, famille
@@ -401,6 +408,7 @@ fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
         year: annee_fiable_album(mb_date.as_deref(), compilation, tag_annee),
         tracks: r.get(3)?,
         path: r.get(4)?,
+        ajoute_le: r.get::<_, Option<i64>>(7)?.filter(|&t| t > 0),
     })
 }
 
@@ -4410,7 +4418,7 @@ impl Library {
                HAVING COUNT(DISTINCT mb_album_artist_id) = 1
              )
              SELECT t.album, COALESCE(t.album_artist, t.artist), MIN(t.year), COUNT(*), MIN(t.path),
-                    MIN(r.first_release_date), MIN(r.secondary_types)
+                    MIN(r.first_release_date), MIN(r.secondary_types), MAX(t.mtime)
                FROM tracks t
                LEFT JOIN mb_release_groups r
                       ON r.artist_mbid = t.mb_album_artist_id
@@ -4439,7 +4447,7 @@ impl Library {
         // invité en artiste.
         let mut stmt = self.conn.prepare(
             "SELECT t.album, COALESCE(t.album_artist, t.artist), MIN(t.year), COUNT(*), MIN(t.path),
-                    MIN(r.first_release_date), MIN(r.secondary_types)
+                    MIN(r.first_release_date), MIN(r.secondary_types), MAX(t.mtime)
                FROM tracks t
                LEFT JOIN mb_release_groups r
                       ON r.artist_mbid = t.mb_album_artist_id
@@ -5501,6 +5509,47 @@ mod tests {
 
         let albums = lib.albums_of_artist(None, "N.E.R.D").unwrap();
         assert_eq!(albums.len(), 2, "les albums étiquetés ne remontent pas : {albums:?}");
+    }
+
+    /// La date d'ajout d'un album est la date de fichier **la plus récente** de
+    /// ses pistes — un morceau posé plus tard le remonte —, pas la date de
+    /// passage du scan. Une date absente ou nulle ne compte pas.
+    #[test]
+    fn albums_rendent_la_date_de_fichier_la_plus_recente() {
+        let lib = Library::open_in_memory().unwrap();
+        let pistes = [
+            ("/m/a/1.mp3", "Ancien", 1_000_000_000),
+            ("/m/a/2.mp3", "Ancien", 1_100_000_000),
+            ("/m/b/1.mp3", "Récent", 1_700_000_000),
+            ("/m/b/2.mp3", "Récent", 1_600_000_000),
+            ("/m/c/1.mp3", "Sans date", 0),
+        ];
+        for (path, album, mtime) in pistes {
+            lib.upsert(&TrackMeta {
+                path: path.into(),
+                artist: Some("X".into()),
+                album: Some(album.into()),
+                mtime,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let par_nom: std::collections::HashMap<_, _> = lib
+            .albums(None)
+            .unwrap()
+            .into_iter()
+            .map(|a| (a.name, a.ajoute_le))
+            .collect();
+        assert_eq!(par_nom["Ancien"], Some(1_100_000_000));
+        assert_eq!(par_nom["Récent"], Some(1_700_000_000));
+        assert_eq!(par_nom["Sans date"], None, "une date nulle n'est pas une date");
+
+        // Même colonne par la voie « albums d'un artiste ».
+        let de_x = lib.albums_of_artist(None, "X").unwrap();
+        assert_eq!(
+            de_x.iter().find(|a| a.name == "Récent").and_then(|a| a.ajoute_le),
+            Some(1_700_000_000)
+        );
     }
 
     /// Sans identifiant, le repli se fait sur le nom — et deux artistes

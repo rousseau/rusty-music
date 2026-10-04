@@ -543,13 +543,16 @@ function dessinerGrille() {
   grilleFenetre.style.transform = `translateY(${rangHaut * ALBUM_HAUT}px)`;
   grilleFenetre.style.gridTemplateColumns = `repeat(${cols}, ${ALBUM_LARG}px)`;
 
-  if (vue.quoi !== grilleCartesQuoi) {
+  // Les cases d'albums montrent la date d'ajout sous « Ajoutés » et l'année
+  // sinon : changer d'un affichage à l'autre doit les refaire, pas les déplacer.
+  const affichageCartes = `${vue.quoi}${vue.quoi === "albums" && triAlbums === "ajoutes" ? ":ajoutes" : ""}`;
+  if (affichageCartes !== grilleCartesQuoi) {
     // Vider la Map ne suffit pas : les nœuds restent dans `grilleFenetre`, et
     // les cartes de l'ancienne vue s'affichent devant les nouvelles (Artistes
     // sans effet, tris d'Albums figés derrière des cartes périmées).
     grilleFenetre.replaceChildren();
     grilleCartes.clear();
-    grilleCartesQuoi = vue.quoi;
+    grilleCartesQuoi = affichageCartes;
   }
 
   const carte = vue.quoi === "artistes" ? carteArtiste : carteAlbum;
@@ -592,7 +595,17 @@ function carteAlbum(item) {
   el.children[2].innerHTML = `<span class="album__artiste"></span> · <span></span>`;
   const artiste = el.children[2].children[0];
   artiste.textContent = txt(item.artist, "(sans artiste)");
-  el.children[2].children[1].textContent = item.year ?? "————";
+  // Sous l'ordre « Ajoutés », la date d'arrivée remplace l'année : sans elle,
+  // on ne comprendrait pas l'ordre. L'année reste dans l'infobulle.
+  if (triAlbums === "ajoutes" && item.ajoute_le) {
+    const date = new Date(item.ajoute_le * 1000).toLocaleDateString("fr-FR", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    el.children[2].children[1].textContent = date;
+    el.children[2].children[1].title = `Ajouté le ${date}${item.year ? ` · sorti en ${item.year}` : ""}`;
+  } else {
+    el.children[2].children[1].textContent = item.year ?? "————";
+  }
   el.addEventListener("click", () => activer(item));
 
   // Le nom de l'artiste ouvre tous ses albums ; `stopPropagation` évite que
@@ -7857,8 +7870,8 @@ function albumsAffiches() {
 }
 
 /// Ordre de la grille d'albums. `alpha` est l'ordre rendu par le moteur
-/// (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee` et `alea`
-/// retrient une copie côté interface.
+/// (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee`, `ajoutes` et
+/// `alea` retrient une copie côté interface.
 let triAlbums = "alpha";
 /// Ordre de la grille d'artistes : `alpha` (celui du moteur) ou `alea` — pas
 /// d'année, un artiste n'en a pas. Mémorisé à part de `triAlbums`.
@@ -7887,7 +7900,9 @@ function rebrasserAlea(lignes) {
 /// « Année » n'a de sens que pour les albums.
 function majBarreTri(horsEcoute = modeCourant !== "ecoute") {
   $("tri-albums").hidden = horsEcoute || !vueEnGrille();
+  // « Année » et « Ajoutés » n'ont de sens que pour les albums.
   document.querySelector('[data-tri="annee"]').hidden = vue.quoi === "artistes";
+  document.querySelector('[data-tri="ajoutes"]').hidden = vue.quoi === "artistes";
   document.querySelectorAll("[data-tri]").forEach((b) =>
     b.classList.toggle("tri__opt--actif", b.dataset.tri === triCourant()),
   );
@@ -7904,6 +7919,15 @@ function trierAlbums(lignes) {
       const ya = a.year ?? -Infinity;
       const yb = b.year ?? -Infinity;
       if (ya !== yb) return yb - ya;
+      return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
+    });
+  }
+  if (triAlbums === "ajoutes") {
+    // Le plus récent d'abord ; un album sans date de fichier va en dernier.
+    return [...lignes].sort((a, b) => {
+      const da = a.ajoute_le ?? -Infinity;
+      const db = b.ajoute_le ?? -Infinity;
+      if (da !== db) return db - da;
       return (a.name || "").localeCompare(b.name || "", "fr", { sensitivity: "base" });
     });
   }
