@@ -119,6 +119,11 @@ const vueEnGrille = (quoi = vue.quoi) => quoi === "albums" || quoi === "artistes
 const estListePistes = (quoi = vue.quoi) => quoi === "pistes" || quoi === "recherche";
 
 let fileCourante = []; // pistes envoyées au lecteur, pour l'affichage
+// D'où vient la file en cours, quand l'interface le sait — la demande faite à
+// Lama, « Dans l'esprit de … » : `{ texte, premier, n }`. `origineDeLaFile` ne
+// la croit que si la file n'a pas changé depuis (même longueur, même premier
+// morceau) : aucune remise à zéro à répartir sur tous les chemins de lecture.
+let origineFile = null;
 
 // Un bouton ✦ à la fois (case d'album ou inspecteur) : les deux partagent le
 // graphe des voisins et le panneau de composition, deux lancements concurrents
@@ -141,7 +146,9 @@ liste.appendChild(socle);
 
 function dessiner() {
   const n = vue.lignes.length;
-  socle.style.height = `${n * LIGNE}px`;
+  // Une liste de playlists vide garde de quoi montrer son message d'accueil.
+  const vide = n === 0 && vue.quoi === "playlists";
+  socle.style.height = `${(vide ? 2 : n) * LIGNE}px`;
 
   // On ne pose dans le DOM que ce qui est visible, plus une marge : 3 543
   // artistes en une fois figeraient la fenêtre.
@@ -154,6 +161,13 @@ function dessiner() {
   for (let i = haut; i < bas; i++) {
     fenetre.appendChild(ligne(vue.lignes[i], i));
   }
+  if (vide) {
+    const p = document.createElement("p");
+    p.className = "aide liste__vide";
+    p.textContent =
+      "Aucune playlist pour l'instant. Ouvrez la file d'attente (bouton « file » du transport) et choisissez « enregistrer ».";
+    fenetre.appendChild(p);
+  }
   majIndexActif();
 }
 
@@ -161,6 +175,9 @@ function ligne(item, index) {
   const el = document.createElement("div");
   el.className = "ligne";
   el.dataset.index = index;
+  // Une playlist n'a pas de `path` : le comparer à `pisteSelectionnee?.path`
+  // (lui aussi `undefined` tant que rien n'est choisi) la surlignerait à tort.
+  if (vue.quoi === "playlists") return lignePlaylist(el, item);
   if (item.path === enLecture) el.classList.add("ligne--joue");
   if (item.path === pisteSelectionnee?.path) el.classList.add("ligne--select");
   return vue.quoi === "recherche" ? ligneRecherche(el, item) : lignePiste(el, item);
@@ -808,6 +825,7 @@ const ALCHIMIE_PISTES = 20;
 function genererAlchimie(item, bouton) {
   return composerAlchimie({
     bouton,
+    origine: `Dans l'esprit de « ${item.name} »`,
     chemin: () =>
       invoke("path_album", {
         album: item.name,
@@ -845,7 +863,7 @@ function genererAlchimie(item, bouton) {
 /// artiste », `shuffle_artist`) — pas de dérive sonique, donc ni préparation
 /// du graphe de voisins ni route sur la carte, et pas de piste « graine »
 /// dans la file (aucun pivot, juste un mélange).
-async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES, graphe = true }) {
+async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES, graphe = true, origine = null }) {
   if (alchimieEnCours) return;
   alchimieEnCours = true;
   const fileEtaitOuverte = !$("file").hidden;
@@ -870,6 +888,9 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
 
     selectionner(pistes[0]);
     fileCourante = pistes;
+    // D'où vient cette file, pour la proposer en nom et la garder si elle est
+    // enregistrée (`origineDeLaFile`).
+    origineFile = origine ? { texte: origine, premier: pistes[0].path, n: pistes.length } : null;
     if (graphe) tracerRouteSurCarte(pistes);
     // Lecture tout de suite ; le sondage d'état qui démarre avec elle
     // voudra redessiner la file, `fileCompositionActive` l'en empêche
@@ -1773,6 +1794,8 @@ function composerPlanTexte() {
   $("lama-resultat").hidden = true;
   composerAlchimie({
     bouton: $("plan-texte-composer"),
+    // La demande faite à Lama : elle nomme la playlist et se garde avec elle.
+    origine: lama.prompt || null,
     cible: cibleDuPlan(planTexte),
     chemin: async () => {
       try {
@@ -1938,6 +1961,194 @@ window.addEventListener("resize", () => {
   positionnerPlayhead();
 });
 
+/* ------------------------------------------------- playlists enregistrées
+ *
+ * Une file qu'on garde, nommée (`docs/plan-ecouter-v0.2.md`, point 4). Trois
+ * gestes : « enregistrer » dans le panneau de file, la vue « Playlists »
+ * d'Écouter (jouer, ouvrir, renommer, supprimer), et l'ouverture d'une playlist
+ * comme une liste de pistes ordinaire.
+ */
+
+/// La demande ou le point de départ de la file en cours — seulement si la file
+/// n'a pas changé depuis qu'on l'a composée.
+function origineDeLaFile() {
+  const o = origineFile;
+  if (!o || fileCourante.length !== o.n || !fileCourante.some((t) => t.path === o.premier)) return null;
+  return o.texte;
+}
+
+function nomParDefaut() {
+  const o = origineDeLaFile();
+  if (o) return o.length > 80 ? `${o.slice(0, 79)}…` : o;
+  return `Playlist du ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
+}
+
+let etatEnregistrementMinuteur = null;
+function etatEnregistrement(texte) {
+  $("file-enregistrer-etat").textContent = texte;
+  clearTimeout(etatEnregistrementMinuteur);
+  if (texte) etatEnregistrementMinuteur = setTimeout(() => etatEnregistrement(""), 6000);
+}
+
+function fermerEnregistrement() {
+  $("file-enregistrer-form").hidden = true;
+}
+
+$("file-enregistrer").addEventListener("click", () => {
+  const form = $("file-enregistrer-form");
+  if (!form.hidden) return fermerEnregistrement();
+  if (!fileCourante.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
+  etatEnregistrement("");
+  form.hidden = false;
+  const champ = $("file-enregistrer-nom");
+  champ.value = nomParDefaut();
+  champ.focus();
+  champ.select();
+});
+$("file-enregistrer-annuler").addEventListener("click", fermerEnregistrement);
+$("file-enregistrer-nom").addEventListener("keydown", (e) => {
+  // Les raccourcis globaux (espace, flèches) ne doivent pas traverser le champ.
+  e.stopPropagation();
+  if (e.key === "Escape") fermerEnregistrement();
+});
+
+$("file-enregistrer-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const paths = fileCourante.map((t) => t.path);
+  if (!paths.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
+  const nom = $("file-enregistrer-nom").value.trim() || nomParDefaut();
+  try {
+    await invoke("creer_playlist", { nom, origine: origineDeLaFile(), paths });
+  } catch (err) {
+    signalerErreur("file-enregistrer-etat", "Enregistrement impossible.", err, "creer_playlist");
+    return;
+  }
+  fermerEnregistrement();
+  etatEnregistrement(`Enregistrée : ${nom} (${paths.length} pistes)`);
+  if (vue.quoi === "playlists") await chargerPlaylists();
+});
+
+async function chargerPlaylists() {
+  poser("playlists", "Playlists", await invoke("playlists"));
+}
+
+function boutonAction(texte, titre, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "ligne__action";
+  b.textContent = texte;
+  b.title = titre;
+  b.setAttribute("aria-label", titre);
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick(b);
+  });
+  return b;
+}
+
+/// Une ligne de la vue Playlists. Un clic sur la ligne l'ouvre (ses pistes, au
+/// centre) ; ▶ la lit d'un bout à l'autre ; ✎ la renomme sur place ; ✕ la
+/// supprime, en deux temps — pas de boîte de dialogue.
+function lignePlaylist(el, item) {
+  el.classList.add("ligne--playlist");
+  el.appendChild(boutonAction("▶", `Lire ${item.nom}`, () => jouerPlaylist(item).catch((e) => remonter(e, "playlist"))));
+
+  const nom = document.createElement("span");
+  nom.className = "ligne__nom";
+  nom.textContent = item.nom;
+  nom.title = item.origine ? `${item.nom} — ${item.origine}` : item.nom;
+  el.appendChild(nom);
+
+  const resume = document.createElement("span");
+  resume.className = "ligne__sec";
+  const manquantes = item.nb_manquantes > 0 ? ` · ${item.nb_manquantes} introuvable${item.nb_manquantes > 1 ? "s" : ""}` : "";
+  resume.textContent = `${item.nb_pistes} pistes · ${dureeLongue((item.duree_ms || 0) / 1000)}${manquantes}`;
+  el.appendChild(resume);
+
+  el.appendChild(boutonAction("✎", "Renommer", () => renommerPlaylistEnLigne(el, item)));
+  el.appendChild(boutonAction("✕", "Supprimer", (b) => supprimerPlaylistEnDeuxTemps(b, item)));
+  el.addEventListener("click", () => ouvrirPlaylist(item).catch((e) => remonter(e, "playlist")));
+  return el;
+}
+
+function renommerPlaylistEnLigne(el, item) {
+  const nom = el.querySelector(".ligne__nom");
+  const champ = document.createElement("input");
+  champ.className = "ligne__champ";
+  champ.maxLength = 120;
+  champ.value = item.nom;
+  champ.setAttribute("aria-label", "Nouveau nom");
+  nom.replaceWith(champ);
+  champ.focus();
+  champ.select();
+  let fini = false;
+  const valider = async () => {
+    if (fini) return;
+    fini = true;
+    const v = champ.value.trim();
+    if (v && v !== item.nom) {
+      try {
+        await invoke("renommer_playlist", { id: item.id, nom: v });
+      } catch (e) {
+        remonter(e, "renommer_playlist");
+      }
+      await chargerPlaylists();
+    } else {
+      dessiner();
+    }
+  };
+  champ.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") valider();
+    else if (e.key === "Escape") {
+      fini = true;
+      dessiner();
+    }
+  });
+  champ.addEventListener("blur", valider);
+  champ.addEventListener("click", (e) => e.stopPropagation());
+}
+
+function supprimerPlaylistEnDeuxTemps(bouton, item) {
+  if (bouton.dataset.confirme === "1") {
+    invoke("supprimer_playlist", { id: item.id })
+      .catch((e) => remonter(e, "supprimer_playlist"))
+      .then(() => chargerPlaylists());
+    return;
+  }
+  bouton.dataset.confirme = "1";
+  bouton.textContent = "supprimer ?";
+  bouton.classList.add("ligne__action--danger");
+  setTimeout(() => {
+    if (!bouton.isConnected) return;
+    delete bouton.dataset.confirme;
+    bouton.textContent = "✕";
+    bouton.classList.remove("ligne__action--danger");
+  }, 3500);
+}
+
+/// Lit la playlist du début à la fin, comme un album.
+async function jouerPlaylist(item) {
+  const pistes = await invoke("playlist_pistes", { id: item.id });
+  if (pistes.length === 0) {
+    $("fil-compte").textContent = "aucune piste disponible dans cette playlist";
+    return;
+  }
+  selectionner(pistes[0]);
+  fileCourante = pistes;
+  tracerRouteSurCarte(pistes);
+  await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
+}
+
+/// Montre les pistes de la playlist au centre, comme celles d'un album :
+/// « ← Playlists » revient à la liste.
+async function ouvrirPlaylist(item) {
+  const pistes = await invoke("playlist_pistes", { id: item.id });
+  poser("pistes", item.nom, pistes, {
+    quoi: "playlists", titre: vue.titre, lignes: vue.lignes, scroll: scrollActuel(),
+  });
+}
+
 /* ---------------------------------------------------------- navigation */
 
 // Le défilement d'où l'on vient : lu par `activer()` juste avant de
@@ -1968,7 +2179,8 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     // La grille d'albums peut être filtrée par famille : le compte suit ce qui
     // est réellement montré, pas le total.
     const compte = quoi === "albums" ? lignesCourantes().length : lignes.length;
-    $("fil-compte").textContent = `${compte} ${quoi === "artistes" ? "artistes" : quoi === "albums" ? "albums" : "morceaux"}`;
+    const unite = { artistes: "artistes", albums: "albums", playlists: "playlists" }[quoi] ?? "morceaux";
+    $("fil-compte").textContent = `${compte} ${unite}`;
   }
   $("retour").hidden = retour === null;
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
@@ -1976,7 +2188,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // Artistes et albums partagent le même geste de premier niveau ; le
   // commutateur du rail suit celui qui a produit la vue affichée, y compris
   // en descendant depuis un artiste vers ses albums.
-  if (quoi === "artistes" || quoi === "albums") {
+  if (quoi === "artistes" || quoi === "albums" || quoi === "playlists") {
     document.querySelectorAll("[data-vuelib]").forEach((b) =>
       b.classList.toggle("segment--actif", b.dataset.vuelib === quoi),
     );
@@ -2102,7 +2314,11 @@ function sauterALettre(l) {
 }
 
 document.querySelectorAll("[data-vuelib]").forEach((b) =>
-  b.addEventListener("click", () => charger(b.dataset.vuelib)),
+  b.addEventListener("click", () =>
+    (b.dataset.vuelib === "playlists" ? chargerPlaylists() : charger(b.dataset.vuelib)).catch((e) =>
+      remonter(e, "parcourir"),
+    ),
+  ),
 );
 
 document.querySelectorAll("[data-tri]").forEach((b) =>
@@ -2515,6 +2731,7 @@ $("autour-radio").addEventListener("click", () => {
   if (!nom) return;
   composerAlchimie({
     bouton: $("autour-radio"),
+    origine: `Radio à partir de ${nom}`,
     chemin: () =>
       invoke("path_artist", {
         artist: nom,
@@ -2536,6 +2753,7 @@ $("autour-playlist").addEventListener("click", () => {
   if (!nom) return;
   composerAlchimie({
     bouton: $("autour-playlist"),
+    origine: `Playlist de ${nom}`,
     graphe: false,
     chemin: () => invoke("shuffle_artist", { artist: nom, mbid: mbid || null }),
     demarrer: (pistes) => invoke("play", { paths: pistes.map((t) => t.path) }),
@@ -2610,6 +2828,7 @@ $("insp-alchimie").addEventListener("click", () => {
     const { name, artist } = inspectionAlbum;
     composerAlchimie({
       bouton: $("insp-alchimie"),
+      origine: `Dans l'esprit de « ${name} »`,
       chemin: () =>
         invoke("path_album", {
           album: name,
@@ -2626,6 +2845,7 @@ $("insp-alchimie").addEventListener("click", () => {
   if (!Number.isFinite(id) || $("insp-titre").dataset.id === "") return;
   composerAlchimie({
     bouton: $("insp-alchimie"),
+    origine: `Dans l'esprit de « ${$("insp-titre").textContent} »`,
     chemin: () =>
       invoke("path", {
         from: id,
@@ -3941,6 +4161,14 @@ function sonder(actif) {
     sondage = null;
   }
 }
+
+// Reprise de session : le lecteur peut tenir une file avant même que la page
+// n'existe, et il est alors en pause — donc jamais sondé. Un battement au
+// démarrage suffit (il coupe le sondage tout seul quand rien ne joue), et le
+// moteur prévient si la reprise n'est finie qu'ensuite. Différé d'un tour :
+// `battement` lit des variables déclarées plus bas dans ce fichier.
+setTimeout(() => sonder(true), 0);
+window.__TAURI__.event.listen("session-restauree", () => sonder(true));
 
 // Une pochette peut coûter 200 ms de lecture disque, soit toute la période du
 // sondage : sans ce verrou les appels s'empilent et retardent les commandes de

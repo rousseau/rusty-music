@@ -86,10 +86,13 @@ ensuite une sortie restée en pause — lecture muette.
   illisible, avec et sans répétition. Test pur de la borne de 32.
 - `scripts/audit-interface.sh` : 180 cellules, 0 violation.
 
-**Contrôle manuel à faire** (l'audit ne déclenche pas le message) : lancer un
-album, renommer hors de l'application le fichier de la 4ᵉ piste, passer en
-revue jusqu'à elle — le message doit apparaître dans le transport et la
-lecture continuer sur la 5ᵉ. Variante : un `.mp3` tronqué dans le dossier.
+**Contrôle visuel** (harnais navigateur, voir « Méthode de test de
+l'interface » plus bas) : le message s'affiche dans le transport, **en rouge**
+(le premier jet était gris : `.transport__now span` l'emportait en
+spécificité), puis s'efface au bout de 8 s. **Reste à faire à la main** dans
+l'application elle-même : renommer hors de l'application le fichier de la 4ᵉ
+piste d'un album en lecture, avancer jusqu'à elle — la lecture doit continuer
+sur la 5ᵉ.
 
 **Limite connue** : les échecs sont relevés par le sondage de l'interface ; en
 mode Éditer (stems), `battement` ne sonde pas `playback_state` et rien n'est
@@ -126,27 +129,63 @@ la répétition. Pas l'écran ni la vue ouverts : hors périmètre.
   Vérifié de bout en bout sur l'application construite, sur une copie de la
   base : session semée → reprise → réécrite, id inexistant omis.
 
-**Non vérifié** : l'affichage dans la fenêtre au lancement (transport sur la
-piste reprise, ▶ affiché, file dans le panneau) — à contrôler à la main. Et
-l'écriture à la fermeture (`RunEvent::Exit`), qui ne se déclenche pas sur un
-arrêt par signal ; la sauvegarde de 5 s est le filet.
+**Défaut trouvé au contrôle de l'interface, corrigé.** L'interface ne sonde le
+lecteur que quand il joue (pour ne pas consommer du processeur au repos) : une
+session reprise **en pause** n'était donc jamais affichée — transport sur
+« Rien en lecture », volume à 100. Corrigé par un battement au démarrage
+(`setTimeout(() => sonder(true), 0)`, il se coupe seul quand rien ne joue) et un
+évènement `session-restauree` émis par le moteur si la reprise finit après le
+chargement de la page. Vérifié dans le harnais : titre, position (01:01),
+volume (40), aléatoire, répétition et file reprise, sondage arrêté ensuite.
 
-### 4. Playlists enregistrées — M à L
+**Non vérifié** : l'écriture à la fermeture (`RunEvent::Exit`), qui ne se
+déclenche pas sur un arrêt par signal ; la sauvegarde de 5 s est le filet.
 
-**Constaté.** Les playlists (artiste, Lama, voisins) se jouent mais ne se
-sauvegardent pas : aucune table de playlists dans `db.rs`. La file elle-même
-ne s'enregistre pas.
+### 4. Playlists enregistrées — **fait, sauf l'export M3U8 (4 oct. 2026)**
 
-| Option | Principe | Coût |
-|---|---|---|
-| A. Tables `playlist` / `playlist_piste` | « Enregistrer la file », renommer, rouvrir, supprimer ; liste dans le rail ou la Bibliothèque | M |
-| B. Export / import M3U8 seul | Fichiers dans le dossier de musique ; interop Plex et autres lecteurs, pas d'UI de gestion | S |
-| C. A + B | Les deux : base pour l'usage, M3U8 pour l'échange | M-L |
+**Décisions** : tables SQLite ; export M3U8 « ensuite » ; une playlist de Lama
+garde ses morceaux et le **texte de la demande** (pas de spec rejouable) ; vue
+« Playlists » à côté d'Artistes/Albums, gestion simple (créer, jouer, ouvrir,
+renommer, supprimer — pas d'édition piste par piste en 0.2).
 
-**Recommandation : A d'abord, B ensuite** (l'export M3U8 est peu coûteux une
-fois A là). Point à trancher : une playlist générée par Lama garde-t-elle sa
-**spec** (le texte et les parties) ou seulement ses morceaux ? Garder la spec
-permet de la « rejouer » avec une bibliothèque qui a grandi.
+**Écart assumé avec la session** : le contenu est une liste de **chemins** et
+non d'identifiants. L'identité d'un morceau est son chemin ; un fichier retiré
+puis réinséré au même endroit (disque démonté, rescan) reçoit un nouvel
+identifiant — avec des ids, la playlist le perdrait pour de bon, avec des
+chemins elle le retrouve. Les chemins servent aussi tels quels à l'export M3U8.
+Une piste absente reste dans la liste, comptée « introuvable ».
+
+**Fait.**
+- `crates/core/src/playlists.rs` + tables `playlist` et `playlist_piste`
+  (`schema.sql`) : création, liste (récentes d'abord), pistes dans l'ordre,
+  renommage, suppression ; nom nettoyé, borné à 120 caractères, jamais vide.
+  5 tests.
+- Commandes `playlists`, `creer_playlist`, `playlist_pistes`,
+  `renommer_playlist`, `supprimer_playlist`.
+- Interface : segment « Playlists » dans « Parcourir » ; bouton « enregistrer »
+  et champ de nom dans le panneau de file (pas de fenêtre modale) ; liste avec
+  ▶ (lire), clic (ouvrir comme un album, « ← Playlists »), ✎ (renommer sur
+  place), ✕ (suppression en deux temps, sans boîte de dialogue) ; message
+  d'accueil quand il n'y en a aucune.
+- Origine : les cinq générateurs passent par `composerAlchimie({ origine })` —
+  la demande faite à Lama, « Dans l'esprit de … », « Radio à partir de … »,
+  « Playlist de … ». Elle propose le nom et se garde avec la playlist, mais
+  seulement si la file n'a pas changé depuis (même longueur, même premier
+  morceau).
+
+**Reste** : l'export/import M3U8 (second temps décidé), et tout ce que la
+décision a écarté — éditer une playlist enregistrée, la regénérer.
+
+**Méthode de test de l'interface.** La fenêtre Tauri ne se capture pas, et
+`node --check` ne voit pas les collisions de noms (JS accepte une fonction
+redéclarée). Un harnais jetable — `ui/` servi par `http.server`, un
+`mock.js` qui remplace `window.__TAURI__` par un backend en mémoire — a permis
+de dérouler les gestes dans Chrome. Il a trouvé **quatre défauts** que les tests
+Rust ne pouvaient pas voir : `dureeLongue` déjà définie plus bas (la mienne
+était ignorée : « 222,2 h »), un faux surlignage « sélectionné » des lignes de
+playlist (`undefined === undefined`), la reprise de session invisible, le
+message rouge devenu gris. Le harnais n'est pas versionné ; si l'on veut le
+garder, c'est un candidat pour `scripts/`.
 
 ### 5. Mémoire d'écoute : favoris et historique — M
 

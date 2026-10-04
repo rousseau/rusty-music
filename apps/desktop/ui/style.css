@@ -1570,7 +1570,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .np__mesures:empty { display: none; }
 /* Piste sautée : même couleur d'alerte que `.bouton--danger`. */
-.np__mesures--alerte { color: #C0503A; opacity: 1; font-family: inherit; }
+/* `.transport__now span` colore en `--mut` : il faut sa spécificité pour l'emporter. */
+.transport__now .np__mesures--alerte { color: #C0503A; opacity: 1; font-family: inherit; }
 
 .reglage__val {
   min-width: 46px;
@@ -1761,3 +1762,40 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama__pistes li:hover { background: var(--panel2); }
 .lama__pistes li > span:first-child { display: inline; }
 .lama__piste-duree { float: right; font-family: var(--mono); font-size: 11px; color: var(--mut); margin-left: 12px; }
+
+/* ---------- playlists enregistrées ---------- */
+/* Liste d'Écouter (`vue.quoi === "playlists"`) : ▶, nom, résumé, deux actions. */
+.ligne--playlist { gap: 10px; }
+.ligne--playlist .ligne__nom:hover { color: var(--accent); }
+.ligne__action {
+  flex: none; font: inherit; font-size: 12px; color: var(--mut);
+  background: none; border: 1px solid transparent; border-radius: 4px;
+  padding: 2px 7px; cursor: pointer;
+}
+.ligne__action:hover, .ligne__action:focus-visible { color: var(--txt); border-color: var(--line); }
+/* Confirmation en deux temps : même rouge que `.bouton--danger`. */
+.ligne__action--danger { color: #C0503A; border-color: #C0503A; }
+.ligne__champ {
+  flex: 1; min-width: 0; font: inherit; color: var(--txt);
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px;
+  padding: 3px 7px;
+}
+.ligne__champ:focus { outline: none; }
+.liste__vide { padding: 24px var(--gouttiere); margin: 0; max-width: 520px; }
+
+/* Enregistrer la file : un champ sous les boutons du panneau. `[hidden]` doit
+   l'emporter sur `display: flex`. */
+.file__enregistrer {
+  display: flex; gap: 6px; flex: none;
+  padding: 8px var(--gouttiere-panneau); border-bottom: 1px solid var(--line);
+}
+.file__enregistrer[hidden] { display: none; }
+.file__enregistrer input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--txt);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+  padding: 5px 8px;
+}
+.file__enregistrer input:focus { outline: none; border-color: var(--accent); }
+.file__enregistrer .file__bouton { flex: none; padding: 5px 10px; }
+.file__etat { margin: 0; padding: 6px var(--gouttiere-panneau) 0; }
+.file__etat:empty { display: none; }

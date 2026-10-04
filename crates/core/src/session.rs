@@ -3,9 +3,9 @@
 //! l'autre.
 //!
 //! Une seule ligne dans la table `session` (voir `sql/schema.sql`). La file
-//! y est une liste d'**identifiants** de pistes : un fichier retiré de la
-//! bibliothèque n'y a plus d'identifiant et se sauterait de lui-même, un
-//! fichier déplacé puis rescanné garde le sien.
+//! y est une liste d'**identifiants** de pistes. L'identité d'un morceau est
+//! son chemin : un fichier retiré **ou déplacé** perd son identifiant (la
+//! base n'a pas de détection de déplacement) et la reprise le saute.
 //!
 //! Le lecteur (`crates/player`) ignore la base : c'est l'application qui
 //! traduit chemins ↔ identifiants, avec [`Library::ids_par_chemins`] et

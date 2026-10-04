@@ -38,6 +38,7 @@
         <div class="segments">
           <button class="segment" data-vuelib="artistes">Artistes</button>
           <button class="segment segment--actif" data-vuelib="albums">Albums</button>
+          <button class="segment" data-vuelib="playlists">Playlists</button>
         </div>
       </div>
 
@@ -1059,7 +1060,19 @@
                 title="Lecture aléatoire : mélange ce qui n'est pas encore joué.">aléatoire</button>
         <button id="file-repeter" class="file__bouton" aria-pressed="false" data-mode="aucune"
                 title="Répéter : coupé → toute la file → le morceau en cours.">répéter</button>
+        <button id="file-enregistrer" class="file__bouton"
+                title="Enregistrer cette file comme playlist (vue Playlists d'Écouter).">enregistrer</button>
       </div>
+      <!-- Nom de la playlist à enregistrer : un champ dans le panneau, pas une
+           fenêtre modale (`docs/interface-guidelines.md`). -->
+      <form id="file-enregistrer-form" class="file__enregistrer" hidden>
+        <input id="file-enregistrer-nom" type="text" maxlength="120" autocomplete="off"
+               placeholder="nom de la playlist" aria-label="Nom de la playlist">
+        <button type="submit" class="file__bouton" title="Enregistrer">ok</button>
+        <button type="button" id="file-enregistrer-annuler" class="file__bouton"
+                aria-label="Annuler" title="Annuler">×</button>
+      </form>
+      <p id="file-enregistrer-etat" class="aide file__etat" aria-live="polite"></p>
       <!-- Pendant qu'une playlist ✦ se compose : la phase en cours (graphe des
            voisins, puis composition) et sa progression. Masqué le reste du temps. -->
       <div id="file-compo" class="file__compo" hidden>

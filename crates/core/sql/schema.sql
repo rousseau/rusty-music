@@ -403,9 +403,10 @@ CREATE TABLE IF NOT EXISTS lastfm_fetched (
 -- Reprise de session : ce que le lecteur jouait à la fermeture, pour le
 -- retrouver au lancement (en pause — jamais de son surprise). Une seule ligne
 -- (`id = 1`) : une session, pas un historique. La file est une liste
--- d'identifiants de pistes, pas de chemins : un fichier déplacé puis rescanné
--- garde son identifiant, un fichier retiré de la bibliothèque est simplement
--- sauté à la restauration. `avant_melange` porte l'ordre d'avant l'aléatoire,
+-- d'identifiants de pistes, pas de chemins : plus compact, sans chaîne à
+-- comparer. L'identité d'un morceau reste son chemin (`tracks.path`) : un
+-- fichier retiré **ou déplacé** perd son identifiant et est simplement sauté
+-- à la restauration. `avant_melange` porte l'ordre d'avant l'aléatoire,
 -- que le bouton rend à sa désactivation ; vide quand l'aléatoire n'a pas servi.
 CREATE TABLE IF NOT EXISTS session (
     id             INTEGER PRIMARY KEY CHECK (id = 1),
@@ -418,3 +419,29 @@ CREATE TABLE IF NOT EXISTS session (
     volume         REAL    NOT NULL,
     enregistree_le INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+
+-- Playlists enregistrées (`docs/plan-ecouter-v0.2.md`, point 4). Le contenu est
+-- une liste de **chemins**, pas d'identifiants : l'identité d'un morceau est
+-- son chemin, et un fichier retiré puis réinséré au même endroit (disque
+-- démonté, rescan) reçoit un nouvel identifiant — la playlist le retrouve
+-- quand même. Un chemin que la bibliothèque ne connaît plus reste dans la
+-- liste, compté « manquant », et revient si le fichier revient. Les chemins
+-- servent aussi tels quels à l'export M3U8.
+CREATE TABLE IF NOT EXISTS playlist (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom          TEXT    NOT NULL,
+    -- D'où elle vient, pour l'afficher : la demande faite à Lama, « Dans
+    -- l'esprit de … »… NULL quand elle vient d'une file ordinaire.
+    origine      TEXT,
+    creee_le     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    modifiee_le  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS playlist_piste (
+    playlist_id  INTEGER NOT NULL,
+    rang         INTEGER NOT NULL,
+    chemin       TEXT    NOT NULL,
+    PRIMARY KEY (playlist_id, rang)
+);
+-- La jointure vers `tracks` se fait par chemin : `tracks.path` est déjà indexé
+-- (UNIQUE), il ne manque que de quoi retrouver les pistes d'une playlist.
+CREATE INDEX IF NOT EXISTS idx_playlist_piste_chemin ON playlist_piste(chemin);

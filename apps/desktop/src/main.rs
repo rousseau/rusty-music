@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
+use rusty_music_core::playlists::PlaylistRow;
 use rusty_music_core::session::Session;
 use rusty_music_core::Library;
 use rusty_music_player::Player;
@@ -7219,6 +7220,53 @@ fn file_courante(etat: State<Etat>) -> Result<Vec<TrackRow>, String> {
     verrou(&etat.lib).pistes_par_chemins(&chemins).map_err(echec)
 }
 
+/// Les playlists enregistrées, la plus récemment modifiée d'abord.
+#[tauri::command(async)]
+fn playlists(etat: State<Etat>) -> Result<Vec<PlaylistRow>, String> {
+    verrou(&etat.lib).playlists().map_err(echec)
+}
+
+/// Enregistre `paths` (la file, dans l'ordre) sous le nom `nom`. `origine` dit
+/// d'où elle vient quand l'interface le sait (la demande faite à Lama…).
+/// Rend l'identifiant de la playlist.
+#[tauri::command(async)]
+fn creer_playlist(
+    etat: State<Etat>,
+    nom: String,
+    origine: Option<String>,
+    paths: Vec<String>,
+) -> Result<i64, String> {
+    if paths.is_empty() {
+        return Err("la file est vide : il n'y a rien à enregistrer".into());
+    }
+    verrou(&etat.lib)
+        .creer_playlist(&nom, origine.as_deref(), &paths)
+        .map_err(echec)
+}
+
+/// Les pistes de la playlist `id` que la bibliothèque connaît encore, dans
+/// l'ordre enregistré.
+#[tauri::command(async)]
+fn playlist_pistes(etat: State<Etat>, id: i64) -> Result<Vec<TrackRow>, String> {
+    verrou(&etat.lib).pistes_de_playlist(id).map_err(echec)
+}
+
+#[tauri::command(async)]
+fn renommer_playlist(etat: State<Etat>, id: i64, nom: String) -> Result<(), String> {
+    match verrou(&etat.lib).renommer_playlist(id, &nom).map_err(echec)? {
+        true => Ok(()),
+        false => Err("cette playlist n'existe plus".into()),
+    }
+}
+
+#[tauri::command(async)]
+fn supprimer_playlist(etat: State<Etat>, id: i64) -> Result<(), String> {
+    match verrou(&etat.lib).supprimer_playlist(id).map_err(echec)? {
+        true => Ok(()),
+        false => Err("cette playlist n'existe plus".into()),
+    }
+}
+
 /// Garde les éléments connus d'une file et recale `rang` : le nombre de
 /// pistes retenues **avant** la piste en cours. Rend aussi si la piste en
 /// cours elle-même a été retenue — sinon `rang` désigne la suivante, et la
@@ -7302,12 +7350,13 @@ fn sauvegarder_session(etat: &Etat, memo: &mut MemoSession) -> Result<(), String
 ///
 /// Fait en tâche de fond : décoder la piste prend de quoi retarder
 /// l'ouverture de la fenêtre. Si l'utilisateur a lancé quelque chose entre-temps,
-/// `Player::restaurer` s'efface devant.
-fn restaurer_session(etat: &Etat) -> Result<(), String> {
+/// `Player::restaurer` s'efface devant. Rend `true` quand une session a bien
+/// été reprise.
+fn restaurer_session(etat: &Etat) -> Result<bool, String> {
     let (session, chemins, anciens) = {
         let lib = verrou(&etat.lib);
         let Some(s) = lib.session().map_err(echec)? else {
-            return Ok(());
+            return Ok(false);
         };
         let chemins = lib.chemins_par_ids(&s.file).map_err(echec)?;
         let anciens = lib.chemins_par_ids(&s.avant_melange).map_err(echec)?;
@@ -7319,7 +7368,7 @@ fn restaurer_session(etat: &Etat) -> Result<(), String> {
     let (chemins, rang, courante_presente) = retenir(chemins, session.rang);
     let file: Vec<PathBuf> = chemins.into_iter().map(PathBuf::from).collect();
     if file.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
     let avant_melange: Vec<PathBuf> = anciens.into_iter().flatten().map(PathBuf::from).collect();
     verrou(&etat.player)
@@ -7336,7 +7385,6 @@ fn restaurer_session(etat: &Etat) -> Result<(), String> {
             repetition: rusty_music_player::Repetition::depuis_nom(&session.repetition),
             volume: session.volume,
         })
-        .map(|_| ())
         .map_err(echec)
 }
 
@@ -7582,8 +7630,16 @@ fn main() {
             let etat_session = app.handle().clone();
             std::thread::spawn(move || {
                 if let Some(etat) = etat_session.try_state::<Etat>() {
-                    if let Err(e) = restaurer_session(&etat) {
-                        tracing::warn!(erreur = %e, "reprise de la session impossible");
+                    match restaurer_session(&etat) {
+                        // La page ne sonde le lecteur que quand il joue : on la
+                        // prévient, sans quoi une reprise en pause resterait
+                        // invisible. (Si elle n'est pas encore chargée, son
+                        // propre battement de démarrage voit l'état.)
+                        Ok(true) => {
+                            let _ = etat_session.emit("session-restauree", ());
+                        }
+                        Ok(false) => {}
+                        Err(e) => tracing::warn!(erreur = %e, "reprise de la session impossible"),
                     }
                 }
                 let mut memo = MemoSession::default();
@@ -7907,6 +7963,11 @@ fn main() {
             set_volume,
             playback_state,
             file_courante,
+            playlists,
+            creer_playlist,
+            playlist_pistes,
+            renommer_playlist,
+            supprimer_playlist,
         ])
         .build(tauri::generate_context!())
         .expect("démarrage de l'application impossible")
