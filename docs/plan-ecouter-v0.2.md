@@ -58,20 +58,42 @@ un album continu.
 `examples/silences_bords.rs` chiffre le silence en tête et en queue d'une
 liste de pistes.
 
-### 2. Piste illisible ou disparue : comportement à confirmer — S
+### 2. Piste illisible ou disparue — **fait (4 oct. 2026)**
 
-**Constaté.** La spec exige « message clair, passage à la piste suivante »
-(10 fichiers illisibles au moment de l'écriture, depuis réduits à 2 ;
-fichier disparu pendant qu'il est dans la file). Je n'ai pas retrouvé de test
-de ce chemin.
+**Constaté avant.** Au préchargement, une piste qui ne s'ouvrait pas était
+sautée (`a_precharger` avance avant de tenter) mais **sans que personne le
+sache**. Pire : si c'était la piste de **départ** (clic, suivant, précédent),
+`charger` renvoyait l'erreur sans rien lire et le préchargement remplissait
+ensuite une sortie restée en pause — lecture muette.
 
-| Option | Principe | Coût |
-|---|---|---|
-| A. Test + message transitoire | Un test de `Player` (fichier supprimé en file) et un bandeau « Illisible : *titre* — suivante » | S |
-| B. A + marquage en base | Mémorise l'échec (`illisible`), grise la piste dans les listes, la saute en aléatoire | M |
+**Décisions** : passer à la suivante et prévenir ; pas de mémoire en base
+(message transitoire seulement) ; test Rust + contrôle manuel du message.
 
-**Recommandation : A.** B n'a de sens que si les cas se multiplient (disque
-réseau déconnecté).
+**Fait.**
+- `Player::charger` essaie les pistes suivantes jusqu'à en trouver une
+  lisible, chacune une fois au plus (la répétition ne peut pas faire boucler) ;
+  si toutes échouent, l'erreur remonte et rien ne démarre.
+- `Player` retient les pistes sautées (`Echec`, 32 au plus) ;
+  `signaler_echec` pour le préchargement du desktop, `prendre_echecs` pour les
+  relever une seule fois.
+- `playback_state` expose `ignorees` ; l'interface écrit dans la ligne
+  `#np-mesures` du transport, en rouge, 8 s : « Illisible : *titre* —
+  suivante », ou « N pistes illisibles ignorées ». Pas de bandeau ni de
+  toast, conformément à `interface-guidelines.md`.
+- Test `une_piste_illisible_est_sautee_et_signalee` (ouvre la sortie audio :
+  `--ignored`, comme `ouvre_la_sortie_par_defaut`) : fichier disparu +
+  fichier corrompu en tête de file, saut par `jump_to`, file entièrement
+  illisible, avec et sans répétition. Test pur de la borne de 32.
+- `scripts/audit-interface.sh` : 180 cellules, 0 violation.
+
+**Contrôle manuel à faire** (l'audit ne déclenche pas le message) : lancer un
+album, renommer hors de l'application le fichier de la 4ᵉ piste, passer en
+revue jusqu'à elle — le message doit apparaître dans le transport et la
+lecture continuer sur la 5ᵉ. Variante : un `.mp3` tronqué dans le dossier.
+
+**Limite connue** : les échecs sont relevés par le sondage de l'interface ; en
+mode Éditer (stems), `battement` ne sonde pas `playback_state` et rien n'est
+affiché.
 
 ## Priorité 2 — ce qui manque à un lecteur du quotidien
 

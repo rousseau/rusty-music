@@ -2647,6 +2647,52 @@ $("insp-alchimie").addEventListener("click", () => {
 /// Séparé de l'inspecteur, qui suit la **sélection** : le transport suit ce
 /// qu'on **écoute**, et les deux divergent dès qu'on explore la carte sans
 /// changer de morceau.
+/// Avertissement transitoire du lecteur — une piste sautée —, dans la ligne
+/// `#np-mesures` du transport : pas de bandeau ni de toast
+/// (`docs/interface-guidelines.md`), le transport a déjà cette ligne. Les
+/// trois endroits qui l'écrivent (`mesuresDuTransport` et les deux
+/// remises à zéro au changement de morceau) la laissent tranquille tant que
+/// l'avertissement dure — la piste suivante démarre juste après le saut, et
+/// effacerait sinon le message avant qu'on ait pu le lire.
+const ALERTE_TRANSPORT_MS = 8000;
+let alerteTransportJusqua = 0;
+let alerteTransportMinuteur = null;
+
+function alerteTransportActive() {
+  return Date.now() < alerteTransportJusqua;
+}
+
+function alerteTransport(texte) {
+  const el = $("np-mesures");
+  el.textContent = texte;
+  el.title = texte; // la ligne est tronquée par une ellipse
+  el.classList.add("np__mesures--alerte");
+  alerteTransportJusqua = Date.now() + ALERTE_TRANSPORT_MS;
+  clearTimeout(alerteTransportMinuteur);
+  alerteTransportMinuteur = setTimeout(() => {
+    el.classList.remove("np__mesures--alerte");
+    el.title = "";
+    el.textContent = "";
+    // Rend la ligne à ce qu'elle montre d'ordinaire (tempo, tonalité).
+    const t = fileCourante.find((x) => x.path === enLecture);
+    if (t) mesuresDuTransport(t);
+  }, ALERTE_TRANSPORT_MS);
+}
+
+/// Dit à l'utilisateur quelles pistes le lecteur vient de sauter
+/// (`playback_state.ignorees`, relevées une seule fois côté moteur).
+function signalerPistesIgnorees(ignorees) {
+  if (!ignorees || !ignorees.length) return;
+  if (ignorees.length > 1) {
+    alerteTransport(`${ignorees.length} pistes illisibles ignorées`);
+    return;
+  }
+  const { path } = ignorees[0];
+  const t = fileCourante.find((x) => x.path === path);
+  const nom = t ? txt(t.title, "(sans titre)") : path.split("/").pop();
+  alerteTransport(`Illisible : ${nom} — suivante`);
+}
+
 async function mesuresDuTransport(t) {
   const vise = t.path;
   let d;
@@ -2655,7 +2701,7 @@ async function mesuresDuTransport(t) {
   } catch {
     return;
   }
-  if (!d || !estAffiche(vise)) return;
+  if (!d || !estAffiche(vise) || alerteTransportActive()) return;
   const bouts = [];
   if (d.bpm) bouts.push(`${Math.round(d.bpm)} BPM`);
   const ton = tonaliteFr(d.tonalite);
@@ -3345,7 +3391,7 @@ function majApercuTransport() {
   $("np-artiste").textContent = txt(t.artist, "(sans artiste)");
   $("np-artiste").dataset.artiste = t.artist ?? "";
   $("np-artiste").dataset.mbid = t.artist_mbid ?? "";
-  $("np-mesures").textContent = "";
+  if (!alerteTransportActive()) $("np-mesures").textContent = "";
   $("np-qualite").textContent = "";
   mesuresDuTransport(t);
   qualiteDuTransport(t);
@@ -3927,6 +3973,7 @@ async function battement() {
   // sur un vrai changement de morceau ou une action du panneau — sans quoi
   // la file se reconstruirait à 5 Hz sous le curseur de qui la parcourt.
   etatVerrou = e.verrou;
+  signalerPistesIgnorees(e.ignorees);
   if (etatAlea !== e.alea) {
     etatAlea = e.alea;
     refletAlea();
@@ -3952,7 +3999,7 @@ async function battement() {
     $("np-artiste").dataset.mbid = t?.artist_mbid ?? "";
     // Hors du chemin critique, comme la pochette : la ligne se remplit quand
     // la mesure arrive, et reste vide si le morceau n'est pas mesuré.
-    $("np-mesures").textContent = "";
+    if (!alerteTransportActive()) $("np-mesures").textContent = "";
     if (t) mesuresDuTransport(t);
     $("np-qualite").textContent = "";
     if (t) qualiteDuTransport(t);

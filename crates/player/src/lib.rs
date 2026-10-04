@@ -320,6 +320,29 @@ fn deplacer_dans(queue: &mut Vec<PathBuf>, verrou: usize, de: usize, a: usize) {
     queue.insert(a, piste);
 }
 
+/// Une piste que le lecteur a dû sauter parce qu'elle ne s'ouvrait pas :
+/// fichier disparu, corrompu, format non décodé. L'interface la montre à
+/// l'utilisateur — le moteur, lui, a déjà continué.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Echec {
+    /// Chemin de la file (avant résolution du cache HD).
+    pub chemin: PathBuf,
+    pub raison: String,
+}
+
+/// Nombre d'échecs retenus avant que l'interface ne les relève : une file
+/// entière de fichiers disparus (disque débranché) ne doit pas grossir sans
+/// borne pendant que la fenêtre est masquée.
+const ECHECS_MAX: usize = 32;
+
+/// Ajoute `echec` à `echecs` en gardant les `ECHECS_MAX` plus récents.
+fn noter_echec(echecs: &mut Vec<Echec>, echec: Echec) {
+    if echecs.len() >= ECHECS_MAX {
+        echecs.remove(0);
+    }
+    echecs.push(echec);
+}
+
 /// Sortie audio et transport.
 ///
 /// Une seule instance par processus : elle tient la sortie du système ouverte.
@@ -366,6 +389,9 @@ pub struct Player {
     /// accepté plutôt que de retenir un historique complet pour ce cas
     /// marginal.
     avant_melange: Vec<PathBuf>,
+    /// Pistes sautées faute de pouvoir être ouvertes, pas encore relevées par
+    /// l'interface — voir [`Self::prendre_echecs`].
+    echecs: Vec<Echec>,
 }
 
 /// Ouvre la sortie audio par défaut du système et retient sa fréquence.
@@ -397,6 +423,7 @@ impl Player {
             repetition: Repetition::default(),
             alea: false,
             avant_melange: Vec::new(),
+            echecs: Vec::new(),
         })
     }
 
@@ -498,9 +525,38 @@ impl Player {
         // loudness normalisée est une propriété du morceau, indépendante de
         // la version effectivement lue.
         let gain = (self.gain)(&self.queue[rang]);
-        let source = ouvrir(&piste, gain)?;
-        self.charger_precharge(rang, source);
-        Ok(())
+        match ouvrir(&piste, gain) {
+            Ok(source) => {
+                self.charger_precharge(rang, source);
+                Ok(())
+            }
+            Err(e) => {
+                self.signaler_echec(rang, &e.to_string());
+                Err(e)
+            }
+        }
+    }
+
+    /// Note que la piste de rang `rang` n'a pas pu s'ouvrir, pour que
+    /// l'interface le dise. À appeler par qui ouvre hors de [`Self::completer`]
+    /// (le préchargement du desktop) : la file, elle, a déjà avancé — voir
+    /// [`Self::a_precharger`].
+    pub fn signaler_echec(&mut self, rang: usize, raison: &str) {
+        let Some(chemin) = self.queue.get(rang).cloned() else {
+            return;
+        };
+        noter_echec(
+            &mut self.echecs,
+            Echec {
+                chemin,
+                raison: raison.to_string(),
+            },
+        );
+    }
+
+    /// Rend les pistes sautées depuis le dernier appel, et les oublie.
+    pub fn prendre_echecs(&mut self) -> Vec<Echec> {
+        std::mem::take(&mut self.echecs)
     }
 
     /// Installe l'aiguillage chemin de file → chemin réellement ouvert (cache
@@ -703,7 +759,24 @@ impl Player {
         // sondage) le temps du décodage. La réserve est complétée juste après,
         // hors verrou, par le sondage de `playback_state` (côté desktop) ou la
         // boucle du CLI — un fichier à la fois, toutes les 200 ms.
-        self.completer()?;
+        //
+        // Une piste de départ illisible ne doit pas laisser la lecture muette :
+        // on essaie les suivantes, chacune une fois au plus (la répétition
+        // ramènerait sinon sans fin sur les mêmes fichiers). Si toutes
+        // échouent, la dernière erreur remonte et rien ne démarre.
+        let mut derniere = None;
+        for _ in 0..self.queue.len().max(1) {
+            match self.completer() {
+                Ok(()) => {
+                    derniere = None;
+                    break;
+                }
+                Err(e) => derniere = Some(e),
+            }
+        }
+        if let Some(e) = derniere {
+            return Err(e);
+        }
         // `clear()` laisse le lecteur en pause : sans ça, rien ne sortirait.
         self.inner.play();
         Ok(())
@@ -830,6 +903,92 @@ mod tests {
 
     fn chemins(n: usize) -> Vec<PathBuf> {
         (0..n).map(|i| PathBuf::from(format!("{i}.flac"))).collect()
+    }
+
+    #[test]
+    fn noter_echec_garde_les_plus_recents() {
+        let mut echecs = Vec::new();
+        for i in 0..(ECHECS_MAX + 5) {
+            noter_echec(
+                &mut echecs,
+                Echec {
+                    chemin: PathBuf::from(format!("{i}.mp3")),
+                    raison: "illisible".into(),
+                },
+            );
+        }
+        assert_eq!(echecs.len(), ECHECS_MAX);
+        assert_eq!(echecs[0].chemin, PathBuf::from("5.mp3"));
+        assert_eq!(
+            echecs.last().map(|e| e.chemin.clone()),
+            Some(PathBuf::from(format!("{}.mp3", ECHECS_MAX + 4)))
+        );
+    }
+
+    /// WAV mono 8 kHz de `n` échantillons de silence : le plus petit fichier
+    /// que `rodio` décode.
+    fn ecrire_wav(chemin: &Path, n: u32) {
+        let donnees = n * 2;
+        let mut v = Vec::new();
+        v.extend_from_slice(b"RIFF");
+        v.extend_from_slice(&(36 + donnees).to_le_bytes());
+        v.extend_from_slice(b"WAVEfmt ");
+        v.extend_from_slice(&16u32.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        v.extend_from_slice(&1u16.to_le_bytes()); // mono
+        v.extend_from_slice(&8000u32.to_le_bytes());
+        v.extend_from_slice(&16000u32.to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes());
+        v.extend_from_slice(&16u16.to_le_bytes());
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&donnees.to_le_bytes());
+        v.resize(v.len() + donnees as usize, 0);
+        std::fs::write(chemin, v).expect("écriture du wav");
+    }
+
+    /// Une file qui commence par un fichier disparu puis un fichier corrompu
+    /// doit démarrer sur la première piste lisible, et dire ce qu'elle a
+    /// sauté. Ouvre la sortie audio : ignoré par défaut, comme
+    /// `ouvre_la_sortie_par_defaut`.
+    #[test]
+    #[ignore]
+    fn une_piste_illisible_est_sautee_et_signalee() {
+        let dossier = std::env::temp_dir().join(format!("rusty-music-echec-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).expect("dossier");
+        let disparu = dossier.join("disparu.wav");
+        let corrompu = dossier.join("corrompu.mp3");
+        let bonne = dossier.join("bonne.wav");
+        let autre = dossier.join("autre.wav");
+        std::fs::write(&corrompu, b"ceci n'est pas de l'audio").expect("fichier corrompu");
+        ecrire_wav(&bonne, 8000);
+        ecrire_wav(&autre, 8000);
+
+        let mut player = Player::new().expect("sortie audio indisponible");
+        player
+            .play(&[disparu.clone(), corrompu.clone(), bonne.clone(), autre.clone()])
+            .expect("la lecture doit démarrer sur la première piste lisible");
+        assert_eq!(player.current(), Some(bonne.as_path()));
+        let echecs = player.prendre_echecs();
+        assert_eq!(
+            echecs.iter().map(|e| e.chemin.clone()).collect::<Vec<_>>(),
+            vec![disparu.clone(), corrompu.clone()]
+        );
+        assert!(player.prendre_echecs().is_empty(), "relevés une seule fois");
+
+        // « Précédent » depuis la bonne piste ne retombe pas sur les mauvaises
+        // sans prévenir : elles sont resautées et resignalées.
+        player.jump_to(0).expect("jump_to saute aussi");
+        assert_eq!(player.current(), Some(bonne.as_path()));
+        assert_eq!(player.prendre_echecs().len(), 2);
+
+        // Rien de lisible : l'erreur remonte, rien ne démarre.
+        let seule = player.play(&[disparu.clone(), corrompu.clone()]);
+        assert!(seule.is_err(), "une file entièrement illisible doit échouer");
+
+        // Avec la répétition, une file illisible ne boucle pas sans fin.
+        player.set_repetition(Repetition::Toutes);
+        assert!(player.play(&[disparu, corrompu]).is_err());
+        let _ = std::fs::remove_dir_all(&dossier);
     }
 
     #[test]

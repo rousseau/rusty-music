@@ -1569,6 +1569,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   font-variant-numeric: tabular-nums;
 }
 .np__mesures:empty { display: none; }
+/* Piste sautée : même couleur d'alerte que `.bouton--danger`. */
+.np__mesures--alerte { color: #C0503A; opacity: 1; font-family: inherit; }
 
 .reglage__val {
   min-width: 46px;

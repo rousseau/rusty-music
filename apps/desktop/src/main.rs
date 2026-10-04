@@ -6905,6 +6905,16 @@ struct EtatLecture {
     /// Rang de la file à partir duquel elle peut encore être mélangée ou
     /// réordonnée — voir `rusty_music_player::Player::verrou`.
     verrou: usize,
+    /// Pistes sautées depuis le sondage précédent parce qu'elles ne s'ouvraient
+    /// pas — relevées une seule fois, l'interface les montre dans le transport.
+    ignorees: Vec<PisteIgnoree>,
+}
+
+/// Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé.
+#[derive(serde::Serialize)]
+struct PisteIgnoree {
+    path: String,
+    raison: String,
 }
 
 #[tauri::command(async)]
@@ -7157,8 +7167,10 @@ fn precharger_suivante(etat: &Etat) -> Result<(), String> {
                 .charger_precharge(rang, source),
             Err(e) => {
                 // Une piste illisible ne doit pas interrompre le suivi : la
-                // lecture passera simplement à la suivante.
+                // lecture passera simplement à la suivante — et le transport
+                // le dit (`EtatLecture::ignorees`).
                 tracing::warn!(error = %e, "préparation de la piste suivante impossible");
+                verrou(&etat.player).signaler_echec(rang, &e.to_string());
             }
         }
     }
@@ -7169,7 +7181,15 @@ fn precharger_suivante(etat: &Etat) -> Result<(), String> {
 #[tauri::command(async)]
 fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
     precharger_suivante(&etat)?;
-    let player = verrou(&etat.player);
+    let mut player = verrou(&etat.player);
+    let ignorees = player
+        .prendre_echecs()
+        .into_iter()
+        .map(|e| PisteIgnoree {
+            path: e.chemin.display().to_string(),
+            raison: e.raison,
+        })
+        .collect();
     Ok(EtatLecture {
         current: player.current().map(|p| p.display().to_string()),
         paused: player.is_paused(),
@@ -7184,6 +7204,7 @@ fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
         },
         alea: player.alea(),
         verrou: player.verrou(),
+        ignorees,
     })
 }
 
