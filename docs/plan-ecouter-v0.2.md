@@ -367,46 +367,39 @@ morceau sur 100.
 synchronisées), à activer dans les réglages, avec cache — au prix du « tout
 local » et d'une zone grise de droits d'auteur.
 
-### 10. Égaliseur — M
+### 10. Égaliseur — **écarté (4 oct. 2026)**
 
-Aucune trace. La normalisation « N » règle le niveau, pas le timbre.
-
-| Option | Principe | Réserve |
-|---|---|---|
-| A. 5 à 10 bandes (filtres biquad dans `player`) | Curseurs + préréglages | Ajoute un étage au chemin audio, à placer avant le clamp final |
-| B. Préampli + « Graves / Aigus » | Deux curseurs | Le plus petit pas utile |
-| C. Ne pas faire | Le système (macOS) a ses propres réglages | |
-
-**Recommandation : C pour la 0.2**, B si quelqu'un le demande. Ce n'est pas
-ce qui distingue l'app.
+Décision : pas d'égaliseur, pas besoin. La normalisation « N » règle le niveau ;
+le réglage du timbre est laissé au système.
 
 ## Priorité 4 — décisions de périmètre, pas de développement
 
-### 11. Les boutons « E » et « HD » — décision, S
+### 11. Les boutons « E » et « HD » — **conservés (4 oct. 2026)**
 
-**Constaté.** Le chapitre `livre/ecouter.qmd` les range dans « Essais
-abandonnés (mais disponibles) : le résultat n'a pas été concluant », alors
-que `CLAUDE.md`, le README et `suite.md` disent « livré » et que les deux
-boutons sont toujours dans le transport (`index.html`).
+Décision : on ne les retire pas, ils sont historiques. Ils restent dans le
+transport, avec leur code (`crates/superres`, excitateur). Le chapitre
+`livre/ecouter.qmd` les range dans « essais abandonnés (mais disponibles) » —
+c'est le sens de « conservés » : réalisés, au résultat jugé non concluant, mais
+gardés. Aucun changement de code.
 
-| Option | Principe |
-|---|---|
-| A. Garder, déplacer sous « Expérimental » | Réglages > Expérimental, retirés du transport |
-| B. Retirer de l'interface, garder le code | Les crates `superres` et `amelioration` restent, désactivés à la compilation |
-| C. Retirer tout | Gain de maintenance : AERO + `ort` sont une dépendance lourde |
-| D. Statu quo | |
+### 12. Cas limites visuels — **fait (4 oct. 2026)**
 
-**Recommandation : A**, avec les docs alignées. Le transport est la zone la
-plus chargée de l'écran ; deux boutons qu'on a jugés non concluants n'y ont
-plus leur place. C si le poids de `ort`/AERO pèse sur l'installeur.
+Passés en revue dans le harnais (1200×761 et 960×588), avec : un titre de
+220 caractères, de l'écriture japonaise (`芸能山城組`), des diacritiques
+(`(həd) p.e.`, `Kanañ a ri!`), titre, artiste, album, année et durée vides,
+un nom d'artiste de 160 caractères.
 
-### 12. Vérification visuelle des cas limites — S
+- **Écriture non latine** : rendue correctement (police de repli du système) ;
+  la crainte du plan est levée.
+- **Champs vides** : « (sans titre) », « (sans artiste) », « — » ; aucune ligne
+  ne se déforme.
+- **Titres longs** : ellipse dans la liste, le transport et la file.
+- **Défaut trouvé et corrigé** : un nom d'artiste très long n'était pas tronqué
+  (`.ligne__sec` en `flex: none`) et chassait le titre et la durée hors de la
+  ligne. Il se tronque maintenant à 40 % de la largeur ; plus aucun élément ne
+  dépasse du viewport.
 
-États limites listés dans la spec : artiste vide (« (sans artiste) » existe
-dans `app.js`), titres très longs, écritures CJK (la police de secours est
-celle du système : probablement bonne sur macOS, **non vérifiée**). À passer
-en revue avec la bibliothèque réelle, puis lancer
-`scripts/audit-interface.sh`.
+Audit d'interface non relancé (voir point 7).
 
 ## Ce qui est écarté pour la 0.2
 

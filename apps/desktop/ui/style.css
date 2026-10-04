@@ -477,7 +477,12 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .ligne--pistes .ligne__nom:hover { color: var(--accent); }
 .ligne--pistes:has(.ligne__nom:hover) .jouer__no { opacity: 0; }
 .ligne--pistes:has(.ligne__nom:hover) .jouer__ic { opacity: 1; }
-.ligne__sec { font-size: 12px; color: var(--mut); flex: none; }
+/* Le nom d'artiste (ou le résumé d'une playlist) se tronque à 40 % de la ligne :
+   en `flex: none`, un nom très long chassait le titre et la durée hors de l'écran. */
+.ligne__sec {
+  font-size: 12px; color: var(--mut); flex: 0 1 auto; min-width: 0; max-width: 40%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 /* Morceau favori : un ♥ discret dans les listes de pistes. */
 .ligne__fav { flex: none; font-size: 11px; color: var(--accent); }
 .ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
