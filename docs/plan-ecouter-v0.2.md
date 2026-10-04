@@ -97,19 +97,39 @@ affiché.
 
 ## Priorité 2 — ce qui manque à un lecteur du quotidien
 
-### 3. Reprise de session — M
+### 3. Reprise de session — **fait (4 oct. 2026)**
 
-**Constaté.** La file et la position ne survivent pas à la fermeture
-(seuls les réglages E/N/Lama sont dans `localStorage`).
+**Décisions** : table SQLite `session` ; au lancement, la file revient **en
+pause** (jamais de son surprise) ; on restaure aussi le volume, l'aléatoire et
+la répétition. Pas l'écran ni la vue ouverts : hors périmètre.
 
-| Option | Principe | Réserve |
-|---|---|---|
-| A. `localStorage` | La liste d'identifiants + rang + position, écrits par l'interface | Rapide ; fragile si la bibliothèque change (ids obsolètes), et propre à la webview |
-| B. Table SQLite `session` | Ids de pistes, rang, position, aléa/répétition ; nettoyée si un id disparaît | Un peu plus de code, mais robuste et testable en Rust |
-| C. Bouton « Reprendre » | Ne restaure rien seul : propose de relancer à la fermeture | Moins surprenant (pas de lecture au démarrage), un clic de plus |
+**Fait.**
+- `crates/core/src/session.rs` + table `session` (une ligne, `schema.sql`) :
+  la file en **identifiants** de pistes, `avant_melange` (l'ordre à rendre à
+  la désactivation de l'aléatoire), rang, position, réglages. La file n'est
+  réécrite que lorsqu'elle change ; sinon seule la position l'est.
+- `Player::instantane` / `Player::restaurer` : la piste visée est chargée
+  **sans démarrer le son** (`charger_depuis(…, false)`) — pas de `charger`
+  puis `pause`, qui laisserait passer un instant de son. Une session qui
+  arrive après que l'utilisateur a lancé autre chose s'efface.
+- Desktop : un fil natif reprend la session au lancement puis la réécrit
+  toutes les 5 s (comme le préchargement, côté natif : une fenêtre masquée
+  ralentit les temporisateurs de la webview) ; dernière écriture à
+  `RunEvent::Exit`. Une piste disparue de la bibliothèque est omise et le
+  rang recalé (`retenir`) ; si c'était la piste en cours, la position repart de 0.
+- Interface : la page n'a jamais vu la file restaurée, elle la demande au
+  moteur (`file_courante`) la première fois qu'une piste qu'elle ne connaît pas
+  joue, et cale le curseur de volume sur celui du lecteur.
+- Tests : 8 (cœur : aller-retour, mise à jour de position, une seule ligne,
+  traductions chemins ↔ ids, longue file par paquets), 2 de retenue (desktop),
+  1 avec sortie audio (`restaurer_reprend_en_pause_a_la_bonne_position`).
+  Vérifié de bout en bout sur l'application construite, sur une copie de la
+  base : session semée → reprise → réécrite, id inexistant omis.
 
-**Recommandation : B, avec la restauration en pause** (jamais de son au
-lancement), et C si on préfère ne rien démarrer sans geste.
+**Non vérifié** : l'affichage dans la fenêtre au lancement (transport sur la
+piste reprise, ▶ affiché, file dans le panneau) — à contrôler à la main. Et
+l'écriture à la fermeture (`RunEvent::Exit`), qui ne se déclenche pas sur un
+arrêt par signal ; la sauvegarde de 5 s est le filet.
 
 ### 4. Playlists enregistrées — M à L
 

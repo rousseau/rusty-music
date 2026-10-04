@@ -399,3 +399,22 @@ CREATE TABLE IF NOT EXISTS lastfm_fetched (
     mb_artist_id TEXT PRIMARY KEY,
     at           INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+
+-- Reprise de session : ce que le lecteur jouait à la fermeture, pour le
+-- retrouver au lancement (en pause — jamais de son surprise). Une seule ligne
+-- (`id = 1`) : une session, pas un historique. La file est une liste
+-- d'identifiants de pistes, pas de chemins : un fichier déplacé puis rescanné
+-- garde son identifiant, un fichier retiré de la bibliothèque est simplement
+-- sauté à la restauration. `avant_melange` porte l'ordre d'avant l'aléatoire,
+-- que le bouton rend à sa désactivation ; vide quand l'aléatoire n'a pas servi.
+CREATE TABLE IF NOT EXISTS session (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    file           TEXT    NOT NULL,              -- ids séparés par des virgules, dans l'ordre courant
+    avant_melange  TEXT    NOT NULL DEFAULT '',
+    rang           INTEGER NOT NULL,              -- rang de la piste en cours dans `file`
+    position_ms    INTEGER NOT NULL,
+    alea           INTEGER NOT NULL,
+    repetition     TEXT    NOT NULL,              -- aucune | toutes | une
+    volume         REAL    NOT NULL,
+    enregistree_le INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);

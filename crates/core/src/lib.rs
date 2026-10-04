@@ -33,6 +33,7 @@ pub mod pochette;
 pub mod opus;
 pub mod popularite;
 pub mod scan;
+pub mod session;
 pub mod tags;
 pub mod theaudiodb;
 pub mod volume;

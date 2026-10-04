@@ -242,6 +242,42 @@ pub enum Repetition {
     Une,
 }
 
+impl Repetition {
+    /// Nom stable (« aucune », « toutes », « une ») : celui que l'interface et
+    /// la reprise de session échangent.
+    pub fn nom(self) -> &'static str {
+        match self {
+            Repetition::Aucune => "aucune",
+            Repetition::Toutes => "toutes",
+            Repetition::Une => "une",
+        }
+    }
+
+    /// Inverse de [`Self::nom`] ; un nom inconnu donne « aucune ».
+    pub fn depuis_nom(nom: &str) -> Self {
+        match nom {
+            "toutes" => Repetition::Toutes,
+            "une" => Repetition::Une,
+            _ => Repetition::Aucune,
+        }
+    }
+}
+
+/// Ce qu'il faut retenir du lecteur pour le retrouver au prochain lancement.
+#[derive(Debug, Clone)]
+pub struct Instantane {
+    /// File dans l'ordre courant.
+    pub file: Vec<PathBuf>,
+    /// Ordre d'avant l'aléatoire (vide si l'aléatoire n'a pas servi).
+    pub avant_melange: Vec<PathBuf>,
+    /// Rang de la piste en cours dans `file`.
+    pub rang: usize,
+    pub position: Duration,
+    pub alea: bool,
+    pub repetition: Repetition,
+    pub volume: f32,
+}
+
 /// xorshift64* minimal, pour mélanger la file — pas de graine à retenir,
 /// contrairement à `crates/analysis::alea::Alea` : l'errance sur la carte
 /// doit rejouer identique d'une fois sur l'autre, le mélange de la file veut
@@ -748,6 +784,14 @@ impl Player {
     /// regarnir. `self.queue` n'est pas touchée — sans quoi on perdrait
     /// l'historique et un second retour en arrière serait impossible.
     fn charger(&mut self, depart: usize) -> Result<()> {
+        self.charger_depuis(depart, true)
+    }
+
+    /// [`Self::charger`], avec le choix de **démarrer le son ou non** :
+    /// `demarrer = false` laisse la piste prête et en pause (reprise de
+    /// session). Ne pas passer par `charger` puis `pause` : le son partirait
+    /// l'espace d'un instant.
+    fn charger_depuis(&mut self, depart: usize, demarrer: bool) -> Result<()> {
         self.rouvrir_sortie();
         self.inner.clear();
         self.prochain = depart;
@@ -778,8 +822,57 @@ impl Player {
             return Err(e);
         }
         // `clear()` laisse le lecteur en pause : sans ça, rien ne sortirait.
-        self.inner.play();
+        if demarrer {
+            self.inner.play();
+        }
         Ok(())
+    }
+
+    /// Ce qu'il faut pour reprendre cette lecture plus tard, ou `None` quand
+    /// rien ne joue (file vide ou épuisée) : on ne remplace alors pas une
+    /// session valable par du vide.
+    pub fn instantane(&self) -> Option<Instantane> {
+        let rang = self.index()?;
+        Some(Instantane {
+            file: self.queue.clone(),
+            avant_melange: if self.alea {
+                self.avant_melange.clone()
+            } else {
+                Vec::new()
+            },
+            rang,
+            position: self.position(),
+            alea: self.alea,
+            repetition: self.repetition,
+            volume: self.volume(),
+        })
+    }
+
+    /// Reprend une session : installe la file et les réglages, charge la piste
+    /// `rang` **en pause** et se replace à `position`. Rend `false` sans rien
+    /// toucher quand une file existe déjà — l'utilisateur a lancé quelque
+    /// chose avant la fin de la restauration, qui passe avant.
+    ///
+    /// Comme [`Self::play`], une piste de départ illisible est sautée (et
+    /// signalée par [`Self::prendre_echecs`]).
+    pub fn restaurer(&mut self, session: Instantane) -> Result<bool> {
+        if !self.queue.is_empty() || session.file.is_empty() {
+            return Ok(false);
+        }
+        let rang = session.rang.min(session.file.len() - 1);
+        self.queue = session.file;
+        self.avant_melange = session.avant_melange;
+        self.alea = session.alea;
+        self.repetition = session.repetition;
+        self.inner.set_volume(session.volume);
+        if let Err(e) = self.charger_depuis(rang, false) {
+            // Rien de lisible : la file n'a pas à rester là, vide de sens.
+            self.queue.clear();
+            return Err(e);
+        }
+        // Un `seek` raté (position au-delà de la durée) laisse la piste au début.
+        let _ = self.seek(session.position);
+        Ok(true)
     }
 
     /// Rouvre la sortie par défaut du système, file et volume conservés.
@@ -988,6 +1081,55 @@ mod tests {
         // Avec la répétition, une file illisible ne boucle pas sans fin.
         player.set_repetition(Repetition::Toutes);
         assert!(player.play(&[disparu, corrompu]).is_err());
+        let _ = std::fs::remove_dir_all(&dossier);
+    }
+
+    /// Reprendre une session charge la piste visée **en pause**, à la bonne
+    /// position, avec les réglages mémorisés ; une session qui arrive après
+    /// qu'on a lancé autre chose ne l'écrase pas. Ouvre la sortie audio.
+    #[test]
+    #[ignore]
+    fn restaurer_reprend_en_pause_a_la_bonne_position() {
+        let dossier = std::env::temp_dir().join(format!("rusty-music-session-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).expect("dossier");
+        let pistes: Vec<PathBuf> = ["a", "b", "c"]
+            .iter()
+            .map(|n| {
+                let p = dossier.join(format!("{n}.wav"));
+                ecrire_wav(&p, 16_000); // 2 s à 8 kHz
+                p
+            })
+            .collect();
+        let session = |rang, position: Duration| Instantane {
+            file: pistes.clone(),
+            avant_melange: Vec::new(),
+            rang,
+            position,
+            alea: false,
+            repetition: Repetition::Toutes,
+            volume: 0.4,
+        };
+
+        let mut player = Player::new().expect("sortie audio indisponible");
+        assert!(player.instantane().is_none(), "rien ne joue : rien à retenir");
+        assert!(player.restaurer(session(1, Duration::from_secs(1))).expect("restauration"));
+        assert!(player.is_paused(), "la reprise ne doit jamais lancer le son");
+        assert_eq!(player.current(), Some(pistes[1].as_path()));
+        let pos = player.position();
+        assert!(
+            pos >= Duration::from_millis(900) && pos <= Duration::from_millis(1100),
+            "position reprise à {pos:?}"
+        );
+        assert!((player.volume() - 0.4).abs() < 1e-6);
+        assert_eq!(player.repetition(), Repetition::Toutes);
+
+        let instantane = player.instantane().expect("une piste est chargée");
+        assert_eq!(instantane.rang, 1);
+        assert_eq!(instantane.file, pistes);
+
+        // Une file existe déjà : une seconde restauration ne la remplace pas.
+        assert!(!player.restaurer(session(2, Duration::ZERO)).expect("sans effet"));
+        assert_eq!(player.current(), Some(pistes[1].as_path()));
         let _ = std::fs::remove_dir_all(&dossier);
     }
 

@@ -641,7 +641,7 @@ fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> HashMap<i64, f
 
 /// Colonnes projetées pour un [`TrackRow`], partagées par toutes les requêtes
 /// de consultation pour que l'ordre reste aligné sur [`track_from_row`].
-const TRACK_COLS: &str =
+pub(crate) const TRACK_COLS: &str =
     "id, path, title, artist, album, track_no, year, duration_ms, mb_artist_id";
 
 /// Met à niveau une base créée par une version antérieure.
@@ -877,7 +877,7 @@ fn requete_fts(q: &str) -> String {
         .join(" ")
 }
 
-fn track_from_row(r: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
+pub(crate) fn track_from_row(r: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
     Ok(TrackRow {
         id: r.get(0)?,
         path: r.get(1)?,

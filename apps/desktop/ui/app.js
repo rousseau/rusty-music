@@ -3946,6 +3946,8 @@ function sonder(actif) {
 // sondage : sans ce verrou les appels s'empilent et retardent les commandes de
 // transport, qui attendent alors derrière eux.
 let battementEnVol = false;
+let volumeSynchronise = false;
+let courantResynchronise = null;
 // Un seul signalement par panne, pas un par sondage — à 5 Hz, `remonter`
 // spammerait le journal sans rien apprendre de plus après le premier coup.
 let battementEnErreur = false;
@@ -3974,6 +3976,33 @@ async function battement() {
   // la file se reconstruirait à 5 Hz sous le curseur de qui la parcourt.
   etatVerrou = e.verrou;
   signalerPistesIgnorees(e.ignorees);
+  // Le curseur de volume part à 100 dans la page ; le lecteur, lui, peut avoir
+  // repris le volume de la session précédente. Une seule fois : ensuite c'est
+  // le curseur qui commande.
+  if (!volumeSynchronise) {
+    volumeSynchronise = true;
+    $("volume").value = String(Math.round(e.volume * 100));
+  }
+  // Le lecteur tient une file que la page ne connaît pas — la reprise de
+  // session l'a installée avant que la fenêtre n'existe. On la lui demande,
+  // une fois par morceau, sans quoi le transport afficherait « Rien en
+  // lecture » devant un morceau pourtant chargé.
+  if (
+    e.current &&
+    e.current !== courantResynchronise &&
+    !fileCourante.some((x) => x.path === e.current)
+  ) {
+    courantResynchronise = e.current;
+    try {
+      const pistes = await invoke("file_courante");
+      if (pistes.length) {
+        fileCourante = pistes;
+        dessinerFile();
+      }
+    } catch (err) {
+      remonter(err, "file courante");
+    }
+  }
   if (etatAlea !== e.alea) {
     etatAlea = e.alea;
     refletAlea();

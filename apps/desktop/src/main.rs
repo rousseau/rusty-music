@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
+use rusty_music_core::session::Session;
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -7197,15 +7198,146 @@ fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
         position_ms: player.position().as_millis() as u64,
         remaining: player.remaining(),
         volume: player.volume(),
-        repetition: match player.repetition() {
-            rusty_music_player::Repetition::Aucune => "aucune",
-            rusty_music_player::Repetition::Toutes => "toutes",
-            rusty_music_player::Repetition::Une => "une",
-        },
+        repetition: player.repetition().nom(),
         alea: player.alea(),
         verrou: player.verrou(),
         ignorees,
     })
+}
+
+/// La file du lecteur, avec les métadonnées de la bibliothèque, dans l'ordre
+/// du moteur. Sert à l'interface quand elle ne la connaît pas — au lancement,
+/// après la reprise de session, le lecteur tient une file que la webview n'a
+/// jamais vue.
+#[tauri::command(async)]
+fn file_courante(etat: State<Etat>) -> Result<Vec<TrackRow>, String> {
+    let chemins: Vec<String> = verrou(&etat.player)
+        .queue()
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    verrou(&etat.lib).pistes_par_chemins(&chemins).map_err(echec)
+}
+
+/// Garde les éléments connus d'une file et recale `rang` : le nombre de
+/// pistes retenues **avant** la piste en cours. Rend aussi si la piste en
+/// cours elle-même a été retenue — sinon `rang` désigne la suivante, et la
+/// position mémorisée ne signifie plus rien. Commun à la sauvegarde (chemins
+/// inconnus de la base) et à la reprise (identifiants disparus).
+fn retenir<T>(elements: Vec<Option<T>>, rang: usize) -> (Vec<T>, usize, bool) {
+    let courante_retenue = elements.get(rang).is_some_and(Option::is_some);
+    let avant = elements[..rang.min(elements.len())]
+        .iter()
+        .flatten()
+        .count();
+    (elements.into_iter().flatten().collect(), avant, courante_retenue)
+}
+
+/// Ce que [`sauvegarder_session`] a déjà écrit de la file : tant qu'elle ne
+/// change pas, seules la position et les réglages sont mis à jour — une file
+/// de plusieurs milliers de pistes n'est pas réécrite toutes les cinq
+/// secondes.
+#[derive(Default)]
+struct MemoSession {
+    empreinte_file: Option<u64>,
+}
+
+/// Retient la lecture en cours pour la reprise de session (`Library::session`).
+/// Sans effet quand rien ne joue : on ne remplace pas une session valable par
+/// du vide.
+fn sauvegarder_session(etat: &Etat, memo: &mut MemoSession) -> Result<(), String> {
+    use std::hash::{Hash, Hasher};
+    let Some(i) = verrou(&etat.player).instantane() else {
+        return Ok(());
+    };
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    i.file.hash(&mut h);
+    i.avant_melange.hash(&mut h);
+    let empreinte = h.finish();
+    let repetition = i.repetition.nom();
+    let position_ms = i.position.as_millis() as u64;
+
+    let lib = verrou(&etat.lib);
+    if memo.empreinte_file == Some(empreinte)
+        && lib
+            .enregistrer_position(i.rang, position_ms, i.alea, repetition, i.volume)
+            .map_err(echec)?
+    {
+        return Ok(());
+    }
+
+    // La file a changé (ou la ligne n'existe pas) : écriture complète, en
+    // identifiants. Une piste que la bibliothèque ne connaît pas est omise, et
+    // le rang recalé : il compte les pistes retenues avant la piste en cours.
+    let chemins = |v: &[PathBuf]| -> Vec<String> {
+        v.iter().map(|p| p.display().to_string()).collect()
+    };
+    let ids = lib.ids_par_chemins(&chemins(&i.file)).map_err(echec)?;
+    let (file, rang, _) = retenir(ids, i.rang);
+    if file.is_empty() {
+        return Ok(());
+    }
+    let avant_melange: Vec<i64> = lib
+        .ids_par_chemins(&chemins(&i.avant_melange))
+        .map_err(echec)?
+        .into_iter()
+        .flatten()
+        .collect();
+    lib.enregistrer_session(&Session {
+        file,
+        avant_melange,
+        rang,
+        position_ms,
+        alea: i.alea,
+        repetition: repetition.to_string(),
+        volume: i.volume,
+    })
+    .map_err(echec)?;
+    memo.empreinte_file = Some(empreinte);
+    Ok(())
+}
+
+/// Reprend la session enregistrée : la file revient, la piste en cours est
+/// chargée **en pause** à sa position. Jamais de son au lancement.
+///
+/// Fait en tâche de fond : décoder la piste prend de quoi retarder
+/// l'ouverture de la fenêtre. Si l'utilisateur a lancé quelque chose entre-temps,
+/// `Player::restaurer` s'efface devant.
+fn restaurer_session(etat: &Etat) -> Result<(), String> {
+    let (session, chemins, anciens) = {
+        let lib = verrou(&etat.lib);
+        let Some(s) = lib.session().map_err(echec)? else {
+            return Ok(());
+        };
+        let chemins = lib.chemins_par_ids(&s.file).map_err(echec)?;
+        let anciens = lib.chemins_par_ids(&s.avant_melange).map_err(echec)?;
+        (s, chemins, anciens)
+    };
+    // Les pistes retirées de la bibliothèque depuis sont omises ; le rang suit
+    // la piste en cours, ou la suivante si c'est elle qui a disparu (la
+    // position, alors, ne signifie plus rien).
+    let (chemins, rang, courante_presente) = retenir(chemins, session.rang);
+    let file: Vec<PathBuf> = chemins.into_iter().map(PathBuf::from).collect();
+    if file.is_empty() {
+        return Ok(());
+    }
+    let avant_melange: Vec<PathBuf> = anciens.into_iter().flatten().map(PathBuf::from).collect();
+    verrou(&etat.player)
+        .restaurer(rusty_music_player::Instantane {
+            file,
+            avant_melange,
+            rang,
+            position: if courante_presente {
+                Duration::from_millis(session.position_ms)
+            } else {
+                Duration::ZERO
+            },
+            alea: session.alea,
+            repetition: rusty_music_player::Repetition::depuis_nom(&session.repetition),
+            volume: session.volume,
+        })
+        .map(|_| ())
+        .map_err(echec)
 }
 
 /// Enregistre les touches média du clavier (▶⏸, précédent, suivant) comme
@@ -7438,6 +7570,29 @@ fn main() {
                 if let Some(etat) = etat_arriere_plan.try_state::<Etat>() {
                     if let Err(e) = precharger_suivante(&etat) {
                         tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
+                    }
+                }
+            });
+
+            // Reprise de session : la file et la position, relues ici (en
+            // pause, voir `restaurer_session`) puis réécrites toutes les cinq
+            // secondes. Côté natif plutôt que par l'interface, pour la même
+            // raison que le préchargement : une fenêtre masquée ralentit les
+            // temporisateurs de la webview.
+            let etat_session = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Some(etat) = etat_session.try_state::<Etat>() {
+                    if let Err(e) = restaurer_session(&etat) {
+                        tracing::warn!(erreur = %e, "reprise de la session impossible");
+                    }
+                }
+                let mut memo = MemoSession::default();
+                loop {
+                    std::thread::sleep(Duration::from_secs(5));
+                    if let Some(etat) = etat_session.try_state::<Etat>() {
+                        if let Err(e) = sauvegarder_session(&etat, &mut memo) {
+                            tracing::warn!(erreur = %e, "sauvegarde de la session impossible");
+                        }
                     }
                 }
             });
@@ -7751,15 +7906,27 @@ fn main() {
             seek,
             set_volume,
             playback_state,
+            file_courante,
         ])
-        .run(tauri::generate_context!())
-        .expect("démarrage de l'application impossible");
+        .build(tauri::generate_context!())
+        .expect("démarrage de l'application impossible")
+        .run(|app, evenement| {
+            // Dernière sauvegarde à la fermeture : la périodique (5 s) laisse
+            // jusqu'à cinq secondes de position sur la table.
+            if let tauri::RunEvent::Exit = evenement {
+                if let Some(etat) = app.try_state::<Etat>() {
+                    if let Err(e) = sauvegarder_session(&etat, &mut MemoSession::default()) {
+                        tracing::warn!(erreur = %e, "sauvegarde finale de la session impossible");
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
+        retenir, composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
         fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
         sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
@@ -7773,6 +7940,31 @@ mod tests {
     /// `liberer_si_inactif` doit décharger `valeur` une fois le seuil
     /// d'inactivité dépassé, et rester sans effet avant — isolé de `Etat`,
     /// qui ne se construit pas hors de Tauri.
+    /// Une piste de la file disparue de la bibliothèque ne doit pas décaler la
+    /// reprise : le rang suit la piste en cours, ou la suivante si c'est elle
+    /// qui a disparu.
+    #[test]
+    fn retenir_recale_le_rang_sur_la_piste_en_cours() {
+        // a, (absente), c, d — on jouait c (rang 2) : il devient le rang 1.
+        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c"), Some("d")], 2);
+        assert_eq!((file, rang, presente), (vec!["a", "c", "d"], 1, true));
+
+        // On jouait la piste absente (rang 1) : le rang désigne la suivante
+        // (c), et la position ne vaut plus rien.
+        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c")], 1);
+        assert_eq!((file, rang, presente), (vec!["a", "c"], 1, false));
+    }
+
+    #[test]
+    fn retenir_tolere_un_rang_hors_file_et_une_file_vide() {
+        let (file, rang, presente) = retenir(vec![Some(1), Some(2)], 9);
+        assert_eq!((file, rang, presente), (vec![1, 2], 2, false));
+        let (file, rang, presente) = retenir::<i64>(Vec::new(), 0);
+        assert!(file.is_empty() && rang == 0 && !presente);
+        let (file, _, _) = retenir::<i64>(vec![None, None], 0);
+        assert!(file.is_empty(), "toute la file a disparu");
+    }
+
     #[test]
     fn cache_libere_apres_le_seuil_dinactivite() {
         let cache = Mutex::new(Cache { valeur: Some(42), touche: Some(Instant::now()) });
