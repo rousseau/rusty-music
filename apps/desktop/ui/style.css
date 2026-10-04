@@ -1813,4 +1813,10 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .file__enregistrer input:focus { outline: none; border-color: var(--accent); }
 .file__enregistrer .file__bouton { flex: none; padding: 5px 10px; }
 .file__etat { margin: 0; padding: 6px var(--gouttiere-panneau) 0; }
+/* Durée totale et temps restant, sous l'en-tête de la file. */
+.file__total {
+  margin: 0; padding: 0 var(--gouttiere-panneau) 10px; flex: none;
+  font: 10.5px var(--mono); color: var(--mut); font-variant-numeric: tabular-nums;
+}
+.file__total:empty { display: none; }
 .file__etat:empty { display: none; }

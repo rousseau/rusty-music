@@ -1056,6 +1056,9 @@
         <span id="file-compte" class="fil__compte"></span>
         <button id="file-fermer" class="file__fermer" aria-label="Fermer">×</button>
       </header>
+      <!-- Durée de la file : le total, et ce qu'il reste à jouer depuis le
+           morceau en cours (`texteDureeFile`). Vide quand aucune durée n'est connue. -->
+      <p id="file-duree" class="file__total" aria-live="off"></p>
       <!-- Aléatoire et répétition : deux bascules du moteur, pas de l'affichage —
            `set_alea`/`set_repetition` (`app.js`) pilotent la file côté Rust,
            chaque ligne reflète ensuite ce qu'il a réellement retenu. -->

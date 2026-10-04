@@ -1833,6 +1833,7 @@ function demarrerCompositionFile(cible) {
   $("file-compo-phase").textContent = "Préparation du graphe des voisins…";
   majBarreCompo(0, 0);
   $("file-compte").textContent = `0 / ${cible}`;
+  $("file-duree").textContent = ""; // la file en cours n'est plus celle qui s'affiche
   const hote = $("file-liste");
   hote.replaceChildren();
   for (let i = 0; i < cible; i++) hote.appendChild(ligneSquelette(i));
@@ -3545,6 +3546,51 @@ $("file-repeter").addEventListener("click", async () => {
 
 // L'interface connaît déjà la file : c'est elle qui l'a envoyée au moteur.
 // Inutile de la redemander, `current` suffit à situer la lecture.
+/// 3 720 000 ms → « 1 h 02 » ; sous l'heure → « 41 min » ; sous la minute →
+/// « 35 s ». La durée d'une file se lit à la minute près.
+function dureeFile(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const min = Math.round(s / 60);
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+}
+
+/// « 1 h 02 · reste 41 min » : le total de la file, et ce qu'il reste à jouer
+/// depuis la piste en cours (le reste de celle-ci, plus les suivantes).
+///
+/// - une piste sans durée connue n'est pas comptée, et le total est alors
+///   précédé de « ≈ » ;
+/// - **pas de « reste » en répétition** : la file reboucle, il n'y a pas de fin ;
+/// - `rang` négatif (rien en lecture) : le total seul.
+function texteDureeFile(pistes, rang, positionMs, repetition) {
+  const duree_ = (t) => (Number.isFinite(t.duration_ms) && t.duration_ms > 0 ? t.duration_ms : 0);
+  const somme = (liste) => liste.reduce((n, t) => n + duree_(t), 0);
+  const total = somme(pistes);
+  if (total === 0) return "";
+  const approx = pistes.some((t) => duree_(t) === 0) ? "≈ " : "";
+  let texte = `${approx}${dureeFile(total)}`;
+  if (rang >= 0 && repetition === "aucune") {
+    const reste = Math.max(0, duree_(pistes[rang]) - positionMs) + somme(pistes.slice(rang + 1));
+    texte += ` · reste ${approx}${dureeFile(reste)}`;
+  }
+  return texte;
+}
+
+/// Dernière position lue par le battement : la ligne « reste » s'en sert entre
+/// deux redessins de la file.
+let dernierePositionMs = 0;
+
+/// Remet à jour la ligne de durée du panneau de file. Légère — un battement
+/// l'appelle à 5 Hz — : le texte n'est réécrit que s'il change, et rien n'est
+/// calculé tant que le panneau est fermé.
+function majDureeFile() {
+  if ($("file").hidden) return;
+  const rang = fileCourante.findIndex((t) => t.path === enLecture);
+  const texte = texteDureeFile(fileCourante, rang, dernierePositionMs, etatRepetition);
+  const el = $("file-duree");
+  if (el.textContent !== texte) el.textContent = texte;
+}
+
 function dessinerFile() {
   // La composition d'une playlist ✦ tient la main sur le panneau : elle y
   // fait défiler ses pistes elle-même (`revelerFile`), un rendu ordinaire
@@ -3555,6 +3601,7 @@ function dessinerFile() {
   if (glissementEnCours) return;
   const hote = $("file-liste");
   $("file-compte").textContent = `${fileCourante.length} morceaux`;
+  majDureeFile();
 
   if (fileCourante.length === 0) {
     hote.innerHTML = '<p class="file__vide">Rien en file. Choisissez un morceau.</p>';
@@ -4315,6 +4362,8 @@ async function battement() {
   // sur un vrai changement de morceau ou une action du panneau — sans quoi
   // la file se reconstruirait à 5 Hz sous le curseur de qui la parcourt.
   etatVerrou = e.verrou;
+  dernierePositionMs = e.position_ms;
+  majDureeFile();
   signalerPistesIgnorees(e.ignorees);
   // Le curseur de volume part à 100 dans la page ; le lecteur, lui, peut avoir
   // repris le volume de la session précédente. Une seule fois : ensuite c'est

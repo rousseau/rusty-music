@@ -281,12 +281,29 @@ rend toujours `Ok`, le système n'a pas de refus à signaler.
 
 ## Priorité 3 — confort
 
-### 7. Durée totale et temps restant de la file — S
+### 7. Durée totale et temps restant de la file — **fait (4 oct. 2026)**
 
-Listé dans la spec (§ « Ce que l'interface demandera au moteur », point 5),
-non affiché. Une ligne « 14 pistes · 1 h 02 » sous la file, calculée côté
-interface à partir des `duration_ms`. Aucune alternative utile ;
-**à faire**.
+**Décisions** : total **et** temps restant, dans l'en-tête du panneau de file
+seulement (pas dans le transport, déjà dense).
+
+**Fait.** Une ligne sous l'en-tête de la file : « 15 min · reste 10 min »
+(`texteDureeFile`, pure). Le reste est celui de la piste en cours (position
+comprise) plus les suivantes ; il se met à jour à chaque battement sans toucher
+au DOM tant que le texte ne change pas, et rien n'est calculé panneau fermé.
+Une piste sans durée n'est pas comptée et le total est alors précédé de « ≈ » ;
+**pas de « reste » en répétition** (la file reboucle, il n'y a pas de fin) ;
+rien en lecture : le total seul. Formats : « 35 s », « 41 min », « 1 h 02 ».
+Vérifié sur huit cas limites et sur le rendu dans le harnais.
+
+**Audit d'interface non concluant ce jour-là.** `scripts/audit-interface.sh`
+s'est figé à 27-32 cellules sur 180, sans erreur et sans activité du processus,
+**y compris sur `0a33ff6`, dont l'audit passait quelques heures plus tôt** : le
+blocage ne vient donc pas des changements des points 6 et 7. Écartés : réseau
+(Deezer, CAA, MusicBrainz répondent en < 0,3 s), charge de la machine, session
+verrouillée ou en veille, mémoire, disque. Non écarté : la webview se suspend
+quand sa fenêtre n'est pas visible (l'audit pilote une vraie fenêtre) ; amener
+la fenêtre au premier plan par `osascript` n'a rien changé, mais n'est pas
+prouvé efficace. À relancer par l'utilisateur, fenêtre au premier plan.
 
 ### 8. Minuteur d'arrêt — S
 
