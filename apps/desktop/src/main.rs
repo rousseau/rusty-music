@@ -30,6 +30,7 @@ use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 /// fichier de `ui/` change. Voir `build.rs`.
 const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
+mod systeme_media;
 mod tuiles;
 
 /// Centroïdes d'empreinte par album (identifiant, vecteur) — voir
@@ -7776,6 +7777,8 @@ fn main() {
                 // Mémoire d'écoute : le même battement natif compte le temps
                 // réellement joué (`suivre_ecoute`).
                 let mut suivi = SuiviEcoute::nouveau();
+                // Et l'annonce au système (« En cours de lecture »).
+                let mut annonce = systeme_media::Annonce::nouveau(std::time::Instant::now());
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                     if let Some(etat) = etat_arriere_plan.try_state::<Etat>() {
@@ -7783,6 +7786,7 @@ fn main() {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
                         suivre_ecoute(&etat, &mut suivi);
+                        systeme_media::annoncer(&etat_arriere_plan, &etat, &mut annonce);
                     }
                 }
             });
@@ -7973,7 +7977,11 @@ fn main() {
                 let _ = w.set_focus();
             }
 
-            enregistrer_touches_media(app.handle().clone());
+            // Commandes à distance du système (macOS) ; ailleurs, ou si le système
+            // refuse, les raccourcis globaux — voir `systeme_media`.
+            if !systeme_media::demarrer(app.handle()) {
+                enregistrer_touches_media(app.handle().clone());
+            }
 
             // Un cache HD produit par une version antérieure du pipeline
             // (rééchantillonnage, mélange…) donnerait un son étouffé joué tel

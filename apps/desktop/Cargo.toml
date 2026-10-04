@@ -36,3 +36,9 @@ serde_json.workspace = true
 # ni HTTP à interroger. Tauri fait déjà tourner tokio, on ne l'ajoute pas.
 pmtiles = { version = "0.24", default-features = false, features = ["mmap-async-tokio"] }
 tokio = { version = "1", features = ["rt", "fs"] }
+
+# « En cours de lecture » de macOS (centre de contrôle, AirPods, écran verrouillé)
+# et commandes à distance — voir `src/systeme_media.rs`. macOS seulement : les
+# autres plateformes gardent les raccourcis globaux (`global-hotkey`). Licence MIT.
+[target.'cfg(target_os = "macos")'.dependencies]
+souvlaki = { version = "0.8", default-features = false }

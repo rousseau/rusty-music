@@ -229,22 +229,55 @@ lignes — l'inspecteur seul le bascule. L'historique n'alimente pas encore Lama
 bouton « effacer l'historique » : à ajouter si l'on veut garder la main sur ce
 qui est retenu.
 
-### 6. Intégration système macOS (« En cours de lecture ») — M
+### 6. Intégration système macOS (« En cours de lecture ») — **fait, à éprouver à la main (4 oct. 2026)**
 
-**Constaté.** Les touches média passent par des **raccourcis globaux** (
-`main.rs`, au prix de l'autorisation « Surveillance des saisies » demandée au
-premier appui, et d'un échec silencieux si elle est refusée). Pas de
-widget « En cours de lecture », pas de pilotage depuis l'écran verrouillé ou
-les AirPods.
+**Décisions** : crate `souvlaki` ; infos du morceau **et** commandes ; les
+raccourcis globaux sont retirés quand l'intégration démarre, gardés en repli.
 
-| Option | Principe | Réserve |
-|---|---|---|
-| A. Crate `souvlaki` | API unique : MPNowPlayingInfoCenter + commandes à distance (macOS), MPRIS (Linux), SMTC (Windows) | Licence à passer à `cargo deny` ; boucle d'évènements à brancher sur Tauri |
-| B. Liaisons Objective-C directes (`objc2-media-player`) | Même résultat, sans intermédiaire | Plus de code, macOS seulement |
-| C. Statu quo | Garder les raccourcis globaux | Pas de pochette/titre dans le centre de contrôle |
+**Constaté avant.** Les touches média passaient par des raccourcis globaux
+(`global-hotkey`), au prix de l'autorisation « Surveillance des saisies » et
+d'un échec silencieux si elle était refusée ; rien dans le centre de contrôle.
 
-**Recommandation : A.** Bénéfice collatéral : supprime la dépendance à la
-permission « Surveillance des saisies ».
+**Fait.** `apps/desktop/src/systeme_media.rs`.
+- Annonce au système : titre, artiste, album, durée, position, pochette,
+  état lecture/pause/arrêt. **La décision est pure** (`Annonce::decider`) et
+  testée sur toutes les plateformes : fiche seulement pour un nouveau morceau,
+  position ré-annoncée chaque seconde en lecture (pas plus), une seule fois en
+  pause, tout de suite après un saut dans la piste, arrêt annoncé une fois.
+  `souvlaki` pose le temps écoulé mais **pas la vitesse de lecture** : sans ce
+  rafraîchissement, macOS ne ferait pas avancer la barre.
+- Commandes du système : lecture, pause, bascule, suivant, précédent
+  repassent par l'évènement `touche-media` des anciens raccourcis (garde
+  anti-double-appui de l'interface comprise) ; lecture et pause, distinctes pour
+  le système (AirPods), ne déclenchent la bascule que si elle changerait
+  quelque chose. Déplacement dans la piste (barre du centre de contrôle, avance/recul)
+  appliqué directement au lecteur.
+- Pochette : la pochette locale du morceau est écrite sous `en-cours/` (les deux
+  fichiers les plus récents seulement) et passée en URL `file://`
+  **percent-encodée** — le dossier de données contient une espace.
+- Appels à `souvlaki` sur le fil principal (`run_on_main_thread`).
+- `souvlaki` 0.8.3, MIT, **macOS seulement** (dépendance conditionnelle) ;
+  `cargo deny check` : licences, interdictions, sources et avis de sécurité OK.
+  7 tests.
+
+**Vérifié** : l'application construite démarre sans erreur sur une copie de la
+base ; la pochette de la piste reprise est écrite ; l'ancien avertissement des
+touches média a disparu (les raccourcis globaux ne sont plus enregistrés).
+
+**Non vérifié — à faire à la main** : macOS désigne comme « application en cours
+de lecture » la **dernière qui a joué du son**, et je ne sais pas lancer une
+lecture depuis ici. Donc : (1) lancer un morceau puis ouvrir le centre de
+contrôle — titre, artiste, pochette et barre de progression qui avance ;
+(2) touches ▶⏸ ⏭ ⏮ du clavier ; (3) AirPods (tap) ; (4) déplacer la barre du
+centre de contrôle ; (5) écran verrouillé.
+
+**Changement de comportement à connaître.** Avant, les touches média étaient
+captées par l'application en permanence, même sans rien jouer. Maintenant elles
+vont à la dernière application qui a joué du son : tant que Rusty Music n'a rien
+joué dans la session, elles peuvent piloter autre chose (Musique, un navigateur).
+**Issue** : `RUSTY_MUSIC_TOUCHES_GLOBALES=1` rétablit les raccourcis globaux.
+Le repli « si le système refuse » ne se déclenche pas sur macOS : `souvlaki` y
+rend toujours `Ok`, le système n'a pas de refus à signaler.
 
 ## Priorité 3 — confort
 
