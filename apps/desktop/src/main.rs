@@ -30,6 +30,7 @@ use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 /// fichier de `ui/` change. Voir `build.rs`.
 const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
+mod minuteur;
 mod systeme_media;
 mod tuiles;
 
@@ -49,6 +50,9 @@ type CentroidesEtNoeuds = (usize, Arc<CentroidesAlbums>, Arc<NoeudsAlbums>);
 struct Etat {
     lib: Mutex<Library>,
     player: Mutex<Player>,
+    /// Minuteur d'arrêt en cours, s'il y en a un — voir `minuteur.rs`. Ordre des
+    /// verrous : `minuteur` avant `player` et `lib`, jamais l'inverse.
+    minuteur: Mutex<Option<minuteur::Minuteur>>,
     /// Chemin de la base, pour que le scan puisse ouvrir sa propre connexion.
     db: PathBuf,
     /// Racine du cache HD (`crates/superres`), à côté de la base. Le lecteur y
@@ -6912,6 +6916,8 @@ struct EtatLecture {
     /// Pistes sautées depuis le sondage précédent parce qu'elles ne s'ouvraient
     /// pas — relevées une seule fois, l'interface les montre dans le transport.
     ignorees: Vec<PisteIgnoree>,
+    /// Minuteur d'arrêt armé, avec ce qu'il reste — l'interface l'affiche.
+    minuteur: Option<minuteur::EtatMinuteur>,
 }
 
 /// Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé.
@@ -7185,6 +7191,8 @@ fn precharger_suivante(etat: &Etat) -> Result<(), String> {
 #[tauri::command(async)]
 fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
     precharger_suivante(&etat)?;
+    // Avant de tenir le verrou du lecteur : le minuteur le prend lui-même.
+    let minuteur = etat_du_minuteur(&etat);
     let mut player = verrou(&etat.player);
     let ignorees = player
         .prendre_echecs()
@@ -7205,7 +7213,146 @@ fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
         alea: player.alea(),
         verrou: player.verrou(),
         ignorees,
+        minuteur,
     })
+}
+
+/// Photo du lecteur pour le minuteur. La durée est celle que le lecteur a
+/// **décodée** (`Player::duree_courante`), pas celle de la base : c'est la fin
+/// qu'on entend, et c'est elle que le minuteur vise.
+fn photo_lecteur(etat: &Etat) -> minuteur::Lecteur {
+    let p = verrou(&etat.player);
+    minuteur::Lecteur {
+        courant: p.current().map(Path::to_path_buf),
+        position: p.position(),
+        duree: p.duree_courante(),
+        volume: p.volume(),
+        repetition_une: p.repetition() == rusty_music_player::Repetition::Une,
+    }
+}
+
+/// Ce que le minuteur armé affiche, ou `None` s'il n'y en a pas.
+fn etat_du_minuteur(etat: &Etat) -> Option<minuteur::EtatMinuteur> {
+    let garde = verrou(&etat.minuteur);
+    let m = garde.as_ref()?;
+    let lecteur = photo_lecteur(etat);
+    Some(m.etat(std::time::Instant::now(), &lecteur))
+}
+
+/// Applique au lecteur ce que le minuteur demande.
+fn appliquer_minuteur(etat: &Etat, action: minuteur::Action) {
+    use minuteur::Action;
+    match action {
+        Action::Rien => {}
+        Action::Volume(v) => verrou(&etat.player).set_volume(v),
+        Action::Pause { rendre_volume } => {
+            let p = verrou(&etat.player);
+            p.pause();
+            // Pause d'abord : remettre le volume avant ferait entendre la
+            // reprise du son pendant un instant.
+            if let Some(v) = rendre_volume {
+                p.set_volume(v);
+            }
+        }
+        Action::Annuler { rendre_volume } => {
+            if let Some(v) = rendre_volume {
+                verrou(&etat.player).set_volume(v);
+            }
+        }
+    }
+}
+
+/// Un tour de surveillance : fait avancer le minuteur armé et rend le délai
+/// avant le suivant (500 ms tant qu'aucun n'est armé).
+fn surveiller_minuteur(etat: &Etat) -> Duration {
+    let mut garde = verrou(&etat.minuteur);
+    let Some(m) = garde.as_mut() else {
+        return Duration::from_millis(500);
+    };
+    let lecteur = photo_lecteur(etat);
+    let (action, fini) = m.avancer(std::time::Instant::now(), &lecteur);
+    let attente = m.battement(&lecteur);
+    if fini {
+        *garde = None;
+    }
+    appliquer_minuteur(etat, action);
+    attente
+}
+
+/// Les morceaux de l'album du morceau en cours qui restent dans la file, dans
+/// l'ordre, morceau en cours en tête : la suite ininterrompue de pistes du même
+/// album. Sans album connu, le morceau en cours seul.
+fn album_a_venir(etat: &Etat, courant: &Path) -> Vec<PathBuf> {
+    let a_venir: Vec<String> = {
+        let p = verrou(&etat.player);
+        let queue = p.queue();
+        let debut = queue.iter().position(|c| c == courant).unwrap_or(0);
+        queue[debut..].iter().map(|c| c.display().to_string()).collect()
+    };
+    let Ok(pistes) = verrou(&etat.lib).pistes_par_chemins(&a_venir) else {
+        return vec![courant.to_path_buf()];
+    };
+    let Some(album) = pistes.first().and_then(|t| t.album.clone()) else {
+        return vec![courant.to_path_buf()];
+    };
+    pistes
+        .iter()
+        .take_while(|t| t.album.as_deref() == Some(album.as_str()))
+        .map(|t| PathBuf::from(&t.path))
+        .collect()
+}
+
+/// Arme le minuteur d'arrêt. `mode` : « duree » (avec `minutes`), « piste » ou
+/// « album ». Remplace le minuteur précédent, en rendant son volume s'il était
+/// en plein fondu.
+#[tauri::command(async)]
+fn minuteur_demarrer(
+    etat: State<Etat>,
+    mode: String,
+    minutes: Option<u64>,
+) -> Result<Option<minuteur::EtatMinuteur>, String> {
+    let lecteur = photo_lecteur(&etat);
+    let maintenant = std::time::Instant::now();
+    let rien_ne_joue = || "rien ne joue : pas de morceau à finir".to_string();
+    let nouveau = match mode.as_str() {
+        "duree" => {
+            let m = minutes
+                .filter(|m| (1..=24 * 60).contains(m))
+                .ok_or("durée du minuteur invalide")?;
+            minuteur::Minuteur::dans(maintenant, Duration::from_secs(m * 60))
+        }
+        "piste" => minuteur::Minuteur::fin_de_piste(
+            lecteur.courant.clone().ok_or_else(rien_ne_joue)?,
+            lecteur.position,
+        ),
+        "album" => {
+            let courant = lecteur.courant.clone().ok_or_else(rien_ne_joue)?;
+            minuteur::Minuteur::fin_d_album(album_a_venir(&etat, &courant), lecteur.position)
+                .ok_or_else(rien_ne_joue)?
+        }
+        autre => return Err(format!("mode de minuteur inconnu : {autre}")),
+    };
+    let affichage = nouveau.etat(maintenant, &lecteur);
+    let mut garde = verrou(&etat.minuteur);
+    if let Some(v) = garde.take().and_then(|ancien| ancien.annuler()) {
+        verrou(&etat.player).set_volume(v);
+    }
+    *garde = Some(nouveau);
+    Ok(Some(affichage))
+}
+
+/// Désarme le minuteur ; rend le volume s'il était en plein fondu.
+#[tauri::command(async)]
+fn minuteur_annuler(etat: State<Etat>) {
+    if let Some(v) = verrou(&etat.minuteur).take().and_then(|m| m.annuler()) {
+        verrou(&etat.player).set_volume(v);
+    }
+}
+
+/// Le minuteur armé et ce qu'il reste, ou `None`.
+#[tauri::command(async)]
+fn minuteur_etat(etat: State<Etat>) -> Option<minuteur::EtatMinuteur> {
+    etat_du_minuteur(&etat)
 }
 
 /// La file du lecteur, avec les métadonnées de la bibliothèque, dans l'ordre
@@ -7455,9 +7602,15 @@ struct MemoSession {
 /// du vide.
 fn sauvegarder_session(etat: &Etat, memo: &mut MemoSession) -> Result<(), String> {
     use std::hash::{Hash, Hasher};
-    let Some(i) = verrou(&etat.player).instantane() else {
+    let Some(mut i) = verrou(&etat.player).instantane() else {
         return Ok(());
     };
+    // Pendant le fondu d'un minuteur, le volume du lecteur est en train de
+    // baisser : c'est le volume d'avant qu'on retient, sans quoi on le
+    // retrouverait presque éteint au lancement suivant.
+    if let Some(nominal) = verrou(&etat.minuteur).as_ref().and_then(minuteur::Minuteur::volume_nominal) {
+        i.volume = nominal;
+    }
     let mut h = std::collections::hash_map::DefaultHasher::new();
     i.file.hash(&mut h);
     i.avant_melange.hash(&mut h);
@@ -7725,6 +7878,7 @@ fn main() {
             app.manage(Etat {
                 lib: Mutex::new(Library::open(&db)?),
                 player: Mutex::new(player),
+                minuteur: Mutex::new(None),
                 db,
                 hd,
                 loudness: Mutex::new(EtatLoudness::default()),
@@ -7820,6 +7974,17 @@ fn main() {
                         }
                     }
                 }
+            });
+
+            // Minuteur d'arrêt : un fil à part, au battement adaptatif (500 ms au
+            // repos, 100 ms armé, 20 ms dans la dernière seconde d'un morceau).
+            let etat_minuteur = app.handle().clone();
+            std::thread::spawn(move || loop {
+                let attente = match etat_minuteur.try_state::<Etat>() {
+                    Some(etat) => surveiller_minuteur(&etat),
+                    None => Duration::from_millis(500),
+                };
+                std::thread::sleep(attente);
             });
 
             // Décharge l'encodeur texte CLAP (478 Mo) et le modèle AERO
@@ -8136,6 +8301,9 @@ fn main() {
             set_volume,
             playback_state,
             file_courante,
+            minuteur_demarrer,
+            minuteur_annuler,
+            minuteur_etat,
             playlists,
             creer_playlist,
             playlist_pistes,

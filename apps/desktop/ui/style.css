@@ -1813,6 +1813,18 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .file__enregistrer input:focus { outline: none; border-color: var(--accent); }
 .file__enregistrer .file__bouton { flex: none; padding: 5px 10px; }
 .file__etat { margin: 0; padding: 6px var(--gouttiere-panneau) 0; }
+/* Quatre boutons sur une rangée du panneau (263 px utiles ; leurs textes en
+   prennent 193) : un espacement et un padding resserrés, mesurés pour tenir. */
+.file__transport { gap: 6px; }
+.file__transport .file__bouton { flex: 1 1 auto; padding: 5px 4px; }
+/* Menu du minuteur d'arrêt : des boutons qui reviennent à la ligne. */
+.file__minuteur {
+  display: flex; flex-wrap: wrap; gap: 6px; flex: none;
+  padding: 8px var(--gouttiere-panneau); border-bottom: 1px solid var(--line);
+}
+.file__minuteur[hidden] { display: none; }
+.file__minuteur .file__bouton { flex: 0 1 auto; padding: 5px 10px; }
+#file-minuteur-etat { color: var(--accent); }
 /* Durée totale et temps restant, sous l'en-tête de la file. */
 .file__total {
   margin: 0; padding: 0 var(--gouttiere-panneau) 10px; flex: none;

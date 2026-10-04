@@ -1969,6 +1969,72 @@ window.addEventListener("resize", () => {
   positionnerPlayhead();
 });
 
+/* --------------------------------------------------- minuteur d'arrêt
+ *
+ * Arrêter la lecture dans 15/30/60 min, à la fin du morceau ou de l'album. Tout
+ * vit côté moteur (`minuteur.rs`) : la page n'y arme et n'y désarme rien d'autre
+ * qu'en le demandant, et affiche ce que le moteur lui rapporte — avec le
+ * battement, tant que ça joue, et à l'ouverture du panneau.
+ */
+
+/// « Arrêt dans 24 min », « Arrêt à la fin du morceau (1 min) »…
+function texteMinuteur(m) {
+  if (!m) return "";
+  const reste = Number.isFinite(m.reste_ms) ? dureeFile(m.reste_ms) : null;
+  if (m.mode === "duree") return `Arrêt dans ${reste ?? "…"}`;
+  const cible = m.mode === "album" ? "de l'album" : "du morceau";
+  return reste ? `Arrêt à la fin ${cible} (${reste})` : `Arrêt à la fin ${cible}`;
+}
+
+/// Reflète l'état du minuteur dans le panneau de file : le texte, le bouton
+/// allumé, et « annuler » seulement quand il y a quelque chose à annuler.
+function majMinuteur(m) {
+  const texte = texteMinuteur(m);
+  const el = $("file-minuteur-etat");
+  if (el.textContent !== texte) el.textContent = texte;
+  $("file-minuteur").setAttribute("aria-pressed", String(Boolean(m)));
+  $("file-minuteur-annuler").hidden = !m;
+}
+
+function rafraichirMinuteur() {
+  invoke("minuteur_etat")
+    .then(majMinuteur)
+    .catch((e) => remonter(e, "minuteur_etat"));
+}
+
+$("file-minuteur").addEventListener("click", () => {
+  const menu = $("file-minuteur-menu");
+  menu.hidden = !menu.hidden;
+  $("file-minuteur").setAttribute("aria-expanded", String(!menu.hidden));
+  if (!menu.hidden) rafraichirMinuteur();
+});
+
+document.querySelectorAll("[data-minuteur]").forEach((b) =>
+  b.addEventListener("click", async () => {
+    try {
+      const minutes = b.dataset.minutes ? Number(b.dataset.minutes) : null;
+      majMinuteur(await invoke("minuteur_demarrer", { mode: b.dataset.minuteur, minutes }));
+    } catch (e) {
+      // Le moteur dit pourquoi, en clair (« rien ne joue… »).
+      signalerErreur("file-minuteur-etat", String(e), e, "minuteur_demarrer");
+      return;
+    }
+    $("file-minuteur-menu").hidden = true;
+    $("file-minuteur").setAttribute("aria-expanded", "false");
+  }),
+);
+
+$("file-minuteur-annuler").addEventListener("click", async () => {
+  try {
+    await invoke("minuteur_annuler");
+  } catch (e) {
+    remonter(e, "minuteur_annuler");
+  }
+  majMinuteur(null);
+  $("file-minuteur-menu").hidden = true;
+  $("file-minuteur").setAttribute("aria-expanded", "false");
+});
+
 /* ------------------------------------------------- playlists enregistrées
  *
  * Une file qu'on garde, nommée (`docs/plan-ecouter-v0.2.md`, point 4). Trois
@@ -3704,7 +3770,10 @@ function basculerFile(ouvrir) {
   // Sans ça, le bouton restait étiqueté « file » même une fois le panneau
   // ouvert — rien ne distinguait alors « l'ouvrir » de « le fermer ».
   $("bascule-file").textContent = visible ? "fermer" : "file";
-  if (visible) dessinerFile();
+  if (visible) {
+    dessinerFile();
+    rafraichirMinuteur();
+  }
 }
 
 $("bascule-file").addEventListener("click", () => basculerFile());
@@ -4364,6 +4433,7 @@ async function battement() {
   etatVerrou = e.verrou;
   dernierePositionMs = e.position_ms;
   majDureeFile();
+  majMinuteur(e.minuteur);
   signalerPistesIgnorees(e.ignorees);
   // Le curseur de volume part à 100 dans la page ; le lecteur, lui, peut avoir
   // repris le volume de la session précédente. Une seule fois : ensuite c'est

@@ -305,30 +305,67 @@ quand sa fenêtre n'est pas visible (l'audit pilote une vraie fenêtre) ; amener
 la fenêtre au premier plan par `osascript` n'a rien changé, mais n'est pas
 prouvé efficace. À relancer par l'utilisateur, fenêtre au premier plan.
 
-### 8. Minuteur d'arrêt — S
+### 8. Minuteur d'arrêt — **fait (4 oct. 2026)**
 
-| Option | Principe |
-|---|---|
-| A. Durée fixe | 15 / 30 / 60 min, fondu de 10 s puis pause |
-| B. Fin de piste ou d'album | S'arrête à la fin de ce qui joue |
-| C. A + B | Un petit menu |
+**Décisions** : trois modes — « dans 15/30/60 min », « fin du morceau », « fin de
+l'album » ; pour une durée fixe, le volume descend pendant 10 s puis pause à la
+position atteinte, volume remis ; bouton dans le panneau de file, à côté
+d'« enregistrer ». Compté en temps réel, pause comprise (comme un minuteur de
+chevet) ; jamais conservé d'un lancement à l'autre.
 
-**Recommandation : C**, dans le menu du transport. Pas de nouveau moteur :
-la pause existe, il faut un fondu de volume.
+**Fait.**
+- `apps/desktop/src/minuteur.rs` : une machine d'états **pure**
+  (`Minuteur::avancer`), qui reçoit une photo du lecteur et rend une action ;
+  18 tests purs. Elle vit **côté moteur**, dans un fil à battement adaptatif
+  (500 ms au repos, 100 ms armé, 20 ms dans les 2 dernières secondes d'un
+  morceau) : une webview masquée ralentit ses temporisateurs, et un minuteur de
+  coucher est précisément ce cas-là.
+- **Fondu** : volume × (reste/10 s)², le carré parce qu'une descente linéaire
+  paraît tomber d'un coup à la fin ; borné à la durée du minuteur s'il est plus
+  court que 10 s ; le volume ne remonte jamais. Pause d'abord, volume remis
+  ensuite (l'inverse ferait entendre la reprise). **Le volume d'avant est
+  retenu pour la session** : sans cela, un arrêt de l'application en plein fondu
+  l'aurait enregistré presque éteint.
+- **Visée de la fin d'un morceau.** Attendre le changement de morceau laissait
+  entendre **35 ms du suivant** (mesuré, stable) : le lecteur audio met quelques
+  dizaines de ms à appliquer une pause, et c'est un « tic » sur une attaque
+  franche. On met donc en pause à **moins de 40 ms de la fin**, sur le même
+  morceau (mesuré : pause à 1,49 s d'un morceau de 1,5 s, **rien du suivant
+  n'est entendu**) ; reprendre rejoue ces quelques ms puis enchaîne.
+  Pour cela le lecteur expose la **durée réellement décodée**
+  (`Player::duree_courante`, de pair avec `charges`), pas celle des tags — qui
+  peut être fausse (retard d'encodeur, MP3 sans en-tête). Sans durée connue,
+  le changement de morceau reste le filet (35 ms, veille à 20 ms).
+- « Fin de l'album » : la suite ininterrompue de pistes du même album dans la
+  file, morceau en cours en tête. Si l'on quitte l'album **avant** son dernier
+  morceau (autre lecture lancée), le minuteur s'efface sans rien arrêter ; sans
+  album connu, il retombe sur « fin du morceau ».
+- Avec « répéter un morceau », « fin du morceau » s'arrête à la fin du tour en
+  cours ; une file épuisée d'elle-même efface le minuteur.
+- Interface : bouton « minuteur » (allumé quand armé), menu en ligne, état
+  « Arrêt dans 24 min » / « Arrêt à la fin du morceau (1 min) », « annuler » ;
+  le moteur refuse en clair quand rien ne joue. 4 boutons tiennent sur une
+  rangée du panneau (mesuré : 193 px de texte pour 263 px utiles).
+- Tests avec sortie audio : pause juste avant la fin du morceau, filet sans
+  durée, fondu complet (volume jamais remonté, fin < 0,05, volume remis).
 
-### 9. Paroles — M
+**Limites.** Quitter un morceau par « suivant » ou « précédent » pendant
+« fin du morceau » déclenche la pause tout de suite (le morceau « est fini »).
+Le décompte affiché n'avance que pendant la lecture (le battement de la page
+s'arrête en pause) ; il se remet à jour à l'ouverture du panneau. Audit
+d'interface non relancé (voir point 7).
 
-**Constaté.** Rien dans le code.
+### 9. Paroles — **écarté de la 0.2 (4 oct. 2026)**
 
-| Option | Principe | Réserve |
-|---|---|---|
-| A. Local seul | Tag `USLT` (non synchronisé) ou fichier `.lrc` voisin (synchronisé), lus par `lofty` ; affichés dans l'inspecteur | Couverture dépend de la bibliothèque : à mesurer avant de se lancer |
-| B. LRCLIB (API libre) | Paroles synchronisées par titre/artiste/durée | Réseau, appariement flou (le projet évite par principe le flou par nom), droits d'auteur des textes |
-| C. Ne pas faire | | |
+**Mesuré sur 3 000 MP3 de la bibliothèque** : paroles dans les tags (`USLT`
+non vide) pour **22 morceaux, soit 0,7 %** ; aucun fichier `.lrc` voisin. Une
+version purement locale n'afficherait donc des paroles que pour moins de 1
+morceau sur 100.
 
-**Recommandation : mesurer la couverture locale (S), et ne faire A que si
-elle dépasse quelques pourcents.** B est à écarter tant que le projet n'a
-pas tranché la question des droits.
+**Décision** : ne pas faire en 0.2. Reste ouverte pour plus tard : LRCLIB
+(service libre, sans clé, appariement par titre/artiste/album/durée, paroles
+synchronisées), à activer dans les réglages, avec cache — au prix du « tout
+local » et d'une zone grise de droits d'auteur.
 
 ### 10. Égaliseur — M
 

@@ -399,6 +399,11 @@ pub struct Player {
     /// sortie, et décalerait tout le repérage. Cette liste ne retient que ce
     /// qui y est réellement entré.
     charges: Vec<usize>,
+    /// Durée **réellement décodée** de chaque entrée de `charges`, de pair avec
+    /// elle (`Source::total_duration`). Celle de la base peut différer — retard
+    /// d'encodeur, MP3 sans en-tête — et le minuteur d'arrêt doit viser la vraie
+    /// fin du morceau. Voir [`Self::duree_courante`].
+    durees: Vec<Option<Duration>>,
     /// Traduit un chemin de la file en chemin réellement ouvert — l'identité
     /// par défaut, un aiguillage vers le cache HD (`crates/superres`) côté
     /// application. `queue` garde toujours les chemins d'origine : c'est eux
@@ -454,6 +459,7 @@ impl Player {
             queue: Vec::new(),
             prochain: 0,
             charges: Vec::new(),
+            durees: Vec::new(),
             resoudre: Box::new(|p| p.to_path_buf()),
             gain: Box::new(|_| 1.0),
             repetition: Repetition::default(),
@@ -526,6 +532,7 @@ impl Player {
         }
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
+        let duree = rodio::Source::total_duration(&*source);
         self.inner.clear();
         self.inner.append(source);
         let _ = self.inner.try_seek(pos);
@@ -536,6 +543,7 @@ impl Player {
         }
         self.queue = tracks.to_vec();
         self.charges = vec![0];
+        self.durees = vec![duree];
         self.prochain = 1;
         Ok(())
     }
@@ -703,8 +711,10 @@ impl Player {
     /// Empile une source déjà ouverte par [`ouvrir`]. Ne fait aucune I/O, sûr
     /// à appeler verrou tenu.
     pub fn charger_precharge(&mut self, rang: usize, source: Box<dyn rodio::Source + Send>) {
+        let duree = rodio::Source::total_duration(&*source);
         self.inner.append(source);
         self.charges.push(rang);
+        self.durees.push(duree);
     }
 
     /// Revient à la piste précédente.
@@ -761,10 +771,13 @@ impl Player {
         }
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
+        let duree = rodio::Source::total_duration(&*source);
         self.inner.clear();
         self.charges.clear();
+        self.durees.clear();
         self.inner.append(source);
         self.charges.push(i);
+        self.durees.push(duree);
         self.prochain = i + 1;
         // `SamplesBuffer` : le seek est un calcul d'index, pas une reprise de
         // décodage. Une piste plus courte que `pos` (ne devrait pas arriver)
@@ -796,6 +809,7 @@ impl Player {
         self.inner.clear();
         self.prochain = depart;
         self.charges.clear();
+        self.durees.clear();
         // Une seule piste décodée ici, juste de quoi lancer le son : `ouvrir`
         // décode le fichier entier en mémoire (~0,3 à 1 s sur support lent) et
         // `charger` tient le verrou `Player`. En préparer `PRECHARGE` d'un coup
@@ -911,6 +925,15 @@ impl Player {
         }
         let rang = self.charges.len().checked_sub(restantes)?;
         self.charges.get(rang).copied()
+    }
+
+    /// Durée **décodée** de la piste en cours, si elle est connue — celle qu'on
+    /// entend vraiment, pas celle des tags (voir le champ `durees`). C'est elle
+    /// qui permet de viser la fin d'un morceau au centième de seconde près.
+    pub fn duree_courante(&self) -> Option<Duration> {
+        let restantes = self.inner.len();
+        let rang = self.durees.len().checked_sub(restantes)?;
+        self.durees.get(rang).copied().flatten()
     }
 
     /// Piste en cours de lecture, si la file n'est pas épuisée.
@@ -1122,6 +1145,12 @@ mod tests {
         );
         assert!((player.volume() - 0.4).abs() < 1e-6);
         assert_eq!(player.repetition(), Repetition::Toutes);
+        // La durée décodée (2 s), celle que vise le minuteur d'arrêt.
+        let duree = player.duree_courante().expect("durée décodée connue");
+        assert!(
+            duree >= Duration::from_millis(1990) && duree <= Duration::from_millis(2010),
+            "durée décodée : {duree:?}"
+        );
 
         let instantane = player.instantane().expect("une piste est chargée");
         assert_eq!(instantane.rang, 1);

@@ -1069,7 +1069,21 @@
                 title="Répéter : coupé → toute la file → le morceau en cours.">répéter</button>
         <button id="file-enregistrer" class="file__bouton"
                 title="Enregistrer cette file comme playlist (vue Playlists d'Écouter).">enregistrer</button>
+        <button id="file-minuteur" class="file__bouton" aria-pressed="false" aria-expanded="false"
+                title="Minuteur d'arrêt : arrête la lecture dans un moment, à la fin du morceau ou à la fin de l'album.">minuteur</button>
       </div>
+      <!-- Minuteur d'arrêt (`minuteur.rs`) : un menu en ligne, pas une fenêtre. -->
+      <div id="file-minuteur-menu" class="file__minuteur" hidden role="group" aria-label="Minuteur d'arrêt">
+        <button type="button" class="file__bouton" data-minuteur="duree" data-minutes="15">15 min</button>
+        <button type="button" class="file__bouton" data-minuteur="duree" data-minutes="30">30 min</button>
+        <button type="button" class="file__bouton" data-minuteur="duree" data-minutes="60">60 min</button>
+        <button type="button" class="file__bouton" data-minuteur="piste"
+                title="S'arrête quand le morceau en cours se termine.">fin du morceau</button>
+        <button type="button" class="file__bouton" data-minuteur="album"
+                title="S'arrête quand le dernier morceau de l'album en cours se termine.">fin de l'album</button>
+        <button type="button" id="file-minuteur-annuler" class="file__bouton" hidden>annuler</button>
+      </div>
+      <p id="file-minuteur-etat" class="aide file__etat" aria-live="polite"></p>
       <!-- Nom de la playlist à enregistrer : un champ dans le panneau, pas une
            fenêtre modale (`docs/interface-guidelines.md`). -->
       <form id="file-enregistrer-form" class="file__enregistrer" hidden>
