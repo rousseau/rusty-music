@@ -48,6 +48,9 @@ pub fn decoder_depuis(octets: &[u8]) -> Result<Piste> {
     let mut pcm = Vec::new();
     let mut sortie = Vec::new();
     let mut entetes = 0;
+    // Position de granule de la dernière page : le nombre d'échantillons
+    // (à 48 kHz) que le fichier déclare, pré-saut compris.
+    let mut fin_granule = None;
 
     while let Some(p) = pages
         .read_packet()
@@ -88,6 +91,9 @@ pub fn decoder_depuis(octets: &[u8]) -> Result<Piste> {
             .decode_float(&p.data, &mut pcm, false)
             .map_err(|e| Error::Opus(format!("{e:?}")))?;
         sortie.extend_from_slice(&pcm[..n * canaux]);
+        if p.last_in_stream() && p.absgp_page() != u64::MAX {
+            fin_granule = Some(p.absgp_page() as usize);
+        }
     }
 
     if canaux == 0 {
@@ -95,6 +101,13 @@ pub fn decoder_depuis(octets: &[u8]) -> Result<Piste> {
     }
     let debut = (a_sauter * canaux).min(sortie.len());
     let mut echantillons = sortie.split_off(debut);
+    // La dernière trame est presque toujours plus longue que ce qui reste du
+    // morceau : l'encodeur la complète, et c'est la granule de fin qui dit
+    // où s'arrêter. L'ignorer ajoutait quelques ms de blanc avant la piste
+    // suivante (`examples/verif_gapless.rs`).
+    if let Some(fin) = fin_granule {
+        echantillons.truncate(fin.saturating_sub(a_sauter) * canaux);
+    }
     if gain != 1.0 {
         for e in &mut echantillons {
             *e *= gain;

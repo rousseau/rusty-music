@@ -16,26 +16,47 @@ Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
 
 ## Priorité 1 — fiabilité (à faire avant tout le reste)
 
-### 1. Vérifier que l'enchaînement est réellement sans blanc — S puis M
+### 1. Enchaînement sans blanc — **mesuré et corrigé (4 oct. 2026)**
 
-**Constaté.** Le préchargement empile les pistes dans la sortie `rodio`
-(`Player::a_precharger`, `PRECHARGE = 2`), donc il n'y a pas de trou
-**d'ouverture de fichier**. Mais rien dans le code ne traite le **retard de
-l'encodeur** (MP3, AAC : quelques dizaines de ms de silence en tête et en
-queue) : le décodeur est appelé avec `Decoder::try_from`, sans option, et
-aucun test ne mesure le raccord. Sur un album live ou électronique mixé, un
-« clic » ou un blanc de 25-50 ms s'entend. **Non mesuré** : c'est le premier
-travail.
+**Méthode.** `scripts/gapless-fixtures.sh` coupe un balayage de fréquence à
+l'échantillon près et encode chaque moitié dans chaque format ;
+`crates/player/examples/verif_gapless.rs` ouvre les deux moitiés par `ouvrir`
+(le chemin exact de la lecture, rééchantillonnage vers 48 kHz compris) et
+mesure le blanc ou le saut au raccord. Seuil retenu : 5 ms.
 
-| Option | Principe | Coût | Réserve |
-|---|---|---|---|
-| A. Banc de mesure d'abord | Un sinus continu coupé en deux MP3/AAC/FLAC, joués à la suite, enregistré en boucle logicielle ; on mesure l'écart de phase au raccord | S | Ne corrige rien, mais dit si les options B/C sont utiles |
-| B. Réglage gapless du décodeur | Activer l'option de `rodio`/symphonia qui rogne le retard déclaré (tag LAME, `iTunSMPB`) | S si l'option existe dans la version épinglée | À vérifier dans rodio 0.22 |
-| C. Rognage maison | Lire le retard dans les tags (`lofty`) et sauter les échantillons en tête/queue avant d'empiler | M | Réécrit une brique que B fournit peut-être |
-| D. Fondu enchaîné court (20-50 ms) | Masque le clic sans le supprimer | M | Mauvais pour le live et le classique : coupe l'attaque |
+**Avant correction** : WAV, FLAC, MP3 à en-tête LAME et Vorbis à 0,00 ms ;
+**M4A +41,8 ms** (symphonia 0.5.5 lit la liste d'édition sans l'appliquer) ;
+**Opus +13,5 ms** (notre décodeur ignorait la granule de fin).
+**Après** : tous les formats à 0,00 ms, aux deux fréquences.
 
-**Recommandation : A, puis B si A trouve un défaut, C en dernier recours.**
-D seulement comme réglage optionnel.
+**Corrigé** : `crates/core/src/opus.rs` (troncature à la granule de fin) et
+`crates/core/src/gapless.rs` (lecture d'`iTunSMPB` puis de la liste d'édition
+`elst`, appliquée par `ouvrir` avant le rééchantillonnage). Sur la
+bibliothèque réelle, 280 M4A sur 300 échantillonnés portent l'information
+(retard iTunes, 2 112 trames).
+
+**Limite assumée — MP3 sans en-tête Xing/Info.** Environ **la moitié des MP3**
+de la bibliothèque n'en ont pas (1 516 sur 3 000 échantillonnés) : le fichier
+ne dit pas son retard, aucun décodeur ne peut le rogner sans heuristique. Le
+décodage laisse alors ~25 ms de retard d'encodeur en tête. Sur 300 vraies
+pistes, le silence propre aux morceaux dépasse largement ce retard (médiane
+130 à 240 ms en tête, 1 à 2 s en queue) : il ne s'entend que sur les pistes
+qui s'enchaînent sans silence. **Décision : ne rien faire**, toute correction
+serait une heuristique qui risque de couper de la musique. À revoir si
+l'écoute d'albums continus (live, mix) le justifie — voir la validation ci-dessous.
+
+**Validation sur trois albums réels** (blanc mesuré à chaque raccord, seuil
+−60 dB) : Soul Coughing *Live 2024* — 17 raccords sur 20 à 0 ms, les trois
+autres sont de vrais silences (3 s, 0,5 s, 0,2 s) ; Korn *Issues* — 15 sur 15
+à 11 ms ou moins ; Sons of Kemet *Black to the Future* — 0 sur 10 sous 50 ms,
+mais ce sont des silences voulus (fins de morceaux étirées, médiane 3,3 s) que
+le lecteur doit respecter. Ces trois albums portent tous l'en-tête Xing/Info :
+**ils ne testent pas la limite des MP3 sans tag**, qui reste non observée sur
+un album continu.
+
+**Décisions** : pas de fondu enchaîné en 0.2.
+`examples/silences_bords.rs` chiffre le silence en tête et en queue d'une
+liste de pistes.
 
 ### 2. Piste illisible ou disparue : comportement à confirmer — S
 
