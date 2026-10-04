@@ -7179,24 +7179,31 @@ fn precharger_suivante(etat: &Etat) -> Result<(), String> {
     };
     let a_charger = {
         let mut player = verrou(&etat.player);
+        let epoque = player.epoque();
         player.a_precharger().map(|(rang, piste)| {
             // Chemin de bibliothèque (avant résolution HD), pour le gain de
             // normalisation — voir `gain_pour` et `Player::completer`.
             let original = player.queue().get(rang).cloned().unwrap_or_else(|| piste.clone());
-            (rang, piste, original)
+            (epoque, rang, piste, original)
         })
     };
-    if let Some((rang, piste, original)) = a_charger {
+    if let Some((epoque, rang, piste, original)) = a_charger {
         let gain = gain_pour(etat, &original);
         match rusty_music_player::ouvrir(&piste, gain) {
-            Ok(source) => verrou(&etat.player)
-                .charger_precharge(rang, source),
+            // Refusée si la sortie a été vidée pendant l'ouverture (⏮, saut,
+            // nouvelle liste) : cette piste est celle de l'ancienne file.
+            Ok(source) => {
+                verrou(&etat.player).charger_precharge_si(epoque, rang, source);
+            }
             Err(e) => {
                 // Une piste illisible ne doit pas interrompre le suivi : la
                 // lecture passera simplement à la suivante — et le transport
                 // le dit (`EtatLecture::ignorees`).
                 tracing::warn!(error = %e, "préparation de la piste suivante impossible");
-                verrou(&etat.player).signaler_echec(rang, &e.to_string());
+                let mut player = verrou(&etat.player);
+                if player.epoque() == epoque {
+                    player.signaler_echec(rang, &e.to_string());
+                }
             }
         }
     }

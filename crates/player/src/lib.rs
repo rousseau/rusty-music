@@ -392,6 +392,11 @@ pub struct Player {
     queue: Vec<PathBuf>,
     /// Rang de la prochaine piste à confier à la sortie.
     prochain: usize,
+    /// Génération de la sortie : augmente chaque fois qu'elle est vidée puis
+    /// regarnie (`charger_depuis`, `remplacer_courant`, `rebrancher_file`,
+    /// `stop`). Un préchargement lancé avant la coupure et fini après porte
+    /// l'ancienne génération — [`Self::charger_precharge_si`] le refuse.
+    epoque: u64,
     /// Rangs des pistes effectivement confiées à la sortie, dans l'ordre.
     ///
     /// On ne peut pas déduire la piste courante d'un simple calcul sur
@@ -458,6 +463,7 @@ impl Player {
             _output: output,
             queue: Vec::new(),
             prochain: 0,
+            epoque: 0,
             charges: Vec::new(),
             durees: Vec::new(),
             resoudre: Box::new(|p| p.to_path_buf()),
@@ -533,6 +539,7 @@ impl Player {
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
         let duree = rodio::Source::total_duration(&*source);
+        self.epoque += 1;
         self.inner.clear();
         self.inner.append(source);
         let _ = self.inner.try_seek(pos);
@@ -708,6 +715,30 @@ impl Player {
         self.prochain
     }
 
+    /// Génération actuelle de la sortie. À relever **dans le même verrou** que
+    /// [`Self::a_precharger`], puis à rendre à [`Self::charger_precharge_si`].
+    pub fn epoque(&self) -> u64 {
+        self.epoque
+    }
+
+    /// [`Self::charger_precharge`], sauf si la sortie a été vidée depuis que
+    /// `epoque` a été relevée : la source appartient alors à l'ancienne file
+    /// (retour en arrière, saut, nouvelle liste pendant son décodage) et
+    /// l'empiler la ferait jouer au milieu de la nouvelle. Rend `false` — et
+    /// jette la source — dans ce cas.
+    pub fn charger_precharge_si(
+        &mut self,
+        epoque: u64,
+        rang: usize,
+        source: Box<dyn rodio::Source + Send>,
+    ) -> bool {
+        if epoque != self.epoque {
+            return false;
+        }
+        self.charger_precharge(rang, source);
+        true
+    }
+
     /// Empile une source déjà ouverte par [`ouvrir`]. Ne fait aucune I/O, sûr
     /// à appeler verrou tenu.
     pub fn charger_precharge(&mut self, rang: usize, source: Box<dyn rodio::Source + Send>) {
@@ -772,6 +803,7 @@ impl Player {
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
         let duree = rodio::Source::total_duration(&*source);
+        self.epoque += 1;
         self.inner.clear();
         self.charges.clear();
         self.durees.clear();
@@ -806,6 +838,7 @@ impl Player {
     /// l'espace d'un instant.
     fn charger_depuis(&mut self, depart: usize, demarrer: bool) -> Result<()> {
         self.rouvrir_sortie();
+        self.epoque += 1;
         self.inner.clear();
         self.prochain = depart;
         self.charges.clear();
@@ -956,6 +989,7 @@ impl Player {
 
     /// Vide la file et arrête la sortie.
     pub fn stop(&mut self) {
+        self.epoque += 1;
         self.inner.stop();
         self.queue.clear();
         self.prochain = 0;
