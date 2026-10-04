@@ -193,6 +193,10 @@ struct Etat {
     /// repasser par Ollama). Même patron que `superres_modele`, y compris
     /// pour l'éviction par inactivité.
     texte_modele: Mutex<Cache<rusty_music_analysis::EmbedderTexte>>,
+    /// Un seul préchargement à la fois — voir `precharger_suivante`. Verrou
+    /// distinct de `player` : il est tenu pendant toute l'ouverture du
+    /// fichier, que `player` ne doit jamais attendre.
+    precharge: Mutex<()>,
 }
 
 /// Délai d'inactivité au-delà duquel un poids lourd chargé à la demande
@@ -7160,7 +7164,19 @@ fn set_amelioration(
 /// s'arrêtait alors en fin de piste jusqu'à ramener l'appli au premier plan.
 /// Le fil de fond n'a pas ce problème : il tourne côté natif, indépendamment
 /// de la visibilité de la fenêtre.
+///
+/// **Un seul appel à la fois** (`Etat::precharge`, `try_lock`). Ces deux
+/// appelants se croisent : `a_precharger` avance `prochain` avant que le
+/// fichier soit ouvert, et la sortie ne compte la piste qu'une fois ajoutée —
+/// pendant les ~1 s de décodage, un second appel voyait encore la réserve
+/// vide et prenait la piste d'après. Les deux arrivaient dans l'ordre où elles
+/// finissaient de décoder : sur un album, la piste 3 (plus courte) pouvait
+/// passer avant la 2, que ⏭ semblait alors « sauter ». Le second appelant
+/// passe son tour ; le battement suivant réessaiera.
 fn precharger_suivante(etat: &Etat) -> Result<(), String> {
+    let Ok(_seul) = etat.precharge.try_lock() else {
+        return Ok(());
+    };
     let a_charger = {
         let mut player = verrou(&etat.player);
         player.a_precharger().map(|(rang, piste)| {
@@ -7919,6 +7935,7 @@ fn main() {
                 graphes_voirie: Mutex::new(std::collections::HashMap::new()),
                 agrement_voirie: Mutex::new(None),
                 texte_modele: Mutex::new(Cache::default()),
+                precharge: Mutex::new(()),
             });
             app.manage(tuiles::Archives::default());
 
