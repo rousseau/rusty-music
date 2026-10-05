@@ -10,6 +10,8 @@
 //! retenu dans `docs/architecture.md`.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink};
@@ -387,6 +389,11 @@ pub struct Player {
     // tomber avant la sortie à laquelle il est raccordé, pas l'inverse.
     inner: rodio::Player,
     _output: MixerDeviceSink,
+    /// Levé par cpal quand le flux ouvert est mort (périphérique débranché,
+    /// changé, machine réveillée) : plus personne ne tire sur la source, et
+    /// tout appel de `rodio` qui attend une réponse du fil audio — `try_seek`
+    /// — ne revient jamais. Voir [`Self::seek`].
+    sortie_perdue: Arc<AtomicBool>,
     /// Chemins empilés, dans l'ordre. Sert à savoir ce qui joue : `rodio` ne
     /// retient que le nombre de sources restantes, pas leur provenance.
     queue: Vec<PathBuf>,
@@ -440,9 +447,22 @@ pub struct Player {
     echecs: Vec<Echec>,
 }
 
-/// Ouvre la sortie audio par défaut du système et retient sa fréquence.
-fn ouvrir_sortie() -> Result<MixerDeviceSink> {
-    let mut output = DeviceSinkBuilder::open_default_sink()?;
+/// Ouvre la sortie audio par défaut du système et retient sa fréquence. Rend
+/// aussi le drapeau que cpal lève si le flux meurt ensuite.
+fn ouvrir_sortie() -> Result<(MixerDeviceSink, Arc<AtomicBool>)> {
+    let perdue = Arc::new(AtomicBool::new(false));
+    let signal = Arc::clone(&perdue);
+    // Le repli de `open_default_sink` (autre périphérique, autre config) n'a
+    // pas de callback : sur ce chemin rare le drapeau ne se lève jamais.
+    let mut output = DeviceSinkBuilder::from_default_device()
+        .and_then(|b| {
+            b.with_error_callback(move |e| {
+                tracing::warn!(erreur = %e, "flux audio en erreur");
+                signal.store(true, Ordering::Release);
+            })
+            .open_stream()
+        })
+        .or_else(|_| DeviceSinkBuilder::open_default_sink())?;
     // On ferme la sortie sciemment en fin de processus : le message que
     // `rodio` émet alors sur stderr n'apprend rien et pollue la CLI.
     output.log_on_drop(false);
@@ -450,17 +470,18 @@ fn ouvrir_sortie() -> Result<MixerDeviceSink> {
     // décodé vers elle (sinc propre), plutôt que de laisser `rodio` faire
     // son interpolation linéaire au mélangeur.
     amelioration::enregistrer_taux_sortie(output.config().sample_rate().get());
-    Ok(output)
+    Ok((output, perdue))
 }
 
 impl Player {
     /// Ouvre la sortie audio par défaut du système.
     pub fn new() -> Result<Self> {
-        let output = ouvrir_sortie()?;
+        let (output, sortie_perdue) = ouvrir_sortie()?;
         let inner = rodio::Player::connect_new(output.mixer());
         Ok(Self {
             inner,
             _output: output,
+            sortie_perdue,
             queue: Vec::new(),
             prochain: 0,
             epoque: 0,
@@ -538,6 +559,9 @@ impl Player {
         }
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
+        // Position lue avant : le lecteur neuf repart à zéro. Sans cela, le
+        // `try_seek` plus bas attendrait un flux mort.
+        self.rouvrir_si_perdue();
         let duree = rodio::Source::total_duration(&*source);
         self.epoque += 1;
         self.inner.clear();
@@ -802,6 +826,9 @@ impl Player {
         }
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
+        // Position lue avant : le lecteur neuf repart à zéro. Sans cela, le
+        // `try_seek` plus bas attendrait un flux mort.
+        self.rouvrir_si_perdue();
         let duree = rodio::Source::total_duration(&*source);
         self.epoque += 1;
         self.inner.clear();
@@ -932,8 +959,8 @@ impl Player {
     /// son. Si la réouverture échoue, on garde l'ancien flux plutôt que de
     /// perdre une sortie qui marche peut-être encore.
     fn rouvrir_sortie(&mut self) {
-        let output = match ouvrir_sortie() {
-            Ok(output) => output,
+        let (output, sortie_perdue) = match ouvrir_sortie() {
+            Ok(ouverte) => ouverte,
             Err(e) => {
                 tracing::warn!(erreur = %e, "réouverture de la sortie audio impossible");
                 return;
@@ -944,6 +971,14 @@ impl Player {
         // Le lecteur tombe avant la sortie à laquelle il était raccordé.
         self.inner = inner;
         self._output = output;
+        self.sortie_perdue = sortie_perdue;
+    }
+
+    /// [`Self::rouvrir_sortie`], seulement si cpal a signalé le flux mort.
+    fn rouvrir_si_perdue(&mut self) {
+        if self.sortie_perdue.load(Ordering::Acquire) {
+            self.rouvrir_sortie();
+        }
     }
 
     /// Rang de la piste en cours dans la file.
@@ -1015,7 +1050,24 @@ impl Player {
     }
 
     /// Déplace la tête de lecture dans la piste en cours.
-    pub fn seek(&self, pos: Duration) -> Result<()> {
+    ///
+    /// **Si le flux audio est mort** (casque débranché, sortie changée), on ne
+    /// passe pas par `try_seek` : il attend sans délai une réponse du fil audio
+    /// qui ne viendra jamais, et comme l'appelant tient le verrou `Player`, le
+    /// sondage, la sauvegarde de session et le préchargement se figeaient avec
+    /// lui — l'app entière bloquée. On rouvre la sortie, on recharge la piste
+    /// en cours (pause conservée) et on se place à `pos` sur le flux neuf.
+    pub fn seek(&mut self, pos: Duration) -> Result<()> {
+        if self.sortie_perdue.load(Ordering::Acquire) {
+            let Some(rang) = self.index() else {
+                // Rien ne joue : `try_seek` reviendrait sans attendre, mais
+                // sans rien à déplacer. On ne rouvre la sortie qu'au prochain
+                // départ de lecture.
+                return Ok(());
+            };
+            let en_pause = self.is_paused();
+            self.charger_depuis(rang, !en_pause)?;
+        }
         self.inner.try_seek(pos)?;
         Ok(())
     }
