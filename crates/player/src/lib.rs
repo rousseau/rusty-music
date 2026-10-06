@@ -57,6 +57,9 @@ pub enum Error {
 
     #[error("aucune piste à lire")]
     Vide,
+
+    #[error("la sortie audio ne répond plus")]
+    SortieMorte,
 }
 
 /// Un fichier Opus chargé en mémoire, ou `None` si ce n'en est pas un.
@@ -373,6 +376,10 @@ pub struct Echec {
 /// borne pendant que la fenêtre est masquée.
 const ECHECS_MAX: usize = 32;
 
+/// Attente maximale d'un `try_seek` avant de déclarer la sortie audio morte.
+/// Le fil audio répond en ~5 ms sur un flux vivant.
+const DELAI_SEEK: Duration = Duration::from_millis(750);
+
 /// Ajoute `echec` à `echecs` en gardant les `ECHECS_MAX` plus récents.
 fn noter_echec(echecs: &mut Vec<Echec>, echec: Echec) {
     if echecs.len() >= ECHECS_MAX {
@@ -387,7 +394,7 @@ fn noter_echec(echecs: &mut Vec<Echec>, echec: Echec) {
 pub struct Player {
     // L'ordre de déclaration fixe l'ordre de destruction. Le lecteur doit
     // tomber avant la sortie à laquelle il est raccordé, pas l'inverse.
-    inner: rodio::Player,
+    inner: Arc<rodio::Player>,
     _output: MixerDeviceSink,
     /// Levé par cpal quand le flux ouvert est mort (périphérique débranché,
     /// changé, machine réveillée) : plus personne ne tire sur la source, et
@@ -477,7 +484,7 @@ impl Player {
     /// Ouvre la sortie audio par défaut du système.
     pub fn new() -> Result<Self> {
         let (output, sortie_perdue) = ouvrir_sortie()?;
-        let inner = rodio::Player::connect_new(output.mixer());
+        let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         Ok(Self {
             inner,
             _output: output,
@@ -566,7 +573,7 @@ impl Player {
         self.epoque += 1;
         self.inner.clear();
         self.inner.append(source);
-        let _ = self.inner.try_seek(pos);
+        let _ = self.deplacer_borne(pos);
         if en_pause {
             self.inner.pause();
         } else {
@@ -841,7 +848,7 @@ impl Player {
         // `SamplesBuffer` : le seek est un calcul d'index, pas une reprise de
         // décodage. Une piste plus courte que `pos` (ne devrait pas arriver)
         // laisse simplement le seek échouer sans conséquence.
-        let _ = self.inner.try_seek(pos);
+        let _ = self.deplacer_borne(pos);
         if en_pause {
             self.inner.pause();
         } else {
@@ -966,7 +973,7 @@ impl Player {
                 return;
             }
         };
-        let inner = rodio::Player::connect_new(output.mixer());
+        let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         inner.set_volume(self.inner.volume());
         // Le lecteur tombe avant la sortie à laquelle il était raccordé.
         self.inner = inner;
@@ -1059,17 +1066,54 @@ impl Player {
     /// en cours (pause conservée) et on se place à `pos` sur le flux neuf.
     pub fn seek(&mut self, pos: Duration) -> Result<()> {
         if self.sortie_perdue.load(Ordering::Acquire) {
-            let Some(rang) = self.index() else {
-                // Rien ne joue : `try_seek` reviendrait sans attendre, mais
-                // sans rien à déplacer. On ne rouvre la sortie qu'au prochain
-                // départ de lecture.
-                return Ok(());
-            };
-            let en_pause = self.is_paused();
-            self.charger_depuis(rang, !en_pause)?;
+            self.recharger_courante()?;
         }
-        self.inner.try_seek(pos)?;
-        Ok(())
+        match self.deplacer_borne(pos) {
+            // Le drapeau cpal n'a rien dit mais le fil audio ne répond pas :
+            // changement de périphérique par défaut sans que l'ancien
+            // « meure » (casque débranché, Bluetooth), que cpal ne signale pas.
+            Err(Error::SortieMorte) => {
+                self.recharger_courante()?;
+                self.deplacer_borne(pos)
+            }
+            autre => autre,
+        }
+    }
+
+    /// Rouvre la sortie et recharge la piste en cours (pause conservée).
+    /// Sans effet quand rien ne joue.
+    fn recharger_courante(&mut self) -> Result<()> {
+        let Some(rang) = self.index() else {
+            // Rien ne joue : rien à déplacer. On ne rouvre la sortie qu'au
+            // prochain départ de lecture.
+            return Ok(());
+        };
+        let en_pause = self.is_paused();
+        self.charger_depuis(rang, !en_pause)
+    }
+
+    /// `try_seek` de `rodio` borné dans le temps.
+    ///
+    /// Il attend sans délai une réponse du fil audio ; sur un flux mort elle
+    /// ne vient jamais, et l'appelant tient le verrou `Player` — toute l'app
+    /// se figeait. On le lance donc sur un fil jetable et on n'attend que
+    /// [`DELAI_SEEK`] ; au-delà la sortie est déclarée perdue
+    /// ([`Error::SortieMorte`]). Le fil reste alors bloqué tant que l'ancienne
+    /// sortie n'est pas détruite : une fuite par incident, sans conséquence.
+    fn deplacer_borne(&self, pos: Duration) -> Result<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let lecteur = Arc::clone(&self.inner);
+        std::thread::spawn(move || {
+            let _ = tx.send(lecteur.try_seek(pos));
+        });
+        match rx.recv_timeout(DELAI_SEEK) {
+            Ok(res) => Ok(res?),
+            Err(_) => {
+                tracing::warn!("seek sans réponse du fil audio : sortie déclarée perdue");
+                self.sortie_perdue.store(true, Ordering::Release);
+                Err(Error::SortieMorte)
+            }
+        }
     }
 
     /// Volume linéaire : 1.0 = niveau d'origine.
