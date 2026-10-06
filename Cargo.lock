@@ -7737,6 +7737,7 @@ dependencies = [
  "ebur128",
  "flate2",
  "geo-types",
+ "image",
  "lofty",
  "notify",
  "ogg",

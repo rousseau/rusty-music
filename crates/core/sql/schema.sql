@@ -126,6 +126,27 @@ CREATE TABLE IF NOT EXISTS scan_failures (
     at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+-- Vérification des pochettes, un enregistrement par dossier d'album
+-- (`crate::pochettes_verif`). `signature` résume les fichiers du dossier
+-- (taille, mtime des pistes et des images) : tant qu'elle ne change pas, le
+-- dossier n'est pas revérifié. `anomalie` : NULL (rien à signaler),
+-- 'illisible' ou 'divergente' ; « partagée entre albums » se déduit de
+-- `emb_hash` à la lecture, elle n'est pas stockée. `ignoree` : l'utilisateur
+-- a écarté le signalement (remis à 0 si les fichiers changent).
+CREATE TABLE IF NOT EXISTS pochettes_verif (
+    dossier    TEXT PRIMARY KEY,
+    artiste    TEXT NOT NULL DEFAULT '',
+    album      TEXT NOT NULL DEFAULT '',
+    signature  TEXT NOT NULL,
+    version    INTEGER NOT NULL,
+    emb_hash   TEXT,
+    anomalie   TEXT,
+    detail     TEXT NOT NULL DEFAULT '',
+    mesure     REAL,
+    ignoree    INTEGER NOT NULL DEFAULT 0,
+    verifie_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 -- Paramètres du calcul de la carte (projection t-SNE, clustering k-means) —
 -- clé/valeur plutôt que des colonnes : ce sont quatre nombres, pas de quoi
 -- justifier un schéma rigide. Une clé absente vaut la valeur par défaut

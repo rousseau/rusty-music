@@ -60,6 +60,33 @@ pub struct TrackRow {
     pub artist_mbid: Option<String>,
 }
 
+/// Une piste vue par la vérification des pochettes.
+#[derive(Debug, Clone)]
+pub struct PisteVerifPochette {
+    pub path: String,
+    pub taille: i64,
+    pub mtime: i64,
+    pub artiste: String,
+    pub album: String,
+}
+
+/// Le résultat de la vérification d'un dossier (ligne de `pochettes_verif`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerifPochette {
+    pub dossier: String,
+    pub artiste: String,
+    pub album: String,
+    pub signature: String,
+    pub version: i32,
+    /// Hachage de l'image intégrée — sert à repérer une même image sur des
+    /// albums différents.
+    pub emb_hash: Option<String>,
+    /// `None`, `"illisible"` ou `"divergente"`.
+    pub anomalie: Option<String>,
+    pub detail: String,
+    pub mesure: Option<f64>,
+}
+
 /// Une piste en attente de mesure de loudness — chemin et clé d'album
 /// (normalisée comme `album_loudness` : chaîne vide si absente) pour que
 /// `crate::loudness::actualiser` sache quels albums une passe touche.
@@ -2421,6 +2448,125 @@ impl Library {
     /// [`Self::pending_descripteurs`] et sa colonne `algo_version`.
     pub fn effacer_descripteurs(&self) -> Result<usize> {
         Ok(self.conn.execute("DELETE FROM descriptors", [])?)
+    }
+
+    /* --------------------------------------------- vérification des pochettes */
+
+    /// Les pistes à regrouper par dossier pour la vérification des pochettes
+    /// (`crate::pochettes_verif`) : chemin, taille, mtime, artiste d'album,
+    /// album. Les fichiers déjà en échec de scan sont exclus — on ne rouvre
+    /// pas un fichier qui a déjà fait trébucher son support.
+    pub fn pistes_pour_verif_pochettes(&self) -> Result<Vec<PisteVerifPochette>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, COALESCE(size_bytes, 0), COALESCE(mtime, 0),
+                    COALESCE(NULLIF(album_artist, ''), artist, ''), COALESCE(album, '')
+               FROM tracks
+              WHERE NOT EXISTS (SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
+              ORDER BY path",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(PisteVerifPochette {
+                    path: r.get(0)?,
+                    taille: r.get(1)?,
+                    mtime: r.get(2)?,
+                    artiste: r.get(3)?,
+                    album: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// `dossier → (signature, version)` des dossiers déjà vérifiés.
+    pub fn signatures_verif_pochettes(
+        &self,
+    ) -> Result<std::collections::HashMap<String, (String, i32)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT dossier, signature, version FROM pochettes_verif")?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, (r.get(1)?, r.get(2)?))))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(rows)
+    }
+
+    /// Écrit le résultat de la vérification d'un dossier. Réécrire remet
+    /// `ignoree` à 0 : les fichiers ont changé, le signalement écarté
+    /// auparavant ne vaut plus.
+    pub fn enregistrer_verif_pochette(&self, v: &VerifPochette) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO pochettes_verif(dossier, artiste, album, signature, version,
+                                         emb_hash, anomalie, detail, mesure, ignoree, verifie_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, strftime('%s','now'))
+             ON CONFLICT(dossier) DO UPDATE SET
+                artiste = excluded.artiste, album = excluded.album,
+                signature = excluded.signature, version = excluded.version,
+                emb_hash = excluded.emb_hash, anomalie = excluded.anomalie,
+                detail = excluded.detail, mesure = excluded.mesure,
+                ignoree = 0, verifie_at = excluded.verifie_at",
+            params![
+                v.dossier, v.artiste, v.album, v.signature, v.version, v.emb_hash,
+                v.anomalie, v.detail, v.mesure
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Retire les dossiers vérifiés qui ne sont plus dans la bibliothèque.
+    pub fn elaguer_verif_pochettes(
+        &self,
+        presents: &std::collections::HashSet<String>,
+    ) -> Result<usize> {
+        let mut stmt = self.conn.prepare("SELECT dossier FROM pochettes_verif")?;
+        let connus: Vec<String> = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        drop(stmt);
+        let mut n = 0;
+        for d in connus.iter().filter(|d| !presents.contains(*d)) {
+            n += self
+                .conn
+                .execute("DELETE FROM pochettes_verif WHERE dossier = ?1", params![d])?;
+        }
+        Ok(n)
+    }
+
+    /// Toutes les lignes de vérification, `ignoree` comprise.
+    pub fn verifs_pochettes(&self) -> Result<Vec<(VerifPochette, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT dossier, artiste, album, signature, version, emb_hash, anomalie,
+                    detail, mesure, ignoree
+               FROM pochettes_verif ORDER BY artiste, album, dossier",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    VerifPochette {
+                        dossier: r.get(0)?,
+                        artiste: r.get(1)?,
+                        album: r.get(2)?,
+                        signature: r.get(3)?,
+                        version: r.get(4)?,
+                        emb_hash: r.get(5)?,
+                        anomalie: r.get(6)?,
+                        detail: r.get(7)?,
+                        mesure: r.get(8)?,
+                    },
+                    r.get::<_, i64>(9)? != 0,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Écarte le signalement d'un dossier (bouton « Ignorer »).
+    pub fn ignorer_pochette_suspecte(&self, dossier: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE pochettes_verif SET ignoree = 1 WHERE dossier = ?1",
+            params![dossier],
+        )?;
+        Ok(())
     }
 
     /* --------------------------------------------- loudness (EBU R128) */

@@ -185,7 +185,7 @@ pub struct Cover {
 }
 
 /// Noms de fichiers cherchés à côté du morceau, par ordre de préférence.
-const COVER_FILES: &[&str] = &[
+pub(crate) const COVER_FILES: &[&str] = &[
     "cover.jpg",
     "cover.jpeg",
     "cover.png",
@@ -209,7 +209,7 @@ pub fn read_cover(path: &Path) -> Result<Option<Cover>> {
     Ok(read_folder_cover(path))
 }
 
-fn read_embedded_cover(path: &Path) -> Result<Option<Cover>> {
+pub(crate) fn read_embedded_cover(path: &Path) -> Result<Option<Cover>> {
     // Les propriétés audio ne servent à rien ici et coûtent une estimation de
     // durée sur les MPEG : on ne demande que les tags.
     let opts = ParseOptions::new()
@@ -247,7 +247,7 @@ fn read_embedded_cover(path: &Path) -> Result<Option<Cover>> {
     }))
 }
 
-fn read_folder_cover(path: &Path) -> Option<Cover> {
+pub(crate) fn read_folder_cover(path: &Path) -> Option<Cover> {
     let dir = path.parent()?;
     for nom in COVER_FILES {
         let candidat = dir.join(nom);

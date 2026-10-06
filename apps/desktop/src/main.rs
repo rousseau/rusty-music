@@ -74,6 +74,7 @@ struct Etat {
     descripteurs: Mutex<EtatDescripteurs>,
     /// Avancement de la passe de loudness EBU R128 (piste + album).
     loudness: Mutex<EtatLoudness>,
+    verif_pochettes: Mutex<EtatVerifPochettes>,
     /// Normalisation de volume à la lecture : activation et référence
     /// (piste ou album) — réglage du mode Bibliothèque, lu par le résolveur
     /// de gain installé sur `player` ([`Player::set_gain_resolveur`]) et par
@@ -272,6 +273,7 @@ impl_etat_passe!(
     EtatAnalyse,
     EtatDescripteurs,
     EtatLoudness,
+    EtatVerifPochettes,
     EtatPopularite,
     EtatBio,
     EtatCritiques,
@@ -3918,6 +3920,91 @@ fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>)
 #[tauri::command(async)]
 fn loudness_state(etat: State<Etat>) -> Result<EtatLoudness, String> {
     Ok(verrou(&etat.loudness).clone())
+}
+
+/// Avancement de la vérification des pochettes, sondé par l'interface.
+#[derive(Clone, Default, serde::Serialize)]
+struct EtatVerifPochettes {
+    en_cours: bool,
+    faits: usize,
+    total: usize,
+    resultat: Option<String>,
+}
+
+/// Vérifie les pochettes des dossiers dont les fichiers ont changé — ou de
+/// tous, avec `force` (`rusty_music_core::pochettes_verif`). Même patron que
+/// [`start_loudness`] : fil et connexion propres. Ne modifie aucun fichier de
+/// l'utilisateur : les signalements se lisent par [`pochettes_suspectes`].
+/// Enchaînée juste après le scan, qui est ce qui amène les fichiers neufs.
+#[tauri::command(async)]
+fn start_verif_pochettes(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>) -> Result<(), String> {
+    let force = force.unwrap_or(false);
+    {
+        let mut v = verrou(&etat.verif_pochettes);
+        if v.en_cours {
+            return Err("une vérification des pochettes est déjà en cours".into());
+        }
+        *v = EtatVerifPochettes {
+            en_cours: true,
+            ..Default::default()
+        };
+    }
+
+    let db = etat.db.clone();
+    std::thread::spawn(move || {
+        let etat = app.state::<Etat>();
+        let _garde = GardePasse::nouvelle(&etat.verif_pochettes);
+
+        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
+            let fils = fils_pour_passe(&lib);
+            rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |faits, total| {
+                let mut v = verrou(&etat.verif_pochettes);
+                v.faits = faits;
+                v.total = total;
+            })
+            .map_err(|e| e.to_string())
+        });
+
+        let bilan = match issue {
+            Ok(b) => format!(
+                "{} dossiers vérifiés sur {} · {} pochette{} à examiner",
+                b.verifies,
+                b.dossiers,
+                b.suspectes,
+                if b.suspectes > 1 { "s" } else { "" }
+            ),
+            Err(e) => format!("échec : {e}"),
+        };
+        tracing::info!(%bilan, "vérification des pochettes terminée");
+
+        let mut v = verrou(&etat.verif_pochettes);
+        v.en_cours = false;
+        v.resultat = Some(bilan);
+    });
+
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn verif_pochettes_state(etat: State<Etat>) -> Result<EtatVerifPochettes, String> {
+    Ok(verrou(&etat.verif_pochettes).clone())
+}
+
+/// Les pochettes à examiner (panneau « Vérifications » du mode Bibliothèque).
+#[tauri::command(async)]
+fn pochettes_suspectes(
+    etat: State<Etat>,
+) -> Result<Vec<rusty_music_core::pochettes_verif::PochetteSuspecte>, String> {
+    let lib = verrou(&etat.lib);
+    rusty_music_core::pochettes_verif::suspectes(&lib).map_err(echec)
+}
+
+/// Écarte le signalement d'un dossier (« Ignorer »). Revient tout seul si les
+/// fichiers du dossier changent.
+#[tauri::command(async)]
+fn ignore_pochette_suspecte(etat: State<Etat>, dossier: String) -> Result<(), String> {
+    let lib = verrou(&etat.lib);
+    lib.ignorer_pochette_suspecte(&dossier).map_err(echec)
 }
 
 /// Gain de normalisation de volume (linéaire, 1.0 = neutre) pour `chemin`,
@@ -7905,6 +7992,7 @@ fn main() {
                 db,
                 hd,
                 loudness: Mutex::new(EtatLoudness::default()),
+                verif_pochettes: Mutex::new(EtatVerifPochettes::default()),
                 normalisation,
                 superres: Mutex::new(EtatSuperres::default()),
                 superres_modele: Mutex::new(Cache::default()),
@@ -8222,6 +8310,10 @@ fn main() {
             descripteurs_state,
             start_loudness,
             loudness_state,
+            start_verif_pochettes,
+            verif_pochettes_state,
+            pochettes_suspectes,
+            ignore_pochette_suspecte,
             set_normalisation,
             start_enrichment,
             enrichment_state,

@@ -70,6 +70,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # redémarrage forcé — voir apps/desktop/src/main.rs.
 tracing-appender = "0.2"
 
+# Décodage d'images pour la vérification des pochettes (`crates/core/src/
+# pochettes_verif.rs`) : vignette 16×16 pour comparer deux images, détection
+# des fichiers tronqués. Déjà dans l'arbre (Burn le tire) ; seuls les formats
+# de pochette courants sont activés. Licence MIT/Apache-2.0.
+image     = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+
 # Lecture audio (module 1). rodio décode via symphonia — le décodeur retenu
 # dans architecture.md. `default-features = false` écarte `recording`, dont on
 # n'a pas l'usage. Licences : rodio MIT/Apache-2.0, cpal Apache-2.0.

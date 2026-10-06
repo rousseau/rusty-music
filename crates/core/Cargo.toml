@@ -29,3 +29,4 @@ quick-xml.workspace = true
 rodio.workspace     = true
 ebur128.workspace   = true
 sha2.workspace      = true
+image.workspace     = true

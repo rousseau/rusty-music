@@ -179,6 +179,20 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         fils: usize,
     },
+    /// Vérifie les pochettes : image illisible ou tronquée, intégrée ≠ cover.jpg
+    /// du dossier, même image sur des albums d'artistes différents
+    ///
+    /// Ne modifie aucun fichier : liste ce qui est à examiner. Incrémentale —
+    /// un dossier n'est rouvert que si ses fichiers ont changé, sauf `--force`.
+    /// Fait aussi partie de la chaîne « Analyser » de l'application.
+    Pochettes {
+        /// Revérifie tous les dossiers, même ceux dont rien n'a changé.
+        #[arg(long)]
+        force: bool,
+        /// Fils de lecture (0 = tous les cœurs)
+        #[arg(long, default_value_t = 0)]
+        fils: usize,
+    },
     /// Mesure la loudness EBU R128 des morceaux (piste et album)
     ///
     /// Décode le fichier entier, contrairement aux descripteurs qui n'en
@@ -1005,6 +1019,35 @@ fn main() -> Result<()> {
                 "{} sans pulsation décelable, {} sans tonalité, {} en échec",
                 r.sans_tempo, r.sans_tonalite, r.echecs
             );
+        }
+        Cmd::Pochettes { force, fils } => {
+            let fils = if fils > 0 {
+                fils
+            } else {
+                std::thread::available_parallelism().map_or(4, |p| p.get())
+            };
+            let t = Instant::now();
+            let mut dernier = 0usize;
+            let bilan = rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |vus, total| {
+                if vus >= dernier + 200 {
+                    dernier = vus;
+                    println!("  {vus} / {total} dossiers — {:.1} s", t.elapsed().as_secs_f64());
+                }
+            })?;
+            println!(
+                "{} dossiers d'albums, {} (re)vérifiés — {:.1} s",
+                bilan.dossiers,
+                bilan.verifies,
+                t.elapsed().as_secs_f64()
+            );
+            let suspectes = rusty_music_core::pochettes_verif::suspectes(&lib)?;
+            if suspectes.is_empty() {
+                println!("Aucune pochette à examiner.");
+            }
+            for p in &suspectes {
+                let mesure = p.mesure.map(|m| format!(" (écart {m:.2})")).unwrap_or_default();
+                println!("[{}] {} — {}{mesure}\n    {}\n    {}", p.anomalie, p.artiste, p.album, p.detail, p.dossier);
+            }
         }
         Cmd::Loudness { limite, force, fils } => {
             let fils = if fils > 0 {

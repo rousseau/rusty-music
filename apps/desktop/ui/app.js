@@ -9969,6 +9969,34 @@ async function chargerVerifications() {
     })),
   );
 
+  const pochettes = await invoke("pochettes_suspectes");
+  $("pochettes-suspectes-vide").textContent = pochettes.length
+    ? `${pochettes.length.toLocaleString("fr-FR")} pochette${pochettes.length > 1 ? "s" : ""} à examiner.`
+    : "Aucune pochette suspecte.";
+  dessinerListeVerif(
+    "pochettes-suspectes",
+    pochettes.map((p) => {
+      const bouton = document.createElement("button");
+      bouton.className = "bouton";
+      bouton.textContent = "Ignorer";
+      bouton.addEventListener("click", async () => {
+        await invoke("ignore_pochette_suspecte", { dossier: p.dossier });
+        await chargerVerifications();
+      });
+      const nature = {
+        illisible: "Image illisible",
+        divergente: "Intégrée ≠ image du dossier",
+        partagee: "Même image sur plusieurs albums",
+      }[p.anomalie] ?? p.anomalie;
+      const ecart = p.mesure == null ? "" : ` (écart ${p.mesure.toFixed(2).replace(".", ",")})`;
+      return {
+        ligne: `${txt(p.artiste, "?")} — ${txt(p.album, p.dossier.split("/").pop())}`,
+        detail: `${nature}${ecart} — ${p.detail}`,
+        action: bouton,
+      };
+    }),
+  );
+
   const echecs = await invoke("scan_failures");
   $("echecs-scan-vide").textContent = echecs.length
     ? `${echecs.length.toLocaleString("fr-FR")} fichier${echecs.length > 1 ? "s" : ""} qu'un scan n'a pas su lire.`
@@ -10177,7 +10205,7 @@ function resumeChaine() {
   const total = dernierTotalBiblio;
   const rafraichirPop = $("pop-rafraichir").checked;
 
-  const etapes = ["scan", "loudness", "empreintes", "mesures"];
+  const etapes = ["scan", "pochettes", "loudness", "empreintes", "mesures"];
   // Les trois décodent le fichier (empreintes en fenêtres, loudness en
   // entier) ou en dérivent — même ordre de grandeur que la mesure retenue
   // pour les empreintes, faute de mieux pour la loudness à ce jour.
@@ -10263,6 +10291,15 @@ async function analyserRacine(chemin) {
       etat.textContent = s.en_cours
         ? `${chemin} — scan : ${s.morceaux.toLocaleString("fr-FR")} morceaux en base`
         : (etat.textContent = s.resultat ?? "");
+    });
+
+    etat.textContent = `${chemin} — pochettes…`;
+    await invoke("start_verif_pochettes", { force });
+    await attendreFin("verif_pochettes_state", 1000, (v) => {
+      majJauge("scan-jauge", v.en_cours, v.faits, v.total);
+      if (v.en_cours && v.total) {
+        etat.textContent = `${chemin} — pochettes : ${v.faits.toLocaleString("fr-FR")} / ${v.total.toLocaleString("fr-FR")}`;
+      }
     });
 
     etat.textContent = `${chemin} — loudness…`;
@@ -10488,6 +10525,26 @@ async function passeLoudness(force, phase) {
   });
 }
 
+/// Vérification des pochettes (image illisible, intégrée ≠ `cover.jpg`, même
+/// image sur des albums différents). Placée juste après le scan : c'est lui qui
+/// amène les fichiers neufs, et la passe est incrémentale (quelques secondes
+/// quand rien n'a changé). Les résultats s'affichent dans « Vérifications ».
+async function passePochettes(force, phase) {
+  avancementActu(phase, "pochettes : démarrage…", 0, 0);
+  await invoke("start_verif_pochettes", { force });
+  await attendreFin("verif_pochettes_state", 1000, (v) => {
+    if (!v.en_cours) return;
+    avancementActu(
+      phase,
+      v.total
+        ? `pochettes : ${v.faits.toLocaleString("fr-FR")} / ${v.total.toLocaleString("fr-FR")}${pourcent(v.faits, v.total)}`
+        : "pochettes : démarrage…",
+      v.faits,
+      v.total,
+    );
+  });
+}
+
 async function passeGenres(contact, phase) {
   avancementActu(phase, "genres : démarrage…", 0, 0);
   await invoke("start_enrichment", { contact });
@@ -10656,7 +10713,7 @@ async function passeLastfm(cle, phase) {
   carte.familleVotes = null; // le vote peut avoir changé
 }
 
-/// La chaîne complète — scan, empreintes, tempo/tonalité/énergie, genres,
+/// La chaîne complète — scan, pochettes, loudness, empreintes, tempo/tonalité/énergie, genres,
 /// popularité, puis biographies/critiques/liaison Discogs si cochées — sur
 /// toutes les racines surveillées, l'étape en cours affichée en clair. C'est
 /// ce que « Scanner » lance quand aucun dossier neuf n'est saisi ; chaque
@@ -10667,13 +10724,14 @@ async function lancerChaineComplete() {
   const etat = $("scan-etat");
   verrouillerActualisation(true);
   try {
-    await passeScan(force, "Étape 1/6 — ");
-    await passeLoudness(force, "Étape 2/6 — ");
-    await passeEmpreintes("Étape 3/6 — ");
-    await passeDescripteurs(force, "Étape 4/6 — ");
-    if (contact.includes("@")) await passeGenres(contact, "Étape 5/6 — ");
-    else etat.textContent = "Étape 5/6 — genres sautés (pas d'adresse de contact MusicBrainz)";
-    await passePopularite(contact, "Étape 6/6 — ", $("pop-rafraichir").checked);
+    await passeScan(force, "Étape 1/7 — ");
+    await passePochettes(force, "Étape 2/7 — ");
+    await passeLoudness(force, "Étape 3/7 — ");
+    await passeEmpreintes("Étape 4/7 — ");
+    await passeDescripteurs(force, "Étape 5/7 — ");
+    if (contact.includes("@")) await passeGenres(contact, "Étape 6/7 — ");
+    else etat.textContent = "Étape 6/7 — genres sautés (pas d'adresse de contact MusicBrainz)";
+    await passePopularite(contact, "Étape 7/7 — ", $("pop-rafraichir").checked);
     if ($("bio-active").checked) await passeBiographies("Biographies — ");
     if ($("critiques-active").checked) await passeCritiques("Critiques — ");
     if ($("discogs-lier-active").checked && contact.includes("@")) {
@@ -10713,6 +10771,7 @@ function verrouillerActualisation(occupe) {
 async function reprendreActualisationEnCours() {
   const sondes = [
     ["scan_state", "scan"],
+    ["verif_pochettes_state", "pochettes"],
     ["loudness_state", "loudness"],
     ["analysis_state", "empreintes"],
     ["descripteurs_state", "tempo, tonalité, énergie"],

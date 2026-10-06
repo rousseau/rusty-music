@@ -32,6 +32,7 @@ pub mod ollama;
 pub mod panique;
 pub mod playlists;
 pub mod pochette;
+pub mod pochettes_verif;
 pub mod opus;
 pub mod popularite;
 pub mod scan;

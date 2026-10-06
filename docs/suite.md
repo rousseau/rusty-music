@@ -12,7 +12,7 @@ l'ordre et les raisons.
 | Module 1 — Lecteur (mode Écouter) | **livré, v0.1.0** : file (aléatoire, répétition, glisser-déposer), univers de l'artiste, bios, critiques, crédits, popularité, spectrogramme, normalisation « N ». Suite : `docs/plan-ecouter-v0.2.md` |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie** |
 | Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
-| Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli pour les pochettes manquantes livré** (CAA release → CAA release-group → Deezer ; cache négatif à péremption 30 j, une panne réseau n'est jamais mise en cache) |
+| Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli pour les pochettes manquantes livré** (CAA release → CAA release-group → Deezer ; cache négatif à péremption 30 j, une panne réseau n'est jamais mise en cache) ; **vérification des pochettes livrée** (5 oct. 2026, `crates/core/src/pochettes_verif.rs` : à chaque analyse, étape 2 juste après le scan, incrémentale par dossier ; signale image illisible/tronquée, image intégrée ≠ `cover.jpg`, même image intégrée sur des albums d'artistes différents ; panneau « Pochettes suspectes » du mode Bibliothèque, `rusty-music pochettes` en CLI ; ne modifie jamais un fichier. Ne voit pas une image fausse sans référence locale (pas de `cover.jpg`, image propre à un seul album) ni un fichier ajouté par la surveillance seule avant la prochaine analyse) |
 
 ## Les dettes connues
 
