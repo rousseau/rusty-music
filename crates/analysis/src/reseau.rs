@@ -780,6 +780,10 @@ pub struct Options {
     pub eviter_autoroutes: bool,
     /// Nombre d'itinéraires proposés (Yen). 1 à 3, comme Google Maps.
     pub alternatives: usize,
+    /// Familles isolées dans Explorer : le trajet ne traverse que des morceaux
+    /// de ces familles. `None` = pas de restriction. Le départ, l'arrivée et
+    /// les étapes imposées y échappent toujours — l'utilisateur les a choisis.
+    pub familles: Option<HashSet<i64>>,
 }
 
 impl Options {
@@ -792,7 +796,14 @@ impl Options {
             tolerance_ms: 90_000,
             eviter_autoroutes: false,
             alternatives: 1,
+            familles: None,
         }
+    }
+    /// Restreint le trajet à ces familles ; une liste vide ne restreint rien.
+    pub fn dans_les_familles(mut self, familles: impl IntoIterator<Item = i64>) -> Self {
+        let f: HashSet<i64> = familles.into_iter().collect();
+        self.familles = (!f.is_empty()).then_some(f);
+        self
     }
     pub fn vers(mut self, arrivee: i64) -> Self {
         self.arrivee = Some(arrivee);
@@ -866,14 +877,33 @@ impl Reseau {
         entier(base * if o.eviter_autoroutes { a.classe.penalite_evitement() } else { 1.0 })
     }
 
+    /// Le trajet a-t-il le droit de passer par ce morceau ? Toujours, sans
+    /// restriction de familles ; sinon seulement dans les familles isolées,
+    /// sauf pour les bornes que l'utilisateur a nommées.
+    ///
+    /// Retirer des nœuds ne fait que retirer des arêtes : A* reste admissible
+    /// (le minorant ne peut que sous-estimer un coût plus grand).
+    fn admis(&self, o: &Options, r: u32) -> bool {
+        let Some(permises) = &o.familles else {
+            return true;
+        };
+        if permises.contains(&self.morceaux[r as usize].famille) {
+            return true;
+        }
+        let id = self.ids[r as usize];
+        id == o.depart
+            || o.arrivee == Some(id)
+            || matches!(&o.profil, Profil::Etapes(e) if e.contains(&id))
+    }
+
     /// Les voisins d'un rang et ce qu'ils coûtent, pour ce profil.
     fn successeurs(&self, o: &Options, r: u32) -> Vec<(u32, u64)> {
         self.incidence[r as usize]
             .iter()
-            .map(|&i| {
+            .filter_map(|&i| {
                 let a = &self.aretes[i as usize];
                 let autre = if a.a == r { a.b } else { a.a };
-                (autre, self.cout(o, i, autre))
+                self.admis(o, autre).then(|| (autre, self.cout(o, i, autre)))
             })
             .collect()
     }
@@ -1517,6 +1547,65 @@ mod tests {
             let (a, b) = (r.identifiants()[0], r.identifiants()[30]);
             assert!(r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).is_ok());
         }
+    }
+
+    /// Isoler des familles borne le trajet : aucun morceau hors d'elles, sauf
+    /// le départ et l'arrivée, que l'utilisateur a nommés.
+    #[test]
+    fn un_itineraire_reste_dans_les_familles_isolees() {
+        let r = reseau();
+        let ids = r.identifiants().to_vec();
+        let famille = |id: &i64| r.morceaux[r.rang[id] as usize].famille;
+        // Les familles 0 et 1 se touchent à leur couture ; la 2 est de l'autre côté.
+        let (a, b) = (ids[2], ids[35]);
+        assert_eq!((famille(&a), famille(&b)), (0, 1));
+        let libre = &r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap()[0];
+        let borne = &r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([0, 1]))
+            .unwrap()[0];
+        assert!(borne.morceaux.iter().all(|id| [0, 1].contains(&famille(id))));
+        assert!(libre.morceaux.len() >= 2 && borne.morceaux.len() >= 2);
+    }
+
+    /// Une borne hors des familles isolées reste atteignable ; mais un trajet
+    /// qui devrait traverser une famille exclue est refusé, pas contourné.
+    #[test]
+    fn les_bornes_nommees_echappent_au_filtre_et_le_reste_non() {
+        let r = reseau();
+        let ids = r.identifiants().to_vec();
+        let famille = |id: &i64| r.morceaux[r.rang[id] as usize].famille;
+        let (a, b) = (ids[2], ids[35]);
+        // Seule la famille 1 est permise : le départ (famille 0) y échappe,
+        // l'arrivée est dedans, et le trajet n'entre que par la couture.
+        let t = &r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([1]))
+            .map(|v| v[0].clone());
+        match t {
+            Ok(t) => {
+                assert_eq!(t.morceaux[0], a);
+                assert!(t.morceaux[1..].iter().all(|id| famille(id) == 1));
+            }
+            Err(Erreur::Injoignable) => {}
+            Err(e) => panic!("erreur inattendue : {e}"),
+        }
+        // Le dernier morceau de la famille 2 est séparé de a par la famille 1 :
+        // en n'autorisant que la 0, rien n'y mène.
+        let loin = ids[45];
+        assert_eq!(famille(&loin), 2);
+        let direct = r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(loin).dans_les_familles([0]));
+        assert!(matches!(direct, Err(Erreur::Injoignable)), "{direct:?}");
+    }
+
+    /// Une liste vide ne restreint rien (même convention que l'interface).
+    #[test]
+    fn des_familles_vides_ne_restreignent_rien() {
+        let r = reseau();
+        let (a, b) = (r.identifiants()[2], r.identifiants()[35]);
+        let sans = r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap();
+        let vide = r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([]))
+            .unwrap();
+        assert_eq!(sans[0].morceaux, vide[0].morceaux);
     }
 
     #[test]

@@ -257,9 +257,12 @@ Le réseau se construit à la première demande, une fois par session.
 
 - **Les biomes de Whittaker** : le quatrième axe, l'humidité, n'est pas décidé.
   La palette reste hypsométrique.
-- **Les dates MusicBrainz** : les colonnes sont là, la passe reste à lancer.
-  C'est elle qui corrigera les rééditions, et donc les 720 morceaux d'avant 1990
-  dont tout le récit chronologique dépend.
+- ~~**Les dates MusicBrainz** : les colonnes sont là, la passe reste à lancer.~~
+  **Faite** (constaté le 7 oct. 2026 sur la base de l'application) : 66 097 des
+  83 782 release-groups portent une `first_release_date`, et
+  `annee_fiable_album` l'utilise (sauf compilations) pour corriger les
+  rééditions, donc les 720 morceaux d'avant 1990 dont le récit chronologique
+  dépend. Restent ~17 700 groupes sans date, cause non étudiée.
 - **Les nationales dessinent encore des triangles** par endroits aux zooms
   moyens : le filtre de longueur les raccourcit sans les rendre sinueuses. Les
   faire épouser le relief — l'astuce de crête du document — reste à faire pour
@@ -757,10 +760,18 @@ cause non identifiée) :
   de « Recalculer la carte » (qui, lui, ne touche que les positions t-SNE).
   Détruit et relance l'instance MapLibre après coup, pour ne pas laisser
   affiché un rendu périmé sous un onglet qui pense n'avoir rien à refaire ;
-- le banc d'essai `RUSTY_MUSIC_AUTOTEST=1` (fluidité, allers-retours de
-  coordonnées) sur le contenu réel, maintenant que ce bouton existe ;
-- calibrer à l'œil les zooms de révélation (`tuiles::classe_reelle_visible_des`,
-  `tuiles::anneau_visible_a`, `Paliers::ville`), posés sans mesure ;
+- ~~le banc d'essai `RUSTY_MUSIC_AUTOTEST=1` (fluidité, allers-retours de
+  coordonnées) sur le contenu réel, maintenant que ce bouton existe~~ — **passé
+  le 7 octobre 2026 sur une copie de la base réelle (27 657 morceaux, Paris) :
+  19/19.** Deux échecs initiaux venaient du banc et non de l'application : il
+  comparait l'aller-retour à la position t-SNE alors que le plan de ville place
+  le morceau à son adresse (`positionsReelles`), et il interrogeait la couche
+  fictive `territoires` au lieu de `territoires-reels`, avant la fin du
+  chargement des tuiles. Le banc couvre aussi l'itinéraire musical borné à une
+  famille. `scripts/audit-interface.sh` : 180 cellules, 0 violation ;
+- ~~calibrer à l'œil les zooms de révélation (`tuiles::classe_reelle_visible_des`,
+  `tuiles::anneau_visible_a`, `Paliers::ville`), posés sans mesure~~ — **jugés
+  corrects à l'usage le 7 octobre 2026**, rien à changer ;
 - ~~le recentrage initial de la caméra MapLibre n'est pas câblé~~ —
   **corrigé le 29 août 2026**, trouvé en repassant derrière le bouton
   ci-dessus : sans lui, la carte réelle se générait mais MapLibre s'ouvrait
@@ -1008,12 +1019,13 @@ peine perceptible. La logique est donc vérifiée correcte ; son effet sur les
 tuiles réelles de Paris n'a pas pu être capturé en image dans cette session
 (flakiness du harnais headless, pas de l'application).
 
-**Non vérifié en image dans cette session, à confirmer à l'usage** : le clic
-sur un bâtiment déclenchant l'écoute (`pointSous` + `queryRenderedFeatures`)
-demande un vrai geste de souris et l'IPC Tauri (`invoke("play", …)`), hors de
-portée du harnais MapLibre autonome utilisé ici — code relu avec soin,
-suit le patron déjà en place pour le survol/lasso, mais un clic réel dans
-l'application reste le seul essai qui compte.
+**Vérifié à la main le 7 octobre 2026** (par l'utilisateur, dans l'application) :
+un clic sur un bâtiment **sélectionne** le morceau sans le lancer — comportement
+voulu et conservé (le texte d'origine parlait d'un déclenchement de l'écoute) ;
+le filtre par famille estompe les autres familles et borne le chemin ; la couleur
+suit la coloration choisie au dézoom ; les zooms de révélation sont jugés
+corrects (pas de recalibrage à faire). Itinéraire borné aux familles isolées :
+vérifié aussi.
 
 **Le filtre par famille borne aussi le calcul d'un chemin.** Jusqu'ici,
 isoler une famille dans le panneau « Familles » ne changeait que
@@ -1030,8 +1042,16 @@ celles dont les deux extrémités restent dans une famille isolée. Un
 sous-graphe disjoint fait retomber le sonique sur le direct (lui aussi
 filtré). Changer les familles isolées recalcule le chemin déjà tracé
 (`rejouerChemin`, même
-graine). L'itinéraire *musical* (`reseau.rs`) reste non couvert ; l'itinéraire
-*sur voirie* (`itineraire_voirie`), lui, l'est — `familles` est passé à la
+graine). L'itinéraire *musical* (`reseau.rs`) l'est **depuis le 7 octobre 2026** :
+`Options::familles` (`dans_les_familles`) filtre les successeurs à chaque
+requête — le réseau, construit une fois par session, n'est pas refait ; le
+départ, l'arrivée et les étapes imposées échappent au filtre, et un trajet qui
+devrait traverser une famille exclue est refusé (`Injoignable`) plutôt que
+contourné. Changer les familles isolées rejoue aussi un itinéraire déjà tracé
+(`rejouerSelonFamilles`). Tests : `un_itineraire_reste_dans_les_familles_isolees`,
+`les_bornes_nommees_echappent_au_filtre_et_le_reste_non`,
+`des_familles_vides_ne_restreignent_rien`. L'itinéraire
+*sur voirie* (`itineraire_voirie`), lui, l'est depuis plus longtemps — `familles` est passé à la
 commande et `morceaux_le_long` écarte les morceaux hors des familles isolées
 du couloir (le départ et l'arrivée passent toujours). Test :
 `le_sous_graphe_restreint_ne_traverse_que_les_permis` et

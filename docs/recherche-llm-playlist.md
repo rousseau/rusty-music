@@ -182,9 +182,11 @@ Reste : « Du metal » → énergie « intense » déduite (1 cas).
 
 ## Redécouverte (pistes, hors chantier actuel)
 
-- `added_at` existe, mais **aucun historique d'écoute** n'est stocké : « morceaux
-  oubliés » demanderait d'abord une table d'écoutes. En attendant, « peu connu »
-  passe par `track_popularite.relative`.
+- `added_at` existe, et **l'historique d'écoute existe depuis le 4 octobre 2026**
+  (table `ecoute(chemin, le)`, alimentée par le lecteur, avec `favori` et
+  `playlist`). Le blocage est levé, mais le Lama ne s'en sert pas encore :
+  « morceaux oubliés » reste à câbler dans la spec et `filtres_playlist.rs`.
+  En attendant, « peu connu » passe par `track_popularite.relative`.
 - Étagères d'hypothèses (Spotify, arXiv 2607.25823) : le LLM propose des thèmes,
   le code les réalise sur la bibliothèque.
 - Légende générée de la playlist : Deezer mesure un gain d'engagement en A/B

@@ -188,7 +188,8 @@ texte libre la playlist voulue, pas seulement nommer une famille.
     renseignés à 97-100 %, popularité 92 %, genre 98 % ; sélection en
     quelques ms. Reste hors de ce chantier : fusion de plusieurs graines
     (`alchemy`/`subtract`), ordre lissé par tempo/énergie/tonalité,
-    redécouverte (aucun historique d'écoute stocké), raffinement multi-tours.
+    redécouverte (l'historique d'écoute existe depuis le 4 oct. — table
+    `ecoute` — mais le Lama ne s'en sert pas encore), raffinement multi-tours.
 - **Playlists en plusieurs parties et affichage « Lama » (1ᵉʳ octobre 2026).**
   « Rock pendant 12 minutes, puis hip hop pendant 20 minutes » a révélé le
   défaut de fond : le schéma ne savait pas dire *une suite de parties, chacune

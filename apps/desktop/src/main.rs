@@ -964,6 +964,7 @@ fn itineraire(
     arrivee: Option<i64>,
     profil: String,
     minutes: Option<u64>,
+    familles: Option<Vec<i64>>,
 ) -> Result<Vec<ItineraireVu>, String> {
     use rusty_music_analysis::reseau::{Options, Profil};
 
@@ -989,6 +990,11 @@ fn itineraire(
     o.arrivee = arrivee;
     o.alternatives = 1;
     o.duree_cible_ms = minutes.map(|m| m * 60_000);
+    // Familles isolées dans Explorer : le trajet n'en sort pas (le réseau est
+    // construit une fois, la restriction se fait à chaque requête).
+    if let Some(fs) = familles.filter(|fs| !fs.is_empty()) {
+        o = o.dans_les_familles(fs);
+    }
 
     let trajets = reseau.itineraires(&o).map_err(echec)?;
     drop(cache);

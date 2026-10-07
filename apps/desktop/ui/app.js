@@ -7874,6 +7874,18 @@ function rendreFamilles(hote, estActive, auClic, extension) {
   }
 }
 
+/// Le filtre par famille borne aussi le trajet : quand les familles isolées
+/// changent, ce qui est déjà tracé se recalcule. Un itinéraire (voirie ou
+/// musical) n'a pas de `carte.refaire` : on ne le rejoue que s'il y a un départ
+/// et un tracé à l'écran, pour ne pas lancer un calcul que personne n'a demandé.
+function rejouerSelonFamilles() {
+  if (carte.chemin === "itineraire") {
+    if (carte.depart && carte.route) tracerItineraire().catch((e) => remonter(e, "itinéraire"));
+  } else if (carte.refaire) {
+    rejouerChemin().catch((e) => remonter(e, "chemin"));
+  }
+}
+
 async function dessinerFamilles() {
   await chargerFamilles();
   rendreFamilles(
@@ -7887,7 +7899,7 @@ async function dessinerFamilles() {
       majFiltreGL();
       // Le filtre par famille borne aussi le chemin : un chemin déjà tracé se
       // recalcule pour ne garder que les familles isolées (ou les relâcher).
-      if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
+      rejouerSelonFamilles();
     },
     // Zoom vertical ciblé (§ 3) : seulement sur la frise, où une bande peut
     // compresser plusieurs milliers d'albums (Rock · Grunge, par exemple).
@@ -7911,7 +7923,7 @@ $("familles-tout").addEventListener("click", () => {
   dessinerFamilles();
   dessinerCarte();
   majFiltreGL();
-  if (carte.refaire) rejouerChemin().catch((e) => remonter(e, "chemin"));
+  rejouerSelonFamilles();
 });
 
 /* ------------------------------------------- filtre par famille — mode Écoute
@@ -12797,6 +12809,7 @@ async function itineraireMusical(minutes) {
     arrivee: carte.arrivee ? carte.arrivee.id : null,
     profil: itinProfil,
     minutes: minutes > 0 ? minutes : null,
+    familles: [...carte.isolees],
   });
   if (!trajets.length) {
     $("itin-etat").textContent = "aucun itinéraire";
@@ -12843,7 +12856,8 @@ async function tracerItineraire() {
     }
     await poserItineraire(reponse.trajets[0]);
   } catch (e) {
-    etat.textContent = "échec : " + e;
+    etat.textContent =
+      "échec : " + e + (carte.isolees.size ? " — essayer avec plus de familles isolées" : "");
   } finally {
     if ($("itin-tracer")) $("itin-tracer").disabled = false;
   }
@@ -12932,10 +12946,13 @@ async function autotestCarte() {
     if (glPret) {
       const [gx, gy] = versEcran(p0, r);
       const [gxr, gyr] = versCarte(gx, gy, r);
+      // Sur le plan de ville, `versEcran` place le morceau à son adresse, pas
+      // à sa position t-SNE : c'est elle que l'aller-retour doit retrouver.
+      const [attX, attY] = (villeReelle && carte.positionsReelles.get(p0.id)) || [p0.x, p0.y];
       verifier(
         "carte : aller-retour des coordonnées",
-        Math.abs(gxr - p0.x) < 1e-3 && Math.abs(gyr - p0.y) < 1e-3,
-        `${p0.x.toFixed(4)}→${gxr.toFixed(4)}`,
+        Math.abs(gxr - attX) < 1e-3 && Math.abs(gyr - attY) < 1e-3,
+        `${attX.toFixed(4)}→${gxr.toFixed(4)}`,
       );
       verifier("carte : pointage", pointSous(gx, gy)?.id === p0.id, pointSous(gx, gy)?.id);
 
@@ -12978,8 +12995,17 @@ async function autotestCarte() {
       );
 
       // Les entités des tuiles répondent-elles au pointage ?
-      const rendues = gl.queryRenderedFeatures({ layers: ["territoires"] });
-      verifier("carte : entités interrogeables", rendues.length > 0, rendues.length);
+      // Après la vue d'ensemble (animée), les tuiles du nouveau cadrage se
+      // chargent : on attend qu'elles le soient avant d'interroger.
+      const couche = villeReelle ? "territoires-reels" : "territoires";
+      for (let i = 0; i < 40 && !(gl.areTilesLoaded() && !gl.isMoving()); i++) await attendre(250);
+      const rendues = gl.queryRenderedFeatures({ layers: [couche] });
+      const source = gl.querySourceFeatures("carte", { sourceLayer: couche });
+      verifier(
+        "carte : entités interrogeables",
+        rendues.length > 0,
+        `${rendues.length} rendues, ${source.length} en source (zoom ${gl.getZoom().toFixed(1)})`,
+      );
     }
 
     // --- le lasso, dans les deux repères ---------------------------------
@@ -13017,6 +13043,7 @@ async function autotestCarte() {
         arrivee: null,
         profil: "sentier",
         minutes: 20,
+        familles: null,
       });
       verifier(
         "itinéraire",
@@ -13025,6 +13052,28 @@ async function autotestCarte() {
       );
     } catch (e) {
       verifier("itinéraire", false, e);
+    }
+
+    // --- l'itinéraire musical borné à une famille isolée -----------------
+    try {
+      etape("itinéraire borné à la famille du départ");
+      const depart = carte.points[0];
+      const t = await invoke("itineraire", {
+        depart: depart.id,
+        arrivee: null,
+        profil: "sentier",
+        minutes: 10,
+        familles: [depart.cluster],
+      });
+      const hors = (t[0]?.pistes || []).filter((p) => p.id !== depart.id && p.cluster !== depart.cluster);
+      verifier(
+        "itinéraire : familles isolées",
+        t.length > 0 && t[0].pistes.length > 1 && hors.length === 0,
+        `${t[0]?.pistes.length} morceaux, ${hors.length} hors famille ${depart.cluster}`,
+      );
+    } catch (e) {
+      // Un départ sans voisin dans sa famille est un refus légitime, pas un bogue.
+      verifier("itinéraire : familles isolées", /aucun trajet/.test(String(e)), e);
     }
 
     // --- l'itinéraire sur voirie réelle (si une ville est importée) ------
@@ -13036,7 +13085,7 @@ async function autotestCarte() {
           arrivee: null,
           profil: "panoramique",
           minutes: 20,
-          famille: null,
+          familles: null,
           rayonM: null,
         });
         const t = rep.trajets[0];
