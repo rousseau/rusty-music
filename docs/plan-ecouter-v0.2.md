@@ -229,7 +229,7 @@ lignes — l'inspecteur seul le bascule. L'historique n'alimente pas encore Lama
 bouton « effacer l'historique » : à ajouter si l'on veut garder la main sur ce
 qui est retenu.
 
-### 6. Intégration système macOS (« En cours de lecture ») — **fait, à éprouver à la main (4 oct. 2026)**
+### 6. Intégration système macOS (« En cours de lecture ») — **fait et éprouvé à la main (4 oct. 2026, contrôle le 7 oct.)**
 
 **Décisions** : crate `souvlaki` ; infos du morceau **et** commandes ; les
 raccourcis globaux sont retirés quand l'intégration démarre, gardés en repli.
@@ -264,12 +264,11 @@ d'un échec silencieux si elle était refusée ; rien dans le centre de contrôl
 base ; la pochette de la piste reprise est écrite ; l'ancien avertissement des
 touches média a disparu (les raccourcis globaux ne sont plus enregistrés).
 
-**Non vérifié — à faire à la main** : macOS désigne comme « application en cours
-de lecture » la **dernière qui a joué du son**, et je ne sais pas lancer une
-lecture depuis ici. Donc : (1) lancer un morceau puis ouvrir le centre de
-contrôle — titre, artiste, pochette et barre de progression qui avance ;
-(2) touches ▶⏸ ⏭ ⏮ du clavier ; (3) AirPods (tap) ; (4) déplacer la barre du
-centre de contrôle ; (5) écran verrouillé.
+**Contrôle à la main (7 oct. 2026) : conforme.** macOS désigne comme « application en
+cours de lecture » la dernière qui a joué du son ; la liste de contrôle (centre de
+contrôle : titre, artiste, pochette, barre de progression ; touches ▶⏸ ⏭ ⏮ ; AirPods ;
+déplacement de la barre ; écran verrouillé) a été déroulée par l'utilisateur, qui
+valide le comportement.
 
 **Changement de comportement à connaître.** Avant, les touches média étaient
 captées par l'application en permanence, même sans rien jouer. Maintenant elles
