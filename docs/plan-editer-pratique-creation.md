@@ -249,6 +249,43 @@ et servent 2.2.
 
 ### 1.4 Partition et tablature — alphaTab — **M/L** — *vue principale de la pratique (9 oct.)*
 
+**Prototype (9 oct.) — ce qui est établi.** alphaTab 1.8.4 embarqué
+(`apps/desktop/ui/vendor/alphatab/`, MPL-2.0 sans clause d'incompatibilité,
+police Bravura OFL, chargé seulement quand on pratique). Sélecteur
+Pratiquer / Créer dans le rail ; en Pratiquer, la partition prend le centre et
+la pile se réduit à une rangée de niveaux. Faute de transcription, la partition
+porte la **grille mesurée** (`texGrille` : une note par temps, `\ts` par
+mesure, `\sync (mesure 0 ms)` sur chaque premier temps). Mesuré hors de
+l'application (Chrome sans fenêtre, même CSP que la webview) :
+- l'alphaTex de la grille passe l'analyseur pour les **998 grilles GTZAN**,
+  une mesure par premier temps, sans exception ;
+- **132 mesures (6 min) rendues en 60-70 ms** sur le fil principal ; le worker
+  d'alphaTab ne démarre pas hors d'un serveur → `useWorkers: false` ;
+- syntaxe 1.8 : arguments de métadonnées **entre parenthèses** (`\ts (4 4)`,
+  `\sync (0 0 1200)`), pas de point séparateur ; basse en `\clef F4` avec
+  `\displaytranspose 12` (mi à vide sur la 1ʳᵉ ligne supplémentaire) ;
+- alphaTab émet **des `seekTo` de lui-même** au chargement : on ne suit que
+  ceux qui suivent un clic dans la partition (moins de 1,5 s).
+
+**Essai dans l'application (9 oct.)** : le suivi et le clic dans la partition
+fonctionnent. Corrigé après l'essai : la vue ne descendait pas avec la
+lecture — le défilement d'alphaTab ne suit pas un lecteur externe ; il est
+fait par `suivreCurseur` (mesure jouée tirée de notre pulsation, position
+verticale de `boundsLookup`, pas de rappel pendant 3 s après un défilement à
+la molette). Préférences : basse en **tablature seule** (`\staff {tabs}`),
+batterie en **portée de percussion** (`\instrument percussion`,
+`\articulation defaults`, `\clef neutral`, noms Guitar Pro « Hi-Hat
+(closed) »…) ; l'instrument affiché se choisit dans le rail, sans lien avec
+S/M. Corrigé aussi : le « panneau blanc » — alphaTab était rechargé à chaque
+retour en Pratiquer (`chargerScript` le charge désormais une fois) et l'aide
+remplaçait son contenu (`#partition-aide` est maintenant à côté de
+`#partition-rendu`). Vérifié avec un harnais (vraie interface, backend
+simulé, Chrome sans fenêtre) : basse, batterie, défilement à 2:30,
+allers-retours Pratiquer/Créer. **Reste** : la
+boucle vue sur la partition, le comportement à vitesse réduite. Constat sur la
+grille : une intro sans pulsation nette donne des mesures irrégulières (1/4,
+2/4, 5/4) — la grille dit ce qu'elle a mesuré.
+
 **À faire.**
 - Quantificateur Rust : position de temps (0.2) → grille double croche ou
   triolet par temps (règle `(4, 3)` de music21, pénalité de faux triolet),

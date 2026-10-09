@@ -195,6 +195,26 @@
         <button id="familles-tout" class="lien" hidden>Toutes les familles</button>
       </div>
 
+      <!-- Mode Éditer : l'usage se choisit dans le rail, comme une vue — le
+           centre reste le plus clair possible (`docs/ui-spec-editeur.md`,
+           décision 12). N'apparaît qu'une fois les stems là. -->
+      <div class="bloc" id="bloc-usage" hidden>
+        <p class="rail__titre">Usage</p>
+        <div class="segments" id="usages">
+          <button class="segment" data-usage="pratiquer"
+                  title="Couper son instrument et lire sa partie au centre, calée sur la lecture">Pratiquer</button>
+          <button class="segment segment--actif" data-usage="creer"
+                  title="La pile de stems : régler, remplacer, exporter">Créer</button>
+        </div>
+        <!-- Pratiquer : la partie de quel instrument. Indépendant du solo
+             et de la coupure — on peut lire sa partie en l'écoutant. -->
+        <div class="segments" id="instruments" hidden style="margin-top:8px">
+          <button class="segment segment--actif" data-instrument="bass">Basse</button>
+          <button class="segment" data-instrument="drums">Batterie</button>
+        </div>
+        <p class="aide" id="usage-aide"></p>
+      </div>
+
       <!-- Mode Éditer : le démixage vit dans le rail, là où on cherche une
            action sur le morceau en cours — le centre garde l'établi. -->
       <div class="bloc" id="bloc-demix" hidden>
@@ -366,6 +386,12 @@
              un seul playhead vertical en travers. Le détail d'un stem est
              porté par l'inspecteur (#bloc-stem), pas déplié sous la ligne. -->
         <div id="editer-etabli" class="etabli" hidden>
+          <!-- Pratiquer : la partition au centre (décision 11), rendue par
+               alphaTab, qui suit le lecteur de stems. -->
+          <div id="partition" class="partition" hidden>
+            <p id="partition-aide" class="partition__aide" hidden></p>
+            <div id="partition-rendu"></div>
+          </div>
           <div id="dock-pistes" class="dock__pistes"></div>
           <div id="playhead" class="playhead" hidden></div>
           <div id="boucle-bande" class="boucle-bande" hidden></div>

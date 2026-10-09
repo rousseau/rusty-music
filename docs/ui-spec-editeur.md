@@ -406,7 +406,11 @@ réglage.
    mesure, boucle visible sur les mesures ; les stems restent accessibles en
    une rangée de niveaux. L'autoroute de notes n'est plus la vue par défaut —
    elle reste une vue de repli si la transcription est trop peu sûre pour
-   être gravée.
+   être gravée. **Notation par instrument (9 oct.)** : la basse en
+   **tablature seule**, la batterie en **portée de percussion** (clé neutre).
+   L'instrument affiché se choisit dans le rail (Basse / Batterie, sous
+   Pratiquer), **indépendamment du solo et de la coupure** : on peut lire sa
+   partie en l'écoutant, en solo, ou la jouer à la place du stem coupé.
 12. **L'usage se choisit dans le rail.** Décidé le 9 octobre 2026 : un sélecteur
    Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.
    La barre d'outils garde les réglages d'écoute (vitesse, hauteur, boucle) ;

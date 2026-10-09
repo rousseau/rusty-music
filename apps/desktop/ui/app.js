@@ -8792,6 +8792,10 @@ async function basculerMode(mode) {
   $("bloc-chercher").hidden = bibliotheque || decouvrir || enLama;
   $("bloc-colorer").hidden = !explorer;
   $("bloc-demix").hidden = !editer;
+  if (!editer) {
+    $("bloc-usage").hidden = true;
+    cacherPartition();
+  }
   $("bloc-chemin").hidden = !explorer;
   // Le champ d'intention vit dans le panneau Lama (`#lama-vue`) : il n'est
   // visible qu'avec lui, plus sur les quatre autres affichages où il n'avait
@@ -11104,6 +11108,9 @@ async function battementStems() {
   }
   reconcilierStems(e);
   edition.dureeMs = e.duree_ms;
+  edition.posMs = e.position_ms;
+  edition.posLueA = performance.now();
+  edition.enPause = e.en_pause;
   accelererAuPassage(e.passages ?? 0);
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(e.duree_ms)}`;
   edition.deriveMs = e.derive_ms;
@@ -11172,6 +11179,19 @@ const edition = {
   accelBoucle: false,
   passagesVus: 0,
   dureeMs: 0,
+  // « creer » (la pile de stems) ou « pratiquer » (la partition au centre) —
+  // choisi dans le rail (`docs/ui-spec-editeur.md`, décisions 11 et 12).
+  usage: "creer",
+  // La partie affichée en Pratiquer : « bass » (tablature) ou « drums »
+  // (portée de percussion). Choisie dans le rail, sans lien avec le solo ni
+  // la coupure : on peut lire sa partie en l'écoutant, ou la jouer à la place.
+  instrument: "bass",
+  // Dernière position lue au moteur, l'instant où on l'a lue et l'état de
+  // pause : de quoi extrapoler la position entre deux sondages pour la
+  // partition, qui veut une mise à jour toutes les 50 ms.
+  posMs: 0,
+  posLueA: 0,
+  enPause: true,
 };
 
 /// Pas d'accélération par passage de boucle, et la vitesse où l'on s'arrête.
@@ -11248,6 +11268,7 @@ async function majPulsation() {
     // Un autre morceau a été ouvert pendant le calcul.
     if (edition.source?.id !== src.id) return;
     edition.pulsation = p.premiers_temps.length >= 2 ? p : null;
+    if (edition.usage === "pratiquer") majUsage();
   } catch (e) {
     // Pas de boucle à la mesure : un réglage de moins, pas une erreur à
     // montrer (morceau sans pulsation, poids indisponibles hors ligne).
@@ -11343,7 +11364,7 @@ function positionnerBande() {
   const bande = $("boucle-bande");
   const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
   const etabli = $("editer-etabli");
-  if (!edition.boucle || !premier || etabli.hidden || !edition.dureeMs) {
+  if (!edition.boucle || !premier || etabli.hidden || !edition.dureeMs || edition.usage === "pratiquer") {
     bande.hidden = true;
     return;
   }
@@ -11368,6 +11389,272 @@ $("boucle-accel").addEventListener("click", () => {
   edition.accelBoucle = !edition.accelBoucle;
   majBoucleUI();
 });
+
+/* ------------------------------------------------ éditer : pratiquer */
+
+// La partition au centre (décision 11 de `ui-spec-editeur.md`), rendue par
+// alphaTab (MPL-2.0, `vendor/alphatab/`), chargé seulement quand on pratique.
+// alphaTab n'émet aucun son : il suit le lecteur de stems
+// (`PlayerMode.EnabledExternalMedia`) — chaque commande qu'il donne devient
+// un ordre au moteur, et le moteur lui rend la position.
+//
+// **Prototype** (chantier 1.4 de `plan-editer-pratique-creation.md`) : faute
+// de transcription, la partition ne porte que la grille mesurée — une note
+// par temps, une mesure par premier temps détecté, un `\sync` par mesure.
+const partition = {
+  api: null,
+  // Le morceau dont la grille est chargée, pour ne pas la recharger.
+  source: null,
+  // Instant du dernier clic dans la partition. alphaTab émet aussi des
+  // `seekTo` de lui-même pendant un chargement (0, puis quelques ms — vu à
+  // l'essai du 9 oct.) : on ne suit que ceux qui viennent d'un geste.
+  gesteA: -Infinity,
+  // Dernier défilement à la main : on ne ramène pas la vue au curseur
+  // pendant 3 s, le temps de lire plus loin.
+  moletteA: -Infinity,
+  // Dernier défilement lancé ici : l'animation dure ~0,5 s, on ne la
+  // relance pas à chaque tick de 50 ms pendant qu'elle se déroule.
+  defileA: -Infinity,
+  minuteur: null,
+};
+
+/// Charge un script une seule fois, même appelé plusieurs fois. Le
+/// recharger redéfinissait alphaTab sous l'instance en cours — le « panneau
+/// blanc » de l'essai du 9 oct.
+const scriptsCharges = new Map();
+function chargerScript(src) {
+  if (!scriptsCharges.has(src)) scriptsCharges.set(src, chargerScriptUneFois(src));
+  return scriptsCharges.get(src);
+}
+function chargerScriptUneFois(src) {
+  return new Promise((ok, ko) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = ok;
+    el.onerror = () => ko(new Error(`script introuvable : ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+/// L'alphaTex de la grille mesurée, pour l'instrument pratiqué : une note par
+/// temps, une métrique par mesure — celle que les temps détectés donnent —, un
+/// point de synchro par premier temps. La basse se lit en **tablature** (corde
+/// de mi à vide, faute de transcription), la batterie en **portée de
+/// percussion** (charleston fermé) — préférences arrêtées le 9 oct.
+function texGrille(p, titre, instrument) {
+  const P = p.premiers_temps;
+  const T = p.temps;
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  const batterie = instrument === "drums";
+  const piste = batterie
+    ? `\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}`
+    : `\\track "Basse" \\staff {tabs} \\tuning (G2 D2 A1 E1)`;
+  const note = batterie ? `"Hi-Hat (closed)".4` : "0.4.4";
+  const tete =
+    `\\title "${guillemets(titre)}" \\subtitle "Grille mesurée — prototype, sans transcription"` +
+    ` \\tempo ${Math.round(p.bpm ?? 120)}\n${piste}\n`;
+  const mesures = [];
+  let precedente = 0;
+  let k = 0;
+  for (let i = 0; i < P.length; i++) {
+    const fin = i + 1 < P.length ? P[i + 1] : Infinity;
+    while (k < T.length && T[k] < P[i] - 1e-3) k++;
+    let n = 0;
+    while (k + n < T.length && T[k + n] < fin - 1e-3) n++;
+    if (i + 1 >= P.length) n = p.metrique ?? 4;
+    n = Math.max(1, Math.min(n, 12));
+    // Portée de percussion : clé neutre, pas la clé de sol par défaut.
+    let m = i === 0 && batterie ? "\\clef neutral " : "";
+    m += n !== precedente ? `\\ts (${n} 4) ` : "";
+    precedente = n;
+    m += `\\sync (${i} 0 ${Math.round(P[i] * 1000)}) ` + Array(n).fill(note).join(" ");
+    mesures.push(m);
+  }
+  return tete + mesures.join(" |\n") + " |";
+}
+
+/// L'instrument dont on lit la partie : celui choisi dans le rail, s'il a
+/// un stem ; sinon l'autre ; sinon aucun.
+function instrumentPratique() {
+  const present = (n) => edition.stems.some((s) => s.nom === n);
+  if (present(edition.instrument)) return edition.instrument;
+  return ["bass", "drums"].find(present) ?? null;
+}
+
+/// La position du lecteur, extrapolée depuis le dernier sondage.
+function positionEstimee() {
+  if (edition.enPause) return edition.posMs;
+  return edition.posMs + (performance.now() - edition.posLueA) * edition.vitesse;
+}
+
+async function preparerPartition() {
+  if (partition.api) return partition.api;
+  await chargerScript("vendor/alphatab/alphaTab.min.js");
+  // `#partition` défile ; alphaTab dessine dans `#partition-rendu`, à côté du
+  // paragraphe d'aide — jamais d'`innerHTML` sur ce qu'il possède.
+  const hote = $("partition");
+  const api = new alphaTab.AlphaTabApi($("partition-rendu"), {
+    // Sans worker : il ne démarre pas hors d'un serveur (essai du 9 oct.),
+    // et le rendu sur le fil principal prend ~60 ms pour 130 mesures.
+    core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false },
+    display: { layoutMode: "page", scale: 0.9 },
+    player: {
+      playerMode: "enabledExternalMedia",
+      enableCursor: true,
+      enableUserInteraction: true,
+      // Le défilement est fait ici (`suivreCurseur`) : avec un lecteur
+      // externe, celui d'alphaTab ne suit pas la lecture.
+      scrollMode: "off",
+    },
+  });
+  // Ce qu'alphaTab demande, le moteur le fait. La vitesse et le volume
+  // restent ceux de la barre d'outils : la partition ne les règle pas.
+  const commandes = {
+    get backingTrackDuration() {
+      return edition.dureeMs;
+    },
+    get playbackRate() {
+      return 1;
+    },
+    set playbackRate(_) {},
+    get masterVolume() {
+      return 1;
+    },
+    set masterVolume(_) {},
+    seekTo(ms) {
+      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      invoke("stems_transport", { action: "deplacer", position: ms / 1000 }).catch(console.warn);
+    },
+    play() {
+      if (edition.enLecture) invoke("stems_transport", { action: "reprendre", position: null }).catch(console.warn);
+    },
+    pause() {
+      if (edition.enLecture) invoke("stems_transport", { action: "pause", position: null }).catch(console.warn);
+    },
+  };
+  const brancher = () => {
+    if (api.player?.output) api.player.output.handler = commandes;
+  };
+  brancher();
+  api.playerReady.on(brancher);
+  hote.addEventListener("pointerdown", () => {
+    partition.gesteA = performance.now();
+  });
+  hote.addEventListener("wheel", () => {
+    partition.moletteA = performance.now();
+  }, { passive: true });
+  partition.api = api;
+  return api;
+}
+
+/// Ramène la ligne jouée dans le haut de la vue quand elle sort de la zone
+/// lisible — sauf juste après un défilement à la main.
+///
+/// La mesure jouée se déduit de notre pulsation (dernier premier temps passé),
+/// sa place verticale de la table des positions d'alphaTab : pas besoin de lire
+/// l'élément curseur, que le lecteur externe ne déplace qu'à son rythme.
+function suivreCurseur() {
+  const hote = $("partition");
+  const P = edition.pulsation?.premiers_temps;
+  const table = partition.api?.boundsLookup ?? partition.api?.renderer?.boundsLookup;
+  const maintenant = performance.now();
+  if (!P || !table || maintenant - partition.moletteA < 3000 || maintenant - partition.defileA < 600) return;
+  const t = positionEstimee() / 1000;
+  let i = 0;
+  while (i + 1 < P.length && P[i + 1] <= t) i++;
+  const b = table.findMasterBarByIndex(i)?.lineAlignedBounds;
+  const surface = hote.querySelector(".at-surface");
+  if (!b || !surface) return;
+  // Par rectangles plutôt qu'`offsetTop` : la surface est dans
+  // `#partition-rendu`, lui-même sous le paragraphe d'aide.
+  const haut = surface.getBoundingClientRect().top - hote.getBoundingClientRect().top + hote.scrollTop + b.y;
+  const bas = haut + b.h;
+  const vue = hote.scrollTop;
+  if (haut < vue || bas > vue + hote.clientHeight * 0.85) {
+    partition.defileA = maintenant;
+    hote.scrollTo({ top: Math.max(0, haut - hote.clientHeight * 0.15), behavior: "smooth" });
+  }
+}
+
+async function montrerPartition() {
+  const hote = $("partition");
+  const p = edition.pulsation;
+  const instrument = instrumentPratique();
+  const message = !p
+    ? "Pulsation en cours de calcul… La partition se pose sur les mesures du morceau."
+    : !instrument
+      ? "Ce morceau n'a ni basse ni batterie séparées."
+      : null;
+  $("partition-aide").hidden = !message;
+  $("partition-aide").textContent = message ?? "";
+  $("partition-rendu").hidden = !!message;
+  if (message) return;
+  try {
+    const api = await preparerPartition();
+    const cle = `${edition.source?.id ?? ""}:${instrument}`;
+    if (partition.source !== cle) {
+      partition.source = cle;
+      api.tex(texGrille(p, txt(edition.source?.title, "?"), instrument));
+    }
+  } catch (e) {
+    $("partition-aide").hidden = false;
+    $("partition-aide").textContent = `La partition n'a pas pu s'afficher : ${String(e)}`;
+    console.warn("partition", e);
+  }
+  // 50 ms : la cadence que recommande alphaTab pour un lecteur externe.
+  clearInterval(partition.minuteur);
+  partition.minuteur = setInterval(() => {
+    const out = partition.api?.player?.output;
+    if (!out || edition.usage !== "pratiquer" || modeCourant !== "editer") return;
+    out.updatePosition(positionEstimee());
+    suivreCurseur();
+  }, 50);
+}
+
+function cacherPartition() {
+  clearInterval(partition.minuteur);
+  partition.minuteur = null;
+}
+
+/// Range le centre selon l'usage. Appelée par `majEtatEditer`.
+function majUsage() {
+  const etabli = $("editer-etabli");
+  const pratiquer = edition.usage === "pratiquer" && !etabli.hidden;
+  $("bloc-usage").hidden = etabli.hidden;
+  for (const b of document.querySelectorAll("#usages [data-usage]")) {
+    b.classList.toggle("segment--actif", b.dataset.usage === edition.usage);
+  }
+  const instrument = instrumentPratique();
+  $("instruments").hidden = edition.usage !== "pratiquer";
+  for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
+    b.classList.toggle("segment--actif", b.dataset.instrument === instrument);
+    b.disabled = !edition.stems.some((s) => s.nom === b.dataset.instrument);
+  }
+  $("usage-aide").textContent =
+    edition.usage === "pratiquer"
+      ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus."
+      : "";
+  etabli.classList.toggle("etabli--pratiquer", pratiquer);
+  $("partition").hidden = !pratiquer;
+  if (pratiquer) montrerPartition();
+  else cacherPartition();
+  positionnerPlayhead();
+  positionnerBande();
+}
+
+for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
+  b.addEventListener("click", () => {
+    edition.instrument = b.dataset.instrument;
+    majUsage();
+  });
+}
+
+for (const b of document.querySelectorAll("#usages [data-usage]")) {
+  b.addEventListener("click", () => {
+    edition.usage = b.dataset.usage;
+    majUsage();
+  });
+}
 
 /// Bornes et pas des deux réglages.
 ///
@@ -11831,6 +12118,7 @@ function majEtatEditer() {
     $("retour").textContent = "← Choisir un morceau";
   }
 
+  majUsage();
   if (etat === 3) positionnerPlayhead();
 }
 
@@ -11842,7 +12130,7 @@ function positionnerPlayhead() {
   const etabli = $("editer-etabli");
   const pistes = $("dock-pistes");
   const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
-  if (modeCourant !== "editer" || etabli.hidden || !premier || !pistes.children.length) {
+  if (modeCourant !== "editer" || etabli.hidden || !premier || !pistes.children.length || edition.usage === "pratiquer") {
     ph.hidden = true;
     return;
   }
