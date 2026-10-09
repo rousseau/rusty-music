@@ -392,8 +392,8 @@ A·Pratiquer (bascule dans la barre d'outils, autoroute au centre, stems réduit
 l'inspecteur, écoute A/B), B (« pratiquer » sur la ligne d'un stem, autoroute
 dépliée sous la ligne), C (usage choisi dans le rail, partition + tablature au
 centre). **Tranché le 9 oct. : variante C, la partition au centre**
-(`ui-spec-editeur.md`, décision 11). Reste à choisir où se bascule l'usage
-(rail ou barre d'outils).
+(`ui-spec-editeur.md`, décision 11). **L'usage se choisit dans le rail**
+(décision 12, 9 oct.) — le centre reste le plus clair possible.
 
 **Décidé le 8 oct.** : on itère sur les possibilités avant de figer. Pratiquer
 et créer ne demandent pas le même établi : l'un lit en continu une partie qui

@@ -407,6 +407,10 @@ réglage.
    une rangée de niveaux. L'autoroute de notes n'est plus la vue par défaut —
    elle reste une vue de repli si la transcription est trop peu sûre pour
    être gravée.
+12. **L'usage se choisit dans le rail.** Décidé le 9 octobre 2026 : un sélecteur
+   Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.
+   La barre d'outils garde les réglages d'écoute (vitesse, hauteur, boucle) ;
+   le centre ne porte que la partition (pratiquer) ou la pile (créer).
 
 ## Questions ouvertes
 
@@ -423,6 +427,6 @@ réglage.
 - ~~**Où vivent l'autoroute et la partition** dans l'établi ?~~ **Tranché le
   9 octobre : la partition (ou la tablature) occupe le centre** en mode
   pratique, la pile de stems se réduisant à une rangée de niveaux au-dessus
-  (variante C de `ui/prototype/maquette-editer-usages.html`). Reste ouvert :
-  l'usage se choisit-il dans le rail (comme la maquette C) ou dans la barre
-  d'outils (maquette A) ?
+  (variante C de `ui/prototype/maquette-editer-usages.html`). **L'usage
+  (Pratiquer / Créer) se choisit dans le rail**, comme dans la maquette C —
+  tranché le 9 octobre : le centre reste le plus clair possible.
