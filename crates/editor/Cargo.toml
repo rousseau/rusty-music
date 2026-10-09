@@ -28,6 +28,9 @@ burn.workspace       = true
 rodio.workspace      = true
 rustfft.workspace    = true
 wsola.workspace      = true
+beat-this.workspace  = true
+serde.workspace      = true
+serde_json.workspace = true
 rusty-music-core = { path = "../core" }
 thiserror.workspace  = true
 tracing.workspace    = true

@@ -109,6 +109,10 @@ struct Etat {
     /// Le jeu de stems en écoute, s'il y en a un. Il tient sa propre sortie
     /// audio : le lecteur du module 1 se tait pendant ce temps.
     stems: Mutex<Option<rusty_music_player::Multipiste>>,
+    /// Le pisteur de pulsation (Beat This!), chargé au premier usage puis
+    /// gardé — 83 Mo de poids, 30 ms à charger : le garder évite surtout de
+    /// relire le disque à chaque morceau ouvert.
+    pisteur: Mutex<Option<rusty_music_editor::pulsation::Pisteur>>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -5921,6 +5925,9 @@ fn stems_transport(etat: State<Etat>, action: String, position: Option<f64>) -> 
         // l'écart déjà pris. Les deux gestes sont distincts, et il faut les
         // deux — égaliser les vitesses arrête la dérive mais laisse le décalage.
         "realigner" => m.realigner(),
+        // Ôter la boucle — la poser passe par `stems_boucle`, qui a deux
+        // bornes à recevoir.
+        "sans_boucle" => m.boucler(None),
         "arreter" => {
             drop(garde);
             *verrou(&etat.stems) = None;
@@ -5928,6 +5935,80 @@ fn stems_transport(etat: State<Etat>, action: String, position: Option<f64>) -> 
         _ => return Err(format!("action inconnue : {action}")),
     }
     Ok(())
+}
+
+/// Pose une boucle A-B sur les stems en écoute, bornes en secondes du
+/// morceau d'origine. L'aimantation sur les mesures est faite par l'interface,
+/// qui tient la pulsation : le moteur boucle où on lui dit.
+#[tauri::command(async)]
+fn stems_boucle(etat: State<Etat>, debut: f64, fin: f64) -> Result<(), String> {
+    if !(debut.is_finite() && fin.is_finite() && fin > debut && debut >= 0.0) {
+        return Err(format!("bornes de boucle invalides : {debut} – {fin}"));
+    }
+    if let Some(m) = verrou(&etat.stems).as_ref() {
+        m.boucler(Some((
+            std::time::Duration::from_secs_f64(debut),
+            std::time::Duration::from_secs_f64(fin),
+        )));
+    }
+    Ok(())
+}
+
+/// La pulsation d'un morceau, telle que l'interface la consomme.
+#[derive(serde::Serialize)]
+struct VuePulsation {
+    /// Chaque temps, en secondes du fichier d'origine.
+    temps: Vec<f32>,
+    /// Les premiers temps de mesure, en secondes.
+    premiers_temps: Vec<f32>,
+    bpm: Option<f32>,
+    /// Temps par mesure.
+    metrique: Option<u32>,
+}
+
+/// Temps et premiers temps de mesure d'un morceau (Beat This!).
+///
+/// En cache à côté de ses stems (`pulsation.json`) : quelques secondes de
+/// calcul la première fois, rien ensuite. Les poids (83 Mo) se téléchargent
+/// au premier usage, empreintes vérifiées, comme les variantes de démixage.
+/// Le pisteur reste chargé une fois qu'il l'a été.
+#[tauri::command(async)]
+fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
+    use rusty_music_editor::pulsation::{Modele, Pisteur, Pulsation, FICHIER_CACHE};
+
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let source = PathBuf::from(&chemin);
+    let dossier = dossier_stems(&etat, &source);
+    std::fs::create_dir_all(&dossier).map_err(echec)?;
+    let cache = dossier.join(FICHIER_CACHE);
+    let modele = Modele::Complet;
+
+    let p = match Pulsation::lire(&cache, modele) {
+        Some(p) => p,
+        None => {
+            if !modele.present() {
+                tracing::info!("pulsation : téléchargement des poids Beat This!");
+                modele.telecharger(|_, _| {}).map_err(echec)?;
+            }
+            let mut garde = verrou(&etat.pisteur);
+            if garde.is_none() {
+                *garde = Some(Pisteur::charger(modele).map_err(echec)?);
+            }
+            let debut = std::time::Instant::now();
+            let p = garde
+                .as_mut()
+                .expect("chargé juste au-dessus")
+                .analyser_avec_cache(&source, &cache)
+                .map_err(echec)?;
+            tracing::info!(ms = debut.elapsed().as_millis() as u64, temps = p.temps.len(), "pulsation calculée");
+            p
+        }
+    };
+    Ok(VuePulsation { bpm: p.bpm(), metrique: p.metrique(), temps: p.temps, premiers_temps: p.premiers_temps })
 }
 
 /// État du multipiste, sondé par l'interface pour animer sa barre.
@@ -5949,6 +6030,11 @@ struct EtatStems {
     /// **Mesuré, pas prédit** — « les stems ont dérivé de 1,4 s » se vérifie à
     /// l'oreille, « ils peuvent se désynchroniser » ne dit rien.
     derive_ms: u64,
+    /// Boucle A-B posée, en secondes de référence.
+    boucle: Option<(f64, f64)>,
+    /// Retours au début de boucle depuis qu'elle est posée — l'interface
+    /// s'en sert pour accélérer d'un cran à chaque passage.
+    passages: u32,
 }
 
 #[tauri::command(async)]
@@ -5965,6 +6051,8 @@ fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
                 niveaux: m.niveaux(),
                 vitesses: m.vitesses(),
                 derive_ms: m.derive().as_millis() as u64,
+                boucle: m.boucle().map(|(a, b)| (a.as_secs_f64(), b.as_secs_f64())),
+                passages: m.passages(),
             },
             None => EtatStems::default(),
         }
@@ -8018,6 +8106,7 @@ fn main() {
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
+                pisteur: Mutex::new(None),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un
@@ -8371,6 +8460,8 @@ fn main() {
             stems_play,
             stems_gain,
             stems_transport,
+            stems_boucle,
+            pulsation,
             stems_state,
             stem_spectre,
             voisins_de_stem,

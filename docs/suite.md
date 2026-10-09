@@ -11,7 +11,7 @@ l'ordre et les raisons.
 | Cœur d'ingestion | livré — 27 044 morceaux, scan et surveillance, décodage Opus |
 | Module 1 — Lecteur (mode Écouter) | **livré, v0.1.0** : file (aléatoire, répétition, glisser-déposer), univers de l'artiste, bios, critiques, crédits, popularité, spectrogramme, normalisation « N ». Plan 0.2 **entièrement traité** (reprise de session, playlists, historique/favoris, « En cours de lecture » macOS, minuteur…) ; restes : `docs/plan-ecouter-v0.2.md` |
 | Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie**. **État au 7 oct. 2026** : carte de Paris, peuplement chronologique et Lama (playlists par parties) livrés ; descripteurs remesurés (`VERSION_DESCRIPTEURS = 3`) et dates MusicBrainz posées. **Vérifié à la main le 7 oct.** (clic bâtiment = sélection, filtre de famille, itinéraire borné, couleur au dézoom, zooms). **Restes** : Lama sur l'historique d'écoute (`ecoute`), puis raffinement multi-tours / fusion de graines / ordre lissé ; peuplement persisté (Nyström) et autocomplétion multi-type écartés pour l'instant. Détail : `carto-etapes.md`, `ui-spec.md`, `recherche-llm-playlist.md` |
-| Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export |
+| Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export. **Suite décidée le 8 oct. 2026** : deux usages, *pratiquer* (transcription basse/batterie, partition défilante, boucles) et *créer* (greffe mesure par mesure puis par section, génération) — `recherche-editer-pratique-creation.md`, plan : `plan-editer-pratique-creation.md` |
 | Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli pour les pochettes manquantes livré** (CAA release → CAA release-group → Deezer ; cache négatif à péremption 30 j, une panne réseau n'est jamais mise en cache) ; **vérification des pochettes livrée** (5 oct. 2026, `crates/core/src/pochettes_verif.rs` : à chaque analyse, étape 2 juste après le scan, incrémentale par dossier ; signale image illisible/tronquée, image intégrée ≠ `cover.jpg`, même image intégrée sur des albums d'artistes différents ; panneau « Pochettes suspectes » du mode Bibliothèque, `rusty-music pochettes` en CLI ; ne modifie jamais un fichier. Ne voit pas une image fausse sans référence locale (pas de `cover.jpg`, image propre à un seul album) ni un fichier ajouté par la surveillance seule avant la prochaine analyse) |
 
 ## Les dettes connues
@@ -369,11 +369,14 @@ l'idée d'emprunter ceux d'AudioMuse-AI a été mesurée puis écartée : leur c
 Caler deux morceaux demande mieux que ±3 % et une position de battement. Ces
 deux grandeurs sont à calculer chez nous. Référence à étudier : Mixxx.
 
-### 9. Génération de piste — non planifié
+### 9. Génération de piste — ~~non planifié~~ **planifiée le 8 oct. 2026**
 
-`docs/modules.md` la classe expérimentale et tardive : qualité inégale, calcul
-très intensif, licences floues. À laisser de côté tant que le reste n'est pas
-solide.
+~~`docs/modules.md` la classe expérimentale et tardive : qualité inégale, calcul
+très intensif, licences floues.~~ La politique de licence précisée le 8 oct.
+(on adopte la licence de chaque poids et on s'y conforme) rend utilisables
+MusicGen-Stem, STAGE/DARC, ACE-Step 1.5 et RAVE. Toujours tardive et
+facultative : portée en Burn (pas de Python), chantier 2.7 de `plan-editer-pratique-creation.md`,
+après la greffe mesure par mesure et la recherche de greffons.
 
 ## Ce qui n'est pas dans ce plan, et pourquoi
 

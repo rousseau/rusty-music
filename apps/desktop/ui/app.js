@@ -11103,6 +11103,8 @@ async function battementStems() {
     poserLecture(!e.en_pause);
   }
   reconcilierStems(e);
+  edition.dureeMs = e.duree_ms;
+  accelererAuPassage(e.passages ?? 0);
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(e.duree_ms)}`;
   edition.deriveMs = e.derive_ms;
   majDerive();
@@ -11158,7 +11160,25 @@ const edition = {
   tempoSource: null,
   // Dernière dérive mesurée par le moteur, en millisecondes.
   deriveMs: 0,
+  // Temps et premiers temps de mesure du morceau ouvert (`pulsation`, Beat
+  // This!) : { temps, premiers_temps, bpm, metrique }, ou `null` tant qu'ils
+  // ne sont pas calculés. Sert la boucle et, plus tard, la partition.
+  pulsation: null,
+  // La boucle posée : { debut, fin, mesures } en secondes d'origine, ou `null`.
+  boucle: null,
+  // Nombre de mesures que « boucler » prend — retenu d'une boucle à l'autre.
+  mesuresBoucle: 4,
+  // Accélérer d'un cran à chaque passage (Soundslice) : jusqu'à 100 %.
+  accelBoucle: false,
+  passagesVus: 0,
+  dureeMs: 0,
 };
+
+/// Pas d'accélération par passage de boucle, et la vitesse où l'on s'arrête.
+/// On ralentit pour apprendre un passage et on remonte au tempo d'origine ;
+/// aller au-delà n'est pas l'objet.
+const ACCEL_PAS = 0.02;
+const ACCEL_CIBLE = 1.0;
 
 /// En deçà, la pulsation n'est pas franche et on ne propose pas de BPM cible :
 /// « au-delà de 2, la pulsation est franche » (`battements::Grille`).
@@ -11214,6 +11234,140 @@ async function majTempoSource() {
   if (!edition.tempoSource) edition.vitesseEnBpm = false;
   dessinerReglages();
 }
+
+/// Va chercher la pulsation du morceau ouvert (temps et premiers temps de
+/// mesure). Quelques secondes la première fois, en cache ensuite ; le réglage
+/// « boucle » n'apparaît qu'une fois qu'elle est là.
+async function majPulsation() {
+  const src = edition.source;
+  edition.pulsation = null;
+  majBoucleUI();
+  if (!src) return;
+  try {
+    const p = await invoke("pulsation", { id: src.id });
+    // Un autre morceau a été ouvert pendant le calcul.
+    if (edition.source?.id !== src.id) return;
+    edition.pulsation = p.premiers_temps.length >= 2 ? p : null;
+  } catch (e) {
+    // Pas de boucle à la mesure : un réglage de moins, pas une erreur à
+    // montrer (morceau sans pulsation, poids indisponibles hors ligne).
+    console.warn("pulsation", e);
+  }
+  majBoucleUI();
+}
+
+/// Les bornes de `n` mesures à partir de celle qui contient `t`, en secondes.
+/// Au-delà du dernier premier temps, la mesure se prolonge de la longueur de
+/// la précédente.
+function bornesMesures(t, n) {
+  const p = edition.pulsation?.premiers_temps;
+  if (!p || p.length < 2) return null;
+  let i = 0;
+  while (i + 1 < p.length && p[i + 1] <= t) i++;
+  const debut = p[i];
+  const derniere = p[p.length - 1] - p[p.length - 2];
+  const j = i + n;
+  const fin = j < p.length ? p[j] : p[p.length - 1] + (j - (p.length - 1)) * derniere;
+  return { debut, fin: Math.min(fin, edition.dureeMs / 1000 || fin) };
+}
+
+/// Pose (ou repose) la boucle côté moteur. Le multipiste est recréé à chaque
+/// rechargement des stems (transposition, greffe) : la boucle doit le suivre.
+async function reposerBoucle() {
+  if (!edition.enLecture) return;
+  if (edition.boucle) {
+    await invoke("stems_boucle", { debut: edition.boucle.debut, fin: edition.boucle.fin });
+  } else {
+    await invoke("stems_transport", { action: "sans_boucle", position: null });
+  }
+  edition.passagesVus = 0;
+}
+
+/// Boucle `edition.mesuresBoucle` mesures autour de la position courante, ou
+/// ôte la boucle. Ancrée sur la mesure qui contient la tête de lecture : on
+/// boucle ce qu'on vient d'entendre.
+async function basculerBoucle() {
+  if (edition.boucle) {
+    edition.boucle = null;
+  } else {
+    const t = (edition.tete * edition.dureeMs) / 1000;
+    const b = bornesMesures(t, edition.mesuresBoucle);
+    if (!b) return;
+    edition.boucle = { ...b, mesures: edition.mesuresBoucle };
+  }
+  await reposerBoucle();
+  majBoucleUI();
+}
+
+/// Change le nombre de mesures d'une boucle posée, sans déplacer son début.
+async function allongerBoucle(d) {
+  edition.mesuresBoucle = Math.max(1, Math.min(32, edition.mesuresBoucle + d));
+  if (edition.boucle) {
+    const b = bornesMesures(edition.boucle.debut + 1e-3, edition.mesuresBoucle);
+    if (b) edition.boucle = { ...b, mesures: edition.mesuresBoucle };
+    await reposerBoucle();
+  }
+  majBoucleUI();
+}
+
+/// Un passage de plus : un cran de vitesse, jusqu'au tempo d'origine.
+async function accelererAuPassage(passages) {
+  if (!edition.accelBoucle || passages <= edition.passagesVus) {
+    edition.passagesVus = passages;
+    return;
+  }
+  const crans = passages - edition.passagesVus;
+  edition.passagesVus = passages;
+  if (edition.vitesse >= ACCEL_CIBLE) return;
+  edition.vitesse = Math.min(ACCEL_CIBLE, edition.vitesse + crans * ACCEL_PAS);
+  await appliquerVitesses();
+  dessinerReglages();
+}
+
+function majBoucleUI() {
+  const r = $("boucle-reglage");
+  r.hidden = !edition.pulsation;
+  const active = !!edition.boucle;
+  $("boucle").setAttribute("aria-pressed", String(active));
+  $("boucle").classList.toggle("reglage__unite--actif", active);
+  $("boucle").textContent = active ? "boucle" : "boucler";
+  $("boucle-detail").hidden = !active;
+  $("boucle-mesures").textContent = `${edition.mesuresBoucle} mes.`;
+  $("boucle-accel").setAttribute("aria-pressed", String(edition.accelBoucle));
+  $("boucle-accel").classList.toggle("reglage__unite--actif", edition.accelBoucle);
+  positionnerBande();
+}
+
+/// La bande de la boucle, en travers de la pile — calée comme le playhead.
+function positionnerBande() {
+  const bande = $("boucle-bande");
+  const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
+  const etabli = $("editer-etabli");
+  if (!edition.boucle || !premier || etabli.hidden || !edition.dureeMs) {
+    bande.hidden = true;
+    return;
+  }
+  const rc = premier.canvas.getBoundingClientRect();
+  const re = etabli.getBoundingClientRect();
+  const rp = $("dock-pistes").getBoundingClientRect();
+  const d = edition.dureeMs / 1000;
+  const x0 = rc.left - re.left + etabli.scrollLeft + (edition.boucle.debut / d) * rc.width;
+  const x1 = rc.left - re.left + etabli.scrollLeft + (edition.boucle.fin / d) * rc.width;
+  bande.style.left = `${Math.round(x0)}px`;
+  bande.style.width = `${Math.max(1, Math.round(x1 - x0))}px`;
+  bande.style.top = `${Math.round(rp.top - re.top + etabli.scrollTop)}px`;
+  bande.style.height = `${$("dock-pistes").offsetHeight}px`;
+  bande.hidden = false;
+}
+
+$("boucle").addEventListener("click", () => basculerBoucle().catch((e) => remonter(e, "boucle")));
+for (const b of document.querySelectorAll("[data-boucle]")) {
+  b.addEventListener("click", () => allongerBoucle(Number(b.dataset.boucle)).catch((e) => remonter(e, "boucle")));
+}
+$("boucle-accel").addEventListener("click", () => {
+  edition.accelBoucle = !edition.accelBoucle;
+  majBoucleUI();
+});
 
 /// Bornes et pas des deux réglages.
 ///
@@ -11433,6 +11587,7 @@ async function appliquerReglages() {
       edition.enLecture = true;
       verifierNoms(noms);
       await appliquerVitesses();
+      await reposerBoucle();
       await appliquerNiveaux();
       if (avant) {
         // La position se conserve **en proportion** : le rechargement remet
@@ -11595,6 +11750,8 @@ async function poserSourceEdition() {
   // Revenir sur le même morceau (simple ré-entrée dans le mode) garde
   // l'établi et ses réglages en place.
   if (change) {
+    edition.pulsation = null;
+    edition.boucle = null;
     edition.stems = [];
     edition.stemSel = null;
     // Le tempo est propre au morceau : on l'oublie tant que le nouveau n'est
@@ -11796,6 +11953,7 @@ async function chargerStemsExistants(t) {
     dessinerStems();
     $("demix-etat").textContent = `${trouves.length} stems déjà calculés`;
     majTempoSource();
+    majPulsation();
     if (modeCourant === "editer") await prendreLaMain();
   } else {
     edition.stems = [];
@@ -11931,6 +12089,7 @@ $("lancer-demix").addEventListener("click", async () => {
     edition.muets.clear();
     dessinerStems();
     majTempoSource();
+    majPulsation();
     // Même règle qu'au chargement d'un démixage existant : afficher des stems,
     // c'est en faire la source. Sans cela, solo, coupure, vitesse et hauteur
     // n'agissaient sur rien tant qu'on n'avait pas relancé la lecture.
@@ -12477,6 +12636,7 @@ function poserTete(frac) {
   edition.tete = Math.min(1, Math.max(0, frac || 0));
   for (const s of edition.stems) peindreSpectre(s);
   positionnerPlayhead();
+  positionnerBande();
 }
 
 /// Table de 256 couleurs interpolée sur `--rampe`, calculée une fois.
@@ -12632,6 +12792,7 @@ async function lireStems() {
     edition.enLecture = true;
     verifierNoms(noms);
     await appliquerVitesses();
+    await reposerBoucle();
   } catch (e) {
     edition.enLecture = false;
     // `stems_play` a pu réussir avant qu'une étape suivante échoue : on coupe

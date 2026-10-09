@@ -33,7 +33,7 @@
 //! n'aurait plus de position à montrer.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -128,6 +128,27 @@ const UNITE: f64 = (1u64 << FRAC) as f64;
 /// producteur et un tampon circulaire —, ce que cette mesure ne rend pas
 /// nécessaire aujourd'hui.
 const BLOC: usize = 128;
+
+/// Fondu aux deux bords d'une boucle, en trames — 5 ms. Assez court pour ne
+/// pas manger l'attaque du premier temps, assez long pour que le saut ne
+/// claque pas : on revient sur un premier temps, presque toujours une
+/// attaque, mais on le quitte au milieu de ce qui sonne encore.
+const FONDU_BOUCLE: u64 = (SR as u64 * 5) / 1000;
+
+/// Plus grand pas de la position de référence entre deux trames, en trames —
+/// au-delà, c'est un déplacement. ×4 est la vitesse maximale ; marge comprise.
+const PAS_MAX: u64 = 8;
+
+/// Une boucle A-B partagée entre l'interface et le fil audio, en trames de la
+/// position de référence. `fin == 0` : pas de boucle.
+#[derive(Clone, Default)]
+struct Boucle {
+    debut: Arc<AtomicU64>,
+    fin: Arc<AtomicU64>,
+    /// Retours au début depuis la pose de la boucle — de quoi accélérer à
+    /// chaque passage (chantier 0.3 de `plan-editer-pratique-creation.md`).
+    passages: Arc<AtomicU32>,
+}
 
 /// Un stem et sa tête de lecture : matière, niveau, vitesse, position.
 ///
@@ -265,12 +286,62 @@ struct Melange {
     /// Canal en cours dans la trame courante.
     canal: usize,
     trames: usize,
+    boucle: Boucle,
+    /// Position de référence à la trame précédente : la boucle se déclenche
+    /// quand on **franchit** sa fin, pas quand on est au-delà — un
+    /// déplacement après la boucle n'y ramène pas.
+    precedente: u64,
+    /// Trames de fondu d'entrée qui restent après un retour au début.
+    rampe: u64,
+    /// Gain de la trame courante, le même pour ses deux canaux.
+    gain: f32,
+}
+
+impl Melange {
+    /// Au début de chaque trame : retour au début de boucle si l'on vient
+    /// d'en franchir la fin, et gain des fondus.
+    fn debut_de_trame(&mut self) {
+        let mut pos = self.maitre.load(Ordering::Relaxed) >> FRAC;
+        let fin = self.boucle.fin.load(Ordering::Relaxed);
+        let debut = self.boucle.debut.load(Ordering::Relaxed);
+        let active = fin > debut;
+        // Un pas de lecture avance d'au plus quatre trames (vitesse maximale
+        // ×4) ; un écart plus grand est un déplacement, qui ne franchit rien.
+        let franchie = self.precedente < fin && pos >= fin && pos - self.precedente <= PAS_MAX;
+        if active && franchie {
+            let brut = debut << FRAC;
+            self.maitre.store(brut, Ordering::Relaxed);
+            for v in &mut self.voix {
+                v.curseur.store(brut, Ordering::Relaxed);
+                // L'étireur garde ce qu'il a calculé avant le saut : il le
+                // rendrait par-dessus le début de la boucle.
+                v.changer_de_voie();
+            }
+            self.boucle.passages.fetch_add(1, Ordering::Relaxed);
+            self.rampe = FONDU_BOUCLE;
+            pos = debut;
+        }
+        self.precedente = pos;
+
+        let mut g = 1.0f32;
+        if active && pos < fin && pos >= debut && fin - pos < FONDU_BOUCLE {
+            g = (fin - pos) as f32 / FONDU_BOUCLE as f32;
+        }
+        if self.rampe > 0 {
+            g *= 1.0 - self.rampe as f32 / FONDU_BOUCLE as f32;
+            self.rampe -= 1;
+        }
+        self.gain = g;
+    }
 }
 
 impl Iterator for Melange {
     type Item = rodio::Sample;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.canal == 0 {
+            self.debut_de_trame();
+        }
         let canal = self.canal;
         let mut somme = 0.0f32;
         let mut vivante = false;
@@ -297,7 +368,7 @@ impl Iterator for Melange {
         // La somme des stems reconstitue le mélange d'origine, qui pouvait
         // déjà frôler la pleine échelle : sans écrêtage, un solo à plein
         // niveau saturerait.
-        Some(somme.clamp(-1.0, 1.0))
+        Some((somme * self.gain).clamp(-1.0, 1.0))
     }
 }
 
@@ -331,6 +402,7 @@ pub struct Multipiste {
     maitre: Arc<AtomicU64>,
     vitesse_maitre: Vitesse,
     trames: usize,
+    boucle: Boucle,
 }
 
 impl Multipiste {
@@ -406,12 +478,17 @@ impl Multipiste {
         // En pause **avant** d'ajouter la source : sinon elle sonne pendant
         // l'intervalle entre l'ajout et la pause.
         lecteur.pause();
+        let boucle = Boucle::default();
         lecteur.append(Melange {
             voix,
             maitre: Arc::clone(&maitre),
             vitesse_maitre: vitesse_maitre.clone(),
             canal: 0,
             trames,
+            boucle: boucle.clone(),
+            precedente: 0,
+            rampe: 0,
+            gain: 1.0,
         });
 
         Ok(Self {
@@ -425,6 +502,7 @@ impl Multipiste {
             maitre,
             vitesse_maitre,
             trames,
+            boucle,
         })
     }
 
@@ -566,6 +644,41 @@ impl Multipiste {
         for c in &self.curseurs {
             c.store(ou, Ordering::Relaxed);
         }
+    }
+
+    /// Pose une boucle A-B sur la position de référence, ou l'ôte (`None`).
+    ///
+    /// La lecture revient en `debut` chaque fois qu'elle **franchit** `fin`,
+    /// tous stems réalignés, avec 5 ms de fondu de part et d'autre. Un
+    /// déplacement au-delà de la fin n'y ramène pas : on peut sortir d'une
+    /// boucle sans l'ôter. Les bornes à aimanter sur les mesures sont
+    /// l'affaire de l'appelant (`editor::pulsation`).
+    pub fn boucler(&self, bornes: Option<(Duration, Duration)>) {
+        // `fin` d'abord à zéro : le fil audio ne voit jamais un `debut` neuf
+        // avec une `fin` ancienne.
+        self.boucle.fin.store(0, Ordering::Relaxed);
+        self.boucle.passages.store(0, Ordering::Relaxed);
+        if let Some((a, b)) = bornes {
+            let trame = |d: Duration| ((d.as_secs_f64() * SR as f64) as u64).min(self.trames as u64);
+            let (a, b) = (trame(a), trame(b));
+            if b > a {
+                self.boucle.debut.store(a, Ordering::Relaxed);
+                self.boucle.fin.store(b, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// La boucle posée, s'il y en a une.
+    pub fn boucle(&self) -> Option<(Duration, Duration)> {
+        let fin = self.boucle.fin.load(Ordering::Relaxed);
+        let debut = self.boucle.debut.load(Ordering::Relaxed);
+        let s = |t: u64| Duration::from_secs_f64(t as f64 / SR as f64);
+        (fin > debut).then(|| (s(debut), s(fin)))
+    }
+
+    /// Retours au début de boucle depuis qu'elle a été posée.
+    pub fn passages(&self) -> u32 {
+        self.boucle.passages.load(Ordering::Relaxed)
     }
 
     /// Vrai quand plus aucun stem n'a de matière — pas quand le premier finit.
@@ -731,6 +844,10 @@ mod tests {
                 vitesse_maitre: vitesse_maitre.clone(),
                 canal: 0,
                 trames,
+                boucle: Boucle::default(),
+                precedente: 0,
+                rampe: 0,
+                gain: 1.0,
             },
             curseurs,
             vitesses,
@@ -943,6 +1060,78 @@ mod tests {
             let aligne = brut - brut % CANAUX as usize;
             assert_eq!(aligne % CANAUX as usize, 0, "désaligné pour {brut}");
             assert!(aligne <= brut);
+        }
+    }
+
+    /// Une piste qui vaut son numéro de trame, pour lire la position à
+    /// l'oreille du test.
+    fn rampe_de_trames(n: usize) -> Vec<i16> {
+        (0..n).flat_map(|t| [t as i16, t as i16]).collect()
+    }
+
+    /// Franchir la fin ramène au début, toutes têtes ensemble, et compte un
+    /// passage.
+    #[test]
+    fn la_boucle_ramene_au_debut_en_franchissant_la_fin() {
+        let mut b = banc(vec![rampe_de_trames(2000), rampe_de_trames(2000)], vec![Niveau::nouveau(1.0), Niveau::nouveau(1.0)]);
+        b.melange.boucle.debut.store(300, Ordering::Relaxed);
+        b.melange.boucle.fin.store(1000, Ordering::Relaxed);
+        // Une voix en avance (vitesse propre) : le saut la réaligne aussi.
+        b.curseurs[1].store(1100 << FRAC, Ordering::Relaxed);
+        b.maitre.store(990 << FRAC, Ordering::Relaxed);
+        b.melange.precedente = 990;
+        for _ in 0..(10 * CANAUX as usize) {
+            b.melange.next();
+        }
+        // On est sur la trame 1000 : le début de la suivante saute.
+        b.melange.next();
+        assert_eq!(b.maitre.load(Ordering::Relaxed) >> FRAC, 300);
+        assert_eq!(b.melange.boucle.passages.load(Ordering::Relaxed), 1);
+        assert!(b.curseurs.iter().all(|c| (c.load(Ordering::Relaxed) >> FRAC) <= 301), "têtes réalignées");
+    }
+
+    /// Un déplacement au-delà de la fin ne ramène pas dans la boucle.
+    #[test]
+    fn se_deplacer_apres_la_boucle_nen_sort_pas_de_force() {
+        let mut b = banc(vec![rampe_de_trames(3000)], vec![Niveau::nouveau(1.0)]);
+        b.melange.boucle.debut.store(300, Ordering::Relaxed);
+        b.melange.boucle.fin.store(1000, Ordering::Relaxed);
+        b.curseurs[0].store(2000 << FRAC, Ordering::Relaxed);
+        b.maitre.store(2000 << FRAC, Ordering::Relaxed);
+        // `precedente` vaut 0 : comme juste après un déplacement depuis le
+        // début du morceau.
+        for _ in 0..8 {
+            b.melange.next();
+        }
+        assert!(b.maitre.load(Ordering::Relaxed) >> FRAC >= 2000);
+        assert_eq!(b.melange.boucle.passages.load(Ordering::Relaxed), 0);
+    }
+
+    /// Fondu de sortie avant la fin, fondu d'entrée après le saut : le gain
+    /// passe par zéro au raccord, jamais de saut d'amplitude.
+    #[test]
+    fn le_raccord_de_boucle_est_fondu() {
+        let mut b = banc(vec![vec![10_000i16; 2 * 4000]], vec![Niveau::nouveau(1.0)]);
+        b.melange.boucle.debut.store(1000, Ordering::Relaxed);
+        b.melange.boucle.fin.store(2000, Ordering::Relaxed);
+        b.curseurs[0].store(1500 << FRAC, Ordering::Relaxed);
+        b.maitre.store(1500 << FRAC, Ordering::Relaxed);
+        b.melange.precedente = 1500;
+        let plein = 10_000.0 / i16::MAX as f32;
+        let mut min = f32::MAX;
+        let mut fin_de_boucle = Vec::new();
+        for k in 0..(1000 * CANAUX as usize) {
+            let v = b.melange.next().unwrap();
+            if k % 2 == 0 && k / 2 > 600 {
+                fin_de_boucle.push(v);
+            }
+            min = min.min(v);
+        }
+        assert!(min < 0.05 * plein, "le gain doit passer près de zéro au raccord : {min}");
+        // Pas de saut d'une trame à l'autre plus grand qu'un pas de fondu.
+        let pas_max = plein / FONDU_BOUCLE as f32 * 1.5;
+        for w in fin_de_boucle.windows(2) {
+            assert!((w[1] - w[0]).abs() <= pas_max, "saut d'amplitude {} > {pas_max}", (w[1] - w[0]).abs());
         }
     }
 }

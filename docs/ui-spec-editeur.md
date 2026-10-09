@@ -391,6 +391,23 @@ réglage.
    septembre — le besoin est de fondre des matières de morceaux différents, et
    un ratio ne dit pas si elles s'accordent.
 
+10. **Deux usages dans le même établi : pratiquer et créer.** Décidé le 8
+   octobre 2026 (`recherche-editer-pratique-creation.md`, plan :
+   `plan-editer-pratique-creation.md`). *Pratiquer* : couper le stem de son
+   instrument, lire sa partie transcrite qui défile (autoroute de notes
+   d'abord, partition/tablature alphaTab ensuite), boucler par mesures,
+   ralentir. *Créer* : remplacer un stem par celui d'un autre morceau (greffe
+   calée mesure par mesure, puis section par section) ou par un stem généré,
+   ou en **ajouter** un. Ni l'un ni l'autre n'ouvre de session : on édite
+   toujours un seul morceau, la décision 1 tient.
+11. **En pratique, la partition est au centre.** Décidé le 9 octobre 2026 sur
+   maquette (`ui/prototype/maquette-editer-usages.html`, variante C) : portée
+   et/ou tablature de l'instrument coupé à la place de la pile, curseur sur la
+   mesure, boucle visible sur les mesures ; les stems restent accessibles en
+   une rangée de niveaux. L'autoroute de notes n'est plus la vue par défaut —
+   elle reste une vue de repli si la transcription est trop peu sûre pour
+   être gravée.
+
 ## Questions ouvertes
 
 - ~~**Le remplacement de stem est-il dans ce module ou au-delà ?**~~ **Tranché
@@ -403,3 +420,9 @@ réglage.
   diviserait la taille par deux mais demande un encodeur, donc une dépendance.
 - **Le cache de stems doit-il se purger tout seul** (les N derniers morceaux, ou
   une taille plafond), ou seulement à la main depuis les Réglages ?
+- ~~**Où vivent l'autoroute et la partition** dans l'établi ?~~ **Tranché le
+  9 octobre : la partition (ou la tablature) occupe le centre** en mode
+  pratique, la pile de stems se réduisant à une rangée de niveaux au-dessus
+  (variante C de `ui/prototype/maquette-editer-usages.html`). Reste ouvert :
+  l'usage se choisit-il dans le rail (comme la maquette C) ou dans la barre
+  d'outils (maquette A) ?

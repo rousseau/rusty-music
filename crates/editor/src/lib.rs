@@ -11,6 +11,7 @@
 pub mod decode;
 pub mod etirement;
 pub mod greffe;
+pub mod pulsation;
 pub mod wav;
 
 use std::future::Future;
@@ -44,7 +45,7 @@ pub fn moteur() -> &'static str {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("poids du modèle introuvables : {0} — voir scripts/preparer-demucs.sh")]
+    #[error("poids du modèle introuvables : {0}")]
     PoidsAbsents(String),
 
     #[error("téléchargement des poids : {0}")]

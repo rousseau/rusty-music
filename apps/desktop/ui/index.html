@@ -368,6 +368,7 @@
         <div id="editer-etabli" class="etabli" hidden>
           <div id="dock-pistes" class="dock__pistes"></div>
           <div id="playhead" class="playhead" hidden></div>
+          <div id="boucle-bande" class="boucle-bande" hidden></div>
         </div>
 
         <!-- Mode Explorer : la carte -->
@@ -987,6 +988,21 @@
           <input id="val-tonalite" class="reglage__val" inputmode="numeric"
                  aria-label="Transposition en demi-tons" value="±0">
           <button data-r="tonalite" data-d="1" aria-label="Monter d'un demi-ton">+</button>
+        </div>
+        <!-- Boucle calée sur les mesures (Beat This!) : n'apparaît qu'une fois
+             la pulsation du morceau connue. Le détail (longueur, accélération)
+             attend qu'une boucle soit posée — `interface-guidelines.md`,
+             règles 5 et 8. -->
+        <div class="reglage" role="group" aria-label="Boucle" id="boucle-reglage" hidden
+             title="Boucle les mesures autour de la tête de lecture. Le retour au début est calé sur le premier temps, sans blanc.">
+          <button id="boucle" class="reglage__unite" aria-pressed="false">boucler</button>
+          <span id="boucle-detail" hidden>
+            <button data-boucle="-1" aria-label="Une mesure de moins">−</button>
+            <b id="boucle-mesures">4 mes.</b>
+            <button data-boucle="1" aria-label="Une mesure de plus">+</button>
+            <button id="boucle-accel" class="reglage__unite" aria-pressed="false"
+                    title="À chaque passage, la vitesse monte de 2 %, jusqu'à 100 % : on ralentit pour apprendre, la boucle ramène au tempo.">+2 %/passage</button>
+          </span>
         </div>
         <!-- N'apparaît qu'au-delà de ±20 % d'étirement d'ensemble : `wsola`
              commence à s'entendre. La mesure, pas l'interdiction. -->

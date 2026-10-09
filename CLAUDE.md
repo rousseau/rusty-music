@@ -29,8 +29,11 @@ Séquencement (fait) : cœur → lecteur → exploration → éditeur. État cou
 Projet publié sous **GPL-3.0-or-later** (texte intégral dans `LICENSE`).
 **Toute dépendance open source est acceptable**, copyleft comprise.
 Principe directeur : **ne jamais réécrire ce qui existe déjà.** Privilégier les briques éprouvées quelle que soit leur licence.
-Seules exclusions : licences **non libres** (CC BY-NC-*, « research only ») et **GPL-2.0-only**. Vérifier aussi la licence des **poids de modèles**, distincte du code.
-Contrôlé par `cargo deny check` (`deny.toml`) en CI. Détail : `docs/rust-audio-stack.md`.
+**Philosophie (précisée le 8 oct. 2026)** : projet open source, non commercial. On utilise les outils et les **poids disponibles**, on **adopte leur licence et on s'y conforme**, et on **cite** chaque travail (article, site, dépôt) dans les remerciements. Le seul souci est la conformité, pas le caractère commercial ou non d'une licence.
+- **Code lié au binaire** : doit rester compatible GPL-3 (sinon le binaire ne serait pas distribuable) — pas de code CC BY-NC-* ni GPL-2.0-only *lié* ; un tel code se réécrit en Rust ou tourne en processus séparé. Contrôlé par `cargo deny check` (`deny.toml`) en CI.
+- **Poids de modèles** : toute licence, NC comprise. On peut les **convertir** pour Rust/Burn (safetensors, ONNX) et **republier** les poids convertis (release assets, Hugging Face) **sous leur licence d'origine**, avec fiche citant la source — si la licence le permet. Licence non déclarée = pas de droit de redistribuer : le script de préparation télécharge à la source et convertit localement (ou on demande l'accord des auteurs). Conditions d'usage particulières (ex. MuScriptor) à respecter et à signaler à l'utilisateur.
+- **Homogénéité** : tout en Rust (Burn, `ort` là où il est déjà) à l'exécution — pas de Python ni de processus externe ; on convertit les poids et on porte le réseau. Python seulement pour préparer (conversion) et vérifier (parité, bancs). Poids convertis republiés sur Hugging Face, compte **`rousseau`**.
+- Remerciements et liens : `MODELES.md` (à créer avec le premier poids tiers ajouté) + écran « À propos ». Détail : `docs/rust-audio-stack.md`.
 
 ## Support de la carte — DÉCIDÉ
 **La carte est le plan de Paris**, importé d'OpenStreetMap et découpé sur la
@@ -88,6 +91,7 @@ et pièges : README, section « Démarrer ».
 - `docs/ui-spec.md` — brief d'interface du module 2 (Exploration).
 - `docs/ui-spec-lecteur.md` — brief d'interface du module 1 (Lecteur).
 - `docs/ui-spec-editeur.md` — brief d'interface du module 3 (Éditeur). Périmètre tranché : une piste, pas de projet sauvegardé. **Centre = « l'établi » à trois états (choisir / séparer / retoucher), décidé et livré le 10 sept. 2026 (commits `ae637d2` + `0a0848b`) : la pile de stems occupe le centre, un playhead unique la traverse, le détail d'un stem va dans l'inspecteur commun (`#bloc-stem`), le dock est une barre d'outils pleine largeur. `majEtatEditer` dans `app.js`. La séparation affiche une vraie barre de progression (`separer_fichier_suivi` → `EtatDemix`). Vérif visuelle faite ; audit d'`interface-guidelines.md` retranché.** Décision 9 (10 sept.) : **BPM cible fait** — bouton d'unité %↔BPM dans la barre d'outils, actif si pulsation franche (`tempo_cible`, netteté ≥ 2 sur le stem `drums`), repli octave « ½ / ×2 ». Reste (hors chantier de l'établi) : tonalité cible par stem, et la greffe qui cale aussi la tonalité (`demi_tons_rendu` à ajouter à `Plan`).
+- `docs/recherche-editer-pratique-creation.md` — **mode Éditer, suite : état de l'art pour *pratiquer* (transcription basse/batterie, partition défilante) et *créer* (greffe calée mesure/section, génération de stems), licences code et poids.** Plan : `docs/plan-editer-pratique-creation.md` — **à lire avant de toucher au module 3.**
 - `docs/module3-demixage.md` — pourquoi le démixage passe par `demucs-core` (Burn) et non l'export ONNX + `ort`.
 - `docs/data-sources.md` — Plex/AudioMuse-AI, MusicBrainz, enrichissement métadonnées.
 - `docs/popularite.md` — **popularité générale (ListenBrainz + Deezer, sans clé API) : passe d'analyse (étape 5/5, rafraîchissement 90 j) + jauge à 5 segments dans la file et les listes de pistes. Livré. Reste hors chantier : popularité d'artiste pour la carte.**

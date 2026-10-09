@@ -155,6 +155,14 @@ html, body {
   position: absolute; width: 1px;
   background: var(--accent); opacity: .55; pointer-events: none;
 }
+/* La boucle posée : une bande en travers de la pile, bornée par deux filets.
+   Même calage que le playhead ; elle ne capte pas les clics (on se déplace
+   toujours en cliquant le spectrogramme). */
+.boucle-bande {
+  position: absolute; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-left: 1px solid var(--accent); border-right: 1px solid var(--accent);
+}
 
 /* ---------- état 2 : le morceau visé, au centre (l'action est dans le rail) ---------- */
 .editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px var(--gouttiere); display: flex; justify-content: center; align-items: flex-start; }

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — Éditer, pratiquer et créer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Chantier I de `docs/plan-editer-pratique-creation.md` : comparer des façons
+   de loger les deux usages du mode Éditer — pratiquer (couper son instrument,
+   lire sa partie qui défile, boucler) et créer (remplacer un stem). Mêmes
+   jetons que `apps/desktop/ui/style.css` et que `maquette-editeur.html`.
+   Rien n'est branché : notes, spectrogrammes et candidats sont inventés. */
+:root {
+  --bg:#14120E; --panel:#1B1813; --panel2:#221E17; --line:#2E2921;
+  --txt:#EDE8DC; --mut:#9A9284; --accent:#C07C4A;
+  --serif:Newsreader, Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --familles:#EF8891,#EC9066,#D99E46,#B7AF47,#88BC6A,#4EC497,
+             #0CC3C3,#38BBE6,#73AEF8,#A39FF6,#C892E1,#E289BD;
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--txt);
+  font-family:var(--sans); font-size:14px; overflow:hidden; -webkit-font-smoothing:antialiased; }
+
+.demo-bar { position:fixed; top:0; left:0; right:0; z-index:50; display:flex; align-items:center;
+  gap:10px; padding:6px 14px; background:#0d0b08; border-bottom:1px solid var(--line);
+  font-family:var(--mono); font-size:11px; color:var(--mut); }
+.demo-bar b { color:var(--txt); font-weight:500; }
+.demo-bar button { font:inherit; background:none; border:1px solid var(--line); color:var(--mut);
+  padding:3px 10px; cursor:pointer; }
+.demo-bar button.actif { color:var(--accent); border-color:var(--accent); }
+.demo-note { margin-left:auto; font-style:italic; max-width:46%; text-align:right; }
+
+.atelier { position:absolute; inset:33px 0 0 0; display:grid;
+  grid-template-columns:232px 1fr 300px; grid-template-rows:1fr auto 64px;
+  grid-template-areas:"rail centre insp" "barre barre barre" "trans trans trans"; }
+
+.rail { grid-area:rail; background:var(--panel); border-right:1px solid var(--line);
+  padding:18px 16px; display:flex; flex-direction:column; gap:22px; }
+.marque { font-family:var(--serif); font-size:18px; }
+.rail__titre { font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--mut); margin:0 0 8px; }
+.modes { display:flex; flex-direction:column; }
+.mode { font:inherit; font-size:13px; text-align:left; background:none; border:none;
+  border-left:2px solid transparent; color:var(--mut); padding:7px 10px; }
+.mode--actif { color:var(--accent); border-left-color:var(--accent); background:var(--panel2); }
+.aide { font-size:11.5px; color:var(--mut); line-height:1.55; margin:6px 0 0; }
+.segments { display:flex; border:1px solid var(--line); }
+.segment { flex:1; font:inherit; font-size:12px; background:none; border:none; color:var(--mut);
+  padding:7px 8px; cursor:pointer; }
+.segment + .segment { border-left:1px solid var(--line); }
+.segment--actif { background:var(--panel2); color:var(--accent); }
+
+.centre { grid-area:centre; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.fil { display:flex; align-items:baseline; gap:14px; padding:18px 26px 12px;
+  border-bottom:1px solid var(--line); flex:none; }
+.fil h1 { font-family:var(--serif); font-size:22px; font-weight:500; margin:0; }
+.fil__compte { font-family:var(--mono); font-size:10.5px; color:var(--mut); margin-left:auto; }
+.etabli { flex:1; min-height:0; overflow-y:auto; padding:14px 22px; position:relative; display:flex;
+  flex-direction:column; gap:10px; }
+
+/* pile de stems */
+.lane { border:1px solid var(--line); background:var(--panel); display:grid;
+  grid-template-columns:132px minmax(0,1fr); }
+.lane--sel { border-color:var(--accent); }
+.lane--muet .lane__spectre { opacity:.35; }
+.lane__flanc { padding:10px 12px; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+.lane__nom { font-size:13.5px; }
+.lane__b { display:flex; gap:6px; flex-wrap:wrap; }
+.stem__b { font:inherit; font-size:10.5px; padding:3px 8px; background:none; border:1px solid var(--line);
+  color:var(--mut); cursor:pointer; }
+.stem__b--actif { color:var(--accent); border-color:var(--accent); }
+.lane__spectre { display:block; width:100%; height:72px; background:var(--bg); }
+/* pile compacte (A · pratiquer) : une rangée par stem, sans spectrogramme */
+.compacte { display:flex; gap:8px; flex:none; }
+.mini { flex:1; border:1px solid var(--line); background:var(--panel); padding:7px 10px;
+  display:flex; align-items:center; gap:8px; font-size:12px; }
+.mini--muet { opacity:.45; }
+.mini .fader { flex:1; }
+.fader { height:4px; background:var(--line); position:relative; }
+.fader i { position:absolute; inset:0 auto 0 0; background:var(--accent); }
+
+/* autoroute */
+.autoroute { position:relative; border:1px solid var(--line); background:var(--bg); flex:1; min-height:220px; }
+.autoroute canvas { position:absolute; inset:0; width:100%; height:100%; }
+.autoroute__tete { position:absolute; right:8px; bottom:6px; font-family:var(--mono); font-size:9.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--mut); z-index:1; }
+.deplie { grid-column:1 / -1; height:200px; border-top:1px solid var(--line); position:relative; }
+.deplie canvas { position:absolute; inset:0; width:100%; height:100%; }
+
+/* partition (C) */
+.partition { flex:1; border:1px solid var(--line); background:#EFE9DC; position:relative; min-height:260px; }
+.partition canvas { position:absolute; inset:0; width:100%; height:100%; }
+
+.barre { grid-area:barre; background:var(--panel); border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:16px; padding:8px 18px; font-size:12px; }
+.barre__titre { font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--mut); }
+.reglage { display:flex; align-items:center; gap:6px; }
+.reglage b { font-weight:500; font-size:11px; color:var(--mut); }
+.reglage button { font:inherit; min-width:22px; height:22px; background:none; border:1px solid var(--line);
+  color:var(--mut); cursor:pointer; padding:0 6px; font-size:11px; }
+.reglage button.actif { color:var(--accent); border-color:var(--accent); }
+.reglage__val { width:52px; text-align:center; font-family:var(--mono); font-size:11px;
+  background:var(--bg); border:1px solid var(--line); color:var(--txt); padding:3px 2px; }
+.barre__fin { margin-left:auto; display:flex; gap:12px; align-items:center; }
+.bouton { font:inherit; font-size:11.5px; background:var(--panel2); color:var(--txt);
+  border:1px solid var(--line); padding:5px 12px; cursor:pointer; }
+
+.insp { grid-area:insp; background:var(--panel); border-left:1px solid var(--line);
+  padding:18px; overflow-y:auto; }
+.insp__titre { font-family:var(--serif); font-size:20px; font-weight:500; }
+.insp__mut { color:var(--mut); font-size:12px; margin:2px 0 12px; }
+.insp__section { font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--mut); margin:20px 0 8px; }
+.champ { width:100%; font:inherit; font-size:12.5px; background:var(--bg); color:var(--txt);
+  border:1px solid var(--line); padding:7px 9px; }
+.candidat { border:1px solid var(--line); background:var(--panel2); padding:8px 10px; margin-bottom:6px; }
+.candidat--sel { border-color:var(--accent); }
+.candidat b { font-size:12.5px; font-weight:500; display:block; }
+.candidat span { font-family:var(--mono); font-size:9.5px; color:var(--mut); }
+.raisons { display:grid; grid-template-columns:auto 1fr; gap:3px 8px; margin-top:6px; align-items:center;
+  font-family:var(--mono); font-size:9.5px; color:var(--mut); }
+.jauge5 { display:flex; gap:2px; }
+.jauge5 i { width:14px; height:5px; background:var(--line); }
+.jauge5 i.on { background:var(--accent); }
+.ab { display:flex; gap:6px; margin-top:8px; }
+.note { font-size:11px; color:var(--mut); line-height:1.5; }
+
+.transport { grid-area:trans; background:var(--panel); border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:14px; padding:0 18px; font-size:12px; }
+.transport__play { width:34px; height:34px; border-radius:50%; border:1px solid var(--accent);
+  background:none; color:var(--accent); }
+.transport__barre { flex:1; height:4px; background:var(--line); position:relative; }
+.transport__barre i { position:absolute; inset:0 auto 0 0; width:31%; background:var(--accent); }
+.transport__barre u { position:absolute; top:-3px; bottom:-3px; left:28%; width:6%;
+  border-left:1px solid var(--accent); border-right:1px solid var(--accent);
+  background:color-mix(in srgb, var(--accent) 18%, transparent); }
+.tc { font-family:var(--mono); font-size:11px; color:var(--mut); }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <b>Maquette</b>
+  <button data-v="a-pratiquer" class="actif">A · Pratiquer</button>
+  <button data-v="a-creer">A · Créer</button>
+  <button data-v="b">B · Autoroute sous le stem</button>
+  <button data-v="c">C · Partition au centre</button>
+  <span class="demo-note" id="note"></span>
+</div>
+
+<div class="atelier">
+  <nav class="rail">
+    <div class="marque">Rusty Music</div>
+    <div>
+      <p class="rail__titre">Modes</p>
+      <div class="modes">
+        <button class="mode">Écouter</button><button class="mode">Explorer</button>
+        <button class="mode mode--actif">Éditer</button><button class="mode">Découvrir</button>
+      </div>
+    </div>
+    <div id="rail-usage">
+      <p class="rail__titre">Ce que je fais</p>
+      <div class="segments">
+        <button class="segment segment--actif">Pratiquer</button><button class="segment">Créer</button>
+      </div>
+      <p class="aide">Variante C : l'usage se choisit dans le rail, comme une vue — l'établi change de centre.</p>
+    </div>
+    <div>
+      <p class="rail__titre">Morceau</p>
+      <p class="aide" style="color:var(--txt)">Herbie Hancock — Chameleon</p>
+      <p class="aide">4 stems · 94 BPM · 4/4 · 160 mesures</p>
+    </div>
+  </nav>
+
+  <main class="centre">
+    <header class="fil"><h1>Chameleon</h1><span class="fil__compte" id="fil-compte"></span></header>
+    <div class="etabli" id="etabli"></div>
+  </main>
+
+  <aside class="insp" id="insp"></aside>
+
+  <section class="barre" id="barre"></section>
+
+  <footer class="transport">
+    <button class="transport__play">❚❚</button>
+    <span class="tc">4:41 / 15:41</span>
+    <div class="transport__barre"><i></i><u title="boucle"></u></div>
+    <span class="tc">80 %</span>
+  </footer>
+</div>
+
+<script>
+// ------------------------------------------------------------ données
+const STEMS = ["drums", "bass", "other", "vocals"];
+const BPM = 94, BEAT = 60 / BPM, BAR = 4 * BEAT;
+// Une ligne de basse inventée : (temps en battements, corde 0=G..3=E, frette, durée)
+const BASSE = [];
+for (let m = 0; m < 200; m++) {
+  const motif = [[0, 3, 3, .75], [1, 3, 3, .5], [1.5, 2, 5, .5], [2.5, 3, 3, .5], [3, 2, 1, .25], [3.5, 2, 3, .5]];
+  for (const [b, c, f, d] of motif) BASSE.push({ t: (m * 4 + b) * BEAT, corde: c, frette: f + (m % 8 >= 4 ? 2 : 0), d: d * BEAT, conf: Math.random() > .08 ? 1 : .45 });
+}
+const FUTS = ["HH", "SD", "T", "BD"];
+const BATT = [];
+for (let m = 0; m < 200; m++) for (let k = 0; k < 16; k++) {
+  const t = (m * 4 + k / 4) * BEAT;
+  if (k % 2 === 0) BATT.push({ t, l: 0, conf: 1 });
+  if (k === 4 || k === 12) BATT.push({ t, l: 1, conf: 1 });
+  if (k === 7 || k === 15) BATT.push({ t, l: 1, conf: .5, fantome: true });
+  if (k === 0 || k === 6 || k === 10) BATT.push({ t, l: 3, conf: 1 });
+}
+const BOUCLE = [44 * BAR, 48 * BAR];
+let t0 = performance.now(), position = 44 * BAR + 1.2;
+
+// ------------------------------------------------------------ dessin
+function bruit(cnv, graine) {
+  const w = cnv.width = cnv.clientWidth * devicePixelRatio, h = cnv.height = cnv.clientHeight * devicePixelRatio;
+  const c = cnv.getContext("2d"), img = c.createImageData(w, h);
+  let s = graine;
+  for (let x = 0; x < w; x++) {
+    s = (s * 9301 + 49297) % 233280;
+    const e = .3 + .7 * Math.abs(Math.sin(x / 37 + graine)) * (s / 233280);
+    for (let y = 0; y < h; y++) {
+      const v = Math.max(0, e - y / h) * 255 * (0.6 + 0.4 * Math.random());
+      const i = (y * w + x) * 4;
+      img.data[i] = v * .9; img.data[i + 1] = v * .55; img.data[i + 2] = v * .3; img.data[i + 3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+  const xb0 = BOUCLE[0] / (160 * BAR) * w, xb1 = BOUCLE[1] / (160 * BAR) * w;
+  c.fillStyle = "rgba(192,124,74,.14)"; c.fillRect(xb0, 0, xb1 - xb0, h);
+}
+
+/// L'autoroute : le temps défile de droite à gauche, la ligne « maintenant »
+/// à 22 % de la largeur. Couloirs = cordes (basse, ordre de la tablature) ou
+/// fûts (batterie). Barres de mesure sur les premiers temps.
+function autoroute(cnv, quoi) {
+  const w = cnv.width = cnv.clientWidth * devicePixelRatio, h = cnv.height = cnv.clientHeight * devicePixelRatio;
+  const c = cnv.getContext("2d"), dpr = devicePixelRatio;
+  const couloirs = quoi === "basse" ? ["G", "D", "A", "E"] : FUTS;
+  const fenetre = 4 * BAR, now = w * .22, px = (w - now) / fenetre * 1.25;
+  const X = (t) => now + (t - position) * px;
+  const haut = 18 * dpr, ch = (h - haut - 8 * dpr) / couloirs.length;
+  c.clearRect(0, 0, w, h);
+  // boucle
+  c.fillStyle = "rgba(192,124,74,.10)"; c.fillRect(X(BOUCLE[0]), 0, X(BOUCLE[1]) - X(BOUCLE[0]), h);
+  // couloirs
+  c.font = `${10 * dpr}px IBM Plex Mono`; c.textBaseline = "middle";
+  couloirs.forEach((n, i) => {
+    const y = haut + ch * (i + .5);
+    c.strokeStyle = "#2E2921"; c.lineWidth = dpr; c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke();
+    c.fillStyle = "#9A9284"; c.fillText(n, 6 * dpr, y);
+  });
+  // mesures
+  const m0 = Math.floor((position - now / px) / BAR), m1 = Math.ceil((position + (w - now) / px) / BAR);
+  for (let m = m0; m <= m1; m++) {
+    for (let b = 0; b < 4; b++) {
+      const x = X((m * 4 + b) * BEAT);
+      c.strokeStyle = b === 0 ? "#4a4236" : "#262119"; c.lineWidth = dpr;
+      c.beginPath(); c.moveTo(x, haut); c.lineTo(x, h); c.stroke();
+    }
+    c.fillStyle = "#9A9284"; c.fillText(String(m + 1), X(m * BAR) + 4 * dpr, 9 * dpr);
+  }
+  // notes
+  const notes = quoi === "basse" ? BASSE : BATT;
+  for (const n of notes) {
+    const x = X(n.t);
+    if (x < -40 * dpr || x > w + 10) continue;
+    const i = quoi === "basse" ? n.corde : n.l, y = haut + ch * (i + .5);
+    const passe = n.t + (n.d || 0) < position;
+    c.globalAlpha = (passe ? .35 : 1) * n.conf;
+    if (quoi === "basse") {
+      const lg = Math.max(18 * dpr, n.d * px);
+      c.fillStyle = "#C07C4A"; c.fillRect(x, y - ch * .32, lg, ch * .64);
+      c.fillStyle = "#14120E"; c.font = `600 ${11 * dpr}px IBM Plex Mono`; c.fillText(String(n.frette), x + 4 * dpr, y);
+    } else {
+      const r = (n.fantome ? 3.5 : 6) * dpr;
+      c.fillStyle = n.fantome ? "transparent" : "#C07C4A"; c.strokeStyle = "#C07C4A"; c.lineWidth = 1.5 * dpr;
+      c.beginPath();
+      if (i === 0) { c.moveTo(x - r, y - r); c.lineTo(x + r, y + r); c.moveTo(x + r, y - r); c.lineTo(x - r, y + r); c.stroke(); }
+      else { c.arc(x, y, r, 0, 7); n.fantome ? c.stroke() : c.fill(); }
+    }
+    c.globalAlpha = 1;
+  }
+  // maintenant
+  c.fillStyle = "#EDE8DC"; c.fillRect(now, 0, dpr, h);
+}
+
+/// Aperçu de partition : portée en clé de fa + tablature, curseur sur la
+/// mesure courante. Ce que rendra alphaTab (chantier 1.4), en très grossier.
+function partition(cnv) {
+  const w = cnv.width = cnv.clientWidth * devicePixelRatio, h = cnv.height = cnv.clientHeight * devicePixelRatio;
+  const c = cnv.getContext("2d"), dpr = devicePixelRatio;
+  c.clearRect(0, 0, w, h);
+  const mParSys = 4, marge = 30 * dpr, larg = (w - 2 * marge) / mParSys;
+  const mCour = Math.floor(position / BAR), mDeb = Math.floor(mCour / mParSys) * mParSys;
+  for (let s = 0; s < 2; s++) {
+    const y0 = 30 * dpr + s * 150 * dpr, ecart = 7 * dpr, ty = y0 + 70 * dpr;
+    c.strokeStyle = "#3b342a"; c.lineWidth = dpr;
+    for (let l = 0; l < 5; l++) { c.beginPath(); c.moveTo(marge, y0 + l * ecart); c.lineTo(w - marge, y0 + l * ecart); c.stroke(); }
+    for (let l = 0; l < 4; l++) { c.beginPath(); c.moveTo(marge, ty + l * 10 * dpr); c.lineTo(w - marge, ty + l * 10 * dpr); c.stroke(); }
+    c.fillStyle = "#3b342a"; c.font = `${10 * dpr}px IBM Plex Mono`;
+    c.fillText("TAB", marge - 26 * dpr, ty + 18 * dpr);
+    for (let k = 0; k < mParSys; k++) {
+      const m = mDeb + s * mParSys + k, x0 = marge + k * larg;
+      c.fillRect(x0, y0, dpr, 4 * ecart); c.fillRect(x0, ty, dpr, 30 * dpr);
+      c.fillText(String(m + 1), x0 + 3 * dpr, y0 - 6 * dpr);
+      if (m >= BOUCLE[0] / BAR && m < BOUCLE[1] / BAR) { c.fillStyle = "rgba(192,124,74,.16)"; c.fillRect(x0, y0 - 14 * dpr, larg, 128 * dpr); c.fillStyle = "#3b342a"; }
+      for (const n of BASSE) {
+        if (n.t < m * BAR || n.t >= (m + 1) * BAR) continue;
+        const x = x0 + 12 * dpr + ((n.t - m * BAR) / BAR) * (larg - 20 * dpr);
+        const yn = y0 + (2 + n.corde * .5 - n.frette * .25) * ecart;
+        c.beginPath(); c.ellipse(x, yn, 4 * dpr, 3 * dpr, -.4, 0, 7); c.fill();
+        c.fillRect(x + 3.5 * dpr, yn - 22 * dpr, dpr, 22 * dpr);
+        c.fillStyle = "#EFE9DC"; c.fillRect(x - 5 * dpr, ty + n.corde * 10 * dpr - 5 * dpr, 10 * dpr, 10 * dpr);
+        c.fillStyle = "#3b342a"; c.fillText(String(n.frette), x - 3 * dpr, ty + n.corde * 10 * dpr + 4 * dpr);
+      }
+    }
+    c.fillRect(w - marge, y0, dpr, 4 * ecart);
+    if (s === 0 || mCour >= mDeb + mParSys) {
+      const k = (position / BAR) - mDeb - s * mParSys;
+      if (k >= 0 && k < mParSys) { c.fillStyle = "#C07C4A"; c.fillRect(marge + k * larg, y0 - 12 * dpr, 2 * dpr, 124 * dpr); c.fillStyle = "#3b342a"; }
+    }
+  }
+}
+
+// ------------------------------------------------------------ variantes
+const NOTES = {
+  "a-pratiquer": "Bascule Pratiquer / Créer dans la barre d'outils. En Pratiquer, l'autoroute du stem coupé prend le centre ; les stems se réduisent à leurs niveaux.",
+  "a-creer": "Même bascule, côté Créer : la pile complète, le stem à remplacer sélectionné, les candidats et leurs raisons dans l'inspecteur, écoute A/B.",
+  "b": "Pas de bascule : « pratiquer » sur la ligne d'un stem le coupe et déplie son autoroute sous la ligne. La pile reste la référence.",
+  "c": "L'usage se choisit dans le rail ; en Pratiquer le centre devient une partition (portée + tablature), curseur sur la mesure.",
+};
+let variante = "a-pratiquer";
+
+function lane(nom, opts = {}) {
+  return `<div class="lane ${opts.sel ? "lane--sel" : ""} ${opts.muet ? "lane--muet" : ""}">
+    <div class="lane__flanc"><span class="lane__nom">${nom}</span>
+      <div class="lane__b"><button class="stem__b">S</button><button class="stem__b ${opts.muet ? "stem__b--actif" : ""}">M</button>${opts.extra || ""}</div>
+      <div class="fader"><i style="width:${opts.muet ? 0 : 78}%"></i></div></div>
+    <canvas class="lane__spectre" data-bruit="${nom.length}"></canvas>
+    ${opts.deplie ? `<div class="deplie"><canvas data-route="${opts.deplie}"></canvas></div>` : ""}
+  </div>`;
+}
+
+function barre(bascule) {
+  return `<span class="barre__titre">Stems</span>
+    ${bascule ? `<div class="reglage"><button class="${variante === "a-pratiquer" ? "actif" : ""}" data-v2="a-pratiquer">Pratiquer</button><button class="${variante === "a-creer" ? "actif" : ""}" data-v2="a-creer">Créer</button></div>` : ""}
+    <div class="reglage"><b>vitesse</b><button>−</button><input class="reglage__val" value="80 %"><button>+</button></div>
+    <div class="reglage"><b>hauteur</b><button>−</button><input class="reglage__val" value="±0"><button>+</button></div>
+    <div class="reglage"><button class="actif">boucle</button><button>−</button><b>4 mes.</b><button>+</button><button class="actif">+2 %/passage</button></div>
+    <div class="barre__fin"><button class="bouton">Exporter…</button></div>`;
+}
+
+function inspPratiquer(instr) {
+  const batterie = instr === "drums";
+  return `<div class="insp__titre">${instr}</div><div class="insp__mut">coupé · vous jouez</div>
+    <div class="insp__section">Transcription</div>
+    <p class="note">${batterie
+      ? "ADTOF + LarsNet · 2 310 coups · cymbales estompées (moins sûres) · notes fantômes en creux."
+      : "Basic Pitch · 1 284 notes · 3 % peu sûres (estompées). Accordage : 4 cordes, standard."}</p>
+    <div class="reglage" style="margin-top:8px"><button class="actif">autoroute</button><button>partition</button></div>
+    <div class="insp__section">Note sélectionnée</div>
+    <p class="note">${batterie
+      ? `mes. 45, temps 2,75 — caisse claire, fantôme<br><button class="stem__b" style="margin-top:6px">autre fût</button> <button class="stem__b">accent</button> <button class="stem__b">supprimer</button>`
+      : `mes. 45, temps 2,5 — La, corde A, frette 5<br><button class="stem__b" style="margin-top:6px">autre corde</button> <button class="stem__b">octave −</button> <button class="stem__b">supprimer</button>`}</p>
+    <div class="insp__section">Exporter ma partie</div>
+    <div class="ab"><button class="stem__b">MIDI</button><button class="stem__b">Guitar Pro</button></div>`;
+}
+
+function jauge(n) { return `<span class="jauge5">${[0,1,2,3,4].map((i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</span>`; }
+function candidat(t, a, tempo, ton, sync, sel) {
+  return `<div class="candidat ${sel ? "candidat--sel" : ""}"><b>${t}</b><span>${a}</span>
+    <div class="raisons"><span>syncope</span>${jauge(sync)}<span>tempo</span><span>${tempo}</span><span>tonalité</span><span>${ton}</span></div>
+    ${sel ? `<div class="ab"><button class="stem__b stem__b--actif">A · origine</button><button class="stem__b">B · greffon</button><button class="bouton">Greffer</button></div>` : ""}</div>`;
+}
+function inspCreer() {
+  return `<div class="insp__titre">drums</div><div class="insp__mut">à remplacer</div>
+    <div class="reglage" style="margin-bottom:10px"><button class="actif">Bibliothèque</button><button>Générer</button></div>
+    <input class="champ" value="plus funk, syncopé">
+    <div class="insp__section">Candidats · 8 démixés sur 200</div>
+    ${candidat("Cissy Strut", "The Meters · 1969", "92 → 94 BPM (+2 %)", "—", 5, true)}
+    ${candidat("Funky Drummer", "James Brown · 1970", "102 → 94 (−8 %)", "—", 4)}
+    ${candidat("Pass the Peas", "The J.B.'s · 1972", "↑×2 47 → 94", "—", 4)}
+    ${candidat("Rock Steady", "Aretha Franklin · 1971", "100 → 94 (−6 %)", "—", 3)}
+    <p class="note">Classés par syncope à densité voisine (CLAP pour le style, puis tempo et métrique). Calé mesure par mesure : 160 mesures, 0 refusée.</p>`;
+}
+
+function rendre() {
+  document.querySelectorAll(".demo-bar button").forEach((b) => b.classList.toggle("actif", b.dataset.v === variante));
+  document.getElementById("note").textContent = NOTES[variante];
+  document.getElementById("rail-usage").hidden = variante !== "c";
+  const e = document.getElementById("etabli"), i = document.getElementById("insp"), b = document.getElementById("barre");
+  const compte = document.getElementById("fil-compte");
+  if (variante === "a-pratiquer") {
+    compte.textContent = "basse coupée · mes. 45 / 160";
+    e.innerHTML = `<div class="compacte">${STEMS.map((s) => `<div class="mini ${s === "bass" ? "mini--muet" : ""}"><span>${s}</span><button class="stem__b ${s === "bass" ? "stem__b--actif" : ""}">M</button><div class="fader"><i style="width:${s === "bass" ? 0 : 78}%"></i></div></div>`).join("")}</div>
+      <div class="autoroute"><span class="autoroute__tete">basse · tablature défilante</span><canvas data-route="basse"></canvas></div>`;
+    i.innerHTML = inspPratiquer("bass"); b.innerHTML = barre(true);
+  } else if (variante === "a-creer") {
+    compte.textContent = "4 stems · greffe en cours";
+    e.innerHTML = STEMS.map((s) => lane(s, { sel: s === "drums" })).join("");
+    i.innerHTML = inspCreer(); b.innerHTML = barre(true);
+  } else if (variante === "b") {
+    compte.textContent = "4 stems";
+    e.innerHTML = STEMS.map((s) => lane(s, s === "drums"
+      ? { muet: true, sel: true, deplie: "batterie", extra: `<button class="stem__b stem__b--actif">pratiquer</button>` }
+      : { extra: `<button class="stem__b">pratiquer</button>` })).join("");
+    i.innerHTML = inspPratiquer("drums"); b.innerHTML = barre(false);
+  } else {
+    compte.textContent = "basse coupée · partition";
+    e.innerHTML = `<div class="compacte">${STEMS.map((s) => `<div class="mini ${s === "bass" ? "mini--muet" : ""}"><span>${s}</span><div class="fader"><i style="width:${s === "bass" ? 0 : 78}%"></i></div></div>`).join("")}</div>
+      <div class="partition"><canvas data-partition></canvas></div>`;
+    i.innerHTML = inspPratiquer("bass"); b.innerHTML = barre(false);
+  }
+  document.querySelectorAll("[data-bruit]").forEach((c) => bruit(c, Number(c.dataset.bruit)));
+  document.querySelectorAll("[data-v2]").forEach((x) => x.addEventListener("click", () => { variante = x.dataset.v2; rendre(); }));
+}
+document.querySelectorAll(".demo-bar button").forEach((b) => b.addEventListener("click", () => { variante = b.dataset.v; rendre(); }));
+
+function anim(t) {
+  // 80 % de vitesse, dans la boucle de quatre mesures.
+  position = BOUCLE[0] + (((t - t0) / 1000 * .8) % (BOUCLE[1] - BOUCLE[0]));
+  document.querySelectorAll("[data-route]").forEach((c) => autoroute(c, c.dataset.route));
+  document.querySelectorAll("[data-partition]").forEach(partition);
+  requestAnimationFrame(anim);
+}
+rendre();
+requestAnimationFrame(anim);
+addEventListener("resize", rendre);
+</script>
+</body>
+</html>

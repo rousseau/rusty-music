@@ -32,7 +32,7 @@ Objectif : éditer et recomposer à partir des fichiers de la bibliothèque. **U
 - **Démixage (stems)** : HTDemucs, poids Meta (MIT). ~~Export ONNX exécuté via `ort`~~. *Retenu : `demucs-core` (fork de `demucs-rs` épinglé, URL dans `crates/editor/Cargo.toml`), où la STFT reste en Rust et où Burn ne reçoit que le réseau — l'export ONNX déroulait la transformée de Fourier en milliers de nœuds et le backend GPU s'y trompait. Voir `module3-demixage.md`.* Coût : GPU conseillé, découpage overlap-add.
 - **Greffe de stem** *(livré)* : mettre à la place d'un stem celui d'un autre morceau, calé sur le tempo et sur les temps forts (grille de battements, `analysis/src/battements.rs`).
 - **Mixer deux pistes** : **hors du module 3** depuis la spec d'interface — redevient un chantier à part s'il se fait. Territoire DJ (beatmatching, tonalité, roue de Camelot). Référence : **Mixxx**.
-- **Génération de piste** : non planifié. Partie la plus fragile (qualité inégale, calcul intensif, droits flous). Référence : **ACE-Step**.
+- **Génération de piste** : ~~non planifié~~ planifiée le 8 oct. 2026, facultative, portée en Burn (MusicGen-Stem, STAGE/DARC, ACE-Step, RAVE). Avec la **transcription** basse/batterie et la partition défilante (usage *pratiquer*) : `docs/plan-editer-pratique-creation.md`.
 
 ## Séquencement
 Cœur d'ingestion → Module 1 → Module 2 → Module 3. **Fait** (voir `suite.md`) : les quatre briques sont livrées à leur périmètre spécifié ; restent des finitions (aléatoire/répétition du lecteur, carte sur plan de ville réel, pochettes/bios).

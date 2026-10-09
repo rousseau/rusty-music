@@ -103,6 +103,13 @@ Résumé ci-dessous.
 
 ### Le blocage — licence des poids
 
+> **Levé le 8 oct. 2026.** La politique de licence a été précisée
+> (`CLAUDE.md`, `docs/rust-audio-stack.md`) : projet open source non
+> commercial, on adopte la licence des poids (NC comprise) et on s'y conforme,
+> avec citation. Le raisonnement ci-dessous, qui concluait à la non-conformité,
+> est conservé comme registre. Reste vrai : AudioSR sans licence déclarée ne
+> se republie pas.
+
 - **MUSDB18-HQ** (dont dépendent les poids musique d'AERO / AEROMamba) est
   fourni « for educational purposes only », **non commercial** ; 46 de ses
   150 pistes sont en CC BY-NC-SA. `CLAUDE.md` exclut explicitement les

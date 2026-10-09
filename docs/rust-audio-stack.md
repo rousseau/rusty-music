@@ -6,9 +6,16 @@ Objectif : **utiliser les meilleurs outils existants plutôt que réécrire**. L
 
 Le projet est distribué sous **GPL-3.0-or-later**. Conséquences :
 - **Toute dépendance open source est acceptable** : MIT, Apache-2.0, BSD, MPL-2.0, LGPL, GPL-2.0-or-later, GPL-3.0, AGPL-3.0.
-- Une seule vraie exclusion demeure : les licences **non-commerciales ou non-libres** (CC BY-NC-*, « research only », « non-commercial use »). Elles ne sont pas compatibles GPL et ne sont pas open source.
+- Pour le **code lié au binaire**, une seule vraie exclusion demeure : les licences **non-commerciales ou non-libres** (CC BY-NC-*, « research only », « non-commercial use »). Elles ne sont pas compatibles GPL et ne sont pas open source.
 - Point de vigilance restant : **GPL-2.0-only** (sans « or later ») est incompatible avec GPL-3.0. Cas rare, mais à vérifier.
-- Attention aussi aux **poids de modèles**, dont la licence est distincte du code : plusieurs modèles du zoo Essentia sont en CC BY-NC-SA. À vérifier modèle par modèle.
+- **Poids de modèles** (licence distincte du code) — **politique du 8 oct. 2026** : le projet est open source et non commercial ; on **adopte la licence de chaque modèle et on s'y conforme**, NC comprise (zoo Essentia en CC BY-NC-SA, ADTOF, LarsNet, MusicGen-Stem…). Conformité concrète :
+  1. **jamais dans Git** (volume) : les poids passent par `scripts/preparer-*.sh` / `telecharger-modeles.sh` ;
+  2. **conversion autorisée** vers safetensors/ONNX pour Burn ou `ort` — le résultat garde la licence d'origine (ShareAlike : même licence ; NC : mêmes restrictions) ;
+  3. **republication** des poids convertis (release assets, Hugging Face) seulement si la licence la permet, avec une fiche qui cite l'article, le dépôt et le lien des poids originaux. **Licence non déclarée** = aucun droit de redistribution : on télécharge à la source et on convertit localement, ou on demande l'accord des auteurs ;
+  4. **conditions d'usage** particulières (droits sur les œuvres, indemnisation, accès sur formulaire) lues, respectées et signalées à l'utilisateur ;
+  5. **remerciements** : chaque modèle dans `MODELES.md` et l'écran « À propos ».
+
+  L'exclusion NC ci-dessus reste valable pour le **code** lié au binaire : c'est la condition pour que le binaire GPL-3 reste distribuable. Un code NC se réécrit (inférence en Rust) ou tourne en processus séparé.
 
 `deny.toml` ne sert donc plus à filtrer les licences copyleft, mais à repérer les licences non libres, les avis de sécurité et les doublons de versions.
 
