@@ -227,6 +227,25 @@ erreurs ? à trancher au banc), triolets, découpage des durées sur les temps
 (silences pointés peu lisibles), MuScriptor en mode qualité, corrections
 manuelles (1.5).
 
+**Après l'essai du 9 oct.** (curseur irrégulier, notes mal placées, doigtés
+incohérents) :
+- *curseur* : un point de synchro **par temps** et non plus par mesure
+  (alphaTab avançait au tempo moyen dans la mesure puis sautait à la barre),
+  et une position **lissée** (avance à la vitesse de lecture, se recale de
+  15 % de l'écart par tick, saute seulement au-delà de 250 ms) ;
+- *placement* : mesuré sur « Love Foolosophy », les attaques (basse **et**
+  batterie) tombent ~50 ms derrière les temps détectés, près d'une
+  demi-double croche — la moitié des notes allaient sur la case voisine.
+  `quantification::decalage_de_jeu` estime ce décalage par morceau (± une
+  demi-double croche, à égalité « derrière le temps ») et le retranche.
+  Par ailleurs, `beat-this` place les temps **12 ms en avance** sur les
+  annotations GTZAN (53 554 temps, tous genres) : corrigé à la source
+  (`pulsation::CORRECTION_S`, cache en version 2) ;
+- *doigtés* : modèle de **position de main** (l'index sur une frette, quatre
+  frettes sous les doigts, une corde à vide ne déplace pas la main ;
+  traverser une corde coûte 0,1, déplacer la main une frette 1). Sur « Love
+  Foolosophy », la main reste en 2ᵉ position au lieu de sauter.
+
 **Recommandation.** Nouveau crate `crates/transcription` (Burn + `ort`, même
 règle de backend que `analysis` et `editor`). Modèle par défaut **Basic Pitch**
 (Apache-2.0, ONNX livré, < 17 000 paramètres) via `ort` — rapide, toujours
@@ -249,6 +268,22 @@ deux sert par défaut et si le port vaut sa taille.
 **Vérification.** Le banc 0.4 ; écoute de quelques lignes de basse connues.
 
 ### 1.3 Transcription batterie — **M/L**
+
+**Fait (9 oct.) — ADTOF de bout en bout.** `crates/transcription::batterie` :
+spectrogramme de madmom réécrit en Rust (mono 16 bits tronqué, trames de 2048
+centrées à 100/s, Hann ÷ 32767, 84 bandes triangulaires normalisées,
+`log10(1+x)`), réseau ADTOF « Frame_RNN » en ONNX (architecture réécrite pour
+l'export, poids chargés et vérifiés, `scripts/preparer-adtof.sh` +
+`experiments/batterie/exporter_adtof.py`), choix de pics de madmom
+(`NotePeakPickingProcessor`, seuils d'ADTOF par classe). **Parité avec la
+référence Python sur 30 s de « Love Foolosophy »** : caractéristiques 2,4e-7,
+sorties 7,8e-7, 207/207 coups identiques (`examples/batterie_parite.rs`).
+Morceau entier (224 s) : 1,2 s. `quantification::quantifier_coups` (pièces
+d'une même double croche réunies, décalage de jeu retranché), commande
+`transcrire(id, "drums")`, partition de percussion (`texBatterie`,
+articulations GP7). **Reste** : LarsNet (crash/ride, vélocité, ghost notes),
+deux voix (pieds en bas, mains en haut), banc MDB-Drums.
+
 
 **Recommandation.** Vainqueur du banc entre :
 - **ADTOF** — CRNN image par image, 5 classes, entraîné sur 359 h de vraie

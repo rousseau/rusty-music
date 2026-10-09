@@ -5,14 +5,21 @@
 //! littérature sur la tablature d'une ligne monophonique
 //! (`docs/recherche-editer-pratique-creation.md`).
 //!
-//! Le coût d'un passage d'une position à la suivante :
-//! - le déplacement de la main, en frettes — mais une corde à vide ne
-//!   déplace rien, et un long silence laisse le temps de se replacer ;
-//! - un changement de corde, un peu ;
-//! - les positions hautes, au-delà de la 4ᵉ frette : à jouabilité égale, on
-//!   reste en bas du manche. Sans ce terme (0,05 par frette au départ), la
-//!   transcription de « Love Foolosophy » sautait à la 12ᵉ frette de la corde
-//!   de mi plutôt que de jouer la même note en 2ᵉ frette de ré.
+//! Le modèle est celui d'un professeur de basse : **la main a une position**
+//! — l'index sur une frette, les quatre doigts couvrent quatre frettes
+//! (« un doigt par case »). Une note frettée doit tomber sous la main ; une
+//! corde à vide ne la déplace pas. Le chemin se cherche donc sur les couples
+//! (position jouée, position de la main), et le coût d'un passage est :
+//! - le déplacement de la main, en frettes — moins cher après un silence,
+//!   qui laisse le temps de se replacer ;
+//! - un changement de corde, très peu (0,1 par corde traversée) ;
+//! - une main haute sur le manche : un peu dès la 1ʳᵉ position, nettement
+//!   au-delà de la 5ᵉ.
+//!
+//! Version précédente (9 oct.) : un coût entre positions successives, sans
+//! mémoire de la main. Une corde à vide « libérait » tout, et la main pouvait
+//! sauter d'un bout du manche à l'autre autour d'elle — les doigtés
+//! incohérents signalés à l'essai.
 
 use crate::Note;
 
@@ -59,20 +66,23 @@ impl Accordage {
     }
 }
 
-/// Le prix d'une position haute : rien jusqu'à la 4ᵉ frette.
-fn hauteur_manche(frette: u8) -> f32 {
-    0.1 * frette.saturating_sub(4) as f32
+/// Doigts disponibles : la main couvre `position..position + ETENDUE - 1`.
+const ETENDUE: u8 = 4;
+
+/// Le prix d'une main haute : une légère préférence pour le bas du manche
+/// dès la première position, nette au-delà de la 5ᵉ.
+fn hauteur_main(position: u8) -> f32 {
+    0.03 * position.saturating_sub(1) as f32 + 0.1 * position.saturating_sub(5) as f32
 }
 
-fn cout(prec: (u8, u8), suiv: (u8, u8), silence_s: f32) -> f32 {
-    let (c1, f1) = prec;
-    let (c2, f2) = suiv;
-    // Une corde à vide ne dit rien de la position de la main.
-    let main = if f1 == 0 || f2 == 0 { 0.5 } else { (f1 as f32 - f2 as f32).abs() };
-    // Le temps de se replacer : passé une demi-seconde, le déplacement coûte
-    // de moins en moins.
-    let repli = 1.0 / (1.0 + (silence_s - 0.5).max(0.0) * 2.0);
-    main * repli + 0.2 * (c1 as f32 - c2 as f32).abs() + hauteur_manche(f2)
+/// Positions de main (frette de l'index) compatibles avec une note.
+fn mains(frette: u8, max: u8) -> Vec<u8> {
+    if frette == 0 {
+        // Corde à vide : la main reste où elle est — toute position convient.
+        (1..=max).collect()
+    } else {
+        (frette.saturating_sub(ETENDUE - 1).max(1)..=frette.min(max)).collect()
+    }
 }
 
 /// Pose corde et frette sur chaque note. Une note hors du manche est ramenée
@@ -84,20 +94,37 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
     for n in notes.iter_mut() {
         n.hauteur = accordage.ramener(n.hauteur);
     }
-    let candidats: Vec<Vec<(u8, u8)>> = notes.iter().map(|n| accordage.positions(n.hauteur)).collect();
+    let max_main = accordage.frettes.saturating_sub(ETENDUE - 1).max(1);
+    // États de chaque note : (corde, frette, main).
+    let etats: Vec<Vec<(u8, u8, u8)>> = notes
+        .iter()
+        .map(|n| {
+            accordage
+                .positions(n.hauteur)
+                .into_iter()
+                .flat_map(|(c, f)| mains(f, max_main).into_iter().map(move |m| (c, f, m)))
+                .collect()
+        })
+        .collect();
 
-    // Viterbi : meilleur coût pour finir à chaque candidat, et d'où l'on vient.
-    let mut couts: Vec<Vec<f32>> = vec![candidats[0].iter().map(|&(_, f)| hauteur_manche(f)).collect()];
-    let mut retour: Vec<Vec<usize>> = vec![vec![0; candidats[0].len()]];
+    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(_, _, m)| hauteur_main(m)).collect()];
+    let mut retour: Vec<Vec<usize>> = vec![vec![0; etats[0].len()]];
     for i in 1..notes.len() {
         let silence = notes[i].debut_s - notes[i - 1].fin_s;
-        let mut c_i = Vec::with_capacity(candidats[i].len());
-        let mut r_i = Vec::with_capacity(candidats[i].len());
-        for &suiv in &candidats[i] {
-            let (meilleur, d_ou) = candidats[i - 1]
+        // Le temps de se replacer : passé une demi-seconde, un déplacement
+        // coûte de moins en moins.
+        let repli = 1.0 / (1.0 + (silence - 0.5).max(0.0) * 2.0);
+        let (mut c_i, mut r_i) = (Vec::with_capacity(etats[i].len()), Vec::with_capacity(etats[i].len()));
+        for &(c2, _, m2) in &etats[i] {
+            let (meilleur, d_ou) = etats[i - 1]
                 .iter()
                 .enumerate()
-                .map(|(k, &prec)| (couts[i - 1][k] + cout(prec, suiv, silence), k))
+                .map(|(k, &(c1, _, m1))| {
+                    let main = (m1 as f32 - m2 as f32).abs() * repli;
+                    // Traverser les cordes ne coûte presque rien à un bassiste ;
+                    // déplacer la main, si.
+                    (couts[i - 1][k] + main + 0.1 * (c1 as f32 - c2 as f32).abs() + hauteur_main(m2), k)
+                })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .unwrap_or((0.0, 0));
             c_i.push(meilleur);
@@ -111,7 +138,7 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
         .min_by(|&a, &b| couts[dernier][a].total_cmp(&couts[dernier][b]))
         .unwrap_or(0);
     for i in (0..notes.len()).rev() {
-        if let Some(&(c, f)) = candidats[i].get(k) {
+        if let Some(&(c, f, _)) = etats[i].get(k) {
             notes[i].corde = Some(c);
             notes[i].frette = Some(f);
         }
@@ -153,6 +180,26 @@ mod tests {
         let mut n = vec![note(0.0, 28), note(0.3, 40)];
         poser(&mut n, &Accordage::basse4());
         assert_eq!((n[1].corde, n[1].frette), (Some(2), Some(2)));
+    }
+
+    #[test]
+    fn la_main_ne_bouge_pas_autour_d_une_corde_a_vide() {
+        // Sol1 (mi, 3ᵉ frette), mi1 à vide, si1 : la main reste en première
+        // position — si1 en 2ᵉ frette de la, pas en 7ᵉ de mi.
+        let mut n = vec![note(0.0, 31), note(0.3, 28), note(0.6, 35)];
+        poser(&mut n, &Accordage::basse4());
+        assert_eq!((n[2].corde, n[2].frette), (Some(1), Some(2)));
+    }
+
+    #[test]
+    fn une_ligne_haute_reste_en_position() {
+        // Une phrase en 7ᵉ position (la2 si2 do3 ré3) reste sous la main :
+        // pas d'allers-retours vers les cordes à vide.
+        let mut n: Vec<Note> = [45u8, 47, 48, 50, 48, 47].iter().enumerate().map(|(i, &h)| note(i as f32 * 0.2, h)).collect();
+        poser(&mut n, &Accordage::basse4());
+        let f: Vec<u8> = n.iter().map(|x| x.frette.unwrap()).collect();
+        let (mn, mx) = (*f.iter().min().unwrap(), *f.iter().max().unwrap());
+        assert!(mx - mn <= 3, "tient sous la main : {f:?}");
     }
 
     #[test]

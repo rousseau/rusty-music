@@ -11436,6 +11436,19 @@ function chargerScriptUneFois(src) {
   });
 }
 
+/// Les points de synchro d'une mesure : un par temps détecté, pas seulement
+/// le premier. alphaTab avance au tempo moyen entre deux points ; avec un
+/// point par mesure, le curseur accélérait ou freinait dans la mesure puis
+/// sautait à la barre (essai du 9 oct.). Un par temps suit le jeu réel.
+function syncTemps(i, debut, fin, T) {
+  const dans = T.filter((t) => t >= debut - 1e-3 && t < fin - 1e-3);
+  if (!dans.length || Math.abs(dans[0] - debut) > 0.05) dans.unshift(debut);
+  const n = dans.length;
+  return dans
+    .map((t, k) => (k === 0 ? `\\sync (${i} 0 ${Math.round(t * 1000)}) ` : `\\sync (${i} 0 ${Math.round(t * 1000)} ${(k / n).toFixed(4)}) `))
+    .join("");
+}
+
 /// L'alphaTex de la grille mesurée, pour l'instrument pratiqué : une note par
 /// temps, une métrique par mesure — celle que les temps détectés donnent —, un
 /// point de synchro par premier temps. La basse se lit en **tablature** (corde
@@ -11467,7 +11480,7 @@ function texGrille(p, titre, instrument) {
     let m = i === 0 && batterie ? "\\clef neutral " : "";
     m += n !== precedente ? `\\ts (${n} 4) ` : "";
     precedente = n;
-    m += `\\sync (${i} 0 ${Math.round(P[i] * 1000)}) ` + Array(n).fill(note).join(" ");
+    m += syncTemps(i, P[i], fin, T) + Array(n).fill(note).join(" ");
     mesures.push(m);
   }
   return tete + mesures.join(" |\n") + " |";
@@ -11491,7 +11504,8 @@ function decouperDuree(seiziemes) {
 /// (`crates/transcription`, `quantification::Mesure`) — frettes, silences,
 /// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
-function texTablature(mesures, titre, bpm) {
+function texTablature(mesures, titre, p) {
+  const bpm = p.bpm;
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (Basic Pitch) — à vérifier à l'oreille"` +
@@ -11500,7 +11514,8 @@ function texTablature(mesures, titre, bpm) {
   const corps = mesures.map((m, i) => {
     let t = m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
     precedente = m.temps;
-    t += `\\sync (${i} 0 ${Math.round(m.debut_s * 1000)}) `;
+    const fin = mesures[i + 1]?.debut_s ?? Infinity;
+    t += syncTemps(i, m.debut_s, fin, p.temps);
     const temps = [];
     for (const e of m.evenements) {
       const durees = decouperDuree(e.seiziemes);
@@ -11517,12 +11532,53 @@ function texTablature(mesures, titre, bpm) {
   return tete + corps.join(" |\n") + " |";
 }
 
+/// Les pièces d'ADTOF en articulations Guitar Pro (`\articulation defaults`).
+const ARTICULATIONS = {
+  grosse_caisse: '"Kick (hit)"',
+  caisse_claire: '"Snare (hit)"',
+  toms: '"Mid Tom (hit)"',
+  charleston: '"Hi-Hat (closed)"',
+  cymbales: '"Crash high (hit)"',
+};
+
+/// L'alphaTex d'une batterie transcrite : les mesures quantifiées par le
+/// moteur (`quantification::MesureBatterie`), une frappe = les pièces
+/// frappées ensemble, en accord ; une durée longue se découpe en silences
+/// (seule l'attaque compte en batterie).
+function texBatterie(mesures, titre, p) {
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  const tete =
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (ADTOF) — à vérifier à l'oreille"` +
+    ` \\tempo ${Math.round(p.bpm ?? 120)}\n\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}\n`;
+  let precedente = 0;
+  const corps = mesures.map((m, i) => {
+    let t = i === 0 ? "\\clef neutral " : "";
+    t += m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
+    precedente = m.temps;
+    const fin = mesures[i + 1]?.debut_s ?? Infinity;
+    t += syncTemps(i, m.debut_s, fin, p.temps);
+    const temps = [];
+    for (const f of m.frappes) {
+      const [premiere, ...reste] = decouperDuree(f.seiziemes);
+      if (f.pieces.length) {
+        const acc = f.pieces.map((x) => ARTICULATIONS[x]).join(" ");
+        temps.push(`${f.pieces.length > 1 ? `(${acc})` : acc}.${premiere}`);
+      } else {
+        temps.push(`r.${premiere}`);
+      }
+      for (const d of reste) temps.push(`r.${d}`);
+    }
+    return t + (temps.length ? temps.join(" ") : "r.1");
+  });
+  return tete + corps.join(" |\n") + " |";
+}
+
 /// La transcription du morceau ouvert, par instrument : la promesse en cours
 /// ou le résultat — calculée une fois, en cache côté moteur.
 const transcriptions = new Map();
 function transcription(instrument) {
   const id = edition.source?.id;
-  if (id === undefined || instrument !== "bass") return null;
+  if (id === undefined || (instrument !== "bass" && instrument !== "drums")) return null;
   const cle = `${id}:${instrument}`;
   if (!transcriptions.has(cle)) {
     const entree = { pret: null, erreur: null };
@@ -11556,6 +11612,26 @@ function positionEstimee() {
   return edition.posMs + (performance.now() - edition.posLueA) * edition.vitesse;
 }
 
+/// La position donnée à alphaTab, lissée : elle avance à la vitesse de
+/// lecture et ne se recale que d'une fraction de l'écart à chaque tick.
+/// L'estimation brute se corrige d'un coup à chaque relevé du moteur (5 par
+/// seconde) — de petits sauts que le curseur rendait visibles. Un vrai
+/// déplacement (plus de 250 ms d'écart) se suit sans lissage.
+const lissage = { sortie: null, a: 0 };
+function positionLissee() {
+  const cible = positionEstimee();
+  const maintenant = performance.now();
+  if (lissage.sortie === null || edition.enPause || Math.abs(cible - lissage.sortie) > 250) {
+    lissage.sortie = cible;
+    lissage.a = maintenant;
+    return cible;
+  }
+  const prevue = lissage.sortie + (maintenant - lissage.a) * edition.vitesse;
+  lissage.a = maintenant;
+  lissage.sortie = prevue + 0.15 * (cible - prevue);
+  return lissage.sortie;
+}
+
 async function preparerPartition() {
   if (partition.api) return partition.api;
   await chargerScript("vendor/alphatab/alphaTab.min.js");
@@ -11565,7 +11641,11 @@ async function preparerPartition() {
   const api = new alphaTab.AlphaTabApi($("partition-rendu"), {
     // Sans worker : il ne démarre pas hors d'un serveur (essai du 9 oct.),
     // et le rendu sur le fil principal prend ~60 ms pour 130 mesures.
-    core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false },
+    // Sans rendu paresseux : il ne dessine que ce qu'il croit visible, et se
+    // trompe quand c'est nous qui faisons défiler le conteneur — d'où des
+    // pans de partition blancs (le « panneau blanc » de l'essai du 9 oct.,
+    // reproduit avec la batterie de « Love Foolosophy »).
+    core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false, enableLazyLoading: false },
     display: { layoutMode: "page", scale: 0.9 },
     player: {
       playerMode: "enabledExternalMedia",
@@ -11667,7 +11747,12 @@ async function montrerPartition() {
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
-      api.tex(tr?.pret ? texTablature(tr.pret.mesures, titre, p.bpm) : texGrille(p, titre, instrument));
+      const tex = !tr?.pret
+        ? texGrille(p, titre, instrument)
+        : instrument === "drums"
+          ? texBatterie(tr.pret.mesures, titre, p)
+          : texTablature(tr.pret.mesures, titre, p);
+      api.tex(tex);
     }
   } catch (e) {
     $("partition-aide").hidden = false;
@@ -11679,7 +11764,7 @@ async function montrerPartition() {
   partition.minuteur = setInterval(() => {
     const out = partition.api?.player?.output;
     if (!out || edition.usage !== "pratiquer" || modeCourant !== "editer") return;
-    out.updatePosition(positionEstimee());
+    out.updatePosition(positionLissee());
     suivreCurseur();
   }, 50);
 }

@@ -25,7 +25,15 @@ use crate::{decode, Error, Result};
 
 /// Version du format et du calcul. Une pulsation en cache d'une autre version
 /// est recalculée.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+
+/// Correction ajoutée à chaque temps, en secondes. Mesurée sur GTZAN (998
+/// clips, 53 554 temps appariés à ±70 ms) : le portage place les temps
+/// **12 ms avant** les annotations, de façon homogène d'un genre à l'autre
+/// (−7 à −20 ms) — vraisemblablement un demi-pas de trame (10 ms à 50
+/// trames/s). Invisible au F1 à ±70 ms, mais une double croche à 130 BPM ne
+/// dure que 115 ms. Version 2 du cache.
+pub const CORRECTION_S: f32 = 0.012;
 
 /// Nom du fichier de cache, rangé à côté des stems du morceau.
 pub const FICHIER_CACHE: &str = "pulsation.json";
@@ -292,7 +300,13 @@ impl Pisteur {
             .reseau
             .analyze_owned(mono, frequence)
             .map_err(|e| Error::Modele(e.to_string()))?;
-        Ok(Pulsation { version: VERSION, modele: self.modele, temps: a.beats, premiers_temps: a.downbeats })
+        let corriger = |v: Vec<f32>| -> Vec<f32> { v.into_iter().map(|t| t + CORRECTION_S).collect() };
+        Ok(Pulsation {
+            version: VERSION,
+            modele: self.modele,
+            temps: corriger(a.beats),
+            premiers_temps: corriger(a.downbeats),
+        })
     }
 
     /// Décode un fichier entier et l'analyse. Le mélange des deux canaux :

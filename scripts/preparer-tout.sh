@@ -23,6 +23,10 @@ echo "═══ HTDemucs ═══"
 "$ICI/preparer-demucs.sh"
 
 echo
+echo "═══ ADTOF (batterie) ═══"
+"$ICI/preparer-adtof.sh"
+
+echo
 echo "═══ AERO ═══"
 echo "À faire à part : ./scripts/preparer-aero.sh --checkpoint CHEMIN.th"
 echo "(ou ./scripts/telecharger-modeles.sh aero)"

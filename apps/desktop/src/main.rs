@@ -116,6 +116,8 @@ struct Etat {
     /// Basic Pitch (transcription), chargé au premier usage puis gardé —
     /// 230 Ko de poids, une session ONNX Runtime.
     transcripteur: Mutex<Option<rusty_music_transcription::basic_pitch::Transcripteur>>,
+    /// ADTOF (batterie), chargé au premier usage puis gardé.
+    batteur: Mutex<Option<rusty_music_transcription::batterie::Batteur>>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -6034,20 +6036,24 @@ struct VueTranscription {
     instrument: String,
     modele: String,
     notes: Vec<rusty_music_transcription::Note>,
+    /// Les coups de batterie, pour la batterie.
+    #[serde(default)]
+    coups: Vec<rusty_music_transcription::batterie::Coup>,
     mesures: serde_json::Value,
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
-const VERSION_TRANSCRIPTION: u32 = 1;
+const VERSION_TRANSCRIPTION: u32 = 2;
 
-/// Transcrit le stem `instrument` d'un morceau — la basse seulement pour
-/// l'instant : Basic Pitch, une note à la fois, corde et frette, puis
-/// quantification sur la pulsation (`crates/transcription`). En cache à côté
-/// des stems ; quelques secondes la première fois.
+/// Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
+/// - « bass » : Basic Pitch, une note à la fois, corde et frette ;
+/// - « drums » : ADTOF, cinq pièces.
+/// Puis quantification sur la pulsation. En cache à côté des stems ;
+/// quelques secondes la première fois.
 #[tauri::command(async)]
 fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTranscription, String> {
-    use rusty_music_transcription::{basic_pitch, monophonie, quantification, tablature};
-    if instrument != "bass" {
+    use rusty_music_transcription::{basic_pitch, batterie, monophonie, quantification, tablature};
+    if instrument != "bass" && instrument != "drums" {
         return Err(format!("transcription de « {instrument} » pas encore disponible"));
     }
     let chemin = verrou(&etat.lib)
@@ -6078,6 +6084,39 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
 
     let debut = std::time::Instant::now();
     let s = rusty_music_editor::decode::stereo(&stem).map_err(echec)?;
+    if instrument == "drums" {
+        let (carac, trames, bandes) = batterie::caracteristiques(&s.gauche, &s.droite);
+        drop(s);
+        let activations = {
+            let mut garde = verrou(&etat.batteur);
+            if garde.is_none() {
+                *garde = Some(batterie::Batteur::charger_installe().map_err(echec)?);
+            }
+            garde.as_mut().expect("chargé juste au-dessus").activations(&carac, trames, bandes).map_err(echec)?
+        };
+        let coups = batterie::coups(&activations, trames);
+        let mesures = quantification::quantifier_coups(
+            &coups,
+            &pulsation.temps,
+            &pulsation.premiers_temps,
+            pulsation.metrique().unwrap_or(4),
+        );
+        tracing::info!(ms = debut.elapsed().as_millis() as u64, coups = coups.len(), mesures = mesures.len(), "transcription batterie");
+        let vue = VueTranscription {
+            version: VERSION_TRANSCRIPTION,
+            instrument,
+            modele: "adtof-frame-rnn".into(),
+            notes: Vec::new(),
+            coups,
+            mesures: serde_json::to_value(&mesures).map_err(echec)?,
+        };
+        if let Ok(o) = serde_json::to_vec(&vue) {
+            if let Err(e) = std::fs::write(&cache, o) {
+                tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
+            }
+        }
+        return Ok(vue);
+    }
     let mono: Vec<f32> = s.gauche.iter().zip(&s.droite).map(|(g, d)| 0.5 * (g + d)).collect();
     drop(s);
     basic_pitch::POIDS.telecharger(|_, _| {}).map_err(echec)?;
@@ -6106,6 +6145,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
         instrument,
         modele: "basic-pitch".into(),
         notes,
+        coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
@@ -8213,6 +8253,7 @@ fn main() {
                 stems: Mutex::new(None),
                 pisteur: Mutex::new(None),
                 transcripteur: Mutex::new(None),
+                batteur: Mutex::new(None),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un

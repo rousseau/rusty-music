@@ -13,6 +13,8 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 ort = { version = "=2.0.0-rc.10", features = ["ndarray"] }
 ndarray = "0.16"
 rubato.workspace = true
+# FFT du spectrogramme de la batterie (même calcul que madmom).
+rustfft.workspace = true
 serde.workspace = true
 rusty-music-core = { path = "../core" }
 thiserror.workspace = true

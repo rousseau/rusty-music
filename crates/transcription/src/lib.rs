@@ -10,8 +10,12 @@
 //! 2. [`monophonie`] — une basse joue une note à la fois ;
 //! 3. [`tablature`] — corde et frette de chaque note, par plus court chemin ;
 //! 4. [`quantification`] — sur les temps et les mesures de la pulsation.
+//!
+//! La batterie : [`batterie`] — ADTOF (Zehren et al.), poids convertis en ONNX,
+//! spectrogramme et choix des pics réécrits d'après madmom.
 
 pub mod basic_pitch;
+pub mod batterie;
 pub mod monophonie;
 pub mod quantification;
 pub mod tablature;
