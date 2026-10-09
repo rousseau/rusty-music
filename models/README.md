@@ -19,6 +19,10 @@ Les fichiers téléchargés sont les *release assets* de la balise `modeles-v1`.
 | `clap-audio-encoder-b5.onnx` | 112 Mo | `9ee45d84…ba5f2244` | encodeur audio de CLAP, formes figées à 5 fenêtres | `crates/analysis/build.rs` (traduit en Rust au build) | Apache-2.0 — `laion/clap-htsat-unfused` |
 | `htdemucs.safetensors` | 80 Mo | `8193504c…6578423e` | HTDemucs 4 stems | `crates/editor` (`demucs-core`, à l'exécution) | MIT — poids Meta / HTDemucs |
 | `aero-11025-44100.onnx` | 148 Mo | `c1fbe1f9…8b6f339b` | générateur AERO (super-résolution), réseau seul | `crates/superres` (ONNX Runtime, à l'exécution) | voir `slp-rl/aero` |
+| `beat_this.onnx` + `beat_this_mel.onnx` | 83 Mo + 0,3 Mo | `5f810deb…70f02` / `fdd59e65…e3de9` | pulsation « Beat This! » : temps et premiers temps de mesure | `crates/editor` (`pulsation`, runtime `rten`) — **téléchargés au premier usage**, ou `scripts/preparer-beat-this.sh` | MIT — CPJKU / `beat-this-rs` |
+| `basic_pitch_nmp.onnx` | 0,2 Mo | `2c3c1d14…2c059a0ec` | transcription (Basic Pitch, Spotify) | `crates/transcription` (ONNX Runtime) — **téléchargé au premier usage** | Apache-2.0 — `spotify/basic-pitch` |
+
+Remerciements, articles et liens de tous les modèles : `MODELES.md` à la racine.
 
 La licence des poids est **distincte** de celle du code (GPL-3.0-or-later).
 

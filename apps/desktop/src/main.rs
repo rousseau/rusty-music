@@ -113,6 +113,9 @@ struct Etat {
     /// gardé — 83 Mo de poids, 30 ms à charger : le garder évite surtout de
     /// relire le disque à chaque morceau ouvert.
     pisteur: Mutex<Option<rusty_music_editor::pulsation::Pisteur>>,
+    /// Basic Pitch (transcription), chargé au premier usage puis gardé —
+    /// 230 Ko de poids, une session ONNX Runtime.
+    transcripteur: Mutex<Option<rusty_music_transcription::basic_pitch::Transcripteur>>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -5974,7 +5977,7 @@ struct VuePulsation {
 /// Le pisteur reste chargé une fois qu'il l'a été.
 #[tauri::command(async)]
 fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
-    use rusty_music_editor::pulsation::{Modele, Pisteur, Pulsation, FICHIER_CACHE};
+    use rusty_music_editor::pulsation::{Modele, FICHIER_CACHE};
 
     let chemin = verrou(&etat.lib)
         .track(id)
@@ -5987,7 +5990,19 @@ fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
     let cache = dossier.join(FICHIER_CACHE);
     let modele = Modele::Complet;
 
-    let p = match Pulsation::lire(&cache, modele) {
+    let p = pulsation_de(&etat, &source, &cache, modele)?;
+    Ok(VuePulsation { bpm: p.bpm(), metrique: p.metrique(), temps: p.temps, premiers_temps: p.premiers_temps })
+}
+
+/// La pulsation de `source`, depuis le cache ou calculée (et mise en cache).
+fn pulsation_de(
+    etat: &State<Etat>,
+    source: &Path,
+    cache: &Path,
+    modele: rusty_music_editor::pulsation::Modele,
+) -> Result<rusty_music_editor::pulsation::Pulsation, String> {
+    use rusty_music_editor::pulsation::{Pisteur, Pulsation};
+    let p = match Pulsation::lire(cache, modele) {
         Some(p) => p,
         None => {
             if !modele.present() {
@@ -6002,13 +6017,103 @@ fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
             let p = garde
                 .as_mut()
                 .expect("chargé juste au-dessus")
-                .analyser_avec_cache(&source, &cache)
+                .analyser_avec_cache(source, cache)
                 .map_err(echec)?;
             tracing::info!(ms = debut.elapsed().as_millis() as u64, temps = p.temps.len(), "pulsation calculée");
             p
         }
     };
-    Ok(VuePulsation { bpm: p.bpm(), metrique: p.metrique(), temps: p.temps, premiers_temps: p.premiers_temps })
+    Ok(p)
+}
+
+/// Une transcription, telle que l'interface la consomme : les notes (pour
+/// les corrections à venir) et les mesures quantifiées (pour la partition).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VueTranscription {
+    version: u32,
+    instrument: String,
+    modele: String,
+    notes: Vec<rusty_music_transcription::Note>,
+    mesures: serde_json::Value,
+}
+
+/// Version du cache de transcription : à monter dès que le calcul change.
+const VERSION_TRANSCRIPTION: u32 = 1;
+
+/// Transcrit le stem `instrument` d'un morceau — la basse seulement pour
+/// l'instant : Basic Pitch, une note à la fois, corde et frette, puis
+/// quantification sur la pulsation (`crates/transcription`). En cache à côté
+/// des stems ; quelques secondes la première fois.
+#[tauri::command(async)]
+fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTranscription, String> {
+    use rusty_music_transcription::{basic_pitch, monophonie, quantification, tablature};
+    if instrument != "bass" {
+        return Err(format!("transcription de « {instrument} » pas encore disponible"));
+    }
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let source = PathBuf::from(&chemin);
+    let dossier = dossier_stems(&etat, &source);
+    let cache = dossier.join(format!("transcription-{instrument}.json"));
+    if let Some(t) = std::fs::read(&cache)
+        .ok()
+        .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
+        .filter(|t| t.version == VERSION_TRANSCRIPTION)
+    {
+        return Ok(t);
+    }
+    let (_, stem) = stems_du_dossier(&dossier)
+        .into_iter()
+        .find(|(n, _)| *n == instrument)
+        .ok_or_else(|| format!("pas de stem « {instrument} » séparé pour ce morceau"))?;
+    let pulsation = pulsation_de(
+        &etat,
+        &source,
+        &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
+        rusty_music_editor::pulsation::Modele::Complet,
+    )?;
+
+    let debut = std::time::Instant::now();
+    let s = rusty_music_editor::decode::stereo(&stem).map_err(echec)?;
+    let mono: Vec<f32> = s.gauche.iter().zip(&s.droite).map(|(g, d)| 0.5 * (g + d)).collect();
+    drop(s);
+    basic_pitch::POIDS.telecharger(|_, _| {}).map_err(echec)?;
+    let activations = {
+        let mut garde = verrou(&etat.transcripteur);
+        if garde.is_none() {
+            *garde = Some(basic_pitch::Transcripteur::charger_installe().map_err(echec)?);
+        }
+        garde
+            .as_mut()
+            .expect("chargé juste au-dessus")
+            .activations(&mono, rusty_music_editor::SR)
+            .map_err(echec)?
+    };
+    let mut notes = monophonie::monophonique(basic_pitch::notes(&activations, &basic_pitch::Reglages::basse()));
+    tablature::poser(&mut notes, &tablature::Accordage::basse4());
+    let mesures = quantification::quantifier(
+        &notes,
+        &pulsation.temps,
+        &pulsation.premiers_temps,
+        pulsation.metrique().unwrap_or(4),
+    );
+    tracing::info!(ms = debut.elapsed().as_millis() as u64, notes = notes.len(), mesures = mesures.len(), "transcription");
+    let vue = VueTranscription {
+        version: VERSION_TRANSCRIPTION,
+        instrument,
+        modele: "basic-pitch".into(),
+        notes,
+        mesures: serde_json::to_value(&mesures).map_err(echec)?,
+    };
+    if let Ok(o) = serde_json::to_vec(&vue) {
+        if let Err(e) = std::fs::write(&cache, o) {
+            tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
+        }
+    }
+    Ok(vue)
 }
 
 /// État du multipiste, sondé par l'interface pour animer sa barre.
@@ -8107,6 +8212,7 @@ fn main() {
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 pisteur: Mutex::new(None),
+                transcripteur: Mutex::new(None),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un
@@ -8462,6 +8568,7 @@ fn main() {
             stems_transport,
             stems_boucle,
             pulsation,
+            transcrire,
             stems_state,
             stem_spectre,
             voisins_de_stem,

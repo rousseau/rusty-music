@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/cli", "crates/osm", "crates/player", "crates/analysis", "crates/carto", "crates/editor", "crates/superres", "apps/desktop"]
+members = ["crates/core", "crates/cli", "crates/osm", "crates/player", "crates/analysis", "crates/carto", "crates/editor", "crates/superres", "crates/transcription", "apps/desktop"]
 # `experiments/` reste hors du workspace : ce qu'on y essaie doit pouvoir ne
 # pas compiler sans empêcher `cargo build` de passer sur le reste.
 exclude = ["experiments"]

@@ -17,6 +17,7 @@ rusty-music-analysis = { path = "../../crates/analysis" }
 rusty-music-carto = { path = "../../crates/carto" }
 rusty-music-editor = { path = "../../crates/editor" }
 rusty-music-superres = { path = "../../crates/superres" }
+rusty-music-transcription = { path = "../../crates/transcription" }
 # Lecture directe de `ville-paris.db` : `main.rs` appelle `osm::base::lire`
 # pour brancher le plan de ville réel sur `carto::ville::rassembler`.
 rusty-music-osm = { path = "../../crates/osm" }

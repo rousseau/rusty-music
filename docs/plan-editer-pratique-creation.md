@@ -210,6 +210,23 @@ mal placée, pas un rythme faux.
 
 ### 1.2 Transcription basse — **M**
 
+**Fait (9 oct.) — première version de bout en bout.** Nouveau crate
+`crates/transcription` (15 tests) : `basic_pitch` (ONNX Runtime, fenêtres de
+2 s recouvrantes, port de `note_creation` sans pitch bends ; l'« astuce
+Melodia » par tas plutôt que par balayages), `monophonie`, `tablature`
+(Viterbi : main, changement de corde 0,2, positions au-delà de la 4ᵉ frette
+0,1 par frette), `quantification` (doubles croches sur les temps mesurés,
+découpe aux premiers temps, liaisons). **Parité avec le code de Spotify sur
+le stem de basse de « Love Foolosophy »** : activations à 1,5 × 10⁻⁷, 832/832
+notes identiques (`experiments/transcription/parite_basic_pitch.py`). 224 s
+de basse : réseau 1,2 s, notes 5 ms. Commande `transcrire(id, instrument)`
+(cache `transcription-bass.json`) ; dans l'interface, la tablature transcrite
+remplace la grille dès qu'elle arrive (`texTablature`).
+**Reste** : contrôle d'octave (alternances si1/si2 visibles — réelles ou
+erreurs ? à trancher au banc), triolets, découpage des durées sur les temps
+(silences pointés peu lisibles), MuScriptor en mode qualité, corrections
+manuelles (1.5).
+
 **Recommandation.** Nouveau crate `crates/transcription` (Burn + `ort`, même
 règle de backend que `analysis` et `editor`). Modèle par défaut **Basic Pitch**
 (Apache-2.0, ONNX livré, < 17 000 paramètres) via `ort` — rapide, toujours

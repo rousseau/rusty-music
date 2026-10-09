@@ -1,0 +1,24 @@
+[package]
+name = "rusty-music-transcription"
+description = "Transcription automatique d'un stem (module 3 — pratiquer) : notes, cordes et frettes, quantification sur la pulsation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+# ONNX Runtime, comme `crates/superres` (même version épinglée) : Basic Pitch
+# (Spotify, Apache-2.0) est livré en ONNX, CQT comprise dans le graphe.
+ort = { version = "=2.0.0-rc.10", features = ["ndarray"] }
+ndarray = "0.16"
+rubato.workspace = true
+serde.workspace = true
+rusty-music-core = { path = "../core" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# Décodage des exemples seulement : le crate, lui, ne décode rien.
+rodio.workspace = true
+serde_json.workspace = true

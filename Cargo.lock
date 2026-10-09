@@ -7942,6 +7942,7 @@ dependencies = [
  "rusty-music-osm",
  "rusty-music-player",
  "rusty-music-superres",
+ "rusty-music-transcription",
  "serde",
  "serde_json",
  "souvlaki",
@@ -8006,6 +8007,21 @@ dependencies = [
  "rodio",
  "rubato 5.0.0",
  "rustfft",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "rusty-music-transcription"
+version = "0.1.0"
+dependencies = [
+ "ndarray 0.16.1",
+ "ort",
+ "rodio",
+ "rubato 5.0.0",
+ "rusty-music-core",
+ "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "tracing",
 ]

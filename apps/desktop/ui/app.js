@@ -11473,6 +11473,75 @@ function texGrille(p, titre, instrument) {
   return tete + mesures.join(" |\n") + " |";
 }
 
+/// Durées alphaTex d'une longueur en doubles croches, la plus longue d'abord.
+const DUREES_TEX = [[16, "1"], [12, "2{d}"], [8, "2"], [6, "4{d}"], [4, "4"], [3, "8{d}"], [2, "8"], [1, "16"]];
+function decouperDuree(seiziemes) {
+  const morceaux = [];
+  let reste = seiziemes;
+  for (const [n, d] of DUREES_TEX) {
+    while (reste >= n) {
+      morceaux.push(d);
+      reste -= n;
+    }
+  }
+  return morceaux;
+}
+
+/// L'alphaTex d'une basse transcrite : les mesures quantifiées par le moteur
+/// (`crates/transcription`, `quantification::Mesure`) — frettes, silences,
+/// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
+/// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
+function texTablature(mesures, titre, bpm) {
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  const tete =
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (Basic Pitch) — à vérifier à l'oreille"` +
+    ` \\tempo ${Math.round(bpm ?? 120)}\n\\track "Basse" \\staff {tabs} \\tuning (G2 D2 A1 E1)\n`;
+  let precedente = 0;
+  const corps = mesures.map((m, i) => {
+    let t = m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
+    precedente = m.temps;
+    t += `\\sync (${i} 0 ${Math.round(m.debut_s * 1000)}) `;
+    const temps = [];
+    for (const e of m.evenements) {
+      const durees = decouperDuree(e.seiziemes);
+      const jeu = e.jeu;
+      if (!jeu || jeu.corde === null || jeu.frette === null) {
+        for (const d of durees) temps.push(`r.${d}`);
+        continue;
+      }
+      const corde = 4 - jeu.corde;
+      durees.forEach((d, k) => temps.push(e.lie || k > 0 ? `-.${corde}.${d}` : `${jeu.frette}.${corde}.${d}`));
+    }
+    return t + (temps.length ? temps.join(" ") : `r.${m.temps === 4 ? "1" : "4"}`);
+  });
+  return tete + corps.join(" |\n") + " |";
+}
+
+/// La transcription du morceau ouvert, par instrument : la promesse en cours
+/// ou le résultat — calculée une fois, en cache côté moteur.
+const transcriptions = new Map();
+function transcription(instrument) {
+  const id = edition.source?.id;
+  if (id === undefined || instrument !== "bass") return null;
+  const cle = `${id}:${instrument}`;
+  if (!transcriptions.has(cle)) {
+    const entree = { pret: null, erreur: null };
+    entree.promesse = invoke("transcrire", { id, instrument })
+      .then((t) => {
+        entree.pret = t;
+      })
+      .catch((e) => {
+        entree.erreur = String(e);
+        console.warn("transcription", e);
+      })
+      .finally(() => {
+        if (edition.usage === "pratiquer" && edition.source?.id === id) montrerPartition();
+      });
+    transcriptions.set(cle, entree);
+  }
+  return transcriptions.get(cle);
+}
+
 /// L'instrument dont on lit la partie : celui choisi dans le rail, s'il a
 /// un stem ; sinon l'autre ; sinon aucun.
 function instrumentPratique() {
@@ -11580,21 +11649,25 @@ async function montrerPartition() {
   const hote = $("partition");
   const p = edition.pulsation;
   const instrument = instrumentPratique();
+  const tr = p && instrument ? transcription(instrument) : null;
   const message = !p
     ? "Pulsation en cours de calcul… La partition se pose sur les mesures du morceau."
     : !instrument
       ? "Ce morceau n'a ni basse ni batterie séparées."
       : null;
-  $("partition-aide").hidden = !message;
-  $("partition-aide").textContent = message ?? "";
+  // Pendant la transcription, ou sans elle (batterie), la grille mesurée.
+  const note = tr && !tr.pret ? (tr.erreur ? `Transcription impossible : ${tr.erreur}` : "Transcription en cours…") : null;
+  $("partition-aide").hidden = !(message ?? note);
+  $("partition-aide").textContent = message ?? note ?? "";
   $("partition-rendu").hidden = !!message;
   if (message) return;
   try {
     const api = await preparerPartition();
-    const cle = `${edition.source?.id ?? ""}:${instrument}`;
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}`;
     if (partition.source !== cle) {
       partition.source = cle;
-      api.tex(texGrille(p, txt(edition.source?.title, "?"), instrument));
+      const titre = txt(edition.source?.title, "?");
+      api.tex(tr?.pret ? texTablature(tr.pret.mesures, titre, p.bpm) : texGrille(p, titre, instrument));
     }
   } catch (e) {
     $("partition-aide").hidden = false;
