@@ -103,6 +103,16 @@ tablature à la bonne double croche : hauteur juste 71 %, octave 6,5 %
 (44 %) est la limite principale : Basic Pitch ne voit pas les notes répétées
 rapides ni les notes étouffées.
 
+## Autres livres (sondés le 10 oct.)
+
+| Livre | Résolution | Tablature lisible | Intérêt |
+|---|---|---|---|
+| Nirvana — *The Bass Guitar Collection* | 300 dpi | oui | autre bassiste (médiator, toniques), accordages abaissés |
+| Primus — *Sailing the Seas of Cheese* | 300 dpi | peu (guitare et basse) | à trier |
+| Royal Blood — *Songbook* (epub) | ~160 dpi | à essayer | basse jouée comme une guitare |
+| Jaco Pastorius, Primus *Anthology* | 75-100 dpi | non | — |
+| Livres guitare, piano-voix (epub) | ~60 dpi | non | — |
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,

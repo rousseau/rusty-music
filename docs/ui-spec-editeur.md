@@ -406,8 +406,12 @@ réglage.
    mesure, boucle visible sur les mesures ; les stems restent accessibles en
    une rangée de niveaux. L'autoroute de notes n'est plus la vue par défaut —
    elle reste une vue de repli si la transcription est trop peu sûre pour
-   être gravée. **Notation par instrument (9 oct.)** : la basse en
-   **tablature seule**, la batterie en **portée de percussion** (clé neutre).
+   être gravée. **Notation par instrument (9 oct., révisée le 10)** : la basse
+   en **notation + tablature** par défaut, comme les livres « Bass Recorded
+   Versions » (clé de fa au-dessus de la tablature), avec une bascule
+   « Partition + tab / Tablature » dans le rail, sous Basse / Batterie
+   (retenue par le navigateur) ; la batterie en **portée de percussion**
+   (clé neutre).
    L'instrument affiché se choisit dans le rail (Basse / Batterie, sous
    Pratiquer), **indépendamment du solo et de la coupure** : on peut lire sa
    partie en l'écoutant, en solo, ou la jouer à la place du stem coupé.

@@ -11511,12 +11511,12 @@ function texTablature(mesures, titre, p, accordage) {
   // vient du moteur (standard, drop D, cinq cordes), de la corde aiguë à la
   // grave.
   const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
-  const portee = NOTATION_BASSE === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
+  const portee = notationBasse === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (Basic Pitch) — à vérifier à l'oreille"` +
     ` \\tempo ${Math.round(bpm ?? 120)} \\multibarrest\n` +
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
-    (NOTATION_BASSE === "tabs" ? "" : "\\clef F4\n");
+    (notationBasse === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
   const corps = mesures.map((m, i) => {
     let t = m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
@@ -11539,11 +11539,17 @@ function texTablature(mesures, titre, p, accordage) {
   return tete + corps.join(" |\n") + " |";
 }
 
-/// Basse en tablature seule (préférence du 9 oct., décision 11 de
-/// `ui-spec-editeur.md`). « score+tabs » reproduit les livres « Bass Recorded
-/// Versions » : notation en clé de fa au-dessus de la tablature — proposé le
-/// 10 oct., à trancher.
-const NOTATION_BASSE = "tabs";
+/// Notation de la basse : « score+tabs » (défaut, décidé le 10 oct. —
+/// comme les livres « Bass Recorded Versions », la notation en clé de fa
+/// au-dessus de la tablature) ou « tabs » (tablature seule). Bascule dans le
+/// rail, retenue par le navigateur (commodité, pas un état à partager).
+let notationBasse = (() => {
+  try {
+    return localStorage.getItem("notation-basse") === "tabs" ? "tabs" : "score+tabs";
+  } catch {
+    return "score+tabs";
+  }
+})();
 
 /// Une note suivie d'un silence d'une double croche le garde pour elle :
 /// la transcription coupe les notes un peu court, et une partition de basse
@@ -11777,7 +11783,7 @@ async function montrerPartition() {
   if (message) return;
   try {
     const api = await preparerPartition();
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}`;
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
@@ -11822,6 +11828,10 @@ function majUsage() {
     b.classList.toggle("segment--actif", b.dataset.instrument === instrument);
     b.disabled = !edition.stems.some((s) => s.nom === b.dataset.instrument);
   }
+  $("notations").hidden = edition.usage !== "pratiquer" || instrument !== "bass";
+  for (const b of document.querySelectorAll("#notations [data-notation]")) {
+    b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
+  }
   $("usage-aide").textContent =
     edition.usage === "pratiquer"
       ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus."
@@ -11837,6 +11847,16 @@ function majUsage() {
 for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
   b.addEventListener("click", () => {
     edition.instrument = b.dataset.instrument;
+    majUsage();
+  });
+}
+
+for (const b of document.querySelectorAll("#notations [data-notation]")) {
+  b.addEventListener("click", () => {
+    notationBasse = b.dataset.notation;
+    try {
+      localStorage.setItem("notation-basse", notationBasse);
+    } catch {}
     majUsage();
   });
 }

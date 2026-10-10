@@ -212,6 +212,13 @@
           <button class="segment segment--actif" data-instrument="bass">Basse</button>
           <button class="segment" data-instrument="drums">Batterie</button>
         </div>
+        <!-- Basse : notation au-dessus de la tablature (comme les livres
+             publiés) ou tablature seule. -->
+        <div class="segments" id="notations" hidden style="margin-top:8px">
+          <button class="segment segment--actif" data-notation="score+tabs"
+                  title="Notation en clé de fa au-dessus de la tablature, comme les livres de basse">Partition + tab</button>
+          <button class="segment" data-notation="tabs" title="Tablature seule : plus de mesures à l'écran">Tablature</button>
+        </div>
         <p class="aide" id="usage-aide"></p>
       </div>
 
