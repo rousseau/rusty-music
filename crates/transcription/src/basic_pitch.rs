@@ -92,12 +92,17 @@ impl Reglages {
     /// deux tablatures de référence (« Love Foolosophy », « She's A Bad Mama
     /// Jama » ; `experiments/transcription/regler.py`) — note combinée
     /// attaques × hauteurs de 53,7 à 58,9 % en moyenne.
+    ///
+    /// Durée minimale ramenée à 6 trames le 10 oct., au banc contre 15
+    /// partitions publiées (`experiments/partitions/`) : F1 de 0,459 à
+    /// 0,468 — les doubles croches répétées du funk sont courtes. Les seuils
+    /// d'attaque et de trame n'y gagnent rien.
     pub fn basse() -> Self {
         Self {
             freq_min: Some(30.0),
             freq_max: Some(400.0),
             seuil_attaque: 0.6,
-            duree_min: 8,
+            duree_min: 6,
             harmoniques: Some(0.6),
             ..Self::default()
         }

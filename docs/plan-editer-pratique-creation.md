@@ -167,7 +167,16 @@ très utile à l'entraînement. Sert aussi à l'écoute d'une greffe.
 **Constaté.** Aucun chiffre publié sur des stems sortis de Demucs. Le projet a
 déjà l'habitude des bancs (`banc-tempo-gtzan`, `experiments/`).
 
-**À faire.** `experiments/banc-transcription/` :
+**Fait côté basse (10 oct.) : banc contre des partitions publiées**
+(`experiments/partitions/`). Les 15 morceaux de *Californication* (livre
+« Bass Recorded Versions », notation + tablature) : Audiveris lit la notation
+(rythmes) une fois les tablatures effacées, nos propres scripts lisent la
+tablature (hauteurs, cordes, frettes), un Viterbi aligne nos mesures sur les
+mesures écrites (reprises, codas, figures rejouées). Chaîne de l'éditeur :
+F1 0,48 (0,51 sur les mesures adossées à la tablature), doigtés identiques
+61 %. Usage local, rien d'extrait des livres n'est versionné.
+
+**Reste à faire.** `experiments/banc-transcription/` :
 - données : Slakh2100 (basse), MDB-Drums et ENST (batterie), rapatriées de
   Garage en local (`rclone sync`, jamais streamées) ;
 - protocole : remixer, séparer par **notre** HTDemucs, transcrire, comparer à
@@ -256,6 +265,19 @@ sans préférence pour le bas du manche : les bassistes restent sur une corde).
 « Love Foolosophy » : attaques 66 → 72 % (rappel), hauteurs justes 85 → 91 %,
 octaves 10 → 4 %, doigtés identiques 47 → 71 %. Limite trouvée : « Black
 Crow » (pulsation à 75 BPM pour 120 — ternaire ?), grille fausse.
+
+**Contre 15 partitions publiées (10 oct.)** — `experiments/partitions/`
+(banc 0.4). Signalé à l'essai : des notes là où la basse ne joue pas. Cause :
+Basic Pitch ignore le niveau et transcrit les fuites d'autres instruments
+dans le stem (« Under the Bridge » : 119 notes pendant l'introduction et le
+couplet tacet, stem 60 à 70 dB sous son niveau de jeu). **Porte d'énergie**
+(`porte.rs`, 30 dB sous le 95ᵉ centile du stem) : 119 → 2 notes ; « Love
+Foolosophy » commence enfin à l'entrée de la basse. Durée minimale 6 trames,
+**coût d'une corde à vide sous une main haute** (`vide_haut`), accordage
+choisi par les notes (standard, drop D, cinq cordes). F1 0,450 → 0,48,
+doigtés 51 → 61 %. Limite : le rappel (44 %) — notes répétées rapides,
+notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
+que MuScriptor doit faire mieux.
 
 **Recommandation.** Nouveau crate `crates/transcription` (Burn + `ort`, même
 règle de backend que `analysis` et `editor`). Modèle par défaut **Basic Pitch**
@@ -365,6 +387,17 @@ grille : une intro sans pulsation nette donne des mesures irrégulières (1/4,
 
 Bascule autoroute ↔ partition par l'utilisateur ; l'autoroute reste le
 défaut pour une transcription automatique.
+
+**Rendu, d'après les livres publiés (10 oct.).** Silences de plusieurs
+mesures regroupés (`\multibarrest`) ; une note suivie d'un silence d'une
+double croche le garde (`legato` : la transcription coupe court, une
+partition écrit la note jusqu'à la suivante) ; accordage donné par le moteur.
+**Proposé, à trancher** : la notation en clé de fa au-dessus de la tablature,
+comme dans les livres (`NOTATION_BASSE` dans `app.js` ; la tablature seule
+reste le défaut, préférence du 9 oct.). Encore absents des livres : les
+accords chiffrés, les sections (Intro, Verse, Chorus — port d'all-in-one,
+2.4), les reprises et figures (« Bass Fig. 1 ») qui raccourcissent la
+lecture.
 
 ### 1.5 Corriger la transcription — **S/M**
 

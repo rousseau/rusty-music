@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut n = 0;
     // Réglages retenus après le premier banc (10 oct.) : base des suivants.
     let base = Reglages { seuil_attaque: 0.6, seuil_trame: 0.3, duree_min: 8, ..Reglages::basse() };
-    let doigte = Couts { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 12, pente_haut: 0.1 };
+    let doigte = Couts::default();
     if mode == "bp" {
         for &sa in &[0.3f32, 0.4, 0.5, 0.6, 0.7] {
             for &st in &[0.2f32, 0.3, 0.4] {
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for &pb in &[0.0f32, 0.03] {
                 for &dh in &[5u8, 9, 12] {
                     for &ph in &[0.0f32, 0.1, 0.3] {
-                        let k = Couts { corde: c, deplacement: 1.0, pente_bas: pb, debut_haut: dh, pente_haut: ph };
+                        let k = Couts { corde: c, deplacement: 1.0, pente_bas: pb, debut_haut: dh, pente_haut: ph, ..Couts::default() };
                         ecrire(format!("dg_{c}_{pb}_{dh}_{ph}"), &Reglages::basse(), &k)?;
                         n += 1;
                     }

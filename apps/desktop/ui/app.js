@@ -11504,12 +11504,19 @@ function decouperDuree(seiziemes) {
 /// (`crates/transcription`, `quantification::Mesure`) — frettes, silences,
 /// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
-function texTablature(mesures, titre, p) {
+function texTablature(mesures, titre, p, accordage) {
   const bpm = p.bpm;
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  // Les mesures de silence regroupées, comme dans les livres. L'accordage
+  // vient du moteur (standard, drop D, cinq cordes), de la corde aiguë à la
+  // grave.
+  const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
+  const portee = NOTATION_BASSE === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (Basic Pitch) — à vérifier à l'oreille"` +
-    ` \\tempo ${Math.round(bpm ?? 120)}\n\\track "Basse" \\staff {tabs} \\tuning (G2 D2 A1 E1)\n`;
+    ` \\tempo ${Math.round(bpm ?? 120)} \\multibarrest\n` +
+    `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
+    (NOTATION_BASSE === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
   const corps = mesures.map((m, i) => {
     let t = m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
@@ -11517,19 +11524,46 @@ function texTablature(mesures, titre, p) {
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
     t += syncTemps(i, m.debut_s, fin, p.temps);
     const temps = [];
-    for (const e of m.evenements) {
+    for (const e of legato(m.evenements)) {
       const durees = decouperDuree(e.seiziemes);
       const jeu = e.jeu;
       if (!jeu || jeu.corde === null || jeu.frette === null) {
         for (const d of durees) temps.push(`r.${d}`);
         continue;
       }
-      const corde = 4 - jeu.corde;
+      const corde = cordes.length - jeu.corde;
       durees.forEach((d, k) => temps.push(e.lie || k > 0 ? `-.${corde}.${d}` : `${jeu.frette}.${corde}.${d}`));
     }
     return t + (temps.length ? temps.join(" ") : `r.${m.temps === 4 ? "1" : "4"}`);
   });
   return tete + corps.join(" |\n") + " |";
+}
+
+/// Basse en tablature seule (préférence du 9 oct., décision 11 de
+/// `ui-spec-editeur.md`). « score+tabs » reproduit les livres « Bass Recorded
+/// Versions » : notation en clé de fa au-dessus de la tablature — proposé le
+/// 10 oct., à trancher.
+const NOTATION_BASSE = "tabs";
+
+/// Une note suivie d'un silence d'une double croche le garde pour elle :
+/// la transcription coupe les notes un peu court, et une partition de basse
+/// écrit la note jusqu'à la suivante (« do‿½ soupir » plutôt que « do 1/16 +
+/// silence 1/16 »). Les vrais silences, plus longs, restent.
+function legato(evenements) {
+  const out = [];
+  for (const e of evenements) {
+    const prec = out[out.length - 1];
+    if (!e.jeu && e.seiziemes === 1 && prec?.jeu) {
+      out[out.length - 1] = { ...prec, seiziemes: prec.seiziemes + 1 };
+    } else out.push(e);
+  }
+  return out;
+}
+
+/// Nom alphaTex d'une hauteur MIDI : 28 → « E1 », 43 → « G2 ».
+function nomMidi(h) {
+  const noms = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  return `${noms[h % 12]}${Math.floor(h / 12) - 1}`;
 }
 
 /// Les pièces d'ADTOF en articulations Guitar Pro (`\articulation defaults`).
@@ -11751,7 +11785,7 @@ async function montrerPartition() {
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
           ? texBatterie(tr.pret.mesures, titre, p)
-          : texTablature(tr.pret.mesures, titre, p);
+          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage);
       api.tex(tex);
     }
   } catch (e) {

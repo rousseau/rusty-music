@@ -6040,10 +6040,14 @@ struct VueTranscription {
     #[serde(default)]
     coups: Vec<rusty_music_transcription::batterie::Coup>,
     mesures: serde_json::Value,
+    /// Accordage de la basse, de la corde grave à l'aiguë, en hauteurs MIDI
+    /// (standard, drop D ou cinq cordes : `Accordage::choisir`).
+    #[serde(default)]
+    accordage: Vec<u8>,
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
-const VERSION_TRANSCRIPTION: u32 = 3;
+const VERSION_TRANSCRIPTION: u32 = 4;
 
 /// Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
 /// - « bass » : Basic Pitch, une note à la fois, corde et frette ;
@@ -6052,7 +6056,7 @@ const VERSION_TRANSCRIPTION: u32 = 3;
 /// quelques secondes la première fois.
 #[tauri::command(async)]
 fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTranscription, String> {
-    use rusty_music_transcription::{basic_pitch, batterie, monophonie, quantification, tablature};
+    use rusty_music_transcription::{basic_pitch, batterie, monophonie, porte, quantification, tablature};
     if instrument != "bass" && instrument != "drums" {
         return Err(format!("transcription de « {instrument} » pas encore disponible"));
     }
@@ -6109,6 +6113,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
             notes: Vec::new(),
             coups,
             mesures: serde_json::to_value(&mesures).map_err(echec)?,
+            accordage: Vec::new(),
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
             if let Err(e) = std::fs::write(&cache, o) {
@@ -6131,8 +6136,17 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
             .activations(&mono, rusty_music_editor::SR)
             .map_err(echec)?
     };
-    let mut notes = monophonie::monophonique(basic_pitch::notes(&activations, &basic_pitch::Reglages::basse()));
-    tablature::poser(&mut notes, &tablature::Accordage::basse4());
+    // La porte retire ce que le stem ne joue pas vraiment (fuites d'autres
+    // instruments, 60 dB sous la basse) avant de choisir les notes.
+    let brutes = porte::filtrer(
+        basic_pitch::notes(&activations, &basic_pitch::Reglages::basse()),
+        &mono,
+        rusty_music_editor::SR,
+        porte::SEUIL_DB,
+    );
+    let mut notes = monophonie::monophonique(brutes);
+    let accordage = tablature::Accordage::choisir(&notes);
+    tablature::poser(&mut notes, &accordage);
     let mesures = quantification::quantifier(
         &notes,
         &pulsation.temps,
@@ -6147,6 +6161,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
         notes,
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
+        accordage: accordage.cordes,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {

@@ -40,6 +40,28 @@ impl Accordage {
         Self { cordes: vec![23, 28, 33, 38, 43], frettes: 20 }
     }
 
+    /// Basse 4 cordes en drop D : la corde grave descend au ré0.
+    pub fn drop_d() -> Self {
+        Self { cordes: vec![26, 33, 38, 43], frettes: 20 }
+    }
+
+    /// L'accordage que les notes réclament. Une basse standard ne descend pas
+    /// sous le mi0 ; si une part des notes tombe sous lui, le morceau est en
+    /// drop D (ré0, ré♯0) ou joué sur une cinq cordes (jusqu'au si0). Sans ça,
+    /// ces notes remontaient d'une octave (« Scar Tissue », en drop D :
+    /// 83 notes une octave trop haut au banc du 10 oct.).
+    pub fn choisir(notes: &[Note]) -> Self {
+        let seuil = (notes.len() / 50).max(4);
+        let sous = |a: u8, b: u8| notes.iter().filter(|n| (a..=b).contains(&n.hauteur)).count();
+        if sous(23, 25) >= seuil {
+            Self::basse5()
+        } else if sous(26, 27) >= seuil {
+            Self::drop_d()
+        } else {
+            Self::basse4()
+        }
+    }
+
     fn positions(&self, hauteur: u8) -> Vec<(u8, u8)> {
         self.cordes
             .iter()
@@ -82,6 +104,12 @@ pub struct Couts {
     /// Au-delà de cette position, chaque position coûte en plus `pente_haut`.
     pub debut_haut: u8,
     pub pente_haut: f32,
+    /// Une corde à vide quand la main est haute : par position de la main.
+    /// Un bassiste en 10ᵉ position ne va pas chercher la corde à vide.
+    pub vide_haut: f32,
+    /// Préférence pour les cordes graves, par corde au-dessus de la plus
+    /// grave : le son plus rond d'une note jouée haut sur une corde grave.
+    pub corde_aigue: f32,
 }
 
 /// Réglé le 10 oct. contre deux tablatures de référence : doigtés identiques
@@ -89,9 +117,15 @@ pub struct Couts {
 /// bas du manche) traversait les cordes trop volontiers ; les bassistes de
 /// référence restent sur une corde et dans une position (« Love
 /// Foolosophy » : 378 notes sur 615 sur la corde de mi, en 7ᵉ position).
+///
+/// Puis contre les 15 tablatures du livre *Californication* (Flea,
+/// `experiments/partitions/regler_doigtes.py`) : une corde à vide quand la
+/// main est haute coûte (`vide_haut` 0,3) — Flea joue le sol en 10ᵉ case de
+/// la corde de la plutôt que la corde de sol à vide. Doigtés identiques de
+/// 51 à 61 % des notes ; la préférence pour les cordes graves n'apporte rien.
 impl Default for Couts {
     fn default() -> Self {
-        Self { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 12, pente_haut: 0.1 }
+        Self { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 12, pente_haut: 0.0, vide_haut: 0.3, corde_aigue: 0.0 }
     }
 }
 
@@ -100,6 +134,12 @@ impl Couts {
     fn hauteur_main(&self, position: u8) -> f32 {
         self.pente_bas * position.saturating_sub(1) as f32
             + self.pente_haut * position.saturating_sub(self.debut_haut) as f32
+    }
+
+    /// Le prix propre d'une position jouée (corde, frette) sous une main.
+    fn jeu(&self, corde: u8, frette: u8, main: u8) -> f32 {
+        let vide = if frette == 0 { self.vide_haut * main.saturating_sub(1) as f32 } else { 0.0 };
+        vide + self.corde_aigue * corde as f32 + self.hauteur_main(main)
     }
 }
 
@@ -141,7 +181,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         .collect();
 
     let k = couts_doigte;
-    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(_, _, m)| k.hauteur_main(m)).collect()];
+    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(c, f, m)| k.jeu(c, f, m)).collect()];
     let mut retour: Vec<Vec<usize>> = vec![vec![0; etats[0].len()]];
     for i in 1..notes.len() {
         let silence = notes[i].debut_s - notes[i - 1].fin_s;
@@ -149,7 +189,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         // coûte de moins en moins.
         let repli = 1.0 / (1.0 + (silence - 0.5).max(0.0) * 2.0);
         let (mut c_i, mut r_i) = (Vec::with_capacity(etats[i].len()), Vec::with_capacity(etats[i].len()));
-        for &(c2, _, m2) in &etats[i] {
+        for &(c2, f2, m2) in &etats[i] {
             let (meilleur, d_ou) = etats[i - 1]
                 .iter()
                 .enumerate()
@@ -157,7 +197,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
                     let main = k.deplacement * (m1 as f32 - m2 as f32).abs() * repli;
                     // Traverser les cordes ne coûte presque rien à un bassiste ;
                     // déplacer la main, si.
-                    (couts[i - 1][j] + main + k.corde * (c1 as f32 - c2 as f32).abs() + k.hauteur_main(m2), j)
+                    (couts[i - 1][j] + main + k.corde * (c1 as f32 - c2 as f32).abs() + k.jeu(c2, f2, m2), j)
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .unwrap_or((0.0, 0));
@@ -209,13 +249,23 @@ mod tests {
     }
 
     #[test]
-    fn l_octave_se_joue_sur_la_meme_corde() {
-        // Mi1 à vide puis mi2 : l'octave sur la même corde (12ᵉ frette), le
-        // geste du funk — les bassistes de référence restent sur une corde
-        // plutôt que d'en traverser deux (réglage du 10 oct.).
+    fn l_octave_d_une_corde_a_vide_se_prend_deux_cordes_plus_haut() {
+        // Mi1 à vide puis mi2 : la forme d'octave (corde de ré, 2ᵉ case),
+        // pas la 12ᵉ case de la corde de mi — une corde à vide sous une main
+        // en 12ᵉ position coûte (`vide_haut`, réglage du 10 oct.).
         let mut n = vec![note(0.0, 28), note(0.3, 40)];
         poser(&mut n, &Accordage::basse4());
-        assert_eq!((n[1].corde, n[1].frette), (Some(0), Some(12)));
+        assert_eq!((n[1].corde, n[1].frette), (Some(2), Some(2)));
+    }
+
+    #[test]
+    fn en_position_haute_on_evite_la_corde_a_vide() {
+        // Une phrase en 10ᵉ position (sol3, fa3) qui redescend sur sol2 : la
+        // corde de la en 10ᵉ case, sous la main, plutôt que la corde de sol à
+        // vide (Flea, « Parallel Universe »).
+        let mut n: Vec<Note> = [55u8, 53, 43, 55, 53, 43].iter().enumerate().map(|(i, &h)| note(i as f32 * 0.2, h)).collect();
+        poser(&mut n, &Accordage::basse4());
+        assert!(n.iter().all(|x| x.frette != Some(0)), "{:?}", n.iter().map(|x| (x.corde, x.frette)).collect::<Vec<_>>());
     }
 
     #[test]
@@ -236,6 +286,18 @@ mod tests {
         let f: Vec<u8> = n.iter().map(|x| x.frette.unwrap()).collect();
         let (mn, mx) = (*f.iter().min().unwrap(), *f.iter().max().unwrap());
         assert!(mx - mn <= 3, "tient sous la main : {f:?}");
+    }
+
+    #[test]
+    fn des_re_graves_reclament_le_drop_d() {
+        let mut n: Vec<Note> = (0..40).map(|i| note(i as f32 * 0.3, if i % 4 == 0 { 26 } else { 38 })).collect();
+        let a = Accordage::choisir(&n);
+        assert_eq!(a, Accordage::drop_d());
+        poser(&mut n, &a);
+        assert_eq!((n[0].hauteur, n[0].corde, n[0].frette), (26, Some(0), Some(0)));
+        // Quelques notes graves isolées (erreurs) ne changent pas l'accordage.
+        let m: Vec<Note> = (0..100).map(|i| note(i as f32 * 0.3, if i == 5 { 26 } else { 40 })).collect();
+        assert_eq!(Accordage::choisir(&m), Accordage::basse4());
     }
 
     #[test]

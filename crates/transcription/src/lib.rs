@@ -7,9 +7,11 @@
 //!
 //! 1. [`basic_pitch`] — le réseau de Spotify (Apache-2.0) par ONNX Runtime,
 //!    puis le port de sa création de notes ;
-//! 2. [`monophonie`] — une basse joue une note à la fois ;
-//! 3. [`tablature`] — corde et frette de chaque note, par plus court chemin ;
-//! 4. [`quantification`] — sur les temps et les mesures de la pulsation.
+//! 2. [`porte`] — pas de note là où le stem se tait (fuites d'autres
+//!    instruments) ;
+//! 3. [`monophonie`] — une basse joue une note à la fois ;
+//! 4. [`tablature`] — corde et frette de chaque note, par plus court chemin ;
+//! 5. [`quantification`] — sur les temps et les mesures de la pulsation.
 //!
 //! La batterie : [`batterie`] — ADTOF (Zehren et al.), poids convertis en ONNX,
 //! spectrogramme et choix des pics réécrits d'après madmom.
@@ -17,6 +19,7 @@
 pub mod basic_pitch;
 pub mod batterie;
 pub mod monophonie;
+pub mod porte;
 pub mod quantification;
 pub mod tablature;
 
