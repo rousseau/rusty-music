@@ -23,21 +23,29 @@
 //! jetons sont écartés et les notes ouvertes fermées à sa frontière.
 
 pub mod jetons;
+pub mod mince;
 pub mod reseau;
 pub mod spectre;
 
 use std::path::Path;
 
+use burn::module::{Module, ModuleMapper, Param};
 use burn::tensor::backend::Backend;
-use burn::tensor::{Int, Tensor, TensorData};
+use burn::tensor::{DType, Element, Int, Tensor, TensorData};
 use burn_store::{KeyRemapper, ModuleSnapshot, PyTorchToBurnAdapter, SafetensorsStore};
 
 use crate::{Error, Note, Result};
+pub use mince::ProduitMince;
 pub use reseau::Config;
 
 /// Le backend de l'application : `wgpu` (Metal, Vulkan, DX12) ou le repli
-/// CPU, selon les fonctionnalités du crate.
-#[cfg(feature = "gpu")]
+/// CPU, selon les fonctionnalités du crate. Sur Metal, en flottants 16 bits :
+/// moitié de mémoire (6,3 Go au lieu de 11,7 en pointe, lot de 16), mêmes
+/// notes à 10 ms près sur les morceaux du banc. Ailleurs, f32 : le f16 n'est
+/// pas garanti par tous les pilotes Vulkan et DX12.
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+pub type Moteur = burn::backend::Wgpu<burn::tensor::f16>;
+#[cfg(all(feature = "gpu", not(target_os = "macos")))]
 pub type Moteur = burn::backend::Wgpu;
 #[cfg(all(not(feature = "gpu"), feature = "cpu"))]
 pub type Moteur = burn::backend::NdArray;
@@ -78,7 +86,7 @@ pub struct Bilan {
     pub boucles: Vec<usize>,
 }
 
-impl<B: Backend> Muscriptor<B> {
+impl<B: ProduitMince> Muscriptor<B> {
     /// Charge un `model.safetensors` d'origine. L'architecture se lit dans le
     /// `config.json` voisin s'il existe, sinon `medium`.
     pub fn charger(poids: &Path, device: &B::Device) -> Result<Self> {
@@ -93,6 +101,9 @@ impl<B: Backend> Muscriptor<B> {
         if !r.missing.is_empty() || !r.errors.is_empty() {
             return Err(Error::Sortie(format!("poids manquants {:?}, erreurs {:?}", r.missing, r.errors)));
         }
+        // `burn-store` garde le type du fichier (f32) : on ramène les poids
+        // au flottant du backend, sinon un `Wgpu<f16>` mêle les deux.
+        let reseau = reseau.map(&mut VersFlottant(<B::FloatElem as Element>::dtype()));
         let longueur = 504 + 32 + 2000; // préfixe (mel + classes) + jetons, limite de l'original
         Ok(Self { gen: reseau::Generateur::new(reseau, config, longueur, device), longueur_max: LONGUEUR_MAX })
     }
@@ -264,11 +275,21 @@ impl<B: Backend> Muscriptor<B> {
         sortie
     }
 
+    /// Notes brutes (avec leur programme) d'un signal mono à n'importe quelle
+    /// fréquence. `instruments` vide : aucune restriction.
+    pub fn transcrire_brut(&self, mono: &[f32], frequence: u32, instruments: &[&str], lot: usize, avancer: impl FnMut(usize, usize)) -> Result<(Vec<jetons::NoteBrute>, Bilan)> {
+        let mut x = if frequence == FREQUENCE { mono.to_vec() } else { crate::basic_pitch::reechantillonner(mono, frequence, FREQUENCE)? };
+        let gain = gain_niveau(&x);
+        if gain > 1.0 {
+            x.iter_mut().for_each(|v| *v = (*v * gain).clamp(-1.0, 1.0));
+        }
+        Ok(self.transcrire_16k(&x, instruments, lot, avancer))
+    }
+
     /// Transcrit du mono à n'importe quelle fréquence : notes des
     /// `instruments` demandés, en secondes du fichier, triées.
     pub fn transcrire(&self, mono: &[f32], frequence: u32, instruments: &[&str], lot: usize, avancer: impl FnMut(usize, usize)) -> Result<(Vec<Note>, Bilan)> {
-        let x = if frequence == FREQUENCE { mono.to_vec() } else { crate::basic_pitch::reechantillonner(mono, frequence, FREQUENCE)? };
-        let (brutes, bilan) = self.transcrire_16k(&x, instruments, lot, avancer);
+        let (brutes, bilan) = self.transcrire_brut(mono, frequence, instruments, lot, avancer)?;
         let mut notes: Vec<Note> = brutes
             .into_iter()
             .filter(|n| n.programme != jetons::PROGRAMME_BATTERIE || instruments.contains(&"drums"))
@@ -277,6 +298,39 @@ impl<B: Backend> Muscriptor<B> {
         notes.sort_by(|a, b| a.debut_s.total_cmp(&b.debut_s).then(a.hauteur.cmp(&b.hauteur)));
         Ok((notes, bilan))
     }
+}
+
+/// Convertit chaque paramètre flottant vers un type donné.
+struct VersFlottant(DType);
+
+impl<B: Backend> ModuleMapper<B> for VersFlottant {
+    fn map_float<const D: usize>(&mut self, param: Param<Tensor<B, D>>) -> Param<Tensor<B, D>> {
+        let (id, t, mapper) = param.consume();
+        Param::from_mapped_value(id, t.cast(self.0), mapper)
+    }
+}
+
+/// Niveau de jeu visé (RMS des passages joués). Le modèle se tait sur un
+/// signal trop faible : le stem de basse de « Strawberry Fields Forever »
+/// (RMS 0,008, la piste entière est enregistrée bas) ne donne aucune note,
+/// le même amplifié 20 fois en donne 134. Un stem au niveau habituel (0,1 à
+/// 0,3) n'est pas touché.
+const NIVEAU_CIBLE: f32 = 0.1;
+
+/// Gain qui amène le niveau des passages joués (90ᵉ centile du RMS par
+/// tranches de 100 ms) à [`NIVEAU_CIBLE`] ; jamais d'atténuation, au plus
+/// ×100 (le silence reste du silence).
+fn gain_niveau(x: &[f32]) -> f32 {
+    let mut rms: Vec<f32> = x.chunks(FREQUENCE as usize / 10).map(|c| (c.iter().map(|v| v * v).sum::<f32>() / c.len() as f32).sqrt()).collect();
+    if rms.is_empty() {
+        return 1.0;
+    }
+    rms.sort_by(f32::total_cmp);
+    let niveau = rms[(rms.len() * 9 / 10).min(rms.len() - 1)];
+    if niveau <= 1e-5 {
+        return 1.0;
+    }
+    (NIVEAU_CIBLE / niveau).clamp(1.0, 100.0)
 }
 
 fn lire_config(chemin: &Path) -> Option<Config> {
@@ -292,6 +346,35 @@ pub fn poids() -> Option<std::path::PathBuf> {
     rusty_music_core::modeles::trouver(FICHIER).or_else(|| poids_hugging_face("medium"))
 }
 
+/// Révision épinglée des poids medium sur Hugging Face : l'empreinte et la
+/// taille ci-dessous sont celles de ce fichier-là.
+pub const REVISION: &str = "f32236969308476e01fd3aae67357de5feb05a2d";
+pub const OCTETS: u64 = 1_228_144_472;
+const SHA256: &str = "ac80adbdf85d87231735fd948af7013441c0afced316c4e9067fd5d8a7fb97ec";
+
+/// Télécharge les poids medium dans le dossier des modèles de l'application,
+/// avec le jeton Hugging Face de l'utilisateur : le dépôt est à accès
+/// restreint (conditions d'usage à accepter sur huggingface.co, compte
+/// requis). Le jeton n'est envoyé qu'à Hugging Face et n'est écrit nulle part.
+pub fn telecharger(jeton: Option<&str>, avancer: impl FnMut(u64, Option<u64>)) -> Result<std::path::PathBuf> {
+    let url = format!("https://huggingface.co/MuScriptor/muscriptor-medium/resolve/{REVISION}/model.safetensors");
+    rusty_music_core::modeles::telecharger_avec_jeton(FICHIER, &url, jeton, OCTETS, Some(SHA256), avancer).map_err(|e| Error::Telechargement(e.to_string()))
+}
+
+/// Le jeton Hugging Face déjà posé sur la machine : `HF_TOKEN`, sinon le
+/// fichier qu'écrit `hf auth login` (`$HF_HOME/token`, par défaut
+/// `~/.cache/huggingface/token`).
+pub fn jeton_hugging_face() -> Option<String> {
+    let jeton = std::env::var("HF_TOKEN").ok().or_else(|| {
+        let base = std::env::var_os("HF_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".cache/huggingface")))?;
+        std::fs::read_to_string(base.join("token")).ok()
+    })?;
+    let jeton = jeton.trim().to_string();
+    (!jeton.is_empty()).then_some(jeton)
+}
+
 /// Le `model.safetensors` d'une taille dans le cache Hugging Face local
 /// (`~/.cache/huggingface/hub`), s'il y est.
 pub fn poids_hugging_face(taille: &str) -> Option<std::path::PathBuf> {
@@ -300,4 +383,18 @@ pub fn poids_hugging_face(taille: &str) -> Option<std::path::PathBuf> {
         .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".cache/huggingface")))?;
     let snaps = base.join(format!("hub/models--MuScriptor--muscriptor-{taille}/snapshots"));
     std::fs::read_dir(snaps).ok()?.flatten().map(|e| e.path().join("model.safetensors")).find(|p| p.exists())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn le_gain_amplifie_un_signal_faible_et_jamais_un_fort() {
+        let sinus = |a: f32| -> Vec<f32> { (0..FREQUENCE as usize * 2).map(|i| a * (i as f32 * 0.05).sin()).collect() };
+        // RMS d'un sinus = a / √2
+        assert!((gain_niveau(&sinus(0.01)) - NIVEAU_CIBLE / (0.01 / 2f32.sqrt())).abs() < 0.5);
+        assert_eq!(gain_niveau(&sinus(0.5)), 1.0);
+        assert_eq!(gain_niveau(&vec![0.0; 16_000]), 1.0);
+    }
 }

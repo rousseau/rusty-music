@@ -11915,8 +11915,9 @@ function choisirTranscripteur(t) {
 }
 
 /// « Qualité » : conditions d'usage de MuScriptor montrées la première fois,
-/// puis vérification que les poids sont là (l'utilisateur les télécharge
-/// lui-même depuis Hugging Face, après y avoir accepté ces conditions).
+/// puis vérification que les poids sont là. Sinon, téléchargement depuis
+/// Hugging Face avec le jeton de l'utilisateur (le dépôt est à accès
+/// restreint : il faut y avoir accepté ces conditions avec son compte).
 async function demanderQualite() {
   let accepte = false;
   try {
@@ -11924,18 +11925,51 @@ async function demanderQualite() {
   } catch {}
   if (!accepte) {
     $("muscriptor-accepter").hidden = false;
+    $("muscriptor-telecharger").hidden = true;
+    $("muscriptor-jeton-ligne").hidden = true;
     $("muscriptor-conditions").hidden = false;
     return;
   }
   if (!(await invoke("muscriptor_disponible").catch(() => false))) {
+    const jeton = await invoke("muscriptor_jeton_present").catch(() => false);
     $("muscriptor-texte").textContent =
-      "Poids de MuScriptor absents. Acceptez leurs conditions sur huggingface.co/MuScriptor/muscriptor-medium, " +
-      "puis lancez « hf download MuScriptor/muscriptor-medium » dans un terminal.";
+      "Poids de MuScriptor absents (1,2 Go). Acceptez d'abord leurs conditions avec votre compte sur " +
+      "huggingface.co/MuScriptor/muscriptor-medium, puis téléchargez-les ici" +
+      (jeton ? " (jeton Hugging Face de cette machine)." : " avec un jeton d'accès en lecture (huggingface.co/settings/tokens).");
     $("muscriptor-accepter").hidden = true;
+    $("muscriptor-jeton-ligne").hidden = jeton;
+    $("muscriptor-telecharger").hidden = false;
+    $("muscriptor-telecharger").disabled = false;
     $("muscriptor-conditions").hidden = false;
     return;
   }
   choisirTranscripteur("qualite");
+}
+
+/// Télécharge les poids, avancement dans le texte du panneau ; le jeton saisi
+/// part avec la requête et n'est gardé nulle part.
+async function telechargerMuscriptor() {
+  const bouton = $("muscriptor-telecharger");
+  bouton.disabled = true;
+  const minuteur = setInterval(async () => {
+    try {
+      const e = await invoke("etat_transcription");
+      if (e.telechargement && e.octets_total) {
+        $("muscriptor-texte").textContent =
+          `Téléchargement des poids de MuScriptor… ${Math.round((100 * e.octets_faits) / e.octets_total)} %`;
+      }
+    } catch {}
+  }, 500);
+  try {
+    await invoke("telecharger_muscriptor", { jeton: $("muscriptor-jeton").value || null });
+    $("muscriptor-jeton").value = "";
+    clearInterval(minuteur);
+    demanderQualite();
+  } catch (e) {
+    clearInterval(minuteur);
+    $("muscriptor-texte").textContent = `Échec du téléchargement : ${e}`;
+    bouton.disabled = false;
+  }
 }
 
 for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
@@ -11950,6 +11984,7 @@ $("muscriptor-accepter").addEventListener("click", () => {
   } catch {}
   demanderQualite();
 });
+$("muscriptor-telecharger").addEventListener("click", telechargerMuscriptor);
 $("muscriptor-annuler").addEventListener("click", () => {
   $("muscriptor-conditions").hidden = true;
 });

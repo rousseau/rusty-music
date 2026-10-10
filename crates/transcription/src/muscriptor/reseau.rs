@@ -22,8 +22,9 @@ use burn::module::{Module, Param};
 use burn::nn::{Embedding, EmbeddingConfig, LayerNorm, LayerNormConfig};
 use burn::tensor::activation::{gelu, softmax};
 use burn::tensor::backend::Backend;
-use burn::tensor::{Int, Tensor, TensorData};
+use burn::tensor::{Int, Tensor, TensorData, TensorPrimitive};
 
+use super::mince::ProduitMince;
 use super::spectre;
 
 /// Architecture d'une taille publiée (`config.json` du dépôt).
@@ -53,6 +54,12 @@ pub struct Lineaire<B: Backend> {
     pub bias: Option<Param<Tensor<B, 1>>>,
 }
 
+/// `x` `[n, entrée]` · `w` `[sortie, entrée]`ᵀ — par le produit mince
+/// pour un lot de quelques séquences (voir [`ProduitMince`]).
+fn produit<B: ProduitMince>(x: Tensor<B, 2>, w: Tensor<B, 2>) -> Tensor<B, 2> {
+    Tensor::from_primitive(TensorPrimitive::Float(B::produit_mince(x.into_primitive().tensor(), w.into_primitive().tensor())))
+}
+
 impl<B: Backend> Lineaire<B> {
     fn new(entree: usize, sortie: usize, biais: bool, device: &B::Device) -> Self {
         Self {
@@ -60,7 +67,9 @@ impl<B: Backend> Lineaire<B> {
             bias: biais.then(|| Param::from_tensor(Tensor::zeros([sortie], device))),
         }
     }
+}
 
+impl<B: ProduitMince> Lineaire<B> {
     /// Les dimensions de tête sont aplaties : un produit 2D `[n, entrée]` ×
     /// `[entrée, sortie]`, plutôt qu'un produit par lot qui diffuserait les
     /// poids.
@@ -68,7 +77,7 @@ impl<B: Backend> Lineaire<B> {
         let mut forme = x.dims();
         let entree = forme[D - 1];
         let n: usize = forme[..D - 1].iter().product();
-        let mut y = x.reshape([n, entree]).matmul(self.weight.val().transpose());
+        let mut y = produit(x.reshape([n, entree]), self.weight.val());
         if let Some(b) = &self.bias {
             y = y + b.val().unsqueeze::<2>();
         }
@@ -206,7 +215,7 @@ pub struct Generateur<B: Backend> {
     device: B::Device,
 }
 
-impl<B: Backend> Generateur<B> {
+impl<B: ProduitMince> Generateur<B> {
     pub fn new(reseau: Reseau<B>, config: Config, longueur_max: usize, device: &B::Device) -> Self {
         let fenetre = reseau.condition_provider.conditioners.self_wav.mel_spec_transform.spectrogram.window.val().into_data();
         let fenetre = fenetre.convert::<f32>().into_vec::<f32>().expect("fenêtre en f32");
@@ -278,7 +287,7 @@ impl<B: Backend> Generateur<B> {
     fn attention(&self, a: &Attention<B>, x: Tensor<B, 3>, cache: &mut Cache<B>, couche: usize) -> Tensor<B, 3> {
         let [b, t, dim] = x.dims();
         let (h, d) = (self.config.tetes, dim / self.config.tetes);
-        let qkv = x.reshape([b * t, dim]).matmul(a.in_proj_weight.val().transpose()).reshape([b, t, 3 * dim]);
+        let qkv = produit(x.reshape([b * t, dim]), a.in_proj_weight.val()).reshape([b, t, 3 * dim]);
         let tete = |r: std::ops::Range<usize>| qkv.clone().slice([0..b, 0..t, r]).reshape([b, t, h, d]).swap_dims(1, 2);
         let (q, k, v) = (tete(0..dim), tete(dim..2 * dim), tete(2 * dim..3 * dim));
         let p = cache.position;

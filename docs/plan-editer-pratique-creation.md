@@ -301,9 +301,22 @@ cherchés dans le dossier des modèles puis le cache Hugging Face — c'est
 l'utilisateur qui les télécharge, après avoir accepté leurs conditions sur
 Hugging Face. Avancement affiché pendant la minute de calcul.
 
-Reste : téléchargement depuis l'application (jeton Hugging Face de
-l'utilisateur), poids en f16 (moitié moins de mémoire et de lecture),
-noyau de produit vecteur × matrice pour les petits lots.
+**Fait (11 oct.)** :
+- **téléchargement depuis l'application** — bouton « Télécharger (1,2 Go) »
+  dans le choix « Qualité », jeton Hugging Face lu dans `HF_TOKEN` ou le
+  cache de `hf auth login`, sinon un champ masqué (jamais enregistré) ;
+  révision épinglée, taille et SHA256 vérifiés, 401/403 expliqués ;
+- **poids en f16 sur Metal** — pointe mémoire 11,7 → 6,3 Go, mêmes notes
+  à 10 ms près (816/817 sur « Give It Away », toutes à même hauteur et
+  début à 30 ms) ; f32 ailleurs (f16 non garanti par Vulkan/DX12) ;
+- **produit « mince »** (`muscriptor/mince.rs`, CubeCL) pour 2 à 16 lignes,
+  là où Burn quitte son gemv pour le produit tuilé : 23 ms par pas en lot
+  de 16 contre 37 à 66 (minima, machine chargée par les bancs — la mesure
+  de bout en bout reste à refaire au calme) ; `MUSCRIPTOR_SANS_MINCE` le
+  désactive ;
+- **normalisation du niveau d'entrée** — un stem faible (basse de
+  « Strawberry Fields », RMS 0,008) ne donnait aucune note : gain qui porte
+  le 90ᵉ centile du RMS à 0,1, jamais d'atténuation.
 
 **Nirvana (10 oct.)** — second corpus, 17 morceaux dont 11 accordés plus
 bas. `Accordage::choisir` essaie huit accordages (standard, −½, −1, −2 tons,

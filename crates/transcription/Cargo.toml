@@ -11,7 +11,7 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 # Vulkan, DX12) ou le repli CPU.
 [features]
 default = ["gpu"]
-gpu = ["burn/wgpu"]
+gpu = ["burn/wgpu", "dep:burn-cubecl", "dep:burn-fusion", "dep:burn-ir", "dep:cubecl"]
 cpu = ["burn/ndarray"]
 
 [dependencies]
@@ -19,6 +19,12 @@ cpu = ["burn/ndarray"]
 # depuis le `model.safetensors` d'origine par `burn-store`.
 burn.workspace = true
 burn-store.workspace = true
+# Noyau du produit mince (`src/muscriptor/mince.rs`) : CubeCL et l'opération
+# personnalisée de la fusion, aux versions que tire déjà `burn` (MIT/Apache-2.0).
+burn-cubecl = { version = "0.21", default-features = false, optional = true }
+burn-fusion = { version = "0.21", default-features = false, optional = true }
+burn-ir = { version = "0.21", default-features = false, optional = true }
+cubecl = { version = "0.10", default-features = false, optional = true }
 serde_json.workspace = true
 # ONNX Runtime, comme `crates/superres` (même version épinglée) : Basic Pitch
 # (Spotify, Apache-2.0) est livré en ONNX, CQT comprise dans le graphe.

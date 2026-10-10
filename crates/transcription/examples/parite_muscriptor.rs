@@ -4,18 +4,16 @@
 //! préfixe de conditionnement, logits du premier pas, jetons de chaque
 //! segment (prologue forcé repris de la référence) et notes.
 //!
-//!   cargo run --release -p rusty-music-transcription --example parite_muscriptor -- <dossier_ref> [model.safetensors]
+//!   MOTEUR=f16 cargo run --release -p rusty-music-transcription --example parite_muscriptor -- <dossier_ref> [model.safetensors]
+
+#[macro_use]
+mod commun;
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use burn::tensor::Tensor;
-use rusty_music_transcription::muscriptor::{self, jetons, Muscriptor, BASSES, SEGMENT};
-
-#[cfg(feature = "gpu")]
-type B = burn::backend::Wgpu;
-#[cfg(not(feature = "gpu"))]
-type B = burn::backend::NdArray;
+use rusty_music_transcription::muscriptor::{self, ProduitMince, jetons, Muscriptor, BASSES, SEGMENT};
 
 fn lire_f32(chemin: PathBuf) -> Vec<f32> {
     std::fs::read(&chemin).unwrap_or_else(|e| panic!("{} : {e}", chemin.display())).chunks(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
@@ -28,7 +26,7 @@ fn ecart(a: &[f32], b: &[f32]) -> (f32, f32) {
     (max, echelle)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn executer<B: ProduitMince>() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let dossier = PathBuf::from(&a[0]);
     let poids = a.get(1).map(PathBuf::from).or_else(|| muscriptor::poids_hugging_face("medium")).expect("poids introuvables");
@@ -86,4 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bilan.boucles
     );
     Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    selon_moteur!(executer)
 }

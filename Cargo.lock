@@ -8016,7 +8016,11 @@ name = "rusty-music-transcription"
 version = "0.1.0"
 dependencies = [
  "burn",
+ "burn-cubecl",
+ "burn-fusion",
+ "burn-ir",
  "burn-store",
+ "cubecl",
  "ndarray 0.16.1",
  "ort",
  "rodio",

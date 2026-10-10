@@ -6065,6 +6065,10 @@ struct EtatTranscription {
     id: i64,
     faits: usize,
     total: usize,
+    /// Téléchargement des poids de MuScriptor en cours, et son avancement.
+    telechargement: bool,
+    octets_faits: u64,
+    octets_total: u64,
 }
 
 #[tauri::command]
@@ -6078,6 +6082,35 @@ fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
 #[tauri::command]
 fn muscriptor_disponible() -> bool {
     rusty_music_transcription::muscriptor::poids().is_some()
+}
+
+/// Vrai si un jeton Hugging Face est déjà posé sur la machine (`HF_TOKEN`
+/// ou `hf auth login`) : l'interface ne le demande alors pas.
+#[tauri::command]
+fn muscriptor_jeton_present() -> bool {
+    rusty_music_transcription::muscriptor::jeton_hugging_face().is_some()
+}
+
+/// Télécharge les poids de MuScriptor (1,2 Go) dans le dossier des modèles,
+/// avec le jeton saisi, sinon celui de la machine. Le jeton n'est envoyé qu'à
+/// Hugging Face et n'est conservé nulle part.
+#[tauri::command(async)]
+fn telecharger_muscriptor(etat: State<Etat>, jeton: Option<String>) -> Result<(), String> {
+    use rusty_music_transcription::muscriptor;
+    let jeton = jeton.map(|j| j.trim().to_string()).filter(|j| !j.is_empty()).or_else(muscriptor::jeton_hugging_face);
+    {
+        let mut t = verrou(&etat.transcription);
+        if t.telechargement {
+            return Err("téléchargement déjà en cours".into());
+        }
+        (t.telechargement, t.octets_faits, t.octets_total) = (true, 0, muscriptor::OCTETS);
+    }
+    let issue = muscriptor::telecharger(jeton.as_deref(), |vus, total| {
+        let mut t = verrou(&etat.transcription);
+        (t.octets_faits, t.octets_total) = (vus, total.unwrap_or(muscriptor::OCTETS));
+    });
+    verrou(&etat.transcription).telechargement = false;
+    issue.map(|_| ()).map_err(echec)
 }
 
 /// Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
@@ -6161,10 +6194,13 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
     let brutes = if qualite {
         let poids = muscriptor::poids().ok_or_else(|| {
             "poids de MuScriptor absents : accepter leurs conditions sur huggingface.co/MuScriptor/muscriptor-medium, \
-             puis « hf download MuScriptor/muscriptor-medium »"
+             puis les télécharger depuis le choix « Qualité »"
                 .to_string()
         })?;
-        *verrou(&etat.transcription) = EtatTranscription { en_cours: true, id, faits: 0, total: 0 };
+        {
+            let mut t = verrou(&etat.transcription);
+            (t.en_cours, t.id, t.faits, t.total) = (true, id, 0, 0);
+        }
         let issue = (|| -> Result<Vec<rusty_music_transcription::Note>, String> {
             let mut garde = verrou(&etat.muscriptor);
             if garde.valeur.is_none() {
@@ -8685,6 +8721,8 @@ fn main() {
             transcrire,
             etat_transcription,
             muscriptor_disponible,
+            muscriptor_jeton_present,
+            telecharger_muscriptor,
             stems_state,
             stem_spectre,
             voisins_de_stem,

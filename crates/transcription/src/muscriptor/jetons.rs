@@ -132,7 +132,7 @@ pub fn prologue(ouvertes: &[(u8, u8)]) -> Vec<u32> {
 }
 
 /// Une note décodée, en secondes depuis le début de l'audio transcrit.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct NoteBrute {
     pub debut_s: f32,
     pub fin_s: f32,

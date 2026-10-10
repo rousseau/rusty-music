@@ -13,6 +13,9 @@
 //! Pitch et porte).
 //!
 //! Notes venues d'ailleurs (un autre modèle, au banc) :
+//! `banc -- brutes <audio> <notes.json>` — Basic Pitch aux réglages par
+//! défaut, notes brutes.
+//!
 //! `banc -- notes <notes.json> <pulsation.json> <sortie.json> [bass.wav]` —
 //! même suite que pour Basic Pitch : porte (si le stem est donné),
 //! monophonie, accordage, doigtés, quantification.
@@ -59,6 +62,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mesures = quantification::quantifier(&notes, &temps, &premiers, 4);
         std::fs::write(&a[3], serde_json::to_string(&serde_json::json!({ "notes": notes, "mesures": mesures, "accordage": accordage.cordes }))?)?;
         println!("{} notes → {}", notes.len(), a[3]);
+        return Ok(());
+    }
+    // Basic Pitch aux réglages par défaut (polyphonique, toute la tessiture),
+    // notes brutes : base de comparaison du banc multi-instrument
+    // (`experiments/partitions/banc_pvg.py`).
+    if a[0] == "brutes" {
+        let (mono, sr) = lire_mono(&a[1])?;
+        let act = Transcripteur::charger_installe()?.activations(&mono, sr)?;
+        let notes = basic_pitch::notes(&act, &Reglages::default());
+        std::fs::write(&a[2], serde_json::to_string(&notes)?)?;
+        println!("{} notes → {}", notes.len(), a[2]);
         return Ok(());
     }
     if a[0] == "coups" {

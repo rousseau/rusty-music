@@ -119,6 +119,31 @@ pub fn telecharger_dans(
     url: &str,
     octets_minimum: u64,
     sha256_attendu: Option<&str>,
+    avancer: impl FnMut(u64, Option<u64>),
+) -> Result<PathBuf> {
+    telecharger_dans_avec_jeton(dossier, nom, url, None, octets_minimum, sha256_attendu, avancer)
+}
+
+/// [`telecharger`] d'un dépôt à accès restreint : `jeton` est envoyé au
+/// serveur, jamais écrit nulle part.
+pub fn telecharger_avec_jeton(
+    nom: &str,
+    url: &str,
+    jeton: Option<&str>,
+    octets_minimum: u64,
+    sha256_attendu: Option<&str>,
+    avancer: impl FnMut(u64, Option<u64>),
+) -> Result<PathBuf> {
+    telecharger_dans_avec_jeton(&dossier_telechargement(), nom, url, jeton, octets_minimum, sha256_attendu, avancer)
+}
+
+fn telecharger_dans_avec_jeton(
+    dossier: &Path,
+    nom: &str,
+    url: &str,
+    jeton: Option<&str>,
+    octets_minimum: u64,
+    sha256_attendu: Option<&str>,
     mut avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
     std::fs::create_dir_all(dossier)?;
@@ -127,7 +152,7 @@ pub fn telecharger_dans(
 
     let (mut recus, mut attendus) = (0u64, None);
     let agent = crate::discogs::agent();
-    let issue = crate::discogs::telecharger_avec_avancement(&agent, url, &partiel, |vus, total| {
+    let issue = crate::discogs::telecharger_avec_jeton(&agent, url, jeton, &partiel, |vus, total| {
         (recus, attendus) = (vus, total);
         avancer(vus, total);
     });

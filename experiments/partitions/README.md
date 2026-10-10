@@ -229,6 +229,13 @@ partie remplie du cache ; puis le lot, parce que le pas est limité par le
 coût de lancement des ~1 200 opérations (≈ 10 ms de CPU), pas par le calcul :
 13 ms par jeton seul, 4,7 en lot de 16.
 
+Depuis (11 oct.) : f16 sur Metal (moitié de mémoire, mêmes notes à 10 ms
+près), produit « mince » pour les lots de 2 à 16 (`muscriptor/mince.rs`),
+et normalisation du niveau d'entrée — sans elle le stem de basse de
+« Strawberry Fields Forever » (RMS 0,008) ne donne aucune note. Exemples de
+comparaison : `MOTEUR=f32|f16|f16-brut|f32-brut`, `ab_mince`,
+`micro_matmul`.
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,

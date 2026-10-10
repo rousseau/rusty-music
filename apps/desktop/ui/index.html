@@ -233,8 +233,15 @@
             Ses poids sont publiés sous licence CC BY-NC 4.0 avec des conditions d'usage :
             usage non commercial, et ne transcrire que de la musique sur laquelle vous avez
             les droits.</p>
+          <label class="reglette" id="muscriptor-jeton-ligne" hidden>
+            <span>jeton Hugging Face</span>
+            <input id="muscriptor-jeton" type="password" class="chercher"
+                   placeholder="hf_… (lecture)" autocomplete="off"
+                   style="margin-left:auto; width:auto; flex:1">
+          </label>
           <div style="display:flex; gap:8px; margin-top:6px">
             <button class="bouton bouton--mince" id="muscriptor-accepter">J'accepte</button>
+            <button class="bouton bouton--mince" id="muscriptor-telecharger" hidden>Télécharger (1,2 Go)</button>
             <button class="bouton bouton--mince" id="muscriptor-annuler">Annuler</button>
           </div>
         </div>

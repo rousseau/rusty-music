@@ -147,12 +147,31 @@ pub fn telecharger_avec_avancement(
     agent: &ureq::Agent,
     url: &str,
     dest: &Path,
+    avancer: impl FnMut(u64, Option<u64>),
+) -> Result<()> {
+    telecharger_avec_jeton(agent, url, None, dest, avancer)
+}
+
+/// [`telecharger_avec_avancement`] avec un jeton d'accès (`Authorization:
+/// Bearer`), pour un dépôt Hugging Face à accès restreint. ureq ne renvoie pas
+/// l'en-tête à l'hôte d'une redirection (le CDN reçoit une URL déjà signée).
+pub fn telecharger_avec_jeton(
+    agent: &ureq::Agent,
+    url: &str,
+    jeton: Option<&str>,
+    dest: &Path,
     mut avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<()> {
-    let mut r = agent
-        .get(url)
-        .call()
-        .map_err(|e| Error::Reseau(format!("téléchargement {url} : {e}")))?;
+    let mut requete = agent.get(url);
+    if let Some(j) = jeton {
+        requete = requete.header("Authorization", format!("Bearer {j}"));
+    }
+    let mut r = requete.call().map_err(|e| match e {
+        ureq::Error::StatusCode(401 | 403) => Error::Reseau(format!(
+            "téléchargement {url} : accès refusé — conditions d'usage non acceptées sur Hugging Face, ou jeton absent ou invalide"
+        )),
+        e => Error::Reseau(format!("téléchargement {url} : {e}")),
+    })?;
     let total = r
         .headers()
         .get(ureq::http::header::CONTENT_LENGTH)
