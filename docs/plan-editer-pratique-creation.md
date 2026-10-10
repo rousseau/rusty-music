@@ -246,6 +246,17 @@ incohérents) :
   traverser une corde coûte 0,1, déplacer la main une frette 1). Sur « Love
   Foolosophy », la main reste en 2ᵉ position au lieu de sauter.
 
+**Contre des tablatures de référence (10 oct.)** — Songsterr, « Love
+Foolosophy » et « She's A Bad Mama Jama » (`experiments/transcription/`) :
+réglage de Basic Pitch (seuil d'attaque 0,6, durée minimale 8 trames),
+**correction des harmoniques** (erreurs dominantes : +12, +19, +24 demi-tons ;
+une note dont la fondamentale supposée est active à 60 % de sa propre
+activation est ramenée dessus) et coûts de doigtés (changement de corde 0,6,
+sans préférence pour le bas du manche : les bassistes restent sur une corde).
+« Love Foolosophy » : attaques 66 → 72 % (rappel), hauteurs justes 85 → 91 %,
+octaves 10 → 4 %, doigtés identiques 47 → 71 %. Limite trouvée : « Black
+Crow » (pulsation à 75 BPM pour 120 — ternaire ?), grille fausse.
+
 **Recommandation.** Nouveau crate `crates/transcription` (Burn + `ort`, même
 règle de backend que `analysis` et `editor`). Modèle par défaut **Basic Pitch**
 (Apache-2.0, ONNX livré, < 17 000 paramètres) via `ort` — rapide, toujours

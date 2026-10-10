@@ -69,10 +69,38 @@ impl Accordage {
 /// Doigts disponibles : la main couvre `position..position + ETENDUE - 1`.
 const ETENDUE: u8 = 4;
 
-/// Le prix d'une main haute : une légère préférence pour le bas du manche
-/// dès la première position, nette au-delà de la 5ᵉ.
-fn hauteur_main(position: u8) -> f32 {
-    0.03 * position.saturating_sub(1) as f32 + 0.1 * position.saturating_sub(5) as f32
+/// Les coûts du chemin. [`Couts::default`] est le réglage retenu ; les autres
+/// valeurs servent les bancs (`examples/regler.rs`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Couts {
+    /// Par corde traversée.
+    pub corde: f32,
+    /// Par frette de déplacement de la main.
+    pub deplacement: f32,
+    /// Préférence pour le bas du manche, par position dès la première.
+    pub pente_bas: f32,
+    /// Au-delà de cette position, chaque position coûte en plus `pente_haut`.
+    pub debut_haut: u8,
+    pub pente_haut: f32,
+}
+
+/// Réglé le 10 oct. contre deux tablatures de référence : doigtés identiques
+/// de 64 à 74 % en moyenne. Le premier réglage (corde 0,1, préférence pour le
+/// bas du manche) traversait les cordes trop volontiers ; les bassistes de
+/// référence restent sur une corde et dans une position (« Love
+/// Foolosophy » : 378 notes sur 615 sur la corde de mi, en 7ᵉ position).
+impl Default for Couts {
+    fn default() -> Self {
+        Self { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 12, pente_haut: 0.1 }
+    }
+}
+
+impl Couts {
+    /// Le prix d'une main en `position`.
+    fn hauteur_main(&self, position: u8) -> f32 {
+        self.pente_bas * position.saturating_sub(1) as f32
+            + self.pente_haut * position.saturating_sub(self.debut_haut) as f32
+    }
 }
 
 /// Positions de main (frette de l'index) compatibles avec une note.
@@ -88,6 +116,11 @@ fn mains(frette: u8, max: u8) -> Vec<u8> {
 /// Pose corde et frette sur chaque note. Une note hors du manche est ramenée
 /// d'une ou plusieurs octaves (et sa hauteur corrigée en conséquence).
 pub fn poser(notes: &mut [Note], accordage: &Accordage) {
+    poser_avec(notes, accordage, &Couts::default());
+}
+
+/// [`poser`] avec d'autres coûts.
+pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Couts) {
     if notes.is_empty() {
         return;
     }
@@ -107,7 +140,8 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
         })
         .collect();
 
-    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(_, _, m)| hauteur_main(m)).collect()];
+    let k = couts_doigte;
+    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(_, _, m)| k.hauteur_main(m)).collect()];
     let mut retour: Vec<Vec<usize>> = vec![vec![0; etats[0].len()]];
     for i in 1..notes.len() {
         let silence = notes[i].debut_s - notes[i - 1].fin_s;
@@ -119,11 +153,11 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
             let (meilleur, d_ou) = etats[i - 1]
                 .iter()
                 .enumerate()
-                .map(|(k, &(c1, _, m1))| {
-                    let main = (m1 as f32 - m2 as f32).abs() * repli;
+                .map(|(j, &(c1, _, m1))| {
+                    let main = k.deplacement * (m1 as f32 - m2 as f32).abs() * repli;
                     // Traverser les cordes ne coûte presque rien à un bassiste ;
                     // déplacer la main, si.
-                    (couts[i - 1][k] + main + 0.1 * (c1 as f32 - c2 as f32).abs() + hauteur_main(m2), k)
+                    (couts[i - 1][j] + main + k.corde * (c1 as f32 - c2 as f32).abs() + k.hauteur_main(m2), j)
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .unwrap_or((0.0, 0));
@@ -134,15 +168,15 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
         retour.push(r_i);
     }
     let dernier = couts.len() - 1;
-    let mut k = (0..couts[dernier].len())
+    let mut e = (0..couts[dernier].len())
         .min_by(|&a, &b| couts[dernier][a].total_cmp(&couts[dernier][b]))
         .unwrap_or(0);
     for i in (0..notes.len()).rev() {
-        if let Some(&(c, f, _)) = etats[i].get(k) {
+        if let Some(&(c, f, _)) = etats[i].get(e) {
             notes[i].corde = Some(c);
             notes[i].frette = Some(f);
         }
-        k = retour[i].get(k).copied().unwrap_or(0);
+        e = retour[i].get(e).copied().unwrap_or(0);
     }
 }
 
@@ -175,11 +209,13 @@ mod tests {
     }
 
     #[test]
-    fn apres_une_corde_a_vide_on_ne_monte_pas_au_douzieme() {
-        // Mi1 à vide puis mi2 : deuxième frette de ré, pas douzième de mi.
+    fn l_octave_se_joue_sur_la_meme_corde() {
+        // Mi1 à vide puis mi2 : l'octave sur la même corde (12ᵉ frette), le
+        // geste du funk — les bassistes de référence restent sur une corde
+        // plutôt que d'en traverser deux (réglage du 10 oct.).
         let mut n = vec![note(0.0, 28), note(0.3, 40)];
         poser(&mut n, &Accordage::basse4());
-        assert_eq!((n[1].corde, n[1].frette), (Some(2), Some(2)));
+        assert_eq!((n[1].corde, n[1].frette), (Some(0), Some(12)));
     }
 
     #[test]

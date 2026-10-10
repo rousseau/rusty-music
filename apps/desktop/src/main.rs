@@ -6043,7 +6043,7 @@ struct VueTranscription {
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
-const VERSION_TRANSCRIPTION: u32 = 2;
+const VERSION_TRANSCRIPTION: u32 = 3;
 
 /// Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
 /// - « bass » : Basic Pitch, une note à la fois, corde et frette ;

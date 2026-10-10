@@ -62,6 +62,10 @@ pub struct Reglages {
     pub freq_max: Option<f32>,
     pub deduire_attaques: bool,
     pub melodia: bool,
+    /// Correction des harmoniques : une note dont la fondamentale supposée
+    /// (−12, −19 ou −24 demi-tons) est active à au moins cette fraction de sa
+    /// propre activation est ramenée sur la plus grave. `None` : sans.
+    pub harmoniques: Option<f32>,
 }
 
 impl Default for Reglages {
@@ -74,6 +78,7 @@ impl Default for Reglages {
             freq_max: None,
             deduire_attaques: true,
             melodia: true,
+            harmoniques: None,
         }
     }
 }
@@ -81,8 +86,21 @@ impl Default for Reglages {
 impl Reglages {
     /// Les réglages d'une basse : de si0 (30,9 Hz, la corde grave d'une cinq
     /// cordes) au sol4 (392 Hz, haut du manche).
+    ///
+    /// Seuil d'attaque 0,6 (au lieu de 0,5), durée minimale 8 trames (au lieu
+    /// de 11) et correction des harmoniques à 0,6 : réglés le 10 oct. contre
+    /// deux tablatures de référence (« Love Foolosophy », « She's A Bad Mama
+    /// Jama » ; `experiments/transcription/regler.py`) — note combinée
+    /// attaques × hauteurs de 53,7 à 58,9 % en moyenne.
     pub fn basse() -> Self {
-        Self { freq_min: Some(30.0), freq_max: Some(400.0), ..Self::default() }
+        Self {
+            freq_min: Some(30.0),
+            freq_max: Some(400.0),
+            seuil_attaque: 0.6,
+            duree_min: 8,
+            harmoniques: Some(0.6),
+            ..Self::default()
+        }
     }
 }
 
@@ -290,6 +308,27 @@ pub fn notes(a: &Activations, r: &Reglages) -> Vec<Note> {
                 continue;
             }
             sortie.push((debut, fin, f, moyenne(debut, fin, f)));
+        }
+    }
+
+    if let Some(rapport) = r.harmoniques {
+        for note in sortie.iter_mut() {
+            let (d, fin, f, a) = *note;
+            // La plus grave des fondamentales candidates assez active.
+            let mut choisie = f;
+            for ecart in [24usize, 19, 12] {
+                if f < ecart || f - ecart < bas {
+                    continue;
+                }
+                let g = f - ecart;
+                if moyenne(d, fin, g) >= rapport * a {
+                    choisie = g;
+                    break;
+                }
+            }
+            if choisie != f {
+                *note = (d, fin, choisie, moyenne(d, fin, choisie));
+            }
         }
     }
 
