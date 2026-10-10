@@ -1,9 +1,10 @@
 {
  "livres": {
   "rhcp-cal": "Red Hot Chili Peppers - Californication (Bass) by Red Hot Chili Peppers.pdf",
-  "rhcp-gh": "Red Hot Chili Peppers - Greatest Hits Songbook_ Bass Recorded Versions (2004, Hal Leonard).pdf"
+  "rhcp-gh": "Red Hot Chili Peppers - Greatest Hits Songbook_ Bass Recorded Versions (2004, Hal Leonard).pdf",
+  "nirvana": "Nirvana The Bass Guitar Collection by Nirvana.pdf"
  },
- "_note": "Pages : indices PyMuPDF (0 = couverture). rhcp-gh est un scan basse résolution : tablature illisible, hauteurs de la notation seulement (\"tablature\": false).",
+ "_note": "Pages : indices PyMuPDF (0 = couverture). rhcp-gh est un scan basse résolution : tablature illisible, hauteurs de la notation seulement (\"tablature\": false). \"accordage\" : cordes à vide réelles (grave → aiguë) quand le morceau n'est pas en accordage standard ; la tablature est écrite relativement à lui, la notation transposée de (corde aiguë − sol2).",
  "morceaux": [
   {
    "id": "around-the-world",
@@ -159,6 +160,269 @@
    ],
    "tablature": false,
    "fichier": "Red Hot Chili Peppers/Blood Sugar Sex Magik/09 Give It Away.mp3"
+  },
+  {
+   "id": "about-a-girl",
+   "livre": "nirvana",
+   "pages": [
+    3,
+    5
+   ],
+   "fichier": "Nirvana/Bleach/03 About a Girl.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "all-apologies",
+   "livre": "nirvana",
+   "pages": [
+    6,
+    8
+   ],
+   "fichier": "Nirvana/In Utero/12 All Apologies.mp3",
+   "accordage": [
+    25,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "blew",
+   "livre": "nirvana",
+   "pages": [
+    9,
+    11
+   ],
+   "fichier": "Nirvana/Bleach/01 Blew.mp3",
+   "accordage": [
+    24,
+    29,
+    34,
+    39
+   ]
+  },
+  {
+   "id": "come-as-you-are",
+   "livre": "nirvana",
+   "pages": [
+    12,
+    14
+   ],
+   "fichier": "Nirvana/Nevermind/03 Come as You Are.mp3",
+   "accordage": [
+    26,
+    31,
+    36,
+    41
+   ]
+  },
+  {
+   "id": "dumb",
+   "livre": "nirvana",
+   "pages": [
+    15,
+    16
+   ],
+   "fichier": "Nirvana/In Utero/06 Dumb.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "floyd-the-barber",
+   "livre": "nirvana",
+   "pages": [
+    17,
+    18
+   ],
+   "fichier": "Nirvana/Bleach/02 Floyd the Barber.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "heart-shaped-box",
+   "livre": "nirvana",
+   "pages": [
+    19,
+    23
+   ],
+   "fichier": "Nirvana/In Utero/03 Heart-Shaped Box.mp3",
+   "accordage": [
+    25,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "in-bloom",
+   "livre": "nirvana",
+   "pages": [
+    24,
+    26
+   ],
+   "fichier": "Nirvana/Nevermind/02 In Bloom.mp3"
+  },
+  {
+   "id": "lithium",
+   "livre": "nirvana",
+   "pages": [
+    27,
+    31
+   ],
+   "fichier": "Nirvana/Nevermind/05 Lithium.mp3",
+   "accordage": [
+    26,
+    31,
+    36,
+    41
+   ]
+  },
+  {
+   "id": "lounge-act",
+   "livre": "nirvana",
+   "pages": [
+    32,
+    34
+   ],
+   "fichier": "Nirvana/Nevermind/09 Lounge Act.mp3"
+  },
+  {
+   "id": "mr-moustache",
+   "livre": "nirvana",
+   "pages": [
+    35,
+    37
+   ],
+   "fichier": "Nirvana/Bleach/10 Mr. Moustache.mp3"
+  },
+  {
+   "id": "on-a-plain",
+   "livre": "nirvana",
+   "pages": [
+    38,
+    40
+   ],
+   "fichier": "Nirvana/Nevermind/11 On a Plain.mp3",
+   "accordage": [
+    26,
+    33,
+    38,
+    43
+   ]
+  },
+  {
+   "id": "pennyroyal-tea",
+   "livre": "nirvana",
+   "pages": [
+    41,
+    44
+   ],
+   "fichier": "Nirvana/In Utero/09 Pennyroyal Tea.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "polly",
+   "livre": "nirvana",
+   "pages": [
+    45,
+    46
+   ],
+   "fichier": "Nirvana/Nevermind/06 Polly.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "rape-me",
+   "livre": "nirvana",
+   "pages": [
+    47,
+    49
+   ],
+   "fichier": "Nirvana/In Utero/04 Rape Me.mp3",
+   "accordage": [
+    27,
+    32,
+    37,
+    42
+   ]
+  },
+  {
+   "id": "smells-like-teen-spirit",
+   "livre": "nirvana",
+   "pages": [
+    50,
+    52
+   ],
+   "fichier": "Nirvana/Nevermind/01 Smells Like Teen Spirit.mp3"
+  },
+  {
+   "id": "stay-away",
+   "livre": "nirvana",
+   "pages": [
+    56,
+    58
+   ],
+   "fichier": "Nirvana/Nevermind/10 Stay Away.mp3"
   }
- ]
+ ],
+ "batterie": [
+  {
+   "id": "love-foolosophy",
+   "pdf": "love-foolosophy-jamiroquai-drum-transcription.pdf",
+   "fichier": "Jamiroquai/A Funk Odyssey/05 Love Foolosophy.mp3"
+  },
+  {
+   "id": "bulls-on-parade",
+   "pdf": "bulls-on-parade-rage-against-the-machine-drum-transcription.pdf",
+   "fichier": "Rage Against the Machine/Evil Empire/02 Bulls on Parade.mp3"
+  },
+  {
+   "id": "are-you-gonna-go-my-way",
+   "pdf": "are-you-gonna-go-my-way-lenny-kravitz-drum-transcription.pdf",
+   "fichier": "Lenny Kravitz/Greatest Hits/02 Are You Gonna Go My Way.mp3"
+  },
+  {
+   "id": "paradise-city",
+   "pdf": "paradise-city-guns-n-roses.pdf",
+   "fichier": "Guns N’ Roses/Appetite for Destruction/06 Paradise City.mp3"
+  },
+  {
+   "id": "show-me-how-to-live",
+   "pdf": "show-me-how-to-live-audioslave-drum-transcription.pdf",
+   "fichier": "Audioslave/Audioslave/02 Show Me How to Live.mp3"
+  },
+  {
+   "id": "sunburn",
+   "pdf": "sunburn-muse-drum-transcription.pdf",
+   "fichier": "Muse/Showbiz/01 Sunburn.mp3"
+  },
+  {
+   "id": "today",
+   "pdf": "today-smashing-pumpkins-drum-transcription.pdf",
+   "fichier": "The Smashing Pumpkins/Siamese Dream/03 Today.mp3"
+  }
+ ],
+ "_note_batterie": "Transcriptions de batterie de thedrumninja.com (PDF Sibelius vectoriels), lues par lire_batterie.py."
 }

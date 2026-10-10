@@ -34,7 +34,7 @@ const FMAX: f64 = 20_000.0;
 /// Les classes, dans l'ordre des sorties du réseau.
 pub const CLASSES: [Piece; 5] = [Piece::GrosseCaisse, Piece::CaisseClaire, Piece::Toms, Piece::Charleston, Piece::Cymbales];
 /// Seuils de détection par classe, réglés par ADTOF sur sa validation.
-const SEUILS: [f32; 5] = [0.22, 0.24, 0.32, 0.22, 0.30];
+pub const SEUILS: [f32; 5] = [0.22, 0.24, 0.32, 0.22, 0.30];
 
 /// Le fichier ONNX produit par la préparation.
 pub const FICHIER: &str = "adtof_frame_rnn.onnx";
@@ -196,6 +196,11 @@ impl Batteur {
 /// moyenne sur 10 trames avant et 1 après, maximum sur 2 avant et 1 après,
 /// coups d'une même classe à moins de 20 ms fusionnés sur le premier).
 pub fn coups(activations: &[f32], trames: usize) -> Vec<Coup> {
+    coups_avec(activations, trames, &SEUILS)
+}
+
+/// [`coups`] avec d'autres seuils (bancs).
+pub fn coups_avec(activations: &[f32], trames: usize, seuils: &[f32; 5]) -> Vec<Coup> {
     const AVANT_MOY: usize = 10;
     const APRES_MOY: usize = 1;
     const AVANT_MAX: usize = 2;
@@ -211,7 +216,7 @@ pub fn coups(activations: &[f32], trames: usize) -> Vec<Coup> {
                 let moy: f32 = (i - AVANT_MOY as i64..=i + APRES_MOY as i64).map(|j| lire(&a, j)).sum::<f32>()
                     / (AVANT_MOY + APRES_MOY + 1) as f32;
                 let x = a[i as usize];
-                if x >= moy + SEUILS[c] { x } else { 0.0 }
+                if x >= moy + seuils[c] { x } else { 0.0 }
             })
             .collect();
         let mut instants: Vec<(f32, f32)> = Vec::new();

@@ -12,6 +12,9 @@
 //! calcule les activations une fois et écrit un fichier par réglage (Basic
 //! Pitch et porte).
 //!
+//! Batterie : `banc -- batterie <drums.wav> <pulsation.json> <sortie.json>` —
+//! ADTOF puis quantification, comme l'éditeur.
+//!
 //! Grille de doigtés : `banc -- doigtes <transcription.json> <pulsation.json> <dossier>`
 //! repose les notes d'une transcription avec plusieurs jeux de [`Couts`] et
 //! écrit un fichier par jeu.
@@ -32,6 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if a[0] == "reglages" {
         return grille_reglages(&a[1..]);
+    }
+    if a[0] == "batterie" {
+        return batterie(&a[1..]);
     }
     let (wav, puls, sortie) = (PathBuf::from(&a[0]), PathBuf::from(&a[1]), PathBuf::from(&a[2]));
     let dec = Decoder::try_from(std::fs::File::open(&wav)?)?;
@@ -125,5 +131,40 @@ fn grille_reglages(a: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     println!("{n} réglages écrits dans {}", dossier.display());
+    Ok(())
+}
+
+fn batterie(a: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use rusty_music_transcription::batterie as b;
+    let dec = Decoder::try_from(std::fs::File::open(&a[0])?)?;
+    let (sr, canaux) = (dec.sample_rate().get(), dec.channels().get() as usize);
+    assert_eq!(sr, 44_100, "stem attendu à 44,1 kHz");
+    let brut: Vec<f32> = UniformSourceIterator::new(dec, (canaux as u16).try_into()?, sr.try_into()?).collect();
+    let g: Vec<f32> = brut.chunks(canaux).map(|c| c[0]).collect();
+    let d: Vec<f32> = brut.chunks(canaux).map(|c| c[c.len() - 1]).collect();
+    let (temps, premiers) = lire_pulsation(&a[1])?;
+    let (carac, trames, bandes) = b::caracteristiques(&g, &d);
+    let act = b::Batteur::charger_installe()?.activations(&carac, trames, bandes)?;
+    let coups = b::coups(&act, trames);
+    let mesures = quantification::quantifier_coups(&coups, &temps, &premiers, 4);
+    std::fs::write(&a[2], serde_json::to_string(&serde_json::json!({ "coups": coups, "mesures": mesures }))?)?;
+    println!("{} coups, {} mesures → {}", coups.len(), mesures.len(), a[2]);
+    // Avec un dossier en 4ᵉ argument : seuils balayés classe par classe (les
+    // classes se détectent indépendamment), un fichier par (classe, seuil).
+    if let Some(dossier) = a.get(3) {
+        std::fs::create_dir_all(dossier)?;
+        for c in 0..5 {
+            for &v in &[0.04f32, 0.07, 0.1, 0.14, 0.18, 0.22, 0.26, 0.32, 0.4] {
+                let mut s = b::SEUILS;
+                s[c] = v;
+                let coups = b::coups_avec(&act, trames, &s);
+                let mesures = quantification::quantifier_coups(&coups, &temps, &premiers, 4);
+                std::fs::write(
+                    PathBuf::from(dossier).join(format!("seuil_{c}_{v}.json")),
+                    serde_json::to_string(&serde_json::json!({ "mesures": mesures }))?,
+                )?;
+            }
+        }
+    }
     Ok(())
 }

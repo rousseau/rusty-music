@@ -45,21 +45,67 @@ impl Accordage {
         Self { cordes: vec![26, 33, 38, 43], frettes: 20 }
     }
 
-    /// L'accordage que les notes réclament. Une basse standard ne descend pas
-    /// sous le mi0 ; si une part des notes tombe sous lui, le morceau est en
-    /// drop D (ré0, ré♯0) ou joué sur une cinq cordes (jusqu'au si0). Sans ça,
-    /// ces notes remontaient d'une octave (« Scar Tissue », en drop D :
-    /// 83 notes une octave trop haut au banc du 10 oct.).
+    /// Les accordages essayés par [`Accordage::choisir`] : standard, abaissés
+    /// d'un demi-ton, d'un ton, de deux tons (le grunge : Nirvana), drop D
+    /// et ses variantes, cinq cordes.
+    pub fn candidats() -> Vec<Self> {
+        [
+            vec![28, 33, 38, 43],
+            vec![27, 32, 37, 42],
+            vec![26, 31, 36, 41],
+            vec![24, 29, 34, 39],
+            vec![26, 33, 38, 43],
+            vec![25, 32, 37, 42],
+            vec![24, 31, 36, 41],
+            vec![23, 28, 33, 38, 43],
+        ]
+        .into_iter()
+        .map(|cordes| Self { cordes, frettes: 20 })
+        .collect()
+    }
+
+    /// L'accordage que les notes réclament. Une note sous la corde grave est
+    /// impossible ; la corde grave à vide, elle, se joue (le rock accordé
+    /// plus bas tourne autour d'elle). Parmi les accordages compatibles —
+    /// presque aucune note dessous, la corde grave à vide jouée —, celui qui
+    /// donne le doigté le moins coûteux : un morceau écrit pour un accordage
+    /// y trouve ses cordes à vide. Sans corde grave jouée, le standard si les
+    /// notes y tiennent.
+    ///
+    /// Banc du 10 oct. (`experiments/partitions/`, 17 morceaux de Nirvana dont
+    /// 11 accordés plus bas) : avec le seul standard, les frettes de la
+    /// tablature ne correspondaient à aucune des nôtres.
     pub fn choisir(notes: &[Note]) -> Self {
-        let seuil = (notes.len() / 50).max(4);
-        let sous = |a: u8, b: u8| notes.iter().filter(|n| (a..=b).contains(&n.hauteur)).count();
-        if sous(23, 25) >= seuil {
-            Self::basse5()
-        } else if sous(26, 27) >= seuil {
-            Self::drop_d()
-        } else {
-            Self::basse4()
+        let tolere = (notes.len() / 100).max(1);
+        let sous = |l: u8| notes.iter().filter(|n| n.hauteur < l).count();
+        let a_vide = |l: u8| notes.iter().filter(|n| n.hauteur == l).count();
+        let candidats = Self::candidats();
+        let mut valides: Vec<&Self> = candidats
+            .iter()
+            .filter(|a| sous(a.cordes[0]) <= tolere && a_vide(a.cordes[0]) >= tolere.max(2))
+            .collect();
+        if valides.is_empty() {
+            if sous(28) <= tolere {
+                return Self::basse4();
+            }
+            // Des notes sous le mi sans corde grave nette : l'accordage le plus
+            // haut qui les contient toutes.
+            let haut = candidats.iter().filter(|a| sous(a.cordes[0]) <= tolere).map(|a| a.cordes[0]).max();
+            valides = candidats.iter().filter(|a| Some(a.cordes[0]) == haut).collect();
+            if valides.is_empty() {
+                return Self::basse5();
+            }
         }
+        let cout = |a: &Self| {
+            let mut x = notes.to_vec();
+            poser_avec(&mut x, a, &Couts::default())
+        };
+        valides
+            .into_iter()
+            .map(|a| (cout(a), a))
+            .min_by(|x, y| x.0.total_cmp(&y.0))
+            .map(|(_, a)| a.clone())
+            .unwrap_or_else(Self::basse4)
     }
 
     fn positions(&self, hauteur: u8) -> Vec<(u8, u8)> {
@@ -160,9 +206,10 @@ pub fn poser(notes: &mut [Note], accordage: &Accordage) {
 }
 
 /// [`poser`] avec d'autres coûts.
-pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Couts) {
+/// Rend le coût du doigté retenu (ce que [`Accordage::choisir`] compare).
+pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Couts) -> f32 {
     if notes.is_empty() {
-        return;
+        return 0.0;
     }
     for n in notes.iter_mut() {
         n.hauteur = accordage.ramener(n.hauteur);
@@ -211,6 +258,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
     let mut e = (0..couts[dernier].len())
         .min_by(|&a, &b| couts[dernier][a].total_cmp(&couts[dernier][b]))
         .unwrap_or(0);
+    let total = couts[dernier].get(e).copied().unwrap_or(0.0);
     for i in (0..notes.len()).rev() {
         if let Some(&(c, f, _)) = etats[i].get(e) {
             notes[i].corde = Some(c);
@@ -218,6 +266,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         }
         e = retour[i].get(e).copied().unwrap_or(0);
     }
+    total
 }
 
 #[cfg(test)]
@@ -289,8 +338,16 @@ mod tests {
     }
 
     #[test]
+    fn un_morceau_accorde_un_demi_ton_plus_bas_est_reconnu() {
+        // Mi♭0 à vide, la♭0, ré♭1 : les cordes à vide d'une basse en mi♭.
+        let n: Vec<Note> = (0..48).map(|i| note(i as f32 * 0.3, [27u8, 27, 32, 37, 34, 27][i % 6])).collect();
+        assert_eq!(Accordage::choisir(&n).cordes, vec![27, 32, 37, 42]);
+    }
+
+    #[test]
     fn des_re_graves_reclament_le_drop_d() {
-        let mut n: Vec<Note> = (0..40).map(|i| note(i as f32 * 0.3, if i % 4 == 0 { 26 } else { 38 })).collect();
+        // Ré0 à vide, la0 et ré1 à vide : drop D plutôt que ré standard.
+        let mut n: Vec<Note> = (0..40).map(|i| note(i as f32 * 0.3, [26u8, 33, 38, 26, 45][i % 5])).collect();
         let a = Accordage::choisir(&n);
         assert_eq!(a, Accordage::drop_d());
         poser(&mut n, &a);

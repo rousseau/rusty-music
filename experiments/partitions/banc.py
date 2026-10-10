@@ -30,16 +30,16 @@ def audio(m):
     lignes.sort(key=lambda l: -sum(w.lower() in (l[2] or "").lower() for w in mots))
     return lignes[0][0]
 
-def preparer_audio(m):
-    """Stems et pulsation (en cache). Rend (dossier, stem de basse, pulsation)."""
+def preparer_audio(m, stem="bass"):
+    """Stems et pulsation (en cache). Rend (dossier, stem demandé, pulsation)."""
     d = os.path.join(CACHE, m["id"]); os.makedirs(d, exist_ok=True)
     src = audio(m)
     stems = os.path.join(d, "stems")
-    basse = [f for f in os.listdir(stems) if "bass" in f] if os.path.isdir(stems) else []
+    basse = [f for f in os.listdir(stems) if stem in f] if os.path.isdir(stems) else []
     if not basse:
         subprocess.run([CLI, "demix", src, "--out", stems, "--modele", "htdemucs_6s"], check=True, cwd=RACINE,
                        stdout=subprocess.DEVNULL)
-        basse = [f for f in os.listdir(stems) if "bass" in f]
+        basse = [f for f in os.listdir(stems) if stem in f]
     puls = os.path.join(d, "pulsation.json")
     if not os.path.exists(puls):
         out = subprocess.run([PULS, src], capture_output=True, text=True, check=True, cwd=RACINE).stdout
@@ -52,7 +52,7 @@ def etape(m, refaire):
     tr = os.path.join(d, "transcription.json")
     if refaire or not os.path.exists(tr):
         subprocess.run([BANC, basse, puls, tr], check=True, cwd=RACINE, stdout=subprocess.DEVNULL)
-    ref = reference.extraire_dossier(d)
+    ref = reference.extraire_dossier(d, m.get("accordage"))
     json.dump(ref, open(os.path.join(d, "reference.json"), "w"))
     return comparer.comparer(json.load(open(tr)), ref)
 

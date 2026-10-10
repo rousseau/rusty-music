@@ -279,6 +279,13 @@ doigtés 51 → 61 %. Limite : le rappel (44 %) — notes répétées rapides,
 notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
 que MuScriptor doit faire mieux.
 
+**Nirvana (10 oct.)** — second corpus, 17 morceaux dont 11 accordés plus
+bas. `Accordage::choisir` essaie huit accordages (standard, −½, −1, −2 tons,
+drop D et variantes, cinq cordes) : compatibles si la corde grave à vide est
+jouée et presque rien dessous, puis le doigté le moins coûteux. Accordage
+juste pour 29 morceaux sur 34 ; doigtés des morceaux accordés plus bas de 0
+à 50-90 %. F1 Nirvana 0,36 (basse saturée doublée par la guitare).
+
 **Recommandation.** Nouveau crate `crates/transcription` (Burn + `ort`, même
 règle de backend que `analysis` et `editor`). Modèle par défaut **Basic Pitch**
 (Apache-2.0, ONNX livré, < 17 000 paramètres) via `ort` — rapide, toujours
@@ -316,6 +323,12 @@ d'une même double croche réunies, décalage de jeu retranché), commande
 `transcrire(id, "drums")`, partition de percussion (`texBatterie`,
 articulations GP7). **Reste** : LarsNet (crash/ride, vélocité, ghost notes),
 deux voix (pieds en bas, mains en haut), banc MDB-Drums.
+
+**Banc contre des transcriptions publiées (10 oct.)** — sept PDF Drum Ninja,
+vectoriels, lus sans OMR (`experiments/partitions/lire_batterie.py`). F1 à
+la double croche : grosse caisse 0,72, caisse claire 0,80, charleston 0,77,
+cymbales 0,76, toms 0,42 (sous-notés par la référence). Seuils d'ADTOF déjà
+au mieux.
 
 
 **Recommandation.** Vainqueur du banc entre :

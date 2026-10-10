@@ -50,7 +50,7 @@ def lire(chemin):
     nom = next(n for n in z.namelist() if n.endswith(".xml") and not n.startswith("META"))
     return ET.fromstring(z.read(nom))
 
-def extraire(racine, systeme0=0):
+def extraire(racine, systeme0=0, transposition=0):
     parties = racine.findall("part")
     n_mesures = max(len(p.findall("measure")) for p in parties)
     par_mesure = armures(parties, n_mesures)
@@ -77,7 +77,7 @@ def extraire(racine, systeme0=0):
             for e in m:
                 if e.tag == "attributes":
                     d = e.find("divisions")
-                    if d is not None: div[pid] = int(d.text)
+                    if d is not None and int(d.text) > 0: div[pid] = int(d.text)
                     c = e.find("clef/sign")
                     if c is not None:
                         cle[pid] = c.text
@@ -110,7 +110,7 @@ def extraire(racine, systeme0=0):
                         if acc in ACCIDENTS: accidents[(pas, octave)] = ACCIDENTS[acc]
                         alter = accidents.get((pas, octave), alteration(pas, fifths))
                         midi = 12 * (octave + 1) + PAS[pas] + alter
-                        notes.append([debut * 4, midi - 12, dur * 4])
+                        notes.append([debut * 4, midi - 12 + transposition, dur * 4])
                     elif h is not None and lie_fin:
                         notes.append([debut * 4, None, dur * 4])
                     if not accord: pos += dur
@@ -150,19 +150,24 @@ def fichiers(dossier):
     cle = lambda f: (int(re.search(r"page-(\d+)", f)[1]), int((re.search(r"mvt(\d+)", f) or [0, 0])[1]))
     return sorted(glob.glob(os.path.join(dossier, "page-*.mxl")), key=cle)
 
-def extraire_dossier(dossier):
+def extraire_dossier(dossier, accordage=None):
+    """`accordage` : cordes à vide réelles d'un morceau accordé plus bas (la
+    tablature est écrite relativement à elles ; la notation, comme en
+    accordage standard, d'où la transposition par la corde aiguë)."""
+    accordage = accordage or ACCORDAGE
+    transposition = accordage[3] - ACCORDAGE[3]
     m = []
     for f in fichiers(dossier):
-        for x in extraire(lire(f), m[-1]["systeme"] + 1 if m else 0):
+        for x in extraire(lire(f), m[-1]["systeme"] + 1 if m else 0, transposition):
             x["numero"] = len(m) + 1; m.append(x)
     tab = os.path.join(dossier, "tablature.json")
     if os.path.exists(tab):
-        fusionner_tablature(m, json.load(open(tab)))
+        fusionner_tablature(m, json.load(open(tab)), accordage)
     return m
 
 ACCORDAGE = [28, 33, 38, 43]  # basse 4 cordes, corde 0 = mi grave
 
-def fusionner_tablature(mesures, tablature):
+def fusionner_tablature(mesures, tablature, accordage=None):
     """Remplace les hauteurs reconnues par celles de la tablature, et ajoute
     corde et frette. Les mesures de la notation (celles qui ont une portée de
     basse) et celles de la tablature se suivent dans le même ordre, mais leurs
@@ -170,7 +175,8 @@ def fusionner_tablature(mesures, tablature):
     mesure) : on aligne les deux suites par programmation dynamique, sur la
     ressemblance des hauteurs, puis on fusionne les paires assez ressemblantes."""
     omr = [x for x in mesures if not x["absente"] and x["notes"]]
-    tabs = [mt for p in sorted(tablature, key=int) for s in tablature[p] for mt in s["mesures"] if mt]
+    accordage = accordage or ACCORDAGE
+    tabs = [[dict(n, accordage=accordage) for n in mt] for p in sorted(tablature, key=int) for s in tablature[p] for mt in s["mesures"] if mt]
     n, k = len(omr), len(tabs)
     G = -0.2
     S = [[0.0] * (k + 1) for _ in range(n + 1)]
@@ -194,7 +200,7 @@ def fusionner_tablature(mesures, tablature):
         else: j -= 1
 
 def notes_tab(mt):
-    return [(None if n["frette"] == "X" else ACCORDAGE[n["corde"]] + n["frette"], n["corde"], n["frette"]) for n in mt]
+    return [(None if n["frette"] == "X" else n.get("accordage", ACCORDAGE)[n["corde"]] + n["frette"], n["corde"], n["frette"]) for n in mt]
 
 def _sc(a, b):
     if b[0] is None: return 0.5
@@ -222,14 +228,15 @@ def ressemblance(o, t):
 
 def fusionner_mesure(mo, mt):
     t = notes_tab(mt); o = mo["notes"]
+    acc = mt[0].get("accordage", ACCORDAGE) if mt else ACCORDAGE
     for i, j in ressemblance(o, t)[1]:
         h, corde, frette = t[j]
         if h is None: o[i].append("etouffee"); continue
         # Un chiffre rattaché à la corde voisine : la tablature et la notation
         # diffèrent alors d'une quarte juste (4 % des notes au banc du
         # 10 oct.). Même frette, corde d'à côté.
-        if h - o[i][1] == 5 and corde > 0: corde -= 1; h -= 5
-        elif h - o[i][1] == -5 and corde < 3: corde += 1; h += 5
+        if corde > 0 and h - o[i][1] == acc[corde] - acc[corde - 1]: h -= acc[corde] - acc[corde - 1]; corde -= 1
+        elif corde < 3 and o[i][1] - h == acc[corde + 1] - acc[corde]: h += acc[corde + 1] - acc[corde]; corde += 1
         o[i][1] = h; o[i] += [corde, frette]
     # les notes étouffées (X) n'ont pas de hauteur : hors évaluation
     mo["notes"] = [x for x in o if "etouffee" not in x]

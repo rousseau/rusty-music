@@ -113,6 +113,54 @@ rapides ni les notes étouffées.
 | Jaco Pastorius, Primus *Anthology* | 75-100 dpi | non | — |
 | Livres guitare, piano-voix (epub) | ~60 dpi | non | — |
 
+## Nirvana (10 oct., second corpus de basse)
+
+*The Bass Guitar Collection* : 17 morceaux dans la bibliothèque (« Stain »
+absent), Krist Novoselic au médiator. **11 sont accordés plus bas**
+(demi-ton, ton, deux tons, drop D, drop D un demi-ton plus bas) : la
+tablature est écrite relativement à l'accordage, la notation comme en
+standard. `morceaux.json` donne l'accordage réel (`"accordage"`) ;
+`reference.py` en déduit hauteurs et transposition.
+
+| | F1 | F1tab | doigtés |
+|---|---|---|---|
+| Nirvana, accordage standard seul | 0,36 | 0,36 | 0,34 |
+| Nirvana, accordage choisi par les notes | 0,36 | 0,36 | **0,60** (34 morceaux, deux corpus) |
+
+`Accordage::choisir` essaie huit accordages : compatibles = presque aucune
+note sous la corde grave et la corde grave à vide jouée ; entre eux, le
+doigté le moins coûteux. **Juste pour 29 morceaux sur 34** ; les échecs sont
+des cordes graves que Basic Pitch ne voit pas (do0 de « Blew », ré0 de « On a
+Plain »). Le F1 de Nirvana est plus bas que celui de Flea : basse saturée
+doublée par la guitare, octaves (11 %), « Polly » (acoustique, basse
+discrète) à 0,04.
+
+## Batterie (10 oct.)
+
+Sept transcriptions de [thedrumninja.com](https://thedrumninja.com/drum-transcriptions)
+(PDF Sibelius **vectoriels**) : `lire_batterie.py` lit directement glyphes
+(têtes noires, en croix, fantômes, silences, « % » et « %% ») et traits
+(hampes, ligatures, barres) — Audiveris, lui, rate les têtes en croix. Rythme
+par voix (hampes montantes : mains, descendantes : pieds), durées par le
+nombre de ligatures ; les hampes des petites notes sont écartées. Pièces
+selon la clé standard, codées comme les cinq classes d'ADTOF.
+`banc_batterie.py` aligne comme pour la basse.
+
+| pièce | F1 | F1±1 |
+|---|---|---|
+| grosse caisse | 0,72 | 0,81 |
+| caisse claire | 0,80 | 0,83 |
+| toms | 0,42 | 0,43 |
+| charleston | 0,77 | 0,82 |
+| cymbales | 0,76 | 0,77 |
+
+Par morceau, F1 de 0,92 (« Sunburn ») à 0,54 (« Paradise City », qui
+accélère à la fin : la grille de mesures décroche). Les seuils de détection
+d'ADTOF sont déjà au mieux (`regler_batterie.py` : moins de 0,02 à gagner
+par pièce). Biais : une transcription Drum Ninja note le groove de chaque
+section et le répète ; fills et variations ne sont pas tous écrits — les toms
+surtout sont sous-notés.
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,
