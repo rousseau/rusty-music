@@ -118,6 +118,13 @@ struct Etat {
     transcripteur: Mutex<Option<rusty_music_transcription::basic_pitch::Transcripteur>>,
     /// ADTOF (batterie), chargé au premier usage puis gardé.
     batteur: Mutex<Option<rusty_music_transcription::batterie::Batteur>>,
+    /// MuScriptor (transcription de qualité de la basse) : 1,2 Go de poids
+    /// sur le GPU, chargés au premier usage, déchargés après inactivité
+    /// (voir [`Cache`]).
+    muscriptor: Mutex<Cache<rusty_music_transcription::muscriptor::Muscriptor<rusty_music_transcription::muscriptor::Moteur>>>,
+    /// Avancement d'une transcription MuScriptor (segments de 5 s faits sur
+    /// le total), sondé par l'interface : une minute environ par morceau.
+    transcription: Mutex<EtatTranscription>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -6049,17 +6056,44 @@ struct VueTranscription {
 /// Version du cache de transcription : à monter dès que le calcul change.
 const VERSION_TRANSCRIPTION: u32 = 5;
 
+/// Avancement d'une transcription MuScriptor, sondé par l'interface.
+#[derive(Clone, Default, serde::Serialize)]
+struct EtatTranscription {
+    en_cours: bool,
+    /// Le morceau transcrit, pour que l'interface sache si l'avancement est
+    /// le sien.
+    id: i64,
+    faits: usize,
+    total: usize,
+}
+
+#[tauri::command]
+fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
+    verrou(&etat.transcription).clone()
+}
+
+/// Vrai si les poids de MuScriptor sont sur la machine (dossier des modèles
+/// ou cache Hugging Face) : l'utilisateur doit les télécharger lui-même,
+/// après avoir accepté leurs conditions d'usage sur Hugging Face.
+#[tauri::command]
+fn muscriptor_disponible() -> bool {
+    rusty_music_transcription::muscriptor::poids().is_some()
+}
+
 /// Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
-/// - « bass » : Basic Pitch, une note à la fois, corde et frette ;
+/// - « bass » : Basic Pitch, ou MuScriptor si `qualite` (une minute par
+///   morceau, plus juste — banc `experiments/partitions/`), puis une note à
+///   la fois, corde et frette ;
 /// - « drums » : ADTOF, cinq pièces.
 /// Puis quantification sur la pulsation. En cache à côté des stems ;
 /// quelques secondes la première fois.
 #[tauri::command(async)]
-fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTranscription, String> {
-    use rusty_music_transcription::{basic_pitch, batterie, monophonie, porte, quantification, tablature};
+fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bool>) -> Result<VueTranscription, String> {
+    use rusty_music_transcription::{basic_pitch, batterie, monophonie, muscriptor, porte, quantification, tablature};
     if instrument != "bass" && instrument != "drums" {
         return Err(format!("transcription de « {instrument} » pas encore disponible"));
     }
+    let qualite = qualite.unwrap_or(false) && instrument == "bass";
     let chemin = verrou(&etat.lib)
         .track(id)
         .map_err(echec)?
@@ -6067,7 +6101,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
     let source = PathBuf::from(&chemin);
     let dossier = dossier_stems(&etat, &source);
-    let cache = dossier.join(format!("transcription-{instrument}.json"));
+    let cache = dossier.join(if qualite { format!("transcription-{instrument}-muscriptor.json") } else { format!("transcription-{instrument}.json") });
     if let Some(t) = std::fs::read(&cache)
         .ok()
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
@@ -6124,26 +6158,47 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
     }
     let mono: Vec<f32> = s.gauche.iter().zip(&s.droite).map(|(g, d)| 0.5 * (g + d)).collect();
     drop(s);
-    basic_pitch::POIDS.telecharger(|_, _| {}).map_err(echec)?;
-    let activations = {
+    let brutes = if qualite {
+        let poids = muscriptor::poids().ok_or_else(|| {
+            "poids de MuScriptor absents : accepter leurs conditions sur huggingface.co/MuScriptor/muscriptor-medium, \
+             puis « hf download MuScriptor/muscriptor-medium »"
+                .to_string()
+        })?;
+        *verrou(&etat.transcription) = EtatTranscription { en_cours: true, id, faits: 0, total: 0 };
+        let issue = (|| -> Result<Vec<rusty_music_transcription::Note>, String> {
+            let mut garde = verrou(&etat.muscriptor);
+            if garde.valeur.is_none() {
+                garde.valeur = Some(muscriptor::Muscriptor::charger(&poids, &Default::default()).map_err(echec)?);
+            }
+            let m = garde.valeur.as_ref().expect("chargé juste au-dessus");
+            let (notes, bilan) = m
+                .transcrire(&mono, rusty_music_editor::SR, muscriptor::BASSES, muscriptor::LOT, |faits, total| {
+                    let mut t = verrou(&etat.transcription);
+                    (t.faits, t.total) = (faits, total);
+                })
+                .map_err(echec)?;
+            garde.touche = Some(Instant::now());
+            tracing::info!(segments = bilan.segments, jetons = bilan.jetons, boucles = ?bilan.boucles, "MuScriptor");
+            Ok(notes)
+        })();
+        verrou(&etat.transcription).en_cours = false;
+        issue?
+    } else {
+        basic_pitch::POIDS.telecharger(|_, _| {}).map_err(echec)?;
         let mut garde = verrou(&etat.transcripteur);
         if garde.is_none() {
             *garde = Some(basic_pitch::Transcripteur::charger_installe().map_err(echec)?);
         }
-        garde
+        let activations = garde
             .as_mut()
             .expect("chargé juste au-dessus")
             .activations(&mono, rusty_music_editor::SR)
-            .map_err(echec)?
+            .map_err(echec)?;
+        basic_pitch::notes(&activations, &basic_pitch::Reglages::basse())
     };
     // La porte retire ce que le stem ne joue pas vraiment (fuites d'autres
     // instruments, 60 dB sous la basse) avant de choisir les notes.
-    let brutes = porte::filtrer(
-        basic_pitch::notes(&activations, &basic_pitch::Reglages::basse()),
-        &mono,
-        rusty_music_editor::SR,
-        porte::SEUIL_DB,
-    );
+    let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
     let mut notes = monophonie::monophonique(brutes);
     let accordage = tablature::Accordage::choisir(&notes);
     tablature::poser(&mut notes, &accordage);
@@ -6157,7 +6212,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String) -> Result<VueTrans
     let vue = VueTranscription {
         version: VERSION_TRANSCRIPTION,
         instrument,
-        modele: "basic-pitch".into(),
+        modele: if qualite { "muscriptor-medium" } else { "basic-pitch" }.into(),
         notes,
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
@@ -8269,6 +8324,8 @@ fn main() {
                 pisteur: Mutex::new(None),
                 transcripteur: Mutex::new(None),
                 batteur: Mutex::new(None),
+                muscriptor: Mutex::new(Cache::default()),
+                transcription: Mutex::new(EtatTranscription::default()),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un
@@ -8368,6 +8425,7 @@ fn main() {
                 if let Some(etat) = etat_eviction.try_state::<Etat>() {
                     liberer_si_inactif(&etat.texte_modele, "encodeur texte CLAP");
                     liberer_si_inactif(&etat.superres_modele, "modèle AERO");
+                    liberer_si_inactif(&etat.muscriptor, "MuScriptor");
                     // Même patron pour la continuation automatique (errance/
                     // sonique) : ses caches survivent, eux aussi, bien après
                     // qu'une playlist a été composée — voir la documentation
@@ -8625,6 +8683,8 @@ fn main() {
             stems_boucle,
             pulsation,
             transcrire,
+            etat_transcription,
+            muscriptor_disponible,
             stems_state,
             stem_spectre,
             voisins_de_stem,

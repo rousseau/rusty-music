@@ -7,7 +7,19 @@ rust-version.workspace = true
 license.workspace = true
 publish = false        # composant de l'application, jamais publié seul sur crates.io
 
+# Backend Burn de MuScriptor, comme `crates/analysis` : `wgpu` (Metal,
+# Vulkan, DX12) ou le repli CPU.
+[features]
+default = ["gpu"]
+gpu = ["burn/wgpu"]
+cpu = ["burn/ndarray"]
+
 [dependencies]
+# MuScriptor (`src/muscriptor/`) : Transformer porté en Burn, poids chargés
+# depuis le `model.safetensors` d'origine par `burn-store`.
+burn.workspace = true
+burn-store.workspace = true
+serde_json.workspace = true
 # ONNX Runtime, comme `crates/superres` (même version épinglée) : Basic Pitch
 # (Spotify, Apache-2.0) est livré en ONNX, CQT comprise dans le graphe.
 ort = { version = "=2.0.0-rc.10", features = ["ndarray"] }
@@ -23,4 +35,3 @@ tracing.workspace = true
 [dev-dependencies]
 # Décodage des exemples seulement : le crate, lui, ne décode rien.
 rodio.workspace = true
-serde_json.workspace = true

@@ -8015,10 +8015,13 @@ dependencies = [
 name = "rusty-music-transcription"
 version = "0.1.0"
 dependencies = [
+ "burn",
+ "burn-store",
  "ndarray 0.16.1",
  "ort",
  "rodio",
  "rubato 5.0.0",
+ "rustfft",
  "rusty-music-core",
  "serde",
  "serde_json",

@@ -11504,7 +11504,7 @@ function decouperDuree(seiziemes) {
 /// (`crates/transcription`, `quantification::Mesure`) — frettes, silences,
 /// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
-function texTablature(mesures, titre, p, accordage) {
+function texTablature(mesures, titre, p, accordage, modele) {
   const bpm = p.bpm;
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   // Les mesures de silence regroupées, comme dans les livres. L'accordage
@@ -11513,7 +11513,7 @@ function texTablature(mesures, titre, p, accordage) {
   const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
   const portee = notationBasse === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
-    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (Basic Pitch) — à vérifier à l'oreille"` +
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
     ` \\tempo ${Math.round(bpm ?? 120)} \\multibarrest\n` +
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
     (notationBasse === "tabs" ? "" : "\\clef F4\n");
@@ -11619,10 +11619,12 @@ const transcriptions = new Map();
 function transcription(instrument) {
   const id = edition.source?.id;
   if (id === undefined || (instrument !== "bass" && instrument !== "drums")) return null;
-  const cle = `${id}:${instrument}`;
+  const qualite = instrument === "bass" && transcripteurBasse === "qualite";
+  const cle = `${id}:${instrument}:${qualite ? "qualite" : "rapide"}`;
   if (!transcriptions.has(cle)) {
-    const entree = { pret: null, erreur: null };
-    entree.promesse = invoke("transcrire", { id, instrument })
+    const entree = { pret: null, erreur: null, qualite };
+    if (qualite) suivreTranscription(id, entree);
+    entree.promesse = invoke("transcrire", { id, instrument, qualite })
       .then((t) => {
         entree.pret = t;
       })
@@ -11636,6 +11638,36 @@ function transcription(instrument) {
     transcriptions.set(cle, entree);
   }
   return transcriptions.get(cle);
+}
+
+/// Transcription de la basse : « rapide » (Basic Pitch) ou « qualite »
+/// (MuScriptor, conditions d'usage acceptées une fois dans le rail).
+let transcripteurBasse = (() => {
+  try {
+    return localStorage.getItem("transcripteur-basse") === "qualite" &&
+      localStorage.getItem("muscriptor-conditions") === "1"
+      ? "qualite"
+      : "rapide";
+  } catch {
+    return "rapide";
+  }
+})();
+
+/// Avancement d'une transcription MuScriptor (une minute environ) : les
+/// segments de 5 s faits, dans l'aide de la partition.
+function suivreTranscription(id, entree) {
+  const minuteur = setInterval(async () => {
+    if (entree.pret || entree.erreur) return clearInterval(minuteur);
+    try {
+      const e = await invoke("etat_transcription");
+      if (e.id === id && e.total) {
+        entree.avancement = `${Math.round((100 * e.faits) / e.total)} %`;
+        if (edition.usage === "pratiquer" && edition.source?.id === id && !$("partition-aide").hidden) {
+          $("partition-aide").textContent = `Transcription de qualité (MuScriptor) en cours… ${entree.avancement}`;
+        }
+      }
+    } catch {}
+  }, 1000);
 }
 
 /// L'instrument dont on lit la partie : celui choisi dans le rail, s'il a
@@ -11776,14 +11808,21 @@ async function montrerPartition() {
       ? "Ce morceau n'a ni basse ni batterie séparées."
       : null;
   // Pendant la transcription, ou sans elle (batterie), la grille mesurée.
-  const note = tr && !tr.pret ? (tr.erreur ? `Transcription impossible : ${tr.erreur}` : "Transcription en cours…") : null;
+  const note =
+    tr && !tr.pret
+      ? tr.erreur
+        ? `Transcription impossible : ${tr.erreur}`
+        : tr.qualite
+          ? `Transcription de qualité (MuScriptor) en cours… ${tr.avancement ?? ""}`
+          : "Transcription en cours…"
+      : null;
   $("partition-aide").hidden = !(message ?? note);
   $("partition-aide").textContent = message ?? note ?? "";
   $("partition-rendu").hidden = !!message;
   if (message) return;
   try {
     const api = await preparerPartition();
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}`;
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
@@ -11791,7 +11830,7 @@ async function montrerPartition() {
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
           ? texBatterie(tr.pret.mesures, titre, p)
-          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage);
+          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
       api.tex(tex);
     }
   } catch (e) {
@@ -11832,6 +11871,11 @@ function majUsage() {
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
     b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
   }
+  $("transcripteurs").hidden = $("notations").hidden;
+  if ($("notations").hidden) $("muscriptor-conditions").hidden = true;
+  for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
+    b.classList.toggle("segment--actif", b.dataset.transcripteur === transcripteurBasse);
+  }
   $("usage-aide").textContent =
     edition.usage === "pratiquer"
       ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus."
@@ -11860,6 +11904,55 @@ for (const b of document.querySelectorAll("#notations [data-notation]")) {
     majUsage();
   });
 }
+
+function choisirTranscripteur(t) {
+  transcripteurBasse = t;
+  try {
+    localStorage.setItem("transcripteur-basse", t);
+  } catch {}
+  $("muscriptor-conditions").hidden = true;
+  majUsage();
+}
+
+/// « Qualité » : conditions d'usage de MuScriptor montrées la première fois,
+/// puis vérification que les poids sont là (l'utilisateur les télécharge
+/// lui-même depuis Hugging Face, après y avoir accepté ces conditions).
+async function demanderQualite() {
+  let accepte = false;
+  try {
+    accepte = localStorage.getItem("muscriptor-conditions") === "1";
+  } catch {}
+  if (!accepte) {
+    $("muscriptor-accepter").hidden = false;
+    $("muscriptor-conditions").hidden = false;
+    return;
+  }
+  if (!(await invoke("muscriptor_disponible").catch(() => false))) {
+    $("muscriptor-texte").textContent =
+      "Poids de MuScriptor absents. Acceptez leurs conditions sur huggingface.co/MuScriptor/muscriptor-medium, " +
+      "puis lancez « hf download MuScriptor/muscriptor-medium » dans un terminal.";
+    $("muscriptor-accepter").hidden = true;
+    $("muscriptor-conditions").hidden = false;
+    return;
+  }
+  choisirTranscripteur("qualite");
+}
+
+for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
+  b.addEventListener("click", () => {
+    if (b.dataset.transcripteur === "qualite") demanderQualite();
+    else choisirTranscripteur("rapide");
+  });
+}
+$("muscriptor-accepter").addEventListener("click", () => {
+  try {
+    localStorage.setItem("muscriptor-conditions", "1");
+  } catch {}
+  demanderQualite();
+});
+$("muscriptor-annuler").addEventListener("click", () => {
+  $("muscriptor-conditions").hidden = true;
+});
 
 for (const b of document.querySelectorAll("#usages [data-usage]")) {
   b.addEventListener("click", () => {

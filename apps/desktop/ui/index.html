@@ -219,6 +219,25 @@
                   title="Notation en clé de fa au-dessus de la tablature, comme les livres de basse">Partition + tab</button>
           <button class="segment" data-notation="tabs" title="Tablature seule : plus de mesures à l'écran">Tablature</button>
         </div>
+        <!-- Basse : transcription rapide (Basic Pitch) ou de qualité
+             (MuScriptor, conditions d'usage acceptées une fois). -->
+        <div class="segments" id="transcripteurs" hidden style="margin-top:8px">
+          <button class="segment segment--actif" data-transcripteur="rapide"
+                  title="Basic Pitch : quelques secondes">Rapide</button>
+          <button class="segment" data-transcripteur="qualite"
+                  title="MuScriptor : environ une minute par morceau, plus juste">Qualité</button>
+        </div>
+        <div id="muscriptor-conditions" hidden style="margin-top:8px">
+          <p class="aide" id="muscriptor-texte">La transcription de qualité utilise MuScriptor
+            (Kyutai et Mirelo) : plus juste, plus lente (environ une minute par morceau).
+            Ses poids sont publiés sous licence CC BY-NC 4.0 avec des conditions d'usage :
+            usage non commercial, et ne transcrire que de la musique sur laquelle vous avez
+            les droits.</p>
+          <div style="display:flex; gap:8px; margin-top:6px">
+            <button class="bouton bouton--mince" id="muscriptor-accepter">J'accepte</button>
+            <button class="bouton bouton--mince" id="muscriptor-annuler">Annuler</button>
+          </div>
+        </div>
         <p class="aide" id="usage-aide"></p>
       </div>
 

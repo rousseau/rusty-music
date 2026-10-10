@@ -287,11 +287,23 @@ notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
 que MuScriptor doit faire mieux.
 
 **MuScriptor au banc (10 oct.)** : il fait mieux — F1 0,55 contre 0,42 sur
-les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana. **Décision proposée : le porter
-en Burn** (taille *medium*, ≈ 300 M paramètres) comme transcription de basse
-de qualité, Basic Pitch restant le mode rapide et le repli. À reprendre du
-banc : restriction aux basses (`instruments`), écart des tranches qui
-bouclent.
+les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana.
+
+**Fait (10 oct.) — MuScriptor porté en Burn**
+(`crates/transcription/src/muscriptor/`) : spectre (rustfft), Transformer
+avec cache clé-valeur, vocabulaire MT3 et automate de décodage ; le
+`model.safetensors` d'origine est lu tel quel par `burn-store`. Parité exacte
+avec le code d'origine ; au banc, F1 0,546 (original 0,549), ≈ 35 s par
+morceau sur Metal en décodant 16 segments de 5 s ensemble. Dans
+l'application : bouton **Rapide / Qualité** sous la notation (Pratiquer,
+basse), conditions d'usage montrées au premier choix de « Qualité », poids
+cherchés dans le dossier des modèles puis le cache Hugging Face — c'est
+l'utilisateur qui les télécharge, après avoir accepté leurs conditions sur
+Hugging Face. Avancement affiché pendant la minute de calcul.
+
+Reste : téléchargement depuis l'application (jeton Hugging Face de
+l'utilisateur), poids en f16 (moitié moins de mémoire et de lecture),
+noyau de produit vecteur × matrice pour les petits lots.
 
 **Nirvana (10 oct.)** — second corpus, 17 morceaux dont 11 accordés plus
 bas. `Accordage::choisir` essaie huit accordages (standard, −½, −1, −2 tons,

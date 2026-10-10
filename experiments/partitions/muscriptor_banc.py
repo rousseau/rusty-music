@@ -52,6 +52,8 @@ def main():
     a.add_argument("--taille", default="medium")
     a.add_argument("--instruments", default="electric_bass,acoustic_bass")
     a.add_argument("--porte", action="store_true", help="porte d'énergie, comme Basic Pitch")
+    a.add_argument("--rust", type=int, metavar="LOT", help="portage Burn (exemple `muscriptor`) au lieu du code Python, LOT segments ensemble")
+    a.add_argument("--longueur", type=int, default=1000, help="jetons par segment au plus (portage Burn)")
     a.add_argument("ids", nargs="*")
     args = a.parse_args()
     modele = None
@@ -65,15 +67,21 @@ def main():
         d = os.path.join(banc.CACHE, m["id"])
         if not reference.fichiers(d) or not os.path.isdir(os.path.join(d, "stems")): continue
         d, basse, puls = banc.preparer_audio(m)
-        brut = os.path.join(d, f"muscriptor-{args.taille}-notes.json")
+        nom = f"rust-lot{args.rust}" if args.rust else args.taille
+        brut = os.path.join(d, f"muscriptor-{nom}-notes.json")
+        if args.rust and not os.path.exists(brut):
+            r = subprocess.run([os.path.join(banc.RACINE, "target/release/examples/muscriptor"), basse, brut, str(args.rust), str(args.longueur)],
+                               check=True, capture_output=True, text=True, cwd=banc.RACINE)
+            print(f"  {m['id']} : {r.stdout.strip()}", file=sys.stderr)
         if not os.path.exists(brut):
             modele = modele or charger()
             t0 = time.time()
             json.dump(transcrire(modele, basse, args.instruments.split(",")), open(brut, "w"))
             print(f"  {m['id']} : {time.time() - t0:.0f} s", file=sys.stderr)
-        propre = os.path.join(d, f"muscriptor-{args.taille}-notes-propres.json")
-        json.dump(nettoyer(json.load(open(brut))), open(propre, "w"))
-        tr = os.path.join(d, f"transcription-muscriptor-{args.taille}.json")
+        propre = os.path.join(d, f"muscriptor-{nom}-notes-propres.json")
+        # Le portage écarte lui-même les segments qui bouclent.
+        json.dump(json.load(open(brut)) if args.rust else nettoyer(json.load(open(brut))), open(propre, "w"))
+        tr = os.path.join(d, f"transcription-muscriptor-{nom}.json")
         cmd = [banc.BANC, "notes", propre, puls, tr] + ([basse] if args.porte else [])
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, cwd=banc.RACINE)
         ref = reference.extraire_dossier(d, m.get("accordage"))
@@ -82,7 +90,7 @@ def main():
         f1 = 2 * st["exactes"] / max(1, st["ref"] + st["nous"])
         f1t = 2 * st["exactes_tab"] / max(1, st["ref_tab"] + st["nous_tab"])
         print(f"{m['id']:24} F1 {f1:.2f}  F1tab {f1t:.2f}  doigté {st['doigtes'] / max(1, st['doigtes_ref']):.2f}", flush=True)
-    print(f"TOTAL MuScriptor {args.taille} : F1 {2 * tot['exactes'] / max(1, tot['ref'] + tot['nous']):.3f}  "
+    print(f"TOTAL MuScriptor {nom} : F1 {2 * tot['exactes'] / max(1, tot['ref'] + tot['nous']):.3f}  "
           f"F1tab {2 * tot['exactes_tab'] / max(1, tot['ref_tab'] + tot['nous_tab']):.3f}  "
           f"doigtés {tot['doigtes'] / max(1, tot['doigtes_ref']):.3f}")
 

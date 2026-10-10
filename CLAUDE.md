@@ -20,6 +20,7 @@ Séquencement (fait) : cœur → lecteur → exploration → éditeur. État cou
 - **Familles de la carte** : vocabulaire de genres (MusicBrainz + tags), avec repli k-means maison (k-means++) sur l'empreinte pour ce que le vocabulaire ne nomme pas. `linfa` reste la voie documentée pour DBSCAN/GMM. **Réduction 2D** : `bhtsne` (t-SNE Barnes-Hut, pur Rust).
 - **Démixage (module 3)** : HTDemucs via **`demucs-core`** (STFT en Rust, réseau sur Burn) — l'export ONNX a été écarté, voir `docs/module3-demixage.md`.
 - **Super-résolution (bouton « HD »)** : AERO via ONNX Runtime (`ort`) — `crates/superres`.
+- **Transcription (module 3, pratiquer)** : `crates/transcription` — basse par Basic Pitch (`ort`, mode rapide) ou **MuScriptor porté en Burn** (mode qualité, poids téléchargés par l'utilisateur après acceptation de leurs conditions) ; batterie par ADTOF (`ort`).
 - **Time-stretch / pitch (modules 1 et 3)** : crate **`wsola`** (recouvrement-addition, pur Rust). La transposition ajoute un rééchantillonnage (`rubato`). Vérifié avant d'écrire le nôtre — un vocodeur maison a été retiré.
 - **Interface finale** : HTML/CSS/JS + WebGL, empaquetée avec **Tauri** (backend Rust exposé à l'UI). `rerun` : diagnostic pendant le dev seulement.
 - **Métadonnées / connexions artistes** : API MusicBrainz + Cover Art Archive + Wikidata/Wikipédia (voir `docs/data-sources.md`).

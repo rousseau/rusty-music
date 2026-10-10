@@ -13,12 +13,16 @@
 //! 4. [`tablature`] — corde et frette de chaque note, par plus court chemin ;
 //! 5. [`quantification`] — sur les temps et les mesures de la pulsation.
 //!
+//! Mode qualité : [`muscriptor`] — MuScriptor (Kyutai × Mirelo) porté en Burn,
+//! à la place de Basic Pitch à l'étape 1.
+//!
 //! La batterie : [`batterie`] — ADTOF (Zehren et al.), poids convertis en ONNX,
 //! spectrogramme et choix des pics réécrits d'après madmom.
 
 pub mod basic_pitch;
 pub mod batterie;
 pub mod monophonie;
+pub mod muscriptor;
 pub mod porte;
 pub mod quantification;
 pub mod tablature;

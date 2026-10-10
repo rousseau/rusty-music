@@ -205,6 +205,30 @@ boucle.
 Batterie : pas mieux qu'ADTOF (cymbales nettement moins bonnes) — ADTOF
 reste.
 
+### Portage en Burn (10 oct.)
+
+`crates/transcription/src/muscriptor/` : parité exacte avec le code
+d'origine en float32 (639 jetons sur 639, 139 notes sur 139 sur 15 s de
+« Parallel Universe » ; `experiments/muscriptor/reference.py` puis l'exemple
+`parite_muscriptor`). Au banc (`muscriptor_banc.py --rust 16 --porte`) :
+
+| basse, 34 morceaux | F1 | F1tab | doigtés | temps par morceau |
+|---|---|---|---|---|
+| code d'origine (MPS, fp16, prélude forcé) | 0,549 | 0,571 | 0,62 | ≈ 30 s |
+| portage Burn, 16 segments en lot (Metal, fp32) | 0,546 | 0,570 | 0,61 | ≈ 35 s |
+
+Décoder 16 segments ensemble, chacun devinant ses notes tenues au lieu du
+prélude forcé, ne coûte rien en qualité. Aucune boucle sur les 34 morceaux
+(l'original en fp16 en faisait deux) ; le segment le plus long compte 365
+jetons, d'où la limite de 1 000 au lieu de 2 000.
+
+Vitesse — ce qui a compté, mesuré sur Metal : poids gardés en disposition
+PyTorch et lus transposés (le produit vecteur × matrice de Burn est 5 à 28
+fois plus lent en `[entrée, sortie]`) ; attention écrite à la main sur la
+partie remplie du cache ; puis le lot, parce que le pas est limité par le
+coût de lancement des ~1 200 opérations (≈ 10 ms de CPU), pas par le calcul :
+13 ms par jeton seul, 4,7 en lot de 16.
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,

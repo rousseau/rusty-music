@@ -21,20 +21,14 @@ quand celle-ci le permet.
 | **Beat This!** (`final0`, `small1`) | temps et premiers temps de mesure (Éditer : boucles à la mesure, puis partition et greffe) | Foscarin, Schlüter, Widmer, « Beat This! Accurate and Generalizable Beat Tracking », ISMIR 2024 | [CPJKU/beat_this](https://github.com/CPJKU/beat_this) ; portage Rust [`beat-this-rs`](https://github.com/danigb/beat-this-rs) (danigb) | MIT ; portage MIT | MIT | exports ONNX de `beat-this-rs` (révision `1ae768e` et release `model-large`), exécutés par `rten` (pur Rust) ; téléchargés au premier usage ou par `preparer-beat-this.sh` |
 | **Basic Pitch** (`icassp_2022/nmp.onnx`) | transcription de la basse (Éditer → Pratiquer : tablature) | Bittner, Bosch, Rubinstein, Meseguer-Brocal, Ewert, « A Lightweight Instrument-Agnostic Model for Polyphonic Note Transcription and Multipitch Estimation », ICASSP 2022 | [spotify/basic-pitch](https://github.com/spotify/basic-pitch) | Apache-2.0 | Apache-2.0 | ONNX du dépôt, tel quel (révision `fa5997a`), exécuté par ONNX Runtime ; création de notes portée en Rust (`crates/transcription`, parité 832/832 notes avec le code d'origine) ; téléchargé au premier usage |
 | **ADTOF** « Frame_RNN » (`adtofAll_0`) | transcription de la batterie (Éditer → Pratiquer : partition de batterie) | Zehren, Alunno, Bientinesi, « High-Quality and Reproducible Automatic Drum Transcription from Crowdsourced Data », *Signals* 4(4), 2023 | [MZehren/ADTOF](https://github.com/MZehren/ADTOF) | CC BY-NC-SA 4.0 (non lié : architecture réécrite pour l'export, inférence et prétraitement réécrits en Rust d'après madmom, BSD) | CC BY-NC-SA 4.0 | point de contrôle TensorFlow (révision `b3968fb`) → ONNX par `scripts/preparer-adtof.sh`, exécuté par ONNX Runtime ; parité avec la référence Python (caractéristiques 2,4e-7, sorties 7,8e-7, coups identiques) ; l'ONNX converti reste sous CC BY-NC-SA 4.0 |
+| **MuScriptor** medium (`MuScriptor/muscriptor-medium`) | transcription de qualité de la basse (Éditer → Pratiquer : bouton « Qualité ») | Kyutai × Mirelo, MuScriptor, 2026 ([dépôt](https://github.com/muscriptor/muscriptor)) | [muscriptor/muscriptor](https://github.com/muscriptor/muscriptor) | MIT | [CC BY-NC 4.0](https://huggingface.co/MuScriptor/muscriptor-medium) + conditions d'usage (transcrire seulement ce sur quoi on a les droits ; accès après acceptation sur Hugging Face) | Transformer, mel et décodage des jetons portés en Burn (`crates/transcription/src/muscriptor/`) ; le `model.safetensors` d'origine est lu tel quel, jamais converti ni redistribué : l'utilisateur le télécharge (`hf download`) après avoir accepté les conditions, que l'application rappelle au premier usage ; parité avec le code d'origine : 639 jetons sur 639, 139 notes sur 139 (`examples/parite_muscriptor.rs`) |
 
 ## À venir
 
-Les modèles prévus par `docs/plan-editer-pratique-creation.md` (MuScriptor, ADT_STR, LarsNet, all-in-one, COCOLA, GrooVAE, MusicGen-Stem,
+Les modèles prévus par `docs/plan-editer-pratique-creation.md` (ADT_STR, LarsNet, all-in-one, COCOLA, GrooVAE, MusicGen-Stem,
 STAGE/DARC, RAVE, ACE-Step) seront ajoutés ici **au moment où ils entrent dans
 le code**, avec leur licence et leurs conditions d'usage. Le tableau des
 licences de la recherche est dans `docs/recherche-editer-pratique-creation.md`.
-
-**MuScriptor** ([muscriptor/muscriptor](https://github.com/muscriptor/muscriptor),
-Kyutai × Mirelo ; code MIT, poids [CC BY-NC 4.0](https://huggingface.co/MuScriptor/muscriptor-medium)
-et conditions d'usage : transcrire seulement ce sur quoi on a les droits)
-est pour l'instant évalué seulement (`experiments/partitions/`), par son code
-Python, avec des poids téléchargés par l'utilisateur après acceptation des
-conditions.
 
 ## Données d'évaluation (jamais distribuées)
 

@@ -406,7 +406,7 @@ pub fn reechantillonner_pour_essai(mono: &[f32], frequence: u32) -> Result<Vec<f
 
 /// Rééchantillonnage sinc par FFT (`rubato`), même méthode que
 /// `crates/superres` : amorce réfléchie, puis retirée.
-fn reechantillonner(x: &[f32], de: u32, vers: u32) -> Result<Vec<f32>> {
+pub(crate) fn reechantillonner(x: &[f32], de: u32, vers: u32) -> Result<Vec<f32>> {
     use rubato::audioadapter_buffers::direct::InterleavedSlice;
     use rubato::{Fft, FixedSync, Resampler, WindowFunction};
 
