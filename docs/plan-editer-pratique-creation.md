@@ -176,6 +176,13 @@ mesures écrites (reprises, codas, figures rejouées). Chaîne de l'éditeur :
 F1 0,48 (0,51 sur les mesures adossées à la tablature), doigtés identiques
 61 %. Usage local, rien d'extrait des livres n'est versionné.
 
+**MuScriptor essayé (10 oct.)** sur les 34 morceaux de basse (Flea et
+Nirvana), taille *medium*, code Python de référence : F1 0,42 → **0,55**,
+F1tab 0,44 → 0,57, accordage juste 29 → 31/34, meilleur sur 29 morceaux.
+Sur la batterie, pas mieux qu'ADTOF (cymbales 0,76 → 0,56). Défaut : des
+tranches de 5 s bouclent (décodage glouton sans fin de séquence, surtout
+dans le silence) — à écarter. Détail : `experiments/partitions/README.md`.
+
 **Reste à faire.** `experiments/banc-transcription/` :
 - données : Slakh2100 (basse), MDB-Drums et ENST (batterie), rapatriées de
   Garage en local (`rclone sync`, jamais streamées) ;
@@ -278,6 +285,13 @@ choisi par les notes (standard, drop D, cinq cordes). F1 0,450 → 0,48,
 doigtés 51 → 61 %. Limite : le rappel (44 %) — notes répétées rapides,
 notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
 que MuScriptor doit faire mieux.
+
+**MuScriptor au banc (10 oct.)** : il fait mieux — F1 0,55 contre 0,42 sur
+les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana. **Décision proposée : le porter
+en Burn** (taille *medium*, ≈ 300 M paramètres) comme transcription de basse
+de qualité, Basic Pitch restant le mode rapide et le repli. À reprendre du
+banc : restriction aux basses (`instruments`), écart des tranches qui
+bouclent.
 
 **Nirvana (10 oct.)** — second corpus, 17 morceaux dont 11 accordés plus
 bas. `Accordage::choisir` essaie huit accordages (standard, −½, −1, −2 tons,

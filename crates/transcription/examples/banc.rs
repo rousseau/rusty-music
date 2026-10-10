@@ -12,8 +12,14 @@
 //! calcule les activations une fois et écrit un fichier par réglage (Basic
 //! Pitch et porte).
 //!
+//! Notes venues d'ailleurs (un autre modèle, au banc) :
+//! `banc -- notes <notes.json> <pulsation.json> <sortie.json> [bass.wav]` —
+//! même suite que pour Basic Pitch : porte (si le stem est donné),
+//! monophonie, accordage, doigtés, quantification.
+//!
 //! Batterie : `banc -- batterie <drums.wav> <pulsation.json> <sortie.json>` —
-//! ADTOF puis quantification, comme l'éditeur.
+//! ADTOF puis quantification, comme l'éditeur. Coups venus d'ailleurs :
+//! `banc -- coups <coups.json> <pulsation.json> <sortie.json>`.
 //!
 //! Grille de doigtés : `banc -- doigtes <transcription.json> <pulsation.json> <dossier>`
 //! repose les notes d'une transcription avec plusieurs jeux de [`Couts`] et
@@ -38,6 +44,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if a[0] == "batterie" {
         return batterie(&a[1..]);
+    }
+    if a[0] == "notes" {
+        let mut brutes: Vec<Note> = serde_json::from_slice(&std::fs::read(&a[1])?)?;
+        let (temps, premiers) = lire_pulsation(&a[2])?;
+        // Avec le stem en 4ᵉ argument : la même porte d'énergie que Basic Pitch.
+        if let Some(wav) = a.get(4) {
+            let (mono, sr) = lire_mono(wav)?;
+            brutes = porte::filtrer(brutes, &mono, sr, porte::SEUIL_DB);
+        }
+        let mut notes = monophonie::monophonique(brutes);
+        let accordage = Accordage::choisir(&notes);
+        tablature::poser(&mut notes, &accordage);
+        let mesures = quantification::quantifier(&notes, &temps, &premiers, 4);
+        std::fs::write(&a[3], serde_json::to_string(&serde_json::json!({ "notes": notes, "mesures": mesures, "accordage": accordage.cordes }))?)?;
+        println!("{} notes → {}", notes.len(), a[3]);
+        return Ok(());
+    }
+    if a[0] == "coups" {
+        let coups: Vec<rusty_music_transcription::batterie::Coup> = serde_json::from_slice(&std::fs::read(&a[1])?)?;
+        let (temps, premiers) = lire_pulsation(&a[2])?;
+        let mesures = quantification::quantifier_coups(&coups, &temps, &premiers, 4);
+        std::fs::write(&a[3], serde_json::to_string(&serde_json::json!({ "coups": coups, "mesures": mesures }))?)?;
+        println!("{} coups → {}", coups.len(), a[3]);
+        return Ok(());
     }
     let (wav, puls, sortie) = (PathBuf::from(&a[0]), PathBuf::from(&a[1]), PathBuf::from(&a[2]));
     let dec = Decoder::try_from(std::fs::File::open(&wav)?)?;

@@ -52,6 +52,8 @@ python3 preparer_audio.py          # stems et pulsations (long)
 python3 banc.py --refaire-transcription
 python3 regler_basic_pitch.py
 python3 regler_doigtes.py
+<venv>/bin/python muscriptor_banc.py --taille medium   # muscriptor, pymupdf
+<venv>/bin/python muscriptor_batterie.py
 ```
 
 Variables : `LIVRES` (défaut `~/Exp/tmp`), `CACHE` (`~/Exp/tmp/banc-partitions`),
@@ -160,6 +162,48 @@ d'ADTOF sont déjà au mieux (`regler_batterie.py` : moins de 0,02 à gagner
 par pièce). Biais : une transcription Drum Ninja note le groove de chaque
 section et le répète ; fills et variations ne sont pas tous écrits — les toms
 surtout sont sous-notés.
+
+## MuScriptor (10 oct.)
+
+[MuScriptor](https://github.com/muscriptor/muscriptor) (Kyutai × Mirelo,
+code MIT, poids CC BY-NC 4.0 et conditions d'usage acceptées sur Hugging
+Face), taille *medium*, par son code Python de référence — évaluation
+seulement, dans un environnement à part. `muscriptor_banc.py` transcrit le
+stem de basse restreint aux basses, puis la chaîne de l'éditeur (exemple
+`banc -- notes` : porte, monophonie, accordage, doigtés, mise en mesure) et
+la même comparaison ; `muscriptor_batterie.py` fait de même pour la batterie
+(groupe « drums », General MIDI → cinq pièces, `banc -- coups`).
+
+| basse, 34 morceaux | F1 | F1tab | doigtés | accordage juste |
+|---|---|---|---|---|
+| Basic Pitch (chaîne actuelle) | 0,42 | 0,44 | 0,60 | 29/34 |
+| MuScriptor medium | **0,55** | **0,57** | 0,62 | **31/34** |
+
+Meilleur sur 29 morceaux sur 34 ; le gain est le plus fort sur Nirvana
+(basse saturée doublée par la guitare) : « Mr. Moustache » 0,23 → 0,79,
+« Come As You Are » 0,59 → 0,85, « Blew » 0,17 → 0,43. Flea : « Otherside »
+0,64 → 0,77, « Get On Top » 0,26 → 0,41. Restent bas les mêmes
+(« Porcelain », « I Like Dirt », « Polly »). La porte d'énergie ne change
+presque rien (0,548 → 0,549) : MuScriptor ne transcrit pas les fuites.
+
+**Défaut trouvé : boucles du décodage glouton.** Une tranche de 5 s qui
+n'émet jamais sa fin de séquence répète la même note toutes les 10-20 ms
+jusqu'à la limite de longueur — dans le silence (introduction tacet
+d'« Under the Bridge » : 22 000 notes, 221 s de calcul) et les fins bruitées
+(« Purple Stain »). `nettoyer()` écarte les tranches de plus de 150 notes ou
+de plus de 10 doublons (un morceau sain reste sous 110). Un portage devra
+faire de même (ou redécoder la tranche autrement).
+
+Temps : ≈ 30 s par morceau sur la puce Apple (MPS), plus quand une tranche
+boucle.
+
+| batterie, 7 morceaux | GC | CC | toms | HH | CY |
+|---|---|---|---|---|---|
+| ADTOF | **0,72** | **0,80** | 0,42 | 0,77 | **0,76** |
+| MuScriptor medium | 0,71 | 0,76 | **0,46** | 0,77 | 0,56 |
+
+Batterie : pas mieux qu'ADTOF (cymbales nettement moins bonnes) — ADTOF
+reste.
 
 ## Limites du banc
 

@@ -29,6 +29,13 @@ STAGE/DARC, RAVE, ACE-Step) seront ajoutés ici **au moment où ils entrent dans
 le code**, avec leur licence et leurs conditions d'usage. Le tableau des
 licences de la recherche est dans `docs/recherche-editer-pratique-creation.md`.
 
+**MuScriptor** ([muscriptor/muscriptor](https://github.com/muscriptor/muscriptor),
+Kyutai × Mirelo ; code MIT, poids [CC BY-NC 4.0](https://huggingface.co/MuScriptor/muscriptor-medium)
+et conditions d'usage : transcrire seulement ce sur quoi on a les droits)
+est pour l'instant évalué seulement (`experiments/partitions/`), par son code
+Python, avec des poids téléchargés par l'utilisateur après acceptation des
+conditions.
+
 ## Données d'évaluation (jamais distribuées)
 
 Les bancs d'`experiments/` utilisent des jeux sans licence déclarée,
