@@ -32,6 +32,11 @@ pub enum Error {
     #[error("source distante injoignable : {0}")]
     Reseau(String),
 
+    /// La source répond, mais refuse l'accès (401/403) : jeton absent ou
+    /// invalide, conditions d'usage non acceptées.
+    #[error("{0}")]
+    AccesRefuse(String),
+
     #[error("fichier Opus illisible : {0}")]
     Opus(String),
 

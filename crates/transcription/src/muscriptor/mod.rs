@@ -296,8 +296,23 @@ impl<B: ProduitMince> Muscriptor<B> {
             .map(|n| Note { debut_s: n.debut_s, fin_s: n.fin_s, hauteur: n.hauteur, amplitude: 1.0, corde: None, frette: None })
             .collect();
         notes.sort_by(|a, b| a.debut_s.total_cmp(&b.debut_s).then(a.hauteur.cmp(&b.hauteur)));
-        Ok((notes, bilan))
+        Ok((sans_doublons(notes), bilan))
     }
+}
+
+/// Le programme est oublié dans [`Note`] : une même note émise pour deux
+/// instruments du groupe (basse électrique et acoustique : 14 doublons sur
+/// 391 notes d'un morceau de Slakh) n'en fait qu'une, la plus longue.
+fn sans_doublons(notes: Vec<Note>) -> Vec<Note> {
+    let mut gardees: Vec<Note> = Vec::with_capacity(notes.len());
+    for n in notes {
+        let double = gardees.iter_mut().rev().take_while(|g| n.debut_s - g.debut_s <= 0.02).find(|g| g.hauteur == n.hauteur);
+        match double {
+            Some(g) => g.fin_s = g.fin_s.max(n.fin_s),
+            None => gardees.push(n),
+        }
+    }
+    gardees
 }
 
 /// Convertit chaque paramètre flottant vers un type donné.
@@ -388,6 +403,14 @@ pub fn poids_hugging_face(taille: &str) -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_note_emise_pour_deux_basses_n_en_fait_qu_une() {
+        let n = |d: f32, f: f32, h: u8| Note { debut_s: d, fin_s: f, hauteur: h, amplitude: 1.0, corde: None, frette: None };
+        let r = sans_doublons(vec![n(3.01, 4.51, 38), n(3.01, 4.0, 43), n(3.02, 4.6, 38), n(4.51, 5.0, 38)]);
+        assert_eq!(r.len(), 3);
+        assert_eq!((r[0].hauteur, r[0].fin_s), (38, 4.6));
+    }
 
     #[test]
     fn le_gain_amplifie_un_signal_faible_et_jamais_un_fort() {

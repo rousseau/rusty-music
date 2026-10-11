@@ -167,7 +167,7 @@ pub fn telecharger_avec_jeton(
         requete = requete.header("Authorization", format!("Bearer {j}"));
     }
     let mut r = requete.call().map_err(|e| match e {
-        ureq::Error::StatusCode(401 | 403) => Error::Reseau(format!(
+        ureq::Error::StatusCode(401 | 403) => Error::AccesRefuse(format!(
             "téléchargement {url} : accès refusé — conditions d'usage non acceptées sur Hugging Face, ou jeton absent ou invalide"
         )),
         e => Error::Reseau(format!("téléchargement {url} : {e}")),

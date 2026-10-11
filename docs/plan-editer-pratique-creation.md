@@ -191,16 +191,26 @@ Pitch partout, harmonie 0,53-0,65 contre 0,49-0,58, voix 0,12-0,28 contre
 les chiffres absolus : ce banc classe, il ne mesure pas. Batterie du
 portage : cymbales 0,67, toujours derrière ADTOF.
 
-**Reste à faire.** `experiments/banc-transcription/` :
-- données : Slakh2100 (basse), MDB-Drums et ENST (batterie), rapatriées de
-  Garage en local (`rclone sync`, jamais streamées) ;
-- protocole : remixer, séparer par **notre** HTDemucs, transcrire, comparer à
-  la référence — F1 de note avec et sans offset (50 ms), par classe pour la
-  batterie, temps de calcul ;
-- candidats basse : Basic Pitch, YourMT3+, MuScriptor ; batterie : ADTOF
-  (± LarsNet), ADT_STR, YourMT3+ ;
-- la référence Python des modèles suffit ici : le banc décide **quel** modèle
-  porter, avant d'en porter un.
+**Jeux annotés, vérité exacte (11 oct.).** Le banc est dans
+`experiments/banc-transcription/`. Les stems viennent de **notre** HTDemucs ;
+MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
+
+- **Basse** (BabySlakh, stem démixé) : MuScriptor 0,59 contre 0,44 pour Basic
+  Pitch.
+- **Batterie** (MDB Drums) : ADTOF reste devant sur trois pièces sur cinq.
+  MuScriptor l'emporte sur les toms (0,56 contre 0,44).
+- **Guitare** (GuitarSet) : à l'attaque, MuScriptor est devant (0,73 / 0,87
+  contre 0,72 / 0,82). Ses fins de note sont moins justes que celles de Basic
+  Pitch.
+
+Le banc a aussi révélé des notes émises en double par MuScriptor ; elles sont
+désormais fusionnées.
+
+**Reste** :
+- la voix, sur MedleyDB (accès sur demande) ;
+- la batterie en pleine bande : BabySlakh est à 16 kHz, et ADTOF n'y voit ni
+  charleston ni cymbale ;
+- YourMT3+ et ADT_STR, si un candidat de plus devient utile.
 
 ---
 
