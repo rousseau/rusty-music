@@ -249,6 +249,7 @@ Trois leviers peu coûteux essayés, aucun ne dépasse la chaîne actuelle.
 | démixage `htdemucs_6s` (bancs) | 0,547 | 0,571 | 0,61 |
 | démixage `htdemucs` (défaut de l'application) | 0,544 | 0,567 | 0,62 |
 | démixage `htdemucs_ft` (336 Mo, ≈ 4 fois plus lent) | 0,550 | 0,573 | 0,60 |
+| MuScriptor **large** (1,3 G paramètres, `--taille large`), `htdemucs_6s` | 0,541 | 0,565 | 0,61 |
 
 - **Démixage** : les trois variantes font jeu égal. `DEMIX=htdemucs|htdemucs_ft`
   choisit la variante (`banc.py`, `muscriptor_banc.py`) ; stems dans
@@ -259,8 +260,12 @@ Trois leviers peu coûteux essayés, aucun ne dépasse la chaîne actuelle.
   une note à la fois 0,586 → 0,620 — l'application le fait déjà
   (`monophonie.rs`) ; filtre de gamme, octave ou confirmation par Basic Pitch :
   rien ou pire.
-- **Leviers restants** : MuScriptor *large* (5,5 Go, conditions à accepter sur
-  Hugging Face), ou un modèle spécialisé de basse.
+- **MuScriptor large** (11 oct.) : pas mieux que le medium sur la basse, et
+  3,5 fois plus lent (121 s par morceau en lot 16 sur Metal). Il monte à
+  22 Go de mémoire au pic en lot 16, 9 Go en lot 8. On garde le medium dans
+  l'application. Poids : `$RUSTY_DEV/hf/muscriptor-large` (dépôt à accès
+  restreint, mêmes conditions CC BY-NC que le medium).
+- **Levier restant** : un modèle spécialisé de basse.
 
 ## Piano-chant-guitare : tous les instruments (11 oct.)
 

@@ -202,8 +202,9 @@ MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
 **Pistes pour la basse (11 oct.)** : démixage `htdemucs_ft` 0,550 contre
 0,547 (`6s`) et 0,544 (`htdemucs`) ; mode lent et post-traitements (gamme,
 octave, Basic Pitch) sans gain. Une note à la fois (+0,03) est déjà dans la
-chaîne. Leviers restants : MuScriptor *large*, ou un modèle de basse
-spécialisé. Détail : `experiments/partitions/README.md`.
+chaîne. **MuScriptor large** : 0,541 contre 0,547, 3,5 fois plus lent ; on
+garde le medium. Levier restant : un modèle de basse spécialisé. Détail :
+`experiments/partitions/README.md`.
   MuScriptor l'emporte sur les toms (0,56 contre 0,44).
 - **Guitare** (GuitarSet) : à l'attaque, MuScriptor est devant (0,73 / 0,87
   contre 0,72 / 0,82). Ses fins de note sont moins justes que celles de Basic
