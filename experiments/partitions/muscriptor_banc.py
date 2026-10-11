@@ -68,6 +68,10 @@ def main():
         if not reference.fichiers(d) or not os.path.isdir(os.path.join(d, "stems")): continue
         d, basse, puls = banc.preparer_audio(m)
         nom = f"rust-lot{args.rust}" if args.rust else args.taille
+        if args.rust and args.taille != "medium":
+            # Poids d'une autre taille, rangés sur le disque de développement.
+            nom += f"-{args.taille}"
+            os.environ.setdefault("MUSCRIPTOR_POIDS", os.path.join(banc.DEV, "hf", f"muscriptor-{args.taille}", "model.safetensors"))
         if banc.DEMIX != "htdemucs_6s": nom += f"-{banc.DEMIX}"
         brut = os.path.join(d, f"muscriptor-{nom}-notes.json")
         if args.rust and not os.path.exists(brut):

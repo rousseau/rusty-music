@@ -6,7 +6,10 @@
 //! les notes gardent leur programme (`NoteBrute`) — banc multi-instrument
 //! (`experiments/partitions/banc_pvg.py`).
 //!
-//!   [MOTEUR=f32] cargo run --release -p rusty-music-transcription --example muscriptor -- <audio> <notes.json> [lot] [longueur_max] [instruments]
+//! `MUSCRIPTOR_POIDS` désigne un autre `model.safetensors` (taille large :
+//! son `config.json` voisin donne l'architecture).
+//!
+//!   [MOTEUR=f32] [MUSCRIPTOR_POIDS=…] cargo run --release -p rusty-music-transcription --example muscriptor -- <audio> <notes.json> [lot] [longueur_max] [instruments]
 
 #[macro_use]
 mod commun;
@@ -23,7 +26,8 @@ fn executer<B: ProduitMince>() -> Result<(), Box<dyn std::error::Error>> {
     let (sr, canaux) = (dec.sample_rate().get(), dec.channels().get() as usize);
     let brut: Vec<f32> = dec.collect();
     let mono: Vec<f32> = brut.chunks(canaux).map(|c| c.iter().sum::<f32>() / canaux as f32).collect();
-    let mut m = Muscriptor::<B>::charger(&muscriptor::poids_hugging_face("medium").ok_or("poids MuScriptor introuvables")?, &Default::default())?;
+    let poids = std::env::var_os("MUSCRIPTOR_POIDS").map(std::path::PathBuf::from).or_else(|| muscriptor::poids_hugging_face("medium"));
+    let mut m = Muscriptor::<B>::charger(&poids.ok_or("poids MuScriptor introuvables")?, &Default::default())?;
     if let Some(l) = a.get(3).and_then(|x| x.parse().ok()) {
         m.longueur_max = l;
     }

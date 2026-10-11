@@ -40,6 +40,12 @@ CACHE = os.path.expanduser(os.environ.get("CACHE", os.path.join(DEV, "banc-jeux"
 CLI = os.path.join(RACINE, "target/release/rusty-music")
 BANC = os.path.join(RACINE, "target/release/examples/banc")
 MUS = os.path.join(RACINE, "target/release/examples/muscriptor")
+# Taille de MuScriptor : medium par défaut ; une autre (`MUSCRIPTOR=large`)
+# prend ses poids dans `$RUSTY_DEV/hf/muscriptor-<taille>` et son propre cache.
+TAILLE = os.environ.get("MUSCRIPTOR", "medium")
+if TAILLE != "medium":
+    os.environ.setdefault("MUSCRIPTOR_POIDS", os.path.join(DEV, "hf", f"muscriptor-{TAILLE}", "model.safetensors"))
+LOT = os.environ.get("LOT", "16")
 BASSES = "electric_bass,acoustic_bass"
 GUITARES = "acoustic_guitar,clean_electric_guitar,distorted_electric_guitar"
 # General MIDI → les cinq pièces d'ADTOF.
@@ -59,8 +65,10 @@ def lancer(cmd):
 def muscriptor(audio, sortie, instruments=None):
     """Notes brutes `{debut_s, fin_s, hauteur, programme?}` ; sans liste, les
     basses au format de l'application."""
+    if TAILLE != "medium":
+        sortie = os.path.join(os.path.dirname(sortie), os.path.basename(sortie).replace("muscriptor", f"muscriptor-{TAILLE}", 1))
     if not os.path.exists(sortie):
-        lancer([MUS, audio, sortie, "16", "1000"] + ([instruments] if instruments else []))
+        lancer([MUS, audio, sortie, LOT, "1000"] + ([instruments] if instruments else []))
     return json.load(open(sortie))
 
 def basic_pitch(audio, sortie):
