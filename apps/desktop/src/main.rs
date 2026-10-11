@@ -9261,6 +9261,7 @@ mod tests {
                 bpm: Some(100.0),
                 energie: Some(i as f32 / N as f32),
                 popularite: None,
+                jours_depuis_ecoute: None,
                 genres: vec![if i % 2 == 0 { "rock".into() } else { "jazz".into() }],
             })
             .collect();

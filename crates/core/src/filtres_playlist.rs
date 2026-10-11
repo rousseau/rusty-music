@@ -75,6 +75,38 @@ impl NiveauPopularite {
     }
 }
 
+/// Depuis combien de jours un morceau écouté est dit « oublié » : six mois.
+pub const OUBLIE_APRES_JOURS: u32 = 180;
+
+/// Ce que la playlist demande de l'historique d'écoute (table `ecoute`, voir
+/// `memoire.rs`). Un morceau **oublié** a été écouté au moins une fois, mais pas
+/// depuis [`OUBLIE_APRES_JOURS`] ; un morceau **jamais** écouté n'a aucune ligne
+/// dans l'historique. Deux demandes distinctes, et distinctes de la popularité
+/// générale : « oubliés » parle de *cet* utilisateur, pas du monde.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NiveauEcoute {
+    Oublie,
+    Jamais,
+}
+
+impl NiveauEcoute {
+    pub fn depuis_texte(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "oublie" | "oublié" | "oublies" | "oubliés" | "forgotten" => Some(Self::Oublie),
+            "jamais" | "jamais_ecoute" | "jamais écouté" | "never" | "unheard" => Some(Self::Jamais),
+            _ => None,
+        }
+    }
+
+    pub fn libelle(self) -> &'static str {
+        match self {
+            Self::Oublie => "oubliés",
+            Self::Jamais => "jamais écoutés",
+        }
+    }
+}
+
 /// Les contraintes d'une playlist. Tout est optionnel : un filtre vide ne
 /// restreint rien ([`FiltresPlaylist::est_vide`]).
 ///
@@ -96,6 +128,7 @@ pub struct FiltresPlaylist {
     pub bpm_max: Option<f32>,
     pub energie: Option<NiveauEnergie>,
     pub popularite: Option<NiveauPopularite>,
+    pub ecoute: Option<NiveauEcoute>,
 }
 
 impl FiltresPlaylist {
@@ -109,6 +142,7 @@ impl FiltresPlaylist {
             && self.bpm_max.is_none()
             && self.energie.is_none()
             && self.popularite.is_none()
+            && self.ecoute.is_none()
     }
 }
 
@@ -123,6 +157,9 @@ pub struct CaracteristiquesPiste {
     pub energie: Option<f32>,
     /// Rang percentile 0..1 dans la bibliothèque (1 = le plus écouté).
     pub popularite: Option<f64>,
+    /// Jours écoulés depuis la dernière écoute **de cet utilisateur** ; `None`
+    /// = jamais écouté (aucune ligne dans `ecoute`).
+    pub jours_depuis_ecoute: Option<u32>,
     /// Genres résolus, en minuscules.
     pub genres: Vec<String>,
 }
@@ -290,6 +327,15 @@ fn convient(
             return false;
         }
     }
+    if let Some(niveau) = f.ecoute {
+        let ok = match niveau {
+            NiveauEcoute::Oublie => p.jours_depuis_ecoute.is_some_and(|j| j >= OUBLIE_APRES_JOURS),
+            NiveauEcoute::Jamais => p.jours_depuis_ecoute.is_none(),
+        };
+        if !ok {
+            return false;
+        }
+    }
     true
 }
 
@@ -357,13 +403,22 @@ pub fn entonnoir(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> Vec<(
         courant.popularite = Some(p);
         ajouter(format!("popularité : {}", p.libelle()), &courant, &mut etapes);
     }
+    if let Some(e) = f.ecoute {
+        courant.ecoute = Some(e);
+        ajouter(format!("écoute : {}", e.libelle()), &courant, &mut etapes);
+    }
     etapes
 }
 
 /// Lâche le critère désiré le moins essentiel encore posé, dans l'ordre :
-/// popularité, énergie, BPM, années, genres. Les exclusions ne sont jamais
+/// écoute, popularité, énergie, BPM, années, genres. Les exclusions ne sont jamais
 /// touchées. `None` quand il n'y a plus rien à lâcher.
 fn relacher(f: &mut FiltresPlaylist) -> Option<&'static str> {
+    // L'historique d'écoute est le critère le plus pauvre en données (il ne
+    // remonte qu'au premier lancement de la mémoire d'écoute) : il cède d'abord.
+    if f.ecoute.take().is_some() {
+        return Some("écoute");
+    }
     if f.popularite.take().is_some() {
         return Some("popularité");
     }
@@ -516,6 +571,7 @@ mod tests {
             bpm: Some(100.0 + id as f32),
             energie: Some(energie),
             popularite: Some(id as f64 / 10.0),
+            jours_depuis_ecoute: None,
             genres: vec![genre.into()],
         }
     }
@@ -722,5 +778,50 @@ mod tests {
     fn duree_moyenne_retombe_sur_le_defaut() {
         assert_eq!(duree_moyenne_ms(&[], None), DUREE_DEFAUT_MS);
         assert_eq!(duree_moyenne_ms(&corpus(), None), 200_000);
+    }
+    /// « Oubliés » : écoutés un jour, plus depuis six mois. « Jamais » : aucune
+    /// ligne dans l'historique. Un morceau récent n'est ni l'un ni l'autre.
+    #[test]
+    fn oublies_et_jamais_ecoutes_se_lisent_dans_lhistorique() {
+        let mut c = corpus();
+        c[0].jours_depuis_ecoute = Some(400);
+        c[1].jours_depuis_ecoute = Some(10);
+        c[2].jours_depuis_ecoute = Some(OUBLIE_APRES_JOURS);
+        c[3].jours_depuis_ecoute = Some(OUBLIE_APRES_JOURS - 1);
+        let avec = |e| FiltresPlaylist { ecoute: Some(e), ..Default::default() };
+
+        let oublies = filtrer(&c, &avec(NiveauEcoute::Oublie));
+        assert_eq!(oublies, HashSet::from([c[0].id, c[2].id]), "la limite est incluse, la veille non");
+
+        let jamais = filtrer(&c, &avec(NiveauEcoute::Jamais));
+        assert_eq!(jamais.len(), c.len() - 4);
+        assert!([0, 1, 2, 3].iter().all(|&i| !jamais.contains(&c[i].id)));
+    }
+
+    /// L'historique est le critère le plus pauvre : il cède en premier, et le
+    /// plan le dit. Sans historique, « oubliés » ne vide donc pas la playlist.
+    #[test]
+    fn lecoute_est_le_premier_critere_relache() {
+        let c = corpus(); // aucun morceau écouté : aucun « oublié »
+        let f = FiltresPlaylist {
+            ecoute: Some(NiveauEcoute::Oublie),
+            energie: Some(NiveauEnergie::Calme),
+            ..Default::default()
+        };
+        let s = selectionner(&c, &f, 2).unwrap();
+        assert!(s.relaches.iter().any(|r| r.contains("« écoute »")), "{:?}", s.relaches);
+        assert!(!s.relaches.iter().any(|r| r.contains("énergie")), "l'énergie est gardée : {:?}", s.relaches);
+        assert!(s.ids.len() >= 2);
+    }
+
+    #[test]
+    fn lentonnoir_montre_lecoute() {
+        let mut c = corpus();
+        c[0].jours_depuis_ecoute = Some(500);
+        let f = FiltresPlaylist { ecoute: Some(NiveauEcoute::Oublie), ..Default::default() };
+        let e = entonnoir(&c, &f);
+        assert_eq!(e.last().unwrap(), &("écoute : oubliés".to_string(), 1));
+        assert_eq!(NiveauEcoute::depuis_texte("jamais"), Some(NiveauEcoute::Jamais));
+        assert!(!f.est_vide());
     }
 }

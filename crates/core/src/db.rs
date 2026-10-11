@@ -1890,10 +1890,13 @@ impl Library {
 
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.artist, t.mb_artist_id, t.album, t.genre, t.year, t.duration_ms,
-                    d.bpm, d.energy, tp.relative
+                    d.bpm, d.energy, tp.relative,
+                    CAST((strftime('%s','now') - e.dernier) / 86400 AS INTEGER)
                FROM tracks t
                LEFT JOIN descriptors d ON d.track_id = t.id
-               LEFT JOIN track_popularite tp ON tp.track_id = t.id",
+               LEFT JOIN track_popularite tp ON tp.track_id = t.id
+               LEFT JOIN (SELECT chemin, MAX(le) AS dernier FROM ecoute GROUP BY chemin) e
+                      ON e.chemin = t.path",
         )?;
         let lignes = stmt
             .query_map([], |r| {
@@ -1910,6 +1913,11 @@ impl Library {
                         bpm: r.get(7)?,
                         energie: r.get(8)?,
                         popularite: r.get(9)?,
+                        // Jamais négatif : une horloge reculée ne fait pas
+                        // une écoute future.
+                        jours_depuis_ecoute: r
+                            .get::<_, Option<i64>>(10)?
+                            .map(|j| u32::try_from(j.max(0)).unwrap_or(u32::MAX)),
                         genres: Vec::new(),
                     },
                     mbid,

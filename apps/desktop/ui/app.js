@@ -1359,6 +1359,7 @@ function retirerPartie(plan, k) {
 
 const LIBELLE_ENERGIE = { calme: "calme", moyenne: "énergie moyenne", intense: "intense" };
 const LIBELLE_POPULARITE = { peu_connu: "peu connu", connu: "connu" };
+const LIBELLE_ECOUTE = { oublie: "oubliés (plus écoutés depuis 6 mois)", jamais: "jamais écoutés" };
 
 /// Les contraintes du plan, une ligne retirable chacune (`× `) : retirer
 /// n'appelle pas Ollama, ça modifie le plan affiché, que « Recomposer »
@@ -1390,6 +1391,7 @@ function contraintesDuPlan(plan) {
   }
   if (f.energie) ajouter(`énergie : ${LIBELLE_ENERGIE[f.energie] ?? f.energie}`, () => { f.energie = null; });
   if (f.popularite) ajouter(LIBELLE_POPULARITE[f.popularite] ?? f.popularite, () => { f.popularite = null; });
+  if (f.ecoute) ajouter(LIBELLE_ECOUTE[f.ecoute] ?? f.ecoute, () => { f.ecoute = null; });
   if (plan.plafond_par_artiste)
     ajouter(`${plan.plafond_par_artiste} morceau(x) max par artiste`, () => { plan.plafond_par_artiste = null; });
   return lignes;

@@ -32,6 +32,8 @@ fn main() -> anyhow::Result<()> {
             energie: Some(NiveauEnergie::Calme), annee_min: Some(1970), annee_max: Some(1979),
             exclure_genres: vec!["rock".into()], ..Default::default() }),
         ("peu connu", FiltresPlaylist { popularite: Some(NiveauPopularite::PeuConnu), ..Default::default() }),
+        ("oubliés (écoute > 6 mois)", FiltresPlaylist { ecoute: Some(NiveauEcoute::Oublie), ..Default::default() }),
+        ("jamais écoutés", FiltresPlaylist { ecoute: Some(NiveauEcoute::Jamais), ..Default::default() }),
         ("jazz peu connu bpm ≤ 90", FiltresPlaylist {
             genres: vec!["jazz".into()], popularite: Some(NiveauPopularite::PeuConnu),
             bpm_max: Some(90.0), ..Default::default() }),

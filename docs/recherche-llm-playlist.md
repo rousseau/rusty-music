@@ -180,13 +180,61 @@ de l'ambiance) : corrigé par une règle plus ferme dans la consigne et par
 aux accents, synonymes français, variantes rap/hip hop et une faute de frappe).
 Reste : « Du metal » → énergie « intense » déduite (1 cas).
 
+## Écoute : « oubliés » et « jamais écoutés » (7 octobre 2026)
+
+Premier pas de la redécouverte, branché sur la table `ecoute` (mémoire d'écoute
+du lecteur). **Deux demandes, distinctes de la popularité** — « oubliés » parle
+de *cet* utilisateur, pas de la notoriété d'un morceau :
+
+- **`oublie`** : écouté au moins une fois, **pas depuis 180 jours**
+  (`OUBLIE_APRES_JOURS`, six mois) ;
+- **`jamais`** : aucune ligne dans `ecoute`.
+
+Mécanique, comme pour les autres critères : le LLM rend `ecoute`
+(`"oublie" | "jamais" | null`, dans le schéma) ; le code applique
+(`FiltresPlaylist::ecoute`, `CaracteristiquesPiste::jours_depuis_ecoute`,
+rempli par `Library::caracteristiques_pistes` depuis `MAX(le)` par chemin).
+Le bloc « Contraintes » l'affiche, retirable ; l'entonnoir en fait une ligne
+(« écoute : oubliés »).
+
+- **Ancrage déterministe** (`InterpretationLlm::ancrer_ecoute`, `ecoute_dite`) :
+  `ecoute` n'est gardée que si **le texte la dit**, et posée si le texte la dit
+  et que le modèle l'a manquée. Lexique étroit — « oubliés », « forgotten »,
+  « n'écoute plus », « pas écoutés depuis », « haven't listened in a while » ;
+  « jamais écoutés », « never listened », « pas encore écoutés », « unheard » —
+  avec la négation exigée devant l'écoute (« que j'écoute le plus », « never
+  get tired of listening » ne déclenchent rien).
+- **« Oubliés » n'est plus une popularité.** L'ancienne consigne disait
+  « oubliés » → `popularite: peu_connu`, et le banc l'exigeait (`pop-oublies`) :
+  deux notions confondues. La consigne les sépare, et `ancrer_ecoute` retire la
+  popularité `peu_connu` que le modèle a lue dans « oubliés » quand le texte ne
+  parle pas de notoriété (« perles méconnues que j'ai oubliées » garde les deux).
+- **Relâchement** : `ecoute` est le **premier** critère lâché
+  (`filtres_playlist::relacher`) et le plan le dit — c'est le plus pauvre en
+  données.
+
+**Limite à connaître : l'historique est jeune.** La table `ecoute` date du
+4 octobre 2026 (128 morceaux distincts au 7 octobre, sur ~27 700). Mesuré sur
+la base réelle : **« oubliés » → 0 morceau admissible** (aucun n'a six mois
+d'écoute), donc le critère est relâché avec son message ; il ne produira de
+sélection qu'à partir d'**avril 2027**, à mesure que l'historique vieillit.
+**« jamais écoutés » → 27 567 morceaux** : utilisable tout de suite, mais
+presque tout est « jamais » tant que l'historique est mince. Le seuil
+(`OUBLIE_APRES_JOURS`) est le réglage à revoir si six mois paraît trop long.
+
+Banc (`experiments/prompts-playlist`, gemma4:e4b-mlx) : **69/69** conformes
+(64 existants + 5 cas « écoute », dont un piège « que j'écoute le plus »).
+Tests : `lecoute_se_lit_dans_le_texte`,
+`lecoute_corrige_le_modele_et_la_popularite_deduite`,
+`oublies_et_jamais_ecoutes_se_lisent_dans_lhistorique`,
+`lecoute_est_le_premier_critere_relache`.
+
 ## Redécouverte (pistes, hors chantier actuel)
 
 - `added_at` existe, et **l'historique d'écoute existe depuis le 4 octobre 2026**
   (table `ecoute(chemin, le)`, alimentée par le lecteur, avec `favori` et
-  `playlist`). Le blocage est levé, mais le Lama ne s'en sert pas encore :
-  « morceaux oubliés » reste à câbler dans la spec et `filtres_playlist.rs`.
-  En attendant, « peu connu » passe par `track_popularite.relative`.
+  `playlist`). Le blocage est levé : « oubliés » et « jamais écoutés » sont câblés depuis le 7 octobre (voir la
+  section « Écoute » ci-dessous). « Peu connu » reste `track_popularite.relative`.
 - Étagères d'hypothèses (Spotify, arXiv 2607.25823) : le LLM propose des thèmes,
   le code les réalise sur la bibliothèque.
 - Légende générée de la playlist : Deezer mesure un gain d'engagement en A/B

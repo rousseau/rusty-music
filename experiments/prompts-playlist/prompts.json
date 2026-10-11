@@ -315,11 +315,11 @@
    }
   },
   {
-   "id": "pop-oublies",
-   "categorie": "popularité",
+   "id": "ecoute-oublies",
+   "categorie": "écoute",
    "prompt": "Des morceaux que j'ai oubliés",
    "attendu": {
-    "popularite": "peu_connu"
+    "ecoute": "oublie"
    }
   },
   {
@@ -794,6 +794,48 @@
      "jazz"
     ]
    }
+  },
+  {
+   "id": "ecoute-plus",
+   "categorie": "écoute",
+   "prompt": "Des chansons que je n'écoute plus depuis longtemps",
+   "attendu": {
+    "ecoute": "oublie"
+   }
+  },
+  {
+   "id": "ecoute-jamais",
+   "categorie": "écoute",
+   "prompt": "Des morceaux que je n'ai jamais écoutés",
+   "attendu": {
+    "ecoute": "jamais"
+   }
+  },
+  {
+   "id": "ecoute-jamais-genre",
+   "categorie": "écoute",
+   "prompt": "Du jazz que je n'ai jamais écouté",
+   "attendu": {
+    "genres": [
+     "jazz"
+    ],
+    "ecoute": "jamais"
+   }
+  },
+  {
+   "id": "ecoute-perles-oubliees",
+   "categorie": "écoute",
+   "prompt": "Des perles méconnues que j'ai oubliées",
+   "attendu": {
+    "popularite": "peu_connu",
+    "ecoute": "oublie"
+   }
+  },
+  {
+   "id": "ecoute-piege-souvent",
+   "categorie": "écoute",
+   "prompt": "Les morceaux que j'écoute le plus souvent",
+   "attendu": {}
   }
  ]
 }

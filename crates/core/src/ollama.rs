@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::Error;
-use crate::filtres_playlist::{FiltresPlaylist, NiveauEnergie, NiveauPopularite};
+use crate::filtres_playlist::{FiltresPlaylist, NiveauEcoute, NiveauEnergie, NiveauPopularite};
 
 /// Modèle par défaut de `preparer_vocabulaire.py`, choisi là pour tourner
 /// correctement sur un poste sans accélérateur — **jamais utilisé comme
@@ -111,6 +111,10 @@ pub struct InterpretationLlm {
     /// « peu_connu » ou « connu ».
     #[serde(default)]
     pub popularite: Option<String>,
+    /// « oublie » ou « jamais » : ce que la playlist demande de l'historique
+    /// d'écoute de l'utilisateur ([`NiveauEcoute`]). Distinct de la popularité.
+    #[serde(default)]
+    pub ecoute: Option<String>,
 }
 
 /// Les mots d'un texte, en minuscules et sans accents.
@@ -258,6 +262,76 @@ fn energie_nommee(texte: &[String]) -> bool {
     })
 }
 
+/// Le texte parle-t-il de l'historique d'écoute de l'utilisateur ?
+///
+/// - **jamais** : « jamais écoutés », « never listened to », « pas encore
+///   écoutés », « unheard » — une négation d'écoute, dans une fenêtre de trois
+///   mots (« never get tired of listening » n'en est pas une) ;
+/// - **oublié** : « oubliés », « forgotten », « que je n'écoute plus », « pas
+///   écoutés depuis longtemps », « haven't listened to in a while » ; un
+///   « oublier » nié (« n'oublie pas du rock ») ne compte pas.
+///
+/// Un lexique étroit et déterministe plutôt que le jugement du modèle : le
+/// filtre vide la bibliothèque s'il se trompe.
+fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
+    let est = |m: &String, prefixes: &[&str]| prefixes.iter().any(|p| m.starts_with(p));
+    const ECOUTE: &[&str] = &["ecout", "listen", "entend", "heard"];
+    // Un mot de `a` suivi, dans les `fenetre` mots suivants, d'un mot de `b`.
+    let suivi = |a: &[&str], b: &[&str], fenetre: usize| {
+        texte.iter().enumerate().any(|(i, m)| {
+            est(m, a) && texte[i + 1..(i + 1 + fenetre).min(texte.len())].iter().any(|x| est(x, b))
+        })
+    };
+    let mot = |m: &str| texte.iter().any(|t| t == m);
+
+    // « jamais écoutés » : la négation précède l'écoute.
+    if suivi(&["jamais", "never"], ECOUTE, 3)
+        || mot("unheard")
+        || (mot("encore") && mot("pas") && texte.iter().any(|m| est(m, ECOUTE)))
+        || (mot("yet") && texte.iter().any(|m| est(m, ECOUTE)) && texte.iter().any(|m| m == "not" || m == "t"))
+    {
+        return Some(NiveauEcoute::Jamais);
+    }
+    // « oubliés ».
+    let nie = |i: usize, fenetre: usize| {
+        texte[i.saturating_sub(fenetre)..i].iter().any(|x| {
+            NEGATIONS.contains(&x.as_str()) || ["n", "ne", "haven", "hasn", "hadn"].contains(&x.as_str())
+        })
+    };
+    let oublie_nomme = texte.iter().enumerate().any(|(i, m)| {
+        est(m, &["oubli", "forgot", "neglect"]) && !nie(i, 2)
+    });
+    // Une écoute **niée** et datée : « n'écoute plus », « pas écouté depuis »,
+    // « ne plus écouter », « haven't listened in a while ». Sans négation,
+    // « que j'écoute le plus » dirait l'inverse.
+    let ecoute_niee = texte.iter().enumerate().any(|(i, m)| {
+        if !est(m, ECOUTE) {
+            return false;
+        }
+        let apres = &texte[i + 1..(i + 5).min(texte.len())];
+        let plus_avant = i > 0 && texte[i - 1] == "plus" && nie(i - 1, 2);
+        let date = apres.iter().take(2).any(|x| x == "plus" || x == "depuis")
+            || apres.iter().any(|x| ["while", "ages", "longtemps", "long", "moment"].contains(&x.as_str()));
+        plus_avant || (nie(i, 2) && date)
+    });
+    if oublie_nomme || ecoute_niee {
+        return Some(NiveauEcoute::Oublie);
+    }
+    None
+}
+
+/// Le texte parle-t-il de **notoriété** (« méconnus », « confidentiels »,
+/// « hidden gems ») ? Sert à ne retirer la popularité que le modèle a lue dans
+/// « oubliés » que si rien d'autre ne la justifie.
+fn notoriete_nommee(texte: &[String]) -> bool {
+    texte.iter().any(|m| {
+        m.contains("connu")
+            || ["obscur", "confidentiel", "rare", "underrat", "unknown", "perle", "gem", "hidden", "niche"]
+                .iter()
+                .any(|p| m.starts_with(p))
+    })
+}
+
 /// `genre` désigne-t-il au moins un genre de la bibliothèque ? Même règle que
 /// le filtre de playlist (`filtres_playlist::genre_correspond`, par **mots**) :
 /// « indie » est connu dès qu'un genre comme « indie rock » existe, alors que
@@ -376,6 +450,7 @@ impl InterpretationLlm {
             bpm_max: self.bpm_max,
             energie: self.energie.as_deref().and_then(NiveauEnergie::depuis_texte),
             popularite: self.popularite.as_deref().and_then(NiveauPopularite::depuis_texte),
+            ecoute: self.ecoute.as_deref().and_then(NiveauEcoute::depuis_texte),
         }
     }
 
@@ -634,6 +709,32 @@ impl InterpretationLlm {
         ecartes
     }
 
+    /// Fixe `ecoute` d'après **ce que le texte dit** de l'historique d'écoute
+    /// ([`ecoute_dite`]), dans les deux sens : un petit modèle la déduit d'une
+    /// ambiance qui n'en parle pas, et rendait « oubliés » en popularité
+    /// `peu_connu` (c'était la consigne d'origine). Si le texte parle d'écoute,
+    /// la popularité que le modèle y a lue — sans que le texte ne parle de
+    /// notoriété — est retirée. Rend `(avant, après)` quand `ecoute` change.
+    pub fn ancrer_ecoute(&mut self, prompt: &str) -> Option<(Option<String>, Option<String>)> {
+        let texte = mots_sans_accent(prompt);
+        let dite = ecoute_dite(&texte);
+        let apres = dite.map(|e| match e {
+            NiveauEcoute::Oublie => "oublie".to_string(),
+            NiveauEcoute::Jamais => "jamais".to_string(),
+        });
+        if dite.is_some()
+            && self.popularite.as_deref().and_then(NiveauPopularite::depuis_texte)
+                == Some(NiveauPopularite::PeuConnu)
+            && !notoriete_nommee(&texte)
+        {
+            self.popularite = None;
+        }
+        let avant = self.ecoute.take();
+        let change = avant.as_deref().and_then(NiveauEcoute::depuis_texte) != dite;
+        self.ecoute = apres.clone();
+        change.then_some((avant, apres))
+    }
+
     /// « Du folk puis de l'électronique » : un « puis » explicite entre deux
     /// genres nommés **est** une suite de parties, même quand le modèle les rend
     /// en filtre commun (mesuré : une partie des petits modèles le fait quand
@@ -822,8 +923,14 @@ dans cet ordre :
   "energie": "calme", "moyenne" ou "intense", UNIQUEMENT si le texte parle
              d'ambiance ou d'énergie (calme, posé, dynamique, « pour courir »),
              sinon null,
-  "popularite": "peu_connu" (« méconnus », « oubliés », « confidentiels ») ou
-                "connu" (« tubes », « classiques connus »), sinon null,
+  "popularite": "peu_connu" (« méconnus », « confidentiels ») ou
+                "connu" (« tubes », « classiques connus »), sinon null.
+                Jamais pour « oubliés » ni « jamais écoutés » : cela parle de
+                l'écoute de l'utilisateur, pas de la notoriété d'un morceau,
+  "ecoute": "oublie" (des morceaux que l'utilisateur a écoutés autrefois et
+            n'écoute plus : « oubliés », « que je n'écoute plus ») ou "jamais"
+            (des morceaux qu'il n'a jamais écoutés : « que je n'ai jamais
+            écoutés »), sinon null,
   "plafond_par_artiste": « pas plus de 2 morceaux par artiste » → 2, sinon null,
   "parties": VIDE ([]) dans la plupart des cas. Ne la remplis QUE si le texte
              enchaîne plusieurs moments distincts, chacun avec son style
@@ -867,7 +974,7 @@ hip hop », la bonne réponse est :
   "etapes": ["hip hop with a strong groove"], "n": null, "duree_minutes": null,
   "genres": [], "exclure_genres": [], "exclure_artistes": [],
   "annee_min": null, "annee_max": null, "bpm_min": null, "bpm_max": null,
-  "energie": null, "popularite": null, "plafond_par_artiste": null, "parties": []
+  "energie": null, "popularite": null, "ecoute": null, "plafond_par_artiste": null, "parties": []
 }
 
 Exemple : pour « Une playlist calme de 60 minutes, sans rock, années 70 »
@@ -879,7 +986,7 @@ Exemple : pour « Une playlist calme de 60 minutes, sans rock, années 70 »
   "etapes": ["calm, relaxing music"], "n": null, "duree_minutes": 60,
   "genres": [], "exclure_genres": ["rock"], "exclure_artistes": [],
   "annee_min": 1970, "annee_max": 1979, "bpm_min": null, "bpm_max": null,
-  "energie": "calme", "popularite": null, "plafond_par_artiste": null, "parties": []
+  "energie": "calme", "popularite": null, "ecoute": null, "plafond_par_artiste": null, "parties": []
 }
 
 Exemple : pour « Du jazz pendant 20 minutes, puis du reggae pendant 10 minutes »
@@ -891,7 +998,7 @@ Exemple : pour « Du jazz pendant 20 minutes, puis du reggae pendant 10 minutes 
   "etapes": ["jazz music", "reggae music"], "n": null, "duree_minutes": null,
   "genres": [], "exclure_genres": [], "exclure_artistes": [],
   "annee_min": null, "annee_max": null, "bpm_min": null, "bpm_max": null,
-  "energie": null, "popularite": null, "plafond_par_artiste": null,
+  "energie": null, "popularite": null, "ecoute": null, "plafond_par_artiste": null,
   "parties": [
     {"description": "jazz music", "genres": ["jazz"], "energie": null, "duree_minutes": 20, "n": null},
     {"description": "reggae music", "genres": ["reggae"], "energie": null, "duree_minutes": 10, "n": null}
@@ -957,6 +1064,7 @@ fn schema() -> Value {
             "bpm_max": nombre_ou_null,
             "energie": energie,
             "popularite": { "type": ["string", "null"], "enum": ["peu_connu", "connu", null] },
+            "ecoute": { "type": ["string", "null"], "enum": ["oublie", "jamais", null] },
             "plafond_par_artiste": entier_ou_null,
             "parties": {
                 "type": "array",
@@ -977,7 +1085,7 @@ fn schema() -> Value {
             "reformulation", "seed_artiste", "seed_morceau", "arrivee_artiste", "arrivee_morceau",
             "etapes", "n", "duree_minutes", "genres", "exclure_genres",
             "exclure_artistes", "annee_min", "annee_max", "bpm_min", "bpm_max",
-            "energie", "popularite", "plafond_par_artiste", "parties"
+            "energie", "popularite", "ecoute", "plafond_par_artiste", "parties"
         ],
     })
 }
@@ -1099,6 +1207,9 @@ pub fn interpreter(
         let deduites = p.ancrer_energie(prompt);
         if !deduites.is_empty() {
             tracing::info!(?deduites, "champ d'intention : énergie que le texte ne dit pas, écartée");
+        }
+        if let Some((avant, apres)) = p.ancrer_ecoute(prompt) {
+            tracing::info!(?avant, ?apres, "champ d'intention : écoute fixée d'après le texte");
         }
         if p.inferer_parties(prompt) {
             tracing::info!("champ d'intention : suite de genres lue comme des parties");
@@ -1570,6 +1681,59 @@ mod tests {
         }
     }
 
+    /// L'historique d'écoute se lit dans le texte, pas dans le jugement du
+    /// modèle — et « oubliés » n'est plus une popularité.
+    #[test]
+    fn lecoute_se_lit_dans_le_texte() {
+        let brut = r#"{"etapes": ["x"], "ecoute": null}"#;
+        for (texte, voulu) in [
+            ("Des morceaux que j'ai oubliés", Some("oublie")),
+            ("Des chansons oubliées de ma bibliothèque", Some("oublie")),
+            ("Que je n'écoute plus depuis longtemps", Some("oublie")),
+            ("Des titres que je n'ai pas écoutés depuis des mois", Some("oublie")),
+            ("Songs I haven't listened to in a while", Some("oublie")),
+            ("Forgotten tracks", Some("oublie")),
+            ("Des morceaux que je n'ai jamais écoutés", Some("jamais")),
+            ("Du jazz que je n'ai jamais écouté", Some("jamais")),
+            ("Songs I have never listened to", Some("jamais")),
+            ("Des morceaux pas encore écoutés", Some("jamais")),
+            ("Unheard songs", Some("jamais")),
+            // Ce que le texte ne dit pas : rien.
+            ("Une playlist calme de 60 minutes", None),
+            ("Des morceaux que j'écoute le plus", None),
+            ("Les chansons que j'écoute tout le temps", None),
+            ("Songs I never get tired of listening to", None),
+            ("N'oublie pas du rock des années 70", None),
+            ("Des perles méconnues", None),
+        ] {
+            let mut p = interpretation_de(brut).unwrap();
+            p.ancrer_ecoute(texte);
+            assert_eq!(p.ecoute.as_deref(), voulu, "{texte}");
+        }
+    }
+
+    /// Le modèle qui rend `ecoute` sans que le texte en parle est corrigé ; et
+    /// la popularité qu'il a lue dans « oubliés » (ancienne consigne) tombe,
+    /// sauf si le texte parle aussi de notoriété.
+    #[test]
+    fn lecoute_corrige_le_modele_et_la_popularite_deduite() {
+        let brut = r#"{"etapes": ["x"], "ecoute": "oublie", "popularite": "peu_connu"}"#;
+        let mut p = interpretation_de(brut).unwrap();
+        assert!(p.ancrer_ecoute("De la musique calme").is_some());
+        assert_eq!(p.ecoute, None);
+        assert_eq!(p.popularite.as_deref(), Some("peu_connu"), "le texte ne parle pas d'écoute");
+
+        let mut p = interpretation_de(brut).unwrap();
+        assert!(p.ancrer_ecoute("Des morceaux que j'ai oubliés").is_none(), "déjà juste");
+        assert_eq!(p.ecoute.as_deref(), Some("oublie"));
+        assert_eq!(p.popularite, None, "« oubliés » ne dit pas « peu connu »");
+
+        let mut p = interpretation_de(brut).unwrap();
+        p.ancrer_ecoute("Des perles méconnues que j'ai oubliées");
+        assert_eq!(p.popularite.as_deref(), Some("peu_connu"), "le texte parle de notoriété");
+        assert_eq!(p.filtres().ecoute, Some(NiveauEcoute::Oublie));
+    }
+
     /// Mesuré sur gemma4:e4b-mlx : une ambiance ou un usage devenait des
     /// filtres de genre que personne n'avait écrits.
     #[test]
@@ -1698,13 +1862,15 @@ mod tests {
             "arrivee_morceau": "d", "etapes": ["e"], "n": 5, "duree_minutes": 5,
             "genres": ["g"], "exclure_genres": ["h"], "exclure_artistes": ["i"],
             "annee_min": 1990, "annee_max": 1999, "bpm_min": 80.0, "bpm_max": 120.0,
-            "energie": "calme", "popularite": "connu", "plafond_par_artiste": 2
+            "energie": "calme", "popularite": "connu", "ecoute": "oublie",
+            "plafond_par_artiste": 2
         });
         let mut lues: Vec<String> = complet.as_object().unwrap().keys().cloned().collect();
         lues.sort();
         assert_eq!(cles, lues, "le schéma décrit toutes les clés de la structure");
         let p: InterpretationLlm = serde_json::from_value(complet).expect("tout se lit");
         assert_eq!(p.plafond_par_artiste, Some(2));
+        assert_eq!(p.ecoute.as_deref(), Some("oublie"));
     }
 
     /// Régression réelle (1ᵉʳ octobre) : sur « Des morceaux des années 80 », le

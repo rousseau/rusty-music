@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 const FILTRES: &[&str] = &[
     "seed_artiste", "seed_morceau", "arrivee_artiste", "arrivee_morceau", "n", "duree_minutes",
     "genres", "exclure_genres", "exclure_artistes", "annee_min", "annee_max", "bpm_min",
-    "bpm_max", "energie", "popularite", "plafond_par_artiste",
+    "bpm_max", "energie", "popularite", "ecoute", "plafond_par_artiste",
 ];
 
 fn est_vide(v: &Value) -> bool {
@@ -117,7 +117,7 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
             Some(Value::String(v)) => {
                 let r = rendu.as_str().unwrap_or("");
                 // Un nom : inclusion ; une énumération : égalité.
-                let ok = if matches!(*champ, "energie" | "popularite") {
+                let ok = if matches!(*champ, "energie" | "popularite" | "ecoute") {
                     r.eq_ignore_ascii_case(v)
                 } else {
                     trouve(v, &[r.to_string()])
