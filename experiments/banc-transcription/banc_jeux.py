@@ -159,17 +159,23 @@ def famille(programme):
     return programme // 8  # familles General MIDI : 4 basse, 3 guitare, 0 piano…
 
 def slakh(args):
+    # BabySlakh : 20 morceaux en WAV à 16 kHz. Slakh2100 : partie de test,
+    # 151 morceaux en FLAC à 44,1 kHz (cymbales et charleston audibles).
+    if args.jeu == "slakh2100":
+        pistes, ext, dossier = glob.glob(os.path.join(JEUX, "slakh2100", "slakh2100_flac_redux", "test", "Track*")), "flac", "slakh2100"
+    else:
+        pistes, ext, dossier = glob.glob(os.path.join(JEUX, "babyslakh", "*", "Track*")), "wav", "slakh"
     T, TC = Total(), TotalCoups()
-    pistes = sorted(glob.glob(os.path.join(JEUX, "babyslakh", "*", "Track*")))[:args.limite]
+    pistes = sorted(p for p in pistes if not os.path.basename(p).startswith("._"))[:args.limite]
     for piste in pistes:
-        nom = os.path.basename(piste); d = os.path.join(CACHE, "slakh", nom); os.makedirs(d, exist_ok=True)
+        nom = os.path.basename(piste); d = os.path.join(CACHE, dossier, nom); os.makedirs(d, exist_ok=True)
         meta = yaml.safe_load(open(os.path.join(piste, "metadata.yaml")))
         ref, ref_coups = [], []
         for s, m in meta["stems"].items():
             midi = os.path.join(piste, "MIDI", f"{s}.mid")
             # `audio_rendered` est faux partout dans BabySlakh : le stem
             # rendu fait foi.
-            if not os.path.exists(os.path.join(piste, "stems", f"{s}.wav")) or not os.path.exists(midi):
+            if not os.path.exists(os.path.join(piste, "stems", f"{s}.{ext}")) or not os.path.exists(midi):
                 continue
             notes = [n for inst in pretty_midi.PrettyMIDI(midi).instruments for n in inst.notes]
             if m["is_drum"]:
@@ -178,9 +184,9 @@ def slakh(args):
             # Le rendu de Slakh transpose certains instruments (les basses
             # sonnent une octave sous leur MIDI) : l'octave qui sonne se lit
             # sur le stem isolé, la même pour tous les modèles comparés.
-            k = octave_rendue([(n.start, n.end, n.pitch) for n in notes], os.path.join(piste, "stems", f"{s}.wav"), os.path.join(d, f"octave-{s}.json"))
+            k = octave_rendue([(n.start, n.end, n.pitch) for n in notes], os.path.join(piste, "stems", f"{s}.{ext}"), os.path.join(d, f"octave-{s}.json"))
             ref += [(n.start, n.end, n.pitch + k, famille(m["program_num"])) for n in notes]
-        mix = os.path.join(piste, "mix.wav")
+        mix = os.path.join(piste, f"mix.{ext}")
         # Tous les instruments, sur le mélange.
         mt = muscriptor(mix, os.path.join(d, "muscriptor-tous.json"), "tous")
         bp = basic_pitch(mix, os.path.join(d, "basic-pitch-mix.json"))
@@ -287,10 +293,10 @@ def maestro(args):
 
 def main():
     a = argparse.ArgumentParser()
-    a.add_argument("jeu", choices=["slakh", "mdb", "guitarset", "maestro"])
+    a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro"])
     a.add_argument("--limite", type=int, default=None)
     args = a.parse_args()
-    {"slakh": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro}[args.jeu](args)
+    {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro}[args.jeu](args)
 
 if __name__ == "__main__":
     main()

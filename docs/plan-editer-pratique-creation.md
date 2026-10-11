@@ -535,6 +535,20 @@ Garage.
 ~300 K paramètres) consomme les 4 stems Demucs — les nôtres. Il dépend de
 noyaux NATTEN (pas d'ONNX) et du DBN de madmom.
 
+**Référence mesurée (11 oct.)** — `experiments/structure/`. On a lancé la
+référence Python, avec nos stems et NATTEN réécrit en PyTorch pur
+(`natten_pur/`, qui sert aussi de spécification au portage). Elle tourne sur
+89 morceaux de la bibliothèque, annotés par Isophonics et SALAMI
+(`experiments/annotations/`).
+
+| | F0,5 | F3 | Paires |
+|---|---|---|---|
+| all-in-one | 0,487 | 0,630 | 0,601 |
+| repli Foote (sans apprentissage) | 0,174 | 0,487 | 0,576 |
+
+all-in-one l'emporte nettement sur les frontières. Les étiquettes sont
+proches. Le portage est justifié.
+
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +
 softmax (dimension 24, faisable), un seul des 8 plis d'abord, parité contre
 Python. Poids convertis en safetensors et republiés sur HF (MIT). Sorties :

@@ -155,11 +155,11 @@ localement à partir de la source.
 | Entrées/sorties de `nmp.onnx` (CQT intégrée ? plage depuis La0 ?) | Prétraitement Rust, 5 cordes | Inspection du graphe |
 | Disponibilité des poids ADTOF (PyTorch) et données sur demande (Zenodo) | Conditionne le banc batterie | Dépôt GitHub, contact auteurs |
 | Récupération des points de contrôle GrooVAE et COCOLA | Magenta archivé, COCOLA sur Google Drive : risque de disparition | Télécharger et archiver sur Garage tôt |
-| Parité du port all-in-one (padding et biais relatif de NATTEN) | Le port n'est pas testé | Lecture du code NATTEN, comparaison avec Python |
+| Parité du port all-in-one (padding et biais relatif de NATTEN) | Sémantique de NATTEN 0.14 réécrite en PyTorch pur (`experiments/structure/natten_pur`), validée par le banc ; reste la parité Burn | Comparaison Burn contre `natten_pur` |
 | En-tête MPL-2.0 d'alphaTab (« Incompatible With Secondary Licenses » ?) | Compatibilité GPL du code embarqué | Lire le LICENSE |
 | alphaTab en WKWebView : lecteur externe, boucles, taille, polices hors ligne | Rien n'est testé dans Tauri | Prototype jetable |
 | Syntaxe alphaTex d'accordage basse 4/5 cordes | Non vérifiée | Documentation alphaTex |
-| Précision des labels all-in-one hors pop | Entraîné sur Harmonix | Écoute sur un échantillon ; comparaison SongFormer |
+| ~~Précision d'all-in-one hors pop~~ | **Mesuré le 11 oct.** sur 89 morceaux de la bibliothèque (Isophonics, SALAMI ; `experiments/structure`) : F0,5 0,49, F3 0,63, paires 0,60, contre 0,17 / 0,49 / 0,58 pour le repli Foote | Écoute ; SongFormer si les labels déçoivent |
 | MusicGen-Stem : taille, durée max, conditionnement par audio de référence | Non documentés dans la recherche | Fiche HF, essai |
 | Qualité d'ACE-Step lego, STAGE, MusicGen-Stem sur nos morceaux | Aucune mesure indépendante | Écoute comparée hors moteur |
 | Fidélité des descripteurs de groove calculés sur l'audio | Définis symboliquement dans la littérature | Comparaison avec la transcription batterie |
