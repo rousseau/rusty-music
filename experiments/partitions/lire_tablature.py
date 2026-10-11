@@ -26,24 +26,36 @@ def _lignes(bande):
         else: g.append([r])
     return [(x[0] + x[-1]) / 2 for x in g]
 
-def portees_tab(a):
-    """Portées de tablature : [(xs des bandes, 4 ordonnées de lignes par bande)]."""
+def interlignes(ecarts):
+    """Interligne des portées et celui des tablatures : les deux écarts
+    fréquents, le petit pour les portées. Le plus fréquent n'est pas toujours
+    celui des portées : une tablature de guitare a cinq interlignes contre
+    quatre, et les livres de guitare en ont souvent plus que de portées."""
+    h = np.bincount(np.round(ecarts).astype(int)).astype(float)
+    h = np.convolve(h, [0.5, 1, 0.5], mode="same")  # un pic étalé sur deux valeurs
+    premier = int(h.argmax())
+    loin = [k for k in np.argsort(h)[::-1] if h[k] > 0.03 * h[premier]
+            and 1.3 <= max(k, premier) / max(1, min(k, premier)) <= 1.9]
+    if not loin: return premier, None
+    a, b = sorted((premier, int(loin[0])))
+    return a, b
+
+def portees_tab(a, cordes=4):
+    """Portées de tablature : [(xs des bandes, `cordes` ordonnées de lignes par bande)]."""
     h, w = a.shape; larg = w // BANDES
     par_bande = [_lignes(a[:, b * larg:(b + 1) * larg]) for b in range(BANDES)]
     ecarts = np.concatenate([np.diff(c) for c in par_bande if len(c) > 1])
     ecarts = ecarts[ecarts > 4]
-    inter = np.bincount(np.round(ecarts).astype(int)).argmax()
-    autres = np.round(ecarts[(ecarts > 1.35 * inter) & (ecarts < 3 * inter) & (np.abs(ecarts - 2 * inter) > 0.12 * inter)]).astype(int)
-    if len(autres) == 0: return [], inter, None
-    tab = np.bincount(autres).argmax()
+    inter, tab = interlignes(ecarts)
+    if tab is None: return [], inter, None
     morceaux = []
     for b, c in enumerate(par_bande):
         i = 0
-        while i + 3 < len(c):
-            g = c[i:i + 4]
+        while i + cordes - 1 < len(c):
+            g = c[i:i + cordes]
             d = np.diff(g)
             if np.all(np.abs(d - tab) < 0.12 * tab):
-                morceaux.append((b, g)); i += 4
+                morceaux.append((b, g)); i += cordes
             else: i += 1
     # regrouper les morceaux de bandes voisines en portées
     portees = []
@@ -114,26 +126,37 @@ def classer(binaire):
     if w < 0.4 * h: return "1", 1.0
     return meilleur[1], meilleur[0]
 
-def lire(a):
-    portees, inter, tab = portees_tab(a)
+def lire(a, cordes=4):
+    """`cordes` : 4 (basse) ou 6 (guitare)."""
+    portees, inter, tab = portees_tab(a, cordes)
     noir = a < 128
     systemes = []
     for xs, g in portees:
         x0, x1 = int(xs.min() - 1.5 * (xs[1] - xs[0])), int(xs.max() + 1.5 * (xs[1] - xs[0]))
         x0, x1 = max(0, x0), min(a.shape[1], x1)
-        y0, y1 = int(g[:, 0].min() - 0.8 * tab), int(g[:, 3].max() + 0.8 * tab)
+        y0, y1 = int(g[:, 0].min() - 0.8 * tab), int(g[:, cordes - 1].max() + 0.8 * tab)
         zone = noir[y0:y1, x0:x1].copy()
         cols = np.arange(x0, x1)
-        lignes_y = np.stack([np.interp(cols, xs, g[:, k]) for k in range(4)]) - y0  # 4 × largeur
+        lignes_y = np.stack([np.interp(cols, xs, g[:, k]) for k in range(cordes)]) - y0  # cordes × largeur
         gris = a[y0:y1, x0:x1]
         # Segmentation : on efface les rangées des lignes (les chiffres y
         # perdent une bande, qu'une fermeture verticale recoud). La lecture se
         # fait ensuite sur l'image d'origine, dans la boîte du chiffre.
         sombre = zone.copy()
-        for k in range(4):
+        for k in range(cordes):
             for j, yl in enumerate(lignes_y[k]):
                 sombre[max(0, int(yl) - 2):int(yl) + 3, j] = False
         sombre = ndimage.binary_closing(sombre, structure=np.ones((7, 1)))
+        # Tablature rythmée (hampes et ligatures au-dessus des chiffres) : les
+        # traits verticaux plus longs qu'un interligne sont des hampes, pas
+        # des chiffres ; les ligatures, plus larges qu'un chiffre, tombent
+        # au filtre de taille.
+        # Une hampe traverse parfois le chiffre (« 0 » barré) : on rend les
+        # pixels de la hampe pris entre deux traits horizontaux (les arcs).
+        tige = ndimage.binary_opening(sombre, structure=np.ones((int(tab), 1)))
+        reste = sombre & ~tige
+        e = max(2, int(0.12 * tab))
+        sombre = reste | (tige & np.roll(reste, e, axis=1) & np.roll(reste, -e, axis=1))
         # Ce qui reste des lignes forme des composantes bien plus larges qu'un
         # chiffre, qu'on ignore.
         lab, n = ndimage.label(sombre)
@@ -145,7 +168,7 @@ def lire(a):
         # barres de mesure : colonnes noires d'un bout à l'autre de la portée
         barres = []
         for j in range(zone.shape[1]):
-            ya, yb = int(lignes_y[0, j]) - 1, int(lignes_y[3, j]) + 2
+            ya, yb = int(lignes_y[0, j]) - 1, int(lignes_y[cordes - 1, j]) + 2
             if zone[ya:yb, j].mean() > 0.95:
                 if barres and j - barres[-1][-1] <= 2: barres[-1].append(j)
                 else: barres.append([j])
@@ -183,7 +206,7 @@ def lire(a):
             val = "X" if "X" in t else (int(t) if t.isdigit() and int(t) <= 24 else None)
             if val is None: continue
             # corde 0 = la plus grave (mi), comme dans crates/transcription
-            notes.append({"x": x0 + (j["x0"] + j["x1"]) / 2, "corde": 3 - j["corde"], "frette": val})
+            notes.append({"x": x0 + (j["x0"] + j["x1"]) / 2, "corde": cordes - 1 - j["corde"], "frette": val})
         barres = sorted(x0 + b for b in barres)
         # mesures : entre barres successives
         # avant la première barre : la clé « TAB », sauf si la portée commence
@@ -198,7 +221,7 @@ def lire(a):
 
 if __name__ == "__main__":
     a = np.array(Image.open(sys.argv[1]).convert("L"))
-    for s in lire(a):
+    for s in lire(a, int(sys.argv[2]) if len(sys.argv) > 2 else 4):
         print(f"y={s['y']:.0f} barres={s['barres']}")
         for m in s["mesures"]:
             print("   |", " ".join(f"{n['corde']}:{n['frette']}" for n in m))

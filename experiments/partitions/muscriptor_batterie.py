@@ -9,6 +9,7 @@ la chaîne de l'éditeur (exemple `banc -- coups`) et comparées aux
 transcriptions Drum Ninja comme dans `banc_batterie.py`.
 
     <venv>/bin/python muscriptor_batterie.py [--taille small|medium|large] [id ...]
+    python3 muscriptor_batterie.py --rust [id ...]   # portage Burn
 """
 import argparse, json, os, subprocess, sys, time
 import banc, banc_batterie, comparer, lire_batterie
@@ -27,13 +28,24 @@ def transcrire(modele, wav):
             coups.append({"instant_s": e.start_time, "piece": GM[e.pitch], "force": 0.8})
     return sorted(coups, key=lambda c: c["instant_s"])
 
+def transcrire_rust(stem, brut):
+    notes = os.path.join(os.path.dirname(brut), "muscriptor-rust-batterie-notes.json")
+    if not os.path.exists(notes):
+        subprocess.run([os.path.join(banc.RACINE, "target/release/examples/muscriptor"), stem, notes, "16", "1000", "drums"],
+                       check=True, capture_output=True, cwd=banc.RACINE)
+    return sorted(({"instant_s": n["debut_s"], "piece": GM[n["hauteur"]], "force": 0.8}
+                   for n in json.load(open(notes)) if n["programme"] == 128 and n["hauteur"] in GM), key=lambda c: c["instant_s"])
+
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("--taille", default="medium")
+    a.add_argument("--rust", action="store_true", help="portage Burn (exemple `muscriptor`) au lieu du code Python")
     a.add_argument("ids", nargs="*")
     args = a.parse_args()
-    from muscriptor.transcription_model import TranscriptionModel
-    modele = TranscriptionModel.load_model(args.taille)
+    if args.rust: args.taille = "rust"
+    else:
+        from muscriptor.transcription_model import TranscriptionModel
+        modele = TranscriptionModel.load_model(args.taille)
     conf = json.load(open(os.path.join(banc.ICI, "morceaux.json")))
     pieces = banc_batterie.PIECES
     tot = {c: dict(ref=0, nous=0, ok=0, tol=0) for c in pieces}
@@ -43,7 +55,7 @@ def main():
         brut = os.path.join(d, f"muscriptor-{args.taille}-coups.json")
         if not os.path.exists(brut):
             t0 = time.time()
-            json.dump(transcrire(modele, stem), open(brut, "w"))
+            json.dump(transcrire_rust(stem, brut) if args.rust else transcrire(modele, stem), open(brut, "w"))
             print(f"  {m['id']} : {time.time() - t0:.0f} s", file=sys.stderr)
         tr = os.path.join(d, f"batterie-muscriptor-{args.taille}.json")
         subprocess.run([banc.BANC, "coups", brut, puls, tr], check=True, stdout=subprocess.DEVNULL, cwd=banc.RACINE)

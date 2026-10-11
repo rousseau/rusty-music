@@ -236,6 +236,71 @@ et normalisation du niveau d'entrée — sans elle le stem de basse de
 comparaison : `MOTEUR=f32|f16|f16-brut|f32-brut`, `ab_mince`,
 `micro_matmul`.
 
+## Piano-chant-guitare : tous les instruments (11 oct.)
+
+Recueils « piano/vocal/guitar » au format epub (Hal Leonard), dans
+`~/Exp/tmp` — usage local d'évaluation, rien n'est versionné hors des
+scripts. 87 morceaux (`morceaux_pvg.json`) : Beatles 29 (« 1967–1970 » et
+*Abbey Road*), Queen 9, Stevie Wonder 12, The Doors 12, The Clash 13, Alanis
+Morissette 12.
+
+Chaîne :
+- `nettoyer_pvg.py` : les images font environ 60 dpi, on les agrandit ×3 en
+  bicubique, sans seuil (un seuil casse les lignes de portée). Les grilles
+  d'accords sont détectées à la résolution d'origine (composantes grises,
+  au moins 6 trous), puis effacées avec leur nom.
+- `omr_pvg.py` : Audiveris sur les pages du chapitre.
+- `reference_pvg.py` : extrait par mesure
+  - la **voix** (portée seule, note la plus haute par attaque ; une portée
+    seule en clé de fa est une clé de sol mal lue, décalée de +12 degrés) ;
+  - l'**harmonie** (les deux portées du piano) ;
+  - la **basse** (note la plus grave de la main gauche).
+- `banc_pvg.py` :
+  - transcription du stem (`vocals` pour la voix, `bass` pour la basse) et
+    du mélange entier (`tous`, pour l'harmonie), par MuScriptor (portage
+    Burn, groupe « voice » ou aucune restriction) et par Basic Pitch ;
+  - transposition par morceau (corrélation des classes de hauteur), car un
+    recueil n'est pas toujours dans la tonalité du disque (« Penny Lane ») ;
+  - voix et basse : F1 de notes du banc de basse ;
+  - harmonie : F1 sur les classes de hauteur qui sonnent à chaque temps.
+
+| recueil | voix MuS | voix BP | basse MuS | harmonie MuS | harmonie BP |
+|---|---|---|---|---|---|
+| Beatles (29) | **0,17** | 0,14 | 0,32 | **0,62** | 0,54 |
+| Queen (9) | **0,12** | 0,08 | 0,26 | **0,53** | 0,49 |
+| Stevie Wonder (12) | **0,12** | 0,08 | 0,31 | **0,61** | 0,53 |
+| The Doors (12) | **0,28** | 0,23 | 0,42 | **0,62** | 0,55 |
+| The Clash (13) | **0,25** | 0,18 | 0,44 | **0,65** | 0,53 |
+| Alanis Morissette (12) | **0,15** | 0,10 | 0,34 | **0,60** | 0,58 |
+
+MuScriptor l'emporte partout sur l'harmonie (de 0,02 à 0,12) et sur la voix.
+Les chiffres absolus de la voix et de la basse sont bas parce que la
+référence est mauvaise, pas seulement la transcription :
+- l'OMR travaille sur des images de 60 dpi ;
+- la ligne de chant d'un recueil est une simplification (rythmes arrondis,
+  pas de mélismes ni de chœurs) ;
+- la main gauche du piano n'est pas la ligne de basse du disque (comparer
+  avec 0,55 contre les vraies partitions de basse).
+
+Ce banc classe les modèles ; il ne mesure pas leur justesse absolue. La
+normalisation du niveau d'entrée y a été trouvée : la basse de
+« Strawberry Fields Forever » passe de 0 à 0,23.
+
+**Batterie en Rust** (`muscriptor_batterie.py --rust`, 7 morceaux) : F1
+grosse caisse 0,72, caisse claire 0,77, toms 0,45, charleston 0,77,
+cymbales 0,67. C'est mieux que le code Python d'origine sur les cymbales
+(0,56), mais ADTOF reste meilleur (cymbales 0,76, caisse claire 0,80).
+
+**Normalisation et banc de basse** : sur les 8 stems qu'elle amplifie, le
+F1 passe de 0,548 à 0,547 (neutre).
+
+**Tablatures de guitare** (`lire_tablature.py page.png 6`) : lecture
+généralisée à 6 cordes. L'interligne de la tablature est distingué de celui
+des portées, et les hampes de la tablature rythmée sont supprimées.
+« Ten » (Pearl Jam) se lit à peu près, Jack Johnson mal. Le banc de guitare
+n'est pas écrit. La tablature de basse de Royal Blood demande un
+classifieur de chiffres tiré de la police du livre.
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,

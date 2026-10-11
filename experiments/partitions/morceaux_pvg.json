@@ -1,0 +1,535 @@
+{
+ "livres": {
+  "beatles": "The Beatles - Essential Songs--The Beatles (Songbook) (2013, Hal Leonard).epub",
+  "alanis": "Alanis Morissette - Alanis Morissette--Jagged Little Pill (Songbook) (1995, Hal Leonard).epub",
+  "queen": "Queen - Queen--Deluxe Anthology (Songbook) (2013_1994, Hal Leonard).epub",
+  "stevie": "Stevie Wonder - The Stevie Wonder Anthology (2002, Hal Leonard).epub",
+  "doors": "The Doors - The Doors Anthology (Songbook) (2000, Hal Leonard).epub",
+  "clash": "The Clash - The Clash--The Singles (Songbook) (2009, Hal Leonard).epub"
+ },
+ "_note": "Recueils piano-chant-guitare (epub, images ~60 dpi) : voix, piano, grilles d'accords. « chapitre » : le fichier XHTML du morceau dans l'epub, ses images dans l'ordre. Usage local d'évaluation seulement.",
+ "morceaux": [
+  {
+   "id": "beatles-strawberry-fields-forever",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c77.html",
+   "fichier": "The Beatles/1967–1970/01 Strawberry Fields Forever.mp3"
+  },
+  {
+   "id": "beatles-penny-lane",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c64.html",
+   "fichier": "The Beatles/1967–1970/02 Penny Lane.mp3"
+  },
+  {
+   "id": "beatles-sgt-peppers-lonely-hearts-club-band",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c70.html",
+   "fichier": "The Beatles/1967–1970/03 Sgt. Pepper’s Lonely Hearts Club Band.mp3"
+  },
+  {
+   "id": "beatles-with-a-little-help-from-my-friends",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c88.html",
+   "fichier": "The Beatles/1967–1970/04 With a Little Help From My Friends.mp3"
+  },
+  {
+   "id": "beatles-lucy-in-the-sky-with-diamonds",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c59.html",
+   "fichier": "The Beatles/1967–1970/05 Lucy in the Sky With Diamonds.mp3"
+  },
+  {
+   "id": "beatles-a-day-in-the-life",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c14.html",
+   "fichier": "The Beatles/1967–1970/06 A Day in the Life.mp3"
+  },
+  {
+   "id": "beatles-all-you-need-is-love",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c02.html",
+   "fichier": "The Beatles/1967–1970/07 All You Need Is Love.mp3"
+  },
+  {
+   "id": "beatles-i-am-the-walrus",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c37.html",
+   "fichier": "The Beatles/1967–1970/08 I Am the Walrus.mp3"
+  },
+  {
+   "id": "beatles-hello-goodbye",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c29.html",
+   "fichier": "The Beatles/1967–1970/09 Hello, Goodbye.mp3"
+  },
+  {
+   "id": "beatles-the-fool-on-the-hill",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c20.html",
+   "fichier": "The Beatles/1967–1970/10 The Fool on the Hill.mp3"
+  },
+  {
+   "id": "beatles-magical-mystery-tour",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c60.html",
+   "fichier": "The Beatles/1967–1970/11 Magical Mystery Tour.mp3"
+  },
+  {
+   "id": "beatles-lady-madonna",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c54.html",
+   "fichier": "The Beatles/1967–1970/12 Lady Madonna.mp3"
+  },
+  {
+   "id": "beatles-hey-jude",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c34.html",
+   "fichier": "The Beatles/1967–1970/13 Hey Jude.mp3"
+  },
+  {
+   "id": "beatles-revolution",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c72.html",
+   "fichier": "The Beatles/1967–1970/14 Revolution.mp3"
+  },
+  {
+   "id": "beatles-back-in-the-u-s-s-r",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c07.html",
+   "fichier": "The Beatles/1967–1970/15 Back in the U.S.S.R_.mp3"
+  },
+  {
+   "id": "beatles-while-my-guitar-gently-weeps",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c86.html",
+   "fichier": "The Beatles/1967–1970/16 While My Guitar Gently Weeps.mp3"
+  },
+  {
+   "id": "beatles-ob-la-di-ob-la-da",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c67.html",
+   "fichier": "The Beatles/1967–1970/17 Ob‐La‐Di, Ob‐La‐Da.mp3"
+  },
+  {
+   "id": "beatles-get-back",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c22.html",
+   "fichier": "The Beatles/1967–1970/18 Get Back.mp3"
+  },
+  {
+   "id": "beatles-the-ballad-of-john-and-yoko",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c03.html",
+   "fichier": "The Beatles/1967–1970/20 The Ballad of John and Yoko.mp3"
+  },
+  {
+   "id": "beatles-here-comes-the-sun",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c32.html",
+   "fichier": "The Beatles/1967–1970/22 Here Comes the Sun.mp3"
+  },
+  {
+   "id": "beatles-come-together",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c13.html",
+   "fichier": "The Beatles/1967–1970/23 Come Together.mp3"
+  },
+  {
+   "id": "beatles-something",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c75.html",
+   "fichier": "The Beatles/1967–1970/24 Something.mp3"
+  },
+  {
+   "id": "beatles-let-it-be",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c52.html",
+   "fichier": "The Beatles/1967–1970/26 Let It Be.mp3"
+  },
+  {
+   "id": "beatles-the-long-and-winding-road",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c55.html",
+   "fichier": "The Beatles/1967–1970/28 The Long and Winding Road.mp3"
+  },
+  {
+   "id": "beatles-maxwells-silver-hammer",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c61.html",
+   "fichier": "The Beatles/Abbey Road (super deluxe edition)/03 Maxwell’s Silver Hammer (2019 mix).mp3"
+  },
+  {
+   "id": "beatles-because",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c08.html",
+   "fichier": "The Beatles/Abbey Road (super deluxe edition)/08 Because (2019 mix).mp3"
+  },
+  {
+   "id": "beatles-you-never-give-me-your-money",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c92.html",
+   "fichier": "The Beatles/Abbey Road (super deluxe edition)/09 You Never Give Me Your Money (2019 mix).mp3"
+  },
+  {
+   "id": "beatles-she-came-in-through-the-bathroom-window",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c73.html",
+   "fichier": "The Beatles/Abbey Road (super deluxe edition)/13 She Came In Through the Bathroom Window (2019 mix).mp3"
+  },
+  {
+   "id": "beatles-carry-that-weight",
+   "livre": "beatles",
+   "chapitre": "e9781458435521_c12.html",
+   "fichier": "The Beatles/Abbey Road (super deluxe edition)/15 Carry That Weight (2019 mix).mp3"
+  },
+  {
+   "id": "queen-somebody-to-love",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c10.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/02 Somebody to Love.mp3"
+  },
+  {
+   "id": "queen-killer-queen",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c03.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/05 Killer Queen.mp3"
+  },
+  {
+   "id": "queen-bohemian-rhapsody",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c21.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/07 Bohemian Rhapsody.mp3"
+  },
+  {
+   "id": "queen-crazy-little-thing-called-love",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c29.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/09 Crazy Little Thing Called Love.mp3"
+  },
+  {
+   "id": "queen-we-will-rock-you",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c01.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/11 We Will Rock You (movie mix).mp3"
+  },
+  {
+   "id": "queen-another-one-bites-the-dust",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c12.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/12 Another One Bites the Dust.mp3"
+  },
+  {
+   "id": "queen-i-want-to-break-free",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c06.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/13 I Want to Break Free.mp3"
+  },
+  {
+   "id": "queen-under-pressure",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c17.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/14 Under Pressure.mp3"
+  },
+  {
+   "id": "queen-don-t-stop-me-now",
+   "livre": "queen",
+   "chapitre": "e9781458428059_c15.html",
+   "fichier": "Queen/Bohemian Rhapsody_ The Original Soundtrack/21 Don’t Stop Me Now (…revisited).mp3"
+  },
+  {
+   "id": "stevie-isn-t-she-lovely",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c32.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/01 Isn't She Lovely.mp3"
+  },
+  {
+   "id": "stevie-boogie-on-reggae-woman",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c04.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/05 Boogie On Reggae Woman.mp3"
+  },
+  {
+   "id": "stevie-my-cherie-amour",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c43.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/05 My Cherie Amour.mp3"
+  },
+  {
+   "id": "stevie-higher-ground",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c25.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/06 Higher Ground.mp3"
+  },
+  {
+   "id": "stevie-signed-sealed-delivered-i-m-yours",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c60.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/08 Signed, Sealed, Delivered I'm Yours.mp3"
+  },
+  {
+   "id": "stevie-superstition",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c64.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/09 Superstition.mp3"
+  },
+  {
+   "id": "stevie-you-are-the-sunshine-of-my-life",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c73.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/10 You Are The Sunshine Of My Life.mp3"
+  },
+  {
+   "id": "stevie-living-for-the-city",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c40.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/11 Living For The City.mp3"
+  },
+  {
+   "id": "stevie-i-wish",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c27.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/12 I Wish.mp3"
+  },
+  {
+   "id": "stevie-sir-duke",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c62.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/13 Sir Duke.mp3"
+  },
+  {
+   "id": "stevie-master-blaster",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c42.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/14 Master Blaster (Jammin').mp3"
+  },
+  {
+   "id": "stevie-part-time-lover",
+   "livre": "stevie",
+   "chapitre": "e9781458432469_c51.html",
+   "fichier": "Stevie Wonder/Song Review_ Greatest Hits/18 Part-Time Lover.mp3"
+  },
+  {
+   "id": "doors-light-my-fire",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c28.html",
+   "fichier": "The Doors/Greatest Hits/02 Light My Fire.mp3"
+  },
+  {
+   "id": "doors-love-her-madly",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c29.html",
+   "fichier": "The Doors/Greatest Hits/04 Love Her Madly.mp3"
+  },
+  {
+   "id": "doors-strange-days",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c49.html",
+   "fichier": "The Doors/Greatest Hits/05 Strange Days.mp3"
+  },
+  {
+   "id": "doors-riders-on-the-storm",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c37.html",
+   "fichier": "The Doors/Greatest Hits/07 Riders on the Storm.mp3"
+  },
+  {
+   "id": "doors-touch-me",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c54.html",
+   "fichier": "The Doors/Greatest Hits/17 Touch Me.mp3"
+  },
+  {
+   "id": "doors-people-are-strange",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c38.html",
+   "fichier": "The Doors/Greatest Hits/19 People Are Strange.mp3"
+  },
+  {
+   "id": "doors-roadhouse-blues",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c40.html",
+   "fichier": "The Doors/Greatest Hits/24 Roadhouse Blues.mp3"
+  },
+  {
+   "id": "doors-love-me-two-times",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c27.html",
+   "fichier": "The Doors/Greatest Hits/26 Love Me Two Times.mp3"
+  },
+  {
+   "id": "doors-five-to-one",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c15.html",
+   "fichier": "The Doors/Greatest Hits/35 Five to One.mp3"
+  },
+  {
+   "id": "doors-soul-kitchen",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c46.html",
+   "fichier": "The Doors/Greatest Hits/38 Soul Kitchen.mp3"
+  },
+  {
+   "id": "doors-peace-frog",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c36.html",
+   "fichier": "The Doors/Greatest Hits/39 Peace Frog.mp3"
+  },
+  {
+   "id": "doors-l-a-woman",
+   "livre": "doors",
+   "chapitre": "e9781458449894_c21.html",
+   "fichier": "The Doors/Greatest Hits/41 L.A. Woman.mp3"
+  },
+  {
+   "id": "clash-london-calling",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c01.html",
+   "fichier": "The Clash/The Clash_  Essentials/01 London Calling (Remastered).mp3"
+  },
+  {
+   "id": "clash-rock-the-casbah",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c02.html",
+   "fichier": "The Clash/The Clash_  Essentials/02 Rock the Casbah (Remastered).mp3"
+  },
+  {
+   "id": "clash-white-riot",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c10.html",
+   "fichier": "The Clash/The Clash_  Essentials/03 White Riot.mp3"
+  },
+  {
+   "id": "clash-should-i-stay-or-should-i-go",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c03.html",
+   "fichier": "The Clash/The Clash_  Essentials/04 Should I Stay or Should I Go (Remastered).mp3"
+  },
+  {
+   "id": "clash-i-fought-the-law",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c04.html",
+   "fichier": "The Clash/The Clash_  Essentials/05 I Fought the Law.mp3"
+  },
+  {
+   "id": "clash-train-in-vain",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c19.html",
+   "fichier": "The Clash/The Clash_  Essentials/06 Train in Vain (Remastered).mp3"
+  },
+  {
+   "id": "clash-complete-control",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c09.html",
+   "fichier": "The Clash/The Clash_  Essentials/07 Complete Control.mp3"
+  },
+  {
+   "id": "clash-in-hammersmith-palais",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c05.html",
+   "fichier": "The Clash/The Clash_  Essentials/09 (White Man) in Hammersmith Palais.mp3"
+  },
+  {
+   "id": "clash-tommy-gun",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c12.html",
+   "fichier": "The Clash/The Clash_  Essentials/11 Tommy Gun.mp3"
+  },
+  {
+   "id": "clash-the-magnificent-seven",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c06.html",
+   "fichier": "The Clash/The Clash_  Essentials/13 The Magnificent Seven (Remastered).mp3"
+  },
+  {
+   "id": "clash-this-is-radio-clash",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c18.html",
+   "fichier": "The Clash/The Clash_  Essentials/14 This is Radio Clash.mp3"
+  },
+  {
+   "id": "clash-clash-city-rockers",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c13.html",
+   "fichier": "The Clash/The Clash_  Essentials/21 Clash City Rockers.mp3"
+  },
+  {
+   "id": "clash-bankrobber",
+   "livre": "clash",
+   "chapitre": "e9781458455024_c07.html",
+   "fichier": "The Clash/The Clash_  Essentials/23 Bankrobber.mp3"
+  },
+  {
+   "id": "alanis-all-i-really-want",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c01.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/01 All I Really Want.mp3"
+  },
+  {
+   "id": "alanis-you-oughta-know",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c02.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/02 You Oughta Know.mp3"
+  },
+  {
+   "id": "alanis-perfect",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c03.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/03 Perfect.mp3"
+  },
+  {
+   "id": "alanis-hand-in-my-pocket",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c04.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/04 Hand in My Pocket.mp3"
+  },
+  {
+   "id": "alanis-right-through-you",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c05.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/05 Right Through You.mp3"
+  },
+  {
+   "id": "alanis-forgiven",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c06.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/06 Forgiven.mp3"
+  },
+  {
+   "id": "alanis-you-learn",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c07.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/07 You Learn.mp3"
+  },
+  {
+   "id": "alanis-head-over-feet",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c08.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/08 Head Over Feet.mp3"
+  },
+  {
+   "id": "alanis-mary-jane",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c09.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/09 Mary Jane.mp3"
+  },
+  {
+   "id": "alanis-ironic",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c10.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/10 Ironic.mp3"
+  },
+  {
+   "id": "alanis-not-the-doctor",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c11.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/11 Not the Doctor.mp3"
+  },
+  {
+   "id": "alanis-wake-up",
+   "livre": "alanis",
+   "chapitre": "e9781476803234_c12.html",
+   "fichier": "Alanis Morissette/Jagged Little Pill/12 Wake Up.mp3"
+  }
+ ]
+}

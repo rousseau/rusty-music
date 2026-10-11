@@ -183,6 +183,14 @@ Sur la batterie, pas mieux qu'ADTOF (cymbales 0,76 → 0,56). Défaut : des
 tranches de 5 s bouclent (décodage glouton sans fin de séquence, surtout
 dans le silence) — à écarter. Détail : `experiments/partitions/README.md`.
 
+**Tous les instruments (11 oct.)** — 87 morceaux de six recueils
+piano-chant-guitare (Beatles, Queen, Stevie Wonder, Doors, Clash, Alanis
+Morissette), voix, basse et harmonie lues par OMR : MuScriptor devant Basic
+Pitch partout, harmonie 0,53-0,65 contre 0,49-0,58, voix 0,12-0,28 contre
+0,08-0,23. La référence (60 dpi, chant simplifié, main gauche ≠ basse) borne
+les chiffres absolus : ce banc classe, il ne mesure pas. Batterie du
+portage : cymbales 0,67, toujours derrière ADTOF.
+
 **Reste à faire.** `experiments/banc-transcription/` :
 - données : Slakh2100 (basse), MDB-Drums et ENST (batterie), rapatriées de
   Garage en local (`rclone sync`, jamais streamées) ;
