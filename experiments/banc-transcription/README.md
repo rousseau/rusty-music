@@ -5,17 +5,24 @@ Vérité exacte, sans OMR. Ce banc complète celui des partitions publiées
 leur justesse. Plan : `docs/plan-editer-pratique-creation.md`, section 0.4.
 
 ```
-python banc_jeux.py slakh|mdb|guitarset [--limite N]
+python banc_jeux.py slakh|mdb|guitarset|maestro [--limite N]
+python piano_specialises.py      # Transkun et ByteDance, environnement à part
 ```
 
 ## Prérequis
 
-- **Jeux de données** : téléchargés à la source dans `~/Exp/tmp/jeux`, jamais
+- **Disque externe** : les données vivent dans `RUSTY_DEV`, par défaut
+  `/Volumes/LaCieDock/rusty_music-dev`. Ce disque n'est pas toujours
+  branché ; sans lui, le banc s'arrête avec un message clair.
+- **Jeux de données** : téléchargés à la source dans `$RUSTY_DEV/jeux`, jamais
   versionnés.
   - BabySlakh : CC BY 4.0.
   - MDB Drums : CC BY-NC-SA 4.0.
   - GuitarSet : CC BY 4.0.
-- **Cache** : `~/Exp/tmp/banc-jeux`.
+  - MAESTRO v3 : CC BY-NC-SA 4.0. On a tiré 20 pièces du jeu de test
+    (`choix.json`) et on les a lues à distance dans l'archive de 108 Go,
+    avec `remotezip`, sans la télécharger entière.
+- **Cache** : `$RUSTY_DEV/banc-jeux`.
 - **Binaires** :
   - `target/release/rusty-music` (démixage) ;
   - `target/release/examples/banc` (Basic Pitch, ADTOF) ;
@@ -74,6 +81,26 @@ python banc_jeux.py slakh|mdb|guitarset [--limite N]
 | Accompagnement | **0,73** (0,40 avec fin) | 0,72 (**0,43** avec fin) |
 | Solo | **0,87** (0,57 avec fin) | 0,82 (**0,65** avec fin) |
 
+### MAESTRO (piano)
+
+20 pièces du jeu de test, 156 min, 85 889 notes, piano réel (Disklavier).
+La fin de la note de référence est prolongée tant que la pédale forte tient,
+selon la convention d'Onsets and Frames.
+
+| Modèle | F1 | F1 avec fin |
+|---|---|---|
+| **Transkun 2** (MIT) | **0,985** | 0,48 |
+| **ByteDance**, Kong et al. (Apache-2.0, poids CC BY 4.0) | 0,968 | **0,84** |
+| MuScriptor | 0,83 | 0,38 |
+| Basic Pitch | 0,67 | 0,22 |
+
+- **Biais en faveur des spécialisés :** Transkun et ByteDance sont entraînés
+  sur la partie d'entraînement de MAESTRO, donc sur le même piano et la même
+  salle. Les pièces du jeu de test sont distinctes, mais il faudra confirmer
+  ces chiffres sur MAPS ou SMD.
+- **Écart de mesure sur les fins :** Transkun traite la pédale à part, ce qui
+  explique sans doute son F1 avec fin plus bas.
+
 ## Lecture
 
 - **Basse.** Sur le stem démixé, MuScriptor l'emporte nettement
@@ -95,6 +122,18 @@ python banc_jeux.py slakh|mdb|guitarset [--limite N]
     que grosse caisse, caisse claire et toms. Les chiffres de batterie de
     Slakh ne valent donc que pour ces trois pièces. Il faudrait Slakh2100 en
     pleine bande pour aller plus loin.
+- **Piano.** Les modèles spécialisés sont d'un autre ordre :
+  0,97-0,99 contre 0,83. Pour une partition de piano, on portera
+  l'un d'eux plutôt que de compter sur MuScriptor.
+  - ByteDance est un CRNN classique, exportable en ONNX pour `ort`.
+  - Transkun décode par semi-CRF, ce qui est plus long à porter.
+- **Boucles de MuScriptor** (révélées par MAESTRO).
+  - **Symptôme :** une tranche de 5 s de Scriabine rendait 586 notes au lieu
+    de 47, alors même qu'elle se terminait par un EOS.
+  - **Correctif :** `jetons::debut_de_boucle` repère une même note rejouée
+    trois fois à 20 ms ou moins d'intervalle. Le décodage s'arrête, et on garde
+    le flux d'avant la boucle au lieu d'écarter le segment.
+  - **Effet :** sur cette pièce, F1 0,38 → 0,53.
 - **Correctif tiré du banc.** MuScriptor émettait parfois deux fois la même note,
   à moins de 20 ms d'écart (14 notes sur 391 en mode basse). `sans_doublons`
   les fusionne désormais dans `crates/transcription/src/muscriptor/mod.rs`.

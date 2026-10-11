@@ -280,6 +280,70 @@ impl Suivi {
     }
 }
 
+/// Écart maximal, en trames, entre deux attaques d'une même note pour
+/// qu'elles comptent comme une répétition : 20 ms, plus vite qu'aucun
+/// instrumentiste ne rejoue une touche.
+const REPRISE_TRAMES: u32 = 2;
+/// Répétitions rapprochées d'une même note qui signent une boucle.
+const REPRISES_BOUCLE: u32 = 2;
+
+/// Indice du jeton où le décodage part en boucle — la même note rejouée au
+/// même instant ou toutes les 10-20 ms (banc MAESTRO : un segment de 5 s
+/// rendu en 586 notes au lieu de 47). Le flux avant cet indice reste bon.
+/// Une répétition isolée ne compte pas : [`super::sans_doublons`] la fond.
+pub fn debut_de_boucle(jetons: &[u32]) -> Option<usize> {
+    let mut tic = 0u32;
+    let mut programme: Option<u8> = None;
+    let mut velocite = 1u8;
+    let mut actif = false;
+    // (programme, hauteur) → (dernière attaque, répétitions, indice de la première)
+    let mut vues: std::collections::HashMap<(u8, u8), (u32, u32, usize)> = Default::default();
+    for (i, &j) in jetons.iter().enumerate() {
+        let cle = match evenement(j) {
+            Evenement::Tie => {
+                actif = true;
+                continue;
+            }
+            Evenement::Decalage(v) => {
+                actif = true;
+                tic = v;
+                continue;
+            }
+            Evenement::Programme(p) => {
+                programme = Some(p);
+                continue;
+            }
+            Evenement::Velocite(v) => {
+                velocite = v;
+                continue;
+            }
+            Evenement::Hauteur(h) if actif && velocite > 0 => (programme.unwrap_or(0), h),
+            Evenement::Batterie(h) if actif => (PROGRAMME_BATTERIE, h),
+            _ => continue,
+        };
+        match vues.get_mut(&cle) {
+            Some((dernier, reprises, premiere)) => {
+                if tic.abs_diff(*dernier) <= REPRISE_TRAMES {
+                    if *reprises == 0 {
+                        *premiere = i;
+                    }
+                    *reprises += 1;
+                    if *reprises >= REPRISES_BOUCLE {
+                        return Some(*premiere);
+                    }
+                } else {
+                    *reprises = 0;
+                }
+                *dernier = tic;
+            }
+            None => {
+                vues.insert(cle, (tic, 0, i));
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +415,28 @@ mod tests {
         assert!(v.contains(&programme(0)) && v.contains(&(BATTERIE + 36)));
         assert_eq!(v.len(), 128 + 128);
         assert_eq!(groupes_de(&["electric_bass", "acoustic_bass"]), vec![8, 7]);
+    }
+
+    #[test]
+    fn une_note_rejouee_en_rafale_est_une_boucle() {
+        let mut v = vec![TIE, decalage(10), programme(0), DEBUT, hauteur(60), hauteur(64)];
+        let boucle = v.len() + 1;
+        for t in 11..20 {
+            v.extend([decalage(t), hauteur(64)]);
+        }
+        assert_eq!(debut_de_boucle(&v), Some(boucle));
+    }
+
+    #[test]
+    fn un_trille_ou_un_accord_n_est_pas_une_boucle() {
+        let mut v = vec![TIE, programme(0), DEBUT];
+        for k in 0..20 {
+            // Note rejouée toutes les 50 ms, accord de trois notes.
+            v.extend([decalage(5 * k), hauteur(60), hauteur(64), hauteur(67)]);
+        }
+        assert_eq!(debut_de_boucle(&v), None);
+        // Une seule répétition au même instant : un doublon, pas une boucle.
+        v.extend([decalage(200), hauteur(72), hauteur(72), decalage(210), hauteur(74)]);
+        assert_eq!(debut_de_boucle(&v), None);
     }
 }

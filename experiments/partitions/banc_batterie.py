@@ -14,7 +14,11 @@ Une transcription Drum Ninja note le groove de chaque section et le répète
 import json, os, subprocess, sys
 import banc, comparer, lire_batterie
 
-LIVRES = os.path.expanduser(os.environ.get("LIVRES", "~/Exp/tmp"))
+# Données de développement sur le disque externe, pas toujours branché.
+DEV = os.path.expanduser(os.environ.get("RUSTY_DEV", "/Volumes/LaCieDock/rusty_music-dev"))
+if not os.path.isdir(DEV):
+    sys.exit(f"données de développement absentes : {DEV} (disque débranché ? sinon RUSTY_DEV=…)")
+LIVRES = os.path.expanduser(os.environ.get("LIVRES", DEV))
 PIECES = {36: "grosse caisse", 38: "caisse claire", 45: "toms", 42: "charleston", 49: "cymbales"}
 CODES = {"grosse_caisse": 36, "caisse_claire": 38, "toms": 45, "charleston": 42, "cymbales": 49}
 

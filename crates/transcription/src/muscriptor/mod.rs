@@ -17,10 +17,12 @@
 //!    la fin du précédent ([`jetons::prologue`]), au lieu de les deviner ;
 //! 4. [`jetons::Suivi`] tire les notes du flux.
 //!
-//! Écart voulu avec l'original : un segment qui n'émet jamais sa fin (EOS)
-//! dans la limite de longueur boucle — même note répétée toutes les 10 à
-//! 20 ms, surtout dans le silence (banc `experiments/partitions/`) ; ses
-//! jetons sont écartés et les notes ouvertes fermées à sa frontière.
+//! Écart voulu avec l'original : le décodage glouton part parfois en boucle
+//! — même note répétée au même instant ou toutes les 10 à 20 ms (bancs
+//! `experiments/partitions/` et `experiments/banc-transcription/`), avec ou
+//! sans EOS. [`jetons::debut_de_boucle`] le repère : le décodage s'arrête,
+//! on garde le flux d'avant la boucle. Un segment sans EOS ni boucle
+//! repérée est écarté, ses notes ouvertes fermées à sa frontière.
 
 pub mod jetons;
 pub mod mince;
@@ -84,6 +86,8 @@ pub struct Bilan {
     pub jetons_max: usize,
     /// Segments écartés faute d'EOS.
     pub boucles: Vec<usize>,
+    /// Segments coupés au début d'une boucle, le reste gardé.
+    pub tronques: Vec<usize>,
 }
 
 impl<B: ProduitMince> Muscriptor<B> {
@@ -141,8 +145,13 @@ impl<B: ProduitMince> Muscriptor<B> {
             for debut_lot in (0..n).step_by(lot) {
                 let fin_lot = (debut_lot + lot).min(n);
                 let segs: Vec<Vec<f32>> = (debut_lot..fin_lot).map(decoupe).collect();
-                for (k, (genere, fini)) in self.segments_en_lot(&segs, &groupes, &masque).into_iter().enumerate() {
+                for (k, (mut genere, mut fini)) in self.segments_en_lot(&segs, &groupes, &masque).into_iter().enumerate() {
                     let i = debut_lot + k;
+                    if let Some(b) = jetons::debut_de_boucle(&genere) {
+                        genere.truncate(b);
+                        fini = true;
+                        bilan.tronques.push(i);
+                    }
                     let debut = (i * 5) as f32;
                     suivi.frontiere(debut, (i + 1 < n).then_some(debut + 5.0));
                     bilan.jetons += genere.len();
@@ -164,7 +173,12 @@ impl<B: ProduitMince> Muscriptor<B> {
             let fin = (i + 1 < n).then_some(debut + 5.0);
             suivi.frontiere(debut, fin);
             let prologue = if i > 0 { jetons::prologue(&suivi.ouvertes()) } else { Vec::new() };
-            let (genere, fini) = self.segment(&segment, &groupes, &prologue, &masque);
+            let (mut genere, mut fini) = self.segment(&segment, &groupes, &prologue, &masque);
+            if let Some(b) = jetons::debut_de_boucle(&genere) {
+                genere.truncate(b);
+                fini = true;
+                bilan.tronques.push(i);
+            }
             bilan.jetons += prologue.len() + genere.len();
             if fini {
                 bilan.jetons_max = bilan.jetons_max.max(prologue.len() + genere.len());
@@ -226,6 +240,9 @@ impl<B: ProduitMince> Muscriptor<B> {
                     }
                     genere.push(j as u32);
                 }
+                if jetons::debut_de_boucle(&genere).is_some() {
+                    return (genere, false);
+                }
             }
         }
         (genere, false)
@@ -245,6 +262,7 @@ impl<B: ProduitMince> Muscriptor<B> {
         let mut logits = g.avancer(Tensor::cat(vec![prefixe, g.reseau.emb.forward(initial)], 1), &mut cache);
         let masque = masque.clone().expand([b, card]);
         let mut sortie: Vec<(Vec<u32>, bool)> = vec![(Vec::new(), false); b];
+        let mut boucle = vec![false; b];
         let mut lot: Vec<Tensor<B, 2, Int>> = Vec::with_capacity(LECTURE);
         let mut n = 0;
         while n < self.longueur_max {
@@ -257,7 +275,7 @@ impl<B: ProduitMince> Muscriptor<B> {
                 let lus = Tensor::cat(std::mem::take(&mut lot), 1).into_data().convert::<i64>().into_vec::<i64>().expect("jetons");
                 for (r, (genere, fini)) in sortie.iter_mut().enumerate() {
                     for &j in &lus[r * k..(r + 1) * k] {
-                        if *fini {
+                        if *fini || boucle[r] {
                             break;
                         }
                         if j as u32 == jetons::EOS {
@@ -266,8 +284,13 @@ impl<B: ProduitMince> Muscriptor<B> {
                             genere.push(j as u32);
                         }
                     }
+                    // Le segment continue de tourner avec le lot, mais on
+                    // n'en garde plus rien.
+                    if !*fini && !boucle[r] && jetons::debut_de_boucle(genere).is_some() {
+                        boucle[r] = true;
+                    }
                 }
-                if sortie.iter().all(|s| s.1) {
+                if sortie.iter().zip(&boucle).all(|(s, &b)| s.1 || b) {
                     break;
                 }
             }

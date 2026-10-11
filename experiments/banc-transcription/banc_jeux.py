@@ -4,13 +4,16 @@
 partitions publiées (`experiments/partitions/`), qui classe les modèles mais
 ne mesure pas leur justesse.
 
-Jeux (téléchargés à la source, dans `~/Exp/tmp/jeux`, jamais versionnés) :
+Jeux (téléchargés à la source, dans `$RUSTY_DEV/jeux`, jamais versionnés) :
 - BabySlakh (Manilow et al. 2019, CC BY 4.0) : 20 morceaux synthétisés
   depuis le MIDI, chaque instrument annoté ;
 - MDB Drums (Southall et al. 2017, CC BY-NC-SA 4.0) : 23 extraits de
   MedleyDB, frappes en 5 classes ;
 - GuitarSet (Xi et al. 2018, CC BY 4.0) : 360 extraits de guitare seule,
-  notes par corde.
+  notes par corde ;
+- MAESTRO v3 (Hawthorne et al. 2019, CC BY-NC-SA 4.0) : piano réel,
+  Disklavier ; 20 pièces tirées du jeu de test (`choix.json`), lues à
+  distance dans l'archive sans la télécharger entière.
 
 Chaîne de l'application : les stems viennent de **notre** HTDemucs
 (`rusty-music demix`), puis Basic Pitch (notes brutes, réglages par défaut),
@@ -26,8 +29,12 @@ import mir_eval, pretty_midi, yaml, jams
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 RACINE = os.path.abspath(os.path.join(ICI, "..", ".."))
-JEUX = os.path.expanduser(os.environ.get("JEUX", "~/Exp/tmp/jeux"))
-CACHE = os.path.expanduser(os.environ.get("CACHE", "~/Exp/tmp/banc-jeux"))
+# Données de développement sur le disque externe, pas toujours branché.
+DEV = os.path.expanduser(os.environ.get("RUSTY_DEV", "/Volumes/LaCieDock/rusty_music-dev"))
+if not os.path.isdir(DEV):
+    sys.exit(f"données de développement absentes : {DEV} (disque débranché ? sinon RUSTY_DEV=…)")
+JEUX = os.path.expanduser(os.environ.get("JEUX", os.path.join(DEV, "jeux")))
+CACHE = os.path.expanduser(os.environ.get("CACHE", os.path.join(DEV, "banc-jeux")))
 CLI = os.path.join(RACINE, "target/release/rusty-music")
 BANC = os.path.join(RACINE, "target/release/examples/banc")
 MUS = os.path.join(RACINE, "target/release/examples/muscriptor")
@@ -226,12 +233,54 @@ def guitarset(args):
         print(f"{nom:28} MuS {sm['f']:.2f}  BP {sb['f']:.2f}", flush=True)
     print("TOTAL notes\n" + str(T))
 
+def pedale(pm):
+    """Notes de référence, fin prolongée tant que la pédale forte (CC64 ≥ 64)
+    tient : convention d'Onsets and Frames pour MAESTRO."""
+    inst = pm.instruments[0]
+    appuis, debut = [], None
+    for c in sorted(inst.control_changes, key=lambda c: c.time):
+        if c.number != 64: continue
+        if c.value >= 64 and debut is None: debut = c.time
+        elif c.value < 64 and debut is not None: appuis.append((debut, c.time)); debut = None
+    if debut is not None: appuis.append((debut, pm.get_end_time()))
+    notes = sorted(inst.notes, key=lambda n: n.start)
+    ref = []
+    for i, n in enumerate(notes):
+        fin = n.end
+        for a, b in appuis:
+            if a <= fin < b: fin = b; break
+        # Une note tenue s'arrête quand la même touche est rejouée.
+        suivante = next((m.start for m in notes[i + 1:] if m.pitch == n.pitch), None)
+        if suivante is not None: fin = min(fin, suivante)
+        ref.append((n.start, max(fin, n.start + 0.01), n.pitch))
+    return ref
+
+def maestro(args):
+    T = Total()
+    base = os.path.join(JEUX, "maestro")
+    for x in json.load(open(os.path.join(base, "choix.json")))[:args.limite]:
+        audio = os.path.join(base, os.path.basename(x["audio_filename"]))
+        nom = os.path.basename(audio)[:-4]; d = os.path.join(CACHE, "maestro", nom); os.makedirs(d, exist_ok=True)
+        ref = pedale(pretty_midi.PrettyMIDI(os.path.join(base, os.path.basename(x["midi_filename"]))))
+        sm = score_notes(ref, triplets(muscriptor(audio, os.path.join(d, "muscriptor.json"), "acoustic_piano")))
+        sb = score_notes(ref, [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(audio, os.path.join(d, "basic-pitch.json"))])
+        T.ajouter("piano : MuScriptor", sm); T.ajouter("piano : Basic Pitch", sb)
+        ligne = f"{x['canonical_composer'][:22]:22} {x['canonical_title'][:30]:30} MuS {sm['f']:.2f}  BP {sb['f']:.2f}"
+        # Modèles spécialisés, s'ils sont passés (`piano_specialises.py`).
+        for nom_m, court in (("transkun", "TK"), ("bytedance", "BD")):
+            mid = os.path.join(d, f"{nom_m}.mid")
+            if os.path.exists(mid):
+                s = score_notes(ref, [(n.start, n.end, n.pitch) for i in pretty_midi.PrettyMIDI(mid).instruments for n in i.notes])
+                T.ajouter(f"piano : {nom_m}", s); ligne += f"  {court} {s['f']:.2f}"
+        print(ligne, flush=True)
+    print("TOTAL notes\n" + str(T))
+
 def main():
     a = argparse.ArgumentParser()
-    a.add_argument("jeu", choices=["slakh", "mdb", "guitarset"])
+    a.add_argument("jeu", choices=["slakh", "mdb", "guitarset", "maestro"])
     a.add_argument("--limite", type=int, default=None)
     args = a.parse_args()
-    {"slakh": slakh, "mdb": mdb, "guitarset": guitarset}[args.jeu](args)
+    {"slakh": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro}[args.jeu](args)
 
 if __name__ == "__main__":
     main()

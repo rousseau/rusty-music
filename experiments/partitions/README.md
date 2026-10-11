@@ -56,7 +56,11 @@ python3 regler_doigtes.py
 <venv>/bin/python muscriptor_batterie.py
 ```
 
-Variables : `LIVRES` (défaut `~/Exp/tmp`), `CACHE` (`~/Exp/tmp/banc-partitions`),
+Les données vivent sur le disque externe : `RUSTY_DEV`, par défaut
+`/Volumes/LaCieDock/rusty_music-dev`. Un script s'arrête avec un message
+clair quand le disque est débranché.
+
+Variables : `LIVRES` (défaut `$RUSTY_DEV`), `CACHE` (`$RUSTY_DEV/banc-partitions`),
 `MUSIQUE` (`~/Music/MyMusic`), `RUSTY_DB`. Python : PyMuPDF, Pillow, NumPy,
 SciPy.
 
@@ -239,7 +243,7 @@ comparaison : `MOTEUR=f32|f16|f16-brut|f32-brut`, `ab_mince`,
 ## Piano-chant-guitare : tous les instruments (11 oct.)
 
 Recueils « piano/vocal/guitar » au format epub (Hal Leonard), dans
-`~/Exp/tmp` — usage local d'évaluation, rien n'est versionné hors des
+`$RUSTY_DEV` — usage local d'évaluation, rien n'est versionné hors des
 scripts. 87 morceaux (`morceaux_pvg.json`) : Beatles 29 (« 1967–1970 » et
 *Abbey Road*), Queen 9, Stevie Wonder 12, The Doors 12, The Clash 13, Alanis
 Morissette 12.

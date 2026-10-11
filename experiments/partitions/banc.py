@@ -6,14 +6,18 @@ Pour chaque morceau de `morceaux.json` : six stems (htdemucs_6s), pulsation
 ligne de basse de la partition (`omr.py` puis `reference.py`), comparaison
 (`comparer.py`). Tout se met en cache dans $CACHE ; rien n'est versionné.
 
-    CACHE=~/Exp/tmp/banc-partitions python3 banc.py [--refaire-transcription] [id ...]
+    CACHE=$RUSTY_DEV/banc-partitions python3 banc.py [--refaire-transcription] [id ...]
 """
 import json, os, sqlite3, subprocess, sys
 import reference, comparer
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 RACINE = os.path.abspath(os.path.join(ICI, "..", ".."))
-CACHE = os.path.expanduser(os.environ.get("CACHE", "~/Exp/tmp/banc-partitions"))
+# Données de développement sur le disque externe, pas toujours branché.
+DEV = os.path.expanduser(os.environ.get("RUSTY_DEV", "/Volumes/LaCieDock/rusty_music-dev"))
+if not os.path.isdir(DEV):
+    sys.exit(f"données de développement absentes : {DEV} (disque débranché ? sinon RUSTY_DEV=…)")
+CACHE = os.path.expanduser(os.environ.get("CACHE", os.path.join(DEV, "banc-partitions")))
 MUSIQUE = os.path.expanduser(os.environ.get("MUSIQUE", "~/Music/MyMusic"))
 BASE = os.path.expanduser(os.environ.get("RUSTY_DB", "~/Library/Application Support/fm.rustymusic.desktop/rusty-music.db"))
 CLI = os.path.join(RACINE, "target/release/rusty-music")

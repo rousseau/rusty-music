@@ -17,8 +17,12 @@ from PIL import Image
 from nettoyer_pvg import nettoyer
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-LIVRES = os.path.expanduser(os.environ.get("LIVRES", "~/Exp/tmp"))
-CACHE = os.path.expanduser(os.environ.get("CACHE", "~/Exp/tmp/banc-partitions"))
+# Données de développement sur le disque externe, pas toujours branché.
+DEV = os.path.expanduser(os.environ.get("RUSTY_DEV", "/Volumes/LaCieDock/rusty_music-dev"))
+if not os.path.isdir(DEV):
+    sys.exit(f"données de développement absentes : {DEV} (disque débranché ? sinon RUSTY_DEV=…)")
+LIVRES = os.path.expanduser(os.environ.get("LIVRES", DEV))
+CACHE = os.path.expanduser(os.environ.get("CACHE", os.path.join(DEV, "banc-partitions")))
 AUDIVERIS = os.environ["AUDIVERIS"]
 
 def images(epub, chapitre):
