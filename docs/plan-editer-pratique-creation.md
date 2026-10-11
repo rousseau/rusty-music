@@ -198,6 +198,12 @@ MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
 - **Basse** (BabySlakh, stem démixé) : MuScriptor 0,59 contre 0,44 pour Basic
   Pitch.
 - **Batterie** (MDB Drums) : ADTOF reste devant sur trois pièces sur cinq.
+
+**Pistes pour la basse (11 oct.)** : démixage `htdemucs_ft` 0,550 contre
+0,547 (`6s`) et 0,544 (`htdemucs`) ; mode lent et post-traitements (gamme,
+octave, Basic Pitch) sans gain. Une note à la fois (+0,03) est déjà dans la
+chaîne. Leviers restants : MuScriptor *large*, ou un modèle de basse
+spécialisé. Détail : `experiments/partitions/README.md`.
   MuScriptor l'emporte sur les toms (0,56 contre 0,44).
 - **Guitare** (GuitarSet) : à l'attaque, MuScriptor est devant (0,73 / 0,87
   contre 0,72 / 0,82). Ses fins de note sont moins justes que celles de Basic

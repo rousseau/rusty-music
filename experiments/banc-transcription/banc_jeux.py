@@ -29,7 +29,9 @@ import mir_eval, pretty_midi, yaml, jams
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 RACINE = os.path.abspath(os.path.join(ICI, "..", ".."))
-# Données de développement sur le disque externe, pas toujours branché.
+# Données de développement sur le disque externe, pas toujours branché. Il
+# est en exFAT : macOS y sème des `._*` (attributs étendus), à ignorer dans
+# tout listage de dossier.
 DEV = os.path.expanduser(os.environ.get("RUSTY_DEV", "/Volumes/LaCieDock/rusty_music-dev"))
 if not os.path.isdir(DEV):
     sys.exit(f"données de développement absentes : {DEV} (disque débranché ? sinon RUSTY_DEV=…)")
@@ -76,7 +78,7 @@ def demixer(src441, dossier):
     stems = os.path.join(dossier, "stems")
     if not os.path.isdir(stems) or not os.listdir(stems):
         lancer([CLI, "demix", src441, "--out", stems, "--modele", "htdemucs_6s"])
-    return {s: os.path.join(stems, f) for f in os.listdir(stems) for s in ("bass", "drums", "guitar", "vocals", "piano", "other") if f"— {s}." in f}
+    return {s: os.path.join(stems, f) for f in os.listdir(stems) if not f.startswith("._") for s in ("bass", "drums", "guitar", "vocals", "piano", "other") if f"— {s}." in f}
 
 def adtof(stem441, dossier):
     sortie = os.path.join(dossier, "adtof.json")

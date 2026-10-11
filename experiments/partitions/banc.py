@@ -23,6 +23,10 @@ BASE = os.path.expanduser(os.environ.get("RUSTY_DB", "~/Library/Application Supp
 CLI = os.path.join(RACINE, "target/release/rusty-music")
 PULS = os.path.join(RACINE, "target/release/examples/verif_pulsation")
 BANC = os.path.join(RACINE, "target/release/examples/banc")
+# Variante de démixage : htdemucs_6s (historique du banc), htdemucs (défaut de
+# l'application) ou htdemucs_ft. Les stems d'une autre variante que 6s vont
+# dans `stems-<variante>`.
+DEMIX = os.environ.get("DEMIX", "htdemucs_6s")
 
 def audio(m):
     if "fichier" in m: return os.path.join(MUSIQUE, m["fichier"])
@@ -38,12 +42,12 @@ def preparer_audio(m, stem="bass"):
     """Stems et pulsation (en cache). Rend (dossier, stem demandé, pulsation)."""
     d = os.path.join(CACHE, m["id"]); os.makedirs(d, exist_ok=True)
     src = audio(m)
-    stems = os.path.join(d, "stems")
-    basse = [f for f in os.listdir(stems) if stem in f] if os.path.isdir(stems) else []
+    stems = os.path.join(d, "stems" if DEMIX == "htdemucs_6s" else f"stems-{DEMIX}")
+    basse = [f for f in os.listdir(stems) if stem in f and not f.startswith("._")] if os.path.isdir(stems) else []
     if not basse:
-        subprocess.run([CLI, "demix", src, "--out", stems, "--modele", "htdemucs_6s"], check=True, cwd=RACINE,
+        subprocess.run([CLI, "demix", src, "--out", stems, "--modele", DEMIX], check=True, cwd=RACINE,
                        stdout=subprocess.DEVNULL)
-        basse = [f for f in os.listdir(stems) if stem in f]
+        basse = [f for f in os.listdir(stems) if stem in f and not f.startswith("._")]
     puls = os.path.join(d, "pulsation.json")
     if not os.path.exists(puls):
         out = subprocess.run([PULS, src], capture_output=True, text=True, check=True, cwd=RACINE).stdout

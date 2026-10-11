@@ -28,7 +28,7 @@ def main():
         if not (os.path.exists(ref) and os.path.isdir(stems)): continue
         grille = os.path.join(d, "reglages")
         if not os.path.isdir(grille):
-            basse = next(f for f in os.listdir(stems) if "bass" in f)
+            basse = next(f for f in os.listdir(stems) if "bass" in f and not f.startswith("._"))
             subprocess.run([banc.BANC, "reglages", os.path.join(stems, basse), os.path.join(d, "pulsation.json"), grille],
                            check=True, stdout=subprocess.DEVNULL, cwd=banc.RACINE)
         taches += [(f, ref) for f in sorted(glob.glob(os.path.join(grille, "*.json")))]

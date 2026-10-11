@@ -68,6 +68,7 @@ def main():
         if not reference.fichiers(d) or not os.path.isdir(os.path.join(d, "stems")): continue
         d, basse, puls = banc.preparer_audio(m)
         nom = f"rust-lot{args.rust}" if args.rust else args.taille
+        if banc.DEMIX != "htdemucs_6s": nom += f"-{banc.DEMIX}"
         brut = os.path.join(d, f"muscriptor-{nom}-notes.json")
         if args.rust and not os.path.exists(brut):
             r = subprocess.run([os.path.join(banc.RACINE, "target/release/examples/muscriptor"), basse, brut, str(args.rust), str(args.longueur)],

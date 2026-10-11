@@ -7,6 +7,7 @@ leur justesse. Plan : `docs/plan-editer-pratique-creation.md`, section 0.4.
 ```
 python banc_jeux.py slakh|mdb|guitarset|maestro [--limite N]
 python piano_specialises.py      # Transkun et ByteDance, environnement à part
+python pistes_basse.py           # post-traitements de la basse, sur le cache
 ```
 
 ## Prérequis
@@ -109,6 +110,12 @@ selon la convention d'Onsets and Frames.
     (0,46). L'ordre de l'application reste donc : démixer d'abord.
   - Les écarts d'un morceau à l'autre sont grands (0,17 à 0,90). Ils viennent
     en partie des rendus de Slakh : basses synthétiques, octaves déplacées.
+  - **Post-traitements** (`pistes_basse.py`, sur les notes en cache) : garder
+    une note à la fois porte MuScriptor de 0,59 à 0,62 (précision 0,71,
+    rappel 0,59) ; l'application le fait déjà. Gamme, octave ou
+    confirmation par Basic Pitch : rien ou pire. Sans restriction
+    d'instrument : 0,615, pas mieux. Deux morceaux (Track00007, 00012)
+    échouent au démixage : le stem de basse contient surtout guitare et piano.
 - **Fins de note.** C'est le point faible de MuScriptor : sur GuitarSet, il est
   devant à l'attaque mais derrière Basic Pitch dès qu'on compte la fin. C'est
   peu gênant pour une partition, où la durée est quantifiée sur la grille de
@@ -140,6 +147,8 @@ selon la convention d'Onsets and Frames.
 
 ## Pièges
 
+- **exFAT** : sur le disque externe, macOS crée des fichiers `._*` ; ils sont
+  filtrés, et `dot_clean -m` les supprime.
 - **Stems valides** : dans `metadata.yaml` de BabySlakh, `audio_rendered` est
   faux partout. On se fie à l'existence du wav du stem.
 - **Octave rendue** : certains instruments sont rendus transposés par rapport

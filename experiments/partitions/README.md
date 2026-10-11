@@ -31,7 +31,7 @@ sont.
      une quarte juste d'écart, 4 % des notes) est remis sur sa corde ;
    - mesure **sans portée de basse** (« w/ Bass Fig. 1 », tacet) : inconnue,
      retirée de la référence ; mesure écrite en silences : silence.
-3. **`banc.py`** — six stems (`rusty-music demix --modele htdemucs_6s`),
+3. **`banc.py`** — six stems (`rusty-music demix --modele htdemucs_6s`, ou `DEMIX`),
    pulsation sur le mélange (`verif_pulsation`), transcription du stem de
    basse (exemple `banc` du crate : la chaîne de l'éditeur), comparaison.
 4. **`comparer.py`** — une partition écrite n'est pas une chronologie
@@ -239,6 +239,28 @@ et normalisation du niveau d'entrée — sans elle le stem de basse de
 « Strawberry Fields Forever » (RMS 0,008) ne donne aucune note. Exemples de
 comparaison : `MOTEUR=f32|f16|f16-brut|f32-brut`, `ab_mince`,
 `micro_matmul`.
+
+### Pistes pour la basse (11 oct.)
+
+Trois leviers peu coûteux essayés, aucun ne dépasse la chaîne actuelle.
+
+| basse, 34 morceaux, portage en lot | F1 | F1tab | doigtés |
+|---|---|---|---|
+| démixage `htdemucs_6s` (bancs) | 0,547 | 0,571 | 0,61 |
+| démixage `htdemucs` (défaut de l'application) | 0,544 | 0,567 | 0,62 |
+| démixage `htdemucs_ft` (336 Mo, ≈ 4 fois plus lent) | 0,550 | 0,573 | 0,60 |
+
+- **Démixage** : les trois variantes font jeu égal. `DEMIX=htdemucs|htdemucs_ft`
+  choisit la variante (`banc.py`, `muscriptor_banc.py`) ; stems dans
+  `stems-<variante>`. On garde `htdemucs` dans l'application.
+- **Mode lent** (prélude forcé, un segment à la fois) : déjà tranché plus haut,
+  0,549 contre 0,546.
+- **Post-traitements** sur BabySlakh (`experiments/banc-transcription/pistes_basse.py`) :
+  une note à la fois 0,586 → 0,620 — l'application le fait déjà
+  (`monophonie.rs`) ; filtre de gamme, octave ou confirmation par Basic Pitch :
+  rien ou pire.
+- **Leviers restants** : MuScriptor *large* (5,5 Go, conditions à accepter sur
+  Hugging Face), ou un modèle spécialisé de basse.
 
 ## Piano-chant-guitare : tous les instruments (11 oct.)
 
