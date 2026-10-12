@@ -5,7 +5,7 @@ Vérité exacte, sans OMR. Ce banc complète celui des partitions publiées
 leur justesse. Plan : `docs/plan-editer-pratique-creation.md`, section 0.4.
 
 ```
-python banc_jeux.py slakh|mdb|guitarset|maestro [--limite N]
+uv run --with mir_eval --with pretty_midi --with pyyaml --with jams python banc_jeux.py slakh|slakh2100|mdb|guitarset|maestro [--limite N]
 python piano_specialises.py      # Transkun et ByteDance, environnement à part
 python pistes_basse.py           # post-traitements de la basse, sur le cache
 ```
@@ -61,6 +61,30 @@ python pistes_basse.py           # post-traitements de la basse, sur le cache
 | Charleston | 0,07 | **0,60** |
 | Cymbales | 0,00 | 0,11 |
 
+### Slakh2100, partie test
+
+151 morceaux en FLAC à 44,1 kHz (pleine bande), 594 718 notes. Lancement :
+`banc_jeux.py slakh2100` (≈ 2 min 40 s par morceau, 7 h en tout).
+
+| Entrée | MuScriptor | Basic Pitch |
+|---|---|---|
+| Mélange, toutes notes | **0,54** (0,23 avec fin) | 0,43 (0,16 avec fin) |
+| Stem basse démixé | **0,68** (0,32 avec fin) | 0,53 (0,24 avec fin) |
+| Mélange, instrument nommé : basse | 0,37 | — |
+| Mélange, instrument nommé : guitare | 0,37 | — |
+| Mélange, instrument nommé : piano | 0,36 | — |
+
+| Pièce | ADTOF (stem démixé) | MuScriptor (mélange) |
+|---|---|---|
+| Grosse caisse | **0,89** | 0,53 |
+| Caisse claire | **0,74** | 0,41 |
+| Toms | **0,29** | 0,13 |
+| Charleston | **0,67** | 0,47 |
+| Cymbales | **0,24** | 0,09 |
+
+En pleine bande, ADTOF entend enfin le charleston (0,07 → 0,67) et
+l'emporte sur toutes les pièces. Le piège de BabySlakh est confirmé.
+
 ### MDB Drums
 
 23 extraits réels.
@@ -105,7 +129,8 @@ selon la convention d'Onsets and Frames.
 ## Lecture
 
 - **Basse.** Sur le stem démixé, MuScriptor l'emporte nettement
-  (0,59 contre 0,44). Cela confirme le mode « Qualité ».
+  (0,59 contre 0,44 sur BabySlakh, 0,68 contre 0,53 sur les 151 morceaux de
+  Slakh2100). Cela confirme le mode « Qualité ».
   - Nommer l'instrument sur le mélange fait moins bien que transcrire le stem
     (0,46). L'ordre de l'application reste donc : démixer d'abord.
   - Les écarts d'un morceau à l'autre sont grands (0,17 à 0,90). Ils viennent
@@ -127,8 +152,10 @@ selon la convention d'Onsets and Frames.
   - **Piège de BabySlakh :** à 16 kHz, rien n'existe au-dessus de 8 kHz. ADTOF,
     entraîné à 44,1 kHz, ne voit alors ni charleston ni cymbale : il ne sort
     que grosse caisse, caisse claire et toms. Les chiffres de batterie de
-    Slakh ne valent donc que pour ces trois pièces. Il faudrait Slakh2100 en
-    pleine bande pour aller plus loin.
+    Slakh ne valent donc que pour ces trois pièces. Slakh2100 en pleine
+    bande le confirme : ADTOF y passe à 0,67 sur le charleston et l'emporte
+    partout. Les cymbales restent faibles (0,24) ; les toms aussi, pour les
+    deux modèles.
 - **Piano.** Les modèles spécialisés sont d'un autre ordre :
   0,97-0,99 contre 0,83. Pour une partition de piano, on portera
   l'un d'eux plutôt que de compter sur MuScriptor.

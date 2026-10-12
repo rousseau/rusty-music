@@ -196,7 +196,9 @@ portage : cymbales 0,67, toujours derrière ADTOF.
 MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
 
 - **Basse** (BabySlakh, stem démixé) : MuScriptor 0,59 contre 0,44 pour Basic
-  Pitch.
+  Pitch. Sur Slakh2100 (151 morceaux, pleine bande) : 0,68 contre 0,53.
+- **Batterie** (Slakh2100, pleine bande) : ADTOF l'emporte sur toutes les
+  pièces ; charleston 0,67 (0,07 sur BabySlakh à 16 kHz), cymbales 0,24.
 - **Batterie** (MDB Drums) : ADTOF reste devant sur trois pièces sur cinq.
 
 **Pistes pour la basse (11 oct.)** : démixage `htdemucs_ft` 0,550 contre
