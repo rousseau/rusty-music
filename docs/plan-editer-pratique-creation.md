@@ -575,9 +575,12 @@ frontières et des étiquettes est porté lui aussi.
   début de la section, ⌥-clic = la boucler ; sections contiguës de même
   étiquette fusionnées, section jouée soulignée. Pas de couleur par étiquette
   (Règle 3). 10 à 20 s par morceau selon la charge de la machine.
+  Vérifié dans l'application (clic, boucle). La partition porte les mêmes
+  sections (`\section "Refrain"`, sur la mesure la plus proche de chaque
+  frontière), en grille comme en transcription.
 - **Reste** : publier les poids convertis sur Hugging Face (MIT) pour que
   l'application les télécharge (aujourd'hui : copiés à la main dans
-  `models/`), sections dans l'alphaTex, puis greffe section sur section.
+  `models/`), puis greffe section sur section.
   Les temps restent ceux de Beat This! : le DBN de madmom n'est pas porté.
 
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +

@@ -11314,6 +11314,8 @@ async function majSections() {
     console.warn("sections", e);
   }
   dessinerSections();
+  // La partition déjà affichée prend ses marques de section.
+  if (edition.sections && edition.usage === "pratiquer" && !$("partition").hidden) montrerPartition();
 }
 
 function dessinerSections() {
@@ -11550,6 +11552,7 @@ function texGrille(p, titre, instrument) {
     `\\title "${guillemets(titre)}" \\subtitle "Grille mesurée — prototype, sans transcription"` +
     ` \\tempo ${Math.round(p.bpm ?? 120)}\n${piste}\n`;
   const mesures = [];
+  const sections = marquesSections(P);
   let precedente = 0;
   let k = 0;
   for (let i = 0; i < P.length; i++) {
@@ -11560,13 +11563,33 @@ function texGrille(p, titre, instrument) {
     if (i + 1 >= P.length) n = p.metrique ?? 4;
     n = Math.max(1, Math.min(n, 12));
     // Portée de percussion : clé neutre, pas la clé de sol par défaut.
-    let m = i === 0 && batterie ? "\\clef neutral " : "";
+    let m = (i === 0 && batterie ? "\\clef neutral " : "") + sections[i];
     m += n !== precedente ? `\\ts (${n} 4) ` : "";
     precedente = n;
     m += syncTemps(i, P[i], fin, T) + Array(n).fill(note).join(" ");
     mesures.push(m);
   }
   return tete + mesures.join(" |\n") + " |";
+}
+
+/// Les marques de section (`\section "Refrain"`) par mesure : chaque section
+/// nommée va sur la mesure dont le début est le plus proche de sa frontière
+/// (all-in-one et Beat This! ne posent pas les frontières au même endroit à
+/// quelques centièmes près). Une mesure ne porte qu'une marque, la dernière.
+function marquesSections(debuts) {
+  const marques = debuts.map(() => "");
+  if (!edition.sections || !debuts.length) return marques;
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  for (const x of edition.sections) {
+    const nom = NOMS_SECTIONS[x.etiquette] ?? x.etiquette;
+    if (!nom) continue;
+    let i = 0;
+    for (let k = 1; k < debuts.length; k++) {
+      if (Math.abs(debuts[k] - x.debut_s) < Math.abs(debuts[i] - x.debut_s)) i = k;
+    }
+    marques[i] = `\\section "${guillemets(nom[0].toUpperCase() + nom.slice(1))}" `;
+  }
+  return marques;
 }
 
 /// Durées alphaTex d'une longueur en doubles croches, la plus longue d'abord.
@@ -11601,8 +11624,9 @@ function texTablature(mesures, titre, p, accordage, modele) {
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
     (notationBasse === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
+  const sections = marquesSections(mesures.map((m) => m.debut_s));
   const corps = mesures.map((m, i) => {
-    let t = m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
+    let t = sections[i] + (m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "");
     precedente = m.temps;
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
     t += syncTemps(i, m.debut_s, fin, p.temps);
@@ -11674,8 +11698,9 @@ function texBatterie(mesures, titre, p) {
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (ADTOF) — à vérifier à l'oreille"` +
     ` \\tempo ${Math.round(p.bpm ?? 120)}\n\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}\n`;
   let precedente = 0;
+  const sections = marquesSections(mesures.map((m) => m.debut_s));
   const corps = mesures.map((m, i) => {
-    let t = i === 0 ? "\\clef neutral " : "";
+    let t = (i === 0 ? "\\clef neutral " : "") + sections[i];
     t += m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
     precedente = m.temps;
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
@@ -11905,7 +11930,7 @@ async function montrerPartition() {
   if (message) return;
   try {
     const api = await preparerPartition();
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}`;
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}:${edition.sections?.length ?? 0}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
