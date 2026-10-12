@@ -164,6 +164,35 @@ html, body {
   border-left: 1px solid var(--accent); border-right: 1px solid var(--accent);
 }
 
+/* Les sections du morceau, au-dessus de la pile : mêmes colonnes qu'une
+   ligne de stem, pour que chaque section tombe au-dessus de son passage.
+   Pas de couleur par étiquette (la couleur dit la famille, Règle 3) : des
+   filets, le nom, et l'accent pour la section jouée. */
+.sections {
+  display: grid; grid-template-columns: 74px minmax(0, 1fr);
+  margin-bottom: 4px; border: 1px solid transparent;
+}
+.sections__titre {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--mut); opacity: .7;
+  padding: 0 7px; align-self: center;
+}
+.sections__pistes { position: relative; height: 20px; }
+.section {
+  position: absolute; top: 0; bottom: 0; padding: 0 4px;
+  font: inherit; font-size: 10.5px; line-height: 18px; text-align: left;
+  color: var(--mut); background: var(--panel2); cursor: pointer;
+  border: 1px solid var(--line); border-right: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.section:last-child { border-right: 1px solid var(--line); }
+.section:hover { color: var(--txt); }
+.section--vide { background: none; }
+.section--courante { color: var(--accent); border-color: var(--accent); }
+.section--courante + .section { border-left-color: var(--accent); }
+.etabli--pratiquer .sections { grid-template-columns: minmax(0, 1fr); order: -1; margin: 0; }
+.etabli--pratiquer .sections__titre { display: none; }
+
 /* ---------- état 2 : le morceau visé, au centre (l'action est dans le rail) ---------- */
 .editer-separer { flex: 1; min-height: 0; overflow-y: auto; padding: 38px var(--gouttiere); display: flex; justify-content: center; align-items: flex-start; }
 .editer-separer .aide { max-width: 520px; margin: 0; }

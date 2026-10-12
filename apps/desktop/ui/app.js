@@ -11173,6 +11173,9 @@ const edition = {
   // This!) : { temps, premiers_temps, bpm, metrique }, ou `null` tant qu'ils
   // ne sont pas calculés. Sert la boucle et, plus tard, la partition.
   pulsation: null,
+  // Sections du morceau ouvert (all-in-one) : [{ debut_s, fin_s, etiquette }],
+  // ou `null` tant qu'elles ne sont pas calculées (ou poids absents).
+  sections: null,
   // La boucle posée : { debut, fin, mesures } en secondes d'origine, ou `null`.
   boucle: null,
   // Nombre de mesures que « boucler » prend — retenu d'une boucle à l'autre.
@@ -11276,6 +11279,84 @@ async function majPulsation() {
     // montrer (morceau sans pulsation, poids indisponibles hors ligne).
     console.warn("pulsation", e);
   }
+  majBoucleUI();
+}
+
+/// Noms français des étiquettes de Harmonix ; « start » et « end » (le
+/// silence avant et après la musique) restent sans nom.
+const NOMS_SECTIONS = {
+  intro: "intro", verse: "couplet", chorus: "refrain", bridge: "pont",
+  inst: "instrumental", solo: "solo", break: "pause", outro: "outro",
+  start: "", end: "",
+};
+
+/// Va chercher les sections du morceau ouvert (all-in-one sur ses stems).
+/// Quelques secondes la première fois, en cache ensuite ; sans les poids,
+/// le bandeau ne s'affiche simplement pas.
+async function majSections() {
+  const src = edition.source;
+  edition.sections = null;
+  dessinerSections();
+  if (!src) return;
+  try {
+    if (!(await invoke("sections_disponibles"))) return;
+    const v = await invoke("sections", { id: src.id });
+    if (edition.source?.id !== src.id) return;
+    // Des sections contiguës de même étiquette se lisent comme une seule.
+    const fusion = [];
+    for (const x of v.sections) {
+      const der = fusion[fusion.length - 1];
+      if (der && der.etiquette === x.etiquette) der.fin_s = x.fin_s;
+      else fusion.push({ ...x });
+    }
+    edition.sections = fusion.length ? fusion : null;
+  } catch (e) {
+    console.warn("sections", e);
+  }
+  dessinerSections();
+}
+
+function dessinerSections() {
+  const bande = $("sections-bande");
+  const pistes = $("sections-pistes");
+  pistes.replaceChildren();
+  const S = edition.sections;
+  const d = S?.[S.length - 1]?.fin_s;
+  bande.hidden = !S || !d;
+  if (bande.hidden) return;
+  for (const x of S) {
+    const b = document.createElement("button");
+    b.type = "button";
+    const nom = NOMS_SECTIONS[x.etiquette] ?? x.etiquette;
+    b.className = nom ? "section" : "section section--vide";
+    b.style.left = `${(x.debut_s / d) * 100}%`;
+    b.style.width = `${((x.fin_s - x.debut_s) / d) * 100}%`;
+    b.textContent = nom;
+    b.title = `${nom || "silence"} · ${horloge(x.debut_s * 1000)}–${horloge(x.fin_s * 1000)}\nClic : y aller · ⌥-clic : la boucler`;
+    b.addEventListener("click", (e) =>
+      (e.altKey ? bouclerSection(x) : deplacerLecture(x.debut_s / d)).catch((err) => remonter(err, "sections")),
+    );
+    pistes.append(b);
+  }
+  marquerSectionCourante();
+}
+
+/// Souligne la section sous la tête de lecture.
+function marquerSectionCourante() {
+  const S = edition.sections;
+  if (!S || $("sections-bande").hidden) return;
+  const t = edition.tete * S[S.length - 1].fin_s;
+  const boutons = $("sections-pistes").children;
+  S.forEach((x, i) => boutons[i]?.classList.toggle("section--courante", t >= x.debut_s && t < x.fin_s));
+}
+
+/// Boucle une section entière, bornes posées sur ses frontières ; un second
+/// ⌥-clic sur la même section ôte la boucle.
+async function bouclerSection(x) {
+  const meme = edition.boucle && Math.abs(edition.boucle.debut - x.debut_s) < 1e-3 && Math.abs(edition.boucle.fin - x.fin_s) < 1e-3;
+  edition.boucle = meme ? null : { debut: x.debut_s, fin: x.fin_s, mesures: null };
+  if (!meme) await deplacerLecture(x.debut_s / edition.sections[edition.sections.length - 1].fin_s);
+  await reposerBoucle();
   majBoucleUI();
 }
 
@@ -12584,6 +12665,7 @@ async function chargerStemsExistants(t) {
     $("demix-etat").textContent = `${trouves.length} stems déjà calculés`;
     majTempoSource();
     majPulsation();
+    majSections();
     if (modeCourant === "editer") await prendreLaMain();
   } else {
     edition.stems = [];
@@ -12720,6 +12802,7 @@ $("lancer-demix").addEventListener("click", async () => {
     dessinerStems();
     majTempoSource();
     majPulsation();
+    majSections();
     // Même règle qu'au chargement d'un démixage existant : afficher des stems,
     // c'est en faire la source. Sans cela, solo, coupure, vitesse et hauteur
     // n'agissaient sur rien tant qu'on n'avait pas relancé la lecture.
@@ -13267,6 +13350,7 @@ function poserTete(frac) {
   for (const s of edition.stems) peindreSpectre(s);
   positionnerPlayhead();
   positionnerBande();
+  marquerSectionCourante();
 }
 
 /// Table de 256 couleurs interpolée sur `--rampe`, calculée une fois.

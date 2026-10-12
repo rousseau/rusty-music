@@ -125,6 +125,9 @@ struct Etat {
     /// Avancement d'une transcription MuScriptor (segments de 5 s faits sur
     /// le total), sondé par l'interface : une minute environ par morceau.
     transcription: Mutex<EtatTranscription>,
+    /// all-in-one (sections du morceau) : 8 plis, chargés au premier usage,
+    /// déchargés après inactivité.
+    sections: Mutex<Cache<rusty_music_transcription::sections::Sections<rusty_music_transcription::sections::Moteur>>>,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -6262,6 +6265,93 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
     Ok(vue)
 }
 
+/// Sections d'un morceau, telles que l'interface les consomme.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VueSections {
+    version: u32,
+    sections: Vec<rusty_music_transcription::sections::Section>,
+}
+
+/// Version du cache des sections : à monter dès que le calcul change.
+const VERSION_SECTIONS: u32 = 1;
+
+/// Vrai si les 8 plis d'all-in-one sont dans le dossier des modèles.
+#[tauri::command]
+fn sections_disponibles() -> bool {
+    rusty_music_transcription::sections::installes().is_some()
+}
+
+/// Sections d'un morceau démixé (intro, couplet, refrain…) par all-in-one,
+/// sur ses stems HTDemucs : six secondes environ, en cache à côté des
+/// stems. Avec six stems, guitare et piano rejoignent « other », comme le
+/// modèle à quatre stems sur lequel all-in-one a appris.
+#[tauri::command(async)]
+fn sections(etat: State<Etat>, id: i64) -> Result<VueSections, String> {
+    use rusty_music_transcription::sections::Sections;
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let dossier = dossier_stems(&etat, Path::new(&chemin));
+    let cache = dossier.join("sections.json");
+    if let Some(v) = std::fs::read(&cache)
+        .ok()
+        .and_then(|o| serde_json::from_slice::<VueSections>(&o).ok())
+        .filter(|v| v.version == VERSION_SECTIONS)
+    {
+        return Ok(v);
+    }
+    let stems = stems_du_dossier(&dossier);
+    if stems.is_empty() {
+        return Err("morceau pas encore séparé".into());
+    }
+    let debut = std::time::Instant::now();
+    // bass, drums, other, vocals ; tout stem d'un autre nom va dans « other ».
+    let mut quatre: [(Vec<f32>, Vec<f32>); 4] = Default::default();
+    for (nom, wav) in &stems {
+        let i = match nom.as_str() {
+            "bass" => 0,
+            "drums" => 1,
+            "vocals" => 3,
+            _ => 2,
+        };
+        let s = rusty_music_editor::decode::stereo(wav).map_err(echec)?;
+        let (g, d) = &mut quatre[i];
+        if g.len() < s.gauche.len() {
+            g.resize(s.gauche.len(), 0.0);
+            d.resize(s.droite.len(), 0.0);
+        }
+        g.iter_mut().zip(&s.gauche).for_each(|(a, b)| *a += b);
+        d.iter_mut().zip(&s.droite).for_each(|(a, b)| *a += b);
+    }
+    // Un stem absent reste silencieux, à la longueur des autres.
+    let n = quatre.iter().map(|(g, _)| g.len()).max().unwrap_or(0);
+    for (g, d) in &mut quatre {
+        g.resize(n, 0.0);
+        d.resize(n, 0.0);
+    }
+    let mut garde = verrou(&etat.sections);
+    if garde.valeur.is_none() {
+        garde.valeur = Some(Sections::charger_installes(&Default::default()).map_err(echec)?);
+    }
+    let (sections, _) = garde
+        .valeur
+        .as_ref()
+        .expect("chargé juste au-dessus")
+        .analyser(std::array::from_fn(|i| (quatre[i].0.as_slice(), quatre[i].1.as_slice())));
+    garde.touche = Some(Instant::now());
+    drop(garde);
+    tracing::info!(ms = debut.elapsed().as_millis() as u64, sections = sections.len(), "sections");
+    let vue = VueSections { version: VERSION_SECTIONS, sections };
+    if let Ok(o) = serde_json::to_vec(&vue) {
+        if let Err(e) = std::fs::write(&cache, o) {
+            tracing::warn!("sections : cache non écrit ({}) : {e}", cache.display());
+        }
+    }
+    Ok(vue)
+}
+
 /// État du multipiste, sondé par l'interface pour animer sa barre.
 #[derive(Clone, Default, serde::Serialize)]
 struct EtatStems {
@@ -8362,6 +8452,7 @@ fn main() {
                 batteur: Mutex::new(None),
                 muscriptor: Mutex::new(Cache::default()),
                 transcription: Mutex::new(EtatTranscription::default()),
+                sections: Mutex::new(Cache::default()),
                 // Jamais absent (voir la doc du champ) : un `Cache` par
                 // défaut serait `valeur: None`, ce qui forcerait un premier
                 // rechargement même sur une base vide — poser directement un
@@ -8462,6 +8553,7 @@ fn main() {
                     liberer_si_inactif(&etat.texte_modele, "encodeur texte CLAP");
                     liberer_si_inactif(&etat.superres_modele, "modèle AERO");
                     liberer_si_inactif(&etat.muscriptor, "MuScriptor");
+                    liberer_si_inactif(&etat.sections, "all-in-one");
                     // Même patron pour la continuation automatique (errance/
                     // sonique) : ses caches survivent, eux aussi, bien après
                     // qu'une playlist a été composée — voir la documentation
@@ -8721,6 +8813,8 @@ fn main() {
             transcrire,
             etat_transcription,
             muscriptor_disponible,
+            sections_disponibles,
+            sections,
             muscriptor_jeton_present,
             telecharger_muscriptor,
             stems_state,

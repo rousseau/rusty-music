@@ -567,10 +567,18 @@ frontières et des étiquettes est porté lui aussi.
 - **f32 obligatoire** : en f16, les logits s'écartent de 5 à 8.
 - **Temps** : 6 s pour un morceau de 4 min (Metal, 8 plis, lecture des
   stems comprise), après 13 s de compilation des shaders au premier appel.
-- **Reste** : publier les poids convertis sur Hugging Face (MIT), brancher
-  l'analyse après le démixage, puis le bandeau des sections dans
-  l'interface. Les temps restent ceux de Beat This! : le DBN de madmom
-  n'est pas porté.
+- **Dans l'application (12 oct.)** : commande `sections` (cache
+  `sections.json` à côté des stems ; six stems → guitare et piano rejoignent
+  « other »), plis cherchés dans le dossier des modèles sous les noms
+  `allinone-harmonix-fold<i>.safetensors`. Bandeau des sections au-dessus de
+  la pile et de la partition, calé sur les spectrogrammes : clic = aller au
+  début de la section, ⌥-clic = la boucler ; sections contiguës de même
+  étiquette fusionnées, section jouée soulignée. Pas de couleur par étiquette
+  (Règle 3). 10 à 20 s par morceau selon la charge de la machine.
+- **Reste** : publier les poids convertis sur Hugging Face (MIT) pour que
+  l'application les télécharge (aujourd'hui : copiés à la main dans
+  `models/`), sections dans l'alphaTex, puis greffe section sur section.
+  Les temps restent ceux de Beat This! : le DBN de madmom n'est pas porté.
 
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +
 softmax (dimension 24, faisable), un seul des 8 plis d'abord, parité contre

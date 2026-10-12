@@ -17,7 +17,8 @@
 //! activations sont rendues pour comparaison.
 //!
 //! Poids : `experiments/structure/exporter_safetensors.py` convertit les
-//! `.pth` de `taejunkim/allinone` en safetensors.
+//! `.pth` de `taejunkim/allinone` en safetensors ; l'application les cherche
+//! dans le dossier des modèles sous les noms [`fichier`].
 
 pub mod reseau;
 pub mod voisinage;
@@ -45,6 +46,27 @@ const FMAX: f64 = 17_000.0;
 const TRAMES_PAR_TEMPS_MIN: usize = 24;
 /// Fenêtres du choix des frontières : 12 s de part et d'autre.
 const FENETRE: usize = 12 * FPS;
+
+/// Plis publiés (ensemble `harmonix-all`).
+pub const PLIS: usize = 8;
+
+/// Le backend de l'application. **f32 partout** : en f16 les logits
+/// s'écartent de plusieurs unités de la référence et les frontières
+/// changent ; le réseau est petit, la demi-précision n'y gagne rien.
+#[cfg(feature = "gpu")]
+pub type Moteur = burn::backend::Wgpu<f32>;
+#[cfg(all(not(feature = "gpu"), feature = "cpu"))]
+pub type Moteur = burn::backend::NdArray;
+
+/// Nom du pli `i` dans le dossier des modèles de l'application.
+pub fn fichier(i: usize) -> String {
+    format!("allinone-harmonix-fold{i}.safetensors")
+}
+
+/// Les plis présents dans le dossier des modèles, tous ou aucun.
+pub fn installes() -> Option<Vec<PathBuf>> {
+    (0..PLIS).map(|i| rusty_music_core::modeles::trouver(&fichier(i))).collect()
+}
 
 /// Une section.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -106,13 +128,19 @@ impl<B: Backend> Sections<B> {
         Ok(Self { plis, device: device.clone() })
     }
 
+    /// Les plis installés (voir [`installes`]).
+    pub fn charger_installes(device: &B::Device) -> Result<Self> {
+        let f = installes().ok_or_else(|| Error::PoidsAbsents(rusty_music_core::modeles::introuvable(&fichier(0))))?;
+        Self::charger(&f, device)
+    }
+
     /// Tous les plis d'un dossier, dans l'ordre de leur nom.
     pub fn charger_dossier(dossier: &Path, device: &B::Device) -> Result<Self> {
         let mut f: Vec<PathBuf> = std::fs::read_dir(dossier)
             .map_err(|e| Error::PoidsAbsents(format!("{} : {e}", dossier.display())))?
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("harmonix-fold") && n.ends_with(".safetensors")))
+            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("harmonix-fold") && n.ends_with(".safetensors")))
             .collect();
         f.sort();
         Self::charger(&f, device)
