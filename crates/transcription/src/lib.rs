@@ -17,14 +17,19 @@
 //! à la place de Basic Pitch à l'étape 1.
 //!
 //! La batterie : [`batterie`] — ADTOF (Zehren et al.), poids convertis en ONNX,
-//! spectrogramme et choix des pics réécrits d'après madmom.
+//! spectrogramme ([`madmom`]) et choix des pics réécrits d'après madmom.
+//!
+//! Les sections : [`sections`] — all-in-one (Kim et Nam) porté en Burn, sur
+//! les quatre stems du démixage.
 
 pub mod basic_pitch;
 pub mod batterie;
+pub mod madmom;
 pub mod monophonie;
 pub mod muscriptor;
 pub mod porte;
 pub mod quantification;
+pub mod sections;
 pub mod tablature;
 
 use serde::{Deserialize, Serialize};

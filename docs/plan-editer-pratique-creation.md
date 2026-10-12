@@ -551,6 +551,27 @@ référence Python, avec nos stems et NATTEN réécrit en PyTorch pur
 all-in-one l'emporte nettement sur les frontières. Les étiquettes sont
 proches. Le portage est justifié.
 
+**Port Burn fait (12 oct.)** — `crates/transcription/src/sections/`. Les 8
+plis sont convertis en safetensors
+(`experiments/structure/exporter_safetensors.py`). L'attention de voisinage
+dilatée est réécrite par gather + softmax (`voisinage.rs`), avec les
+détails de NATTEN 0.14 et ceux d'all-in-one : complétion par des zéros
+après la normalisation, cinquième ligne nulle sur la grille des
+instruments. Le spectrogramme de madmom est partagé avec ADTOF
+(`madmom.rs`, filtres creux : 6 s → 1,4 s par morceau). Le choix des
+frontières et des étiquettes est porté lui aussi.
+- **Parité** (`examples/sections_parite.rs`, *Blackened* entier et un
+  extrait de 45 s) : spectrogramme à 2e-7, logits à moins de 1e-5, mêmes
+  19 sections. Sur les 94 morceaux du banc, mêmes scores que Python
+  (`examples/sections.rs`).
+- **f32 obligatoire** : en f16, les logits s'écartent de 5 à 8.
+- **Temps** : 6 s pour un morceau de 4 min (Metal, 8 plis, lecture des
+  stems comprise), après 13 s de compilation des shaders au premier appel.
+- **Reste** : publier les poids convertis sur Hugging Face (MIT), brancher
+  l'analyse après le démixage, puis le bandeau des sections dans
+  l'interface. Les temps restent ceux de Beat This! : le DBN de madmom
+  n'est pas porté.
+
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +
 softmax (dimension 24, faisable), un seul des 8 plis d'abord, parité contre
 Python. Poids convertis en safetensors et republiés sur HF (MIT). Sorties :

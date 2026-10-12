@@ -63,6 +63,22 @@ Données, stems, sorties : `$RUSTY_DEV/banc-annotations/{demix,spec,allinone,rep
   son calage n'est sûr qu'à une mesure près. Sur trois morceaux sur cinq, le
   meilleur décalage tombe à 2 ou 4 s de celui des temps.
 
+## Port Burn (12 oct. 2026)
+
+`crates/transcription/src/sections/`, poids convertis par
+`exporter_safetensors.py`, référence de parité par `parite_ref.py` :
+
+```
+<env>/bin/python exporter_safetensors.py                  # → $RUSTY_DEV/modeles/allinone
+PYTHONPATH=natten_pur <env>/bin/python parite_ref.py <stems> <sortie> [--secondes 45]
+MOTEUR=f32 cargo run --release -p rusty-music-transcription --example sections_parite -- <sortie> $RUSTY_DEV/modeles/allinone
+MOTEUR=f32 cargo run --release -p rusty-music-transcription --example sections -- $RUSTY_DEV/modeles/allinone <sortie> <stems>...
+```
+
+Logits à moins de 1e-5 de Python, mêmes sections. Sur les 94 morceaux du
+banc, mêmes scores (0,487 / 0,630 / 0,601), 6 s par morceau. En f16, les
+logits divergent : f32 obligatoire.
+
 ## Pièges
 
 - **Noms** : all-in-one résout les liens symboliques et nomme tout d'après le

@@ -339,7 +339,7 @@ fn sans_doublons(notes: Vec<Note>) -> Vec<Note> {
 }
 
 /// Convertit chaque paramètre flottant vers un type donné.
-struct VersFlottant(DType);
+pub(crate) struct VersFlottant(pub(crate) DType);
 
 impl<B: Backend> ModuleMapper<B> for VersFlottant {
     fn map_float<const D: usize>(&mut self, param: Param<Tensor<B, D>>) -> Param<Tensor<B, D>> {
