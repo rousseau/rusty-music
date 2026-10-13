@@ -5,7 +5,7 @@ Vérité exacte, sans OMR. Ce banc complète celui des partitions publiées
 leur justesse. Plan : `docs/plan-editer-pratique-creation.md`, section 0.4.
 
 ```
-uv run --with mir_eval --with pretty_midi --with pyyaml --with jams python banc_jeux.py slakh|slakh2100|mdb|guitarset|maestro [--limite N]
+uv run --with mir_eval --with pretty_midi --with pyyaml --with jams python banc_jeux.py slakh|slakh2100|mdb|guitarset|maestro|medleydb [--limite N]
 python piano_specialises.py      # Transkun et ByteDance, environnement à part
 python pistes_basse.py           # post-traitements de la basse, sur le cache
 ```
@@ -126,6 +126,32 @@ selon la convention d'Onsets and Frames.
 - **Écart de mesure sur les fins :** Transkun traite la pédale à part, ce qui
   explique sans doute son F1 avec fin plus bas.
 
+### MedleyDB (basse sur vrais mélanges, 13 oct.)
+
+90 stems de basse électrique ou contrebasse (V1 + V2), mélange d'origine
+démixé par notre HTDemucs ; un mélange illisible sauté (AimeeNorwich_Child,
+AAC sous extension .wav). Mesure de contour (`mir_eval.melody`, pas de
+5,8 ms) : justesse à un demi-ton, puis à l'octave près, voisement et fausse
+alarme. Le contour des modèles est fait de leurs notes.
+
+| Annotations | Modèle | Justesse | À l'octave près | Voisement | Fausse alarme |
+|---|---|---|---|---|---|
+| Corrigées à la main (10 stems) | **MuScriptor** | **0,728** | **0,766** | **0,878** | **0,381** |
+| | Basic Pitch | 0,709 | 0,756 | 0,840 | 0,407 |
+| pYIN sur la piste isolée (80 stems) | MuScriptor | 0,655 | 0,677 | 0,770 | 0,571 |
+| | **Basic Pitch** | **0,657** | **0,686** | 0,769 | **0,533** |
+
+- Morceau par morceau, MuScriptor gagne 45 fois sur 90 ; médianes de la
+  justesse 0,79 contre 0,76. Les totaux pondèrent par la durée.
+- Les annotations pYIN sont des estimations : elles ratent des notes (d'où une
+  fausse alarme élevée pour les deux) et notaient une octave trop haut sous
+  55 Hz, son plancher (corrigé par `PLANCHER_PYIN`).
+- Échecs : la contrebasse jouée à l'archet ou très grave
+  (InTheHalloftheMountainKing 0,15 / 0,07, FreeJazz 0,60 / 0,54).
+- Écart bien plus faible que sur Slakh (0,68 contre 0,53) : sur de vrais
+  enregistrements, Basic Pitch tient la hauteur presque aussi bien ;
+  l'avantage de MuScriptor reste le découpage en notes et le voisement.
+
 ## Lecture
 
 - **Basse.** Sur le stem démixé, MuScriptor l'emporte nettement
@@ -183,5 +209,8 @@ selon la convention d'Onsets and Frames.
   sur le stem isolé et choisit −12, 0 ou +12 ; le résultat est mis en cache.
 - **MDB Drums** : la classe OT (autres) est ignorée, et l'audio est rééchantillonné
   à 44,1 kHz stéréo avant le démixage.
-- **Reste à mesurer : la voix**. MedleyDB (accès sur demande) donnerait une
-  mélodie annotée sur de vrais mélanges.
+- **MedleyDB** : quelques fichiers `Pitch` ont une troisième colonne sur
+  certaines lignes ; on ne lit que les deux premières. Le dépôt git des
+  annotations ne se clone pas sur exFAT (`._pack*.idx`) : données extraites
+  seules.
+- **Reste à mesurer : la voix**, sur les mélodies de MedleyDB (mêmes mélanges).

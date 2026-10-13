@@ -359,7 +359,7 @@ def medleydb(args):
                     pistes.append((v, t, "pyin", pyin, st["instrument"]))
     for v, t, sorte, fic, inst in pistes[:args.limite]:
         d = os.path.join(CACHE, "medleydb", t); os.makedirs(d, exist_ok=True)
-        ref = np.loadtxt(fic, delimiter=",", ndmin=2)
+        ref = np.loadtxt(fic, delimiter=",", ndmin=2, usecols=(0, 1))  # quelques lignes ont une 3e colonne
         # pYIN ne rend que les instants voisés : on pose une grille régulière
         # (5,8 ms, celle des annotations) où le reste est muet.
         pas = 256 / 44100
