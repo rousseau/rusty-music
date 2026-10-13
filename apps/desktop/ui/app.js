@@ -13148,6 +13148,19 @@ function zoneGreffe(s) {
 /// Ce qu'il a fallu faire au greffon, dit plutôt que laissé à deviner.
 function decrireGreffe(g) {
   const bouts = [g.origine];
+  if (g.mesures > 0) {
+    // Mesure par mesure : chaque mesure étirée sur la sienne ; le facteur
+    // dit l'étirement typique.
+    const pct = Math.round((g.facteur - 1) * 1000) / 10;
+    bouts.push(`calé mesure par mesure (${g.mesures} mesures)`);
+    if (g.mesures_par_section > 0) {
+      bouts.push(g.mesures_par_section === g.mesures ? "section sur section" : `${g.mesures_par_section} section sur section`);
+    }
+    if (pct !== 0) bouts.push(`étiré d'environ ${pct > 0 ? "+" : ""}${pct} %`);
+    if (g.octaves > 0) bouts.push(`${2 ** g.octaves} mesures pour une`);
+    if (g.octaves < 0) bouts.push(`une demi-mesure pour une`);
+    return bouts.join(" · ");
+  }
   const pct = Math.round((g.facteur - 1) * 1000) / 10;
   bouts.push(pct === 0 ? "au même tempo" : `étiré de ${pct > 0 ? "+" : ""}${pct} %`);
   if (g.octaves > 0) bouts.push(`joué à ${2 ** g.octaves} × son tempo`);
@@ -13158,6 +13171,7 @@ function decrireGreffe(g) {
   // lui les deux matières pulsent au même tempo sans tomber sur le même temps,
   // et il faut le rattraper à la main avec la vitesse de ce stem.
   bouts.push(g.cale_aux_temps ? "calé sur les temps" : "calé sur la première attaque");
+  if (g.repli) bouts.push(`pas mesure par mesure : ${g.repli}`);
   return bouts.join(" · ");
 }
 

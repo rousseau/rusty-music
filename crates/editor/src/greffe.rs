@@ -59,6 +59,11 @@ pub struct Plan {
     /// **Rendu à l'interface plutôt que deviné** : c'est la différence entre
     /// une greffe qui tombe juste et une qu'il faudra rattraper à la main.
     pub cale_aux_temps: bool,
+    /// Greffe mesure par mesure ([`greffer_par_mesures`]) : mesures posées,
+    /// et combien ont trouvé une section de même nom chez le greffon. 0 et 0
+    /// pour la greffe d'un bloc.
+    pub mesures: usize,
+    pub mesures_par_section: usize,
 }
 
 /// Où tombent les battements, de part et d'autre. Ce que [`greffer`] ne sait
@@ -352,6 +357,8 @@ pub fn greffer(
         boucles,
         bpm_rendu: bpm_greffon.map(|b| b / facteur).unwrap_or(0.0),
         cale_aux_temps,
+        mesures: 0,
+        mesures_par_section: 0,
     };
     tracing::info!(
         facteur = plan.facteur,
@@ -361,6 +368,251 @@ pub fn greffer(
         cale = plan.cale_aux_temps,
         "greffe écrite"
     );
+    Ok(plan)
+}
+
+/// Une section d'un morceau (all-in-one), en secondes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Partie {
+    pub debut_s: f32,
+    pub fin_s: f32,
+    /// Étiquette de Harmonix : `intro`, `verse`, `chorus`… ; `start` et
+    /// `end` sont le silence avant et après la musique.
+    pub etiquette: String,
+}
+
+/// Ce qu'il faut savoir d'un côté de la greffe pour la faire mesure par
+/// mesure : ses premiers temps (Beat This!), sa métrique, ses sections.
+#[derive(Debug, Clone, Default)]
+pub struct Grille {
+    pub premiers_temps: Vec<f32>,
+    pub metrique: Option<u32>,
+    /// Vide : les mesures sont prises dans l'ordre, sans tenir compte des
+    /// sections.
+    pub sections: Vec<Partie>,
+}
+
+/// Les unités de la grille : mesures `[début, fin)`, regroupées par deux
+/// (`octaves` = 1) ou coupées en deux (−1). La dernière mesure se prolonge
+/// de la longueur de la précédente, sans dépasser `duree_s`.
+fn unites(premiers: &[f32], octaves: i32, duree_s: f32) -> Vec<(f32, f32)> {
+    let mut m: Vec<(f32, f32)> = premiers.windows(2).map(|w| (w[0], w[1])).collect();
+    if let (Some(&(a, b)), Some(&der)) = (m.last(), premiers.last()) {
+        let fin = (der + (b - a)).min(duree_s);
+        if fin > der + 0.25 * (b - a) {
+            m.push((der, fin));
+        }
+    }
+    for _ in 0..octaves.max(0) {
+        m = m.chunks(2).map(|c| (c[0].0, c[c.len() - 1].1)).collect();
+    }
+    for _ in 0..(-octaves).max(0) {
+        m = m.iter().flat_map(|&(a, b)| [(a, (a + b) / 2.0), ((a + b) / 2.0, b)]).collect();
+    }
+    m
+}
+
+fn etiquette_a(sections: &[Partie], t: f32) -> Option<&str> {
+    sections.iter().find(|s| t >= s.debut_s && t < s.fin_s).map(|s| s.etiquette.as_str())
+}
+
+fn silence(etiquette: Option<&str>) -> bool {
+    matches!(etiquette, Some("start") | Some("end"))
+}
+
+/// Suites d'unités consécutives de même étiquette : `(étiquette, indices)`.
+fn suites<'a>(u: &[(f32, f32)], sections: &'a [Partie]) -> Vec<(Option<&'a str>, Vec<usize>)> {
+    let mut out: Vec<(Option<&str>, Vec<usize>)> = Vec::new();
+    for (i, &(a, b)) in u.iter().enumerate() {
+        let e = etiquette_a(sections, (a + b) / 2.0);
+        match out.last_mut() {
+            Some((d, v)) if *d == e => v.push(i),
+            _ => out.push((e, vec![i])),
+        }
+    }
+    out
+}
+
+/// Quelle unité du greffon va sur chaque unité de la source.
+///
+/// La *k*-ième mesure d'un refrain de la source reçoit la *k*-ième mesure
+/// d'un refrain du greffon (en boucle si celui-ci est plus court), le
+/// *n*-ième refrain allant sur le *n*-ième, en boucle lui aussi. Le silence
+/// de la source (`start`, `end`) reste silencieux. Une étiquette que le
+/// greffon n'a pas prend ses mesures musicales dans l'ordre.
+///
+/// Rend la correspondance et le nombre d'unités appariées par section.
+pub fn correspondance(
+    source: &[(f32, f32)],
+    sections_source: &[Partie],
+    greffon: &[(f32, f32)],
+    sections_greffon: &[Partie],
+) -> (Vec<Option<usize>>, usize) {
+    let suites_g = suites(greffon, sections_greffon);
+    let musique: Vec<usize> =
+        suites_g.iter().filter(|(e, _)| !silence(*e)).flat_map(|(_, v)| v.iter().copied()).collect();
+    let mut sortie = vec![None; source.len()];
+    let mut appariees = 0;
+    let mut vues: std::collections::HashMap<Option<&str>, usize> = Default::default();
+    let mut libre = 0; // curseur des mesures prises dans l'ordre
+    for (e, v) in suites(source, sections_source) {
+        if silence(e) {
+            continue;
+        }
+        let n = vues.entry(e).or_insert(0);
+        let memes: Vec<&Vec<usize>> = suites_g.iter().filter(|(eg, _)| e.is_some() && *eg == e).map(|(_, v)| v).collect();
+        if let Some(suite) = (!memes.is_empty()).then(|| memes[*n % memes.len()]) {
+            for (k, &j) in v.iter().enumerate() {
+                sortie[j] = Some(suite[k % suite.len()]);
+            }
+            appariees += v.len();
+        } else if !musique.is_empty() {
+            for &j in &v {
+                sortie[j] = Some(musique[libre % musique.len()]);
+                libre += 1;
+            }
+        }
+        *n += 1;
+    }
+    (sortie, appariees)
+}
+
+/// Pose la matière du greffon unité par unité : chaque unité `i` est étirée
+/// (WSOLA) sur la durée de l'unité `j` qu'elle remplace, et fondue sur
+/// [`FONDU_S`] avec la suivante. Rend le signal entrelacé de `cible` trames
+/// et la médiane des facteurs d'étirement.
+pub fn poser_mesures(
+    matiere: &[f32],
+    canaux: usize,
+    source: &[(f32, f32)],
+    greffon: &[(f32, f32)],
+    correspondance: &[Option<usize>],
+    cible: usize,
+) -> (Vec<f32>, f32) {
+    let mut sortie = vec![0.0f32; cible * canaux];
+    let trames = matiere.len() / canaux.max(1);
+    let fondu_s = FONDU_S;
+    let mut facteurs = Vec::new();
+    for (j, i) in correspondance.iter().enumerate() {
+        let Some(i) = *i else { continue };
+        let ((a, b), (c, d)) = (source[j], greffon[i]);
+        if b <= a || d <= c {
+            continue;
+        }
+        let facteur = ((b - a) / (d - c)).clamp(0.5, 2.0);
+        facteurs.push(facteur);
+        // Un fondu de part et d'autre, **avant** le premier temps et après
+        // la fin : le fondu d'entrée ne doit pas manger l'attaque du premier
+        // temps, et celui de sortie recouvre l'entrée de l'unité suivante.
+        let avance = fondu_s.min(c * facteur).min(a);
+        let t0 = (((c - avance / facteur) * SR as f32) as usize).min(trames);
+        let t1 = (((d + fondu_s / facteur) * SR as f32) as usize).min(trames);
+        if t1 <= t0 {
+            continue;
+        }
+        let morceau = etirement::etirer(&matiere[t0 * canaux..t1 * canaux], canaux, facteur);
+        let n = morceau.len() / canaux;
+        let depart = ((a - avance) * SR as f32) as usize;
+        let fondu = ((fondu_s * SR as f32) as usize).min(n / 2).max(1);
+        for t in 0..n {
+            let ou = depart + t;
+            if ou >= cible {
+                break;
+            }
+            let mut gain = 1.0f32;
+            if t < fondu {
+                gain *= t as f32 / fondu as f32;
+            }
+            if t >= n - fondu {
+                gain *= (n - t) as f32 / fondu as f32;
+            }
+            for k in 0..canaux {
+                sortie[ou * canaux + k] += morceau[t * canaux + k] * gain;
+            }
+        }
+    }
+    facteurs.sort_by(f32::total_cmp);
+    let mediane = facteurs.get(facteurs.len() / 2).copied().unwrap_or(1.0);
+    (sortie, mediane)
+}
+
+/// Repliement d'octave entre deux grilles : de combien de doublements la
+/// mesure du greffon s'écarte de celle de la source (médianes).
+fn octaves_entre(source: &[f32], greffon: &[f32]) -> i32 {
+    let med = |p: &[f32]| {
+        let mut d: Vec<f32> = p.windows(2).map(|w| w[1] - w[0]).filter(|x| *x > 0.0).collect();
+        d.sort_by(f32::total_cmp);
+        d.get(d.len() / 2).copied()
+    };
+    match (med(source), med(greffon)) {
+        (Some(a), Some(b)) => (a / b).log2().round().clamp(-2.0, 2.0) as i32,
+        _ => 0,
+    }
+}
+
+/// Peut-on greffer mesure par mesure ? Deux grilles d'au moins quatre
+/// mesures, et la même métrique : un 3/4 sous un 4/4 ne se cale pas mesure
+/// à mesure, on le refuse plutôt que de le tordre.
+pub fn mesure_a_mesure(source: &Grille, greffon: &Grille) -> std::result::Result<(), String> {
+    if source.premiers_temps.len() < 4 || greffon.premiers_temps.len() < 4 {
+        return Err("pas assez de mesures détectées".into());
+    }
+    match (source.metrique, greffon.metrique) {
+        (Some(a), Some(b)) if a != b => Err(format!("métriques différentes ({b}/4 sous {a}/4)")),
+        _ => Ok(()),
+    }
+}
+
+/// Écrit à `sortie` le stem `greffon` mis à la place de `remplace`, **mesure
+/// par mesure** : chaque mesure de la source reçoit une mesure du greffon,
+/// prise dans une section de même nom ([`correspondance`]), étirée sur sa
+/// durée exacte — un tempo qui dérive ne désaligne plus rien. Le tempo
+/// moyen est replié à l'octave comme dans [`greffer`] : à demi-tempo, deux
+/// mesures du greffon en font une.
+///
+/// À n'appeler que si [`mesure_a_mesure`] l'accepte.
+pub fn greffer_par_mesures(
+    remplace: &Path,
+    greffon: &Path,
+    source: &Grille,
+    autre: &Grille,
+    sortie: &Path,
+) -> Result<Plan> {
+    let ancien = decode::stereo(remplace)?;
+    let neuf = decode::stereo(greffon)?;
+    if neuf.gauche.is_empty() {
+        return Err(Error::Decodage(decode::Error::Vide { path: greffon.to_path_buf() }));
+    }
+    let cible = ancien.gauche.len();
+    drop(ancien);
+    let matiere: Vec<f32> = neuf.gauche.iter().zip(&neuf.droite).flat_map(|(g, d)| [*g, *d]).collect();
+    let duree_greffon = neuf.gauche.len() as f32 / SR as f32;
+    drop(neuf);
+
+    let octaves = octaves_entre(&source.premiers_temps, &autre.premiers_temps);
+    let us = unites(&source.premiers_temps, 0, cible as f32 / SR as f32);
+    let ug = unites(&autre.premiers_temps, octaves, duree_greffon);
+    let (corr, par_section) = correspondance(&us, &source.sections, &ug, &autre.sections);
+    let (pose, facteur) = poser_mesures(&matiere, CANAUX, &us, &ug, &corr, cible);
+
+    let (g, d): (Vec<f32>, Vec<f32>) = pose.chunks_exact(CANAUX).map(|c| (c[0].clamp(-1.0, 1.0), c[1].clamp(-1.0, 1.0))).unzip();
+    if let Some(dossier) = sortie.parent() {
+        std::fs::create_dir_all(dossier)?;
+    }
+    wav::ecrire(sortie, &g, &d, SR)?;
+
+    let posees = corr.iter().flatten().count();
+    let plan = Plan {
+        facteur,
+        octaves,
+        retard_s: corr.iter().position(Option::is_some).map(|j| us[j].0).unwrap_or(0.0),
+        boucles: 1,
+        bpm_rendu: 0.0,
+        cale_aux_temps: true,
+        mesures: posees,
+        mesures_par_section: par_section,
+    };
+    tracing::info!(facteur, octaves, mesures = posees, par_section, "greffe mesure par mesure écrite");
     Ok(plan)
 }
 
@@ -601,6 +853,73 @@ mod tests {
         let (rendu, entiere) = decouper_aux_temps(&court, 1, 0.0, 0.5, 100);
         assert!(!entiere);
         assert_eq!(rendu.len(), court.len());
+    }
+
+    fn partie(a: f32, b: f32, e: &str) -> Partie {
+        Partie { debut_s: a, fin_s: b, etiquette: e.into() }
+    }
+
+    /// Un refrain va sur un refrain, à la même place dans la section ; le
+    /// silence reste silencieux ; une étiquette absente du greffon prend ses
+    /// mesures dans l'ordre.
+    #[test]
+    fn les_refrains_vont_sur_les_refrains() {
+        // Source : 1 mesure de silence, 2 de couplet, 2 de refrain, 1 de pont, 2 de refrain.
+        let us: Vec<(f32, f32)> = (0..8).map(|i| (i as f32, i as f32 + 1.0)).collect();
+        let ss = [partie(0.0, 1.0, "start"), partie(1.0, 3.0, "verse"), partie(3.0, 5.0, "chorus"), partie(5.0, 6.0, "bridge"), partie(6.0, 8.0, "chorus")];
+        // Greffon : 3 de couplet (0-2), 3 de refrain (3-5).
+        let ug: Vec<(f32, f32)> = (0..6).map(|i| (i as f32 * 2.0, i as f32 * 2.0 + 2.0)).collect();
+        let sg = [partie(0.0, 6.0, "verse"), partie(6.0, 12.0, "chorus")];
+        let (c, n) = correspondance(&us, &ss, &ug, &sg);
+        assert_eq!(c, vec![None, Some(0), Some(1), Some(3), Some(4), Some(0), Some(3), Some(4)]);
+        assert_eq!(n, 6, "couplets et refrains appariés, pas le pont");
+    }
+
+    /// Deux mesures de greffon pour une de source quand le greffon est noté
+    /// à double tempo ; coupées en deux dans l'autre sens.
+    #[test]
+    fn les_unites_se_replient_a_loctave() {
+        let p = [0.0, 1.0, 2.0, 3.0, 4.0];
+        assert_eq!(unites(&p, 0, 100.0).len(), 5, "la dernière mesure prolongée");
+        assert_eq!(unites(&p, 1, 100.0), vec![(0.0, 2.0), (2.0, 4.0), (4.0, 5.0)]);
+        assert_eq!(unites(&p[..3], -1, 2.0), vec![(0.0, 0.5), (0.5, 1.0), (1.0, 1.5), (1.5, 2.0)]);
+        assert_eq!(octaves_entre(&[0.0, 2.0, 4.0, 6.0], &[0.0, 1.0, 2.0, 3.0]), 1);
+    }
+
+    /// **La preuve de la greffe mesure par mesure** : un greffon à 100 BPM
+    /// posé sous une source dont le tempo dérive de 120 à 132 BPM. Chaque
+    /// premier temps du greffon doit tomber sur le premier temps de la
+    /// source — un étirement global ne le pourrait pas.
+    #[test]
+    fn chaque_mesure_tombe_sur_sa_mesure() {
+        // Greffon : un clic par mesure de 4 temps à 100 BPM (2,4 s), 10 mesures.
+        let periode_g = 2.4f32;
+        let greffon = clics(60.0 / periode_g, 24.0, 0.0);
+        let pg: Vec<f32> = (0..10).map(|i| i as f32 * periode_g).collect();
+        // Source : des mesures qui raccourcissent de 2,0 s à 1,82 s.
+        let mut ps = vec![0.5f32];
+        for i in 0..11 {
+            let d = 2.0 - 0.018 * i as f32;
+            ps.push(ps[i] + d);
+        }
+        let cible = ((ps[ps.len() - 1] + 1.0) * SR as f32) as usize;
+        let us = unites(&ps, 0, cible as f32 / SR as f32);
+        let ug = unites(&pg, 0, 24.0);
+        let (c, _) = correspondance(&us, &[], &ug, &[]);
+        let (pose, _) = poser_mesures(&greffon, 1, &us, &ug, &c, cible);
+        let vues = attaques(&pose, 1);
+        assert!(vues.len() >= 10, "trop peu d'attaques : {vues:?}");
+        for t in &vues {
+            let ecart = ps.iter().map(|p| (p - t).abs()).fold(f32::MAX, f32::min);
+            assert!(ecart < 0.025, "attaque à {t:.3} s, {:.1} ms d'un premier temps", ecart * 1000.0);
+        }
+    }
+
+    #[test]
+    fn une_autre_metrique_est_refusee() {
+        let g = |m| Grille { premiers_temps: (0..8).map(|i| i as f32).collect(), metrique: Some(m), sections: vec![] };
+        assert!(mesure_a_mesure(&g(4), &g(4)).is_ok());
+        assert!(mesure_a_mesure(&g(4), &g(3)).is_err());
     }
 
     #[test]

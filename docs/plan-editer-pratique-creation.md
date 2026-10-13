@@ -502,6 +502,23 @@ fondus aux jonctions — un tempo qui dérive (morceau joué sans clic) ne
 désaligne plus rien. `Plan` gagne `mesures_calees` et `demi_tons_rendu`.
 Métrique différente (3/4 sous 4/4) : refuser et le dire, plutôt que tordre.
 
+**Fait (13 oct.), avec les sections de 2.4.** `greffe::greffer_par_mesures` :
+chaque mesure de la source reçoit une mesure du greffon prise dans une section
+de même nom (*k*-ième mesure du *n*-ième refrain sur la *k*-ième du *n*-ième
+refrain, en boucle ; silence `start`/`end` laissé muet ; étiquette absente
+chez le greffon → ses mesures dans l'ordre), étirée par WSOLA sur la durée
+exacte de sa mesure, fondu de 20 ms posé **avant** le premier temps (sinon il
+mange l'attaque). Tempo replié à l'octave par unités (deux mesures pour une,
+ou une demi-mesure). Métrique différente : repli sur la greffe d'un bloc, et
+l'interface dit pourquoi. `Plan` gagne `mesures` et `mesures_par_section`.
+`demi_tons_rendu` reste à faire.
+- **Mesure** (`examples/greffe_mesures.rs`, batterie de *She's A Bad Mama
+  Jama* sous *Love Foolosophy*, joué sans clic) : Beat This! relancé sur la
+  batterie greffée seule, contre la grille de la source (F à 70 ms) — temps
+  0,976, premiers temps 0,968 (la batterie d'origine : 0,991 et 0,948) ; la
+  greffe d'un bloc d'avant : 0,313 et 0,109, elle dérive. 121 mesures sur 121
+  appariées section sur section, 20 s de calcul.
+
 ### 2.2 Chercher le bon greffon — **M**
 
 **Constaté.** `voisins_de_stem` rend les voisins CLAP **du morceau entier**
@@ -580,7 +597,7 @@ frontières et des étiquettes est porté lui aussi.
   frontière), en grille comme en transcription.
 - **Reste** : publier les poids convertis sur Hugging Face (MIT) pour que
   l'application les télécharge (aujourd'hui : copiés à la main dans
-  `models/`), puis greffe section sur section.
+  `models/`). Greffe section sur section : faite, voir 2.1.
   Les temps restent ceux de Beat This! : le DBN de madmom n'est pas porté.
 
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +

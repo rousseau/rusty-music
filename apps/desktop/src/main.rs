@@ -6287,13 +6287,17 @@ fn sections_disponibles() -> bool {
 /// modèle à quatre stems sur lequel all-in-one a appris.
 #[tauri::command(async)]
 fn sections(etat: State<Etat>, id: i64) -> Result<VueSections, String> {
+    sections_de(&etat, id)
+}
+
+fn sections_de(etat: &State<Etat>, id: i64) -> Result<VueSections, String> {
     use rusty_music_transcription::sections::Sections;
     let chemin = verrou(&etat.lib)
         .track(id)
         .map_err(echec)?
         .map(|t| t.path)
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
-    let dossier = dossier_stems(&etat, Path::new(&chemin));
+    let dossier = dossier_stems(etat, Path::new(&chemin));
     let cache = dossier.join("sections.json");
     if let Some(v) = std::fs::read(&cache)
         .ok()
@@ -6742,6 +6746,12 @@ struct Greffon {
     /// Le greffon est-il entré sur un battement ? L'interface le dit plutôt
     /// que de laisser l'oreille le découvrir.
     cale_aux_temps: bool,
+    /// Greffe mesure par mesure : mesures posées, dont appariées par section
+    /// (refrain sur refrain). 0 pour la greffe d'un bloc.
+    mesures: usize,
+    mesures_par_section: usize,
+    /// Pourquoi on s'est rabattu sur la greffe d'un bloc, s'il y a lieu.
+    repli: Option<String>,
 }
 
 /// Les grilles de battements des deux stems.
@@ -6833,20 +6843,54 @@ fn stems_greffer(
     // choisir le voisin. La grille n'apporte que la phase — mais elle apporte
     // aussi son propre tempo, plus fin, dont on se sert pour l'étirement quand
     // la base n'en a pas.
-    let grilles = grilles_des_stems(Path::new(&remplace), &greffon);
-    let plan = rusty_music_editor::greffe::greffer(
-        Path::new(&remplace),
-        &greffon,
-        tempos.get(&id).copied().or(grilles.map(|(a, _)| a.bpm)),
-        tempos.get(&voisin).copied().or(grilles.map(|(_, b)| b.bpm)),
-        grilles.map(|(a, b)| rusty_music_editor::greffe::Cale {
-            phase_remplace_s: a.phase_s,
-            phase_greffon_s: b.phase_s,
-            periode_greffon_s: b.periode(),
-        }),
-        &sortie,
-    )
-    .map_err(echec)?;
+    // **Mesure par mesure d'abord** (plan 2.1 et 2.4) : les premiers temps
+    // de Beat This! des deux côtés et, si les poids d'all-in-one sont là,
+    // les sections — refrain sur refrain. Sinon, la greffe d'un bloc.
+    use rusty_music_editor::greffe;
+    let grille_de = |chemin: &str, tid: i64| -> Result<greffe::Grille, String> {
+        let dossier = dossier_stems(&etat, Path::new(chemin));
+        let p = pulsation_de(
+            &etat,
+            Path::new(chemin),
+            &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
+            rusty_music_editor::pulsation::Modele::Complet,
+        )?;
+        let sections = if rusty_music_transcription::sections::installes().is_some() {
+            sections_de(&etat, tid)
+                .map(|v| v.sections.into_iter().map(|x| greffe::Partie { debut_s: x.debut_s, fin_s: x.fin_s, etiquette: x.etiquette }).collect())
+                .unwrap_or_else(|e| {
+                    tracing::warn!("greffe : sections indisponibles : {e}");
+                    Vec::new()
+                })
+        } else {
+            Vec::new()
+        };
+        Ok(greffe::Grille { metrique: p.metrique(), premiers_temps: p.premiers_temps, sections })
+    };
+    let par_mesures = grille_de(&source.path, id)
+        .and_then(|a| Ok((a, grille_de(&autre.path, voisin)?)))
+        .and_then(|(a, b)| greffe::mesure_a_mesure(&a, &b).map(|()| (a, b)));
+    let (plan, repli) = match par_mesures {
+        Ok((a, b)) => (greffe::greffer_par_mesures(Path::new(&remplace), &greffon, &a, &b, &sortie).map_err(echec)?, None),
+        Err(raison) => {
+            tracing::info!("greffe d'un bloc : {raison}");
+            let grilles = grilles_des_stems(Path::new(&remplace), &greffon);
+            let plan = greffe::greffer(
+                Path::new(&remplace),
+                &greffon,
+                tempos.get(&id).copied().or(grilles.map(|(a, _)| a.bpm)),
+                tempos.get(&voisin).copied().or(grilles.map(|(_, b)| b.bpm)),
+                grilles.map(|(a, b)| greffe::Cale {
+                    phase_remplace_s: a.phase_s,
+                    phase_greffon_s: b.phase_s,
+                    periode_greffon_s: b.periode(),
+                }),
+                &sortie,
+            )
+            .map_err(echec)?;
+            (plan, Some(raison))
+        }
+    };
 
     Ok(Greffon {
         chemin: sortie.display().to_string(),
@@ -6856,6 +6900,9 @@ fn stems_greffer(
         retard_s: plan.retard_s,
         boucles: plan.boucles,
         cale_aux_temps: plan.cale_aux_temps,
+        mesures: plan.mesures,
+        mesures_par_section: plan.mesures_par_section,
+        repli,
     })
 }
 
