@@ -11,6 +11,11 @@ Jeux (téléchargés à la source, dans `$RUSTY_DEV/jeux`, jamais versionnés) :
   MedleyDB, frappes en 5 classes ;
 - GuitarSet (Xi et al. 2018, CC BY 4.0) : 360 extraits de guitare seule,
   notes par corde ;
+- MedleyDB 1 et 2 (Bittner et al. 2014, 2016, CC BY-NC-SA 4.0, accès sur
+  demande à Zenodo ; annotations du dépôt `marl/medleydb`, MIT) : vrais
+  mélanges ; la basse comme contour de hauteur — 12 stems corrigés à la main
+  (`Pitch`), 91 par pYIN sur la piste isolée (`Pitch_Pyin`, automatique mais
+  sûr sur une basse seule) ;
 - MAESTRO v3 (Hawthorne et al. 2019, CC BY-NC-SA 4.0) : piano réel,
   Disklavier ; 20 pièces tirées du jeu de test (`choix.json`), lues à
   distance dans l'archive sans la télécharger entière.
@@ -21,7 +26,11 @@ MuScriptor (portage Burn) ou ADTOF. Mesures de mir_eval : F1 de notes à
 l'attaque (±50 ms, hauteur au demi-ton), avec ou sans la fin (20 % de la
 durée) ; F1 de frappes par classe (±50 ms).
 
-    <env>/bin/python banc_jeux.py slakh|mdb|guitarset [--limite N]
+Sur MedleyDB, la mesure est celle de la mélodie (mir_eval.melody), la note
+la plus grave sonnant à chaque instant du contour : justesse de hauteur à
+±50 cents sur les instants voisés, rappel et fausse alarme de voisement.
+
+    <env>/bin/python banc_jeux.py slakh|mdb|guitarset|medleydb [--limite N]
 """
 import argparse, glob, json, os, subprocess, sys
 import numpy as np
@@ -291,12 +300,96 @@ def maestro(args):
         print(ligne, flush=True)
     print("TOTAL notes\n" + str(T))
 
+def contour(notes, temps):
+    """La note la plus grave qui sonne à chaque instant, en Hz (0 : rien)."""
+    f = np.zeros(len(temps))
+    if notes:
+        n = np.array(notes, dtype=float)
+        n = n[np.argsort(-n[:, 2])]  # la plus grave écrite en dernier l'emporte
+        for a, b, h in n:
+            i, j = np.searchsorted(temps, [a, b])
+            f[i:j] = mir_eval.util.midi_to_hz(h)
+    return f
+
+PLANCHER_PYIN = 55.0
+
+def score_contour(ref_t, ref_f, notes, plancher=None):
+    """`plancher` : fréquence sous laquelle la référence ne descend pas (pYIN
+    s'arrête à 55 Hz et note une octave trop haut le mi, le fa, le sol
+    graves) ; une estimation sous le plancher, une octave pile sous la
+    référence, y compte comme juste."""
+    est = contour(notes, ref_t)
+    if plancher:
+        ref_f = ref_f.copy()
+        ok = (est > 0) & (est < plancher) & (ref_f > 0) & (np.abs(1200 * np.log2(np.maximum(est, 1e-9) * 2 / np.maximum(ref_f, 1e-9))) < 50)
+        ref_f[ok] /= 2
+    rv, rc, ev, ec = mir_eval.melody.to_cent_voicing(ref_t, ref_f, ref_t, est)
+    return dict(rpa=mir_eval.melody.raw_pitch_accuracy(rv, rc, ev, ec), rca=mir_eval.melody.raw_chroma_accuracy(rv, rc, ev, ec), vr=mir_eval.melody.voicing_recall(rv, ev),
+                vfa=mir_eval.melody.voicing_false_alarm(rv, ev), n=int(np.sum(rv > 0)))
+
+class TotalContours:
+    """Moyennes pondérées par le nombre d'instants voisés de la référence."""
+    def __init__(self): self.s = {}
+    def ajouter(self, nom, sc):
+        a = self.s.setdefault(nom, [0.0, 0.0, 0.0, 0, 0.0])
+        a[0] += sc["rpa"] * sc["n"]; a[1] += sc["vr"] * sc["n"]; a[2] += sc["vfa"] * sc["n"]; a[3] += sc["n"]; a[4] += sc["rca"] * sc["n"]
+    def __str__(self):
+        return "\n".join(f"  {k:36} justesse {v[0] / max(1, v[3]):.3f}  à l'octave près {v[4] / max(1, v[3]):.3f}  voisement {v[1] / max(1, v[3]):.3f}  fausse alarme {v[2] / max(1, v[3]):.3f}" for k, v in self.s.items())
+
+def medleydb(args):
+    racine = os.path.join(JEUX, "medleydb")
+    ann = os.path.join(racine, "depot", "medleydb", "data")
+    T = {"main": TotalContours(), "pyin": TotalContours()}
+    pistes = []
+    for v in ("V1", "V2"):
+        for t in sorted(os.listdir(os.path.join(racine, v))):
+            meta = os.path.join(ann, "Metadata", f"{t}_METADATA.yaml")
+            if t.startswith("._") or not os.path.exists(meta):
+                continue
+            md = yaml.safe_load(open(meta))
+            for sid, st in (md.get("stems") or {}).items():
+                if st["instrument"] not in ("electric bass", "double bass"):
+                    continue
+                k = sid[1:]
+                main = os.path.join(ann, "Annotations", "Pitch", f"{t}_STEM_{k}.csv")
+                pyin = os.path.join(ann, "Annotations", "Pitch_Pyin", f"{t}_STEM_{k}_vamp_pyin_pyin_smoothedpitchtrack.csv")
+                if os.path.exists(main):
+                    pistes.append((v, t, "main", main, st["instrument"]))
+                elif os.path.exists(pyin):
+                    pistes.append((v, t, "pyin", pyin, st["instrument"]))
+    for v, t, sorte, fic, inst in pistes[:args.limite]:
+        d = os.path.join(CACHE, "medleydb", t); os.makedirs(d, exist_ok=True)
+        ref = np.loadtxt(fic, delimiter=",", ndmin=2)
+        # pYIN ne rend que les instants voisés : on pose une grille régulière
+        # (5,8 ms, celle des annotations) où le reste est muet.
+        pas = 256 / 44100
+        rt = np.arange(0, ref[-1, 0] + pas, pas)
+        rf = np.zeros(len(rt))
+        idx = np.clip(np.round(ref[:, 0] / pas).astype(int), 0, len(rt) - 1)
+        rf[idx] = np.where(ref[:, 1] > 0, ref[:, 1], 0)
+        mix = os.path.join(racine, v, t, f"{t}_MIX.wav")
+        # Un mélange de l'archive (AimeeNorwich_Child) est un AAC illisible
+        # sous une extension .wav.
+        if open(mix, "rb").read(4) != b"RIFF":
+            print(f"{t:44} mélange illisible, sauté", flush=True)
+            continue
+        stems = demixer(en_441(mix, os.path.join(d, "mix441.wav")), d)
+        res = {"stem basse : MuScriptor": triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json"))),
+               "stem basse : Basic Pitch": [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))]}
+        ligne = f"{t:44} {sorte:4} {inst:12}"
+        for k, est in res.items():
+            sc = score_contour(rt, rf, est, PLANCHER_PYIN if sorte == "pyin" else None); T[sorte].ajouter(k, sc)
+            ligne += f"  {k.split(' : ')[1][:3]} {sc['rpa']:.2f}/{sc['vr']:.2f}"
+        print(ligne, flush=True)
+    for sorte, lib in (("main", "corrigés à la main"), ("pyin", "pYIN sur la piste isolée")):
+        print(f"TOTAL {lib}\n" + str(T[sorte]))
+
 def main():
     a = argparse.ArgumentParser()
-    a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro"])
+    a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro", "medleydb"])
     a.add_argument("--limite", type=int, default=None)
     args = a.parse_args()
-    {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro}[args.jeu](args)
+    {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro, "medleydb": medleydb}[args.jeu](args)
 
 if __name__ == "__main__":
     main()
