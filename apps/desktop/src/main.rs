@@ -6275,10 +6275,17 @@ struct VueSections {
 /// Version du cache des sections : à monter dès que le calcul change.
 const VERSION_SECTIONS: u32 = 1;
 
-/// Vrai si les 8 plis d'all-in-one sont dans le dossier des modèles.
-#[tauri::command]
+/// Vrai si les sections peuvent se calculer : les 8 plis d'all-in-one sont
+/// là, ou viennent d'être téléchargés (10 Mo, MIT, depuis
+/// huggingface.co/rousseau/allinone-harmonix). Hors ligne et sans les plis :
+/// faux, le bandeau ne s'affiche pas.
+#[tauri::command(async)]
 fn sections_disponibles() -> bool {
-    rusty_music_transcription::sections::installes().is_some()
+    use rusty_music_transcription::sections;
+    sections::installes().is_some()
+        || sections::telecharger(|_, _| {})
+            .map_err(|e| tracing::warn!("sections : poids d'all-in-one non téléchargés : {e}"))
+            .is_ok()
 }
 
 /// Sections d'un morceau démixé (intro, couplet, refrain…) par all-in-one,
@@ -6855,7 +6862,7 @@ fn stems_greffer(
             &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
             rusty_music_editor::pulsation::Modele::Complet,
         )?;
-        let sections = if rusty_music_transcription::sections::installes().is_some() {
+        let sections = if sections_disponibles() {
             sections_de(&etat, tid)
                 .map(|v| v.sections.into_iter().map(|x| greffe::Partie { debut_s: x.debut_s, fin_s: x.fin_s, etiquette: x.etiquette }).collect())
                 .unwrap_or_else(|e| {

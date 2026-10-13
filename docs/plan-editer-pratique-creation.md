@@ -595,9 +595,12 @@ frontières et des étiquettes est porté lui aussi.
   Vérifié dans l'application (clic, boucle). La partition porte les mêmes
   sections (`\section "Refrain"`, sur la mesure la plus proche de chaque
   frontière), en grille comme en transcription.
-- **Reste** : publier les poids convertis sur Hugging Face (MIT) pour que
-  l'application les télécharge (aujourd'hui : copiés à la main dans
-  `models/`). Greffe section sur section : faite, voir 2.1.
+- **Poids publiés (13 oct.)** sur
+  [rousseau/allinone-harmonix](https://huggingface.co/rousseau/allinone-harmonix)
+  (MIT, fiche citant l'article et le dépôt d'origine), révision épinglée et
+  empreintes vérifiées (`sections::POIDS`) ; l'application les télécharge
+  d'elle-même au premier morceau séparé (10 Mo). Greffe section sur
+  section : faite, voir 2.1.
   Les temps restent ceux de Beat This! : le DBN de madmom n'est pas porté.
 
 **À faire.** Port Burn : attention de voisinage dilatée réécrite par gather +

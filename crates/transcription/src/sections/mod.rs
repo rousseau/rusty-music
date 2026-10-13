@@ -17,8 +17,9 @@
 //! activations sont rendues pour comparaison.
 //!
 //! Poids : `experiments/structure/exporter_safetensors.py` convertit les
-//! `.pth` de `taejunkim/allinone` en safetensors ; l'application les cherche
-//! dans le dossier des modèles sous les noms [`fichier`].
+//! `.pth` de `taejunkim/allinone` en safetensors, republiés (MIT) sur
+//! <https://huggingface.co/rousseau/allinone-harmonix> ; l'application les
+//! télécharge dans le dossier des modèles ([`POIDS`]).
 
 pub mod reseau;
 pub mod voisinage;
@@ -58,14 +59,76 @@ pub type Moteur = burn::backend::Wgpu<f32>;
 #[cfg(all(not(feature = "gpu"), feature = "cpu"))]
 pub type Moteur = burn::backend::NdArray;
 
+/// Les 8 plis convertis, révision épinglée (10 Mo en tout, MIT : téléchargés
+/// sans rien demander, comme Basic Pitch).
+pub const POIDS: [crate::Poids; PLIS] = [
+    crate::Poids {
+        nom: "allinone-harmonix-fold0.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold0.safetensors",
+        octets: 1258820,
+        sha256: "d6c6e2ac3ad7c73a203f71bfd7b45573cb2b0c20df454dfec23acf00c932d692",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold1.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold1.safetensors",
+        octets: 1258820,
+        sha256: "c42d5e084ff67f911a9ec7776abf60f75f2fde7d04fa26059719ff52d8626087",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold2.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold2.safetensors",
+        octets: 1258820,
+        sha256: "89cf75907eced2552f3abfdd23d9c185bf0c2e396104ba6fc12221dc8444187d",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold3.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold3.safetensors",
+        octets: 1258820,
+        sha256: "4da2595e41ab7056376579f619a2abb632b5a797fbb2e34e47f6403f62a453d5",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold4.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold4.safetensors",
+        octets: 1258820,
+        sha256: "fdc5cdfe463197f6f74a5b7e64e6c2cb20960ba3de87eff8ee93e3eb49879d46",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold5.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold5.safetensors",
+        octets: 1258820,
+        sha256: "1cc098cd01c939e21a39a6f11eaa569d029e1e556f95706ab3fb2a991b31c60a",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold6.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold6.safetensors",
+        octets: 1258820,
+        sha256: "22a78110f68deec1011c15cfb39c8c66e11a542e0548d7c1432577c04e186a6e",
+    },
+    crate::Poids {
+        nom: "allinone-harmonix-fold7.safetensors",
+        url: "https://huggingface.co/rousseau/allinone-harmonix/resolve/fd77931c07f8e7bf56244f869c4f3576092eeb2e/allinone-harmonix-fold7.safetensors",
+        octets: 1258820,
+        sha256: "e206806a9272e3f757cf35be74e43235b1d138d00989af74daf10e683333de72",
+    },
+];
+
 /// Nom du pli `i` dans le dossier des modèles de l'application.
 pub fn fichier(i: usize) -> String {
-    format!("allinone-harmonix-fold{i}.safetensors")
+    POIDS[i].nom.to_string()
 }
 
 /// Les plis présents dans le dossier des modèles, tous ou aucun.
 pub fn installes() -> Option<Vec<PathBuf>> {
-    (0..PLIS).map(|i| rusty_music_core::modeles::trouver(&fichier(i))).collect()
+    POIDS.iter().map(|p| rusty_music_core::modeles::trouver(p.nom)).collect()
+}
+
+/// Télécharge les plis qui manquent, empreintes vérifiées.
+pub fn telecharger(mut avancer: impl FnMut(usize, usize)) -> Result<()> {
+    for (i, p) in POIDS.iter().enumerate() {
+        p.telecharger(|_, _| {})?;
+        avancer(i + 1, PLIS);
+    }
+    Ok(())
 }
 
 /// Une section.
