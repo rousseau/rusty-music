@@ -168,6 +168,44 @@ voix 0,33 / 0,32 ; vents et cordes 0,13 / 0,15.
 - Sur Slakh, la basse séparait nettement les deux (0,68 contre 0,53) ; sur de
   vrais enregistrements l'écart fond.
 
+### MedleyDB : démixage (14 oct.)
+
+`banc_jeux.py medleydb-demix` : les trois HTDemucs de l'application sur les
+195 mélanges. Chaque stem de MedleyDB est rangé dans une source de HTDemucs 6s
+d'après son instrument (`source_de`) ; les modèles à quatre sources comptent
+guitare et piano dans « other » (`other4`). Les gains de mixage sont estimés
+par moindres carrés (somme des stems contre le mélange) ; SDR global de MDX,
+médiane par source, source absente non notée. **100 morceaux sur 195 seulement**
+sont dans les totaux : sous 12 dB d'ajustement, le mélange n'est pas la somme
+de ses stems (mastering, effets sur le bus, prises d'ensemble avec repisse,
+surtout en V1 — médiane d'ajustement 9,8 dB contre 34,6 en V2).
+
+SDR médian (dB) :
+
+| Version | Modèle | Basse | Batterie | Voix | Autres (4) | Guitare | Piano | Other (6) |
+|---|---|---|---|---|---|---|---|---|
+| V1 (52 morceaux, en partie appris via MUSDB18) | htdemucs | 10,3 | 8,1 | 11,1 | 8,5 | | | |
+| | **htdemucs_ft** | **10,8** | **8,3** | **11,6** | **8,8** | | | |
+| | htdemucs_6s | 9,6 | 6,9 | 10,7 | 8,0 | 5,4 | 3,9 | 3,6 |
+| V2 (48 morceaux, inédits) | htdemucs | 2,2 | 7,4 | **7,8** | 10,1 | | | |
+| | **htdemucs_ft** | **2,9** | **7,4** | 7,7 | **11,2** | | | |
+| | htdemucs_6s | 1,9 | 6,8 | 6,9 | 8,2 | 4,3 | 0,7 | 3,0 |
+
+- **`htdemucs_ft` en tête partout** sauf la voix de V2 (−0,2 dB), pour un coût
+  quatre fois plus grand. Concorde avec le banc de la basse sur les livres
+  (0,550 contre 0,547).
+- **`htdemucs_6s` coûte 0,5 à 1,2 dB** sur basse, batterie et voix. Ses stems
+  guitare (4-5 dB) et surtout piano (0,7-3,9 dB) sont faibles : la
+  transcription du piano part d'un stem pauvre, ce qui borne le 0,59 du banc
+  par famille.
+- **Basse de V2 à 2-3 dB** : V2 est surtout classique et musiques du monde ;
+  contrebasse d'orchestre, violoncelle et basson s'y mêlent, et HTDemucs ne
+  range pas la contrebasse d'ensemble dans « bass ». Moyennes de la batterie
+  tirées vers 1 dB par quelques timbales et percussions d'orchestre classées
+  « drums » : lire les médianes.
+- V1 et V2 ne diffèrent pas que par l'apprentissage : les genres changent.
+  Le classement des modèles, lui, est le même.
+
 ## Lecture
 
 - **Basse.** Sur le stem démixé, MuScriptor l'emporte nettement

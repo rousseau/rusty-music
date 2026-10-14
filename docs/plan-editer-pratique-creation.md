@@ -205,6 +205,11 @@ MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
   annotations à la main — basse 0,73 / 0,71, piano 0,59 / 0,45, guitare
   0,48 / 0,41, vents et cordes 0,49 / 0,47, **voix 0,51 / 0,55**. L'écart de
   Slakh fond sur de vrais enregistrements, sauf au piano et à la guitare.
+- **Démixage** (MedleyDB, 100 mélanges dont la somme des stems tient à 12 dB,
+  14 oct.) : `htdemucs_ft` en tête (basse 10,8, batterie 8,3, voix 11,6 dB
+  sur V1) ; `htdemucs_6s` perd 0,5 à 1,2 dB et ses stems guitare (4-5 dB) et
+  piano (0,7-3,9 dB) sont faibles. Pour la pratique de la basse, la batterie
+  ou la voix, préférer `ft` ; `6s` seulement pour guitare ou piano.
 
 **Pistes pour la basse (11 oct.)** : démixage `htdemucs_ft` 0,550 contre
 0,547 (`6s`) et 0,544 (`htdemucs`) ; mode lent et post-traitements (gamme,
@@ -221,7 +226,6 @@ Le banc a aussi révélé des notes émises en double par MuScriptor ; elles son
 désormais fusionnées.
 
 **Reste** :
-- le démixage sur MedleyDB (SDR des trois HTDemucs, en cours) ;
 - la batterie en pleine bande : BabySlakh est à 16 kHz, et ADTOF n'y voit ni
   charleston ni cymbale ;
 - YourMT3+ et ADT_STR, si un candidat de plus devient utile.
