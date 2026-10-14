@@ -300,12 +300,13 @@ def maestro(args):
         print(ligne, flush=True)
     print("TOTAL notes\n" + str(T))
 
-def contour(notes, temps):
-    """La note la plus grave qui sonne à chaque instant, en Hz (0 : rien)."""
+def contour(notes, temps, grave=True):
+    """La note la plus grave (ou la plus aiguë) qui sonne à chaque instant, en
+    Hz (0 : rien)."""
     f = np.zeros(len(temps))
     if notes:
         n = np.array(notes, dtype=float)
-        n = n[np.argsort(-n[:, 2])]  # la plus grave écrite en dernier l'emporte
+        n = n[np.argsort(-n[:, 2] if grave else n[:, 2])]  # la dernière écrite l'emporte
         for a, b, h in n:
             i, j = np.searchsorted(temps, [a, b])
             f[i:j] = mir_eval.util.midi_to_hz(h)
@@ -313,51 +314,112 @@ def contour(notes, temps):
 
 PLANCHER_PYIN = 55.0
 
-def score_contour(ref_t, ref_f, notes, plancher=None):
+def score_contour(ref_t, ref_f, notes, plancher=None, grave=True):
     """`plancher` : fréquence sous laquelle la référence ne descend pas (pYIN
     s'arrête à 55 Hz et note une octave trop haut le mi, le fa, le sol
     graves) ; une estimation sous le plancher, une octave pile sous la
     référence, y compte comme juste."""
-    est = contour(notes, ref_t)
+    est = contour(notes, ref_t, grave)
     if plancher:
         ref_f = ref_f.copy()
         ok = (est > 0) & (est < plancher) & (ref_f > 0) & (np.abs(1200 * np.log2(np.maximum(est, 1e-9) * 2 / np.maximum(ref_f, 1e-9))) < 50)
         ref_f[ok] /= 2
+    # Présence : la note annotée est-elle parmi celles qui sonnent, quelle que
+    # soit la plus grave ou la plus aiguë ? Juste pour un stem qui mêle
+    # plusieurs parties (deux chanteurs, l'« other » de HTDemucs), indulgent
+    # pour une estimation chargée d'accords.
+    trouve = np.zeros(len(ref_t), bool)
+    for a, b, h in notes:
+        i, j = np.searchsorted(ref_t, [a, b])
+        r = ref_f[i:j]
+        trouve[i:j] |= (r > 0) & (np.abs(1200 * np.log2(np.maximum(r, 1e-9) / mir_eval.util.midi_to_hz(h))) < 50)
+    voise = ref_f > 0
+    pres = float(trouve[voise].mean()) if voise.any() else 0.0
     rv, rc, ev, ec = mir_eval.melody.to_cent_voicing(ref_t, ref_f, ref_t, est)
     return dict(rpa=mir_eval.melody.raw_pitch_accuracy(rv, rc, ev, ec), rca=mir_eval.melody.raw_chroma_accuracy(rv, rc, ev, ec), vr=mir_eval.melody.voicing_recall(rv, ev),
-                vfa=mir_eval.melody.voicing_false_alarm(rv, ev), n=int(np.sum(rv > 0)))
+                vfa=mir_eval.melody.voicing_false_alarm(rv, ev), n=int(np.sum(rv > 0)), pres=pres)
 
 class TotalContours:
     """Moyennes pondérées par le nombre d'instants voisés de la référence."""
     def __init__(self): self.s = {}
     def ajouter(self, nom, sc):
-        a = self.s.setdefault(nom, [0.0, 0.0, 0.0, 0, 0.0])
-        a[0] += sc["rpa"] * sc["n"]; a[1] += sc["vr"] * sc["n"]; a[2] += sc["vfa"] * sc["n"]; a[3] += sc["n"]; a[4] += sc["rca"] * sc["n"]
+        a = self.s.setdefault(nom, [0.0, 0.0, 0.0, 0, 0.0, 0.0])
+        a[0] += sc["rpa"] * sc["n"]; a[1] += sc["vr"] * sc["n"]; a[2] += sc["vfa"] * sc["n"]; a[3] += sc["n"]; a[4] += sc["rca"] * sc["n"]; a[5] += sc["pres"] * sc["n"]
     def __str__(self):
-        return "\n".join(f"  {k:36} justesse {v[0] / max(1, v[3]):.3f}  à l'octave près {v[4] / max(1, v[3]):.3f}  voisement {v[1] / max(1, v[3]):.3f}  fausse alarme {v[2] / max(1, v[3]):.3f}" for k, v in self.s.items())
+        return "\n".join(f"  {k:36} justesse {v[0] / max(1, v[3]):.3f}  à l'octave près {v[4] / max(1, v[3]):.3f}  voisement {v[1] / max(1, v[3]):.3f}  fausse alarme {v[2] / max(1, v[3]):.3f}  présence {v[5] / max(1, v[3]):.3f}" for k, v in self.s.items())
 
-def medleydb(args):
+# MedleyDB : chaque famille dit quels stems annotés elle prend, le stem de
+# HTDemucs 6s où on les cherche, et à quoi MuScriptor est restreint. Les vents
+# et cordes sont restreints à l'instrument exact (le programme du stem est
+# connu) ; le chant, la guitare et le piano au groupe de leur stem, ce que
+# l'application saurait faire. La basse se lit par la note la plus grave, les
+# autres par la plus aiguë.
+VENTS_CORDES = {"violin": "violin", "violin section": "violin", "viola": "viola", "viola section": "viola", "cello": "cello", "erhu": "violin",
+                "flute": "flutes", "piccolo": "flutes", "dizi": "flutes", "bamboo flute": "flutes", "flute section": "flutes",
+                "clarinet": "clarinet", "bass clarinet": "clarinet", "clarinet section": "clarinet", "oboe": "oboe", "bassoon": "bassoon",
+                "trumpet": "trumpet", "trumpet section": "trumpet", "french horn": "french_horn", "horn section": "french_horn",
+                "trombone": "trombone", "tuba": "tuba", "brass section": "brass_section",
+                "alto saxophone": "soprano_and_alto_sax", "soprano saxophone": "soprano_and_alto_sax", "tenor saxophone": "tenor_sax", "baritone saxophone": "baritone_sax"}
+FAMILLES = {
+    "basse": ("bass", {"electric bass": None, "double bass": None}, True),
+    "voix": ("vocals", {i: "voice" for i in ("male singer", "female singer", "vocalists", "male rapper", "female rapper")}, False),
+    "guitare": ("guitar", {i: GUITARES for i in ("clean electric guitar", "distorted electric guitar", "acoustic guitar", "lap steel guitar")}, False),
+    "piano": ("piano", {i: "acoustic_piano,electric_piano" for i in ("piano", "tack piano", "electric piano")}, False),
+    "vents-cordes": ("other", VENTS_CORDES, False),
+}
+
+def medleydb_morceaux():
     racine = os.path.join(JEUX, "medleydb")
     ann = os.path.join(racine, "depot", "medleydb", "data")
-    T = {"main": TotalContours(), "pyin": TotalContours()}
-    pistes = []
     for v in ("V1", "V2"):
         for t in sorted(os.listdir(os.path.join(racine, v))):
             meta = os.path.join(ann, "Metadata", f"{t}_METADATA.yaml")
             if t.startswith("._") or not os.path.exists(meta):
                 continue
-            md = yaml.safe_load(open(meta))
-            for sid, st in (md.get("stems") or {}).items():
-                if st["instrument"] not in ("electric bass", "double bass"):
+            mix = os.path.join(racine, v, t, f"{t}_MIX.wav")
+            # Un mélange de l'archive (AimeeNorwich_Child) est un AAC illisible
+            # sous une extension .wav.
+            if open(mix, "rb").read(4) != b"RIFF":
+                print(f"{t:44} mélange illisible, sauté", flush=True)
+                continue
+            yield v, t, mix, yaml.safe_load(open(meta)), ann
+
+def instrument(st):
+    i = st["instrument"]
+    return i if isinstance(i, str) else i[0]
+
+def actif(ann, t, sid, temps):
+    """1 où le stem joue d'après MedleyDB (confiance d'activation ≥ 0,5,
+    leur seuil), 0 ailleurs. pYIN marque tout comme voisé, silences compris,
+    où il suit le ronflement du secteur (60 Hz) ou la repisse : sans ce
+    masque, la voix et les vents se noteraient sur du bruit."""
+    lab = os.path.join(ann, "Annotations", "Activation_Confidence", "v2", f"{t}_ACTIVATION_CONF.lab")
+    if not os.path.exists(lab):
+        return np.ones(len(temps))
+    a = np.genfromtxt(lab, delimiter=",", names=True)
+    if sid not in a.dtype.names:
+        return np.ones(len(temps))
+    return (np.interp(temps, a["time"], a[sid]) >= 0.5).astype(float)
+
+def medleydb(args):
+    familles = args.famille.split(",") if args.famille else list(FAMILLES)
+    T = {(f, s): TotalContours() for f in familles for s in ("main", "pyin")}
+    pistes = []
+    for v, t, mix, md, ann in medleydb_morceaux():
+        for sid, st in sorted((md.get("stems") or {}).items()):
+            inst = instrument(st)
+            for f in familles:
+                if inst not in FAMILLES[f][1]:
                     continue
                 k = sid[1:]
                 main = os.path.join(ann, "Annotations", "Pitch", f"{t}_STEM_{k}.csv")
                 pyin = os.path.join(ann, "Annotations", "Pitch_Pyin", f"{t}_STEM_{k}_vamp_pyin_pyin_smoothedpitchtrack.csv")
                 if os.path.exists(main):
-                    pistes.append((v, t, "main", main, st["instrument"]))
+                    pistes.append((f, t, mix, "main", main, inst, sid))
                 elif os.path.exists(pyin):
-                    pistes.append((v, t, "pyin", pyin, st["instrument"]))
-    for v, t, sorte, fic, inst in pistes[:args.limite]:
+                    pistes.append((f, t, mix, "pyin", pyin, inst, sid))
+    for f, t, mix, sorte, fic, inst, sid in pistes[:args.limite]:
+        nom_stem, table, grave = FAMILLES[f]
         d = os.path.join(CACHE, "medleydb", t); os.makedirs(d, exist_ok=True)
         ref = np.loadtxt(fic, delimiter=",", ndmin=2, usecols=(0, 1))  # quelques lignes ont une 3e colonne
         # pYIN ne rend que les instants voisés : on pose une grille régulière
@@ -367,29 +429,118 @@ def medleydb(args):
         rf = np.zeros(len(rt))
         idx = np.clip(np.round(ref[:, 0] / pas).astype(int), 0, len(rt) - 1)
         rf[idx] = np.where(ref[:, 1] > 0, ref[:, 1], 0)
-        mix = os.path.join(racine, v, t, f"{t}_MIX.wav")
-        # Un mélange de l'archive (AimeeNorwich_Child) est un AAC illisible
-        # sous une extension .wav.
-        if open(mix, "rb").read(4) != b"RIFF":
-            print(f"{t:44} mélange illisible, sauté", flush=True)
-            continue
+        if sorte == "pyin":
+            rf *= actif(ann, t, sid, rt)
         stems = demixer(en_441(mix, os.path.join(d, "mix441.wav")), d)
-        res = {"stem basse : MuScriptor": triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json"))),
-               "stem basse : Basic Pitch": [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))]}
-        ligne = f"{t:44} {sorte:4} {inst:12}"
+        # Les noms de cache de la basse sont ceux du premier banc.
+        if f == "basse":
+            mus = triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json")))
+            bp = basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))
+        else:
+            groupes = table[inst]
+            mus = triplets(muscriptor(stems[nom_stem], os.path.join(d, f"muscriptor-{nom_stem}-{groupes.split(',')[0]}.json"), groupes))
+            bp = basic_pitch(stems[nom_stem], os.path.join(d, f"basic-pitch-{nom_stem}.json"))
+        res = {"MuScriptor": mus, "Basic Pitch": [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in bp]}
+        ligne = f"{f:12} {t:44} {sorte:4} {inst[:18]:18}"
         for k, est in res.items():
-            sc = score_contour(rt, rf, est, PLANCHER_PYIN if sorte == "pyin" else None); T[sorte].ajouter(k, sc)
-            ligne += f"  {k.split(' : ')[1][:3]} {sc['rpa']:.2f}/{sc['vr']:.2f}"
+            sc = score_contour(rt, rf, est, PLANCHER_PYIN if sorte == "pyin" and f == "basse" else None, grave)
+            T[(f, sorte)].ajouter(f"{f} : {k}", sc)
+            ligne += f"  {k[:3]} {sc['rpa']:.2f}/{sc['vr']:.2f}/{sc['pres']:.2f}"
         print(ligne, flush=True)
-    for sorte, lib in (("main", "corrigés à la main"), ("pyin", "pYIN sur la piste isolée")):
-        print(f"TOTAL {lib}\n" + str(T[sorte]))
+    for (f, sorte), tot in T.items():
+        if tot.s:
+            print(f"TOTAL {f}, {'corrigés à la main' if sorte == 'main' else 'pYIN sur la piste isolée'}\n" + str(tot))
+
+# Démixage : chaque stem de MedleyDB va dans une des six sources de HTDemucs 6s
+# selon son instrument ; les modèles à quatre sources rangent guitare et piano
+# dans « other ».
+def source_de(inst):
+    i = inst.lower()
+    if i in ("electric bass", "double bass", "bass synthesizer"):
+        return "bass"
+    if any(m in i for m in ("singer", "vocalist", "rapper", "choir", "beatbox", "speaker", "crowd")):
+        return "vocals"
+    if any(m in i for m in ("drum", "percussion", "cymbal", "tabla", "bongo", "conga", "shaker", "tambourine", "cabasa", "castanet", "clap",
+                            "snap", "gong", "darbuka", "doumbek", "timpani", "cowbell", "kick", "snare", "toms", "hi-hat", "triangle")):
+        return "drums"
+    if "guitar" in i:
+        return "guitar"
+    if "piano" in i:
+        return "piano"
+    return "other"
+
+def sdr(ref, est):
+    """SDR global de MDX (Mitsufuji et al. 2021) : pas de projection, ni de
+    fenêtres ; un stem muet n'est pas noté."""
+    return 10 * np.log10((np.sum(ref ** 2) + 1e-8) / (np.sum((ref - est) ** 2) + 1e-8))
+
+# Un mélange que la somme des stems n'explique pas à 12 dB près (mastering,
+# effets sur le bus, prise de son d'ensemble) fausse la référence : morceau
+# affiché, mais hors des totaux.
+AJUSTEMENT_MIN = 12.0
+
+def medleydb_demix(args):
+    import soundfile as sf
+    modeles = args.modele.split(",")
+    sources6 = ["bass", "drums", "vocals", "guitar", "piano", "other"]
+    totaux = {}
+    for v, t, mix, md, _ in list(medleydb_morceaux())[:args.limite]:
+        d = os.path.join(CACHE, "medleydb", t); os.makedirs(d, exist_ok=True)
+        m441 = en_441(mix, os.path.join(d, "mix441.wav"))
+        x, _ = sf.read(m441, dtype="float32")
+        # Références : les stems de MedleyDB, avec le gain qui les somme au
+        # mélange (moindres carrés sur un échantillon sur 16) — le mixage
+        # n'est pas une somme à gain unité.
+        dossier = os.path.join(os.path.dirname(mix), md["stem_dir"])
+        refs, noms = [], []
+        for sid, st in sorted((md.get("stems") or {}).items()):
+            w = os.path.join(dossier, st["filename"])
+            if os.path.exists(w):
+                y, _ = sf.read(w, dtype="float32", always_2d=True)
+                y = np.repeat(y, 2, axis=1) if y.shape[1] == 1 else y[:, :2]
+                n = min(len(x), len(y)); z = np.zeros_like(x); z[:n] = y[:n]
+                refs.append(z); noms.append(source_de(instrument(st)))
+        if not refs:
+            continue
+        A = np.stack([r[::16].ravel() for r in refs], 1)
+        g, *_ = np.linalg.lstsq(A, x[::16].ravel(), rcond=None)
+        par_source = {s: sum((g[i] * refs[i] for i in range(len(refs)) if noms[i] == s), np.zeros_like(x)) for s in sources6}
+        par_source["other4"] = par_source["guitar"] + par_source["piano"] + par_source["other"]
+        residu = 10 * np.log10(np.sum(x ** 2) / max(1e-8, np.sum((x - sum(par_source[s] for s in sources6)) ** 2)))
+        ligne = f"{v} {t:44} ajustement {residu:5.1f} dB{'' if residu >= AJUSTEMENT_MIN else ' (écarté)'}"
+        for mo in modeles:
+            sortie = os.path.join(d, "stems" if mo == "htdemucs_6s" else f"stems-{mo}")
+            if not os.path.isdir(sortie) or not os.listdir(sortie):
+                lancer([CLI, "demix", m441, "--out", sortie, "--modele", mo])
+            est = {}
+            for fic in os.listdir(sortie):
+                for s in sources6:
+                    if not fic.startswith("._") and f"— {s}." in fic:
+                        e, _ = sf.read(os.path.join(sortie, fic), dtype="float32", always_2d=True)
+                        z = np.zeros_like(x); n = min(len(x), len(e)); z[:n] = e[:n, :2]; est[s] = z
+            est["other4"] = sum(est.get(s, 0) for s in ("guitar", "piano", "other"))
+            for s in (sources6 + ["other4"] if mo == "htdemucs_6s" else ["bass", "drums", "vocals", "other4"]):
+                # Source absente ou presque (sous −50 dB du mélange) : pas notée.
+                if s not in est or np.sum(par_source[s] ** 2) < 1e-5 * np.sum(x ** 2):
+                    continue
+                val = sdr(par_source[s], est[s])
+                if residu >= AJUSTEMENT_MIN:
+                    totaux.setdefault((v, mo, s), []).append(val)
+                if s in ("bass", "drums", "vocals", "other4"):
+                    ligne += f"  {mo[8:] or '4'}:{s[:3]} {val:5.1f}"
+        print(ligne, flush=True)
+    print("TOTAL SDR médian par source (dB), V1 en partie dans MUSDB18 (entraînement de HTDemucs), V2 inédit")
+    for (v, mo, s), vals in sorted(totaux.items()):
+        print(f"  {v} {mo:12} {s:7} médiane {np.median(vals):5.2f}  moyenne {np.mean(vals):5.2f}  n {len(vals)}")
 
 def main():
     a = argparse.ArgumentParser()
-    a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro", "medleydb"])
+    a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro", "medleydb", "medleydb-demix"])
     a.add_argument("--limite", type=int, default=None)
+    a.add_argument("--famille", help=f"medleydb : parmi {','.join(FAMILLES)} (toutes par défaut)")
+    a.add_argument("--modele", default="htdemucs_6s,htdemucs,htdemucs_ft", help="medleydb-demix : variantes de HTDemucs")
     args = a.parse_args()
-    {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro, "medleydb": medleydb}[args.jeu](args)
+    {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro, "medleydb": medleydb, "medleydb-demix": medleydb_demix}[args.jeu](args)
 
 if __name__ == "__main__":
     main()

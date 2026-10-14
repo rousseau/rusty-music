@@ -200,10 +200,11 @@ MuScriptor tourne en portage Burn, ADTOF et Basic Pitch via `ort`.
 - **Batterie** (Slakh2100, pleine bande) : ADTOF l'emporte sur toutes les
   pièces ; charleston 0,67 (0,07 sur BabySlakh à 16 kHz), cymbales 0,24.
 - **Batterie** (MDB Drums) : ADTOF reste devant sur trois pièces sur cinq.
-- **Basse sur vrais mélanges** (MedleyDB, 90 stems, 13 oct.) : justesse du
-  contour 0,73 contre 0,71 sur les 10 stems corrigés à la main, 0,655 contre
-  0,657 sur les 80 annotés par pYIN. L'écart de Slakh fond sur de vrais
-  enregistrements ; MuScriptor garde le voisement (0,88 contre 0,84).
+- **Vrais mélanges** (MedleyDB 1 et 2, 195 morceaux, stems de HTDemucs 6s,
+  13-14 oct.) : justesse du contour, MuScriptor contre Basic Pitch, sur les
+  annotations à la main — basse 0,73 / 0,71, piano 0,59 / 0,45, guitare
+  0,48 / 0,41, vents et cordes 0,49 / 0,47, **voix 0,51 / 0,55**. L'écart de
+  Slakh fond sur de vrais enregistrements, sauf au piano et à la guitare.
 
 **Pistes pour la basse (11 oct.)** : démixage `htdemucs_ft` 0,550 contre
 0,547 (`6s`) et 0,544 (`htdemucs`) ; mode lent et post-traitements (gamme,
@@ -220,7 +221,7 @@ Le banc a aussi révélé des notes émises en double par MuScriptor ; elles son
 désormais fusionnées.
 
 **Reste** :
-- la voix, sur les mélodies de MedleyDB (accès obtenu, mélanges déjà démixés) ;
+- le démixage sur MedleyDB (SDR des trois HTDemucs, en cours) ;
 - la batterie en pleine bande : BabySlakh est à 16 kHz, et ADTOF n'y voit ni
   charleston ni cymbale ;
 - YourMT3+ et ADT_STR, si un candidat de plus devient utile.

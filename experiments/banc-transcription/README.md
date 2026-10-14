@@ -5,7 +5,7 @@ Vérité exacte, sans OMR. Ce banc complète celui des partitions publiées
 leur justesse. Plan : `docs/plan-editer-pratique-creation.md`, section 0.4.
 
 ```
-uv run --with mir_eval --with pretty_midi --with pyyaml --with jams python banc_jeux.py slakh|slakh2100|mdb|guitarset|maestro|medleydb [--limite N]
+uv run --with mir_eval --with pretty_midi --with pyyaml --with jams python banc_jeux.py slakh|slakh2100|mdb|guitarset|maestro|medleydb|medleydb-demix [--limite N] [--famille …] [--modele …]
 python piano_specialises.py      # Transkun et ByteDance, environnement à part
 python pistes_basse.py           # post-traitements de la basse, sur le cache
 ```
@@ -126,31 +126,47 @@ selon la convention d'Onsets and Frames.
 - **Écart de mesure sur les fins :** Transkun traite la pédale à part, ce qui
   explique sans doute son F1 avec fin plus bas.
 
-### MedleyDB (basse sur vrais mélanges, 13 oct.)
+### MedleyDB (vrais mélanges, 13-14 oct.)
 
-90 stems de basse électrique ou contrebasse (V1 + V2), mélange d'origine
-démixé par notre HTDemucs ; un mélange illisible sauté (AimeeNorwich_Child,
-AAC sous extension .wav). Mesure de contour (`mir_eval.melody`, pas de
-5,8 ms) : justesse à un demi-ton, puis à l'octave près, voisement et fausse
-alarme. Le contour des modèles est fait de leurs notes.
+195 morceaux de MedleyDB 1 et 2 (un mélange illisible sauté), démixés par
+notre HTDemucs 6s. Chaque stem annoté est comparé à la transcription du stem
+de HTDemucs qui le contient (`--famille`) : basse → `bass`, voix → `vocals`,
+guitare → `guitar`, piano → `piano`, vents et cordes → `other`. MuScriptor
+est restreint au groupe du stem (voix, guitare, piano) ou à l'instrument
+exact (vents, cordes). Mesure de contour (`mir_eval.melody`, pas de 5,8 ms) ;
+le contour d'une transcription est sa note la plus grave (basse) ou la plus
+aiguë (le reste) à chaque instant. **Présence** : part des instants annotés
+où la note figure parmi celles qui sonnent, quelle que soit sa place —
+juste quand un stem mêle plusieurs parties, indulgente pour les accords.
 
-| Annotations | Modèle | Justesse | À l'octave près | Voisement | Fausse alarme |
+Annotations corrigées à la main (`Pitch`) :
+
+| Famille | Stems | MuScriptor | Basic Pitch | Voisement MuS / BP | Présence MuS / BP |
 |---|---|---|---|---|---|
-| Corrigées à la main (10 stems) | **MuScriptor** | **0,728** | **0,766** | **0,878** | **0,381** |
-| | Basic Pitch | 0,709 | 0,756 | 0,840 | 0,407 |
-| pYIN sur la piste isolée (80 stems) | MuScriptor | 0,655 | 0,677 | 0,770 | 0,571 |
-| | **Basic Pitch** | **0,657** | **0,686** | 0,769 | **0,533** |
+| Basse | 10 | **0,728** | 0,709 | 0,88 / 0,84 | 0,74 / 0,72 |
+| Voix | 72 | 0,511 | **0,549** | 0,94 / 0,82 | 0,63 / 0,65 |
+| Guitare | 28 | **0,477** | 0,408 | 0,94 / 0,88 | 0,73 / 0,67 |
+| Piano | 26 | **0,591** | 0,446 | 0,91 / 0,86 | 0,74 / 0,57 |
+| Vents et cordes | ≈ 80 | **0,487** | 0,465 | 0,96 / 0,95 | 0,70 / 0,72 |
 
-- Morceau par morceau, MuScriptor gagne 45 fois sur 90 ; médianes de la
-  justesse 0,79 contre 0,76. Les totaux pondèrent par la durée.
-- Les annotations pYIN sont des estimations : elles ratent des notes (d'où une
-  fausse alarme élevée pour les deux) et notaient une octave trop haut sous
-  55 Hz, son plancher (corrigé par `PLANCHER_PYIN`).
-- Échecs : la contrebasse jouée à l'archet ou très grave
-  (InTheHalloftheMountainKing 0,15 / 0,07, FreeJazz 0,60 / 0,54).
-- Écart bien plus faible que sur Slakh (0,68 contre 0,53) : sur de vrais
-  enregistrements, Basic Pitch tient la hauteur presque aussi bien ;
-  l'avantage de MuScriptor reste le découpage en notes et le voisement.
+Annotations pYIN sur la piste isolée : basse (80 stems) 0,687 pour les deux ;
+voix 0,33 / 0,32 ; vents et cordes 0,13 / 0,15.
+
+- **MuScriptor devant sur le piano et la guitare**, à égalité sur la basse et
+  les vents, derrière sur la voix : il entend mieux quand elle chante, mais
+  ajoute plus de notes (fausse alarme 0,46 contre 0,29).
+- **Fausses alarmes fortes hors basse et voix** (0,7-0,8) : le stem de
+  HTDemucs contient d'autres parties que celle annotée (guitare rythmique à
+  côté de la solo, tout l'« other »). C'est la limite du protocole, pas des
+  modèles.
+- **pYIN n'est fiable que pour la basse.** Il marque tout comme voisé,
+  silences compris, où il suit le ronflement du secteur (60 Hz) ou la
+  repisse : on masque par la confiance d'activation de MedleyDB (≥ 0,5),
+  ce qui suffit à la basse mais pas aux cordes et aux vents (octaves, repisse).
+- Échecs : contrebasse à l'archet ou très grave (InTheHalloftheMountainKing
+  0,15 / 0,07).
+- Sur Slakh, la basse séparait nettement les deux (0,68 contre 0,53) ; sur de
+  vrais enregistrements l'écart fond.
 
 ## Lecture
 
@@ -213,4 +229,7 @@ alarme. Le contour des modèles est fait de leurs notes.
   certaines lignes ; on ne lit que les deux premières. Le dépôt git des
   annotations ne se clone pas sur exFAT (`._pack*.idx`) : données extraites
   seules.
-- **Reste à mesurer : la voix**, sur les mélodies de MedleyDB (mêmes mélanges).
+- **MedleyDB, pYIN** : annotations voisées partout ; masquées par
+  `Activation_Confidence/v2` (fonction `actif`).
+- **Reste** : les mélodies Melody1/2 de MedleyDB 1 (108 morceaux), pour le
+  jour où l'application suivra une mélodie sur le mélange.
