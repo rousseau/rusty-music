@@ -66,6 +66,9 @@ réanalyser, et déplacerait le morceau sur la carte.
 Trois variantes de séparation : 4 stems (7,8 × le temps réel), 6 stems (+
 guitare et piano, même vitesse, les quatre de base un peu moins bien séparés),
 4 stems affinés (quatre réseaux, ~4 × plus lent).
+**Variante par défaut selon l'usage (14 oct.)** : affinée pour pratiquer
+(basse, batterie et voix les mieux séparées sur MedleyDB, +0,5 dB), standard
+pour créer. Un choix fait à la main n'est plus repris (`varianteParDefaut`).
 
 ## Le parcours — le centre a trois états
 

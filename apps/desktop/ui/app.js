@@ -11136,6 +11136,10 @@ async function battementStems() {
 const edition = {
   source: null, // TrackRow
   variante: "htdemucs",
+  // Tant que rien n'est choisi à la main, la variante suit l'usage : `ft` pour
+  // pratiquer (meilleure basse, batterie et voix sur MedleyDB, +0,5 dB), la
+  // standard pour créer (quatre fois plus rapide). Voir `varianteParDefaut`.
+  varianteChoisie: false,
   // Un stem : { nom, chemin, origine, niveau, vitesse, tonalite, greffe, voisins }
   // `chemin` est ce qu'on joue — il change quand on greffe ; `origine` est le
   // stem séparé, qu'on ne perd jamais de vue. `vitesse` et `tonalite` valent
@@ -12100,6 +12104,7 @@ $("muscriptor-annuler").addEventListener("click", () => {
 for (const b of document.querySelectorAll("#usages [data-usage]")) {
   b.addEventListener("click", () => {
     edition.usage = b.dataset.usage;
+    varianteParDefaut();
     majUsage();
   });
 }
@@ -12699,13 +12704,25 @@ async function chargerStemsExistants(t) {
   }
 }
 
+function choisirVariante(nom) {
+  edition.variante = nom;
+  document
+    .querySelectorAll("[data-variante]")
+    .forEach((s) => s.classList.toggle("segment--actif", s.dataset.variante === nom));
+  majTexteBouton();
+}
+
+/// Pour pratiquer, les stems affinés : la basse, la batterie et la voix y sont
+/// mieux séparées (banc MedleyDB, `experiments/banc-transcription/README.md`).
+/// Un choix fait à la main n'est jamais repris.
+function varianteParDefaut() {
+  if (!edition.varianteChoisie) choisirVariante(edition.usage === "pratiquer" ? "htdemucs_ft" : "htdemucs");
+}
+
 document.querySelectorAll("[data-variante]").forEach((b) =>
   b.addEventListener("click", () => {
-    edition.variante = b.dataset.variante;
-    document
-      .querySelectorAll("[data-variante]")
-      .forEach((s) => s.classList.toggle("segment--actif", s === b));
-    majTexteBouton();
+    edition.varianteChoisie = true;
+    choisirVariante(b.dataset.variante);
   }),
 );
 
