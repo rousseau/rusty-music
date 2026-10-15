@@ -11548,6 +11548,16 @@ function syncTemps(i, debut, fin, T) {
     .join("");
 }
 
+/// Le tempo affiché en tête de partition : celui de la pulsation, ou le temps
+/// moyen du premier au dernier temps quand elle n'en donne pas (120 n'était
+/// qu'un défaut ; la médiane d'un intervalle arrondi aux 10 ms donnait 130
+/// pour un morceau à 129). La synchro, elle, suit les temps.
+function tempoDe(p) {
+  if (p.bpm) return Math.round(p.bpm);
+  const T = p.temps ?? [];
+  return T.length > 1 ? Math.round((60 * (T.length - 1)) / (T[T.length - 1] - T[0])) : 120;
+}
+
 /// L'alphaTex de la grille mesurée, pour l'instrument pratiqué : une note par
 /// temps, une métrique par mesure — celle que les temps détectés donnent —, un
 /// point de synchro par premier temps. La basse se lit en **tablature** (corde
@@ -11564,7 +11574,7 @@ function texGrille(p, titre, instrument) {
   const note = batterie ? `"Hi-Hat (closed)".4` : "0.4.4";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Grille mesurée — prototype, sans transcription"` +
-    ` \\tempo ${Math.round(p.bpm ?? 120)}\n${piste}\n`;
+    ` \\tempo ${tempoDe(p)}\n${piste}\n`;
   const mesures = [];
   const sections = marquesSections(P);
   let precedente = 0;
@@ -11625,7 +11635,6 @@ function decouperDuree(seiziemes) {
 /// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
 function texTablature(mesures, titre, p, accordage, modele) {
-  const bpm = p.bpm;
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   // Les mesures de silence regroupées, comme dans les livres. L'accordage
   // vient du moteur (standard, drop D, cinq cordes), de la corde aiguë à la
@@ -11634,7 +11643,7 @@ function texTablature(mesures, titre, p, accordage, modele) {
   const portee = notationBasse === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
-    ` \\tempo ${Math.round(bpm ?? 120)} \\multibarrest\n` +
+    ` \\tempo ${tempoDe(p)} \\multibarrest\n` +
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
     (notationBasse === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
@@ -11703,36 +11712,77 @@ const ARTICULATIONS = {
 };
 
 /// L'alphaTex d'une batterie transcrite : les mesures quantifiées par le
-/// moteur (`quantification::MesureBatterie`), une frappe = les pièces
-/// frappées ensemble, en accord ; une durée longue se découpe en silences
-/// (seule l'attaque compte en batterie).
+/// moteur (`quantification::MesureBatterie`), écrites comme une partition de
+/// batteur — deux voix, les mains en haut (charleston, cymbales, caisse
+/// claire, toms ; hampes vers le haut), les pieds en bas (grosse caisse ;
+/// hampes vers le bas). Chaque voix tient sa note jusqu'à sa frappe suivante,
+/// coupée aux temps pour que chaque temps se lise d'un bloc (essai du 15 oct.
+/// contre une partition publiée).
+const PIEDS = new Set(["grosse_caisse"]);
 function texBatterie(mesures, titre, p) {
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (ADTOF) — à vérifier à l'oreille"` +
-    ` \\tempo ${Math.round(p.bpm ?? 120)}\n\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}\n`;
-  let precedente = 0;
+    ` \\tempo ${tempoDe(p)}\n\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}\n`;
   const sections = marquesSections(mesures.map((m) => m.debut_s));
-  const corps = mesures.map((m, i) => {
+  const haut = [];
+  const bas = [];
+  let precedente = 0;
+  mesures.forEach((m, i) => {
+    // La métrique, les sections et la synchro sont des réglages de mesure :
+    // la première voix les porte.
     let t = (i === 0 ? "\\clef neutral " : "") + sections[i];
     t += m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "";
     precedente = m.temps;
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
     t += syncTemps(i, m.debut_s, fin, p.temps);
-    const temps = [];
-    for (const f of m.frappes) {
-      const [premiere, ...reste] = decouperDuree(f.seiziemes);
-      if (f.pieces.length) {
-        const acc = f.pieces.map((x) => ARTICULATIONS[x]).join(" ");
-        temps.push(`${f.pieces.length > 1 ? `(${acc})` : acc}.${premiere}`);
-      } else {
-        temps.push(`r.${premiere}`);
-      }
-      for (const d of reste) temps.push(`r.${d}`);
-    }
-    return t + (temps.length ? temps.join(" ") : "r.1");
+    haut.push(t + voixBatterie(m, (x) => !PIEDS.has(x)));
+    bas.push(voixBatterie(m, (x) => PIEDS.has(x)));
   });
-  return tete + corps.join(" |\n") + " |";
+  return tete + "\\voice\n" + haut.join(" |\n") + " |\n\\voice\n" + bas.join(" |\n") + " |";
+}
+
+/// Une voix d'une mesure de batterie : les frappes des pièces retenues, puis
+/// des silences ; une note dure jusqu'à la frappe suivante de sa voix.
+function voixBatterie(m, garder) {
+  const total = m.temps * 4;
+  const frappes = [];
+  let pos = 0;
+  for (const f of m.frappes) {
+    const pieces = f.pieces.filter(garder);
+    if (pieces.length) frappes.push({ pos, pieces });
+    pos += f.seiziemes;
+  }
+  const out = [];
+  // Une frappe s'écrit au plus noire, la suite en silences : une grosse
+  // caisse sur 1 et 3 est une noire sur 1 et une sur 3. Les silences de la
+  // voix des pieds ne se dessinent pas (`silencesInvisibles`).
+  const poser = (debut, fin, tete) => {
+    const noteFin = tete ? Math.min(fin, debut % 4 === 0 ? debut + 4 : (Math.floor(debut / 4) + 1) * 4) : debut;
+    decouperAuxTemps(debut, noteFin).forEach((d, k) => out.push(k === 0 ? `${tete}.${d}` : `r.${d}`));
+    decouperAuxTemps(noteFin, fin).forEach((d) => out.push(`r.${d}`));
+  };
+  if (!frappes.length || frappes[0].pos > 0) poser(0, frappes[0]?.pos ?? total, null);
+  frappes.forEach((f, k) => {
+    const acc = f.pieces.map((x) => ARTICULATIONS[x]).join(" ");
+    poser(f.pos, Math.min(total, frappes[k + 1]?.pos ?? total), f.pieces.length > 1 ? `(${acc})` : acc);
+  });
+  return out.join(" ");
+}
+
+/// Les durées alphaTex de [debut, fin) en doubles croches, coupées aux temps :
+/// un bloc commencé sur un temps garde ses temps entiers (noire, blanche…),
+/// le reste ne franchit jamais une barre de temps.
+function decouperAuxTemps(debut, fin) {
+  const durees = [];
+  let x = debut;
+  while (x < fin) {
+    const prochainTemps = (Math.floor(x / 4) + 1) * 4;
+    const y = x % 4 === 0 && fin - x >= 4 ? x + Math.floor((fin - x) / 4) * 4 : Math.min(fin, prochainTemps);
+    durees.push(...decouperDuree(y - x));
+    x = y;
+  }
+  return durees;
 }
 
 /// La transcription du morceau ouvert, par instrument : la promesse en cours
@@ -11851,7 +11901,10 @@ async function creerPartition() {
     // pans de partition blancs (le « panneau blanc » de l'essai du 9 oct.,
     // reproduit avec la batterie de « Love Foolosophy »).
     core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false, enableLazyLoading: false },
-    display: { layoutMode: "page", scale: 0.9 },
+    // La seconde voix (les pieds, en batterie) en noir comme la première :
+    // alphaTab la grise par défaut. Pas de nuance « f » par défaut.
+    display: { layoutMode: "page", scale: 0.9, resources: { secondaryGlyphColor: "#000000" } },
+    notation: { elements: { effectDynamics: false } },
     player: {
       playerMode: "enabledExternalMedia",
       enableCursor: true,
@@ -11879,11 +11932,15 @@ async function creerPartition() {
       if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
       invoke("stems_transport", { action: "deplacer", position: ms / 1000 }).catch(console.warn);
     },
+    // alphaTab arrête son lecteur à chaque partition chargée : sans le
+    // garde-fou du geste, changer d'instrument mettait les stems en pause.
     play() {
-      if (edition.enLecture) invoke("stems_transport", { action: "reprendre", position: null }).catch(console.warn);
+      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      invoke("stems_transport", { action: "reprendre", position: null }).catch(console.warn);
     },
     pause() {
-      if (edition.enLecture) invoke("stems_transport", { action: "pause", position: null }).catch(console.warn);
+      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      invoke("stems_transport", { action: "pause", position: null }).catch(console.warn);
     },
   };
   const brancher = () => {
@@ -12000,12 +12057,29 @@ function chargerPartition(api, tex, cle) {
     const minuteur = setTimeout(() => fin("délai dépassé"), 5000);
     off = api.renderFinished.on(() => fin("rendu"));
     try {
-      api.tex(tex);
+      // Par l'importeur plutôt qu'`api.tex` : la partition passe par
+      // `silencesInvisibles` avant le rendu.
+      const imp = new alphaTab.importer.AlphaTexImporter();
+      imp.initFromString(tex, api.settings);
+      const score = imp.readScore();
+      silencesInvisibles(score);
+      api.renderScore(score);
     } catch (e) {
       journal("partition", e?.stack ?? e, "error");
       fin("échec");
     }
   });
+}
+
+/// Les silences des voix secondaires (les pieds, en batterie) restent dans le
+/// temps mais ne se dessinent pas, comme dans une partition de batteur :
+/// alphaTab les posait au-dessus de la portée, au milieu du charleston.
+function silencesInvisibles(score) {
+  for (const piste of score.tracks)
+    for (const portee of piste.staves)
+      for (const mesure of portee.bars)
+        for (const voix of mesure.voices)
+          if (voix.index > 0) for (const b of voix.beats) if (b.isRest) b.isEmpty = true;
 }
 
 function cacherPartition() {
