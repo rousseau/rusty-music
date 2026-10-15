@@ -1433,6 +1433,17 @@ fn journal_carte(niveau: String, message: String) {
     }
 }
 
+/// Le même renvoi pour le reste de l'interface (partition, lecteur) : une
+/// version release n'a pas d'inspecteur du tout.
+#[tauri::command(async)]
+fn journal_ui(niveau: String, source: String, message: String) {
+    match niveau.as_str() {
+        "error" => tracing::error!(target: "ui", "{source} : {message}"),
+        "warn" => tracing::warn!(target: "ui", "{source} : {message}"),
+        _ => tracing::info!(target: "ui", "{source} : {message}"),
+    }
+}
+
 /// Les octets d'une tuile, pour `maplibregl.addProtocol`.
 ///
 /// Rend un tableau vide quand la tuile n'existe pas : c'est le cas ordinaire
@@ -8782,6 +8793,7 @@ fn main() {
             positions_carte,
             trace_rues,
             journal_carte,
+            journal_ui,
             mode_initial,
             autotest_carte,
             itineraire,

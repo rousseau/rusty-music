@@ -19,6 +19,10 @@ window.addEventListener("unhandledrejection", (e) =>
   remonter(e.reason?.stack || e.reason, "promesse non traitée"),
 );
 
+/// Une ligne au journal du processus, sans rien montrer à l'écran.
+const journal = (source, message, niveau = "info") =>
+  invoke("journal_ui", { niveau, source, message: String(message) }).catch(() => {});
+
 const $ = (id) => document.getElementById(id);
 
 /// Affiche `texte` dans le petit slot de statut `idStatut` — la convention
@@ -11492,8 +11496,14 @@ $("boucle-accel").addEventListener("click", () => {
 // par temps, une mesure par premier temps détecté, un `\sync` par mesure.
 const partition = {
   api: null,
+  // La création d'alphaTab en cours ou faite (`preparerPartition`).
+  prete: null,
   // Le morceau dont la grille est chargée, pour ne pas la recharger.
   source: null,
+  // Le chargement en cours : le suivant l'attend. Deux `api.tex` coup sur coup
+  // (la grille, puis les sections qui arrivent) laissaient le lecteur externe
+  // d'alphaTab décroché de la lecture.
+  chargement: Promise.resolve(),
   // Instant du dernier clic dans la partition. alphaTab émet aussi des
   // `seekTo` de lui-même pendant un chargement (0, puis quelques ms — vu à
   // l'essai du 9 oct.) : on ne suit que ceux qui viennent d'un geste.
@@ -11816,8 +11826,19 @@ function positionLissee() {
   return lissage.sortie;
 }
 
-async function preparerPartition() {
-  if (partition.api) return partition.api;
+/// Une seule instance d'alphaTab, même quand deux affichages se croisent
+/// (l'usage, puis les sections qui arrivent) : sans la promesse partagée,
+/// chacun créait la sienne dans `#partition-rendu`, d'où deux curseurs — un
+/// figé sur la première mesure — et une batterie recouverte (15 oct.).
+function preparerPartition() {
+  partition.prete ??= creerPartition().catch((e) => {
+    partition.prete = null;
+    throw e;
+  });
+  return partition.prete;
+}
+
+async function creerPartition() {
   await chargerScript("vendor/alphatab/alphaTab.min.js");
   // `#partition` défile ; alphaTab dessine dans `#partition-rendu`, à côté du
   // paragraphe d'aide — jamais d'`innerHTML` sur ce qu'il possède.
@@ -11870,6 +11891,7 @@ async function preparerPartition() {
   };
   brancher();
   api.playerReady.on(brancher);
+  api.error.on((e) => journal("partition", `alphaTab : ${e?.stack ?? e?.message ?? e}`, "error"));
   hote.addEventListener("pointerdown", () => {
     partition.gesteA = performance.now();
   });
@@ -11943,12 +11965,15 @@ async function montrerPartition() {
         : instrument === "drums"
           ? texBatterie(tr.pret.mesures, titre, p)
           : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
-      api.tex(tex);
+      await partition.chargement;
+      // Un appel plus récent a pris la main pendant l'attente : c'est lui
+      // qui charge.
+      if (partition.source === cle) partition.chargement = chargerPartition(api, tex, cle);
     }
   } catch (e) {
     $("partition-aide").hidden = false;
     $("partition-aide").textContent = `La partition n'a pas pu s'afficher : ${String(e)}`;
-    console.warn("partition", e);
+    journal("partition", e?.stack ?? e, "warn");
   }
   // 50 ms : la cadence que recommande alphaTab pour un lecteur externe.
   clearInterval(partition.minuteur);
@@ -11958,6 +11983,29 @@ async function montrerPartition() {
     out.updatePosition(positionLissee());
     suivreCurseur();
   }, 50);
+}
+
+/// Charge un alphaTex et attend la fin de son rendu (5 s au plus : un rendu
+/// qui ne finit pas ne doit pas bloquer les suivants).
+function chargerPartition(api, tex, cle) {
+  return new Promise((fini) => {
+    const t0 = performance.now();
+    let off = null;
+    const fin = (quoi) => {
+      off?.();
+      clearTimeout(minuteur);
+      if (quoi !== "rendu") journal("partition", `${quoi} après ${Math.round(performance.now() - t0)} ms : ${cle}`, "warn");
+      fini();
+    };
+    const minuteur = setTimeout(() => fin("délai dépassé"), 5000);
+    off = api.renderFinished.on(() => fin("rendu"));
+    try {
+      api.tex(tex);
+    } catch (e) {
+      journal("partition", e?.stack ?? e, "error");
+      fin("échec");
+    }
+  });
 }
 
 function cacherPartition() {
@@ -12920,6 +12968,12 @@ function dessinerStems() {
     });
     el.querySelector('[data-a="sel"]').addEventListener("click", () => {
       edition.stemSel = edition.stemSel === s.nom ? null : s.nom;
+      // En Pratiquer, désigner la basse ou la batterie dans la pile choisit
+      // aussi la partie lue — le geste qu'on fait d'instinct (essai du 15 oct.).
+      if (edition.usage === "pratiquer" && (s.nom === "bass" || s.nom === "drums") && edition.instrument !== s.nom) {
+        edition.instrument = s.nom;
+        majUsage();
+      }
       dessinerStems();
     });
 
