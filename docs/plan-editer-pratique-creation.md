@@ -322,8 +322,8 @@ doigtés 51 → 61 %. Limite : le rappel (44 %) — notes répétées rapides,
 notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
 que MuScriptor doit faire mieux.
 
-**Doigtés appris sur 162 tablatures (17 oct.)** — le doigté se mesure seul,
-sur les hauteurs mêmes des tablatures de référence (31 des livres, 131
+**Doigtés appris sur 331 tablatures (17 oct.)** — le doigté se mesure seul,
+sur les hauteurs mêmes des tablatures de référence (31 des livres, 300
 parties de basse Songsterr des morceaux populaires de la bibliothèque ;
 banc `experiments/partitions/`, section « Doigtés »). Le réglage du 10 oct.
 (`vide_haut` 0,3, réglé sur Flea seul) poussait la main vers le bas du

@@ -166,8 +166,8 @@ pub struct Couts {
 /// tablatures du livre *Californication* (Flea) : une corde à vide quand la
 /// main est haute coûte (`vide_haut`).
 ///
-/// Réglage actuel (17 oct.) : banc des doigtés sur 162 tablatures (31 des
-/// livres du banc, 131 parties de basse Songsterr ; exemple `doigtes`,
+/// Réglage actuel (17 oct.) : banc des doigtés sur 331 tablatures (31 des
+/// livres du banc, 300 parties de basse Songsterr ; exemple `doigtes`,
 /// `experiments/partitions/regler_doigtes_loo.py`), validation croisée un
 /// morceau de côté : 64 % de doigtés identiques avec l'ancien réglage, 73 %
 /// avec les seuls coûts réglés à nouveau, **77 %** avec l'a priori de position

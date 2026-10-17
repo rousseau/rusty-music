@@ -352,14 +352,16 @@ position compte.
 - `regler_doigtes_loo.py` — coûts et poids de l'a priori réglés en laissant
   chaque morceau hors de sa table.
 
-Corpus du 17 oct. : 162 morceaux, 88 663 notes (31 livres, 131 Songsterr).
-Doigtés identiques, moyenne par morceau, validation croisée :
+Corpus du 17 oct. : 331 morceaux, 190 850 notes (31 livres, 300 Songsterr ;
+réglage choisi sur les 162 premiers, confirmé sur le tout — à 0,004 du
+meilleur de la grille). Doigtés identiques, moyenne par morceau, validation
+croisée :
 
 | | livres | Songsterr | moyenne |
 |---|---|---|---|
-| réglage du 10 oct. (`vide_haut` 0,3, Flea) | 0,575 | 0,711 | 0,643 |
-| coûts seuls, réglés à nouveau | 0,732 | 0,717 | 0,725 |
-| **coûts + a priori appris (retenu)** | **0,758** | **0,774** | **0,766** |
+| réglage du 10 oct. (`vide_haut` 0,3, Flea) | 0,575 | 0,708 | 0,641 |
+| coûts seuls, réglés à nouveau | 0,732 | 0,725 | 0,729 |
+| **coûts + a priori appris (retenu)** | **0,762** | **0,781** | **0,771** |
 | meilleur réglage choisi morceau par morceau (borne) | 0,85 | 0,92 | |
 
 Sur une vraie transcription (« Love Foolosophy », tablature Songsterr de Nick

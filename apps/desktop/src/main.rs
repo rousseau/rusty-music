@@ -6076,8 +6076,8 @@ const VERSION_TRANSCRIPTION: u32 = 5;
 /// Version du doigté (`tablature::Couts`) : quand seul le doigté change, les
 /// notes en cache sont reposées sans retranscrire (MuScriptor prend des
 /// minutes). 1 : avant l'a priori appris ; 2 : a priori de position et coûts
-/// réglés sur 89 tablatures (17 oct.).
-const VERSION_DOIGTES: u32 = 2;
+/// réglés sur 89 tablatures (17 oct.) ; 3 : table apprise sur 331 tablatures.
+const VERSION_DOIGTES: u32 = 3;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
