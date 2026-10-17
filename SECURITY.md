@@ -23,7 +23,7 @@ limitée à ce qu'il lit et aux quelques requêtes sortantes qu'il émet :
   dépôt avec vérification SHA-256 (`scripts/telecharger-modeles.sh`).
 
 Ne sont **pas** dans le périmètre : les vulnérabilités des dépendances tierces
-(signale-les en amont ; `cargo deny check` suit les avis RUSTSEC en CI), et
+(signale-les en amont ; `cargo deny check` suit les avis RUSTSEC, lancé avant chaque publication), et
 tout scénario supposant un accès déjà obtenu à la machine de l'utilisateur.
 
 ## Versions

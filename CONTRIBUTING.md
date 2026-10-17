@@ -51,7 +51,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo deny check          # licences, avis de sécurité — cargo install --locked cargo-deny
 ```
 
-Ces trois-là tournent en CI et doivent passer.
+Ces trois-là doivent passer ; `./scripts/verifier.sh` les enchaîne (pas de CI
+GitHub : la vérification se fait en local avant le push).
 
 **`cargo fmt` n'est pas imposé.** Le style suit le code alentour ; certaines
 lignes dépassent 100 colonnes à dessein. Ne reformate pas un fichier entier.
