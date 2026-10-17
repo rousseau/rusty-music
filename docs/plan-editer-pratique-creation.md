@@ -334,6 +334,16 @@ transcrit : 41 → 66 %. Les transcriptions en cache sont redoigtées sans
 retranscrire. Reste le style du bassiste (borne morceau par morceau : 85 à
 92 %).
 
+
+**Décompte avant de jouer (17 oct.)** — en Pratiquer, ▶ compte une ou deux
+mesures de clics (réglage « Décompte », retenu d'une session à l'autre) au
+tempo local de la pulsation, puis la musique repart du premier temps de la
+mesure en cours. Les clics sont joués par le moteur
+(`Multipiste::decompter`, commande `stems_decompter`), à l'échantillon près
+dans le même flux que les stems : les têtes de lecture attendent la fin du
+décompte, la vitesse de lecture s'y applique. Au début du morceau, le
+décompte vise le premier temps et chevauche une éventuelle levée. Se
+déplacer pendant le décompte l'annule.
 **MuScriptor au banc (10 oct.)** : il fait mieux — F1 0,55 contre 0,42 sur
 les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana.
 

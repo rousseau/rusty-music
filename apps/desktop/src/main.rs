@@ -5980,6 +5980,21 @@ fn stems_boucle(etat: State<Etat>, debut: f64, fin: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// Lance les stems après un décompte de métronome (Pratiquer) : la musique
+/// part de `debut`, en secondes du morceau, et `clics` donne chaque clic
+/// (instant en secondes du morceau, premier temps ou non). L'interface les
+/// place sur la pulsation ; le moteur les joue à l'échantillon près.
+#[tauri::command(async)]
+fn stems_decompter(etat: State<Etat>, debut: f64, clics: Vec<(f64, bool)>) -> Result<(), String> {
+    if !debut.is_finite() || debut < 0.0 || clics.iter().any(|c| !c.0.is_finite()) {
+        return Err(format!("décompte invalide : début {debut}"));
+    }
+    if let Some(m) = verrou(&etat.stems).as_ref() {
+        m.decompter(std::time::Duration::from_secs_f64(debut), &clics);
+    }
+    Ok(())
+}
+
 /// La pulsation d'un morceau, telle que l'interface la consomme.
 #[derive(serde::Serialize)]
 struct VuePulsation {
@@ -8913,6 +8928,7 @@ fn main() {
             stems_gain,
             stems_transport,
             stems_boucle,
+            stems_decompter,
             pulsation,
             transcrire,
             etat_transcription,

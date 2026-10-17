@@ -35,7 +35,8 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rodio::source::UniformSourceIterator;
@@ -148,6 +149,64 @@ struct Boucle {
     /// Retours au début depuis la pose de la boucle — de quoi accélérer à
     /// chaque passage (chantier 0.3 de `plan-editer-pratique-creation.md`).
     passages: Arc<AtomicU32>,
+}
+
+/// Durée d'un clic de décompte, en trames — 40 ms.
+const CLIC: u64 = (SR as u64 * 40) / 1000;
+
+/// Le décompte d'avant la lecture : des clics de métronome, et les stems
+/// tenus à l'arrêt tant que la musique ne doit pas commencer — comme un
+/// batteur qui compte « un, deux, trois, quatre » avant que le groupe parte.
+///
+/// Tout est en trames **de sortie**, comptées depuis le premier clic : la
+/// vitesse de lecture est déjà appliquée par [`Multipiste::decompter`].
+/// Les clics qui tombent après `pre` sonnent par-dessus la musique — une
+/// levée commence avant le premier temps, le décompte la chevauche.
+#[derive(Default)]
+struct Decompte {
+    /// Trames de silence (de stems) avant que la musique parte.
+    pre: u64,
+    /// Début de chaque clic, et s'il marque le premier temps de la mesure.
+    clics: Vec<(u64, bool)>,
+    horloge: u64,
+    actif: bool,
+}
+
+impl Decompte {
+    /// Le clic de la trame courante, et si les stems attendent encore.
+    fn trame(&mut self) -> (f32, bool) {
+        if !self.actif {
+            return (0.0, false);
+        }
+        let h = self.horloge;
+        let attente = h < self.pre;
+        let mut v = 0.0f32;
+        let mut reste = false;
+        for &(t, accent) in &self.clics {
+            if h >= t && h < t + CLIC {
+                // Une sinusoïde amortie : 1 600 Hz sur le premier temps,
+                // 1 000 Hz sur les autres, ce que font les métronomes.
+                let dt = (h - t) as f32 / SR as f32;
+                let f = if accent { 1600.0 } else { 1000.0 };
+                v += 0.5 * (-dt / 0.008).exp() * (std::f32::consts::TAU * f * dt).sin();
+            }
+            reste |= t + CLIC > h;
+        }
+        self.horloge += 1;
+        if !reste && !attente {
+            self.actif = false;
+        }
+        (v, attente)
+    }
+}
+
+/// Le décompte à prendre en compte, déposé par l'interface. Le fil audio ne
+/// fait que `try_lock` — jamais d'attente sur le chemin du son — et échange
+/// son décompte contre celui-ci : l'ancien est libéré hors du fil audio.
+#[derive(Default)]
+struct Depot {
+    nouveau: AtomicBool,
+    decompte: Mutex<Decompte>,
 }
 
 /// Un stem et sa tête de lecture : matière, niveau, vitesse, position.
@@ -295,12 +354,25 @@ struct Melange {
     rampe: u64,
     /// Gain de la trame courante, le même pour ses deux canaux.
     gain: f32,
+    decompte: Decompte,
+    depot: Arc<Depot>,
+    /// Clic de la trame courante, et stems à l'arrêt pendant le décompte.
+    clic: f32,
+    attente: bool,
 }
 
 impl Melange {
     /// Au début de chaque trame : retour au début de boucle si l'on vient
     /// d'en franchir la fin, et gain des fondus.
     fn debut_de_trame(&mut self) {
+        if self.depot.nouveau.swap(false, Ordering::Acquire) {
+            match self.depot.decompte.try_lock() {
+                Ok(mut d) => std::mem::swap(&mut self.decompte, &mut d),
+                Err(_) => self.depot.nouveau.store(true, Ordering::Release),
+            }
+        }
+        (self.clic, self.attente) = self.decompte.trame();
+
         let mut pos = self.maitre.load(Ordering::Relaxed) >> FRAC;
         let fin = self.boucle.fin.load(Ordering::Relaxed);
         let debut = self.boucle.debut.load(Ordering::Relaxed);
@@ -342,6 +414,12 @@ impl Iterator for Melange {
         if self.canal == 0 {
             self.debut_de_trame();
         }
+        if self.attente {
+            // Les têtes ne bougent pas : la musique part au bout du décompte,
+            // à l'endroit où on l'a posée.
+            self.canal = (self.canal + 1) % CANAUX as usize;
+            return Some(self.clic);
+        }
         let canal = self.canal;
         let mut somme = 0.0f32;
         let mut vivante = false;
@@ -368,7 +446,7 @@ impl Iterator for Melange {
         // La somme des stems reconstitue le mélange d'origine, qui pouvait
         // déjà frôler la pleine échelle : sans écrêtage, un solo à plein
         // niveau saturerait.
-        Some((somme * self.gain).clamp(-1.0, 1.0))
+        Some((somme * self.gain + self.clic).clamp(-1.0, 1.0))
     }
 }
 
@@ -403,6 +481,7 @@ pub struct Multipiste {
     vitesse_maitre: Vitesse,
     trames: usize,
     boucle: Boucle,
+    depot: Arc<Depot>,
 }
 
 impl Multipiste {
@@ -479,6 +558,7 @@ impl Multipiste {
         // l'intervalle entre l'ajout et la pause.
         lecteur.pause();
         let boucle = Boucle::default();
+        let depot = Arc::new(Depot::default());
         lecteur.append(Melange {
             voix,
             maitre: Arc::clone(&maitre),
@@ -489,6 +569,10 @@ impl Multipiste {
             precedente: 0,
             rampe: 0,
             gain: 1.0,
+            decompte: Decompte::default(),
+            depot: Arc::clone(&depot),
+            clic: 0.0,
+            attente: false,
         });
 
         Ok(Self {
@@ -503,6 +587,7 @@ impl Multipiste {
             vitesse_maitre,
             trames,
             boucle,
+            depot,
         })
     }
 
@@ -621,6 +706,9 @@ impl Multipiste {
     /// Tout est en mémoire : déplacer, c'est écrire un entier. Aucun décodage,
     /// aucune relecture disque, et les stems repartent alignés.
     pub fn deplacer(&self, ou: Duration) {
+        // Se déplacer pendant un décompte l'annule : il comptait vers
+        // l'endroit d'où l'on part.
+        self.deposer(Decompte::default());
         let t = (ou.as_secs_f64() * SR as f64) as usize;
         // La position est comptée en trames : la stéréo ne peut plus se
         // décaler d'un canal, ce qui inversait les côtés pour tout le reste
@@ -630,6 +718,35 @@ impl Multipiste {
         for c in &self.curseurs {
             c.store(brut, Ordering::Relaxed);
         }
+    }
+
+    /// Part de `debut` après un décompte, et lance la lecture.
+    ///
+    /// `clics` : instant de chaque clic en secondes **du morceau** (avant
+    /// `debut` pour la plupart), et s'il marque un premier temps. Les stems
+    /// attendent jusqu'à ce que le temps du morceau atteigne `debut` ; les
+    /// clics d'après sonnent par-dessus la musique. L'interface les place sur
+    /// la pulsation : le dernier clic tombe un temps avant le premier temps
+    /// joué, au tempo du morceau. La vitesse globale s'applique au décompte
+    /// comme à la musique.
+    pub fn decompter(&self, debut: Duration, clics: &[(f64, bool)]) {
+        let s = debut.as_secs_f64();
+        let origine = clics.iter().map(|c| c.0).fold(s, f64::min);
+        let v = self.vitesse_maitre.lire().max(0.25) as f64;
+        let trame = |x: f64| ((x - origine) / v * SR as f64).round().max(0.0) as u64;
+        self.deplacer(debut);
+        self.deposer(Decompte {
+            pre: trame(s),
+            clics: clics.iter().map(|&(t, a)| (trame(t), a)).collect(),
+            horloge: 0,
+            actif: true,
+        });
+        self.reprendre();
+    }
+
+    fn deposer(&self, d: Decompte) {
+        *self.depot.decompte.lock().unwrap_or_else(|e| e.into_inner()) = d;
+        self.depot.nouveau.store(true, Ordering::Release);
     }
 
     /// Ramène tous les stems sur la position de référence, **sans toucher aux
@@ -848,6 +965,10 @@ mod tests {
                 precedente: 0,
                 rampe: 0,
                 gain: 1.0,
+                decompte: Decompte::default(),
+                depot: Arc::new(Depot::default()),
+                clic: 0.0,
+                attente: false,
             },
             curseurs,
             vitesses,
@@ -1133,5 +1254,34 @@ mod tests {
         for w in fin_de_boucle.windows(2) {
             assert!((w[1] - w[0]).abs() <= pas_max, "saut d'amplitude {} > {pas_max}", (w[1] - w[0]).abs());
         }
+    }
+
+    /// Le décompte tient les têtes à l'arrêt, clique aux instants demandés,
+    /// puis laisse partir la musique ; un clic d'après chevauche la musique.
+    #[test]
+    fn le_decompte_retient_la_musique_puis_la_laisse_partir() {
+        let mut b = banc(vec![vec![0i16; 2 * 20_000]], vec![Niveau::nouveau(1.0)]);
+        // Deux clics avant la musique, un après (une levée).
+        *b.melange.depot.decompte.lock().unwrap() = Decompte {
+            pre: 1000,
+            clics: vec![(0, true), (500, false), (1500, false)],
+            horloge: 0,
+            actif: true,
+        };
+        b.melange.depot.nouveau.store(true, Ordering::Release);
+        let mut sortie = Vec::new();
+        for _ in 0..6000 {
+            sortie.push(b.melange.next().unwrap());
+            sortie.push(b.melange.next().unwrap());
+            if sortie.len() == 2 * 999 {
+                assert_eq!(b.maitre.load(Ordering::Relaxed) >> FRAC, 0, "à l'arrêt pendant le décompte");
+            }
+        }
+        assert!(b.maitre.load(Ordering::Relaxed) >> FRAC >= 999, "la musique est partie");
+        let energie = |a: usize| sortie[2 * a..2 * (a + CLIC as usize)].iter().map(|x| x * x).sum::<f32>();
+        for t in [0, 500, 1500] {
+            assert!(energie(t) > 1.0, "clic attendu à la trame {t}");
+        }
+        assert!(energie(4000) == 0.0, "plus de clic après le dernier");
     }
 }

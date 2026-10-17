@@ -4039,6 +4039,7 @@ async function basculerLecture() {
   poserLecture(!versPause);
   ignorerEtatJusqua = Date.now() + 400;
 
+  if (edition.enLecture && !versPause && (await lancerDecompte())) return;
   if (edition.enLecture) {
     // **On n'interroge pas le moteur avant d'agir.** L'aller-retour ajoutait
     // un appel à la file d'un pool déjà encombré par les sondages, et le clic
@@ -11204,6 +11205,9 @@ const edition = {
   // partition, qui veut une mise à jour toutes les 50 ms.
   posMs: 0,
   posLueA: 0,
+  // Fin du décompte en cours (`performance.now()`) : jusque-là, la position
+  // ne bouge pas, les stems attendent.
+  decompteJusqua: 0,
   enPause: true,
 };
 
@@ -11852,7 +11856,7 @@ function instrumentPratique() {
 
 /// La position du lecteur, extrapolée depuis le dernier sondage.
 function positionEstimee() {
-  if (edition.enPause) return edition.posMs;
+  if (edition.enPause || performance.now() < edition.decompteJusqua) return edition.posMs;
   return edition.posMs + (performance.now() - edition.posLueA) * edition.vitesse;
 }
 
@@ -12102,6 +12106,10 @@ function majUsage() {
     b.disabled = !edition.stems.some((s) => s.nom === b.dataset.instrument);
   }
   $("notations").hidden = edition.usage !== "pratiquer" || instrument !== "bass";
+  $("decomptes").hidden = edition.usage !== "pratiquer";
+  for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
+    b.classList.toggle("segment--actif", Number(b.dataset.decompte) === decompteMesures);
+  }
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
     b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
   }
@@ -12112,7 +12120,8 @@ function majUsage() {
   }
   $("usage-aide").textContent =
     edition.usage === "pratiquer"
-      ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus."
+      ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus." +
+        (decompteMesures ? " ▶ fait d’abord le décompte au tempo du morceau, puis repart du premier temps de la mesure en cours." : "")
       : "";
   etabli.classList.toggle("etabli--pratiquer", pratiquer);
   $("partition").hidden = !pratiquer;
@@ -12134,6 +12143,72 @@ for (const b of document.querySelectorAll("#notations [data-notation]")) {
     notationBasse = b.dataset.notation;
     try {
       localStorage.setItem("notation-basse", notationBasse);
+    } catch {}
+    majUsage();
+  });
+}
+
+/* ------------------------------------------------ pratiquer : décompte */
+
+// Mesures de clics avant que la musique parte (0, 1 ou 2), en Pratiquer.
+let decompteMesures = (() => {
+  try {
+    const n = Number(localStorage.getItem("decompte-mesures") ?? 1);
+    return [0, 1, 2].includes(n) ? n : 1;
+  } catch {
+    return 1;
+  }
+})();
+
+/// Le décompte pour repartir de `posS` (secondes du morceau) : on repart du
+/// premier temps de la mesure en cours, et les clics tombent sur les temps
+/// qui le précèdent, au tempo local de la pulsation — le dernier un temps
+/// avant. Avant le premier temps du morceau (une levée), on part de `posS`
+/// et les clics comptent vers ce premier temps : ceux qui tombent dans la
+/// levée sonnent par-dessus la musique. `null` sans pulsation.
+function planDecompte(posS) {
+  const p = edition.pulsation;
+  if (!p || !decompteMesures) return null;
+  const P = p.premiers_temps;
+  const T = p.temps ?? [];
+  let debut = posS;
+  for (const x of P) if (x <= posS + 0.05) debut = x;
+  const cible = P.find((x) => x >= debut - 0.01);
+  if (cible === undefined) return null;
+  // Période : médiane des quatre temps qui suivent la cible.
+  const j = T.findIndex((t) => t >= cible - 0.01);
+  const ecarts = j < 0 ? [] : T.slice(j, j + 5).slice(1).map((t, k) => t - T[j + k]).sort((a, b) => a - b);
+  const periode = ecarts.length ? ecarts[ecarts.length >> 1] : 60 / tempoDe(p);
+  const m = p.metrique || 4;
+  const n = decompteMesures * m;
+  const clics = [];
+  for (let k = n; k >= 1; k--) clics.push([cible - k * periode, (n - k) % m === 0]);
+  return { debut, clics };
+}
+
+/// ▶ en Pratiquer : décompte, puis la musique. Rend vrai si le moteur l'a pris.
+async function lancerDecompte() {
+  if (edition.usage !== "pratiquer" || $("partition").hidden) return false;
+  const plan = planDecompte(edition.posMs / 1000);
+  if (!plan) return false;
+  const attente = Math.max(0, plan.debut - plan.clics[0][0]) / (edition.vitesse || 1);
+  try {
+    await invoke("stems_decompter", plan);
+  } catch (e) {
+    console.warn("décompte", e);
+    return false;
+  }
+  edition.posMs = plan.debut * 1000;
+  edition.posLueA = performance.now();
+  edition.decompteJusqua = performance.now() + attente * 1000;
+  return true;
+}
+
+for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
+  b.addEventListener("click", () => {
+    decompteMesures = Number(b.dataset.decompte);
+    try {
+      localStorage.setItem("decompte-mesures", String(decompteMesures));
     } catch {}
     majUsage();
   });

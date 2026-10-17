@@ -219,6 +219,14 @@
                   title="Notation en clé de fa au-dessus de la tablature, comme les livres de basse">Partition + tab</button>
           <button class="segment" data-notation="tabs" title="Tablature seule : plus de mesures à l'écran">Tablature</button>
         </div>
+        <!-- Décompte du métronome avant que la musique parte, au tempo du
+             morceau, comme un groupe qui compte avant de démarrer. -->
+        <div class="segments" id="decomptes" hidden style="margin-top:8px">
+          <button class="segment" data-decompte="0" title="La musique part dès ▶">Sans décompte</button>
+          <button class="segment segment--actif" data-decompte="1"
+                  title="Une mesure de clics au tempo du morceau avant que la musique parte">Décompte 1 mesure</button>
+          <button class="segment" data-decompte="2" title="Deux mesures de clics avant que la musique parte">2 mesures</button>
+        </div>
         <!-- Basse : transcription rapide (Basic Pitch) ou de qualité
              (MuScriptor, conditions d'usage acceptées une fois). -->
         <div class="segments" id="transcripteurs" hidden style="margin-top:8px">
