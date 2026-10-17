@@ -12107,7 +12107,16 @@ function majUsage() {
   }
   $("notations").hidden = edition.usage !== "pratiquer" || instrument !== "bass";
   $("decomptes").hidden = edition.usage !== "pratiquer";
-  for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
+  $("songsterr").hidden = edition.usage !== "pratiquer" || !edition.source?.title;
+  /// La recherche Songsterr du morceau ouvert, dans le navigateur.
+$("songsterr").addEventListener("click", () => {
+  const src = edition.source;
+  if (!src?.title) return;
+  const motif = [src.artist, src.title].filter(Boolean).join(" ");
+  ouvrirLien(`https://www.songsterr.com/?pattern=${encodeURIComponent(motif)}`);
+});
+
+for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
     b.classList.toggle("segment--actif", Number(b.dataset.decompte) === decompteMesures);
   }
   for (const b of document.querySelectorAll("#notations [data-notation]")) {

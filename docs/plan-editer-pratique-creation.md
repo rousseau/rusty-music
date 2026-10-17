@@ -344,6 +344,15 @@ dans le même flux que les stems : les têtes de lecture attendent la fin du
 décompte, la vitesse de lecture s'y applique. Au début du morceau, le
 décompte vise le premier temps et chevauche une éventuelle levée. Se
 déplacer pendant le décompte l'annule.
+
+**Tablatures publiées : un lien, pas d'import automatique (17 oct.)** — le
+lien « Voir les tablatures sur Songsterr » ouvre la recherche du morceau
+dans le navigateur, pour comparer à l'œil. Les conditions de Songsterr
+réservent le téléchargement des tabs (Guitar Pro, MIDI) à l'abonnement Plus
+et interdisent de contourner les fonctions payantes par un outil
+automatique : l'application ne lit pas leurs tabs. Piste ouverte : importer
+un fichier Guitar Pro / MusicXML que l'utilisateur possède, le caler sur la
+pulsation et le comparer à la transcription.
 **MuScriptor au banc (10 oct.)** : il fait mieux — F1 0,55 contre 0,42 sur
 les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana.
 
