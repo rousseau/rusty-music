@@ -53,11 +53,14 @@ pub fn voisins_2d(x: usize, y: usize, k: usize, d: usize) -> (Vec<i64>, Vec<i64>
     (j, b)
 }
 
+/// Indices de voisinage et de biais pour une forme donnée.
+type PaireIndices<B> = (Tensor<B, 1, Int>, Tensor<B, 1, Int>);
+
 /// Indices calculés une fois par forme, partagés par les couches et les
 /// plis d'une même analyse.
 pub struct Indices<B: Backend> {
     device: B::Device,
-    cache: HashMap<(usize, usize, usize, usize), (Tensor<B, 1, Int>, Tensor<B, 1, Int>)>,
+    cache: HashMap<(usize, usize, usize, usize), PaireIndices<B>>,
 }
 
 impl<B: Backend> Indices<B> {
@@ -102,11 +105,11 @@ pub fn attention<B: Backend>(
     while a < l {
         let z = (a + tranche).min(l);
         let m = z - a;
-        let ix = idx.clone().slice([a * n..z * n]);
+        let ix = idx.clone().slice(a * n..z * n);
         let kv = k.clone().select(2, ix.clone()).reshape([b, h, m, n, d]);
         let qs = q.clone().slice([0..b, 0..h, a..z, 0..d]);
         let scores = (qs.unsqueeze_dim::<5>(3) * kv).sum_dim(4).reshape([b, h, m, n]);
-        let biais = rpb.clone().select(1, bidx.clone().slice([a * n..z * n])).reshape([1, h, m, n]);
+        let biais = rpb.clone().select(1, bidx.clone().slice(a * n..z * n)).reshape([1, h, m, n]);
         let p = softmax(scores + biais, 3);
         let vv = v.clone().select(2, ix).reshape([b, h, m, n, d]);
         sorties.push((p.unsqueeze_dim::<5>(4) * vv).sum_dim(3).reshape([b, h, m, d]));

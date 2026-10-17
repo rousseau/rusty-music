@@ -14,6 +14,7 @@ pub const FRETTES: usize = 21;
 pub const CORDES: usize = 6;
 
 /// `POSITIONS[corde depuis l'aiguë][frette]`.
+#[allow(clippy::approx_constant)] // coûts appris : 6.28 n'est pas τ
 pub const POSITIONS: [[f32; FRETTES]; CORDES] = [
     [3.88, 5.92, 3.42, 4.13, 3.55, 3.07, 3.91, 3.42, 4.75, 3.55, 4.37, 5.29, 4.95, 7.07, 4.53, 7.58, 5.39, 5.34, 8.45, 5.59, 8.27],
     [2.44, 3.0, 1.99, 2.3, 1.98, 1.68, 3.06, 1.87, 3.49, 2.87, 3.43, 4.74, 3.96, 5.62, 3.79, 5.72, 8.45, 4.84, 8.45, 5.67, 8.96],

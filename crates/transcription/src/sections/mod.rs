@@ -294,8 +294,7 @@ fn choisir_pics(act: &[f32], passe: usize, futur: usize) -> Vec<usize> {
     let t = act.len();
     let val = |i: i64| if i >= 0 && (i as usize) < t { act[i as usize] } else { 0.0 };
     let mut pics = Vec::new();
-    for i in 0..t {
-        let x = act[i];
+    for (i, &x) in act.iter().enumerate() {
         if x <= 0.0 {
             continue;
         }
