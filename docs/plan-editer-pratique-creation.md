@@ -322,6 +322,18 @@ doigtés 51 → 61 %. Limite : le rappel (44 %) — notes répétées rapides,
 notes étouffées ; erreurs d'octave 6,5 % des notes bien placées. C'est là
 que MuScriptor doit faire mieux.
 
+**Doigtés appris sur 162 tablatures (17 oct.)** — le doigté se mesure seul,
+sur les hauteurs mêmes des tablatures de référence (31 des livres, 131
+parties de basse Songsterr des morceaux populaires de la bibliothèque ;
+banc `experiments/partitions/`, section « Doigtés »). Le réglage du 10 oct.
+(`vide_haut` 0,3, réglé sur Flea seul) poussait la main vers le bas du
+manche : 64 % de doigtés identiques. Coûts réglés à nouveau, plus un **a
+priori de position appris** (`positions.rs`, comptes agrégés seulement) :
+**77 %** en validation croisée un morceau de côté ; « Love Foolosophy »
+transcrit : 41 → 66 %. Les transcriptions en cache sont redoigtées sans
+retranscrire. Reste le style du bassiste (borne morceau par morceau : 85 à
+92 %).
+
 **MuScriptor au banc (10 oct.)** : il fait mieux — F1 0,55 contre 0,42 sur
 les 34 morceaux, 0,36 → ≈ 0,55 sur Nirvana.
 

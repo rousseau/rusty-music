@@ -28,6 +28,7 @@ pub mod madmom;
 pub mod monophonie;
 pub mod muscriptor;
 pub mod porte;
+pub mod positions;
 pub mod quantification;
 pub mod sections;
 pub mod tablature;

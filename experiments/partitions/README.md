@@ -332,6 +332,49 @@ des portées, et les hampes de la tablature rythmée sont supprimées.
 n'est pas écrit. La tablature de basse de Royal Blood demande un
 classifieur de chiffres tiré de la police du livre.
 
+## Doigtés : banc sur tablatures, a priori appris (17 oct.)
+
+Le doigté (`tablature.rs`) se mesure **sans transcription** : on repose les
+hauteurs d'une tablature de référence et on compte les notes à la même corde
+et la même frette. Ni alignement, ni erreur de hauteur : seul le choix de
+position compte.
+
+- `songsterr_basse.py` — parties de basse Songsterr des morceaux les plus
+  populaires de la bibliothèque (trois au plus par artiste, parties
+  d'au moins 300 vues, jamais générées par IA), dans
+  `$RUSTY_DEV/jeux/songsterr-basse/`. Une requête toutes les 1,2 s.
+- `corpus_doigtes.py` — corpus : mesures lues des livres (`reference.json`)
+  et parties Songsterr ; accords et notes étouffées retirés.
+- exemple `doigtes` du crate — une grille de `Couts` sur tout le corpus en
+  une seconde ; `[detail.json]` écrit les doigtés note à note.
+- `apprendre_positions.py` — l'a priori de position (frette × corde depuis
+  l'aiguë, − log fréquence) → `crates/transcription/src/positions.rs`.
+- `regler_doigtes_loo.py` — coûts et poids de l'a priori réglés en laissant
+  chaque morceau hors de sa table.
+
+Corpus du 17 oct. : 162 morceaux, 88 663 notes (31 livres, 131 Songsterr).
+Doigtés identiques, moyenne par morceau, validation croisée :
+
+| | livres | Songsterr | moyenne |
+|---|---|---|---|
+| réglage du 10 oct. (`vide_haut` 0,3, Flea) | 0,575 | 0,711 | 0,643 |
+| coûts seuls, réglés à nouveau | 0,732 | 0,717 | 0,725 |
+| **coûts + a priori appris (retenu)** | **0,758** | **0,774** | **0,766** |
+| meilleur réglage choisi morceau par morceau (borne) | 0,85 | 0,92 | |
+
+Sur une vraie transcription (« Love Foolosophy », tablature Songsterr de Nick
+Fyffe, notes MuScriptor) : 41 % → 66 % de doigtés identiques.
+
+Ce qui reste est affaire de style : Louis Johnson (« Billie Jean ») joue en
+2ᵉ-4ᵉ case là où le modèle va en 7ᵉ-9ᵉ sur la corde de mi ; Flea (« Get On
+Top ») en 17ᵉ-19ᵉ case. Un modèle de Markov entièrement appris (transitions
+corde/frette, sans position de main) fait moins bien (0,74) que la main
+explicite. Les parties Songsterr sont communautaires : quelques-unes sont
+fausses ou dans un autre accordage, elles pèsent dans la moyenne.
+
+L'application repose les doigtés des transcriptions en cache sans
+retranscrire (`VERSION_DOIGTES`).
+
 ## Limites du banc
 
 - La référence garde du bruit : mesures sans tablature (hauteurs d'Audiveris,

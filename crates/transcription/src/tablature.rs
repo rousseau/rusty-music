@@ -13,15 +13,16 @@
 //! - le déplacement de la main, en frettes — moins cher après un silence,
 //!   qui laisse le temps de se replacer ;
 //! - un changement de corde, très peu (0,1 par corde traversée) ;
-//! - une main haute sur le manche : un peu dès la 1ʳᵉ position, nettement
-//!   au-delà de la 5ᵉ.
+//! - une main haute sur le manche, au-delà de la 9ᵉ position ;
+//! - un a priori **appris** sur des tablatures de référence : les frettes et
+//!   cordes où les bassistes jouent le plus ([`crate::positions`]).
 //!
 //! Version précédente (9 oct.) : un coût entre positions successives, sans
 //! mémoire de la main. Une corde à vide « libérait » tout, et la main pouvait
 //! sauter d'un bout du manche à l'autre autour d'elle — les doigtés
 //! incohérents signalés à l'essai.
 
-use crate::Note;
+use crate::{positions, Note};
 
 /// Un accordage, de la corde la plus grave à la plus aiguë, en hauteurs MIDI.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,22 +157,29 @@ pub struct Couts {
     /// Préférence pour les cordes graves, par corde au-dessus de la plus
     /// grave : le son plus rond d'une note jouée haut sur une corde grave.
     pub corde_aigue: f32,
+    /// Poids de l'a priori de position appris ([`crate::positions`]) : où,
+    /// sur le manche, les bassistes des tablatures de référence jouent.
+    pub position: f32,
 }
 
-/// Réglé le 10 oct. contre deux tablatures de référence : doigtés identiques
-/// de 64 à 74 % en moyenne. Le premier réglage (corde 0,1, préférence pour le
-/// bas du manche) traversait les cordes trop volontiers ; les bassistes de
-/// référence restent sur une corde et dans une position (« Love
-/// Foolosophy » : 378 notes sur 615 sur la corde de mi, en 7ᵉ position).
+/// Réglé le 10 oct. contre deux tablatures de référence, puis contre les 15
+/// tablatures du livre *Californication* (Flea) : une corde à vide quand la
+/// main est haute coûte (`vide_haut`).
 ///
-/// Puis contre les 15 tablatures du livre *Californication* (Flea,
-/// `experiments/partitions/regler_doigtes.py`) : une corde à vide quand la
-/// main est haute coûte (`vide_haut` 0,3) — Flea joue le sol en 10ᵉ case de
-/// la corde de la plutôt que la corde de sol à vide. Doigtés identiques de
-/// 51 à 61 % des notes ; la préférence pour les cordes graves n'apporte rien.
+/// Réglage actuel (17 oct.) : banc des doigtés sur 162 tablatures (31 des
+/// livres du banc, 131 parties de basse Songsterr ; exemple `doigtes`,
+/// `experiments/partitions/regler_doigtes_loo.py`), validation croisée un
+/// morceau de côté : 64 % de doigtés identiques avec l'ancien réglage, 73 %
+/// avec les seuls coûts réglés à nouveau, **77 %** avec l'a priori de position
+/// appris ([`crate::positions`]). Le pire de l'ancien réglage était
+/// `vide_haut` 0,3, réglé sur Flea seul : il poussait la main vers le bas du
+/// manche (« Love Foolosophy » : 41 % → 66 % sur la transcription réelle).
+/// Le plateau est large (± 0,01 sur une vingtaine de réglages) ; l'écart
+/// restant tient au style des bassistes : choisir le meilleur réglage
+/// morceau par morceau donnerait 85 à 92 %.
 impl Default for Couts {
     fn default() -> Self {
-        Self { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 12, pente_haut: 0.0, vide_haut: 0.3, corde_aigue: 0.0 }
+        Self { corde: 0.6, deplacement: 1.0, pente_bas: 0.0, debut_haut: 9, pente_haut: 0.1, vide_haut: 0.1, corde_aigue: 0.3, position: 0.3 }
     }
 }
 
@@ -182,10 +190,13 @@ impl Couts {
             + self.pente_haut * position.saturating_sub(self.debut_haut) as f32
     }
 
-    /// Le prix propre d'une position jouée (corde, frette) sous une main.
-    fn jeu(&self, corde: u8, frette: u8, main: u8) -> f32 {
+    /// Le prix propre d'une position jouée (corde, frette) sous une main,
+    /// sur un manche de `cordes` cordes.
+    fn jeu(&self, corde: u8, frette: u8, main: u8, cordes: usize) -> f32 {
         let vide = if frette == 0 { self.vide_haut * main.saturating_sub(1) as f32 } else { 0.0 };
-        vide + self.corde_aigue * corde as f32 + self.hauteur_main(main)
+        let depuis_aigue = cordes.saturating_sub(1 + corde as usize).min(positions::CORDES - 1);
+        let appris = self.position * positions::POSITIONS[depuis_aigue][(frette as usize).min(positions::FRETTES - 1)];
+        vide + self.corde_aigue * corde as f32 + self.hauteur_main(main) + appris
     }
 }
 
@@ -228,7 +239,8 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         .collect();
 
     let k = couts_doigte;
-    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(c, f, m)| k.jeu(c, f, m)).collect()];
+    let n_cordes = accordage.cordes.len();
+    let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(c, f, m)| k.jeu(c, f, m, n_cordes)).collect()];
     let mut retour: Vec<Vec<usize>> = vec![vec![0; etats[0].len()]];
     for i in 1..notes.len() {
         let silence = notes[i].debut_s - notes[i - 1].fin_s;
@@ -244,7 +256,7 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
                     let main = k.deplacement * (m1 as f32 - m2 as f32).abs() * repli;
                     // Traverser les cordes ne coûte presque rien à un bassiste ;
                     // déplacer la main, si.
-                    (couts[i - 1][j] + main + k.corde * (c1 as f32 - c2 as f32).abs() + k.jeu(c2, f2, m2), j)
+                    (couts[i - 1][j] + main + k.corde * (c1 as f32 - c2 as f32).abs() + k.jeu(c2, f2, m2, n_cordes), j)
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .unwrap_or((0.0, 0));
@@ -298,23 +310,24 @@ mod tests {
     }
 
     #[test]
-    fn l_octave_d_une_corde_a_vide_se_prend_deux_cordes_plus_haut() {
-        // Mi1 à vide puis mi2 : la forme d'octave (corde de ré, 2ᵉ case),
-        // pas la 12ᵉ case de la corde de mi — une corde à vide sous une main
-        // en 12ᵉ position coûte (`vide_haut`, réglage du 10 oct.).
+    fn l_octave_d_une_corde_a_vide_reste_sous_la_main() {
+        // Mi1 à vide puis mi2 : la forme d'octave (corde de ré, 2ᵉ case) ou
+        // la 7ᵉ case de la corde de la — jamais la 12ᵉ case de la corde de mi.
+        // Les deux se lisent dans les tablatures de référence ; l'a priori
+        // appris (17 oct.) préfère la corde de la.
         let mut n = vec![note(0.0, 28), note(0.3, 40)];
         poser(&mut n, &Accordage::basse4());
-        assert_eq!((n[1].corde, n[1].frette), (Some(2), Some(2)));
+        assert!(matches!((n[1].corde, n[1].frette), (Some(1), Some(7)) | (Some(2), Some(2))), "{:?}", (n[1].corde, n[1].frette));
     }
 
     #[test]
-    fn en_position_haute_on_evite_la_corde_a_vide() {
-        // Une phrase en 10ᵉ position (sol3, fa3) qui redescend sur sol2 : la
-        // corde de la en 10ᵉ case, sous la main, plutôt que la corde de sol à
-        // vide (Flea, « Parallel Universe »).
-        let mut n: Vec<Note> = [55u8, 53, 43, 55, 53, 43].iter().enumerate().map(|(i, &h)| note(i as f32 * 0.2, h)).collect();
+    fn un_riff_repete_se_doigte_pareil() {
+        // Sol3, fa3, sol2, quatre fois (Flea, « Parallel Universe ») : les
+        // reprises du milieu, loin des bords du chemin, sont identiques.
+        let mut n: Vec<Note> = [55u8, 53, 43].repeat(4).iter().enumerate().map(|(i, &h)| note(i as f32 * 0.2, h)).collect();
         poser(&mut n, &Accordage::basse4());
-        assert!(n.iter().all(|x| x.frette != Some(0)), "{:?}", n.iter().map(|x| (x.corde, x.frette)).collect::<Vec<_>>());
+        let d: Vec<_> = n.iter().map(|x| (x.corde, x.frette)).collect();
+        assert_eq!(d[3..6], d[6..9], "{d:?}");
     }
 
     #[test]
