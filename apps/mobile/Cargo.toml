@@ -1,0 +1,36 @@
+[package]
+name = "rusty-music-mobile"
+description = "Compagnon iOS du mode Écouter : lit une valise préparée par le Mac."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+# Tauri mobile : l'app iOS lie la bibliothèque statique ; `main.rs` ne sert
+# qu'à lancer la même interface sur le Mac pendant le développement.
+[lib]
+name = "rusty_music_mobile"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+# Le cœur et le lecteur seulement : ni Burn, ni `ort`, ni la carte. Les deux
+# compilent pour `aarch64-apple-ios` sans modification (vérifié le 18 oct. 2026).
+rusty-music-core = { path = "../../crates/core" }
+rusty-music-player = { path = "../../crates/player" }
+rusqlite.workspace = true
+tauri.workspace   = true
+serde.workspace   = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Session audio d'iOS (lecture en arrière-plan, sourdine ignorée) — voir
+# `src/session_audio.rs`. Déjà tirés par `cpal` : pas de nouvelle dépendance.
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSString"] }
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioSession", "AVAudioSessionTypes"] }

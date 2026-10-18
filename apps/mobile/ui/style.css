@@ -1,0 +1,103 @@
+/* Compagnon iOS — mêmes jetons que le bureau (apps/desktop/ui/style.css),
+   gabarit en une colonne. Cibles tactiles d'au moins 44 pt. */
+:root {
+  --bg:      #14120E;
+  --panel:   #1B1813;
+  --panel2:  #221E17;
+  --line:    #2E2921;
+  --txt:     #EDE8DC;
+  --mut:     #9A9284;
+  --accent:  #C07C4A;
+  --serif:   Newsreader, Georgia, "Times New Roman", serif;
+  --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  --gouttiere: 16px;
+  --cible: 44px;
+  --hauteur-entete: 52px;
+  --hauteur-lecteur: 72px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--sans);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+.entete {
+  position: fixed; inset: 0 0 auto 0; z-index: 2;
+  height: calc(var(--hauteur-entete) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--gouttiere) 0;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.entete__retour { width: var(--cible); height: var(--cible); font-size: 30px; color: var(--accent); margin-left: -12px; }
+.entete__titre {
+  font-family: var(--serif); font-size: 20px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.contenu {
+  padding: calc(var(--hauteur-entete) + env(safe-area-inset-top) + 12px) var(--gouttiere)
+           calc(var(--hauteur-lecteur) + env(safe-area-inset-bottom) + 16px);
+}
+.vide { color: var(--mut); line-height: 1.5; margin-top: 24px; }
+.vide code { font-family: var(--mono); font-size: 13px; color: var(--txt); }
+
+/* Liste des valises */
+.valise {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  min-height: var(--cible); padding: 14px; margin-bottom: 8px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; text-align: left;
+}
+.valise__meta { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+
+/* Grille d'albums */
+.regle {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--mut); margin: 18px 0 10px;
+}
+.grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+.album { text-align: left; min-width: 0; }
+.album__pochette, .entete-album__pochette {
+  width: 100%; aspect-ratio: 1; border-radius: 6px; background: var(--panel2);
+  object-fit: cover; display: block;
+}
+.album__nom { font-size: 14px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.album__artiste { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Vue album */
+.entete-album { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 16px; }
+.entete-album__pochette { width: 128px; flex: none; }
+.entete-album__nom { font-family: var(--serif); font-size: 22px; line-height: 1.2; }
+.entete-album__artiste { color: var(--mut); margin-top: 4px; }
+.entete-album__annee { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-top: 4px; }
+.piste {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: var(--cible); padding: 10px 0; border-bottom: 1px solid var(--line); text-align: left;
+}
+.piste__no { font-family: var(--mono); font-size: 12px; color: var(--mut); width: 22px; flex: none; }
+.piste__titre { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.piste__duree { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+.piste--en-cours .piste__titre { color: var(--accent); }
+
+/* Mini-lecteur */
+.lecteur {
+  position: fixed; inset: auto 0 0 0; z-index: 2;
+  padding: 0 var(--gouttiere) env(safe-area-inset-bottom);
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+.lecteur__barre { height: 3px; margin: 0 calc(-1 * var(--gouttiere)); background: var(--line); }
+.lecteur__avance { height: 100%; width: 0; background: var(--accent); }
+.lecteur__ligne { display: flex; align-items: center; gap: 4px; height: calc(var(--hauteur-lecteur) - 3px); }
+.lecteur__infos { flex: 1; min-width: 0; }
+.lecteur__titre { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lecteur__artiste { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lecteur__bouton { width: var(--cible); height: var(--cible); font-size: 20px; }
+.lecteur__bouton--principal { color: var(--accent); font-size: 24px; }

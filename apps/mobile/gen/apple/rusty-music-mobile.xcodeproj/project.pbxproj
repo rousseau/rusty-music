@@ -1,0 +1,462 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		19F8D9460CA5B8C2BF071165 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7DDBBBEED176827960EC0CD3 /* WebKit.framework */; };
+		24A5DEC301EA963A2098DB5B /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8780FB9061601D2A8C6D5316 /* QuartzCore.framework */; };
+		3774CEC8D166A0F0319463DE /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6980B6DD5124BA5BB6ECE3A6 /* main.mm */; };
+		3C7BF1A851B3F917517B4A01 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D28C609A4196736C0BE4C65 /* Security.framework */; };
+		713BD48F4DE7B96D3DC474DD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9E963AB8854BC9DFCBDB59B1 /* LaunchScreen.storyboard */; };
+		819373011F20BCB4ED7FD53F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D04724F8CA49F1D91D4E4CF1 /* Metal.framework */; };
+		9A6C9E143080BFCBC6074332 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7F12582818DE1221310819D /* MetalKit.framework */; };
+		BD827ECC1FE025D81C464BB8 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DF4094967C712EED06D375DA /* CoreGraphics.framework */; };
+		BF307F5F652161C82B572B43 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83A43428E5F59A78B3BA7653 /* UIKit.framework */; };
+		D190CBD4D1AF3B04AB25DBCF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 88E06D71205F3175497C1E59 /* Assets.xcassets */; };
+		D4E73AE6149EBB2C9AAAEDE3 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 68E833F99EC1E65C692CDA35 /* libapp.a */; };
+		E47045E867E016FA6DF9DD58 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 03E34F3C1BC1BBD6FA38BFCD /* assets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		03E34F3C1BC1BBD6FA38BFCD /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		4A68774A2C3BB286D19BCACF /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		4BDE125775D013A2A41838FF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		549D1FACC507B5045A783F3E /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		5D28C609A4196736C0BE4C65 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		611227FE676C9690277A1CB9 /* session_audio.rs */ = {isa = PBXFileReference; path = session_audio.rs; sourceTree = "<group>"; };
+		68E833F99EC1E65C692CDA35 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		6980B6DD5124BA5BB6ECE3A6 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		7370B4A182B0ECA60C23002B /* rusty-music-mobile_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "rusty-music-mobile_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DDBBBEED176827960EC0CD3 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		83A43428E5F59A78B3BA7653 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		8780FB9061601D2A8C6D5316 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		88E06D71205F3175497C1E59 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9E963AB8854BC9DFCBDB59B1 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		B7F12582818DE1221310819D /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		D04724F8CA49F1D91D4E4CF1 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		DF4094967C712EED06D375DA /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		ED8C59ABFFD7057B8762F458 /* rusty-music-mobile_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "rusty-music-mobile_iOS.entitlements"; sourceTree = "<group>"; };
+		F9668CBE4061628E0724B8BF /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		66E9149138E9F2966D21F932 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4E73AE6149EBB2C9AAAEDE3 /* libapp.a in Frameworks */,
+				BD827ECC1FE025D81C464BB8 /* CoreGraphics.framework in Frameworks */,
+				819373011F20BCB4ED7FD53F /* Metal.framework in Frameworks */,
+				9A6C9E143080BFCBC6074332 /* MetalKit.framework in Frameworks */,
+				24A5DEC301EA963A2098DB5B /* QuartzCore.framework in Frameworks */,
+				3C7BF1A851B3F917517B4A01 /* Security.framework in Frameworks */,
+				BF307F5F652161C82B572B43 /* UIKit.framework in Frameworks */,
+				19F8D9460CA5B8C2BF071165 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2893EAED6CC29C04EBE70A64 /* rusty-music-mobile_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				4BDE125775D013A2A41838FF /* Info.plist */,
+				ED8C59ABFFD7057B8762F458 /* rusty-music-mobile_iOS.entitlements */,
+			);
+			path = "rusty-music-mobile_iOS";
+			sourceTree = "<group>";
+		};
+		3DA99EEB14FE51F3043F8583 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		3E654788B7D05AD05CE985A7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DF4094967C712EED06D375DA /* CoreGraphics.framework */,
+				68E833F99EC1E65C692CDA35 /* libapp.a */,
+				D04724F8CA49F1D91D4E4CF1 /* Metal.framework */,
+				B7F12582818DE1221310819D /* MetalKit.framework */,
+				8780FB9061601D2A8C6D5316 /* QuartzCore.framework */,
+				5D28C609A4196736C0BE4C65 /* Security.framework */,
+				83A43428E5F59A78B3BA7653 /* UIKit.framework */,
+				7DDBBBEED176827960EC0CD3 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4BED0DD1057750176781FC49 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7370B4A182B0ECA60C23002B /* rusty-music-mobile_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		57B9112737907B3392C967E4 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A74CACF8FB7B69C22AFE324D /* rusty-music-mobile */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		7CA777A0FE55D4A2DAB5B6B5 = {
+			isa = PBXGroup;
+			children = (
+				03E34F3C1BC1BBD6FA38BFCD /* assets */,
+				88E06D71205F3175497C1E59 /* Assets.xcassets */,
+				9E963AB8854BC9DFCBDB59B1 /* LaunchScreen.storyboard */,
+				3DA99EEB14FE51F3043F8583 /* Externals */,
+				2893EAED6CC29C04EBE70A64 /* rusty-music-mobile_iOS */,
+				57B9112737907B3392C967E4 /* Sources */,
+				A1935CBB7B6CDF31C6FC49C4 /* src */,
+				3E654788B7D05AD05CE985A7 /* Frameworks */,
+				4BED0DD1057750176781FC49 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1935CBB7B6CDF31C6FC49C4 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				549D1FACC507B5045A783F3E /* lib.rs */,
+				4A68774A2C3BB286D19BCACF /* main.rs */,
+				611227FE676C9690277A1CB9 /* session_audio.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		A74CACF8FB7B69C22AFE324D /* rusty-music-mobile */ = {
+			isa = PBXGroup;
+			children = (
+				6980B6DD5124BA5BB6ECE3A6 /* main.mm */,
+				CF1648A05EDE701755851C39 /* bindings */,
+			);
+			path = "rusty-music-mobile";
+			sourceTree = "<group>";
+		};
+		CF1648A05EDE701755851C39 /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				F9668CBE4061628E0724B8BF /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5981B87600FE5F3BE9B3E300 /* rusty-music-mobile_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D9A3E4539444E38525DD6E1 /* Build configuration list for PBXNativeTarget "rusty-music-mobile_iOS" */;
+			buildPhases = (
+				CF20B47F98E5A00641B1D232 /* Build Rust Code */,
+				84E95E31D8245F8F27153696 /* Sources */,
+				D27FA28C02712B1AFDD6651D /* Resources */,
+				66E9149138E9F2966D21F932 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "rusty-music-mobile_iOS";
+			packageProductDependencies = (
+			);
+			productName = "rusty-music-mobile_iOS";
+			productReference = 7370B4A182B0ECA60C23002B /* rusty-music-mobile_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B304BCB03696FED6BE0C63BD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = EA921221861D31118CFB55EC /* Build configuration list for PBXProject "rusty-music-mobile" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7CA777A0FE55D4A2DAB5B6B5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4BED0DD1057750176781FC49 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5981B87600FE5F3BE9B3E300 /* rusty-music-mobile_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D27FA28C02712B1AFDD6651D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D190CBD4D1AF3B04AB25DBCF /* Assets.xcassets in Resources */,
+				713BD48F4DE7B96D3DC474DD /* LaunchScreen.storyboard in Resources */,
+				E47045E867E016FA6DF9DD58 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CF20B47F98E5A00641B1D232 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cargo tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		84E95E31D8245F8F27153696 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3774CEC8D166A0F0319463DE /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		449412DB03EFD047DB149138 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "rusty-music-mobile_iOS/rusty-music-mobile_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "rusty-music-mobile_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = fm.rustymusic.compagnon;
+				PRODUCT_NAME = "Rusty Valise";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		45DBEA199D5968981B5A2CEE /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		98BCBB4F3C995EDC6754AA48 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		C64AAA42140494C0770A0C01 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "rusty-music-mobile_iOS/rusty-music-mobile_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "rusty-music-mobile_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = fm.rustymusic.compagnon;
+				PRODUCT_NAME = "Rusty Valise";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5D9A3E4539444E38525DD6E1 /* Build configuration list for PBXNativeTarget "rusty-music-mobile_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C64AAA42140494C0770A0C01 /* debug */,
+				449412DB03EFD047DB149138 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		EA921221861D31118CFB55EC /* Build configuration list for PBXProject "rusty-music-mobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45DBEA199D5968981B5A2CEE /* debug */,
+				98BCBB4F3C995EDC6754AA48 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B304BCB03696FED6BE0C63BD /* Project object */;
+}

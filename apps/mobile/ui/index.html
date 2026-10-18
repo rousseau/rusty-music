@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rusty Valise</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <button class="entete__retour" id="retour" hidden aria-label="Retour">‹</button>
+    <div class="entete__titre" id="titre">Valises</div>
+  </header>
+
+  <main class="contenu" id="contenu"></main>
+
+  <footer class="lecteur" id="lecteur" hidden>
+    <div class="lecteur__barre"><div class="lecteur__avance" id="avance"></div></div>
+    <div class="lecteur__ligne">
+      <div class="lecteur__infos">
+        <div class="lecteur__titre" id="l-titre"></div>
+        <div class="lecteur__artiste" id="l-artiste"></div>
+      </div>
+      <button class="lecteur__bouton" id="precedente" aria-label="Précédente">⏮</button>
+      <button class="lecteur__bouton lecteur__bouton--principal" id="pause" aria-label="Lecture ou pause">⏸</button>
+      <button class="lecteur__bouton" id="suivante" aria-label="Suivante">⏭</button>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

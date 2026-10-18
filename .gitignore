@@ -40,6 +40,7 @@ expe/
 
 # Régénéré par Tauri à chaque build.
 apps/desktop/gen/
+apps/mobile/gen/schemas/
 
 # Sorties des sondages : jetables, régénérées depuis une base locale. Elles
 # porteraient le contenu d'une bibliothèque réelle (titres, identifiants

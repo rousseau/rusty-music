@@ -65,6 +65,27 @@ audio, avec le même `player` que le bureau.
 
 ## Étape 0 — Prototype qui lève les risques · **M**
 
+**Avancement (18 oct. 2026)** — `apps/mobile/` (« Rusty Valise »,
+`fm.rustymusic.compagnon`) :
+- `crates/core` et `crates/player` **compilent pour `aarch64-apple-ios` sans
+  modification**. Le découpage de l'étape 1 n'est donc plus un préalable : il
+  ne sert plus qu'à alléger le binaire ;
+- la session audio se règle **en Rust** (`src/session_audio.rs`, par
+  `objc2-avf-audio`, déjà tiré par `cpal`) : pas de plugin Swift pour cette
+  partie ;
+- l'app lit les valises du dossier Documents (`$RUSTY_VALISES` sur le Mac),
+  affiche les albums par règle, les pistes, et joue par `Player`.
+  `set_resolveur` traduit chemin d'origine → fichier de la valise, et le gain
+  d'album vient de la base ;
+- `Info.ios.plist` : `UIBackgroundModes = audio`, partage de fichiers par le
+  Finder ;
+- projet Xcode généré (`cargo tauri ios init`, `gen/apple/`). Il a fallu
+  `xcodegen`, `libimobiledevice` et `cocoapods` (Homebrew) ;
+- **reste** : construire et lancer sur le simulateur puis sur l'iPhone
+  (CoreSimulator et équipe de signature manquants), puis « En cours de
+  lecture » et les commandes à distance (`MPNowPlayingInfoCenter`,
+  `MPRemoteCommandCenter`), et les mesures (batterie, gapless).
+
 **Préalable manquant (18 oct. 2026)** : Xcode n'est pas installé sur le Mac
 (seulement les outils en ligne de commande). Il est indispensable : SDK iOS,
 signature, déploiement sur l'iPhone. Il faut aussi les cibles Rust
