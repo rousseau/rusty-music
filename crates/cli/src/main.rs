@@ -512,6 +512,39 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         seconds: u64,
     },
+    /// Prépare une valise pour le compagnon iOS (docs/plan-ios-compagnon.md)
+    Valise {
+        #[command(subcommand)]
+        action: ValiseCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ValiseCmd {
+    /// Choisit des albums et les exporte dans un dossier, avec une base réduite
+    Exporter {
+        /// Dossier de sortie (absent ou vide)
+        #[arg(long)]
+        sortie: Option<PathBuf>,
+        /// Taille de l'audio : « 4G », « 800M »…
+        #[arg(long, default_value = "4G")]
+        budget: String,
+        /// Règles, budget partagé à parts égales : recents, peu-ecoutes
+        #[arg(long, value_delimiter = ',', default_value = "recents,peu-ecoutes")]
+        regles: Vec<String>,
+        /// Albums de moins de N pistes écartés
+        #[arg(long, default_value_t = 3)]
+        pistes_min: usize,
+        /// Albums d'un même artiste, au plus
+        #[arg(long, default_value_t = 2)]
+        par_artiste: usize,
+        /// Graine du tirage « peu écoutés » (par défaut : l'heure courante)
+        #[arg(long)]
+        graine: Option<u64>,
+        /// Montre la sélection sans rien copier
+        #[arg(long)]
+        essai: bool,
+    },
 }
 
 /// Durée longue, en h/min — pour l'avancement d'une passe qui dure.
@@ -2339,6 +2372,90 @@ fn main() -> Result<()> {
                 let sortie = out.join(format!("{base} — {}.wav", p.nom));
                 wav::ecrire(&sortie, &p.gauche, &p.droite, SR)?;
                 println!("{:<10} {energie:>10.6}  {}", p.nom, sortie.display());
+            }
+        }
+        Cmd::Valise {
+            action:
+                ValiseCmd::Exporter {
+                    sortie,
+                    budget,
+                    regles,
+                    pistes_min,
+                    par_artiste,
+                    graine,
+                    essai,
+                },
+        } => {
+            use rusty_music_core::valise::{self, Regle, Reglages};
+
+            let budget_octets = valise::lire_taille(&budget)
+                .ok_or_else(|| anyhow::anyhow!("budget illisible : « {budget} »"))?;
+            let regles = regles
+                .iter()
+                .map(|r| {
+                    Regle::depuis_texte(r).ok_or_else(|| {
+                        anyhow::anyhow!("règle inconnue : « {r} » (recents, peu-ecoutes)")
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let graine = graine.unwrap_or_else(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            });
+            let reglages = Reglages {
+                regles,
+                budget_octets,
+                pistes_min,
+                par_artiste,
+                graine,
+            };
+            let sel = lib.selectionner_valise(&reglages)?;
+            let mo = |o: u64| o as f64 / (1024.0 * 1024.0);
+            for a in &sel.albums {
+                println!(
+                    "{:<12} {:>7.0} Mo  {} — {}{}",
+                    a.regle.libelle(),
+                    mo(a.octets),
+                    a.artiste,
+                    a.album,
+                    a.annee.map(|y| format!(" ({y})")).unwrap_or_default()
+                );
+            }
+            println!(
+                "{} albums, {:.0} Mo sur un budget de {:.0} Mo",
+                sel.albums.len(),
+                mo(sel.octets()),
+                mo(budget_octets)
+            );
+            if essai {
+                return Ok(());
+            }
+            let sortie = sortie.ok_or_else(|| anyhow::anyhow!("--sortie requis (ou --essai)"))?;
+            let debut = Instant::now();
+            let rapport = valise::exporter(&lib, &sel, &sortie, |i, n, a| {
+                eprintln!("[{}/{n}] {} — {}", i + 1, a.artiste, a.album);
+            })?;
+            println!(
+                "valise écrite dans {} : {} albums, {} pistes, {:.0} Mo, en {}",
+                sortie.display(),
+                rapport.albums,
+                rapport.pistes,
+                mo(rapport.octets),
+                duree_h(debut.elapsed().as_secs_f64())
+            );
+            if rapport.sans_pochette > 0 {
+                println!("{} album(s) sans pochette", rapport.sans_pochette);
+            }
+            if !rapport.manquants.is_empty() {
+                println!(
+                    "{} fichier(s) introuvable(s), ignoré(s) :",
+                    rapport.manquants.len()
+                );
+                for m in &rapport.manquants {
+                    println!("  {m}");
+                }
             }
         }
         Cmd::Play {

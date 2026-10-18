@@ -38,6 +38,7 @@ pub mod popularite;
 pub mod scan;
 pub mod session;
 pub mod tags;
+pub mod valise;
 pub mod theaudiodb;
 pub mod volume;
 pub mod watch;

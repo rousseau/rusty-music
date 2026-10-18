@@ -441,7 +441,7 @@ fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
 
 /// Hachage stable d'un couple artiste/album. Doit rendre la même valeur d'une
 /// exécution à l'autre : c'est lui qui départage les arrivées d'une même année.
-fn hacher(artiste: &str, album: &str) -> u64 {
+pub(crate) fn hacher(artiste: &str, album: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for octet in artiste.as_bytes().iter().chain(b"\x1f").chain(album.as_bytes()) {
         h ^= *octet as u64;

@@ -65,6 +65,13 @@ audio, avec le même `player` que le bureau.
 
 ## Étape 0 — Prototype qui lève les risques · **M**
 
+**Préalable manquant (18 oct. 2026)** : Xcode n'est pas installé sur le Mac
+(seulement les outils en ligne de commande). Il est indispensable : SDK iOS,
+signature, déploiement sur l'iPhone. Il faut aussi les cibles Rust
+`aarch64-apple-ios` et `aarch64-apple-ios-sim`. Attention à la place :
+Xcode et un simulateur iOS demandent plusieurs dizaines de Go, et le SSD
+n'en a plus que 29 de libres.
+
 Toute la suite dépend de cette étape. Il faut construire le plus petit projet
 Tauri iOS qui :
 
@@ -128,17 +135,35 @@ l'enrichissement réseau.
 - `scripts/verifier.sh` : ajouter `cargo check --target aarch64-apple-ios -p
   rusty-music-mobile`.
 
-## Étape 2 — Le format de valise · **M**
+## Étape 2 — Le format de valise · **M** — **livrée (18 oct. 2026), sans réencodage**
+
+**Fait** : `crates/core/src/valise.rs` + `rusty-music valise exporter`.
+Essai sur la bibliothèque réelle : sélection de 26 albums pour 3 Go en
+1,5 s ; un export de 600 Mo donne 8 albums, 79 pistes, une base de 456 Ko et
+des pochettes de 17 à 130 Ko. La copie est quasi instantanée sur APFS
+(`fs::copy` clone les fichiers). Écarts au plan ci-dessous :
+- les fichiers de la valise sont nommés `audio/<id>/NN - Titre.<ext>`, avec
+  l'extension d'origine ;
+- la correspondance piste → fichier vit dans une table `valise_fichier`
+  (`track_id`, `album_id`, `fichier`) plutôt que dans une colonne de
+  `tracks` : `tracks` garde exactement le schéma du bureau ;
+- `valise_album` (ordre, règle, pochette) et `valise_info` (format, date,
+  règles) complètent la base ;
+- **pas de réencodage Opus** : la bibliothèque est en MP3 à 98,5 %
+  (27 321 MP3, 355 M4A, 22 FLAC sur 27 721 pistes), qui se copient tels
+  quels de toute façon. Le réencodage des quelques sources sans perte attendra.
+  Il demanderait libopus, donc `cmake` au build.
+
 
 Une valise est un **dossier** autonome, versionné et lisible sans le Mac :
 
 ```
-valise-2026-10-18/
+<sortie>/
   valise.json        manifeste : version du format, id, date, règles qui
                      l'ont produite, budget, liste des albums
   base.sqlite        base réduite (schéma ci-dessous)
   pochettes/<id>.jpg 600 px, une par album
-  audio/<album-id>/<nn>-<titre>.opus
+  audio/<album-id>/NN - Titre.<ext>
 ```
 
 **Base réduite** : le même schéma que le bureau, restreint aux pistes de la
@@ -146,7 +171,7 @@ valise. Le code de lecture de `base` reste ainsi le même des deux côtés.
 
 | Table | Contenu |
 |---|---|
-| `tracks` | pistes de la valise ; `path` = chemin **d'origine** (identité), nouvelle colonne `fichier` = chemin relatif dans la valise |
+| `tracks` | pistes de la valise ; `path` = chemin **d'origine** (identité) ; le fichier dans la valise est donné par `valise_fichier` |
 | `track_loudness`, `album_loudness` | valeurs mesurées sur le Mac (pas de remesure sur l'iPhone) |
 | `track_popularite`, `mb_genres` | jauge, genres affichés |
 | `theaudiodb_artistes`, `critiques`, `credits_discogs` | textes ; l'attribution CritiqueBrainz voyage avec la critique |
@@ -164,8 +189,9 @@ du bureau, files de travail (`*_fetched`, `scan_failures`).
 | **Opus 160 kb/s** | ≈ 55 Mo | transparent à l'écoute pour l'immense majorité, déjà lu par `opus-decoder`, gapless déjà vérifié (granule de fin) | réencodage sur le Mac (≈ quelques s par album) |
 | AAC 256 kb/s | ≈ 85 Mo | lu nativement par `AVPlayer` | encodeur AAC : Apple (AudioToolbox, macOS seulement) ou FDK (licence non libre) |
 
-**Recommandation : Opus 160 kb/s par défaut, avec une case « garder les
-originaux »**. Les sources déjà avec perte (MP3, M4A) sont copiées telles
+**Recommandation initiale : Opus 160 kb/s par défaut, avec une case
+« garder les originaux »** — révisée : voir « Fait » ci-dessus, les
+originaux suffisent tant que la bibliothèque reste en MP3. Les sources déjà avec perte (MP3, M4A) sont copiées telles
 quelles plutôt que réencodées : réencoder une source avec perte dégrade sans
 rien gagner.
 
