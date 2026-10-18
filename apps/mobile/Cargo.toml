@@ -32,7 +32,8 @@ tracing-subscriber.workspace = true
 # `src/session_audio.rs`. Déjà tirés par `cpal` : pas de nouvelle dépendance.
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSString", "NSDictionary", "NSValue", "NSObject", "NSDate"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSString", "NSDictionary", "NSValue", "NSObject", "NSDate", "NSData"] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioSession", "AVAudioSessionTypes"] }
 objc2-media-player = { version = "0.3", default-features = false, features = ["std", "block2", "MPNowPlayingInfoCenter", "MPRemoteCommandCenter", "MPRemoteCommand", "MPRemoteCommandEvent", "MPMediaItem"] }
 block2 = "0.6"
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }

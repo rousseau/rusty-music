@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Compagnon iOS — prototype : valises → albums → pistes, mini-lecteur.
+// Compagnon iOS : valises → albums → pistes, et le lecteur en bas.
+// Au plus simple : un toucher sur ▶ d'une pochette lance l'album.
 'use strict';
 
 const invoke = window.__TAURI__.core.invoke;
@@ -9,6 +10,7 @@ const LIBELLES_REGLES = { 'recents': 'Récents', 'peu-ecoutes': 'Peu écoutés' 
 
 const etat = {
   ecran: 'valises',     // valises | albums | album
+  nbValises: 0,
   albums: [],
   album: null,          // album affiché dans l'écran « album »
   pochettes: new Map(), // id d'album → URL data: (ou null)
@@ -22,7 +24,7 @@ function el(balise, classe, texte) {
 }
 
 function duree(ms) {
-  if (!ms) return '—';
+  if (ms == null) return '—';
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
@@ -57,20 +59,23 @@ function changerIcone(bouton, id) {
   if (use.getAttribute('href') !== `#${id}`) use.setAttribute('href', `#${id}`);
 }
 
-function entete(titre, retour) {
-  $('titre').textContent = titre;
-  $('retour').hidden = !retour;
-  $('retour').onclick = retour || null;
+/** Le bouton retour flottant : affiché seulement s'il mène quelque part. */
+function retour(action) {
+  $('retour').hidden = !action;
+  $('retour').onclick = action || null;
 }
+
+const jouer = (albumId, rang) => invoke('jouer', { albumId, rang }).then(rafraichir);
 
 /* ------------------------------------------------------------ valises */
 
 async function afficherValises() {
   etat.ecran = 'valises';
-  entete('Valises', null);
+  retour(null);
   const contenu = $('contenu');
   contenu.replaceChildren();
   const liste = await invoke('valises');
+  etat.nbValises = liste.length;
   if (!liste.length) {
     const p = el('p', 'vide');
     p.append('Aucune valise. Sur le Mac : ',
@@ -79,13 +84,17 @@ async function afficherValises() {
     contenu.append(p);
     return;
   }
+  // Une seule valise : on l'ouvre directement, sans écran intermédiaire.
+  if (liste.length === 1) {
+    ouvrirValise(liste[0].nom);
+    return;
+  }
   for (const v of liste) {
     const b = el('button', 'valise');
     b.append(el('span', null, v.nom), el('span', 'valise__meta', `${v.albums} albums`));
     b.onclick = () => ouvrirValise(v.nom);
     contenu.append(b);
   }
-  if (liste.length === 1) ouvrirValise(liste[0].nom);
 }
 
 /* ------------------------------------------------------------- albums */
@@ -93,13 +102,12 @@ async function afficherValises() {
 async function ouvrirValise(nom) {
   etat.albums = await invoke('ouvrir_valise', { nom });
   etat.pochettes.clear();
-  etat.nomValise = nom;
   afficherAlbums();
 }
 
 function afficherAlbums() {
   etat.ecran = 'albums';
-  entete(etat.nomValise, afficherValises);
+  retour(etat.nbValises > 1 ? afficherValises : null);
   const contenu = $('contenu');
   contenu.replaceChildren();
   let regle = null;
@@ -107,27 +115,37 @@ function afficherAlbums() {
   for (const a of etat.albums) {
     if (a.regle !== regle) {
       regle = a.regle;
-      contenu.append(el('div', 'regle', LIBELLES_REGLES[regle] || regle));
+      contenu.append(el('h2', 'regle', LIBELLES_REGLES[regle] || regle));
       grille = el('div', 'grille');
       contenu.append(grille);
     }
-    const b = el('button', 'album');
-    b.append(imagePochette(a.id, 'album__pochette'),
-      el('div', 'album__nom', a.album),
-      el('div', 'album__artiste', a.artiste));
-    b.onclick = () => afficherAlbum(a);
-    grille.append(b);
+    const carte = el('div', 'album');
+    const image = el('div', 'album__image');
+    const ouvrir = el('button', 'album__ouvrir');
+    ouvrir.setAttribute('aria-label', `${a.album}, ${a.artiste}`);
+    ouvrir.append(imagePochette(a.id, 'album__pochette'));
+    ouvrir.onclick = () => afficherAlbum(a);
+    const lire = el('button', 'album__lire');
+    lire.setAttribute('aria-label', `Lire ${a.album}`);
+    lire.append(icone('i-lecture'));
+    lire.onclick = () => jouer(a.id, 0);
+    image.append(ouvrir, lire);
+    carte.append(image, el('div', 'album__nom', a.album), el('div', 'album__artiste', a.artiste));
+    grille.append(carte);
   }
+  window.scrollTo(0, etat.defilement || 0);
 }
 
 /* -------------------------------------------------------------- album */
 
 async function afficherAlbum(a) {
+  if (etat.ecran === 'albums') etat.defilement = window.scrollY;
   etat.ecran = 'album';
   etat.album = a;
-  entete(a.artiste, afficherAlbums);
+  retour(afficherAlbums);
   const contenu = $('contenu');
   contenu.replaceChildren();
+  window.scrollTo(0, 0);
   const tete = el('div', 'entete-album');
   const textes = el('div');
   textes.append(el('div', 'entete-album__nom', a.album),
@@ -135,7 +153,7 @@ async function afficherAlbum(a) {
     el('div', 'entete-album__annee', a.annee ? String(a.annee) : ''));
   const lire = el('button', 'lire');
   lire.append(icone('i-lecture'), el('span', null, 'Lire'));
-  lire.onclick = () => invoke('jouer', { albumId: a.id, rang: 0 }).then(rafraichir);
+  lire.onclick = () => jouer(a.id, 0);
   tete.append(imagePochette(a.id, 'entete-album__pochette'), textes, lire);
   contenu.append(tete);
 
@@ -146,9 +164,10 @@ async function afficherAlbum(a) {
     b.append(el('span', 'piste__no', String(rang + 1)),
       el('span', 'piste__titre', p.titre),
       el('span', 'piste__duree', duree(p.duree_ms)));
-    b.onclick = () => invoke('jouer', { albumId: a.id, rang }).then(rafraichir);
+    b.onclick = () => jouer(a.id, rang);
     contenu.append(b);
   });
+  rafraichir();
 }
 
 /* ------------------------------------------------------------ lecteur */
@@ -163,33 +182,19 @@ async function afficherPochetteLecteur(albumId) {
   if (lecteur.albumPochette === albumId) return;
   lecteur.albumPochette = albumId;
   const url = albumId ? await pochette(albumId) : null;
-  for (const img of [$('m-pochette'), $('p-pochette')]) {
-    if (url) img.src = url; else img.removeAttribute('src');
-  }
-  $('p-fond').style.backgroundImage = url ? `url("${url}")` : 'none';
+  if (url) $('l-pochette').src = url; else $('l-pochette').removeAttribute('src');
 }
 
 async function rafraichir() {
   const l = await invoke('etat_lecture').catch(() => null);
   lecteur.derniere = l;
-  $('mini').hidden = !l;
-  if (!l) {
-    fermerPlein();
-    return;
-  }
+  $('lecteur').hidden = !l;
+  if (!l) return;
   afficherPochetteLecteur(l.album_id);
-  const artisteAlbum = [l.artiste, l.album].filter(Boolean).join(' — ');
-  $('m-titre').textContent = l.titre || '';
-  $('m-artiste').textContent = artisteAlbum;
-  $('p-titre').textContent = l.titre || '';
-  $('p-artiste').textContent = artisteAlbum;
-  const icon = l.pause ? 'i-lecture' : 'i-pause';
-  changerIcone($('m-pause'), icon);
-  changerIcone($('p-pause'), icon);
-  $('plein').classList.toggle('plein--pause', l.pause);
-
+  $('l-titre').textContent = l.titre || '';
+  $('l-artiste').textContent = [l.artiste, l.album].filter(Boolean).join(' — ');
+  changerIcone($('pause'), l.pause ? 'i-lecture' : 'i-pause');
   const part = l.duree_ms ? Math.min(1, l.position_ms / l.duree_ms) : 0;
-  $('m-avance').style.width = `${(part * 100).toFixed(2)}%`;
   if (!lecteur.glisse) placerCurseur(part, l.position_ms, l.duree_ms);
 
   if (etat.ecran === 'album' && etat.album && etat.album.id === l.album_id) {
@@ -200,41 +205,30 @@ async function rafraichir() {
 }
 
 function placerCurseur(part, position_ms, duree_ms) {
-  const c = $('p-curseur');
+  const c = $('l-curseur');
   c.value = Math.round(part * 1000);
   c.style.setProperty('--part', `${(part * 100).toFixed(2)}%`);
-  $('p-ecoule').textContent = duree(position_ms) === '—' ? '0:00' : duree(position_ms);
-  $('p-reste').textContent = duree_ms ? `−${duree(Math.max(0, duree_ms - position_ms))}` : '';
+  $('l-ecoule').textContent = duree(position_ms || 0);
+  $('l-reste').textContent = duree_ms ? `−${duree(Math.max(0, duree_ms - position_ms))}` : '';
 }
 
-function ouvrirPlein() {
-  $('plein').classList.add('plein--ouvert');
-  $('plein').setAttribute('aria-hidden', 'false');
-}
-function fermerPlein() {
-  $('plein').classList.remove('plein--ouvert');
-  $('plein').setAttribute('aria-hidden', 'true');
-}
+$('pause').onclick = () => invoke('basculer_pause').then(rafraichir);
+$('suivante').onclick = () => invoke('suivante').then(rafraichir);
+$('precedente').onclick = () => invoke('precedente').then(rafraichir);
 
-const pause = () => invoke('basculer_pause').then(rafraichir);
-const suivante = () => invoke('suivante').then(rafraichir);
-const precedente = () => invoke('precedente').then(rafraichir);
-
-$('ouvrir-plein').onclick = ouvrirPlein;
-$('fermer-plein').onclick = fermerPlein;
-$('m-pause').onclick = pause;
-$('p-pause').onclick = pause;
-$('m-suivante').onclick = suivante;
-$('p-suivante').onclick = suivante;
-$('p-precedente').onclick = precedente;
+// Toucher la piste en cours mène à son album.
+$('l-piste').onclick = () => {
+  const l = lecteur.derniere;
+  const a = l && etat.albums.find((x) => x.id === l.album_id);
+  if (a) afficherAlbum(a);
+};
 
 // Curseur : suit le doigt, et ne cherche dans la piste qu'au relâcher.
-const curseur = $('p-curseur');
+const curseur = $('l-curseur');
 curseur.addEventListener('input', () => {
   lecteur.glisse = true;
-  const l = lecteur.derniere;
+  const d = lecteur.derniere && lecteur.derniere.duree_ms;
   const part = curseur.value / 1000;
-  const d = l && l.duree_ms;
   placerCurseur(part, d ? part * d : 0, d);
 });
 curseur.addEventListener('change', () => {
@@ -242,16 +236,6 @@ curseur.addEventListener('change', () => {
   lecteur.glisse = false;
   if (!l || !l.duree_ms) return;
   invoke('aller_a', { positionMs: Math.round((curseur.value / 1000) * l.duree_ms) }).then(rafraichir);
-});
-
-// Glisser la feuille vers le bas la referme.
-let departY = null;
-$('plein').addEventListener('touchstart', (e) => {
-  departY = e.target === curseur ? null : e.touches[0].clientY;
-}, { passive: true });
-$('plein').addEventListener('touchend', (e) => {
-  if (departY != null && e.changedTouches[0].clientY - departY > 90) fermerPlein();
-  departY = null;
 });
 
 setInterval(rafraichir, 500);

@@ -5,8 +5,9 @@
 //! Le pendant de `apps/desktop/src/systeme_media.rs`, qui passe par
 //! `souvlaki` — déclaré pour macOS seulement. Ici, directement par
 //! `objc2-media-player` (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`).
-//! Pas encore de pochette : `MPMediaItemArtwork` demande une `UIImage`, donc
-//! les liaisons UIKit en plus.
+//! La pochette passe par `MPMediaItemArtwork`, dont `objc2-media-player` ne
+//! génère le constructeur que pour macOS (`NSImage`) : on l'appelle ici par
+//! `msg_send!`, avec une `UIImage` construite depuis le JPEG de la valise.
 
 use std::time::{Duration, Instant};
 
@@ -55,17 +56,21 @@ pub(crate) fn brancher_commandes(app: tauri::AppHandle) {
 
 #[cfg(target_os = "ios")]
 mod ios {
+    use std::path::{Path, PathBuf};
     use std::ptr::NonNull;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use block2::RcBlock;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::Message;
-    use objc2_foundation::{NSDictionary, NSNumber, NSString};
+    use objc2::{class, msg_send, AnyThread, Message};
+    use objc2_core_foundation::CGSize;
+    use objc2_foundation::{NSData, NSDictionary, NSNumber, NSString};
     use objc2_media_player::{
-        MPChangePlaybackPositionCommandEvent, MPMediaItemPropertyAlbumTitle,
-        MPMediaItemPropertyArtist, MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle,
+        MPChangePlaybackPositionCommandEvent, MPMediaItemArtwork, MPMediaItemPropertyAlbumTitle,
+        MPMediaItemPropertyArtist, MPMediaItemPropertyArtwork,
+        MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle,
         MPNowPlayingInfoCenter, MPNowPlayingInfoPropertyElapsedPlaybackTime,
         MPNowPlayingInfoPropertyPlaybackRate, MPRemoteCommand, MPRemoteCommandCenter,
         MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
@@ -79,6 +84,46 @@ mod ios {
     fn objet<T: Message>(r: Retained<T>) -> Retained<AnyObject> {
         // SAFETY : conversion vers la racine de la hiérarchie d'objets.
         unsafe { Retained::cast_unchecked(r) }
+    }
+
+    /// La dernière pochette construite, gardée tant que l'album ne change
+    /// pas : le dictionnaire est republié toutes les 10 s.
+    struct Pochette(PathBuf, Retained<MPMediaItemArtwork>);
+    // SAFETY : `MPMediaItemArtwork` est immuable une fois construite ; on ne
+    // fait que la passer au centre « En cours de lecture ».
+    unsafe impl Send for Pochette {}
+    static POCHETTE: Mutex<Option<Pochette>> = Mutex::new(None);
+
+    /// `MPMediaItemArtwork` pour le JPEG `chemin`, `None` s'il est illisible.
+    fn pochette(chemin: &Path) -> Option<Retained<MPMediaItemArtwork>> {
+        let mut garde = POCHETTE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(Pochette(c, oeuvre)) = garde.as_ref() {
+            if c == chemin {
+                return Some(oeuvre.clone());
+            }
+        }
+        let octets = std::fs::read(chemin).ok()?;
+        let donnees = NSData::with_bytes(&octets);
+        // SAFETY : `+[UIImage imageWithData:]` rend une image autolibérée ou
+        // nil ; `initWithBoundsSize:requestHandler:` copie le bloc, qui
+        // retient l'image et la rend à chaque demande.
+        let oeuvre = unsafe {
+            let image: Option<Retained<AnyObject>> =
+                msg_send![class!(UIImage), imageWithData: &*donnees];
+            let image = image?;
+            let taille: CGSize = msg_send![&*image, size];
+            let bloc = RcBlock::new(move |_: CGSize| -> NonNull<AnyObject> {
+                NonNull::from(&*image)
+            });
+            let oeuvre: Retained<MPMediaItemArtwork> = msg_send![
+                MPMediaItemArtwork::alloc(),
+                initWithBoundsSize: taille,
+                requestHandler: &*bloc
+            ];
+            oeuvre
+        };
+        *garde = Some(Pochette(chemin.to_path_buf(), oeuvre.clone()));
+        Some(oeuvre)
     }
 
     pub(super) fn afficher(lecture: Option<&EtatLecture>) {
@@ -105,6 +150,10 @@ mod ios {
             if let Some(d) = l.duree_ms {
                 cles.push(MPMediaItemPropertyPlaybackDuration);
                 valeurs.push(objet(NSNumber::new_f64(d as f64 / 1000.0)));
+            }
+            if let Some(oeuvre) = l.pochette.as_deref().and_then(pochette) {
+                cles.push(MPMediaItemPropertyArtwork);
+                valeurs.push(objet(oeuvre));
             }
             cles.push(MPNowPlayingInfoPropertyElapsedPlaybackTime);
             valeurs.push(objet(NSNumber::new_f64(l.position_ms as f64 / 1000.0)));

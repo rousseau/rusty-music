@@ -24,63 +24,40 @@
       <path transform="translate(24 0) scale(-1 1)" d="M2.5 6.6v10.8c0 .8.9 1.2 1.5.8l7.5-5.4v4.6c0 .8.9 1.2 1.5.8l7.9-5.6c.5-.4.5-1.2 0-1.6L13 5.4c-.6-.4-1.5 0-1.5.8v4.6L4 5.8c-.6-.4-1.5 0-1.5.8z"/>
     </symbol>
     <symbol id="i-retour" viewBox="0 0 24 24">
-      <path d="M15 4.5 7.5 12l7.5 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
-    <symbol id="i-fermer" viewBox="0 0 24 24">
-      <path d="M5 9l7 6 7-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M15 4.5 7.5 12l7.5 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
   </svg>
 
-  <header class="entete">
-    <button class="entete__retour" id="retour" hidden aria-label="Retour">
-      <svg class="icone"><use href="#i-retour"/></svg>
-    </button>
-    <div class="entete__titre" id="titre">Valises</div>
-  </header>
+  <!-- Retour (vue d'un album, ou liste des valises s'il y en a plusieurs). -->
+  <button class="retour" id="retour" hidden aria-label="Retour">
+    <svg class="icone"><use href="#i-retour"/></svg>
+  </button>
 
   <main class="contenu" id="contenu"></main>
 
-  <!-- Mini-lecteur : carte flottante au-dessus du bas de l'écran. -->
-  <div class="mini" id="mini" hidden>
-    <button class="mini__corps" id="ouvrir-plein" aria-label="Ouvrir le lecteur">
-      <img class="mini__pochette" id="m-pochette" alt="">
-      <span class="mini__textes">
-        <span class="mini__titre" id="m-titre"></span>
-        <span class="mini__artiste" id="m-artiste"></span>
+  <!-- Lecteur : toujours complet dès qu'une piste joue. -->
+  <footer class="lecteur" id="lecteur" hidden>
+    <button class="lecteur__piste" id="l-piste" aria-label="Voir l'album">
+      <img class="lecteur__pochette" id="l-pochette" alt="">
+      <span class="lecteur__textes">
+        <span class="lecteur__titre" id="l-titre"></span>
+        <span class="lecteur__artiste" id="l-artiste"></span>
       </span>
     </button>
-    <button class="bouton-icone" id="m-pause" aria-label="Lecture ou pause">
-      <svg class="icone icone--moyenne"><use href="#i-pause"/></svg>
-    </button>
-    <button class="bouton-icone" id="m-suivante" aria-label="Suivante">
-      <svg class="icone icone--moyenne"><use href="#i-suivante"/></svg>
-    </button>
-    <div class="mini__avance" id="m-avance"></div>
-  </div>
-
-  <!-- Lecteur plein écran. -->
-  <section class="plein" id="plein" aria-hidden="true">
-    <div class="plein__fond" id="p-fond"></div>
-    <button class="plein__fermer" id="fermer-plein" aria-label="Fermer le lecteur">
-      <svg class="icone"><use href="#i-fermer"/></svg>
-    </button>
-    <img class="plein__pochette" id="p-pochette" alt="">
-    <div class="plein__titre" id="p-titre"></div>
-    <div class="plein__artiste" id="p-artiste"></div>
-    <input class="plein__curseur" id="p-curseur" type="range" min="0" max="1000" value="0" aria-label="Position">
-    <div class="plein__temps"><span id="p-ecoule">0:00</span><span id="p-reste">−0:00</span></div>
-    <div class="plein__commandes">
-      <button class="bouton-icone bouton-icone--grand" id="p-precedente" aria-label="Précédente">
+    <input class="lecteur__curseur" id="l-curseur" type="range" min="0" max="1000" value="0" aria-label="Position">
+    <div class="lecteur__temps"><span id="l-ecoule">0:00</span><span id="l-reste"></span></div>
+    <div class="lecteur__commandes">
+      <button class="bouton-icone" id="precedente" aria-label="Précédente">
         <svg class="icone icone--grande"><use href="#i-precedente"/></svg>
       </button>
-      <button class="bouton-icone bouton-icone--principal" id="p-pause" aria-label="Lecture ou pause">
+      <button class="bouton-icone bouton-icone--principal" id="pause" aria-label="Lecture ou pause">
         <svg class="icone icone--enorme"><use href="#i-pause"/></svg>
       </button>
-      <button class="bouton-icone bouton-icone--grand" id="p-suivante" aria-label="Suivante">
+      <button class="bouton-icone" id="suivante" aria-label="Suivante">
         <svg class="icone icone--grande"><use href="#i-suivante"/></svg>
       </button>
     </div>
-  </section>
+  </footer>
 
   <script src="app.js"></script>
 </body>

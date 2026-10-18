@@ -90,8 +90,13 @@ audio, avec le même `player` que le bureau.
 - **l'app tourne sur l'iPhone** (iPhone 11 Pro, iOS 27.0.1, 18 oct. 2026) :
   lecture, arrière-plan écran verrouillé, « En cours de lecture » et
   commandes à distance vérifiés à la main ;
-- **reste** : les mesures (batterie, gapless), la pochette sur l'écran
-  verrouillé.
+- la pochette sur l'écran verrouillé passe par `MPMediaItemArtwork`,
+  appelé par `msg_send!` (`objc2-media-player` ne génère son constructeur
+  que pour macOS) ;
+- interface (18 oct.) : pas d'en-tête, ▶ sur chaque pochette, lecteur
+  toujours complet en bas (pochette, titre, curseur, précédente / pause /
+  suivante) ;
+- **reste** : les mesures (batterie, gapless).
 
 **Installer sur l'iPhone** (compte Apple gratuit, « Personal Team ») :
 1. Xcode → Settings → Accounts → Manage Certificates → « + » Apple

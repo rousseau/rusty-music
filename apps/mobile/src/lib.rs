@@ -87,6 +87,9 @@ pub(crate) struct EtatLecture {
     pub position_ms: u64,
     pub duree_ms: Option<u64>,
     pub pause: bool,
+    /// Pochette de l'album dans la valise, pour « En cours de lecture ».
+    #[serde(skip)]
+    pub pochette: Option<PathBuf>,
 }
 
 /// Les valises du dossier : chaque sous-dossier qui porte un `valise.json`.
@@ -349,17 +352,27 @@ pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
     };
     let valise = verrou(&etat.valise);
     let v = valise.as_ref()?;
-    let (titre, artiste, album, album_id) = v
+    let (titre, artiste, album, album_id, pochette) = v
         .lib
         .conn
         .query_row(
-            "SELECT t.title, t.artist, t.album, f.album_id
+            "SELECT t.title, t.artist, t.album, f.album_id, a.pochette
                FROM tracks t LEFT JOIN valise_fichier f ON f.track_id = t.id
+                             LEFT JOIN valise_album a ON a.id = f.album_id
               WHERE t.path = ?1",
             params![chemin.to_string_lossy()],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                ))
+            },
         )
         .ok()?;
+    let pochette = pochette.map(|rel| v.racine.join(rel));
     Some(EtatLecture {
         titre,
         artiste,
@@ -368,6 +381,7 @@ pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
         position_ms: position.as_millis() as u64,
         duree_ms: duree.map(|d| d.as_millis() as u64),
         pause,
+        pochette,
     })
 }
 
