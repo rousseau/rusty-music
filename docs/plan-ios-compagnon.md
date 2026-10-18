@@ -87,9 +87,32 @@ audio, avec le même `player` que le bureau.
 - « En cours de lecture » et les commandes à distance sont écrits en Rust
   (`src/en_cours.rs`, `objc2-media-player`), sans pochette pour l'instant
   (il faudrait les liaisons UIKit) ;
-- **reste** : vérifier la lecture, l'écran verrouillé et les commandes
-  (sur le simulateur puis l'iPhone, ce qui demande une équipe de
-  signature), puis les mesures (batterie, gapless).
+- **l'app tourne sur l'iPhone** (iPhone 11 Pro, iOS 27.0.1, 18 oct. 2026) :
+  lecture, arrière-plan écran verrouillé, « En cours de lecture » et
+  commandes à distance vérifiés à la main ;
+- **reste** : les mesures (batterie, gapless), la pochette sur l'écran
+  verrouillé.
+
+**Installer sur l'iPhone** (compte Apple gratuit, « Personal Team ») :
+1. Xcode → Settings → Accounts → Manage Certificates → « + » Apple
+   Development. Si `security find-identity -v -p codesigning` ne voit pas
+   le certificat, il manque l'intermédiaire Apple WWDR G3
+   (apple.com/certificateauthority) dans le trousseau.
+2. `cargo tauri ios build --debug --target aarch64 --export-method
+   debugging` (équipe dans `tauri.conf.json`, `developmentTeam`), puis
+   `xcrun devicectl device install app --device <UDID> "gen/apple/build/arm64/Rusty Valise.ipa"`.
+3. L'option « Mode développeur » de l'iPhone (Réglages → Confidentialité
+   et sécurité) n'apparaît qu'**après une première tentative
+   d'installation**, refusée. L'activer, redémarrer, réinstaller.
+4. Sur l'iPhone : Réglages → Général → VPN et gestion de l'appareil → se
+   fier au développeur. L'app expire au bout de 7 jours (compte gratuit) :
+   réinstaller, les Documents restent.
+5. Déposer une valise : `xcrun devicectl device copy to --device <UDID>
+   --domain-type appDataContainer --domain-identifier fr.rousseau.rustyvalise
+   --source <valise> --destination Documents/<nom>` (ou le Finder).
+
+L'identifiant `fm.rustymusic.compagnon` était déjà pris chez Apple : l'app
+est `fr.rousseau.rustyvalise`.
 
 **Pièges de construction (Xcode 27, Swift 6.4)** :
 1. `swift-rs` 1.0.9 compile le paquet Swift de Tauri avec `--arch`, et le
@@ -110,12 +133,10 @@ audio, avec le même `player` que le bureau.
    avant de reconstruire, sinon on réinstalle l'ancienne version sans le
    savoir.
 
-**Préalable manquant (18 oct. 2026)** : Xcode n'est pas installé sur le Mac
-(seulement les outils en ligne de commande). Il est indispensable : SDK iOS,
-signature, déploiement sur l'iPhone. Il faut aussi les cibles Rust
-`aarch64-apple-ios` et `aarch64-apple-ios-sim`. Attention à la place :
-Xcode et un simulateur iOS demandent plusieurs dizaines de Go, et le SSD
-n'en a plus que 29 de libres.
+**Préalable (levé le 18 oct. 2026)** : Xcode complet (SDK iOS, signature,
+déploiement) et les cibles Rust `aarch64-apple-ios` et `aarch64-apple-ios-sim`.
+Xcode et le simulateur prennent plusieurs dizaines de Go : il reste 28 Go
+sur le SSD.
 
 Toute la suite dépend de cette étape. Il faut construire le plus petit projet
 Tauri iOS qui :

@@ -1,6 +1,6 @@
 name: rusty-music-mobile
 options:
-  bundleIdPrefix: fm.rustymusic.compagnon
+  bundleIdPrefix: fr.rousseau.rustyvalise
   deploymentTarget:
     iOS: 16.0
 fileGroups: [../../src]
@@ -11,7 +11,7 @@ settingGroups:
   app:
     base:
       PRODUCT_NAME: Rusty Valise
-      PRODUCT_BUNDLE_IDENTIFIER: fm.rustymusic.compagnon
+      PRODUCT_BUNDLE_IDENTIFIER: fr.rousseau.rustyvalise
 targetTemplates:
   app:
     type: application
