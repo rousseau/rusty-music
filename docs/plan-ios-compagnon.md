@@ -81,10 +81,34 @@ audio, avec le même `player` que le bureau.
   Finder ;
 - projet Xcode généré (`cargo tauri ios init`, `gen/apple/`). Il a fallu
   `xcodegen`, `libimobiledevice` et `cocoapods` (Homebrew) ;
-- **reste** : construire et lancer sur le simulateur puis sur l'iPhone
-  (CoreSimulator et équipe de signature manquants), puis « En cours de
-  lecture » et les commandes à distance (`MPNowPlayingInfoCenter`,
-  `MPRemoteCommandCenter`), et les mesures (batterie, gapless).
+- **l'app tourne sur le simulateur** (iPhone 18 Pro, iOS 27.1) : la
+  valise d'essai s'ouvre, les albums s'affichent par règle avec leurs
+  pochettes ;
+- « En cours de lecture » et les commandes à distance sont écrits en Rust
+  (`src/en_cours.rs`, `objc2-media-player`), sans pochette pour l'instant
+  (il faudrait les liaisons UIKit) ;
+- **reste** : vérifier la lecture, l'écran verrouillé et les commandes
+  (sur le simulateur puis l'iPhone, ce qui demande une équipe de
+  signature), puis les mesures (batterie, gapless).
+
+**Pièges de construction (Xcode 27, Swift 6.4)** :
+1. `swift-rs` 1.0.9 compile le paquet Swift de Tauri avec `--arch`, et le
+   nouveau moteur de SwiftPM analyse alors les modules contre le SDK macOS
+   (« clang dependency scanning failure … AppKit »). Corrigé en amont, mais
+   pas encore publié : `[patch.crates-io]` dans `Cargo.toml` sur le commit
+   corrigé, à retirer à la prochaine version.
+2. Une bibliothèque statique ne déclare pas ses frameworks à l'édition de
+   liens Xcode. AudioToolbox, CoreAudio, AVFAudio et MediaPlayer sont donc
+   ajoutés à la main dans `gen/apple/project.yml` (puis `xcodegen
+   generate`). La clé `bundle > iOS > frameworks` de Tauri n'a aucun effet
+   ici. À reporter si `cargo tauri ios init` régénère le fichier.
+3. iOS 27 arrête au lancement une app sans cycle de vie par scènes. `tao`
+   ne branche son délégué de scène que si `Info.ios.plist` déclare
+   `UIApplicationSceneManifest > UIApplicationSupportsMultipleScenes`.
+4. `cargo tauri ios build` ne remplace pas un `.app` déjà présent dans
+   `gen/apple/build/arm64-sim/` (« Directory not empty ») : le supprimer
+   avant de reconstruire, sinon on réinstalle l'ancienne version sans le
+   savoir.
 
 **Préalable manquant (18 oct. 2026)** : Xcode n'est pas installé sur le Mac
 (seulement les outils en ligne de commande). Il est indispensable : SDK iOS,

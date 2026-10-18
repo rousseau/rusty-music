@@ -6081,6 +6081,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-media-player"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85f2a98483f6e76313cb85a5a185eaa3cda86a177b13a8852d56cbd0085bf635"
+dependencies = [
+ "bitflags 2.13.1",
+ "block2",
+ "objc2",
+ "objc2-foundation",
+]
+
+[[package]]
 name = "objc2-metal"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7975,9 +7987,11 @@ dependencies = [
 name = "rusty-music-mobile"
 version = "0.1.0"
 dependencies = [
+ "block2",
  "objc2",
  "objc2-avf-audio",
  "objc2-foundation",
+ "objc2-media-player",
  "rusqlite",
  "rusty-music-core",
  "rusty-music-player",
@@ -8745,9 +8759,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "swift-rs"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4057c98e2e852d51fdcfca832aac7b571f6b351ad159f9eda5db1655f8d0c4d7"
+version = "1.0.9"
+source = "git+https://github.com/Brendonovich/swift-rs?rev=207e4bfe5d36fdd0cc08f28d1849ff94ac7e24b8#207e4bfe5d36fdd0cc08f28d1849ff94ac7e24b8"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -9385,7 +9398,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",

@@ -7,6 +7,7 @@
 //! La file porte les chemins **d'origine** des morceaux (leur identité dans
 //! la base) ; `Player::set_resolveur` les traduit en fichiers de la valise.
 
+mod en_cours;
 mod session_audio;
 
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ struct Valise {
     lib: Library,
 }
 
-struct Etat {
+pub(crate) struct Etat {
     /// Dossier où chercher les valises.
     dossier: PathBuf,
     valise: Mutex<Option<Valise>>,
@@ -75,15 +76,15 @@ struct PisteVue {
     duree_ms: Option<i64>,
 }
 
-#[derive(Serialize)]
-struct EtatLecture {
-    titre: Option<String>,
-    artiste: Option<String>,
-    album: Option<String>,
-    album_id: Option<String>,
-    position_ms: u64,
-    duree_ms: Option<u64>,
-    pause: bool,
+#[derive(Serialize, Clone, PartialEq)]
+pub(crate) struct EtatLecture {
+    pub titre: Option<String>,
+    pub artiste: Option<String>,
+    pub album: Option<String>,
+    pub album_id: Option<String>,
+    pub position_ms: u64,
+    pub duree_ms: Option<u64>,
+    pub pause: bool,
 }
 
 /// Les valises du dossier : chaque sous-dossier qui porte un `valise.json`.
@@ -275,45 +276,62 @@ fn jouer(etat: State<Etat>, album_id: String, rang: usize) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
-fn basculer_pause(etat: State<Etat>) -> Result<bool, String> {
-    let garde = verrou(&etat.player);
-    let Some(player) = garde.as_ref() else {
-        return Ok(true);
+/// Transport, commun à l'interface et aux commandes à distance (écran
+/// verrouillé, centre de contrôle, AirPods — voir `en_cours`).
+pub(crate) enum Geste {
+    /// `None` bascule ; `Some(true)` met en pause, `Some(false)` relance.
+    Pause(Option<bool>),
+    Suivante,
+    Precedente,
+    AllerA(Duration),
+}
+
+pub(crate) fn transport(etat: &Etat, geste: Geste) -> Result<(), String> {
+    let mut garde = verrou(&etat.player);
+    let Some(player) = garde.as_mut() else {
+        return Ok(());
     };
-    if player.is_paused() {
-        player.resume();
-    } else {
-        player.pause();
+    match geste {
+        Geste::Pause(voulu) => {
+            if voulu.unwrap_or(!player.is_paused()) {
+                player.pause();
+            } else {
+                player.resume();
+            }
+        }
+        Geste::Suivante => player.skip(),
+        Geste::Precedente => player.previous().map_err(echec)?,
+        Geste::AllerA(position) => player.seek(position).map_err(echec)?,
     }
-    Ok(player.is_paused())
+    drop(garde);
+    // Le geste se voit tout de suite sur l'écran verrouillé, sans attendre
+    // le battement suivant.
+    en_cours::afficher(lecture_courante(etat).as_ref());
+    Ok(())
 }
 
 #[tauri::command]
-fn suivante(etat: State<Etat>) {
-    if let Some(player) = verrou(&etat.player).as_ref() {
-        player.skip();
-    }
+fn basculer_pause(etat: State<Etat>) -> Result<(), String> {
+    transport(&etat, Geste::Pause(None))
+}
+
+#[tauri::command]
+fn suivante(etat: State<Etat>) -> Result<(), String> {
+    transport(&etat, Geste::Suivante)
 }
 
 #[tauri::command]
 fn precedente(etat: State<Etat>) -> Result<(), String> {
-    match verrou(&etat.player).as_mut() {
-        Some(player) => player.previous().map_err(echec),
-        None => Ok(()),
-    }
+    transport(&etat, Geste::Precedente)
 }
 
 #[tauri::command]
 fn aller_a(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
-    match verrou(&etat.player).as_mut() {
-        Some(player) => player.seek(Duration::from_millis(position_ms)).map_err(echec),
-        None => Ok(()),
-    }
+    transport(&etat, Geste::AllerA(Duration::from_millis(position_ms)))
 }
 
-#[tauri::command]
-fn etat_lecture(etat: State<Etat>) -> Option<EtatLecture> {
+/// Ce qui joue, avec ses métadonnées ; `None` si rien ne joue.
+pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
     let (chemin, position, duree, pause) = {
         let garde = verrou(&etat.player);
         let player = garde.as_ref()?;
@@ -349,6 +367,11 @@ fn etat_lecture(etat: State<Etat>) -> Option<EtatLecture> {
         duree_ms: duree.map(|d| d.as_millis() as u64),
         pause,
     })
+}
+
+#[tauri::command]
+fn etat_lecture(etat: State<Etat>) -> Option<EtatLecture> {
+    lecture_courante(&etat)
 }
 
 /// Précharge la piste suivante — version courte de `precharger_suivante` du
@@ -444,10 +467,16 @@ pub fn run() {
             // webview en arrière-plan sont suspendues, et l'enchaînement des
             // pistes avec elles (même piège que sur le bureau).
             let handle = app.handle().clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_millis(250));
-                precharger_suivante(&handle.state::<Etat>());
+            std::thread::spawn(move || {
+                let mut affiche = en_cours::Suivi::default();
+                loop {
+                    std::thread::sleep(Duration::from_millis(250));
+                    let etat = handle.state::<Etat>();
+                    precharger_suivante(&etat);
+                    affiche.battement(lecture_courante(&etat).as_ref());
+                }
             });
+            en_cours::brancher_commandes(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

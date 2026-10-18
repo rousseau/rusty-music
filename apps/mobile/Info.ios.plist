@@ -13,5 +13,14 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- iOS 27 arrête au lancement une app qui n'adopte pas le cycle de vie
+	     par scènes (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption).
+	     `tao` ne branche son délégué de scène que si ce manifeste annonce
+	     plusieurs scènes ; sur iPhone, une seule fenêtre s'ouvre de toute façon. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

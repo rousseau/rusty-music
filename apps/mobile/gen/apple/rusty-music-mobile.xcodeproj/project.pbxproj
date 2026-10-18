@@ -11,18 +11,26 @@
 		24A5DEC301EA963A2098DB5B /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8780FB9061601D2A8C6D5316 /* QuartzCore.framework */; };
 		3774CEC8D166A0F0319463DE /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6980B6DD5124BA5BB6ECE3A6 /* main.mm */; };
 		3C7BF1A851B3F917517B4A01 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D28C609A4196736C0BE4C65 /* Security.framework */; };
+		4AC9602EAC58C8EB89588671 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC653F8FD6568AF9A07D0E8F /* CoreAudio.framework */; };
+		69EC6861C60106361B9871EA /* libapp.a in Resources */ = {isa = PBXBuildFile; fileRef = 245A04B864D18DFB462B52CA /* libapp.a */; };
 		713BD48F4DE7B96D3DC474DD /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9E963AB8854BC9DFCBDB59B1 /* LaunchScreen.storyboard */; };
 		819373011F20BCB4ED7FD53F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D04724F8CA49F1D91D4E4CF1 /* Metal.framework */; };
 		9A6C9E143080BFCBC6074332 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7F12582818DE1221310819D /* MetalKit.framework */; };
+		B0A62EA551447822A4E16360 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6AECB742EC7DB95FBEEC965 /* MediaPlayer.framework */; };
 		BD827ECC1FE025D81C464BB8 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DF4094967C712EED06D375DA /* CoreGraphics.framework */; };
 		BF307F5F652161C82B572B43 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83A43428E5F59A78B3BA7653 /* UIKit.framework */; };
+		BF7203C58AD54E22E194064F /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4872010A05B1CDE731C56C28 /* AudioToolbox.framework */; };
 		D190CBD4D1AF3B04AB25DBCF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 88E06D71205F3175497C1E59 /* Assets.xcassets */; };
 		D4E73AE6149EBB2C9AAAEDE3 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 68E833F99EC1E65C692CDA35 /* libapp.a */; };
 		E47045E867E016FA6DF9DD58 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 03E34F3C1BC1BBD6FA38BFCD /* assets */; };
+		F19A5356A7AF5206A86583E2 /* AVFAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2542204A6A7664A51799B0F9 /* AVFAudio.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		03E34F3C1BC1BBD6FA38BFCD /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		245A04B864D18DFB462B52CA /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		2542204A6A7664A51799B0F9 /* AVFAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFAudio.framework; path = System/Library/Frameworks/AVFAudio.framework; sourceTree = SDKROOT; };
+		4872010A05B1CDE731C56C28 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		4A68774A2C3BB286D19BCACF /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		4BDE125775D013A2A41838FF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		549D1FACC507B5045A783F3E /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
@@ -36,9 +44,12 @@
 		8780FB9061601D2A8C6D5316 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		88E06D71205F3175497C1E59 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9E963AB8854BC9DFCBDB59B1 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A6AECB742EC7DB95FBEEC965 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
+		AC653F8FD6568AF9A07D0E8F /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		B7F12582818DE1221310819D /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		D04724F8CA49F1D91D4E4CF1 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		DF4094967C712EED06D375DA /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		E5D718943B20C1C0C85E1797 /* en_cours.rs */ = {isa = PBXFileReference; path = en_cours.rs; sourceTree = "<group>"; };
 		ED8C59ABFFD7057B8762F458 /* rusty-music-mobile_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "rusty-music-mobile_iOS.entitlements"; sourceTree = "<group>"; };
 		F9668CBE4061628E0724B8BF /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -56,6 +67,10 @@
 				3C7BF1A851B3F917517B4A01 /* Security.framework in Frameworks */,
 				BF307F5F652161C82B572B43 /* UIKit.framework in Frameworks */,
 				19F8D9460CA5B8C2BF071165 /* WebKit.framework in Frameworks */,
+				BF7203C58AD54E22E194064F /* AudioToolbox.framework in Frameworks */,
+				4AC9602EAC58C8EB89588671 /* CoreAudio.framework in Frameworks */,
+				F19A5356A7AF5206A86583E2 /* AVFAudio.framework in Frameworks */,
+				B0A62EA551447822A4E16360 /* MediaPlayer.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,9 +86,18 @@
 			path = "rusty-music-mobile_iOS";
 			sourceTree = "<group>";
 		};
+		2AB5D3E13A8459342BA15A26 /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+				A86404156228E9CA42702062 /* debug */,
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
 		3DA99EEB14FE51F3043F8583 /* Externals */ = {
 			isa = PBXGroup;
 			children = (
+				2AB5D3E13A8459342BA15A26 /* arm64 */,
 			);
 			path = Externals;
 			sourceTree = "<group>";
@@ -81,8 +105,12 @@
 		3E654788B7D05AD05CE985A7 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				4872010A05B1CDE731C56C28 /* AudioToolbox.framework */,
+				2542204A6A7664A51799B0F9 /* AVFAudio.framework */,
+				AC653F8FD6568AF9A07D0E8F /* CoreAudio.framework */,
 				DF4094967C712EED06D375DA /* CoreGraphics.framework */,
 				68E833F99EC1E65C692CDA35 /* libapp.a */,
+				A6AECB742EC7DB95FBEEC965 /* MediaPlayer.framework */,
 				D04724F8CA49F1D91D4E4CF1 /* Metal.framework */,
 				B7F12582818DE1221310819D /* MetalKit.framework */,
 				8780FB9061601D2A8C6D5316 /* QuartzCore.framework */,
@@ -127,6 +155,7 @@
 		A1935CBB7B6CDF31C6FC49C4 /* src */ = {
 			isa = PBXGroup;
 			children = (
+				E5D718943B20C1C0C85E1797 /* en_cours.rs */,
 				549D1FACC507B5045A783F3E /* lib.rs */,
 				4A68774A2C3BB286D19BCACF /* main.rs */,
 				611227FE676C9690277A1CB9 /* session_audio.rs */,
@@ -144,12 +173,27 @@
 			path = "rusty-music-mobile";
 			sourceTree = "<group>";
 		};
+		A86404156228E9CA42702062 /* debug */ = {
+			isa = PBXGroup;
+			children = (
+				245A04B864D18DFB462B52CA /* libapp.a */,
+			);
+			path = debug;
+			sourceTree = "<group>";
+		};
 		CF1648A05EDE701755851C39 /* bindings */ = {
 			isa = PBXGroup;
 			children = (
 				F9668CBE4061628E0724B8BF /* bindings.h */,
 			);
 			path = bindings;
+			sourceTree = "<group>";
+		};
+		"TEMP_A093D879-FACF-4937-855A-29B436E54258" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -213,6 +257,7 @@
 				D190CBD4D1AF3B04AB25DBCF /* Assets.xcassets in Resources */,
 				713BD48F4DE7B96D3DC474DD /* LaunchScreen.storyboard in Resources */,
 				E47045E867E016FA6DF9DD58 /* assets in Resources */,
+				69EC6861C60106361B9871EA /* libapp.a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
