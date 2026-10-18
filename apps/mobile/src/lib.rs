@@ -17,6 +17,8 @@ use std::time::Duration;
 
 use rusqlite::params;
 use rusty_music_core::loudness::{ModeGain, CIBLE_LUFS};
+use rusty_music_core::memoire::SuiviEcoute;
+use rusty_music_core::valise;
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use serde::Serialize;
@@ -374,6 +376,42 @@ fn etat_lecture(etat: State<Etat>) -> Option<EtatLecture> {
     lecture_courante(&etat)
 }
 
+/// Mémoire d'écoute, au même seuil que le bureau ([`SuiviEcoute`]) : une
+/// écoute est notée dans la base de la valise (chemin d'origine), puis
+/// `journal.json` est réécrit pour que le Mac la reprenne
+/// (`rusty-music valise importer`).
+fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
+    let ecoule = s.battement();
+    let (courant, en_pause, position) = {
+        let garde = verrou(&etat.player);
+        match garde.as_ref() {
+            Some(p) if !p.is_finished() => {
+                (p.current().map(Path::to_path_buf), p.is_paused(), p.position())
+            }
+            _ => (None, false, Duration::ZERO),
+        }
+    };
+    let valise = verrou(&etat.valise);
+    let Some(v) = valise.as_ref() else {
+        return;
+    };
+    let ecoute = s.avancer(courant, en_pause, position, ecoule, |c| {
+        v.lib
+            .pistes_par_chemins(&[c.to_string_lossy().into_owned()])
+            .ok()
+            .and_then(|t| t.first().and_then(|t| t.duration_ms))
+    });
+    if let Some(chemin) = ecoute {
+        let note = v
+            .lib
+            .noter_ecoute(&chemin.to_string_lossy())
+            .and_then(|()| valise::ecrire_journal(&v.lib, &v.racine));
+        if let Err(e) = note {
+            tracing::warn!(erreur = %e, "écoute non enregistrée");
+        }
+    }
+}
+
 /// Précharge la piste suivante — version courte de `precharger_suivante` du
 /// bureau : le verrou du lecteur n'est pas tenu pendant l'ouverture du
 /// fichier.
@@ -469,10 +507,12 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut affiche = en_cours::Suivi::default();
+                let mut ecoute = SuiviEcoute::nouveau();
                 loop {
                     std::thread::sleep(Duration::from_millis(250));
                     let etat = handle.state::<Etat>();
                     precharger_suivante(&etat);
+                    suivre_ecoute(&etat, &mut ecoute);
                     affiche.battement(lecture_courante(&etat).as_ref());
                 }
             });

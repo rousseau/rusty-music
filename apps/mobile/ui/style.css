@@ -1,5 +1,6 @@
-/* Compagnon iOS — mêmes jetons que le bureau (apps/desktop/ui/style.css),
-   gabarit en une colonne. Cibles tactiles d'au moins 44 pt. */
+/* Compagnon iOS — mêmes jetons de couleur que le bureau (apps/desktop/ui/style.css),
+   gabarit en une colonne, matières translucides à la manière d'iOS.
+   Cibles tactiles d'au moins 44 pt. */
 :root {
   --bg:      #14120E;
   --panel:   #1B1813;
@@ -8,18 +9,20 @@
   --txt:     #EDE8DC;
   --mut:     #9A9284;
   --accent:  #C07C4A;
-  --serif:   Newsreader, Georgia, "Times New Roman", serif;
+  --verre:   rgba(34, 30, 23, .72);
+  --serif:   Newsreader, "New York", Georgia, "Times New Roman", serif;
   --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --sans:    -apple-system, system-ui, "IBM Plex Sans", sans-serif;
 
   --gouttiere: 16px;
   --cible: 44px;
   --hauteur-entete: 52px;
-  --hauteur-lecteur: 72px;
+  --hauteur-mini: 64px;
+  --rayon: 14px;
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; min-height: 100%; }
 body {
   background: var(--bg);
   color: var(--txt);
@@ -27,25 +30,43 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:active { opacity: .6; }
 
+.icone { width: 22px; height: 22px; fill: currentColor; display: block; }
+.icone--moyenne { width: 24px; height: 24px; }
+.icone--grande { width: 34px; height: 34px; }
+.icone--enorme { width: 44px; height: 44px; }
+.bouton-icone {
+  width: var(--cible); height: var(--cible); flex: none;
+  display: grid; place-items: center; border-radius: 50%;
+}
+.bouton-icone--grand { width: 64px; height: 64px; }
+.bouton-icone--principal { width: 84px; height: 84px; }
+
+/* En-tête : verre dépoli, le contenu défile dessous. */
 .entete {
   position: fixed; inset: 0 0 auto 0; z-index: 2;
   height: calc(var(--hauteur-entete) + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) var(--gouttiere) 0;
-  display: flex; align-items: center; gap: 8px;
-  background: var(--panel); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 4px;
+  background: var(--verre);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: .5px solid rgba(237, 232, 220, .08);
 }
-.entete__retour { width: var(--cible); height: var(--cible); font-size: 30px; color: var(--accent); margin-left: -12px; }
+.entete__retour { width: var(--cible); height: var(--cible); margin-left: -12px; color: var(--accent); display: grid; place-items: center; }
+.entete__retour .icone { width: 24px; height: 24px; }
 .entete__titre {
-  font-family: var(--serif); font-size: 20px; font-weight: 500;
+  font-family: var(--serif); font-size: 20px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .contenu {
   padding: calc(var(--hauteur-entete) + env(safe-area-inset-top) + 12px) var(--gouttiere)
-           calc(var(--hauteur-lecteur) + env(safe-area-inset-bottom) + 16px);
+           calc(var(--hauteur-mini) + env(safe-area-inset-bottom) + 32px);
 }
 .vide { color: var(--mut); line-height: 1.5; margin-top: 24px; }
 .vide code { font-family: var(--mono); font-size: 13px; color: var(--txt); }
@@ -53,51 +74,119 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Liste des valises */
 .valise {
   display: flex; justify-content: space-between; align-items: center; width: 100%;
-  min-height: var(--cible); padding: 14px; margin-bottom: 8px;
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; text-align: left;
+  min-height: 56px; padding: 14px 16px; margin-bottom: 10px;
+  background: var(--panel2); border-radius: var(--rayon); text-align: left; font-size: 17px;
 }
-.valise__meta { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+.valise__meta { font-size: 14px; color: var(--mut); }
 
 /* Grille d'albums */
 .regle {
-  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--mut); margin: 18px 0 10px;
+  font-family: var(--serif); font-size: 22px; font-weight: 600;
+  margin: 20px 0 12px;
 }
-.grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+.regle:first-child { margin-top: 4px; }
+.grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 14px; }
 .album { text-align: left; min-width: 0; }
 .album__pochette, .entete-album__pochette {
-  width: 100%; aspect-ratio: 1; border-radius: 6px; background: var(--panel2);
+  width: 100%; aspect-ratio: 1; border-radius: 10px; background: var(--panel2);
   object-fit: cover; display: block;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
 }
-.album__nom { font-size: 14px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.album__artiste { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.album__nom { font-size: 15px; font-weight: 500; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.album__artiste { font-size: 13px; color: var(--mut); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Vue album */
-.entete-album { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 16px; }
-.entete-album__pochette { width: 128px; flex: none; }
-.entete-album__nom { font-family: var(--serif); font-size: 22px; line-height: 1.2; }
-.entete-album__artiste { color: var(--mut); margin-top: 4px; }
-.entete-album__annee { font-family: var(--mono); font-size: 12px; color: var(--mut); margin-top: 4px; }
+/* Vue album : pochette centrée, titre, bouton « Lire » en pilule. */
+.entete-album { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 8px 0 20px; }
+.entete-album__pochette { width: min(68vw, 280px); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, .5); }
+.entete-album__nom { font-family: var(--serif); font-size: 24px; font-weight: 600; line-height: 1.2; margin-top: 18px; }
+.entete-album__artiste { color: var(--accent); font-size: 18px; margin-top: 4px; }
+.entete-album__annee { font-size: 13px; color: var(--mut); margin-top: 6px; }
+.lire {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 16px; min-width: 160px; height: 48px; padding: 0 24px;
+  border-radius: 24px; background: var(--panel2); color: var(--accent);
+  font-size: 17px; font-weight: 600;
+}
+.lire .icone { width: 18px; height: 18px; }
+
 .piste {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  min-height: var(--cible); padding: 10px 0; border-bottom: 1px solid var(--line); text-align: left;
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  min-height: 52px; padding: 10px 0; text-align: left;
+  border-bottom: .5px solid var(--line);
 }
-.piste__no { font-family: var(--mono); font-size: 12px; color: var(--mut); width: 22px; flex: none; }
-.piste__titre { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.piste__duree { font-family: var(--mono); font-size: 12px; color: var(--mut); }
-.piste--en-cours .piste__titre { color: var(--accent); }
+.piste__no { font-size: 15px; color: var(--mut); width: 22px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.piste__titre { flex: 1; min-width: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.piste__duree { font-size: 14px; color: var(--mut); font-variant-numeric: tabular-nums; }
+.piste--en-cours .piste__titre, .piste--en-cours .piste__no { color: var(--accent); }
 
-/* Mini-lecteur */
-.lecteur {
-  position: fixed; inset: auto 0 0 0; z-index: 2;
-  padding: 0 var(--gouttiere) env(safe-area-inset-bottom);
-  background: var(--panel); border-top: 1px solid var(--line);
+/* Mini-lecteur : carte flottante en verre, au-dessus de l'indicateur d'accueil. */
+.mini {
+  position: fixed; z-index: 3;
+  left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 6px);
+  height: var(--hauteur-mini); padding: 0 8px; overflow: hidden;
+  display: flex; align-items: center; gap: 2px;
+  border-radius: 18px;
+  background: var(--verre);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border: .5px solid rgba(237, 232, 220, .1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
 }
-.lecteur__barre { height: 3px; margin: 0 calc(-1 * var(--gouttiere)); background: var(--line); }
-.lecteur__avance { height: 100%; width: 0; background: var(--accent); }
-.lecteur__ligne { display: flex; align-items: center; gap: 4px; height: calc(var(--hauteur-lecteur) - 3px); }
-.lecteur__infos { flex: 1; min-width: 0; }
-.lecteur__titre { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lecteur__artiste { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lecteur__bouton { width: var(--cible); height: var(--cible); font-size: 20px; }
-.lecteur__bouton--principal { color: var(--accent); font-size: 24px; }
+.mini[hidden] { display: none; }
+.mini__corps { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; height: 100%; text-align: left; }
+.mini__pochette { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
+.mini__textes { min-width: 0; display: flex; flex-direction: column; }
+.mini__titre { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini__artiste { font-size: 13px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini__avance { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--accent); }
+
+/* Lecteur plein écran : feuille qui monte du bas. */
+.plein {
+  position: fixed; inset: 0; z-index: 4;
+  display: flex; flex-direction: column; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 8px) 28px calc(env(safe-area-inset-bottom) + 24px);
+  background: var(--panel); overflow: hidden;
+  transform: translateY(100%); transition: transform .32s cubic-bezier(.2, .8, .2, 1);
+}
+.plein--ouvert { transform: none; }
+.plein__fond {
+  position: absolute; inset: -40px; z-index: -1;
+  background-size: cover; background-position: center;
+  filter: blur(60px) saturate(140%) brightness(.45);
+}
+.plein__fermer { width: 64px; height: var(--cible); color: var(--mut); display: grid; place-items: center; }
+.plein__fermer .icone { width: 30px; height: 30px; }
+.plein__pochette {
+  width: 100%; max-width: 360px; aspect-ratio: 1; margin: auto 0 0;
+  border-radius: 14px; object-fit: cover; background: var(--panel2);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+  transition: transform .3s ease;
+}
+.plein--pause .plein__pochette { transform: scale(.88); }
+.plein__titre {
+  align-self: stretch; margin-top: 28px;
+  font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.plein__artiste {
+  align-self: stretch; margin-top: 4px; color: rgba(237, 232, 220, .65); font-size: 18px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.plein__curseur {
+  align-self: stretch; margin: 24px 0 0; height: 28px;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  --part: 0%;
+}
+.plein__curseur::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, var(--txt) var(--part), rgba(237, 232, 220, .22) var(--part));
+}
+.plein__curseur::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; margin-top: -4px;
+  border-radius: 50%; background: var(--txt); opacity: 0;
+}
+.plein__curseur:active::-webkit-slider-thumb { opacity: 1; }
+.plein__temps {
+  align-self: stretch; display: flex; justify-content: space-between;
+  font-size: 12px; color: rgba(237, 232, 220, .55); font-variant-numeric: tabular-nums;
+}
+.plein__commandes { display: flex; align-items: center; justify-content: space-evenly; align-self: stretch; margin: 24px 0 auto; }

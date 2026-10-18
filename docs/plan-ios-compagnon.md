@@ -132,6 +132,12 @@ est `fr.rousseau.rustyvalise`.
    `gen/apple/build/arm64-sim/` (« Directory not empty ») : le supprimer
    avant de reconstruire, sinon on réinstalle l'ancienne version sans le
    savoir.
+5. Construction optimisée (sans `--debug`) : `swift-rs` compile alors le
+   paquet Swift de Tauri en `release`, et Swift 6.4 y laisse
+   `log_stdout`, `on_webview_created`, `run_plugin_command` en symboles
+   locaux (« Undefined symbols »). `[profile.release.package.tauri] debug
+   = 1` dans `Cargo.toml` le fait compiler en `debug`. Le `cdylib` a été
+   retiré de `apps/mobile` (Android seulement).
 
 **Préalable (levé le 18 oct. 2026)** : Xcode complet (SDK iOS, signature,
 déploiement) et les cibles Rust `aarch64-apple-ios` et `aarch64-apple-ios-sim`.
@@ -348,6 +354,16 @@ construire.
 
 ## Étape 6 — Le retour des écoutes · **M**
 
+**Livré (18 oct. 2026), version courte** : le suivi d'écoute du bureau
+(`SuiviEcoute`, 30 s réellement jouées ou la moitié d'une piste courte) est
+passé dans `crates/core/src/memoire.rs`, commun aux deux apps. L'iPhone note
+chaque écoute dans la table `ecoute` de sa valise et réécrit
+`journal.json` à la racine de la valise. `rusty-music valise importer
+<valise ou journal.json>` verse les écoutes dans la base du Mac ; une écoute
+déjà présente (même chemin, même instant) n'est pas recomptée, ce qui
+remplace le numéro de séquence prévu ci-dessous. Les avis (table `avis`)
+restent à faire.
+
 L'iPhone écrit dans la table `ecoute` de sa valise (chemin **d'origine**,
 horodatage) et ses avis dans une table `avis`. À la synchronisation :
 
@@ -382,6 +398,17 @@ Option : une valise peut épingler des albums qui survivent à la rotation.
   compte Apple gratuit, l'app expire au bout de 7 jours et il faut la
   réinstaller. Avec l'Apple Developer Program (99 $/an), le profil dure un an
   et TestFlight devient possible.
+- **Renouveler la signature sans câble** : les Raccourcis d'iOS ne savent
+  pas re-signer une app ; l'action « Refresh Apps » vient d'AltStore ou de
+  SideStore. AltStore (AltServer sur le Mac, rafraîchissement en Wi-Fi) est
+  la voie locale. Un compte gratuit est limité à 3 apps installées ainsi
+  (AltStore en compte une).
+- **CarPlay** : sans le droit `com.apple.developer.carplay-audio` (accordé par
+  Apple sur demande, compte payant), l'app n'a pas d'icône sur l'écran de la
+  voiture. Mais l'écran « En cours » de CarPlay et les boutons du volant
+  passent par `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter`, déjà
+  branchés (`src/en_cours.rs`) : la lecture lancée sur l'iPhone s'y pilote.
+  À vérifier dans une voiture ou avec le « CarPlay Simulator » d'Xcode.
 - **App Store / TestFlight public : écarté (décidé le 18 oct. 2026).** Pas de
   publication prévue. La question de compatibilité GPL-3 / conditions de
   l'App Store ne se pose donc pas.

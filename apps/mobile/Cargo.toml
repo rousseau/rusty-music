@@ -11,7 +11,7 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 # qu'à lancer la même interface sur le Mac pendant le développement.
 [lib]
 name = "rusty_music_mobile"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
 
 [build-dependencies]
 tauri-build.workspace = true

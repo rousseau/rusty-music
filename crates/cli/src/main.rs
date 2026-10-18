@@ -545,6 +545,11 @@ enum ValiseCmd {
         #[arg(long)]
         essai: bool,
     },
+    /// Verse dans la base les écoutes faites sur le téléphone (journal.json)
+    Importer {
+        /// Le journal, ou le dossier de la valise qui le contient
+        journal: PathBuf,
+    },
 }
 
 /// Durée longue, en h/min — pour l'avancement d'une passe qui dure.
@@ -2372,6 +2377,22 @@ fn main() -> Result<()> {
                 let sortie = out.join(format!("{base} — {}.wav", p.nom));
                 wav::ecrire(&sortie, &p.gauche, &p.droite, SR)?;
                 println!("{:<10} {energie:>10.6}  {}", p.nom, sortie.display());
+            }
+        }
+        Cmd::Valise {
+            action: ValiseCmd::Importer { journal },
+        } => {
+            let journal = rusty_music_core::valise::lire_journal(&journal)?;
+            let import = lib.importer_journal(&journal)?;
+            println!(
+                "{} écoutes ajoutées, {} déjà connues",
+                import.nouvelles, import.deja
+            );
+            if import.inconnues > 0 {
+                println!(
+                    "dont {} sur des chemins que la bibliothèque ne connaît plus (gardées)",
+                    import.inconnues
+                );
             }
         }
         Cmd::Valise {

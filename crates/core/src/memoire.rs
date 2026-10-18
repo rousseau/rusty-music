@@ -7,6 +7,9 @@
 //! De là viennent trois listes calculées — récemment écoutés, les plus
 //! écoutés, favoris — que l'interface montre en tête de la vue Playlists.
 
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
 use crate::db::{track_from_row, Library, TrackRow, TRACK_COLS};
 use crate::error::Result;
 
@@ -132,9 +135,176 @@ impl Library {
     }
 }
 
+/// Une écoute compte après 30 secondes **réellement jouées**, ou la moitié de
+/// la piste si elle est plus courte que une minute — le premier seuil atteint.
+pub const SEUIL_ECOUTE: Duration = Duration::from_secs(30);
+
+/// Ce que le suivi d'écoute sait de la piste en cours, d'un battement à
+/// l'autre. Commun au bureau et au compagnon iOS : une écoute compte au même
+/// moment des deux côtés.
+pub struct SuiviEcoute {
+    chemin: Option<PathBuf>,
+    /// Temps réellement joué sur cette piste (pause exclue, saut exclu).
+    joue: Duration,
+    /// Temps à jouer pour que l'écoute compte.
+    seuil: Duration,
+    compte: bool,
+    position: Duration,
+    dernier_battement: std::time::Instant,
+}
+
+impl SuiviEcoute {
+    pub fn nouveau() -> Self {
+        Self {
+            chemin: None,
+            joue: Duration::ZERO,
+            seuil: SEUIL_ECOUTE,
+            compte: false,
+            position: Duration::ZERO,
+            dernier_battement: std::time::Instant::now(),
+        }
+    }
+
+    /// Le temps écoulé depuis le battement précédent, à passer à
+    /// [`SuiviEcoute::avancer`]. Un battement très en retard (appareil
+    /// endormi) ne vaut pas du temps joué : plafonné à 2 s.
+    pub fn battement(&mut self) -> Duration {
+        let maintenant = std::time::Instant::now();
+        let ecoule = maintenant
+            .duration_since(self.dernier_battement)
+            .min(Duration::from_secs(2));
+        self.dernier_battement = maintenant;
+        ecoule
+    }
+}
+
+/// Seuil d'une piste de `duree_ms` : 30 s, ou la moitié si elle est plus courte
+/// qu'une minute. Une durée inconnue ou nulle garde les 30 s.
+pub fn seuil_ecoute(duree_ms: Option<i64>) -> Duration {
+    match duree_ms {
+        Some(ms) if ms > 0 => SEUIL_ECOUTE.min(Duration::from_millis(ms as u64 / 2)),
+        _ => SEUIL_ECOUTE,
+    }
+}
+
+impl SuiviEcoute {
+    /// Fait avancer le suivi d'un battement : `courant` est la piste en cours,
+    /// `ecoule` le temps écoulé depuis le battement précédent. Rend le chemin
+    /// à noter ([`Library::noter_ecoute`]) quand l'écoute **vient** de compter, `None` sinon.
+    ///
+    /// On compte le **temps écoulé en lecture**, pas la position : sauter à la
+    /// fin d'une piste ne la fait pas compter. Une piste qui recommence
+    /// (répétition « une », retour au début) repart de zéro. `duree` donne la
+    /// durée d'une piste, demandée une seule fois par piste.
+    pub fn avancer(
+        &mut self,
+        courant: Option<PathBuf>,
+        en_pause: bool,
+        position: Duration,
+        ecoule: Duration,
+        duree: impl FnOnce(&Path) -> Option<i64>,
+    ) -> Option<PathBuf> {
+        let recommence = courant == self.chemin && position + Duration::from_secs(5) < self.position;
+        if courant != self.chemin || recommence {
+            self.seuil = courant.as_deref().map_or(SEUIL_ECOUTE, |c| seuil_ecoute(duree(c)));
+            self.chemin = courant;
+            self.joue = Duration::ZERO;
+            self.compte = false;
+        }
+        self.position = position;
+
+        let chemin = self.chemin.as_ref()?;
+        if en_pause || self.compte {
+            return None;
+        }
+        self.joue += ecoule;
+        if self.joue < self.seuil {
+            return None;
+        }
+        self.compte = true;
+        Some(chemin.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fait jouer `suivi` pendant `secondes` battements d'une seconde sur la
+    /// piste `piste` (durée `duree_ms`), de la position `depart`. Rend les
+    /// écoutes notées.
+    fn jouer(
+        suivi: &mut SuiviEcoute,
+        piste: &str,
+        duree_ms: i64,
+        depart: u64,
+        secondes: u64,
+        en_pause: bool,
+    ) -> Vec<String> {
+        let mut notees = Vec::new();
+        for t in 0..secondes {
+            let r = suivi.avancer(
+                Some(std::path::PathBuf::from(piste)),
+                en_pause,
+                Duration::from_secs(depart + t),
+                Duration::from_secs(1),
+                |_| Some(duree_ms),
+            );
+            notees.extend(r.map(|p| p.display().to_string()));
+        }
+        notees
+    }
+
+    #[test]
+    fn une_ecoute_compte_apres_trente_secondes_jouees_une_seule_fois() {
+        let mut s = SuiviEcoute::nouveau();
+        assert!(jouer(&mut s, "/m/a", 200_000, 0, 29, false).is_empty());
+        assert_eq!(jouer(&mut s, "/m/a", 200_000, 29, 100, false), vec!["/m/a"]);
+    }
+
+    #[test]
+    fn la_pause_et_le_saut_ne_font_pas_compter() {
+        let mut s = SuiviEcoute::nouveau();
+        // 60 s en pause : rien n'est joué.
+        assert!(jouer(&mut s, "/m/a", 200_000, 0, 60, true).is_empty());
+        // Sauter à la fin ne vaut pas 30 s de lecture.
+        assert!(jouer(&mut s, "/m/a", 200_000, 190, 5, false).is_empty());
+    }
+
+    #[test]
+    fn une_piste_courte_compte_a_la_moitie() {
+        let mut s = SuiviEcoute::nouveau();
+        // 40 s de durée : seuil de 20 s.
+        assert_eq!(jouer(&mut s, "/m/a", 40_000, 0, 20, false), vec!["/m/a"]);
+        assert_eq!(seuil_ecoute(None), Duration::from_secs(30));
+        assert_eq!(seuil_ecoute(Some(0)), Duration::from_secs(30));
+        assert_eq!(seuil_ecoute(Some(10 * 60_000)), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn changer_de_piste_remet_le_compte_a_zero() {
+        let mut s = SuiviEcoute::nouveau();
+        assert!(jouer(&mut s, "/m/a", 200_000, 0, 25, false).is_empty());
+        // 25 s de plus sur une autre piste : ni a (changée) ni b (pas assez).
+        assert!(jouer(&mut s, "/m/b", 200_000, 0, 25, false).is_empty());
+        assert_eq!(jouer(&mut s, "/m/b", 200_000, 25, 10, false), vec!["/m/b"]);
+    }
+
+    #[test]
+    fn la_repetition_d_une_piste_la_fait_compter_a_chaque_tour() {
+        let mut s = SuiviEcoute::nouveau();
+        let mut notees = jouer(&mut s, "/m/a", 40_000, 0, 40, false);
+        // Le morceau recommence à 0 : la position a reculé de plus de 5 s.
+        notees.extend(jouer(&mut s, "/m/a", 40_000, 0, 40, false));
+        assert_eq!(notees, vec!["/m/a", "/m/a"]);
+    }
+
+    #[test]
+    fn rien_en_lecture_ne_compte() {
+        let mut s = SuiviEcoute::nouveau();
+        let r = s.avancer(None, false, Duration::ZERO, Duration::from_secs(60), |_| None);
+        assert!(r.is_none());
+    }
 
     fn bibliotheque(chemins: &[&str]) -> Library {
         let lib = Library::open_in_memory().unwrap();

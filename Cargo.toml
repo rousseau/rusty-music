@@ -44,6 +44,15 @@ opt-level = 3
 [profile.dev.package.rusty-music-editor]
 opt-level = 3
 
+# Compagnon iOS, construction optimisée : `swift-rs` compile le paquet Swift
+# de Tauri en `release` dès que `DEBUG` (infos de débogage) est faux, et Swift
+# 6.4 y laisse alors `log_stdout`, `on_webview_created` et
+# `run_plugin_command` en symboles locaux — l'édition de liens échoue. Les
+# infos de débogage sur le seul crate `tauri` font compiler ce petit paquet
+# en `debug` ; le code Rust reste optimisé.
+[profile.release.package.tauri]
+debug = 1
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

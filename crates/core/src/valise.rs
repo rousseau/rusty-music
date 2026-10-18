@@ -688,6 +688,114 @@ pub fn exporter(
     Ok(rapport)
 }
 
+/// Nom du journal d'écoutes que le téléphone tient à la racine de sa valise.
+pub const JOURNAL: &str = "journal.json";
+
+/// Une écoute faite sur le téléphone : le chemin **d'origine** (celui du Mac)
+/// et l'instant, en secondes Unix.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EcouteJournal {
+    pub chemin: String,
+    pub le: i64,
+}
+
+/// Le journal `journal.json` : toutes les écoutes de la valise depuis son
+/// arrivée sur le téléphone. Réécrit en entier à chaque écoute (quelques Ko),
+/// pour que le Mac n'ait qu'un fichier à lire — la base, elle, est ouverte
+/// par l'app et son journal WAL ne se copie pas proprement.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct Journal {
+    pub format: u32,
+    pub ecoutes: Vec<EcouteJournal>,
+}
+
+/// Ce que l'import d'un journal a fait.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Import {
+    /// Écoutes ajoutées à la base du Mac.
+    pub nouvelles: usize,
+    /// Écoutes déjà présentes (journal importé une deuxième fois).
+    pub deja: usize,
+    /// Chemins que la bibliothèque ne connaît plus (fichier déplacé depuis
+    /// l'export). Les écoutes sont gardées quand même, comme partout ailleurs.
+    pub inconnues: usize,
+}
+
+impl Library {
+    /// Le journal d'écoutes de cette base (celle d'une valise), dans l'ordre.
+    pub fn journal_valise(&self) -> Result<Journal> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT chemin, le FROM ecoute ORDER BY le, rowid")?;
+        let ecoutes = stmt
+            .query_map([], |r| {
+                Ok(EcouteJournal {
+                    chemin: r.get(0)?,
+                    le: r.get(1)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(Journal {
+            format: VERSION_FORMAT,
+            ecoutes,
+        })
+    }
+
+    /// Verse les écoutes d'un journal dans `ecoute`. Une écoute déjà présente
+    /// (même chemin, même instant) n'est pas recomptée : réimporter un
+    /// journal, ou le journal d'une valise qui a continué de servir, ne
+    /// double rien.
+    pub fn importer_journal(&self, journal: &Journal) -> Result<Import> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut import = Import::default();
+        {
+            let mut existe =
+                tx.prepare("SELECT 1 FROM ecoute WHERE chemin = ?1 AND le = ?2 LIMIT 1")?;
+            let mut connu = tx.prepare("SELECT 1 FROM tracks WHERE path = ?1 LIMIT 1")?;
+            let mut inserer = tx.prepare("INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)")?;
+            for e in &journal.ecoutes {
+                if existe.exists(params![e.chemin, e.le])? {
+                    import.deja += 1;
+                    continue;
+                }
+                if !connu.exists([&e.chemin])? {
+                    import.inconnues += 1;
+                }
+                inserer.execute(params![e.chemin, e.le])?;
+                import.nouvelles += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(import)
+    }
+}
+
+/// Réécrit `journal.json` à la racine de la valise depuis sa base. Passe par
+/// un fichier temporaire : un Mac qui lit pendant l'écriture voit l'ancien
+/// journal ou le nouveau, jamais un morceau.
+pub fn ecrire_journal(lib: &Library, racine: &Path) -> Result<()> {
+    let json = serde_json::to_string_pretty(&lib.journal_valise()?)
+        .map_err(|e| Error::Parsing(format!("journal : {e}")))?;
+    let provisoire = racine.join(format!("{JOURNAL}.tmp"));
+    std::fs::write(&provisoire, json)?;
+    std::fs::rename(&provisoire, racine.join(JOURNAL))?;
+    Ok(())
+}
+
+/// Lit un journal : `chemin` est le fichier lui-même, ou le dossier de la
+/// valise qui le contient.
+pub fn lire_journal(chemin: &Path) -> Result<Journal> {
+    let fichier = if chemin.is_dir() {
+        chemin.join(JOURNAL)
+    } else {
+        chemin.to_path_buf()
+    };
+    let texte = std::fs::read_to_string(&fichier)?;
+    serde_json::from_str(&texte)
+        .map_err(|e| Error::Parsing(format!("{} : {e}", fichier.display())))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -862,5 +970,43 @@ mod tests {
         // Un second export dans le même dossier est refusé.
         assert!(exporter(&lib, &sel, &sortie, |_, _, _| {}).is_err());
         let _ = std::fs::remove_dir_all(&racine);
+    }
+
+    #[test]
+    fn le_journal_du_telephone_se_reimporte_sans_doublon() {
+        let racine = racine_test("journal");
+        let mac = bibliotheque(&racine, 2, 10);
+        let a = racine.join("src/A0/0.mp3").to_string_lossy().into_owned();
+
+        // Côté téléphone : la base de la valise note deux écoutes.
+        let telephone = Library::open_in_memory().unwrap();
+        for le in [5000, 6000] {
+            telephone
+                .conn
+                .execute("INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)", params![a, le])
+                .unwrap();
+        }
+        telephone
+            .conn
+            .execute("INSERT INTO ecoute(chemin, le) VALUES ('/ailleurs.mp3', 7000)", [])
+            .unwrap();
+        ecrire_journal(&telephone, &racine).unwrap();
+
+        let journal = lire_journal(&racine).unwrap();
+        assert_eq!(journal.ecoutes.len(), 3);
+        assert_eq!(
+            mac.importer_journal(&journal).unwrap(),
+            Import { nouvelles: 3, deja: 0, inconnues: 1 }
+        );
+        // Deuxième import du même journal : rien de neuf.
+        assert_eq!(
+            mac.importer_journal(&journal).unwrap(),
+            Import { nouvelles: 0, deja: 3, inconnues: 0 }
+        );
+        let n: i64 = mac
+            .conn
+            .query_row("SELECT COUNT(*) FROM ecoute WHERE chemin = ?1", [&a], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2);
     }
 }
