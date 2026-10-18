@@ -99,7 +99,7 @@ audio, avec le même `player` que le bureau.
    le certificat, il manque l'intermédiaire Apple WWDR G3
    (apple.com/certificateauthority) dans le trousseau.
 2. `cargo tauri ios build --debug --target aarch64 --export-method
-   debugging` (équipe dans `tauri.conf.json`, `developmentTeam`), puis
+   debugging` (`--debug` obligatoire, voir le piège 5) (équipe dans `tauri.conf.json`, `developmentTeam`), puis
    `xcrun devicectl device install app --device <UDID> "gen/apple/build/arm64/Rusty Valise.ipa"`.
 3. L'option « Mode développeur » de l'iPhone (Réglages → Confidentialité
    et sécurité) n'apparaît qu'**après une première tentative
@@ -137,7 +137,14 @@ est `fr.rousseau.rustyvalise`.
    `log_stdout`, `on_webview_created`, `run_plugin_command` en symboles
    locaux (« Undefined symbols »). `[profile.release.package.tauri] debug
    = 1` dans `Cargo.toml` le fait compiler en `debug`. Le `cdylib` a été
-   retiré de `apps/mobile` (Android seulement).
+   retiré de `apps/mobile` (Android seulement). **Mais la construction
+   optimisée plante au lancement** (iOS 27.0.1, iPhone 11 Pro) :
+   `EXC_BAD_ACCESS` dans `objc_retain`, appelé par
+   `-[UIApplication _connectUISceneFromFBSScene:transitionContext:]`.
+   `tao` sans optimisation n'y change rien ; cause non trouvée. On construit
+   donc avec `--debug` : les dépendances y sont déjà optimisées
+   (`[profile.dev.package."*"] opt-level = 3`), seuls nos crates ne le sont
+   pas.
 
 **Préalable (levé le 18 oct. 2026)** : Xcode complet (SDK iOS, signature,
 déploiement) et les cibles Rust `aarch64-apple-ios` et `aarch64-apple-ios-sim`.
