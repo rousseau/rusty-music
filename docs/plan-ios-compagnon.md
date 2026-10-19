@@ -6,6 +6,12 @@ Même forme que les autres plans : état **constaté**, **options** comparées,
 recommandation. Décidé : développement lancé le 18 oct. 2026, usage personnel seulement
 (pas d'App Store). Le reste est une liste à trancher.
 
+**Où on en est (19 oct. 2026)** : l'app « Rusty Valise » (`apps/mobile/`)
+tourne sur l'iPhone. Étapes 0 (sauf les mesures), 2, 4A et 6 (sans les avis)
+livrées ; étape 5 en version minimale (valises, albums, lecture) ; étapes 1,
+3 (au-delà de « récents » et « peu écoutés »), 4B et 7 restent. Le tableau
+« Ordre et charge » porte l'état de chaque étape.
+
 Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
 
 ## L'idée
@@ -85,17 +91,20 @@ audio, avec le même `player` que le bureau.
   valise d'essai s'ouvre, les albums s'affichent par règle avec leurs
   pochettes ;
 - « En cours de lecture » et les commandes à distance sont écrits en Rust
-  (`src/en_cours.rs`, `objc2-media-player`), sans pochette pour l'instant
-  (il faudrait les liaisons UIKit) ;
+  (`src/en_cours.rs`, `objc2-media-player`) : **aucun plugin Swift** n'a été
+  nécessaire (point à trancher n° 2) ;
 - **l'app tourne sur l'iPhone** (iPhone 11 Pro, iOS 27.0.1, 18 oct. 2026) :
   lecture, arrière-plan écran verrouillé, « En cours de lecture » et
   commandes à distance vérifiés à la main ;
 - la pochette sur l'écran verrouillé passe par `MPMediaItemArtwork`,
   appelé par `msg_send!` (`objc2-media-player` ne génère son constructeur
-  que pour macOS) ;
+  que pour macOS), l'`UIImage` étant faite depuis le JPEG de la valise
+  (`objc2-core-foundation`) ;
 - interface (18 oct.) : pas d'en-tête, ▶ sur chaque pochette, lecteur
   toujours complet en bas (pochette, titre, curseur, précédente / pause /
-  suivante) ;
+  suivante) ; un toucher sur la piste en cours mène à son album. Icônes
+  SVG ; icône de l'app : un vinyle dont l'étiquette est l'avatar GitHub
+  (`apps/mobile/icons/icon.png`, déclinée dans `gen/apple/Assets.xcassets`) ;
 - **reste** : les mesures (batterie, gapless).
 
 **Installer sur l'iPhone** (compte Apple gratuit, « Personal Team ») :
@@ -167,7 +176,10 @@ Tauri iOS qui :
 4. se met en pause proprement sur un appel entrant ou un débranchement de
    casque, et reprend après l'appel.
 
-**Ce qu'il faut en Swift** (petit plugin Tauri, environ 150 lignes) :
+**Ce qu'il faut en Swift** (petit plugin Tauri, environ 150 lignes) —
+*prévision dépassée : tout a été écrit en Rust par `objc2` (`src/session_audio.rs`,
+`src/en_cours.rs`) ; les interruptions et changements de route restent à
+vérifier* :
 - `AVAudioSession` en catégorie `.playback`, et `UIBackgroundModes = audio`
   dans `Info.plist` ;
 - les notifications d'interruption et de changement de route, renvoyées au
@@ -236,7 +248,10 @@ des pochettes de 17 à 130 Ko. La copie est quasi instantanée sur APFS
 - **pas de réencodage Opus** : la bibliothèque est en MP3 à 98,5 %
   (27 321 MP3, 355 M4A, 22 FLAC sur 27 721 pistes), qui se copient tels
   quels de toute façon. Le réencodage des quelques sources sans perte attendra.
-  Il demanderait libopus, donc `cmake` au build.
+  Il demanderait libopus, donc `cmake` au build ;
+- la pochette exportée passe par `Library::lire_pochette`, comme le bureau
+  et la CLI : le choix « Image du dossier » fait dans les vérifications
+  (table `pochette_choix`) voyage donc dans la valise.
 
 
 Une valise est un **dossier** autonome, versionné et lisible sans le Mac :
@@ -338,6 +353,14 @@ Côté iPhone, marquer le dossier audio « exclu de la sauvegarde »
 
 ## Étape 5 — L'app Écouter mobile · **L**
 
+**Version minimale livrée (18 oct. 2026)** : liste des valises, grille des
+albums par règle (▶ sur chaque pochette pour lancer l'album), écran album
+(pistes), lecteur complet toujours visible en bas, pochette sur l'écran
+verrouillé. La piste suivante est préchargée (gapless). Interface volontairement
+sobre : pas d'en-tête, un toucher pour lancer. **Reste** : biographie,
+critique, crédits, jauge ; file ; avis ; « N » / « E » ; persistance de la
+session ; section mobile d'`interface-guidelines.md`.
+
 Interface à part de `apps/desktop/ui/app.js` (14 000 lignes, pensées pour le
 rail et l'inspecteur). On en reprend les **jetons** (couleurs, typographie,
 `--familles`) et la logique de jauge de popularité, pas la mise en page.
@@ -427,17 +450,17 @@ Option : une valise peut épingler des albums qui survivent à la rotation.
 
 ## Ordre et charge
 
-| # | Étape | Effort | Dépend de |
-|---|---|---|---|
-| 0 | Prototype iOS (lecture, arrière-plan, « En cours ») | M | — |
-| 1 | Découpage `base` / `player` / `apps/mobile` | M | 0 |
-| 2 | Format de valise + `valise exporter` | M | 1 |
-| 4A | Transfert par le Finder | S | 2 |
-| 5 | App Écouter mobile (v1 : Valise, Album, Lecture, File) | L | 1, 2 |
-| 6 | Retour des écoutes (`valise importer`) | M | 5 |
-| 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) |
-| 7 | Rotation | M | 3, 6 |
-| 4B | Synchronisation Wi-Fi | M | 6 |
+| # | Étape | Effort | Dépend de | État (19 oct. 2026) |
+|---|---|---|---|---|
+| 0 | Prototype iOS (lecture, arrière-plan, « En cours ») | M | — | **fait** sur iPhone ; restent les mesures (batterie, gapless) et les interruptions |
+| 1 | Découpage `base` / `player` / `apps/mobile` | M | 0 | à faire — plus un préalable (tout compile pour iOS), sert à alléger le binaire |
+| 2 | Format de valise + `valise exporter` | M | 1 | **fait**, sans réencodage |
+| 4A | Transfert par le Finder | S | 2 | **fait** (Finder ou `devicectl`) |
+| 5 | App Écouter mobile (v1 : Valise, Album, Lecture, File) | L | 1, 2 | version minimale (sans file, avis, textes) |
+| 6 | Retour des écoutes (`valise importer`) | M | 5 | **fait**, sans les avis |
+| 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | « récents » et « peu écoutés » en CLI |
+| 7 | Rotation | M | 3, 6 | à faire |
+| 4B | Synchronisation Wi-Fi | M | 6 | à faire |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement
 (« récents » et « peu écoutés ») réglées en ligne de commande. Les thèmes,
@@ -447,9 +470,14 @@ le panneau de préparation, la rotation et le Wi-Fi viennent ensuite.
 
 1. Lecture par `cpal` (parité avec le bureau, « E ») ou par `AVPlayer`
    (batterie) — **décidé par les mesures de l'étape 0**.
-2. Plugin Swift ou `objc2` pour la session audio et « En cours de lecture ».
-3. Crate `base` extrait (recommandé) ou features dans `core`.
-4. Opus 160 kb/s par défaut ou originaux par défaut.
-5. Seuil d'une écoute, et ce qui fait qu'un album est « écouté en entier ».
+2. ~~Plugin Swift ou `objc2`~~ — **`objc2`** : session audio, « En cours de
+   lecture », commandes à distance et pochette, sans plugin Swift.
+3. Crate `base` extrait (recommandé) ou features dans `core` — moins pressant :
+   `core` compile tel quel pour iOS.
+4. ~~Opus 160 kb/s par défaut ou originaux~~ — **originaux** tant que la
+   bibliothèque reste en MP3 (étape 2).
+5. Seuil d'une écoute : **celui du bureau** (`SuiviEcoute` : 30 s jouées, ou la
+   moitié d'une piste courte). Reste : ce qui fait qu'un album est « écouté en
+   entier ».
 6. ~~Distribution au-delà de l'usage personnel~~ — écartée : usage personnel
    seulement (compte gratuit à 7 jours ou Developer Program à 1 an).

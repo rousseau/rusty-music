@@ -46,6 +46,7 @@ le plan de Paris (~0,4 Go, empreintes vérifiées), puis construit `.app` et
 | Module 2 — Exploration (carte 2D, chemins, familles, filtres tempo/énergie) | livré ; carte sur plan de ville réel (Paris/OpenStreetMap) en cours |
 | Module 3 — Éditeur (démixage, vitesse, hauteur, greffe calée sur les temps, export) | périmètre de `docs/ui-spec-editeur.md` couvert |
 | Super-résolution audio hors ligne (bouton « HD ») | livré (`crates/superres`) |
+| Compagnon iOS « Rusty Valise » (valise d'albums exportée par le Mac, écoutes rapatriées) | tourne sur iPhone, usage personnel ; `docs/plan-ios-compagnon.md` |
 | Métadonnées enrichies | genres MusicBrainz + descripteurs audio + popularité + pochettes de repli (Cover Art Archive, Deezer) + bios (TheAudioDB) + crédits (Discogs) + critiques (CritiqueBrainz) livrés |
 
 `docs/suite.md` tient le détail de ce qui reste et dans quel ordre.
@@ -64,6 +65,7 @@ crates/editor/         module 3 — démixage HTDemucs (demucs-core / Burn), gre
 crates/superres/       super-résolution audio hors ligne (AERO via ONNX Runtime)
 crates/cli/            binaire `rusty-music` — pilote le moteur sans interface
 apps/desktop/          application Tauri : interface HTML/CSS/JS + WebGL
+apps/mobile/           compagnon iOS « Rusty Valise » (Tauri) : lit une valise
 scripts/               préparation des modèles (CLAP, HTDemucs, AERO)
 ui/prototype/          maquette HTML du modèle de navigation retenu
 experiments/           sondages jetables, hors du workspace

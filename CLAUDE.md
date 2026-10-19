@@ -75,6 +75,7 @@ crates/editor/   module 3 — démixage (demucs-core / Burn), étirement, greffe
 crates/superres/ super-résolution audio hors ligne (AERO via ONNX Runtime) — bouton « HD »
 crates/cli/      binaire `rusty-music` : scan / watch / analyse / carte / démixage…
 apps/desktop/    application Tauri (interface HTML/CSS/JS + WebGL)
+apps/mobile/     compagnon iOS « Rusty Valise » (Tauri) — lit une valise exportée par le Mac
 scripts/         préparation des modèles (CLAP, HTDemucs, AERO)
 ui/prototype/    maquette du modèle de navigation retenu (variante « Atelier »)
 docs/            spécifications
