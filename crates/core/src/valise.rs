@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::db::{hacher, Library};
 use crate::error::{Error, Result};
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS valise_fichier (
 ";
 
 /// Ce qui fait entrer un album dans la valise.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Regle {
     /// Les derniers arrivés (date de modification la plus récente des fichiers,
@@ -67,6 +67,13 @@ pub enum Regle {
     /// Jamais ou peu écoutés, puis écoutés il y a longtemps ; à égalité, un
     /// tirage qui change d'une valise à l'autre.
     PeuEcoutes,
+    /// Les albums d'une famille de la carte (cluster majoritaire de l'album,
+    /// [`Library::familles_des_albums`]), tirés au sort.
+    Famille,
+    /// Tirés au sort dans toute la bibliothèque.
+    Hasard,
+    /// Épinglé à la main ([`Reglages::epingles`]) : passe avant les règles.
+    Choisi,
 }
 
 impl Regle {
@@ -74,6 +81,7 @@ impl Regle {
         match s.trim() {
             "recents" | "récents" => Some(Self::Recents),
             "peu-ecoutes" | "peu-écoutés" => Some(Self::PeuEcoutes),
+            "hasard" => Some(Self::Hasard),
             _ => None,
         }
     }
@@ -82,6 +90,9 @@ impl Regle {
         match self {
             Self::Recents => "recents",
             Self::PeuEcoutes => "peu-ecoutes",
+            Self::Famille => "famille",
+            Self::Hasard => "hasard",
+            Self::Choisi => "choisi",
         }
     }
 
@@ -89,35 +100,79 @@ impl Regle {
         match self {
             Self::Recents => "Récents",
             Self::PeuEcoutes => "Peu écoutés",
+            Self::Famille => "Famille",
+            Self::Hasard => "Au hasard",
+            Self::Choisi => "Choisi",
         }
     }
 }
 
-/// Réglages d'une sélection.
-#[derive(Debug, Clone)]
+/// Une part de la valise : une règle et ce qu'elle a le droit de prendre.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Part {
+    pub regle: Regle,
+    /// Albums au plus, dans la limite du budget qui reste ; `None` : une part
+    /// égale du budget restant entre les parts restantes (la ligne de
+    /// commande).
+    #[serde(default)]
+    pub albums: Option<usize>,
+    /// La famille, pour [`Regle::Famille`].
+    #[serde(default)]
+    pub famille: Option<i64>,
+}
+
+impl Part {
+    /// Une part égale du budget, sans compte d'albums.
+    pub fn budget(regle: Regle) -> Self {
+        Self { regle, albums: None, famille: None }
+    }
+
+    /// Au plus `albums` albums.
+    pub fn albums(regle: Regle, albums: usize) -> Self {
+        Self { regle, albums: Some(albums), famille: None }
+    }
+}
+
+/// Réglages d'une sélection. Le bureau les garde dans la base
+/// ([`Library::reglages_valise`]), d'une valise à l'autre.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Reglages {
-    /// Règles, chacune avec une part égale du budget ; ce qu'une règle ne
-    /// consomme pas passe à la suivante.
-    pub regles: Vec<Regle>,
+    /// Les parts, dans l'ordre : chacune prend ses albums parmi ce que les
+    /// précédentes ont laissé.
+    pub parts: Vec<Part>,
     /// Taille totale de l'audio, en octets.
     pub budget_octets: u64,
     /// Albums de moins de pistes écartés (pistes isolées, extraits).
     pub pistes_min: usize,
     /// Albums d'un même artiste, au plus, dans toute la valise.
     pub par_artiste: usize,
-    /// Graine du tirage de « peu écoutés » : deux valises préparées à des
-    /// moments différents ne proposent pas les mêmes albums.
+    /// Graine des tirages (« peu écoutés » à égalité, famille, hasard) : deux
+    /// valises préparées à des moments différents ne proposent pas les mêmes
+    /// albums.
     pub graine: u64,
+    /// Albums gardés à la main (identifiants d'[`AlbumValise`]), pris avant
+    /// toute règle, sans plafond par artiste.
+    pub epingles: Vec<String>,
+    /// Albums écartés à la main : aucune règle ne les reprend.
+    pub exclus: Vec<String>,
+    /// Modèle d'empreintes dont les familles servent [`Regle::Famille`] —
+    /// fourni par l'appelant (le crate d'analyse le connaît, pas celui-ci).
+    #[serde(skip)]
+    pub modele: String,
 }
 
 impl Default for Reglages {
     fn default() -> Self {
         Self {
-            regles: vec![Regle::Recents, Regle::PeuEcoutes],
+            parts: vec![Part::budget(Regle::Recents), Part::budget(Regle::PeuEcoutes)],
             budget_octets: 4 * 1024 * 1024 * 1024,
             pistes_min: 3,
             par_artiste: 2,
             graine: 0,
+            epingles: Vec::new(),
+            exclus: Vec::new(),
+            modele: String::new(),
         }
     }
 }
@@ -130,6 +185,8 @@ pub struct AlbumValise {
     pub artiste: String,
     pub annee: Option<i64>,
     pub regle: Regle,
+    /// Famille de la carte (cluster majoritaire), si l'album y est.
+    pub famille: Option<i64>,
     pub nb_pistes: usize,
     pub octets: u64,
     pub duree_ms: i64,
@@ -166,6 +223,7 @@ struct Candidat {
     ecoutes: i64,
     derniere_ecoute: Option<i64>,
     favori: bool,
+    famille: Option<i64>,
     hache: u64,
 }
 
@@ -230,6 +288,7 @@ impl Library {
                     ecoutes: r.get(7)?,
                     derniere_ecoute: r.get(8)?,
                     favori: r.get::<_, i64>(9)? != 0,
+                    famille: None,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -250,22 +309,88 @@ impl Library {
         Ok(ids)
     }
 
-    /// Choisit les albums d'une valise selon `reglages`.
+    /// Choisit les albums d'une valise selon `reglages` : les épinglés
+    /// d'abord, puis chaque part dans l'ordre, sans dépasser le budget.
     pub fn selectionner_valise(&self, reglages: &Reglages) -> Result<Selection> {
-        let candidats = self.candidats_valise(reglages.pistes_min.max(1))?;
+        let mut candidats = self.candidats_valise(reglages.pistes_min.max(1))?;
+        if !reglages.modele.is_empty() {
+            let familles: HashMap<(String, String), i64> = self
+                .familles_des_albums(&reglages.modele)?
+                .into_iter()
+                .filter_map(|(album, artiste, c)| Some(((album, artiste?), c)))
+                .collect();
+            for c in &mut candidats {
+                c.famille = familles.get(&(c.album.clone(), c.artiste.clone())).copied();
+            }
+        }
+        let exclus: HashSet<&str> = reglages.exclus.iter().map(String::as_str).collect();
+
         let mut retenus: Vec<AlbumValise> = Vec::new();
         let mut pris: HashSet<u64> = HashSet::new();
         let mut par_artiste: HashMap<String, usize> = HashMap::new();
         let mut reste_total = reglages.budget_octets;
 
-        for (i, &regle) in reglages.regles.iter().enumerate() {
-            // Part égale de ce qui reste entre les règles restantes : une
-            // règle qui ne remplit pas sa part la laisse aux suivantes.
-            let restantes = (reglages.regles.len() - i) as u64;
-            let mut part = reste_total / restantes;
+        let retenir = |c: &Candidat,
+                           regle: Regle,
+                           retenus: &mut Vec<AlbumValise>,
+                           pris: &mut HashSet<u64>,
+                           par_artiste: &mut HashMap<String, usize>|
+         -> Result<()> {
+            *par_artiste.entry(c.artiste.to_lowercase()).or_default() += 1;
+            pris.insert(c.hache);
+            retenus.push(AlbumValise {
+                id: format!("{:016x}", c.hache),
+                album: c.album.clone(),
+                artiste: c.artiste.clone(),
+                annee: c.annee,
+                regle,
+                famille: c.famille,
+                nb_pistes: c.nb_pistes,
+                octets: c.octets,
+                duree_ms: c.duree_ms,
+                ajoute_le: c.ajoute_le,
+                ecoutes: c.ecoutes,
+                pistes: self.pistes_album_valise(&c.album, &c.artiste)?,
+            });
+            Ok(())
+        };
 
-            let mut ordre: Vec<&Candidat> = candidats.iter().collect();
-            match regle {
+        // Les épinglés, dans l'ordre où on les a gardés : un choix explicite
+        // passe outre le plafond par artiste, pas le budget.
+        let par_id: HashMap<String, &Candidat> = candidats
+            .iter()
+            .map(|c| (format!("{:016x}", c.hache), c))
+            .collect();
+        for id in &reglages.epingles {
+            let Some(&c) = par_id.get(id) else { continue };
+            if pris.contains(&c.hache) || c.octets == 0 || c.octets > reste_total {
+                continue;
+            }
+            reste_total -= c.octets;
+            retenir(c, Regle::Choisi, &mut retenus, &mut pris, &mut par_artiste)?;
+        }
+
+        for (i, part) in reglages.parts.iter().enumerate() {
+            // Sans compte d'albums, part égale de ce qui reste entre les parts
+            // restantes : une part qui ne remplit pas la sienne la laisse aux
+            // suivantes.
+            let restantes = (reglages.parts.len() - i) as u64;
+            let mut plafond = match part.albums {
+                Some(_) => reste_total,
+                None => reste_total / restantes,
+            };
+            let max_albums = part.albums.unwrap_or(usize::MAX);
+            let tirage = |c: &Candidat| melanger(c.hache ^ reglages.graine);
+
+            let mut ordre: Vec<&Candidat> = match part.regle {
+                Regle::Famille => candidats
+                    .iter()
+                    .filter(|c| c.famille.is_some() && c.famille == part.famille)
+                    .collect(),
+                Regle::Choisi => Vec::new(),
+                _ => candidats.iter().collect(),
+            };
+            match part.regle {
                 Regle::Recents => ordre.sort_by(|a, b| {
                     b.ajoute_le
                         .unwrap_or(i64::MIN)
@@ -277,36 +402,31 @@ impl Library {
                         c.ecoutes,
                         c.derniere_ecoute.unwrap_or(i64::MIN),
                         c.favori,
-                        melanger(c.hache ^ reglages.graine),
+                        tirage(c),
                     )
                 }),
+                Regle::Famille | Regle::Hasard => ordre.sort_by_key(|c| tirage(c)),
+                Regle::Choisi => {}
             }
 
+            let mut n = 0;
             for c in ordre {
-                if pris.contains(&c.hache) || c.octets == 0 || c.octets > part {
+                if n >= max_albums {
+                    break;
+                }
+                if pris.contains(&c.hache)
+                    || exclus.contains(format!("{:016x}", c.hache).as_str())
+                    || c.octets == 0
+                    || c.octets > plafond
+                    || par_artiste.get(&c.artiste.to_lowercase()).copied().unwrap_or(0)
+                        >= reglages.par_artiste.max(1)
+                {
                     continue;
                 }
-                let n = par_artiste.entry(c.artiste.to_lowercase()).or_default();
-                if *n >= reglages.par_artiste.max(1) {
-                    continue;
-                }
-                *n += 1;
-                pris.insert(c.hache);
-                part -= c.octets;
+                plafond -= c.octets;
                 reste_total -= c.octets;
-                retenus.push(AlbumValise {
-                    id: format!("{:016x}", c.hache),
-                    album: c.album.clone(),
-                    artiste: c.artiste.clone(),
-                    annee: c.annee,
-                    regle,
-                    nb_pistes: c.nb_pistes,
-                    octets: c.octets,
-                    duree_ms: c.duree_ms,
-                    ajoute_le: c.ajoute_le,
-                    ecoutes: c.ecoutes,
-                    pistes: self.pistes_album_valise(&c.album, &c.artiste)?,
-                });
+                n += 1;
+                retenir(c, part.regle, &mut retenus, &mut pris, &mut par_artiste)?;
             }
         }
 
@@ -314,6 +434,32 @@ impl Library {
             reglages: reglages.clone(),
             albums: retenus,
         })
+    }
+
+    /// Les réglages de la dernière valise préparée au bureau, ou les réglages
+    /// par défaut.
+    pub fn reglages_valise(&self) -> Result<Reglages> {
+        let json: Option<String> = self
+            .conn
+            .query_row("SELECT reglages FROM valise_preparation WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default())
+    }
+
+    /// Garde `reglages` pour la prochaine valise.
+    pub fn definir_reglages_valise(&self, reglages: &Reglages) -> Result<()> {
+        let json = serde_json::to_string(reglages)
+            .map_err(|e| Error::Parsing(format!("réglages de valise : {e}")))?;
+        self.conn.execute(
+            "INSERT INTO valise_preparation(id, reglages) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET reglages = excluded.reglages",
+            params![json],
+        )?;
+        Ok(())
     }
 }
 
@@ -505,9 +651,9 @@ fn ecrire_base(
                 "regles",
                 selection
                     .reglages
-                    .regles
+                    .parts
                     .iter()
-                    .map(|r| r.code())
+                    .map(|p| p.regle.code())
                     .collect::<Vec<_>>()
                     .join(","),
             ),
@@ -676,7 +822,7 @@ pub fn exporter(
     let manifeste = Manifeste {
         format: VERSION_FORMAT,
         cree_le: maintenant(),
-        regles: selection.reglages.regles.iter().map(|r| r.code()).collect(),
+        regles: selection.reglages.parts.iter().map(|p| p.regle.code()).collect(),
         budget_octets: selection.reglages.budget_octets,
         octets: rapport.octets,
         albums: &selection.albums,
@@ -853,11 +999,10 @@ mod tests {
         let lib = bibliotheque(&racine, 9, 100);
         let sel = lib
             .selectionner_valise(&Reglages {
-                regles: vec![Regle::Recents],
+                parts: vec![Part::budget(Regle::Recents)],
                 budget_octets: 300 * 5,
-                pistes_min: 3,
                 par_artiste: 1,
-                graine: 0,
+                ..Default::default()
             })
             .unwrap();
         let noms: Vec<&str> = sel.albums.iter().map(|a| a.album.as_str()).collect();
@@ -890,15 +1035,47 @@ mod tests {
         }
         let sel = lib
             .selectionner_valise(&Reglages {
-                regles: vec![Regle::PeuEcoutes],
+                parts: vec![Part::budget(Regle::PeuEcoutes)],
                 budget_octets: 300,
-                pistes_min: 3,
-                par_artiste: 2,
                 graine: 42,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(sel.albums.len(), 1);
         assert_eq!(sel.albums[0].album, "Album 3");
+        let _ = std::fs::remove_dir_all(&racine);
+    }
+
+    #[test]
+    fn parts_comptees_epingles_et_exclus() {
+        let racine = racine_test("parts");
+        let lib = bibliotheque(&racine, 9, 100);
+        let id = |k: usize| format!("{:016x}", hacher(&format!("Artiste {}", k % 3), &format!("Album {k}")));
+        let sel = lib
+            .selectionner_valise(&Reglages {
+                parts: vec![Part::albums(Regle::Recents, 2), Part::albums(Regle::Hasard, 1)],
+                budget_octets: 100_000,
+                par_artiste: 9,
+                epingles: vec![id(0)],
+                exclus: vec![id(8)],
+                ..Default::default()
+            })
+            .unwrap();
+        let noms: Vec<(&str, Regle)> =
+            sel.albums.iter().map(|a| (a.album.as_str(), a.regle)).collect();
+        // L'épinglé d'abord, puis deux récents sans l'exclu, puis un tirage.
+        assert_eq!(noms.len(), 4);
+        assert_eq!(noms[0], ("Album 0", Regle::Choisi));
+        assert_eq!(noms[1], ("Album 7", Regle::Recents));
+        assert_eq!(noms[2], ("Album 6", Regle::Recents));
+        assert_eq!(noms[3].1, Regle::Hasard);
+        assert!(!sel.albums.iter().any(|a| a.id == id(8)));
+
+        // Les réglages se gardent dans la base, d'une valise à l'autre.
+        lib.definir_reglages_valise(&sel.reglages).unwrap();
+        let relus = lib.reglages_valise().unwrap();
+        assert_eq!(relus.parts, sel.reglages.parts);
+        assert_eq!(relus.epingles, [id(0)]);
         let _ = std::fs::remove_dir_all(&racine);
     }
 
@@ -914,11 +1091,9 @@ mod tests {
             .unwrap();
         let sel = lib
             .selectionner_valise(&Reglages {
-                regles: vec![Regle::Recents],
+                parts: vec![Part::budget(Regle::Recents)],
                 budget_octets: 10_000,
-                pistes_min: 3,
-                par_artiste: 2,
-                graine: 0,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(sel.albums.len(), 3);

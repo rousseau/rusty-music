@@ -529,7 +529,7 @@ enum ValiseCmd {
         /// Taille de l'audio : « 4G », « 800M »…
         #[arg(long, default_value = "4G")]
         budget: String,
-        /// Règles, budget partagé à parts égales : recents, peu-ecoutes
+        /// Règles, budget partagé à parts égales : recents, peu-ecoutes, hasard
         #[arg(long, value_delimiter = ',', default_value = "recents,peu-ecoutes")]
         regles: Vec<String>,
         /// Albums de moins de N pistes écartés
@@ -538,7 +538,7 @@ enum ValiseCmd {
         /// Albums d'un même artiste, au plus
         #[arg(long, default_value_t = 2)]
         par_artiste: usize,
-        /// Graine du tirage « peu écoutés » (par défaut : l'heure courante)
+        /// Graine des tirages (par défaut : l'heure courante)
         #[arg(long)]
         graine: Option<u64>,
         /// Montre la sélection sans rien copier
@@ -2407,7 +2407,7 @@ fn main() -> Result<()> {
                     essai,
                 },
         } => {
-            use rusty_music_core::valise::{self, Regle, Reglages};
+            use rusty_music_core::valise::{self, Part, Regle, Reglages};
 
             let budget_octets = valise::lire_taille(&budget)
                 .ok_or_else(|| anyhow::anyhow!("budget illisible : « {budget} »"))?;
@@ -2415,8 +2415,9 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|r| {
                     Regle::depuis_texte(r).ok_or_else(|| {
-                        anyhow::anyhow!("règle inconnue : « {r} » (recents, peu-ecoutes)")
+                        anyhow::anyhow!("règle inconnue : « {r} » (recents, peu-ecoutes, hasard)")
                     })
+                    .map(Part::budget)
                 })
                 .collect::<Result<Vec<_>>>()?;
             let graine = graine.unwrap_or_else(|| {
@@ -2426,11 +2427,12 @@ fn main() -> Result<()> {
                     .unwrap_or(0)
             });
             let reglages = Reglages {
-                regles,
+                parts: regles,
                 budget_octets,
                 pistes_min,
                 par_artiste,
                 graine,
+                ..Default::default()
             };
             let sel = lib.selectionner_valise(&reglages)?;
             let mo = |o: u64| o as f64 / (1024.0 * 1024.0);

@@ -75,7 +75,7 @@ crates/editor/   module 3 — démixage (demucs-core / Burn), étirement, greffe
 crates/superres/ super-résolution audio hors ligne (AERO via ONNX Runtime) — bouton « HD »
 crates/cli/      binaire `rusty-music` : scan / watch / analyse / carte / démixage…
 apps/desktop/    application Tauri (interface HTML/CSS/JS + WebGL)
-apps/mobile/     compagnon iOS « Rusty Valise » (Tauri) — lit une valise exportée par le Mac
+apps/mobile/     compagnon iOS « Rusty Valise » (Tauri) — lit une valise préparée et envoyée par le mode Valise du bureau
 scripts/         préparation des modèles (CLAP, HTDemucs, AERO)
 ui/prototype/    maquette du modèle de navigation retenu (variante « Atelier »)
 docs/            spécifications
@@ -85,7 +85,7 @@ Build : Rust 1.82+, un compilateur C, et les modèles préparés (`scripts/`,
 et pièges : README, section « Démarrer ».
 
 ## Documents détaillés
-- `docs/interface-guidelines.md` — **contrat de cohérence d'interface, transversal aux cinq écrans du rail (les quatre modes Écouter/Explorer/Éditer/Découvrir, plus Bibliothèque en point d'entrée au-dessus du sélecteur de mode), plus l'audit complet de l'existant contre ce contrat. À consulter avant toute construction ou modification d'interface, dans n'importe quel écran. Règle 10 (gabarit : jetons `--largeur-droite`, `--gouttiere`…) vérifiée par `scripts/audit-interface.sh` — à lancer après toute modification de mise en page.**
+- `docs/interface-guidelines.md` — **contrat de cohérence d'interface, transversal aux écrans du rail (les cinq modes Écouter/Explorer/Éditer/Découvrir/Valise, plus Bibliothèque en point d'entrée au-dessus du sélecteur de mode), plus l'audit complet de l'existant contre ce contrat. À consulter avant toute construction ou modification d'interface, dans n'importe quel écran. Règle 10 (gabarit : jetons `--largeur-droite`, `--gouttiere`…) vérifiée par `scripts/audit-interface.sh` — à lancer après toute modification de mise en page.**
 - `docs/suite.md` — **état d'avancement par brique et ordre de ce qui reste. À lire pour savoir où en est le projet.**
 - `docs/plan-ecouter-v0.2.md` — **mode Écouter : ce qu'il reste pour la v0.2, chantier par chantier, avec options comparées et recommandation. À lire avant de toucher au lecteur.**
 - `docs/plan-ios-compagnon.md` — **compagnon iOS du mode Écouter : la « valise » (sélection d'albums exportée par le Mac, Opus 160 kb/s, base réduite), lecture par `crates/player` sur iPhone, retour des écoutes, rotation. Étape 0 = prototype qui lève les risques (arrière-plan, « En cours de lecture », batterie). Rien d'engagé.**

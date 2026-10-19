@@ -120,7 +120,9 @@ audio, avec le même `player` que le bureau.
    d'installation**, refusée. L'activer, redémarrer, réinstaller.
 4. Sur l'iPhone : Réglages → Général → VPN et gestion de l'appareil → se
    fier au développeur. L'app expire au bout de 7 jours (compte gratuit) :
-   réinstaller, les Documents restent.
+   réinstaller, les Documents restent — `./scripts/reinstaller-valise.sh`
+   fait les étapes 2 (ménage de `gen/apple/build/arm64`, construction,
+   installation) et trouve seul l'iPhone appairé, en USB ou en Wi-Fi.
 5. Déposer une valise : `xcrun devicectl device copy to --device <UDID>
    --domain-type appDataContainer --domain-identifier fr.rousseau.rustyvalise
    --source <valise> --destination Documents/<nom>` (ou le Finder).
@@ -303,7 +305,27 @@ que les fichiers restent lisibles hors de l'app.
 --sortie <dossier>` dans `crates/cli`, testé en écrivant une valise et en la
 relisant avec `base` en mode lecture.
 
-## Étape 3 — La sélection · **L**
+## Étape 3 — La sélection · **L** — **en partie livrée (19 oct. 2026) : mode Valise du bureau**
+
+**Ce qui est fait.** Un mode **Valise** du rail, sous Découvrir (et non un
+panneau de Bibliothèque comme prévu plus bas : la valise a ses propres gestes,
+iPhone compris). Au centre, la composition :
+- des **lignes** « règle + nombre d'albums », dans l'ordre, chacune prenant
+  parmi ce que les précédentes ont laissé (`valise::Part`) : **Récents**,
+  **Peu écoutés**, **Famille** (une famille de la carte, tirée au sort),
+  **Au hasard** ;
+- des **limites** : taille de la valise (Go), albums par artiste, pistes par
+  album ;
+- la **liste** de ce qui partira (famille, règle, taille, écoutes), où l'on
+  **garde** un album (pris avant les règles, d'une valise à l'autre) ou
+  l'**écarte** (aucune règle ne le reprend) ; « Nouveau tirage » change la
+  graine.
+Les réglages vivent dans la base (`valise_preparation`, un JSON) : l'aperçu
+les enregistre, l'envoi les relit. La CLI garde le partage du budget à parts
+égales (`Part::budget`).
+
+**Reste** : oubliés, genre / décennie, autour d'un artiste, phrase libre,
+playlist ; la mémoire des valises (table `valise`, verdicts).
 
 L'unité est l'**album**, entier, dans l'ordre des pistes. La sélection
 répond à un **budget** (en Go, ou en nombre d'albums) partagé entre une ou
@@ -347,6 +369,29 @@ avant l'export. L'aperçu se met à jour à chaque changement. À construire sel
 reste (format, lecture, retour d'écoutes) sans écrire de réseau. B est ce
 qui rend l'usage agréable et doit transférer par **différence** : seuls les
 albums ajoutés transitent, les retraits se font par le manifeste.
+
+**Fait (19 oct. 2026) : A sans Finder, depuis le bureau.** Le bouton
+« Envoyer sur l'iPhone » du mode Valise passe par `xcrun devicectl`
+(`apps/desktop/src/iphone.rs`), en USB ou en Wi-Fi d'appairage (iPhone
+déverrouillé, même réseau) :
+1. rapatrie le `journal.json` de chaque valise du téléphone et l'importe ;
+2. prépare la valise dans les données de l'app (`valise-envoi/`) ;
+3. la dépose dans `Documents/valise-AAAA-MM-JJ-HHMM` ;
+4. `devicectl` ne sait pas supprimer : les anciennes valises (celles dont le
+   journal est repris, ou qui n'en ont pas) sont listées dans
+   `Documents/a-retirer.json`, que l'app traite à la liste des valises
+   (`retirer_valises_remplacees`, la valise ouverte attend) ;
+5. efface la copie locale.
+Une écoute faite entre l'envoi et le prochain affichage de la liste sur le
+téléphone est perdue avec l'ancienne valise (rare, accepté). Tout recopier à
+chaque envoi : pas encore de différence (option B).
+
+Le rail montre l'iPhone appairé, l'**échéance** de l'app (expiration du profil
+de signature, `devicectl device profile list`) et les valises qu'il porte.
+« Renouveler l'app » lance `scripts/reinstaller-valise.sh` (construction
+`--debug` + installation), seulement si le dépôt et Xcode sont là. Xcode
+réutilise le profil tant qu'il n'a pas expiré : réinstaller avant l'échéance
+ne la repousse pas forcément.
 
 Côté iPhone, marquer le dossier audio « exclu de la sauvegarde »
 (`isExcludedFromBackup`) : sinon chaque valise gonfle la sauvegarde iCloud.
@@ -426,6 +471,10 @@ dépose dans son dossier et que le Mac lit par `rusty-music valise importer`.
    applique sans tout recopier.
 
 Option : une valise peut épingler des albums qui survivent à la rotation.
+— **Fait en partie** : les albums gardés du mode Valise survivent aux
+tirages, et l'envoi remplace l'ancienne valise après en avoir repris les
+écoutes. Restent les points 2 (retirer ce qui est écouté en entier) et 4 (la
+différence).
 
 ## Distribution
 
@@ -435,9 +484,11 @@ Option : une valise peut épingler des albums qui survivent à la rotation.
   et TestFlight devient possible.
 - **Renouveler la signature sans câble** : les Raccourcis d'iOS ne savent
   pas re-signer une app ; l'action « Refresh Apps » vient d'AltStore ou de
-  SideStore. AltStore (AltServer sur le Mac, rafraîchissement en Wi-Fi) est
-  la voie locale. Un compte gratuit est limité à 3 apps installées ainsi
-  (AltStore en compte une).
+  SideStore. **AltStore écarté (19 oct. 2026)** : AltServer 1.7 n'arrive
+  pas à se connecter à l'identifiant Apple sous macOS 27 (« could not sign
+  in », -80045 ; anisette vide, User-Agent périmé — seul un fork non
+  officiel le corrige, auquel on ne confie pas un mot de passe Apple). On
+  réinstalle chaque semaine par `scripts/reinstaller-valise.sh`.
 - **CarPlay** : sans le droit `com.apple.developer.carplay-audio` (accordé par
   Apple sur demande, compte payant), l'app n'a pas d'icône sur l'écran de la
   voiture. Mais l'écran « En cours » de CarPlay et les boutons du volant
@@ -455,11 +506,11 @@ Option : une valise peut épingler des albums qui survivent à la rotation.
 | 0 | Prototype iOS (lecture, arrière-plan, « En cours ») | M | — | **fait** sur iPhone ; restent les mesures (batterie, gapless) et les interruptions |
 | 1 | Découpage `base` / `player` / `apps/mobile` | M | 0 | à faire — plus un préalable (tout compile pour iOS), sert à alléger le binaire |
 | 2 | Format de valise + `valise exporter` | M | 1 | **fait**, sans réencodage |
-| 4A | Transfert par le Finder | S | 2 | **fait** (Finder ou `devicectl`) |
+| 4A | Transfert par le Finder | S | 2 | **fait** : envoi depuis le mode Valise (`devicectl`) |
 | 5 | App Écouter mobile (v1 : Valise, Album, Lecture, File) | L | 1, 2 | version minimale (sans file, avis, textes) |
 | 6 | Retour des écoutes (`valise importer`) | M | 5 | **fait**, sans les avis |
-| 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | « récents » et « peu écoutés » en CLI |
-| 7 | Rotation | M | 3, 6 | à faire |
+| 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
+| 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
 | 4B | Synchronisation Wi-Fi | M | 6 | à faire |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement

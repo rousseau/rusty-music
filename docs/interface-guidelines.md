@@ -1,4 +1,4 @@
-# Contrat d'interface — transversal aux cinq écrans
+# Contrat d'interface — transversal aux écrans du rail
 
 > Document de cohérence, pas de design. Les règles ci-dessous ont presque
 > toutes été décidées ailleurs — `ui-spec.md` (Explorer), `ui-spec-lecteur.md`
@@ -9,6 +9,15 @@
 > Explorer, Éditer, Découvrir) plus **Bibliothèque**, point d'entrée posé
 > au-dessus du sélecteur de mode plutôt que dedans — et vérifie ce qui existe
 > déjà contre ce contrat.
+
+> **Sixième écran (19 octobre 2026) : Valise**, cinquième bouton du
+> sélecteur, sous Découvrir — la synchronisation du compagnon iOS. Panneau
+> central `#valise-vue` (colonne de lecture `.bibliotheque`) : la composition
+> de la valise (lignes règle + nombre d'albums, limites), puis la liste des
+> albums qui partiront, où l'on garde ou écarte un album. Rail `#bloc-valise` :
+> l'iPhone (appareil, échéance de l'app, valises qu'il porte, « Renouveler
+> l'app »). Là où ce document dit « cinq écrans », lire « les écrans du rail » :
+> Valise y est soumis aux mêmes règles (audit ci-dessous).
 
 > **Correction de périmètre au moment d'écrire ce document (7 septembre
 > 2026)** : la commande qui a produit ce document supposait Éditer et
@@ -364,6 +373,20 @@ dans son journal que la composition va au bout.
 | 7 | Zoom/pan cohérents | — | Pas de zoom dans ce mode. |
 | 8 | Révélation par échelle | ✅ | Le bloc Familles ne s'affiche que quand il a un sens (`majBlocFamillesDecouvrir`, carte déjà calculée) plutôt qu'en permanence. |
 | 9 | Langage de force unique | — | Pas de relations graphiques dans ce mode (des listes, pas un anneau ou une frise). |
+
+### Valise (19 octobre 2026)
+
+| # | Règle | Verdict | Raison |
+|---|---|---|---|
+| 1 | Inspecteur unique | ✅ | Rien ne s'y écoute : la liste des albums de la valise ne peuple pas l'inspecteur et n'en recrée pas un ; l'inspecteur garde ce qui joue. |
+| 2 | Estomper, jamais masquer | — | Pas de filtre : la liste est le résultat des réglages. Un album écarté sort de la valise (c'est le geste demandé), son retour se fait par « Tout rétablir ». |
+| 3 | Palette unique | ✅ | Pastille de famille par `couleursFamilles()` (`--familles`). |
+| 4 | Stabilité des positions | ✅ | Garder un album ne réordonne pas la liste au-delà de ce que la sélection change (l'album gardé passe en tête : il est pris avant les règles). |
+| 5 | Sobriété stricte | ✅ | Trois blocs (composition, limites, contenu) ; l'iPhone et ses gestes dans le rail ; « Renouveler l'app » n'apparaît que sur une machine qui a le dépôt et Xcode. |
+| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 7 | Zoom/pan cohérents | — | Pas de zoom. |
+| 8 | Révélation par échelle | ✅ | Le choix de famille n'apparaît que sur une ligne « Famille » ; les albums écartés ne se comptent que s'il y en a ; l'avancement de l'envoi seulement pendant l'envoi. |
+| 9 | Langage de force unique | — | Pas de relations. |
 
 ### Constat transversal — Règle 10, le gabarit (1ᵉʳ octobre 2026)
 

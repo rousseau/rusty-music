@@ -92,9 +92,48 @@ pub(crate) struct EtatLecture {
     pub pochette: Option<PathBuf>,
 }
 
+/// Supprime les valises que le Mac a remplacées : il dépose leurs noms dans
+/// `a-retirer.json` après avoir repris leurs écoutes (`devicectl` ne sait pas
+/// supprimer un fichier sur l'iPhone). La valise ouverte attend le prochain
+/// passage ; la liste est réécrite sans les noms traités.
+fn retirer_valises_remplacees(dossier: &Path, ouverte: Option<&Path>) {
+    let liste = dossier.join("a-retirer.json");
+    let Some(noms) = std::fs::read(&liste)
+        .ok()
+        .and_then(|o| serde_json::from_slice::<Vec<String>>(&o).ok())
+    else {
+        return;
+    };
+    let mut restants = Vec::new();
+    for nom in noms {
+        let racine = dossier.join(&nom);
+        // Un nom simple, et un dossier qui est bien une valise.
+        if nom.contains(['/', '\\']) || nom.starts_with('.') || !racine.join("valise.json").is_file() {
+            continue;
+        }
+        if ouverte == Some(racine.as_path()) {
+            restants.push(nom);
+            continue;
+        }
+        match std::fs::remove_dir_all(&racine) {
+            Ok(()) => tracing::info!(valise = %nom, "valise remplacée, retirée"),
+            Err(e) => tracing::warn!(valise = %nom, "retrait impossible : {e}"),
+        }
+    }
+    let _ = if restants.is_empty() {
+        std::fs::remove_file(&liste)
+    } else {
+        std::fs::write(&liste, serde_json::to_vec(&restants).unwrap_or_default())
+    };
+}
+
 /// Les valises du dossier : chaque sous-dossier qui porte un `valise.json`.
 #[tauri::command]
 fn valises(etat: State<Etat>) -> Result<Vec<ValiseResume>, String> {
+    {
+        let ouverte = verrou(&etat.valise);
+        retirer_valises_remplacees(&etat.dossier, ouverte.as_ref().map(|v| v.racine.as_path()));
+    }
     let mut out = Vec::new();
     let Ok(entrees) = std::fs::read_dir(&etat.dossier) else {
         return Ok(out);

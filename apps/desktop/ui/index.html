@@ -25,6 +25,7 @@
         <button class="mode" data-mode="explorer">Explorer</button>
         <button class="mode" data-mode="editer">Éditer</button>
         <button class="mode" data-mode="decouvrir">Découvrir</button>
+        <button class="mode" data-mode="valise">Valise</button>
       </nav>
 
       <div class="bloc" id="bloc-chercher">
@@ -72,6 +73,25 @@
         <p class="rail__titre">Familles</p>
         <div id="familles-decouvrir" class="familles"></div>
         <button id="familles-decouvrir-tout" class="lien" hidden>Toutes les familles</button>
+      </div>
+
+      <!-- Mode Valise : l'iPhone du compagnon « Rusty Valise » — qui est
+           appairé, quand l'app expire, ce qu'il porte, et les deux gestes
+           (envoyer, renouveler). La composition est au centre. -->
+      <div class="bloc" id="bloc-valise" hidden>
+        <p class="rail__titre">iPhone</p>
+        <p id="iphone-nom" class="iphone__nom">—</p>
+        <p id="iphone-etat" class="aide"></p>
+        <p id="iphone-echeance" class="iphone__echeance" hidden></p>
+        <button id="valise-renouveler" class="bouton bouton--mince" hidden>Renouveler l'app</button>
+        <p id="valise-renouveler-etat" class="aide" hidden></p>
+        <button id="iphone-actualiser" class="lien">Actualiser</button>
+
+        <p class="rail__titre" style="margin-top:22px">Sur le téléphone</p>
+        <div id="iphone-valises" class="iphone__valises"></div>
+        <p class="aide">Envoyer reprend d'abord les écoutes notées sur le
+          téléphone, puis remplace ces valises par la nouvelle. En USB, ou en
+          Wi-Fi si l'iPhone est déverrouillé sur le même réseau.</p>
       </div>
 
       <!-- Carte : visible en mode Explorer seulement -->
@@ -940,6 +960,44 @@
             <p class="aide" id="decouvrir-etat"></p>
             <div id="decouvrir-liens" class="liste-verif"></div>
           </div>
+        </div>
+
+        <!-- Mode Valise : composer la valise — des parts (règle + nombre
+             d'albums), des limites, puis la liste de ce qui partira, où l'on
+             garde ou écarte un album à la main. Chaque réglage est gardé. -->
+        <div id="valise-vue" class="bibliotheque" hidden>
+          <p class="rail__titre">Composition</p>
+          <p class="aide">Chaque ligne prend ses albums parmi ce que les
+            précédentes ont laissé, sans dépasser la taille de la valise. Les
+            albums gardés à la main passent avant.</p>
+          <div id="valise-parts" class="valise-parts"></div>
+          <div class="ajout__ligne">
+            <button id="valise-ajouter-part" class="lien">+ Ajouter une ligne</button>
+          </div>
+
+          <p class="rail__titre" style="margin-top:28px">Limites</p>
+          <div class="valise-limites">
+            <label class="reglette">Taille de la valise (Go)
+              <input id="valise-budget" type="number" min="0.5" max="256" step="0.5"></label>
+            <label class="reglette">Albums d'un même artiste, au plus
+              <input id="valise-par-artiste" type="number" min="1" max="20" step="1"></label>
+            <label class="reglette">Pistes par album, au moins
+              <input id="valise-pistes-min" type="number" min="1" max="30" step="1"></label>
+          </div>
+
+          <div class="valise-tete">
+            <div>
+              <p class="rail__titre">Dans la valise</p>
+              <p id="valise-resume" class="aide"></p>
+            </div>
+            <button id="valise-tirage" class="lien">Nouveau tirage</button>
+            <button id="valise-envoyer" class="bouton" disabled>Envoyer sur l'iPhone</button>
+          </div>
+          <div class="valise-remplissage"><i id="valise-remplissage"></i></div>
+          <progress id="valise-jauge" class="jauge" hidden max="1" value="0"></progress>
+          <p id="valise-avancement" class="aide" aria-live="polite" hidden></p>
+          <p id="valise-exclus" class="aide" hidden></p>
+          <div id="valise-albums" class="liste-verif valise-albums"></div>
         </div>
       </div>
     </main>

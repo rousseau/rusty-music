@@ -168,6 +168,13 @@ CREATE TABLE IF NOT EXISTS parametres_carte (
     valeur REAL NOT NULL
 );
 
+-- Réglages du mode Valise du bureau (compagnon iOS, `valise::Reglages`) :
+-- un document JSON, relu tel quel à la prochaine valise. Une seule ligne.
+CREATE TABLE IF NOT EXISTS valise_preparation (
+    id       INTEGER PRIMARY KEY CHECK (id = 1),
+    reglages TEXT    NOT NULL
+);
+
 -- Le vocabulaire des familles par genre — quelles familles la carte
 -- reconnaît, et quels genres MusicBrainz s'y rattachent. Vide = valeurs par
 -- défaut ([`Library::vocabulaire_familles`]), même convention que

@@ -74,13 +74,14 @@ const CONTENUS_AUDIT = {
   "explorer:lama+playlist": [{ sel: ".fil" }, { sel: ".lama__tete" }, { sel: "#lama-corps" }],
   editer: [{ sel: ".fil" }, { sel: "#editer-etabli" }, { sel: "#editer-separer" }],
   decouvrir: [{ sel: ".fil" }, { sel: "#decouvrir-vue" }],
+  valise: [{ sel: ".fil" }, { sel: "#valise-vue" }],
   bibliotheque: [{ sel: ".fil" }, { sel: "#bibliotheque-vue" }],
 };
 
 /// Conteneurs dont on contrôle le défilement horizontal (G3).
 const DEFILEMENTS_AUDIT = [
   ".rail", ".centre", ".inspecteur", "#file", "#liste", "#grille", "#lama-corps",
-  "#bibliotheque-vue", "#decouvrir-vue", "#editer-etabli", "#editer-separer",
+  "#bibliotheque-vue", "#decouvrir-vue", "#valise-vue", "#editer-etabli", "#editer-separer",
 ];
 
 function auditerGabarit(ecran) {
@@ -249,6 +250,7 @@ async function auditerInterface() {
     ["ecoute", async () => { await basculerMode("ecoute"); await attendre(700); }],
     ["editer", async () => { await basculerMode("editer"); await attendre(500); }],
     ["decouvrir", async () => { await basculerMode("decouvrir"); await attendre(900); }],
+    ["valise", async () => { await basculerMode("valise"); await attendre(900); }],
     ["bibliotheque", async () => { await basculerMode("bibliotheque"); await attendre(900); }],
   ];
   const FENETRES = [[960, 620], [1400, 900], [1920, 1080]];
