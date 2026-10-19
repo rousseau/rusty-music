@@ -387,6 +387,11 @@ pub fn suspectes(lib: &Library) -> Result<Vec<PochetteSuspecte>> {
             });
         };
         if let Some(a) = &v.anomalie {
+            // Divergence tranchée par l'utilisateur (« Image du dossier ») :
+            // l'application montre déjà la bonne image.
+            if a == DIVERGENTE && lib.pochette_dossier_choisie(&v.dossier)? {
+                continue;
+            }
             pousser(a, v.detail.clone(), v.mesure);
         }
         if let Some(h) = &v.emb_hash {

@@ -2577,6 +2577,60 @@ impl Library {
         Ok(())
     }
 
+    /// Fait afficher l'image du dossier (`cover.jpg`…) plutôt que celle des
+    /// tags pour l'album de `dossier`, ou revient aux tags (`false`).
+    pub fn choisir_pochette_dossier(&self, dossier: &str, oui: bool) -> Result<()> {
+        if oui {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO pochette_choix(dossier, source) VALUES (?1, 'dossier')",
+                params![dossier],
+            )?;
+        } else {
+            self.conn
+                .execute("DELETE FROM pochette_choix WHERE dossier = ?1", params![dossier])?;
+        }
+        Ok(())
+    }
+
+    /// Les pistes posées directement dans `dossier` (pas dans ses
+    /// sous-dossiers). Comparaison de préfixe plutôt que `LIKE` : `_` et `%`
+    /// sont fréquents dans les noms de dossiers.
+    pub fn pistes_du_dossier(&self, dossier: &str) -> Result<Vec<String>> {
+        let prefixe = format!("{}/", dossier.trim_end_matches('/'));
+        let mut stmt = self.conn.prepare(
+            "SELECT path FROM tracks
+              WHERE substr(path, 1, length(?1)) = ?1
+                AND instr(substr(path, length(?1) + 1), '/') = 0
+              ORDER BY path",
+        )?;
+        let pistes = stmt
+            .query_map(params![prefixe], |r| r.get(0))?
+            .collect::<std::result::Result<Vec<String>, _>>()?;
+        Ok(pistes)
+    }
+
+    /// Le dossier d'album `dossier` doit-il montrer l'image du dossier ?
+    pub fn pochette_dossier_choisie(&self, dossier: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT 1 FROM pochette_choix WHERE dossier = ?1 AND source = 'dossier'")?
+            .exists(params![dossier])?)
+    }
+
+    /// La pochette de `path` en tenant compte du choix de l'utilisateur :
+    /// l'image du dossier si elle a été choisie (et existe), sinon
+    /// [`crate::tags::read_cover`] (tags d'abord, dossier en repli).
+    pub fn lire_pochette(&self, path: &Path) -> Result<Option<crate::tags::Cover>> {
+        if let Some(dossier) = path.parent() {
+            if self.pochette_dossier_choisie(&dossier.to_string_lossy())? {
+                if let Some(c) = crate::tags::read_folder_cover(path) {
+                    return Ok(Some(c));
+                }
+            }
+        }
+        crate::tags::read_cover(path)
+    }
+
     /* --------------------------------------------- loudness (EBU R128) */
 
     /// Les morceaux dont la loudness (EBU R128 / BS.1770) reste à mesurer —
@@ -7661,5 +7715,39 @@ mod tests_ordre {
             .map(|a| a.piste)
             .collect();
         assert!(pistes.windows(2).all(|p| p[0] <= p[1]), "{pistes:?}");
+    }
+
+    /// « Image du dossier » : le choix vit dans la base et l'emporte sur les
+    /// tags, même quand le fichier audio est illisible — une recopie des MP3
+    /// ne l'efface donc pas.
+    #[test]
+    fn le_choix_de_pochette_du_dossier_l_emporte_sur_les_tags() {
+        let racine = std::env::temp_dir()
+            .join(format!("rusty-music-pochette-choix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&racine);
+        let dossier = racine.join("Artiste_1/Album 100%");
+        std::fs::create_dir_all(dossier.join("CD2")).unwrap();
+        let piste = dossier.join("01.mp3");
+        std::fs::write(&piste, b"pas un mp3").unwrap();
+        std::fs::write(dossier.join("cover.jpg"), b"jpeg du dossier").unwrap();
+
+        let lib = Library::open_in_memory().unwrap();
+        for p in [&piste, &dossier.join("CD2/01.mp3"), &racine.join("Artiste_1/autre.mp3")] {
+            lib.conn
+                .execute("INSERT INTO tracks (path) VALUES (?1)", params![p.to_string_lossy()])
+                .unwrap();
+        }
+        let d = dossier.to_string_lossy();
+        assert_eq!(lib.pistes_du_dossier(&d).unwrap(), vec![piste.to_string_lossy()]);
+
+        // Sans choix : les tags d'abord, et ce fichier n'en a pas de lisibles.
+        assert!(lib.lire_pochette(&piste).is_err());
+        lib.choisir_pochette_dossier(&d, true).unwrap();
+        let c = lib.lire_pochette(&piste).unwrap().unwrap();
+        assert_eq!(c.data, b"jpeg du dossier");
+        assert_eq!(c.source, crate::tags::CoverSource::Folder);
+        lib.choisir_pochette_dossier(&d, false).unwrap();
+        assert!(!lib.pochette_dossier_choisie(&d).unwrap());
+        let _ = std::fs::remove_dir_all(&racine);
     }
 }

@@ -779,7 +779,7 @@ fn main() -> Result<()> {
                 anyhow::bail!("rien ne correspond à « {query} »");
             };
             let debut = Instant::now();
-            match rusty_music_core::tags::read_cover(Path::new(&piste.path))? {
+            match lib.lire_pochette(Path::new(&piste.path))? {
                 Some(cover) => {
                     let origine = match cover.source {
                         rusty_music_core::CoverSource::Embedded => "embarquée",

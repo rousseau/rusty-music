@@ -568,8 +568,8 @@ fn maintenant() -> i64 {
 
 /// La pochette d'un album, réduite à [`POCHETTE_MAX`] et écrite en JPEG.
 /// Rend l'extension écrite, `None` si l'album n'a pas de pochette lisible.
-fn ecrire_pochette(piste: &Path, sans_ext: &Path) -> Option<PathBuf> {
-    let cover = crate::tags::read_cover(piste).ok()??;
+fn ecrire_pochette(lib: &Library, piste: &Path, sans_ext: &Path) -> Option<PathBuf> {
+    let cover = lib.lire_pochette(piste).ok()??;
     let image = image::load_from_memory(&cover.data).ok()?;
     let image = if image.width() > POCHETTE_MAX || image.height() > POCHETTE_MAX {
         image.thumbnail(POCHETTE_MAX, POCHETTE_MAX)
@@ -654,7 +654,7 @@ pub fn exporter(
 
         let pochette = premiere
             .as_deref()
-            .and_then(|p| ecrire_pochette(p, &sortie.join("pochettes").join(&album.id)));
+            .and_then(|p| ecrire_pochette(lib, p, &sortie.join("pochettes").join(&album.id)));
         match pochette {
             Some(_) => {
                 pochettes.insert(album.id.clone(), format!("pochettes/{}.jpg", album.id));

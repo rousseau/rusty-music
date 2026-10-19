@@ -1277,6 +1277,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .verif__ligne { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .verif__detail { color: var(--mut); font-size: 10.5px; margin-top: 2px; }
 .verif__mesure { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.verif__actions { display: flex; gap: 6px; flex: none; }
 .verif--clic { cursor: pointer; }
 .verif--clic:hover { background: var(--panel2); }
 

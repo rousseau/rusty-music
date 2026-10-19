@@ -147,6 +147,17 @@ CREATE TABLE IF NOT EXISTS pochettes_verif (
     verifie_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+-- Choix de pochette par dossier d'album, fait par l'utilisateur quand l'image
+-- intégrée aux tags est fausse (« Image du dossier » dans les vérifications).
+-- Dans la base et non dans les fichiers : une recopie des MP3 depuis leur
+-- source (qui garde les dates) a déjà effacé deux corrections faites dans les
+-- tags. Seule valeur pour l'instant : 'dossier'.
+CREATE TABLE IF NOT EXISTS pochette_choix (
+    dossier TEXT PRIMARY KEY,
+    source  TEXT NOT NULL CHECK (source IN ('dossier')),
+    le      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 -- Paramètres du calcul de la carte (projection t-SNE, clustering k-means) —
 -- clé/valeur plutôt que des colonnes : ce sont quatre nombres, pas de quoi
 -- justifier un schéma rigide. Une clé absente vaut la valeur par défaut

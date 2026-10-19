@@ -4043,6 +4043,27 @@ fn ignore_pochette_suspecte(etat: State<Etat>, dossier: String) -> Result<(), St
     lib.ignorer_pochette_suspecte(&dossier).map_err(echec)
 }
 
+/// « Image du dossier » : l'album de `dossier` montrera `cover.jpg` (ou
+/// équivalent) plutôt que l'image intégrée aux tags. Le choix vit dans la
+/// base, pas dans les fichiers, pour survivre à une recopie des MP3. Les
+/// pochettes déjà mises en cache pour ses pistes sont effacées.
+#[tauri::command(async)]
+fn pochette_du_dossier(etat: State<Etat>, dossier: String) -> Result<(), String> {
+    let pistes = {
+        let lib = verrou(&etat.lib);
+        lib.choisir_pochette_dossier(&dossier, true).map_err(echec)?;
+        lib.pistes_du_dossier(&dossier).map_err(echec)?
+    };
+    let cache = etat.db.with_file_name("pochettes");
+    for p in pistes {
+        let chemin = Path::new(&p);
+        if let Some(mtime) = std::fs::metadata(chemin).ok().and_then(|m| m.modified().ok()) {
+            let _ = std::fs::remove_file(cache.join(cle_pochette(chemin, mtime)));
+        }
+    }
+    Ok(())
+}
+
 /// Gain de normalisation de volume (linéaire, 1.0 = neutre) pour `chemin`,
 /// selon le réglage courant — jamais un blocage : coupé, ou morceau pas
 /// encore mesuré, rendent 1.0.
@@ -7186,14 +7207,18 @@ const PISTES_SOEURS_MAX: usize = 8;
 /// plutôt que d'échouer : il passe alors au repli réseau au lieu de
 /// disparaître en silence (l'interface avale l'erreur de `cover`).
 fn cover_locale(db_path: &Path, chemin: &Path) -> Option<rusty_music_core::Cover> {
-    if let Ok(Some(c)) = rusty_music_core::tags::read_cover(chemin) {
+    // La base d'abord : elle porte le choix « Image du dossier » de
+    // l'utilisateur. Illisible, on lit quand même les tags.
+    let Ok(lib) = rusty_music_core::db::Library::open(db_path) else {
+        return rusty_music_core::tags::read_cover(chemin).ok().flatten();
+    };
+    if let Ok(Some(c)) = lib.lire_pochette(chemin) {
         return Some(c);
     }
-    let lib = rusty_music_core::db::Library::open(db_path).ok()?;
     lib.pistes_soeurs(chemin, PISTES_SOEURS_MAX)
         .ok()?
         .iter()
-        .find_map(|p| rusty_music_core::tags::read_cover(p).ok().flatten())
+        .find_map(|p| lib.lire_pochette(p).ok().flatten())
 }
 
 /// Issue du repli réseau quand ni les tags ni le dossier n'ont de pochette.
@@ -8793,6 +8818,7 @@ fn main() {
             verif_pochettes_state,
             pochettes_suspectes,
             ignore_pochette_suspecte,
+            pochette_du_dossier,
             set_normalisation,
             start_enrichment,
             enrichment_state,

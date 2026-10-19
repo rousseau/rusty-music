@@ -4339,7 +4339,16 @@ const waveCnv = $("wave-cnv");
 const waveCtx = waveCnv.getContext("2d");
 const HAUT_SPECTRE = 42;
 
-const spectres = new Map(); // clé path+hd → { fond: canvas } déjà peint
+// clé path+hd → { fond: canvas } déjà peint. Borné : sans plafond, chaque
+// morceau joué laissait son canvas en mémoire jusqu'à la fermeture — des
+// centaines sur une journée d'écoute. Les plus anciens partent d'abord.
+const SPECTRES_MAX = 24;
+const spectres = new Map();
+function garderSpectre(cle, fond) {
+  spectres.delete(cle);
+  spectres.set(cle, fond);
+  while (spectres.size > SPECTRES_MAX) spectres.delete(spectres.keys().next().value);
+}
 let spectreCourant = null; // le { fond } affiché
 let teteCourante = 0;
 
@@ -4415,6 +4424,7 @@ async function chargerSpectreTransport(t, reessai = true) {
   const cle = `${t.path}#${hd}`;
   if (spectres.has(cle)) {
     spectreCourant = spectres.get(cle);
+    garderSpectre(cle, spectreCourant); // remis en tête : le dernier vu reste
     return peindreTransport(teteCourante);
   }
 
@@ -4456,7 +4466,7 @@ async function calculerSpectre(vise, largeur, cle) {
     }
     if (s && s.pixels && s.pixels.length) {
       const compose = composerSpectre(s);
-      spectres.set(cle, compose);
+      garderSpectre(cle, compose);
       return compose;
     }
     await new Promise((r) => setTimeout(r, attente));
@@ -9999,6 +10009,24 @@ async function chargerVerifications() {
   dessinerListeVerif(
     "pochettes-suspectes",
     pochettes.map((p) => {
+      const actions = document.createElement("span");
+      actions.className = "verif__actions";
+      // Image intégrée fausse : afficher celle du dossier. Le choix est gardé
+      // dans la base — corriger les tags ne tient pas si les MP3 sont
+      // recopiés depuis leur source.
+      if (p.anomalie === "divergente") {
+        const dossier = document.createElement("button");
+        dossier.className = "bouton";
+        dossier.textContent = "Image du dossier";
+        dossier.title = "Afficher l'image du dossier (cover.jpg…) au lieu de celle des tags";
+        dossier.addEventListener("click", async () => {
+          await invoke("pochette_du_dossier", { dossier: p.dossier });
+          pochettes.clear();
+          pochettesPoids = 0;
+          await chargerVerifications();
+        });
+        actions.appendChild(dossier);
+      }
       const bouton = document.createElement("button");
       bouton.className = "bouton";
       bouton.textContent = "Ignorer";
@@ -10006,6 +10034,7 @@ async function chargerVerifications() {
         await invoke("ignore_pochette_suspecte", { dossier: p.dossier });
         await chargerVerifications();
       });
+      actions.appendChild(bouton);
       const nature = {
         illisible: "Image illisible",
         divergente: "Intégrée ≠ image du dossier",
@@ -10015,7 +10044,7 @@ async function chargerVerifications() {
       return {
         ligne: `${txt(p.artiste, "?")} — ${txt(p.album, p.dossier.split("/").pop())}`,
         detail: `${nature}${ecart} — ${p.detail}`,
-        action: bouton,
+        action: actions,
       };
     }),
   );
