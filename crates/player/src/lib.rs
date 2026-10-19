@@ -483,7 +483,21 @@ fn ouvrir_sortie() -> Result<(MixerDeviceSink, Arc<AtomicBool>)> {
 impl Player {
     /// Ouvre la sortie audio par défaut du système.
     pub fn new() -> Result<Self> {
-        let (output, sortie_perdue) = ouvrir_sortie()?;
+        // CoreAudio refuse parfois de démarrer le matériel un court instant
+        // (« failed to start the hardware », coreaudiod) : quelques essais
+        // espacés plutôt que d'échouer au lancement de l'app.
+        let mut essai = 0;
+        let (output, sortie_perdue) = loop {
+            match ouvrir_sortie() {
+                Ok(s) => break s,
+                Err(e) if essai < 5 => {
+                    essai += 1;
+                    tracing::warn!(erreur = %e, essai, "sortie audio indisponible, nouvel essai");
+                    std::thread::sleep(Duration::from_millis(400));
+                }
+                Err(e) => return Err(e),
+            }
+        };
         let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         Ok(Self {
             inner,
