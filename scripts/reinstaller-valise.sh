@@ -30,6 +30,17 @@ fi
 # ménage, on réinstallerait l'ancienne version sans le savoir.
 rm -rf gen/apple/build/arm64
 
+# Xcode réutilise le profil de signature tant qu'il n'a pas expiré : la
+# réinstallation ne repousserait pas l'échéance. Sans profil local de l'app,
+# -allowProvisioningUpdates en demande un neuf (7 jours à partir de maintenant).
+profils="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+for p in "$profils"/*.mobileprovision; do
+  [ -f "$p" ] || continue
+  if security cms -D -i "$p" 2>/dev/null | grep -q '\.fr\.rousseau\.rustyvalise<'; then
+    rm -f "$p"
+  fi
+done
+
 echo "── construction (--debug : la version optimisée plante au lancement, piège 5)"
 cargo tauri ios build --debug --target aarch64 --export-method debugging
 
@@ -38,8 +49,7 @@ cargo tauri ios build --debug --target aarch64 --export-method debugging
 echo "── installation sur $udid"
 xcrun devicectl device install app --device "$udid" "$ipa"
 
-# L'échéance est celle du profil de signature : Xcode le réutilise tant qu'il
-# n'a pas expiré, une réinstallation ne la repousse donc pas toujours.
+# L'échéance est celle du profil de signature installé sur l'iPhone.
 echeance=$(xcrun devicectl device profile list --device "$udid" --json-output - 2>/dev/null \
   | /usr/bin/python3 -c '
 import json, sys
