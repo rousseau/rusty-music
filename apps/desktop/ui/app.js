@@ -12233,6 +12233,13 @@ function transcription(instrument) {
   return transcriptions.get(cle);
 }
 
+/// Oublie les partitions d'un morceau après un nouveau démixage : celles du
+/// moteur sont retirées avec les anciens stems, celles d'ici aussi.
+function oublierPartitions(id) {
+  for (const cle of [...transcriptions.keys()]) if (cle.startsWith(`${id}:`)) transcriptions.delete(cle);
+  if (edition.usage === "pratiquer") montrerPartition();
+}
+
 /// Transcription de la basse : « rapide » (Basic Pitch) ou « qualite »
 /// (MuScriptor, conditions d'usage acceptées une fois dans le rail).
 let transcripteurBasse = (() => {
@@ -13460,6 +13467,8 @@ $("lancer-demix").addEventListener("click", async () => {
     // précédent, on ne les pose pas sur le nouveau. Ils restent calculés —
     // `stems_existants` les retrouvera si on y revient.
     if (edition.source?.path !== cible) return;
+    // Le moteur a retiré les partitions calculées sur les anciens stems.
+    oublierPartitions(edition.source.id);
     if (edition.enLecture) await arreterStems();
     edition.stems = d.stems.map(stemNeuf);
     edition.solo = null;
@@ -13833,6 +13842,7 @@ async function greffer(s, candidat, liste) {
       $("dock-aide").textContent = "séparation du morceau voisin…";
       await invoke("start_demix", { path: candidat.path, variant: edition.variante });
       await attendreDemix();
+      oublierPartitions(candidat.id);
     }
     $("dock-aide").textContent = "calage du stem…";
     const g = await invoke("stems_greffer", {

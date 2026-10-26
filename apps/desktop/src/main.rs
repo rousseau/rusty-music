@@ -6150,6 +6150,7 @@ fn start_demix(
 
         let (stems, bilan) = match issue {
             Ok(fichiers) => {
+                oublier_derives_des_stems(&sortie, &fichiers);
                 let noms: Vec<(String, String)> = fichiers
                     .iter()
                     .map(|f| {
@@ -6183,6 +6184,34 @@ fn start_demix(
     });
 
     Ok(())
+}
+
+/// Après un nouveau démixage, retire ce qui venait des stems précédents : un
+/// démixage écrase le précédent (un seul jeu de stems par morceau).
+/// - les stems que la nouvelle variante ne produit pas (`guitar` et `piano`
+///   d'un 6 stems quand on revient à 4) ;
+/// - les partitions en cache (`transcription-*.json`), calculées sur l'ancien
+///   stem — sinon « Calculer » rendait la partition d'avant ;
+/// - `traites/`, les versions transposées des anciens stems.
+///
+/// La pulsation et les sections viennent du mélange : elles restent. Les
+/// greffes aussi (`greffes/`), qui sont des stems venus d'ailleurs.
+fn oublier_derives_des_stems(dossier: &Path, gardes: &[PathBuf]) {
+    for (nom, p) in stems_du_dossier(dossier) {
+        if !gardes.iter().any(|g| g.file_name() == p.file_name()) {
+            tracing::info!(stem = %nom, "ancien stem retiré");
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    if let Ok(entrees) = std::fs::read_dir(dossier) {
+        for p in entrees.filter_map(|e| e.ok()).map(|e| e.path()) {
+            let nom = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if nom.starts_with("transcription-") && nom.ends_with(".json") {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(dossier.join("traites"));
 }
 
 /// Ce que l'interface doit savoir d'une variante avant d'en proposer le bouton.
