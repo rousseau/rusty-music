@@ -252,9 +252,25 @@
              les conditions du site ; rien n'est lu par l'application). -->
         <button id="songsterr" class="lien" hidden style="margin-top:8px"
                 title="Ouvre dans le navigateur la recherche de ce morceau sur Songsterr">Voir les tablatures sur Songsterr</button>
+        <p class="aide" id="usage-aide"></p>
+      </div>
+
+      <!-- Mode Éditer : les partitions du morceau, une ligne par instrument
+           séparé — état (à calculer, en cours, prête) et le geste qui va
+           avec. Rien ne se calcule sans « Calculer » (demande du 24 oct. :
+           la partition apparaissait sans qu'on sache d'où). -->
+      <div class="bloc" id="bloc-partitions" hidden>
+        <p class="rail__titre">Partitions</p>
+        <div class="partition-ligne" data-partition="bass">
+          <span class="partition-ligne__nom">Basse</span>
+          <span class="partition-ligne__etat"></span>
+          <button class="bouton bouton--mince partition-ligne__action"></button>
+        </div>
+        <progress class="jauge partition-ligne__jauge" data-partition-jauge="bass" hidden max="1" value="0"
+                  aria-label="Calcul de la partition de basse"></progress>
         <!-- Basse : transcription rapide (Basic Pitch) ou de qualité
              (MuScriptor, conditions d'usage acceptées une fois). -->
-        <div class="segments" id="transcripteurs" hidden style="margin-top:8px">
+        <div class="segments" id="transcripteurs" style="margin-top:8px">
           <button class="segment segment--actif" data-transcripteur="rapide"
                   title="Basic Pitch : quelques secondes">Rapide</button>
           <button class="segment" data-transcripteur="qualite"
@@ -266,6 +282,15 @@
             Ses poids sont publiés sous licence CC BY-NC 4.0 avec des conditions d'usage :
             usage non commercial, et ne transcrire que de la musique sur laquelle vous avez
             les droits.</p>
+          <div style="display:flex; gap:12px">
+            <button class="lien" data-url="https://huggingface.co/MuScriptor/muscriptor-medium"
+                    title="Page du modèle : conditions d'usage et demande d'accès">Page du modèle</button>
+            <button class="lien" id="muscriptor-lien-jeton" hidden
+                    data-url="https://huggingface.co/settings/tokens"
+                    title="Créer un jeton de type « Read » (ou fine-grained avec l'accès aux dépôts restreints)">Créer un jeton</button>
+          </div>
+          <progress id="muscriptor-jauge" class="jauge" hidden max="1" value="0"
+                    aria-label="Téléchargement des poids de MuScriptor"></progress>
           <label class="reglette" id="muscriptor-jeton-ligne" hidden>
             <span>jeton Hugging Face</span>
             <input id="muscriptor-jeton" type="password" class="chercher"
@@ -278,7 +303,13 @@
             <button class="bouton bouton--mince" id="muscriptor-annuler">Annuler</button>
           </div>
         </div>
-        <p class="aide" id="usage-aide"></p>
+        <div class="partition-ligne" data-partition="drums">
+          <span class="partition-ligne__nom">Batterie</span>
+          <span class="partition-ligne__etat"></span>
+          <button class="bouton bouton--mince partition-ligne__action"></button>
+        </div>
+        <progress class="jauge partition-ligne__jauge" data-partition-jauge="drums" hidden max="1" value="0"
+                  aria-label="Calcul de la partition de batterie"></progress>
       </div>
 
       <!-- Mode Éditer : le démixage vit dans le rail, là où on cherche une
@@ -456,6 +487,8 @@
                alphaTab, qui suit le lecteur de stems. -->
           <div id="partition" class="partition" hidden>
             <p id="partition-aide" class="partition__aide" hidden></p>
+            <progress id="partition-jauge" class="jauge partition__jauge" hidden max="1" value="0"
+                      aria-label="Progression de la transcription"></progress>
             <div id="partition-rendu"></div>
           </div>
           <!-- Les sections du morceau (all-in-one), calées sur les
@@ -909,6 +942,33 @@
             <p class="rail__titre">Fichiers en échec</p>
             <p class="aide" id="echecs-scan-vide"></p>
             <div id="echecs-scan" class="liste-verif"></div>
+          </div>
+
+          <!-- À propos : version, licence, et les travaux dont l'application
+               dépend. Les modèles viennent de MODELES.md (`a_propos.rs`), les
+               sources de données sont listées ici. -->
+          <p class="rail__titre" style="margin-top:32px">À propos</p>
+          <div class="ajout">
+            <p class="aide"><span id="a-propos-version">Rusty Music</span> — logiciel libre
+              sous licence GPL-3.0-or-later. Chaque modèle garde sa licence d'origine,
+              distincte de celle du code ; certains n'autorisent qu'un usage non
+              commercial (voir la colonne « poids »).</p>
+            <div class="ajout__ligne">
+              <button class="lien a-propos__lien" data-url="https://github.com/rousseau/rusty-music">Code source</button>
+            </div>
+            <p class="stats__titre" style="margin-top:16px">Modèles</p>
+            <div id="a-propos-modeles" class="credits"></div>
+            <p class="stats__titre" style="margin-top:16px">Données</p>
+            <div id="a-propos-donnees" class="credits">
+              <div class="credit"><div class="credit__nom">Plan de Paris</div><div class="credit__detail">© les contributeurs OpenStreetMap</div><div class="credit__licences">ODbL</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://www.openstreetmap.org/copyright">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Genres, artistes, dates</div><div class="credit__detail">MusicBrainz</div><div class="credit__licences">CC0</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://musicbrainz.org">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Pochettes</div><div class="credit__detail">Cover Art Archive, Deezer en repli</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://coverartarchive.org">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Critiques</div><div class="credit__detail">CritiqueBrainz, auteur et licence cités sous chaque critique</div><div class="credit__licences">CC BY-SA ou BY-NC-SA</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://critiquebrainz.org">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Biographies</div><div class="credit__detail">TheAudioDB</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://www.theaudiodb.com">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Crédits et labels</div><div class="credit__detail">Discogs, dumps mensuels</div><div class="credit__licences">CC0</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://data.discogs.com">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Popularité</div><div class="credit__detail">ListenBrainz et Deezer</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://listenbrainz.org">Site</button></div></div>
+              <div class="credit"><div class="credit__nom">Palettes du fond de plan</div><div class="credit__detail">maptoposter</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/originalankur/maptoposter">Dépôt</button></div></div>
+            </div>
           </div>
 
         </div>

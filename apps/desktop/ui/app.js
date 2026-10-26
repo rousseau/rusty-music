@@ -8816,6 +8816,7 @@ async function basculerMode(mode) {
   $("bloc-demix").hidden = !editer;
   if (!editer) {
     $("bloc-usage").hidden = true;
+    $("bloc-partitions").hidden = true;
     cacherPartition();
   }
   $("bloc-chemin").hidden = !explorer;
@@ -8881,6 +8882,7 @@ async function basculerMode(mode) {
     chargerParametresCarte().catch((e) => remonter(e, "paramètres de la carte"));
     chargerVocabulaireFamilles().catch((e) => remonter(e, "vocabulaire des familles"));
     chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
+    chargerAPropos().catch((e) => remonter(e, "à propos"));
   } else if (valise) {
     $("fil-titre").textContent = "Valise";
     $("fil-compte").textContent = "";
@@ -9498,6 +9500,41 @@ let decouvrirEnCours = false;
 let decouvrirDernierePasse = null;
 
 /// Un bouton stylé comme un lien, avec son action.
+/// « À propos » du mode Bibliothèque : la version, et une ligne par modèle
+/// de MODELES.md (nom, rôle, article, licences du code et des poids, liens).
+/// Ne change pas pendant une session : dessiné une fois.
+async function chargerAPropos() {
+  const hote = $("a-propos-modeles");
+  if (hote.childElementCount) return;
+  const a = await invoke("a_propos");
+  $("a-propos-version").textContent = `Rusty Music ${a.version}`;
+  const div = (classe, texte) => {
+    const d = document.createElement("div");
+    d.className = classe;
+    d.textContent = texte;
+    return d;
+  };
+  for (const m of a.modeles) {
+    const liens = div("credit__liens", null);
+    for (const l of m.liens) {
+      const b = boutonLien(l.texte, () => ouvrirLien(l.url));
+      b.title = l.url;
+      liens.append(b);
+    }
+    const fiche = div("credit", null);
+    fiche.append(
+      div("credit__nom", `${m.nom} — ${m.role}`),
+      div("credit__detail", m.article),
+      div("credit__licences", `code : ${m.licence_code} · poids : ${m.licence_poids}`),
+      liens,
+    );
+    hote.append(fiche);
+  }
+}
+// Liens écrits dans la page (code source, sources de données).
+document.querySelectorAll(".a-propos__lien").forEach((b) =>
+  b.addEventListener("click", () => ouvrirLien(b.dataset.url)));
+
 function boutonLien(texte, action) {
   const b = document.createElement("button");
   b.className = "lien";
@@ -11936,6 +11973,9 @@ const partition = {
   // relance pas à chaque tick de 50 ms pendant qu'elle se déroule.
   defileA: -Infinity,
   minuteur: null,
+  // Notre curseur de temps (`placerCurseur`) et sa boucle d'images.
+  curseur: null,
+  image: null,
 };
 
 /// Charge un script une seule fois, même appelé plusieurs fois. Le
@@ -12057,14 +12097,15 @@ function decouperDuree(seiziemes) {
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
 function texTablature(mesures, titre, p, accordage, modele) {
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
-  // Les mesures de silence regroupées, comme dans les livres. L'accordage
-  // vient du moteur (standard, drop D, cinq cordes), de la corde aiguë à la
-  // grave.
+  // Pas de silences multimesures : regrouper huit mesures de silence en une
+  // casserait la largeur égale des mesures, et le curseur y filerait.
+  // L'accordage vient du moteur (standard, drop D, cinq cordes), de la corde
+  // aiguë à la grave.
   const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
   const portee = notationBasse === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
-    ` \\tempo ${tempoDe(p)} \\multibarrest\n` +
+    ` \\tempo ${tempoDe(p)}\n` +
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
     (notationBasse === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
@@ -12207,14 +12248,17 @@ function decouperAuxTemps(debut, fin) {
 }
 
 /// La transcription du morceau ouvert, par instrument : la promesse en cours
-/// ou le résultat — calculée une fois, en cache côté moteur.
+/// ou le résultat — calculée une fois, en cache côté moteur. Sans `lancer`,
+/// seulement si elle est déjà en cache (`partitionsEnCache`) : le calcul ne
+/// part que du bouton « Calculer » du bloc Partitions.
 const transcriptions = new Map();
-function transcription(instrument) {
+function transcription(instrument, lancer = false) {
   const id = edition.source?.id;
   if (id === undefined || (instrument !== "bass" && instrument !== "drums")) return null;
   const qualite = instrument === "bass" && transcripteurBasse === "qualite";
   const cle = `${id}:${instrument}:${qualite ? "qualite" : "rapide"}`;
   if (!transcriptions.has(cle)) {
+    if (!lancer && !enCache(id, instrument, qualite)) return null;
     const entree = { pret: null, erreur: null, qualite };
     if (qualite) suivreTranscription(id, entree);
     entree.promesse = invoke("transcrire", { id, instrument, qualite })
@@ -12227,17 +12271,112 @@ function transcription(instrument) {
       })
       .finally(() => {
         if (edition.usage === "pratiquer" && edition.source?.id === id) montrerPartition();
+        majBlocPartitions();
       });
     transcriptions.set(cle, entree);
+    majBlocPartitions();
   }
   return transcriptions.get(cle);
+}
+
+/// Les caches de partition du morceau ouvert (`transcriptions_en_cache`),
+/// demandés une fois par morceau.
+const partitionsEnCache = { id: null, cles: new Set(), demande: null };
+function enCache(id, instrument, qualite) {
+  if (partitionsEnCache.id !== id) return false;
+  return partitionsEnCache.cles.has(instrument === "bass" && qualite ? "bass-muscriptor" : instrument);
+}
+function chargerPartitionsEnCache(id) {
+  if (partitionsEnCache.demande === id) return;
+  partitionsEnCache.demande = id;
+  invoke("transcriptions_en_cache", { id })
+    .then((cles) => {
+      if (partitionsEnCache.demande !== id) return;
+      partitionsEnCache.id = id;
+      partitionsEnCache.cles = new Set(cles);
+      majUsage();
+    })
+    .catch((e) => journal("partitions", e, "warn"));
 }
 
 /// Oublie les partitions d'un morceau après un nouveau démixage : celles du
 /// moteur sont retirées avec les anciens stems, celles d'ici aussi.
 function oublierPartitions(id) {
   for (const cle of [...transcriptions.keys()]) if (cle.startsWith(`${id}:`)) transcriptions.delete(cle);
+  if (partitionsEnCache.id === id || partitionsEnCache.demande === id) {
+    Object.assign(partitionsEnCache, { id: null, cles: new Set(), demande: null });
+  }
+  majBlocPartitions();
   if (edition.usage === "pratiquer") montrerPartition();
+}
+
+/// Le bloc « Partitions » du rail : par instrument séparé, son état et le
+/// geste qui va avec — Calculer, la jauge pendant le calcul, puis Afficher.
+function majBlocPartitions() {
+  const id = edition.source?.id;
+  $("bloc-partitions").hidden = $("bloc-usage").hidden || id === undefined;
+  if ($("bloc-partitions").hidden) return;
+  chargerPartitionsEnCache(id);
+  for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]")) {
+    const instrument = ligne.dataset.partition;
+    const present = edition.stems.some((s) => s.nom === instrument);
+    const jauge = document.querySelector(`[data-partition-jauge="${instrument}"]`);
+    ligne.hidden = !present;
+    jauge.hidden = true;
+    if (instrument === "bass") {
+      $("transcripteurs").hidden = !present;
+      if (!present) $("muscriptor-conditions").hidden = true;
+      for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
+        b.classList.toggle("segment--actif", b.dataset.transcripteur === transcripteurBasse);
+      }
+    }
+    if (!present) continue;
+    const tr = transcription(instrument);
+    const affichee = edition.usage === "pratiquer" && instrumentPratique() === instrument;
+    const etat = ligne.querySelector(".partition-ligne__etat");
+    const action = ligne.querySelector(".partition-ligne__action");
+    action.hidden = false;
+    action.disabled = false;
+    etat.title = "";
+    if (tr?.pret) {
+      etat.textContent = affichee ? "affichée" : "prête";
+      action.textContent = "Afficher";
+      action.hidden = affichee;
+    } else if (tr?.erreur) {
+      etat.textContent = "échec";
+      etat.title = tr.erreur;
+      action.textContent = "Réessayer";
+    } else if (tr) {
+      etat.textContent = tr.avancement ?? "calcul…";
+      action.hidden = true;
+      jauge.hidden = false;
+      if (tr.fraction !== undefined) jauge.value = tr.fraction;
+      else jauge.removeAttribute("value");
+    } else {
+      etat.textContent = instrument === "bass" && transcripteurBasse === "qualite" ? "à calculer (≈ 1 min)" : "à calculer";
+      action.textContent = "Calculer";
+    }
+  }
+}
+
+for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]")) {
+  ligne.querySelector(".partition-ligne__action").addEventListener("click", () => {
+    const instrument = ligne.dataset.partition;
+    const tr = transcription(instrument);
+    if (tr?.pret) {
+      // Afficher : la partition se lit en Pratiquer.
+      edition.usage = "pratiquer";
+      edition.instrument = instrument;
+      varianteParDefaut();
+      majUsage();
+      return;
+    }
+    if (tr?.erreur) {
+      const qualite = instrument === "bass" && transcripteurBasse === "qualite";
+      transcriptions.delete(`${edition.source?.id}:${instrument}:${qualite ? "qualite" : "rapide"}`);
+    }
+    transcription(instrument, true);
+  });
 }
 
 /// Transcription de la basse : « rapide » (Basic Pitch) ou « qualite »
@@ -12261,10 +12400,13 @@ function suivreTranscription(id, entree) {
     try {
       const e = await invoke("etat_transcription");
       if (e.id === id && e.total) {
-        entree.avancement = `${Math.round((100 * e.faits) / e.total)} %`;
+        entree.fraction = e.faits / e.total;
+        entree.avancement = `${Math.round(100 * entree.fraction)} %`;
         if (edition.usage === "pratiquer" && edition.source?.id === id && !$("partition-aide").hidden) {
           $("partition-aide").textContent = `Transcription de qualité (MuScriptor) en cours… ${entree.avancement}`;
+          $("partition-jauge").value = entree.fraction;
         }
+        majBlocPartitions();
       }
     } catch {}
   }, 1000);
@@ -12331,11 +12473,22 @@ async function creerPartition() {
     core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false, enableLazyLoading: false },
     // La seconde voix (les pieds, en batterie) en noir comme la première :
     // alphaTab la grise par défaut. Pas de nuance « f » par défaut.
-    display: { layoutMode: "page", scale: 0.9, resources: { secondaryGlyphColor: "#000000" } },
+    // Mise en page « du modèle » : chaque mesure prend la même largeur
+    // (`displayScale` 1 partout), MESURES_PAR_LIGNE par ligne — voir
+    // `mesuresEgales`.
+    display: {
+      layoutMode: "page",
+      systemsLayoutMode: "useModelLayout",
+      scale: 0.9,
+      resources: { secondaryGlyphColor: "#000000" },
+    },
     notation: { elements: { effectDynamics: false } },
     player: {
       playerMode: "enabledExternalMedia",
       enableCursor: true,
+      // Le curseur de temps est le nôtre (`placerCurseur`) ; celui d'alphaTab
+      // sautait de note en note.
+      enableAnimatedBeatCursor: false,
       enableUserInteraction: true,
       // Le défilement est fait ici (`suivreCurseur`) : avec un lecteur
       // externe, celui d'alphaTab ne suit pas la lecture.
@@ -12349,7 +12502,7 @@ async function creerPartition() {
       return edition.dureeMs;
     },
     get playbackRate() {
-      return 1;
+      return edition.vitesse || 1;
     },
     set playbackRate(_) {},
     get masterVolume() {
@@ -12416,6 +12569,46 @@ function suivreCurseur() {
   }
 }
 
+/// Le curseur de temps : dans la mesure jouée, il glisse du bord gauche au
+/// bord droit au prorata du temps écoulé entre ses deux premiers temps. Les
+/// mesures ayant toutes la même largeur (`mesuresEgales`), il avance à vitesse
+/// constante tant que le tempo l'est — le repère du musicien (24 oct.).
+function placerCurseur() {
+  partition.image = requestAnimationFrame(placerCurseur);
+  const P = edition.pulsation?.premiers_temps;
+  const table = partition.api?.boundsLookup ?? partition.api?.renderer?.boundsLookup;
+  const rendu = $("partition-rendu");
+  const surface = rendu.querySelector(".at-surface");
+  let c = partition.curseur;
+  if (!P?.length || !table || !surface || edition.usage !== "pratiquer" || modeCourant !== "editer") {
+    if (c) c.hidden = true;
+    return;
+  }
+  if (!c?.isConnected) {
+    c = partition.curseur = document.createElement("div");
+    c.className = "partition__curseur";
+    rendu.append(c);
+  }
+  const t = positionLissee() / 1000;
+  let i = 0;
+  while (i + 1 < P.length && P[i + 1] <= t) i++;
+  // La dernière mesure n'a pas de premier temps suivant : la durée moyenne.
+  const duree = i + 1 < P.length ? P[i + 1] - P[i] : P.length > 1 ? (P[P.length - 1] - P[0]) / (P.length - 1) : 2;
+  const f = Math.min(1, Math.max(0, (t - P[i]) / duree));
+  const m = table.findMasterBarByIndex(i);
+  const x = m?.realBounds;
+  const y = m?.lineAlignedBounds ?? m?.visualBounds;
+  if (!x || !y) {
+    c.hidden = true;
+    return;
+  }
+  const s = surface.getBoundingClientRect();
+  const r = rendu.getBoundingClientRect();
+  c.hidden = false;
+  c.style.height = `${y.h}px`;
+  c.style.transform = `translate(${s.left - r.left + x.x + f * x.w}px, ${s.top - r.top + y.y}px)`;
+}
+
 async function montrerPartition() {
   const hote = $("partition");
   const p = edition.pulsation;
@@ -12426,6 +12619,10 @@ async function montrerPartition() {
     : !instrument
       ? "Ce morceau n'a ni basse ni batterie séparées."
       : null;
+  const aCalculer =
+    !message && !tr
+      ? "Partition pas encore calculée : « Calculer » dans le bloc Partitions du rail. En attendant, la grille des mesures."
+      : null;
   // Pendant la transcription, ou sans elle (batterie), la grille mesurée.
   const note =
     tr && !tr.pret
@@ -12435,8 +12632,14 @@ async function montrerPartition() {
           ? `Transcription de qualité (MuScriptor) en cours… ${tr.avancement ?? ""}`
           : "Transcription en cours…"
       : null;
-  $("partition-aide").hidden = !(message ?? note);
-  $("partition-aide").textContent = message ?? note ?? "";
+  $("partition-aide").hidden = !(message ?? note ?? aCalculer);
+  $("partition-aide").textContent = message ?? note ?? aCalculer ?? "";
+  // La jauge pendant le calcul : MuScriptor dit où il en est (segments de
+  // 5 s), Basic Pitch et ADTOF non — jauge indéterminée, quelques secondes.
+  const jauge = $("partition-jauge");
+  jauge.hidden = !(!message && tr && !tr.pret && !tr.erreur);
+  if (tr?.fraction !== undefined) jauge.value = tr.fraction;
+  else jauge.removeAttribute("value");
   $("partition-rendu").hidden = !!message;
   if (message) return;
   try {
@@ -12458,13 +12661,21 @@ async function montrerPartition() {
   } catch (e) {
     $("partition-aide").hidden = false;
     $("partition-aide").textContent = `La partition n'a pas pu s'afficher : ${String(e)}`;
+    $("partition-jauge").hidden = true;
     journal("partition", e?.stack ?? e, "warn");
   }
+  cancelAnimationFrame(partition.image);
+  partition.image = requestAnimationFrame(placerCurseur);
   // 50 ms : la cadence que recommande alphaTab pour un lecteur externe.
   clearInterval(partition.minuteur);
   partition.minuteur = setInterval(() => {
     const out = partition.api?.player?.output;
     if (!out || edition.usage !== "pratiquer" || modeCourant !== "editer") return;
+    // alphaTab anime le curseur d'une note à la suivante sur la durée de la
+    // note à *sa* vitesse : restée à 1 quand on ralentit les stems, le curseur
+    // arrivait trop tôt puis attendait — en avance et par à-coups (24 oct.).
+    const vitesse = edition.vitesse || 1;
+    if (partition.api.playbackSpeed !== vitesse) partition.api.playbackSpeed = vitesse;
     out.updatePosition(positionLissee());
     suivreCurseur();
   }, 50);
@@ -12491,12 +12702,28 @@ function chargerPartition(api, tex, cle) {
       imp.initFromString(tex, api.settings);
       const score = imp.readScore();
       silencesInvisibles(score);
+      mesuresEgales(score);
       api.renderScore(score);
     } catch (e) {
       journal("partition", e?.stack ?? e, "error");
       fin("échec");
     }
   });
+}
+
+/// Autant de mesures par ligne, toutes de la même largeur : le musicien lit
+/// le temps à la place du curseur, qui avance alors à vitesse constante
+/// (demande du 24 oct.). alphaTab, par défaut, élargit les mesures chargées
+/// en notes — le curseur ralentissait dans les doubles croches et filait
+/// dans les rondes.
+const MESURES_PAR_LIGNE = 4;
+function mesuresEgales(score) {
+  score.defaultSystemsLayout = MESURES_PAR_LIGNE;
+  score.systemsLayout = [];
+  for (const t of score.tracks) {
+    t.defaultSystemsLayout = MESURES_PAR_LIGNE;
+    t.systemsLayout = [];
+  }
 }
 
 /// Les silences des voix secondaires (les pieds, en batterie) restent dans le
@@ -12513,6 +12740,8 @@ function silencesInvisibles(score) {
 function cacherPartition() {
   clearInterval(partition.minuteur);
   partition.minuteur = null;
+  cancelAnimationFrame(partition.image);
+  partition.image = null;
 }
 
 /// Range le centre selon l'usage. Appelée par `majEtatEditer`.
@@ -12546,11 +12775,6 @@ for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
     b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
   }
-  $("transcripteurs").hidden = $("notations").hidden;
-  if ($("notations").hidden) $("muscriptor-conditions").hidden = true;
-  for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
-    b.classList.toggle("segment--actif", b.dataset.transcripteur === transcripteurBasse);
-  }
   $("usage-aide").textContent =
     edition.usage === "pratiquer"
       ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus." +
@@ -12560,6 +12784,7 @@ for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
   $("partition").hidden = !pratiquer;
   if (pratiquer) montrerPartition();
   else cacherPartition();
+  majBlocPartitions();
   positionnerPlayhead();
   positionnerBande();
 }
@@ -12669,6 +12894,7 @@ async function demanderQualite() {
     $("muscriptor-accepter").hidden = false;
     $("muscriptor-telecharger").hidden = true;
     $("muscriptor-jeton-ligne").hidden = true;
+    $("muscriptor-lien-jeton").hidden = true;
     $("muscriptor-conditions").hidden = false;
     return;
   }
@@ -12676,10 +12902,11 @@ async function demanderQualite() {
     const jeton = await invoke("muscriptor_jeton_present").catch(() => false);
     $("muscriptor-texte").textContent =
       "Poids de MuScriptor absents (1,2 Go). Acceptez d'abord leurs conditions avec votre compte sur " +
-      "huggingface.co/MuScriptor/muscriptor-medium, puis téléchargez-les ici" +
-      (jeton ? " (jeton Hugging Face de cette machine)." : " avec un jeton d'accès en lecture (huggingface.co/settings/tokens).");
+      "la page du modèle, puis téléchargez-les ici" +
+      (jeton ? " (jeton Hugging Face de cette machine)." : " avec un jeton d'accès en lecture.");
     $("muscriptor-accepter").hidden = true;
     $("muscriptor-jeton-ligne").hidden = jeton;
+    $("muscriptor-lien-jeton").hidden = jeton;
     $("muscriptor-telecharger").hidden = false;
     $("muscriptor-telecharger").disabled = false;
     $("muscriptor-conditions").hidden = false;
@@ -12692,11 +12919,15 @@ async function demanderQualite() {
 /// part avec la requête et n'est gardé nulle part.
 async function telechargerMuscriptor() {
   const bouton = $("muscriptor-telecharger");
+  const jauge = $("muscriptor-jauge");
   bouton.disabled = true;
+  jauge.removeAttribute("value");
+  jauge.hidden = false;
   const minuteur = setInterval(async () => {
     try {
       const e = await invoke("etat_transcription");
       if (e.telechargement && e.octets_total) {
+        jauge.value = e.octets_faits / e.octets_total;
         $("muscriptor-texte").textContent =
           `Téléchargement des poids de MuScriptor… ${Math.round((100 * e.octets_faits) / e.octets_total)} %`;
       }
@@ -12706,13 +12937,18 @@ async function telechargerMuscriptor() {
     await invoke("telecharger_muscriptor", { jeton: $("muscriptor-jeton").value || null });
     $("muscriptor-jeton").value = "";
     clearInterval(minuteur);
+    jauge.hidden = true;
     demanderQualite();
   } catch (e) {
     clearInterval(minuteur);
+    jauge.hidden = true;
     $("muscriptor-texte").textContent = `Échec du téléchargement : ${e}`;
     bouton.disabled = false;
   }
 }
+
+document.querySelectorAll("#muscriptor-conditions [data-url]").forEach((b) =>
+  b.addEventListener("click", () => ouvrirLien(b.dataset.url)));
 
 for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
   b.addEventListener("click", () => {

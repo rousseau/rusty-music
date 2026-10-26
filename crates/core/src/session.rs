@@ -176,9 +176,48 @@ impl Library {
     }
 }
 
+/// Garde les éléments connus d'une file et recale `rang` : le nombre de
+/// pistes retenues **avant** la piste en cours. Rend aussi si la piste en
+/// cours elle-même a été retenue — sinon `rang` désigne la suivante, et la
+/// position mémorisée ne signifie plus rien. Commun à la sauvegarde (chemins
+/// inconnus de la base) et à la reprise (identifiants disparus).
+pub fn retenir<T>(elements: Vec<Option<T>>, rang: usize) -> (Vec<T>, usize, bool) {
+    let courante_retenue = elements.get(rang).is_some_and(Option::is_some);
+    let avant = elements[..rang.min(elements.len())]
+        .iter()
+        .flatten()
+        .count();
+    (elements.into_iter().flatten().collect(), avant, courante_retenue)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Une piste de la file disparue de la bibliothèque ne doit pas décaler la
+    /// reprise : le rang suit la piste en cours, ou la suivante si c'est elle
+    /// qui a disparu.
+    #[test]
+    fn retenir_recale_le_rang_sur_la_piste_en_cours() {
+        // a, (absente), c, d — on jouait c (rang 2) : il devient le rang 1.
+        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c"), Some("d")], 2);
+        assert_eq!((file, rang, presente), (vec!["a", "c", "d"], 1, true));
+
+        // On jouait la piste absente (rang 1) : le rang désigne la suivante
+        // (c), et la position ne vaut plus rien.
+        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c")], 1);
+        assert_eq!((file, rang, presente), (vec!["a", "c"], 1, false));
+    }
+
+    #[test]
+    fn retenir_tolere_un_rang_hors_file_et_une_file_vide() {
+        let (file, rang, presente) = retenir(vec![Some(1), Some(2)], 9);
+        assert_eq!((file, rang, presente), (vec![1, 2], 2, false));
+        let (file, rang, presente) = retenir::<i64>(Vec::new(), 0);
+        assert!(file.is_empty() && rang == 0 && !presente);
+        let (file, _, _) = retenir::<i64>(vec![None, None], 0);
+        assert!(file.is_empty(), "toute la file a disparu");
+    }
 
     fn bibliotheque(chemins: &[&str]) -> Library {
         let lib = Library::open_in_memory().unwrap();

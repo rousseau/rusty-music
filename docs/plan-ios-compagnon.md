@@ -402,9 +402,29 @@ Côté iPhone, marquer le dossier audio « exclu de la sauvegarde »
 albums par règle (▶ sur chaque pochette pour lancer l'album), écran album
 (pistes), lecteur complet toujours visible en bas, pochette sur l'écran
 verrouillé. La piste suivante est préchargée (gapless). Interface volontairement
-sobre : pas d'en-tête, un toucher pour lancer. **Reste** : biographie,
-critique, crédits, jauge ; file ; avis ; « N » / « E » ; persistance de la
-session ; section mobile d'`interface-guidelines.md`.
+sobre : pas d'en-tête, un toucher pour lancer.
+
+**File et reprise de session (22 oct. 2026)** :
+- **file** : « À la suite » sur l'écran d'un album (lance l'album si rien ne
+  joue) ; bouton file dans le lecteur → écran *File* : pistes passées
+  estompées, piste en cours en couleur, un toucher pour y sauter, × pour
+  retirer. La piste en cours et celle déjà préchargée ne se retirent pas
+  (`Player::verrou` — même règle que le bureau) ;
+- **session** : table `session` de la base de la valise, écrite toutes les
+  5 s par le fil natif (`src/session.rs`, mêmes fonctions du cœur que le
+  bureau, `retenir` déplacé dans `rusty_music_core::session`). Au lancement,
+  la valise rouverte est celle dont la session est la plus récente, la file
+  revient **en pause** à sa position ; une valise remplacée par le Mac repart
+  de zéro ;
+- gains de normalisation calculés une fois à l'ouverture de la valise (le
+  lecteur les demande pour toute piste ajoutée) ;
+- vérifié : test de bout en bout sur une vraie valise et la sortie audio du
+  Mac (`la_file_revient_en_pause_a_sa_position`, `--ignored`, variable
+  `RUSTY_VALISE_ESSAI`) ; interface déroulée dans un harnais Chrome
+  (backend simulé). **Pas encore essayé sur l'iPhone.**
+
+**Reste** : biographie, critique, crédits, jauge ; avis ; « N » / « E » ;
+section mobile d'`interface-guidelines.md`.
 
 Interface à part de `apps/desktop/ui/app.js` (14 000 lignes, pensées pour le
 rail et l'inspecteur). On en reprend les **jetons** (couleurs, typographie,
@@ -507,7 +527,7 @@ différence).
 | 1 | Découpage `base` / `player` / `apps/mobile` | M | 0 | à faire — plus un préalable (tout compile pour iOS), sert à alléger le binaire |
 | 2 | Format de valise + `valise exporter` | M | 1 | **fait**, sans réencodage |
 | 4A | Transfert par le Finder | S | 2 | **fait** : envoi depuis le mode Valise (`devicectl`) |
-| 5 | App Écouter mobile (v1 : Valise, Album, Lecture, File) | L | 1, 2 | version minimale (sans file, avis, textes) |
+| 5 | App Écouter mobile (v1 : Valise, Album, Lecture, File) | L | 1, 2 | file et reprise de session (22 oct.) ; sans avis ni textes |
 | 6 | Retour des écoutes (`valise importer`) | M | 5 | **fait**, sans les avis |
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |

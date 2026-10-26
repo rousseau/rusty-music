@@ -42,6 +42,7 @@ button:active { opacity: .6; }
   display: grid; place-items: center; border-radius: 50%;
 }
 .bouton-icone--principal { width: 72px; height: 72px; }
+.bouton-icone--petit { width: var(--cible); height: var(--cible); color: var(--mut); }
 
 /* Verre dépoli, commun au retour et au lecteur. */
 .retour, .lecteur, .album__lire {
@@ -77,6 +78,8 @@ button:active { opacity: .6; }
 /* Grille d'albums */
 .regle { font-family: var(--serif); font-size: 24px; font-weight: 600; margin: 22px 0 12px; }
 .regle:first-child { margin-top: 6px; }
+/* Titre d'un écran qui a le bouton retour : à sa droite, sur sa ligne. */
+.regle--sous-retour.regle:first-child { margin: 6px 0 12px 52px; line-height: var(--cible); }
 .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 14px; }
 .album { min-width: 0; }
 .album__image { position: relative; }
@@ -109,6 +112,8 @@ button:active { opacity: .6; }
   font-size: 17px; font-weight: 600;
 }
 .lire .icone { width: 18px; height: 18px; }
+.lire--second { color: var(--txt); min-width: 0; }
+.entete-album__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 10px; }
 
 .piste {
   display: flex; align-items: center; gap: 14px; width: 100%;
@@ -120,6 +125,19 @@ button:active { opacity: .6; }
 .piste__duree { font-size: 14px; color: var(--mut); font-variant-numeric: tabular-nums; }
 .piste--en-cours .piste__titre, .piste--en-cours .piste__no { color: var(--accent); }
 
+/* File : titre et artiste par ligne, × pour retirer ce qui n'est pas
+   encore confié à la sortie ; ce qui est passé, estompé. */
+.piste-file { display: flex; align-items: center; border-bottom: .5px solid var(--line); }
+.piste-file .piste { border-bottom: 0; flex: 1; min-width: 0; }
+.piste-file--passee { opacity: .45; }
+.piste__textes { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.piste__textes .piste__titre { flex: none; }
+.piste__artiste { font-size: 13px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.piste-file__retirer {
+  width: var(--cible); height: var(--cible); flex: none;
+  display: grid; place-items: center; color: var(--mut);
+}
+
 /* Lecteur : carte en verre au bas de l'écran, toujours complète. */
 .lecteur {
   position: fixed; z-index: 3;
@@ -130,7 +148,8 @@ button:active { opacity: .6; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
 }
 .lecteur[hidden] { display: none; }
-.lecteur__piste { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; }
+.lecteur__haut { display: flex; align-items: center; gap: 8px; }
+.lecteur__piste { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; text-align: left; }
 .lecteur__pochette { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
 .lecteur__textes { min-width: 0; display: flex; flex-direction: column; }
 .lecteur__titre { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

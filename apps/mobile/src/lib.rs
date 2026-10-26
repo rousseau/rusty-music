@@ -8,6 +8,7 @@
 //! la base) ; `Player::set_resolveur` les traduit en fichiers de la valise.
 
 mod en_cours;
+mod session;
 mod session_audio;
 
 use std::collections::HashMap;
@@ -40,6 +41,10 @@ pub(crate) struct Etat {
     /// Chemin d'origine → fichier dans la valise, lu par le résolveur du
     /// lecteur (qui ne peut pas tenir le verrou de la valise).
     fichiers: Arc<RwLock<HashMap<PathBuf, PathBuf>>>,
+    /// Chemin d'origine → gain de normalisation (album), calculé une fois à
+    /// l'ouverture de la valise : le lecteur le demande pour toute piste
+    /// ajoutée à la file, sans accès à la base.
+    gains: Arc<RwLock<HashMap<PathBuf, f32>>>,
     /// Un seul préchargement à la fois — même raison que sur le bureau
     /// (`precharger_suivante` dans `apps/desktop/src/main.rs`).
     precharge: Mutex<()>,
@@ -71,6 +76,30 @@ struct AlbumVue {
 }
 
 #[derive(Serialize)]
+struct Reprise {
+    nom: String,
+    albums: Vec<AlbumVue>,
+}
+
+#[derive(Serialize)]
+struct PisteFile {
+    titre: String,
+    artiste: Option<String>,
+    album_id: Option<String>,
+    duree_ms: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct FileVue {
+    pistes: Vec<PisteFile>,
+    /// Rang de la piste en cours, `None` si la file est épuisée.
+    rang: Option<usize>,
+    /// Premier rang qu'on peut retirer : ceux d'avant sont déjà confiés à la
+    /// sortie (`Player::verrou`).
+    retirable: usize,
+}
+
+#[derive(Serialize)]
 struct PisteVue {
     id: i64,
     titre: String,
@@ -84,6 +113,8 @@ pub(crate) struct EtatLecture {
     pub artiste: Option<String>,
     pub album: Option<String>,
     pub album_id: Option<String>,
+    /// Rang dans la file : l'écran de la file suit la piste en cours.
+    pub rang: usize,
     pub position_ms: u64,
     pub duree_ms: Option<u64>,
     pub pause: bool,
@@ -160,7 +191,11 @@ fn valises(etat: State<Etat>) -> Result<Vec<ValiseResume>, String> {
 /// Ouvre une valise et rend ses albums, dans l'ordre de la valise.
 #[tauri::command]
 fn ouvrir_valise(etat: State<Etat>, nom: String) -> Result<Vec<AlbumVue>, String> {
-    let racine = etat.dossier.join(&nom);
+    ouvrir(&etat, &nom)
+}
+
+fn ouvrir(etat: &Etat, nom: &str) -> Result<Vec<AlbumVue>, String> {
+    let racine = etat.dossier.join(nom);
     let lib = Library::open(&racine.join("base.sqlite")).map_err(echec)?;
 
     let albums = {
@@ -206,9 +241,33 @@ fn ouvrir_valise(etat: State<Etat>, nom: String) -> Result<Vec<AlbumVue>, String
             .map(|(origine, fichier)| (PathBuf::from(origine), racine.join(fichier)))
             .collect::<HashMap<_, _>>()
     };
+    let gains = fichiers
+        .keys()
+        .filter_map(|p| {
+            let g = lib.gain_lecture(p, ModeGain::Album, CIBLE_LUFS).ok().flatten()?;
+            Some((p.clone(), g))
+        })
+        .collect();
     *etat.fichiers.write().unwrap_or_else(|e| e.into_inner()) = fichiers;
+    *etat.gains.write().unwrap_or_else(|e| e.into_inner()) = gains;
     *verrou(&etat.valise) = Some(Valise { racine, lib });
     Ok(albums)
+}
+
+/// Au lancement : rouvre la valise de la dernière session et reprend sa file
+/// en pause. `None` s'il n'y a rien à reprendre.
+#[tauri::command]
+fn reprendre(etat: State<Etat>) -> Result<Option<Reprise>, String> {
+    retirer_valises_remplacees(&etat.dossier, None);
+    let Some(nom) = session::valise_la_plus_recente(&etat.dossier) else {
+        return Ok(None);
+    };
+    let albums = ouvrir(&etat, &nom)?;
+    if let Err(e) = session::restaurer(&etat) {
+        tracing::warn!(erreur = %e, "reprise de la session impossible");
+    }
+    en_cours::afficher(lecture_courante(&etat).as_ref());
+    Ok(Some(Reprise { nom, albums }))
 }
 
 /// Les pistes d'un album de la valise, dans l'ordre du disque (les fichiers
@@ -266,7 +325,7 @@ fn pochette(etat: State<Etat>, album_id: String) -> Result<Option<String>, Strin
 }
 
 /// Ouvre la sortie audio au premier besoin, résolveur et gain branchés.
-fn lecteur<'a>(etat: &'a Etat) -> Result<MutexGuard<'a, Option<Player>>, String> {
+pub(crate) fn lecteur(etat: &Etat) -> Result<MutexGuard<'_, Option<Player>>, String> {
     let mut garde = verrou(&etat.player);
     if garde.is_none() {
         let mut player = Player::new().map_err(echec)?;
@@ -279,6 +338,10 @@ fn lecteur<'a>(etat: &'a Etat) -> Result<MutexGuard<'a, Option<Player>>, String>
                 .cloned()
                 .unwrap_or_else(|| p.to_path_buf())
         });
+        let gains = etat.gains.clone();
+        player.set_gain_resolveur(move |p| {
+            gains.read().unwrap_or_else(|e| e.into_inner()).get(p).copied().unwrap_or(1.0)
+        });
         *garde = Some(player);
     }
     Ok(garde)
@@ -287,32 +350,35 @@ fn lecteur<'a>(etat: &'a Etat) -> Result<MutexGuard<'a, Option<Player>>, String>
 /// Gain de normalisation (album, comme le bureau par défaut) — 1.0 si la
 /// piste n'a pas été mesurée sur le Mac.
 fn gain_pour(etat: &Etat, chemin: &Path) -> f32 {
-    verrou(&etat.valise)
-        .as_ref()
-        .and_then(|v| v.lib.gain_lecture(chemin, ModeGain::Album, CIBLE_LUFS).ok().flatten())
+    etat.gains
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(chemin)
+        .copied()
         .unwrap_or(1.0)
+}
+
+/// Les chemins d'origine des pistes d'un album, dans l'ordre du disque.
+fn chemins_album(etat: &Etat, album_id: &str) -> Result<Vec<PathBuf>, String> {
+    let valise = verrou(&etat.valise);
+    let v = valise.as_ref().ok_or("aucune valise ouverte")?;
+    let file: Vec<PathBuf> = pistes_album(&v.lib, album_id)
+        .map_err(echec)?
+        .into_iter()
+        .map(|(_, p)| p)
+        .collect();
+    if file.is_empty() {
+        return Err("album vide".into());
+    }
+    Ok(file)
 }
 
 /// Joue l'album `album_id` à partir de la piste de rang `rang`.
 #[tauri::command]
 fn jouer(etat: State<Etat>, album_id: String, rang: usize) -> Result<(), String> {
-    let file: Vec<PathBuf> = {
-        let valise = verrou(&etat.valise);
-        let v = valise.as_ref().ok_or("aucune valise ouverte")?;
-        pistes_album(&v.lib, &album_id)
-            .map_err(echec)?
-            .into_iter()
-            .map(|(_, p)| p)
-            .collect()
-    };
-    if file.is_empty() {
-        return Err("album vide".into());
-    }
+    let file = chemins_album(&etat, &album_id)?;
     let mut garde = lecteur(&etat)?;
     let player = garde.as_mut().expect("ouvert par `lecteur`");
-    let gains = file.iter().map(|p| gain_pour(&etat, p)).collect::<Vec<_>>();
-    let gains_par_chemin: HashMap<PathBuf, f32> = file.iter().cloned().zip(gains).collect();
-    player.set_gain_resolveur(move |p| gains_par_chemin.get(p).copied().unwrap_or(1.0));
     player.play(&file).map_err(echec)?;
     if rang > 0 {
         player.jump_to(rang.min(file.len() - 1)).map_err(echec)?;
@@ -374,9 +440,97 @@ fn aller_a(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
     transport(&etat, Geste::AllerA(Duration::from_millis(position_ms)))
 }
 
+/// Met l'album à la suite de la file — ou le lance si rien ne joue.
+#[tauri::command]
+fn ajouter_album(etat: State<Etat>, album_id: String) -> Result<(), String> {
+    let album = chemins_album(&etat, &album_id)?;
+    let mut garde = lecteur(&etat)?;
+    let player = garde.as_mut().expect("ouvert par `lecteur`");
+    if player.is_finished() || player.rang_courant().is_none() {
+        return player.play(&album).map_err(echec);
+    }
+    // `set_queue` garde la piste en cours et ce qui est déjà confié à la
+    // sortie : la file commence par les mêmes pistes, rien n'est coupé.
+    let file: Vec<PathBuf> = player.queue().iter().cloned().chain(album).collect();
+    player.set_queue(&file).map_err(echec)
+}
+
+/// La file du lecteur, avec ce qu'il faut pour l'afficher.
+#[tauri::command]
+fn file_lecture(etat: State<Etat>) -> Result<FileVue, String> {
+    let (file, rang, retirable) = {
+        let garde = verrou(&etat.player);
+        let Some(p) = garde.as_ref() else {
+            return Ok(FileVue { pistes: Vec::new(), rang: None, retirable: 0 });
+        };
+        let rang = if p.is_finished() { None } else { p.rang_courant() };
+        (p.queue().to_vec(), rang, p.verrou())
+    };
+    let valise = verrou(&etat.valise);
+    let v = valise.as_ref().ok_or("aucune valise ouverte")?;
+    let mut stmt = v
+        .lib
+        .conn
+        .prepare(
+            "SELECT t.title, t.artist, t.duration_ms, f.album_id
+               FROM tracks t LEFT JOIN valise_fichier f ON f.track_id = t.id
+              WHERE t.path = ?1",
+        )
+        .map_err(echec)?;
+    let pistes = file
+        .iter()
+        .map(|chemin| {
+            stmt.query_row(params![chemin.to_string_lossy()], |r| {
+                Ok(PisteFile {
+                    titre: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    artiste: r.get(1)?,
+                    duree_ms: r.get(2)?,
+                    album_id: r.get(3)?,
+                })
+            })
+            .unwrap_or_else(|_| PisteFile {
+                titre: chemin
+                    .file_stem()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                artiste: None,
+                duree_ms: None,
+                album_id: None,
+            })
+        })
+        .collect();
+    Ok(FileVue { pistes, rang, retirable })
+}
+
+/// Saute à la piste de rang `rang` de la file.
+#[tauri::command]
+fn sauter_a(etat: State<Etat>, rang: usize) -> Result<(), String> {
+    let mut garde = verrou(&etat.player);
+    let Some(player) = garde.as_mut() else {
+        return Ok(());
+    };
+    player.jump_to(rang).map_err(echec)
+}
+
+/// Retire de la file la piste de rang `rang`, si elle n'est pas déjà confiée
+/// à la sortie (la piste en cours et celle préchargée ne se retirent pas).
+#[tauri::command]
+fn retirer_de_la_file(etat: State<Etat>, rang: usize) -> Result<(), String> {
+    let mut garde = verrou(&etat.player);
+    let Some(player) = garde.as_mut() else {
+        return Ok(());
+    };
+    if rang < player.verrou() || rang >= player.queue().len() {
+        return Err("cette piste ne peut plus être retirée".into());
+    }
+    let mut file = player.queue().to_vec();
+    file.remove(rang);
+    player.set_queue(&file).map_err(echec)
+}
+
 /// Ce qui joue, avec ses métadonnées ; `None` si rien ne joue.
 pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
-    let (chemin, position, duree, pause) = {
+    let (chemin, rang, position, duree, pause) = {
         let garde = verrou(&etat.player);
         let player = garde.as_ref()?;
         if player.is_finished() {
@@ -384,6 +538,7 @@ pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
         }
         (
             player.current()?.to_path_buf(),
+            player.rang_courant()?,
             player.position(),
             player.duree_courante(),
             player.is_paused(),
@@ -417,6 +572,7 @@ pub(crate) fn lecture_courante(etat: &Etat) -> Option<EtatLecture> {
         artiste,
         album,
         album_id,
+        rang,
         position_ms: position.as_millis() as u64,
         duree_ms: duree.map(|d| d.as_millis() as u64),
         pause,
@@ -552,6 +708,7 @@ pub fn run() {
                 valise: Mutex::new(None),
                 player: Mutex::new(None),
                 fichiers: Arc::new(RwLock::new(HashMap::new())),
+                gains: Arc::new(RwLock::new(HashMap::new())),
                 precharge: Mutex::new(()),
             });
             // Le préchargement tourne côté natif : les minuteries JS d'une
@@ -561,12 +718,22 @@ pub fn run() {
             std::thread::spawn(move || {
                 let mut affiche = en_cours::Suivi::default();
                 let mut ecoute = SuiviEcoute::nouveau();
+                let mut memo = session::Memo::default();
+                let mut tour = 0u32;
                 loop {
+                    tour = tour.wrapping_add(1);
                     std::thread::sleep(Duration::from_millis(250));
                     let etat = handle.state::<Etat>();
                     precharger_suivante(&etat);
                     suivre_ecoute(&etat, &mut ecoute);
                     affiche.battement(lecture_courante(&etat).as_ref());
+                    // Session toutes les cinq secondes, comme le bureau : iOS
+                    // peut fermer l'app suspendue sans prévenir.
+                    if tour % 20 == 0 {
+                        if let Err(e) = session::sauvegarder(&etat, &mut memo) {
+                            tracing::warn!(erreur = %e, "sauvegarde de la session impossible");
+                        }
+                    }
                 }
             });
             en_cours::brancher_commandes(app.handle().clone());
@@ -577,7 +744,12 @@ pub fn run() {
             ouvrir_valise,
             pistes,
             pochette,
+            reprendre,
             jouer,
+            ajouter_album,
+            file_lecture,
+            sauter_a,
+            retirer_de_la_file,
             basculer_pause,
             suivante,
             precedente,

@@ -23,6 +23,22 @@
     <symbol id="i-precedente" viewBox="0 0 24 24">
       <path transform="translate(24 0) scale(-1 1)" d="M2.5 6.6v10.8c0 .8.9 1.2 1.5.8l7.5-5.4v4.6c0 .8.9 1.2 1.5.8l7.9-5.6c.5-.4.5-1.2 0-1.6L13 5.4c-.6-.4-1.5 0-1.5.8v4.6L4 5.8c-.6-.4-1.5 0-1.5.8z"/>
     </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="13" height="2.2" rx="1.1"/>
+      <rect x="3" y="10.9" width="13" height="2.2" rx="1.1"/>
+      <rect x="3" y="16.8" width="9" height="2.2" rx="1.1"/>
+      <path d="M15.5 15.2v5.6c0 .6.7 1 1.2.7l4.4-2.8c.5-.3.5-1 0-1.3l-4.4-2.8c-.5-.3-1.2.1-1.2.6z"/>
+    </symbol>
+    <symbol id="i-a-la-suite" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="12" height="2.2" rx="1.1"/>
+      <rect x="3" y="10.9" width="12" height="2.2" rx="1.1"/>
+      <rect x="3" y="16.8" width="8" height="2.2" rx="1.1"/>
+      <rect x="17.4" y="12.5" width="2.2" height="9" rx="1.1"/>
+      <rect x="14" y="15.9" width="9" height="2.2" rx="1.1"/>
+    </symbol>
+    <symbol id="i-retirer" viewBox="0 0 24 24">
+      <path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    </symbol>
     <symbol id="i-retour" viewBox="0 0 24 24">
       <path d="M15 4.5 7.5 12l7.5 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
@@ -37,13 +53,18 @@
 
   <!-- Lecteur : toujours complet dès qu'une piste joue. -->
   <footer class="lecteur" id="lecteur" hidden>
-    <button class="lecteur__piste" id="l-piste" aria-label="Voir l'album">
-      <img class="lecteur__pochette" id="l-pochette" alt="">
-      <span class="lecteur__textes">
-        <span class="lecteur__titre" id="l-titre"></span>
-        <span class="lecteur__artiste" id="l-artiste"></span>
-      </span>
-    </button>
+    <div class="lecteur__haut">
+      <button class="lecteur__piste" id="l-piste" aria-label="Voir l'album">
+        <img class="lecteur__pochette" id="l-pochette" alt="">
+        <span class="lecteur__textes">
+          <span class="lecteur__titre" id="l-titre"></span>
+          <span class="lecteur__artiste" id="l-artiste"></span>
+        </span>
+      </button>
+      <button class="bouton-icone bouton-icone--petit" id="file" aria-label="File de lecture">
+        <svg class="icone"><use href="#i-file"/></svg>
+      </button>
+    </div>
     <input class="lecteur__curseur" id="l-curseur" type="range" min="0" max="1000" value="0" aria-label="Position">
     <div class="lecteur__temps"><span id="l-ecoule">0:00</span><span id="l-reste"></span></div>
     <div class="lecteur__commandes">

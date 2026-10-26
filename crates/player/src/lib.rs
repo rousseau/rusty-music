@@ -1025,6 +1025,11 @@ impl Player {
         self.durees.get(rang).copied().flatten()
     }
 
+    /// Rang de la piste en cours dans la file, `None` si rien ne joue.
+    pub fn rang_courant(&self) -> Option<usize> {
+        self.index()
+    }
+
     /// Piste en cours de lecture, si la file n'est pas épuisée.
     pub fn current(&self) -> Option<&Path> {
         self.queue.get(self.index()?).map(PathBuf::as_path)

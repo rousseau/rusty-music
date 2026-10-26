@@ -19,7 +19,7 @@ use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, T
 use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
 use rusty_music_core::memoire::{ListeIntelligente, SuiviEcoute};
 use rusty_music_core::playlists::PlaylistRow;
-use rusty_music_core::session::Session;
+use rusty_music_core::session::{retenir, Session};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -30,6 +30,7 @@ use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 /// fichier de `ui/` change. Voir `build.rs`.
 const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
+mod a_propos;
 mod iphone;
 mod minuteur;
 mod systeme_media;
@@ -6502,6 +6503,29 @@ fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
     verrou(&etat.transcription).clone()
 }
 
+/// Les partitions déjà calculées du morceau, sans rien calculer : « bass »,
+/// « bass-muscriptor », « drums » selon les caches présents et à jour. Le
+/// bloc « Partitions » du rail montre ainsi « prête » plutôt que « Calculer ».
+#[tauri::command(async)]
+fn transcriptions_en_cache(etat: State<Etat>, id: i64) -> Result<Vec<String>, String> {
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let dossier = dossier_stems(&etat, Path::new(&chemin));
+    Ok(["bass", "bass-muscriptor", "drums"]
+        .into_iter()
+        .filter(|cle| {
+            std::fs::read(dossier.join(format!("transcription-{cle}.json")))
+                .ok()
+                .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
+                .is_some_and(|t| t.version == VERSION_TRANSCRIPTION)
+        })
+        .map(String::from)
+        .collect())
+}
+
 /// Vrai si les poids de MuScriptor sont sur la machine (dossier des modèles
 /// ou cache Hugging Face) : l'utilisateur doit les télécharger lui-même,
 /// après avoir accepté leurs conditions d'usage sur Hugging Face.
@@ -6655,10 +6679,13 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
             let mut t = verrou(&etat.transcription);
             (t.en_cours, t.id, t.faits, t.total) = (true, id, 0, 0);
         }
+        // Le bilan n'arrive qu'à la fin (une minute) : sans cette ligne, une
+        // transcription interrompue ne laissait aucune trace au journal.
+        tracing::info!(id, "MuScriptor : transcription de la basse lancée");
         let issue = (|| -> Result<Vec<rusty_music_transcription::Note>, String> {
             let mut garde = verrou(&etat.muscriptor);
             if garde.valeur.is_none() {
-                garde.valeur = Some(muscriptor::Muscriptor::charger(&poids, &Default::default()).map_err(echec)?);
+                garde.valeur = Some(muscriptor::Muscriptor::charger(&poids, &muscriptor::appareil()).map_err(echec)?);
             }
             let m = garde.valeur.as_ref().expect("chargé juste au-dessus");
             let (notes, bilan) = m
@@ -8546,20 +8573,6 @@ fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
     }
 }
 
-/// Garde les éléments connus d'une file et recale `rang` : le nombre de
-/// pistes retenues **avant** la piste en cours. Rend aussi si la piste en
-/// cours elle-même a été retenue — sinon `rang` désigne la suivante, et la
-/// position mémorisée ne signifie plus rien. Commun à la sauvegarde (chemins
-/// inconnus de la base) et à la reprise (identifiants disparus).
-fn retenir<T>(elements: Vec<Option<T>>, rang: usize) -> (Vec<T>, usize, bool) {
-    let courante_retenue = elements.get(rang).is_some_and(Option::is_some);
-    let avant = elements[..rang.min(elements.len())]
-        .iter()
-        .flatten()
-        .count();
-    (elements.into_iter().flatten().collect(), avant, courante_retenue)
-}
-
 /// Ce que [`sauvegarder_session`] a déjà écrit de la file : tant qu'elle ne
 /// change pas, seules la position et les réglages sont mis à jour — une file
 /// de plusieurs milliers de pistes n'est pas réécrite toutes les cinq
@@ -9255,6 +9268,7 @@ fn main() {
             sections,
             muscriptor_jeton_present,
             telecharger_muscriptor,
+            transcriptions_en_cache,
             stems_state,
             stem_spectre,
             voisins_de_stem,
@@ -9295,6 +9309,7 @@ fn main() {
             stockage_logiciel,
             play,
             set_queue,
+            a_propos::a_propos,
             remplacer_file,
             toggle_pause,
             skip,
@@ -9339,7 +9354,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        retenir, composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
+        composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
         cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
         fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
         sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
@@ -9353,31 +9368,6 @@ mod tests {
     /// `liberer_si_inactif` doit décharger `valeur` une fois le seuil
     /// d'inactivité dépassé, et rester sans effet avant — isolé de `Etat`,
     /// qui ne se construit pas hors de Tauri.
-    /// Une piste de la file disparue de la bibliothèque ne doit pas décaler la
-    /// reprise : le rang suit la piste en cours, ou la suivante si c'est elle
-    /// qui a disparu.
-    #[test]
-    fn retenir_recale_le_rang_sur_la_piste_en_cours() {
-        // a, (absente), c, d — on jouait c (rang 2) : il devient le rang 1.
-        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c"), Some("d")], 2);
-        assert_eq!((file, rang, presente), (vec!["a", "c", "d"], 1, true));
-
-        // On jouait la piste absente (rang 1) : le rang désigne la suivante
-        // (c), et la position ne vaut plus rien.
-        let (file, rang, presente) = retenir(vec![Some("a"), None, Some("c")], 1);
-        assert_eq!((file, rang, presente), (vec!["a", "c"], 1, false));
-    }
-
-    #[test]
-    fn retenir_tolere_un_rang_hors_file_et_une_file_vide() {
-        let (file, rang, presente) = retenir(vec![Some(1), Some(2)], 9);
-        assert_eq!((file, rang, presente), (vec![1, 2], 2, false));
-        let (file, rang, presente) = retenir::<i64>(Vec::new(), 0);
-        assert!(file.is_empty() && rang == 0 && !presente);
-        let (file, _, _) = retenir::<i64>(vec![None, None], 0);
-        assert!(file.is_empty(), "toute la file a disparu");
-    }
-
     #[test]
     fn cache_libere_apres_le_seuil_dinactivite() {
         let cache = Mutex::new(Cache { valeur: Some(42), touche: Some(Instant::now()) });

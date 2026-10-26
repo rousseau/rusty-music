@@ -151,8 +151,9 @@ struct Boucle {
     passages: Arc<AtomicU32>,
 }
 
-/// Durée d'un clic de décompte, en trames — 40 ms.
-const CLIC: u64 = (SR as u64 * 40) / 1000;
+/// Durée d'un clic de décompte, en trames — 120 ms, cinq fois sa constante
+/// d'amortissement.
+const CLIC: u64 = (SR as u64 * 120) / 1000;
 
 /// Le décompte d'avant la lecture : des clics de métronome, et les stems
 /// tenus à l'arrêt tant que la musique ne doit pas commencer — comme un
@@ -185,10 +186,12 @@ impl Decompte {
         for &(t, accent) in &self.clics {
             if h >= t && h < t + CLIC {
                 // Une sinusoïde amortie : 1 600 Hz sur le premier temps,
-                // 1 000 Hz sur les autres, ce que font les métronomes.
+                // 1 000 Hz sur les autres, ce que font les métronomes. À 0,5
+                // et 8 ms d'amortissement, on l'entendait à peine sous la
+                // musique (24 oct.) : 0,9 et 25 ms, une dizaine de dB de plus.
                 let dt = (h - t) as f32 / SR as f32;
                 let f = if accent { 1600.0 } else { 1000.0 };
-                v += 0.5 * (-dt / 0.008).exp() * (std::f32::consts::TAU * f * dt).sin();
+                v += 0.9 * (-dt / 0.025).exp() * (std::f32::consts::TAU * f * dt).sin();
             }
             reste |= t + CLIC > h;
         }
@@ -1260,7 +1263,7 @@ mod tests {
     /// puis laisse partir la musique ; un clic d'après chevauche la musique.
     #[test]
     fn le_decompte_retient_la_musique_puis_la_laisse_partir() {
-        let mut b = banc(vec![vec![0i16; 2 * 20_000]], vec![Niveau::nouveau(1.0)]);
+        let mut b = banc(vec![vec![0i16; 2 * 30_000]], vec![Niveau::nouveau(1.0)]);
         // Deux clics avant la musique, un après (une levée).
         *b.melange.depot.decompte.lock().unwrap() = Decompte {
             pre: 1000,
@@ -1270,7 +1273,7 @@ mod tests {
         };
         b.melange.depot.nouveau.store(true, Ordering::Release);
         let mut sortie = Vec::new();
-        for _ in 0..6000 {
+        for _ in 0..(1500 + 3 * CLIC as usize) {
             sortie.push(b.melange.next().unwrap());
             sortie.push(b.melange.next().unwrap());
             if sortie.len() == 2 * 999 {
@@ -1282,6 +1285,6 @@ mod tests {
         for t in [0, 500, 1500] {
             assert!(energie(t) > 1.0, "clic attendu à la trame {t}");
         }
-        assert!(energie(4000) == 0.0, "plus de clic après le dernier");
+        assert!(energie(1500 + CLIC as usize) == 0.0, "plus de clic après le dernier");
     }
 }

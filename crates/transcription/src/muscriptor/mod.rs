@@ -52,6 +52,23 @@ pub type Moteur = burn::backend::Wgpu;
 #[cfg(all(not(feature = "gpu"), feature = "cpu"))]
 pub type Moteur = burn::backend::NdArray;
 
+/// L'appareil de MuScriptor. Burn 0.21 fixe le flottant par défaut **par
+/// appareil**, une fois pour toutes, au premier tenseur créé : `Wgpu<f16>` et
+/// le `Wgpu<f32>` du démixage partagent le type d'appareil, donc l'appareil
+/// par défaut. Après une transcription, le démixage échouait (« expected F16,
+/// got F32 », 24 oct.). Sur Metal, MuScriptor prend donc l'appareil
+/// « intégré » — la même puce Apple, mais un appareil distinct pour Burn,
+/// avec ses réglages et sa mémoire. Un Mac sans GPU intégré (Mac Pro Intel)
+/// n'est pas couvert.
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+pub fn appareil() -> burn::tensor::Device<Moteur> {
+    burn::backend::wgpu::WgpuDevice::IntegratedGpu(0)
+}
+#[cfg(not(all(feature = "gpu", target_os = "macos")))]
+pub fn appareil() -> burn::tensor::Device<Moteur> {
+    Default::default()
+}
+
 /// Nom du fichier de poids dans le dossier des modèles de l'application.
 pub const FICHIER: &str = "muscriptor-medium.safetensors";
 

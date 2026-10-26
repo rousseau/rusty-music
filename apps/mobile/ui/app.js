@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 const LIBELLES_REGLES = { 'recents': 'Récents', 'peu-ecoutes': 'Peu écoutés' };
 
 const etat = {
-  ecran: 'valises',     // valises | albums | album
+  ecran: 'valises',     // valises | albums | album | file
   nbValises: 0,
   albums: [],
   album: null,          // album affiché dans l'écran « album »
@@ -66,6 +66,7 @@ function retour(action) {
 }
 
 const jouer = (albumId, rang) => invoke('jouer', { albumId, rang }).then(rafraichir);
+const aLaSuite = (albumId) => invoke('ajouter_album', { albumId }).then(rafraichir);
 
 /* ------------------------------------------------------------ valises */
 
@@ -154,7 +155,15 @@ async function afficherAlbum(a) {
   const lire = el('button', 'lire');
   lire.append(icone('i-lecture'), el('span', null, 'Lire'));
   lire.onclick = () => jouer(a.id, 0);
-  tete.append(imagePochette(a.id, 'entete-album__pochette'), textes, lire);
+  const suite = el('button', 'lire lire--second');
+  suite.append(icone('i-a-la-suite'), el('span', null, 'À la suite'));
+  suite.onclick = () => aLaSuite(a.id).then(() => {
+    suite.lastChild.textContent = 'Ajouté';
+    setTimeout(() => { suite.lastChild.textContent = 'À la suite'; }, 1500);
+  });
+  const actions = el('div', 'entete-album__actions');
+  actions.append(lire, suite);
+  tete.append(imagePochette(a.id, 'entete-album__pochette'), textes, actions);
   contenu.append(tete);
 
   const pistes = await invoke('pistes', { albumId: a.id });
@@ -170,12 +179,66 @@ async function afficherAlbum(a) {
   rafraichir();
 }
 
+/* --------------------------------------------------------------- file */
+
+// L'écran d'où l'on est venu, pour que « retour » y ramène.
+let avantFile = null;
+
+function ouvrirFile() {
+  if (etat.ecran === 'file') return;
+  if (etat.ecran === 'albums') etat.defilement = window.scrollY;
+  const ecran = etat.ecran;
+  const album = etat.album;
+  avantFile = () => {
+    if (ecran === 'album' && album) afficherAlbum(album);
+    else if (ecran === 'albums') afficherAlbums();
+    else afficherValises();
+  };
+  etat.ecran = 'file';
+  retour(avantFile);
+  afficherFile(true);
+}
+
+async function afficherFile(centrer) {
+  const f = await invoke('file_lecture');
+  if (etat.ecran !== 'file') return;
+  lecteur.rangFile = f.rang;
+  const contenu = $('contenu');
+  contenu.replaceChildren(el('h2', 'regle regle--sous-retour', 'File'));
+  if (!f.pistes.length) {
+    contenu.append(el('p', 'vide', 'La file est vide.'));
+    return;
+  }
+  let enCours = null;
+  f.pistes.forEach((p, rang) => {
+    const ligne = el('div', 'piste-file');
+    if (f.rang != null && rang < f.rang) ligne.classList.add('piste-file--passee');
+    const b = el('button', 'piste');
+    if (rang === f.rang) { b.classList.add('piste--en-cours'); enCours = ligne; }
+    const textes = el('span', 'piste__textes');
+    textes.append(el('span', 'piste__titre', p.titre), el('span', 'piste__artiste', p.artiste || ''));
+    b.append(textes, el('span', 'piste__duree', duree(p.duree_ms)));
+    b.onclick = () => invoke('sauter_a', { rang }).then(rafraichir);
+    ligne.append(b);
+    if (rang >= f.retirable) {
+      const x = el('button', 'piste-file__retirer');
+      x.setAttribute('aria-label', `Retirer ${p.titre}`);
+      x.append(icone('i-retirer'));
+      x.onclick = () => invoke('retirer_de_la_file', { rang }).then(() => afficherFile(false));
+      ligne.append(x);
+    }
+    contenu.append(ligne);
+  });
+  if (centrer && enCours) enCours.scrollIntoView({ block: 'center' });
+}
+
 /* ------------------------------------------------------------ lecteur */
 
 const lecteur = {
   derniere: null,      // dernier état lu
   albumPochette: null, // album dont la pochette est affichée
   glisse: false,       // le doigt est sur le curseur : ne pas le bouger
+  rangFile: null,      // rang en cours au dernier affichage de la file
 };
 
 async function afficherPochetteLecteur(albumId) {
@@ -197,6 +260,8 @@ async function rafraichir() {
   const part = l.duree_ms ? Math.min(1, l.position_ms / l.duree_ms) : 0;
   if (!lecteur.glisse) placerCurseur(part, l.position_ms, l.duree_ms);
 
+  if (etat.ecran === 'file' && l.rang !== lecteur.rangFile) afficherFile(false);
+
   if (etat.ecran === 'album' && etat.album && etat.album.id === l.album_id) {
     for (const b of document.querySelectorAll('.piste')) {
       b.classList.toggle('piste--en-cours', b.dataset.titre === l.titre);
@@ -212,6 +277,7 @@ function placerCurseur(part, position_ms, duree_ms) {
   $('l-reste').textContent = duree_ms ? `−${duree(Math.max(0, duree_ms - position_ms))}` : '';
 }
 
+$('file').onclick = ouvrirFile;
 $('pause').onclick = () => invoke('basculer_pause').then(rafraichir);
 $('suivante').onclick = () => invoke('suivante').then(rafraichir);
 $('precedente').onclick = () => invoke('precedente').then(rafraichir);
@@ -238,5 +304,19 @@ curseur.addEventListener('change', () => {
   invoke('aller_a', { positionMs: Math.round((curseur.value / 1000) * l.duree_ms) }).then(rafraichir);
 });
 
+/** Au lancement : la valise de la dernière session, sa file reprise en
+ *  pause ; sinon la liste des valises. */
+async function demarrer() {
+  const r = await invoke('reprendre').catch(() => null);
+  if (!r) {
+    afficherValises();
+    return;
+  }
+  etat.nbValises = (await invoke('valises')).length;
+  etat.albums = r.albums;
+  afficherAlbums();
+  rafraichir();
+}
+
 setInterval(rafraichir, 500);
-afficherValises();
+demarrer();

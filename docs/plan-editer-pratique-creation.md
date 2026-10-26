@@ -41,13 +41,19 @@ Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
 
 ## Phase 0 — le socle commun
 
-### 0.1 Modèles tiers : préparation, publication, remerciements — **S** — *en cours (8 oct.)*
+### 0.1 Modèles tiers : préparation, publication, remerciements — **S** — *fait, sauf la publication sur Hugging Face (22 oct.)*
 
 **Fait** : `MODELES.md` (CLAP, HTDemucs, AERO, Beat This! — article, dépôt,
 licences code et poids, conversion) ; `scripts/preparer-beat-this.sh` (ajouté
-à `preparer-tout.sh`) ; `models/README.md`. **Reste** : écran « À propos »,
-lecture depuis Hugging Face dans `telecharger-modeles.sh` (rien à republier
-pour Beat This! : les ONNX de `beat-this-rs` sont déjà publics, MIT).
+à `preparer-tout.sh`) ; `models/README.md` ; **écran « À propos »** (22 oct.,
+fin du mode Bibliothèque) : version, licence, une fiche par modèle — nom,
+rôle, article, licences du code et des poids, liens — lue dans le tableau de
+`MODELES.md` à la compilation (`apps/desktop/src/a_propos.rs`), si bien qu'un
+modèle ajouté au fichier apparaît sans autre code ; plus les sources de
+données (OpenStreetMap, MusicBrainz, CritiqueBrainz…). **Reste** : lecture
+depuis Hugging Face dans `telecharger-modeles.sh`, qui suppose d'y avoir
+republié les poids convertis (CLAP, HTDemucs, AERO) — rien à republier pour
+Beat This! : les ONNX de `beat-this-rs` sont déjà publics, MIT.
 
 **Constaté.** Les modèles passent par `scripts/preparer-*.sh` (conversion
 depuis la source) et `scripts/telecharger-modeles.sh` (fichiers déjà préparés,
@@ -344,6 +350,33 @@ dans le même flux que les stems : les têtes de lecture attendent la fin du
 décompte, la vitesse de lecture s'y applique. Au début du morceau, le
 décompte vise le premier temps et chevauche une éventuelle levée. Se
 déplacer pendant le décompte l'annule.
+
+**Après l'essai du 24 oct.** :
+- *bloc « Partitions »* du rail : une ligne par instrument séparé (basse,
+  batterie), son état (à calculer, en cours avec jauge, prête) et le geste
+  qui va avec. Rien ne se calcule sans « Calculer » — la partition
+  apparaissait sans qu'on sache d'où ; `transcriptions_en_cache` dit ce qui
+  est déjà prêt. MuScriptor montre son avancement (jauge sous la partition) ;
+  liens vers la page du modèle et la création d'un jeton Hugging Face ;
+- *curseur* : celui d'alphaTab sautait de note en note ; un trait à nous
+  (`placerCurseur`) glisse dans la mesure au prorata du temps écoulé entre
+  ses premiers temps, à vitesse constante tant que le tempo l'est ;
+- *décompte* : clics à peine audibles sous la musique, passés à 0,9
+  d'amplitude et 25 ms d'amortissement (une dizaine de dB de plus) ;
+- *MuScriptor puis démixage* échouait (« expected F16, got F32 ») : Burn
+  0.21 fixe le flottant par défaut par appareil, et `Wgpu<f16>` partageait
+  celui du démixage en f32. MuScriptor prend l'appareil « intégré » sous
+  Metal (`muscriptor::appareil`).
+
+**Démixages successifs (26 oct.)** — un seul jeu de stems par morceau : un
+nouveau démixage écrase le précédent et retire ce qui venait de lui
+(partitions en cache, `traites/`, stems que la nouvelle variante ne produit
+pas) ; avant, « Calculer » rendait la partition de l'ancien stem. Comparé à
+la tab Songsterr d'« About Damn Time » (Lizzo) : F1 0,89 (attaque ±50 ms,
+hauteur exacte) avec htdemucs_ft, 0,87-0,88 avec htdemucs et 6s — mêmes
+erreurs (notes à l'octave des pré-refrains), la variante ne compte pas.
+Défaut vu au passage : `premiers_temps` coupe une mesure en deux 2/4 à
+28 s et note tout l'outro en 2/4.
 
 **Tablatures publiées : un lien, pas d'import automatique (17 oct.)** — le
 lien « Voir les tablatures sur Songsterr » ouvre la recherche du morceau
