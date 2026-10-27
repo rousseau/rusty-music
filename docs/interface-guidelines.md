@@ -206,8 +206,8 @@ central), `--gouttiere-panneau` (18, marge intérieure des panneaux),
 - **Les marges sont symétriques**, la droite mesurée jusqu'au panneau droit
   *visible le plus proche* (inspecteur, ou file si elle est ouverte), pas jusqu'au
   bord de la fenêtre ni jusqu'à l'inspecteur seul.
-- **Une colonne de lecture à largeur limitée est centrée** (Bibliothèque ; accueil
-  du Lama) : le conteneur reste pleine largeur — la barre de défilement reste au
+- **Une colonne de lecture à largeur limitée est centrée** (Bibliothèque, Valise ;
+  accueil du Lama) : le conteneur reste pleine largeur — la barre de défilement reste au
   bord du panneau — et c'est le padding qui centre.
 - **Deux colonnes seulement si chacune a la place** : `auto-fit` plutôt qu'un
   rapport fixe (le Lama s'empile dans une fenêtre étroite au lieu de déborder).

@@ -6472,6 +6472,9 @@ struct VueTranscription {
     /// Version du doigté de la basse ([`VERSION_DOIGTES`]).
     #[serde(default)]
     doigtes: u32,
+    /// Version de la grille des mesures ([`VERSION_MESURES`]).
+    #[serde(default)]
+    grille: u32,
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
@@ -6482,6 +6485,11 @@ const VERSION_TRANSCRIPTION: u32 = 5;
 /// minutes). 1 : avant l'a priori appris ; 2 : a priori de position et coûts
 /// réglés sur 89 tablatures (17 oct.) ; 3 : table apprise sur 331 tablatures.
 const VERSION_DOIGTES: u32 = 3;
+
+/// Version de la grille des mesures (`Pulsation::regularisee`) : quand seule
+/// elle change, les notes et coups en cache sont requantifiés sans
+/// retranscrire. 1 : premiers temps parasites retirés (26 oct.).
+const VERSION_MESURES: u32 = 1;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
@@ -6590,33 +6598,39 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
         .filter(|t| t.version == VERSION_TRANSCRIPTION)
     {
-        if instrument != "bass" || t.doigtes == VERSION_DOIGTES {
+        let doigtes_a_jour = instrument != "bass" || t.doigtes == VERSION_DOIGTES;
+        if doigtes_a_jour && t.grille == VERSION_MESURES {
             return Ok(t);
         }
-        // Seul le doigté a changé : les notes en cache sont reposées.
+        // Seuls le doigté ou la grille des mesures ont changé : les notes en
+        // cache sont reposées et requantifiées, sans retranscrire.
         let pulsation = pulsation_de(
             &etat,
             &source,
             &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
             rusty_music_editor::pulsation::Modele::Complet,
         )?;
-        let accordage = tablature::Accordage::choisir(&t.notes);
-        tablature::poser(&mut t.notes, &accordage);
-        let mesures = quantification::quantifier(
-            &t.notes,
-            &pulsation.temps,
-            &pulsation.premiers_temps,
-            pulsation.metrique().unwrap_or(4),
-        );
-        t.mesures = serde_json::to_value(&mesures).map_err(echec)?;
-        t.accordage = accordage.cordes;
-        t.doigtes = VERSION_DOIGTES;
+        let metrique = pulsation.metrique().unwrap_or(4);
+        t.mesures = if instrument == "bass" {
+            if !doigtes_a_jour {
+                let accordage = tablature::Accordage::choisir(&t.notes);
+                tablature::poser(&mut t.notes, &accordage);
+                t.accordage = accordage.cordes;
+                t.doigtes = VERSION_DOIGTES;
+            }
+            let mesures = quantification::quantifier(&t.notes, &pulsation.temps, &pulsation.premiers_temps, metrique);
+            serde_json::to_value(&mesures).map_err(echec)?
+        } else {
+            let mesures = quantification::quantifier_coups(&t.coups, &pulsation.temps, &pulsation.premiers_temps, metrique);
+            serde_json::to_value(&mesures).map_err(echec)?
+        };
+        t.grille = VERSION_MESURES;
         if let Ok(o) = serde_json::to_vec(&t) {
             if let Err(e) = std::fs::write(&cache, o) {
                 tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
             }
         }
-        tracing::info!(notes = t.notes.len(), "doigtés reposés");
+        tracing::info!(notes = t.notes.len(), coups = t.coups.len(), "partition reposée sur la grille");
         return Ok(t);
     }
     let (_, stem) = stems_du_dossier(&dossier)
@@ -6659,6 +6673,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
             mesures: serde_json::to_value(&mesures).map_err(echec)?,
             accordage: Vec::new(),
             doigtes: 0,
+            grille: VERSION_MESURES,
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
             if let Err(e) = std::fs::write(&cache, o) {
@@ -6735,6 +6750,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
         accordage: accordage.cordes,
         doigtes: VERSION_DOIGTES,
+        grille: VERSION_MESURES,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {

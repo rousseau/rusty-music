@@ -375,8 +375,14 @@ pas) ; avant, « Calculer » rendait la partition de l'ancien stem. Comparé à
 la tab Songsterr d'« About Damn Time » (Lizzo) : F1 0,89 (attaque ±50 ms,
 hauteur exacte) avec htdemucs_ft, 0,87-0,88 avec htdemucs et 6s — mêmes
 erreurs (notes à l'octave des pré-refrains), la variante ne compte pas.
-Défaut vu au passage : `premiers_temps` coupe une mesure en deux 2/4 à
-28 s et note tout l'outro en 2/4.
+Défaut vu au passage, corrigé : Beat This! marquait parfois un premier
+temps tous les deux temps (une mesure coupée en deux 2/4 à 28 s, tout
+l'outro en 2/4). `Pulsation::regularisee` retire un premier temps qui coupe
+une mesure quand un autre suit exactement une mesure pleine après le
+précédent — une vraie mesure courte reste. Appliquée à l'analyse et à la
+lecture du cache ; les partitions en cache sont requantifiées sans
+retranscrire (`VERSION_MESURES`). Sur ce morceau : 84 barres sur 84 au même
+endroit que Songsterr.
 
 **Tablatures publiées : un lien, pas d'import automatique (17 oct.)** — le
 lien « Voir les tablatures sur Songsterr » ouvre la recherche du morceau

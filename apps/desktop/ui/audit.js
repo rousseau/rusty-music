@@ -78,6 +78,11 @@ const CONTENUS_AUDIT = {
   bibliotheque: [{ sel: ".fil" }, { sel: "#bibliotheque-vue" }],
 };
 
+/// Écrans dont le centre est une colonne de lecture (`--colonne-lecture`)
+/// centrée : la marge y dépasse la gouttière dès que le panneau est plus large
+/// que la colonne, ce qui est voulu — seule la symétrie compte.
+const COLONNES_LECTURE = new Set(["bibliotheque", "valise"]);
+
 /// Conteneurs dont on contrôle le défilement horizontal (G3).
 const DEFILEMENTS_AUDIT = [
   ".rail", ".centre", ".inspecteur", "#file", "#liste", "#grille", "#lama-corps",
@@ -139,7 +144,7 @@ function auditerGabarit(ecran) {
       viol.push({ regle: "G2", detail: `${sel} : marges gauche ${gauche.toFixed(1)} ≠ droite ${droite.toFixed(1)} px (jusqu'au panneau droit visible)` });
     else if (gauche < attendu.gouttiere - tol)
       viol.push({ regle: "G2", detail: `${sel} : marges ${gauche.toFixed(1)} px < gouttière ${attendu.gouttiere}` });
-    else if (gauche > attendu.gouttiere + tol && ecran !== "bibliotheque")
+    else if (gauche > attendu.gouttiere + tol && !COLONNES_LECTURE.has(ecran))
       viol.push({ regle: "G2", detail: `${sel} : marges ${gauche.toFixed(1)} px ≠ gouttière ${attendu.gouttiere}` });
   }
 

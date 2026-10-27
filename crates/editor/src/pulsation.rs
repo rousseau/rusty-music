@@ -250,12 +250,43 @@ impl Pulsation {
             .min_by(|a, b| (a - t).abs().total_cmp(&(b - t).abs()))
     }
 
+    /// Retire les premiers temps parasites : ceux qui coupent une mesure alors
+    /// qu'un premier temps suit exactement une mesure pleine après le
+    /// précédent. Le réseau en marque parfois un tous les deux temps sur
+    /// quelques mesures (« About Damn Time » : une mesure de 4/4 coupée en
+    /// deux 2/4 à 28 s, tout l'outro en 2/4, contre la tab Songsterr). Une
+    /// vraie mesure courte, après laquelle la grille repart d'elle, reste.
+    /// Appliquée à la lecture du cache comme à l'analyse : idempotente.
+    pub fn regularisee(mut self) -> Self {
+        let Some(m) = self.metrique().map(|m| m as usize) else {
+            return self;
+        };
+        let idx = self.indices_premiers();
+        if idx.len() != self.premiers_temps.len() {
+            return self;
+        }
+        let presents: std::collections::HashSet<usize> = idx.iter().copied().collect();
+        let mut garde = Vec::with_capacity(idx.len());
+        let mut dernier: Option<usize> = None;
+        for (&i, &t) in idx.iter().zip(&self.premiers_temps) {
+            if let Some(d) = dernier {
+                if i.saturating_sub(d) < m && presents.contains(&(d + m)) {
+                    continue;
+                }
+            }
+            garde.push(t);
+            dernier = Some(i);
+        }
+        self.premiers_temps = garde;
+        self
+    }
+
     /// Lit une pulsation en cache ; `None` si absente, illisible ou d'une
     /// autre version ou d'un autre modèle.
     pub fn lire(chemin: &Path, modele: Modele) -> Option<Pulsation> {
         let texte = std::fs::read_to_string(chemin).ok()?;
         let p: Pulsation = serde_json::from_str(&texte).ok()?;
-        (p.version == VERSION && p.modele == modele).then_some(p)
+        (p.version == VERSION && p.modele == modele).then_some(p.regularisee())
     }
 
     /// Écrit la pulsation en cache, par fichier temporaire renommé.
@@ -306,7 +337,8 @@ impl Pisteur {
             modele: self.modele,
             temps: corriger(a.beats),
             premiers_temps: corriger(a.downbeats),
-        })
+        }
+        .regularisee())
     }
 
     /// Décode un fichier entier et l'analyse. Le mélange des deux canaux :
@@ -394,6 +426,24 @@ mod tests {
         assert_eq!(p.mesure_autour(7.5), Some((7.0, 9.0)));
         assert_eq!(p.aimanter(3.9), Some(3.0));
         assert_eq!(p.aimanter(4.1), Some(5.0));
+    }
+
+    #[test]
+    fn premiers_temps_parasites_retires() {
+        // 4/4, un temps toutes les 0,5 s ; le réseau a coupé la deuxième
+        // mesure en deux (temps 6) et marqué la fin tous les deux temps.
+        let temps: Vec<f32> = (0..=48).map(|k| k as f32 * 0.5).collect();
+        let premiers: Vec<f32> =
+            [0, 4, 6, 8, 12, 16, 20, 24, 28, 32, 36, 38, 40, 42, 44].iter().map(|&k| k as f32 * 0.5).collect();
+        let p = Pulsation { version: VERSION, modele: Modele::Petit, temps: temps.clone(), premiers_temps: premiers }.regularisee();
+        let attendu: Vec<f32> = (0..=44).step_by(4).map(|k| k as f32 * 0.5).collect();
+        assert_eq!(p.premiers_temps, attendu);
+        assert_eq!(p.clone().regularisee(), p, "idempotente");
+
+        // Une vraie mesure de 2/4 (la grille repart d'elle) reste.
+        let premiers: Vec<f32> = [0, 4, 8, 10, 14, 18, 22, 26].iter().map(|&k| k as f32 * 0.5).collect();
+        let q = Pulsation { version: VERSION, modele: Modele::Petit, temps, premiers_temps: premiers.clone() }.regularisee();
+        assert_eq!(q.premiers_temps, premiers);
     }
 
     #[test]
