@@ -4036,6 +4036,12 @@ async function basculerLecture() {
     return;
   }
   const versPause = veutJouer;
+  if (!versPause && (await rattacherStems())) {
+    await invoke("stems_transport", { action: "reprendre", position: null });
+    poserLecture(true);
+    sonder(true);
+    return;
+  }
   poserLecture(!versPause);
   ignorerEtatJusqua = Date.now() + 400;
 
@@ -4339,7 +4345,7 @@ const waveCnv = $("wave-cnv");
 const waveCtx = waveCnv.getContext("2d");
 const HAUT_SPECTRE = 42;
 
-// clé path+hd → { fond: canvas } déjà peint. Borné : sans plafond, chaque
+// clé path+hd → { img: ImageData } déjà composé. Borné : sans plafond, chaque
 // morceau joué laissait son canvas en mémoire jusqu'à la fermeture — des
 // centaines sur une journée d'écoute. Les plus anciens partent d'abord.
 const SPECTRES_MAX = 24;
@@ -4349,7 +4355,28 @@ function garderSpectre(cle, fond) {
   spectres.set(cle, fond);
   while (spectres.size > SPECTRES_MAX) spectres.delete(spectres.keys().next().value);
 }
-let spectreCourant = null; // le { fond } affiché
+let spectreCourant = null; // le { img } affiché
+
+/// Pose une image gardée côté CPU sur un canevas de w×h.
+///
+/// Les spectrogrammes ne sont pas gardés dans des canevas hors écran : WebKit
+/// peut jeter sans prévenir la mémoire GPU d'un canevas (pression mémoire,
+/// veille, relance de son processus GPU), et `drawImage` d'un canevas perdu
+/// peint du noir — au bout d'un moment, tous les spectrogrammes devenaient
+/// noirs. Les pixels restent en `ImageData`, qu'on repose à chaque fois.
+function poserImage(ctx, img, w, h) {
+  if (img.width === w && img.height === h) {
+    ctx.putImageData(img, 0, 0);
+    return;
+  }
+  // Tailles différentes (fenêtre redimensionnée) : passage par un canevas
+  // jetable, pour que `drawImage` étire.
+  const tmp = document.createElement("canvas");
+  tmp.width = img.width;
+  tmp.height = img.height;
+  tmp.getContext("2d").putImageData(img, 0, 0);
+  ctx.drawImage(tmp, 0, 0, w, h);
+}
 let teteCourante = 0;
 
 /// Recompose : image de fond + assombrissement de la partie écoulée + trait.
@@ -4359,7 +4386,7 @@ function peindreTransport(frac) {
   const h = waveCnv.height || 1;
   waveCtx.clearRect(0, 0, w, h);
   if (spectreCourant) {
-    waveCtx.drawImage(spectreCourant.fond, 0, 0, w, h);
+    poserImage(waveCtx, spectreCourant.img, w, h);
   }
   const x = Math.round(teteCourante * w);
   waveCtx.fillStyle = "rgba(0,0,0,.34)";
@@ -4369,14 +4396,10 @@ function peindreTransport(frac) {
   waveCtx.fillRect(x, 0, 1, h);
 }
 
-/// Peint le spectrogramme hors écran, une fois — teinte l'ajout du HD.
+/// Compose l'image du spectrogramme, une fois — teinte l'ajout du HD.
 function composerSpectre(s) {
   const { largeur: w, hauteur: h, pixels, pixels_ref, hd } = s;
-  const fond = document.createElement("canvas");
-  fond.width = w;
-  fond.height = h;
-  const fctx = fond.getContext("2d");
-  const img = fctx.createImageData(w, h);
+  const img = new ImageData(w, h);
   const table = rampeRGB();
   const acc = (
     getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#c98a3b"
@@ -4405,8 +4428,7 @@ function composerSpectre(s) {
     img.data[i * 4 + 2] = c[2];
     img.data[i * 4 + 3] = 255;
   }
-  fctx.putImageData(img, 0, 0);
-  return { fond };
+  return { img };
 }
 
 /// Demande le spectrogramme du son joué ; le fichier décodé prend quelques
@@ -4448,9 +4470,9 @@ async function chargerSpectreTransport(t, reessai = true) {
   }
 }
 
-const spectresEnCours = new Map(); // clé → promesse du { fond } en calcul
+const spectresEnCours = new Map(); // clé → promesse du { img } en calcul
 
-/// Le calcul lui-même, avec ses reprises : rend le `{ fond }` composé (et le met
+/// Le calcul lui-même, avec ses reprises : rend le `{ img }` composé (et le met
 /// en cache) ; `null` si le morceau a cessé d'être affiché en cours de route,
 /// `false` si le moteur a échoué.
 async function calculerSpectre(vise, largeur, cle) {
@@ -14227,14 +14249,10 @@ async function dessinerSpectre(cnv, stem) {
   if (!cnv.isConnected) return;
 
   const { largeur: w, hauteur: h, pixels } = stem.spectre;
-  // L'image est peinte une fois hors écran ; à chaque battement on la recopie
-  // et on trace la tête de lecture par-dessus. Recalculer le spectrogramme
-  // cinq fois par seconde serait absurde.
-  const fond = document.createElement("canvas");
-  fond.width = w;
-  fond.height = h;
-  const fctx = fond.getContext("2d");
-  const img = fctx.createImageData(w, h);
+  // L'image est composée une fois (gardée côté CPU, voir `poserImage`) ; à
+  // chaque battement on la repose et on trace la tête de lecture par-dessus.
+  // Recalculer le spectrogramme cinq fois par seconde serait absurde.
+  const img = new ImageData(w, h);
   const table = rampeRGB();
   for (let i = 0; i < pixels.length; i++) {
     const c = table[pixels[i]];
@@ -14243,11 +14261,10 @@ async function dessinerSpectre(cnv, stem) {
     img.data[i * 4 + 2] = c[2];
     img.data[i * 4 + 3] = 255;
   }
-  fctx.putImageData(img, 0, 0);
 
   cnv.width = w;
   cnv.height = h;
-  stem.fond = fond;
+  stem.img = img;
   stem.canvas = cnv;
   peindreSpectre(stem);
   // Le canevas vient d'être dimensionné : le playhead unique peut se caler.
@@ -14259,10 +14276,10 @@ async function dessinerSpectre(cnv, stem) {
 /// Une seule tête pour toute la fenêtre : les spectrogrammes et la barre du
 /// bas montrent le même instant, puisqu'ils montrent le même morceau.
 function peindreSpectre(stem) {
-  if (!stem.fond || !stem.canvas || !stem.canvas.isConnected) return;
+  if (!stem.img || !stem.canvas || !stem.canvas.isConnected) return;
   const cnv = stem.canvas;
   const ctx = cnv.getContext("2d");
-  ctx.drawImage(stem.fond, 0, 0);
+  poserImage(ctx, stem.img, cnv.width, cnv.height);
 
   const x = Math.round(edition.tete * cnv.width);
   // Ce qui est déjà passé s'assombrit : la position se lit même quand le
@@ -14273,6 +14290,15 @@ function peindreSpectre(stem) {
     getComputedStyle(document.documentElement).getPropertyValue("--txt").trim() || "#EDE8DC";
   ctx.fillRect(x, 0, 1, cnv.height);
 }
+
+// Les canevas affichés peuvent eux aussi perdre leur contenu pendant que
+// l'app est cachée ou la machine en veille : lecture en pause, rien ne les
+// repeindrait. On les repose au retour.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  peindreTransport(teteCourante);
+  for (const s of edition.stems) peindreSpectre(s);
+});
 
 /// Déplace la tête de lecture sur tous les spectrogrammes à la fois, et le
 /// playhead unique qui les relie.
@@ -14385,7 +14411,7 @@ function reconcilierStems(e) {
 /// n'importe quel spectrogramme revient au même, et la tête bouge partout.
 async function deplacerLecture(frac) {
   frac = Math.min(1, Math.max(0, frac));
-  if (edition.enLecture) {
+  if (edition.enLecture || (await rattacherStems())) {
     const e = await invoke("stems_state");
     await invoke("stems_transport", {
       action: "deplacer",
@@ -14399,6 +14425,17 @@ async function deplacerLecture(frac) {
   if (!t?.duration_ms) return;
   await invoke("seek", { positionMs: Math.round(frac * t.duration_ms) });
   poserTete(frac);
+}
+
+/// En Éditer, des stems affichés que plus rien ne pilote (arrivés au bout du
+/// morceau, coupés par le moteur) : on les recharge, en pause. Sans ça, ▶ et
+/// les clics sur un spectrogramme partaient au lecteur ordinaire — le morceau
+/// d'origine jouait, solo et coupure ne touchaient plus rien et la partition
+/// restait figée. Rend vrai si les stems sont de nouveau chargés.
+async function rattacherStems() {
+  if (modeCourant !== "editer" || !edition.stems.length || edition.enLecture) return false;
+  await prendreLaMain();
+  return edition.enLecture;
 }
 
 /// Charge les stems dans le moteur, **en pause**, à leurs niveaux et vitesses.
