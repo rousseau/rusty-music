@@ -18,9 +18,11 @@ use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink};
 use tracing::debug;
 
 pub mod amelioration;
+pub mod latence;
 pub mod multipiste;
 pub mod spectre;
 pub use amelioration::{amelioration, enregistrer_taux_sortie, Amelioration};
+pub use latence::latence_sortie;
 pub use multipiste::Multipiste;
 pub use spectre::Spectre;
 

@@ -8019,6 +8019,7 @@ name = "rusty-music-player"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "objc2-core-audio",
  "rodio",
  "rubato 5.0.0",
  "rustfft",

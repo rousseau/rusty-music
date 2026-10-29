@@ -22,6 +22,7 @@ use rusty_music_core::playlists::PlaylistRow;
 use rusty_music_core::session::{retenir, Session};
 use rusty_music_core::Library;
 use rusty_music_player::Player;
+use rusty_music_transcription::tablature;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 /// Hachage de `ui/`, injecté par `build.rs`. Jamais lu à l'exécution — sa seule
@@ -6466,12 +6467,20 @@ struct VueTranscription {
     coups: Vec<rusty_music_transcription::batterie::Coup>,
     mesures: serde_json::Value,
     /// Accordage de la basse, de la corde grave à l'aiguë, en hauteurs MIDI
-    /// (standard, drop D ou cinq cordes : `Accordage::choisir`).
+    /// (standard, drop D ou cinq cordes : `Accordage::pour`).
     #[serde(default)]
     accordage: Vec<u8>,
     /// Version du doigté de la basse ([`VERSION_DOIGTES`]).
     #[serde(default)]
     doigtes: u32,
+    /// La basse du réglage (4 ou 5 cordes) sur laquelle le doigté a été posé.
+    #[serde(default)]
+    basses: tablature::Basses,
+    /// Hauteurs transcrites, avant que le doigté ne ramène à l'octave ce qui
+    /// sort du manche : changer de basse repart d'elles (une 4 cordes
+    /// remonte le mi♭ grave qu'une 5 cordes joue).
+    #[serde(default)]
+    hauteurs: Vec<u8>,
     /// Version de la grille des mesures ([`VERSION_MESURES`]).
     #[serde(default)]
     grille: u32,
@@ -6483,13 +6492,29 @@ const VERSION_TRANSCRIPTION: u32 = 5;
 /// Version du doigté (`tablature::Couts`) : quand seul le doigté change, les
 /// notes en cache sont reposées sans retranscrire (MuScriptor prend des
 /// minutes). 1 : avant l'a priori appris ; 2 : a priori de position et coûts
-/// réglés sur 89 tablatures (17 oct.) ; 3 : table apprise sur 331 tablatures.
-const VERSION_DOIGTES: u32 = 3;
+/// réglés sur 89 tablatures (17 oct.) ; 3 : table apprise sur 331 tablatures ;
+/// 4 : un motif, un doigté (`tablature::uniformiser`, 29 oct.) ; 5 : 4 ou
+/// 5 cordes, toujours dans l'accordage du disque.
+const VERSION_DOIGTES: u32 = 5;
+
+/// Pose corde et frette sur les notes, pour les basses du réglage, puis donne
+/// un seul doigté à chaque motif répété.
+fn doigter(
+    notes: &mut [rusty_music_transcription::Note],
+    basses: tablature::Basses,
+    premiers: &[f32],
+) -> tablature::Accordage {
+    let accordage = tablature::Accordage::pour(notes, basses);
+    tablature::poser(notes, &accordage);
+    tablature::uniformiser(notes, &accordage, &tablature::Couts::default(), premiers);
+    accordage
+}
 
 /// Version de la grille des mesures (`Pulsation::regularisee`) : quand seule
 /// elle change, les notes et coups en cache sont requantifiés sans
-/// retranscrire. 1 : premiers temps parasites retirés (26 oct.).
-const VERSION_MESURES: u32 = 1;
+/// retranscrire. 1 : premiers temps parasites retirés (26 oct.) ; 2 :
+/// anticipations coupées au premier temps recousues (29 oct.).
+const VERSION_MESURES: u32 = 2;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
@@ -6579,8 +6604,15 @@ fn telecharger_muscriptor(etat: State<Etat>, jeton: Option<String>) -> Result<()
 /// Puis quantification sur la pulsation. En cache à côté des stems ;
 /// quelques secondes la première fois.
 #[tauri::command(async)]
-fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bool>) -> Result<VueTranscription, String> {
-    use rusty_music_transcription::{basic_pitch, batterie, monophonie, muscriptor, porte, quantification, tablature};
+fn transcrire(
+    etat: State<Etat>,
+    id: i64,
+    instrument: String,
+    qualite: Option<bool>,
+    basses: Option<tablature::Basses>,
+) -> Result<VueTranscription, String> {
+    use rusty_music_transcription::{basic_pitch, batterie, monophonie, muscriptor, porte, quantification};
+    let basses = basses.unwrap_or_default();
     if instrument != "bass" && instrument != "drums" {
         return Err(format!("transcription de « {instrument} » pas encore disponible"));
     }
@@ -6598,7 +6630,7 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
         .filter(|t| t.version == VERSION_TRANSCRIPTION)
     {
-        let doigtes_a_jour = instrument != "bass" || t.doigtes == VERSION_DOIGTES;
+        let doigtes_a_jour = instrument != "bass" || (t.doigtes == VERSION_DOIGTES && t.basses == basses);
         if doigtes_a_jour && t.grille == VERSION_MESURES {
             return Ok(t);
         }
@@ -6613,10 +6645,18 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
         let metrique = pulsation.metrique().unwrap_or(4);
         t.mesures = if instrument == "bass" {
             if !doigtes_a_jour {
-                let accordage = tablature::Accordage::choisir(&t.notes);
-                tablature::poser(&mut t.notes, &accordage);
+                // Un cache d'avant le champ : ses hauteurs ont été ramenées
+                // sur l'accordage du disque, qui les contenait toutes.
+                if t.hauteurs.len() != t.notes.len() {
+                    t.hauteurs = t.notes.iter().map(|n| n.hauteur).collect();
+                }
+                for (n, &h) in t.notes.iter_mut().zip(&t.hauteurs) {
+                    n.hauteur = h;
+                }
+                let accordage = doigter(&mut t.notes, basses, &pulsation.premiers_temps);
                 t.accordage = accordage.cordes;
                 t.doigtes = VERSION_DOIGTES;
+                t.basses = basses;
             }
             let mesures = quantification::quantifier(&t.notes, &pulsation.temps, &pulsation.premiers_temps, metrique);
             serde_json::to_value(&mesures).map_err(echec)?
@@ -6673,6 +6713,8 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
             mesures: serde_json::to_value(&mesures).map_err(echec)?,
             accordage: Vec::new(),
             doigtes: 0,
+            basses: tablature::Basses::default(),
+            hauteurs: Vec::new(),
             grille: VERSION_MESURES,
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
@@ -6732,8 +6774,8 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
     // instruments, 60 dB sous la basse) avant de choisir les notes.
     let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
     let mut notes = monophonie::monophonique(brutes);
-    let accordage = tablature::Accordage::choisir(&notes);
-    tablature::poser(&mut notes, &accordage);
+    let hauteurs = notes.iter().map(|n| n.hauteur).collect();
+    let accordage = doigter(&mut notes, basses, &pulsation.premiers_temps);
     let mesures = quantification::quantifier(
         &notes,
         &pulsation.temps,
@@ -6750,6 +6792,8 @@ fn transcrire(etat: State<Etat>, id: i64, instrument: String, qualite: Option<bo
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
         accordage: accordage.cordes,
         doigtes: VERSION_DOIGTES,
+        basses,
+        hauteurs,
         grille: VERSION_MESURES,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
@@ -6881,7 +6925,10 @@ struct EtatStems {
     boucle: Option<(f64, f64)>,
     /// Retours au début de boucle depuis qu'elle est posée — l'interface
     /// s'en sert pour accélérer d'un cran à chaque passage.
-    passages: u32,
+    passages: u32,    /// Latence de la sortie audio : ce que l'on entend a ce retard sur
+    /// `position_ms` (plus de 200 ms en Bluetooth). L'interface la retranche
+    /// pour que le curseur de la partition suive l'oreille.
+    latence_ms: u64,
 }
 
 #[tauri::command(async)]
@@ -6900,6 +6947,7 @@ fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
                 derive_ms: m.derive().as_millis() as u64,
                 boucle: m.boucle().map(|(a, b)| (a.as_secs_f64(), b.as_secs_f64())),
                 passages: m.passages(),
+                latence_ms: rusty_music_player::latence_sortie().as_millis() as u64,
             },
             None => EtatStems::default(),
         }

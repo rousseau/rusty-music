@@ -268,14 +268,19 @@
         </div>
         <progress class="jauge partition-ligne__jauge" data-partition-jauge="bass" hidden max="1" value="0"
                   aria-label="Calcul de la partition de basse"></progress>
-        <!-- Basse : transcription rapide (Basic Pitch) ou de qualité
-             (MuScriptor, conditions d'usage acceptées une fois). -->
-        <div class="segments" id="transcripteurs" style="margin-top:8px">
-          <button class="segment segment--actif" data-transcripteur="rapide"
-                  title="Basic Pitch : quelques secondes">Rapide</button>
-          <button class="segment" data-transcripteur="qualite"
-                  title="MuScriptor : environ une minute par morceau, plus juste">Qualité</button>
+        <!-- Basse : 4 ou 5 cordes, toujours dans l'accordage du disque (la
+             tablature dit s'il faut désaccorder ; « hauteur » transpose le
+             morceau plutôt). Gardé d'un morceau à l'autre ; en changer repose
+             la tablature sans retranscrire. -->
+        <div class="segments" id="basses" style="margin-top:8px">
+          <button class="segment segment--actif" data-basses="quatre"
+                  title="Doigtés pour une 4 cordes, dans l'accordage du disque (mi♭, drop D… : la tablature l'indique)">4 cordes</button>
+          <button class="segment" data-basses="cinq"
+                  title="Doigtés pour une 5 cordes, dans l'accordage du disque">5 cordes</button>
         </div>
+        <!-- Basse : toujours MuScriptor (29 oct. : la qualité prime). Ses
+             conditions d'usage et ses poids se règlent ici, au premier
+             « Calculer ». -->
         <div id="muscriptor-conditions" hidden style="margin-top:8px">
           <p class="aide" id="muscriptor-texte">La transcription de qualité utilise MuScriptor
             (Kyutai et Mirelo) : plus juste, plus lente (environ une minute par morceau).
@@ -1171,18 +1176,18 @@
           <!-- N'apparaît que si le morceau pulse franchement : bascule le
                réglage entre pour cent et BPM (`docs/ui-spec-editeur.md`). -->
           <button id="vitesse-unite" class="reglage__unite" hidden
-                  title="Régler la vitesse en BPM plutôt qu'en pour cent. Proposé quand la pulsation du morceau est franche — pratique pour amener un stem au tempo d'un autre."></button>
+                  title="Régler la vitesse en BPM ou en pour cent. BPM par défaut, quand la pulsation du morceau est franche ; le choix est gardé d'un morceau à l'autre."></button>
           <!-- Repliement d'octave : n'apparaît qu'en BPM, quand viser ce tempo
                demande plus d'une demi-octave d'étirement. -->
           <button id="vitesse-octave" class="reglage__unite" hidden
                   title="Le morceau se lit peut-être à demi- ou double-tempo : ramener le rapport près de 1 au lieu d'étirer d'une octave."></button>
         </div>
-        <div class="reglage" role="group" aria-label="Transposition en demi-tons"
-             title="Transposition de tous les stems, en demi-tons, à durée inchangée. Quelques secondes de calcul par réglage. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
+        <div class="reglage" role="group" aria-label="Transposition en tons"
+             title="Transposition de tous les stems, en tons, par pas d'un demi-ton, à durée inchangée (−½ ton : un morceau en mi♭ sans désaccorder la basse). Quelques secondes de calcul par réglage. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
           <b>hauteur</b>
           <button data-r="tonalite" data-d="-1" aria-label="Baisser d'un demi-ton">−</button>
-          <input id="val-tonalite" class="reglage__val" inputmode="numeric"
-                 aria-label="Transposition en demi-tons" value="±0">
+          <input id="val-tonalite" class="reglage__val reglage__val--tons" inputmode="decimal"
+                 aria-label="Transposition en tons" value="±0">
           <button data-r="tonalite" data-d="1" aria-label="Monter d'un demi-ton">+</button>
         </div>
         <!-- Boucle calée sur les mesures (Beat This!) : n'apparaît qu'une fois

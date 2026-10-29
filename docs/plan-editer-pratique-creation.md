@@ -234,7 +234,7 @@ désormais fusionnées.
 **Reste** :
 - la batterie en pleine bande : BabySlakh est à 16 kHz, et ADTOF n'y voit ni
   charleston ni cymbale ;
-- YourMT3+ et ADT_STR, si un candidat de plus devient utile.
+- ADT_STR, si un candidat de plus devient utile (YourMT3+ essayé le 29 oct. : écarté, voir plus bas).
 
 ---
 
@@ -383,6 +383,74 @@ précédent — une vraie mesure courte reste. Appliquée à l'analyse et à la
 lecture du cache ; les partitions en cache sont requantifiées sans
 retranscrire (`VERSION_MESURES`). Sur ce morceau : 84 barres sur 84 au même
 endroit que Songsterr.
+
+**Comparaison à une tablature vidéo, et ce qui en sort (29 oct.)** — la
+tab de la vidéo d'EuBasss (« About Damn Time », 5 cordes standard), lue
+image par image : ≈ 95 % des notes au même seizième et à la même hauteur ;
+les erreurs restantes sont les doubles notes et pops du slap, deux
+remplissages glissés à l'octave grave, un mi♭2 final oublié trois fois.
+Corrigé dans la foulée :
+- *notes liées* : MuScriptor coupe une anticipation tenue au premier temps
+  (même hauteur, la seconde commence où la première finit) ; la mise en
+  mesure la recoud (`VERSION_MESURES` 2) — 6 mesures sur 7 conformes ;
+- *curseur en avance* : la position du moteur est ce que la sortie a pris,
+  pas ce qu'on entend ; en Bluetooth (Mustang Micro Plus) l'écart est de
+  242 ms. `rusty_music_player::latence_sortie` le lit à CoreAudio, l'état
+  des stems le transmet, la partition le retranche (`positionEstimee`) ;
+- *un motif, un doigté* : le chemin doigtait un même riff de deux façons
+  selon la suite (7-5-7 sur la corde de la♭, ou 2-0-2 sur celle de ré♭).
+  `tablature::uniformiser` donne aux mesures identiques leur doigté le plus
+  fréquent, à égalité le moins coûteux (`VERSION_DOIGTES` 4). Les
+  tablatures de référence le confirment : 96,6 % des 3 509 motifs répétés
+  du banc des doigtés n'y ont qu'un doigté. Banc : 79,3 % → 79,5 %
+  (86 morceaux gagnent, 58 perdent) ; le moins coûteux d'abord ne gagnait
+  rien. Le corpus porte désormais les débuts de mesure (`premiers`) ;
+- *ma basse* : réglage du bloc Partitions, **4 cordes · 5 cordes**,
+  toujours dans l'accordage du disque (`tablature::Basses`,
+  `Accordage::pour`) : une 4 cordes passe en mi♭ si le morceau l'est, la
+  tablature le dit, et « hauteur » transpose le morceau pour qui ne veut pas
+  désaccorder (décision de l'utilisateur, après un premier essai à quatre
+  choix dont « 4 cordes standard », jugé inutile). En 5 cordes, ce morceau
+  sort comme dans la vidéo (si 4 4, la 4, ré 4-4-3, la 6-4-6). Changer de
+  basse repose les notes sans retranscrire ; les hauteurs d'avant le repli
+  à l'octave sont gardées (`hauteurs`).
+  Premier essai : revenir à une basse déjà calculée ne redessinait pas la
+  tablature (clé de rendu sans les basses) — corrigé ;
+- *basse : toujours MuScriptor* — le choix Rapide / Qualité disparaît du
+  rail ; « Calculer » ouvre au besoin le panneau des conditions et du
+  téléchargement, puis lance le calcul. Basic Pitch ne sert plus qu'au banc ;
+- *réglages* : hauteur affichée en tons (« −½ ton »), vitesse en BPM par
+  défaut, nombre seul dans le champ, unité sur le bouton à côté.
+Reste : les mesures *presque* identiques (une note de plus) restent des
+motifs distincts ; vote entre reprises pour les notes ; import d'un fichier
+Guitar Pro / MusicXML que l'utilisateur possède (alphaTab les lit déjà).
+
+**Autres transcripteurs de basse au banc (29 oct.)** — après recherche web,
+deux candidats essayés par leur code d'origine
+(`experiments/banc-transcription/externes.py`, environnements sous
+`$RUSTY_DEV/ext`) :
+
+| | livres (F1 / F1tab / doigtés) | About Damn Time vs Songsterr | MedleyDB (justesse, fausse alarme) | Slakh2100, stem |
+|---|---|---|---|---|
+| MuScriptor | 0,542 / 0,566 / 0,687 | 0,847 | 0,728, 0,381 | 0,679 |
+| **tsumugi** `bass_v2` (MIT) | 0,547 / 0,572 / 0,669 | 0,855 | 0,718, 0,287 | **0,776** |
+| YourMT3+ (stem) | 0,382 / 0,401 / 0,583 | 0,355 | — | — |
+| YourMT3+ (mélange) | — | 0,188 | — | — |
+| vote des trois | 0,551 / 0,575 / 0,684 | 0,855 | — | — |
+
+- **YourMT3+ écarté** : sur un stem démixé il éparpille la basse entre
+  instruments ; sur le mélange, il n'en trouve que la moitié et en met deux
+  sur trois à l'octave au-dessus. 5 à 10 min par morceau.
+- **tsumugi** fait jeu égal sur de vraies musiques (livres, Songsterr,
+  MedleyDB), avec moins de fausses notes ; son avance sur Slakh tient sans
+  doute à un apprentissage sur des stems rendus comme ceux de Slakh (corpus
+  non publié). Plus petit, MIT, ≈ 19 s par morceau sur Metal.
+- **Vote / union** : +0,004 au mieux ; l'union ajoute surtout des fausses
+  notes. L'oracle « meilleur des deux par morceau » ne vaut que +0,017.
+- Conclusion : aucun modèle ouvert actuel ne fait franchir un palier ; ce qui
+  reste à gagner est dans l'après-transcription (accord entre reprises,
+  notes des motifs) et l'import d'une tablature possédée. Un portage de
+  tsumugi ne se justifierait que pour la vitesse ou la licence des poids.
 
 **Tablatures publiées : un lien, pas d'import automatique (17 oct.)** — le
 lien « Voir les tablatures sur Songsterr » ouvre la recherche du morceau

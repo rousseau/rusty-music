@@ -19,3 +19,8 @@ cpal.workspace    = true
 thiserror.workspace = true
 serde.workspace   = true
 tracing.workspace = true
+
+# Latence de la sortie (`latence.rs`) : celle que cpal ne compte pas. Déjà
+# dans le graphe par cpal, mêmes version et fonctions — un nouvel usage.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "AudioHardware"] }

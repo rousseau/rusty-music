@@ -11591,6 +11591,10 @@ async function battementStems() {
   }
   reconcilierStems(e);
   edition.dureeMs = e.duree_ms;
+  // Un saut de la position (déplacement, retour de boucle) ou l'arrêt : la
+  // nouvelle écoute part de là.
+  if (e.en_pause || Math.abs(e.position_ms - positionMoteur()) > 250) edition.ancreMs = e.position_ms;
+  edition.latenceMs = e.latence_ms ?? 0;
   edition.posMs = e.position_ms;
   edition.posLueA = performance.now();
   edition.enPause = e.en_pause;
@@ -11647,7 +11651,15 @@ const edition = {
   // Le réglage « vitesse » se lit-il en BPM plutôt qu'en pour cent ? N'est
   // vrai que si `tempoSource` existe (pulsation franche) et que l'utilisateur
   // l'a choisi (bouton d'unité). `docs/ui-spec-editeur.md`, décision 9.
-  vitesseEnBpm: false,
+  // Vitesse en BPM (par défaut) ou en pour cent : une préférence gardée
+  // d'un morceau à l'autre, appliquée quand le morceau pulse franchement.
+  vitesseEnBpm: (() => {
+    try {
+      return localStorage.getItem("vitesse-unite") !== "%";
+    } catch {
+      return true;
+    }
+  })(),
   // { bpm, nettete } du morceau ouvert, ou `null` si sa pulsation n'est pas
   // assez franche pour viser un BPM (nappe, rubato). Rempli par `majTempoSource`
   // après que les stems sont là — la netteté se mesure sur le stem `drums`.
@@ -11685,6 +11697,12 @@ const edition = {
   // ne bouge pas, les stems attendent.
   decompteJusqua: 0,
   enPause: true,
+  // Retard de ce qu'on entend sur la position du moteur (sortie audio, plus
+  // de 200 ms en Bluetooth), et la position d'où l'écoute est repartie
+  // (lecture, déplacement, boucle) : avant elle, la sortie joue encore ce
+  // qu'elle avait reçu, le curseur l'attend.
+  latenceMs: 0,
+  ancreMs: 0,
 };
 
 /// Pas d'accélération par passage de boucle, et la vitesse où l'on s'arrête.
@@ -11744,7 +11762,6 @@ async function majTempoSource() {
       console.warn("tempo_cible", e);
     }
   }
-  if (!edition.tempoSource) edition.vitesseEnBpm = false;
   dessinerReglages();
 }
 
@@ -12277,13 +12294,14 @@ const transcriptions = new Map();
 function transcription(instrument, lancer = false) {
   const id = edition.source?.id;
   if (id === undefined || (instrument !== "bass" && instrument !== "drums")) return null;
-  const qualite = instrument === "bass" && transcripteurBasse === "qualite";
-  const cle = `${id}:${instrument}:${qualite ? "qualite" : "rapide"}`;
+  const qualite = instrument === "bass";
+  const cle = cleTranscription(id, instrument, qualite);
   if (!transcriptions.has(cle)) {
     if (!lancer && !enCache(id, instrument, qualite)) return null;
     const entree = { pret: null, erreur: null, qualite };
     if (qualite) suivreTranscription(id, entree);
-    entree.promesse = invoke("transcrire", { id, instrument, qualite })
+    const basses = instrument === "bass" ? bassesJouees : undefined;
+    entree.promesse = invoke("transcrire", { id, instrument, qualite, basses })
       .then((t) => {
         entree.pret = t;
       })
@@ -12299,6 +12317,14 @@ function transcription(instrument, lancer = false) {
     majBlocPartitions();
   }
   return transcriptions.get(cle);
+}
+
+/// Une partition par morceau, instrument, transcripteur — et, pour la basse,
+/// par instrument joué : changer de basse en demande une autre, que le moteur
+/// repose sur les mêmes notes sans retranscrire.
+function cleTranscription(id, instrument, qualite) {
+  const base = `${id}:${instrument}:${qualite ? "qualite" : "rapide"}`;
+  return instrument === "bass" ? `${base}:${bassesJouees}` : base;
 }
 
 /// Les caches de partition du morceau ouvert (`transcriptions_en_cache`),
@@ -12346,11 +12372,11 @@ function majBlocPartitions() {
     ligne.hidden = !present;
     jauge.hidden = true;
     if (instrument === "bass") {
-      $("transcripteurs").hidden = !present;
-      if (!present) $("muscriptor-conditions").hidden = true;
-      for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
-        b.classList.toggle("segment--actif", b.dataset.transcripteur === transcripteurBasse);
+      $("basses").hidden = !present;
+      for (const b of document.querySelectorAll("#basses [data-basses]")) {
+        b.classList.toggle("segment--actif", b.dataset.basses === bassesJouees);
       }
+      if (!present) $("muscriptor-conditions").hidden = true;
     }
     if (!present) continue;
     const tr = transcription(instrument);
@@ -12375,14 +12401,14 @@ function majBlocPartitions() {
       if (tr.fraction !== undefined) jauge.value = tr.fraction;
       else jauge.removeAttribute("value");
     } else {
-      etat.textContent = instrument === "bass" && transcripteurBasse === "qualite" ? "à calculer (≈ 1 min)" : "à calculer";
+      etat.textContent = instrument === "bass" ? "à calculer (≈ 1 min)" : "à calculer";
       action.textContent = "Calculer";
     }
   }
 }
 
 for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]")) {
-  ligne.querySelector(".partition-ligne__action").addEventListener("click", () => {
+  ligne.querySelector(".partition-ligne__action").addEventListener("click", async () => {
     const instrument = ligne.dataset.partition;
     const tr = transcription(instrument);
     if (tr?.pret) {
@@ -12393,24 +12419,21 @@ for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]
       majUsage();
       return;
     }
-    if (tr?.erreur) {
-      const qualite = instrument === "bass" && transcripteurBasse === "qualite";
-      transcriptions.delete(`${edition.source?.id}:${instrument}:${qualite ? "qualite" : "rapide"}`);
-    }
+    // La basse passe par MuScriptor : conditions acceptées et poids présents,
+    // sinon le panneau qui les règle — il lance le calcul une fois prêt.
+    if (instrument === "bass" && !(await muscriptorPret())) return;
+    if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument === "bass"));
     transcription(instrument, true);
   });
 }
 
-/// Transcription de la basse : « rapide » (Basic Pitch) ou « qualite »
-/// (MuScriptor, conditions d'usage acceptées une fois dans le rail).
-let transcripteurBasse = (() => {
+/// La basse de celui qui joue (`tablature::Basses`) : « quatre » ou
+/// « cinq » cordes, dans l'accordage du disque.
+let bassesJouees = (() => {
   try {
-    return localStorage.getItem("transcripteur-basse") === "qualite" &&
-      localStorage.getItem("muscriptor-conditions") === "1"
-      ? "qualite"
-      : "rapide";
+    return localStorage.getItem("basses") === "cinq" ? "cinq" : "quatre";
   } catch {
-    return "rapide";
+    return "quatre";
   }
 })();
 
@@ -12442,10 +12465,20 @@ function instrumentPratique() {
   return ["bass", "drums"].find(present) ?? null;
 }
 
-/// La position du lecteur, extrapolée depuis le dernier sondage.
-function positionEstimee() {
+/// La position du moteur, extrapolée depuis le dernier sondage.
+function positionMoteur() {
   if (edition.enPause || performance.now() < edition.decompteJusqua) return edition.posMs;
   return edition.posMs + (performance.now() - edition.posLueA) * edition.vitesse;
+}
+
+/// La position qu'on entend : celle du moteur moins la latence de la sortie
+/// — sans quoi le curseur de la partition court devant la musique (240 ms
+/// avec le Mustang Micro, 29 oct.). Jamais avant l'endroit d'où la lecture
+/// est repartie ; à l'arrêt, là où elle reprendra.
+function positionEstimee() {
+  const moteur = positionMoteur();
+  if (edition.enPause) return moteur;
+  return Math.max(moteur - edition.latenceMs * edition.vitesse, edition.ancreMs);
 }
 
 /// La position donnée à alphaTab, lissée : elle avance à la vitesse de
@@ -12666,7 +12699,11 @@ async function montrerPartition() {
   if (message) return;
   try {
     const api = await preparerPartition();
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}:${edition.sections?.length ?? 0}`;
+    // Les basses en font partie : revenir à une basse déjà calculée rend
+    // une transcription prête d'emblée, sans passer par la grille — sans
+    // elles, la clé ne changeait pas et la tablature restait l'ancienne.
+    const basses = instrument === "bass" ? bassesJouees : "";
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
@@ -12767,6 +12804,16 @@ function cacherPartition() {
 }
 
 /// Range le centre selon l'usage. Appelée par `majEtatEditer`.
+/// La recherche Songsterr du morceau ouvert, dans le navigateur. Câblée une
+/// fois : posée dans `majUsage`, elle s'ajoutait à chaque appel et un clic
+/// ouvrait autant d'onglets.
+$("songsterr").addEventListener("click", () => {
+  const src = edition.source;
+  if (!src?.title) return;
+  const motif = [src.artist, src.title].filter(Boolean).join(" ");
+  ouvrirLien(`https://www.songsterr.com/?pattern=${encodeURIComponent(motif)}`);
+});
+
 function majUsage() {
   const etabli = $("editer-etabli");
   const pratiquer = edition.usage === "pratiquer" && !etabli.hidden;
@@ -12783,15 +12830,7 @@ function majUsage() {
   $("notations").hidden = edition.usage !== "pratiquer" || instrument !== "bass";
   $("decomptes").hidden = edition.usage !== "pratiquer";
   $("songsterr").hidden = edition.usage !== "pratiquer" || !edition.source?.title;
-  /// La recherche Songsterr du morceau ouvert, dans le navigateur.
-$("songsterr").addEventListener("click", () => {
-  const src = edition.source;
-  if (!src?.title) return;
-  const motif = [src.artist, src.title].filter(Boolean).join(" ");
-  ouvrirLien(`https://www.songsterr.com/?pattern=${encodeURIComponent(motif)}`);
-});
-
-for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
+  for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
     b.classList.toggle("segment--actif", Number(b.dataset.decompte) === decompteMesures);
   }
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
@@ -12879,6 +12918,7 @@ async function lancerDecompte() {
     return false;
   }
   edition.posMs = plan.debut * 1000;
+  edition.ancreMs = edition.posMs;
   edition.posLueA = performance.now();
   edition.decompteJusqua = performance.now() + attente * 1000;
   return true;
@@ -12894,20 +12934,14 @@ for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
   });
 }
 
-function choisirTranscripteur(t) {
-  transcripteurBasse = t;
-  try {
-    localStorage.setItem("transcripteur-basse", t);
-  } catch {}
-  $("muscriptor-conditions").hidden = true;
-  majUsage();
-}
 
-/// « Qualité » : conditions d'usage de MuScriptor montrées la première fois,
-/// puis vérification que les poids sont là. Sinon, téléchargement depuis
-/// Hugging Face avec le jeton de l'utilisateur (le dépôt est à accès
-/// restreint : il faut y avoir accepté ces conditions avec son compte).
-async function demanderQualite() {
+/// MuScriptor est-il prêt pour la basse ? Ses conditions d'usage montrées la
+/// première fois, puis vérification que les poids sont là. Sinon,
+/// téléchargement depuis Hugging Face avec le jeton de l'utilisateur (le dépôt
+/// est à accès restreint : il faut y avoir accepté ces conditions avec son
+/// compte). Plus de choix « Rapide » pour la basse depuis le 29 oct. : la
+/// qualité prime, Basic Pitch ne sert plus qu'au banc.
+async function muscriptorPret() {
   let accepte = false;
   try {
     accepte = localStorage.getItem("muscriptor-conditions") === "1";
@@ -12918,7 +12952,7 @@ async function demanderQualite() {
     $("muscriptor-jeton-ligne").hidden = true;
     $("muscriptor-lien-jeton").hidden = true;
     $("muscriptor-conditions").hidden = false;
-    return;
+    return false;
   }
   if (!(await invoke("muscriptor_disponible").catch(() => false))) {
     const jeton = await invoke("muscriptor_jeton_present").catch(() => false);
@@ -12932,9 +12966,16 @@ async function demanderQualite() {
     $("muscriptor-telecharger").hidden = false;
     $("muscriptor-telecharger").disabled = false;
     $("muscriptor-conditions").hidden = false;
-    return;
+    return false;
   }
-  choisirTranscripteur("qualite");
+  $("muscriptor-conditions").hidden = true;
+  return true;
+}
+
+/// Après l'acceptation ou le téléchargement : si MuScriptor est prêt, la
+/// partition de basse qu'on avait demandée se calcule.
+async function lancerSiPret() {
+  if (await muscriptorPret()) transcription("bass", true);
 }
 
 /// Télécharge les poids, avancement dans le texte du panneau ; le jeton saisi
@@ -12960,7 +13001,7 @@ async function telechargerMuscriptor() {
     $("muscriptor-jeton").value = "";
     clearInterval(minuteur);
     jauge.hidden = true;
-    demanderQualite();
+    lancerSiPret();
   } catch (e) {
     clearInterval(minuteur);
     jauge.hidden = true;
@@ -12972,17 +13013,20 @@ async function telechargerMuscriptor() {
 document.querySelectorAll("#muscriptor-conditions [data-url]").forEach((b) =>
   b.addEventListener("click", () => ouvrirLien(b.dataset.url)));
 
-for (const b of document.querySelectorAll("#transcripteurs [data-transcripteur]")) {
+for (const b of document.querySelectorAll("#basses [data-basses]")) {
   b.addEventListener("click", () => {
-    if (b.dataset.transcripteur === "qualite") demanderQualite();
-    else choisirTranscripteur("rapide");
+    bassesJouees = b.dataset.basses;
+    try {
+      localStorage.setItem("basses", bassesJouees);
+    } catch {}
+    majUsage();
   });
 }
 $("muscriptor-accepter").addEventListener("click", () => {
   try {
     localStorage.setItem("muscriptor-conditions", "1");
   } catch {}
-  demanderQualite();
+  lancerSiPret();
 });
 $("muscriptor-telecharger").addEventListener("click", telechargerMuscriptor);
 $("muscriptor-annuler").addEventListener("click", () => {
@@ -13013,8 +13057,10 @@ const REGLAGES = {
     // En pour cent par défaut ; en BPM quand le morceau pulse franchement et
     // que l'unité a été basculée — `edition.vitesse` reste le rapport, l'unité
     // n'est qu'une vue (`docs/ui-spec-editeur.md`, décision 9).
-    ecrire: (v) =>
-      vitesseEnBpm() ? `${Math.round(v * bpmSource())} BPM` : `${Math.round(v * 100)} %`,
+    // Le nombre seul : l'unité est dite à côté, par le bouton d'unité
+    // (barre) ou un suffixe (ligne d'un stem) — demande du 29 oct.
+    ecrire: (v) => `${Math.round(v * (vitesseEnBpm() ? bpmSource() : 100))}`,
+    unite: () => (vitesseEnBpm() ? "BPM" : "%"),
     // **Ni pour cent ni BPM ambigus.** « 2 » en pour cent est refusé par la
     // borne basse plutôt qu'interprété comme « deux fois » ; en BPM, le champ
     // affiche « BPM » et lit donc un tempo, converti en rapport.
@@ -13035,11 +13081,26 @@ const REGLAGES = {
     pas: 1,
     min: -12,
     max: 12,
-    ecrire: (v) => (v > 0 ? `+${v}` : v === 0 ? "±0" : `${v}`),
-    // « ±0 » se relit, et « +3 » aussi : ce sont les formes que le champ écrit.
+    // La valeur reste en demi-tons (le pas des boutons, ce que le moteur
+    // transpose) ; elle s'écrit **en tons**, comme on parle d'un accordage :
+    // « −½ ton » pour jouer un morceau en mi♭ sans désaccorder la basse.
+    ecrire: (v) => {
+      if (v === 0) return "±0";
+      const a = Math.abs(v);
+      const tons = `${Math.floor(a / 2) || ""}${a % 2 ? "½" : ""}`;
+      return `${v > 0 ? "+" : "−"}${tons} ton${a >= 4 ? "s" : ""}`;
+    },
+    // Se relit dans les formes que le champ écrit (« ±0 », « +1½ ton »,
+    // « −½ ») et en décimal (« 1,5 ») — des tons, convertis en demi-tons.
     lire: (t) => {
-      const n = Number(String(t).replace("±", "").replace(",", ".").trim());
-      return Number.isFinite(n) ? Math.round(n) : null;
+      const brut = String(t)
+        .replace(/tons?/gi, "")
+        .replace("±", "")
+        .replace("−", "-")
+        .replace(",", ".")
+        .trim();
+      const n = Number(brut.replace(/(\d*)½/, (_, e) => `${e || 0}.5`));
+      return Number.isFinite(n) ? Math.round(n * 2) : null;
     },
     immediat: false,
   },
@@ -13249,11 +13310,13 @@ function dessinerReglages() {
     champ.value = r.ecrire(edition[nom]);
   }
 
-  // Bascule d'unité : cachée tant que le morceau ne pulse pas franchement.
-  // Elle porte l'unité courante — cliquer passe à l'autre.
+  // Bascule d'unité : toujours là, puisque la valeur s'écrit sans unité ;
+  // inactive (« % ») tant que le morceau ne pulse pas franchement. Elle porte
+  // l'unité courante — cliquer passe à l'autre.
   const unite = $("vitesse-unite");
-  unite.hidden = !edition.tempoSource;
-  unite.textContent = vitesseEnBpm() ? "BPM" : "%";
+  unite.hidden = false;
+  unite.disabled = !edition.tempoSource;
+  unite.textContent = REGLAGES.vitesse.unite();
   unite.classList.toggle("reglage__unite--actif", vitesseEnBpm());
 
   // Repliement d'octave : « ½ » si viser ce BPM étire de plus d'une demi-octave
@@ -13307,6 +13370,9 @@ document.querySelectorAll(".dock__tete .reglage button[data-r]").forEach((b) => 
 $("vitesse-unite").addEventListener("click", () => {
   if (!edition.tempoSource) return;
   edition.vitesseEnBpm = !edition.vitesseEnBpm;
+  try {
+    localStorage.setItem("vitesse-unite", edition.vitesseEnBpm ? "bpm" : "%");
+  } catch {}
   if (edition.vitesseEnBpm) edition.vitesse = calerReglage("vitesse", edition.vitesse);
   dessinerReglages();
 });
@@ -13385,7 +13451,6 @@ async function poserSourceEdition() {
     // Le tempo est propre au morceau : on l'oublie tant que le nouveau n'est
     // pas mesuré, plutôt que d'afficher un instant le BPM du précédent.
     edition.tempoSource = null;
-    edition.vitesseEnBpm = false;
     dessinerReglages();
   }
   if (t && (change || !edition.stems.length)) chargerStemsExistants(t);
@@ -13859,7 +13924,7 @@ function dessinerStems() {
 /// chaîne vide quand il suit tout (la ligne n'affiche alors rien).
 function resumeStem(s) {
   const bouts = [];
-  if (s.vitesse !== null) bouts.push(REGLAGES.vitesse.ecrire(s.vitesse));
+  if (s.vitesse !== null) bouts.push(`${REGLAGES.vitesse.ecrire(s.vitesse)} ${REGLAGES.vitesse.unite()}`);
   if (s.tonalite !== null) bouts.push(REGLAGES.tonalite.ecrire(s.tonalite));
   if (s.greffe) bouts.push("greffé");
   return bouts.join(" · ");
@@ -13878,15 +13943,16 @@ function panneauStem(s) {
       <b>vitesse</b>
       <button data-r="vitesse" data-d="-1" aria-label="Ralentir ce stem">−</button>
       <input class="reglage__val" data-c="vitesse" inputmode="decimal"
-             aria-label="Vitesse de ce stem, en pour cent">
+             aria-label="Vitesse de ce stem">
       <button data-r="vitesse" data-d="1" aria-label="Accélérer ce stem">+</button>
+      <span class="reglage__suffixe" data-u="vitesse"></span>
     </div>
     <div class="reglage" role="group" aria-label="Hauteur de ce stem"
          title="Transposition de ce stem seul, à durée inchangée. Quelques secondes de calcul, mises en cache.">
       <b>hauteur</b>
       <button data-r="tonalite" data-d="-1" aria-label="Baisser ce stem d'un demi-ton">−</button>
-      <input class="reglage__val" data-c="tonalite" inputmode="numeric"
-             aria-label="Transposition de ce stem, en demi-tons">
+      <input class="reglage__val reglage__val--tons" data-c="tonalite" inputmode="decimal"
+             aria-label="Transposition de ce stem, en tons">
       <button data-r="tonalite" data-d="1" aria-label="Monter ce stem d'un demi-ton">+</button>
     </div>
     <button class="stem__b" data-a="ensemble">suivre l'ensemble</button>`;
@@ -13901,6 +13967,7 @@ function panneauStem(s) {
       champ.classList.remove("reglage__val--faux");
       champ.value = REGLAGES[nom].ecrire(nom === "vitesse" ? vitesseDe(s) : tonaliteDe(s));
     }
+    ligne.querySelector('[data-u="vitesse"]').textContent = REGLAGES.vitesse.unite();
     ensemble.disabled = s.vitesse === null && s.tonalite === null;
     // Refléter le changement sur la ligne du stem dans la pile, sans la
     // redessiner entièrement (on garde le focus des champs en cours de saisie).

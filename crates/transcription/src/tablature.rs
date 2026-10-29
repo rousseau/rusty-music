@@ -22,7 +22,26 @@
 //! sauter d'un bout du manche à l'autre autour d'elle — les doigtés
 //! incohérents signalés à l'essai.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{positions, Note};
+
+/// La basse de celui qui joue, 4 ou 5 cordes : un réglage de l'utilisateur.
+/// L'accordage, lui, est celui du disque ([`Accordage::pour`]) — une 4 cordes
+/// passe en mi♭ si le morceau l'est, la tablature le montre, et l'on peut
+/// transposer le morceau plutôt que désaccorder (29 oct.).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Basses {
+    /// Les anciens noms du réglage (« disque », 4 cordes de préférence ;
+    /// « quatre-et-cinq ») se relisent : les caches qui les portent sont
+    /// reposés de toute façon (`VERSION_DOIGTES`).
+    #[default]
+    #[serde(alias = "disque")]
+    Quatre,
+    #[serde(alias = "quatre-et-cinq")]
+    Cinq,
+}
 
 /// Un accordage, de la corde la plus grave à la plus aiguë, en hauteurs MIDI.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,7 +69,7 @@ impl Accordage {
     /// d'un demi-ton, d'un ton, de deux tons (le grunge : Nirvana), drop D
     /// et ses variantes, cinq cordes.
     pub fn candidats() -> Vec<Self> {
-        [
+        Self::de([
             vec![28, 33, 38, 43],
             vec![27, 32, 37, 42],
             vec![26, 31, 36, 41],
@@ -59,10 +78,17 @@ impl Accordage {
             vec![25, 32, 37, 42],
             vec![24, 31, 36, 41],
             vec![23, 28, 33, 38, 43],
-        ]
-        .into_iter()
-        .map(|cordes| Self { cordes, frettes: 20 })
-        .collect()
+        ])
+    }
+
+    /// Les accordages d'une 5 cordes : standard, abaissés d'un demi-ton et
+    /// d'un ton.
+    pub fn candidats5() -> Vec<Self> {
+        Self::de([vec![23, 28, 33, 38, 43], vec![22, 27, 32, 37, 42], vec![21, 26, 31, 36, 41]])
+    }
+
+    fn de<const N: usize>(cordes: [Vec<u8>; N]) -> Vec<Self> {
+        cordes.into_iter().map(|cordes| Self { cordes, frettes: 20 }).collect()
     }
 
     /// L'accordage que les notes réclament. Une note sous la corde grave est
@@ -77,24 +103,31 @@ impl Accordage {
     /// 11 accordés plus bas) : avec le seul standard, les frettes de la
     /// tablature ne correspondaient à aucune des nôtres.
     pub fn choisir(notes: &[Note]) -> Self {
+        Self::choisir_parmi(notes, &Self::candidats())
+    }
+
+    /// [`Accordage::choisir`] parmi des candidats donnés, le standard en
+    /// premier.
+    pub fn choisir_parmi(notes: &[Note], candidats: &[Self]) -> Self {
         let tolere = (notes.len() / 100).max(1);
         let sous = |l: u8| notes.iter().filter(|n| n.hauteur < l).count();
         let a_vide = |l: u8| notes.iter().filter(|n| n.hauteur == l).count();
-        let candidats = Self::candidats();
+        let standard = candidats.first().cloned().unwrap_or_else(Self::basse4);
         let mut valides: Vec<&Self> = candidats
             .iter()
             .filter(|a| sous(a.cordes[0]) <= tolere && a_vide(a.cordes[0]) >= tolere.max(2))
             .collect();
         if valides.is_empty() {
-            if sous(28) <= tolere {
-                return Self::basse4();
+            if sous(standard.cordes[0]) <= tolere {
+                return standard;
             }
             // Des notes sous le mi sans corde grave nette : l'accordage le plus
             // haut qui les contient toutes.
             let haut = candidats.iter().filter(|a| sous(a.cordes[0]) <= tolere).map(|a| a.cordes[0]).max();
             valides = candidats.iter().filter(|a| Some(a.cordes[0]) == haut).collect();
             if valides.is_empty() {
-                return Self::basse5();
+                // Rien ne contient tout : le plus grave.
+                return candidats.iter().min_by_key(|a| a.cordes[0]).cloned().unwrap_or(standard);
             }
         }
         let cout = |a: &Self| {
@@ -106,7 +139,19 @@ impl Accordage {
             .map(|a| (cout(a), a))
             .min_by(|x, y| x.0.total_cmp(&y.0))
             .map(|(_, a)| a.clone())
-            .unwrap_or_else(Self::basse4)
+            .unwrap_or(standard)
+    }
+
+    /// L'accordage du disque sur la basse de l'utilisateur : parmi ceux d'une
+    /// 4 cordes (standard, abaissés, drop D…) ou d'une 5 cordes.
+    pub fn pour(notes: &[Note], basses: Basses) -> Self {
+        match basses {
+            Basses::Quatre => {
+                let quatre: Vec<Self> = Self::candidats().into_iter().filter(|a| a.cordes.len() == 4).collect();
+                Self::choisir_parmi(notes, &quatre)
+            }
+            Basses::Cinq => Self::choisir_parmi(notes, &Self::candidats5()),
+        }
     }
 
     fn positions(&self, hauteur: u8) -> Vec<(u8, u8)> {
@@ -238,8 +283,22 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         })
         .collect();
 
-    let k = couts_doigte;
-    let n_cordes = accordage.cordes.len();
+    let (total, choix) = chemin(notes, &etats, couts_doigte, accordage.cordes.len());
+    for (n, (e, &j)) in notes.iter_mut().zip(etats.iter().zip(&choix)) {
+        if let Some(&(c, f, _)) = e.get(j) {
+            n.corde = Some(c);
+            n.frette = Some(f);
+        }
+    }
+    total
+}
+
+/// Le plus court chemin (Viterbi) sur les états (corde, frette, main) de
+/// chaque note : son coût et l'état retenu pour chacune.
+fn chemin(notes: &[Note], etats: &[Vec<(u8, u8, u8)>], k: &Couts, n_cordes: usize) -> (f32, Vec<usize>) {
+    if notes.is_empty() {
+        return (0.0, Vec::new());
+    }
     let mut couts: Vec<Vec<f32>> = vec![etats[0].iter().map(|&(c, f, m)| k.jeu(c, f, m, n_cordes)).collect()];
     let mut retour: Vec<Vec<usize>> = vec![vec![0; etats[0].len()]];
     for i in 1..notes.len() {
@@ -271,14 +330,105 @@ pub fn poser_avec(notes: &mut [Note], accordage: &Accordage, couts_doigte: &Cout
         .min_by(|&a, &b| couts[dernier][a].total_cmp(&couts[dernier][b]))
         .unwrap_or(0);
     let total = couts[dernier].get(e).copied().unwrap_or(0.0);
+    let mut choix = vec![0; notes.len()];
     for i in (0..notes.len()).rev() {
-        if let Some(&(c, f, _)) = etats[i].get(e) {
-            notes[i].corde = Some(c);
-            notes[i].frette = Some(f);
-        }
+        choix[i] = e;
         e = retour[i].get(e).copied().unwrap_or(0);
     }
-    total
+    (total, choix)
+}
+
+/// **Un motif se joue toujours de la même façon.** Le chemin de [`poser`]
+/// doigte chaque passage selon ce qui l'entoure : le riff d'« About Damn
+/// Time » sortait tantôt en 7-5-7 sur la corde de la♭, tantôt en 2-0-2 sur
+/// celle de ré♭ (29 oct.) — aucun bassiste ne fait ça : dans les 331
+/// tablatures du banc des doigtés, 96,6 % des motifs répétés n'ont qu'un
+/// doigté. Les mesures aux mêmes notes, aux mêmes places, prennent ici un
+/// seul doigté : parmi ceux que le chemin leur a donnés, le plus fréquent ;
+/// à égalité, celui qui coûte le moins sur l'ensemble de leurs occurrences,
+/// entrée et sortie de chaque mesure comprises.
+///
+/// Banc des doigtés (29 oct.) : 79,3 % → 79,5 % de doigtés identiques à la
+/// référence ; choisir d'abord le moins coûteux ne gagnait rien (79,3 %).
+///
+/// `premiers` : les premiers temps des mesures, en secondes. À appeler après
+/// [`poser`], sur le même accordage.
+pub fn uniformiser(notes: &mut [Note], accordage: &Accordage, k: &Couts, premiers: &[f32]) {
+    if premiers.len() < 2 || notes.len() < 4 {
+        return;
+    }
+    let duree_type = (premiers[premiers.len() - 1] - premiers[0]) / (premiers.len() - 1) as f32;
+    // Les notes de chaque mesure : un intervalle d'indices (notes triées).
+    let mut mesures: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut i = notes.partition_point(|n| n.debut_s < premiers[0]);
+    for (m, &debut) in premiers.iter().enumerate() {
+        let fin = premiers.get(m + 1).copied().unwrap_or(debut + duree_type);
+        let j = i + notes[i..].partition_point(|n| n.debut_s < fin);
+        mesures.push(i..j);
+        i = j;
+    }
+    // Clé d'une mesure : chaque note, hauteur et place à la double croche ;
+    // avec elle, les mesures qui la partagent.
+    type Cle = Vec<(u8, i32)>;
+    let mut groupes: Vec<(Cle, Vec<usize>)> = Vec::new();
+    for (m, r) in mesures.iter().enumerate() {
+        if r.len() < 2 {
+            continue;
+        }
+        let debut = premiers[m];
+        let duree = premiers.get(m + 1).map_or(duree_type, |f| f - debut).max(1e-3);
+        let cle: Vec<(u8, i32)> =
+            notes[r.clone()].iter().map(|n| (n.hauteur, ((n.debut_s - debut) / duree * 16.0).round() as i32)).collect();
+        match groupes.iter_mut().find(|g| g.0 == cle) {
+            Some(g) => g.1.push(m),
+            None => groupes.push((cle, vec![m])),
+        }
+    }
+    let max_main = accordage.frettes.saturating_sub(ETENDUE - 1).max(1);
+    let n_cordes = accordage.cordes.len();
+    let doigte = |notes: &[Note], r: &std::ops::Range<usize>| -> Vec<(u8, u8)> {
+        notes[r.clone()].iter().map(|n| (n.corde.unwrap_or(0), n.frette.unwrap_or(0))).collect()
+    };
+    for (_, occurrences) in groupes.iter().filter(|g| g.1.len() > 1) {
+        let mut candidats: Vec<(Vec<(u8, u8)>, usize)> = Vec::new();
+        for &m in occurrences {
+            let d = doigte(notes, &mesures[m]);
+            match candidats.iter_mut().find(|c| c.0 == d) {
+                Some(c) => c.1 += 1,
+                None => candidats.push((d, 1)),
+            }
+        }
+        if candidats.len() < 2 {
+            continue;
+        }
+        // Le coût d'un doigté imposé à une occurrence, avec la note d'avant et
+        // celle d'après telles qu'elles sont posées : seule la main est libre.
+        let cout = |notes: &[Note], m: usize, d: &[(u8, u8)]| -> f32 {
+            let r = &mesures[m];
+            let de = r.start.saturating_sub(1);
+            let a = (r.end + 1).min(notes.len());
+            let etats: Vec<Vec<(u8, u8, u8)>> = (de..a)
+                .map(|i| {
+                    let (c, f) = if r.contains(&i) { d[i - r.start] } else { (notes[i].corde.unwrap_or(0), notes[i].frette.unwrap_or(0)) };
+                    mains(f, max_main).into_iter().map(|main| (c, f, main)).collect()
+                })
+                .collect();
+            chemin(&notes[de..a], &etats, k, n_cordes).0
+        };
+        // Le plus fréquent ; à égalité, le moins coûteux sur toutes les
+        // occurrences, puis le premier rencontré.
+        let meilleur = candidats
+            .iter()
+            .map(|(d, n)| (occurrences.iter().map(|&m| cout(notes, m, d)).sum::<f32>(), *n, d))
+            .min_by(|a, b| b.1.cmp(&a.1).then(a.0.total_cmp(&b.0)))
+            .map(|(_, _, d)| d.clone())
+            .expect("au moins deux candidats");
+        for &m in occurrences {
+            for (n, &(c, f)) in notes[mesures[m].clone()].iter_mut().zip(&meilleur) {
+                (n.corde, n.frette) = (Some(c), Some(f));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -368,6 +518,42 @@ mod tests {
         // Quelques notes graves isolées (erreurs) ne changent pas l'accordage.
         let m: Vec<Note> = (0..100).map(|i| note(i as f32 * 0.3, if i == 5 { 26 } else { 40 })).collect();
         assert_eq!(Accordage::choisir(&m), Accordage::basse4());
+    }
+
+    #[test]
+    fn un_motif_se_doigte_toujours_pareil() {
+        // Le riff d'« About Damn Time », en mi♭ : mi♭ mi♭ ré♭ sol♭ sol♭ fa |
+        // mi♭ ré♭ mi♭. Suivi tantôt du mi♭ grave à vide, tantôt d'une phrase
+        // aiguë : la fin de mesure était tirée de deux côtés.
+        let riff = [(0.0, 27u8), (0.5, 27), (0.875, 37), (1.0, 42), (1.125, 42), (1.25, 41), (1.5, 39), (1.75, 37), (1.875, 39)];
+        let mut n = Vec::new();
+        for m in 0..6 {
+            let t0 = m as f32 * 4.0;
+            n.extend(riff.iter().map(|&(t, h)| note(t0 + t, h)));
+            let suite: &[u8] = if m % 2 == 0 { &[27, 27, 27, 27] } else { &[51, 53, 54, 56] };
+            n.extend(suite.iter().enumerate().map(|(i, &h)| note(t0 + 2.0 + i as f32 * 0.5, h)));
+        }
+        let premiers: Vec<f32> = (0..12).map(|m| m as f32 * 2.0).collect();
+        let a = Accordage { cordes: vec![27, 32, 37, 42], frettes: 20 };
+        let doigtes = |n: &[Note]| -> Vec<Vec<_>> { n.chunks(13).map(|c| c[..9].iter().map(|x| (x.corde, x.frette)).collect()).collect() };
+        poser(&mut n, &a);
+        let avant = doigtes(&n);
+        uniformiser(&mut n, &a, &Couts::default(), &premiers);
+        let apres = doigtes(&n);
+        assert!(avant.windows(2).any(|w| w[0] != w[1]), "le cas ne teste rien : {avant:?}");
+        assert!(apres.windows(2).all(|w| w[0] == w[1]), "{apres:?}");
+    }
+
+    #[test]
+    fn quatre_ou_cinq_cordes_dans_l_accordage_du_disque() {
+        // Mi♭0 à vide, la♭0, ré♭1 : un disque en mi♭.
+        let grave: Vec<Note> = (0..48).map(|i| note(i as f32 * 0.3, [27u8, 27, 32, 37, 34, 27][i % 6])).collect();
+        assert_eq!(Accordage::pour(&grave, Basses::Quatre).cordes, vec![27, 32, 37, 42]);
+        // La 5 cordes standard le contient (corde de si, 4ᵉ case).
+        assert_eq!(Accordage::pour(&grave, Basses::Cinq), Accordage::basse5());
+        let mi: Vec<Note> = (0..40).map(|i| note(i as f32 * 0.3, [28u8, 40, 43][i % 3])).collect();
+        assert_eq!(Accordage::pour(&mi, Basses::Quatre), Accordage::basse4());
+        assert_eq!(Accordage::pour(&mi, Basses::Cinq), Accordage::basse5());
     }
 
     #[test]

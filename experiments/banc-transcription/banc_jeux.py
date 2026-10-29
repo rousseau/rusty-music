@@ -31,6 +31,10 @@ la plus grave sonnant à chaque instant du contour : justesse de hauteur à
 ±50 cents sur les instants voisés, rappel et fausse alarme de voisement.
 
     <env>/bin/python banc_jeux.py slakh|mdb|guitarset|medleydb [--limite N]
+
+Modèles externes sur le stem de basse (Slakh et MedleyDB, `externes.py`) :
+`EXTERNES=tsumugi,yourmt3` les ajoute, avec l'union des notes de tous les
+modèles (borne haute du rappel d'un vote) et le vote à la majorité.
 """
 import argparse, glob, json, os, subprocess, sys
 import numpy as np
@@ -138,6 +142,21 @@ def triplets(notes, programmes=None):
     return [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in notes
             if n.get("programme", 33) != 128 and (programmes is None or n.get("programme", 33) in programmes)]
 
+EXTERNES = [m for m in os.environ.get("EXTERNES", "").split(",") if m]
+
+def basse_externes(stem, d, mus):
+    """{nom: triplets} sur un stem de basse : chaque modèle externe, puis,
+    s'il y en a, l'union et le vote à la majorité avec MuScriptor."""
+    if not EXTERNES:
+        return {}
+    import externes
+    res = {nom: triplets(externes.transcrire(nom, stem, os.path.join(d, f"{nom}-basse.json"))) for nom in EXTERNES}
+    listes = [[{"debut_s": a, "fin_s": b, "hauteur": h} for a, b, h in l] for l in [mus] + list(res.values())]
+    res["union"] = triplets(externes.fusion(listes, quorum=1))
+    if len(listes) >= 3:
+        res["vote"] = triplets(externes.fusion(listes, quorum=(len(listes) + 1) // 2))
+    return res
+
 class Total:
     """Moyenne pondérée par le nombre de notes de référence."""
     def __init__(self): self.s = {}
@@ -217,6 +236,9 @@ def slakh(args):
             sbb = score_notes(rb, [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))])
             T.ajouter("stem basse : MuScriptor", smb); T.ajouter("stem basse : Basic Pitch", sbb)
             ligne += f"  | stem basse MuS {smb['f']:.2f} BP {sbb['f']:.2f}"
+            mus = triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json")))
+            for k, est in basse_externes(stems["bass"], d, mus).items():
+                sc = score_notes(rb, est); T.ajouter(f"stem basse : {k}", sc); ligne += f" {k[:4]} {sc['f']:.2f}"
         if ref_coups:
             TC.ajouter("stem batterie : ADTOF", score_coups(ref_coups, adtof(stems["drums"], d)))
             TC.ajouter("mélange : MuScriptor", score_coups(ref_coups, coups_muscriptor(mt)))
@@ -441,6 +463,8 @@ def medleydb(args):
             mus = triplets(muscriptor(stems[nom_stem], os.path.join(d, f"muscriptor-{nom_stem}-{groupes.split(',')[0]}.json"), groupes))
             bp = basic_pitch(stems[nom_stem], os.path.join(d, f"basic-pitch-{nom_stem}.json"))
         res = {"MuScriptor": mus, "Basic Pitch": [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in bp]}
+        if f == "basse":
+            res.update(basse_externes(stems["bass"], d, mus))
         ligne = f"{f:12} {t:44} {sorte:4} {inst[:18]:18}"
         for k, est in res.items():
             sc = score_contour(rt, rf, est, PLANCHER_PYIN if sorte == "pyin" and f == "basse" else None, grave)

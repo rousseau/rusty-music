@@ -206,6 +206,23 @@ SDR médian (dB) :
 - V1 et V2 ne diffèrent pas que par l'apprentissage : les genres changent.
   Le classement des modèles, lui, est le même.
 
+### Modèles externes : tsumugi, YourMT3+ (29 oct.)
+
+`externes.py` lance chaque modèle par son code d'origine ; `EXTERNES=tsumugi`
+l'ajoute à `banc_jeux.py`, `experiments/partitions/externe_banc.py` au banc
+des livres. Sorties : `$RUSTY_DEV/ext/banc-*.txt`.
+
+- **Slakh2100, stem basse** : tsumugi F1 0,776 (avec fin 0,614), MuScriptor
+  0,679 (0,324), union 0,676.
+- **MedleyDB, basse corrigée à la main** : justesse tsumugi 0,718,
+  MuScriptor 0,728, Basic Pitch 0,709 ; fausse alarme 0,287 contre 0,381.
+- **Livres** : tsumugi 0,547, MuScriptor 0,542, YourMT3+ 0,382, vote 0,551.
+- YourMT3+ sur le mélange d'About Damn Time : 0,188 (moitié des notes,
+  octave au-dessus pour deux sur trois).
+- Pièges : environnements Python hors exFAT (`TSUMUGI_PY`, `YOURMT3_PY`,
+  `UV_CACHE_DIR` sous `$TMPDIR`) ; YourMT3+ n'a que CUDA/CPU dans le Space,
+  `yourmt3_inferer.py` le fait tourner sur Metal.
+
 ## Lecture
 
 - **Basse.** Sur le stem démixé, MuScriptor l'emporte nettement

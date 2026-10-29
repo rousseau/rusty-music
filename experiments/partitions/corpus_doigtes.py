@@ -9,7 +9,8 @@ les notes de tablatures de référence, avec corde et frette.
 
 Usage local et d'évaluation seulement : rien de ce qui est lu n'est versionné.
 Les accords (plusieurs notes sur une même attaque) sont retirés : la
-transcription de l'éditeur est monophonique.
+transcription de l'éditeur est monophonique. `premiers` : le début de chaque
+mesure, pour `tablature::uniformiser`.
 
     python3 corpus_doigtes.py <sortie.json>
 """
@@ -31,8 +32,9 @@ def livres():
         except (OSError, KeyError, statistics.StatisticsError):
             noire = 0.5
         seizieme = noire / 4
-        brutes, t0 = [], 0.0
+        brutes, t0, premiers = [], 0.0, []
         for m in json.load(open(ref)):
+            premiers.append(t0)
             if m.get("tablature") and not m.get("absente"):
                 par_attaque = collections.Counter(x[0] for x in m["notes"])
                 for x in m["notes"]:
@@ -45,7 +47,8 @@ def livres():
         n = max(vides) + 1
         cordes = [vides.get(c, (vides[0] + 5 * c) if 0 in vides else 28 + 5 * c) for c in range(max(n, 4))]
         yield {"nom": "livre:" + os.path.basename(d.rstrip("/")), "cordes": cordes,
-               "notes": [note(a, b, cordes[c] + f) for a, b, _, c, f in brutes], "verite": [[c, f] for *_, c, f in brutes]}
+               "notes": [note(a, b, cordes[c] + f) for a, b, _, c, f in brutes], "verite": [[c, f] for *_, c, f in brutes],
+               "premiers": premiers}
 
 def songsterr():
     for f in sorted(glob.glob(os.path.join(SONGSTERR, "*.json"))):
@@ -54,8 +57,9 @@ def songsterr():
         tun = tab.get("tuning")
         if not tun or len(tun) not in (4, 5, 6): continue
         bpm = (tab.get("automations", {}).get("tempo") or [{"bpm": 120}])[0]["bpm"]
-        sec, pos, notes, verite = 60 / bpm, 0.0, [], []
+        sec, pos, notes, verite, premiers = 60 / bpm, 0.0, [], [], []
         for i, m in enumerate(tab["measures"]):
+            premiers.append(pos * sec)
             for b in (m.get("voices") or [{"beats": []}])[0]["beats"]:
                 n_, d_ = b["duration"]; dur = 4 * n_ / d_
                 if b.get("graceNote"): dur = 0
@@ -69,7 +73,8 @@ def songsterr():
                         verite.append([len(tun) - 1 - n["string"], n["fret"]])
                 pos += dur
         if len(notes) >= 20:
-            yield {"nom": "songsterr:" + os.path.basename(f)[:-5], "cordes": tun[::-1], "notes": notes, "verite": verite}
+            yield {"nom": "songsterr:" + os.path.basename(f)[:-5], "cordes": tun[::-1], "notes": notes, "verite": verite,
+                   "premiers": premiers}
 
 if __name__ == "__main__":
     corpus = list(livres()) + list(songsterr())

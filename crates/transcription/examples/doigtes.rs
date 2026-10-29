@@ -9,7 +9,8 @@
 //!
 //! `corpus.json` : `[{"nom", "cordes": [grave → aiguë], "notes": [Note], "verite": [[corde, frette]]}]`.
 //! `grille.json` : `[{"corde", "deplacement", ...}]` — les champs absents
-//! gardent la valeur de [`Couts::default`].
+//! gardent la valeur de [`Couts::default`] ; `"uniformiser": true` applique
+//! en plus `tablature::uniformiser` (le corpus doit porter `premiers`).
 //! Sortie : `[{"couts": {...}, "par_morceau": {nom: [identiques, total]}}]`.
 
 use std::collections::BTreeMap;
@@ -25,6 +26,21 @@ struct Morceau {
     cordes: Vec<u8>,
     notes: Vec<Note>,
     verite: Vec<(u8, u8)>,
+    /// Début de chaque mesure, pour `uniformiser`.
+    #[serde(default)]
+    premiers: Vec<f32>,
+}
+
+/// Doigté d'un morceau : le chemin, puis, si le réglage le demande
+/// (`"uniformiser": true`), un seul doigté par motif répété.
+fn doigter(m: &Morceau, g: &Value, k: &Couts) -> Vec<Note> {
+    let mut x = m.notes.clone();
+    let a = Accordage { cordes: m.cordes.clone(), frettes: 24 };
+    tablature::poser_avec(&mut x, &a, k);
+    if g["uniformiser"].as_bool() == Some(true) {
+        tablature::uniformiser(&mut x, &a, k, &m.premiers);
+    }
+    x
 }
 
 fn couts(v: &Value) -> Couts {
@@ -59,8 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let par: BTreeMap<&str, (usize, usize)> = morceaux
                                 .iter()
                                 .map(|m| {
-                                    let mut x = m.notes.clone();
-                                    tablature::poser_avec(&mut x, &Accordage { cordes: m.cordes.clone(), frettes: 24 }, &k);
+                                    let x = doigter(m, g, &k);
                                     let ok = x.iter().zip(&m.verite).filter(|(n, v)| (n.corde, n.frette) == (Some(v.0), Some(v.1))).count();
                                     (m.nom.as_str(), (ok, m.verite.len()))
                                 })
@@ -79,8 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let detail: Vec<Value> = corpus
             .iter()
             .map(|m| {
-                let mut x = m.notes.clone();
-                tablature::poser_avec(&mut x, &Accordage { cordes: m.cordes.clone(), frettes: 24 }, &couts(g));
+                let x = doigter(m, g, &couts(g));
                 let poses: Vec<(Option<u8>, Option<u8>)> = x.iter().map(|n| (n.corde, n.frette)).collect();
                 json!({ "nom": m.nom, "cordes": m.cordes, "poses": poses, "verite": m.verite, "hauteurs": x.iter().map(|n| n.hauteur).collect::<Vec<_>>(), "debuts": x.iter().map(|n| n.debut_s).collect::<Vec<_>>() })
             })

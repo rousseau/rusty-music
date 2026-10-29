@@ -168,7 +168,7 @@ Ce qui manque, et dans cet ordre :
   | réglage | ce que c'est | coût |
   |---|---|---|
   | **vitesse** | 25 à 400 %, pas de 5 %. 200 % lit **deux fois plus vite**. | immédiat — un flottant que la lecture relit à chaque trame |
-  | **hauteur** | −12 à +12 demi-tons, durée inchangée | quelques secondes, 124 Mo par réglage |
+  | **hauteur** | −6 à +6 tons par pas d'un demi-ton, durée inchangée ; affichée en tons (« −½ ton », 29 oct.) | quelques secondes, 124 Mo par réglage |
 
   **La vitesse préserve la hauteur**, par `wsola` — recouvrement-addition
   temporel, la méthode d'`atempo` chez ffmpeg. Elle s'applique dans la lecture
@@ -208,7 +208,9 @@ Ce qui manque, et dans cet ordre :
     le réglage « vitesse » de `%` en `BPM`. `edition.vitesse` reste le rapport
     `bpm_cible / bpm_source` ; l'unité n'est qu'une vue, et le `%` **reste
     accessible d'un clic**. Pas de pulsation franche : le bouton ne s'affiche
-    pas, le `%` est le seul réglage.
+    pas, le `%` est le seul réglage. **Depuis le 29 octobre, le BPM est
+    l'unité par défaut** (demande de l'utilisateur) ; le choix d'unité est
+    gardé d'un morceau à l'autre (`localStorage` « vitesse-unite »).
     - **Plafond de qualité, tenu par l'affichage.** Au-delà de ±20 % d'étirement
       d'ensemble, la barre affiche « étirement franc — le son peut se ternir »,
       du même ton que « les stems ont dérivé de X s » : on ne bloque pas.

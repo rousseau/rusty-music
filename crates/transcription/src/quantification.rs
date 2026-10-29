@@ -8,7 +8,8 @@
 //! - grille de doubles croches seulement (pas encore de triolets) ;
 //! - une note dure jusqu'à sa fin ou jusqu'à l'attaque suivante ;
 //! - ce qui précède le premier premier temps (l'anacrouse) est ignoré ;
-//! - une note qui franchit une barre est coupée et liée ;
+//! - une note qui franchit une barre est coupée et liée ; une anticipation
+//!   que le modèle a coupée au premier temps est d'abord recousue ;
 //! - le **décalage de jeu** est retranché avant d'aimanter (voir
 //!   [`decalage_de_jeu`]).
 
@@ -136,6 +137,24 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
             }
             _ => grille.push((d, f, jeu, n.amplitude)),
         }
+    }
+    // Une anticipation tenue par-dessus la barre est une seule note : le
+    // modèle la coupe souvent au premier temps (même hauteur, la seconde
+    // commence là où la première finit), ce qui la ferait rejouer.
+    let mut i = 0;
+    while i + 1 < grille.len() {
+        let (d, f, jeu, _) = grille[i];
+        let suivante = grille[i + 1];
+        let anticipation = d % DIVISIONS as i64 != 0 && suivante.0 - d < DIVISIONS as i64;
+        if anticipation
+            && jeu.hauteur == suivante.2.hauteur
+            && f >= suivante.0
+            && bornes.binary_search(&suivante.0).is_ok()
+        {
+            grille[i].1 = suivante.1;
+            grille.remove(i + 1);
+        }
+        i += 1;
     }
     // Une note s'arrête au plus tard à l'attaque suivante.
     for i in 0..grille.len().saturating_sub(1) {
@@ -288,6 +307,21 @@ mod tests {
         assert!(debut_m1.lie);
         // De 2,0 s à 3,0 s : la moitié de la seconde mesure.
         assert_eq!(debut_m1.seiziemes, 8);
+    }
+
+    #[test]
+    fn une_anticipation_coupee_au_premier_temps_est_liee() {
+        let (t, p) = grille();
+        // Dernière double croche de la mesure, puis la même hauteur dès le
+        // premier temps, sans écart : une seule note, liée.
+        let m = quantifier(&[note(1.875, 2.0, 30), note(2.0, 2.25, 30)], &t, &p, 4);
+        assert!(m[1].evenements[0].lie && m[1].evenements[0].seiziemes == 2);
+        // Une vraie note rejouée sur le temps (attaque d'avant sur un temps)
+        // reste rejouée, comme une autre hauteur.
+        let m = quantifier(&[note(1.5, 2.0, 30), note(2.0, 2.25, 30)], &t, &p, 4);
+        assert!(!m[1].evenements[0].lie);
+        let m = quantifier(&[note(1.875, 2.0, 30), note(2.0, 2.25, 31)], &t, &p, 4);
+        assert!(!m[1].evenements[0].lie);
     }
 
     #[test]
