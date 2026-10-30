@@ -7972,6 +7972,7 @@ version = "0.1.0"
 dependencies = [
  "beat-this",
  "burn",
+ "burn-store",
  "demucs-core",
  "rodio",
  "rustfft",

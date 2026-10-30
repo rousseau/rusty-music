@@ -12,6 +12,7 @@ pub mod decode;
 pub mod etirement;
 pub mod greffe;
 pub mod pulsation;
+pub mod roformer;
 pub mod wav;
 
 use std::future::Future;
