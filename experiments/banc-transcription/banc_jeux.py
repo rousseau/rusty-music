@@ -95,14 +95,36 @@ def en_441(src, dest):
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", src, "-ar", "44100", "-ac", "2", dest], check=True)
     return dest
 
+# Séparateurs hors de l'application (`experiments/roformer/separer.py`), lancés
+# par leur code d'origine dans leur propre environnement (`ROFORMER_PY`).
+SEPARER = os.path.join(RACINE, "experiments", "roformer", "separer.py")
+ROFORMER_PY = os.path.expanduser(os.environ.get("ROFORMER_PY", os.path.join(os.environ.get("TMPDIR", "/tmp"), "roformer-env", "bin", "python")))
+# Séparateur de la chaîne basse/batterie (Slakh, MedleyDB) : HTDemucs 6s par
+# défaut, comme au premier banc ; `DEMIX=bsrofo_sw` en essaie un autre, avec
+# ses propres stems et ses propres caches de transcription.
+DEMIX = os.environ.get("DEMIX", "htdemucs_6s")
+
+def separer(modele, src441, sortie):
+    if os.path.isdir(sortie) and any(f.endswith(".wav") for f in os.listdir(sortie)):
+        return
+    if modele.startswith("htdemucs"):
+        lancer([CLI, "demix", src441, "--out", sortie, "--modele", modele])
+    else:
+        liste = os.path.join(os.path.dirname(sortie), f"liste-{modele}.tsv")
+        open(liste, "w").write(f"{src441}\t{sortie}\n")
+        lancer([ROFORMER_PY, "-I", SEPARER, modele, liste])
+
+def cache(nom):
+    """Nom de cache propre au séparateur de `DEMIX` (inchangé pour HTDemucs 6s)."""
+    return nom if DEMIX == "htdemucs_6s" else nom.replace(".json", f"@{DEMIX}.json")
+
 def demixer(src441, dossier):
-    stems = os.path.join(dossier, "stems")
-    if not os.path.isdir(stems) or not os.listdir(stems):
-        lancer([CLI, "demix", src441, "--out", stems, "--modele", "htdemucs_6s"])
+    stems = os.path.join(dossier, "stems" if DEMIX == "htdemucs_6s" else f"stems-{DEMIX}")
+    separer(DEMIX, src441, stems)
     return {s: os.path.join(stems, f) for f in os.listdir(stems) if not f.startswith("._") for s in ("bass", "drums", "guitar", "vocals", "piano", "other") if f"— {s}." in f}
 
 def adtof(stem441, dossier):
-    sortie = os.path.join(dossier, "adtof.json")
+    sortie = os.path.join(dossier, cache("adtof.json"))
     if not os.path.exists(sortie):
         # La pulsation ne sert qu'à la mise en mesure, ignorée ici.
         puls = os.path.join(dossier, "pulsation-neutre.json")
@@ -150,7 +172,7 @@ def basse_externes(stem, d, mus):
     if not EXTERNES:
         return {}
     import externes
-    res = {nom: triplets(externes.transcrire(nom, stem, os.path.join(d, f"{nom}-basse.json"))) for nom in EXTERNES}
+    res = {nom: triplets(externes.transcrire(nom, stem, os.path.join(d, cache(f"{nom}-basse.json")))) for nom in EXTERNES}
     listes = [[{"debut_s": a, "fin_s": b, "hauteur": h} for a, b, h in l] for l in [mus] + list(res.values())]
     res["union"] = triplets(externes.fusion(listes, quorum=1))
     if len(listes) >= 3:
@@ -232,11 +254,11 @@ def slakh(args):
         stems = demixer(en_441(mix, os.path.join(d, "mix441.wav")), d)
         rb = [r[:3] for r in ref if r[3] == 4]
         if rb:
-            smb = score_notes(rb, triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json"))))
-            sbb = score_notes(rb, [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))])
+            smb = score_notes(rb, triplets(muscriptor(stems["bass"], os.path.join(d, cache("muscriptor-basse.json")))))
+            sbb = score_notes(rb, [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in basic_pitch(stems["bass"], os.path.join(d, cache("basic-pitch-basse.json")))])
             T.ajouter("stem basse : MuScriptor", smb); T.ajouter("stem basse : Basic Pitch", sbb)
             ligne += f"  | stem basse MuS {smb['f']:.2f} BP {sbb['f']:.2f}"
-            mus = triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json")))
+            mus = triplets(muscriptor(stems["bass"], os.path.join(d, cache("muscriptor-basse.json"))))
             for k, est in basse_externes(stems["bass"], d, mus).items():
                 sc = score_notes(rb, est); T.ajouter(f"stem basse : {k}", sc); ligne += f" {k[:4]} {sc['f']:.2f}"
         if ref_coups:
@@ -456,12 +478,12 @@ def medleydb(args):
         stems = demixer(en_441(mix, os.path.join(d, "mix441.wav")), d)
         # Les noms de cache de la basse sont ceux du premier banc.
         if f == "basse":
-            mus = triplets(muscriptor(stems["bass"], os.path.join(d, "muscriptor-basse.json")))
-            bp = basic_pitch(stems["bass"], os.path.join(d, "basic-pitch-basse.json"))
+            mus = triplets(muscriptor(stems["bass"], os.path.join(d, cache("muscriptor-basse.json"))))
+            bp = basic_pitch(stems["bass"], os.path.join(d, cache("basic-pitch-basse.json")))
         else:
             groupes = table[inst]
-            mus = triplets(muscriptor(stems[nom_stem], os.path.join(d, f"muscriptor-{nom_stem}-{groupes.split(',')[0]}.json"), groupes))
-            bp = basic_pitch(stems[nom_stem], os.path.join(d, f"basic-pitch-{nom_stem}.json"))
+            mus = triplets(muscriptor(stems[nom_stem], os.path.join(d, cache(f"muscriptor-{nom_stem}-{groupes.split(',')[0]}.json")), groupes))
+            bp = basic_pitch(stems[nom_stem], os.path.join(d, cache(f"basic-pitch-{nom_stem}.json")))
         res = {"MuScriptor": mus, "Basic Pitch": [(n["debut_s"], n["fin_s"], n["hauteur"]) for n in bp]}
         if f == "basse":
             res.update(basse_externes(stems["bass"], d, mus))
@@ -534,8 +556,9 @@ def medleydb_demix(args):
         ligne = f"{v} {t:44} ajustement {residu:5.1f} dB{'' if residu >= AJUSTEMENT_MIN else ' (écarté)'}"
         for mo in modeles:
             sortie = os.path.join(d, "stems" if mo == "htdemucs_6s" else f"stems-{mo}")
-            if not os.path.isdir(sortie) or not os.listdir(sortie):
-                lancer([CLI, "demix", m441, "--out", sortie, "--modele", mo])
+            if not mo.startswith("htdemucs") and residu < AJUSTEMENT_MIN:
+                continue  # hors des totaux : inutile de payer la séparation
+            separer(mo, m441, sortie)
             est = {}
             for fic in os.listdir(sortie):
                 for s in sources6:
@@ -543,7 +566,7 @@ def medleydb_demix(args):
                         e, _ = sf.read(os.path.join(sortie, fic), dtype="float32", always_2d=True)
                         z = np.zeros_like(x); n = min(len(x), len(e)); z[:n] = e[:n, :2]; est[s] = z
             est["other4"] = sum(est.get(s, 0) for s in ("guitar", "piano", "other"))
-            for s in (sources6 + ["other4"] if mo == "htdemucs_6s" else ["bass", "drums", "vocals", "other4"]):
+            for s in (sources6 + ["other4"] if "guitar" in est else ["bass", "drums", "vocals", "other4"]):
                 # Source absente ou presque (sous −50 dB du mélange) : pas notée.
                 if s not in est or np.sum(par_source[s] ** 2) < 1e-5 * np.sum(x ** 2):
                     continue
@@ -551,7 +574,7 @@ def medleydb_demix(args):
                 if residu >= AJUSTEMENT_MIN:
                     totaux.setdefault((v, mo, s), []).append(val)
                 if s in ("bass", "drums", "vocals", "other4"):
-                    ligne += f"  {mo[8:] or '4'}:{s[:3]} {val:5.1f}"
+                    ligne += f"  {mo[8:] or '4' if mo.startswith('htdemucs') else mo}:{s[:3]} {val:5.1f}"
         print(ligne, flush=True)
     print("TOTAL SDR médian par source (dB), V1 en partie dans MUSDB18 (entraînement de HTDemucs), V2 inédit")
     for (v, mo, s), vals in sorted(totaux.items()):
@@ -562,7 +585,7 @@ def main():
     a.add_argument("jeu", choices=["slakh", "slakh2100", "mdb", "guitarset", "maestro", "medleydb", "medleydb-demix"])
     a.add_argument("--limite", type=int, default=None)
     a.add_argument("--famille", help=f"medleydb : parmi {','.join(FAMILLES)} (toutes par défaut)")
-    a.add_argument("--modele", default="htdemucs_6s,htdemucs,htdemucs_ft", help="medleydb-demix : variantes de HTDemucs")
+    a.add_argument("--modele", default="htdemucs_6s,htdemucs,htdemucs_ft", help="medleydb-demix : variantes de HTDemucs, ou séparateurs de experiments/roformer/separer.py")
     args = a.parse_args()
     {"slakh": slakh, "slakh2100": slakh, "mdb": mdb, "guitarset": guitarset, "maestro": maestro, "medleydb": medleydb, "medleydb-demix": medleydb_demix}[args.jeu](args)
 
