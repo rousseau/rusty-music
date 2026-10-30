@@ -136,3 +136,29 @@ provenance), spécialistes voix seule (le mode Éditer a besoin de basse et
 de batterie), modèles HF sans fiche (Huge-SCNet, bs_roformer_4stems_ft :
 licence déclarée mais données inconnues, à reprendre si les deux derniers
 déçoivent).
+
+## Décision et intégration (30 oct. 2026)
+
+Banc complet : `experiments/roformer/README.md`. **SW est retenu**, à la
+demande de l'auteur du projet (« le meilleur algorithme »), comme
+quatrième variante de démixage (`Variante::RoformerSw`, `bsrofo_sw`), à
+côté des trois HTDemucs, qui ne changent pas.
+
+- **Ce qu'il apporte** (MedleyDB V2, apparié contre `htdemucs_ft`) :
+  batterie +2,4 dB (21 morceaux sur 24), voix +2,8 dB (15 sur 15), basse
+  +0,5 dB (13 sur 21) ; guitare et piano très au-dessus de `htdemucs_6s`.
+  Basse transcrite par MuScriptor : F1 0,649 → 0,837 sur Slakh, justesse
+  0,728 → 0,797 sur MedleyDB annoté.
+- **Où il sert** : variante par défaut du mode Éditer quand l'usage est
+  *pratiquer* ; *créer* reste sur `htdemucs`, bien plus rapide.
+- **Provenance** : licence non déclarée, auteur et données inconnus. Le
+  `.ckpt` est téléchargé à la source (révision épinglée, SHA-256
+  vérifié), jamais converti ni republié ; l'interface le dit au moment du
+  choix. Si une licence ou un auteur apparaît, mettre à jour `MODELES.md`.
+- **Port** : `crates/editor/src/roformer/`, parité 1,0000000 sur
+  processeur et Metal contre MSST. Le risque Metal ne s'est pas réalisé.
+- **Coût** : 0,69 × le temps réel en WGSL sur un M4 Pro (environ 6 min
+  pour un morceau de 4 min). La même chose compilée avec `burn/metal`
+  (MSL) va deux fois plus vite, avec la même parité : à décider pour toute
+  l'application, puisque HTDemucs, CLAP et MuScriptor en dépendraient
+  aussi.

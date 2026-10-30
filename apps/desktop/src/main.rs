@@ -6230,7 +6230,7 @@ struct VarianteDispo {
 #[tauri::command(async)]
 fn demix_variantes() -> Vec<VarianteDispo> {
     use rusty_music_editor::Variante;
-    [Variante::Standard, Variante::SixStems, Variante::Affinee]
+    [Variante::Standard, Variante::SixStems, Variante::Affinee, Variante::RoformerSw]
         .into_iter()
         .map(|v| VarianteDispo {
             nom: v.nom(),

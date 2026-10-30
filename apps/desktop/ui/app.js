@@ -11621,9 +11621,9 @@ async function battementStems() {
 const edition = {
   source: null, // TrackRow
   variante: "htdemucs",
-  // Tant que rien n'est choisi à la main, la variante suit l'usage : `ft` pour
-  // pratiquer (meilleure basse, batterie et voix sur MedleyDB, +0,5 dB), la
-  // standard pour créer (quatre fois plus rapide). Voir `varianteParDefaut`.
+  // Tant que rien n'est choisi à la main, la variante suit l'usage :
+  // BS-RoFormer pour pratiquer (batterie +2,4 dB, basse transcrite plus juste),
+  // la standard pour créer (bien plus rapide). Voir `varianteParDefaut`.
   varianteChoisie: false,
   // Un stem : { nom, chemin, origine, niveau, vitesse, tonalite, greffe, voisins }
   // `chemin` est ce qu'on joue — il change quand on greffe ; `origine` est le
@@ -13662,14 +13662,16 @@ function choisirVariante(nom) {
   document
     .querySelectorAll("[data-variante]")
     .forEach((s) => s.classList.toggle("segment--actif", s.dataset.variante === nom));
+  // Les poids de SW n'ont ni auteur connu ni licence : on le dit au moment du choix.
+  $("demix-provenance").hidden = nom !== "bsrofo_sw";
   majTexteBouton();
 }
 
-/// Pour pratiquer, les stems affinés : la basse, la batterie et la voix y sont
-/// mieux séparées (banc MedleyDB, `experiments/banc-transcription/README.md`).
-/// Un choix fait à la main n'est jamais repris.
+/// Pour pratiquer, BS-RoFormer : batterie et voix mieux séparées, basse
+/// transcrite plus juste (banc `experiments/roformer/README.md`). Un choix
+/// fait à la main n'est jamais repris.
 function varianteParDefaut() {
-  if (!edition.varianteChoisie) choisirVariante(edition.usage === "pratiquer" ? "htdemucs_ft" : "htdemucs");
+  if (!edition.varianteChoisie) choisirVariante(edition.usage === "pratiquer" ? "bsrofo_sw" : "htdemucs");
 }
 
 document.querySelectorAll("[data-variante]").forEach((b) =>
