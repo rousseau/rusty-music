@@ -34,6 +34,8 @@ pub const BANDES: [usize; 62] = [
 
 /// Nom du fichier de poids de SW, tel que publié.
 pub const FICHIER_SW: &str = "BS-Rofo-SW-Fixed.ckpt";
+/// Son empreinte (`scripts/preparer-roformer.sh`, `FractalSurfer/BS-RoFormer-SW-6stem`).
+pub const SHA256_SW: &str = "24e7d35ee9c64415673d3fd33e06a67cac2c103c5df6267ba1576459c775916e";
 
 /// Architecture et réglages d'inférence d'un modèle publié (son `.yaml`).
 #[derive(Debug, Clone, PartialEq)]
@@ -224,6 +226,7 @@ impl<B: Backend> Roformer<B> {
         let total = longueur.div_ceil(pas);
         let mut i = 0;
         let mut fait = 0;
+        avancer(0, total);
         while i < longueur {
             let fin = (i + taille).min(longueur);
             let lu = fin - i;

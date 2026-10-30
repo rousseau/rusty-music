@@ -95,11 +95,11 @@ fn attendre<F: Future>(futur: F) -> F::Output {
     }
 }
 
-/// Les variantes de HTDemucs disponibles.
+/// Les variantes de démixage disponibles : trois HTDemucs, et BS-RoFormer.
 ///
 /// Le défaut est [`Variante::Standard`] : c'est le meilleur rapport
-/// qualité/temps, et les deux autres ont chacune une contrepartie que la
-/// documentation amont assume.
+/// qualité/temps, et les autres ont chacune une contrepartie que la
+/// documentation assume.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Variante {
     /// 84 Mo, un réseau généraliste, quatre stems. 7,8 × le temps réel.
@@ -112,7 +112,20 @@ pub enum Variante {
     /// Demucs recommande pour la qualité, et environ quatre fois plus lente
     /// puisqu'il faut faire tourner les quatre.
     Affinee,
+    /// 699 Mo, BS-RoFormer « SW », six stems. Le meilleur au banc
+    /// (`experiments/roformer/README.md` : +2,4 dB sur la batterie, basse
+    /// transcrite nettement plus juste), et le plus lent. **Licence non
+    /// déclarée, auteur inconnu** : téléchargé à la source, jamais
+    /// redistribué (`docs/module3-roformer.md`).
+    RoformerSw,
 }
+
+/// Les stems de SW, dans l'ordre de ses têtes de masque.
+const STEMS_SW: [StemId; 6] = [StemId::Bass, StemId::Drums, StemId::Other, StemId::Vocals, StemId::Guitar, StemId::Piano];
+
+/// Source des poids de SW — le miroir qui a pris le relais du dépôt
+/// d'origine supprimé, à une révision épinglée (`scripts/preparer-roformer.sh`).
+const URL_SW: &str = "https://huggingface.co/enerjazzer/BS-ROFO-SW-Fixed/resolve/a443a2985534b3bc815ef54a5d446c6a0390f974/BS-Rofo-SW-Fixed.ckpt";
 
 /// Dépôt des poids safetensors — voir [`Variante::url`].
 const DEPOT_POIDS: &str = "https://huggingface.co/set-soft/audio_separation/resolve/main/Demucs";
@@ -124,6 +137,7 @@ impl Variante {
             Variante::Standard => metadata::HTDEMUCS_ID,
             Variante::SixStems => metadata::HTDEMUCS_6S_ID,
             Variante::Affinee => metadata::HTDEMUCS_FT_ID,
+            Variante::RoformerSw => "bsrofo_sw",
         }
     }
 
@@ -132,8 +146,14 @@ impl Variante {
             metadata::HTDEMUCS_ID => Some(Variante::Standard),
             metadata::HTDEMUCS_6S_ID => Some(Variante::SixStems),
             metadata::HTDEMUCS_FT_ID => Some(Variante::Affinee),
+            "bsrofo_sw" => Some(Variante::RoformerSw),
             _ => None,
         }
+    }
+
+    /// Une variante de HTDemucs ? (Les autres ne passent pas par `demucs-core`.)
+    pub fn htdemucs(self) -> bool {
+        self != Variante::RoformerSw
     }
 
     fn infos(self) -> &'static ModelInfo {
@@ -141,12 +161,16 @@ impl Variante {
             Variante::Standard => &metadata::HTDEMUCS,
             Variante::SixStems => &metadata::HTDEMUCS_6S,
             Variante::Affinee => &metadata::HTDEMUCS_FT,
+            Variante::RoformerSw => unreachable!("BS-RoFormer n'a pas de métadonnées demucs-core"),
         }
     }
 
     /// Nom du fichier de poids attendu dans `models/`.
     pub fn fichier(self) -> &'static str {
-        self.infos().filename
+        match self {
+            Variante::RoformerSw => roformer::FICHIER_SW,
+            _ => self.infos().filename,
+        }
     }
 
     /// Taille exacte du fichier de poids, en octets — celle que sert le dépôt
@@ -157,6 +181,7 @@ impl Variante {
             Variante::Standard => 84_030_696,
             Variante::SixStems => 54_890_960,
             Variante::Affinee => 336_125_008,
+            Variante::RoformerSw => 699_412_152,
         }
     }
 
@@ -169,7 +194,10 @@ impl Variante {
     /// redistribués par set-soft — la source de `scripts/preparer-demucs.sh`
     /// et de `demucs-rs`.
     pub fn url(self) -> String {
-        format!("{DEPOT_POIDS}/{}", self.fichier())
+        match self {
+            Variante::RoformerSw => URL_SW.into(),
+            _ => format!("{DEPOT_POIDS}/{}", self.fichier()),
+        }
     }
 
     /// Empreinte SHA-256 connue du dépôt — même valeur que
@@ -184,6 +212,7 @@ impl Variante {
             Variante::Standard => {
                 Some("8193504cdfb3943adaf039b8acb524a46e87ebf232c383ac7a32c80a6578423e")
             }
+            Variante::RoformerSw => Some(roformer::SHA256_SW),
             Variante::SixStems | Variante::Affinee => None,
         }
     }
@@ -195,7 +224,18 @@ impl Variante {
 
     /// Les stems que cette variante produit.
     pub fn stems(self) -> &'static [StemId] {
-        self.infos().stems
+        match self {
+            Variante::RoformerSw => &STEMS_SW,
+            _ => self.infos().stems,
+        }
+    }
+
+    /// Script qui prépare ses poids à la main.
+    fn script(self) -> String {
+        match self {
+            Variante::RoformerSw => "./scripts/preparer-roformer.sh".into(),
+            _ => format!("./scripts/preparer-demucs.sh {}", self.nom()),
+        }
     }
 
     fn options(self) -> ModelOptions {
@@ -205,6 +245,7 @@ impl Variante {
             // Les quatre sous-modèles, donc les quatre stems : demander moins
             // n'économiserait rien puisqu'il faut de toute façon les charger.
             Variante::Affinee => ModelOptions::FineTuned(metadata::HTDEMUCS_FT.stems.to_vec()),
+            Variante::RoformerSw => unreachable!("BS-RoFormer ne passe pas par demucs-core"),
         }
     }
 }
@@ -288,9 +329,15 @@ fn ecrire_pistes(entree: &Path, dossier: &Path, pistes: &[Piste]) -> Result<Vec<
     Ok(ecrits)
 }
 
+/// Le réseau chargé : HTDemucs par `demucs-core`, ou notre BS-RoFormer.
+enum Modele {
+    Demucs(Demucs<Moteur>),
+    Roformer(Box<roformer::Roformer<Moteur>>),
+}
+
 /// Le démixeur, modèle chargé en mémoire.
 pub struct Demixeur {
-    modele: Demucs<Moteur>,
+    modele: Modele,
     variante: Variante,
 }
 
@@ -342,14 +389,20 @@ impl Demixeur {
         };
         if !poids.is_file() {
             return Err(Error::PoidsAbsents(format!(
-                "{}\n  ./scripts/preparer-demucs.sh {}",
+                "{}\n  {}",
                 rusty_music_core::modeles::introuvable(variante.fichier()),
-                variante.nom()
+                variante.script()
             )));
         }
-        let octets = std::fs::read(&poids)?;
-        let modele = Demucs::<Moteur>::from_bytes(variante.options(), &octets, Default::default())
-            .map_err(|e| Error::Modele(e.to_string()))?;
+        let modele = if variante.htdemucs() {
+            let octets = std::fs::read(&poids)?;
+            Modele::Demucs(
+                Demucs::<Moteur>::from_bytes(variante.options(), &octets, Default::default())
+                    .map_err(|e| Error::Modele(e.to_string()))?,
+            )
+        } else {
+            Modele::Roformer(Box::new(roformer::Roformer::charger(&poids, roformer::Config::sw(), &Default::default())?))
+        };
         Ok(Self { modele, variante })
     }
 
@@ -358,13 +411,29 @@ impl Demixeur {
     /// Sur GPU, la première inférence compile ses noyaux et fait tourner
     /// l'autotune : 4,5 s mesurées. Les payer ici, plutôt que sur le premier
     /// morceau, rend les mesures suivantes lisibles.
+    ///
+    /// Pas pour BS-RoFormer : ses noyaux dépendent de la taille fixe d'un
+    /// segment, la chauffe coûterait un segment entier (5 à 10 s) sans rien
+    /// épargner au premier.
     pub fn chauffer(&self) {
-        attendre(self.modele.warmup());
+        if let Modele::Demucs(m) = &self.modele {
+            attendre(m.warmup());
+        }
+    }
+
+    /// BS-RoFormer : les stems d'un morceau, `avancer(fait, total)` par segment.
+    fn separer_roformer(m: &roformer::Roformer<Moteur>, audio: &Stereo, avancer: impl FnMut(usize, usize)) -> Result<Vec<Piste>> {
+        let stems = m.separer(&audio.gauche, &audio.droite, avancer)?;
+        Ok(m.config().stems.iter().zip(stems).map(|(&nom, [gauche, droite])| Piste { nom, gauche, droite }).collect())
     }
 
     /// Sépare un morceau déjà décodé.
     pub fn separer(&self, audio: &Stereo) -> Result<Vec<Piste>> {
-        let stems = attendre(self.modele.separate(&audio.gauche, &audio.droite, SR))
+        let m = match &self.modele {
+            Modele::Demucs(m) => m,
+            Modele::Roformer(m) => return Self::separer_roformer(m, audio, |_, _| {}),
+        };
+        let stems = attendre(m.separate(&audio.gauche, &audio.droite, SR))
             .map_err(|e| Error::Modele(e.to_string()))?;
         Ok(stems
             .into_iter()
@@ -395,13 +464,25 @@ impl Demixeur {
             moteur()
         );
 
+        let m = match &self.modele {
+            Modele::Demucs(m) => m,
+            Modele::Roformer(m) => {
+                let mut etat = Progres::default();
+                let pistes = Self::separer_roformer(m, &audio, |fait, total| {
+                    etat.segments_faits = fait;
+                    etat.segments_total = total;
+                    progres(&etat);
+                })?;
+                return ecrire_pistes(entree, dossier, &pistes);
+            }
+        };
         let mut ecouteur = Ecouteur {
             rappel: &mut progres,
             etat: Progres::default(),
             stems: self.variante.stems(),
             affinee: self.variante == Variante::Affinee,
         };
-        let stems = attendre(self.modele.separate_with_listener(
+        let stems = attendre(m.separate_with_listener(
             &audio.gauche,
             &audio.droite,
             SR,
@@ -483,6 +564,14 @@ mod tests {
         assert_eq!(Variante::SixStems.stems().len(), 6);
         assert_eq!(Variante::Standard.stems().len(), 4);
         assert!(Variante::Affinee.megaoctets() > Variante::Standard.megaoctets());
+        // BS-RoFormer : le .ckpt d'origine, six stems, empreinte connue.
+        let sw = Variante::RoformerSw;
+        assert_eq!(Variante::analyser(sw.nom()), Some(sw));
+        assert!(!sw.htdemucs());
+        assert_eq!(sw.fichier(), "BS-Rofo-SW-Fixed.ckpt");
+        assert!(sw.url().ends_with(&format!("/{}", sw.fichier())));
+        assert_eq!(sw.stems().len(), 6);
+        assert!(sw.sha256().is_some());
         // L'adresse doit désigner le fichier que la recherche attend, sinon le
         // poids téléchargé ne serait jamais retrouvé.
         for v in [Variante::Standard, Variante::SixStems, Variante::Affinee] {

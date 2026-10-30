@@ -488,7 +488,8 @@ enum Cmd {
         /// Où écrire les stems
         #[arg(long, default_value = "./stems/")]
         out: PathBuf,
-        /// Variante : htdemucs (défaut) · htdemucs_6s · htdemucs_ft
+        /// Variante : htdemucs (défaut) · htdemucs_6s · htdemucs_ft ·
+        /// bsrofo_sw (BS-RoFormer 6 stems, `scripts/preparer-roformer.sh`)
         #[arg(long, default_value = "htdemucs")]
         modele: String,
         /// Dossier des poids. Par défaut : cherché près de l'exécutable,
@@ -2297,7 +2298,7 @@ fn main() -> Result<()> {
 
             let variante = rusty_music_editor::Variante::analyser(&modele).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "variante inconnue : « {modele} » — htdemucs, htdemucs_6s ou htdemucs_ft"
+                    "variante inconnue : « {modele} » — htdemucs, htdemucs_6s, htdemucs_ft ou bsrofo_sw"
                 )
             })?;
             let t = Instant::now();

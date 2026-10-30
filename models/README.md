@@ -10,7 +10,7 @@ fichier). Deux façons de le remplir :
 
 ou, pour reconstruire depuis les sources d'origine :
 `scripts/preparer-modele.sh`, `scripts/preparer-demucs.sh`,
-`scripts/preparer-aero.sh`.
+`scripts/preparer-aero.sh`, `scripts/preparer-roformer.sh`.
 
 Les fichiers téléchargés sont les *release assets* de la balise `modeles-v1`.
 
@@ -21,6 +21,7 @@ Les fichiers téléchargés sont les *release assets* de la balise `modeles-v1`.
 | `aero-11025-44100.onnx` | 148 Mo | `c1fbe1f9…8b6f339b` | générateur AERO (super-résolution), réseau seul | `crates/superres` (ONNX Runtime, à l'exécution) | voir `slp-rl/aero` |
 | `beat_this.onnx` + `beat_this_mel.onnx` | 83 Mo + 0,3 Mo | `5f810deb…70f02` / `fdd59e65…e3de9` | pulsation « Beat This! » : temps et premiers temps de mesure | `crates/editor` (`pulsation`, runtime `rten`) — **téléchargés au premier usage**, ou `scripts/preparer-beat-this.sh` | MIT — CPJKU / `beat-this-rs` |
 | `basic_pitch_nmp.onnx` | 0,2 Mo | `2c3c1d14…2c059a0ec` | transcription (Basic Pitch, Spotify) | `crates/transcription` (ONNX Runtime) — **téléchargé au premier usage** | Apache-2.0 — `spotify/basic-pitch` |
+| `BS-Rofo-SW-Fixed.ckpt` | 699 Mo | `24e7d35e…c775916e` | démixage BS-RoFormer « SW », 6 stems (le `.ckpt` d'origine, lu tel quel) | `crates/editor::roformer` (Burn) — **téléchargé au premier usage**, ou `scripts/preparer-roformer.sh` ; jamais dans les *release assets* | **non déclarée** — auteur inconnu, ne pas redistribuer |
 | `adtof_frame_rnn.onnx` | 1,8 Mo | `5efc8bab…e8df8293d` | transcription de la batterie (ADTOF « Frame_RNN ») | `crates/transcription::batterie` (ONNX Runtime) — `scripts/preparer-adtof.sh` | CC BY-NC-SA 4.0 — `MZehren/ADTOF` |
 
 Remerciements, articles et liens de tous les modèles : `MODELES.md` à la racine.
@@ -28,7 +29,8 @@ Remerciements, articles et liens de tous les modèles : `MODELES.md` à la racin
 La licence des poids est **distincte** de celle du code (GPL-3.0-or-later).
 
 **Les variantes de démixage supplémentaires se téléchargent toutes seules.** Dans
-l'application, choisir « 6 stems » (55 Mo) ou « 4 stems affinés » (336 Mo) puis
+l'application, choisir « 6 stems » (55 Mo), « 4 stems affinés » (336 Mo) ou
+« 6 stems RoFormer » (699 Mo, provenance inconnue, signalée au choix) puis
 « Séparer » récupère les poids manquants avant de séparer — message et barre de
 progression dans le rail, une seule fois. Ils sont rangés dans les données de
 l'application (`~/Library/Application Support/fm.rustymusic.desktop/models/` sur

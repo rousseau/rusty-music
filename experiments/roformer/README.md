@@ -48,7 +48,7 @@ part de ceux de HTDemucs 6s.
 ### SDR sur MedleyDB (`medleydb-demix`, 30 oct. 2026)
 
 100 morceaux retenus (ajustement des stems au mélange ≥ 12 dB), SDR global
-du MDX, médiane par source. `bsrofo_musdb` et `scnet_xl_ihf` : à venir.
+du MDX, médiane par source. `scnet_xl_ihf` : à venir.
 Journal : `$RUSTY_DEV/banc-jeux/roformer/demix-sw.log`.
 
 | | basse V1 | basse V2 | batterie V1 | batterie V2 | voix V1 | voix V2 |
@@ -58,6 +58,7 @@ Journal : `$RUSTY_DEV/banc-jeux/roformer/demix-sw.log`.
 | `htdemucs_ft` | 10,79 | 2,88 | 8,34 | 7,40 | 11,57 | 7,65 |
 | `htdemucs_6s` | 9,59 | 1,91 | 6,91 | 6,77 | 10,66 | 6,86 |
 | **`bsrofo_sw`** | **13,43** | **4,41** | **11,61** | **10,50** | **13,66** | **11,97** |
+| `bsrofo_musdb` | 11,46 | 2,69 | 9,82 | 9,05 | 13,73 | 10,41 |
 
 Différence appariée SW − `htdemucs_ft`, morceau par morceau (médiane,
 morceaux où SW gagne) :
@@ -76,6 +77,11 @@ Lecture :
 - **Le seuil est franchi sur la batterie V2** (+2,4 dB apparié, 21 morceaux
   sur 24), et la voix suit (+2,8 dB, 15 sur 15). V2 n'est dans aucun jeu
   public ; mais rien n'exclut que SW l'ait vu (provenance inconnue).
+- **L'architecture compte, pas seulement les données inconnues** :
+  `bsrofo_musdb`, appris sur les 100 morceaux de MUSDB18HQ seuls, bat déjà
+  `htdemucs_ft` sur V2 en batterie (+1,6 dB) et en voix (+2,8 dB), mais pas
+  en basse (−0,2 dB). C'est un repli de provenance connue si SW devait
+  être écarté — sans le gain sur la basse.
 - **Sur la basse V2, le gain est fragile** : +1,5 dB d'écart entre médianes,
   mais seulement +0,5 dB apparié, 13 morceaux sur 21. La basse de V2 est
   surtout de la contrebasse classique et jazz, où tous les modèles sont
