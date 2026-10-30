@@ -70,6 +70,14 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0368", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0369", reason = "zip::extract non appelé (burn-store lit seulement)" },
+    # zstd 0.13 / zstd-safe 7, tirés par le même zip 8.6 (correctif en
+    # zstd ≥ 0.14, que zip 8 n'accepte pas). Ils ne servent qu'aux entrées
+    # compressées en zstd ; les `.pt`/`.ckpt` que lit burn-store sortent de
+    # `torch.save`, qui les stocke sans compression, et leur empreinte est
+    # vérifiée avant lecture. À retirer avec les trois précédents.
+    { id = "RUSTSEC-2026-0391", reason = "zstd via zip 8 : archives PyTorch non compressées" },
+    { id = "RUSTSEC-2026-0398", reason = "zstd via zip 8 : archives PyTorch non compressées" },
+    { id = "RUSTSEC-2026-0403", reason = "zstd via zip 8 : archives PyTorch non compressées" },
 ]
 
 [sources]
