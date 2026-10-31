@@ -2289,3 +2289,32 @@ banc d'essai (lien trouvé, repli sur la recherche, bouton réactivé). **Pas vu
 dans l'app réelle** : ouverture effective dans le navigateur et justesse de la
 page sur une sortie très récente.
 
+
+## Assainissement du dépôt — 31 oct. 2026
+
+Chantier ouvert à la suite d'un audit (fonctionnellement abouti, couche
+applicative fragile) ; phases et ordre : `docs/suite.md`.
+
+### Point de départ — `scripts/verifier.sh`, mesuré avant toute modification
+
+Référence pour les phases suivantes. Commit `46675a9`, Apple M4 Pro
+(12 cœurs), rustc et cargo 1.98.1, cargo-deny 0.20.2, tous les modèles
+présents dans `models/`.
+
+| Étape | Résultat | Cache chaud | À froid |
+|---|---|---|---|
+| `deny` | passe : advisories, bans, licenses, sources ok ; 73 avertissements `duplicate` (deux versions ou plus d'un même crate, de `windows-*` à `hashbrown` ×6) | 2 s | — |
+| `clippy` (`--workspace --all-targets -D warnings`) | passe ; un avertissement hors lint : `block v0.1.6` sera refusé par une future version de Rust | 1 s | 119 s |
+| `test` (`--workspace`) | passe : **661 tests réussis, 0 échec, 17 ignorés**, sur 22 binaires de test et doctests | 8 s | 429 s* |
+
+\* Dossier cible vierge, mais lancé juste après le clippy à froid dans le même
+dossier : les scripts de build (dont la traduction des deux tours de CLAP par
+`burn-onnx`) étaient déjà faits. Un `cargo test` sur un clone neuf coûtera
+plus. Le dossier cible pèse 18 Go après ces deux commandes (27 Go pour celui
+du dépôt, qui sert aussi aux builds `release`).
+
+Ce que la vérification ne couvre pas aujourd'hui : rien ne compile sans les
+deux tours de CLAP dans `models/` (le script refuse de partir sans elles),
+aucune CI ne tourne (retirée le 17 oct.), et l'interface (`apps/desktop/ui/`)
+n'a aucun test automatique — `scripts/audit-interface.sh` contrôle la mise en
+page, pas le fonctionnement.
