@@ -15,6 +15,10 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 default = ["gpu"]
 gpu = ["burn/wgpu"]
 cpu = ["burn/ndarray"]
+# Compile sans les deux tours de CLAP (`models/*.onnx`) : encodeurs remplacés
+# par des bouchons qui refusent de se charger. Pour la CI et un clone neuf —
+# jamais pour une application qu'on distribue.
+sans-modeles = []
 
 [build-dependencies]
 burn-onnx.workspace = true

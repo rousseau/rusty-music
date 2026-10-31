@@ -21,9 +21,31 @@ use crate::{DIMS, MELS, TRAMES};
 
 /// Le code produit par `burn-onnx`. Généré, donc non conforme à nos usages de
 /// nommage : on ne le relit pas, on le régénère.
+#[cfg(not(feature = "sans-modeles"))]
 #[allow(clippy::all, dead_code, unused_variables, non_snake_case)]
 mod genere {
     include!(concat!(env!("OUT_DIR"), "/model/clap-audio-encoder-b5.rs"));
+}
+
+/// Bouchon de `--features sans-modeles` : même interface, aucun réseau. Les
+/// encodeurs refusent de se charger avant d'y toucher (`charger`).
+#[cfg(feature = "sans-modeles")]
+#[allow(dead_code)]
+mod genere {
+    use burn::prelude::*;
+
+    #[derive(Debug)]
+    pub struct Model<B: Backend>(core::marker::PhantomData<B>);
+
+    impl<B: Backend> Model<B> {
+        pub fn from_file<P: AsRef<std::path::Path>>(_: P, _: &B::Device) -> Self {
+            unreachable!("compilé sans modèles")
+        }
+
+        pub fn forward(&self, _: Tensor<B, 4>) -> Tensor<B, 2> {
+            unreachable!("compilé sans modèles")
+        }
+    }
 }
 
 /// Le backend, choisi à la compilation — c'est ainsi que Burn s'y prend.
@@ -86,6 +108,11 @@ impl Embedder {
     ///
     /// `threads` est ignoré : le parallélisme est celui du backend.
     pub fn charger(poids: Option<&Path>, _threads: usize) -> crate::Result<Self> {
+        if cfg!(feature = "sans-modeles") {
+            return Err(crate::Error::PoidsAbsents(
+                "compilé avec `--features sans-modeles`, sans encodeur CLAP".into(),
+            ));
+        }
         let trouve;
         let poids = match poids {
             Some(p) => p,

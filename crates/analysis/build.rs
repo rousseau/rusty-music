@@ -43,6 +43,16 @@ fn main() {
     println!("cargo:rerun-if-changed={}", TEXTE.onnx);
     println!("cargo:rerun-if-changed=build.rs");
 
+    // `--features sans-modeles` : pas de traduction, les encodeurs sont des
+    // bouchons (`encodeur.rs`). Les variables de chemin restent définies,
+    // vides, pour que `env!` compile.
+    if std::env::var_os("CARGO_FEATURE_SANS_MODELES").is_some() {
+        for m in [&AUDIO, &TEXTE] {
+            println!("cargo:rustc-env=RM_POIDS_{}=", variable(m.poids));
+        }
+        return;
+    }
+
     generer(&AUDIO);
     generer(&TEXTE);
 }

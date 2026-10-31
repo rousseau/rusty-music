@@ -40,9 +40,31 @@ const TOKENIZER_JSON: &[u8] =
 
 /// Le code produit par `burn-onnx`. Généré, donc non conforme à nos usages de
 /// nommage : on ne le relit pas, on le régénère.
+#[cfg(not(feature = "sans-modeles"))]
 #[allow(clippy::all, dead_code, unused_variables, non_snake_case)]
 mod genere {
     include!(concat!(env!("OUT_DIR"), "/model/clap-text-encoder.rs"));
+}
+
+/// Bouchon de `--features sans-modeles` : même interface, aucun réseau. Les
+/// encodeurs refusent de se charger avant d'y toucher (`charger`).
+#[cfg(feature = "sans-modeles")]
+#[allow(dead_code)]
+mod genere {
+    use burn::prelude::*;
+
+    #[derive(Debug)]
+    pub struct Model<B: Backend>(core::marker::PhantomData<B>);
+
+    impl<B: Backend> Model<B> {
+        pub fn from_file<P: AsRef<std::path::Path>>(_: P, _: &B::Device) -> Self {
+            unreachable!("compilé sans modèles")
+        }
+
+        pub fn forward(&self, _: Tensor<B, 2, Int>, _: Tensor<B, 2, Int>) -> Tensor<B, 2> {
+            unreachable!("compilé sans modèles")
+        }
+    }
 }
 
 /// Toujours CPU — voir la documentation de module.
@@ -80,6 +102,11 @@ impl EmbedderTexte {
     /// `rusty_music_core::modeles`. Le tokeniseur, lui, est embarqué dans le
     /// binaire ([`TOKENIZER_JSON`]), rien à en charger séparément.
     pub fn charger(poids: Option<&Path>) -> crate::Result<Self> {
+        if cfg!(feature = "sans-modeles") {
+            return Err(crate::Error::PoidsAbsents(
+                "compilé avec `--features sans-modeles`, sans encodeur CLAP".into(),
+            ));
+        }
         let trouve;
         let poids = match poids {
             Some(p) => p,
