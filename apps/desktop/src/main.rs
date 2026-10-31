@@ -39,6 +39,7 @@ mod editer;
 mod explorer;
 mod iphone;
 mod minuteur;
+mod passe;
 mod systeme;
 mod systeme_media;
 mod tuiles;
@@ -51,6 +52,7 @@ use decouvrir::*;
 use ecouter::*;
 use editer::*;
 use explorer::*;
+use passe::*;
 use systeme::*;
 use valise::*;
 
@@ -316,97 +318,6 @@ fn verrou<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Ce que toute struct `EtatXxx` de passe de fond expose à la garde
-/// anti-panique [`GardePasse`] : le signal d'avancement (`en_cours`) que
-/// l'interface sonde, et comment le clore proprement si la passe s'arrête
-/// autrement qu'en l'écrivant elle-même.
-trait EtatPasse {
-    fn en_cours(&self) -> bool;
-    /// Repositionne l'état comme si la passe avait échoué en interne —
-    /// appelé uniquement quand `en_cours` est encore vrai à la destruction de
-    /// la garde, c'est-à-dire seulement si le fil s'est arrêté (panique)
-    /// avant d'avoir écrit son résultat par le chemin normal.
-    fn marquer_echec_interne(&mut self);
-}
-
-/// Implémente [`EtatPasse`] pour les structs `EtatXxx` qui suivent toutes le
-/// même patron (`en_cours: bool`, `resultat: Option<String>`) — évite de
-/// répéter le même corps quinze fois.
-macro_rules! impl_etat_passe {
-    ($($t:ty),+ $(,)?) => {$(
-        impl EtatPasse for $t {
-            fn en_cours(&self) -> bool {
-                self.en_cours
-            }
-            fn marquer_echec_interne(&mut self) {
-                self.en_cours = false;
-                self.resultat = Some("échec : panique interne".to_string());
-            }
-        }
-    )+};
-}
-impl_etat_passe!(
-    EtatScan,
-    EtatAnalyse,
-    EtatDescripteurs,
-    EtatLoudness,
-    EtatVerifPochettes,
-    EtatPopularite,
-    EtatBio,
-    EtatCritiques,
-    EtatLastfm,
-    EtatDiscogsLiaison,
-    EtatDiscogsDump,
-    EtatDiscogsImport,
-    EtatDecouvrir,
-    EtatDemix,
-    EtatSuperres,
-    EtatEnrichissement,
-);
-impl_etat_passe!(EtatEnvoiValise, EtatRenouvellement);
-
-// `EtatTranspose` porte `erreur`, pas `resultat` — hors du patron commun,
-// implémentation à la main.
-impl EtatPasse for EtatTranspose {
-    fn en_cours(&self) -> bool {
-        self.en_cours
-    }
-    fn marquer_echec_interne(&mut self) {
-        self.en_cours = false;
-        self.erreur = Some("échec : panique interne".to_string());
-    }
-}
-
-/// Posée en tête d'un fil de passe de fond (juste après avoir récupéré
-/// `etat`) : si le fil se termine — panique comprise — sans avoir écrit son
-/// résultat par le chemin normal, `en_cours` redescend quand même à `false`
-/// avec un résultat par défaut. Sans elle, une panique dans le travail
-/// (décodage, inférence…) laissait la passe « en cours » à vie côté
-/// interface, `start_*` refusant tout relancement jusqu'au redémarrage.
-///
-/// Silencieuse sur le chemin normal : celui-ci écrit déjà `en_cours = false`
-/// avant que le fil ne se termine, donc `en_cours()` rend faux à la
-/// destruction et la garde ne fait rien.
-struct GardePasse<'a, T: EtatPasse> {
-    etat: &'a Mutex<T>,
-}
-
-impl<'a, T: EtatPasse> GardePasse<'a, T> {
-    fn nouvelle(etat: &'a Mutex<T>) -> Self {
-        Self { etat }
-    }
-}
-
-impl<T: EtatPasse> Drop for GardePasse<'_, T> {
-    fn drop(&mut self) {
-        let mut g = verrou(self.etat);
-        if g.en_cours() {
-            g.marquer_echec_interne();
-            tracing::warn!("passe de fond interrompue par une panique interne");
-        }
-    }
-}
-
 /// Décharge `cache.valeur` si `cache.touche` indique plus de
 /// [`SEUIL_EVICTION_POIDS`] d'inactivité — appelé périodiquement par le fil
 /// d'éviction lancé dans `main`. Le prochain usage recharge simplement depuis
@@ -452,14 +363,13 @@ struct AccrochageVoirie {
 
 /// Avancement du scan en cours, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
-struct EtatScan {
-    en_cours: bool,
+struct AvancementScan {
     racine: String,
     /// Morceaux en base : seule mesure d'avancement disponible, le scan ne
     /// rend son rapport qu'à la fin.
     morceaux: i64,
-    resultat: Option<String>,
 }
+type EtatScan = Passe<AvancementScan>;
 
 /// Les erreurs du moteur ne traversent pas l'IPC : on les rend en texte.
 fn echec(e: impl std::fmt::Display) -> String {
@@ -797,8 +707,10 @@ fn main() {
                         } else {
                             *s = EtatScan {
                                 en_cours: true,
-                                racine: r.path.clone(),
-                                morceaux: 0,
+                                avancement: AvancementScan {
+                                    racine: r.path.clone(),
+                                    morceaux: 0,
+                                },
                                 resultat: None,
                             };
                             false
@@ -1159,47 +1071,5 @@ mod tests {
         let cache: Mutex<Cache<i32>> = Mutex::new(Cache::default());
         liberer_si_inactif(&cache, "essai");
         assert_eq!(verrou(&cache).valeur, None);
-    }
-
-    /// Une panique survenue pendant qu'une `GardePasse` est en vie doit
-    /// laisser `en_cours` à `false` et un résultat posé — sans quoi la passe
-    /// resterait « en cours » à vie côté interface. Le chemin normal (pas de
-    /// panique) doit rester sans effet, la garde restant silencieuse.
-    #[test]
-    fn garde_passe_cloture_en_cours_apres_une_panique() {
-        let etat = Mutex::new(EtatScan {
-            en_cours: true,
-            ..Default::default()
-        });
-        let issue = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _garde = GardePasse::nouvelle(&etat);
-            panic!("simulation d'un décodage qui tourne mal");
-        }));
-        assert!(issue.is_err(), "la panique doit bien traverser le test");
-        let s = verrou(&etat);
-        assert!(
-            !s.en_cours,
-            "la garde doit clore la passe malgré la panique"
-        );
-        assert_eq!(s.resultat.as_deref(), Some("échec : panique interne"));
-    }
-
-    /// Sur le chemin normal, la garde ne doit rien écraser : le résultat posé
-    /// explicitement avant sa destruction doit survivre.
-    #[test]
-    fn garde_passe_silencieuse_sur_le_chemin_normal() {
-        let etat = Mutex::new(EtatScan {
-            en_cours: true,
-            ..Default::default()
-        });
-        {
-            let _garde = GardePasse::nouvelle(&etat);
-            let mut s = verrou(&etat);
-            s.en_cours = false;
-            s.resultat = Some("terminé normalement".to_string());
-        }
-        let s = verrou(&etat);
-        assert!(!s.en_cours);
-        assert_eq!(s.resultat.as_deref(), Some("terminé normalement"));
     }
 }

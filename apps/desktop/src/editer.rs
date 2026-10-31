@@ -6,30 +6,29 @@ use super::*;
 
 /// Avancement du démixage, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatDemix {
-    pub(crate) en_cours: bool,
+pub(crate) struct AvancementDemix {
     /// Le morceau en cours de traitement, pour que l'interface sache si les
     /// stems affichés sont bien les siens.
-    source: String,
+    pub(crate) source: String,
     /// Où en est le travail : « telechargement » (poids de la variante absents,
     /// récupérés d'abord) puis « separation ». Vide hors traitement.
-    phase: String,
+    pub(crate) phase: String,
     /// Téléchargement des poids : octets reçus et attendus (taille connue
     /// d'avance, la barre est donc toujours graduée).
-    octets_faits: u64,
-    octets_total: u64,
+    pub(crate) octets_faits: u64,
+    pub(crate) octets_total: u64,
     /// Segments audio traités et total, pour la barre de progression. `total`
     /// reste à zéro tant que le découpage n'est pas connu (décodage puis
     /// chauffe du modèle, ou morceau trop court pour être découpé) : la barre
     /// se montre alors indéterminée.
-    segments_faits: usize,
-    segments_total: usize,
+    pub(crate) segments_faits: usize,
+    pub(crate) segments_total: usize,
     /// Variante affinée : le stem dont le réseau tourne en ce moment.
-    stem: Option<String>,
+    pub(crate) stem: Option<String>,
     /// Stems produits : nom et chemin du WAV.
-    stems: Vec<(String, String)>,
-    pub(crate) resultat: Option<String>,
+    pub(crate) stems: Vec<(String, String)>,
 }
+pub(crate) type EtatDemix = Passe<AvancementDemix>;
 
 /// Où déposer les stems : à côté de la base, dans un sous-dossier par morceau.
 ///
@@ -165,6 +164,18 @@ pub(crate) struct EtatTranspose {
     /// Les chemins à jouer, une fois tout fini.
     stems: Vec<(String, String)>,
     pub(crate) erreur: Option<String>,
+}
+
+// `EtatTranspose` porte `erreur`, pas `resultat` — hors du patron commun,
+// implémentation à la main.
+impl EtatPasse for EtatTranspose {
+    fn en_cours(&self) -> bool {
+        self.en_cours
+    }
+    fn marquer_echec_interne(&mut self) {
+        self.en_cours = false;
+        self.erreur = Some("échec : panique interne".to_string());
+    }
 }
 
 /// Lance la transposition des stems **dans son fil**.
@@ -493,95 +504,89 @@ pub(crate) fn start_demix(
     }
     let variante = rusty_music_editor::Variante::analyser(&variant)
         .ok_or_else(|| format!("variante inconnue : {variant}"))?;
-    {
-        let mut d = verrou(&etat.demix);
-        if d.en_cours {
-            return Err("un démixage est déjà en cours".into());
-        }
-        *d = EtatDemix {
-            en_cours: true,
-            source: path.clone(),
-            ..Default::default()
-        };
-    }
-
     let sortie = dossier_stems(&etat, &source);
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.demix);
-
-        // Les poids de la variante manquent (la première fois, typiquement pour
-        // la variante affinée, 336 Mo) : on les télécharge, plutôt que de
-        // renvoyer l'utilisateur à un script. La phase et la progression sont
-        // posées **avant** la première réponse du serveur, pour que
-        // l'interface annonce le téléchargement tout de suite.
-        if !variante.presente() {
+    let depart = AvancementDemix {
+        source: path.clone(),
+        ..Default::default()
+    };
+    passe::lancer(
+        app,
+        |e| &e.demix,
+        "un démixage est déjà en cours",
+        depart,
+        move |etat| {
+            // Les poids de la variante manquent (la première fois, typiquement pour
+            // la variante affinée, 336 Mo) : on les télécharge, plutôt que de
+            // renvoyer l'utilisateur à un script. La phase et la progression sont
+            // posées **avant** la première réponse du serveur, pour que
+            // l'interface annonce le téléchargement tout de suite.
+            if !variante.presente() {
+                {
+                    let mut e = verrou(&etat.demix);
+                    e.avancement.phase = "telechargement".into();
+                    e.avancement.octets_total = variante.octets();
+                }
+            }
+            let poids = rusty_music_editor::Demixeur::assurer_poids(variante, |vus, total| {
+                let mut e = verrou(&etat.demix);
+                e.avancement.octets_faits = vus;
+                e.avancement.octets_total = total.unwrap_or_else(|| variante.octets());
+            });
             {
                 let mut e = verrou(&etat.demix);
-                e.phase = "telechargement".into();
-                e.octets_total = variante.octets();
+                e.avancement.phase = "separation".into();
+                e.avancement.octets_faits = 0;
+                e.avancement.octets_total = 0;
             }
-        }
-        let poids = rusty_music_editor::Demixeur::assurer_poids(variante, |vus, total| {
-            let mut e = verrou(&etat.demix);
-            e.octets_faits = vus;
-            e.octets_total = total.unwrap_or_else(|| variante.octets());
-        });
-        {
-            let mut e = verrou(&etat.demix);
-            e.phase = "separation".into();
-            e.octets_faits = 0;
-            e.octets_total = 0;
-        }
 
-        let issue = poids
-            .and_then(|_| rusty_music_editor::Demixeur::charger(None, variante))
-            .and_then(|d| {
-                d.chauffer();
-                d.separer_fichier_suivi(&source, &sortie, |p| {
-                    let mut e = verrou(&etat.demix);
-                    e.segments_faits = p.segments_faits;
-                    e.segments_total = p.segments_total;
-                    e.stem = p.stem.map(str::to_string);
-                })
-            });
-
-        let (stems, bilan) = match issue {
-            Ok(fichiers) => {
-                oublier_derives_des_stems(&sortie, &fichiers);
-                let noms: Vec<(String, String)> = fichiers
-                    .iter()
-                    .map(|f| {
-                        let nom = f
-                            .file_stem()
-                            .map(|s| {
-                                s.to_string_lossy()
-                                    .rsplit('—')
-                                    .next()
-                                    .unwrap_or("")
-                                    .trim()
-                                    .to_string()
-                            })
-                            .unwrap_or_default();
-                        (nom, f.display().to_string())
+            let issue = poids
+                .and_then(|_| rusty_music_editor::Demixeur::charger(None, variante))
+                .and_then(|d| {
+                    d.chauffer();
+                    d.separer_fichier_suivi(&source, &sortie, |p| {
+                        let mut e = verrou(&etat.demix);
+                        e.avancement.segments_faits = p.segments_faits;
+                        e.avancement.segments_total = p.segments_total;
+                        e.avancement.stem = p.stem.map(str::to_string);
                     })
-                    .collect();
-                let n = noms.len();
-                (noms, format!("{n} stems écrits"))
+                });
+
+            let (stems, bilan) = match issue {
+                Ok(fichiers) => {
+                    oublier_derives_des_stems(&sortie, &fichiers);
+                    let noms: Vec<(String, String)> = fichiers
+                        .iter()
+                        .map(|f| {
+                            let nom = f
+                                .file_stem()
+                                .map(|s| {
+                                    s.to_string_lossy()
+                                        .rsplit('—')
+                                        .next()
+                                        .unwrap_or("")
+                                        .trim()
+                                        .to_string()
+                                })
+                                .unwrap_or_default();
+                            (nom, f.display().to_string())
+                        })
+                        .collect();
+                    let n = noms.len();
+                    (noms, format!("{n} stems écrits"))
+                }
+                Err(e) => (Vec::new(), format!("échec : {e}")),
+            };
+            tracing::info!(%bilan, "démixage terminé");
+
+            {
+                let mut d = verrou(&etat.demix);
+                d.avancement.phase = String::new();
+                d.avancement.stem = None;
+                d.avancement.stems = stems;
             }
-            Err(e) => (Vec::new(), format!("échec : {e}")),
-        };
-        tracing::info!(%bilan, "démixage terminé");
-
-        let mut d = verrou(&etat.demix);
-        d.en_cours = false;
-        d.phase = String::new();
-        d.stem = None;
-        d.stems = stems;
-        d.resultat = Some(bilan);
-    });
-
-    Ok(())
+            bilan
+        },
+    )
 }
 
 /// Après un nouveau démixage, retire ce qui venait des stems précédents : un

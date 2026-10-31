@@ -129,31 +129,18 @@ pub(crate) fn dismiss_scan_failure(etat: State<Etat>, path: String) -> Result<()
 }
 
 /// Avancement de l'analyse en cours, sondé par l'interface.
-#[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatAnalyse {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatAnalyse = Passe<Compte>;
 
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatEnrichissement {
-    pub(crate) en_cours: bool,
-    artistes: usize,
-    total: usize,
-    avec_genre: usize,
-    pub(crate) resultat: Option<String>,
+#[derive(Clone, Default, serde::Serialize)]
+pub(crate) struct AvancementEnrichissement {
+    pub(crate) artistes: usize,
+    pub(crate) total: usize,
+    pub(crate) avec_genre: usize,
 }
+pub(crate) type EtatEnrichissement = Passe<AvancementEnrichissement>;
 
 /// Avancement de la passe de popularité générale, sondé par l'interface.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatPopularite {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatPopularite = Passe<Compte>;
 
 /// Lance le calcul des empreintes des morceaux en attente.
 ///
@@ -167,64 +154,52 @@ pub(crate) struct EtatPopularite {
 /// autorise un rédacteur et des lecteurs simultanés.
 #[tauri::command(async)]
 pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
-    {
-        let mut a = verrou(&etat.analyse);
-        if a.en_cours {
-            return Err("une analyse est déjà en cours".into());
-        }
-        *a = EtatAnalyse {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.analyse);
-
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|lib| {
-                let fils = fils_pour_passe(&lib);
-                rusty_music_analysis::passe::empreintes(
-                    &lib,
-                    None,
-                    i64::MAX,
-                    fils,
-                    |faits, total| {
-                        let mut a = verrou(&etat.analyse);
-                        a.faits = faits;
-                        a.total = total;
-                    },
-                )
+    passe::lancer(
+        app,
+        |e| &e.analyse,
+        "une analyse est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
-                // La projection doit suivre : sans elle les empreintes existent
-                // mais aucun point neuf n'apparaît sur la carte. t-SNE ne
-                // s'incrémente pas — il replace l'ensemble, en une trentaine de
-                // secondes.
-                .and_then(|r| {
-                    rusty_music_analysis::passe::projeter_tout(&lib, None)
-                        .map_err(|e| e.to_string())
-                        .map(|p| (r, p))
-                })
-            });
+                .and_then(|lib| {
+                    let fils = fils_pour_passe(&lib);
+                    rusty_music_analysis::passe::empreintes(
+                        &lib,
+                        None,
+                        i64::MAX,
+                        fils,
+                        |faits, total| {
+                            let mut a = verrou(&etat.analyse);
+                            a.avancement.faits = faits;
+                            a.avancement.total = total;
+                        },
+                    )
+                    .map_err(|e| e.to_string())
+                    // La projection doit suivre : sans elle les empreintes existent
+                    // mais aucun point neuf n'apparaît sur la carte. t-SNE ne
+                    // s'incrémente pas — il replace l'ensemble, en une trentaine de
+                    // secondes.
+                    .and_then(|r| {
+                        rusty_music_analysis::passe::projeter_tout(&lib, None)
+                            .map_err(|e| e.to_string())
+                            .map(|p| (r, p))
+                    })
+                });
 
-        let bilan = match issue {
-            Ok((r, p)) => format!(
-                "{} empreintes · {} en échec · {} points sur la carte",
-                r.empreintes, r.echecs, p.empreintes
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "analyse terminée");
+            let bilan = match issue {
+                Ok((r, p)) => format!(
+                    "{} empreintes · {} en échec · {} points sur la carte",
+                    r.empreintes, r.echecs, p.empreintes
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "analyse terminée");
 
-        let mut a = verrou(&etat.analyse);
-        a.en_cours = false;
-        a.resultat = Some(bilan);
-    });
-
-    Ok(())
+            bilan
+        },
+    )
 }
 
 /// Avancement de l'analyse. L'interface sonde, comme pour le scan.
@@ -234,13 +209,7 @@ pub(crate) fn analysis_state(etat: State<Etat>) -> Result<EtatAnalyse, String> {
 }
 
 /// Avancement de la mesure tempo/tonalité/énergie, sondé par l'interface.
-#[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatDescripteurs {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatDescripteurs = Passe<Compte>;
 
 /// Mesure tempo/tonalité/énergie des morceaux en attente — ou de tous,
 /// `force` effaçant d'abord ce qui est déjà mesuré.
@@ -257,52 +226,46 @@ pub(crate) fn start_descripteurs(
     force: Option<bool>,
 ) -> Result<(), String> {
     let force = force.unwrap_or(false);
-    {
-        let mut d = verrou(&etat.descripteurs);
-        if d.en_cours {
-            return Err("une mesure est déjà en cours".into());
-        }
-        *d = EtatDescripteurs {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.descripteurs);
-
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|lib| {
-                let fils = fils_pour_passe(&lib);
-                if force {
-                    lib.effacer_descripteurs().map_err(|e| e.to_string())?;
-                }
-                rusty_music_analysis::passe::descripteurs(&lib, i64::MAX, fils, |faits, total| {
-                    let mut d = verrou(&etat.descripteurs);
-                    d.faits = faits;
-                    d.total = total;
-                })
+    passe::lancer(
+        app,
+        |e| &e.descripteurs,
+        "une mesure est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
-            });
+                .and_then(|lib| {
+                    let fils = fils_pour_passe(&lib);
+                    if force {
+                        lib.effacer_descripteurs().map_err(|e| e.to_string())?;
+                    }
+                    rusty_music_analysis::passe::descripteurs(
+                        &lib,
+                        i64::MAX,
+                        fils,
+                        |faits, total| {
+                            let mut d = verrou(&etat.descripteurs);
+                            d.avancement.faits = faits;
+                            d.avancement.total = total;
+                        },
+                    )
+                    .map_err(|e| e.to_string())
+                });
 
-        let bilan = match issue {
-            Ok(r) => format!(
-                "{} mesurés · {} sans tempo · {} sans tonalité · {} en échec",
-                r.mesures, r.sans_tempo, r.sans_tonalite, r.echecs
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "mesure des descripteurs terminée");
+            let bilan = match issue {
+                Ok(r) => format!(
+                    "{} mesurés · {} sans tempo · {} sans tonalité · {} en échec",
+                    r.mesures, r.sans_tempo, r.sans_tonalite, r.echecs
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "mesure des descripteurs terminée");
 
-        let mut d = verrou(&etat.descripteurs);
-        d.en_cours = false;
-        d.resultat = Some(bilan);
-    });
-
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -322,13 +285,7 @@ pub(crate) struct ReglagesNormalisation {
 }
 
 /// Avancement de la passe de loudness EBU R128, sondé par l'interface.
-#[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatLoudness {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatLoudness = Passe<Compte>;
 
 /// Mesure la loudness EBU R128 (piste + album) des morceaux en attente — ou
 /// de tous, `force` effaçant d'abord ce qui est déjà mesuré. Même patron que
@@ -341,52 +298,41 @@ pub(crate) fn start_loudness(
     force: Option<bool>,
 ) -> Result<(), String> {
     let force = force.unwrap_or(false);
-    {
-        let mut l = verrou(&etat.loudness);
-        if l.en_cours {
-            return Err("une mesure est déjà en cours".into());
-        }
-        *l = EtatLoudness {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.loudness);
-
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|lib| {
-                let fils = fils_pour_passe(&lib);
-                if force {
-                    lib.effacer_loudness().map_err(|e| e.to_string())?;
-                }
-                rusty_music_core::loudness::actualiser(&lib, i64::MAX, fils, |faits, total| {
-                    let mut l = verrou(&etat.loudness);
-                    l.faits = faits;
-                    l.total = total;
-                })
+    passe::lancer(
+        app,
+        |e| &e.loudness,
+        "une mesure est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
-            });
+                .and_then(|lib| {
+                    let fils = fils_pour_passe(&lib);
+                    if force {
+                        lib.effacer_loudness().map_err(|e| e.to_string())?;
+                    }
+                    rusty_music_core::loudness::actualiser(&lib, i64::MAX, fils, |faits, total| {
+                        let mut l = verrou(&etat.loudness);
+                        l.avancement.faits = faits;
+                        l.avancement.total = total;
+                    })
+                    .map_err(|e| e.to_string())
+                });
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} mesurés · {} albums recalculés · {} en échec",
-                b.mesures, b.albums, b.echecs
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "mesure de loudness terminée");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} mesurés · {} albums recalculés · {} en échec",
+                    b.mesures, b.albums, b.echecs
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "mesure de loudness terminée");
 
-        let mut l = verrou(&etat.loudness);
-        l.en_cours = false;
-        l.resultat = Some(bilan);
-    });
-
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -395,13 +341,7 @@ pub(crate) fn loudness_state(etat: State<Etat>) -> Result<EtatLoudness, String> 
 }
 
 /// Avancement de la vérification des pochettes, sondé par l'interface.
-#[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatVerifPochettes {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatVerifPochettes = Passe<Compte>;
 
 /// Vérifie les pochettes des dossiers dont les fichiers ont changé — ou de
 /// tous, avec `force` (`rusty_music_core::pochettes_verif`). Même patron que
@@ -415,52 +355,46 @@ pub(crate) fn start_verif_pochettes(
     force: Option<bool>,
 ) -> Result<(), String> {
     let force = force.unwrap_or(false);
-    {
-        let mut v = verrou(&etat.verif_pochettes);
-        if v.en_cours {
-            return Err("une vérification des pochettes est déjà en cours".into());
-        }
-        *v = EtatVerifPochettes {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.verif_pochettes);
-
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|lib| {
-                let fils = fils_pour_passe(&lib);
-                rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |faits, total| {
-                    let mut v = verrou(&etat.verif_pochettes);
-                    v.faits = faits;
-                    v.total = total;
-                })
+    passe::lancer(
+        app,
+        |e| &e.verif_pochettes,
+        "une vérification des pochettes est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
-            });
+                .and_then(|lib| {
+                    let fils = fils_pour_passe(&lib);
+                    rusty_music_core::pochettes_verif::actualiser(
+                        &lib,
+                        fils,
+                        force,
+                        |faits, total| {
+                            let mut v = verrou(&etat.verif_pochettes);
+                            v.avancement.faits = faits;
+                            v.avancement.total = total;
+                        },
+                    )
+                    .map_err(|e| e.to_string())
+                });
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} dossiers vérifiés sur {} · {} pochette{} à examiner",
-                b.verifies,
-                b.dossiers,
-                b.suspectes,
-                if b.suspectes > 1 { "s" } else { "" }
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "vérification des pochettes terminée");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} dossiers vérifiés sur {} · {} pochette{} à examiner",
+                    b.verifies,
+                    b.dossiers,
+                    b.suspectes,
+                    if b.suspectes > 1 { "s" } else { "" }
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "vérification des pochettes terminée");
 
-        let mut v = verrou(&etat.verif_pochettes);
-        v.en_cours = false;
-        v.resultat = Some(bilan);
-    });
-
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -591,56 +525,43 @@ pub(crate) fn start_enrichment(
         // des refus deux heures durant.
         return Err("MusicBrainz demande une adresse de contact valable.".into());
     }
-    {
-        let mut e = verrou(&etat.enrichissement);
-        if e.en_cours {
-            return Err("un enrichissement est déjà en cours".into());
-        }
-        *e = EtatEnrichissement {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.enrichissement);
-        let client = rusty_music_core::musicbrainz::Client::new(&contact);
-        // Ouverture et passe dans un même bloc plutôt qu'en chaîne : la
-        // fermeture de progression emprunte `etat`, et l'imbriquer dans un
-        // `and_then` ferait vivre cet emprunt au-delà du fil.
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            let total = lib.mb_avancement().map(|(_, t, _)| t).unwrap_or(0) as usize;
-            {
-                let mut e = verrou(&etat.enrichissement);
-                e.total = total;
-            }
-            rusty_music_core::enrichir::enrichir(&mut lib, &client, usize::MAX, |b| {
-                let mut e = verrou(&etat.enrichissement);
-                e.artistes = b.artistes;
-                e.avec_genre = b.avec_genre;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.enrichissement,
+        "un enrichissement est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            // Ouverture et passe dans un même bloc plutôt qu'en chaîne : la
+            // fermeture de progression emprunte `etat`, et l'imbriquer dans un
+            // `and_then` ferait vivre cet emprunt au-delà du fil.
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                let total = lib.mb_avancement().map(|(_, t, _)| t).unwrap_or(0) as usize;
+                {
+                    let mut e = verrou(&etat.enrichissement);
+                    e.avancement.total = total;
+                }
+                rusty_music_core::enrichir::enrichir(&mut lib, &client, usize::MAX, |b| {
+                    let mut e = verrou(&etat.enrichissement);
+                    e.avancement.artistes = b.artistes;
+                    e.avancement.avec_genre = b.avec_genre;
+                })
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} artistes interrogés, {} avec un genre, {} albums",
-                b.artistes, b.avec_genre, b.albums
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        // Liaison nommée plutôt que verrou pris dans le `if let` : en queue de
-        // fermeture, le temporaire d'un `if let` vit jusqu'à la fin du bloc et
-        // survivrait donc à l'emprunt d'état dont il sort. Les liaisons, elles,
-        // se libèrent dans l'ordre inverse de leur déclaration.
-        let mut fin = verrou(&etat.enrichissement);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} artistes interrogés, {} avec un genre, {} albums",
+                    b.artistes, b.avec_genre, b.albums
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            bilan
+        },
+    )
 }
 
 /// Où en est l'aspiration des genres.
@@ -669,59 +590,56 @@ pub(crate) fn start_popularite(
     contact: String,
     rafraichir: bool,
 ) -> Result<(), String> {
-    {
-        let mut p = verrou(&etat.popularite);
-        if p.en_cours {
-            return Err("une passe de popularité est déjà en cours".into());
-        }
-        *p = EtatPopularite {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let db = etat.db.clone();
     let contact = contact.trim().to_string();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.popularite);
-        let lb = rusty_music_core::listenbrainz::Client::new(&contact);
-        let dz = rusty_music_core::deezer::Client::new();
-        // `depuis` : instant avant lequel une entité déjà interrogée redevient
-        // « à faire ». `0` (par défaut) ne rafraîchit rien.
-        let depuis = if rafraichir {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64 - POP_PEREMPTION_JOURS * 86_400)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::popularite::actualiser(&mut lib, &lb, &dz, depuis, usize::MAX, |b| {
-                let mut p = verrou(&etat.popularite);
-                p.faits = b.faits;
-                p.total = b.total;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.popularite,
+        "une passe de popularité est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+            let dz = rusty_music_core::deezer::Client::new();
+            // `depuis` : instant avant lequel une entité déjà interrogée redevient
+            // « à faire ». `0` (par défaut) ne rafraîchit rien.
+            let depuis = if rafraichir {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64 - POP_PEREMPTION_JOURS * 86_400)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::popularite::actualiser(
+                    &mut lib,
+                    &lb,
+                    &dz,
+                    depuis,
+                    usize::MAX,
+                    |b| {
+                        let mut p = verrou(&etat.popularite);
+                        p.avancement.faits = b.faits;
+                        p.avancement.total = b.total;
+                    },
+                )
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} enregistrements + {} albums (ListenBrainz), \
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} enregistrements + {} albums (ListenBrainz), \
                  {} / {} pistes retrouvées (Deezer), {} morceaux couverts",
-                b.lb_enregistrements, b.lb_albums, b.deezer_trouves, b.deezer, b.couverts
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "passe de popularité terminée");
+                    b.lb_enregistrements, b.lb_albums, b.deezer_trouves, b.deezer, b.couverts
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "passe de popularité terminée");
 
-        let mut fin = verrou(&etat.popularite);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 /// Où en est la passe de popularité.
@@ -746,13 +664,7 @@ pub(crate) fn popularite_fraicheur(
 }
 
 /// Avancement de la passe de biographies TheAudioDB, sondé par l'interface.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatBio {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatBio = Passe<Compte>;
 
 /// Lance la passe de biographies (TheAudioDB).
 ///
@@ -767,46 +679,36 @@ pub(crate) fn start_biographies(
     etat: State<Etat>,
     cle: Option<String>,
 ) -> Result<(), String> {
-    {
-        let mut b = verrou(&etat.biographies);
-        if b.en_cours {
-            return Err("une passe de biographies est déjà en cours".into());
-        }
-        *b = EtatBio {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.biographies);
-        let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::biographies::actualiser(&mut lib, &client, 0, usize::MAX, |b| {
-                let mut e = verrou(&etat.biographies);
-                e.faits = b.faits;
-                e.total = b.total;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.biographies,
+        "une passe de biographies est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::biographies::actualiser(&mut lib, &client, 0, usize::MAX, |b| {
+                    let mut e = verrou(&etat.biographies);
+                    e.avancement.faits = b.faits;
+                    e.avancement.total = b.total;
+                })
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} artistes interrogés, {} avec une biographie",
-                b.interroges, b.trouves
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "passe de biographies terminée");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} artistes interrogés, {} avec une biographie",
+                    b.interroges, b.trouves
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "passe de biographies terminée");
 
-        let mut fin = verrou(&etat.biographies);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -826,13 +728,7 @@ pub(crate) fn bio_artiste(
 }
 
 /// Avancement de la passe de critiques CritiqueBrainz, sondé par l'interface.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatCritiques {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatCritiques = Passe<Compte>;
 
 /// Au-delà de combien de jours une absence de critique redevient « à
 /// vérifier ». Une critique neuve reste rare : fenêtre plus longue que la
@@ -851,54 +747,50 @@ pub(crate) fn start_critiques(
     etat: State<Etat>,
     rafraichir: bool,
 ) -> Result<(), String> {
-    {
-        let mut c = verrou(&etat.critiques);
-        if c.en_cours {
-            return Err("une passe de critiques est déjà en cours".into());
-        }
-        *c = EtatCritiques {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.critiques);
-        let client = rusty_music_core::critiquebrainz::Client::new();
-        let depuis = if rafraichir {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64 - CRITIQUES_PEREMPTION_JOURS * 86_400)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
-                let mut e = verrou(&etat.critiques);
-                e.faits = b.faits;
-                e.total = b.total;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.critiques,
+        "une passe de critiques est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let client = rusty_music_core::critiquebrainz::Client::new();
+            let depuis = if rafraichir {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64 - CRITIQUES_PEREMPTION_JOURS * 86_400)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::critiques::actualiser(
+                    &mut lib,
+                    &client,
+                    depuis,
+                    usize::MAX,
+                    |b| {
+                        let mut e = verrou(&etat.critiques);
+                        e.avancement.faits = b.faits;
+                        e.avancement.total = b.total;
+                    },
+                )
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} albums interrogés, {} avec au moins une critique",
-                b.albums_interroges, b.albums_avec_critique
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "passe de critiques terminée");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} albums interrogés, {} avec au moins une critique",
+                    b.albums_interroges, b.albums_avec_critique
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "passe de critiques terminée");
 
-        let mut fin = verrou(&etat.critiques);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -926,13 +818,7 @@ pub(crate) fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<
 }
 
 /// Avancement de la passe de tags Last.fm, sondé par l'interface.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatLastfm {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    pub(crate) resultat: Option<String>,
-}
+pub(crate) type EtatLastfm = Passe<Compte>;
 
 /// Au-delà de combien de jours des tags redeviennent « à vérifier ».
 pub(crate) const LASTFM_PEREMPTION_JOURS: i64 = 180;
@@ -948,61 +834,57 @@ pub(crate) fn start_lastfm(
     cle: String,
     rafraichir: bool,
 ) -> Result<(), String> {
-    {
-        let mut e = verrou(&etat.lastfm);
-        if e.en_cours {
-            return Err("une passe Last.fm est déjà en cours".into());
-        }
-        *e = EtatLastfm {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.lastfm);
-        let client = rusty_music_core::lastfm::Client::new(cle);
-        let depuis = if rafraichir {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64 - LASTFM_PEREMPTION_JOURS * 86_400)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::lastfm_pass::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
-                let mut e = verrou(&etat.lastfm);
-                e.faits = b.faits;
-                e.total = b.total;
-            })
-            .map_err(|e| e.to_string())
-        })();
-
-        let bilan = match issue {
-            Ok(b) => {
-                let echecs = if b.echecs > 0 {
-                    format!(", {} à reprendre plus tard", b.echecs)
-                } else {
-                    String::new()
-                };
-                format!(
-                    "{} artistes interrogés, {} avec au moins un tag{echecs}",
-                    b.artistes_interroges, b.artistes_avec_tags
+    passe::lancer(
+        app,
+        |e| &e.lastfm,
+        "une passe Last.fm est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let client = rusty_music_core::lastfm::Client::new(cle);
+            let depuis = if rafraichir {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64 - LASTFM_PEREMPTION_JOURS * 86_400)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::lastfm_pass::actualiser(
+                    &mut lib,
+                    &client,
+                    depuis,
+                    usize::MAX,
+                    |b| {
+                        let mut e = verrou(&etat.lastfm);
+                        e.avancement.faits = b.faits;
+                        e.avancement.total = b.total;
+                    },
                 )
-            }
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "passe Last.fm terminée");
+                .map_err(|e| e.to_string())
+            })();
 
-        let mut fin = verrou(&etat.lastfm);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            let bilan = match issue {
+                Ok(b) => {
+                    let echecs = if b.echecs > 0 {
+                        format!(", {} à reprendre plus tard", b.echecs)
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "{} artistes interrogés, {} avec au moins un tag{echecs}",
+                        b.artistes_interroges, b.artistes_avec_tags
+                    )
+                }
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "passe Last.fm terminée");
+
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -1016,14 +898,13 @@ pub(crate) fn lastfm_state(etat: State<Etat>) -> Result<EtatLastfm, String> {
 /// déclencheur à l'import automatique qui suit une liaison utile — voir
 /// `importerDiscogsSiUtile` côté JS : inutile de relire les ~11 Go du dump
 /// (~10 min) si la liaison n'a rien trouvé de nouveau.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatDiscogsLiaison {
-    pub(crate) en_cours: bool,
-    faits: usize,
-    total: usize,
-    liees: usize,
-    pub(crate) resultat: Option<String>,
+#[derive(Clone, Default, serde::Serialize)]
+pub(crate) struct AvancementDiscogsLiaison {
+    pub(crate) faits: usize,
+    pub(crate) total: usize,
+    pub(crate) liees: usize,
 }
+pub(crate) type EtatDiscogsLiaison = Passe<AvancementDiscogsLiaison>;
 
 /// Lance la passe de liaison Discogs — retrouve l'édition Discogs de chaque
 /// édition MusicBrainz connue (`tracks.mb_release_id`) par la relation d'URL
@@ -1040,47 +921,38 @@ pub(crate) fn start_discogs_liaison(
     if !contact.contains('@') {
         return Err("MusicBrainz demande une adresse de contact valable.".into());
     }
-    {
-        let mut d = verrou(&etat.discogs_liaison);
-        if d.en_cours {
-            return Err("une passe de liaison Discogs est déjà en cours".into());
-        }
-        *d = EtatDiscogsLiaison {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.discogs_liaison);
-        let client = rusty_music_core::musicbrainz::Client::new(&contact);
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::discogs_import::lier(&mut lib, &client, usize::MAX, |b| {
-                let mut e = verrou(&etat.discogs_liaison);
-                e.faits = b.faits;
-                e.total = b.total;
-                e.liees = b.liees;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.discogs_liaison,
+        "une passe de liaison Discogs est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::discogs_import::lier(&mut lib, &client, usize::MAX, |b| {
+                    let mut e = verrou(&etat.discogs_liaison);
+                    e.avancement.faits = b.faits;
+                    e.avancement.total = b.total;
+                    e.avancement.liees = b.liees;
+                })
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} éditions vérifiées, {} reliées à Discogs",
-                b.interrogees, b.liees
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "passe de liaison Discogs terminée");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} éditions vérifiées, {} reliées à Discogs",
+                    b.interrogees, b.liees
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "passe de liaison Discogs terminée");
 
-        let mut fin = verrou(&etat.discogs_liaison);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -1097,13 +969,12 @@ pub(crate) fn chemin_dump_discogs(etat: &Etat) -> PathBuf {
 }
 
 /// Avancement du téléchargement du dump Discogs, sondé par l'interface.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatDiscogsDump {
-    pub(crate) en_cours: bool,
-    octets: u64,
-    total: Option<u64>,
-    pub(crate) resultat: Option<String>,
+#[derive(Clone, Default, serde::Serialize)]
+pub(crate) struct AvancementDiscogsDump {
+    pub(crate) octets: u64,
+    pub(crate) total: Option<u64>,
 }
+pub(crate) type EtatDiscogsDump = Passe<AvancementDiscogsDump>;
 
 /// Ce que dit le fichier déjà sur le disque, sans rien télécharger : sa
 /// taille et la date de dernière écriture (= dernier téléchargement réussi).
@@ -1136,42 +1007,34 @@ pub(crate) fn discogs_dump_info(etat: State<Etat>) -> Result<Option<DumpDiscogsI
 /// Go) — remplace un fichier déjà là s'il y en avait un.
 #[tauri::command(async)]
 pub(crate) fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
-    {
-        let mut d = verrou(&etat.discogs_dump);
-        if d.en_cours {
-            return Err("un téléchargement du dump Discogs est déjà en cours".into());
-        }
-        *d = EtatDiscogsDump {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
-
     let chemin = chemin_dump_discogs(&etat);
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.discogs_dump);
-        let issue =
-            rusty_music_core::discogs_import::telecharger_dernier_dump(&chemin, |vus, total| {
-                let mut d = verrou(&etat.discogs_dump);
-                d.octets = vus;
-                d.total = total;
-            });
+    passe::lancer(
+        app,
+        |e| &e.discogs_dump,
+        "un téléchargement du dump Discogs est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = rusty_music_core::discogs_import::telecharger_dernier_dump(
+                &chemin,
+                |vus, total| {
+                    let mut d = verrou(&etat.discogs_dump);
+                    d.avancement.octets = vus;
+                    d.avancement.total = total;
+                },
+            );
 
-        let bilan = match issue {
-            Ok(()) => {
-                let go = std::fs::metadata(&chemin).map(|m| m.len()).unwrap_or(0) as f64 / 1e9;
-                format!("dump téléchargé — {go:.1} Go")
-            }
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "téléchargement du dump Discogs terminé");
+            let bilan = match issue {
+                Ok(()) => {
+                    let go = std::fs::metadata(&chemin).map(|m| m.len()).unwrap_or(0) as f64 / 1e9;
+                    format!("dump téléchargé — {go:.1} Go")
+                }
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "téléchargement du dump Discogs terminé");
 
-        let mut fin = verrou(&etat.discogs_dump);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -1184,14 +1047,13 @@ pub(crate) fn discogs_dump_state(etat: State<Etat>) -> Result<EtatDiscogsDump, S
 /// d'éditions du dump concernent la bibliothèque ne se sait qu'en le
 /// parcourant) : `editions_vues` sert de seul repère de progression, comme
 /// le fait déjà `EtatScan::morceaux` pour un scan.
-#[derive(Default, Clone, serde::Serialize)]
-pub(crate) struct EtatDiscogsImport {
-    pub(crate) en_cours: bool,
-    editions_vues: u64,
-    editions_retenues: u64,
-    fragments_malformes: u64,
-    pub(crate) resultat: Option<String>,
+#[derive(Clone, Default, serde::Serialize)]
+pub(crate) struct AvancementDiscogsImport {
+    pub(crate) editions_vues: u64,
+    pub(crate) editions_retenues: u64,
+    pub(crate) fragments_malformes: u64,
 }
+pub(crate) type EtatDiscogsImport = Passe<AvancementDiscogsImport>;
 
 /// Extrait crédits et labels du dump déjà téléchargé (voir
 /// [`start_discogs_dump`]) vers `credits_discogs`/`labels_discogs`, pour les
@@ -1211,47 +1073,38 @@ pub(crate) fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> 
     if verrou(&etat.discogs_dump).en_cours {
         return Err("le téléchargement du dump est encore en cours".into());
     }
-    {
-        let mut i = verrou(&etat.discogs_import);
-        if i.en_cours {
-            return Err("un import du dump Discogs est déjà en cours".into());
-        }
-        *i = EtatDiscogsImport {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.discogs_import);
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|mut lib| {
-                rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
-                    let mut i = verrou(&etat.discogs_import);
-                    i.editions_vues = b.editions_vues;
-                    i.editions_retenues = b.editions_retenues;
-                    i.fragments_malformes = b.fragments_malformes;
-                })
+    passe::lancer(
+        app,
+        |e| &e.discogs_import,
+        "un import du dump Discogs est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
-            });
+                .and_then(|mut lib| {
+                    rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
+                        let mut i = verrou(&etat.discogs_import);
+                        i.avancement.editions_vues = b.editions_vues;
+                        i.avancement.editions_retenues = b.editions_retenues;
+                        i.avancement.fragments_malformes = b.fragments_malformes;
+                    })
+                    .map_err(|e| e.to_string())
+                });
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} éditions parcourues, {} retenues, {} fragments illisibles ignorés",
-                b.editions_vues, b.editions_retenues, b.fragments_malformes
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "import du dump Discogs terminé");
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} éditions parcourues, {} retenues, {} fragments illisibles ignorés",
+                    b.editions_vues, b.editions_retenues, b.fragments_malformes
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "import du dump Discogs terminé");
 
-        let mut fin = verrou(&etat.discogs_import);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -1393,57 +1246,47 @@ pub(crate) fn start_scan(
     if !racine.is_dir() {
         return Err(format!("{path} n'est pas un dossier"));
     }
-    {
-        let mut s = verrou(&etat.scan);
-        if s.en_cours {
-            return Err("un scan est déjà en cours".into());
-        }
-        *s = EtatScan {
-            en_cours: true,
-            racine: path.clone(),
-            morceaux: 0,
-            resultat: None,
-        };
-    }
-
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        // Posée avant `scan_root_jobs`, pas après : c'est là qu'est le
-        // travail susceptible de paniquer (décodage des tags d'un fichier
-        // arbitraire), et la garde ne protège que ce qu'elle a vu commencer.
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.scan);
+    let depart = AvancementScan {
+        racine: path.clone(),
+        morceaux: 0,
+    };
+    // La garde de `lancer` est posée avant `scan_root_jobs` : c'est là qu'est
+    // le travail susceptible de paniquer (décodage des tags d'un fichier
+    // arbitraire), et la garde ne protège que ce qu'elle a vu commencer.
+    passe::lancer(
+        app,
+        |e| &e.scan,
+        "un scan est déjà en cours",
+        depart,
+        move |etat| {
+            let issue = Library::open(&db)
+                .map_err(|e| e.to_string())
+                .and_then(|lib| {
+                    let jobs = coeurs_arriere_plan();
+                    rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, force)
+                        .map_err(|e| e.to_string())
+                });
 
-        let issue = Library::open(&db)
-            .map_err(|e| e.to_string())
-            .and_then(|lib| {
-                let jobs = coeurs_arriere_plan();
-                rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, force)
-                    .map_err(|e| e.to_string())
-            });
+            let succes = issue.is_ok();
+            let bilan = match issue {
+                Ok(r) => format!(
+                    "{} vus · {} ingérés · {} inchangés · {} retirés · {} en échec",
+                    r.seen, r.inserted, r.skipped, r.removed, r.failed
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+            tracing::info!(%bilan, "scan terminé");
 
-        let succes = issue.is_ok();
-        let bilan = match issue {
-            Ok(r) => format!(
-                "{} vus · {} ingérés · {} inchangés · {} retirés · {} en échec",
-                r.seen, r.inserted, r.skipped, r.removed, r.failed
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        tracing::info!(%bilan, "scan terminé");
-
-        // Une racine qui vient d'être scannée avec succès — nouvelle ou déjà
-        // connue — doit être surveillée en continu ; `demarrer_surveillance`
-        // ne fait rien si elle l'est déjà.
-        if succes {
-            demarrer_surveillance(&etat, &racine);
-        }
-        let mut s = verrou(&etat.scan);
-        s.en_cours = false;
-        s.resultat = Some(bilan);
-    });
-
-    Ok(())
+            // Une racine qui vient d'être scannée avec succès — nouvelle ou déjà
+            // connue — doit être surveillée en continu ; `demarrer_surveillance`
+            // ne fait rien si elle l'est déjà.
+            if succes {
+                demarrer_surveillance(etat, &racine);
+            }
+            bilan
+        },
+    )
 }
 
 /// Avancement du scan. L'interface sonde, faute de rapport intermédiaire.
@@ -1453,7 +1296,7 @@ pub(crate) fn scan_state(etat: State<Etat>) -> Result<EtatScan, String> {
     if s.en_cours {
         // Le nombre de morceaux progresse pendant le scan : c'est la seule
         // mesure d'avancement qu'on puisse offrir sans instrumenter le cœur.
-        s.morceaux = verrou(&etat.lib).count().map_err(echec)?;
+        s.avancement.morceaux = verrou(&etat.lib).count().map_err(echec)?;
     }
     Ok(s)
 }

@@ -6,17 +6,16 @@ use super::*;
 
 /// Avancement d'une régénération HD (super-résolution), sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatSuperres {
-    pub(crate) en_cours: bool,
+pub(crate) struct AvancementSuperres {
     /// Le morceau traité, pour que l'interface sache si l'avancement est le sien.
-    source: String,
-    faits: usize,
-    total: usize,
+    pub(crate) source: String,
+    pub(crate) faits: usize,
+    pub(crate) total: usize,
     /// Téléchargement des poids au premier usage, en octets (0 / 0 sinon).
-    telecharges: u64,
-    a_telecharger: u64,
-    pub(crate) resultat: Option<String>,
+    pub(crate) telecharges: u64,
+    pub(crate) a_telecharger: u64,
 }
+pub(crate) type EtatSuperres = Passe<AvancementSuperres>;
 
 /// Régénère un morceau en haute résolution (AERO) — rendu hors ligne vers le
 /// cache `hd/`. Tourne dans son fil : ~30 s par minute d'audio stéréo, plus le
@@ -32,82 +31,73 @@ pub(crate) fn start_superres(
     if !source.is_file() {
         return Err(format!("{path} est introuvable"));
     }
-    {
-        let mut s = verrou(&etat.superres);
-        if s.en_cours {
-            return Err("une régénération est déjà en cours".into());
-        }
-        *s = EtatSuperres {
-            en_cours: true,
-            source: path.clone(),
-            ..Default::default()
-        };
-    }
     let cible = rusty_music_superres::chemin_cache(&etat.hd, &source);
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.superres);
-        let _ = std::fs::create_dir_all(&etat.hd);
-        rusty_music_superres::purger_anciens(&etat.hd);
+    let depart = AvancementSuperres {
+        source: path.clone(),
+        ..Default::default()
+    };
+    let deja = "une régénération est déjà en cours";
+    passe::lancer(
+        app,
+        |e| &e.superres,
+        deja,
+        depart,
+        move |etat| {
+            let _ = std::fs::create_dir_all(&etat.hd);
+            rusty_music_superres::purger_anciens(&etat.hd);
 
-        let progres = |faits: usize, total: usize| {
-            let mut s = verrou(&etat.superres);
-            s.faits = faits;
-            s.total = total;
-        };
+            let progres = |faits: usize, total: usize| {
+                let mut s = verrou(&etat.superres);
+                s.avancement.faits = faits;
+                s.avancement.total = total;
+            };
 
-        let issue = (|| -> Result<f32, String> {
-            let mut garde = verrou(&etat.superres_modele);
-            if garde.valeur.is_none() {
-                use rusty_music_superres as sr;
-                let modele_onnx = match rusty_music_core::modeles::trouver(sr::POIDS_FICHIER) {
-                    Some(p) => p,
-                    None => rusty_music_core::modeles::telecharger(
-                        sr::POIDS_FICHIER,
-                        sr::POIDS_URL,
-                        sr::POIDS_OCTETS,
-                        Some(sr::POIDS_SHA256),
-                        |recus, attendus| {
-                            let mut s = verrou(&etat.superres);
-                            s.telecharges = recus;
-                            s.a_telecharger = attendus.unwrap_or(sr::POIDS_OCTETS);
-                        },
-                    )
-                    .map_err(|e| format!("téléchargement du modèle : {e}"))?,
-                };
-                garde.valeur = Some(sr::Modele::charger(&modele_onnx).map_err(|e| e.to_string())?);
-            }
-            let modele = garde.valeur.as_mut().expect("modèle chargé");
-            let resultat = rusty_music_superres::regenerer(&source, &cible, modele, progres);
-            garde.touche = Some(Instant::now());
-            resultat.map_err(|e| e.to_string())
-        })();
+            let issue = (|| -> Result<f32, String> {
+                let mut garde = verrou(&etat.superres_modele);
+                if garde.valeur.is_none() {
+                    use rusty_music_superres as sr;
+                    let modele_onnx = match rusty_music_core::modeles::trouver(sr::POIDS_FICHIER) {
+                        Some(p) => p,
+                        None => rusty_music_core::modeles::telecharger(
+                            sr::POIDS_FICHIER,
+                            sr::POIDS_URL,
+                            sr::POIDS_OCTETS,
+                            Some(sr::POIDS_SHA256),
+                            |recus, attendus| {
+                                let mut s = verrou(&etat.superres);
+                                s.avancement.telecharges = recus;
+                                s.avancement.a_telecharger = attendus.unwrap_or(sr::POIDS_OCTETS);
+                            },
+                        )
+                        .map_err(|e| format!("téléchargement du modèle : {e}"))?,
+                    };
+                    garde.valeur =
+                        Some(sr::Modele::charger(&modele_onnx).map_err(|e| e.to_string())?);
+                }
+                let modele = garde.valeur.as_mut().expect("modèle chargé");
+                let resultat = rusty_music_superres::regenerer(&source, &cible, modele, progres);
+                garde.touche = Some(Instant::now());
+                resultat.map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            // Le spectre de la source est conservé (mélange HF), donc le HD ne
-            // peut pas ternir ; mais au-dessus de ~16 kHz de coupure il n'a
-            // presque rien à ajouter — autant le dire.
-            Ok(coupure) if coupure >= 16_000.0 => format!(
-                "régénéré, mais la source monte déjà à {} kHz — le HD n'ajoute presque rien",
-                (coupure / 1000.0).round() as i32
-            ),
-            Ok(_) => "régénéré en HD".to_string(),
-            Err(e) => {
-                let _ = std::fs::remove_file(&cible);
-                format!("échec : {e}")
-            }
-        };
-        tracing::info!(%bilan, source = %path, "régénération HD terminée");
-        {
-            let mut s = verrou(&etat.superres);
-            s.en_cours = false;
-            s.resultat = Some(bilan);
-        }
-        // Libère le handle `State` avant la fin de la fermeture, pour que
-        // l'emprunt du verrou ci-dessus se termine à temps (E0597 sinon).
-        let _ = etat;
-    });
-    Ok(())
+            let bilan = match issue {
+                // Le spectre de la source est conservé (mélange HF), donc le HD ne
+                // peut pas ternir ; mais au-dessus de ~16 kHz de coupure il n'a
+                // presque rien à ajouter — autant le dire.
+                Ok(coupure) if coupure >= 16_000.0 => format!(
+                    "régénéré, mais la source monte déjà à {} kHz — le HD n'ajoute presque rien",
+                    (coupure / 1000.0).round() as i32
+                ),
+                Ok(_) => "régénéré en HD".to_string(),
+                Err(e) => {
+                    let _ = std::fs::remove_file(&cible);
+                    format!("échec : {e}")
+                }
+            };
+            tracing::info!(%bilan, source = %path, "régénération HD terminée");
+            bilan
+        },
+    )
 }
 
 #[tauri::command(async)]

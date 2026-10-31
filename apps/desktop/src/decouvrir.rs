@@ -6,14 +6,13 @@ use super::*;
 /// Avancement de la passe du mode Découvrir, sondé par l'interface — comme
 /// `enrichment_state`.
 #[derive(Clone, Default, serde::Serialize)]
-pub(crate) struct EtatDecouvrir {
-    pub(crate) en_cours: bool,
-    artistes: usize,
-    total: usize,
-    sorties_neuves: usize,
-    voisins_neufs: usize,
-    pub(crate) resultat: Option<String>,
+pub(crate) struct AvancementDecouvrir {
+    pub(crate) artistes: usize,
+    pub(crate) total: usize,
+    pub(crate) sorties_neuves: usize,
+    pub(crate) voisins_neufs: usize,
 }
+pub(crate) type EtatDecouvrir = Passe<AvancementDecouvrir>;
 
 /// Le fil du mode Découvrir, tel que la base le tient.
 ///
@@ -174,46 +173,38 @@ pub(crate) fn start_decouvrir(
     if !contact.contains('@') {
         return Err("Une adresse de contact valable est demandée pour interroger les API.".into());
     }
-    {
-        let mut d = verrou(&etat.decouvrir);
-        if d.en_cours {
-            return Err("une actualisation est déjà en cours".into());
-        }
-        *d = EtatDecouvrir {
-            en_cours: true,
-            ..Default::default()
-        };
-    }
 
     let db = etat.db.clone();
-    std::thread::spawn(move || {
-        let etat = app.state::<Etat>();
-        let _garde = GardePasse::nouvelle(&etat.decouvrir);
-        let lb = rusty_music_core::listenbrainz::Client::new(&contact);
-        let issue = (|| {
-            let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-            rusty_music_core::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
-                let mut d = verrou(&etat.decouvrir);
-                d.artistes = b.artistes;
-                d.total = b.total;
-                d.sorties_neuves = b.sorties_neuves;
-                d.voisins_neufs = b.voisins_neufs;
-            })
-            .map_err(|e| e.to_string())
-        })();
+    passe::lancer(
+        app,
+        |e| &e.decouvrir,
+        "une actualisation est déjà en cours",
+        Default::default(),
+        move |etat| {
+            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+            let issue = (|| {
+                let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
+                rusty_music_core::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
+                    let mut d = verrou(&etat.decouvrir);
+                    d.avancement.artistes = b.artistes;
+                    d.avancement.total = b.total;
+                    d.avancement.sorties_neuves = b.sorties_neuves;
+                    d.avancement.voisins_neufs = b.voisins_neufs;
+                })
+                .map_err(|e| e.to_string())
+            })();
 
-        let bilan = match issue {
-            Ok(b) => format!(
-                "{} sorties neuves, {} voisins sur {} artistes",
-                b.sorties_neuves, b.voisins_neufs, b.artistes
-            ),
-            Err(e) => format!("échec : {e}"),
-        };
-        let mut fin = verrou(&etat.decouvrir);
-        fin.en_cours = false;
-        fin.resultat = Some(bilan);
-    });
-    Ok(())
+            let bilan = match issue {
+                Ok(b) => format!(
+                    "{} sorties neuves, {} voisins sur {} artistes",
+                    b.sorties_neuves, b.voisins_neufs, b.artistes
+                ),
+                Err(e) => format!("échec : {e}"),
+            };
+
+            bilan
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------
