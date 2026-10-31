@@ -175,6 +175,14 @@ depuis ONNX **ne touche pas leur chemin de code** — la preuve la plus utile de
 tout ce sondage. Somme des stems contre l'entrée : **SDR 35,6 dB**, là où leur
 propre test exige 20.
 
+> **Révisé le 31 oct. 2026** (`experiments/burn-metal/README.md`) : le RMS
+> ne suffisait pas. Échantillon par échantillon contre PyTorch, le
+> processeur est exact (70 dB d'écart sous le mélange) mais **wgpu/WGSL
+> s'écarte de 25 à 40 dB sur les trois variantes** — autre défaut que
+> celui du modèle importé d'ONNX, sans effet visible sur le SDR contre les
+> vrais stems. Compilé en `burn/metal` (MSL), htdemucs et htdemucs_ft
+> deviennent exacts ; htdemucs_6s reste faux (18-32 dB).
+
 ### La vitesse
 
 Pour 7,8 s d'audio :
