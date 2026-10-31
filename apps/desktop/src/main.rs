@@ -724,6 +724,10 @@ fn main() {
                         demarrer_surveillance(&etat, &racine);
                         continue;
                     }
+                    // Comme pour tout scan : une panique (tags d'un fichier
+                    // arbitraire) laisserait sinon le scan « en cours » jusqu'au
+                    // redémarrage, et « Scanner » refusé d'ici là.
+                    let _garde = GardePasse::nouvelle(&etat.scan);
                     let succes = match Library::open(&etat.db) {
                         Ok(lib) => {
                             let jobs = coeurs_arriere_plan();
