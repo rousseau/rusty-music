@@ -148,7 +148,15 @@ côté des trois HTDemucs, qui ne changent pas.
   batterie +2,4 dB (21 morceaux sur 24), voix +2,8 dB (15 sur 15), basse
   +0,5 dB (13 sur 21) ; guitare et piano très au-dessus de `htdemucs_6s`.
   Basse transcrite par MuScriptor : F1 0,649 → 0,837 sur Slakh, justesse
-  0,728 → 0,797 sur MedleyDB annoté.
+  0,728 → 0,797 sur MedleyDB annoté — mais l'essentiel de ce gain vient
+  de quitter `htdemucs_6s` : `htdemucs_ft` fait déjà 0,770 et 0,789. SW
+  reste premier sur tous les stems de V2 devant les deux témoins appris
+  sur MUSDB seul (SCNet XL deuxième, BS-RoFormer troisième). Sur la basse
+  transcrite de vraie musique (MedleyDB, pYIN), il n'a plus d'avance :
+  égal à `htdemucs_ft`, un peu derrière SCNet XL (trop gourmand en
+  mémoire pour l'application).
+- **Repli** si la provenance de SW devenait un obstacle : `htdemucs_ft`
+  pour pratiquer, pas `htdemucs_6s`.
 - **Où il sert** : variante par défaut du mode Éditer quand l'usage est
   *pratiquer* ; *créer* reste sur `htdemucs`, bien plus rapide.
 - **Provenance** : licence non déclarée, auteur et données inconnus. Le
@@ -159,6 +167,9 @@ côté des trois HTDemucs, qui ne changent pas.
   processeur et Metal contre MSST. Le risque Metal ne s'est pas réalisé.
 - **Coût** : 0,69 × le temps réel en WGSL sur un M4 Pro (environ 6 min
   pour un morceau de 4 min). La même chose compilée avec `burn/metal`
-  (MSL) va deux fois plus vite, avec la même parité : à décider pour toute
-  l'application, puisque HTDemucs, CLAP et MuScriptor en dépendraient
-  aussi.
+  (MSL) va deux fois plus vite, avec la même parité. Contre
+  `htdemucs_ft` (2,0 × le temps réel), SW coûte 2,9 fois plus en WGSL et
+  1,6 fois en MSL : le critère « au plus deux fois » n'est tenu qu'en
+  `burn/metal`. Bascule de toute l'application à décider : mesures par
+  réseau dans `experiments/roformer/README.md` (htdemucs plus fidèle en
+  MSL qu'en WGSL ; reste la parité de MuScriptor).

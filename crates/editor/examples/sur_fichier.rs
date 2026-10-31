@@ -5,7 +5,10 @@
 //! Le mélange synthétique tient en une seule fenêtre ; un vrai morceau en
 //! demande plusieurs, avec recouvrement. C'est là que les chemins divergent.
 //!
-//!   cargo run --release -p rusty-music-editor --example sur_fichier -- <fichier> [variante] [secondes]
+//! Avec un dossier en quatrième argument, y écrit aussi les stems (WAV),
+//! pour comparer deux backends échantillon par échantillon.
+//!
+//!   cargo run --release -p rusty-music-editor --example sur_fichier -- <fichier> [variante] [secondes] [dossier]
 //!   … --no-default-features --features cpu --example sur_fichier -- …
 
 use rusty_music_editor::{decode, sdr, Demixeur, Variante, SR};
@@ -14,12 +17,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let fichier = args
         .next()
-        .ok_or("usage : … <fichier> [variante] [secondes]")?;
+        .ok_or("usage : … <fichier> [variante] [secondes] [dossier]")?;
     let variante = args
         .next()
         .and_then(|v| Variante::analyser(&v))
         .unwrap_or_default();
     let secondes: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(20);
+    let dossier = args.next().map(std::path::PathBuf::from);
 
     // Le fichier est nommé, et ce n'est pas décoratif : trois « Karma
     // Police » cohabitent dans la bibliothèque de test, dont une reprise en
@@ -58,6 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|x| (*x as f64).powi(2))
             .sum();
         println!("  {:<8} RMS {:.6}", p.nom, (e / total).sqrt());
+        if let Some(d) = &dossier {
+            std::fs::create_dir_all(d)?;
+            rusty_music_editor::wav::ecrire(&d.join(format!("{}.wav", p.nom)), &p.gauche, &p.droite, SR)?;
+        }
         for (a, b) in somme.iter_mut().zip(&p.gauche) {
             *a += b;
         }
