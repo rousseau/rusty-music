@@ -71,3 +71,38 @@ TORCH_HOME=$RUSTY_DEV/torch python -I experiments/burn-metal/reference_htdemucs.
 <target>/examples/sur_fichier <mix.wav> htdemucs_6s 120 <ref>/demucs-msl-htdemucs_6s
 python -I experiments/burn-metal/comparer.py <mix.wav> <ref>/demucs-ref-htdemucs_6s <ref>/demucs-msl-htdemucs_6s
 ```
+
+## Reprendre (état au 31 oct. 2026)
+
+Tous les chiffres sont dans ce fichier et dans `experiments/roformer/README.md` ;
+rien n'est à recalculer pour décider. Ce qui reste :
+
+1. **Localiser le défaut MSL de htdemucs_6s**, couche par couche, dans
+   demucs-core (fork [`rousseau/demucs-rs`](https://github.com/rousseau/demucs-rs),
+   révision épinglée dans `crates/editor/Cargo.toml`) : sorties
+   intermédiaires du réseau sur un segment de 7 s (`extrait60.wav`), processeur
+   contre MSL, comme `examples/parite_roformer.rs` pour RoFormer. Le 4 stems
+   est exact en MSL : chercher ce qui ne dépend que du nombre de sources
+   (dernières couches des décodeurs, découpe des sorties en stems).
+2. **Décider la bascule en `burn/metal`** : gains ×1,2 à ×1,9 selon le réseau ;
+   htdemucs et htdemucs_ft deviennent exacts ; MuScriptor peut passer en f32 sans
+   perte de vitesse ; SW tient alors le critère « au plus deux fois
+   `htdemucs_ft` » (1,6 ×, contre 2,9 × en WGSL). Bloquant : le point 1.
+3. Indépendamment de la bascule : WGSL sépare faux avec les trois HTDemucs
+   (25-40 dB). À signaler en amont (Burn / cubecl-wgpu) une fois le noyau isolé.
+
+Ce qui ne vit que sur le disque LaCie (`$RUSTY_DEV` = `/Volumes/LaCieDock/rusty_music-dev`),
+à rebrancher pour reprendre :
+
+| Chemin | Contenu |
+|---|---|
+| `banc-jeux/parite-metal/` | références de parité : `muscriptor/`, `allinone/`, `demucs-ref-*` (PyTorch, 120 s), `demucs-{wgsl,msl}-*`, `seg60-*` et `extrait60.wav` (7 s au milieu de `TheKitchenettes_Alive`) |
+| `banc-jeux/roformer/` | journaux du banc RoFormer, `suite.sh` (file reprenable) et ses `listes/`, `parite-sw/` (références de RoFormer), `chrono-htdemucs.txt` |
+| `banc-jeux/medleydb/*/stems-*`, `banc-jeux/slakh2100/*/stems-*` | stems des six séparateurs, caches de transcription `…@<séparateur>.json` |
+| `target-banc/{wgsl,msl,cpu}/` | binaires de mesure par backend (≈ reconstruits en quelques minutes ; supprimables) |
+| `torch/`, `hf/` | poids PyTorch de HTDemucs et d'all-in-one pour les références |
+| `ext/mss-training`, `ext/roformer-poids` | code et poids MSST des candidats RoFormer/SCNet |
+
+Perdus à chaque redémarrage du Mac (dans `$TMPDIR`) et à refaire : les
+environnements `roformer-env` (`experiments/roformer/README.md`) et
+`parite-env` (ci-dessus, « Refaire »).
