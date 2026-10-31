@@ -5461,20 +5461,22 @@ struct EtatSuperres {
     source: String,
     faits: usize,
     total: usize,
+    /// Téléchargement des poids au premier usage, en octets (0 / 0 sinon).
+    telecharges: u64,
+    a_telecharger: u64,
     resultat: Option<String>,
 }
 
 /// Régénère un morceau en haute résolution (AERO) — rendu hors ligne vers le
 /// cache `hd/`. Tourne dans son fil : ~30 s par minute d'audio stéréo, plus le
-/// chargement du modèle au premier appel.
+/// chargement du modèle au premier appel, et le téléchargement des poids
+/// (156 Mo) au tout premier.
 #[tauri::command(async)]
 fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Result<(), String> {
     let source = PathBuf::from(&path);
     if !source.is_file() {
         return Err(format!("{path} est introuvable"));
     }
-    let modele_onnx = rusty_music_core::modeles::trouver("aero-11025-44100.onnx")
-        .ok_or_else(|| rusty_music_core::modeles::introuvable("aero-11025-44100.onnx"))?;
     {
         let mut s = verrou(&etat.superres);
         if s.en_cours {
@@ -5499,15 +5501,31 @@ fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Res
             s.total = total;
         };
 
-        let issue = (|| -> rusty_music_superres::Result<f32> {
+        let issue = (|| -> Result<f32, String> {
             let mut garde = verrou(&etat.superres_modele);
             if garde.valeur.is_none() {
-                garde.valeur = Some(rusty_music_superres::Modele::charger(&modele_onnx)?);
+                use rusty_music_superres as sr;
+                let modele_onnx = match rusty_music_core::modeles::trouver(sr::POIDS_FICHIER) {
+                    Some(p) => p,
+                    None => rusty_music_core::modeles::telecharger(
+                        sr::POIDS_FICHIER,
+                        sr::POIDS_URL,
+                        sr::POIDS_OCTETS,
+                        Some(sr::POIDS_SHA256),
+                        |recus, attendus| {
+                            let mut s = verrou(&etat.superres);
+                            s.telecharges = recus;
+                            s.a_telecharger = attendus.unwrap_or(sr::POIDS_OCTETS);
+                        },
+                    )
+                    .map_err(|e| format!("téléchargement du modèle : {e}"))?,
+                };
+                garde.valeur = Some(sr::Modele::charger(&modele_onnx).map_err(|e| e.to_string())?);
             }
             let modele = garde.valeur.as_mut().expect("modèle chargé");
             let resultat = rusty_music_superres::regenerer(&source, &cible, modele, progres);
             garde.touche = Some(Instant::now());
-            resultat
+            resultat.map_err(|e| e.to_string())
         })();
 
         let bilan = match issue {

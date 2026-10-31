@@ -31,9 +31,10 @@ fn main() {
 /// `tauri.conf.json` manque — même pour un simple `cargo build`/`clippy`, où
 /// l'on n'empaquette rien.
 ///
-/// Trois d'entre elles ne sont pas dans le dépôt : `htdemucs.safetensors` et
+/// Aucune n'est dans le dépôt : `htdemucs.safetensors` et
 /// `ville-paris.db` (téléchargées par `scripts/telecharger-modeles.sh` /
-/// `telecharger-ville.sh`) et `clap-audio-encoder-b5.bpk` (produite par
+/// `telecharger-ville.sh`), `clap-audio-encoder-b5.bpk` et
+/// `clap-text-encoder.bpk` (produites par
 /// `crates/analysis/build.rs`, mais seulement en profil `release`, et sans
 /// garantie d'ordre entre scripts de build). Pour que la compilation aboutisse
 /// quand même, on pose un fichier vide en dernier recours. Un build `release`
@@ -42,6 +43,7 @@ fn main() {
 fn completer_ressources_de_paquet() {
     for rel in [
         "../../models/clap-audio-encoder-b5.bpk",
+        "../../models/clap-text-encoder.bpk",
         "../../models/htdemucs.safetensors",
         "../../ville-paris.db",
     ] {

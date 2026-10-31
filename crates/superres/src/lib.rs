@@ -21,6 +21,16 @@ use tracing::debug;
 
 pub mod stft;
 
+/// Poids du générateur AERO : nom de fichier, *release asset* d'où le
+/// télécharger au premier usage (`modeles-v1`, comme
+/// `scripts/telecharger-modeles.sh`), taille et empreinte. Pas dans le paquet
+/// de l'application : 156 Mo pour un bouton qu'on n'emploie pas toujours.
+pub const POIDS_FICHIER: &str = "aero-11025-44100.onnx";
+pub const POIDS_URL: &str =
+    "https://github.com/rousseau/rusty-music/releases/download/modeles-v1/aero-11025-44100.onnx";
+pub const POIDS_OCTETS: u64 = 155_550_606;
+pub const POIDS_SHA256: &str = "c1fbe1f9c79553978d82a1fea31e2bb1d2d72d2bcfea94cee3d249688b6f339b";
+
 /// Fréquences fixées par le modèle musique (`aero-11025-44100.onnx`).
 pub const LR_SR: u32 = 11_025;
 pub const HR_SR: u32 = 44_100;

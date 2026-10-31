@@ -4259,6 +4259,14 @@ function suivreHd(t) {
     }
     if (s.source !== t.path) return;
     if (s.en_cours) {
+      // Premier usage : les poids d'AERO arrivent avant le rendu.
+      if (!s.total && s.a_telecharger) {
+        btnHd.textContent = `↓${Math.round((100 * s.telecharges) / s.a_telecharger)}%`;
+        btnHd.dataset.titre ??= btnHd.title;
+        btnHd.title = "Téléchargement du modèle AERO (156 Mo, une seule fois)";
+        return;
+      }
+      if (btnHd.dataset.titre !== undefined) btnHd.title = btnHd.dataset.titre;
       const pct = s.total ? Math.round((100 * s.faits) / s.total) : 0;
       btnHd.textContent = `${pct}%`;
     } else {

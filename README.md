@@ -65,7 +65,7 @@ Aucun n'est dans le dépôt Git. Remerciements, articles et licences :
 | HTDemucs 4 stems | démixage | 84 Mo | Burn (`demucs-core`) | `telecharger-modeles.sh` |
 | HTDemucs 6 stems / affiné | démixage | 55 / 336 Mo | Burn (`demucs-core`) | au premier usage |
 | BS-RoFormer « SW » | démixage de qualité | 699 Mo | Burn | au premier usage (licence non déclarée, jamais redistribué) |
-| AERO | super-résolution « HD » | 156 Mo | ONNX Runtime | `telecharger-modeles.sh` |
+| AERO | super-résolution « HD » | 156 Mo | ONNX Runtime | au premier usage, ou `telecharger-modeles.sh` |
 | Beat This! | temps et mesures | 83 Mo | `rten` | au premier usage |
 | all-in-one (8 plis) | sections | 10 Mo | Burn | au premier usage |
 | Basic Pitch | transcription de la basse | 0,2 Mo | ONNX Runtime | au premier usage |
