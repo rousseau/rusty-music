@@ -1,387 +1,52 @@
-# Ce qui reste, et dans quel ordre
-
-État au 17 août 2026, **registre historique** : plusieurs sections plus bas ont été dépassées (elles portent alors une mention barrée). Pour le mode Écouter, l'état à jour est dans `docs/ui-spec-lecteur.md` et `docs/plan-ecouter-v0.2.md`. Ce document remplace la section « Suite » du README dès
-qu'il s'agit de séquencer ; le README garde les chiffres, celui-ci garde
-l'ordre et les raisons.
-
-## Où en est le projet
-
-| Brique | État |
-|---|---|
-| Cœur d'ingestion | livré — 27 044 morceaux, scan et surveillance, décodage Opus |
-| Module 1 — Lecteur (mode Écouter) | **livré, v0.1.0** : file (aléatoire, répétition, glisser-déposer), univers de l'artiste, bios, critiques, crédits, popularité, spectrogramme, normalisation « N ». Plan 0.2 **entièrement traité** (reprise de session, playlists, historique/favoris, « En cours de lecture » macOS, minuteur…) ; restes : `docs/plan-ecouter-v0.2.md` |
-| Module 2 — Exploration | 27 042 morceaux, 4 modes de chemin, lasso, familles nommées, **carte colorable par tempo et énergie**. **État au 7 oct. 2026** : carte de Paris, peuplement chronologique et Lama (playlists par parties) livrés ; descripteurs remesurés (`VERSION_DESCRIPTEURS = 3`) et dates MusicBrainz posées. **Vérifié à la main le 7 oct.** (clic bâtiment = sélection, filtre de famille, itinéraire borné, couleur au dézoom, zooms). **Restes** : Lama : raffinement multi-tours / fusion de graines / ordre lissé ; peuplement persisté (Nyström) et autocomplétion multi-type écartés pour l'instant. Détail : `carto-etapes.md`, `ui-spec.md`, `recherche-llm-playlist.md` |
-| Module 3 — Éditeur | **le périmètre de `ui-spec-editeur.md` est couvert** : démixage, vitesse, hauteur, réglage par stem, greffe **calée sur les temps**, export. **Suite décidée le 8 oct. 2026** : deux usages, *pratiquer* (transcription basse/batterie, partition défilante, boucles) et *créer* (greffe mesure par mesure puis par section, génération) — `recherche-editer-pratique-creation.md`, plan : `plan-editer-pratique-creation.md`. **Démixage (31 oct. 2026)** : BS-RoFormer « SW » porté en Burn et intégré, variante par défaut pour pratiquer (`module3-roformer.md`). **Chantier ouvert : passer toute l'application en `burn/metal`** — parité faite, reste à localiser le défaut MSL de htdemucs_6s puis décider ; état et reprise : `experiments/burn-metal/README.md` |
-| Compagnon iOS « Rusty Valise » | **tourne sur l'iPhone (18 oct. 2026)** : lecture par `crates/player`, arrière-plan, « En cours de lecture » avec pochette. **Mode Valise du bureau (19 oct.)** : composition par lignes (récents, peu écoutés, famille, au hasard, N albums chacune), albums gardés / écartés, envoi sur l'iPhone par `devicectl` (écoutes du téléphone reprises d'abord, anciennes valises retirées par l'app), échéance de la signature et « Renouveler l'app » (`scripts/reinstaller-valise.sh`). **File et reprise de session (22 oct.)**. Restes (mesures de batterie, avis, Wi-Fi sans Xcode) : `plan-ios-compagnon.md` |
-| Métadonnées enrichies | genres MusicBrainz livrés ; **descripteurs audio livrés** ; bios TheAudioDB livrées ; **repli pour les pochettes manquantes livré** (CAA release → CAA release-group → Deezer ; cache négatif à péremption 30 j, une panne réseau n'est jamais mise en cache) ; **vérification des pochettes livrée** (5 oct. 2026, `crates/core/src/pochettes_verif.rs` : à chaque analyse, étape 2 juste après le scan, incrémentale par dossier ; signale image illisible/tronquée, image intégrée ≠ `cover.jpg`, même image intégrée sur des albums d'artistes différents ; panneau « Pochettes suspectes » du mode Bibliothèque, `rusty-music pochettes` en CLI ; ne modifie jamais un fichier. Ne voit pas une image fausse sans référence locale (pas de `cover.jpg`, image propre à un seul album) ni un fichier ajouté par la surveillance seule avant la prochaine analyse) |
-
-## Les dettes connues
-
-Elles ne sont pas des fonctionnalités, mais elles bloquent ou fragilisent.
-
-### D1. L'application ne tourne que depuis le dépôt — **réglé le 17 août**
-
-Résolu : résolution partagée dans `crates/core/src/modeles.rs`, ressources
-déclarées dans `tauri.conf.json`, `.app` et `.dmg` produits et vérifiés
-fonctionnellement. Le détail, et les deux pièges silencieux rencontrés, sont
-dans le README. Ce qui suit décrit ce qui n'allait pas.
-
-
-Deux chemins la clouent à la machine de développement :
-
-- les poids de CLAP sont trouvés par `env!("RM_POIDS")`, un chemin **absolu**
-  vers l'`OUT_DIR` du build. Il n'existe sur aucune autre machine ;
-- ceux du démixage par `Path::new("models")`, **relatif au dossier courant**.
-  Un `.app` lancé depuis le Finder a pour dossier courant `/`.
-
-Tant que ça n'est pas réglé, rien ne sort d'ici : ni une distribution, ni même
-un lancement par double-clic. C'est peu de travail et ça conditionne tout le
-reste.
-
-### D2. Le noyau wgpu fautif — **cherché le 17 août, introuvable**
-
-Les sept opérateurs que HTDemucs emploie et que CLAP n'emploie pas ont été
-isolés un par un et comparés à ONNX Runtime, aux petites dimensions puis à
-celles de HTDemucs : **tous justes**, écart maximal 4,1 × 10⁻⁷
-(`experiments/wgpu-noyaux/`). L'hypothèse « un noyau cassé » est réfutée.
-
-Le bénéfice visé est tout de même acquis : le module 2 tourne sur ce backend
-avec un sous-ensemble de ces opérateurs, désormais vérifiés individuellement.
-On est passé de « ça marche » à « ça marche, et voici les contrôles ».
-
-Ce qui reste ouvert : **d'où vient alors l'écart de 33 % sur HTDemucs.** Le
-trancher demanderait de bissecter le vrai graphe — ajouter des sorties
-intermédiaires et remonter au premier point de divergence. Chantier à part,
-sans urgence : la voie d'import concernée n'est plus empruntée, et les deux
-modèles en production sont vérifiés.
-
-### D3. Treize morceaux hors carte — **réglé le 18 août, il en reste deux**
-
-Les 10 opus sont sur la carte. symphonia ne décode pas ce format ;
-`crates/core/src/opus.rs` comble ce seul trou avec `ogg` (BSD-3) et
-`opus-decoder` (MIT/Apache), **portage pur Rust de libopus, sans `unsafe` ni
-FFI**. Le crate `opus` officiel aurait compilé libopus depuis ses sources et
-imposé `cmake` à quiconque construit le projet — écarté pour cela, pas pour sa
-licence.
-
-**27 042 des 27 044 morceaux** sont désormais placés. Les deux restants — un
-m4a et un mp3 — sont réellement corrompus, aucun décodeur n'y changera rien.
-
-### D4. Le module 3 n'a pas de spécification d'interface — **réglée le 18 août**
-
-`docs/ui-spec-editeur.md`. Le périmètre est tranché : **une piste à la fois** —
-ouvrir, séparer, retoucher, exporter. Ni session multipiste, ni projet
-sauvegardé, ni mixage de deux pistes. Les stems écrits sur le disque sont la
-seule persistance, ce qui évite d'inventer un format de projet.
-
-Conséquence à noter : **le mixage DJ sort du module 3.** Il redevient un
-chantier à part, s'il se fait.
-
-## Le plan proposé
-
-### 1. Rendre l'application autonome — **fait**
-
-Régler D1, puis produire un vrai paquet.
-
-- les poids vont dans le dossier de ressources de l'application, et
-  `Demixeur`/`Embedder` les y cherchent d'abord, avec repli sur `models/` pour
-  le développement ;
-- `tauri.conf.json` déclare ces ressources dans son `bundle` ;
-- vérification : lancer le `.app` depuis le Finder, démixer un morceau.
-
-**Pourquoi d'abord.** C'est la seule tâche dont dépend la possibilité même de
-montrer le résultat à quelqu'un, et elle est courte. Tout ce qu'on ajoutera
-ensuite héritera de ce socle.
-
-### 2. Isoler le noyau wgpu — **fait, résultat négatif**
-
-Quatorze cas, sept opérateurs, deux échelles, deux backends : aucun n'est
-fautif. Pas de ticket en amont — il n'y a rien à signaler. Le détail et la
-suite possible sont dans `experiments/wgpu-noyaux/README.md`.
-
-### 3. Fermer le module 2 — **fait**
-
-Les deux questions ouvertes d'`ui-spec.md` sont tranchées et implémentées ; le
-détail des décisions est dans cette spec, section « Tranché le 17 août ».
-Reste, sans urgence, l'autocomplétion multi-type de la recherche — la voie
-« recherche unique » est retenue de fait.
-
-### 4. Spécifier le module 3 — **fait le 18 août**
-
-`docs/ui-spec-editeur.md`. Les trois questions qui bloquaient sont tranchées :
-**une piste**, pas de session ; **pas de projet sauvegardé**, les stems sur le
-disque suffisent ; **time-stretch global par défaut**, par stem en option, avec
-l'avertissement que des facteurs différents désynchronisent.
-
-La spec relève au passage une fuite silencieuse : **124 Mo par jeu de stems**,
-555 Mo déjà accumulés, et rien ne le dit à l'utilisateur ni ne le range.
-
-### 5. Time-stretch et pitch — **fait le 18 août**
-
-**`wsola`, pas un vocodeur écrit à la main** — et c'est une correction. J'avais
-écrit un vocodeur de phase complet (verrouillage sur les crêtes, cinq cents
-lignes) avant de vérifier ce qui existait. `wsola` fait mieux : recouvrement-
-addition par similarité de forme d'onde, la méthode d'`atempo` chez ffmpeg et de
-VLC — temporelle, donc sans artefact de phase — **conçue pour le temps réel**
-(`push`/`pull`, `set_tempo` en direct), pure Rust, 468 lignes, zéro dépendance
-transitive, MIT.
-
-Mesuré avant adoption : hauteur inchangée à 441 Hz de 0,5× à 2×. La
-transposition, que `wsola` ne fait pas, s'obtient en étirant puis en
-rééchantillonnant.
-
-**Livré** : `crates/editor/src/etirement.rs` (259 lignes, dont la transposition
-et le rééchantillonneur), la vitesse de lecture immédiate dans `multipiste.rs`,
-la commande `rusty-music etirer` et `cout_etirement` pour la mesure.
-
-**Coût mesuré du changement** : 17,9 s contre 0,84 s pour étirer un stem de
-184 s hors ligne. Sans effet sur la lecture ; sensible sur la transposition, qui
-reste cependant mise en cache par réglage.
-
-**Le risque d'artefacts est levé par le changement de méthode** : WSOLA est
-temporel, il n'a pas de phase à recoller. Reste à juger à l'oreille sur des
-stems de batterie, où toute méthode d'étirement se trahit.
-
-**Branché dans le dock** : deux pas-à-pas, vitesse et tonalité, globaux. Chaque
-combinaison est mise en cache sur le disque, donc l'aller-retour entre deux
-valeurs est immédiat. ~~Reste le réglage **par stem**.~~ Fait le même jour, voir
-ci-dessous.
-
-### 5 bis. Réglage par stem et greffe — **fait le 18 août**
-
-Les deux dernières lignes de `ui-spec-editeur.md` ont été écrites ensemble, et
-ce n'est pas un hasard : **la greffe ne cale pas les temps forts, et le réglage
-par stem est ce qui permet de les caler à la main.**
-
-**Le réglage par stem.** Chaque ligne du dock s'ouvre sur sa vitesse et sa
-hauteur, plus « suivre l'ensemble ». L'avertissement de désynchronisation est
-tenu par le code : revenir à l'ensemble réaligne les stems, sans quoi on
-arrêterait la dérive en gardant l'écart déjà pris.
-
-**La greffe** (`crates/editor/src/greffe.rs`, 7 tests). Mettre à la place d'un
-stem celui d'un autre morceau demande trois choses :
-
-1. **le tempo** — on étire du rapport des deux, **replié à l'octave** dans
-   [1/√2, √2]. Une boucle à 70 BPM sous un morceau à 140 n'a pas à être
-   accélérée du double, ses temps tombent déjà un sur deux ; le repliement
-   borne l'étirement à ±41 % au pire ;
-2. **le départ** — le greffon entre là où l'ancien stem entrait, pas là où
-   lui-même commençait. L'attaque se cherche à l'énergie relative : un stem
-   séparé n'est jamais exactement silencieux, le modèle y laisse un fond ;
-3. **la longueur** — on boucle ou on coupe, avec 20 ms de fondu aux jonctions.
-
-Deux choix qui rendent le geste réversible : **le voisinage vient du morceau
-entier** (la bibliothèque n'a d'empreintes que de mélanges ; une par stem
-supposerait de démixer les 27 000 morceaux), et **la greffe est un fichier de
-plus** sous `greffes/`, jamais une réécriture — rouvrir le morceau retrouve ses
-stems séparés.
-
-~~**Ce qui manque, et qui s'entend** : les temps forts ne sont pas alignés.~~
-**Fait le 19 août**, voir 5 ter.
-
-### 5 ter. La grille de battements — **faite le 19 août**
-
-`crates/analysis/src/battements.rs`. Classée jusqu'ici « prérequis du chantier
-8 », ce qui était un sous-titre trompeur : **elle sert deux fois.** Elle
-débloque le mixage, et elle finit la greffe, livrée la veille avec ses temps
-forts non alignés.
-
-**Deux corrections, et aucune n'était devinable avant de mesurer :**
-
-- **la latence du détecteur d'attaques**, 32 ms, dérivable — le flux spectral
-  ne voit une attaque qu'au moment où elle entre dans la part de fenêtre que la
-  précédente ne couvrait pas. Dérivée puis mesurée : −31 ms observés ;
-- **le pas de la grille de tempo**, 0,5 %. Sans conséquence pour colorer une
-  carte, rédhibitoire pour une phase : 40 ms de dérive en 16 secondes, une
-  demi-seconde sur un morceau. D'où l'affinage **conjoint** de la période et de
-  la phase — on cherche le couple qui explique le mieux les attaques, au lieu
-  de prendre la période d'un critère et la phase d'un autre.
-
-Erreur de phase : **8,5 ms au pire** contre un plancher de méthode de 7,8 ms
-(`verif_battements`). Aucune dépendance ajoutée.
-
-**La découverte non prévue, et c'est la réserve qui compte : sur une batterie,
-la phase est presque indéterminée.** Le meilleur décalage obtient 2,96 de
-netteté et le suivant — à 42 % de battement, presque le contretemps — 2,93.
-
-Cela a changé la manière de vérifier, pas seulement ce qu'on sait : remesurer
-la grille d'une greffe calée ne prouve rien, on comparerait deux tirages
-ambigus. On pose la grille de référence et l'on regarde ce qu'elle ramasse —
-**2,19 avec calage, 1,08 sans**, une phase quelconque valant 1,00. La commande
-`greffer` fait cette vérification à chaque appel.
-
-**Ce que ça laisse au chantier 8** : le prérequis est à moitié levé. Il y a une
-phase, et elle est bonne à ±8 ms ; mais l'ambiguïté d'un demi-battement rend le
-calage automatique de deux morceaux moins sûr qu'il n'y paraît, et le tempo
-reste supposé constant.
-
-### 6. Genres MusicBrainz — **fait**
-
-De `docs/data-sources.md`, **la part « genres » seulement** : c'est le périmètre
-retenu. ~~Cover Art Archive et Wikidata — les pochettes et les « infos
-artiste/style » que le module 1 promet et que l'inspecteur n'affiche pas —
-restent à faire.~~ **Fait depuis** : pochettes (CAA + Deezer en repli), bios
-(TheAudioDB), crédits (Discogs), critiques (CritiqueBrainz) — voir
-`docs/enrichissement-lecteur.md`. Wikidata n'a jamais été implémenté.
-
-**Livré le 17 août.** `crates/core/src/musicbrainz.rs` (le client, cadencé),
-`crates/core/src/enrichir.rs` (la passe, reprenable), l'arbitrage des trois
-sources dans `genres_du_morceau`, et deux commandes : `rusty-music enrich` et
-`rusty-music familles`. Dépendance ajoutée : `ureq` (31 crates, contre 106 pour
-`reqwest`). Les quatre décisions prises — MusicBrainz d'abord, genres seuls,
-échelon artiste + album, tags des fichiers en repli — sont documentées dans le
-README.
-
-Ce qui a motivé le chantier, mesuré avant de commencer — voir
-`experiments/musicbrainz-genres/`. Les douze familles sont aujourd'hui nommées
-par les tags de genre des fichiers, et ces tags décrochent : la famille de
-Regina Spektor, Agnes Obel et Nina Simone sort « Children's · Pop ».
-Trois chiffres :
-
-- **92,6 % des morceaux portent déjà un `mb_artist_id`** dans leurs tags. Aucun
-  appariement flou à écrire : on interroge par identifiant ;
-- **75 % des artistes** ont au moins un genre chez MusicBrainz ;
-- à score identique, **neuf familles sur douze y gagnent** : « trip hop ·
-  downtempo » au lieu de « Pop · R&B », « nu metal » au lieu de « Metal »,
-  « boom bap », « ska · reggae ».
-
-Deux précautions que le sondage a révélées : **pondérer par le nombre de votes**
-(un tag `amapiano` erroné sur Yann Tiersen suffit à nommer une famille), et
-**garder le tag du fichier en repli** — les artistes de chant breton n'ont
-aucun genre chez MusicBrainz, et là les fichiers disaient juste.
-
-**Plafond de cette voie** : les genres MusicBrainz sont attachés à l'artiste,
-pas au morceau. Bob Marley est dans deux de nos familles et recevra les mêmes
-étiquettes dans les deux. D'où le chantier suivant.
-
-### 6 bis. Descripteurs audio — **fait le 18 août**
-
-`ui-spec.md` promettait de colorer la carte par année, tempo et énergie ; la
-table `descriptors` du schéma prévoyait les colonnes, et elle était vide. Le
-module 2 avait été déclaré clos avec cette promesse non tenue.
-
-Livré : `crates/analysis/src/descripteurs.rs` (416 lignes), la passe
-`passe::descripteurs`, la commande `rusty-music descripteurs`, et le rail qui
-gagne deux boutons. **Aucune dépendance ajoutée, le projet reste MIT.**
-
-Les algorithmes sont ceux des bibliothèques du domaine, pas des inventions :
-flux spectral puis autocorrélation à peigne comme aubio, chroma corrélé aux
-profils de Krumhansl-Schmuckler comme QM-DSP.
-
-**Ce que ça vaut, mesuré** : 73 % d'accord avec AudioMuse-AI à 6 % près, 80 % à
-l'octave près, sur 197 morceaux. Assez pour colorer une carte ; pas pour caler
-deux disques — ce qui tombe bien, le mixage DJ étant sorti du périmètre du
-module 3.
-
-**Limite connue** : les seuils de rejet n'écartent que le silence. Sur 336
-morceaux mesurés, aucun n'est sorti sans tempo ni sans tonalité — un conte lu
-reçoit donc un tempo qui ne veut rien dire. Les relever demanderait une vérité
-terrain qu'on n'a pas.
-
-### 7. Nommer les familles par l'audio — **sondé le 18 août**
-
-Ce que ni les fichiers ni MusicBrainz ne donneront jamais : **des descripteurs
-qui ne sont pas des genres.** Nos familles sortent d'un regroupement
-acoustique ; l'une est « voix féminine, trip-hop et pop-rock », une autre
-« chanson acoustique ». Aucune taxonomie de genres ne nomme ça.
-
-Le sondage est fait — `experiments/clap-texte/`. **Le piège attendu n'était pas
-le bon**, et le chantier se scinde en deux livrables de prix très différents.
-
-**Ce qui était censé bloquer n'a pas bloqué.** La tour texte s'exporte et
-s'importe du premier coup, sans rien figer d'autre que la longueur de séquence
-— 613 nœuds repliés à 464, 2 081 lignes de Rust généré, cosinus 0,9999994636
-contre PyTorch. C'est un RoBERTa : pas de partitionnement en fenêtres, donc
-aucun des `Pad` calculés à l'exécution qui avaient arrêté la tour audio.
-
-**Ce qui bloque vraiment est ailleurs, et c'est trois choses :**
-
-1. **501 Mo**, quatre fois la tour audio ;
-2. **elle ne tourne pas sur wgpu** — `burn-cubecl` n'implémente pas
-   `bool_from_data`, et le masque d'attention est un booléen. 91 ms par phrase
-   sur processeur, ce qui suffit ; mais contrairement à la chasse de
-   `wgpu-noyaux`, **il y a ici quelque chose à signaler en amont** ;
-3. **pour nommer les familles, on n'en a pas besoin à l'exécution.** Le
-   vocabulaire est fixe : ses empreintes se calculent une fois et tiennent dans
-   **102 400 octets**.
-
-**Ce que le nommage vaut, mesuré** : sept familles sur douze mieux nommées que
-par les genres, trois à égalité, **deux franchement fausses**. Le cas que ce
-document citait — Regina Spektor et Nina Simone sous « Folk · Children's » —
-est réparé, elles reçoivent « a female singer with a piano » — mais en second
-mot, la tête de liste étant « a female choir singing in harmony ». Le ska
-français sort « an african percussion ensemble » et le chant breton a cappella
-« a man rapping in french ».
-
-Deux conditions découvertes en chemin, et la seconde n'était pas prévisible :
-
-- **le vocabulaire décide, pas le modèle.** Donné à CLAP, le vocabulaire
-  d'AudioMuse-AI — les 50 tags Last.fm de MusiCNN, à la lettre — rend « blues »
-  et « Mellow » sur presque toutes les familles. Un mot nu est un mauvais
-  prompt : CLAP a été entraîné sur des légendes, pas sur des étiquettes ;
-- **les scores ne se comparent pas d'une phrase à l'autre.** « a children's
-  song » plafonne à +0,74, « a reggae offbeat guitar and bass » à +0,52 :
-  l'argmax brut classe les phrases, pas les morceaux. Centrer chaque colonne
-  suffit ; réduire en plus sur-corrige.
-
-**Le plafond n'a pas cédé** : une famille que rien dans le vocabulaire ne
-décrit ne reste pas sans nom, elle en reçoit un faux. Élargir le vocabulaire a
-été testé et ne suffit pas — le score `part × log₂(sur-représentation)`
-récompense la phrase rare, et chaque ajout redistribue tout. Le nommage par
-centroïde donne des paires plus cohérentes mais fait recevoir la même tête de
-liste à deux familles.
-
-**Ce qui marche le mieux n'est pas ce qu'on cherchait** : la recherche par
-description est excellente sans réglage — « a symphony orchestra » remonte cinq
-Ravel, « a saxophone solo » trois Steve Coleman, « an accordion » Yann Tiersen
-et Fred Guichen. C'est aussi le livrable qui coûte les 501 Mo.
-
-### 7 bis. Ce qu'il reste à décider — **tranché, voir `docs/nommage-familles.md`**
-
-Le sondage avait rendu son verdict sans trancher le choix ; c'est fait. Le
-plan initialement envisagé ici (miner des citations dans les critiques
-CritiqueBrainz pour élargir le vocabulaire à la main) est **abandonné** —
-couverture trop faible, et mauvais niveau de granularité : les critiques
-décrivent des albums, le nommage a besoin de décrire des styles.
-
-Retenu à la place, **détaillé dans `docs/nommage-familles.md`** : un
-vocabulaire construit depuis les genres MusicBrainz réels de la bibliothèque
-(pas choisis à la main) et leur article Wikipédia, un vote entre trois
-sources indépendantes (MusicBrainz, CLAP-texte, Last.fm) plutôt qu'une seule
-autorité, un « nom incertain » affiché avec les trois propositions quand
-elles divergent plutôt qu'un choix tranché en silence, et un affinage local
-suggéré (jamais automatique) pour les familles les plus disputées.
-
-La question d'interface laissée ouverte ici — un nom de famille doit tenir
-dans une légende — reste résolue comme avant ce chantier : le vocabulaire
-associe à chaque phrase le nom du genre MusicBrainz dont elle est issue, qui
-sert de libellé court partout où l'espace manque (légende, anneau, frise).
-
-### 8. Mixage de deux pistes — ~1 semaine
-
-Territoire DJ : beatmatching, détection de tonalité, mixage harmonique.
-**Prérequis à moitié levé le 19 août** — `battements.rs` donne la phase, à
-±8 ms, mais l'ambiguïté d'un demi-battement sur les batteries et l'hypothèse de
-tempo constant restent entières. Ce qui suit décrit l'état antérieur, et vaut
-toujours pour le tempo. On n'avait ni tempo ni tonalité, et
-l'idée d'emprunter ceux d'AudioMuse-AI a été mesurée puis écartée : leur champ
-`scale` vaut `minor` pour les 26 928 morceaux, et leur `tempo` ne prend que
-37 valeurs distinctes espacées de 6 % — une grille de classifieur, sans phase.
-Caler deux morceaux demande mieux que ±3 % et une position de battement. Ces
-deux grandeurs sont à calculer chez nous. Référence à étudier : Mixxx.
-
-### 9. Génération de piste — ~~non planifié~~ **planifiée le 8 oct. 2026**
-
-~~`docs/modules.md` la classe expérimentale et tardive : qualité inégale, calcul
-très intensif, licences floues.~~ La politique de licence précisée le 8 oct.
-(on adopte la licence de chaque poids et on s'y conforme) rend utilisables
-MusicGen-Stem, STAGE/DARC, ACE-Step 1.5 et RAVE. Toujours tardive et
-facultative : portée en Burn (pas de Python), chantier 2.7 de `plan-editer-pratique-creation.md`,
-après la greffe mesure par mesure et la recherche de greffons.
-
-## Ce qui n'est pas dans ce plan, et pourquoi
-
-- **Les 10 fichiers opus** : une dépendance pour 0,04 % de la bibliothèque.
-  À faire si l'occasion se présente, jamais pour elle-même.
-- **La PR amont chez `demucs-rs`** : ouverte, sans réponse. Notre révision est
-  épinglée, on ne dépend pas de leur réactivité.
+# Où en est le projet, et ce qui reste
+
+État au **31 oct. 2026**. Ce document dit où en est chaque brique et ce qui
+reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
+version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
+dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Ce qui a été
+fait et mesuré, au jour le jour : `journal.md`.
+
+## Les briques
+
+| Brique | État | Restes, et où les lire |
+|---|---|---|
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | migrations versionnées de la base (chantier d'assainissement, ci-dessous) |
+| Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
+| Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
+| Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; Lama dépend d'Ollama, processus externe (chantier d'assainissement, phase 7) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
+| Module 3 — Éditer | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem |
+| Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
+| Super-résolution « HD » | livrée (`crates/superres`, AERO via ONNX Runtime) | — (`module3-superresolution.md`) |
+| Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) | étapes 1 (découper le code), 3 (sélection, en partie), 4B (transfert sans Xcode), 7 (rotation) ; mesures de batterie ; `plan-ios-compagnon.md` |
+
+## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
+
+À la suite d'un audit : fonctionnellement abouti, couche applicative fragile.
+Phases, dans l'ordre ; aucun changement de comportement visible voulu, sauf
+mention contraire.
+
+0. Point de départ : `scripts/verifier.sh` mesuré (`journal.md`, 31 oct.).
+1. Hygiène de la documentation : README, `CLAUDE.md` ramené aux décisions et à
+   l'index, historique sous `archives/`, ce document.
+2. Filet de sécurité : `crates/analysis` testable sans le modèle CLAP, CI
+   GitHub Actions minimale (macOS), tests de fumée de l'interface (Chrome
+   headless, `invoke` simulé).
+3. Migrations versionnées de la base (`PRAGMA user_version`).
+4. Découper `apps/desktop/src/main.rs` : un module de commandes par mode, un
+   type générique de passe de fond, progression par `tauri::ipc::Channel`.
+5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un magasin d'état
+   par mode.
+6. Découper `crates/core/src/db.rs` par domaine.
+7. Lama sans Ollama obligatoire : étude d'un modèle exécuté dans le processus,
+   rapport avant toute implémentation.
+8. Préparer la publication de crates autonomes : `publication-crates.md`.
+
+## Ce qui n'est pas prévu, et pourquoi
+
+- **Mixage DJ de deux pistes** : sorti du périmètre du module 3 (une piste à
+  la fois, `ui-spec-editeur.md`). La grille de battements le rendrait
+  possible, mais rien n'est planifié.
+- **Wikidata** pour les infos d'artiste : jamais implémenté, TheAudioDB le
+  remplace (`enrichissement-lecteur.md`).
+- **Deux morceaux hors carte** (un m4a, un mp3) : fichiers réellement
+  corrompus.

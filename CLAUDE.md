@@ -1,117 +1,117 @@
-# Rusty Music — Suite musicale locale autonome
+# Rusty Music — suite musicale locale autonome
 
-## Objectif
-Logiciel autonome et local pour écouter, explorer et éditer une bibliothèque musicale. Point d'entrée unique : un répertoire de fichiers musicaux, surveillé automatiquement pour ingérer les nouveaux morceaux. Trois modules bâtis sur un cœur d'ingestion commun. Alternative légère et personnalisable à AudioMuse-AI (jugé trop lourd / orienté serveur), étendue vers l'écoute soignée et la MAO.
+Logiciel de bureau local pour écouter, explorer et éditer une bibliothèque
+musicale. Point d'entrée : un dossier de musique, surveillé. Un cœur
+d'ingestion commun, cinq modes dans le rail (Écouter, Explorer, Éditer,
+Découvrir, Valise) plus Bibliothèque au-dessus. Alternative légère à
+AudioMuse-AI. **État et restes : `docs/suite.md`.**
 
-## Périmètre — cœur commun + 3 modules
-Détail complet dans `docs/modules.md`.
-- **Cœur d'ingestion (à écrire en premier)** : dossier surveillé + base locale + métadonnées. Consommé par les trois modules.
-- **Module 1 — Lecteur** : lecture agréable et moderne, pochettes, infos artiste/style, (critiques : voir limites dans les docs). Spéc. : `docs/ui-spec-lecteur.md`.
-- **Module 2 — Exploration** : carte 2D interactive, similarité artistes/pistes, chemins, filtres par caractéristiques (tempo, style…). Spéc. : `docs/ui-spec.md`.
-- **Module 3 — Éditeur / MAO** : démixage (stems), time-stretch/pitch, greffe de stem. **Une piste à la fois** — ni session multipiste, ni mixage DJ (sorti du périmètre). Spéc. : `docs/ui-spec-editeur.md`.
+## Décisions en vigueur
 
-Séquencement (fait) : cœur → lecteur → exploration → éditeur. État courant : `docs/suite.md`.
+**Périmètre.** Éditer travaille **une piste à la fois** : ni session
+multipiste, ni projet sauvegardé, ni mixage DJ. Deux usages : *pratiquer*
+(transcription, partition, boucles) et *créer* (greffe, génération).
 
-## Stack technique retenue
-- **Calcul / ML** : Rust + [Burn](https://github.com/tracel-ai/burn) — backend `wgpu` (Metal/Vulkan/DX12) ou `ndarray` (CPU), choisi à la compilation.
-- **Surveillance du dossier** : `notify`. **Lecture des tags** : `lofty`. **Base locale** : SQLite (`rusqlite`).
-- **Décodage audio** : [symphonia](https://github.com/pdeljanov/Symphonia), plus `opus-decoder` (pur Rust) pour l'Opus que symphonia ne fait pas. **Sortie audio** : `rodio` / `cpal`.
-- **Empreintes (module 2)** : encodeur audio de **CLAP** (`laion/clap-htsat-unfused`), traduit d'ONNX en Rust natif par `burn-onnx` au build, exécuté sur Burn. Pas de ré-entraînement.
-- **Familles de la carte** : vocabulaire de genres (MusicBrainz + tags), avec repli k-means maison (k-means++) sur l'empreinte pour ce que le vocabulaire ne nomme pas. `linfa` reste la voie documentée pour DBSCAN/GMM. **Réduction 2D** : `bhtsne` (t-SNE Barnes-Hut, pur Rust).
-- **Démixage (module 3)** : HTDemucs via **`demucs-core`** (STFT en Rust, réseau sur Burn) — l'export ONNX a été écarté, voir `docs/module3-demixage.md`. Plus **BS-RoFormer « SW »** porté en Burn (`crates/editor/src/roformer/`, `.ckpt` d'origine lu tel quel, licence non déclarée : téléchargé à la source, jamais redistribué), variante par défaut pour pratiquer — `docs/module3-roformer.md`.
-- **Super-résolution (bouton « HD »)** : AERO via ONNX Runtime (`ort`) — `crates/superres`.
-- **Transcription (module 3, pratiquer)** : `crates/transcription` — basse par Basic Pitch (`ort`, mode rapide) ou **MuScriptor porté en Burn** (mode qualité, poids téléchargés par l'utilisateur après acceptation de leurs conditions) ; batterie par ADTOF (`ort`).
-- **Time-stretch / pitch (modules 1 et 3)** : crate **`wsola`** (recouvrement-addition, pur Rust). La transposition ajoute un rééchantillonnage (`rubato`). Vérifié avant d'écrire le nôtre — un vocodeur maison a été retiré.
-- **Interface finale** : HTML/CSS/JS + WebGL, empaquetée avec **Tauri** (backend Rust exposé à l'UI). `rerun` : diagnostic pendant le dev seulement.
-- **Métadonnées / connexions artistes** : API MusicBrainz + Cover Art Archive + Wikidata/Wikipédia (voir `docs/data-sources.md`).
-- **Bibliothèque source (test)** : Plex local (déjà relié à AudioMuse-AI). À terme, l'ingestion se fait directement depuis le dossier surveillé, Plex n'est qu'une source de test.
+**Exécution : Rust uniquement**, pas de Python ni de processus externe.
+Python sert seulement à préparer (convertir des poids) et à vérifier (parité,
+bancs). Exception à résorber : Lama appelle Ollama (`crates/core/src/ollama.rs`).
 
-## Licence — DÉCIDÉE
-Projet publié sous **GPL-3.0-or-later** (texte intégral dans `LICENSE`).
-**Toute dépendance open source est acceptable**, copyleft comprise.
-Principe directeur : **ne jamais réécrire ce qui existe déjà.** Privilégier les briques éprouvées quelle que soit leur licence.
-**Philosophie (précisée le 8 oct. 2026)** : projet open source, non commercial. On utilise les outils et les **poids disponibles**, on **adopte leur licence et on s'y conforme**, et on **cite** chaque travail (article, site, dépôt) dans les remerciements. Le seul souci est la conformité, pas le caractère commercial ou non d'une licence.
-- **Code lié au binaire** : doit rester compatible GPL-3 (sinon le binaire ne serait pas distribuable) — pas de code CC BY-NC-* ni GPL-2.0-only *lié* ; un tel code se réécrit en Rust ou tourne en processus séparé. Contrôlé par `cargo deny check` (`deny.toml`), lancé en local par `scripts/verifier.sh` (plus de CI GitHub).
-- **Poids de modèles** : toute licence, NC comprise. On peut les **convertir** pour Rust/Burn (safetensors, ONNX) et **republier** les poids convertis (release assets, Hugging Face) **sous leur licence d'origine**, avec fiche citant la source — si la licence le permet. Licence non déclarée = pas de droit de redistribuer : le script de préparation télécharge à la source et convertit localement (ou on demande l'accord des auteurs). Conditions d'usage particulières (ex. MuScriptor) à respecter et à signaler à l'utilisateur.
-- **Homogénéité** : tout en Rust (Burn, `ort` là où il est déjà) à l'exécution — pas de Python ni de processus externe ; on convertit les poids et on porte le réseau. Python seulement pour préparer (conversion) et vérifier (parité, bancs). Poids convertis republiés sur Hugging Face, compte **`rousseau`**.
-- Remerciements et liens : `MODELES.md` (à créer avec le premier poids tiers ajouté) + écran « À propos ». Détail : `docs/rust-audio-stack.md`.
+**Stack.**
+- Calcul : [Burn](https://github.com/tracel-ai/burn), backend `wgpu` ou
+  `ndarray` choisi à la compilation (bascule vers `burn/metal` étudiée :
+  `experiments/burn-metal/README.md`).
+- Ingestion : `notify`, `lofty`, SQLite (`rusqlite`). Décodage : symphonia +
+  `opus-decoder`. Sortie : `rodio`/`cpal`. Étirement : `wsola` + `rubato`.
+- Empreintes : CLAP (`laion/clap-htsat-unfused`) traduit d'ONNX par
+  `burn-onnx` au build. Réduction 2D : `bhtsne`.
+- Démixage : HTDemucs via `demucs-core` (Burn, pas d'export ONNX :
+  `docs/module3-demixage.md`) ; BS-RoFormer « SW » porté en Burn, `.ckpt`
+  d'origine téléchargé à la source, jamais redistribué (`docs/module3-roformer.md`).
+- Par `ort` (ONNX Runtime) : AERO (« HD », `crates/superres`), Basic Pitch et
+  ADTOF (`crates/transcription`). Beat This! par `rten`. MuScriptor et
+  all-in-one portés en Burn.
+- Interface : HTML/CSS/JS + WebGL dans **Tauri**. `rerun` = diagnostic de dev
+  seulement. Le moteur expose ses données en JSON ou binaire.
+- Enrichissement : MusicBrainz, Cover Art Archive, Deezer, ListenBrainz,
+  TheAudioDB, Discogs (dumps), CritiqueBrainz, Last.fm (`docs/data-sources.md`,
+  `docs/enrichissement-lecteur.md`, `docs/popularite.md`).
 
-## Support de la carte — DÉCIDÉ
-**La carte est le plan de Paris**, importé d'OpenStreetMap et découpé sur la
-limite communale — avec un **halo de petite couronne** (~2 km) de voirie/eau/
-verts dessiné mais jamais habité, pour que le fondu de bordure du rendu ait de
-la matière (`docs/carto-ville.md`, révisé). On n'engendre plus le terrain : une
-ville réelle a déjà des rues d'épaisseurs variées, un fleuve, des parcs et une
-silhouette reconnaissable. Le travail se concentre sur l'**affectation** —
-répartir 27 000 morceaux sur une voirie donnée en préservant le voisinage
-musical.
-Données sous **ODbL** : attribution « © les contributeurs OpenStreetMap »
-obligatoire à l'affichage. Détail : `docs/carto-ville.md`.
+**Licence : GPL-3.0-or-later** (`LICENSE`). Toute dépendance open source est
+acceptable, copyleft comprise ; **ne jamais réécrire ce qui existe**.
+- Code lié au binaire : compatible GPL-3 (pas de CC BY-NC-*, pas de
+  GPL-2.0-only lié) ; sinon réécrit en Rust ou hors processus. Contrôlé par
+  `cargo deny check` (`deny.toml`).
+- Poids : toute licence, NC comprise ; on adopte la licence, on s'y conforme,
+  on cite (`MODELES.md`, écran « À propos »). Poids convertis republiés sous
+  leur licence d'origine (Hugging Face, compte `rousseau`) si elle le permet ;
+  licence non déclarée = téléchargés à la source, jamais redistribués.
+  Détail : `docs/rust-audio-stack.md` — **à lire avant d'ajouter une dépendance.**
 
-## Rendu de la carte — DÉCIDÉ
-**MapLibre GL JS dans la webview Tauri.** Rust génère les tuiles vectorielles (fichier `.pmtiles` lu en local, ou serveur **Martin**) ; MapLibre fait le rendu, les étiquettes dépendantes du zoom et l'évitement de collisions.
-`maplibre-rs` (portage Rust pur) est **archivé** — ne pas l'utiliser.
-Piège : projeter l'espace d'embedding dans un « monde » de coordonnées géographiques fictives — le carré `[-1.08, 1.08]²` traité comme un planisphère entier, encore actif sur le chemin de repli sans ville importée.
-**Fond de plan : plusieurs palettes au choix** (`crates/carto/src/palette.rs`, portées de *maptoposter*, MIT) — `osm-clair` par défaut plus `sepia`/`encre`/`nuit`/`bleu-plan`. Chaque `Palette` porte fond **et** ses 12 teintes de familles *sur la carte* (calées sur le fond) ; le nuage et la légende gardent `--familles`. `engendrer_tuiles` écrit un `style-<id>.json` par palette ; l'interface bascule sans régénérer les tuiles (`gl.setStyle`).
-Détail : `docs/carto-ville.md` (le plan réel, chemin par défaut) ; `docs/carto-direction.md` (direction du monde fictif, chemin de repli) ; `docs/carto-etat-de-lart.md` (thèmes de fond de plan).
-
-## Placement des morceaux sur Paris — DÉCIDÉ (1er oct. 2026)
-**Peuplement chronologique** (`crates/carto/src/croissance.rs`, `docs/carto-ville.md` § « La croissance ») : les morceaux arrivent par date de sortie, l'île de la Cité d'abord ; le « temps » est le coût de voirie (les artères portent la ville plus loin) ; les artères accueillent les morceaux populaires, les petits quartiers les confidentiels, regroupés par style. Remplace l'ancien placement par familles/artistes (étages 1-3), qui ne regardait pas la date.
-
-## Décisions d'architecture clés
-- Cœur d'ingestion partagé : une seule base alimentée par le dossier surveillé, consommée par les 3 modules.
-- Découplage strict moteur (Rust) / interface (HTML+WebGL) : rerun = diagnostic, pas UI finale (chrome peu personnalisable, API d'extension instable).
-- Le moteur expose les données (positions 2D/3D, clusters, métadonnées) à l'interface en JSON ou binaire.
-- Module 3 traité comme un chantier séparé et tardif pour ne pas bloquer l'ensemble sur la brique la plus risquée.
+**Carte (Explorer).**
+- Support : **le plan de Paris** (OpenStreetMap, ODbL : « © les contributeurs
+  OpenStreetMap » affiché), découpé sur la commune, avec un halo de petite
+  couronne dessiné mais jamais habité.
+- Placement : **croissance chronologique** (`crates/carto/src/croissance.rs`) —
+  les morceaux arrivent par date, l'île de la Cité d'abord ; le temps est le
+  coût de voirie ; artères = morceaux populaires, petits quartiers = morceaux
+  confidentiels, regroupés par style. Artistes les plus populaires ancrés aux
+  monuments (`ancrage.rs`).
+- Familles : vocabulaire de genres (MusicBrainz + tags), repli k-means++ sur
+  l'empreinte pour ce qu'il ne nomme pas ; noms votés (`docs/nommage-familles.md`).
+- Rendu : **MapLibre GL JS** dans la webview ; Rust génère les tuiles
+  (`.pmtiles`). `maplibre-rs` est archivé — ne pas l'utiliser.
+- Fond : palettes au choix (`crates/carto/src/palette.rs`, d'après
+  *maptoposter*), `osm-clair` par défaut ; un `style-<id>.json` par palette,
+  bascule par `setStyle` sans régénérer les tuiles.
+- Repli sans ville importée : monde fictif engendré (`docs/carto-direction.md`,
+  `docs/carto-peuplement-architecture.md`). Piège : y traiter le carré
+  `[-1.08, 1.08]²` comme un planisphère.
+- Détail : `docs/carto-ville.md`.
 
 ## Structure du dépôt
-```
-crates/core/     cœur d'ingestion (scan, tags, surveillance, SQLite, enrichissement)
-crates/player/   module 1 — sortie audio, transport, file, amélioration « E »
-crates/analysis/ module 2 — empreintes CLAP (Burn), projection 2D, descripteurs
-crates/carto/    module 2 — tuiles vectorielles de la carte (MVT / PMTiles)
-crates/osm/      import d'un plan de ville OpenStreetMap (jamais lié à l'app)
-crates/editor/   module 3 — démixage (demucs-core / Burn), étirement, greffe
-crates/superres/ super-résolution audio hors ligne (AERO via ONNX Runtime) — bouton « HD »
-crates/cli/      binaire `rusty-music` : scan / watch / analyse / carte / démixage…
-apps/desktop/    application Tauri (interface HTML/CSS/JS + WebGL)
-apps/mobile/     compagnon iOS « Rusty Valise » (Tauri) — lit une valise préparée et envoyée par le mode Valise du bureau
-scripts/         préparation des modèles (CLAP, HTDemucs, AERO)
-ui/prototype/    maquette du modèle de navigation retenu (variante « Atelier »)
-docs/            spécifications
-```
-Build : Rust 1.82+, un compilateur C, et les modèles préparés (`scripts/`,
-`.gitignore`) — sans le modèle CLAP, `crates/analysis` ne compile pas. Détail
-et pièges : README, section « Démarrer ».
 
-## Documents détaillés
-- `docs/interface-guidelines.md` — **contrat de cohérence d'interface, transversal aux écrans du rail (les cinq modes Écouter/Explorer/Éditer/Découvrir/Valise, plus Bibliothèque en point d'entrée au-dessus du sélecteur de mode), plus l'audit complet de l'existant contre ce contrat. À consulter avant toute construction ou modification d'interface, dans n'importe quel écran. Règle 10 (gabarit : jetons `--largeur-droite`, `--gouttiere`…) vérifiée par `scripts/audit-interface.sh` — à lancer après toute modification de mise en page.**
-- `docs/suite.md` — **état d'avancement par brique et ordre de ce qui reste. À lire pour savoir où en est le projet.**
-- `docs/plan-ecouter-v0.2.md` — **mode Écouter : ce qu'il reste pour la v0.2, chantier par chantier, avec options comparées et recommandation. À lire avant de toucher au lecteur.**
-- `docs/plan-ios-compagnon.md` — **compagnon iOS du mode Écouter : la « valise » (sélection d'albums exportée par le Mac, Opus 160 kb/s, base réduite), lecture par `crates/player` sur iPhone, retour des écoutes, rotation. Étape 0 = prototype qui lève les risques (arrière-plan, « En cours de lecture », batterie). Rien d'engagé.**
-- `docs/modules.md` — décomposition en cœur + 3 modules, périmètre et références par module. Écrit avant la décision de licence : la règle « time-stretch/démixage en Rust pur, sans dépendance » y est **caduque** (voir stack ci-dessus).
-- `docs/architecture.md` — contexte de recherche (Islands of Music, Audio Atlas, AudioMuse-AI), pipeline, alternatives. Registre historique : plusieurs « points à trancher » y sont depuis tranchés (CLAP, t-SNE).
-- `docs/ui-spec.md` — brief d'interface du module 2 (Exploration).
-- `docs/ui-spec-lecteur.md` — brief d'interface du module 1 (Lecteur).
-- `docs/ui-spec-editeur.md` — brief d'interface du module 3 (Éditeur). Périmètre tranché : une piste, pas de projet sauvegardé. **Centre = « l'établi » à trois états (choisir / séparer / retoucher), décidé et livré le 10 sept. 2026 (commits `ae637d2` + `0a0848b`) : la pile de stems occupe le centre, un playhead unique la traverse, le détail d'un stem va dans l'inspecteur commun (`#bloc-stem`), le dock est une barre d'outils pleine largeur. `majEtatEditer` dans `app.js`. La séparation affiche une vraie barre de progression (`separer_fichier_suivi` → `EtatDemix`). Vérif visuelle faite ; audit d'`interface-guidelines.md` retranché.** Décision 9 (10 sept.) : **BPM cible fait** — bouton d'unité %↔BPM dans la barre d'outils, actif si pulsation franche (`tempo_cible`, netteté ≥ 2 sur le stem `drums`), repli octave « ½ / ×2 ». Reste (hors chantier de l'établi) : tonalité cible par stem, et la greffe qui cale aussi la tonalité (`demi_tons_rendu` à ajouter à `Plan`).
-- `docs/recherche-editer-pratique-creation.md` — **mode Éditer, suite : état de l'art pour *pratiquer* (transcription basse/batterie, partition défilante) et *créer* (greffe calée mesure/section, génération de stems), licences code et poids.** Plan : `docs/plan-editer-pratique-creation.md` — **à lire avant de toucher au module 3.**
-- `docs/module3-demixage.md` — pourquoi le démixage passe par `demucs-core` (Burn) et non l'export ONNX + `ort`.
-- `docs/data-sources.md` — Plex/AudioMuse-AI, MusicBrainz, enrichissement métadonnées.
-- `docs/popularite.md` — **popularité générale (ListenBrainz + Deezer, sans clé API) : passe d'analyse (étape 5/5, rafraîchissement 90 j) + jauge à 5 segments dans la file et les listes de pistes. Livré. Reste hors chantier : popularité d'artiste pour la carte.**
-- `docs/recherche-llm-playlist.md` — **texte → playlist : état de l'art (Text2Playlist/Deezer, AudioMuse-AI, TalkPlay-Tools, MusicRecoIntent) et direction retenue — le LLM traduit en spec typée (filtres, exclusions, durée, **parties « X puis Y »**, étapes CLAP), le code l'exécute. Le champ d'intention vit dans l'affichage **« Lama »** d'Explorer (récit en cartes + mini-nuage). À lire avant de toucher au champ d'intention.**
-- `docs/enrichissement-lecteur.md` — **trois sources de plus, chacune désactivable : biographies TheAudioDB (par MBID d'artiste seulement), crédits par édition Discogs (dumps mensuels CC0, jamais l'API), critiques CritiqueBrainz (licence CC, attribution obligatoire). Corrige `data-sources.md` sur les critiques.**
-- `docs/nommage-familles.md` — **nommer les 12 familles de la carte : un vocabulaire CLAP-texte construit depuis les genres MusicBrainz réels + leur article Wikipédia, un vote entre MusicBrainz/CLAP-texte/Last.fm, « nom incertain » affiché plutôt que tranché en silence, affinage local suggéré (jamais automatique). Remplace le plan de minage des critiques CritiqueBrainz cité par `docs/suite.md` §7bis.**
-- `docs/carto-ville.md` — **modèle retenu : la carte est le plan d'une vraie ville (Paris). Familles → quartiers, artistes → rues, morceaux → adresses. À lire en premier pour la carte.**
-- `docs/carto-peuplement.md` — modèle du peuplement (morceaux = habitants, placement chronologique). Son support généré est remplacé par le plan de ville ; son intention est reprise par `carto-ville.md`.
-- `docs/carto-peuplement-architecture.md` — **mécanique du peuplement : traits du générateur de monde, placement incrémental, typologie, schéma SQL, réglages et objections.**
-- `docs/carto-etat-de-lart.md` — **génération de cartes : références du domaine, code disponible, et ce qui s'applique à nous. À lire avant d'améliorer l'aspect de la carte.**
-- `docs/carto-etapes.md` — **ce qu'il reste pour que la carte soit une carte : blocage webview, intégration, lisibilité, peuplement. À lire avant de reprendre le chantier cartographique.**
-- `docs/carto-google-maps.md` — réseau routier et profils de routage. Sa section 1 (placement hiérarchique en trois étages) est **abandonnée**, remplacée par le peuplement.
-- `docs/carto-direction.md` — direction cartographique : mer et littoral, relief, toponymes, révélation par échelle, réseau, balade.
-- `docs/rust-audio-stack.md` — **inventaire des crates audio et contraintes de licence. À lire avant d'ajouter toute dépendance.**
-- `docs/amelioration-audio.md` — bouton « E » du mode Écouter : ligne de qualité, excitation psychoacoustique, rééchantillonnage `rubato`, et le sondage super-résolution neuronale.
-- `docs/module3-superresolution.md` — rendu hors-ligne « régénérer en HD » (AERO via `ort`) : **livré** dans `crates/superres` + bouton « HD » du transport. Sondage : `experiments/burn-aero/`. Modèle : `scripts/preparer-aero.sh` → `models/aero-11025-44100.onnx`.
-- `README.md` — état d'avancement, commandes, pièges du premier build.
+```
+crates/core/          cœur : scan, tags, surveillance, SQLite, enrichissement
+crates/player/        Écouter : sortie audio, transport, file, amélioration « E »
+crates/analysis/      Explorer : empreintes CLAP, projection 2D, descripteurs
+crates/carto/         Explorer : tuiles vectorielles (MVT / PMTiles)
+crates/osm/           import d'un plan OpenStreetMap (jamais lié à l'app)
+crates/editor/        Éditer : démixage, pulsation, étirement, greffe
+crates/transcription/ Éditer : basse, batterie, sections
+crates/superres/      super-résolution AERO (bouton « HD »)
+crates/cli/           binaire `rusty-music`
+apps/desktop/         application Tauri (ui/ : HTML/CSS/JS)
+apps/mobile/          compagnon iOS « Rusty Valise »
+scripts/              modèles, vérification (`verifier.sh`), paquet
+experiments/          sondages et bancs, hors workspace
+docs/                 spécifications ; docs/archives/ : historique
+livre/                notes de l'auteur — ne jamais modifier sans demande
+```
 
-## Notes
-Fichier volontairement court. Le détail vit dans `docs/` — convention Claude Code (fichiers courts, décisions actionnables).
+Build : Rust 1.82+, un compilateur C, les deux tours de CLAP dans `models/`
+(`./scripts/telecharger-modeles.sh clap`) — sans elles `crates/analysis` ne
+compile pas. Vérification avant push : `./scripts/verifier.sh`. Pièges : README.
+
+## Index des documents
+
+À lire avant de toucher à…
+- **toute interface** : `docs/interface-guidelines.md` (contrat de cohérence
+  des écrans) ; après une modification de mise en page :
+  `scripts/audit-interface.sh`.
+- **Écouter** : `docs/ui-spec-lecteur.md`, `docs/plan-ecouter-v0.2.md`,
+  `docs/amelioration-audio.md` (« E »), `docs/module3-superresolution.md` (« HD »).
+- **Explorer** : `docs/ui-spec.md`, `docs/carto-ville.md`,
+  `docs/carto-etat-de-lart.md` (aspect, palettes), `docs/carto-direction.md`,
+  `docs/carto-peuplement-architecture.md`, `docs/carto-google-maps.md`
+  (réseau, routage), `docs/carto-anneau.md`, `docs/frise-filiations.md`,
+  `docs/nommage-familles.md`, `docs/recherche-llm-playlist.md` (Lama).
+- **Éditer** : `docs/ui-spec-editeur.md` (l'établi), `docs/plan-editer-pratique-creation.md`
+  et `docs/recherche-editer-pratique-creation.md`, `docs/module3-demixage.md`,
+  `docs/module3-roformer.md`.
+- **enrichissement** : `docs/data-sources.md`, `docs/enrichissement-lecteur.md`,
+  `docs/popularite.md`.
+- **compagnon iOS, Valise** : `docs/plan-ios-compagnon.md`.
+- **dépendances, licences** : `docs/rust-audio-stack.md`, `MODELES.md`.
+- **contexte** : `docs/architecture.md` et `docs/modules.md` (registres
+  historiques, plusieurs points depuis tranchés) ; `docs/journal.md` (ce qui a
+  été fait et mesuré) ; `docs/archives/` (sections abandonnées).
