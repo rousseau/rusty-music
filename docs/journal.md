@@ -2318,3 +2318,26 @@ deux tours de CLAP dans `models/` (le script refuse de partir sans elles),
 aucune CI ne tourne (retirée le 17 oct.), et l'interface (`apps/desktop/ui/`)
 n'a aucun test automatique — `scripts/audit-interface.sh` contrôle la mise en
 page, pas le fonctionnement.
+
+### Filet de sécurité (phase 2)
+
+- **`--features rusty-music-analysis/sans-modeles`** : `build.rs` ne traduit
+  plus les tours de CLAP, les encodeurs deviennent des bouchons qui rendent
+  « poids absents ». Sur un clone neuf sans `models/` : clippy 105 s, tests
+  358 s, **661 réussis** — exactement ceux de la référence : aucun test ne
+  chargeait CLAP.
+- **Tests de fumée de l'interface** (`apps/desktop/ui-tests/`, Playwright,
+  Chrome headless) : aucun banc d'essai Chrome n'était dans le dépôt (ceux
+  qu'évoque ce journal étaient faits à la main), il est écrit de zéro. 8 tests,
+  ~12 s ; une erreur glissée exprès dans `dessinerStems` les fait échouer.
+  En écrivant les réponses figées : l'interface supporte presque partout une
+  réponse `null`, sauf l'Aperçu de Bibliothèque, l'anneau, la Valise et le
+  démarrage des stems (`start_etirer`), qui la déréférencent — sans
+  conséquence avec le vrai moteur, qui ne rend jamais `null` à ces commandes.
+- **`cargo fmt --all`** appliqué une fois (1 486 endroits, 132 fichiers), pour
+  que la CI puisse vérifier la forme ; ignoré par `git blame`
+  (`.git-blame-ignore-revs`).
+- **CI** (`.github/workflows/ci.yml`, macOS) : rust, deny et interface en trois
+  tâches. L'ancienne (retirée le 17 oct.) était rouge surtout à cause de
+  `cargo deny` : nouveaux avis, et action Docker incompatible avec
+  `rust-toolchain.toml`.
