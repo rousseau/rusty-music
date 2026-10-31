@@ -330,7 +330,11 @@ mod macos {
     pub fn annoncer(app: &AppHandle, etat: &Etat, annonce: &mut Annonce) {
         let (courant, en_pause, position) = {
             let p = verrou(&etat.player);
-            (p.current().map(Path::to_path_buf), p.is_paused(), p.position())
+            (
+                p.current().map(Path::to_path_buf),
+                p.is_paused(),
+                p.position(),
+            )
         };
         let actions = annonce.decider(
             courant.as_deref(),
@@ -347,7 +351,10 @@ mod macos {
             let Some(systeme) = app_principal.try_state::<Systeme>() else {
                 return;
             };
-            let mut controles = systeme.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut controles = systeme
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             for action in &actions {
                 let resultat = match action {
                     Action::Fiche(f) => controles.set_metadata(MediaMetadata {
@@ -398,7 +405,13 @@ mod tests {
         let actions = a.decider(Some(Path::new("/m/a")), false, s(0), t0, fiche_de("A"));
         assert_eq!(actions.len(), 2);
         assert!(matches!(&actions[0], Action::Fiche(f) if f.titre.as_deref() == Some("A")));
-        assert_eq!(actions[1], Action::Lecture { en_pause: false, position: s(0) });
+        assert_eq!(
+            actions[1],
+            Action::Lecture {
+                en_pause: false,
+                position: s(0)
+            }
+        );
     }
 
     #[test]
@@ -417,8 +430,17 @@ mod tests {
         };
         assert!(rien(&mut a, 500, 500).is_empty());
         let un = rien(&mut a, 1000, 1000);
-        assert_eq!(un, vec![Action::Lecture { en_pause: false, position: s(1) }]);
-        assert!(rien(&mut a, 1500, 1500).is_empty(), "le compteur repart à la dernière annonce");
+        assert_eq!(
+            un,
+            vec![Action::Lecture {
+                en_pause: false,
+                position: s(1)
+            }]
+        );
+        assert!(
+            rien(&mut a, 1500, 1500).is_empty(),
+            "le compteur repart à la dernière annonce"
+        );
     }
 
     #[test]
@@ -426,11 +448,29 @@ mod tests {
         let t0 = Instant::now();
         let mut a = Annonce::nouveau(t0);
         a.decider(Some(Path::new("/m/a")), false, s(0), t0, fiche_de("A"));
-        let pause = a.decider(Some(Path::new("/m/a")), true, s(3), t0 + s(3), |_| unreachable!());
-        assert_eq!(pause, vec![Action::Lecture { en_pause: true, position: s(3) }]);
+        let pause = a.decider(
+            Some(Path::new("/m/a")),
+            true,
+            s(3),
+            t0 + s(3),
+            |_| unreachable!(),
+        );
+        assert_eq!(
+            pause,
+            vec![Action::Lecture {
+                en_pause: true,
+                position: s(3)
+            }]
+        );
         // Longtemps après, toujours en pause à la même place : rien à dire.
         for k in 4..30 {
-            let r = a.decider(Some(Path::new("/m/a")), true, s(3), t0 + s(k), |_| unreachable!());
+            let r = a.decider(
+                Some(Path::new("/m/a")),
+                true,
+                s(3),
+                t0 + s(k),
+                |_| unreachable!(),
+            );
             assert!(r.is_empty(), "rien à annoncer en pause immobile (t = {k})");
         }
     }
@@ -447,7 +487,13 @@ mod tests {
             t0 + Duration::from_millis(200),
             |_| unreachable!(),
         );
-        assert_eq!(r, vec![Action::Lecture { en_pause: false, position: s(120) }]);
+        assert_eq!(
+            r,
+            vec![Action::Lecture {
+                en_pause: false,
+                position: s(120)
+            }]
+        );
     }
 
     #[test]
@@ -455,7 +501,13 @@ mod tests {
         let t0 = Instant::now();
         let mut a = Annonce::nouveau(t0);
         a.decider(Some(Path::new("/m/a")), false, s(0), t0, fiche_de("A"));
-        let r = a.decider(Some(Path::new("/m/b")), false, s(0), t0 + s(1), fiche_de("B"));
+        let r = a.decider(
+            Some(Path::new("/m/b")),
+            false,
+            s(0),
+            t0 + s(1),
+            fiche_de("B"),
+        );
         assert!(matches!(&r[0], Action::Fiche(f) if f.titre.as_deref() == Some("B")));
     }
 
@@ -464,9 +516,20 @@ mod tests {
         let t0 = Instant::now();
         let mut a = Annonce::nouveau(t0);
         // Rien n'a jamais joué : on dit tout de même « arrêté » une fois.
-        assert_eq!(a.decider(None, true, s(0), t0, |_| unreachable!()), vec![Action::Arret]);
-        assert!(a.decider(None, true, s(0), t0 + s(1), |_| unreachable!()).is_empty());
-        let r = a.decider(Some(Path::new("/m/a")), false, s(0), t0 + s(2), fiche_de("A"));
+        assert_eq!(
+            a.decider(None, true, s(0), t0, |_| unreachable!()),
+            vec![Action::Arret]
+        );
+        assert!(a
+            .decider(None, true, s(0), t0 + s(1), |_| unreachable!())
+            .is_empty());
+        let r = a.decider(
+            Some(Path::new("/m/a")),
+            false,
+            s(0),
+            t0 + s(2),
+            fiche_de("A"),
+        );
         assert_eq!(r.len(), 2, "fiche puis lecture");
     }
 
@@ -480,6 +543,9 @@ mod tests {
             "file:///Users/a/Library/Application%20Support/fm.rustymusic.desktop/en-cours/00ff.jpg"
         );
         assert!(!url.contains(' '));
-        assert_eq!(url_fichier(Path::new("/m/é#?.png")), "file:///m/%C3%A9%23%3F.png");
+        assert_eq!(
+            url_fichier(Path::new("/m/é#?.png")),
+            "file:///m/%C3%A9%23%3F.png"
+        );
     }
 }

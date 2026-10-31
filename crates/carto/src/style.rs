@@ -163,13 +163,29 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
     // le monde fictif, elle garde son apparition étagée dès `artistes_des`.
     let pt_artiste_des = if reel { art_b3 } else { p.artistes_des as f64 };
     let pt_artiste_opacite: Value = if reel {
-        json!(["interpolate", ["linear"], ["zoom"], art_b3, 0.0, art_b4, 0.6])
+        json!([
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            art_b3,
+            0.0,
+            art_b4,
+            0.6
+        ])
     } else {
-        json!(["interpolate", ["linear"], ["zoom"],
-            p.artistes_des as f64, ["match", ["get", "rang"], 3, 0.75, 0.0],
-            art_b2, ["match", ["get", "rang"], 3, 0.75, 2, 0.7, 0.0],
-            art_b3, ["match", ["get", "rang"], 3, 0.75, 2, 0.7, 1, 0.6, 0.0],
-            art_b4, 0.6])
+        json!([
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            p.artistes_des as f64,
+            ["match", ["get", "rang"], 3, 0.75, 0.0],
+            art_b2,
+            ["match", ["get", "rang"], 3, 0.75, 2, 0.7, 0.0],
+            art_b3,
+            ["match", ["get", "rang"], 3, 0.75, 2, 0.7, 1, 0.6, 0.0],
+            art_b4,
+            0.6
+        ])
     };
 
     let mut couches = if !reel {
@@ -210,7 +226,9 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
         // (la Seine), dans l'autre sens que le monde fictif (mer dessous,
         // terre dessus). Ni nappe de densité ni relief à ombrer : Paris est
         // plat, et `crate::ville::rassembler` n'en engendre aucun.
-        vec![json!({ "id": "terre-reelle", "type": "background", "paint": { "background-color": pal.terre } })]
+        vec![
+            json!({ "id": "terre-reelle", "type": "background", "paint": { "background-color": pal.terre } }),
+        ]
     };
 
     // Le reste des couches s'applique tel quel aux deux chemins : sur le plan
@@ -1265,7 +1283,12 @@ mod tests {
     /// bascule le style.
     fn source_ville() -> Source {
         Source {
-            frontiere: Some(vec![vec![[2.3, 48.8], [2.4, 48.8], [2.4, 48.9], [2.3, 48.9]]]),
+            frontiere: Some(vec![vec![
+                [2.3, 48.8],
+                [2.4, 48.8],
+                [2.4, 48.9],
+                [2.3, 48.9],
+            ]]),
             ..source()
         }
     }
@@ -1276,15 +1299,40 @@ mod tests {
     /// simplement absente des tuiles.
     #[test]
     fn le_relief_disparait_sur_le_plan_de_ville_reel() {
-        let s = construire(&source_ville(), &Paliers::ville(), "x", &Palette::osm_clair());
-        assert!(s["sources"].get("relief").is_none(), "source « relief » toujours déclarée");
-        let ids: Vec<&str> = s["layers"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap()).collect();
-        assert!(!ids.contains(&"relief"), "couche « relief » toujours présente");
+        let s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
+        assert!(
+            s["sources"].get("relief").is_none(),
+            "source « relief » toujours déclarée"
+        );
+        let ids: Vec<&str> = s["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap())
+            .collect();
+        assert!(
+            !ids.contains(&"relief"),
+            "couche « relief » toujours présente"
+        );
         for attendu in [
-            "terre-reelle", "eaux-reelles", "verts-reels", "routes-reelles",
-            "territoires-reels", "batiments-reels", "batiments-morceaux", "habites-point",
+            "terre-reelle",
+            "eaux-reelles",
+            "verts-reels",
+            "routes-reelles",
+            "territoires-reels",
+            "batiments-reels",
+            "batiments-morceaux",
+            "habites-point",
         ] {
-            assert!(ids.contains(&attendu), "couche « {attendu} » absente du plan de ville réel : {ids:?}");
+            assert!(
+                ids.contains(&attendu),
+                "couche « {attendu} » absente du plan de ville réel : {ids:?}"
+            );
         }
     }
 
@@ -1293,7 +1341,12 @@ mod tests {
     /// nom de famille — et rien du monde fictif (mer/relief/agglomérations/…).
     #[test]
     fn le_plan_de_ville_est_nu() {
-        let s = construire(&source_ville(), &Paliers::ville(), "x", &Palette::osm_clair());
+        let s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
         let ids: Vec<&str> = s["layers"]
             .as_array()
             .unwrap()
@@ -1304,15 +1357,30 @@ mod tests {
         // pastille brune, rien du monde fictif. Les noms de rues (inventés) sont
         // une donnée de l'overlay, eux, et reviennent au zoom du quartier.
         for absent in [
-            "routes-reelles-lisere", "frontiere-ligne",
-            "curiosites", "curiosites-etiquette",
-            "points-remarquables", "points-remarquables-etiquette",
+            "routes-reelles-lisere",
+            "frontiere-ligne",
+            "curiosites",
+            "curiosites-etiquette",
+            "points-remarquables",
+            "points-remarquables-etiquette",
             "familles-etiquette",
-            "mer", "terre", "relief", "cote", "rivieres", "routes", "routes-lisere",
-            "agglomerations", "agglomerations-bord", "etablissements", "territoires",
+            "mer",
+            "terre",
+            "relief",
+            "cote",
+            "rivieres",
+            "routes",
+            "routes-lisere",
+            "agglomerations",
+            "agglomerations-bord",
+            "etablissements",
+            "territoires",
             "morceaux-point",
         ] {
-            assert!(!ids.contains(&absent), "couche « {absent} » ne devrait pas être sur le plan de ville : {ids:?}");
+            assert!(
+                !ids.contains(&absent),
+                "couche « {absent} » ne devrait pas être sur le plan de ville : {ids:?}"
+            );
         }
     }
 
@@ -1329,19 +1397,34 @@ mod tests {
     /// < points. Sur un plan (OSM, maptoposter) la route passe **sur** l'îlot.
     #[test]
     fn le_plan_de_ville_empile_la_voirie_sur_le_bati() {
-        let s = construire(&source_ville(), &Paliers::ville(), "x", &Palette::osm_clair());
+        let s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
         let ids: Vec<&str> = s["layers"]
             .as_array()
             .unwrap()
             .iter()
             .map(|c| c["id"].as_str().unwrap())
             .collect();
-        let rang = |id: &str| ids.iter().position(|x| *x == id).unwrap_or_else(|| panic!("{id} absent : {ids:?}"));
+        let rang = |id: &str| {
+            ids.iter()
+                .position(|x| *x == id)
+                .unwrap_or_else(|| panic!("{id} absent : {ids:?}"))
+        };
         assert!(rang("eaux-reelles") < rang("territoires-reels"));
         assert!(rang("territoires-reels") < rang("batiments-reels"));
         assert!(rang("batiments-reels") < rang("batiments-morceaux"));
-        assert!(rang("batiments-morceaux") < rang("routes-reelles"), "la voirie doit passer sur le bâti");
-        assert!(rang("routes-reelles") < rang("habites-point"), "la couleur des points doit se voir sur la voirie");
+        assert!(
+            rang("batiments-morceaux") < rang("routes-reelles"),
+            "la voirie doit passer sur le bâti"
+        );
+        assert!(
+            rang("routes-reelles") < rang("habites-point"),
+            "la couleur des points doit se voir sur la voirie"
+        );
         assert!(rang("habites-point") < rang("artistes-etiquette"));
     }
 
@@ -1350,7 +1433,12 @@ mod tests {
     /// s'ouvrir sur la ville, pas au large du golfe de Guinée.
     #[test]
     fn le_style_reel_porte_son_centre_sur_la_ville() {
-        let s = construire(&source_ville(), &Paliers::ville(), "x", &Palette::osm_clair());
+        let s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
         let centre = s["center"].as_array().expect("centre absent du style réel");
         // `source_ville()` a pour frontière le carré [2.3, 48.8]..[2.4, 48.9].
         assert!((centre[0].as_f64().unwrap() - 2.35).abs() < 1e-9);
@@ -1371,21 +1459,49 @@ mod tests {
     fn les_couches_du_style_existent_dans_les_tuiles() {
         // Doit rester d'accord avec les couches qu'écrit `tuiles::encoder_tuile`.
         let connues = [
-            "cotes", "agglomerations", "territoires", "routes", "rivieres",
-            "familles", "etablissements", "curiosites", "artistes", "morceaux",
+            "cotes",
+            "agglomerations",
+            "territoires",
+            "routes",
+            "rivieres",
+            "familles",
+            "etablissements",
+            "curiosites",
+            "artistes",
+            "morceaux",
             // Le plan de ville réel.
-            "frontiere", "batiments", "eaux", "verts", "routes-reelles", "points-remarquables", "albums",
-            "territoires-reels", "habites",
+            "frontiere",
+            "batiments",
+            "eaux",
+            "verts",
+            "routes-reelles",
+            "points-remarquables",
+            "albums",
+            "territoires-reels",
+            "habites",
         ];
         let verifier = |s: &Value| {
             for couche in s["layers"].as_array().unwrap() {
                 if let Some(sl) = couche.get("source-layer").and_then(|v| v.as_str()) {
-                    assert!(connues.contains(&sl), "couche inconnue dans les tuiles : {sl}");
+                    assert!(
+                        connues.contains(&sl),
+                        "couche inconnue dans les tuiles : {sl}"
+                    );
                 }
             }
         };
-        verifier(&construire(&source(), &Paliers::default(), "x", &Palette::osm_clair()));
-        verifier(&construire(&source_ville(), &Paliers::ville(), "x", &Palette::osm_clair()));
+        verifier(&construire(
+            &source(),
+            &Paliers::default(),
+            "x",
+            &Palette::osm_clair(),
+        ));
+        verifier(&construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        ));
     }
 
     /// La révélation par échelle n'est correcte que si les bornes du style
@@ -1511,24 +1627,53 @@ mod tests {
             .map(|c| c["id"].as_str().unwrap())
             .collect();
         for attendu in [
-            "mer", "terre", "cote", "routes", "routes-lisere",
-            "etablissements", "etablissements-etiquette",
-            "agglomerations", "agglomerations-bord",
-            "rivieres", "curiosites", "curiosites-etiquette",
+            "mer",
+            "terre",
+            "cote",
+            "routes",
+            "routes-lisere",
+            "etablissements",
+            "etablissements-etiquette",
+            "agglomerations",
+            "agglomerations-bord",
+            "rivieres",
+            "curiosites",
+            "curiosites-etiquette",
         ] {
-            assert!(ids.contains(&attendu), "couche « {attendu} » absente : {ids:?}");
+            assert!(
+                ids.contains(&attendu),
+                "couche « {attendu} » absente : {ids:?}"
+            );
         }
         let rang = |id: &str| ids.iter().position(|x| *x == id).unwrap();
-        assert!(rang("mer") < rang("terre"), "la mer doit être sous la terre");
-        assert!(rang("terre") < rang("territoires"), "la terre sous les territoires");
-        assert!(rang("routes-lisere") < rang("routes"), "le liseré sous la chaussée");
-        assert!(rang("territoires") < rang("routes"), "les routes sur les territoires");
+        assert!(
+            rang("mer") < rang("terre"),
+            "la mer doit être sous la terre"
+        );
+        assert!(
+            rang("terre") < rang("territoires"),
+            "la terre sous les territoires"
+        );
+        assert!(
+            rang("routes-lisere") < rang("routes"),
+            "le liseré sous la chaussée"
+        );
+        assert!(
+            rang("territoires") < rang("routes"),
+            "les routes sur les territoires"
+        );
         assert!(
             rang("agglomerations") < rang("routes"),
             "les routes traversent les agglomérations, pas l'inverse"
         );
-        assert!(rang("routes") < rang("artistes-etiquette"), "les noms au-dessus");
-        assert!(rang("rivieres") < rang("routes"), "un pont passe au-dessus de l'eau");
+        assert!(
+            rang("routes") < rang("artistes-etiquette"),
+            "les noms au-dessus"
+        );
+        assert!(
+            rang("rivieres") < rang("routes"),
+            "un pont passe au-dessus de l'eau"
+        );
         assert!(
             rang("curiosites") > rang("etablissements"),
             "les points remarquables se posent au-dessus des lieux"
@@ -1562,7 +1707,12 @@ mod tests {
 
     #[test]
     fn les_tuiles_sont_lues_sous_la_base_donnee() {
-        let s = construire(&source(), &Paliers::default(), "tuiles://localhost", &Palette::osm_clair());
+        let s = construire(
+            &source(),
+            &Paliers::default(),
+            "tuiles://localhost",
+            &Palette::osm_clair(),
+        );
         assert_eq!(
             s["sources"]["carte"]["tiles"][0],
             "tuiles://localhost/carte/{z}/{x}/{y}"
@@ -1592,7 +1742,11 @@ mod tests {
 
         // Le fond bouge.
         let fond = |s: &Value| s["layers"][0]["paint"]["background-color"].clone();
-        assert_ne!(fond(&clair), fond(&encre), "le fond n'a pas changé de couleur");
+        assert_ne!(
+            fond(&clair),
+            fond(&encre),
+            "le fond n'a pas changé de couleur"
+        );
         assert_eq!(fond(&encre), json!(Palette::encre().mer));
 
         // Les familles aussi (elles se calent sur le fond).
@@ -1625,7 +1779,10 @@ mod tests_habites {
     fn les_points_habites_relaient_le_bati_au_dezoom() {
         let p = crate::tuiles::Paliers::ville();
         let couches = couches_ville(&Source::default(), &p, &Palette::osm_clair());
-        let c = couches.iter().find(|c| c["id"] == "habites-point").expect("couche absente");
+        let c = couches
+            .iter()
+            .find(|c| c["id"] == "habites-point")
+            .expect("couche absente");
         assert_eq!(c["minzoom"].as_f64().unwrap(), p.habites_des as f64);
         assert!(c["maxzoom"].as_f64().unwrap() <= (p.morceaux_des + 2) as f64);
         assert!(p.habites_des < p.morceaux_des);

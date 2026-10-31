@@ -45,13 +45,16 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self { http: ClientCadence::new(agent, CADENCE) }
+        Self {
+            http: ClientCadence::new(agent, CADENCE),
+        }
     }
 
     /// Une recherche GET rendant du JSON, réessayée sur échec temporaire.
     fn chercher(&self, kind: &str, q: &str) -> Result<Option<Value>> {
         let url = format!("https://api.deezer.com/search/{kind}");
-        self.http.get_json_requete(&url, &[("q", q), ("limit", "5")], kind)
+        self.http
+            .get_json_requete(&url, &[("q", q), ("limit", "5")], kind)
     }
 
     /// Le `rank` Deezer de la piste `titre` de `artiste`, si la recherche rend
@@ -161,7 +164,9 @@ fn url_photo_artiste(v: &Value, nom: &str) -> Option<String> {
         .iter()
         .filter(|d| cle_artiste(d["name"].as_str().unwrap_or("")) == attendu)
         .filter_map(|d| {
-            let url = d["picture_big"].as_str().filter(|u| !u.is_empty() && !u.contains("/artist//"))?;
+            let url = d["picture_big"]
+                .as_str()
+                .filter(|u| !u.is_empty() && !u.contains("/artist//"))?;
             Some((d["nb_fan"].as_i64().unwrap_or(0), url))
         })
         .max_by_key(|(fans, _)| *fans)
@@ -337,7 +342,10 @@ mod tests {
 
     #[test]
     fn pochette_album_rejette_un_autre_artiste_ou_un_autre_album() {
-        assert_eq!(url_pochette_album(&reponse(), "Pearl Jam", "Nevermind"), None);
+        assert_eq!(
+            url_pochette_album(&reponse(), "Pearl Jam", "Nevermind"),
+            None
+        );
         assert_eq!(url_pochette_album(&reponse(), "Nirvana", "Bleach"), None);
     }
 
@@ -387,13 +395,19 @@ mod tests {
             Some("https://cdn/nova.jpg")
         );
         // Un préfixe ne suffit pas quand l'artiste ne garantit rien.
-        assert_eq!(url_pochette_album(&v, "Various Artists", "Nova Rare Grooves"), None);
+        assert_eq!(
+            url_pochette_album(&v, "Various Artists", "Nova Rare Grooves"),
+            None
+        );
     }
 
     #[test]
     fn requetes_album_ajoute_le_titre_court_apres_le_titre_complet() {
         assert_eq!(
-            requetes_album("Mr. Scruff", "Keep It Unreal - 10th Anniversary (Bonus Disc)"),
+            requetes_album(
+                "Mr. Scruff",
+                "Keep It Unreal - 10th Anniversary (Bonus Disc)"
+            ),
             [
                 "artist:\"Mr. Scruff\" album:\"Keep It Unreal - 10th Anniversary (Bonus Disc)\"",
                 "artist:\"Mr. Scruff\" album:\"Keep It Unreal\"",
@@ -443,8 +457,14 @@ mod tests {
             { "name": "Air Supply", "nb_fan": 500000, "picture_big": "https://cdn/air-supply.jpg" },
         ]});
         assert_eq!(url_photo_artiste(&v, "Air"), None);
-        assert_eq!(url_photo_artiste(&v, "Air Supply").as_deref(), Some("https://cdn/air-supply.jpg"));
-        assert_eq!(url_photo_artiste(&serde_json::json!({ "data": [] }), "Air"), None);
+        assert_eq!(
+            url_photo_artiste(&v, "Air Supply").as_deref(),
+            Some("https://cdn/air-supply.jpg")
+        );
+        assert_eq!(
+            url_photo_artiste(&serde_json::json!({ "data": [] }), "Air"),
+            None
+        );
         assert_eq!(url_photo_artiste(&v, ""), None);
     }
 

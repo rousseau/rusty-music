@@ -35,8 +35,10 @@ use crate::DIMS;
 /// du paquet Tauri — `include_bytes!` le rend disponible partout où le
 /// binaire l'est, sans chemin à résoudre entre poste de développement et
 /// application installée.
-const TOKENIZER_JSON: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tokenizer/tokenizer.json"));
+const TOKENIZER_JSON: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tokenizer/tokenizer.json"
+));
 
 /// Le code produit par `burn-onnx`. Généré, donc non conforme à nos usages de
 /// nommage : on ne le relit pas, on le régénère.
@@ -149,7 +151,11 @@ impl EmbedderTexte {
 
         let device = Peripherique::default();
         let modele = genere::Model::from_file(poids, &device);
-        Ok(Self { modele, tokenizer, device })
+        Ok(Self {
+            modele,
+            tokenizer,
+            device,
+        })
     }
 
     /// Empreinte d'une phrase descriptive, dans le même espace à [`DIMS`]

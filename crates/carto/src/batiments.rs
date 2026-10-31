@@ -59,12 +59,17 @@ pub fn aire_m2(anneau: &[[f64; 2]]) -> f64 {
 /// suffisante pour un bâtiment, dont la forme est rarement pathologique.
 fn centroide(anneau: &[[f64; 2]]) -> [f64; 2] {
     let n = anneau.len().max(1) as f64;
-    let (sx, sy) = anneau.iter().fold((0.0, 0.0), |(sx, sy), p| (sx + p[0], sy + p[1]));
+    let (sx, sy) = anneau
+        .iter()
+        .fold((0.0, 0.0), |(sx, sy), p| (sx + p[0], sy + p[1]));
     [sx / n, sy / n]
 }
 
 fn cellule(p: [f64; 2]) -> (i32, i32) {
-    ((p[0] / PAS_GRILLE).floor() as i32, (p[1] / PAS_GRILLE).floor() as i32)
+    (
+        (p[0] / PAS_GRILLE).floor() as i32,
+        (p[1] / PAS_GRILLE).floor() as i32,
+    )
 }
 
 /// Grille spatiale des bâtiments d'un extrait, en mètres locaux.
@@ -91,14 +96,25 @@ impl GrilleBatiments {
                 continue;
             }
             let centre = centroide(&polygone);
-            batiments.push(Batiment { id: c.id, polygone, centre, aire });
+            batiments.push(Batiment {
+                id: c.id,
+                polygone,
+                centre,
+                aire,
+            });
         }
 
         let mut cellules: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
         for (i, b) in batiments.iter().enumerate() {
-            cellules.entry(cellule(b.centre)).or_default().push(i as u32);
+            cellules
+                .entry(cellule(b.centre))
+                .or_default()
+                .push(i as u32);
         }
-        GrilleBatiments { batiments, cellules }
+        GrilleBatiments {
+            batiments,
+            cellules,
+        }
     }
 
     pub fn est_vide(&self) -> bool {
@@ -140,10 +156,9 @@ impl GrilleBatiments {
             return [0.0, 0.0];
         }
         let n = self.batiments.len() as f64;
-        let (sx, sy) = self
-            .batiments
-            .iter()
-            .fold((0.0, 0.0), |(sx, sy), b| (sx + b.centre[0], sy + b.centre[1]));
+        let (sx, sy) = self.batiments.iter().fold((0.0, 0.0), |(sx, sy), b| {
+            (sx + b.centre[0], sy + b.centre[1])
+        });
         [sx / n, sy / n]
     }
 
@@ -158,7 +173,9 @@ impl GrilleBatiments {
         let mut trouves = Vec::new();
         for dx in -etendue..=etendue {
             for dy in -etendue..=etendue {
-                let Some(indices) = self.cellules.get(&(cx + dx, cy + dy)) else { continue };
+                let Some(indices) = self.cellules.get(&(cx + dx, cy + dy)) else {
+                    continue;
+                };
                 for &i in indices {
                     let b = &self.batiments[i as usize];
                     let ddx = b.centre[0] - point[0];
@@ -196,7 +213,10 @@ mod tests {
         let mut anneau = carre(0.0, 0.0, 10.0);
         assert!((aire_m2(&anneau) - 100.0).abs() < 1e-9);
         anneau.reverse();
-        assert!((aire_m2(&anneau) - 100.0).abs() < 1e-9, "le sens de parcours ne doit pas changer l'aire");
+        assert!(
+            (aire_m2(&anneau) - 100.0).abs() < 1e-9,
+            "le sens de parcours ne doit pas changer l'aire"
+        );
     }
 
     /// Un extrait minimal, en degrés, centré à peu près sur `(2.30, 48.85)` —
@@ -218,7 +238,10 @@ mod tests {
     /// applique en interne.
     fn contour_carre(repere: &Repere, id: i64, centre_m: [f64; 2], cote: f64) -> Contour {
         let anneau_m = carre(centre_m[0], centre_m[1], cote);
-        Contour { id, points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect() }
+        Contour {
+            id,
+            points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect(),
+        }
     }
 
     #[test]
@@ -226,13 +249,21 @@ mod tests {
         let mut extrait = extrait_dessai();
         let repere = Repere::centre_de(&extrait);
         // 3 m de côté : 9 m², sous AIRE_MIN_M2 (15).
-        extrait.batis.push(contour_carre(&repere, 1, [0.0, 0.0], 3.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [0.0, 0.0], 3.0));
         // 10 m de côté : 100 m², largement au-dessus.
-        extrait.batis.push(contour_carre(&repere, 2, [50.0, 0.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 2, [50.0, 0.0], 10.0));
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
         let tous = grille.pres_de([0.0, 0.0], 1000.0);
-        assert_eq!(tous.len(), 1, "seul le grand bâtiment doit entrer dans la grille");
+        assert_eq!(
+            tous.len(),
+            1,
+            "seul le grand bâtiment doit entrer dans la grille"
+        );
         assert_eq!(tous[0].id, 2);
     }
 
@@ -240,16 +271,28 @@ mod tests {
     fn pres_de_trouve_selon_la_distance() {
         let mut extrait = extrait_dessai();
         let repere = Repere::centre_de(&extrait);
-        extrait.batis.push(contour_carre(&repere, 1, [10.0, 0.0], 10.0));
-        extrait.batis.push(contour_carre(&repere, 2, [200.0, 0.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [10.0, 0.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 2, [200.0, 0.0], 10.0));
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
 
         let proches = grille.pres_de([0.0, 0.0], 50.0);
-        assert_eq!(proches.len(), 1, "le bâtiment à 200 m ne doit pas entrer dans un rayon de 50 m");
+        assert_eq!(
+            proches.len(),
+            1,
+            "le bâtiment à 200 m ne doit pas entrer dans un rayon de 50 m"
+        );
         assert_eq!(proches[0].id, 1);
 
         let tous = grille.pres_de([0.0, 0.0], 500.0);
-        assert_eq!(tous.len(), 2, "les deux doivent entrer dans un rayon de 500 m");
+        assert_eq!(
+            tous.len(),
+            2,
+            "les deux doivent entrer dans un rayon de 500 m"
+        );
     }
 
     #[test]

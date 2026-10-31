@@ -23,8 +23,12 @@ use rusty_music_core::db::Library;
 fn main() -> anyhow::Result<()> {
     let styles_seulement = std::env::args().any(|a| a == "--styles-seulement");
     let mut positionnels = std::env::args().skip(1).filter(|a| !a.starts_with("--"));
-    let base = positionnels.next().unwrap_or_else(|| "rusty-music.db".into());
-    let ville = positionnels.next().unwrap_or_else(|| "ville-paris.db".into());
+    let base = positionnels
+        .next()
+        .unwrap_or_else(|| "rusty-music.db".into());
+    let ville = positionnels
+        .next()
+        .unwrap_or_else(|| "ville-paris.db".into());
     let modele = "clap-htsat-unfused-5f";
 
     let t = std::time::Instant::now();
@@ -95,7 +99,10 @@ fn main() -> anyhow::Result<()> {
         r.source.verts.len(),
         r.source.frontiere.is_some(),
     );
-    assert!(r.source.est_ville_reelle(), "la source doit basculer sur le rendu réel");
+    assert!(
+        r.source.est_ville_reelle(),
+        "la source doit basculer sur le rendu réel"
+    );
 
     let sortie = std::env::temp_dir().join("rusty-music-paris");
     std::fs::create_dir_all(&sortie)?;
@@ -123,7 +130,10 @@ fn main() -> anyhow::Result<()> {
             chemin_tuiles.display(),
         );
         for (z, n, octets) in &rapport.par_zoom {
-            println!("  zoom {z:>2} : {n:>6} tuiles, {:>8.1} Ko", *octets as f64 / 1e3);
+            println!(
+                "  zoom {z:>2} : {n:>6} tuiles, {:>8.1} Ko",
+                *octets as f64 / 1e3
+            );
         }
     }
 
@@ -145,7 +155,11 @@ fn main() -> anyhow::Result<()> {
             println!(
                 "styles : {} couches, source « relief » {}",
                 style["layers"].as_array().map(|l| l.len()).unwrap_or(0),
-                if style["sources"].get("relief").is_some() { "présente (inattendu)" } else { "absente (attendu)" },
+                if style["sources"].get("relief").is_some() {
+                    "présente (inattendu)"
+                } else {
+                    "absente (attendu)"
+                },
             );
         }
     }

@@ -120,7 +120,10 @@ pub fn appareils() -> Result<Vec<Appareil>, String> {
         .filter_map(|d| {
             Some(Appareil {
                 udid: d["hardwareProperties"]["udid"].as_str()?.to_owned(),
-                nom: d["deviceProperties"]["name"].as_str().unwrap_or("iPhone").to_owned(),
+                nom: d["deviceProperties"]["name"]
+                    .as_str()
+                    .unwrap_or("iPhone")
+                    .to_owned(),
                 modele: d["hardwareProperties"]["marketingName"]
                     .as_str()
                     .unwrap_or_default()
@@ -148,7 +151,15 @@ pub fn echeance(udid: &str) -> Result<Option<String>, String> {
 
 /// L'app compagnon est-elle installée ?
 pub fn app_installee(udid: &str) -> Result<bool, String> {
-    let r = devicectl(&["device", "info", "apps", "--device", udid, "--bundle-id", BUNDLE])?;
+    let r = devicectl(&[
+        "device",
+        "info",
+        "apps",
+        "--device",
+        udid,
+        "--bundle-id",
+        BUNDLE,
+    ])?;
     Ok(r["apps"].as_array().is_some_and(|a| !a.is_empty()))
 }
 
@@ -156,9 +167,17 @@ pub fn app_installee(udid: &str) -> Result<bool, String> {
 /// qui portent un `valise.json`.
 pub fn valises(udid: &str) -> Result<Vec<ValiseTelephone>, String> {
     let r = devicectl(&[
-        "device", "info", "files", "--device", udid,
-        "--domain-type", "appDataContainer", "--domain-identifier", BUNDLE,
-        "--subdirectory", "Documents",
+        "device",
+        "info",
+        "files",
+        "--device",
+        udid,
+        "--domain-type",
+        "appDataContainer",
+        "--domain-identifier",
+        BUNDLE,
+        "--subdirectory",
+        "Documents",
     ])?;
     let fichiers = r["files"].as_array().cloned().unwrap_or_default();
     let mut out: Vec<ValiseTelephone> = fichiers
@@ -173,9 +192,9 @@ pub fn valises(udid: &str) -> Result<Vec<ValiseTelephone>, String> {
                     .find(|d| d["relativePath"] == nom)
                     .and_then(|d| d["metadata"]["lastModDate"].as_str())
                     .map(str::to_owned),
-                journal: fichiers
-                    .iter()
-                    .any(|d| d["relativePath"] == format!("{nom}/{}", rusty_music_core::valise::JOURNAL)),
+                journal: fichiers.iter().any(|d| {
+                    d["relativePath"] == format!("{nom}/{}", rusty_music_core::valise::JOURNAL)
+                }),
             })
         })
         .collect();
@@ -187,10 +206,19 @@ pub fn valises(udid: &str) -> Result<Vec<ValiseTelephone>, String> {
 pub fn copier_depuis(udid: &str, chemin: &str, destination: &Path) -> Result<(), String> {
     let source = format!("Documents/{chemin}");
     devicectl(&[
-        "device", "copy", "from", "--device", udid,
-        "--domain-type", "appDataContainer", "--domain-identifier", BUNDLE,
-        "--source", &source,
-        "--destination", &destination.to_string_lossy(),
+        "device",
+        "copy",
+        "from",
+        "--device",
+        udid,
+        "--domain-type",
+        "appDataContainer",
+        "--domain-identifier",
+        BUNDLE,
+        "--source",
+        &source,
+        "--destination",
+        &destination.to_string_lossy(),
     ])
     .map(|_| ())
 }
@@ -199,10 +227,19 @@ pub fn copier_depuis(udid: &str, chemin: &str, destination: &Path) -> Result<(),
 pub fn copier_vers(udid: &str, source: &Path, chemin: &str) -> Result<(), String> {
     let destination = format!("Documents/{chemin}");
     devicectl(&[
-        "device", "copy", "to", "--device", udid,
-        "--domain-type", "appDataContainer", "--domain-identifier", BUNDLE,
-        "--source", &source.to_string_lossy(),
-        "--destination", &destination,
+        "device",
+        "copy",
+        "to",
+        "--device",
+        udid,
+        "--domain-type",
+        "appDataContainer",
+        "--domain-identifier",
+        BUNDLE,
+        "--source",
+        &source.to_string_lossy(),
+        "--destination",
+        &destination,
     ])
     .map(|_| ())
 }

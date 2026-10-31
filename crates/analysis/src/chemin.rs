@@ -90,7 +90,10 @@ fn bruiter(cx: f32, cy: f32, ecart_type: f32, alea: &mut Alea) -> (f32, f32) {
     if ecart_type <= 0.0 {
         return (cx, cy);
     }
-    (cx + alea.normale() * ecart_type, cy + alea.normale() * ecart_type)
+    (
+        cx + alea.normale() * ecart_type,
+        cy + alea.normale() * ecart_type,
+    )
 }
 
 /// Les `k` morceaux les plus proches d'un morceau donné.
@@ -185,7 +188,12 @@ pub fn direct(
         // extrémités, qui ne passent d'ailleurs jamais par ce calcul (la
         // boucle exclut `i = 0` et `i = etapes - 1`).
         let enveloppe = 2.0 * (t * (1.0 - t)).sqrt();
-        let (cx, cy) = bruiter(cx, cy, bruit * FACTEUR_BRUIT_DIRECT * pas * enveloppe, &mut alea);
+        let (cx, cy) = bruiter(
+            cx,
+            cy,
+            bruit * FACTEUR_BRUIT_DIRECT * pas * enveloppe,
+            &mut alea,
+        );
         let meilleur = points
             .iter()
             .filter(|(id, _, _)| !pris.contains(id))
@@ -479,9 +487,17 @@ impl Graphe {
     /// morceau d'une autre famille. `sonique` rend alors vide et l'appelant
     /// retombe sur le mode direct, lui aussi filtré.
     pub fn restreint(&self, permis: &HashSet<i64>) -> Graphe {
-        let ids: Vec<i64> = self.ids.iter().copied().filter(|id| permis.contains(id)).collect();
-        let rang: HashMap<i64, u32> =
-            ids.iter().enumerate().map(|(r, i)| (*i, r as u32)).collect();
+        let ids: Vec<i64> = self
+            .ids
+            .iter()
+            .copied()
+            .filter(|id| permis.contains(id))
+            .collect();
+        let rang: HashMap<i64, u32> = ids
+            .iter()
+            .enumerate()
+            .map(|(r, i)| (*i, r as u32))
+            .collect();
         let aretes: Vec<Vec<(u32, f32)>> = ids
             .iter()
             .map(|id| {
@@ -638,10 +654,7 @@ impl Graphe {
             if libres.is_empty() {
                 break;
             }
-            let d_min = libres
-                .iter()
-                .map(|&(_, d)| d)
-                .fold(f32::INFINITY, f32::min);
+            let d_min = libres.iter().map(|&(_, d)| d).fold(f32::INFINITY, f32::min);
             // Écart moyen au plus proche : l'« échelle » locale qui rend la
             // température comparable d'un voisinage dense à un voisinage
             // épars. Plancher à 1e-6 pour ne pas diviser par zéro quand tous
@@ -819,10 +832,7 @@ impl Graphe {
                     break 'etapes;
                 }
 
-                let d_min_locale = libres
-                    .iter()
-                    .map(|&(_, d)| d)
-                    .fold(f32::INFINITY, f32::min);
+                let d_min_locale = libres.iter().map(|&(_, d)| d).fold(f32::INFINITY, f32::min);
                 let echelle_locale = (libres.iter().map(|&(_, d)| d - d_min_locale).sum::<f32>()
                     / libres.len() as f32)
                     .max(1e-6);
@@ -1203,7 +1213,11 @@ mod tests {
         // valeur sur laquelle ce test était calibré avant que `bruit` ne
         // remplace `temperature` comme paramètre public.
         let a = g.errance(30, 15, 42, 0.333);
-        assert_eq!(a, g.errance(30, 15, 42, 0.333), "même graine, même promenade");
+        assert_eq!(
+            a,
+            g.errance(30, 15, 42, 0.333),
+            "même graine, même promenade"
+        );
         assert_ne!(
             a,
             g.errance(30, 15, 43, 0.333),
@@ -1301,9 +1315,8 @@ mod tests {
         let ordre: HashMap<i64, u32> = (0..40).map(|i| (i, i as u32)).collect();
         // Le morceau 0 et ses voisins immédiats (1..10) partagent une
         // famille ; tout le reste appartient à une autre.
-        let familles: HashMap<i64, i64> = (0..40)
-            .map(|i| (i, if i < 10 { 0 } else { 1 }))
-            .collect();
+        let familles: HashMap<i64, i64> =
+            (0..40).map(|i| (i, if i < 10 { 0 } else { 1 })).collect();
 
         let route = g.voyage(0, &ordre, &familles, 5, 0.05, 7);
         assert!(
@@ -1563,4 +1576,3 @@ mod tests {
         assert_eq!(echantillonner(&[1, 2, 3], 10), vec![1, 2, 3]);
     }
 }
-

@@ -203,7 +203,10 @@ fn monuments_resolus(extrait: &Extrait, repere: &Repere) -> Vec<(String, [f64; 2
             .filter(|(nom, _)| nom.contains(&cle) || cle.contains(nom.as_str()))
             .min_by_key(|(nom, _)| nom.len());
         let Some((_, point)) = trouve else { continue };
-        if sortie.iter().any(|(_, p)| distance2(*p, *point) < 60.0 * 60.0) {
+        if sortie
+            .iter()
+            .any(|(_, p)| distance2(*p, *point) < 60.0 * 60.0)
+        {
             continue;
         }
         sortie.push((cle_brute.to_string(), *point));
@@ -268,7 +271,9 @@ pub fn ancrer(
 
     let mut ancrages = Ancrages::default();
     for ((artiste, _score), (monument, point)) in classes.iter().zip(monuments.iter()) {
-        let Some(triples) = pistes.get(artiste.as_str()) else { continue };
+        let Some(triples) = pistes.get(artiste.as_str()) else {
+            continue;
+        };
         let mut triples = triples.clone();
         triples.sort();
         let ids: Vec<i64> = triples.into_iter().map(|(_, _, id)| id).collect();
@@ -284,7 +289,10 @@ pub fn ancrer(
         }
         ancrages.par_artiste.insert(
             artiste.clone(),
-            Ancre { monument: monument.clone(), point_m: *point },
+            Ancre {
+                monument: monument.clone(),
+                point_m: *point,
+            },
         );
     }
     ancrages
@@ -317,7 +325,10 @@ mod tests {
 
     #[test]
     fn normalise_deplie_accents_et_ponctuation() {
-        assert_eq!(normalise("Basilique du Sacré-Cœur"), "basilique du sacre cour");
+        assert_eq!(
+            normalise("Basilique du Sacré-Cœur"),
+            "basilique du sacre cour"
+        );
         assert_eq!(normalise("Panthéon"), "pantheon");
         assert!(normalise("Musée du Louvre").contains("louvre"));
     }
@@ -363,7 +374,10 @@ mod tests {
             classe: rusty_music_osm::Classe::Residentielle,
             points: vec![[2.35, 48.87], [2.36, 48.87]],
         });
-        let mut extrait = Extrait { troncons, ..Default::default() };
+        let mut extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         // Un bâtiment près de chaque monument.
         let carre = |c: [f64; 2]| {
@@ -371,10 +385,16 @@ mod tests {
             let r = 6.0;
             Contour {
                 id: (m[0] as i64).abs() % 1000 + 10,
-                points: [[m[0] - r, m[1] - r], [m[0] + r, m[1] - r], [m[0] + r, m[1] + r], [m[0] - r, m[1] + r], [m[0] - r, m[1] - r]]
-                    .iter()
-                    .map(|p| repere.depuis_m(*p))
-                    .collect(),
+                points: [
+                    [m[0] - r, m[1] - r],
+                    [m[0] + r, m[1] - r],
+                    [m[0] + r, m[1] + r],
+                    [m[0] - r, m[1] + r],
+                    [m[0] - r, m[1] - r],
+                ]
+                .iter()
+                .map(|p| repere.depuis_m(*p))
+                .collect(),
             }
         };
         for _ in 0..6 {
@@ -386,8 +406,18 @@ mod tests {
             extrait.batis.push(c2);
         }
         extrait.points_remarquables = vec![
-            PointRemarquable { id: 1, nom: "Tour Eiffel".into(), genre: "monument".into(), point: [2.305, 48.851] },
-            PointRemarquable { id: 2, nom: "Panthéon".into(), genre: "monument".into(), point: [2.355, 48.871] },
+            PointRemarquable {
+                id: 1,
+                nom: "Tour Eiffel".into(),
+                genre: "monument".into(),
+                point: [2.305, 48.851],
+            },
+            PointRemarquable {
+                id: 2,
+                nom: "Panthéon".into(),
+                genre: "monument".into(),
+                point: [2.355, 48.871],
+            },
         ];
 
         let vue = vec![
@@ -399,8 +429,17 @@ mod tests {
         let mut pris = HashSet::new();
         let a = ancrer(&vue, &extrait, &grille, &repere, &mut pris);
 
-        assert_eq!(a.par_artiste.get("Populaire").map(|x| x.monument.as_str()), Some("Tour Eiffel"));
-        assert_eq!(a.adresses.iter().filter(|ad| ad.track_id == 1 || ad.track_id == 2).count(), 2);
+        assert_eq!(
+            a.par_artiste.get("Populaire").map(|x| x.monument.as_str()),
+            Some("Tour Eiffel")
+        );
+        assert_eq!(
+            a.adresses
+                .iter()
+                .filter(|ad| ad.track_id == 1 || ad.track_id == 2)
+                .count(),
+            2
+        );
         assert_eq!(pris.len(), a.adresses.len());
     }
 }

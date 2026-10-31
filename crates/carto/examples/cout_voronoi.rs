@@ -9,7 +9,9 @@ use rusty_music_core::db::Library;
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
 fn main() -> anyhow::Result<()> {
-    let base = std::env::args().nth(1).unwrap_or_else(|| "rusty-music.db".into());
+    let base = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "rusty-music.db".into());
     let lib = Library::open(std::path::Path::new(&base))?;
     let points = lib.map_points("clap-htsat-unfused-5f")?;
     println!("{} sites", points.len());
@@ -38,7 +40,10 @@ fn main() -> anyhow::Result<()> {
                     duree.as_secs_f64()
                 );
             }
-            None => println!("  {relaxations} relaxation(s) : échec en {:.2} s", duree.as_secs_f64()),
+            None => println!(
+                "  {relaxations} relaxation(s) : échec en {:.2} s",
+                duree.as_secs_f64()
+            ),
         }
     }
     Ok(())

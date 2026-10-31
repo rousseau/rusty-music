@@ -111,7 +111,11 @@ pub fn actualiser(
     let aujourdhui = lib.date_il_y_a(0)?;
     let borne = lib.date_il_y_a(fenetre_jours)?;
 
-    let plafond = if limite == 0 { PLAFOND_VOISINS } else { limite.min(PLAFOND_VOISINS) };
+    let plafond = if limite == 0 {
+        PLAFOND_VOISINS
+    } else {
+        limite.min(PLAFOND_VOISINS)
+    };
     let a_faire_voisins: Vec<(String, String)> = lib
         .decouvrir_en_attente("voisins", PEREMPTION_VOISINS_JOURS, plafond)?
         .into_iter()
@@ -123,7 +127,10 @@ pub fn actualiser(
         total: a_faire_voisins.len() + 1,
         ..Default::default()
     };
-    tracing::info!(voisins = a_faire_voisins.len(), "passe Découvrir : démarrage");
+    tracing::info!(
+        voisins = a_faire_voisins.len(),
+        "passe Découvrir : démarrage"
+    );
     avancer(&bilan);
 
     // --- 1. Sorties : une requête ListenBrainz, croisée avec la bibliothèque ---
@@ -136,7 +143,9 @@ pub fn actualiser(
             let mut vus = HashSet::new();
             let mut par_artiste: HashMap<String, usize> = HashMap::new();
             for f in &fraiches {
-                let Some(rg) = f.rg_mbid.clone() else { continue };
+                let Some(rg) = f.rg_mbid.clone() else {
+                    continue;
+                };
                 if !vus.insert(rg) {
                     continue;
                 }
@@ -271,7 +280,9 @@ fn retenir(
 /// Un type primaire retenu, et aucun type secondaire exclu.
 fn type_retenu(primaire: Option<&str>, secondaires: &[String]) -> bool {
     primaire.is_some_and(|t| TYPES_GARDES.contains(&t))
-        && !secondaires.iter().any(|t| TYPES_EXCLUS.contains(&t.as_str()))
+        && !secondaires
+            .iter()
+            .any(|t| TYPES_EXCLUS.contains(&t.as_str()))
 }
 
 /// Joint une liste de chaînes par une virgule, ou `None` si elle est vide.
@@ -299,13 +310,16 @@ mod tests {
         ["ancre".to_string()].into_iter().collect()
     }
     fn noms() -> HashMap<String, String> {
-        [("ancre".to_string(), "L'Ancre".to_string())].into_iter().collect()
+        [("ancre".to_string(), "L'Ancre".to_string())]
+            .into_iter()
+            .collect()
     }
 
     #[test]
     fn retenir_garde_une_sortie_recente_dun_artiste_de_la_bibliotheque() {
         let f = fraiche("Album", &[], "2026-08-20", &["ancre"]);
-        let (mbid, nom, s) = retenir(&f, &bib(), &noms(), "2026-07-31", "2026-08-30").expect("retenu");
+        let (mbid, nom, s) =
+            retenir(&f, &bib(), &noms(), "2026-07-31", "2026-08-30").expect("retenu");
         assert_eq!(mbid, "ancre");
         assert_eq!(nom, "L'Ancre");
         assert_eq!(s.date_sortie_norm.as_deref(), Some("2026-08-20"));
@@ -317,16 +331,63 @@ mod tests {
         let b = bib();
         let n = noms();
         // Aucun artiste de la bibliothèque.
-        assert!(retenir(&fraiche("Album", &[], "2026-08-20", &["autre"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
+        assert!(retenir(
+            &fraiche("Album", &[], "2026-08-20", &["autre"]),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
         // Artiste spécial (Various Artists).
-        assert!(retenir(&fraiche("Album", &[], "2026-08-20", &["89ad4ac3-39f7-470e-963a-56509c546377"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
+        assert!(retenir(
+            &fraiche(
+                "Album",
+                &[],
+                "2026-08-20",
+                &["89ad4ac3-39f7-470e-963a-56509c546377"]
+            ),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
         // Trop vieux / dans le futur.
-        assert!(retenir(&fraiche("Album", &[], "2026-01-01", &["ancre"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
-        assert!(retenir(&fraiche("Album", &[], "2027-01-01", &["ancre"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
+        assert!(retenir(
+            &fraiche("Album", &[], "2026-01-01", &["ancre"]),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
+        assert!(retenir(
+            &fraiche("Album", &[], "2027-01-01", &["ancre"]),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
         // Live, compilation.
-        assert!(retenir(&fraiche("Album", &["Live"], "2026-08-20", &["ancre"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
+        assert!(retenir(
+            &fraiche("Album", &["Live"], "2026-08-20", &["ancre"]),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
         // Type non retenu.
-        assert!(retenir(&fraiche("Broadcast", &[], "2026-08-20", &["ancre"]), &b, &n, "2026-07-31", "2026-08-30").is_none());
+        assert!(retenir(
+            &fraiche("Broadcast", &[], "2026-08-20", &["ancre"]),
+            &b,
+            &n,
+            "2026-07-31",
+            "2026-08-30"
+        )
+        .is_none());
     }
 
     #[test]

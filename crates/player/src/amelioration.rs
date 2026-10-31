@@ -351,7 +351,11 @@ fn estimer_coupure(ech: &[f32], taux: u32, canaux: usize) -> f32 {
     for k in (b_hi..raies).rev() {
         if lisse[k] > seuil {
             let f = k as f32 * hz_par_raie;
-            return if f >= FC_MAX_HZ { FC_MAX_HZ } else { f.max(FC_MIN_HZ) };
+            return if f >= FC_MAX_HZ {
+                FC_MAX_HZ
+            } else {
+                f.max(FC_MIN_HZ)
+            };
         }
     }
     FC_MAX_HZ
@@ -383,9 +387,8 @@ mod tests {
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(n);
         let hann = fenetre_hann(n);
-        let mut buf: Vec<Complex<f32>> = (0..n)
-            .map(|i| Complex::new(x[i] * hann[i], 0.0))
-            .collect();
+        let mut buf: Vec<Complex<f32>> =
+            (0..n).map(|i| Complex::new(x[i] * hann[i], 0.0)).collect();
         fft.process(&mut buf);
         let hz = sr as f32 / n as f32;
         let (k0, k1) = ((f0 / hz) as usize, ((f1 / hz) as usize).min(n / 2));
@@ -456,7 +459,10 @@ mod tests {
             .zip(&copie)
             .map(|(a, b)| (a - b).abs())
             .fold(0.0, f32::max);
-        assert!(ecart < 1e-6, "pleine bande : le tampon doit ressortir intact");
+        assert!(
+            ecart < 1e-6,
+            "pleine bande : le tampon doit ressortir intact"
+        );
     }
 
     #[test]

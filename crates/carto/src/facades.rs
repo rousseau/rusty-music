@@ -53,7 +53,11 @@ pub fn artere(classe: Classe) -> f64 {
 fn distance_point_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l2 = dx * dx + dy * dy;
-    let t = if l2 <= 1e-12 { 0.0 } else { (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2).clamp(0.0, 1.0) };
+    let t = if l2 <= 1e-12 {
+        0.0
+    } else {
+        (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2).clamp(0.0, 1.0)
+    };
     let (qx, qy) = (a[0] + t * dx, a[1] + t * dy);
     ((p[0] - qx).powi(2) + (p[1] - qy).powi(2)).sqrt()
 }
@@ -64,7 +68,12 @@ fn distance_point_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
 /// Distance point-segment exacte, pas au sommet le plus proche : une avenue
 /// aux sommets espacés de 80 m ne doit pas sembler lointaine à un bâtiment qui
 /// la borde entre deux sommets.
-pub fn facades(extrait: &Extrait, repere: &Repere, centres: &[[f64; 2]], portee: f64) -> Vec<Option<Facade>> {
+pub fn facades(
+    extrait: &Extrait,
+    repere: &Repere,
+    centres: &[[f64; 2]],
+    portee: f64,
+) -> Vec<Option<Facade>> {
     let cle = |p: [f64; 2]| ((p[0] / PAS).floor() as i32, (p[1] / PAS).floor() as i32);
     let mut grille: HashMap<(i32, i32), Vec<(u32, u32)>> = HashMap::new();
     let mut segments: Vec<Vec<[f64; 2]>> = Vec::with_capacity(extrait.troncons.len());
@@ -74,7 +83,10 @@ pub fn facades(extrait: &Extrait, repere: &Repere, centres: &[[f64; 2]], portee:
             let (c0, c1) = (cle(paire[0]), cle(paire[1]));
             for cx in c0.0.min(c1.0)..=c0.0.max(c1.0) {
                 for cy in c0.1.min(c1.1)..=c0.1.max(c1.1) {
-                    grille.entry((cx, cy)).or_default().push((t as u32, s as u32));
+                    grille
+                        .entry((cx, cy))
+                        .or_default()
+                        .push((t as u32, s as u32));
                 }
             }
         }
@@ -90,7 +102,9 @@ pub fn facades(extrait: &Extrait, repere: &Repere, centres: &[[f64; 2]], portee:
             let mut grande = 0.0_f64;
             for dx in -etendue..=etendue {
                 for dy in -etendue..=etendue {
-                    let Some(v) = grille.get(&(cx + dx, cy + dy)) else { continue };
+                    let Some(v) = grille.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
                     for &(t, s) in v {
                         let pts = &segments[t as usize];
                         let d = distance_point_segment(c, pts[s as usize], pts[s as usize + 1]);
@@ -134,7 +148,10 @@ mod tests {
                 points: vec![[2.300, 48.8506], [2.310, 48.8506]],
             },
         ];
-        let e = Extrait { troncons, ..Default::default() };
+        let e = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let r = Repere::centre_de(&e);
         (e, r)
     }
@@ -157,7 +174,11 @@ mod tests {
         // d'artère dans tous les cas.
         let p = r.vers_m([2.305, 48.85015]);
         let f = facades(&e, &r, &[p], 60.0)[0].unwrap();
-        assert!(f.artere >= 1.0 - 1e-9, "l'avenue est à portée d'artère : {}", f.artere);
+        assert!(
+            f.artere >= 1.0 - 1e-9,
+            "l'avenue est à portée d'artère : {}",
+            f.artere
+        );
     }
 
     #[test]

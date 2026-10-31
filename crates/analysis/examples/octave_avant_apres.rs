@@ -69,7 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let part = |v: &[f32], bas: f32, haut: f32| -> f64 {
-        100.0 * v.iter().filter(|&&b| (bas..haut).contains(&b)).count() as f64 / v.len().max(1) as f64
+        100.0 * v.iter().filter(|&&b| (bas..haut).contains(&b)).count() as f64
+            / v.len().max(1) as f64
     };
     println!(
         "\nConcentration dans [40, 90] BPM — avant : {:.1} %, après : {:.1} %",
@@ -105,7 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("  ↑ montés :");
     for (chemin, av, ap) in tries.iter().filter(|(_, av, ap)| ap > av) {
-        println!("  {av:>6.1} -> {ap:>6.1}  {:.2}x  {}", ap / av, court(chemin));
+        println!(
+            "  {av:>6.1} -> {ap:>6.1}  {:.2}x  {}",
+            ap / av,
+            court(chemin)
+        );
     }
     Ok(())
 }

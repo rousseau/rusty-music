@@ -23,13 +23,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut b = Batteur::charger_installe()?;
     let act = b.activations(&carac, trames, bandes)?;
     let coups = batterie::coups(&act, trames);
-    println!("{:.0} s : caractéristiques {} ms, total {} ms, {} coups", trames as f32 / 100.0, t_c.as_millis(), t0.elapsed().as_millis(), coups.len());
-    for p in [Piece::GrosseCaisse, Piece::CaisseClaire, Piece::Toms, Piece::Charleston, Piece::Cymbales] {
-        println!("  {p:?} : {}", coups.iter().filter(|c| c.piece == p).count());
+    println!(
+        "{:.0} s : caractéristiques {} ms, total {} ms, {} coups",
+        trames as f32 / 100.0,
+        t_c.as_millis(),
+        t0.elapsed().as_millis(),
+        coups.len()
+    );
+    for p in [
+        Piece::GrosseCaisse,
+        Piece::CaisseClaire,
+        Piece::Toms,
+        Piece::Charleston,
+        Piece::Cymbales,
+    ] {
+        println!(
+            "  {p:?} : {}",
+            coups.iter().filter(|c| c.piece == p).count()
+        );
     }
     if a.len() >= 3 {
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&a[1])?)?;
-        let f = |k: &str| -> Vec<f32> { v[k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
+        let f = |k: &str| -> Vec<f32> {
+            v[k].as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect()
+        };
         let m = quantification::quantifier_coups(&coups, &f("temps"), &f("premiers_temps"), 4);
         std::fs::write(&a[2], serde_json::to_string(&m)?)?;
         println!("{} mesures → {}", m.len(), a[2]);

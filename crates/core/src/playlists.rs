@@ -214,7 +214,11 @@ mod tests {
     fn une_playlist_garde_ses_pistes_dans_l_ordre() {
         let lib = bibliotheque(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"]);
         let id = lib
-            .creer_playlist("Route", Some("Dans l'esprit de X"), &v(&["/m/c.mp3", "/m/a.mp3", "/m/b.mp3"]))
+            .creer_playlist(
+                "Route",
+                Some("Dans l'esprit de X"),
+                &v(&["/m/c.mp3", "/m/a.mp3", "/m/b.mp3"]),
+            )
             .unwrap();
         let titres: Vec<_> = lib
             .pistes_de_playlist(id)
@@ -224,7 +228,11 @@ mod tests {
             .collect();
         assert_eq!(
             titres,
-            vec!["titre de /m/c.mp3", "titre de /m/a.mp3", "titre de /m/b.mp3"]
+            vec![
+                "titre de /m/c.mp3",
+                "titre de /m/a.mp3",
+                "titre de /m/b.mp3"
+            ]
         );
         let liste = lib.playlists().unwrap();
         assert_eq!(liste.len(), 1);
@@ -246,7 +254,10 @@ mod tests {
 
         // Le disque revient : un nouvel identifiant, mais le même chemin.
         lib.conn
-            .execute("INSERT INTO tracks(path, title) VALUES ('/m/disque.mp3', 'revenu')", [])
+            .execute(
+                "INSERT INTO tracks(path, title) VALUES ('/m/disque.mp3', 'revenu')",
+                [],
+            )
             .unwrap();
         assert_eq!(lib.playlists().unwrap()[0].nb_manquantes, 0);
         let titres: Vec<_> = lib
@@ -265,8 +276,12 @@ mod tests {
         let b = lib.creer_playlist("  Soirée  ", Some("   "), &[]).unwrap();
         let long = "x".repeat(500);
         let c = lib.creer_playlist(&long, None, &[]).unwrap();
-        let noms: std::collections::HashMap<i64, PlaylistRow> =
-            lib.playlists().unwrap().into_iter().map(|p| (p.id, p)).collect();
+        let noms: std::collections::HashMap<i64, PlaylistRow> = lib
+            .playlists()
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.id, p))
+            .collect();
         assert_eq!(noms[&a].nom, "Sans titre");
         assert_eq!(noms[&b].nom, "Soirée");
         assert_eq!(noms[&b].origine, None, "une origine vide n'est pas retenue");
@@ -276,7 +291,9 @@ mod tests {
     #[test]
     fn renommer_et_supprimer() {
         let lib = bibliotheque(&["/m/a.mp3"]);
-        let id = lib.creer_playlist("Avant", None, &v(&["/m/a.mp3"])).unwrap();
+        let id = lib
+            .creer_playlist("Avant", None, &v(&["/m/a.mp3"]))
+            .unwrap();
         assert!(lib.renommer_playlist(id, "Après").unwrap());
         assert_eq!(lib.playlists().unwrap()[0].nom, "Après");
         assert!(!lib.renommer_playlist(9_999, "Rien").unwrap());
@@ -308,7 +325,12 @@ mod tests {
     #[test]
     fn le_m3u8_porte_duree_legende_et_chemin() {
         let texte = texte_m3u8(&[
-            piste("/m/a.mp3", Some("Bus to Beelzebub"), Some("Soul Coughing"), Some(200_499)),
+            piste(
+                "/m/a.mp3",
+                Some("Bus to Beelzebub"),
+                Some("Soul Coughing"),
+                Some(200_499),
+            ),
             piste("/m/b.mp3", Some("Sans artiste"), None, Some(200_500)),
             piste("/m/c.mp3", None, Some("X"), None),
         ]);
@@ -323,15 +345,27 @@ mod tests {
 
     #[test]
     fn un_titre_ne_peut_pas_ouvrir_une_ligne_parasite() {
-        let texte = texte_m3u8(&[piste("/m/a.mp3", Some("ligne 1\n/etc/passwd"), Some("A\rB"), Some(1000))]);
+        let texte = texte_m3u8(&[piste(
+            "/m/a.mp3",
+            Some("ligne 1\n/etc/passwd"),
+            Some("A\rB"),
+            Some(1000),
+        )]);
         let lignes: Vec<_> = texte.lines().collect();
-        assert_eq!(lignes.len(), 3, "une seule piste : en-tête, légende, chemin");
+        assert_eq!(
+            lignes.len(),
+            3,
+            "une seule piste : en-tête, légende, chemin"
+        );
         assert_eq!(lignes[2], "/m/a.mp3");
     }
 
     #[test]
     fn le_nom_de_fichier_est_sur() {
-        assert_eq!(nom_de_fichier("Rock/Metal: le \"best\" ?"), "Rock_Metal_ le _best_ _");
+        assert_eq!(
+            nom_de_fichier("Rock/Metal: le \"best\" ?"),
+            "Rock_Metal_ le _best_ _"
+        );
         assert_eq!(nom_de_fichier("..cache"), "cache");
         assert_eq!(nom_de_fichier("   "), "playlist");
         assert_eq!(nom_de_fichier("..."), "playlist");
@@ -350,7 +384,9 @@ mod tests {
         assert_eq!(un.file_name().unwrap(), "Ma liste.m3u8");
         assert_eq!(deux.file_name().unwrap(), "Ma liste (2).m3u8");
         assert_eq!(trois.file_name().unwrap(), "Ma liste (3).m3u8");
-        assert!(std::fs::read_to_string(&un).unwrap().starts_with("#EXTM3U\n"));
+        assert!(std::fs::read_to_string(&un)
+            .unwrap()
+            .starts_with("#EXTM3U\n"));
         let _ = std::fs::remove_dir_all(&dossier);
     }
 
@@ -364,7 +400,10 @@ mod tests {
         assert_eq!(ids, vec![b, a]);
         // Renommer A la remonte (`modifiee_le` plus récent).
         lib.conn
-            .execute("UPDATE playlist SET modifiee_le = modifiee_le - 100 WHERE id = ?1", [b])
+            .execute(
+                "UPDATE playlist SET modifiee_le = modifiee_le - 100 WHERE id = ?1",
+                [b],
+            )
             .unwrap();
         lib.renommer_playlist(a, "A2").unwrap();
         let ids: Vec<_> = lib.playlists().unwrap().into_iter().map(|p| p.id).collect();

@@ -19,7 +19,6 @@
 /// Fréquence de travail de l'éditeur.
 const SR: u32 = 44_100;
 
-
 /// Étire un signal entrelacé sans changer sa hauteur.
 ///
 /// `facteur` est un facteur de **durée** : 1,25 rend le morceau un quart plus

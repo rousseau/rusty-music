@@ -36,8 +36,14 @@ const DIM: usize = 512;
 /// MusicBrainz et Last.fm restent seuls à voter le nom d'une famille.
 pub fn charger() -> Option<Vocabulaire> {
     charger_depuis(
-        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/vocabulaire/vocabulaire.bin")),
-        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/vocabulaire/vocabulaire.txt")),
+        Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vocabulaire/vocabulaire.bin"
+        )),
+        Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/vocabulaire/vocabulaire.txt"
+        )),
     )
 }
 
@@ -174,7 +180,8 @@ mod tests {
 
     #[test]
     fn vocabulaire_absent_ne_bloque_rien() {
-        assert!(charger_depuis(Path::new("/nexiste/pas.bin"), Path::new("/nexiste/pas.txt"))
-            .is_none());
+        assert!(
+            charger_depuis(Path::new("/nexiste/pas.bin"), Path::new("/nexiste/pas.txt")).is_none()
+        );
     }
 }

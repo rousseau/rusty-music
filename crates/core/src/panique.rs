@@ -64,6 +64,9 @@ mod tests {
     #[test]
     fn le_travail_normal_traverse_sans_toucher_au_resultat() {
         assert_eq!(sans_panique(|| 42), Ok(42));
-        assert_eq!(sans_panique(|| Err::<i32, _>("échec ordinaire")), Ok(Err("échec ordinaire")));
+        assert_eq!(
+            sans_panique(|| Err::<i32, _>("échec ordinaire")),
+            Ok(Err("échec ordinaire"))
+        );
     }
 }

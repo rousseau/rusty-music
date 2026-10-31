@@ -590,7 +590,11 @@ fn alternance_dents(env: &[f32], periode: f32) -> f32 {
         let (p, i) = dents(phi);
         let total = p + i;
         let (fort, faible) = if p >= i { (p, i) } else { (i, p) };
-        let rapport = if fort > f32::EPSILON { faible / fort } else { 1.0 };
+        let rapport = if fort > f32::EPSILON {
+            faible / fort
+        } else {
+            1.0
+        };
         if total > meilleur.0 {
             meilleur = (total, rapport);
         }
@@ -936,7 +940,10 @@ pub fn analyser_fenetres(fenetres: &[Vec<f32>], a: &Analyseur) -> Descripteurs {
 /// bascule d'octave d'une fenêtre à l'autre (`examples/diagnostic_tempo.rs`).
 /// `analyser`/`analyser_fenetres` restent le chemin de production ; cette
 /// fonction n'est appelée que par l'outillage de diagnostic.
-pub fn tempos_par_fenetre(path: &Path, a: &Analyseur) -> Result<Vec<Option<DiagnosticTempo>>, decode::Error> {
+pub fn tempos_par_fenetre(
+    path: &Path,
+    a: &Analyseur,
+) -> Result<Vec<Option<DiagnosticTempo>>, decode::Error> {
     let fenetres = decode::fenetres(path, decode::FENETRES)?;
     Ok(fenetres
         .iter()
@@ -1006,12 +1013,21 @@ mod tests {
     /// injecterait une périodicité qui n'existe pas dans le mécanisme réel
     /// et biaiserait le test dans le mauvais sens (constaté en écrivant ce
     /// test : ça fait au contraire *descendre* un gagnant déjà juste).
-    fn clics_accentues(bpm_rapide: f32, secondes: f32, gain_fort: f32, gain_faible: f32) -> Vec<f32> {
+    fn clics_accentues(
+        bpm_rapide: f32,
+        secondes: f32,
+        gain_fort: f32,
+        gain_faible: f32,
+    ) -> Vec<f32> {
         let n = (SR as f32 * secondes) as usize;
         let periode = (SR as f32 * 60.0 / bpm_rapide) as usize;
         let mut s = vec![0.0f32; n];
         for (indice, debut) in (0..n).step_by(periode).enumerate() {
-            let gain = if indice % 2 == 0 { gain_fort } else { gain_faible };
+            let gain = if indice % 2 == 0 {
+                gain_fort
+            } else {
+                gain_faible
+            };
             let duree = (SR as usize / 50).min(n - debut);
             for i in 0..duree {
                 let t = i as f32 / duree as f32;
@@ -1032,9 +1048,9 @@ mod tests {
         // peigne retrouve le battement directement et ne teste rien.
         let a = Analyseur::new();
         let attendu = 176.0f32; // sa moitié, 88, reste dans la grille [60,200]
-        // Contraste mesuré, pas deviné : en dessous de 0,8 le rythme de la
-        // mesure domine trop pour laisser une évidence testable au
-        // battement ; 0,9 donne une marge confortable au-dessus du seuil.
+                                // Contraste mesuré, pas deviné : en dessous de 0,8 le rythme de la
+                                // mesure domine trop pour laisser une évidence testable au
+                                // battement ; 0,9 donne une marge confortable au-dessus du seuil.
         let mut env = flux(&a.spectres(&clics_accentues(attendu, 12.0, 1.0, 0.9)));
         centrer(&mut env);
         let trouve = tempo(&env).expect("pulsation régulière");
@@ -1070,7 +1086,11 @@ mod tests {
         let m = masque_harmonique(&spectres, 20, 80);
         let au = |t: usize, k: usize| m[t][k - 20];
         assert!(au(2, 50) > 0.99, "le son tenu passe : {}", au(2, 50));
-        assert!(au(4, 30) < 0.01, "la frappe est écrasée hors de la raie tenue : {}", au(4, 30));
+        assert!(
+            au(4, 30) < 0.01,
+            "la frappe est écrasée hors de la raie tenue : {}",
+            au(4, 30)
+        );
         // Sur la frappe, la raie tenue garde au moins l'avantage de sa continuité.
         assert!(au(4, 50) > au(4, 30) * 10.0);
     }
@@ -1124,7 +1144,10 @@ mod tests {
         let d = analyser_fenetres(&[bruit(10.0)], &Analyseur::new());
         let aplat = d.flatness_moy.expect("bruit non silencieux");
         let zcr = d.zcr.expect("bruit non silencieux");
-        assert!(aplat > 0.5, "aplatissement {aplat} attendu > 0,5 sur du bruit");
+        assert!(
+            aplat > 0.5,
+            "aplatissement {aplat} attendu > 0,5 sur du bruit"
+        );
         assert!(zcr > 0.3, "ZCR {zcr} attendu > 0,3 sur du bruit");
     }
 
@@ -1135,7 +1158,10 @@ mod tests {
         let d = analyser_fenetres(&[accord(&[880.0], 10.0)], &Analyseur::new());
         let aplat = d.flatness_moy.expect("ton non silencieux");
         let centroide = d.centroide_moy.expect("ton non silencieux");
-        assert!(aplat < 0.3, "aplatissement {aplat} attendu < 0,3 sur un ton pur");
+        assert!(
+            aplat < 0.3,
+            "aplatissement {aplat} attendu < 0,3 sur un ton pur"
+        );
         // Tolérance large : le bruit de calcul de la FFT en f32 (environ
         // 1e-4 du pic, mesuré) se répartit sur les ~1000 raies jusqu'à
         // 24 kHz, et le centroïde le pondère par une fréquence bien plus

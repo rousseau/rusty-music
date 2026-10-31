@@ -39,11 +39,18 @@ fn liens(cellule: &str) -> Vec<Lien> {
     let mut reste = cellule;
     while let Some(debut) = reste.find('[') {
         let apres = &reste[debut + 1..];
-        let Some(fin_texte) = apres.find("](") else { break };
-        let Some(fin_url) = apres[fin_texte + 2..].find(')') else { break };
+        let Some(fin_texte) = apres.find("](") else {
+            break;
+        };
+        let Some(fin_url) = apres[fin_texte + 2..].find(')') else {
+            break;
+        };
         let url = &apres[fin_texte + 2..fin_texte + 2 + fin_url];
         if url.starts_with("http") {
-            out.push(Lien { texte: texte_brut(&apres[..fin_texte]), url: url.to_string() });
+            out.push(Lien {
+                texte: texte_brut(&apres[..fin_texte]),
+                url: url.to_string(),
+            });
         }
         reste = &apres[fin_texte + 2 + fin_url..];
     }
@@ -106,7 +113,10 @@ fn modeles(texte: &str) -> Vec<Modele> {
 
 #[tauri::command]
 pub fn a_propos() -> APropos {
-    APropos { version: env!("CARGO_PKG_VERSION"), modeles: modeles(MODELES) }
+    APropos {
+        version: env!("CARGO_PKG_VERSION"),
+        modeles: modeles(MODELES),
+    }
 }
 
 #[cfg(test)]
@@ -119,8 +129,13 @@ mod tests {
         assert!(m.len() >= 8, "{} modèles", m.len());
         let clap = m.iter().find(|x| x.nom.starts_with("CLAP")).expect("CLAP");
         assert_eq!(clap.licence_poids, "Apache-2.0");
-        assert!(clap.liens.iter().any(|l| l.url == "https://github.com/LAION-AI/CLAP"));
-        assert!(m.iter().all(|x| !x.nom.contains("**") && !x.role.is_empty()));
+        assert!(clap
+            .liens
+            .iter()
+            .any(|l| l.url == "https://github.com/LAION-AI/CLAP"));
+        assert!(m
+            .iter()
+            .all(|x| !x.nom.contains("**") && !x.role.is_empty()));
     }
 
     #[test]
@@ -132,8 +147,14 @@ mod tests {
         assert_eq!(
             liens("[a](https://x) et [b](https://y)"),
             vec![
-                Lien { texte: "a".into(), url: "https://x".into() },
-                Lien { texte: "b".into(), url: "https://y".into() },
+                Lien {
+                    texte: "a".into(),
+                    url: "https://x".into()
+                },
+                Lien {
+                    texte: "b".into(),
+                    url: "https://y".into()
+                },
             ]
         );
     }

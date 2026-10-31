@@ -42,7 +42,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let debut = std::time::Instant::now();
     let v = enc.embed(PHRASE)?;
-    println!("encodé en {:.0} ms · « {PHRASE} »", debut.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "encodé en {:.0} ms · « {PHRASE} »",
+        debut.elapsed().as_secs_f64() * 1000.0
+    );
 
     let norme: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     println!("norme : {norme:.7} (attendue {NORME_ATTENDUE})");

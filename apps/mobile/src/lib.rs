@@ -139,7 +139,10 @@ fn retirer_valises_remplacees(dossier: &Path, ouverte: Option<&Path>) {
     for nom in noms {
         let racine = dossier.join(&nom);
         // Un nom simple, et un dossier qui est bien une valise.
-        if nom.contains(['/', '\\']) || nom.starts_with('.') || !racine.join("valise.json").is_file() {
+        if nom.contains(['/', '\\'])
+            || nom.starts_with('.')
+            || !racine.join("valise.json").is_file()
+        {
             continue;
         }
         if ouverte == Some(racine.as_path()) {
@@ -229,7 +232,9 @@ fn ouvrir(etat: &Etat, nom: &str) -> Result<Vec<AlbumVue>, String> {
     let fichiers = {
         let mut stmt = lib
             .conn
-            .prepare("SELECT t.path, f.fichier FROM tracks t JOIN valise_fichier f ON f.track_id = t.id")
+            .prepare(
+                "SELECT t.path, f.fichier FROM tracks t JOIN valise_fichier f ON f.track_id = t.id",
+            )
             .map_err(echec)?;
         let paires = stmt
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
@@ -244,7 +249,10 @@ fn ouvrir(etat: &Etat, nom: &str) -> Result<Vec<AlbumVue>, String> {
     let gains = fichiers
         .keys()
         .filter_map(|p| {
-            let g = lib.gain_lecture(p, ModeGain::Album, CIBLE_LUFS).ok().flatten()?;
+            let g = lib
+                .gain_lecture(p, ModeGain::Album, CIBLE_LUFS)
+                .ok()
+                .flatten()?;
             Some((p.clone(), g))
         })
         .collect();
@@ -340,7 +348,12 @@ pub(crate) fn lecteur(etat: &Etat) -> Result<MutexGuard<'_, Option<Player>>, Str
         });
         let gains = etat.gains.clone();
         player.set_gain_resolveur(move |p| {
-            gains.read().unwrap_or_else(|e| e.into_inner()).get(p).copied().unwrap_or(1.0)
+            gains
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(p)
+                .copied()
+                .unwrap_or(1.0)
         });
         *garde = Some(player);
     }
@@ -461,9 +474,17 @@ fn file_lecture(etat: State<Etat>) -> Result<FileVue, String> {
     let (file, rang, retirable) = {
         let garde = verrou(&etat.player);
         let Some(p) = garde.as_ref() else {
-            return Ok(FileVue { pistes: Vec::new(), rang: None, retirable: 0 });
+            return Ok(FileVue {
+                pistes: Vec::new(),
+                rang: None,
+                retirable: 0,
+            });
         };
-        let rang = if p.is_finished() { None } else { p.rang_courant() };
+        let rang = if p.is_finished() {
+            None
+        } else {
+            p.rang_courant()
+        };
         (p.queue().to_vec(), rang, p.verrou())
     };
     let valise = verrou(&etat.valise);
@@ -499,7 +520,11 @@ fn file_lecture(etat: State<Etat>) -> Result<FileVue, String> {
             })
         })
         .collect();
-    Ok(FileVue { pistes, rang, retirable })
+    Ok(FileVue {
+        pistes,
+        rang,
+        retirable,
+    })
 }
 
 /// Saute à la piste de rang `rang` de la file.
@@ -594,9 +619,11 @@ fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
     let (courant, en_pause, position) = {
         let garde = verrou(&etat.player);
         match garde.as_ref() {
-            Some(p) if !p.is_finished() => {
-                (p.current().map(Path::to_path_buf), p.is_paused(), p.position())
-            }
+            Some(p) if !p.is_finished() => (
+                p.current().map(Path::to_path_buf),
+                p.is_paused(),
+                p.position(),
+            ),
             _ => (None, false, Duration::ZERO),
         }
     };
@@ -635,7 +662,11 @@ fn precharger_suivante(etat: &Etat) {
         };
         let epoque = player.epoque();
         player.a_precharger().map(|(rang, piste)| {
-            let original = player.queue().get(rang).cloned().unwrap_or_else(|| piste.clone());
+            let original = player
+                .queue()
+                .get(rang)
+                .cloned()
+                .unwrap_or_else(|| piste.clone());
             (epoque, rang, piste, original)
         })
     };
@@ -665,12 +696,24 @@ fn base64(octets: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(octets.len().div_ceil(3) * 4);
     for bloc in octets.chunks(3) {
-        let b = [bloc[0], *bloc.get(1).unwrap_or(&0), *bloc.get(2).unwrap_or(&0)];
+        let b = [
+            bloc[0],
+            *bloc.get(1).unwrap_or(&0),
+            *bloc.get(2).unwrap_or(&0),
+        ];
         let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
         s.push(T[(n >> 18) as usize & 63] as char);
         s.push(T[(n >> 12) as usize & 63] as char);
-        s.push(if bloc.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        s.push(if bloc.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        s.push(if bloc.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        s.push(if bloc.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     s
 }

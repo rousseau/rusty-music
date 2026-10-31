@@ -188,24 +188,51 @@ const VOCABULAIRE_DEFAUT: &[(&str, &[&str])] = &[
     (
         "Rock",
         &[
-            "rock", "alternative rock", "hard rock", "psychedelic rock", "folk rock",
-            "blues rock", "pop rock", "progressive rock", "punk", "grunge", "indie rock",
-            "post-punk", "garage rock",
+            "rock",
+            "alternative rock",
+            "hard rock",
+            "psychedelic rock",
+            "folk rock",
+            "blues rock",
+            "pop rock",
+            "progressive rock",
+            "punk",
+            "grunge",
+            "indie rock",
+            "post-punk",
+            "garage rock",
         ],
     ),
     (
         "Metal",
         &[
-            "metal", "nu metal", "alternative metal", "thrash metal", "industrial metal",
-            "groove metal", "heavy metal", "death metal", "black metal", "doom metal",
+            "metal",
+            "nu metal",
+            "alternative metal",
+            "thrash metal",
+            "industrial metal",
+            "groove metal",
+            "heavy metal",
+            "death metal",
+            "black metal",
+            "doom metal",
         ],
     ),
     ("Hip Hop", &["hip hop", "boom bap", "rap", "trap"]),
     (
         "Électronique",
         &[
-            "electronic", "drum and bass", "big beat", "ambient", "downtempo", "trip hop",
-            "house", "techno", "idm", "electronica", "synthwave",
+            "electronic",
+            "drum and bass",
+            "big beat",
+            "ambient",
+            "downtempo",
+            "trip hop",
+            "house",
+            "techno",
+            "idm",
+            "electronica",
+            "synthwave",
         ],
     ),
     ("Jazz", &["jazz", "acid jazz", "fusion", "bebop", "swing"]),
@@ -213,10 +240,23 @@ const VOCABULAIRE_DEFAUT: &[(&str, &[&str])] = &[
     ("Soul · Funk", &["funk", "soul", "r&b", "disco", "motown"]),
     (
         "Folk",
-        &["folk", "celtic", "bluegrass", "country", "americana", "singer-songwriter"],
+        &[
+            "folk",
+            "celtic",
+            "bluegrass",
+            "country",
+            "americana",
+            "singer-songwriter",
+        ],
     ),
-    ("Chanson", &["chanson française", "chanson", "variété française"]),
-    ("Classique", &["classical", "baroque", "opera", "contemporary classical"]),
+    (
+        "Chanson",
+        &["chanson française", "chanson", "variété française"],
+    ),
+    (
+        "Classique",
+        &["classical", "baroque", "opera", "contemporary classical"],
+    ),
     ("Pop", &["pop", "synthpop", "dance pop", "indie pop"]),
     ("Monde", &["afrobeat", "world", "latin", "flamenco"]),
 ];
@@ -410,9 +450,16 @@ fn epoch_vers_cle(secondes: i64) -> u32 {
 /// [`Library::ordre_darrivee`], réduit à ce dont un album a besoin — sans les
 /// médianes de secours, qui n'ont de sens que faute d'aucune date pour un
 /// morceau isolé.
-fn annee_fiable_album(mb_date: Option<&str>, compilation: bool, tag_annee: Option<i64>) -> Option<i64> {
+fn annee_fiable_album(
+    mb_date: Option<&str>,
+    compilation: bool,
+    tag_annee: Option<i64>,
+) -> Option<i64> {
     if !compilation {
-        if let Some(a) = mb_date.and_then(date_iso_vers_cle).map(|k| (k / 10_000) as i64) {
+        if let Some(a) = mb_date
+            .and_then(date_iso_vers_cle)
+            .map(|k| (k / 10_000) as i64)
+        {
             return Some(a);
         }
     }
@@ -443,7 +490,12 @@ fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
 /// exécution à l'autre : c'est lui qui départage les arrivées d'une même année.
 pub(crate) fn hacher(artiste: &str, album: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for octet in artiste.as_bytes().iter().chain(b"\x1f").chain(album.as_bytes()) {
+    for octet in artiste
+        .as_bytes()
+        .iter()
+        .chain(b"\x1f")
+        .chain(album.as_bytes())
+    {
         h ^= *octet as u64;
         h = h.wrapping_mul(0x1000_0000_01b3);
     }
@@ -486,7 +538,13 @@ type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
 /// `(groupe, artiste MusicBrainz, album, tag de fichier, genre gagnant
 /// CLAP-texte)` — l'entrée du vote à trois sources, voir
 /// [`Library::nommer_par_groupe`].
-type PisteVote = (i64, Option<String>, Option<String>, Option<String>, Option<String>);
+type PisteVote = (
+    i64,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 /// Une piste vue par le recalcul de popularité : son id, son MBID
 /// d'enregistrement, son MBID d'artiste, son album.
@@ -1257,8 +1315,8 @@ impl Library {
                FROM features f JOIN tracks t ON t.id = f.track_id
               WHERE f.model = ?1",
         )?;
-        let pistes: Vec<PisteVote> =
-            stmt.query_map(params![model], |r| {
+        let pistes: Vec<PisteVote> = stmt
+            .query_map(params![model], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
             })?
             .collect::<std::result::Result<_, _>>()?;
@@ -1282,7 +1340,9 @@ impl Library {
         }
         let groupe_de: HashMap<i64, i64> = assignations.iter().cloned().collect();
         let ids: Vec<i64> = assignations.iter().map(|(id, _)| *id).collect();
-        let placeholders = std::iter::repeat_n("?", ids.len()).collect::<Vec<_>>().join(",");
+        let placeholders = std::iter::repeat_n("?", ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
         let sql = format!(
             "SELECT t.id, t.mb_artist_id, t.album, t.genre, f.texte_label
                FROM tracks t JOIN features f ON f.track_id = t.id
@@ -1291,14 +1351,16 @@ impl Library {
         let mut stmt = self.conn.prepare(&sql)?;
         let mut params: Vec<&dyn rusqlite::ToSql> = vec![&model];
         params.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
-        let pistes: Vec<PisteVote> =
-            stmt.query_map(params.as_slice(), |r| {
+        let pistes: Vec<PisteVote> = stmt
+            .query_map(params.as_slice(), |r| {
                 let id: i64 = r.get(0)?;
                 Ok((id, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
             })?
             .filter_map(|res| {
                 res.ok().and_then(|(id, artiste, album, tag, texte_label)| {
-                    groupe_de.get(&id).map(|g| (*g, artiste, album, tag, texte_label))
+                    groupe_de
+                        .get(&id)
+                        .map(|g| (*g, artiste, album, tag, texte_label))
                 })
             })
             .collect();
@@ -1311,10 +1373,7 @@ impl Library {
     /// CLAP-texte)` — un identifiant de groupe générique, famille de la
     /// carte ou sous-groupe d'un affinage local, cette fonction n'en sait
     /// rien et ne le réécrit nulle part.
-    fn nommer_par_groupe(
-        &self,
-        pistes: &[PisteVote],
-    ) -> Result<Vec<VoteFamille>> {
+    fn nommer_par_groupe(&self, pistes: &[PisteVote]) -> Result<Vec<VoteFamille>> {
         let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
         let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
         let albums = self.mb_albums()?;
@@ -1348,7 +1407,10 @@ impl Library {
             if let (Some(artiste), Some(album)) = (artiste, album) {
                 let cle = (artiste.clone(), crate::musicbrainz::normaliser_titre(album));
                 if let Some(rg) = albums.get(&cle) {
-                    rg_par_cluster.entry(*cluster).or_default().insert(rg.clone());
+                    rg_par_cluster
+                        .entry(*cluster)
+                        .or_default()
+                        .insert(rg.clone());
                 }
             }
         }
@@ -1375,10 +1437,11 @@ impl Library {
         // CLAP-texte et Last.fm, eux, ne doivent jamais recevoir ce repli
         // pour le vote — voir [`nommer_les_familles_option`].
         let noms_mb = nommer_les_familles(&effectifs, &comptes_mb);
-        let carte_clap: HashMap<i64, String> = nommer_les_familles_option(&effectifs, &comptes_clap)
-            .into_iter()
-            .filter_map(|(c, n, _)| n.map(|n| (c, n)))
-            .collect();
+        let carte_clap: HashMap<i64, String> =
+            nommer_les_familles_option(&effectifs, &comptes_clap)
+                .into_iter()
+                .filter_map(|(c, n, _)| n.map(|n| (c, n)))
+                .collect();
         let carte_lastfm: HashMap<i64, String> =
             nommer_les_familles_option(&effectifs, &comptes_lastfm)
                 .into_iter()
@@ -1390,7 +1453,9 @@ impl Library {
             let nom_clap = carte_clap.get(&cluster).cloned().unwrap_or_default();
             let nom_lastfm = carte_lastfm.get(&cluster).cloned().unwrap_or_default();
             let critique_confirme = |candidat: &str| -> bool {
-                let Some(rgs) = rg_par_cluster.get(&cluster) else { return false };
+                let Some(rgs) = rg_par_cluster.get(&cluster) else {
+                    return false;
+                };
                 self.critique_contient(rgs, candidat).unwrap_or(false)
             };
             let (fiable, nom_affiche) =
@@ -1423,10 +1488,11 @@ impl Library {
         if rgs.is_empty() {
             return Ok(false);
         }
-        let placeholders = std::iter::repeat_n("?", rgs.len()).collect::<Vec<_>>().join(",");
-        let sql = format!(
-            "SELECT texte FROM critiques WHERE mbid_release_group IN ({placeholders})"
-        );
+        let placeholders = std::iter::repeat_n("?", rgs.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql =
+            format!("SELECT texte FROM critiques WHERE mbid_release_group IN ({placeholders})");
         let mut stmt = self.conn.prepare(&sql)?;
         let textes: Vec<String> = stmt
             .query_map(rusqlite::params_from_iter(rgs.iter()), |r| {
@@ -1444,10 +1510,7 @@ impl Library {
     /// celle de [`Library::albums`] : nom + `COALESCE(album_artist, artist)`.
     /// Les albums dont aucun morceau n'est encore sur la carte n'apparaissent
     /// pas — le filtre les laisse alors visibles par défaut.
-    pub fn familles_des_albums(
-        &self,
-        model: &str,
-    ) -> Result<Vec<(String, Option<String>, i64)>> {
+    pub fn familles_des_albums(&self, model: &str) -> Result<Vec<(String, Option<String>, i64)>> {
         let mut stmt = self.conn.prepare(
             "SELECT t.album, COALESCE(t.album_artist, t.artist), f.cluster, COUNT(*)
                FROM features f JOIN tracks t ON t.id = f.track_id
@@ -1504,7 +1567,10 @@ impl Library {
         type ComptesFamillesParAlbum = HashMap<(String, Option<String>), Vec<(i64, i64)>>;
         let mut par_album: ComptesFamillesParAlbum = HashMap::new();
         for (album, artiste, cluster, n) in lignes {
-            par_album.entry((album, artiste)).or_default().push((cluster, n));
+            par_album
+                .entry((album, artiste))
+                .or_default()
+                .push((cluster, n));
         }
 
         let mut secondaires = HashMap::new();
@@ -1856,7 +1922,10 @@ impl Library {
             let Some(genre) = genre_du_morceau.get(&p.track_id) else {
                 continue;
             };
-            let dominants = par_cluster.get(&p.cluster).map(|v| v.as_slice()).unwrap_or(&[]);
+            let dominants = par_cluster
+                .get(&p.cluster)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             if dominants.iter().any(|(g, _)| g == genre) {
                 continue;
             }
@@ -2041,7 +2110,9 @@ impl Library {
             .collect::<std::result::Result<_, _>>()?;
         let mut cumul: HashMap<String, i64> = HashMap::new();
         for v in valeurs {
-            *cumul.entry(v.unwrap_or_else(|| "non mesuré".to_string())).or_insert(0) += 1;
+            *cumul
+                .entry(v.unwrap_or_else(|| "non mesuré".to_string()))
+                .or_insert(0) += 1;
         }
         let mut resultat: Vec<(String, i64)> = cumul.into_iter().collect();
         resultat.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -2058,7 +2129,12 @@ impl Library {
             .prepare("SELECT bitrate FROM tracks")?
             .query_map([], |r| r.get(0))?
             .collect::<std::result::Result<_, _>>()?;
-        Ok(histogrammer(&valeurs, BITRATE_MIN, BITRATE_PAS, BITRATE_TRANCHES))
+        Ok(histogrammer(
+            &valeurs,
+            BITRATE_MIN,
+            BITRATE_PAS,
+            BITRATE_TRANCHES,
+        ))
     }
 
     /// Morceaux sans identifiant MusicBrainz d'artiste — ni le tag du
@@ -2119,9 +2195,9 @@ impl Library {
         let total = self.count()?;
         let albums = self.mb_albums()?;
 
-        let mut stmt_critiquees = self.conn.prepare(
-            "SELECT DISTINCT mbid_release_group FROM critiques",
-        )?;
+        let mut stmt_critiquees = self
+            .conn
+            .prepare("SELECT DISTINCT mbid_release_group FROM critiques")?;
         let critiquees: HashSet<String> = stmt_critiquees
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<std::result::Result<_, _>>()?;
@@ -2133,7 +2209,11 @@ impl Library {
               GROUP BY mb_artist_id, album",
         )?;
         let lignes = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
         })?;
         let mut avec_critique = 0i64;
         for ligne in lignes {
@@ -2153,7 +2233,9 @@ impl Library {
     /// valeur par défaut ([`ParametresCarte::default`]) — voir la table
     /// `parametres_carte`.
     pub fn parametres_carte(&self) -> Result<ParametresCarte> {
-        let mut stmt = self.conn.prepare("SELECT cle, valeur FROM parametres_carte")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT cle, valeur FROM parametres_carte")?;
         let lignes: HashMap<String, f64> = stmt
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)))?
             .collect::<std::result::Result<_, _>>()?;
@@ -2231,7 +2313,10 @@ impl Library {
     /// ancrer un morceau, ce serait une entrée morte dans le réglage. Passer
     /// une liste vide restaure les valeurs par défaut — la table vidée,
     /// [`Library::vocabulaire_familles`] retombe sur [`VOCABULAIRE_DEFAUT`].
-    pub fn definir_vocabulaire_familles(&mut self, vocabulaire: &[(String, Vec<String>)]) -> Result<()> {
+    pub fn definir_vocabulaire_familles(
+        &mut self,
+        vocabulaire: &[(String, Vec<String>)],
+    ) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute("DELETE FROM vocabulaire_familles", [])?;
         {
@@ -2278,7 +2363,10 @@ impl Library {
         let mut par_cle: HashMap<(String, String), Vec<(String, i64)>> = HashMap::new();
         for (artiste, album, n) in lignes {
             let norme = titre_album_normalise(&album);
-            par_cle.entry((artiste, norme)).or_default().push((album, n));
+            par_cle
+                .entry((artiste, norme))
+                .or_default()
+                .push((album, n));
         }
         let mut resultat: Vec<EditionsAlbum> = par_cle
             .into_iter()
@@ -2362,7 +2450,12 @@ impl Library {
     /// tempo, par exemple) se détecte tout seul : il suffit de faire avancer
     /// `VERSION_DESCRIPTEURS` côté appelant, les lignes plus anciennes
     /// redeviennent « en attente » sans purge explicite.
-    pub fn pending_descripteurs(&self, model: &str, version: i32, limit: i64) -> Result<Vec<TrackRow>> {
+    pub fn pending_descripteurs(
+        &self,
+        model: &str,
+        version: i32,
+        limit: i64,
+    ) -> Result<Vec<TrackRow>> {
         let sql = format!(
             "SELECT {TRACK_COLS} FROM tracks
               WHERE EXISTS (SELECT 1 FROM features f
@@ -2420,9 +2513,19 @@ impl Library {
                flatness_mean=excluded.flatness_mean, flatness_std=excluded.flatness_std,
                algo_version=excluded.algo_version",
             params![
-                track_id, bpm, musical_key, energy, loudness,
-                zcr, centroid_mean, centroid_std,
-                rolloff_mean, rolloff_std, flatness_mean, flatness_std, version
+                track_id,
+                bpm,
+                musical_key,
+                energy,
+                loudness,
+                zcr,
+                centroid_mean,
+                centroid_std,
+                rolloff_mean,
+                rolloff_std,
+                flatness_mean,
+                flatness_std,
+                version
             ],
         )?;
         Ok(())
@@ -2514,8 +2617,15 @@ impl Library {
                 detail = excluded.detail, mesure = excluded.mesure,
                 ignoree = 0, verifie_at = excluded.verifie_at",
             params![
-                v.dossier, v.artiste, v.album, v.signature, v.version, v.emb_hash,
-                v.anomalie, v.detail, v.mesure
+                v.dossier,
+                v.artiste,
+                v.album,
+                v.signature,
+                v.version,
+                v.emb_hash,
+                v.anomalie,
+                v.detail,
+                v.mesure
             ],
         )?;
         Ok(())
@@ -2586,8 +2696,10 @@ impl Library {
                 params![dossier],
             )?;
         } else {
-            self.conn
-                .execute("DELETE FROM pochette_choix WHERE dossier = ?1", params![dossier])?;
+            self.conn.execute(
+                "DELETE FROM pochette_choix WHERE dossier = ?1",
+                params![dossier],
+            )?;
         }
         Ok(())
     }
@@ -2613,7 +2725,9 @@ impl Library {
     pub fn pochette_dossier_choisie(&self, dossier: &str) -> Result<bool> {
         Ok(self
             .conn
-            .prepare_cached("SELECT 1 FROM pochette_choix WHERE dossier = ?1 AND source = 'dossier'")?
+            .prepare_cached(
+                "SELECT 1 FROM pochette_choix WHERE dossier = ?1 AND source = 'dossier'",
+            )?
             .exists(params![dossier])?)
     }
 
@@ -3058,9 +3172,7 @@ impl Library {
                 AND COALESCE(album_artist, artist) IS NOT NULL
               GROUP BY mb_album_artist_id",
         )?;
-        let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         let mut out = HashMap::new();
         for r in rows {
             let (mbid, nom) = r?;
@@ -3473,12 +3585,7 @@ impl Library {
 
     /// Les MBID déjà interrogés (et encore frais) pour une source et un
     /// échelon donnés. `depuis` : voir [`Self::pop_recordings_candidats`].
-    pub fn pop_deja_fait(
-        &self,
-        source: &str,
-        kind: &str,
-        depuis: i64,
-    ) -> Result<HashSet<String>> {
+    pub fn pop_deja_fait(&self, source: &str, kind: &str, depuis: i64) -> Result<HashSet<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT mbid FROM popularite_fetched
               WHERE source = ?1 AND kind = ?2 AND at >= ?3",
@@ -3533,9 +3640,9 @@ impl Library {
         let couverts: i64 =
             self.conn
                 .query_row("SELECT COUNT(*) FROM track_popularite", [], |r| r.get(0))?;
-        let plus_ancienne: Option<i64> = self
-            .conn
-            .query_row("SELECT MIN(at) FROM popularite_fetched", [], |r| r.get(0))?;
+        let plus_ancienne: Option<i64> =
+            self.conn
+                .query_row("SELECT MIN(at) FROM popularite_fetched", [], |r| r.get(0))?;
         let perimes: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM popularite_fetched
               WHERE at < strftime('%s','now') - ?1",
@@ -3660,7 +3767,11 @@ impl Library {
     /// `docs/enrichissement-lecteur.md`. `depuis` : voir
     /// [`Self::pop_recordings_candidats`].
     pub fn theaudiodb_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
-        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let limite = if limite == usize::MAX {
+            i64::MAX
+        } else {
+            limite as i64
+        };
         let mut stmt = self.conn.prepare(
             "SELECT t.mb_artist_id, COUNT(*) n FROM tracks t
               WHERE t.mb_artist_id IS NOT NULL AND t.mb_artist_id <> ''
@@ -3690,7 +3801,12 @@ impl Library {
                    biographie_en=excluded.biographie_en,
                    biographie_fr=excluded.biographie_fr,
                    recupere_le=excluded.recupere_le",
-                params![b.mb_artist_id, b.id_theaudiodb, b.biographie_en, b.biographie_fr],
+                params![
+                    b.mb_artist_id,
+                    b.id_theaudiodb,
+                    b.biographie_en,
+                    b.biographie_fr
+                ],
             )?;
         }
         for mbid in demandes {
@@ -3706,12 +3822,18 @@ impl Library {
     /// Les biographies connues pour un morceau. `mb_artist_id` peut porter
     /// plusieurs MBID `/`-séparés (« X feat. Y ») : une entrée par MBID connu.
     pub fn bio_pour_piste(&self, track_id: i64) -> Result<Vec<BioArtiste>> {
-        let brut: Option<String> = self.conn.query_row(
-            "SELECT mb_artist_id FROM tracks WHERE id = ?1",
-            params![track_id],
-            |r| r.get(0),
-        ).optional()?.flatten();
-        let Some(brut) = brut else { return Ok(Vec::new()) };
+        let brut: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT mb_artist_id FROM tracks WHERE id = ?1",
+                params![track_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        let Some(brut) = brut else {
+            return Ok(Vec::new());
+        };
 
         let mut stmt = self.conn.prepare(
             "SELECT mb_artist_id, biographie_en, biographie_fr
@@ -3740,18 +3862,21 @@ impl Library {
     /// toute piste sélectionnée. `bio_pour_piste` reste la voie de
     /// l'inspecteur, qui part d'une piste et résout son/ses MBID d'artiste.
     pub fn bio_pour_artiste(&self, mbid: &str) -> Result<Option<BioArtiste>> {
-        let row = self.conn.query_row(
-            "SELECT mb_artist_id, biographie_en, biographie_fr
+        let row = self
+            .conn
+            .query_row(
+                "SELECT mb_artist_id, biographie_en, biographie_fr
                FROM theaudiodb_artistes WHERE mb_artist_id = ?1",
-            params![mbid],
-            |r| {
-                Ok(BioArtiste {
-                    mb_artist_id: r.get(0)?,
-                    biographie_en: r.get(1)?,
-                    biographie_fr: r.get(2)?,
-                })
-            },
-        ).optional()?;
+                params![mbid],
+                |r| {
+                    Ok(BioArtiste {
+                        mb_artist_id: r.get(0)?,
+                        biographie_en: r.get(1)?,
+                        biographie_fr: r.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
         Ok(row)
     }
 
@@ -3760,7 +3885,11 @@ impl Library {
     /// Les MBID d'édition (`tracks.mb_release_id`) dont le lien Discogs reste
     /// à vérifier — jamais interrogés via `editions_discogs`.
     pub fn discogs_liaison_candidats(&self, limite: usize) -> Result<Vec<String>> {
-        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let limite = if limite == usize::MAX {
+            i64::MAX
+        } else {
+            limite as i64
+        };
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT t.mb_release_id FROM tracks t
               WHERE t.mb_release_id IS NOT NULL AND t.mb_release_id <> ''
@@ -3806,7 +3935,11 @@ impl Library {
 
     /// Range les crédits d'une édition Discogs — remplace ce qui existait déjà
     /// pour cette édition (un import réécrit, il ne fusionne pas).
-    pub fn credits_poser(&mut self, discogs_release_id: u64, credits: &[CreditDiscogs]) -> Result<()> {
+    pub fn credits_poser(
+        &mut self,
+        discogs_release_id: u64,
+        credits: &[CreditDiscogs],
+    ) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "DELETE FROM credits_discogs WHERE discogs_release_id = ?1",
@@ -3817,7 +3950,13 @@ impl Library {
                 "INSERT OR IGNORE INTO credits_discogs
                    (discogs_release_id, personne, role, pistes, discogs_artist_id, source)
                  VALUES (?1, ?2, ?3, ?4, ?5, 'discogs')",
-                params![discogs_release_id as i64, c.personne, c.role, c.pistes, c.discogs_artist_id],
+                params![
+                    discogs_release_id as i64,
+                    c.personne,
+                    c.role,
+                    c.pistes,
+                    c.discogs_artist_id
+                ],
             )?;
         }
         tx.commit()?;
@@ -3928,7 +4067,11 @@ impl Library {
     /// `mb_release_groups`, déjà rempli par l'enrichissement des genres — pas
     /// de nouvelle résolution nom → release-group.
     pub fn critiques_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
-        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let limite = if limite == usize::MAX {
+            i64::MAX
+        } else {
+            limite as i64
+        };
         let mut stmt = self.conn.prepare(
             "SELECT mbid FROM mb_release_groups g
               WHERE NOT EXISTS (SELECT 1 FROM critiques_fetched f
@@ -3958,8 +4101,14 @@ impl Library {
                    texte=excluded.texte, url_originale=excluded.url_originale,
                    recupere_le=excluded.recupere_le",
                 params![
-                    c.id, mbid_rg, c.auteur, c.licence_id, c.licence_nom,
-                    c.langue, c.texte, c.url_originale
+                    c.id,
+                    mbid_rg,
+                    c.auteur,
+                    c.licence_id,
+                    c.licence_nom,
+                    c.langue,
+                    c.texte,
+                    c.url_originale
                 ],
             )?;
         }
@@ -3989,7 +4138,12 @@ impl Library {
             .query_row(
                 "SELECT mb_artist_id, album FROM tracks WHERE id = ?1",
                 params![track_id],
-                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                    ))
+                },
             )
             .optional()?;
         self.release_group_depuis_paire(paire)
@@ -4005,7 +4159,12 @@ impl Library {
             .query_row(
                 "SELECT mb_artist_id, album FROM tracks WHERE path = ?1",
                 params![chemin],
-                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                    ))
+                },
             )
             .optional()?;
         self.release_group_depuis_paire(paire)
@@ -4064,7 +4223,12 @@ impl Library {
                 "SELECT COALESCE(NULLIF(album_artist, ''), artist), album
                    FROM tracks WHERE path = ?1",
                 params![chemin],
-                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                    ))
+                },
             )
             .optional()?;
         Ok(paire
@@ -4080,7 +4244,9 @@ impl Library {
             return Ok(None);
         };
         let albums = self.mb_albums()?;
-        Ok(albums.get(&(artiste, crate::musicbrainz::normaliser_titre(&album))).cloned())
+        Ok(albums
+            .get(&(artiste, crate::musicbrainz::normaliser_titre(&album)))
+            .cloned())
     }
 
     fn critiques_pour_release_group(&self, mbid_rg: &str) -> Result<Vec<Critique>> {
@@ -4111,7 +4277,11 @@ impl Library {
     /// `mb_fetched` (kind = 'artist') mais avec péremption, comme
     /// `popularite_fetched` : `depuis = 0` ne rafraîchit rien.
     pub fn lastfm_candidats(&self, depuis: i64, limite: usize) -> Result<Vec<String>> {
-        let limite = if limite == usize::MAX { i64::MAX } else { limite as i64 };
+        let limite = if limite == usize::MAX {
+            i64::MAX
+        } else {
+            limite as i64
+        };
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT t.mb_artist_id FROM tracks t
               WHERE t.mb_artist_id IS NOT NULL AND t.mb_artist_id <> ''
@@ -4130,7 +4300,10 @@ impl Library {
     /// sources.
     pub fn lastfm_tags_poser(&mut self, mbid: &str, tags: &[crate::lastfm::Tag]) -> Result<()> {
         let tx = self.conn.transaction()?;
-        tx.execute("DELETE FROM lastfm_tags WHERE mb_artist_id = ?1", params![mbid])?;
+        tx.execute(
+            "DELETE FROM lastfm_tags WHERE mb_artist_id = ?1",
+            params![mbid],
+        )?;
         for t in tags {
             tx.execute(
                 "INSERT INTO lastfm_tags (mb_artist_id, tag, poids) VALUES (?1, ?2, ?3)
@@ -4261,9 +4434,8 @@ impl Library {
     pub fn update_texte_labels(&self, model: &str, labels: &[(i64, Option<String>)]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         {
-            let mut stmt = tx.prepare(
-                "UPDATE features SET texte_label=?3 WHERE track_id=?1 AND model=?2",
-            )?;
+            let mut stmt =
+                tx.prepare("UPDATE features SET texte_label=?3 WHERE track_id=?1 AND model=?2")?;
             for (id, label) in labels {
                 stmt.execute(params![id, model, label])?;
             }
@@ -4394,9 +4566,7 @@ impl Library {
                     id: r.get(0)?,
                     annee: r.get(1)?,
                     album: album.unwrap_or_default(),
-                    artiste: album_artiste
-                        .or(artiste)
-                        .unwrap_or_default(),
+                    artiste: album_artiste.or(artiste).unwrap_or_default(),
                     piste: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
                     ajoute: r.get(6)?,
                     mb_date: r.get(7)?,
@@ -4438,7 +4608,11 @@ impl Library {
             .map(|l| {
                 // Une compilation date d'elle-même, pas des œuvres qu'elle
                 // rassemble : sa date de release-group ne vaut rien ici.
-                let mb = if l.compilation { None } else { l.mb_date.as_deref() };
+                let mb = if l.compilation {
+                    None
+                } else {
+                    l.mb_date.as_deref()
+                };
                 let (date, source) = if let Some(d) = mb.and_then(date_iso_vers_cle) {
                     (d, "musicbrainz")
                 } else if let Some(a) = l.annee.filter(|a| (1900..=2100).contains(a)) {
@@ -5002,7 +5176,11 @@ fn nommer_les_familles(
         .into_iter()
         .enumerate()
         .map(|(rang, (famille, nom, effectif))| {
-            (famille, nom.unwrap_or_else(|| format!("Famille {}", rang + 1)), effectif)
+            (
+                famille,
+                nom.unwrap_or_else(|| format!("Famille {}", rang + 1)),
+                effectif,
+            )
         })
         .collect()
 }
@@ -5165,7 +5343,13 @@ fn se_redisent(a: &str, b: &str) -> bool {
 fn tete_normalisee(nom: &str) -> String {
     let tete = nom.split(" · ").next().unwrap_or(nom);
     tete.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -5277,7 +5461,10 @@ mod tests_vote {
     #[test]
     fn arbitrer_vote_ne_distingue_pas_un_repli_dune_vraie_proposition() {
         let (fiable, _) = arbitrer_vote("Rock · Grunge", "Famille 1", "Famille 1", |_| false);
-        assert!(fiable, "arbitrer_vote seul ne peut pas le détecter — c'est voulu, voir le commentaire");
+        assert!(
+            fiable,
+            "arbitrer_vote seul ne peut pas le détecter — c'est voulu, voir le commentaire"
+        );
     }
 }
 
@@ -5716,7 +5903,11 @@ mod tests {
         }
 
         let albums = lib.albums_of_artist(None, "N.E.R.D").unwrap();
-        assert_eq!(albums.len(), 2, "les albums étiquetés ne remontent pas : {albums:?}");
+        assert_eq!(
+            albums.len(),
+            2,
+            "les albums étiquetés ne remontent pas : {albums:?}"
+        );
     }
 
     /// La date d'ajout d'un album est la date de fichier **la plus récente** de
@@ -5750,12 +5941,17 @@ mod tests {
             .collect();
         assert_eq!(par_nom["Ancien"], Some(1_100_000_000));
         assert_eq!(par_nom["Récent"], Some(1_700_000_000));
-        assert_eq!(par_nom["Sans date"], None, "une date nulle n'est pas une date");
+        assert_eq!(
+            par_nom["Sans date"], None,
+            "une date nulle n'est pas une date"
+        );
 
         // Même colonne par la voie « albums d'un artiste ».
         let de_x = lib.albums_of_artist(None, "X").unwrap();
         assert_eq!(
-            de_x.iter().find(|a| a.name == "Récent").and_then(|a| a.ajoute_le),
+            de_x.iter()
+                .find(|a| a.name == "Récent")
+                .and_then(|a| a.ajoute_le),
             Some(1_700_000_000)
         );
     }
@@ -5864,7 +6060,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn album_embeddings_moyenne_les_empreintes_dun_meme_album() {
         let lib = Library::open_in_memory().unwrap();
@@ -5884,7 +6079,8 @@ mod tests {
         ajoute("/m/x2.mp3", "X", "A", &[3.0, 0.0]);
         ajoute("/m/y1.mp3", "Y", "B", &[0.0, 5.0]);
 
-        let par_id: HashMap<i64, Vec<f32>> = lib.album_embeddings("clap").unwrap().into_iter().collect();
+        let par_id: HashMap<i64, Vec<f32>> =
+            lib.album_embeddings("clap").unwrap().into_iter().collect();
 
         assert_eq!(par_id[&(hacher("X", "A") as i64)], vec![2.0, 0.0]);
         assert_eq!(par_id[&(hacher("Y", "B") as i64)], vec![0.0, 5.0]);
@@ -5992,7 +6188,8 @@ mod tests {
     #[test]
     fn purge_dates_remet_en_attente_les_artistes_deja_fetches() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
         conn.execute(
             "INSERT INTO tracks(path, artist, mb_artist_id) VALUES ('/m/a.mp3', 'X', 'mbid-x')",
             [],
@@ -6004,10 +6201,16 @@ mod tests {
             [],
         )
         .unwrap();
-        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')", [])
-            .unwrap();
-        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'albums')", [])
-            .unwrap();
+        conn.execute(
+            "INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'albums')",
+            [],
+        )
+        .unwrap();
 
         migrate(&conn).unwrap();
         let lib = Library { conn };
@@ -6027,7 +6230,8 @@ mod tests {
     #[test]
     fn purge_dates_ne_se_repete_pas() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
         migrate(&conn).unwrap(); // premier « démarrage » : pose la sentinelle
 
         // Une repasse d'enrich réussie depuis : l'artiste est de nouveau
@@ -6037,8 +6241,11 @@ mod tests {
             [],
         )
         .unwrap();
-        conn.execute("INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')", [])
-            .unwrap();
+        conn.execute(
+            "INSERT INTO mb_fetched (mbid, kind) VALUES ('mbid-x', 'artist')",
+            [],
+        )
+        .unwrap();
 
         migrate(&conn).unwrap(); // deuxième « démarrage »
         let lib = Library { conn };
@@ -6198,7 +6405,8 @@ mod tests {
         assert!(lib.pending_analysis("clap", i64::MAX).unwrap().is_empty());
 
         // L'utilisateur peut lui redonner sa chance.
-        lib.effacer_echec_scan(Path::new("/musique/casse.mp3")).unwrap();
+        lib.effacer_echec_scan(Path::new("/musique/casse.mp3"))
+            .unwrap();
         assert_eq!(lib.pending_analysis("clap", i64::MAX).unwrap().len(), 1);
     }
 
@@ -6345,10 +6553,26 @@ mod tests {
             })
             .unwrap();
         let _ = jamais; // jamais analysé : aucune ligne `descriptors`, exprès.
-        lib.save_descripteurs(sans_tempo, None, None, 0.0, -100.0, None, None, None, None, None, None, None, 1)
-            .unwrap();
-        lib.save_descripteurs(mesure, Some(122.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 1)
-            .unwrap();
+        lib.save_descripteurs(
+            sans_tempo, None, None, 0.0, -100.0, None, None, None, None, None, None, None, 1,
+        )
+        .unwrap();
+        lib.save_descripteurs(
+            mesure,
+            Some(122.0),
+            None,
+            0.5,
+            -12.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+        )
+        .unwrap();
 
         let h = lib.stats_tempo().unwrap();
         assert_eq!(h.sans_valeur, 2);
@@ -6371,11 +6595,28 @@ mod tests {
             })
             .unwrap();
         lib.save_embedding(id, "modele", &[0.1, 0.2]).unwrap();
-        lib.save_descripteurs(id, Some(90.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 1)
-            .unwrap();
+        lib.save_descripteurs(
+            id,
+            Some(90.0),
+            None,
+            0.5,
+            -12.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            1,
+        )
+        .unwrap();
 
         // Version 1 : déjà mesuré, rien à refaire.
-        assert!(lib.pending_descripteurs("modele", 1, 10).unwrap().is_empty());
+        assert!(lib
+            .pending_descripteurs("modele", 1, 10)
+            .unwrap()
+            .is_empty());
         let (faits, total) = lib.compter_descripteurs("modele", 1).unwrap();
         assert_eq!((faits, total), (1, 1));
 
@@ -6387,9 +6628,26 @@ mod tests {
         assert_eq!((faits, total), (0, 1));
 
         // Remesuré en version 2 : de nouveau à jour.
-        lib.save_descripteurs(id, Some(180.0), None, 0.5, -12.0, None, None, None, None, None, None, None, 2)
-            .unwrap();
-        assert!(lib.pending_descripteurs("modele", 2, 10).unwrap().is_empty());
+        lib.save_descripteurs(
+            id,
+            Some(180.0),
+            None,
+            0.5,
+            -12.0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            2,
+        )
+        .unwrap();
+        assert!(lib
+            .pending_descripteurs("modele", 2, 10)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -6478,7 +6736,10 @@ mod tests {
             .unwrap()
             .expect("mesurée");
         let attendu = crate::loudness::db_vers_lineaire(0.2); // plafond, pas le naïf (+7 dB)
-        assert!((gain - attendu).abs() < 1e-6, "gain = {gain}, attendu {attendu}");
+        assert!(
+            (gain - attendu).abs() < 1e-6,
+            "gain = {gain}, attendu {attendu}"
+        );
     }
 
     /// Mode album choisi, mais l'album n'a pas encore de ligne
@@ -6524,12 +6785,7 @@ mod tests {
         let lib = Library::open_in_memory().unwrap();
         // Effectifs tous distincts : aucune égalité à départager dans le
         // classement des dominants.
-        let genres = [
-            ("Rock", 4),
-            ("Pop", 3),
-            ("Electronic", 2),
-            ("Jazz", 1),
-        ];
+        let genres = [("Rock", 4), ("Pop", 3), ("Electronic", 2), ("Jazz", 1)];
         let mut i = 0;
         for (genre, n) in genres {
             for _ in 0..n {
@@ -6592,7 +6848,11 @@ mod tests {
             .unwrap();
         }
         let editions = lib.editions_multiples().unwrap();
-        assert_eq!(editions.len(), 1, "une seule paire d'éditions : {editions:?}");
+        assert_eq!(
+            editions.len(),
+            1,
+            "une seule paire d'éditions : {editions:?}"
+        );
         let (artiste, titre, versions) = &editions[0];
         assert_eq!(artiste, "Radiohead");
         assert_eq!(titre, "Kid A");
@@ -6603,7 +6863,10 @@ mod tests {
     fn titre_album_normalise_tronque_a_la_premiere_parenthese_ou_crochet() {
         assert_eq!(titre_album_normalise("Kid A"), "kid a");
         assert_eq!(titre_album_normalise("Kid A (Remaster)"), "kid a");
-        assert_eq!(titre_album_normalise("OK Computer [Deluxe Edition]"), "ok computer");
+        assert_eq!(
+            titre_album_normalise("OK Computer [Deluxe Edition]"),
+            "ok computer"
+        );
     }
 
     /// La médiane s'ajuste à l'échelle réelle des valeurs, même une échelle
@@ -6614,8 +6877,8 @@ mod tests {
         // Énergie resserrée entre 0,03 et 0,41, comme mesuré en vrai — un
         // seuil fixe à 0,5 rangerait tout le monde dans « lent/léger ».
         let pistes = [
-            (60.0, 0.05), // lent, léger  -> Calme
-            (60.0, 0.40), // lent, dense  -> Intense
+            (60.0, 0.05),  // lent, léger  -> Calme
+            (60.0, 0.40),  // lent, dense  -> Intense
             (150.0, 0.05), // rapide, léger -> Enlevé
             (150.0, 0.40), // rapide, dense -> Énergique
         ];
@@ -6626,11 +6889,31 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
-            lib.save_descripteurs(id, Some(*bpm as f32), None, *energie as f32, -10.0, None, None, None, None, None, None, None, 1)
-                .unwrap();
+            lib.save_descripteurs(
+                id,
+                Some(*bpm as f32),
+                None,
+                *energie as f32,
+                -10.0,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                1,
+            )
+            .unwrap();
         }
         let humeur = lib.stats_humeur().unwrap();
-        let compte = |nom: &str| humeur.iter().find(|(n, _)| n == nom).map(|(_, c)| *c).unwrap_or(0);
+        let compte = |nom: &str| {
+            humeur
+                .iter()
+                .find(|(n, _)| n == nom)
+                .map(|(_, c)| *c)
+                .unwrap_or(0)
+        };
         assert_eq!(compte("Calme"), 1);
         assert_eq!(compte("Intense"), 1);
         assert_eq!(compte("Enlevé"), 1);
@@ -6672,7 +6955,14 @@ mod tests {
         .unwrap();
         assert!(lib.liens_artiste_en_cache("a").unwrap());
         let liens = lib.liens_artiste("a").unwrap();
-        assert_eq!(liens, vec![("b".to_string(), "Artiste B".to_string(), "member of band".to_string())]);
+        assert_eq!(
+            liens,
+            vec![(
+                "b".to_string(),
+                "Artiste B".to_string(),
+                "member of band".to_string()
+            )]
+        );
 
         // Un artiste sans aucune relation connue doit rester marqué comme
         // déjà interrogé, sans quoi il serait réinterrogé à chaque visite.
@@ -6698,15 +6988,21 @@ mod tests {
         let lib = Library::open_in_memory().unwrap();
         let hier = lib.date_il_y_a(1).unwrap();
 
-        assert!(lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None)).unwrap());
+        assert!(lib
+            .decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None))
+            .unwrap());
         lib.decouvrir_marquer_passe("sorties").unwrap();
         lib.decouvrir_tout_vu().unwrap();
 
         // Une seconde passe revoit la même sortie : rien de neuf, et le « vu »
         // tient — sans quoi la pastille « nouveau » se rallumerait à chaque
         // actualisation.
-        assert!(!lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None)).unwrap());
-        assert!(lib.decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg2", &hier, None)).unwrap());
+        assert!(!lib
+            .decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg1", &hier, None))
+            .unwrap());
+        assert!(lib
+            .decouvrir_ajouter_sortie("a", "Artiste A", &sortie("rg2", &hier, None))
+            .unwrap());
 
         let fil = lib.decouvrir_fil(30).unwrap();
         assert_eq!(fil.sorties.len(), 2);
@@ -6730,8 +7026,17 @@ mod tests {
         lib.decouvrir_marquer_passe("sorties").unwrap();
 
         let fil = lib.decouvrir_fil(30).unwrap();
-        assert_eq!(fil.sorties.iter().map(|s| &s.rg_mbid).collect::<Vec<_>>(), ["recent"]);
-        assert_eq!(fil.collaborations.iter().map(|s| &s.rg_mbid).collect::<Vec<_>>(), ["collab"]);
+        assert_eq!(
+            fil.sorties.iter().map(|s| &s.rg_mbid).collect::<Vec<_>>(),
+            ["recent"]
+        );
+        assert_eq!(
+            fil.collaborations
+                .iter()
+                .map(|s| &s.rg_mbid)
+                .collect::<Vec<_>>(),
+            ["collab"]
+        );
         assert!(fil.derniere_passe.is_some());
     }
 
@@ -6740,7 +7045,11 @@ mod tests {
         let mut lib = Library::open_in_memory().unwrap();
         // Deux morceaux pour « gros », un seul pour « petit » : le plus fourni
         // d'abord.
-        for (i, mbid, nom) in [(1, "gros", "Gros"), (2, "gros", "Gros"), (3, "petit", "Petit")] {
+        for (i, mbid, nom) in [
+            (1, "gros", "Gros"),
+            (2, "gros", "Gros"),
+            (3, "petit", "Petit"),
+        ] {
             lib.upsert(&TrackMeta {
                 path: format!("/m/{i}.mp3").into(),
                 title: Some("t".into()),
@@ -6763,7 +7072,10 @@ mod tests {
         // péremption.
         lib.decouvrir_poser_voisins("gros", &[]).unwrap();
         let attente = lib.decouvrir_en_attente("voisins", 30, 0).unwrap();
-        assert_eq!(attente.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(), ["petit"]);
+        assert_eq!(
+            attente.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(),
+            ["petit"]
+        );
     }
 
     #[test]
@@ -6794,7 +7106,12 @@ mod tests {
             "src",
             &[
                 ("dehors".into(), "Dehors".into(), 0.9, "listenbrainz".into()),
-                ("dedans".into(), "Déjà là".into(), 0.8, "listenbrainz".into()),
+                (
+                    "dedans".into(),
+                    "Déjà là".into(),
+                    0.8,
+                    "listenbrainz".into(),
+                ),
             ],
         )
         .unwrap();
@@ -6847,8 +7164,16 @@ mod tests {
             "recording",
             &["rec-a".into(), "rec-c".into()],
             &[
-                PopulariteBrute { mbid: "rec-a", ecoutes: 100, auditeurs: Some(10) },
-                PopulariteBrute { mbid: "rec-c", ecoutes: 5, auditeurs: Some(1) },
+                PopulariteBrute {
+                    mbid: "rec-a",
+                    ecoutes: 100,
+                    auditeurs: Some(10),
+                },
+                PopulariteBrute {
+                    mbid: "rec-c",
+                    ecoutes: 5,
+                    auditeurs: Some(1),
+                },
             ],
         )
         .unwrap();
@@ -6857,8 +7182,16 @@ mod tests {
             "release-group",
             &["rg-x".into(), "rg-y".into()],
             &[
-                PopulariteBrute { mbid: "rg-x", ecoutes: 50, auditeurs: Some(5) },
-                PopulariteBrute { mbid: "rg-y", ecoutes: 9, auditeurs: Some(2) },
+                PopulariteBrute {
+                    mbid: "rg-x",
+                    ecoutes: 50,
+                    auditeurs: Some(5),
+                },
+                PopulariteBrute {
+                    mbid: "rg-y",
+                    ecoutes: 9,
+                    auditeurs: Some(2),
+                },
             ],
         )
         .unwrap();
@@ -6866,7 +7199,11 @@ mod tests {
             "deezer",
             "recording",
             &["rec-a".into()],
-            &[PopulariteBrute { mbid: "rec-a", ecoutes: 900_000, auditeurs: None }],
+            &[PopulariteBrute {
+                mbid: "rec-a",
+                ecoutes: 900_000,
+                auditeurs: None,
+            }],
         )
         .unwrap();
 
@@ -6888,13 +7225,16 @@ mod tests {
         assert_eq!(lignes[1].0, 2);
         assert_eq!(lignes[1].2, "release-group"); // repli sur l'album X
         assert_eq!(lignes[2].2, "recording"); // reco LB connue
-        // Le morceau 1 (le plus écouté partout) domine.
+                                              // Le morceau 1 (le plus écouté partout) domine.
         assert!(lignes[0].1 > lignes[1].1 && lignes[0].1 > lignes[2].1);
 
         // `popularites` ne rend que les morceaux couverts parmi ceux demandés.
         let mut vus = lib.popularites(&[1, 2, 4, 999]).unwrap();
         vus.sort_by_key(|(id, ..)| *id);
-        assert_eq!(vus.iter().map(|(id, ..)| *id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(
+            vus.iter().map(|(id, ..)| *id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
         assert_eq!(lib.popularites(&[]).unwrap(), Vec::new());
     }
 
@@ -6914,18 +7254,28 @@ mod tests {
         assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
 
         // Fait sur une seule source : encore candidat (l'autre reste à faire).
-        lib.pop_poser("listenbrainz", "recording", &["rec-1".into()], &[]).unwrap();
+        lib.pop_poser("listenbrainz", "recording", &["rec-1".into()], &[])
+            .unwrap();
         assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
 
         // Fait sur les deux : plus candidat.
-        lib.pop_poser("deezer", "recording", &["rec-1".into()], &[]).unwrap();
+        lib.pop_poser("deezer", "recording", &["rec-1".into()], &[])
+            .unwrap();
         assert!(lib.pop_recordings_candidats(0, 100).unwrap().is_empty());
 
         // `depuis` très grand : tout fetch compte comme périmé, l'entité revient.
         let futur = i64::MAX;
         assert_eq!(lib.pop_recordings_candidats(futur, 100).unwrap().len(), 1);
-        assert!(lib.pop_deja_fait("listenbrainz", "recording", futur).unwrap().is_empty());
-        assert_eq!(lib.pop_deja_fait("listenbrainz", "recording", 0).unwrap().len(), 1);
+        assert!(lib
+            .pop_deja_fait("listenbrainz", "recording", futur)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            lib.pop_deja_fait("listenbrainz", "recording", 0)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     /// La ligne d'alerte : rien à signaler tant que rien n'est vieux ; l'âge
@@ -6969,7 +7319,10 @@ mod tests {
                  INSERT INTO tracks (id, path, mb_artist_id, added_at) VALUES (2, '/m/2.flac', NULL, 0);",
             )
             .unwrap();
-        assert_eq!(lib.theaudiodb_candidats(0, 100).unwrap(), vec!["art-1".to_string()]);
+        assert_eq!(
+            lib.theaudiodb_candidats(0, 100).unwrap(),
+            vec!["art-1".to_string()]
+        );
 
         lib.theaudiodb_poser(
             &["art-1".to_string()],
@@ -7020,7 +7373,11 @@ mod tests {
             }],
         )
         .unwrap();
-        assert_eq!(lib.stats_sans_bio().unwrap(), 2, "seul le morceau 1 a désormais une biographie");
+        assert_eq!(
+            lib.stats_sans_bio().unwrap(),
+            2,
+            "seul le morceau 1 a désormais une biographie"
+        );
     }
 
     /// `stats_sans_discogs` exige un crédit *ou* un label — l'un des deux
@@ -7042,9 +7399,20 @@ mod tests {
         lib.discogs_lier_edition("rel-2", Some(500)).unwrap();
         assert_eq!(lib.stats_sans_discogs().unwrap(), 3);
 
-        lib.labels_poser(500, &[LabelDiscogs { nom: "Label".into(), catno: "".into(), discogs_label_id: None }])
-            .unwrap();
-        assert_eq!(lib.stats_sans_discogs().unwrap(), 2, "le morceau 2 a désormais un label");
+        lib.labels_poser(
+            500,
+            &[LabelDiscogs {
+                nom: "Label".into(),
+                catno: "".into(),
+                discogs_label_id: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            lib.stats_sans_discogs().unwrap(),
+            2,
+            "le morceau 2 a désormais un label"
+        );
     }
 
     /// `stats_sans_critique` résout le release-group par (artiste, titre
@@ -7067,7 +7435,11 @@ mod tests {
         assert_eq!(lib.stats_sans_critique().unwrap(), 2);
 
         lib.critiques_poser("rg-1", &[]).unwrap();
-        assert_eq!(lib.stats_sans_critique().unwrap(), 2, "release-group interrogé, mais rien trouvé");
+        assert_eq!(
+            lib.stats_sans_critique().unwrap(),
+            2,
+            "release-group interrogé, mais rien trouvé"
+        );
 
         lib.critiques_poser(
             "rg-1",
@@ -7082,7 +7454,11 @@ mod tests {
             }],
         )
         .unwrap();
-        assert_eq!(lib.stats_sans_critique().unwrap(), 1, "le morceau 1 a désormais une critique");
+        assert_eq!(
+            lib.stats_sans_critique().unwrap(),
+            1,
+            "le morceau 1 a désormais une critique"
+        );
     }
 
     /// Le lien Discogs se pose y compris quand il est absent (`None`) — pour
@@ -7097,7 +7473,10 @@ mod tests {
                 [],
             )
             .unwrap();
-        assert_eq!(lib.discogs_liaison_candidats(100).unwrap(), vec!["rel-1".to_string()]);
+        assert_eq!(
+            lib.discogs_liaison_candidats(100).unwrap(),
+            vec!["rel-1".to_string()]
+        );
 
         lib.discogs_lier_edition("rel-1", None).unwrap();
         assert!(lib.discogs_liaison_candidats(100).unwrap().is_empty());
@@ -7162,14 +7541,22 @@ mod tests {
 
         lib.labels_poser(
             249_504,
-            &[LabelDiscogs { nom: "Ancien Label".into(), catno: "OLD1".into(), discogs_label_id: None }],
+            &[LabelDiscogs {
+                nom: "Ancien Label".into(),
+                catno: "OLD1".into(),
+                discogs_label_id: None,
+            }],
         )
         .unwrap();
         assert_eq!(lib.labels_pour_piste(1).unwrap().len(), 1);
 
         lib.labels_poser(
             249_504,
-            &[LabelDiscogs { nom: "Nouveau Label".into(), catno: "NEW1".into(), discogs_label_id: Some(1) }],
+            &[LabelDiscogs {
+                nom: "Nouveau Label".into(),
+                catno: "NEW1".into(),
+                discogs_label_id: Some(1),
+            }],
         )
         .unwrap();
         let labels = lib.labels_pour_piste(1).unwrap();
@@ -7196,8 +7583,16 @@ mod tests {
         lib.labels_poser(
             249_504,
             &[
-                LabelDiscogs { nom: "Ninja Tune".into(), catno: "ZEN123".into(), discogs_label_id: Some(222) },
-                LabelDiscogs { nom: "Big Dada".into(), catno: "BD456".into(), discogs_label_id: Some(333) },
+                LabelDiscogs {
+                    nom: "Ninja Tune".into(),
+                    catno: "ZEN123".into(),
+                    discogs_label_id: Some(222),
+                },
+                LabelDiscogs {
+                    nom: "Big Dada".into(),
+                    catno: "BD456".into(),
+                    discogs_label_id: Some(333),
+                },
             ],
         )
         .unwrap();
@@ -7216,13 +7611,22 @@ mod tests {
     #[test]
     fn discogs_import_utile_detecte_une_edition_reliee_jamais_importee() {
         let lib = Library::open_in_memory().unwrap();
-        assert!(!lib.discogs_import_utile().unwrap(), "rien de relié : rien à importer");
+        assert!(
+            !lib.discogs_import_utile().unwrap(),
+            "rien de relié : rien à importer"
+        );
 
         lib.discogs_lier_edition("rel-1", Some(249_504)).unwrap();
-        assert!(lib.discogs_import_utile().unwrap(), "reliée, jamais importée");
+        assert!(
+            lib.discogs_import_utile().unwrap(),
+            "reliée, jamais importée"
+        );
 
         lib.discogs_marquer_importe(249_504).unwrap();
-        assert!(!lib.discogs_import_utile().unwrap(), "marquée importée, même sans crédit ni label trouvé");
+        assert!(
+            !lib.discogs_import_utile().unwrap(),
+            "marquée importée, même sans crédit ni label trouvé"
+        );
 
         // Une deuxième édition reliée, elle, redevient utile — la marque de
         // la première ne doit pas masquer la nouvelle.
@@ -7247,7 +7651,10 @@ mod tests {
         let b = Path::new("/m/b.mp3");
         assert_eq!(lib.release_pour_path(a).unwrap().as_deref(), Some("rel-1"));
         assert_eq!(lib.release_pour_path(b).unwrap(), None);
-        assert_eq!(lib.release_pour_path(Path::new("/m/inconnu.mp3")).unwrap(), None);
+        assert_eq!(
+            lib.release_pour_path(Path::new("/m/inconnu.mp3")).unwrap(),
+            None
+        );
         assert_eq!(
             lib.artiste_album_pour_path(a).unwrap(),
             Some(("Groupe".to_string(), "Album".to_string()))
@@ -7284,7 +7691,10 @@ mod tests {
                 [],
             )
             .unwrap();
-        assert_eq!(lib.critiques_candidats(0, 100).unwrap(), vec!["rg-1".to_string()]);
+        assert_eq!(
+            lib.critiques_candidats(0, 100).unwrap(),
+            vec!["rg-1".to_string()]
+        );
 
         lib.critiques_poser("rg-1", &[]).unwrap();
         assert!(lib.critiques_candidats(0, 100).unwrap().is_empty());
@@ -7351,7 +7761,8 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
-            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster).unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster)
+                .unwrap();
             id
         };
 
@@ -7374,7 +7785,10 @@ mod tests {
             .unwrap();
         lib.lastfm_tags_poser(
             "mbid-x",
-            &[crate::lastfm::Tag { nom: "alternative metal".into(), poids: 50 }],
+            &[crate::lastfm::Tag {
+                nom: "alternative metal".into(),
+                poids: 50,
+            }],
         )
         .unwrap();
 
@@ -7398,7 +7812,10 @@ mod tests {
             .unwrap();
         lib.lastfm_tags_poser(
             "mbid-y",
-            &[crate::lastfm::Tag { nom: "worldbeat".into(), poids: 50 }],
+            &[crate::lastfm::Tag {
+                nom: "worldbeat".into(),
+                poids: 50,
+            }],
         )
         .unwrap();
 
@@ -7408,7 +7825,10 @@ mod tests {
         assert_eq!(f1.nom_affiche, "Alternative Metal");
 
         let f2 = votes.iter().find(|v| v.cluster == 2).unwrap();
-        assert!(!f2.fiable, "trois sources en désaccord, comme le ska de l'essai");
+        assert!(
+            !f2.fiable,
+            "trois sources en désaccord, comme le ska de l'essai"
+        );
         assert_eq!(f2.nom_affiche, "Reggae");
         assert_eq!(f2.musicbrainz, "Reggae");
         assert_eq!(f2.clap_texte, "An African Percussion Ensemble");
@@ -7424,7 +7844,12 @@ mod tests {
         // ignorant `features.cluster` — l'identifiant de sous-groupe est
         // local à cet appel, jamais réécrit en base.
         let mut assignations: Vec<(i64, i64)> = Vec::new();
-        for (i, (id, _)) in lib.embeddings_du_cluster("clap", 1).unwrap().into_iter().enumerate() {
+        for (i, (id, _)) in lib
+            .embeddings_du_cluster("clap", 1)
+            .unwrap()
+            .into_iter()
+            .enumerate()
+        {
             assignations.push((id, (i % 2) as i64));
         }
         for (id, _) in lib.embeddings_du_cluster("clap", 2).unwrap() {
@@ -7457,7 +7882,8 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
-            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster).unwrap();
+            lib.save_features(id, "clap", &[0.0], 0.0, 0.0, cluster)
+                .unwrap();
         };
         for i in 0..5 {
             ajoute(&format!("/m/x{i}.mp3"), "mbid-x", 1);
@@ -7488,7 +7914,10 @@ mod tests {
         assert!(!f2.fiable);
         assert_eq!(f1.nom_affiche, "Rock");
         assert_eq!(f2.nom_affiche, "Jazz");
-        assert_ne!(f1.nom_affiche, f2.nom_affiche, "pas de faux consensus entre les deux familles");
+        assert_ne!(
+            f1.nom_affiche, f2.nom_affiche,
+            "pas de faux consensus entre les deux familles"
+        );
     }
 }
 
@@ -7547,8 +7976,7 @@ mod tests_ordre {
         poser(4, None, "Seul", "Inconnu"); // rien : date d'ingestion
 
         let ordre = lib.ordre_darrivee().unwrap();
-        let par_id: HashMap<i64, &ArriveeBrute> =
-            ordre.iter().map(|a| (a.track_id, a)).collect();
+        let par_id: HashMap<i64, &ArriveeBrute> = ordre.iter().map(|a| (a.track_id, a)).collect();
         assert_eq!(par_id[&1].source, "tag");
         assert_eq!(par_id[&2].source, "album");
         assert_eq!(par_id[&2].date, 19_900_000);
@@ -7673,7 +8101,11 @@ mod tests_ordre {
         .unwrap();
 
         let albums = lib.albums(None).unwrap();
-        assert_eq!(albums[0].year, Some(1997), "le tag doit l'emporter sur la compilation");
+        assert_eq!(
+            albums[0].year,
+            Some(1997),
+            "le tag doit l'emporter sur la compilation"
+        );
     }
 
     /// Les pistes d'un album arrivent **ensemble**. Sans cela, les 1 341
@@ -7722,8 +8154,8 @@ mod tests_ordre {
     /// ne l'efface donc pas.
     #[test]
     fn le_choix_de_pochette_du_dossier_l_emporte_sur_les_tags() {
-        let racine = std::env::temp_dir()
-            .join(format!("rusty-music-pochette-choix-{}", std::process::id()));
+        let racine =
+            std::env::temp_dir().join(format!("rusty-music-pochette-choix-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&racine);
         let dossier = racine.join("Artiste_1/Album 100%");
         std::fs::create_dir_all(dossier.join("CD2")).unwrap();
@@ -7732,13 +8164,23 @@ mod tests_ordre {
         std::fs::write(dossier.join("cover.jpg"), b"jpeg du dossier").unwrap();
 
         let lib = Library::open_in_memory().unwrap();
-        for p in [&piste, &dossier.join("CD2/01.mp3"), &racine.join("Artiste_1/autre.mp3")] {
+        for p in [
+            &piste,
+            &dossier.join("CD2/01.mp3"),
+            &racine.join("Artiste_1/autre.mp3"),
+        ] {
             lib.conn
-                .execute("INSERT INTO tracks (path) VALUES (?1)", params![p.to_string_lossy()])
+                .execute(
+                    "INSERT INTO tracks (path) VALUES (?1)",
+                    params![p.to_string_lossy()],
+                )
                 .unwrap();
         }
         let d = dossier.to_string_lossy();
-        assert_eq!(lib.pistes_du_dossier(&d).unwrap(), vec![piste.to_string_lossy()]);
+        assert_eq!(
+            lib.pistes_du_dossier(&d).unwrap(),
+            vec![piste.to_string_lossy()]
+        );
 
         // Sans choix : les tags d'abord, et ce fichier n'en a pas de lisibles.
         assert!(lib.lire_pochette(&piste).is_err());

@@ -15,9 +15,23 @@ use rusty_music_core::ollama::{self, InterpretationLlm};
 use serde_json::{json, Value};
 
 const FILTRES: &[&str] = &[
-    "seed_artiste", "seed_morceau", "arrivee_artiste", "arrivee_morceau", "n", "duree_minutes",
-    "genres", "exclure_genres", "exclure_artistes", "annee_min", "annee_max", "bpm_min",
-    "bpm_max", "energie", "popularite", "ecoute", "plafond_par_artiste",
+    "seed_artiste",
+    "seed_morceau",
+    "arrivee_artiste",
+    "arrivee_morceau",
+    "n",
+    "duree_minutes",
+    "genres",
+    "exclure_genres",
+    "exclure_artistes",
+    "annee_min",
+    "annee_max",
+    "bpm_min",
+    "bpm_max",
+    "energie",
+    "popularite",
+    "ecoute",
+    "plafond_par_artiste",
 ];
 
 fn est_vide(v: &Value) -> bool {
@@ -51,7 +65,10 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
     let strict = cas.get("strict").and_then(Value::as_bool).unwrap_or(true);
 
     // Reformulation : le premier champ du schéma, jamais vide.
-    if spec.get("reformulation").is_some_and(|r| r.as_str().is_none_or(|r| r.trim().is_empty())) {
+    if spec
+        .get("reformulation")
+        .is_some_and(|r| r.as_str().is_none_or(|r| r.trim().is_empty()))
+    {
         ecarts.push("reformulation vide".into());
     }
     // Parties : même nombre, dans l'ordre, chacune avec ses champs attendus ;
@@ -59,17 +76,28 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
     let rendues = spec["parties"].as_array().cloned().unwrap_or_default();
     // Cas ambigu : une progression (aucune partie, au moins deux étapes) vaut
     // autant que des parties conformes.
-    let progression = cas.get("ou_progression").and_then(Value::as_bool).unwrap_or(false)
+    let progression = cas
+        .get("ou_progression")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
         && rendues.is_empty()
         && spec["etapes"].as_array().is_some_and(|e| e.len() >= 2);
-    match attendu.get("parties").and_then(Value::as_array).filter(|_| !progression) {
+    match attendu
+        .get("parties")
+        .and_then(Value::as_array)
+        .filter(|_| !progression)
+    {
         None if strict && !rendues.is_empty() => {
             ecarts.push(format!("parties inventées : {} partie(s)", rendues.len()));
         }
         None => {}
         Some(voulues) => {
             if voulues.len() != rendues.len() {
-                ecarts.push(format!("parties : {} rendue(s), {} attendue(s)", rendues.len(), voulues.len()));
+                ecarts.push(format!(
+                    "parties : {} rendue(s), {} attendue(s)",
+                    rendues.len(),
+                    voulues.len()
+                ));
             } else {
                 for (i, (v, r)) in voulues.iter().zip(&rendues).enumerate() {
                     let sous = json!({"attendu": v, "strict": false});
@@ -84,7 +112,9 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
     }
 
     for champ in FILTRES {
-        if libre.contains(champ) || (progression && matches!(*champ, "duree_minutes" | "n" | "genres" | "energie")) {
+        if libre.contains(champ)
+            || (progression && matches!(*champ, "duree_minutes" | "n" | "genres" | "energie"))
+        {
             continue;
         }
         let rendu = &spec[*champ];
@@ -103,7 +133,12 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
             Some(Value::Array(voulus)) => {
                 let rendus: Vec<String> = rendu
                     .as_array()
-                    .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 if voulus.is_empty() && !rendus.is_empty() {
                     ecarts.push(format!("{champ} devait être vide : {rendus:?}"));
@@ -129,7 +164,11 @@ fn verifier(cas: &Value, spec: &Value) -> Vec<String> {
             Some(v) => {
                 // Nombre : égal, ou à 10 % près pour un tempo.
                 let (a, r) = (v.as_f64().unwrap_or(f64::NAN), rendu.as_f64());
-                let tol = if champ.starts_with("bpm") { a * 0.1 } else { 0.0 };
+                let tol = if champ.starts_with("bpm") {
+                    a * 0.1
+                } else {
+                    0.0
+                };
                 if !r.is_some_and(|r| (r - a).abs() <= tol) {
                     ecarts.push(format!("{champ} = {rendu}, attendu {v}"));
                 }
@@ -154,7 +193,11 @@ fn main() -> anyhow::Result<()> {
     let jeu: Value = serde_json::from_str(&std::fs::read_to_string(chemin)?)?;
     let cas = jeu["cas"].as_array().expect("cas");
 
-    println!("modèle {modele} — {} prompts, {} genres connus\n", cas.len(), vocab.len());
+    println!(
+        "modèle {modele} — {} prompts, {} genres connus\n",
+        cas.len(),
+        vocab.len()
+    );
     let mut resultats = Vec::new();
     let mut par_categorie: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut par_champ: BTreeMap<&str, usize> = BTreeMap::new();
@@ -162,8 +205,9 @@ fn main() -> anyhow::Result<()> {
     let mut latences = Vec::new();
 
     // `ROB_IDS=a,b` : ne rejouer que ces cas.
-    let seuls: Option<Vec<String>> =
-        std::env::var("ROB_IDS").ok().map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
+    let seuls: Option<Vec<String>> = std::env::var("ROB_IDS")
+        .ok()
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
     for c in cas {
         let id = c["id"].as_str().unwrap_or("?");
         if seuls.as_ref().is_some_and(|l| !l.iter().any(|x| x == id)) {
@@ -183,7 +227,8 @@ fn main() -> anyhow::Result<()> {
             Err(e) => {
                 echecs_json += 1;
                 println!("✗ {id:<22} ERREUR ({s:.0} s) : {e}");
-                resultats.push(json!({"id": id, "prompt": prompt, "erreur": e.to_string(), "s": s}));
+                resultats
+                    .push(json!({"id": id, "prompt": prompt, "erreur": e.to_string(), "s": s}));
             }
             Ok(p) => {
                 let spec = serde_json::to_value(&p)?;
@@ -202,14 +247,19 @@ fn main() -> anyhow::Result<()> {
                         println!("      {e}");
                     }
                 }
-                resultats.push(json!({"id": id, "prompt": prompt, "spec": spec, "ecarts": ecarts, "s": s,
-                                      "exclusions_dures": c["exclusions_dures"]}));
+                resultats.push(
+                    json!({"id": id, "prompt": prompt, "spec": spec, "ecarts": ecarts, "s": s,
+                                      "exclusions_dures": c["exclusions_dures"]}),
+                );
             }
         }
     }
 
     let ok: usize = par_categorie.values().map(|v| v.0).sum();
-    println!("\n== {modele} : {ok}/{} prompts conformes, {echecs_json} erreurs d'interprétation", cas.len());
+    println!(
+        "\n== {modele} : {ok}/{} prompts conformes, {echecs_json} erreurs d'interprétation",
+        cas.len()
+    );
     for (cat, (o, n)) in &par_categorie {
         println!("   {cat:<12} {o}/{n}");
     }
@@ -224,7 +274,10 @@ fn main() -> anyhow::Result<()> {
         total_s
     );
     if let Some(f) = sortie {
-        std::fs::write(f, serde_json::to_string_pretty(&json!({"modele": modele, "resultats": resultats}))?)?;
+        std::fs::write(
+            f,
+            serde_json::to_string_pretty(&json!({"modele": modele, "resultats": resultats}))?,
+        )?;
     }
     Ok(())
 }

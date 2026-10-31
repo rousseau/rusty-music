@@ -13,7 +13,11 @@ use std::path::PathBuf;
 use rusty_music_analysis::descripteurs::{analyser, Analyseur};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dossier = PathBuf::from(std::env::args().nth(1).expect("usage: verif_tonalite_fmak <dossier>"));
+    let dossier = PathBuf::from(
+        std::env::args()
+            .nth(1)
+            .expect("usage: verif_tonalite_fmak <dossier>"),
+    );
     let analyseur = Analyseur::new();
     let mut fichiers: Vec<PathBuf> = std::fs::read_dir(&dossier)?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -27,7 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // arrêter la passe.
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| analyser(&p, &analyseur)));
         match r {
-            Ok(Ok(d)) => println!("{},{}", id.trim_start_matches('0'), d.tonalite.unwrap_or_default()),
+            Ok(Ok(d)) => println!(
+                "{},{}",
+                id.trim_start_matches('0'),
+                d.tonalite.unwrap_or_default()
+            ),
             Ok(Err(e)) => eprintln!("{id} : {e}"),
             Err(_) => eprintln!("{id} : panique du décodeur"),
         }

@@ -119,11 +119,19 @@ pub fn ecrire(extrait: &Extrait, chemin: &Path, nom: &str, source: &str) -> Resu
     if let Some(parent) = chemin.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    let mut conn = Connection::open(chemin)
-        .with_context(|| format!("création de {}", chemin.display()))?;
+    let mut conn =
+        Connection::open(chemin).with_context(|| format!("création de {}", chemin.display()))?;
     conn.execute_batch(SCHEMA)?;
     let tx = conn.transaction()?;
-    for table in ["ville", "frontiere", "troncons", "surfaces", "adresses", "lieux", "points_remarquables"] {
+    for table in [
+        "ville",
+        "frontiere",
+        "troncons",
+        "surfaces",
+        "adresses",
+        "lieux",
+        "points_remarquables",
+    ] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
 
@@ -373,7 +381,8 @@ mod tests {
     /// importée avant ce correctif.
     #[test]
     fn lire_une_base_sans_points_remarquables_ne_fait_pas_tomber_lappelant() {
-        let dossier = std::env::temp_dir().join(format!("ville-ancienne-{}.db", std::process::id()));
+        let dossier =
+            std::env::temp_dir().join(format!("ville-ancienne-{}.db", std::process::id()));
         std::fs::remove_file(&dossier).ok();
         {
             let conn = Connection::open(&dossier).unwrap();
@@ -391,7 +400,8 @@ mod tests {
             )
             .unwrap();
         }
-        let relu = lire(&dossier).expect("une base sans points_remarquables doit quand même se lire");
+        let relu =
+            lire(&dossier).expect("une base sans points_remarquables doit quand même se lire");
         assert!(relu.points_remarquables.is_empty());
         std::fs::remove_file(&dossier).ok();
     }

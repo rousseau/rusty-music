@@ -198,7 +198,11 @@ pub struct PointRemarquable {
 /// Volontairement étroit : le but est de poser quelques dizaines d'ancres
 /// reconnaissables (tour Eiffel, musées, lieux de culte majeurs), pas de
 /// cataloguer tout ce qu'OSM tague comme point d'intérêt.
-fn genre_repere(tourism: Option<&str>, historic: Option<&str>, amenity: Option<&str>) -> Option<&'static str> {
+fn genre_repere(
+    tourism: Option<&str>,
+    historic: Option<&str>,
+    amenity: Option<&str>,
+) -> Option<&'static str> {
     match tourism {
         Some("attraction") => return Some("attraction"),
         Some("museum") => return Some("musee"),
@@ -218,7 +222,6 @@ fn genre_repere(tourism: Option<&str>, historic: Option<&str>, amenity: Option<&
     }
     None
 }
-
 
 /// La limite administrative d'une commune, en anneaux fermés.
 ///
@@ -263,12 +266,23 @@ impl Frontiere {
                 let haut = a[1].max(b[1]);
                 let i0 = (((bas - sud) / hauteur) * BANDES as f64) as usize;
                 let i1 = (((haut - sud) / hauteur) * BANDES as f64) as usize;
-                for bande in bandes.iter_mut().take(i1.min(BANDES - 1) + 1).skip(i0.min(BANDES - 1)) {
+                for bande in bandes
+                    .iter_mut()
+                    .take(i1.min(BANDES - 1) + 1)
+                    .skip(i0.min(BANDES - 1))
+                {
                     bande.push([a[0], a[1], b[0], b[1]]);
                 }
             }
         }
-        Frontiere { anneaux, bandes, sud, nord, ouest, est }
+        Frontiere {
+            anneaux,
+            bandes,
+            sud,
+            nord,
+            ouest,
+            est,
+        }
     }
 
     /// Test de parité par lancer de rayon vers l'est.
@@ -337,7 +351,6 @@ fn vers_degres(c: Coord) -> [f64; 2] {
     [c[0] as f64 / 1e7, c[1] as f64 / 1e7]
 }
 
-
 /// Recoud des tronçons de frontière en anneaux fermés.
 ///
 /// Le raccord se fait sur les **identifiants de nœuds**, pas sur les
@@ -351,8 +364,16 @@ fn assembler(mut restants: Vec<Vec<i64>>) -> Vec<Vec<i64>> {
                 break;
             }
             let fin = *courant.last().expect("tronçon non vide");
-            let trouve = restants.iter().position(|m| *m.first().unwrap() == fin).map(|i| (i, false))
-                .or_else(|| restants.iter().position(|m| *m.last().unwrap() == fin).map(|i| (i, true)));
+            let trouve = restants
+                .iter()
+                .position(|m| *m.first().unwrap() == fin)
+                .map(|i| (i, false))
+                .or_else(|| {
+                    restants
+                        .iter()
+                        .position(|m| *m.last().unwrap() == fin)
+                        .map(|i| (i, true))
+                });
             let Some((i, inverser)) = trouve else { break };
             let mut m = restants.swap_remove(i);
             if inverser {
@@ -373,8 +394,13 @@ fn assembler(mut restants: Vec<Vec<i64>>) -> Vec<Vec<i64>> {
 /// les dessiner double chaque rue d'un liseré parasite. Ce ne sont pas des rues,
 /// ce sont les bords des rues.
 fn est_trottoir(tags: &HashMap<&str, &str>) -> bool {
-    matches!(tags.get("footway").copied(), Some("sidewalk") | Some("crossing"))
-        || matches!(tags.get("highway").copied(), Some("crossing") | Some("elevator"))
+    matches!(
+        tags.get("footway").copied(),
+        Some("sidewalk") | Some("crossing")
+    ) || matches!(
+        tags.get("highway").copied(),
+        Some("crossing") | Some("elevator")
+    )
 }
 
 /// Lit l'extrait et n'en garde que ce qui tombe dans `bornes`.
@@ -403,78 +429,82 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
     let mut voies_frontiere: HashSet<i64> = HashSet::new();
     let lecteur = ElementReader::from_path(chemin)
         .with_context(|| format!("ouverture de {}", chemin.display()))?;
-    lecteur.for_each(|element| {
-        match element {
-            Element::Relation(relation) => {
-                let Some(cherchee) = commune else { return };
-                let tags: HashMap<&str, &str> = relation.tags().collect();
-                let est_la_commune = tags.get("boundary") == Some(&"administrative")
-                    && tags.get("admin_level") == Some(&"8")
-                    && tags.get("name") == Some(&cherchee);
-                if !est_la_commune {
-                    return;
-                }
-                for membre in relation.members() {
-                    if membre.member_type == osmpbf::RelMemberType::Way
-                        && matches!(membre.role(), Ok("outer") | Ok("inner") | Ok(""))
-                    {
-                        voies_frontiere.insert(membre.member_id);
-                    }
+    lecteur.for_each(|element| match element {
+        Element::Relation(relation) => {
+            let Some(cherchee) = commune else { return };
+            let tags: HashMap<&str, &str> = relation.tags().collect();
+            let est_la_commune = tags.get("boundary") == Some(&"administrative")
+                && tags.get("admin_level") == Some(&"8")
+                && tags.get("name") == Some(&cherchee);
+            if !est_la_commune {
+                return;
+            }
+            for membre in relation.members() {
+                if membre.member_type == osmpbf::RelMemberType::Way
+                    && matches!(membre.role(), Ok("outer") | Ok("inner") | Ok(""))
+                {
+                    voies_frontiere.insert(membre.member_id);
                 }
             }
-            Element::Node(_) | Element::DenseNode(_) => {
-                let (id, lon, lat, tags): (i64, f64, f64, Vec<(String, String)>) = match element {
-                    Element::Node(n) => (
-                        n.id(),
-                        n.lon(),
-                        n.lat(),
-                        n.tags().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
-                    ),
-                    Element::DenseNode(n) => (
-                        n.id(),
-                        n.lon(),
-                        n.lat(),
-                        n.tags().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
-                    ),
-                    _ => unreachable!("filtré par le bras de match"),
-                };
-                if !marge.contient(lon, lat) {
-                    return;
-                }
-                coords.insert(id, [(lon * 1e7) as i32, (lat * 1e7) as i32]);
-                if !bornes.contient(lon, lat) {
-                    return;
-                }
-                let cherche = |cle: &str| {
-                    tags.iter().find(|(k, _)| k == cle).map(|(_, v)| v.clone())
-                };
-                if let Some(numero) = cherche("addr:housenumber") {
-                    extrait.adresses.push(Adresse {
-                        numero,
-                        rue: cherche("addr:street"),
+        }
+        Element::Node(_) | Element::DenseNode(_) => {
+            let (id, lon, lat, tags): (i64, f64, f64, Vec<(String, String)>) = match element {
+                Element::Node(n) => (
+                    n.id(),
+                    n.lon(),
+                    n.lat(),
+                    n.tags()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                ),
+                Element::DenseNode(n) => (
+                    n.id(),
+                    n.lon(),
+                    n.lat(),
+                    n.tags()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                ),
+                _ => unreachable!("filtré par le bras de match"),
+            };
+            if !marge.contient(lon, lat) {
+                return;
+            }
+            coords.insert(id, [(lon * 1e7) as i32, (lat * 1e7) as i32]);
+            if !bornes.contient(lon, lat) {
+                return;
+            }
+            let cherche = |cle: &str| tags.iter().find(|(k, _)| k == cle).map(|(_, v)| v.clone());
+            if let Some(numero) = cherche("addr:housenumber") {
+                extrait.adresses.push(Adresse {
+                    numero,
+                    rue: cherche("addr:street"),
+                    point: [lon, lat],
+                });
+            }
+            if let (Some(genre), Some(nom)) = (cherche("place"), cherche("name")) {
+                extrait.lieux.push(Lieu {
+                    nom,
+                    genre,
+                    point: [lon, lat],
+                });
+            }
+            if let Some(nom) = cherche("name") {
+                if let Some(genre) = genre_repere(
+                    cherche("tourism").as_deref(),
+                    cherche("historic").as_deref(),
+                    cherche("amenity").as_deref(),
+                ) {
+                    extrait.points_remarquables.push(PointRemarquable {
+                        id,
+                        nom,
+                        genre: genre.to_string(),
                         point: [lon, lat],
                     });
                 }
-                if let (Some(genre), Some(nom)) = (cherche("place"), cherche("name")) {
-                    extrait.lieux.push(Lieu { nom, genre, point: [lon, lat] });
-                }
-                if let Some(nom) = cherche("name") {
-                    if let Some(genre) = genre_repere(
-                        cherche("tourism").as_deref(),
-                        cherche("historic").as_deref(),
-                        cherche("amenity").as_deref(),
-                    ) {
-                        extrait.points_remarquables.push(PointRemarquable {
-                            id,
-                            nom,
-                            genre: genre.to_string(),
-                            point: [lon, lat],
-                        });
-                    }
-                }
             }
-            Element::Way(_) => {}
         }
+        Element::Way(_) => {}
     })?;
 
     // ---- Passe 2 : les voies, résolues contre les nœuds retenus.
@@ -494,7 +524,11 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
         }
 
         let tags: HashMap<&str, &str> = voie.tags().collect();
-        let genre_way = genre_repere(tags.get("tourism").copied(), tags.get("historic").copied(), tags.get("amenity").copied());
+        let genre_way = genre_repere(
+            tags.get("tourism").copied(),
+            tags.get("historic").copied(),
+            tags.get("amenity").copied(),
+        );
         let est_repere = genre_way.is_some() && tags.contains_key("name");
         let interessante = tags.contains_key("highway")
             || tags.contains_key("building")
@@ -534,7 +568,10 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
         if points.first() != points.last() || points.len() < 4 {
             return;
         }
-        let contour = Contour { id: voie.id(), points };
+        let contour = Contour {
+            id: voie.id(),
+            points,
+        };
         // Indépendant du bras suivant : un repère peut aussi être un
         // bâtiment (Notre-Dame porte `building=yes` *et* `historic=*`) — les
         // deux doivent survivre. Seuls les repères en anneau fermé arrivent
@@ -544,7 +581,10 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
         if est_repere {
             extrait.points_remarquables.push(PointRemarquable {
                 id: voie.id(),
-                nom: tags.get("name").expect("est_repere garantit un nom").to_string(),
+                nom: tags
+                    .get("name")
+                    .expect("est_repere garantit un nom")
+                    .to_string(),
                 genre: genre_way.expect("est_repere garantit un genre").to_string(),
                 point: centre(&contour.points),
             });
@@ -568,7 +608,10 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
             .get("leisure")
             .is_some_and(|v| matches!(*v, "park" | "garden" | "pitch" | "playground"))
             || tags.get("landuse").is_some_and(|v| {
-                matches!(*v, "grass" | "forest" | "cemetery" | "village_green" | "meadow")
+                matches!(
+                    *v,
+                    "grass" | "forest" | "cemetery" | "village_green" | "meadow"
+                )
             })
         {
             extrait.verts.push(contour);
@@ -603,8 +646,12 @@ pub fn extraire(chemin: &Path, bornes: Bornes, commune: Option<&str>) -> Result<
         // apporter au rendu de fond.
         extrait.adresses.retain(|a| frontiere.contient(a.point));
         extrait.lieux.retain(|l| frontiere.contient(l.point));
-        extrait.points_remarquables.retain(|p| frontiere.contient(p.point));
-        extrait.batis.retain(|c| frontiere.contient(centre(&c.points)));
+        extrait
+            .points_remarquables
+            .retain(|p| frontiere.contient(p.point));
+        extrait
+            .batis
+            .retain(|c| frontiere.contient(centre(&c.points)));
     }
 
     Ok(extrait)
@@ -663,7 +710,11 @@ impl Extrait {
             .collect();
         par_classe.sort_by_key(|(c, _, _)| *c);
 
-        let noms: HashSet<&str> = self.troncons.iter().filter_map(|t| t.nom.as_deref()).collect();
+        let noms: HashSet<&str> = self
+            .troncons
+            .iter()
+            .filter_map(|t| t.nom.as_deref())
+            .collect();
         Resume {
             troncons: self.troncons.len(),
             troncons_nommes: nommes,
@@ -696,7 +747,10 @@ mod tests {
     #[test]
     fn la_marge_ne_deplace_pas_le_centre() {
         let large = PARIS.elargies(0.02);
-        assert!(large.contient(2.2100, 48.9100), "hors cadre strict, dans la marge");
+        assert!(
+            large.contient(2.2100, 48.9100),
+            "hors cadre strict, dans la marge"
+        );
         assert!(!PARIS.contient(2.2100, 48.9100));
     }
 

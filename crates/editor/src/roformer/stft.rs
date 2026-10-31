@@ -13,7 +13,9 @@ pub type Complexe = rustfft::num_complex::Complex64;
 
 /// `torch.hann_window(n)` (périodique).
 pub fn hann(n: usize) -> Vec<f64> {
-    (0..n).map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n as f64).cos()).collect()
+    (0..n)
+        .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n as f64).cos())
+        .collect()
 }
 
 /// Spectre `[trames][n/2 + 1]` à plat.
@@ -46,7 +48,14 @@ pub fn directe(x: &[f32], n: usize, saut: usize, fenetre: &[f64]) -> Vec<Complex
 
 /// Inverse de [`directe`] : addition-recouvrement normalisée par l'enveloppe
 /// des fenêtres au carré, rognée à `longueur`.
-pub fn inverse(z: &[Complexe], cases: usize, n: usize, saut: usize, fenetre: &[f64], longueur: usize) -> Vec<f32> {
+pub fn inverse(
+    z: &[Complexe],
+    cases: usize,
+    n: usize,
+    saut: usize,
+    fenetre: &[f64],
+    longueur: usize,
+) -> Vec<f32> {
     let trames = z.len() / cases;
     let total = n + saut * (trames - 1);
     let ifft = FftPlanner::<f64>::new().plan_fft_inverse(n);

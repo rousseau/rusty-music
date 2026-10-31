@@ -9,15 +9,24 @@ use std::path::Path;
 use rusty_music_carto::reseau_reel::Graphe;
 
 fn main() -> anyhow::Result<()> {
-    let ville = std::env::args().nth(1).unwrap_or_else(|| "ville-paris.db".into());
+    let ville = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "ville-paris.db".into());
     let t = std::time::Instant::now();
     let extrait = rusty_music_osm::base::lire(Path::new(&ville))?;
-    println!("lecture : {} tronçons, {:.2} s", extrait.troncons.len(), t.elapsed().as_secs_f64());
+    println!(
+        "lecture : {} tronçons, {:.2} s",
+        extrait.troncons.len(),
+        t.elapsed().as_secs_f64()
+    );
 
     let t = std::time::Instant::now();
     let graphe = Graphe::construire(&extrait);
     let (sommets, aretes) = graphe.taille();
-    println!("graphe construit en {:.2} s — {sommets} sommets, {aretes} arêtes", t.elapsed().as_secs_f64());
+    println!(
+        "graphe construit en {:.2} s — {sommets} sommets, {aretes} arêtes",
+        t.elapsed().as_secs_f64()
+    );
 
     // Deux points pris aux deux bouts de l'extrait (Notre-Dame et l'Arc de
     // Triomphe, à peu près) pour un chemin qui traverse vraiment la ville.

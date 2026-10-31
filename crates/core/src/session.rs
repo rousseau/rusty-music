@@ -32,10 +32,7 @@ pub struct Session {
 }
 
 fn vers_texte(ids: &[i64]) -> String {
-    ids.iter()
-        .map(i64::to_string)
-        .collect::<Vec<_>>()
-        .join(",")
+    ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",")
 }
 
 /// Relit une liste écrite par [`vers_texte`]. Une valeur illisible est
@@ -187,7 +184,11 @@ pub fn retenir<T>(elements: Vec<Option<T>>, rang: usize) -> (Vec<T>, usize, bool
         .iter()
         .flatten()
         .count();
-    (elements.into_iter().flatten().collect(), avant, courante_retenue)
+    (
+        elements.into_iter().flatten().collect(),
+        avant,
+        courante_retenue,
+    )
 }
 
 #[cfg(test)]
@@ -273,9 +274,13 @@ mod tests {
     fn la_position_se_met_a_jour_sans_toucher_a_la_file() {
         let lib = bibliotheque(&[]);
         // Rien d'enregistré : l'appelant doit faire l'écriture complète.
-        assert!(!lib.enregistrer_position(0, 10, false, "aucune", 1.0).unwrap());
+        assert!(!lib
+            .enregistrer_position(0, 10, false, "aucune", 1.0)
+            .unwrap());
         lib.enregistrer_session(&session()).unwrap();
-        assert!(lib.enregistrer_position(2, 5_000, false, "une", 0.9).unwrap());
+        assert!(lib
+            .enregistrer_position(2, 5_000, false, "une", 0.9)
+            .unwrap());
         let lue = lib.session().unwrap().expect("session");
         assert_eq!(lue.file, vec![3, 1, 2], "la file ne bouge pas");
         assert_eq!((lue.rang, lue.position_ms), (2, 5_000));

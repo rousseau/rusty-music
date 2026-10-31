@@ -101,7 +101,11 @@ fn analyser(chemin: &Path, mode: ebur128::Mode) -> Result<ebur128::EbuR128> {
                 }
             }
         }
-        if let Err(e) = etat.as_mut().expect("posé juste au-dessus").add_frames_f32(bloc) {
+        if let Err(e) = etat
+            .as_mut()
+            .expect("posé juste au-dessus")
+            .add_frames_f32(bloc)
+        {
             echec = Some(erreur_ebur128(e));
         }
     })?;
@@ -136,7 +140,11 @@ fn mesurer(chemin: &Path) -> Result<(f64, f64)> {
     }
     // Le pic vrai d'`ebur128` est linéaire ; l'équation vers dBTP est celle
     // que la doc de la crate donne (`true_peak`) : 20·log10(pic).
-    let true_peak_dbtp = if pic > 0.0 { 20.0 * pic.log10() } else { -100.0 };
+    let true_peak_dbtp = if pic > 0.0 {
+        20.0 * pic.log10()
+    } else {
+        -100.0
+    };
     Ok((integrated_lufs, true_peak_dbtp))
 }
 
@@ -192,7 +200,10 @@ pub fn actualiser(
                 // emporter toute la passe — voir `crate::panique`.
                 let issue = match crate::panique::sans_panique(|| mesurer(chemin)) {
                     Ok(r) => r,
-                    Err(message) => Err(Error::Panique { path: chemin.clone(), message }),
+                    Err(message) => Err(Error::Panique {
+                        path: chemin.clone(),
+                        message,
+                    }),
                 };
                 let mesure = match issue {
                     Ok(m) => Some(m),
@@ -281,7 +292,13 @@ fn recalculer_album(lib: &Library, album: &str, album_artist: &str) -> Result<bo
     if !integrated_lufs.is_finite() {
         return Ok(false);
     }
-    lib.save_album_loudness(album, album_artist, integrated_lufs, etats.len(), VERSION_LOUDNESS)?;
+    lib.save_album_loudness(
+        album,
+        album_artist,
+        integrated_lufs,
+        etats.len(),
+        VERSION_LOUDNESS,
+    )?;
     Ok(true)
 }
 
@@ -343,10 +360,8 @@ mod tests {
         wav.extend_from_slice(&octets_data.to_le_bytes());
         wav.extend_from_slice(&donnees);
 
-        let p = std::env::temp_dir().join(format!(
-            "rusty-music-loudness-{}-{nom}",
-            std::process::id()
-        ));
+        let p =
+            std::env::temp_dir().join(format!("rusty-music-loudness-{}-{nom}", std::process::id()));
         std::fs::write(&p, wav).expect("écriture wav");
         p
     }

@@ -82,8 +82,13 @@ pub fn decoder_natif(chemin: &Path) -> Result<PisteNative> {
         let piste = crate::opus::decoder(chemin)?;
         let canaux = u16::try_from(piste.canaux).unwrap_or(2).max(1);
         let taux = crate::opus::SR;
-        let echantillons = tronquer_si_demesure(piste.echantillons, max_echantillons(taux, canaux), chemin);
-        return Ok(PisteNative { echantillons, canaux, taux });
+        let echantillons =
+            tronquer_si_demesure(piste.echantillons, max_echantillons(taux, canaux), chemin);
+        return Ok(PisteNative {
+            echantillons,
+            canaux,
+            taux,
+        });
     }
     let octets = lire_borne(chemin)?;
     let decodeur =
@@ -108,7 +113,11 @@ pub fn decoder_natif(chemin: &Path) -> Result<PisteNative> {
         );
         echantillons.truncate(max);
     }
-    Ok(PisteNative { echantillons, canaux, taux })
+    Ok(PisteNative {
+        echantillons,
+        canaux,
+        taux,
+    })
 }
 
 /// Coupe `echantillons` à `max` en le signalant, si besoin — utilisé pour
@@ -166,7 +175,8 @@ pub fn decoder_natif_par_blocs(
         let piste = crate::opus::decoder(chemin)?;
         let canaux = u16::try_from(piste.canaux).unwrap_or(2).max(1);
         let taux = crate::opus::SR;
-        let echantillons = tronquer_si_demesure(piste.echantillons, max_echantillons(taux, canaux), chemin);
+        let echantillons =
+            tronquer_si_demesure(piste.echantillons, max_echantillons(taux, canaux), chemin);
         let pas = aligner_sur_les_trames(taille_bloc, canaux as usize);
         for bloc in echantillons.chunks(pas) {
             f(canaux, taux, bloc);
@@ -258,10 +268,8 @@ mod tests {
     use super::*;
 
     fn fichier(nom: &str, octets: &[u8]) -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "rusty-music-decode-{}-{nom}",
-            std::process::id()
-        ));
+        let p =
+            std::env::temp_dir().join(format!("rusty-music-decode-{}-{nom}", std::process::id()));
         std::fs::write(&p, octets).expect("écriture");
         p
     }
@@ -345,7 +353,11 @@ mod tests {
     fn aligner_sur_les_trames_reste_un_multiple_des_canaux() {
         assert_eq!(aligner_sur_les_trames(1000, 2), 1000);
         assert_eq!(aligner_sur_les_trames(1001, 2), 1000);
-        assert_eq!(aligner_sur_les_trames(1, 2), 2, "plancher d'une trame complète");
+        assert_eq!(
+            aligner_sur_les_trames(1, 2),
+            2,
+            "plancher d'une trame complète"
+        );
         assert_eq!(aligner_sur_les_trames(1001, 1), 1001);
     }
 

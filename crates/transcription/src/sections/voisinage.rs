@@ -18,11 +18,16 @@ use burn::tensor::{Int, Tensor, TensorData};
 /// Voisins `[longueur × k]`, ligne par ligne, et indice du biais relatif de
 /// chacun (de 0 à 2k − 2).
 pub fn voisins(longueur: usize, k: usize, d: usize) -> (Vec<i64>, Vec<i64>) {
-    let (mut j, mut b) = (Vec::with_capacity(longueur * k), Vec::with_capacity(longueur * k));
+    let (mut j, mut b) = (
+        Vec::with_capacity(longueur * k),
+        Vec::with_capacity(longueur * k),
+    );
     for i in 0..longueur {
         let (r, u) = (i % d, i / d);
         let long_r = (longueur - r).div_ceil(d) as i64;
-        let debut = (u as i64 - (k / 2) as i64).max(0).min((long_r - k as i64).max(0));
+        let debut = (u as i64 - (k / 2) as i64)
+            .max(0)
+            .min((long_r - k as i64).max(0));
         for ki in 0..k {
             let jj = (debut + ki as i64) * d as i64 + r as i64;
             j.push(jj);
@@ -39,7 +44,10 @@ pub fn voisins_2d(x: usize, y: usize, k: usize, d: usize) -> (Vec<i64>, Vec<i64>
     let (jx, bx) = voisins(x, k, d);
     let (jy, by) = voisins(y, k, d);
     let large = (2 * k - 1) as i64;
-    let (mut j, mut b) = (Vec::with_capacity(x * y * k * k), Vec::with_capacity(x * y * k * k));
+    let (mut j, mut b) = (
+        Vec::with_capacity(x * y * k * k),
+        Vec::with_capacity(x * y * k * k),
+    );
     for a in 0..x {
         for c in 0..y {
             for ki in 0..k {
@@ -65,18 +73,34 @@ pub struct Indices<B: Backend> {
 
 impl<B: Backend> Indices<B> {
     pub fn new(device: &B::Device) -> Self {
-        Self { device: device.clone(), cache: HashMap::new() }
+        Self {
+            device: device.clone(),
+            cache: HashMap::new(),
+        }
     }
 
     /// `(voisins, biais)` d'une grille `x × y` (`x = 1` en 1D).
-    pub fn de(&mut self, x: usize, y: usize, k: usize, d: usize) -> (Tensor<B, 1, Int>, Tensor<B, 1, Int>) {
+    pub fn de(
+        &mut self,
+        x: usize,
+        y: usize,
+        k: usize,
+        d: usize,
+    ) -> (Tensor<B, 1, Int>, Tensor<B, 1, Int>) {
         let device = &self.device;
         self.cache
             .entry((x, y, k, d))
             .or_insert_with(|| {
-                let (j, b) = if x == 1 { voisins(y, k, d) } else { voisins_2d(x, y, k, d) };
+                let (j, b) = if x == 1 {
+                    voisins(y, k, d)
+                } else {
+                    voisins_2d(x, y, k, d)
+                };
                 let n = j.len();
-                (Tensor::from_data(TensorData::new(j, [n]), device), Tensor::from_data(TensorData::new(b, [n]), device))
+                (
+                    Tensor::from_data(TensorData::new(j, [n]), device),
+                    Tensor::from_data(TensorData::new(b, [n]), device),
+                )
             })
             .clone()
     }
@@ -108,11 +132,20 @@ pub fn attention<B: Backend>(
         let ix = idx.clone().slice(a * n..z * n);
         let kv = k.clone().select(2, ix.clone()).reshape([b, h, m, n, d]);
         let qs = q.clone().slice([0..b, 0..h, a..z, 0..d]);
-        let scores = (qs.unsqueeze_dim::<5>(3) * kv).sum_dim(4).reshape([b, h, m, n]);
-        let biais = rpb.clone().select(1, bidx.clone().slice(a * n..z * n)).reshape([1, h, m, n]);
+        let scores = (qs.unsqueeze_dim::<5>(3) * kv)
+            .sum_dim(4)
+            .reshape([b, h, m, n]);
+        let biais = rpb
+            .clone()
+            .select(1, bidx.clone().slice(a * n..z * n))
+            .reshape([1, h, m, n]);
         let p = softmax(scores + biais, 3);
         let vv = v.clone().select(2, ix).reshape([b, h, m, n, d]);
-        sorties.push((p.unsqueeze_dim::<5>(4) * vv).sum_dim(3).reshape([b, h, m, d]));
+        sorties.push(
+            (p.unsqueeze_dim::<5>(4) * vv)
+                .sum_dim(3)
+                .reshape([b, h, m, d]),
+        );
         a = z;
     }
     Tensor::cat(sorties, 2)

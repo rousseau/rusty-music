@@ -61,7 +61,10 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self { http: ClientCadence::new(agent, CADENCE), cle }
+        Self {
+            http: ClientCadence::new(agent, CADENCE),
+            cle,
+        }
     }
 
     /// Une clé refusée (bogue, révoquée) rend 401/403 — vérifié en direct sur
@@ -74,7 +77,10 @@ impl Client {
     /// `ctx` (jamais l'url, qui porte la clé) est ce qu'un message d'erreur
     /// éventuel garde du site interrogé.
     fn json(&self, url: &str) -> std::result::Result<Value, EchecTags> {
-        match self.http.get_json_avec(url, "artist.gettoptags", |code| matches!(code, 401 | 403)) {
+        match self
+            .http
+            .get_json_avec(url, "artist.gettoptags", |code| matches!(code, 401 | 403))
+        {
             Ok(Reponse::Trouvee(v)) => Ok(v),
             Ok(Reponse::Absente) => Ok(Value::Null),
             Ok(Reponse::ArretImmediat(code)) => Err(EchecTags::Bloquant(Error::Reseau(format!(
@@ -147,9 +153,8 @@ mod tests {
 
     #[test]
     fn tag_de_lit_nom_et_poids() {
-        let v: Value =
-            serde_json::from_str(r#"{"name":"celtic","count":45,"url":"https://..."}"#)
-                .expect("JSON de test");
+        let v: Value = serde_json::from_str(r#"{"name":"celtic","count":45,"url":"https://..."}"#)
+            .expect("JSON de test");
         let t = tag_de(&v).expect("tag attendu");
         assert_eq!(t.nom, "celtic");
         assert_eq!(t.poids, 45);
@@ -157,8 +162,8 @@ mod tests {
 
     #[test]
     fn tag_de_accepte_un_compte_en_chaine() {
-        let v: Value = serde_json::from_str(r#"{"name":"folk","count":"12"}"#)
-            .expect("JSON de test");
+        let v: Value =
+            serde_json::from_str(r#"{"name":"folk","count":"12"}"#).expect("JSON de test");
         let t = tag_de(&v).expect("tag attendu");
         assert_eq!(t.poids, 12);
     }
@@ -176,7 +181,13 @@ mod tests {
         )
         .expect("JSON de test");
         let tags = tags_de(&v).expect("tags attendus");
-        assert_eq!(tags, vec![Tag { nom: "celtic".into(), poids: 45 }]);
+        assert_eq!(
+            tags,
+            vec![Tag {
+                nom: "celtic".into(),
+                poids: 45
+            }]
+        );
     }
 
     /// Régression : un artiste introuvable (code 6) est un état normal,
@@ -197,17 +208,22 @@ mod tests {
         let v: Value = serde_json::from_str(r#"{"error":10,"message":"Invalid API key"}"#)
             .expect("JSON de test");
         let e = tags_de(&v).expect_err("une clé invalide doit remonter en erreur");
-        assert!(matches!(e, EchecTags::Bloquant(_)), "doit arrêter la passe : {e}");
-        assert!(e.to_string().contains("Invalid API key"), "message perdu : {e}");
+        assert!(
+            matches!(e, EchecTags::Bloquant(_)),
+            "doit arrêter la passe : {e}"
+        );
+        assert!(
+            e.to_string().contains("Invalid API key"),
+            "message perdu : {e}"
+        );
         assert!(e.to_string().contains("10"), "code perdu : {e}");
     }
 
     #[test]
     fn tags_de_signale_une_cle_suspendue_et_une_limite_de_debit() {
         for code in [4, 26, 29] {
-            let v: Value =
-                serde_json::from_str(&format!(r#"{{"error":{code},"message":"m"}}"#))
-                    .expect("JSON de test");
+            let v: Value = serde_json::from_str(&format!(r#"{{"error":{code},"message":"m"}}"#))
+                .expect("JSON de test");
             assert!(
                 matches!(tags_de(&v), Err(EchecTags::Bloquant(_))),
                 "code {code} devrait arrêter la passe"
@@ -242,7 +258,10 @@ mod tests {
         let client = Client::new("peu-importe".to_string());
         let debut = Instant::now();
         let e = client.json(&url).expect_err("401 doit remonter en erreur");
-        assert!(matches!(e, EchecTags::Bloquant(_)), "doit arrêter la passe : {e}");
+        assert!(
+            matches!(e, EchecTags::Bloquant(_)),
+            "doit arrêter la passe : {e}"
+        );
         assert!(
             debut.elapsed() < Duration::from_secs(2),
             "ne doit pas épuiser les tentatives (attente exponentielle) sur un arrêt immédiat"

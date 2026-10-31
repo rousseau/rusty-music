@@ -748,7 +748,11 @@ impl Multipiste {
     }
 
     fn deposer(&self, d: Decompte) {
-        *self.depot.decompte.lock().unwrap_or_else(|e| e.into_inner()) = d;
+        *self
+            .depot
+            .decompte
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = d;
         self.depot.nouveau.store(true, Ordering::Release);
     }
 
@@ -779,7 +783,8 @@ impl Multipiste {
         self.boucle.fin.store(0, Ordering::Relaxed);
         self.boucle.passages.store(0, Ordering::Relaxed);
         if let Some((a, b)) = bornes {
-            let trame = |d: Duration| ((d.as_secs_f64() * SR as f64) as u64).min(self.trames as u64);
+            let trame =
+                |d: Duration| ((d.as_secs_f64() * SR as f64) as u64).min(self.trames as u64);
             let (a, b) = (trame(a), trame(b));
             if b > a {
                 self.boucle.debut.store(a, Ordering::Relaxed);
@@ -1197,7 +1202,10 @@ mod tests {
     /// passage.
     #[test]
     fn la_boucle_ramene_au_debut_en_franchissant_la_fin() {
-        let mut b = banc(vec![rampe_de_trames(2000), rampe_de_trames(2000)], vec![Niveau::nouveau(1.0), Niveau::nouveau(1.0)]);
+        let mut b = banc(
+            vec![rampe_de_trames(2000), rampe_de_trames(2000)],
+            vec![Niveau::nouveau(1.0), Niveau::nouveau(1.0)],
+        );
         b.melange.boucle.debut.store(300, Ordering::Relaxed);
         b.melange.boucle.fin.store(1000, Ordering::Relaxed);
         // Une voix en avance (vitesse propre) : le saut la réaligne aussi.
@@ -1211,7 +1219,12 @@ mod tests {
         b.melange.next();
         assert_eq!(b.maitre.load(Ordering::Relaxed) >> FRAC, 300);
         assert_eq!(b.melange.boucle.passages.load(Ordering::Relaxed), 1);
-        assert!(b.curseurs.iter().all(|c| (c.load(Ordering::Relaxed) >> FRAC) <= 301), "têtes réalignées");
+        assert!(
+            b.curseurs
+                .iter()
+                .all(|c| (c.load(Ordering::Relaxed) >> FRAC) <= 301),
+            "têtes réalignées"
+        );
     }
 
     /// Un déplacement au-delà de la fin ne ramène pas dans la boucle.
@@ -1251,11 +1264,18 @@ mod tests {
             }
             min = min.min(v);
         }
-        assert!(min < 0.05 * plein, "le gain doit passer près de zéro au raccord : {min}");
+        assert!(
+            min < 0.05 * plein,
+            "le gain doit passer près de zéro au raccord : {min}"
+        );
         // Pas de saut d'une trame à l'autre plus grand qu'un pas de fondu.
         let pas_max = plein / FONDU_BOUCLE as f32 * 1.5;
         for w in fin_de_boucle.windows(2) {
-            assert!((w[1] - w[0]).abs() <= pas_max, "saut d'amplitude {} > {pas_max}", (w[1] - w[0]).abs());
+            assert!(
+                (w[1] - w[0]).abs() <= pas_max,
+                "saut d'amplitude {} > {pas_max}",
+                (w[1] - w[0]).abs()
+            );
         }
     }
 
@@ -1277,14 +1297,29 @@ mod tests {
             sortie.push(b.melange.next().unwrap());
             sortie.push(b.melange.next().unwrap());
             if sortie.len() == 2 * 999 {
-                assert_eq!(b.maitre.load(Ordering::Relaxed) >> FRAC, 0, "à l'arrêt pendant le décompte");
+                assert_eq!(
+                    b.maitre.load(Ordering::Relaxed) >> FRAC,
+                    0,
+                    "à l'arrêt pendant le décompte"
+                );
             }
         }
-        assert!(b.maitre.load(Ordering::Relaxed) >> FRAC >= 999, "la musique est partie");
-        let energie = |a: usize| sortie[2 * a..2 * (a + CLIC as usize)].iter().map(|x| x * x).sum::<f32>();
+        assert!(
+            b.maitre.load(Ordering::Relaxed) >> FRAC >= 999,
+            "la musique est partie"
+        );
+        let energie = |a: usize| {
+            sortie[2 * a..2 * (a + CLIC as usize)]
+                .iter()
+                .map(|x| x * x)
+                .sum::<f32>()
+        };
         for t in [0, 500, 1500] {
             assert!(energie(t) > 1.0, "clic attendu à la trame {t}");
         }
-        assert!(energie(1500 + CLIC as usize) == 0.0, "plus de clic après le dernier");
+        assert!(
+            energie(1500 + CLIC as usize) == 0.0,
+            "plus de clic après le dernier"
+        );
     }
 }

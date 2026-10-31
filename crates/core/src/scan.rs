@@ -156,7 +156,10 @@ fn lire_et_ingerer(lib: &Library, a_lire: Vec<PathBuf>, jobs: usize, rep: &mut S
                 // lui — voir `crate::panique`.
                 let resultat = match crate::panique::sans_panique(|| tags::read(path)) {
                     Ok(r) => r,
-                    Err(message) => Err(Error::Panique { path: path.clone(), message }),
+                    Err(message) => Err(Error::Panique {
+                        path: path.clone(),
+                        message,
+                    }),
                 };
                 // Le récepteur est parti (impossible ici, mais évite de tourner
                 // dans le vide si la boucle d'écriture s'arrêtait un jour).
@@ -230,10 +233,8 @@ mod tests {
     /// grand ménage.
     #[test]
     fn scan_root_jobs_ne_purge_pas_si_rien_vu() {
-        let racine = std::env::temp_dir().join(format!(
-            "rusty-music-scan-test-{}",
-            std::process::id()
-        ));
+        let racine =
+            std::env::temp_dir().join(format!("rusty-music-scan-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&racine);
         std::fs::create_dir_all(&racine).expect("dossier de test");
         let fichier = racine.join("piste.wav");
@@ -251,7 +252,11 @@ mod tests {
         let rep2 = scan_root_jobs(&lib, &racine, 1, false).expect("second scan");
         assert_eq!(rep2.seen, 0, "aucun fichier audio vu cette fois");
         assert_eq!(rep2.removed, 0, "l'élagage est sauté, pas déclenché");
-        assert_eq!(lib.count().unwrap(), 1, "la piste reste en base par prudence");
+        assert_eq!(
+            lib.count().unwrap(),
+            1,
+            "la piste reste en base par prudence"
+        );
 
         let _ = std::fs::remove_dir_all(&racine);
     }

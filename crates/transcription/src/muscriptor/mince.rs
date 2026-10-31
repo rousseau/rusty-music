@@ -52,7 +52,14 @@ mod cube {
     /// `k` par pas de `PLANE_DIM` vecteurs, lit chaque vecteur de `x` une
     /// fois pour les `c` colonnes, et garde `m · c` sommes en f32.
     #[cube(launch_unchecked)]
-    fn noyau<F: Float, N: Size>(x: &Tensor<Vector<F, N>>, w: &Tensor<Vector<F, N>>, sortie: &mut Tensor<F>, #[comptime] m: usize, #[comptime] c: usize, #[define(F)] _dtype: StorageType) {
+    fn noyau<F: Float, N: Size>(
+        x: &Tensor<Vector<F, N>>,
+        w: &Tensor<Vector<F, N>>,
+        sortie: &mut Tensor<F>,
+        #[comptime] m: usize,
+        #[comptime] c: usize,
+        #[define(F)] _dtype: StorageType,
+    ) {
         let n = sortie.shape(1);
         let premiere = (CUBE_POS_X as usize * CUBE_DIM_Y as usize + UNIT_POS_Y as usize) * c;
         if premiere >= n {
@@ -73,7 +80,9 @@ mod cube {
                 for q in 0..c {
                     // Les colonnes au-delà de `n` relisent la dernière.
                     let col = select(premiere + q < n, premiere + q, n - 1);
-                    acc[i * c + q] += f32::cast_from((v * Vector::<f32, N>::cast_from(w[col * k + j])).vector_sum());
+                    acc[i * c + q] += f32::cast_from(
+                        (v * Vector::<f32, N>::cast_from(w[col * k + j])).vector_sum(),
+                    );
                 }
             }
             j += PLANE_DIM as usize;
@@ -88,7 +97,9 @@ mod cube {
         }
     }
 
-    impl<R: CubeRuntime, F: FloatElement, I: IntElement, BT: BoolElement> ProduitMince for CubeBackend<R, F, I, BT> {
+    impl<R: CubeRuntime, F: FloatElement, I: IntElement, BT: BoolElement> ProduitMince
+        for CubeBackend<R, F, I, BT>
+    {
         fn produit_mince(x: FloatTensor<Self>, w: FloatTensor<Self>) -> FloatTensor<Self> {
             let (m, k) = (x.meta.shape()[0], x.meta.shape()[1]);
             let n = w.meta.shape()[0];
@@ -96,17 +107,39 @@ mod cube {
             let (plan, plan_min) = (props.hardware.plane_size_max, props.hardware.plane_size_min);
             // Vecteurs de 4 : la largeur maximale de WGSL.
             let largeur = 4;
-            let adapte = domaine(m) && plan == plan_min && props.features.plane.contains(Plane::Ops) && x.dtype == w.dtype && x.is_contiguous() && w.is_contiguous() && k % largeur == 0;
+            let adapte = domaine(m)
+                && plan == plan_min
+                && props.features.plane.contains(Plane::Ops)
+                && x.dtype == w.dtype
+                && x.is_contiguous()
+                && w.is_contiguous()
+                && k % largeur == 0;
             if !adapte {
                 return Self::float_matmul(x, Self::float_transpose(w));
             }
-            let sortie = empty_device_dtype(x.client.clone(), x.device.clone(), Shape::new([m, n]), x.dtype);
+            let sortie = empty_device_dtype(
+                x.client.clone(),
+                x.device.clone(),
+                Shape::new([m, n]),
+                x.dtype,
+            );
             let (plans, c) = (8, COLONNES);
             let cube_dim = CubeDim::new_2d(plan, plans);
             let cube_count = CubeCount::Static(n.div_ceil(plans as usize * c) as u32, 1, 1);
             let dtype = x.dtype;
             unsafe {
-                noyau::launch_unchecked(&sortie.client, cube_count, cube_dim, largeur, x.into_tensor_arg(), w.into_tensor_arg(), sortie.clone().into_tensor_arg(), m, c, dtype.into());
+                noyau::launch_unchecked(
+                    &sortie.client,
+                    cube_count,
+                    cube_dim,
+                    largeur,
+                    x.into_tensor_arg(),
+                    w.into_tensor_arg(),
+                    sortie.clone().into_tensor_arg(),
+                    m,
+                    c,
+                    dtype.into(),
+                );
             }
             sortie
         }
@@ -136,9 +169,17 @@ mod cube {
                 }
 
                 impl<B1: FusionBackend + ProduitMince> Operation<B1::FusionRuntime> for Op<B1> {
-                    fn execute(&self, handles: &mut HandleContainer<<B1::FusionRuntime as FusionRuntime>::FusionHandle>) {
+                    fn execute(
+                        &self,
+                        handles: &mut HandleContainer<
+                            <B1::FusionRuntime as FusionRuntime>::FusionHandle,
+                        >,
+                    ) {
                         let ([x, w], [sortie]) = self.desc.as_fixed();
-                        let y = B1::produit_mince(handles.get_float_tensor::<B1>(x), handles.get_float_tensor::<B1>(w));
+                        let y = B1::produit_mince(
+                            handles.get_float_tensor::<B1>(x),
+                            handles.get_float_tensor::<B1>(w),
+                        );
                         handles.register_float_tensor::<B1>(&sortie.id, y);
                     }
                 }
@@ -146,9 +187,19 @@ mod cube {
                 let client = x.client.clone();
                 let (m, n, dtype) = (x.shape[0], w.shape[0], x.dtype);
                 let streams = OperationStreams::with_inputs([&x, &w]);
-                let sortie = TensorIr::uninit(client.create_empty_handle(), Shape::new([m, n]), dtype);
+                let sortie =
+                    TensorIr::uninit(client.create_empty_handle(), Shape::new([m, n]), dtype);
                 let desc = CustomOpIr::new("produit_mince", &[x.into_ir(), w.into_ir()], &[sortie]);
-                client.register(streams, OperationIr::Custom(desc.clone()), Op::<B> { desc, _b: core::marker::PhantomData }).output()
+                client
+                    .register(
+                        streams,
+                        OperationIr::Custom(desc.clone()),
+                        Op::<B> {
+                            desc,
+                            _b: core::marker::PhantomData,
+                        },
+                    )
+                    .output()
             }
         }
     }

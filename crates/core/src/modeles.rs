@@ -109,7 +109,14 @@ pub fn telecharger(
     sha256_attendu: Option<&str>,
     avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
-    telecharger_dans(&dossier_telechargement(), nom, url, octets_minimum, sha256_attendu, avancer)
+    telecharger_dans(
+        &dossier_telechargement(),
+        nom,
+        url,
+        octets_minimum,
+        sha256_attendu,
+        avancer,
+    )
 }
 
 /// [`telecharger`] vers un dossier explicite.
@@ -121,7 +128,15 @@ pub fn telecharger_dans(
     sha256_attendu: Option<&str>,
     avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
-    telecharger_dans_avec_jeton(dossier, nom, url, None, octets_minimum, sha256_attendu, avancer)
+    telecharger_dans_avec_jeton(
+        dossier,
+        nom,
+        url,
+        None,
+        octets_minimum,
+        sha256_attendu,
+        avancer,
+    )
 }
 
 /// [`telecharger`] d'un dépôt à accès restreint : `jeton` est envoyé au
@@ -134,7 +149,15 @@ pub fn telecharger_avec_jeton(
     sha256_attendu: Option<&str>,
     avancer: impl FnMut(u64, Option<u64>),
 ) -> Result<PathBuf> {
-    telecharger_dans_avec_jeton(&dossier_telechargement(), nom, url, jeton, octets_minimum, sha256_attendu, avancer)
+    telecharger_dans_avec_jeton(
+        &dossier_telechargement(),
+        nom,
+        url,
+        jeton,
+        octets_minimum,
+        sha256_attendu,
+        avancer,
+    )
 }
 
 fn telecharger_dans_avec_jeton(
@@ -152,10 +175,11 @@ fn telecharger_dans_avec_jeton(
 
     let (mut recus, mut attendus) = (0u64, None);
     let agent = crate::discogs::agent();
-    let issue = crate::discogs::telecharger_avec_jeton(&agent, url, jeton, &partiel, |vus, total| {
-        (recus, attendus) = (vus, total);
-        avancer(vus, total);
-    });
+    let issue =
+        crate::discogs::telecharger_avec_jeton(&agent, url, jeton, &partiel, |vus, total| {
+            (recus, attendus) = (vus, total);
+            avancer(vus, total);
+        });
     let verifie = issue.and_then(|()| match attendus {
         Some(total) if recus != total => Err(Error::Reseau(format!(
             "téléchargement de {nom} interrompu : {recus} octets sur {total}"
@@ -200,7 +224,11 @@ fn sha256_fichier(chemin: &Path) -> Result<String> {
         }
         hasheur.update(&tampon[..n]);
     }
-    Ok(hasheur.finalize().iter().map(|o| format!("{o:02x}")).collect())
+    Ok(hasheur
+        .finalize()
+        .iter()
+        .map(|o| format!("{o:02x}"))
+        .collect())
 }
 
 /// Message d'erreur qui dit où l'on a regardé.
@@ -359,7 +387,10 @@ mod tests {
             Some("0000000000000000000000000000000000000000000000000000000000000000"),
             |_, _| {},
         );
-        assert!(r.is_err(), "empreinte fausse : le téléchargement doit échouer");
+        assert!(
+            r.is_err(),
+            "empreinte fausse : le téléchargement doit échouer"
+        );
         assert!(!dossier.join("hash-mauvais.safetensors").exists());
         assert!(!dossier.join("hash-mauvais.safetensors.partiel").exists());
     }

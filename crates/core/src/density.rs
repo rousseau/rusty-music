@@ -202,9 +202,7 @@ pub fn calculer(
         } else {
             AUTRES
         };
-        par_famille
-            .entry(cle)
-            .or_insert_with(|| vec![0.0; gn * gn])[idx] += 1.0;
+        par_famille.entry(cle).or_insert_with(|| vec![0.0; gn * gn])[idx] += 1.0;
     }
 
     let sigma_cellules = (parametres.noyau / pas).max(0.5);
@@ -511,8 +509,7 @@ mod tests {
     /// coordonnées de carte plutôt qu'en indices de grille.
     #[test]
     fn lechantillonnage_suit_les_coordonnees_de_carte() {
-        let points: Vec<(i64, f32, f32, i64)> =
-            (0..200).map(|i| (i, -0.4, 0.55, 0i64)).collect();
+        let points: Vec<(i64, f32, f32, i64)> = (0..200).map(|i| (i, -0.4, 0.55, 0i64)).collect();
         let parametres = ParametresDensite {
             noyau: 0.04,
             resolution: 128,
@@ -565,7 +562,10 @@ mod tests {
             .iter()
             .filter(|f| !matches!(f, None | Some(AUTRES)))
             .count();
-        assert!(reelles <= FAMILLES_MAX, "{reelles} familles réelles gardées, attendu au plus {FAMILLES_MAX}");
+        assert!(
+            reelles <= FAMILLES_MAX,
+            "{reelles} familles réelles gardées, attendu au plus {FAMILLES_MAX}"
+        );
         assert!(
             territoires.contains(&Some(AUTRES)),
             "les familles en trop devraient former un territoire « autres »"

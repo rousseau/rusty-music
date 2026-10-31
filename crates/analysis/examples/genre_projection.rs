@@ -131,10 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("── Pureté du voisinage (k = {K_VOISINS})");
-    println!(
-        "{:<22} {:>12} {:>12}",
-        "", "genre exact", "famille"
-    );
+    println!("{:<22} {:>12} {:>12}", "", "genre exact", "famille");
     println!("{}", "─".repeat(48));
     println!(
         "{:<22} {:>11.1}% {:>11.1}%",
@@ -187,8 +184,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Dispersion par famille : en 512 d ET sur la carte ------------------
     // Si une famille est déjà étalée dans l'empreinte, aucune projection 2 d ne
     // la resserrera — le plafond est mis par l'empreinte, pas par t-SNE.
-    let coords: HashMap<i64, Vec<f32>> =
-        points.iter().map(|(id, x, y, _)| (*id, vec![*x, *y])).collect();
+    let coords: HashMap<i64, Vec<f32>> = points
+        .iter()
+        .map(|(id, x, y, _)| (*id, vec![*x, *y]))
+        .collect();
     let emb: HashMap<i64, Vec<f32>> = empreintes.iter().map(|(id, v)| (*id, v.clone())).collect();
     let tous: Vec<i64> = points.iter().map(|(id, ..)| *id).collect();
     let hasard_2d = dist_moyenne(&tous, &coords);
@@ -227,7 +226,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let nom: String = brut.chars().take(24).collect();
         println!("{nom:<24} {n:>9} {d512:>11.2}× {d2d:>11.2}×");
     }
-    println!("{:<24} {:>9} {:>11.2}× {:>11.2}×", "au hasard", points.len(), 1.0, 1.0);
+    println!(
+        "{:<24} {:>9} {:>11.2}× {:>11.2}×",
+        "au hasard",
+        points.len(),
+        1.0,
+        1.0
+    );
 
     // --- Repère « grunge » littéral -----------------------------------------
     let grunge: Vec<i64> = genres

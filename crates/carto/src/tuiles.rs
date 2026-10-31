@@ -469,7 +469,10 @@ pub fn ecrire_avec(
                     ("nom", Valeur::Texte(e.nom.clone())),
                     ("rang", Valeur::Entier(rang.indice())),
                     ("population", Valeur::Entier(e.population as i64)),
-                    ("fondation", Valeur::Entier((e.fondation_date / 10_000) as i64)),
+                    (
+                        "fondation",
+                        Valeur::Entier((e.fondation_date / 10_000) as i64),
+                    ),
                     ("famille", Valeur::Entier(e.famille)),
                     ("ile", Valeur::Entier(e.ile as i64)),
                 ],
@@ -598,7 +601,12 @@ pub fn ecrire_avec(
                 if let Some(e) = m.energie {
                     etiquettes.push(("energie", Valeur::Reel(e as f64)));
                 }
-                Point { u: p.u, v: p.v, id: m.id as u64, etiquettes }
+                Point {
+                    u: p.u,
+                    v: p.v,
+                    id: m.id as u64,
+                    etiquettes,
+                }
             })
             .collect()
     } else {
@@ -716,8 +724,7 @@ pub fn ecrire_avec(
                 points,
                 classe: r.classe,
                 bornes: b,
-                trop_longue: (dx * dx + dy * dy).sqrt()
-                    > paliers.longueur_max_route as f64,
+                trop_longue: (dx * dx + dy * dy).sqrt() > paliers.longueur_max_route as f64,
             }
         })
         .collect();
@@ -886,7 +893,12 @@ pub fn ecrire_avec(
                 })
                 .collect();
             let bornes = bornes_de(&points);
-            Troncon { points, classe: 0, bornes, trop_longue: false }
+            Troncon {
+                points,
+                classe: 0,
+                bornes,
+                trop_longue: false,
+            }
         })
         .collect();
 
@@ -935,11 +947,18 @@ pub fn ecrire_avec(
             .center_zoom(14)
     } else {
         let coin = projection::carte_vers_geo(-projection::DEMI_ETENDUE, projection::DEMI_ETENDUE);
-        base.bounds(-180.0, coin.lat.min(-coin.lat), 180.0, coin.lat.max(-coin.lat))
-            .center(0.0, 0.0)
-            .center_zoom(2)
+        base.bounds(
+            -180.0,
+            coin.lat.min(-coin.lat),
+            180.0,
+            coin.lat.max(-coin.lat),
+        )
+        .center(0.0, 0.0)
+        .center_zoom(2)
     };
-    let mut ecrivain = base.metadata(&metadonnees(source, paliers)).create(fichier)?;
+    let mut ecrivain = base
+        .metadata(&metadonnees(source, paliers))
+        .create(fichier)?;
 
     let contexte = Contexte {
         familles: &familles,
@@ -1005,7 +1024,9 @@ pub fn ecrire_avec(
         // réseau de rues l'est (`classe_reelle_visible_des`, les autoroutes
         // dès 10), pas seulement de très près. Calibré à l'œil, pas mesuré.
         if z >= 10 {
-            semer(&mut tuiles, &points_remarquables, n, |t| &mut t.points_remarquables);
+            semer(&mut tuiles, &points_remarquables, n, |t| {
+                &mut t.points_remarquables
+            });
         }
         if z >= paliers.albums_des {
             semer(&mut tuiles, &albums, n, |t| &mut t.albums);
@@ -1139,7 +1160,9 @@ fn encoder_tuile(
         }
     }
     if !t.troncons_reels.is_empty() {
-        if let Some(couche) = couche_troncons_reels(&tuile, &t.troncons_reels, ctx.troncons_reels, z, x, y)? {
+        if let Some(couche) =
+            couche_troncons_reels(&tuile, &t.troncons_reels, ctx.troncons_reels, z, x, y)?
+        {
             tuile.add_layer(couche)?;
             vide = false;
         }
@@ -1150,7 +1173,11 @@ fn encoder_tuile(
         ("curiosites", &t.curiosites, ctx.curiosites),
         ("artistes", &t.artistes, ctx.artistes),
         ("morceaux", &t.morceaux, ctx.morceaux),
-        ("points-remarquables", &t.points_remarquables, ctx.points_remarquables),
+        (
+            "points-remarquables",
+            &t.points_remarquables,
+            ctx.points_remarquables,
+        ),
         ("albums", &t.albums, ctx.albums),
         ("habites", &t.habites, ctx.habites),
     ] {
@@ -1183,12 +1210,7 @@ fn couche_points(
     let mut compte = 0;
     for &i in indices {
         let p = &table[i];
-        let (px, py) = projection::monde_vers_tuile(
-            projection::Monde { u: p.u, v: p.v },
-            z,
-            x,
-            y,
-        );
+        let (px, py) = projection::monde_vers_tuile(projection::Monde { u: p.u, v: p.v }, z, x, y);
         let geom = GeomEncoder::new(GeomType::Point).point(px, py)?.encode()?;
         let mut entite = couche.into_feature(geom);
         entite.set_id(p.id);
@@ -1557,7 +1579,13 @@ fn couche_lignes(
 /// Idem pour les anneaux de territoire, via leurs bornes. [`anneau_visible_a`]
 /// filtre par famille et par zoom : territoires/agglomérations fictifs d'un
 /// côté, surfaces réelles de l'autre, chacun sa règle.
-fn semer_anneaux(tuiles: &mut HashMap<(u32, u32), Tuile>, anneaux: &[Anneau], n: u32, z: u8, paliers: &Paliers) {
+fn semer_anneaux(
+    tuiles: &mut HashMap<(u32, u32), Tuile>,
+    anneaux: &[Anneau],
+    n: u32,
+    z: u8,
+    paliers: &Paliers,
+) {
     for (i, a) in anneaux.iter().enumerate() {
         if !anneau_visible_a(a.famille, a.palier, z, paliers) {
             continue;
@@ -1576,7 +1604,12 @@ fn semer_anneaux(tuiles: &mut HashMap<(u32, u32), Tuile>, anneaux: &[Anneau], n:
 
 /// Les tronçons réels dans les tuiles qu'ils traversent, jusqu'au zoom que
 /// [`classe_reelle_visible_des`] autorise pour leur classe.
-fn semer_troncons_reels(tuiles: &mut HashMap<(u32, u32), Tuile>, troncons: &[TronconReelPret], n: u32, z: u8) {
+fn semer_troncons_reels(
+    tuiles: &mut HashMap<(u32, u32), Tuile>,
+    troncons: &[TronconReelPret],
+    n: u32,
+    z: u8,
+) {
     for (i, t) in troncons.iter().enumerate() {
         if z < classe_reelle_visible_des(t.classe) {
             continue;
@@ -1791,8 +1824,20 @@ mod tests {
                 palier: 0,
                 polygones: vec![vec![
                     // Contour puis trou, en coordonnées carte.
-                    vec![[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5], [-0.5, -0.5]],
-                    vec![[-0.1, -0.1], [-0.1, 0.1], [0.1, 0.1], [0.1, -0.1], [-0.1, -0.1]],
+                    vec![
+                        [-0.5, -0.5],
+                        [0.5, -0.5],
+                        [0.5, 0.5],
+                        [-0.5, 0.5],
+                        [-0.5, -0.5],
+                    ],
+                    vec![
+                        [-0.1, -0.1],
+                        [-0.1, 0.1],
+                        [0.1, 0.1],
+                        [0.1, -0.1],
+                        [-0.1, -0.1],
+                    ],
                 ]],
             }],
             ..Default::default()
@@ -1858,8 +1903,8 @@ mod tests {
     /// plutôt que sur le planisphère fictif.
     #[test]
     fn une_source_de_ville_reelle_produit_les_couches_reelles() {
-        use rusty_music_osm::Classe;
         use crate::source::{BatimentReel, ContourReel, TronconReel};
+        use rusty_music_osm::Classe;
 
         let source = Source {
             troncons_reels: vec![TronconReel {
@@ -1870,9 +1915,20 @@ mod tests {
                 famille: Some(0),
                 artiste: Some("Nina Simone".into()),
             }],
-            batiments: vec![BatimentReel { points: carre(2.340, 48.850, 0.0005), morceau_id: None, famille: None, annee: None, bpm: None, energie: None }],
-            eaux: vec![ContourReel { points: carre(2.350, 48.860, 0.001) }],
-            verts: vec![ContourReel { points: carre(2.330, 48.840, 0.001) }],
+            batiments: vec![BatimentReel {
+                points: carre(2.340, 48.850, 0.0005),
+                morceau_id: None,
+                famille: None,
+                annee: None,
+                bpm: None,
+                energie: None,
+            }],
+            eaux: vec![ContourReel {
+                points: carre(2.350, 48.860, 0.001),
+            }],
+            verts: vec![ContourReel {
+                points: carre(2.330, 48.840, 0.001),
+            }],
             frontiere: Some(vec![carre(2.30, 48.80, 0.1)]),
             ..Default::default()
         };
@@ -1883,7 +1939,10 @@ mod tests {
         let chemin = dossier.join("ville.pmtiles");
         // zoom_max assez haut pour révéler bâti (≥15) et rue résidentielle
         // (≥14) — voir `classe_reelle_visible_des`/`anneau_visible_a`.
-        let paliers = Paliers { zoom_max: 16, ..Paliers::default() };
+        let paliers = Paliers {
+            zoom_max: 16,
+            ..Paliers::default()
+        };
         let r = ecrire(&source, &paliers, &chemin).unwrap();
 
         assert!(r.tuiles > 0, "archive vide");
@@ -1901,8 +1960,14 @@ mod tests {
     fn le_bati_se_revele_au_seuil_des_morceaux() {
         let p = Paliers::ville();
         for palier in [-1_i64, 3] {
-            assert!(anneau_visible_a(FAMILLE_BATIMENT_REEL, palier, p.morceaux_des, &p), "palier {palier} : doit se révéler au seuil des morceaux");
-            assert!(!anneau_visible_a(FAMILLE_BATIMENT_REEL, palier, p.morceaux_des - 1, &p), "palier {palier} : pas avant ce seuil");
+            assert!(
+                anneau_visible_a(FAMILLE_BATIMENT_REEL, palier, p.morceaux_des, &p),
+                "palier {palier} : doit se révéler au seuil des morceaux"
+            );
+            assert!(
+                !anneau_visible_a(FAMILLE_BATIMENT_REEL, palier, p.morceaux_des - 1, &p),
+                "palier {palier} : pas avant ce seuil"
+            );
         }
     }
 
@@ -1917,11 +1982,18 @@ mod tests {
         let mut precedent = i64::MAX;
         for position in 0..total {
             let r = rang_artiste(position, total);
-            assert!(r <= precedent, "le rang doit décroître ou rester stable avec la position");
+            assert!(
+                r <= precedent,
+                "le rang doit décroître ou rester stable avec la position"
+            );
             precedent = r;
             vus.insert(r);
         }
-        assert_eq!(vus, [0, 1, 2, 3].into_iter().collect(), "les quatre paliers doivent tous apparaître sur 1000 artistes");
+        assert_eq!(
+            vus,
+            [0, 1, 2, 3].into_iter().collect(),
+            "les quatre paliers doivent tous apparaître sur 1000 artistes"
+        );
         // Une bibliothèque sans artiste ne doit pas diviser par zéro.
         assert_eq!(rang_artiste(0, 0), 0);
     }

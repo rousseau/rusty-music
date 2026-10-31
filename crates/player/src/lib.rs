@@ -184,8 +184,7 @@ pub fn ouvrir(track: &Path, gain_lineaire: f32) -> Result<Box<dyn rodio::Source 
     })?;
     // Les M4A portent leur retard d'amorçage dans le conteneur, que symphonia
     // n'applique pas ; sans ça, +40 ms de blanc à chaque raccord.
-    let rognage =
-        rusty_music_core::gapless::mp4(track, rodio::Source::sample_rate(&decoder).get());
+    let rognage = rusty_music_core::gapless::mp4(track, rodio::Source::sample_rate(&decoder).get());
     let tampon = decoder_en_memoire(Box::new(decoder), gain_lineaire, rognage.as_ref());
     debug!(path = %track.display(), "piste décodée en mémoire");
     Ok(Box::new(tampon))
@@ -685,7 +684,8 @@ impl Player {
             return None;
         }
         let rang = if self.repetition == Repetition::Une {
-            self.index().unwrap_or(self.prochain.min(self.queue.len() - 1))
+            self.index()
+                .unwrap_or(self.prochain.min(self.queue.len() - 1))
         } else {
             if self.prochain >= self.queue.len() {
                 if self.repetition == Repetition::Toutes {
@@ -1220,7 +1220,8 @@ mod tests {
     #[test]
     #[ignore]
     fn une_piste_illisible_est_sautee_et_signalee() {
-        let dossier = std::env::temp_dir().join(format!("rusty-music-echec-{}", std::process::id()));
+        let dossier =
+            std::env::temp_dir().join(format!("rusty-music-echec-{}", std::process::id()));
         std::fs::create_dir_all(&dossier).expect("dossier");
         let disparu = dossier.join("disparu.wav");
         let corrompu = dossier.join("corrompu.mp3");
@@ -1232,7 +1233,12 @@ mod tests {
 
         let mut player = Player::new().expect("sortie audio indisponible");
         player
-            .play(&[disparu.clone(), corrompu.clone(), bonne.clone(), autre.clone()])
+            .play(&[
+                disparu.clone(),
+                corrompu.clone(),
+                bonne.clone(),
+                autre.clone(),
+            ])
             .expect("la lecture doit démarrer sur la première piste lisible");
         assert_eq!(player.current(), Some(bonne.as_path()));
         let echecs = player.prendre_echecs();
@@ -1250,7 +1256,10 @@ mod tests {
 
         // Rien de lisible : l'erreur remonte, rien ne démarre.
         let seule = player.play(&[disparu.clone(), corrompu.clone()]);
-        assert!(seule.is_err(), "une file entièrement illisible doit échouer");
+        assert!(
+            seule.is_err(),
+            "une file entièrement illisible doit échouer"
+        );
 
         // Avec la répétition, une file illisible ne boucle pas sans fin.
         player.set_repetition(Repetition::Toutes);
@@ -1264,7 +1273,8 @@ mod tests {
     #[test]
     #[ignore]
     fn restaurer_reprend_en_pause_a_la_bonne_position() {
-        let dossier = std::env::temp_dir().join(format!("rusty-music-session-{}", std::process::id()));
+        let dossier =
+            std::env::temp_dir().join(format!("rusty-music-session-{}", std::process::id()));
         std::fs::create_dir_all(&dossier).expect("dossier");
         let pistes: Vec<PathBuf> = ["a", "b", "c"]
             .iter()
@@ -1285,9 +1295,17 @@ mod tests {
         };
 
         let mut player = Player::new().expect("sortie audio indisponible");
-        assert!(player.instantane().is_none(), "rien ne joue : rien à retenir");
-        assert!(player.restaurer(session(1, Duration::from_secs(1))).expect("restauration"));
-        assert!(player.is_paused(), "la reprise ne doit jamais lancer le son");
+        assert!(
+            player.instantane().is_none(),
+            "rien ne joue : rien à retenir"
+        );
+        assert!(player
+            .restaurer(session(1, Duration::from_secs(1)))
+            .expect("restauration"));
+        assert!(
+            player.is_paused(),
+            "la reprise ne doit jamais lancer le son"
+        );
         assert_eq!(player.current(), Some(pistes[1].as_path()));
         let pos = player.position();
         assert!(
@@ -1308,7 +1326,9 @@ mod tests {
         assert_eq!(instantane.file, pistes);
 
         // Une file existe déjà : une seconde restauration ne la remplace pas.
-        assert!(!player.restaurer(session(2, Duration::ZERO)).expect("sans effet"));
+        assert!(!player
+            .restaurer(session(2, Duration::ZERO))
+            .expect("sans effet"));
         assert_eq!(player.current(), Some(pistes[1].as_path()));
         let _ = std::fs::remove_dir_all(&dossier);
     }
@@ -1324,7 +1344,10 @@ mod tests {
         a.sort();
         b.sort();
         assert_eq!(a, b, "le mélange a perdu ou dupliqué une piste");
-        assert_ne!(original, melangee, "vingt pistes mélangées à l'identique — improbable");
+        assert_ne!(
+            original, melangee,
+            "vingt pistes mélangées à l'identique — improbable"
+        );
     }
 
     #[test]

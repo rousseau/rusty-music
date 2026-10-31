@@ -64,7 +64,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  {:<8} RMS {:.6}", p.nom, (e / total).sqrt());
         if let Some(d) = &dossier {
             std::fs::create_dir_all(d)?;
-            rusty_music_editor::wav::ecrire(&d.join(format!("{}.wav", p.nom)), &p.gauche, &p.droite, SR)?;
+            rusty_music_editor::wav::ecrire(
+                &d.join(format!("{}.wav", p.nom)),
+                &p.gauche,
+                &p.droite,
+                SR,
+            )?;
         }
         for (a, b) in somme.iter_mut().zip(&p.gauche) {
             *a += b;

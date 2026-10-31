@@ -55,8 +55,17 @@ fn nom_affiche(classe: rusty_music_osm::Classe, artiste: &str) -> String {
 /// Le rectangle englobant du territoire, en mètres du repère local : la
 /// frontière communale si elle existe, sinon l'enveloppe des centres de rue.
 /// Sert de domaine à `affectation::territoires`.
-fn bornes_locales(extrait: &Extrait, rues: &[affectation::Rue], repere: &affectation::Repere) -> [f64; 4] {
-    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+fn bornes_locales(
+    extrait: &Extrait,
+    rues: &[affectation::Rue],
+    repere: &affectation::Repere,
+) -> [f64; 4] {
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
     let mut voir = |p: [f64; 2]| {
         b[0] = b[0].min(p[0]);
         b[1] = b[1].min(p[1]);
@@ -97,9 +106,16 @@ fn distance2(a: [f64; 2], b: [f64; 2]) -> f64 {
 /// que le `centre_f` interne de `affectation::semer_impl`, recalculé ici pour
 /// mesurer l'écart t-SNE de chaque morceau à peupler.
 fn barycentre_familles(familles: &[Famille]) -> [f64; 2] {
-    let poids: f64 = familles.iter().map(|f| f.effectif as f64).sum::<f64>().max(1e-9);
+    let poids: f64 = familles
+        .iter()
+        .map(|f| f.effectif as f64)
+        .sum::<f64>()
+        .max(1e-9);
     let (sx, sy) = familles.iter().fold((0.0, 0.0), |(sx, sy), f| {
-        (sx + f.centroide[0] as f64 * f.effectif as f64, sy + f.centroide[1] as f64 * f.effectif as f64)
+        (
+            sx + f.centroide[0] as f64 * f.effectif as f64,
+            sy + f.centroide[1] as f64 * f.effectif as f64,
+        )
     });
     [sx / poids, sy / poids]
 }
@@ -123,11 +139,17 @@ fn borde_le_noyau(
     grille: &GrilleBatiments,
     autorises: &HashSet<i64>,
 ) -> bool {
-    let Some(trace) = traces.get(nom) else { return false };
+    let Some(trace) = traces.get(nom) else {
+        return false;
+    };
     let mut s = 0.0;
     loop {
         let (pos, _) = trace.au(s);
-        if grille.pres_de(pos, 40.0).iter().any(|b| autorises.contains(&b.id)) {
+        if grille
+            .pres_de(pos, 40.0)
+            .iter()
+            .any(|b| autorises.contains(&b.id))
+        {
             return true;
         }
         if s >= trace.longueur() {
@@ -172,12 +194,18 @@ pub fn artistes_depuis_vue<'a>(
     let mut cumul: HashMap<&str, CumulArtiste> = HashMap::new();
     let mut pistes_par_artiste: HashMap<&str, Vec<(String, i64, i64)>> = HashMap::new();
     for p in vue {
-        let nom = p.album_artist.as_deref().filter(|s| !s.is_empty()).or(p.artist.as_deref());
+        let nom = p
+            .album_artist
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or(p.artist.as_deref());
         let Some(nom) = nom else { continue };
         if nom.is_empty() {
             continue;
         }
-        let e = cumul.entry(nom).or_insert_with(|| (0.0, 0.0, 0, HashMap::new()));
+        let e = cumul
+            .entry(nom)
+            .or_insert_with(|| (0.0, 0.0, 0, HashMap::new()));
         e.0 += p.x as f64;
         e.1 += p.y as f64;
         e.2 += 1;
@@ -213,7 +241,10 @@ pub fn artistes_depuis_vue<'a>(
         .into_iter()
         .map(|(nom, mut triples)| {
             triples.sort();
-            (nom.to_string(), triples.into_iter().map(|(_, _, id)| id).collect())
+            (
+                nom.to_string(),
+                triples.into_iter().map(|(_, _, id)| id).collect(),
+            )
         })
         .collect();
 
@@ -312,7 +343,8 @@ pub fn zone_peuplee(extrait: &Extrait, vue: &[MapPoint], centre: Option<[f64; 2]
     };
     let centre_ll = centre.unwrap_or_else(|| repere.depuis_m(centre_m));
     let n_libres = vue.len().saturating_sub(ancrages.adresses.len());
-    let bat_centres: Vec<(i64, [f64; 2])> = grille.tous().iter().map(|b| (b.id, b.centre)).collect();
+    let bat_centres: Vec<(i64, [f64; 2])> =
+        grille.tous().iter().map(|b| (b.id, b.centre)).collect();
     let mut couts = crate::cout_voirie::couts_batiments(extrait, &repere, &bat_centres, centre_ll);
     couts.retain(|(id, c)| c.is_finite() && !batiments_ancres.contains(id));
     couts.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
@@ -330,7 +362,15 @@ pub fn zone_peuplee(extrait: &Extrait, vue: &[MapPoint], centre: Option<[f64; 2]
     };
     let autorises: HashSet<i64> = retenus.iter().map(|(id, _)| *id).collect();
     let couts: HashMap<i64, f64> = retenus.into_iter().collect();
-    Zone { repere, grille, ancrages, batiments_ancres, centre_m, autorises, couts }
+    Zone {
+        repere,
+        grille,
+        ancrages,
+        batiments_ancres,
+        centre_m,
+        autorises,
+        couts,
+    }
 }
 
 /// Étages 0 à 2 du peuplement dense (`docs/carto-ville.md`) : ancrage aux
@@ -342,8 +382,15 @@ pub fn preparer(
     espacement: f64,
     centre: Option<[f64; 2]>,
 ) -> Preparation {
-    let Zone { repere, grille, ancrages, batiments_ancres, centre_m, autorises, couts: _ } =
-        zone_peuplee(extrait, vue, centre);
+    let Zone {
+        repere,
+        grille,
+        ancrages,
+        batiments_ancres,
+        centre_m,
+        autorises,
+        couts: _,
+    } = zone_peuplee(extrait, vue, centre);
     let rues = affectation::rassembler_rues(extrait, &repere);
     let traces = affectation::traces_des_rues(extrait, &repere);
     let est_ancre =
@@ -352,13 +399,20 @@ pub fn preparer(
     // Familles et artistes agrégés **après** le retrait des artistes ancrés —
     // sinon leurs gros effectifs faussent centroïdes et cibles de capacité.
     let familles = familles_depuis_vue(vue.iter().filter(|&p| !est_ancre(p)));
-    let (artistes, pistes_par_artiste) =
-        artistes_depuis_vue(vue.iter().filter(|&p| !est_ancre(p)));
+    let (artistes, pistes_par_artiste) = artistes_depuis_vue(vue.iter().filter(|&p| !est_ancre(p)));
 
-    let noyau: Vec<&crate::batiments::Batiment> =
-        grille.tous().iter().filter(|b| autorises.contains(&b.id)).collect();
+    let noyau: Vec<&crate::batiments::Batiment> = grille
+        .tous()
+        .iter()
+        .filter(|b| autorises.contains(&b.id))
+        .collect();
     let noyau_bornes_m = {
-        let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut b = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
         for bat in &noyau {
             b[0] = b[0].min(bat.centre[0]);
             b[1] = b[1].min(bat.centre[1]);
@@ -377,10 +431,9 @@ pub fn preparer(
     // pas deux artistes.
     let mut ancre_rue: HashMap<String, String> = HashMap::new();
     for (nom, ancre) in &ancrages.par_artiste {
-        if let Some(r) = rues
-            .iter()
-            .min_by(|a, b| distance2(a.centre, ancre.point_m).total_cmp(&distance2(b.centre, ancre.point_m)))
-        {
+        if let Some(r) = rues.iter().min_by(|a, b| {
+            distance2(a.centre, ancre.point_m).total_cmp(&distance2(b.centre, ancre.point_m))
+        }) {
             ancre_rue.insert(nom.clone(), r.nom.clone());
         }
     }
@@ -403,19 +456,29 @@ pub fn preparer(
     // (qui surdimensionnait l'échelle et rejetait les cibles hors du noyau).
     let bary = barycentre_familles(&familles);
     let p95_bati = p95(noyau.iter().map(|b| distance2(b.centre, centre_m).sqrt()));
-    let p95_cible = p95(vue.iter().filter(|&p| !est_ancre(p)).map(|p| {
-        ((p.x as f64 - bary[0]).powi(2) + (p.y as f64 - bary[1]).powi(2)).sqrt()
-    }));
+    let p95_cible = p95(vue
+        .iter()
+        .filter(|&p| !est_ancre(p))
+        .map(|p| ((p.x as f64 - bary[0]).powi(2) + (p.y as f64 - bary[1]).powi(2)).sqrt()));
     // Nuage réduit à un point (cas dégénéré des tests) : l'échelle n'a plus de
     // sens, toutes les cibles tombent au centre de toute façon.
-    let echelle = if p95_cible < 1e-6 { 1.0 } else { p95_bati / p95_cible };
+    let echelle = if p95_cible < 1e-6 {
+        1.0
+    } else {
+        p95_bati / p95_cible
+    };
 
     let (seeds, transformation) =
         affectation::semer_centre(&familles, &rues_noyau, centre_m, echelle);
     let quartiers = affectation::partitionner(&familles, &rues_noyau, &seeds);
     let capacites = affectation::capacites_par_rue(&traces, &grille, espacement);
-    let voirie =
-        affectation::loger_artistes(&artistes, &rues_noyau, &quartiers, &transformation, &capacites);
+    let voirie = affectation::loger_artistes(
+        &artistes,
+        &rues_noyau,
+        &quartiers,
+        &transformation,
+        &capacites,
+    );
 
     Preparation {
         repere,
@@ -463,7 +526,13 @@ pub fn rassembler(
     noms_famille: &HashMap<i64, String>,
     centre: Option<[f64; 2]>,
 ) -> Resultat {
-    rassembler_avec(extrait, vue, noms_famille, centre, &croissance::Parametres::default())
+    rassembler_avec(
+        extrait,
+        vue,
+        noms_famille,
+        centre,
+        &croissance::Parametres::default(),
+    )
 }
 
 /// [`rassembler`] avec des réglages de croissance explicites — pour comparer
@@ -475,16 +544,26 @@ pub fn rassembler_avec(
     centre: Option<[f64; 2]>,
     reglages: &croissance::Parametres,
 ) -> Resultat {
-    let Zone { repere, grille, ancrages, batiments_ancres: _, centre_m: _, autorises, couts } =
-        zone_peuplee(extrait, vue, centre);
+    let Zone {
+        repere,
+        grille,
+        ancrages,
+        batiments_ancres: _,
+        centre_m: _,
+        autorises,
+        couts,
+    } = zone_peuplee(extrait, vue, centre);
     let par_id: HashMap<i64, &MapPoint> = vue.iter().map(|p| (p.id, p)).collect();
     let est_ancre =
         |p: &MapPoint| crate::ancrage::nom_artiste(p).is_some_and(|n| ancrages.est_ancre(n));
 
     // --- Les parcelles : chaque bâtiment de la zone, avec son coût de voirie
     // (le « temps » de la ville) et l'importance de la voie qui le borde. ----
-    let batiments_zone: Vec<&crate::batiments::Batiment> =
-        grille.tous().iter().filter(|b| autorises.contains(&b.id)).collect();
+    let batiments_zone: Vec<&crate::batiments::Batiment> = grille
+        .tous()
+        .iter()
+        .filter(|b| autorises.contains(&b.id))
+        .collect();
     let centres: Vec<[f64; 2]> = batiments_zone.iter().map(|b| b.centre).collect();
     let facades = crate::facades::facades(extrait, &repere, &centres, FACADE_PORTEE_M);
     let parcelles: Vec<Parcelle> = batiments_zone
@@ -535,8 +614,10 @@ pub fn rassembler_avec(
         positions_m.insert(a.track_id, a.point_m);
     }
     let adresses_posees = positions_m.len();
-    let positions: HashMap<i64, [f64; 2]> =
-        positions_m.iter().map(|(&id, &m)| (id, repere.depuis_m(m))).collect();
+    let positions: HashMap<i64, [f64; 2]> = positions_m
+        .iter()
+        .map(|(&id, &m)| (id, repere.depuis_m(m)))
+        .collect();
 
     // --- Les morceaux, en lon/lat, prêts pour `Source`. ---------------------
     let morceaux: Vec<Morceau> = positions
@@ -588,18 +669,28 @@ pub fn rassembler_avec(
     let mut groupes_albums: GroupeAlbum = HashMap::new();
     for (&id, lonlat) in &positions {
         let Some(p) = par_id.get(&id) else { continue };
-        let artiste = p.album_artist.as_deref().filter(|s| !s.is_empty()).or(p.artist.as_deref()).unwrap_or("");
+        let artiste = p
+            .album_artist
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or(p.artist.as_deref())
+            .unwrap_or("");
         let album = p.album.as_deref().unwrap_or("");
         if artiste.is_empty() || album.is_empty() {
             continue;
         }
-        groupes_albums.entry((artiste, album)).or_default().push((id, *lonlat));
+        groupes_albums
+            .entry((artiste, album))
+            .or_default()
+            .push((id, *lonlat));
     }
     let albums: Vec<crate::source::AlbumReel> = groupes_albums
         .into_iter()
         .map(|((artiste, album), membres)| {
             let n = membres.len() as f64;
-            let (sx, sy) = membres.iter().fold((0.0, 0.0), |(sx, sy), (_, p)| (sx + p[0], sy + p[1]));
+            let (sx, sy) = membres
+                .iter()
+                .fold((0.0, 0.0), |(sx, sy), (_, p)| (sx + p[0], sy + p[1]));
             let (bx, by) = (sx / n, sy / n);
             let ancre = membres
                 .iter()
@@ -610,7 +701,11 @@ pub fn rassembler_avec(
                 })
                 .map(|(_, p)| *p)
                 .unwrap_or([bx, by]);
-            let famille = membres.first().and_then(|(id, _)| par_id.get(id)).map(|p| p.cluster).unwrap_or(-1);
+            let famille = membres
+                .first()
+                .and_then(|(id, _)| par_id.get(id))
+                .map(|p| p.cluster)
+                .unwrap_or(-1);
             crate::source::AlbumReel {
                 point: ancre,
                 nom: album.to_string(),
@@ -627,7 +722,10 @@ pub fn rassembler_avec(
         .iter()
         .map(|f| crate::source::Famille {
             id: f.id,
-            nom: noms_famille.get(&f.id).cloned().unwrap_or_else(|| format!("famille {}", f.id)),
+            nom: noms_famille
+                .get(&f.id)
+                .cloned()
+                .unwrap_or_else(|| format!("famille {}", f.id)),
             effectif: f.effectif,
         })
         .collect();
@@ -639,12 +737,18 @@ pub fn rassembler_avec(
     let mut famille_ancre: HashMap<&str, HashMap<i64, usize>> = HashMap::new();
     let mut effectif_ancre: HashMap<&str, usize> = HashMap::new();
     for p in vue {
-        let Some(nom) = crate::ancrage::nom_artiste(p) else { continue };
+        let Some(nom) = crate::ancrage::nom_artiste(p) else {
+            continue;
+        };
         if !ancrages.est_ancre(nom) {
             continue;
         }
         *effectif_ancre.entry(nom).or_default() += 1;
-        *famille_ancre.entry(nom).or_default().entry(p.cluster).or_default() += 1;
+        *famille_ancre
+            .entry(nom)
+            .or_default()
+            .entry(p.cluster)
+            .or_default() += 1;
     }
     let famille_dominante_ancre: HashMap<&str, i64> = famille_ancre
         .iter()
@@ -666,29 +770,48 @@ pub fn rassembler_avec(
     type Habitants<'a> = (HashMap<&'a str, usize>, HashMap<i64, usize>);
     let mut par_rue: HashMap<&str, Habitants> = HashMap::new();
     for a in &croissance.adresses {
-        let Some(f) = facades[a.parcelle] else { continue };
-        let Some(nom_rue) = extrait.troncons[f.troncon].nom.as_deref() else { continue };
+        let Some(f) = facades[a.parcelle] else {
+            continue;
+        };
+        let Some(nom_rue) = extrait.troncons[f.troncon].nom.as_deref() else {
+            continue;
+        };
         let Some(p) = par_id.get(&a.id) else { continue };
         let e = par_rue.entry(nom_rue).or_default();
         *e.0.entry(nom_regroupement(p)).or_default() += 1;
         *e.1.entry(p.cluster).or_default() += 1;
     }
     fn dominant<K: Copy + Ord + std::hash::Hash>(m: &HashMap<K, usize>) -> Option<K> {
-        m.iter().max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0))).map(|(k, _)| *k)
+        m.iter()
+            .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))
+            .map(|(k, _)| *k)
     }
-    let mut artiste_de_la_rue: HashMap<&str, &str> =
-        par_rue.iter().filter_map(|(r, (art, _))| dominant(art).map(|a| (*r, a))).collect();
-    let mut famille_de_la_rue: HashMap<&str, i64> =
-        par_rue.iter().filter_map(|(r, (_, fam))| dominant(fam).map(|f| (*r, f))).collect();
+    let mut artiste_de_la_rue: HashMap<&str, &str> = par_rue
+        .iter()
+        .filter_map(|(r, (art, _))| dominant(art).map(|a| (*r, a)))
+        .collect();
+    let mut famille_de_la_rue: HashMap<&str, i64> = par_rue
+        .iter()
+        .filter_map(|(r, (_, fam))| dominant(fam).map(|f| (*r, f)))
+        .collect();
     // Les rues synthétiques des artistes ancrés : le tronçon nommé le plus
     // proche de leur monument porte leur nom, et la famille qu'ils ont quittée.
     for (nom, ancre) in &ancrages.par_artiste {
         let proche = crate::facades::facades(extrait, &repere, &[ancre.point_m], 150.0);
-        let Some(Some(f)) = proche.first() else { continue };
-        let Some(nom_rue) = extrait.troncons[f.troncon].nom.as_deref() else { continue };
+        let Some(Some(f)) = proche.first() else {
+            continue;
+        };
+        let Some(nom_rue) = extrait.troncons[f.troncon].nom.as_deref() else {
+            continue;
+        };
         artiste_de_la_rue.insert(nom_rue, nom.as_str());
-        famille_de_la_rue
-            .insert(nom_rue, famille_dominante_ancre.get(nom.as_str()).copied().unwrap_or(-1));
+        famille_de_la_rue.insert(
+            nom_rue,
+            famille_dominante_ancre
+                .get(nom.as_str())
+                .copied()
+                .unwrap_or(-1),
+        );
     }
     // Une rue du halo (petite couronne, hors commune) peut porter le même nom
     // qu'une rue de Paris : sans ce garde-fou elle hériterait de la famille et
@@ -733,8 +856,13 @@ pub fn rassembler_avec(
     // `croissance.adresses`.
     let mut annee_artiste: HashMap<&str, i32> = HashMap::new();
     for p in vue {
-        let (Some(y), nom) = (p.year, nom_regroupement(p)) else { continue };
-        annee_artiste.entry(nom).and_modify(|m| *m = (*m).min(y as i32)).or_insert(y as i32);
+        let (Some(y), nom) = (p.year, nom_regroupement(p)) else {
+            continue;
+        };
+        annee_artiste
+            .entry(nom)
+            .and_modify(|m| *m = (*m).min(y as i32))
+            .or_insert(y as i32);
     }
 
     // --- Les artistes, posés sur leur quartier, prêts pour `Source`. --------
@@ -744,13 +872,18 @@ pub fn rassembler_avec(
     let mut par_artiste: HashMap<&str, Vec<([f64; 2], i64)>> = HashMap::new();
     for a in &croissance.adresses {
         let Some(p) = par_id.get(&a.id) else { continue };
-        par_artiste.entry(nom_regroupement(p)).or_default().push((parcelles[a.parcelle].centre, p.cluster));
+        par_artiste
+            .entry(nom_regroupement(p))
+            .or_default()
+            .push((parcelles[a.parcelle].centre, p.cluster));
     }
     let mut artistes_places: Vec<crate::source::Artiste> = par_artiste
         .iter()
         .map(|(nom, habitats)| {
             let n = habitats.len() as f64;
-            let b = habitats.iter().fold([0.0, 0.0], |s, (c, _)| [s[0] + c[0] / n, s[1] + c[1] / n]);
+            let b = habitats
+                .iter()
+                .fold([0.0, 0.0], |s, (c, _)| [s[0] + c[0] / n, s[1] + c[1] / n]);
             let medoide = habitats
                 .iter()
                 .min_by(|x, y| distance2(x.0, b).total_cmp(&distance2(y.0, b)))
@@ -779,7 +912,10 @@ pub fn rassembler_avec(
             nom: nom.clone(),
             x: lonlat[0] as f32,
             y: lonlat[1] as f32,
-            famille: famille_dominante_ancre.get(nom.as_str()).copied().unwrap_or(-1),
+            famille: famille_dominante_ancre
+                .get(nom.as_str())
+                .copied()
+                .unwrap_or(-1),
             effectif: effectif_ancre.get(nom.as_str()).copied().unwrap_or(0),
             ancre: Some(ancre.monument.clone()),
             annee: annee_artiste.get(nom.as_str()).copied(),
@@ -795,7 +931,12 @@ pub fn rassembler_avec(
     // genre visible en dézoomant, quand les bâtiments ne sont pas encore
     // révélés — et qui épouse la forme de la ville qui a poussé.
     let bornes_m = {
-        let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut b = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
         for p in &parcelles {
             b[0] = b[0].min(p.centre[0]);
             b[1] = b[1].min(p.centre[1]);
@@ -840,8 +981,20 @@ pub fn rassembler_avec(
         batiments,
         artistes_places,
         territoires_reels,
-        eaux: extrait.eaux.iter().map(|c| ContourReel { points: c.points.clone() }).collect(),
-        verts: extrait.verts.iter().map(|c| ContourReel { points: c.points.clone() }).collect(),
+        eaux: extrait
+            .eaux
+            .iter()
+            .map(|c| ContourReel {
+                points: c.points.clone(),
+            })
+            .collect(),
+        verts: extrait
+            .verts
+            .iter()
+            .map(|c| ContourReel {
+                points: c.points.clone(),
+            })
+            .collect(),
         frontiere: extrait.frontiere.as_ref().map(|f| f.anneaux.clone()),
         points_remarquables: extrait
             .points_remarquables
@@ -853,7 +1006,9 @@ pub fn rassembler_avec(
                     .iter()
                     .find(|(_, a)| distance2(a.point_m, point_m) < 25.0)
                     .map(|(nom, _)| nom.clone());
-                let annee = artiste.as_deref().and_then(|nom| annee_artiste.get(nom).copied());
+                let annee = artiste
+                    .as_deref()
+                    .and_then(|nom| annee_artiste.get(nom).copied());
                 crate::source::PointReel {
                     point: p.point,
                     nom: p.nom.clone(),
@@ -915,7 +1070,12 @@ fn territoires_des_habitants(
     let [xmin, ymin, xmax, ymax] = bornes;
     let pas_x = ((xmax - xmin) / gn as f64).max(1e-6);
     let pas_y = ((ymax - ymin) / gn as f64).max(1e-6);
-    let mut ids: Vec<i64> = habitants.iter().map(|h| h.1).collect::<HashSet<_>>().into_iter().collect();
+    let mut ids: Vec<i64> = habitants
+        .iter()
+        .map(|h| h.1)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
     ids.sort_unstable();
     if ids.is_empty() {
         return Vec::new();
@@ -944,7 +1104,9 @@ fn territoires_des_habitants(
             let mut vus = 0usize;
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    let Some(v) = grille.get(&(kx + dx, ky + dy)) else { continue };
+                    let Some(v) = grille.get(&(kx + dx, ky + dy)) else {
+                        continue;
+                    };
                     for &i in v {
                         let d = distance2(habitants[i].0, p).sqrt();
                         if d <= pas {
@@ -973,7 +1135,15 @@ mod tests {
     use super::*;
     use rusty_music_osm::{Classe, Troncon};
 
-    fn point(id: i64, x: f32, y: f32, cluster: i64, artist: &str, album: &str, piste: i64) -> MapPoint {
+    fn point(
+        id: i64,
+        x: f32,
+        y: f32,
+        cluster: i64,
+        artist: &str,
+        album: &str,
+        piste: i64,
+    ) -> MapPoint {
         MapPoint {
             id,
             path: format!("piste-{id}.flac"),
@@ -995,7 +1165,12 @@ mod tests {
 
     /// Un bâtiment carré, construit en mètres locaux puis reconverti en
     /// lon/lat — même helper que `affectation::tests::contour_carre`.
-    fn contour_carre(repere: &Repere, id: i64, centre_m: [f64; 2], cote: f64) -> rusty_music_osm::Contour {
+    fn contour_carre(
+        repere: &Repere,
+        id: i64,
+        centre_m: [f64; 2],
+        cote: f64,
+    ) -> rusty_music_osm::Contour {
         let r = cote / 2.0;
         let anneau_m = [
             [centre_m[0] - r, centre_m[1] - r],
@@ -1004,7 +1179,10 @@ mod tests {
             [centre_m[0] - r, centre_m[1] + r],
             [centre_m[0] - r, centre_m[1] - r],
         ];
-        rusty_music_osm::Contour { id, points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect() }
+        rusty_music_osm::Contour {
+            id,
+            points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect(),
+        }
     }
 
     fn extrait_dessai() -> Extrait {
@@ -1013,10 +1191,16 @@ mod tests {
                 id: i,
                 nom: Some(format!("Rue {i}")),
                 classe: Classe::Residentielle,
-                points: vec![[2.30 + i as f64 * 0.01, 48.85], [2.30 + i as f64 * 0.01 + 0.005, 48.85]],
+                points: vec![
+                    [2.30 + i as f64 * 0.01, 48.85],
+                    [2.30 + i as f64 * 0.01 + 0.005, 48.85],
+                ],
             })
             .collect();
-        let mut extrait = Extrait { troncons, ..Default::default() };
+        let mut extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
 
         // Trois bâtiments par rue — largement assez pour douze morceaux sur
         // six rues. Sans bâtiment, un morceau n'a plus nulle part où habiter
@@ -1029,7 +1213,9 @@ mod tests {
             let trace = &traces[nom];
             for s in [0.0, trace.longueur() / 2.0, trace.longueur()] {
                 let (pos, _) = trace.au(s);
-                extrait.batis.push(contour_carre(&repere, id, [pos[0], pos[1] + 5.0], 10.0));
+                extrait
+                    .batis
+                    .push(contour_carre(&repere, id, [pos[0], pos[1] + 5.0], 10.0));
                 id += 1;
             }
         }
@@ -1040,19 +1226,40 @@ mod tests {
     fn rassembler_pose_chaque_morceau_a_une_adresse_reelle() {
         let extrait = extrait_dessai();
         let vue: Vec<MapPoint> = (0..12)
-            .map(|i| point(i, 0.0, 0.0, i % 2, &format!("Artiste {}", i % 2), "Album", i))
+            .map(|i| {
+                point(
+                    i,
+                    0.0,
+                    0.0,
+                    i % 2,
+                    &format!("Artiste {}", i % 2),
+                    "Album",
+                    i,
+                )
+            })
             .collect();
 
         let r = rassembler(&extrait, &vue, &HashMap::new(), None);
 
-        assert_eq!(r.morceaux_sans_adresse, 0, "tout doit tenir sur six rues pour douze morceaux");
+        assert_eq!(
+            r.morceaux_sans_adresse, 0,
+            "tout doit tenir sur six rues pour douze morceaux"
+        );
         assert_eq!(r.adresses_posees, 12);
         assert_eq!(r.source.morceaux.len(), 12);
         // Les positions doivent être des coordonnées géographiques plausibles
         // — proches de l'extrait, pas de l'espace t-SNE `[-1, 1]` d'origine.
         for m in &r.source.morceaux {
-            assert!((2.0..2.6).contains(&m.x), "x hors de la fourchette parisienne : {}", m.x);
-            assert!((48.7..49.0).contains(&m.y), "y hors de la fourchette parisienne : {}", m.y);
+            assert!(
+                (2.0..2.6).contains(&m.x),
+                "x hors de la fourchette parisienne : {}",
+                m.x
+            );
+            assert!(
+                (48.7..49.0).contains(&m.y),
+                "y hors de la fourchette parisienne : {}",
+                m.y
+            );
         }
         assert!(r.source.est_ville_reelle());
         assert!(!r.source.troncons_reels.is_empty());
@@ -1061,7 +1268,10 @@ mod tests {
     }
 
     fn point_annee(id: i64, cluster: i64, artist: &str, annee: Option<i64>) -> MapPoint {
-        MapPoint { year: annee, ..point(id, 0.0, 0.0, cluster, artist, "Album", id) }
+        MapPoint {
+            year: annee,
+            ..point(id, 0.0, 0.0, cluster, artist, "Album", id)
+        }
     }
 
     /// L'invariant que `docs/carto-ville.md` réclame pour le curseur
@@ -1076,8 +1286,18 @@ mod tests {
     fn le_batiment_habite_porte_lannee_de_son_occupant() {
         let extrait = extrait_dessai();
         let annees = [
-            Some(1990), Some(2005), None, Some(1998), Some(2010), Some(1990),
-            Some(2020), None, Some(2001), Some(1995), Some(2015), Some(1990),
+            Some(1990),
+            Some(2005),
+            None,
+            Some(1998),
+            Some(2010),
+            Some(1990),
+            Some(2020),
+            None,
+            Some(2001),
+            Some(1995),
+            Some(2015),
+            Some(1990),
         ];
         let vue: Vec<MapPoint> = annees
             .iter()
@@ -1086,7 +1306,10 @@ mod tests {
             .collect();
 
         let r = rassembler(&extrait, &vue, &HashMap::new(), None);
-        assert_eq!(r.morceaux_sans_adresse, 0, "l'invariant suppose tout le monde logé");
+        assert_eq!(
+            r.morceaux_sans_adresse, 0,
+            "l'invariant suppose tout le monde logé"
+        );
 
         for seuil in [1989, 1995, 2000, 2010, 2020, 2021] {
             let occupes = r
@@ -1096,7 +1319,12 @@ mod tests {
                 .filter(|b| b.morceau_id.is_some())
                 .filter(|b| b.annee.is_none_or(|a| a <= seuil))
                 .count();
-            let attendus = r.source.morceaux.iter().filter(|m| m.annee.is_none_or(|a| a <= seuil)).count();
+            let attendus = r
+                .source
+                .morceaux
+                .iter()
+                .filter(|m| m.annee.is_none_or(|a| a <= seuil))
+                .count();
             assert_eq!(occupes, attendus, "seuil {seuil}");
         }
     }
@@ -1114,15 +1342,33 @@ mod tests {
         // autres vacants.
         let extrait = extrait_dessai();
         let vue: Vec<MapPoint> = (0..12)
-            .map(|i| point(i, (i % 3) as f32 * 0.1, 0.0, i % 2, &format!("Artiste {}", i % 2), "Album", i))
+            .map(|i| {
+                point(
+                    i,
+                    (i % 3) as f32 * 0.1,
+                    0.0,
+                    i % 2,
+                    &format!("Artiste {}", i % 2),
+                    "Album",
+                    i,
+                )
+            })
             .collect();
 
         let r = rassembler(&extrait, &vue, &HashMap::new(), None);
 
         assert_eq!(r.batiments_peuples, 12, "N = nombre de morceaux");
         assert_eq!(r.morceaux_sans_adresse, 0);
-        let occupes = r.source.batiments.iter().filter(|b| b.morceau_id.is_some()).count();
-        assert_eq!(occupes, 12, "chaque morceau dans un bâtiment, un par bâtiment");
+        let occupes = r
+            .source
+            .batiments
+            .iter()
+            .filter(|b| b.morceau_id.is_some())
+            .count();
+        assert_eq!(
+            occupes, 12,
+            "chaque morceau dans un bâtiment, un par bâtiment"
+        );
         assert_eq!(
             r.source.batiments.len() - occupes,
             6,
@@ -1141,12 +1387,16 @@ mod tests {
             point: [2.30, 48.85],
         }];
 
-        let mut vue: Vec<MapPoint> =
-            (0..10).map(|i| point(i, 0.0, 0.0, 0, "Foule", "Commun", i)).collect();
+        let mut vue: Vec<MapPoint> = (0..10)
+            .map(|i| point(i, 0.0, 0.0, 0, "Foule", "Commun", i))
+            .collect();
         // Un artiste nettement plus populaire que les autres (aucune pop).
         vue.push(point(100, 0.0, 0.0, 0, "Vedette", "Tube", 1));
         vue.push(point(101, 0.0, 0.0, 0, "Vedette", "Tube", 2));
-        for m in vue.iter_mut().filter(|m| m.album_artist.as_deref() == Some("Vedette")) {
+        for m in vue
+            .iter_mut()
+            .filter(|m| m.album_artist.as_deref() == Some("Vedette"))
+        {
             m.popularite = Some(0.97);
         }
 
@@ -1177,12 +1427,15 @@ mod tests {
                 habitants.push(([1000.0 + i as f64 * 20.0, j as f64 * 20.0], 2));
             }
         }
-        let t = territoires_des_habitants(&habitants, [-300.0, -300.0, 1300.0, 400.0], 160, |_| true);
+        let t =
+            territoires_des_habitants(&habitants, [-300.0, -300.0, 1300.0, 400.0], 160, |_| true);
         let familles: HashSet<i64> = t.iter().map(|t| t.famille).collect();
         assert_eq!(familles, HashSet::from([1, 2]));
         // Rien entre les deux îlots : aucun habitant à moins de 130 m.
         let aplat_au_milieu = t.iter().any(|t| {
-            t.polygones.iter().any(|p| p[0].iter().any(|q| (400.0..600.0).contains(&q[0])))
+            t.polygones
+                .iter()
+                .any(|p| p[0].iter().any(|q| (400.0..600.0).contains(&q[0])))
         });
         assert!(!aplat_au_milieu, "le vide entre deux quartiers reste vide");
     }
@@ -1197,7 +1450,15 @@ mod tests {
             .map(|i| MapPoint {
                 bpm: (i % 2 == 0).then_some(100.0 + i as f32),
                 energy: (i % 3 == 0).then_some(0.5),
-                ..point(i, 0.0, 0.0, i % 2, &format!("Artiste {}", i % 2), "Album", i)
+                ..point(
+                    i,
+                    0.0,
+                    0.0,
+                    i % 2,
+                    &format!("Artiste {}", i % 2),
+                    "Album",
+                    i,
+                )
             })
             .collect();
         let r = rassembler(&extrait, &vue, &HashMap::new(), None);
@@ -1210,6 +1471,11 @@ mod tests {
             vus += 1;
         }
         assert_eq!(vus, 12);
-        assert!(r.source.batiments.iter().filter(|b| b.morceau_id.is_none()).all(|b| b.bpm.is_none() && b.energie.is_none()));
+        assert!(r
+            .source
+            .batiments
+            .iter()
+            .filter(|b| b.morceau_id.is_none())
+            .all(|b| b.bpm.is_none() && b.energie.is_none()));
     }
 }

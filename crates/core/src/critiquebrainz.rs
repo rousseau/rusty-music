@@ -62,7 +62,9 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self { http: ClientCadence::new(agent, CADENCE) }
+        Self {
+            http: ClientCadence::new(agent, CADENCE),
+        }
     }
 
     fn json(&self, url: &str) -> Result<Option<Value>> {
@@ -79,7 +81,9 @@ impl Client {
                 "https://critiquebrainz.org/ws/1/review/?entity_id={mbid}\
                  &entity_type=release_group&limit={PAR_PAGE}&offset={offset}"
             );
-            let Some(v) = self.json(&url)? else { return Ok(out) };
+            let Some(v) = self.json(&url)? else {
+                return Ok(out);
+            };
             let page = v["reviews"].as_array().cloned().unwrap_or_default();
             let recus = page.len();
             out.extend(page.iter().filter_map(critique_de));
@@ -135,7 +139,10 @@ mod tests {
         let c = critique_de(&v).expect("critique attendue");
         assert_eq!(c.auteur.as_deref(), Some("TudbuT"));
         assert_eq!(c.licence_id, "CC BY-SA 3.0");
-        assert_eq!(c.url_originale, "https://critiquebrainz.org/review/2c2ed1da-22f2-4fe9-8b01-9a99227c1c15");
+        assert_eq!(
+            c.url_originale,
+            "https://critiquebrainz.org/review/2c2ed1da-22f2-4fe9-8b01-9a99227c1c15"
+        );
     }
 
     #[test]

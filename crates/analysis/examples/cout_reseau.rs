@@ -9,7 +9,9 @@ use rusty_music_analysis::reseau::{Echelle, Options, Parametres, Profil, Reseau}
 use rusty_music_core::{db::Library, density};
 
 fn main() -> anyhow::Result<()> {
-    let base = std::env::args().nth(1).unwrap_or_else(|| "rusty-music.db".into());
+    let base = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "rusty-music.db".into());
     let k: usize = std::env::args()
         .nth(2)
         .and_then(|v| v.parse().ok())
@@ -66,20 +68,44 @@ fn main() -> anyhow::Result<()> {
     };
     let p = Parametres {
         k,
-        fils: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8),
+        fils: std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(8),
         echelle,
         ..Default::default()
     };
-    println!("\nconstruction (k = {k}, {} pôles, centralité sur {echelle:?})…", p.poles);
-    let (reseau, r) = Reseau::construire_mesure(empreintes, &morceaux, &champ, parametres.resolution, &p);
+    println!(
+        "\nconstruction (k = {k}, {} pôles, centralité sur {echelle:?})…",
+        p.poles
+    );
+    let (reseau, r) =
+        Reseau::construire_mesure(empreintes, &morceaux, &champ, parametres.resolution, &p);
 
-    println!("  graphe des voisins : {:>8.2} s", r.ms_graphe as f64 / 1000.0);
-    println!("  centralité (Brandes) : {:>6.2} s", r.ms_centralite as f64 / 1000.0);
-    println!("  arbre de crête     : {:>8.2} s", r.ms_crete as f64 / 1000.0);
-    println!("  total              : {:>8.2} s", r.ms_total as f64 / 1000.0);
-    println!("\n  {} morceaux, {} arêtes, {} refuges isolés", r.morceaux, r.aretes, r.refuges);
+    println!(
+        "  graphe des voisins : {:>8.2} s",
+        r.ms_graphe as f64 / 1000.0
+    );
+    println!(
+        "  centralité (Brandes) : {:>6.2} s",
+        r.ms_centralite as f64 / 1000.0
+    );
+    println!(
+        "  arbre de crête     : {:>8.2} s",
+        r.ms_crete as f64 / 1000.0
+    );
+    println!(
+        "  total              : {:>8.2} s",
+        r.ms_total as f64 / 1000.0
+    );
+    println!(
+        "\n  {} morceaux, {} arêtes, {} refuges isolés",
+        r.morceaux, r.aretes, r.refuges
+    );
     for (nom, n) in &r.par_classe {
-        println!("  {nom:<12} {n:>7}  {:>5.1} %", 100.0 * *n as f64 / r.aretes as f64);
+        println!(
+            "  {nom:<12} {n:>7}  {:>5.1} %",
+            100.0 * *n as f64 / r.aretes as f64
+        );
     }
 
     // Les quatre profils, entre deux morceaux éloignés.
@@ -122,15 +148,26 @@ fn main() -> anyhow::Result<()> {
                 v[0].distance_sonique,
                 t.elapsed().as_secs_f64() * 1000.0
             ),
-            Err(e) => println!("\n« {minutes} minutes » → {e} ({:.0} ms)", t.elapsed().as_secs_f64() * 1000.0),
+            Err(e) => println!(
+                "\n« {minutes} minutes » → {e} ({:.0} ms)",
+                t.elapsed().as_secs_f64() * 1000.0
+            ),
         }
     }
 
     // Trois itinéraires, comme Google Maps.
     let t = std::time::Instant::now();
-    match reseau.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).alternatives(3)) {
+    match reseau.itineraires(
+        &Options::nouveau(a, Profil::Autoroute)
+            .vers(b)
+            .alternatives(3),
+    ) {
         Ok(v) => {
-            println!("\n{} itinéraires alternatifs en {:.0} ms :", v.len(), t.elapsed().as_secs_f64() * 1000.0);
+            println!(
+                "\n{} itinéraires alternatifs en {:.0} ms :",
+                v.len(),
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             for (n, i) in v.iter().enumerate() {
                 println!(
                     "  {}. {:>3} morceaux, {:>5.1} min, distance {:.2}",

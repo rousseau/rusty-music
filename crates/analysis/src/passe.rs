@@ -418,14 +418,14 @@ pub fn descripteurs(
                     };
                     // Même précaution que dans `empreintes` : un décodage qui
                     // panique ne doit pas emporter toute la passe.
-                    let resultat = match rusty_music_core::panique::sans_panique(|| {
-                        analyser(chemin, &a)
-                    }) {
-                        Ok(r) => r,
-                        Err(message) => {
-                            Err(crate::decode::Error::Panique { path: chemin.clone(), message })
-                        }
-                    };
+                    let resultat =
+                        match rusty_music_core::panique::sans_panique(|| analyser(chemin, &a)) {
+                            Ok(r) => r,
+                            Err(message) => Err(crate::decode::Error::Panique {
+                                path: chemin.clone(),
+                                message,
+                            }),
+                        };
                     let issue = match resultat {
                         Ok(d) => Some(d),
                         Err(e) => {

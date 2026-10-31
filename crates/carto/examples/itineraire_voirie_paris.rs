@@ -26,7 +26,9 @@ fn longueur_m(pts: &[[f64; 2]]) -> f64 {
 }
 
 fn main() -> anyhow::Result<()> {
-    let ville = std::env::args().nth(1).unwrap_or_else(|| "ville-paris.db".into());
+    let ville = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "ville-paris.db".into());
     let extrait = rusty_music_osm::base::lire(Path::new(&ville))?;
     println!("lecture : {} tronçons", extrait.troncons.len());
 
@@ -40,7 +42,11 @@ fn main() -> anyhow::Result<()> {
     let vol = longueur_m(&[depart, arrivee]);
     println!("\ndépart {depart:?} → arrivée {arrivee:?} ({vol:.0} m à vol d'oiseau)\n");
 
-    for profil in [ProfilVoirie::ParLeConnu, ProfilVoirie::Redecouvrir, ProfilVoirie::Panoramique] {
+    for profil in [
+        ProfilVoirie::ParLeConnu,
+        ProfilVoirie::Redecouvrir,
+        ProfilVoirie::Panoramique,
+    ] {
         let t = std::time::Instant::now();
         let graphe =
             Graphe::construire_pondere(&extrait, friction_itineraire(profil, Some(&agrement)));
@@ -77,7 +83,10 @@ fn main() -> anyhow::Result<()> {
                     .troncons
                     .iter()
                     .find(|t| t.id == **id)
-                    .map(|t| t.points.contains(&graphe.point(paire[0])) && t.points.contains(&graphe.point(paire[1])))
+                    .map(|t| {
+                        t.points.contains(&graphe.point(paire[0]))
+                            && t.points.contains(&graphe.point(paire[1]))
+                    })
                     .unwrap_or(false)
             }) {
                 if let Some(c) = classe_de.get(id) {
@@ -86,8 +95,10 @@ fn main() -> anyhow::Result<()> {
             }
         }
         let total: f64 = metres.values().sum::<f64>().max(1.0);
-        let mut part: Vec<(rusty_music_osm::Classe, f64)> =
-            metres.iter().map(|(c, m)| (*c, m / total * 100.0)).collect();
+        let mut part: Vec<(rusty_music_osm::Classe, f64)> = metres
+            .iter()
+            .map(|(c, m)| (*c, m / total * 100.0))
+            .collect();
         part.sort_by(|a, b| b.1.total_cmp(&a.1));
         let repartition: String = part
             .iter()

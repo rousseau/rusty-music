@@ -33,7 +33,9 @@ pub(crate) fn valise_la_plus_recente(dossier: &Path) -> Option<String> {
             }
             let conn = Connection::open_with_flags(&base, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
             let quand: i64 = conn
-                .query_row("SELECT enregistree_le FROM session WHERE id = 1", [], |r| r.get(0))
+                .query_row("SELECT enregistree_le FROM session WHERE id = 1", [], |r| {
+                    r.get(0)
+                })
                 .ok()?;
             Some((quand, e.file_name().to_string_lossy().into_owned()))
         })
@@ -71,8 +73,7 @@ pub(crate) fn sauvegarder(etat: &Etat, memo: &mut Memo) -> Result<(), String> {
     let repetition = i.repetition.nom();
 
     if memo.empreinte_file == Some(empreinte)
-        && v
-            .lib
+        && v.lib
             .enregistrer_position(i.rang, position_ms, i.alea, repetition, i.volume)
             .map_err(echec)?
     {
@@ -173,7 +174,8 @@ mod tests {
     #[test]
     #[ignore = "valise réelle et sortie audio"]
     fn la_file_revient_en_pause_a_sa_position() {
-        let dossier = PathBuf::from(std::env::var_os("RUSTY_VALISE_ESSAI").expect("RUSTY_VALISE_ESSAI"));
+        let dossier =
+            PathBuf::from(std::env::var_os("RUSTY_VALISE_ESSAI").expect("RUSTY_VALISE_ESSAI"));
         let nom = std::fs::read_dir(&dossier)
             .unwrap()
             .flatten()
@@ -203,7 +205,10 @@ mod tests {
         sauvegarder(&a, &mut memo).unwrap();
         drop(a);
 
-        assert_eq!(valise_la_plus_recente(&dossier).as_deref(), Some(nom.as_str()));
+        assert_eq!(
+            valise_la_plus_recente(&dossier).as_deref(),
+            Some(nom.as_str())
+        );
         let b = etat(&dossier);
         crate::ouvrir(&b, &nom).unwrap();
         assert!(restaurer(&b).unwrap());

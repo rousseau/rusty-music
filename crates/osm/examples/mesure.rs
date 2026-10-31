@@ -30,9 +30,15 @@ fn main() -> anyhow::Result<()> {
                 duree.as_secs_f64()
             );
         }
-        None => println!("Paris — CADRE RECTANGULAIRE (frontière introuvable), lu en {:.1} s\n", duree.as_secs_f64()),
+        None => println!(
+            "Paris — CADRE RECTANGULAIRE (frontière introuvable), lu en {:.1} s\n",
+            duree.as_secs_f64()
+        ),
     }
-    println!("  tronçons          {:>8}  ({:.0} km)", r.troncons, r.longueur_km);
+    println!(
+        "  tronçons          {:>8}  ({:.0} km)",
+        r.troncons, r.longueur_km
+    );
     println!(
         "  dont nommés       {:>8}  ({:.0} km)",
         r.troncons_nommes, r.longueur_nommee_km
@@ -51,7 +57,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     if !extrait.points_remarquables.is_empty() {
-        let mut par_genre: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut par_genre: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
         for p in &extrait.points_remarquables {
             *par_genre.entry(p.genre.as_str()).or_default() += 1;
         }
@@ -84,16 +91,28 @@ fn main() -> anyhow::Result<()> {
             None => sans_rue += 1,
         }
     }
-    let noms_de_rues: std::collections::HashSet<&str> =
-        extrait.troncons.iter().filter_map(|t| t.nom.as_deref()).collect();
-    let appariees = par_rue.keys().filter(|r| noms_de_rues.contains(**r)).count();
+    let noms_de_rues: std::collections::HashSet<&str> = extrait
+        .troncons
+        .iter()
+        .filter_map(|t| t.nom.as_deref())
+        .collect();
+    let appariees = par_rue
+        .keys()
+        .filter(|r| noms_de_rues.contains(**r))
+        .count();
     println!("\n  adresses -> rue :");
-    println!("    avec addr:street  {:>8} ({:.0} %)", extrait.adresses.len() - sans_rue,
-             100.0 * (extrait.adresses.len() - sans_rue) as f64 / extrait.adresses.len() as f64);
+    println!(
+        "    avec addr:street  {:>8} ({:.0} %)",
+        extrait.adresses.len() - sans_rue,
+        100.0 * (extrait.adresses.len() - sans_rue) as f64 / extrait.adresses.len() as f64
+    );
     println!("    sans              {:>8}", sans_rue);
     println!("    noms de rue cités {:>8}", par_rue.len());
-    println!("    dont retrouvés dans la géométrie {:>4} ({:.0} %)", appariees,
-             100.0 * appariees as f64 / par_rue.len().max(1) as f64);
+    println!(
+        "    dont retrouvés dans la géométrie {:>4} ({:.0} %)",
+        appariees,
+        100.0 * appariees as f64 / par_rue.len().max(1) as f64
+    );
     let mut plus_fournies: Vec<(usize, &str)> = par_rue.iter().map(|(r, n)| (*n, *r)).collect();
     plus_fournies.sort_unstable_by(|a, b| b.cmp(a));
     println!("    rues les mieux dotées en adresses :");
@@ -106,7 +125,10 @@ fn main() -> anyhow::Result<()> {
         .into_iter()
         .map(|(nom, troncons)| {
             (
-                troncons.iter().map(|t| t.longueur_m() as usize).sum::<usize>(),
+                troncons
+                    .iter()
+                    .map(|t| t.longueur_m() as usize)
+                    .sum::<usize>(),
                 nom,
             )
         })

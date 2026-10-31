@@ -57,11 +57,8 @@ fn main() -> anyhow::Result<()> {
         par_cout.sort_by(|a, b| a.1.total_cmp(&b.1));
         let cout_ids: std::collections::HashSet<i64> =
             par_cout.iter().take(n).map(|(id, _)| *id).collect();
-        let eucl_ids: std::collections::HashSet<i64> = grille
-            .n_plus_proches(c_m, n)
-            .iter()
-            .map(|b| b.id)
-            .collect();
+        let eucl_ids: std::collections::HashSet<i64> =
+            grille.n_plus_proches(c_m, n).iter().map(|b| b.id).collect();
         let rayon = |ids: &std::collections::HashSet<i64>| {
             let mut d: Vec<f64> = grille
                 .tous()
@@ -72,7 +69,9 @@ fn main() -> anyhow::Result<()> {
             d.sort_by(f64::total_cmp);
             (
                 d.get(d.len() / 2).copied().unwrap_or(0.0),
-                d.get((d.len() as f64 * 0.95) as usize).copied().unwrap_or(0.0),
+                d.get((d.len() as f64 * 0.95) as usize)
+                    .copied()
+                    .unwrap_or(0.0),
                 d.last().copied().unwrap_or(0.0),
             )
         };
@@ -99,7 +98,12 @@ fn main() -> anyhow::Result<()> {
 
     // Quatorze bandes, pas linéaire jusqu'au 95ᵉ centile fini (le reste de la
     // queue écraserait l'échelle).
-    let mut finis: Vec<f64> = champ.valeurs.iter().copied().filter(|v| v.is_finite()).collect();
+    let mut finis: Vec<f64> = champ
+        .valeurs
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
     finis.sort_by(f64::total_cmp);
     let haut = finis
         .get((finis.len() as f64 * 0.95) as usize)
@@ -189,7 +193,8 @@ fn main() -> anyhow::Result<()> {
     )?;
     std::fs::write(
         sortie.join("index.html"),
-        include_str!("cout_voirie.html").replace("__SOURCE__", &format!("[{}, {}]", source[0], source[1])),
+        include_str!("cout_voirie.html")
+            .replace("__SOURCE__", &format!("[{}, {}]", source[0], source[1])),
     )?;
 
     println!("\n  écrit dans {}", sortie.display());

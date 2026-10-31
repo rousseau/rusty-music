@@ -27,7 +27,13 @@ const FMIN: f64 = 20.0;
 const FMAX: f64 = 20_000.0;
 
 /// Les classes, dans l'ordre des sorties du réseau.
-pub const CLASSES: [Piece; 5] = [Piece::GrosseCaisse, Piece::CaisseClaire, Piece::Toms, Piece::Charleston, Piece::Cymbales];
+pub const CLASSES: [Piece; 5] = [
+    Piece::GrosseCaisse,
+    Piece::CaisseClaire,
+    Piece::Toms,
+    Piece::Charleston,
+    Piece::Cymbales,
+];
 /// Seuils de détection par classe, réglés par ADTOF sur sa validation.
 pub const SEUILS: [f32; 5] = [0.22, 0.24, 0.32, 0.22, 0.30];
 
@@ -86,12 +92,16 @@ impl Batteur {
 
     /// Activations par trame, `trames × 5`.
     pub fn activations(&mut self, carac: &[f32], trames: usize, bandes: usize) -> Result<Vec<f32>> {
-        let entree = ndarray::Array::from_shape_vec((1, trames, bandes, 1), carac.to_vec()).expect("forme");
+        let entree =
+            ndarray::Array::from_shape_vec((1, trames, bandes, 1), carac.to_vec()).expect("forme");
         let tenseur = ort::value::Tensor::from_array(entree)?;
         let sortie = self.session.run(ort::inputs!["x" => tenseur.view()])?;
         let (_, a) = sortie[0].try_extract_tensor::<f32>()?;
         if a.len() != trames * CLASSES.len() {
-            return Err(Error::Sortie(format!("{} valeurs pour {trames} trames", a.len())));
+            return Err(Error::Sortie(format!(
+                "{} valeurs pour {trames} trames",
+                a.len()
+            )));
         }
         Ok(a.to_vec())
     }
@@ -114,14 +124,28 @@ pub fn coups_avec(activations: &[f32], trames: usize, seuils: &[f32; 5]) -> Vec<
     let n_classes = CLASSES.len();
     let mut tous = Vec::new();
     for (c, piece) in CLASSES.iter().enumerate() {
-        let a: Vec<f32> = (0..trames).map(|t| activations[t * n_classes + c]).collect();
-        let lire = |v: &[f32], i: i64| if i >= 0 && (i as usize) < trames { v[i as usize] } else { 0.0 };
+        let a: Vec<f32> = (0..trames)
+            .map(|t| activations[t * n_classes + c])
+            .collect();
+        let lire = |v: &[f32], i: i64| {
+            if i >= 0 && (i as usize) < trames {
+                v[i as usize]
+            } else {
+                0.0
+            }
+        };
         let detections: Vec<f32> = (0..trames as i64)
             .map(|i| {
-                let moy: f32 = (i - AVANT_MOY as i64..=i + APRES_MOY as i64).map(|j| lire(&a, j)).sum::<f32>()
+                let moy: f32 = (i - AVANT_MOY as i64..=i + APRES_MOY as i64)
+                    .map(|j| lire(&a, j))
+                    .sum::<f32>()
                     / (AVANT_MOY + APRES_MOY + 1) as f32;
                 let x = a[i as usize];
-                if x >= moy + seuils[c] { x } else { 0.0 }
+                if x >= moy + seuils[c] {
+                    x
+                } else {
+                    0.0
+                }
             })
             .collect();
         let mut instants: Vec<(f32, f32)> = Vec::new();
@@ -130,7 +154,9 @@ pub fn coups_avec(activations: &[f32], trames: usize, seuils: &[f32; 5]) -> Vec<
             if d == 0.0 {
                 continue;
             }
-            let max = (i - AVANT_MAX as i64..=i + APRES_MAX as i64).map(|j| lire(&detections, j)).fold(0.0, f32::max);
+            let max = (i - AVANT_MAX as i64..=i + APRES_MAX as i64)
+                .map(|j| lire(&detections, j))
+                .fold(0.0, f32::max);
             if d == max {
                 instants.push((i as f32 / madmom::FPS as f32, d));
             }
@@ -143,9 +169,17 @@ pub fn coups_avec(activations: &[f32], trames: usize, seuils: &[f32; 5]) -> Vec<
                 _ => garde.push((t, f)),
             }
         }
-        tous.extend(garde.into_iter().map(|(t, f)| Coup { instant_s: t, piece: *piece, force: f }));
+        tous.extend(garde.into_iter().map(|(t, f)| Coup {
+            instant_s: t,
+            piece: *piece,
+            force: f,
+        }));
     }
-    tous.sort_by(|a, b| a.instant_s.total_cmp(&b.instant_s).then(a.piece.cmp(&b.piece)));
+    tous.sort_by(|a, b| {
+        a.instant_s
+            .total_cmp(&b.instant_s)
+            .then(a.piece.cmp(&b.piece))
+    });
     tous
 }
 

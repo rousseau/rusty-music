@@ -19,10 +19,10 @@ pub mod hydro;
 pub mod palette;
 pub mod peuplement;
 pub mod projection;
-pub mod source;
-pub mod style;
 pub mod relief;
 pub mod reseau_reel;
+pub mod source;
+pub mod style;
 pub mod tuiles;
 pub mod ville;
 

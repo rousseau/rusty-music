@@ -585,8 +585,12 @@ fn duree(ms: Option<i64>) -> String {
 fn grilles_de(
     remplace: &std::path::Path,
     greffon: &std::path::Path,
-) -> Result<Option<(rusty_music_analysis::battements::Grille, rusty_music_analysis::battements::Grille)>>
-{
+) -> Result<
+    Option<(
+        rusty_music_analysis::battements::Grille,
+        rusty_music_analysis::battements::Grille,
+    )>,
+> {
     use rusty_music_analysis::battements;
 
     let analyseur = rusty_music_analysis::descripteurs::Analyseur::new();
@@ -615,7 +619,11 @@ fn grilles_de(
 /// Ce que vaut une grille imposée sur un fichier, et ce que vaudrait la
 /// meilleure. Les deux ensemble : le premier chiffre seul ne dit pas s'il est
 /// bon.
-fn eprouver(chemin: &std::path::Path, bpm: f32, phase_s: f32) -> Result<(Option<f32>, Option<f32>)> {
+fn eprouver(
+    chemin: &std::path::Path,
+    bpm: f32,
+    phase_s: f32,
+) -> Result<(Option<f32>, Option<f32>)> {
     use rusty_music_analysis::battements;
 
     let s = rusty_music_editor::decode::stereo(chemin)?;
@@ -1015,7 +1023,11 @@ fn main() -> Result<()> {
                 sortie.display()
             );
         }
-        Cmd::Descripteurs { limite, refaire, fils } => {
+        Cmd::Descripteurs {
+            limite,
+            refaire,
+            fils,
+        } => {
             let fils = if fils > 0 {
                 fils
             } else {
@@ -1067,12 +1079,16 @@ fn main() -> Result<()> {
             };
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |vus, total| {
-                if vus >= dernier + 200 {
-                    dernier = vus;
-                    println!("  {vus} / {total} dossiers — {:.1} s", t.elapsed().as_secs_f64());
-                }
-            })?;
+            let bilan =
+                rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |vus, total| {
+                    if vus >= dernier + 200 {
+                        dernier = vus;
+                        println!(
+                            "  {vus} / {total} dossiers — {:.1} s",
+                            t.elapsed().as_secs_f64()
+                        );
+                    }
+                })?;
             println!(
                 "{} dossiers d'albums, {} (re)vérifiés — {:.1} s",
                 bilan.dossiers,
@@ -1084,11 +1100,21 @@ fn main() -> Result<()> {
                 println!("Aucune pochette à examiner.");
             }
             for p in &suspectes {
-                let mesure = p.mesure.map(|m| format!(" (écart {m:.2})")).unwrap_or_default();
-                println!("[{}] {} — {}{mesure}\n    {}\n    {}", p.anomalie, p.artiste, p.album, p.detail, p.dossier);
+                let mesure = p
+                    .mesure
+                    .map(|m| format!(" (écart {m:.2})"))
+                    .unwrap_or_default();
+                println!(
+                    "[{}] {} — {}{mesure}\n    {}\n    {}",
+                    p.anomalie, p.artiste, p.album, p.detail, p.dossier
+                );
             }
         }
-        Cmd::Loudness { limite, force, fils } => {
+        Cmd::Loudness {
+            limite,
+            force,
+            fils,
+        } => {
             let fils = if fils > 0 {
                 fils
             } else {
@@ -1098,7 +1124,8 @@ fn main() -> Result<()> {
                 let n = lib.effacer_loudness()?;
                 println!("{n} mesures effacées — repasse complète");
             }
-            let (faits, total) = lib.compter_loudness(rusty_music_core::loudness::VERSION_LOUDNESS)?;
+            let (faits, total) =
+                lib.compter_loudness(rusty_music_core::loudness::VERSION_LOUDNESS)?;
             println!("{faits} / {total} morceaux déjà mesurés — {fils} fils");
 
             let t = Instant::now();
@@ -1172,7 +1199,11 @@ fn main() -> Result<()> {
 
             let t = std::time::Instant::now();
             let trajets = reseau.itineraires(&o)?;
-            println!("\n{} itinéraire(s) en {:.0} ms", trajets.len(), t.elapsed().as_secs_f64() * 1000.0);
+            println!(
+                "\n{} itinéraire(s) en {:.0} ms",
+                trajets.len(),
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             for (n, i) in trajets.iter().enumerate() {
                 println!(
                     "\n— itinéraire {} — {} morceaux, {:.1} min, distance sonique {:.2}",
@@ -1356,7 +1387,11 @@ fn main() -> Result<()> {
                 para_relief.resolution,
             );
             let compte = |nom: &str| {
-                rap.par_classe.iter().find(|(n, _)| n == nom).map(|(_, n)| *n).unwrap_or(0)
+                rap.par_classe
+                    .iter()
+                    .find(|(n, _)| n == nom)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(0)
             };
             let longues = routes
                 .iter()
@@ -1375,12 +1410,8 @@ fn main() -> Result<()> {
                 para_relief.resolution,
                 &rusty_music_carto::hydro::Parametres::default(),
             );
-            let curiosites = source::curiosites(
-                &morceaux,
-                &peupl.etablissements,
-                &reseau.refuges(0.995),
-                60,
-            );
+            let curiosites =
+                source::curiosites(&morceaux, &peupl.etablissements, &reseau.refuges(0.995), 60);
             println!(
                 "  {} rivières, {} points remarquables",
                 rivieres.len(),
@@ -1479,9 +1510,14 @@ fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::Ville { pbf, commune, sortie } => {
+        Cmd::Ville {
+            pbf,
+            commune,
+            sortie,
+        } => {
             let sortie = sortie.unwrap_or_else(|| {
-                cli.db.with_file_name(format!("ville-{}.db", commune.to_lowercase()))
+                cli.db
+                    .with_file_name(format!("ville-{}.db", commune.to_lowercase()))
             });
             println!("Lecture de {}…", pbf.display());
             let depart = std::time::Instant::now();
@@ -1524,7 +1560,9 @@ fn main() -> Result<()> {
             let modele = rusty_music_analysis::passe::MODELE;
             let vue = lib.map_view(modele)?;
             if vue.is_empty() {
-                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+                anyhow::bail!(
+                    "aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord"
+                );
             }
             let noms: HashMap<i64, String> = lib
                 .familles(modele)?
@@ -1559,16 +1597,15 @@ fn main() -> Result<()> {
                 "famille", "cible (m)", "obtenue", "écart"
             );
             let mut ids: Vec<i64> = prep.familles.iter().map(|f| f.id).collect();
-            ids.sort_by(|a, b| {
-                quartiers.cible[b]
-                    .partial_cmp(&quartiers.cible[a])
-                    .unwrap()
-            });
+            ids.sort_by(|a, b| quartiers.cible[b].partial_cmp(&quartiers.cible[a]).unwrap());
             for id in ids {
                 let cible = quartiers.cible[&id];
                 let obtenue = quartiers.capacite.get(&id).copied().unwrap_or(0.0);
                 let ecart = 100.0 * (obtenue - cible) / cible.max(1.0);
-                let nom = noms.get(&id).cloned().unwrap_or_else(|| format!("famille {id}"));
+                let nom = noms
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("famille {id}"));
                 println!("  {nom:<28} {cible:>10.0} {obtenue:>10.0} {ecart:>+7.0} %");
             }
             println!(
@@ -1587,7 +1624,9 @@ fn main() -> Result<()> {
             let modele = rusty_music_analysis::passe::MODELE;
             let vue = lib.map_view(modele)?;
             if vue.is_empty() {
-                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+                anyhow::bail!(
+                    "aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord"
+                );
             }
             println!("Lecture de {}…", ville.display());
             let extrait = rusty_music_osm::base::lire(&ville)?;
@@ -1612,7 +1651,8 @@ fn main() -> Result<()> {
                 prep.autorises.len(),
             );
 
-            let mut par_taille: Vec<usize> = voirie.logements.values().map(|l| l.rues.len()).collect();
+            let mut par_taille: Vec<usize> =
+                voirie.logements.values().map(|l| l.rues.len()).collect();
             par_taille.sort_unstable();
             let sur_une_rue = par_taille.iter().filter(|n| **n == 1).count();
             let sur_plusieurs = par_taille.iter().filter(|n| **n > 1).count();
@@ -1662,7 +1702,9 @@ fn main() -> Result<()> {
             let modele = rusty_music_analysis::passe::MODELE;
             let vue = lib.map_view(modele)?;
             if vue.is_empty() {
-                anyhow::bail!("aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord");
+                anyhow::bail!(
+                    "aucun morceau sur la carte — lancer `analyser` puis `carte` d'abord"
+                );
             }
 
             let noms: HashMap<i64, String> = lib
@@ -1689,8 +1731,7 @@ fn main() -> Result<()> {
             );
             println!(
                 "  {} artistes ancrés aux monuments, {} bâtiments peuplés",
-                r.artistes_ancres,
-                r.batiments_peuples,
+                r.artistes_ancres, r.batiments_peuples,
             );
 
             // --- Objection V1 : le voisinage musical survit-il à l'affectation ? ---
@@ -1723,7 +1764,9 @@ fn main() -> Result<()> {
                 if musicaux.is_empty() {
                     continue;
                 }
-                let Some(&ici) = positions.get(&id) else { continue };
+                let Some(&ici) = positions.get(&id) else {
+                    continue;
+                };
                 let mut geo: Vec<(i64, f64)> = positions
                     .iter()
                     .filter(|(j, _)| **j != id)
@@ -1735,7 +1778,8 @@ fn main() -> Result<()> {
                 }
                 geo.select_nth_unstable_by(k - 1, |a, b| a.1.total_cmp(&b.1));
                 geo.truncate(k);
-                let geo_set: std::collections::HashSet<i64> = geo.into_iter().map(|(j, _)| j).collect();
+                let geo_set: std::collections::HashSet<i64> =
+                    geo.into_iter().map(|(j, _)| j).collect();
                 let commun = musicaux.iter().filter(|j| geo_set.contains(j)).count();
                 recouvrements.push(commun as f64 / K as f64);
 
@@ -1744,13 +1788,19 @@ fn main() -> Result<()> {
                 // artistes (des voisins sonores chez un tout autre artiste,
                 // donc sur une tout autre rue) ?
                 if let Some(&nom) = artiste_de.get(&id) {
-                    let meme = musicaux.iter().filter(|j| artiste_de.get(j) == Some(&nom)).count();
+                    let meme = musicaux
+                        .iter()
+                        .filter(|j| artiste_de.get(j) == Some(&nom))
+                        .count();
                     part_meme_artiste.push(meme as f64 / K as f64);
                 }
             }
             recouvrements.sort_by(|a, b| a.total_cmp(b));
             let moyenne = recouvrements.iter().sum::<f64>() / recouvrements.len().max(1) as f64;
-            let mediane = recouvrements.get(recouvrements.len() / 2).copied().unwrap_or(0.0);
+            let mediane = recouvrements
+                .get(recouvrements.len() / 2)
+                .copied()
+                .unwrap_or(0.0);
             let part_meme_artiste_moy =
                 part_meme_artiste.iter().sum::<f64>() / part_meme_artiste.len().max(1) as f64;
             println!(
@@ -1793,8 +1843,12 @@ fn main() -> Result<()> {
                     .filter(|b| b.morceau_id.is_some())
                     .filter(|b| b.annee.is_none_or(|a| a <= seuil))
                     .count();
-                let attendus =
-                    r.source.morceaux.iter().filter(|m| m.annee.is_none_or(|a| a <= seuil)).count();
+                let attendus = r
+                    .source
+                    .morceaux
+                    .iter()
+                    .filter(|m| m.annee.is_none_or(|a| a <= seuil))
+                    .count();
                 println!(
                     "\n  curseur temporel à {seuil} : {occupes} bâtiments occupés pour {attendus} morceaux attendus{}",
                     if occupes == attendus { " — invariant vérifié" } else { " — ÉCART, propagation de l'année à revoir" }
@@ -1912,7 +1966,10 @@ fn main() -> Result<()> {
                 t.elapsed().as_secs_f64() / 60.0
             );
             if bilan.echecs > 0 {
-                println!("{} étapes en échec ; relancer la commande les reprendra.", bilan.echecs);
+                println!(
+                    "{} étapes en échec ; relancer la commande les reprendra.",
+                    bilan.echecs
+                );
             }
         }
         Cmd::Popularite {
@@ -1976,18 +2033,29 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::biographies::actualiser(&mut lib, &client, 0, limite, |b| {
-                if b.faits >= dernier + 25 {
-                    dernier = b.faits;
-                    println!("  {} / {} artistes · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
-                }
-            })?;
+            let bilan =
+                rusty_music_core::biographies::actualiser(&mut lib, &client, 0, limite, |b| {
+                    if b.faits >= dernier + 25 {
+                        dernier = b.faits;
+                        println!(
+                            "  {} / {} artistes · {:.0} min",
+                            b.faits,
+                            b.total,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
             println!(
                 "\n{} artistes interrogés, {} avec une biographie — {:.0} min",
-                bilan.interroges, bilan.trouves, t.elapsed().as_secs_f64() / 60.0
+                bilan.interroges,
+                bilan.trouves,
+                t.elapsed().as_secs_f64() / 60.0
             );
         }
-        Cmd::Critiques { limite, rafraichir_des } => {
+        Cmd::Critiques {
+            limite,
+            rafraichir_des,
+        } => {
             let mut lib = lib;
             let client = rusty_music_core::critiquebrainz::Client::new();
             let limite = if limite == 0 { usize::MAX } else { limite };
@@ -2003,18 +2071,30 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, limite, |b| {
-                if b.faits >= dernier + 25 {
-                    dernier = b.faits;
-                    println!("  {} / {} albums · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
-                }
-            })?;
+            let bilan =
+                rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, limite, |b| {
+                    if b.faits >= dernier + 25 {
+                        dernier = b.faits;
+                        println!(
+                            "  {} / {} albums · {:.0} min",
+                            b.faits,
+                            b.total,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
             println!(
                 "\n{} albums interrogés, {} avec au moins une critique — {:.0} min",
-                bilan.albums_interroges, bilan.albums_avec_critique, t.elapsed().as_secs_f64() / 60.0
+                bilan.albums_interroges,
+                bilan.albums_avec_critique,
+                t.elapsed().as_secs_f64() / 60.0
             );
         }
-        Cmd::Lastfm { cle, limite, rafraichir_des } => {
+        Cmd::Lastfm {
+            cle,
+            limite,
+            rafraichir_des,
+        } => {
             let mut lib = lib;
             let client = rusty_music_core::lastfm::Client::new(cle);
             let limite = if limite == 0 { usize::MAX } else { limite };
@@ -2030,12 +2110,23 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::lastfm_pass::actualiser(&mut lib, &client, depuis, limite, |b| {
-                if b.faits >= dernier + 25 {
-                    dernier = b.faits;
-                    println!("  {} / {} artistes · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
-                }
-            })?;
+            let bilan = rusty_music_core::lastfm_pass::actualiser(
+                &mut lib,
+                &client,
+                depuis,
+                limite,
+                |b| {
+                    if b.faits >= dernier + 25 {
+                        dernier = b.faits;
+                        println!(
+                            "  {} / {} artistes · {:.0} min",
+                            b.faits,
+                            b.total,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                },
+            )?;
             let echecs = if bilan.echecs > 0 {
                 format!(", {} laissés pour un prochain passage", bilan.echecs)
             } else {
@@ -2043,7 +2134,9 @@ fn main() -> Result<()> {
             };
             println!(
                 "\n{} artistes interrogés, {} avec au moins un tag{echecs} — {:.0} min",
-                bilan.artistes_interroges, bilan.artistes_avec_tags, t.elapsed().as_secs_f64() / 60.0
+                bilan.artistes_interroges,
+                bilan.artistes_avec_tags,
+                t.elapsed().as_secs_f64() / 60.0
             );
         }
         Cmd::GenresCandidats { seuil } => {
@@ -2069,12 +2162,19 @@ fn main() -> Result<()> {
             let bilan = rusty_music_core::discogs_import::lier(&mut lib, &client, limite, |b| {
                 if b.faits >= dernier + 25 {
                     dernier = b.faits;
-                    println!("  {} / {} éditions · {:.0} min", b.faits, b.total, t.elapsed().as_secs_f64() / 60.0);
+                    println!(
+                        "  {} / {} éditions · {:.0} min",
+                        b.faits,
+                        b.total,
+                        t.elapsed().as_secs_f64() / 60.0
+                    );
                 }
             })?;
             println!(
                 "\n{} éditions vérifiées, {} reliées à Discogs — {:.0} min",
-                bilan.interrogees, bilan.liees, t.elapsed().as_secs_f64() / 60.0
+                bilan.interrogees,
+                bilan.liees,
+                t.elapsed().as_secs_f64() / 60.0
             );
         }
         Cmd::ImportDiscogs { fichier } => {
@@ -2087,19 +2187,22 @@ fn main() -> Result<()> {
                     let dest = std::env::temp_dir().join("rusty-music-discogs-releases.xml.gz");
                     println!("Téléchargement du dernier dump Discogs (≈ 11 Go)…");
                     let mut dernier = 0u64;
-                    rusty_music_core::discogs_import::telecharger_dernier_dump(&dest, |vus, total| {
-                        if vus >= dernier + 500_000_000 {
-                            dernier = vus;
-                            let go = vus as f64 / 1e9;
-                            match total {
-                                Some(total) => {
-                                    let total_go = total as f64 / 1e9;
-                                    println!("  {go:.1} / {total_go:.1} Go");
+                    rusty_music_core::discogs_import::telecharger_dernier_dump(
+                        &dest,
+                        |vus, total| {
+                            if vus >= dernier + 500_000_000 {
+                                dernier = vus;
+                                let go = vus as f64 / 1e9;
+                                match total {
+                                    Some(total) => {
+                                        let total_go = total as f64 / 1e9;
+                                        println!("  {go:.1} / {total_go:.1} Go");
+                                    }
+                                    None => println!("  {go:.1} Go"),
                                 }
-                                None => println!("  {go:.1} Go"),
                             }
-                        }
-                    })?;
+                        },
+                    )?;
                     dest
                 }
             };
@@ -2111,7 +2214,9 @@ fn main() -> Result<()> {
                     dernier = b.editions_vues;
                     println!(
                         "  {} éditions parcourues · {} retenues · {:.0} min",
-                        b.editions_vues, b.editions_retenues, t.elapsed().as_secs_f64() / 60.0
+                        b.editions_vues,
+                        b.editions_retenues,
+                        t.elapsed().as_secs_f64() / 60.0
                     );
                 }
             })?;
@@ -2140,7 +2245,11 @@ fn main() -> Result<()> {
             // du même nom — pas la chanson.
             let depart = trouves
                 .iter()
-                .find(|t| t.title.as_deref().is_some_and(|ti| ti.eq_ignore_ascii_case(recherche.trim())))
+                .find(|t| {
+                    t.title
+                        .as_deref()
+                        .is_some_and(|ti| ti.eq_ignore_ascii_case(recherche.trim()))
+                })
                 .or_else(|| trouves.first());
             let Some(depart) = depart else {
                 anyhow::bail!("aucun morceau ne correspond à « {recherche} »");
@@ -2160,7 +2269,10 @@ fn main() -> Result<()> {
             }
             let par_id: HashMap<i64, TrackRow> = {
                 let ids: std::collections::HashSet<i64> = voisins.iter().copied().collect();
-                lib.tracks_by_ids(&ids)?.into_iter().map(|t| (t.id, t)).collect()
+                lib.tracks_by_ids(&ids)?
+                    .into_iter()
+                    .map(|t| (t.id, t))
+                    .collect()
             };
             println!(
                 "\n  {} — {}\n  ses {k} plus proches voisins :",
@@ -2408,17 +2520,20 @@ fn main() -> Result<()> {
                     essai,
                 },
         } => {
-            use rusty_music_core::valise::{self, Part, Regle, Reglages};
+            use rusty_music_core::valise::{self, Part, Reglages, Regle};
 
             let budget_octets = valise::lire_taille(&budget)
                 .ok_or_else(|| anyhow::anyhow!("budget illisible : « {budget} »"))?;
             let regles = regles
                 .iter()
                 .map(|r| {
-                    Regle::depuis_texte(r).ok_or_else(|| {
-                        anyhow::anyhow!("règle inconnue : « {r} » (recents, peu-ecoutes, hasard)")
-                    })
-                    .map(Part::budget)
+                    Regle::depuis_texte(r)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "règle inconnue : « {r} » (recents, peu-ecoutes, hasard)"
+                            )
+                        })
+                        .map(Part::budget)
                 })
                 .collect::<Result<Vec<_>>>()?;
             let graine = graine.unwrap_or_else(|| {
@@ -2584,7 +2699,9 @@ fn construire_reseau_sur(
 
     let mut par_artiste: HashMap<String, u32> = HashMap::new();
     for p in &vue {
-        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+        *par_artiste
+            .entry(p.artist.clone().unwrap_or_default())
+            .or_default() += 1;
     }
     let index: HashMap<&str, u32> = par_artiste
         .keys()
@@ -2621,7 +2738,9 @@ fn construire_reseau_sur(
         parametres.resolution,
         &Parametres {
             k,
-            fils: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8),
+            fils: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(8),
             ..Default::default()
         },
     ))

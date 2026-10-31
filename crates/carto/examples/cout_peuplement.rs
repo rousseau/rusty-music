@@ -10,8 +10,13 @@ use rusty_music_carto::peuplement::{self, Arrivant, Parametres, Rang};
 use rusty_music_core::db::Library;
 
 fn main() -> anyhow::Result<()> {
-    let base = std::env::args().nth(1).unwrap_or_else(|| "rusty-music.db".into());
-    let seuil: f32 = std::env::args().nth(2).and_then(|v| v.parse().ok()).unwrap_or(0.62);
+    let base = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "rusty-music.db".into());
+    let seuil: f32 = std::env::args()
+        .nth(2)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.62);
     let lib = Library::open(std::path::Path::new(&base))?;
     let modele = "clap-htsat-unfused-5f";
 
@@ -41,7 +46,10 @@ fn main() -> anyhow::Result<()> {
         .collect();
     println!("{} arrivants sur {} morceaux", arrivants.len(), ordre.len());
 
-    let rayon: f32 = std::env::args().nth(3).and_then(|v| v.parse().ok()).unwrap_or(0.012);
+    let rayon: f32 = std::env::args()
+        .nth(3)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.012);
     let p = Parametres {
         seuil_affinite: seuil,
         rayon_base: rayon,
@@ -52,16 +60,31 @@ fn main() -> anyhow::Result<()> {
     let r = peuplement::peupler(&arrivants, &p);
     let rap = &r.rapport;
 
-    println!("\nseuil {seuil}, rayon de base {rayon} — {:.2} s", rap.ms as f64 / 1000.0);
-    println!("  {} habitants, {} établissements, {} îles", rap.habitants, rap.etablissements, rap.iles);
+    println!(
+        "\nseuil {seuil}, rayon de base {rayon} — {:.2} s",
+        rap.ms as f64 / 1000.0
+    );
+    println!(
+        "  {} habitants, {} établissements, {} îles",
+        rap.habitants, rap.etablissements, rap.iles
+    );
     println!("  niveau de la mer : {:.4}", rap.niveau_mer);
     println!("  plus grand établissement : {} habitants", rap.plus_grand);
     for (nom, n) in &rap.par_rang {
-        println!("  {nom:<12} {n:>6}  {:>5.1} %", 100.0 * *n as f64 / rap.etablissements as f64);
+        println!(
+            "  {nom:<12} {n:>6}  {:>5.1} %",
+            100.0 * *n as f64 / rap.etablissements as f64
+        );
     }
 
     // Les critères d'acceptation annoncés dans le document de conception.
-    let cherche = |n: &str| rap.par_rang.iter().find(|(x, _)| x == n).map(|(_, c)| *c).unwrap_or(0);
+    let cherche = |n: &str| {
+        rap.par_rang
+            .iter()
+            .find(|(x, _)| x == n)
+            .map(|(_, c)| *c)
+            .unwrap_or(0)
+    };
     let metropoles = cherche("métropole");
     let fermes = cherche("ferme");
     let mut tailles: Vec<u32> = r.etablissements.iter().map(|e| e.population).collect();
@@ -71,8 +94,16 @@ fn main() -> anyhow::Result<()> {
     let dire = |nom: &str, ok: bool, valeur: String| {
         println!("  {} {nom} : {valeur}", if ok { "✓" } else { "✗" });
     };
-    dire("5 à 15 métropoles", (5..=15).contains(&metropoles), metropoles.to_string());
-    dire("population médiane 4-8", (4..=8).contains(&mediane), mediane.to_string());
+    dire(
+        "5 à 15 métropoles",
+        (5..=15).contains(&metropoles),
+        metropoles.to_string(),
+    );
+    dire(
+        "population médiane 4-8",
+        (4..=8).contains(&mediane),
+        mediane.to_string(),
+    );
     dire(
         "fermes isolées < 15 %",
         (fermes as f64) < 0.15 * rap.etablissements as f64,
@@ -81,7 +112,10 @@ fn main() -> anyhow::Result<()> {
     dire(
         "plus gros < 10 % de la bibliothèque",
         (rap.plus_grand as f64) < 0.10 * rap.habitants as f64,
-        format!("{:.1} %", 100.0 * rap.plus_grand as f64 / rap.habitants as f64),
+        format!(
+            "{:.1} %",
+            100.0 * rap.plus_grand as f64 / rap.habitants as f64
+        ),
     );
 
     // Un aperçu des plus grandes villes.

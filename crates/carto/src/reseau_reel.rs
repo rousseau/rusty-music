@@ -117,15 +117,25 @@ impl Graphe {
                 if a == b {
                     continue;
                 }
-                let milieu = [(paire[0][0] + paire[1][0]) / 2.0, (paire[0][1] + paire[1][1]) / 2.0];
+                let milieu = [
+                    (paire[0][0] + paire[1][0]) / 2.0,
+                    (paire[0][1] + paire[1][1]) / 2.0,
+                ];
                 let f = friction(t.classe, milieu).max(1e-3);
-                let poids = (distance_m(paire[0], paire[1]) * 1000.0 * f).round().max(1.0) as u32;
+                let poids = (distance_m(paire[0], paire[1]) * 1000.0 * f)
+                    .round()
+                    .max(1.0) as u32;
                 aretes[a as usize].push((b, poids));
                 aretes[b as usize].push((a, poids));
             }
         }
         let routable = plus_grande_composante(&aretes);
-        Graphe { points, aretes, routable, troncons_du_sommet }
+        Graphe {
+            points,
+            aretes,
+            routable,
+            troncons_du_sommet,
+        }
     }
 
     /// Les sommets du graphe, en `[lon, lat]` — lecture seule, pour rasteriser
@@ -159,7 +169,10 @@ impl Graphe {
 
     /// Sommets et arêtes — diagnostic seulement.
     pub fn taille(&self) -> (usize, usize) {
-        (self.points.len(), self.aretes.iter().map(|v| v.len()).sum::<usize>() / 2)
+        (
+            self.points.len(),
+            self.aretes.iter().map(|v| v.len()).sum::<usize>() / 2,
+        )
     }
 
     /// Nombre de sommets atteignables depuis `depart` par une simple
@@ -215,7 +228,12 @@ impl Graphe {
     /// pont dans l'extrait n'est pas à exclure.
     pub fn chemin(&self, depart: [f64; 2], arrivee: [f64; 2]) -> Option<Vec<[f64; 2]>> {
         let (sommets, _) = self.chemin_sommets(depart, arrivee)?;
-        Some(sommets.into_iter().map(|i| self.points[i as usize]).collect())
+        Some(
+            sommets
+                .into_iter()
+                .map(|i| self.points[i as usize])
+                .collect(),
+        )
     }
 
     /// Comme [`Graphe::chemin`], mais rend la suite d'**indices de sommets** et
@@ -229,8 +247,11 @@ impl Graphe {
         if a == b {
             return Some((vec![a], 0));
         }
-        let (chemin, cout) =
-            dijkstra(&a, |n| self.aretes[*n as usize].iter().copied(), |n| *n == b)?;
+        let (chemin, cout) = dijkstra(
+            &a,
+            |n| self.aretes[*n as usize].iter().copied(),
+            |n| *n == b,
+        )?;
         Some((chemin, cout as u64))
     }
 
@@ -403,7 +424,10 @@ impl Graphe {
                     let d = d0 + distance_m(self.points[s as usize], self.points[v as usize]);
                     if d <= rayon_m && dist.get(&v).is_none_or(|&dv| d + 1e-6 < dv) {
                         dist.insert(v, d);
-                        couloir.entry(v).and_modify(|r| *r = (*r).min(rang)).or_insert(rang);
+                        couloir
+                            .entry(v)
+                            .and_modify(|r| *r = (*r).min(rang))
+                            .or_insert(rang);
                         file.push_back(v);
                     }
                 }
@@ -457,7 +481,10 @@ impl IndexSommets {
     /// tiendrait un sommet plus proche. Cf. `cout_voirie::SemisSommets`, même
     /// principe, repère différent (mètres locaux là-bas).
     pub fn plus_proche(&self, graphe: &Graphe, p: [f64; 2], portee_m: f64) -> Option<u32> {
-        let (cx, cy) = ((p[0] / self.pas).floor() as i32, (p[1] / self.pas).floor() as i32);
+        let (cx, cy) = (
+            (p[0] / self.pas).floor() as i32,
+            (p[1] / self.pas).floor() as i32,
+        );
         let mut meilleur: Option<(u32, f64)> = None;
         for anneau in 0..40_i32 {
             for dx in -anneau..=anneau {
@@ -465,7 +492,9 @@ impl IndexSommets {
                     if anneau > 0 && dx.abs() != anneau && dy.abs() != anneau {
                         continue;
                     }
-                    let Some(v) = self.cellules.get(&(cx + dx, cy + dy)) else { continue };
+                    let Some(v) = self.cellules.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
                     for &i in v {
                         let d = distance_m(p, graphe.points[i as usize]);
                         if meilleur.is_none_or(|(_, md)| d < md) {
@@ -523,7 +552,10 @@ fn plus_grande_composante(aretes: &[Vec<(u32, u32)>]) -> Vec<bool> {
     let Some((plus_grande, _)) = tailles.iter().enumerate().max_by_key(|(_, t)| **t) else {
         return vec![false; n];
     };
-    composante.iter().map(|&c| c == plus_grande as u32).collect()
+    composante
+        .iter()
+        .map(|&c| c == plus_grande as u32)
+        .collect()
 }
 
 #[cfg(test)]
@@ -556,13 +588,18 @@ mod tests {
                 points: vec![[2.32, 48.86], [2.32, 48.85]],
             },
         ];
-        Extrait { troncons, ..Default::default() }
+        Extrait {
+            troncons,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn le_chemin_suit_les_rues_pas_le_vide() {
         let g = Graphe::construire(&extrait_en_u());
-        let trace = g.chemin([2.30, 48.85], [2.32, 48.85]).expect("un chemin existe");
+        let trace = g
+            .chemin([2.30, 48.85], [2.32, 48.85])
+            .expect("un chemin existe");
         // Le vol d'oiseau ferait ~1,5 km ; le détour en U par les trois rues
         // en fait nettement plus — c'est justement ce qui prouve que le
         // chemin ne coupe pas à travers le vide entre A et C.
@@ -571,9 +608,14 @@ mod tests {
             longueur += distance_m(f[0], f[1]);
         }
         let vol_doiseau = distance_m([2.30, 48.85], [2.32, 48.85]);
-        assert!(longueur > vol_doiseau * 1.3, "chemin trop direct : {longueur} m vs {vol_doiseau} m à vol d'oiseau");
+        assert!(
+            longueur > vol_doiseau * 1.3,
+            "chemin trop direct : {longueur} m vs {vol_doiseau} m à vol d'oiseau"
+        );
         // Passe bien par le sommet nord des deux rues (le coin de la rue B).
-        assert!(trace.iter().any(|p| (p[0] - 2.30).abs() < 1e-9 && (p[1] - 48.86).abs() < 1e-9));
+        assert!(trace
+            .iter()
+            .any(|p| (p[0] - 2.30).abs() < 1e-9 && (p[1] - 48.86).abs() < 1e-9));
     }
 
     #[test]
@@ -581,7 +623,12 @@ mod tests {
         let g = Graphe::construire(&extrait_en_u());
         // Trois rues, chacune un segment : au moins 4 sommets distincts (les
         // extrémités), mais les nœuds partagés ne doivent pas se dupliquer.
-        assert_eq!(g.points.len(), 4, "les nœuds partagés doivent fusionner : {:?}", g.points);
+        assert_eq!(
+            g.points.len(),
+            4,
+            "les nœuds partagés doivent fusionner : {:?}",
+            g.points
+        );
     }
 
     #[test]
@@ -615,7 +662,10 @@ mod tests {
         // Viser un point tout près du fragment isolé (2,3201/48,8501) doit
         // quand même accrocher sur le U et trouver un chemin.
         let trace = g.chemin([2.30, 48.85], [2.3201, 48.8501]);
-        assert!(trace.is_some(), "l'accrochage n'a pas dû se laisser attirer par le fragment isolé");
+        assert!(
+            trace.is_some(),
+            "l'accrochage n'a pas dû se laisser attirer par le fragment isolé"
+        );
     }
 
     /// Une grille de rues 3×3 (deux rues nord-sud, deux rues est-ouest), pour
@@ -643,7 +693,10 @@ mod tests {
             });
             id += 1;
         }
-        Extrait { troncons, ..Default::default() }
+        Extrait {
+            troncons,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -663,8 +716,9 @@ mod tests {
     #[test]
     fn chemin_sommets_rend_les_indices_et_le_cout() {
         let g = Graphe::construire(&extrait_en_u());
-        let (sommets, cout) =
-            g.chemin_sommets([2.30, 48.85], [2.32, 48.85]).expect("un chemin existe");
+        let (sommets, cout) = g
+            .chemin_sommets([2.30, 48.85], [2.32, 48.85])
+            .expect("un chemin existe");
         assert_eq!(sommets.first().copied(), g.accrocher([2.30, 48.85]));
         assert_eq!(sommets.last().copied(), g.accrocher([2.32, 48.85]));
         assert!(cout > 0, "un trajet non trivial a un coût");
@@ -706,8 +760,18 @@ mod tests {
         let perp = vec![[2.302, 48.855], [2.302, 48.86], [2.302, 48.865]];
         let extrait = Extrait {
             troncons: vec![
-                Troncon { id: 1, nom: Some("Avenue".into()), classe: Classe::Secondaire, points: avenue },
-                Troncon { id: 2, nom: Some("Perp".into()), classe: Classe::Residentielle, points: perp },
+                Troncon {
+                    id: 1,
+                    nom: Some("Avenue".into()),
+                    classe: Classe::Secondaire,
+                    points: avenue,
+                },
+                Troncon {
+                    id: 2,
+                    nom: Some("Perp".into()),
+                    classe: Classe::Residentielle,
+                    points: perp,
+                },
             ],
             ..Default::default()
         };
@@ -716,7 +780,10 @@ mod tests {
         let couloir = g.couloir(&trace, 25.0);
         // Le bout lointain de l'avenue (2 km à l'est) est hors couloir.
         let loin = g.accrocher([2.319, 48.86]).unwrap();
-        assert!(!couloir.contains_key(&loin), "le couloir ne doit pas filer jusqu'au bout de l'avenue");
+        assert!(
+            !couloir.contains_key(&loin),
+            "le couloir ne doit pas filer jusqu'au bout de l'avenue"
+        );
         // Le point de traversée, lui, y est.
         let croisement = g.accrocher([2.302, 48.86]).unwrap();
         assert!(couloir.contains_key(&croisement));
@@ -726,7 +793,12 @@ mod tests {
     fn index_sommets_trouve_le_meme_sommet_que_le_balayage() {
         let g = Graphe::construire(&extrait_grille());
         let index = g.index_sommets();
-        for cible in [[2.301, 48.851], [2.319, 48.869], [2.3155, 48.8602], [2.30, 48.87]] {
+        for cible in [
+            [2.301, 48.851],
+            [2.319, 48.869],
+            [2.3155, 48.8602],
+            [2.30, 48.87],
+        ] {
             assert_eq!(
                 index.plus_proche(&g, cible, 500.0),
                 g.accrocher(cible),
@@ -746,7 +818,11 @@ mod tests {
     fn yen_rend_des_traces_distincts() {
         let g = Graphe::construire(&extrait_grille());
         let traces = g.chemins_sommets_yen([2.30, 48.85], [2.32, 48.87], 2);
-        assert_eq!(traces.len(), 2, "la grille offre deux plus courts chemins de même longueur");
+        assert_eq!(
+            traces.len(),
+            2,
+            "la grille offre deux plus courts chemins de même longueur"
+        );
         assert_ne!(traces[0].0, traces[1].0);
     }
 
@@ -754,7 +830,10 @@ mod tests {
     fn itineraires_disperses_evitent_les_rues_deja_prises() {
         let g = Graphe::construire(&extrait_grille());
         let traces = g.itineraires_disperses([2.30, 48.85], [2.32, 48.87], 3, 2.5);
-        assert!(traces.len() >= 2, "la grille permet plusieurs itinéraires distincts");
+        assert!(
+            traces.len() >= 2,
+            "la grille permet plusieurs itinéraires distincts"
+        );
         // Aucun couple ne se recouvre trop.
         for i in 0..traces.len() {
             for j in i + 1..traces.len() {

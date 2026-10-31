@@ -299,7 +299,11 @@ fn melanger_hf(source: &[Vec<f32>], hd: &mut [Vec<f32>], fc: f32) {
         // dizaines de millisecondes.
         let fin = n.saturating_sub(N);
         for j in 0..ch.len() {
-            ch[j] = if j >= N && j < fin { sortie[j] } else { cs.get(j).copied().unwrap_or(0.0) };
+            ch[j] = if j >= N && j < fin {
+                sortie[j]
+            } else {
+                cs.get(j).copied().unwrap_or(0.0)
+            };
         }
     }
 }
@@ -328,8 +332,8 @@ fn fondu(i: usize, len: usize, premier: bool, dernier: bool) -> f32 {
 /// Décode `entree` en canaux planaires, à sa fréquence d'origine. Rend
 /// `(canaux, sr, coupure_estimée)`.
 fn decoder(entree: &Path) -> Result<(Vec<Vec<f32>>, u32, f32)> {
-    let fichier = std::fs::File::open(entree)
-        .map_err(|e| Error::Ouverture(entree.to_path_buf(), e))?;
+    let fichier =
+        std::fs::File::open(entree).map_err(|e| Error::Ouverture(entree.to_path_buf(), e))?;
     let source = rodio::Decoder::try_from(fichier).map_err(|e| Error::Decode(e.to_string()))?;
     let sr = source.sample_rate().get();
     let n_canaux = source.channels().get() as usize;
@@ -367,8 +371,9 @@ fn coupure_estimee(x: &[f32], sr: u32) -> f32 {
     let mut d = 0;
     let mut prises = 0;
     while d + N <= x.len() && prises < 20 {
-        let mut buf: Vec<Complex<f32>> =
-            (0..N).map(|i| Complex::new(x[d + i] * hann[i], 0.0)).collect();
+        let mut buf: Vec<Complex<f32>> = (0..N)
+            .map(|i| Complex::new(x[d + i] * hann[i], 0.0))
+            .collect();
         fft.process(&mut buf);
         for (k, v) in spectre.iter_mut().enumerate() {
             *v += buf[k].norm_sqr();

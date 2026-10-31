@@ -128,13 +128,25 @@ struct Etat {
     /// MuScriptor (transcription de qualité de la basse) : 1,2 Go de poids
     /// sur le GPU, chargés au premier usage, déchargés après inactivité
     /// (voir [`Cache`]).
-    muscriptor: Mutex<Cache<rusty_music_transcription::muscriptor::Muscriptor<rusty_music_transcription::muscriptor::Moteur>>>,
+    muscriptor: Mutex<
+        Cache<
+            rusty_music_transcription::muscriptor::Muscriptor<
+                rusty_music_transcription::muscriptor::Moteur,
+            >,
+        >,
+    >,
     /// Avancement d'une transcription MuScriptor (segments de 5 s faits sur
     /// le total), sondé par l'interface : une minute environ par morceau.
     transcription: Mutex<EtatTranscription>,
     /// all-in-one (sections du morceau) : 8 plis, chargés au premier usage,
     /// déchargés après inactivité.
-    sections: Mutex<Cache<rusty_music_transcription::sections::Sections<rusty_music_transcription::sections::Moteur>>>,
+    sections: Mutex<
+        Cache<
+            rusty_music_transcription::sections::Sections<
+                rusty_music_transcription::sections::Moteur,
+            >,
+        >,
+    >,
     /// Empreintes chargées pour le calcul des chemins. Les relire à chaque
     /// requête coûterait 55 Mo de lecture ; on les garde, en réinvalidant
     /// quand leur nombre change — ce qui arrive tant que l'analyse tourne.
@@ -253,7 +265,10 @@ struct Cache<T> {
 
 impl<T> Default for Cache<T> {
     fn default() -> Self {
-        Self { valeur: None, touche: None }
+        Self {
+            valeur: None,
+            touche: None,
+        }
     }
 }
 
@@ -582,7 +597,10 @@ fn installer_plan_de_ville(app: &tauri::App, dossier: &Path) {
 /// vingtaine de mégaoctets à chaque « refaire les tuiles » serait un gâchis.
 /// Pas d'invalidation : la ville se remplace en bloc (`carto ville`), jamais
 /// en place, et un nouvel import survient hors session.
-fn charger_ville(etat: &State<Etat>, chemin: &Path) -> Result<Arc<rusty_music_osm::Extrait>, String> {
+fn charger_ville(
+    etat: &State<Etat>,
+    chemin: &Path,
+) -> Result<Arc<rusty_music_osm::Extrait>, String> {
     let mut cache = verrou(&etat.ville);
     if let Some(extrait) = &*cache {
         return Ok(extrait.clone());
@@ -617,7 +635,8 @@ fn charger_agrement_voirie(
     if let Some(a) = &*cache {
         return Ok(a.clone());
     }
-    let a = Arc::new(rusty_music_carto::cout_itineraire::ProximiteAgrement::nouvelle(extrait, 120.0));
+    let a =
+        Arc::new(rusty_music_carto::cout_itineraire::ProximiteAgrement::nouvelle(extrait, 120.0));
     *cache = Some(a.clone());
     Ok(a)
 }
@@ -692,7 +711,10 @@ fn charger_accrochage_voirie(
         sommets = morceaux_a.len(),
         "morceaux accrochés à la voirie"
     );
-    let a = Arc::new(AccrochageVoirie { sommet_de, morceaux_a });
+    let a = Arc::new(AccrochageVoirie {
+        sommet_de,
+        morceaux_a,
+    });
     *verrou(&etat.accrochage_voirie) = Some(a.clone());
     Ok(a)
 }
@@ -703,7 +725,9 @@ fn charger_accrochage_voirie(
 fn popularites_par_artiste(vue: &[MapPoint]) -> std::collections::HashMap<i64, f32> {
     let mut par_artiste: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for p in vue {
-        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+        *par_artiste
+            .entry(p.artist.clone().unwrap_or_default())
+            .or_default() += 1;
     }
     let max = par_artiste.values().copied().max().unwrap_or(1).max(1) as f32;
     vue.iter()
@@ -746,7 +770,11 @@ fn morceaux_le_long(
     // corps ; le départ toujours en tête.
     let terminus = arrivee_id;
     let borne = |id: i64| id == depart_id || Some(id) == terminus;
-    let duree_cible_ms = if terminus.is_some() { None } else { duree_cible_ms };
+    let duree_cible_ms = if terminus.is_some() {
+        None
+    } else {
+        duree_cible_ms
+    };
 
     // (rang, id) pour chaque morceau du couloir.
     let mut candidats: Vec<(usize, i64)> = Vec::new();
@@ -890,8 +918,7 @@ fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, 
     // `osm-clair` prend le nom sans suffixe (le style lu par défaut).
     let dossier_style = tuiles::dossier(&app).map_err(echec)?;
     for palette in rusty_music_carto::Palette::toutes() {
-        let style =
-            rusty_music_carto::style::construire(&src, &paliers, &tuiles::base(), palette);
+        let style = rusty_music_carto::style::construire(&src, &paliers, &tuiles::base(), palette);
         let nom = if palette.id == "osm-clair" {
             "style.json".to_string()
         } else {
@@ -915,8 +942,11 @@ fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, 
     if src.est_ville_reelle() {
         let positions: std::collections::HashMap<i64, [f32; 2]> =
             src.morceaux.iter().map(|m| (m.id, [m.x, m.y])).collect();
-        std::fs::write(&chemin_positions, serde_json::to_vec(&positions).map_err(echec)?)
-            .map_err(echec)?;
+        std::fs::write(
+            &chemin_positions,
+            serde_json::to_vec(&positions).map_err(echec)?,
+        )
+        .map_err(echec)?;
     } else {
         std::fs::remove_file(&chemin_positions).ok();
     }
@@ -1046,7 +1076,11 @@ fn itineraire(
                 duree_ms: t.duree_ms,
                 distance_sonique: t.distance_sonique,
                 popularite: t.popularite,
-                classes: t.classes.iter().map(|c| format!("{c:?}").to_lowercase()).collect(),
+                classes: t
+                    .classes
+                    .iter()
+                    .map(|c| format!("{c:?}").to_lowercase())
+                    .collect(),
             })
         })
         .collect()
@@ -1080,7 +1114,10 @@ struct ReponseItineraireVoirie {
 
 impl ReponseItineraireVoirie {
     fn repli(raison: &str) -> ReponseItineraireVoirie {
-        ReponseItineraireVoirie { repli: Some(raison.into()), trajets: Vec::new() }
+        ReponseItineraireVoirie {
+            repli: Some(raison.into()),
+            trajets: Vec::new(),
+        }
     }
 }
 
@@ -1137,10 +1174,14 @@ fn itineraire_voirie(
             .map(|(id, x, y)| (id, [x as f64, y as f64]))
             .collect();
     let Some(&depart_pos) = positions.get(&depart) else {
-        return Ok(ReponseItineraireVoirie::repli("ce morceau n'a pas d'adresse sur la carte"));
+        return Ok(ReponseItineraireVoirie::repli(
+            "ce morceau n'a pas d'adresse sur la carte",
+        ));
     };
     if graphe.accrocher(depart_pos).is_none() {
-        return Ok(ReponseItineraireVoirie::repli("le départ n'est rattaché à aucune rue"));
+        return Ok(ReponseItineraireVoirie::repli(
+            "le départ n'est rattaché à aucune rue",
+        ));
     }
     let arrivee_pos = match arrivee {
         Some(a) => match positions.get(&a) {
@@ -1185,7 +1226,9 @@ fn itineraire_voirie(
                 .sommet_de
                 .iter()
                 .filter(|(id, _)| {
-                    permis.as_ref().is_none_or(|f| f.contains(*id) || **id == depart)
+                    permis
+                        .as_ref()
+                        .is_none_or(|f| f.contains(*id) || **id == depart)
                 })
                 .filter_map(|(&id, &s)| couts.get(s as usize).copied().flatten().map(|c| (c, id)))
                 .collect();
@@ -1214,7 +1257,9 @@ fn itineraire_voirie(
             }
         }
         (None, None) => {
-            return Ok(ReponseItineraireVoirie::repli("choisir une arrivée ou une durée"));
+            return Ok(ReponseItineraireVoirie::repli(
+                "choisir une arrivée ou une durée",
+            ));
         }
     };
 
@@ -1231,9 +1276,19 @@ fn itineraire_voirie(
     let rayon = rayon_m.unwrap_or(25.0).max(0.0);
 
     let couloir = graphe.couloir(&trace, rayon);
-    let route =
-        morceaux_le_long(&accrochage, &couloir, depart, arrivee, permis.as_ref(), cible_ms, &duree);
-    let pistes: Vec<MapPoint> = route.iter().filter_map(|id| par_id.get(id).cloned()).collect();
+    let route = morceaux_le_long(
+        &accrochage,
+        &couloir,
+        depart,
+        arrivee,
+        permis.as_ref(),
+        cible_ms,
+        &duree,
+    );
+    let pistes: Vec<MapPoint> = route
+        .iter()
+        .filter_map(|id| par_id.get(id).cloned())
+        .collect();
     if pistes.len() < 2 {
         return Ok(ReponseItineraireVoirie::repli(
             "aucun morceau le long de cet itinéraire — essayer une autre durée ou un autre profil",
@@ -1254,10 +1309,15 @@ fn itineraire_voirie(
     let trace = &trace[..fin];
 
     let polyligne: Vec<[f64; 2]> = trace.iter().map(|&s| graphe.point(s)).collect();
-    let distance_m = polyligne.windows(2).map(|w| distance_lonlat_m(w[0], w[1])).sum();
+    let distance_m = polyligne
+        .windows(2)
+        .map(|w| distance_lonlat_m(w[0], w[1]))
+        .sum();
     let duree_ms = pistes.iter().map(|p| duree(p.id)).sum();
-    let popularite: Vec<f32> =
-        pistes.iter().map(|p| pop_de.get(&p.id).copied().unwrap_or(0.0)).collect();
+    let popularite: Vec<f32> = pistes
+        .iter()
+        .map(|p| pop_de.get(&p.id).copied().unwrap_or(0.0))
+        .collect();
     let mut classes: Vec<String> = Vec::new();
     for t in graphe.troncons_traverses(trace) {
         if let Some(c) = classe_de.get(&t) {
@@ -1323,7 +1383,9 @@ fn construire_reseau(
     // artiste. La base ne porte aucun compteur d'écoute.
     let mut par_artiste: HashMap<String, u32> = HashMap::new();
     for p in &vue {
-        *par_artiste.entry(p.artist.clone().unwrap_or_default()).or_default() += 1;
+        *par_artiste
+            .entry(p.artist.clone().unwrap_or_default())
+            .or_default() += 1;
     }
     let index: HashMap<&str, u32> = par_artiste
         .keys()
@@ -1354,7 +1416,9 @@ fn construire_reseau(
         &champ,
         parametres.resolution,
         &Parametres {
-            fils: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8),
+            fils: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(8),
             ..Default::default()
         },
     ))
@@ -1377,7 +1441,9 @@ fn autotest_carte() -> bool {
 /// à qui veut retrouver son mode au démarrage.
 #[tauri::command(async)]
 fn mode_initial() -> Option<String> {
-    std::env::var("RUSTY_MUSIC_MODE").ok().filter(|v| !v.is_empty())
+    std::env::var("RUSTY_MUSIC_MODE")
+        .ok()
+        .filter(|v| !v.is_empty())
 }
 
 /// De quoi conduire le panneau Lama sans clavier ni souris : une webview du
@@ -1419,7 +1485,9 @@ fn essai_fenetre(app: tauri::AppHandle, largeur: f64, hauteur: f64) -> Result<()
     if !audit_actif() {
         return Err("essai_fenetre n'existe que sous RUSTY_MUSIC_AUDIT".into());
     }
-    let fenetre = app.get_webview_window("main").ok_or("fenêtre principale introuvable")?;
+    let fenetre = app
+        .get_webview_window("main")
+        .ok_or("fenêtre principale introuvable")?;
     fenetre
         .set_size(tauri::LogicalSize::new(largeur, hauteur))
         .map_err(|e| e.to_string())
@@ -1488,10 +1556,7 @@ async fn tuile(
 /// retombe sur `style.json` si le fichier de thème manque — tuiles engendrées
 /// avant cette fonctionnalité, ou thème `osm-clair`.
 #[tauri::command(async)]
-fn style_carte(
-    app: tauri::AppHandle,
-    theme: Option<String>,
-) -> Result<serde_json::Value, String> {
+fn style_carte(app: tauri::AppHandle, theme: Option<String>) -> Result<serde_json::Value, String> {
     let dossier = tuiles::dossier(&app).map_err(echec)?;
     let chemin = match theme.as_deref() {
         Some(id)
@@ -1571,7 +1636,10 @@ fn rassembler(
                 track_id: a.track_id,
                 x: p.x,
                 y: p.y,
-                empreinte: empreintes_gardees.get(&a.track_id).cloned().unwrap_or_default(),
+                empreinte: empreintes_gardees
+                    .get(&a.track_id)
+                    .cloned()
+                    .unwrap_or_default(),
                 famille: p.cluster,
                 date: a.date,
                 artiste: p.artist.clone().unwrap_or_default(),
@@ -1643,7 +1711,8 @@ fn rassembler(
         parametres.resolution,
         &rusty_music_carto::hydro::Parametres::default(),
     );
-    let curiosites = source::curiosites(&morceaux, &peupl.etablissements, &reseau.refuges(0.995), 60);
+    let curiosites =
+        source::curiosites(&morceaux, &peupl.etablissements, &reseau.refuges(0.995), 60);
 
     Ok((
         source::Source {
@@ -1709,19 +1778,20 @@ fn path(
         Some(fs) if !fs.is_empty() => Some(morceaux_des_familles(&etat, fs)?),
         _ => None,
     };
-    let carte_filtree = |etat: &State<Etat>, app: &tauri::AppHandle| -> Result<Vec<(i64, f32, f32)>, String> {
-        let mut p = points_de_carte_effectifs(etat, app, reel)?;
-        // Sur le plan de ville réel, les positions sont des lon/lat : on les
-        // projette en mètres pour que « le plus proche » se mesure comme à
-        // l'écran (voir [`RepereLocal`]). Le nuage t-SNE, lui, est déjà isotrope.
-        if reel {
-            RepereLocal::projeter_liste(&mut p);
-        }
-        if let Some(ref ids) = permis {
-            p.retain(|(id, _, _)| ids.contains(id));
-        }
-        Ok(p)
-    };
+    let carte_filtree =
+        |etat: &State<Etat>, app: &tauri::AppHandle| -> Result<Vec<(i64, f32, f32)>, String> {
+            let mut p = points_de_carte_effectifs(etat, app, reel)?;
+            // Sur le plan de ville réel, les positions sont des lon/lat : on les
+            // projette en mètres pour que « le plus proche » se mesure comme à
+            // l'écran (voir [`RepereLocal`]). Le nuage t-SNE, lui, est déjà isotrope.
+            if reel {
+                RepereLocal::projeter_liste(&mut p);
+            }
+            if let Some(ref ids) = permis {
+                p.retain(|(id, _, _)| ids.contains(id));
+            }
+            Ok(p)
+        };
 
     // Le direct raisonne sur la carte, les deux autres sur les empreintes : on
     // ne charge que ce que le mode demande. Les empreintes font 55 Mo.
@@ -1757,14 +1827,28 @@ fn path(
                 // vaut la droite que rien du tout. Le journal le dit,
                 // l'interface l'annonce.
                 tracing::info!(from, arrivee, "sonique impossible, repli sur direct");
-                chemin::direct(&carte_filtree(&etat, &app)?, from, arrivee, steps, graine, bruit)
+                chemin::direct(
+                    &carte_filtree(&etat, &app)?,
+                    from,
+                    arrivee,
+                    steps,
+                    graine,
+                    bruit,
+                )
             } else {
                 chemin::echantillonner(&complet, steps.max(2))
             }
         }
         _ => {
             let arrivee = to.ok_or("le mode direct demande une arrivée")?;
-            chemin::direct(&carte_filtree(&etat, &app)?, from, arrivee, steps, graine, bruit)
+            chemin::direct(
+                &carte_filtree(&etat, &app)?,
+                from,
+                arrivee,
+                steps,
+                graine,
+                bruit,
+            )
         }
     };
 
@@ -1892,7 +1976,11 @@ fn path_drawn(
 /// alors sur le trait synthétique existant pour ce segment précis, pas pour
 /// tout l'itinéraire.
 #[tauri::command(async)]
-fn trace_rues(app: tauri::AppHandle, etat: State<Etat>, ids: Vec<i64>) -> Result<Vec<Vec<[f64; 2]>>, String> {
+fn trace_rues(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    ids: Vec<i64>,
+) -> Result<Vec<Vec<[f64; 2]>>, String> {
     if ids.len() < 2 {
         return Ok(Vec::new());
     }
@@ -1904,7 +1992,12 @@ fn trace_rues(app: tauri::AppHandle, etat: State<Etat>, ids: Vec<i64>) -> Result
     // Habillage du trait par les vraies rues : n'a de sens que sur le plan de
     // ville, et raisonne sur les adresses réelles quelle que soit la vue.
     let points = points_de_carte_effectifs(&etat, &app, true)?;
-    let position = |id: i64| points.iter().find(|(i, _, _)| *i == id).map(|(_, x, y)| [*x as f64, *y as f64]);
+    let position = |id: i64| {
+        points
+            .iter()
+            .find(|(i, _, _)| *i == id)
+            .map(|(_, x, y)| [*x as f64, *y as f64])
+    };
 
     let segments: Vec<Vec<[f64; 2]>> = ids
         .windows(2)
@@ -1913,7 +2006,11 @@ fn trace_rues(app: tauri::AppHandle, etat: State<Etat>, ids: Vec<i64>) -> Result
             _ => Vec::new(),
         })
         .collect();
-    tracing::info!(n = segments.iter().filter(|s| !s.is_empty()).count(), sur = segments.len(), "trait habillé de rues réelles");
+    tracing::info!(
+        n = segments.iter().filter(|s| !s.is_empty()).count(),
+        sur = segments.len(),
+        "trait habillé de rues réelles"
+    );
     Ok(segments)
 }
 
@@ -1938,7 +2035,11 @@ impl RepereLocal {
         let n = points.len().max(1) as f64;
         let lon0 = points.iter().map(|p| p.1 as f64).sum::<f64>() / n;
         let lat0 = points.iter().map(|p| p.2 as f64).sum::<f64>() / n;
-        RepereLocal { lon0, lat0, cos_lat0: lat0.to_radians().cos() }
+        RepereLocal {
+            lon0,
+            lat0,
+            cos_lat0: lat0.to_radians().cos(),
+        }
     }
 
     fn projeter(&self, lon: f32, lat: f32) -> (f32, f32) {
@@ -1969,7 +2070,9 @@ impl RepereLocal {
 /// qu'à des coordonnées t-SNE ? La latitude d'une vraie ville est loin de 0 ;
 /// le nuage t-SNE tient dans `[-1,1]²`.
 fn ressemble_a_lon_lat(points: &[(i64, f32, f32)]) -> bool {
-    let Some(&(_, _, lat)) = points.first() else { return false };
+    let Some(&(_, _, lat)) = points.first() else {
+        return false;
+    };
     lat.abs() > 5.0 && lat.abs() < 89.0
 }
 
@@ -2096,7 +2199,11 @@ fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<G
     // continu — voir sa documentation.
     let en_cache = |etat: &State<Etat>| -> Option<Arc<Graphe>> {
         let mut c = verrou(&etat.graphe);
-        let g = c.valeur.as_ref().filter(|(taille, _)| *taille == n).map(|(_, g)| Arc::clone(g));
+        let g = c
+            .valeur
+            .as_ref()
+            .filter(|(taille, _)| *taille == n)
+            .map(|(_, g)| Arc::clone(g));
         if g.is_some() {
             c.touche = Some(Instant::now());
         }
@@ -2125,7 +2232,10 @@ fn construire_graphe(etat: &State<Etat>, vecteurs: &[Empreinte]) -> Result<Arc<G
     ));
     etat.graphe_total.store(0, Ordering::Relaxed);
     tracing::info!(n, ms = debut.elapsed().as_millis(), "graphe des voisins");
-    *verrou(&etat.graphe) = Cache { valeur: Some((n, Arc::clone(&neuf))), touche: Some(Instant::now()) };
+    *verrou(&etat.graphe) = Cache {
+        valeur: Some((n, Arc::clone(&neuf))),
+        touche: Some(Instant::now()),
+    };
     Ok(neuf)
 }
 
@@ -2284,8 +2394,10 @@ fn probable_duplicates(etat: State<Etat>) -> Result<Vec<DoublonProbable>, String
         if !vus.insert(cle) {
             continue;
         }
-        let (Some(a), Some(b)) = (lib.track(cle.0).map_err(echec)?, lib.track(cle.1).map_err(echec)?)
-        else {
+        let (Some(a), Some(b)) = (
+            lib.track(cle.0).map_err(echec)?,
+            lib.track(cle.1).map_err(echec)?,
+        ) else {
             continue;
         };
         if let (Some(da), Some(db)) = (a.duration_ms, b.duration_ms) {
@@ -2293,7 +2405,11 @@ fn probable_duplicates(etat: State<Etat>) -> Result<Vec<DoublonProbable>, String
                 continue;
             }
         }
-        paires.push(DoublonProbable { a, b, distance2: d2 });
+        paires.push(DoublonProbable {
+            a,
+            b,
+            distance2: d2,
+        });
     }
     paires.sort_by(|x, y| x.distance2.total_cmp(&y.distance2));
     Ok(paires)
@@ -2333,12 +2449,17 @@ fn isolated_points(etat: State<Etat>) -> Result<Vec<PointIsole>, String> {
         if d2 < seuil {
             break;
         }
-        let (Some(piste), Some(plus_proche)) =
-            (lib.track(id).map_err(echec)?, lib.track(voisin).map_err(echec)?)
-        else {
+        let (Some(piste), Some(plus_proche)) = (
+            lib.track(id).map_err(echec)?,
+            lib.track(voisin).map_err(echec)?,
+        ) else {
             continue;
         };
-        points.push(PointIsole { piste, plus_proche, distance2: d2 });
+        points.push(PointIsole {
+            piste,
+            plus_proche,
+            distance2: d2,
+        });
     }
     Ok(points)
 }
@@ -2436,7 +2557,11 @@ fn search_albums(etat: State<Etat>, query: String, limit: i64) -> Result<Vec<Alb
         .search_albums(&query, limit)
         .map_err(echec)?
         .into_iter()
-        .map(|(id, name, artist)| AlbumHit { id: id.to_string(), name, artist })
+        .map(|(id, name, artist)| AlbumHit {
+            id: id.to_string(),
+            name,
+            artist,
+        })
         .collect())
 }
 
@@ -2518,7 +2643,12 @@ fn album_ring(etat: State<Etat>, album_id: String, k: usize) -> Result<AnneauVue
         .get(&id)
         .ok_or_else(|| "album inconnu ou sans morceau analysé".to_string())?;
 
-    let vecteur = |i: i64| centroides.iter().find(|(vid, _)| *vid == i).map(|(_, v)| v.as_slice());
+    let vecteur = |i: i64| {
+        centroides
+            .iter()
+            .find(|(vid, _)| *vid == i)
+            .map(|(_, v)| v.as_slice())
+    };
     let vecteur_focal = vecteur(id);
 
     let proches = rusty_music_analysis::chemin::voisins(&centroides, id, k);
@@ -2535,16 +2665,24 @@ fn album_ring(etat: State<Etat>, album_id: String, k: usize) -> Result<AnneauVue
         })
         .collect();
 
-    Ok(AnneauVue { focal: focal.into(), voisins })
+    Ok(AnneauVue {
+        focal: focal.into(),
+        voisins,
+    })
 }
 
 /// Centroïde moyen des albums de chaque artiste, à partir des centroïdes
 /// d'album déjà chargés — pas de nouvelle requête SQL, une simple agrégation
 /// d'un cran supplémentaire sur une donnée déjà en cache.
-fn centroides_par_artiste(centroides: &CentroidesAlbums, noeuds: &NoeudsAlbums) -> HashMap<String, Vec<f32>> {
+fn centroides_par_artiste(
+    centroides: &CentroidesAlbums,
+    noeuds: &NoeudsAlbums,
+) -> HashMap<String, Vec<f32>> {
     let mut cumul: HashMap<String, (Vec<f32>, u32)> = HashMap::new();
     for (id, v) in centroides {
-        let Some(noeud) = noeuds.get(id) else { continue };
+        let Some(noeud) = noeuds.get(id) else {
+            continue;
+        };
         let e = cumul
             .entry(noeud.artist.clone())
             .or_insert_with(|| (vec![0.0; v.len()], 0));
@@ -2570,7 +2708,11 @@ fn centroides_par_artiste(centroides: &CentroidesAlbums, noeuds: &NoeudsAlbums) 
 /// linéaire — une bibliothèque compte bien moins d'artistes que d'albums,
 /// inutile d'y consacrer un graphe.
 #[tauri::command(async)]
-fn artistes_proches(etat: State<Etat>, artiste: String, k: usize) -> Result<Vec<(String, f32)>, String> {
+fn artistes_proches(
+    etat: State<Etat>,
+    artiste: String,
+    k: usize,
+) -> Result<Vec<(String, f32)>, String> {
     let (centroides, noeuds) = charger_centroides_albums(&etat)?;
     let par_artiste = centroides_par_artiste(&centroides, &noeuds);
     let Some(focal) = par_artiste.get(&artiste) else {
@@ -2644,7 +2786,11 @@ fn reseau_albums(etat: State<Etat>, limite_arcs: usize) -> Result<AnneauReseau, 
         if id == voisin {
             continue;
         }
-        let paire = if id < voisin { (id, voisin) } else { (voisin, id) };
+        let paire = if id < voisin {
+            (id, voisin)
+        } else {
+            (voisin, id)
+        };
         if vues.insert(paire) {
             arcs.push((id, voisin, d2));
         }
@@ -2655,8 +2801,15 @@ fn reseau_albums(etat: State<Etat>, limite_arcs: usize) -> Result<AnneauReseau, 
     arcs.truncate(limite_arcs);
     let arcs = arcs
         .into_iter()
-        .filter(|(a, b, _)| noeuds.get(a).is_some_and(|n| n.famille.is_some()) && noeuds.get(b).is_some_and(|n| n.famille.is_some()))
-        .map(|(a, b, distance)| AnneauArcBase { a: a.to_string(), b: b.to_string(), distance })
+        .filter(|(a, b, _)| {
+            noeuds.get(a).is_some_and(|n| n.famille.is_some())
+                && noeuds.get(b).is_some_and(|n| n.famille.is_some())
+        })
+        .map(|(a, b, distance)| AnneauArcBase {
+            a: a.to_string(),
+            b: b.to_string(),
+            distance,
+        })
         .collect();
 
     Ok(AnneauReseau { albums, arcs })
@@ -2714,7 +2867,9 @@ fn path_artist(
 ) -> Result<Vec<TrackRow>, String> {
     let ids: Vec<i64> = {
         let lib = verrou(&etat.lib);
-        let albums = lib.albums_of_artist(mbid.as_deref(), &artist).map_err(echec)?;
+        let albums = lib
+            .albums_of_artist(mbid.as_deref(), &artist)
+            .map_err(echec)?;
         let mut ids = Vec::new();
         for album in albums {
             ids.extend(
@@ -2754,7 +2909,9 @@ fn shuffle_artist(
 ) -> Result<Vec<TrackRow>, String> {
     let mut pistes = {
         let lib = verrou(&etat.lib);
-        let albums = lib.albums_of_artist(mbid.as_deref(), &artist).map_err(echec)?;
+        let albums = lib
+            .albums_of_artist(mbid.as_deref(), &artist)
+            .map_err(echec)?;
         let mut pistes = Vec::new();
         for album in albums {
             pistes.extend(
@@ -2896,10 +3053,12 @@ fn path_texte_interpreter(
     // que de ce qui existe, puis utilisés pour écarter ce qu'il inventerait
     // quand même. Illisible : on s'en passe (aucun filtre de genre) plutôt que
     // de refuser toute interprétation pour cela.
-    let vocabulaire = verrou(&etat.lib).vocabulaire_genres(usize::MAX).unwrap_or_else(|e| {
-        tracing::warn!(erreur = %e, "vocabulaire de genres illisible, interprétation sans");
-        Vec::new()
-    });
+    let vocabulaire = verrou(&etat.lib)
+        .vocabulaire_genres(usize::MAX)
+        .unwrap_or_else(|e| {
+            tracing::warn!(erreur = %e, "vocabulaire de genres illisible, interprétation sans");
+            Vec::new()
+        });
     let interpretation = rusty_music_core::ollama::interpreter(
         rusty_music_core::ollama::HOTE_DEFAUT,
         &modele,
@@ -2908,7 +3067,11 @@ fn path_texte_interpreter(
     )
     .map_err(echec)?;
 
-    let n = interpretation.n.map(|n| n as usize).unwrap_or(n_defaut).max(1);
+    let n = interpretation
+        .n
+        .map(|n| n as usize)
+        .unwrap_or(n_defaut)
+        .max(1);
     let depart = resoudre_piste_nommee(
         &etat,
         "départ",
@@ -3138,12 +3301,20 @@ fn parties_du_plan(
 ) -> Result<Vec<PartiePlan>, String> {
     use rusty_music_core::filtres_playlist::NiveauEnergie;
     if plan.parties.is_empty() {
-        let cibles = plan.etapes.iter().map(|e| embed(e)).collect::<Result<Vec<_>, _>>()?;
+        let cibles = plan
+            .etapes
+            .iter()
+            .map(|e| embed(e))
+            .collect::<Result<Vec<_>, _>>()?;
         return Ok(vec![PartiePlan {
             libelle: "Playlist".into(),
             filtres: plan.filtres.clone(),
             cible_ms: plan.duree_minutes.map(|m| i64::from(m) * 60_000),
-            n: if plan.duree_minutes.is_some() { None } else { Some(plan.n.max(1)) },
+            n: if plan.duree_minutes.is_some() {
+                None
+            } else {
+                Some(plan.n.max(1))
+            },
             cibles,
         }]);
     }
@@ -3177,7 +3348,13 @@ fn parties_du_plan(
                 (None, Some(n)) => Some(n as usize),
                 (None, None) => Some((plan.n / k).max(3)),
             };
-            Ok(PartiePlan { libelle, filtres, cible_ms, n, cibles: vec![embed(&p.description)?] })
+            Ok(PartiePlan {
+                libelle,
+                filtres,
+                cible_ms,
+                n,
+                cibles: vec![embed(&p.description)?],
+            })
         })
         .collect()
 }
@@ -3219,8 +3396,14 @@ fn composer_route(
         vecteurs,
         base,
         par_id: vecteurs.iter().map(|(id, v)| (*id, v.as_slice())).collect(),
-        artiste_de: carac.iter().filter_map(|p| p.artiste.clone().map(|a| (p.id, a))).collect(),
-        duree_de: carac.iter().filter_map(|p| p.duree_ms.map(|d| (p.id, d))).collect(),
+        artiste_de: carac
+            .iter()
+            .filter_map(|p| p.artiste.clone().map(|a| (p.id, a)))
+            .collect(),
+        duree_de: carac
+            .iter()
+            .filter_map(|p| p.duree_ms.map(|d| (p.id, d)))
+            .collect(),
         seed,
         bruit,
     };
@@ -3240,14 +3423,22 @@ fn composer_route(
         resultat.fin = route.len();
         utilises.extend(morceaux);
         for r in &resultat.relaches {
-            relaches.push(if multi { format!("{} — {r}", partie.libelle) } else { r.clone() });
+            relaches.push(if multi {
+                format!("{} — {r}", partie.libelle)
+            } else {
+                r.clone()
+            });
         }
         resultats.push(resultat);
     }
     if route.is_empty() {
         return Err("aucune marche possible avec ces filtres".into());
     }
-    Ok(Composition { route, relaches, parties: resultats })
+    Ok(Composition {
+        route,
+        relaches,
+        parties: resultats,
+    })
 }
 
 /// Compose **une** partie. Rend ses morceaux (éventuellement aucun, si tout ce
@@ -3274,7 +3465,8 @@ fn composer_partie(
         None => partie.n.unwrap_or(plan.n).max(1),
     };
 
-    let selection = filtres_playlist::selectionner(carac, &partie.filtres, (estimation / 2).clamp(5, 40));
+    let selection =
+        filtres_playlist::selectionner(carac, &partie.filtres, (estimation / 2).clamp(5, 40));
     let mut permis: Option<HashSet<i64>> = match selection {
         None => None,
         Some(sel) => {
@@ -3292,8 +3484,14 @@ fn composer_partie(
     // Une partie ne reprend pas un morceau déjà pris — et sans filtre, il faut
     // quand même l'écrire explicitement pour pouvoir les retirer.
     if !utilises.is_empty() {
-        let tous = permis.take().unwrap_or_else(|| carac.iter().map(|p| p.id).collect());
-        permis = Some(tous.into_iter().filter(|id| !utilises.contains(id)).collect());
+        let tous = permis
+            .take()
+            .unwrap_or_else(|| carac.iter().map(|p| p.id).collect());
+        permis = Some(
+            tous.into_iter()
+                .filter(|id| !utilises.contains(id))
+                .collect(),
+        );
     }
     // Départ et arrivée nommés : admis quoi qu'il arrive.
     if let Some(ids) = permis.as_mut() {
@@ -3305,25 +3503,29 @@ fn composer_partie(
         }
     }
     let n_admissibles = permis.as_ref().map_or(carac.len(), HashSet::len);
-    let resultat = |depart_pourquoi: String, relaches: Vec<String>, permis: &Option<HashSet<i64>>| {
-        let mut ids: Vec<i64> = permis.iter().flatten().copied().collect();
-        ids.sort_unstable();
-        PartieResultat {
-            libelle: partie.libelle.clone(),
-            debut: 0,
-            fin: 0,
-            duree_ms: 0,
-            cible_ms: partie.cible_ms,
-            n_admissibles,
-            entonnoir: entonnoir.clone(),
-            depart_pourquoi,
-            relaches,
-            ids_admissibles: ids,
-        }
-    };
+    let resultat =
+        |depart_pourquoi: String, relaches: Vec<String>, permis: &Option<HashSet<i64>>| {
+            let mut ids: Vec<i64> = permis.iter().flatten().copied().collect();
+            ids.sort_unstable();
+            PartieResultat {
+                libelle: partie.libelle.clone(),
+                debut: 0,
+                fin: 0,
+                duree_ms: 0,
+                cible_ms: partie.cible_ms,
+                n_admissibles,
+                entonnoir: entonnoir.clone(),
+                depart_pourquoi,
+                relaches,
+                ids_admissibles: ids,
+            }
+        };
     if permis.as_ref().is_some_and(HashSet::is_empty) {
         relaches.push("tout ce qui convenait est déjà pris par une partie précédente".into());
-        return Ok((Vec::new(), resultat("aucun départ possible".into(), relaches, &permis)));
+        return Ok((
+            Vec::new(),
+            resultat("aucun départ possible".into(), relaches, &permis),
+        ));
     }
 
     let moyenne_ms = filtres_playlist::duree_moyenne_ms(carac, permis.as_ref()).max(1);
@@ -3365,8 +3567,11 @@ fn composer_partie(
         Some(ids) => {
             let presents = vecteurs.iter().filter(|(id, _)| ids.contains(id)).count();
             if presents * 2 < vecteurs.len() {
-                let sous: Vec<Empreinte> =
-                    vecteurs.iter().filter(|(id, _)| ids.contains(id)).cloned().collect();
+                let sous: Vec<Empreinte> = vecteurs
+                    .iter()
+                    .filter(|(id, _)| ids.contains(id))
+                    .cloned()
+                    .collect();
                 dedie = Graphe::construire(
                     &sous,
                     rusty_music_analysis::chemin::K_VOISINS,
@@ -3443,14 +3648,26 @@ fn composer_partie(
     // les deux extrémités et l'allure du trajet (`echantillonner`).
     let duree_totale = |r: &[i64]| -> i64 {
         r.iter()
-            .map(|id| ctx.duree_de.get(id).copied().filter(|d| *d > 0).unwrap_or(filtres_playlist::DUREE_DEFAUT_MS))
+            .map(|id| {
+                ctx.duree_de
+                    .get(id)
+                    .copied()
+                    .filter(|d| *d > 0)
+                    .unwrap_or(filtres_playlist::DUREE_DEFAUT_MS)
+            })
             .sum()
     };
     let route = match partie.cible_ms {
         Some(cible) => {
             // Une arrivée nommée termine la dernière partie : on ne la coupe pas.
             let garder_fin = derniere && plan.arrivee.is_some();
-            let r = filtres_playlist::ajuster_a_duree(&route, &ctx.duree_de, cible, echantillonner, garder_fin);
+            let r = filtres_playlist::ajuster_a_duree(
+                &route,
+                &ctx.duree_de,
+                cible,
+                echantillonner,
+                garder_fin,
+            );
             let total = duree_totale(&r);
             if total * 10 < cible * 9 {
                 relaches.push(format!(
@@ -3526,7 +3743,9 @@ fn charger_vecteurs(etat: &State<Etat>) -> Result<Arc<Vec<Empreinte>>, String> {
         cache.valeur = Some(neuf);
     }
     cache.touche = Some(Instant::now());
-    Ok(Arc::clone(cache.valeur.as_ref().expect("vient d'être posé")))
+    Ok(Arc::clone(
+        cache.valeur.as_ref().expect("vient d'être posé"),
+    ))
 }
 
 /// Centroïdes d'empreinte par album et leurs métadonnées, mis en cache
@@ -3543,7 +3762,10 @@ fn charger_centroides_albums(
         .map_err(echec)?;
 
     let mut cache = verrou(&etat.album_centroides);
-    let a_jour = cache.valeur.as_ref().is_some_and(|(taille, _, _)| *taille == n);
+    let a_jour = cache
+        .valeur
+        .as_ref()
+        .is_some_and(|(taille, _, _)| *taille == n);
     if !a_jour {
         let debut = std::time::Instant::now();
         let centroides = Arc::new(
@@ -3597,8 +3819,16 @@ fn charger_graphe_albums(
         }
     }
     let debut = std::time::Instant::now();
-    let g = Arc::new(Graphe::construire(centroides, ANNEAU_K_MAX, coeurs_arriere_plan()));
-    tracing::info!(albums = n, ms = debut.elapsed().as_millis(), "graphe des albums");
+    let g = Arc::new(Graphe::construire(
+        centroides,
+        ANNEAU_K_MAX,
+        coeurs_arriere_plan(),
+    ));
+    tracing::info!(
+        albums = n,
+        ms = debut.elapsed().as_millis(),
+        "graphe des albums"
+    );
     cache.valeur = Some((n, Arc::clone(&g)));
     cache.touche = Some(Instant::now());
     Ok(g)
@@ -3688,7 +3918,9 @@ fn suspect_genres(etat: State<Etat>) -> Result<Vec<(i64, String, String, String)
 
 /// Albums présents sous plusieurs éditions chez le même artiste.
 #[tauri::command(async)]
-fn multiple_editions(etat: State<Etat>) -> Result<Vec<rusty_music_core::db::EditionsAlbum>, String> {
+fn multiple_editions(
+    etat: State<Etat>,
+) -> Result<Vec<rusty_music_core::db::EditionsAlbum>, String> {
     verrou(&etat.lib).editions_multiples().map_err(echec)
 }
 
@@ -3773,10 +4005,9 @@ fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String
                     i64::MAX,
                     fils,
                     |faits, total| {
-                        { let mut a = verrou(&etat.analyse);
-                            a.faits = faits;
-                            a.total = total;
-                        }
+                        let mut a = verrou(&etat.analyse);
+                        a.faits = faits;
+                        a.total = total;
                     },
                 )
                 .map_err(|e| e.to_string())
@@ -3832,7 +4063,11 @@ struct EtatDescripteurs {
 /// justifie de remesurer une bibliothèque déjà couverte — les empreintes,
 /// elles, n'ont pas de raison de changer sans changer de modèle.
 #[tauri::command(async)]
-fn start_descripteurs(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>) -> Result<(), String> {
+fn start_descripteurs(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    force: Option<bool>,
+) -> Result<(), String> {
     let force = force.unwrap_or(false);
     {
         let mut d = verrou(&etat.descripteurs);
@@ -3850,19 +4085,20 @@ fn start_descripteurs(app: tauri::AppHandle, etat: State<Etat>, force: Option<bo
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.descripteurs);
 
-        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
-            let fils = fils_pour_passe(&lib);
-            if force {
-                lib.effacer_descripteurs().map_err(|e| e.to_string())?;
-            }
-            rusty_music_analysis::passe::descripteurs(&lib, i64::MAX, fils, |faits, total| {
-                { let mut d = verrou(&etat.descripteurs);
+        let issue = Library::open(&db)
+            .map_err(|e| e.to_string())
+            .and_then(|lib| {
+                let fils = fils_pour_passe(&lib);
+                if force {
+                    lib.effacer_descripteurs().map_err(|e| e.to_string())?;
+                }
+                rusty_music_analysis::passe::descripteurs(&lib, i64::MAX, fils, |faits, total| {
+                    let mut d = verrou(&etat.descripteurs);
                     d.faits = faits;
                     d.total = total;
-                }
-            })
-            .map_err(|e| e.to_string())
-        });
+                })
+                .map_err(|e| e.to_string())
+            });
 
         let bilan = match issue {
             Ok(r) => format!(
@@ -3911,7 +4147,11 @@ struct EtatLoudness {
 /// [`start_descripteurs`] : décode le fichier entier (le seul coût de cette
 /// passe), reprenable, tourne sur son propre fil et sa propre connexion.
 #[tauri::command(async)]
-fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>) -> Result<(), String> {
+fn start_loudness(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    force: Option<bool>,
+) -> Result<(), String> {
     let force = force.unwrap_or(false);
     {
         let mut l = verrou(&etat.loudness);
@@ -3929,19 +4169,20 @@ fn start_loudness(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>)
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.loudness);
 
-        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
-            let fils = fils_pour_passe(&lib);
-            if force {
-                lib.effacer_loudness().map_err(|e| e.to_string())?;
-            }
-            rusty_music_core::loudness::actualiser(&lib, i64::MAX, fils, |faits, total| {
-                { let mut l = verrou(&etat.loudness);
+        let issue = Library::open(&db)
+            .map_err(|e| e.to_string())
+            .and_then(|lib| {
+                let fils = fils_pour_passe(&lib);
+                if force {
+                    lib.effacer_loudness().map_err(|e| e.to_string())?;
+                }
+                rusty_music_core::loudness::actualiser(&lib, i64::MAX, fils, |faits, total| {
+                    let mut l = verrou(&etat.loudness);
                     l.faits = faits;
                     l.total = total;
-                }
-            })
-            .map_err(|e| e.to_string())
-        });
+                })
+                .map_err(|e| e.to_string())
+            });
 
         let bilan = match issue {
             Ok(b) => format!(
@@ -3980,7 +4221,11 @@ struct EtatVerifPochettes {
 /// l'utilisateur : les signalements se lisent par [`pochettes_suspectes`].
 /// Enchaînée juste après le scan, qui est ce qui amène les fichiers neufs.
 #[tauri::command(async)]
-fn start_verif_pochettes(app: tauri::AppHandle, etat: State<Etat>, force: Option<bool>) -> Result<(), String> {
+fn start_verif_pochettes(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    force: Option<bool>,
+) -> Result<(), String> {
     let force = force.unwrap_or(false);
     {
         let mut v = verrou(&etat.verif_pochettes);
@@ -3998,15 +4243,17 @@ fn start_verif_pochettes(app: tauri::AppHandle, etat: State<Etat>, force: Option
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.verif_pochettes);
 
-        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
-            let fils = fils_pour_passe(&lib);
-            rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |faits, total| {
-                let mut v = verrou(&etat.verif_pochettes);
-                v.faits = faits;
-                v.total = total;
-            })
+        let issue = Library::open(&db)
             .map_err(|e| e.to_string())
-        });
+            .and_then(|lib| {
+                let fils = fils_pour_passe(&lib);
+                rusty_music_core::pochettes_verif::actualiser(&lib, fils, force, |faits, total| {
+                    let mut v = verrou(&etat.verif_pochettes);
+                    v.faits = faits;
+                    v.total = total;
+                })
+                .map_err(|e| e.to_string())
+            });
 
         let bilan = match issue {
             Ok(b) => format!(
@@ -4058,13 +4305,17 @@ fn ignore_pochette_suspecte(etat: State<Etat>, dossier: String) -> Result<(), St
 fn pochette_du_dossier(etat: State<Etat>, dossier: String) -> Result<(), String> {
     let pistes = {
         let lib = verrou(&etat.lib);
-        lib.choisir_pochette_dossier(&dossier, true).map_err(echec)?;
+        lib.choisir_pochette_dossier(&dossier, true)
+            .map_err(echec)?;
         lib.pistes_du_dossier(&dossier).map_err(echec)?
     };
     let cache = etat.db.with_file_name("pochettes");
     for p in pistes {
         let chemin = Path::new(&p);
-        if let Some(mtime) = std::fs::metadata(chemin).ok().and_then(|m| m.modified().ok()) {
+        if let Some(mtime) = std::fs::metadata(chemin)
+            .ok()
+            .and_then(|m| m.modified().ok())
+        {
             let _ = std::fs::remove_file(cache.join(cle_pochette(chemin, mtime)));
         }
     }
@@ -4094,7 +4345,12 @@ fn gain_pour(etat: &Etat, chemin: &Path) -> f32 {
 /// album). Réouvre le morceau en cours en tâche de fond à la même position —
 /// même recette que `set_amelioration`.
 #[tauri::command(async)]
-fn set_normalisation(app: tauri::AppHandle, etat: State<Etat>, actif: bool, album: bool) -> Result<(), String> {
+fn set_normalisation(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    actif: bool,
+    album: bool,
+) -> Result<(), String> {
     etat.normalisation.actif.store(actif, Ordering::Relaxed);
     etat.normalisation.album.store(album, Ordering::Relaxed);
 
@@ -4169,14 +4425,14 @@ fn start_enrichment(
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             let total = lib.mb_avancement().map(|(_, t, _)| t).unwrap_or(0) as usize;
-            { let mut e = verrou(&etat.enrichissement);
+            {
+                let mut e = verrou(&etat.enrichissement);
                 e.total = total;
             }
             rusty_music_core::enrichir::enrichir(&mut lib, &client, usize::MAX, |b| {
-                { let mut e = verrou(&etat.enrichissement);
-                    e.artistes = b.artistes;
-                    e.avec_genre = b.avec_genre;
-                }
+                let mut e = verrou(&etat.enrichissement);
+                e.artistes = b.artistes;
+                e.avec_genre = b.avec_genre;
             })
             .map_err(|e| e.to_string())
         })();
@@ -4256,10 +4512,9 @@ fn start_popularite(
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::popularite::actualiser(&mut lib, &lb, &dz, depuis, usize::MAX, |b| {
-                { let mut p = verrou(&etat.popularite);
-                    p.faits = b.faits;
-                    p.total = b.total;
-                }
+                let mut p = verrou(&etat.popularite);
+                p.faits = b.faits;
+                p.total = b.total;
             })
             .map_err(|e| e.to_string())
         })();
@@ -4317,13 +4572,20 @@ struct EtatBio {
 /// **exclusivement par MBID** : un artiste sans `mb_artist_id` n'est jamais
 /// interrogé par nom (`docs/enrichissement-lecteur.md`).
 #[tauri::command(async)]
-fn start_biographies(app: tauri::AppHandle, etat: State<Etat>, cle: Option<String>) -> Result<(), String> {
+fn start_biographies(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    cle: Option<String>,
+) -> Result<(), String> {
     {
         let mut b = verrou(&etat.biographies);
         if b.en_cours {
             return Err("une passe de biographies est déjà en cours".into());
         }
-        *b = EtatBio { en_cours: true, ..Default::default() };
+        *b = EtatBio {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let db = etat.db.clone();
@@ -4334,16 +4596,18 @@ fn start_biographies(app: tauri::AppHandle, etat: State<Etat>, cle: Option<Strin
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::biographies::actualiser(&mut lib, &client, 0, usize::MAX, |b| {
-                { let mut e = verrou(&etat.biographies);
-                    e.faits = b.faits;
-                    e.total = b.total;
-                }
+                let mut e = verrou(&etat.biographies);
+                e.faits = b.faits;
+                e.total = b.total;
             })
             .map_err(|e| e.to_string())
         })();
 
         let bilan = match issue {
-            Ok(b) => format!("{} artistes interrogés, {} avec une biographie", b.interroges, b.trouves),
+            Ok(b) => format!(
+                "{} artistes interrogés, {} avec une biographie",
+                b.interroges, b.trouves
+            ),
             Err(e) => format!("échec : {e}"),
         };
         tracing::info!(%bilan, "passe de biographies terminée");
@@ -4364,7 +4628,10 @@ fn biographies_state(etat: State<Etat>) -> Result<EtatBio, String> {
 /// grille d'albums au centre (`docs/interface-guidelines.md`, Règle 1,
 /// exception du 15 septembre 2026) — pas de MBID, pas d'appel côté UI.
 #[tauri::command(async)]
-fn bio_artiste(etat: State<Etat>, mbid: String) -> Result<Option<rusty_music_core::db::BioArtiste>, String> {
+fn bio_artiste(
+    etat: State<Etat>,
+    mbid: String,
+) -> Result<Option<rusty_music_core::db::BioArtiste>, String> {
     verrou(&etat.lib).bio_pour_artiste(&mbid).map_err(echec)
 }
 
@@ -4389,13 +4656,20 @@ const CRITIQUES_PEREMPTION_JOURS: i64 = 180;
 /// albums jamais vérifiés ; à `true`, revérifie aussi ceux de plus de
 /// [`CRITIQUES_PEREMPTION_JOURS`] (une critique neuve reste rare).
 #[tauri::command(async)]
-fn start_critiques(app: tauri::AppHandle, etat: State<Etat>, rafraichir: bool) -> Result<(), String> {
+fn start_critiques(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    rafraichir: bool,
+) -> Result<(), String> {
     {
         let mut c = verrou(&etat.critiques);
         if c.en_cours {
             return Err("une passe de critiques est déjà en cours".into());
         }
-        *c = EtatCritiques { en_cours: true, ..Default::default() };
+        *c = EtatCritiques {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let db = etat.db.clone();
@@ -4414,10 +4688,9 @@ fn start_critiques(app: tauri::AppHandle, etat: State<Etat>, rafraichir: bool) -
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
-                { let mut e = verrou(&etat.critiques);
-                    e.faits = b.faits;
-                    e.total = b.total;
-                }
+                let mut e = verrou(&etat.critiques);
+                e.faits = b.faits;
+                e.total = b.total;
             })
             .map_err(|e| e.to_string())
         })();
@@ -4445,7 +4718,10 @@ fn critiques_state(etat: State<Etat>) -> Result<EtatCritiques, String> {
 
 /// Les critiques du morceau `id`, via son release-group MusicBrainz.
 #[tauri::command(async)]
-fn critiques_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::Critique>, String> {
+fn critiques_piste(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<Vec<rusty_music_core::db::Critique>, String> {
     verrou(&etat.lib).critiques_pour_piste(id).map_err(echec)
 }
 
@@ -4453,7 +4729,9 @@ fn critiques_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::d
 /// invite à en écrire une, même (surtout) quand `critiques_piste` est vide.
 #[tauri::command(async)]
 fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<String>, String> {
-    let rg = verrou(&etat.lib).release_group_pour_piste(id).map_err(echec)?;
+    let rg = verrou(&etat.lib)
+        .release_group_pour_piste(id)
+        .map_err(echec)?;
     Ok(rg.map(|mbid| rusty_music_core::critiques::url_ecrire_critique(&mbid)))
 }
 
@@ -4474,13 +4752,21 @@ const LASTFM_PEREMPTION_JOURS: i64 = 180;
 /// (gratuite, sur last.fm/api) : contrairement aux autres sources, Last.fm
 /// n'a pas de clé de test partagée.
 #[tauri::command(async)]
-fn start_lastfm(app: tauri::AppHandle, etat: State<Etat>, cle: String, rafraichir: bool) -> Result<(), String> {
+fn start_lastfm(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    cle: String,
+    rafraichir: bool,
+) -> Result<(), String> {
     {
         let mut e = verrou(&etat.lastfm);
         if e.en_cours {
             return Err("une passe Last.fm est déjà en cours".into());
         }
-        *e = EtatLastfm { en_cours: true, ..Default::default() };
+        *e = EtatLastfm {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let db = etat.db.clone();
@@ -4499,10 +4785,9 @@ fn start_lastfm(app: tauri::AppHandle, etat: State<Etat>, cle: String, rafraichi
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::lastfm_pass::actualiser(&mut lib, &client, depuis, usize::MAX, |b| {
-                { let mut e = verrou(&etat.lastfm);
-                    e.faits = b.faits;
-                    e.total = b.total;
-                }
+                let mut e = verrou(&etat.lastfm);
+                e.faits = b.faits;
+                e.total = b.total;
             })
             .map_err(|e| e.to_string())
         })();
@@ -4566,7 +4851,10 @@ fn families_detail(etat: State<Etat>) -> Result<Vec<rusty_music_core::db::VoteFa
 /// sens que pour cet appel, jamais réutilisés par la carte, l'anneau ou la
 /// frise.
 #[tauri::command(async)]
-fn subdiviser_famille(etat: State<Etat>, cluster: i64) -> Result<Vec<rusty_music_core::db::VoteFamille>, String> {
+fn subdiviser_famille(
+    etat: State<Etat>,
+    cluster: i64,
+) -> Result<Vec<rusty_music_core::db::VoteFamille>, String> {
     const K: usize = 3;
     let lib = verrou(&etat.lib);
     let modele = rusty_music_analysis::passe::MODELE;
@@ -4605,7 +4893,11 @@ struct EtatDiscogsLiaison {
 /// MusicBrainz par édition) : peut tourner à chaque enrichissement, contrairement
 /// à l'import lourd du dump mensuel (CLI/cron, voir `docs/enrichissement-lecteur.md`).
 #[tauri::command(async)]
-fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: String) -> Result<(), String> {
+fn start_discogs_liaison(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    contact: String,
+) -> Result<(), String> {
     let contact = contact.trim().to_string();
     if !contact.contains('@') {
         return Err("MusicBrainz demande une adresse de contact valable.".into());
@@ -4615,7 +4907,10 @@ fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: Stri
         if d.en_cours {
             return Err("une passe de liaison Discogs est déjà en cours".into());
         }
-        *d = EtatDiscogsLiaison { en_cours: true, ..Default::default() };
+        *d = EtatDiscogsLiaison {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let db = etat.db.clone();
@@ -4626,17 +4921,19 @@ fn start_discogs_liaison(app: tauri::AppHandle, etat: State<Etat>, contact: Stri
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::discogs_import::lier(&mut lib, &client, usize::MAX, |b| {
-                { let mut e = verrou(&etat.discogs_liaison);
-                    e.faits = b.faits;
-                    e.total = b.total;
-                    e.liees = b.liees;
-                }
+                let mut e = verrou(&etat.discogs_liaison);
+                e.faits = b.faits;
+                e.total = b.total;
+                e.liees = b.liees;
             })
             .map_err(|e| e.to_string())
         })();
 
         let bilan = match issue {
-            Ok(b) => format!("{} éditions vérifiées, {} reliées à Discogs", b.interrogees, b.liees),
+            Ok(b) => format!(
+                "{} éditions vérifiées, {} reliées à Discogs",
+                b.interrogees, b.liees
+            ),
             Err(e) => format!("échec : {e}"),
         };
         tracing::info!(%bilan, "passe de liaison Discogs terminée");
@@ -4691,7 +4988,10 @@ fn discogs_dump_info(etat: State<Etat>) -> Result<Option<DumpDiscogsInfo>, Strin
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    Ok(Some(DumpDiscogsInfo { octets: m.len(), telecharge_le }))
+    Ok(Some(DumpDiscogsInfo {
+        octets: m.len(),
+        telecharge_le,
+    }))
 }
 
 /// Lance le téléchargement du dernier dump Discogs (`releases.xml.gz`, ≈ 11
@@ -4703,19 +5003,22 @@ fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), St
         if d.en_cours {
             return Err("un téléchargement du dump Discogs est déjà en cours".into());
         }
-        *d = EtatDiscogsDump { en_cours: true, ..Default::default() };
+        *d = EtatDiscogsDump {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let chemin = chemin_dump_discogs(&etat);
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.discogs_dump);
-        let issue = rusty_music_core::discogs_import::telecharger_dernier_dump(&chemin, |vus, total| {
-            { let mut d = verrou(&etat.discogs_dump);
+        let issue =
+            rusty_music_core::discogs_import::telecharger_dernier_dump(&chemin, |vus, total| {
+                let mut d = verrou(&etat.discogs_dump);
                 d.octets = vus;
                 d.total = total;
-            }
-        });
+            });
 
         let bilan = match issue {
             Ok(()) => {
@@ -4775,23 +5078,27 @@ fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), 
         if i.en_cours {
             return Err("un import du dump Discogs est déjà en cours".into());
         }
-        *i = EtatDiscogsImport { en_cours: true, ..Default::default() };
+        *i = EtatDiscogsImport {
+            en_cours: true,
+            ..Default::default()
+        };
     }
 
     let db = etat.db.clone();
     std::thread::spawn(move || {
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.discogs_import);
-        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|mut lib| {
-            rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
-                { let mut i = verrou(&etat.discogs_import);
+        let issue = Library::open(&db)
+            .map_err(|e| e.to_string())
+            .and_then(|mut lib| {
+                rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
+                    let mut i = verrou(&etat.discogs_import);
                     i.editions_vues = b.editions_vues;
                     i.editions_retenues = b.editions_retenues;
                     i.fragments_malformes = b.fragments_malformes;
-                }
-            })
-            .map_err(|e| e.to_string())
-        });
+                })
+                .map_err(|e| e.to_string())
+            });
 
         let bilan = match issue {
             Ok(b) => format!(
@@ -4828,7 +5135,10 @@ fn discogs_import_utile(etat: State<Etat>) -> Result<bool, String> {
 /// tant que la liaison et l'import mensuel n'ont pas encore couvert cette
 /// édition, jamais une valeur inventée.
 #[tauri::command(async)]
-fn credits_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::CreditDiscogs>, String> {
+fn credits_piste(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<Vec<rusty_music_core::db::CreditDiscogs>, String> {
     verrou(&etat.lib).credits_pour_piste(id).map_err(echec)
 }
 
@@ -4836,7 +5146,10 @@ fn credits_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db:
 /// édition MusicBrainz — vide tant que la liaison et l'import mensuel n'ont
 /// pas encore couvert cette édition, jamais une valeur inventée.
 #[tauri::command(async)]
-fn labels_piste(etat: State<Etat>, id: i64) -> Result<Vec<rusty_music_core::db::LabelDiscogs>, String> {
+fn labels_piste(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<Vec<rusty_music_core::db::LabelDiscogs>, String> {
     verrou(&etat.lib).labels_pour_piste(id).map_err(echec)
 }
 
@@ -4870,7 +5183,8 @@ fn artist_links(
     let liens = client.relations_artiste(&mbid).map_err(|e| e.to_string())?;
 
     let mut lib = verrou(&etat.lib);
-    lib.enregistrer_liens_artiste(&mbid, &liens).map_err(echec)?;
+    lib.enregistrer_liens_artiste(&mbid, &liens)
+        .map_err(echec)?;
     lib.liens_artiste(&mbid).map_err(echec)
 }
 
@@ -5010,7 +5324,9 @@ fn valise_iphone(udid: Option<String>) -> EtatIphone {
     match iphone::app_installee(&choisi) {
         Ok(oui) => e.app_installee = oui,
         Err(err) => {
-            e.erreur = Some(format!("iPhone injoignable — déverrouillé, sur le même Wi-Fi ? ({err})"));
+            e.erreur = Some(format!(
+                "iPhone injoignable — déverrouillé, sur le même Wi-Fi ? ({err})"
+            ));
             return e;
         }
     }
@@ -5095,7 +5411,9 @@ fn valise_envoyer(
                     ) else {
                         continue;
                     };
-                    let Ok(journal) = valise::lire_journal(&local) else { continue };
+                    let Ok(journal) = valise::lire_journal(&local) else {
+                        continue;
+                    };
                     ecoutes += lib.importer_journal(&journal).map_err(echec)?.nouvelles;
                 }
                 if v.nom != nom {
@@ -5197,7 +5515,10 @@ fn valise_renouveler(app: tauri::AppHandle, etat: State<Etat>, udid: String) -> 
                 .map_err(echec)?;
             let mut dernieres: std::collections::VecDeque<String> = Default::default();
             if let Some(sortie) = enfant.stdout.take() {
-                for ligne in std::io::BufReader::new(sortie).lines().map_while(Result::ok) {
+                for ligne in std::io::BufReader::new(sortie)
+                    .lines()
+                    .map_while(Result::ok)
+                {
                     let ligne = ligne.trim().to_string();
                     if ligne.is_empty() {
                         continue;
@@ -5274,13 +5595,17 @@ async fn decouvrir_pochette(
             Reponse::Non => {}
             Reponse::Panne => panne = true,
         }
-        let r = source_de_pochette(&dossier_cache, &cle_pochette_deezer(&artiste, &titre), || {
-            deezer().pochette_album(&artiste, &titre)
-        });
+        let r = source_de_pochette(
+            &dossier_cache,
+            &cle_pochette_deezer(&artiste, &titre),
+            || deezer().pochette_album(&artiste, &titre),
+        );
         match r {
             Reponse::Image(v) => Ok(Some(v)),
             Reponse::Non if !panne => Ok(None),
-            Reponse::Non | Reponse::Panne => Err("pochette indisponible (panne réseau)".to_string()),
+            Reponse::Non | Reponse::Panne => {
+                Err("pochette indisponible (panne réseau)".to_string())
+            }
         }
     })
     .await
@@ -5338,7 +5663,10 @@ async fn decouvrir_photo_artiste(
 /// ne connaît pas (l'interface se rabat sur sa page de recherche). `Err` :
 /// panne réseau.
 #[tauri::command]
-async fn decouvrir_lien_deezer(artiste: String, titre: Option<String>) -> Result<Option<String>, String> {
+async fn decouvrir_lien_deezer(
+    artiste: String,
+    titre: Option<String>,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || match titre {
         Some(titre) => deezer().lien_album(&artiste, &titre),
         None => deezer().lien_artiste(&artiste),
@@ -5356,7 +5684,11 @@ async fn decouvrir_lien_deezer(artiste: String, titre: Option<String>) -> Result
 /// l'ouverture du mode si la dernière passe est ancienne), sur son propre fil,
 /// avec sa propre connexion. Additive et reprenable.
 #[tauri::command(async)]
-fn start_decouvrir(app: tauri::AppHandle, etat: State<Etat>, contact: String) -> Result<(), String> {
+fn start_decouvrir(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    contact: String,
+) -> Result<(), String> {
     let contact = contact.trim().to_string();
     if !contact.contains('@') {
         return Err("Une adresse de contact valable est demandée pour interroger les API.".into());
@@ -5380,12 +5712,11 @@ fn start_decouvrir(app: tauri::AppHandle, etat: State<Etat>, contact: String) ->
         let issue = (|| {
             let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
             rusty_music_core::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
-                { let mut d = verrou(&etat.decouvrir);
-                    d.artistes = b.artistes;
-                    d.total = b.total;
-                    d.sorties_neuves = b.sorties_neuves;
-                    d.voisins_neufs = b.voisins_neufs;
-                }
+                let mut d = verrou(&etat.decouvrir);
+                d.artistes = b.artistes;
+                d.total = b.total;
+                d.sorties_neuves = b.sorties_neuves;
+                d.voisins_neufs = b.voisins_neufs;
             })
             .map_err(|e| e.to_string())
         })();
@@ -5543,7 +5874,8 @@ fn start_superres(app: tauri::AppHandle, etat: State<Etat>, path: String) -> Res
             }
         };
         tracing::info!(%bilan, source = %path, "régénération HD terminée");
-        { let mut s = verrou(&etat.superres);
+        {
+            let mut s = verrou(&etat.superres);
             s.en_cours = false;
             s.resultat = Some(bilan);
         }
@@ -5625,7 +5957,10 @@ fn vider_cache_hd(etat: State<Etat>) -> Result<(), String> {
 /// ou purger ce que le logiciel pose sur son disque.
 #[tauri::command(async)]
 fn dossier_donnees(etat: State<Etat>) -> Result<String, String> {
-    let d = etat.db.parent().ok_or("la base n'a pas de dossier parent")?;
+    let d = etat
+        .db
+        .parent()
+        .ok_or("la base n'a pas de dossier parent")?;
     Ok(d.display().to_string())
 }
 
@@ -5673,7 +6008,12 @@ fn stockage_logiciel(etat: State<Etat>) -> Result<StockageLogiciel, String> {
         .map(|m| m.len())
         .unwrap_or(0);
 
-    Ok(StockageLogiciel { executable, modeles, base, ville })
+    Ok(StockageLogiciel {
+        executable,
+        modeles,
+        base,
+        ville,
+    })
 }
 
 /// Vitesse de lecture des stems, appliquée immédiatement.
@@ -5886,7 +6226,8 @@ fn start_etirer(
                             cible_transposee(chemin, demi_ton).is_some_and(|c| !c.exists());
                         let issue = transposer_un(chemin, demi_ton);
                         if travail && issue.is_ok() {
-                            { let mut t = verrou(&etat.transpose);
+                            {
+                                let mut t = verrou(&etat.transpose);
                                 t.faits += 1;
                             }
                         }
@@ -6138,18 +6479,19 @@ fn start_demix(
         // posées **avant** la première réponse du serveur, pour que
         // l'interface annonce le téléchargement tout de suite.
         if !variante.presente() {
-            { let mut e = verrou(&etat.demix);
+            {
+                let mut e = verrou(&etat.demix);
                 e.phase = "telechargement".into();
                 e.octets_total = variante.octets();
             }
         }
         let poids = rusty_music_editor::Demixeur::assurer_poids(variante, |vus, total| {
-            { let mut e = verrou(&etat.demix);
-                e.octets_faits = vus;
-                e.octets_total = total.unwrap_or_else(|| variante.octets());
-            }
+            let mut e = verrou(&etat.demix);
+            e.octets_faits = vus;
+            e.octets_total = total.unwrap_or_else(|| variante.octets());
         });
-        { let mut e = verrou(&etat.demix);
+        {
+            let mut e = verrou(&etat.demix);
             e.phase = "separation".into();
             e.octets_faits = 0;
             e.octets_total = 0;
@@ -6160,11 +6502,10 @@ fn start_demix(
             .and_then(|d| {
                 d.chauffer();
                 d.separer_fichier_suivi(&source, &sortie, |p| {
-                    { let mut e = verrou(&etat.demix);
-                        e.segments_faits = p.segments_faits;
-                        e.segments_total = p.segments_total;
-                        e.stem = p.stem.map(str::to_string);
-                    }
+                    let mut e = verrou(&etat.demix);
+                    e.segments_faits = p.segments_faits;
+                    e.segments_total = p.segments_total;
+                    e.stem = p.stem.map(str::to_string);
                 })
             });
 
@@ -6225,7 +6566,10 @@ fn oublier_derives_des_stems(dossier: &Path, gardes: &[PathBuf]) {
     }
     if let Ok(entrees) = std::fs::read_dir(dossier) {
         for p in entrees.filter_map(|e| e.ok()).map(|e| e.path()) {
-            let nom = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let nom = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             if nom.starts_with("transcription-") && nom.ends_with(".json") {
                 let _ = std::fs::remove_file(&p);
             }
@@ -6248,14 +6592,19 @@ struct VarianteDispo {
 #[tauri::command(async)]
 fn demix_variantes() -> Vec<VarianteDispo> {
     use rusty_music_editor::Variante;
-    [Variante::Standard, Variante::SixStems, Variante::Affinee, Variante::RoformerSw]
-        .into_iter()
-        .map(|v| VarianteDispo {
-            nom: v.nom(),
-            presente: v.presente(),
-            megaoctets: v.megaoctets(),
-        })
-        .collect()
+    [
+        Variante::Standard,
+        Variante::SixStems,
+        Variante::Affinee,
+        Variante::RoformerSw,
+    ]
+    .into_iter()
+    .map(|v| VarianteDispo {
+        nom: v.nom(),
+        presente: v.presente(),
+        megaoctets: v.megaoctets(),
+    })
+    .collect()
 }
 
 /// Avancement du démixage. L'interface sonde, faute de rapport intermédiaire.
@@ -6312,7 +6661,8 @@ fn stems_play(
     // serait le morceau d'origine par-dessus ses propres stems. On lui reprend
     // au passage son volume : le curseur de la barre du bas commande la même
     // écoute, les stems ne doivent pas repartir à fond.
-    { let p = verrou(&etat.player);
+    {
+        let p = verrou(&etat.player);
         multi.set_volume(p.volume());
         p.pause();
     }
@@ -6437,7 +6787,12 @@ fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
     let modele = Modele::Complet;
 
     let p = pulsation_de(&etat, &source, &cache, modele)?;
-    Ok(VuePulsation { bpm: p.bpm(), metrique: p.metrique(), temps: p.temps, premiers_temps: p.premiers_temps })
+    Ok(VuePulsation {
+        bpm: p.bpm(),
+        metrique: p.metrique(),
+        temps: p.temps,
+        premiers_temps: p.premiers_temps,
+    })
 }
 
 /// La pulsation de `source`, depuis le cache ou calculée (et mise en cache).
@@ -6465,7 +6820,11 @@ fn pulsation_de(
                 .expect("chargé juste au-dessus")
                 .analyser_avec_cache(source, cache)
                 .map_err(echec)?;
-            tracing::info!(ms = debut.elapsed().as_millis() as u64, temps = p.temps.len(), "pulsation calculée");
+            tracing::info!(
+                ms = debut.elapsed().as_millis() as u64,
+                temps = p.temps.len(),
+                "pulsation calculée"
+            );
             p
         }
     };
@@ -6598,7 +6957,10 @@ fn muscriptor_jeton_present() -> bool {
 #[tauri::command(async)]
 fn telecharger_muscriptor(etat: State<Etat>, jeton: Option<String>) -> Result<(), String> {
     use rusty_music_transcription::muscriptor;
-    let jeton = jeton.map(|j| j.trim().to_string()).filter(|j| !j.is_empty()).or_else(muscriptor::jeton_hugging_face);
+    let jeton = jeton
+        .map(|j| j.trim().to_string())
+        .filter(|j| !j.is_empty())
+        .or_else(muscriptor::jeton_hugging_face);
     {
         let mut t = verrou(&etat.transcription);
         if t.telechargement {
@@ -6629,10 +6991,14 @@ fn transcrire(
     qualite: Option<bool>,
     basses: Option<tablature::Basses>,
 ) -> Result<VueTranscription, String> {
-    use rusty_music_transcription::{basic_pitch, batterie, monophonie, muscriptor, porte, quantification};
+    use rusty_music_transcription::{
+        basic_pitch, batterie, monophonie, muscriptor, porte, quantification,
+    };
     let basses = basses.unwrap_or_default();
     if instrument != "bass" && instrument != "drums" {
-        return Err(format!("transcription de « {instrument} » pas encore disponible"));
+        return Err(format!(
+            "transcription de « {instrument} » pas encore disponible"
+        ));
     }
     let qualite = qualite.unwrap_or(false) && instrument == "bass";
     let chemin = verrou(&etat.lib)
@@ -6642,13 +7008,18 @@ fn transcrire(
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
     let source = PathBuf::from(&chemin);
     let dossier = dossier_stems(&etat, &source);
-    let cache = dossier.join(if qualite { format!("transcription-{instrument}-muscriptor.json") } else { format!("transcription-{instrument}.json") });
+    let cache = dossier.join(if qualite {
+        format!("transcription-{instrument}-muscriptor.json")
+    } else {
+        format!("transcription-{instrument}.json")
+    });
     if let Some(mut t) = std::fs::read(&cache)
         .ok()
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
         .filter(|t| t.version == VERSION_TRANSCRIPTION)
     {
-        let doigtes_a_jour = instrument != "bass" || (t.doigtes == VERSION_DOIGTES && t.basses == basses);
+        let doigtes_a_jour =
+            instrument != "bass" || (t.doigtes == VERSION_DOIGTES && t.basses == basses);
         if doigtes_a_jour && t.grille == VERSION_MESURES {
             return Ok(t);
         }
@@ -6676,19 +7047,36 @@ fn transcrire(
                 t.doigtes = VERSION_DOIGTES;
                 t.basses = basses;
             }
-            let mesures = quantification::quantifier(&t.notes, &pulsation.temps, &pulsation.premiers_temps, metrique);
+            let mesures = quantification::quantifier(
+                &t.notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
             serde_json::to_value(&mesures).map_err(echec)?
         } else {
-            let mesures = quantification::quantifier_coups(&t.coups, &pulsation.temps, &pulsation.premiers_temps, metrique);
+            let mesures = quantification::quantifier_coups(
+                &t.coups,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
             serde_json::to_value(&mesures).map_err(echec)?
         };
         t.grille = VERSION_MESURES;
         if let Ok(o) = serde_json::to_vec(&t) {
             if let Err(e) = std::fs::write(&cache, o) {
-                tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
+                tracing::warn!(
+                    "transcription : cache non écrit ({}) : {e}",
+                    cache.display()
+                );
             }
         }
-        tracing::info!(notes = t.notes.len(), coups = t.coups.len(), "partition reposée sur la grille");
+        tracing::info!(
+            notes = t.notes.len(),
+            coups = t.coups.len(),
+            "partition reposée sur la grille"
+        );
         return Ok(t);
     }
     let (_, stem) = stems_du_dossier(&dossier)
@@ -6712,7 +7100,11 @@ fn transcrire(
             if garde.is_none() {
                 *garde = Some(batterie::Batteur::charger_installe().map_err(echec)?);
             }
-            garde.as_mut().expect("chargé juste au-dessus").activations(&carac, trames, bandes).map_err(echec)?
+            garde
+                .as_mut()
+                .expect("chargé juste au-dessus")
+                .activations(&carac, trames, bandes)
+                .map_err(echec)?
         };
         let coups = batterie::coups(&activations, trames);
         let mesures = quantification::quantifier_coups(
@@ -6721,7 +7113,12 @@ fn transcrire(
             &pulsation.premiers_temps,
             pulsation.metrique().unwrap_or(4),
         );
-        tracing::info!(ms = debut.elapsed().as_millis() as u64, coups = coups.len(), mesures = mesures.len(), "transcription batterie");
+        tracing::info!(
+            ms = debut.elapsed().as_millis() as u64,
+            coups = coups.len(),
+            mesures = mesures.len(),
+            "transcription batterie"
+        );
         let vue = VueTranscription {
             version: VERSION_TRANSCRIPTION,
             instrument,
@@ -6737,12 +7134,20 @@ fn transcrire(
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
             if let Err(e) = std::fs::write(&cache, o) {
-                tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
+                tracing::warn!(
+                    "transcription : cache non écrit ({}) : {e}",
+                    cache.display()
+                );
             }
         }
         return Ok(vue);
     }
-    let mono: Vec<f32> = s.gauche.iter().zip(&s.droite).map(|(g, d)| 0.5 * (g + d)).collect();
+    let mono: Vec<f32> = s
+        .gauche
+        .iter()
+        .zip(&s.droite)
+        .map(|(g, d)| 0.5 * (g + d))
+        .collect();
     drop(s);
     let brutes = if qualite {
         let poids = muscriptor::poids().ok_or_else(|| {
@@ -6760,14 +7165,23 @@ fn transcrire(
         let issue = (|| -> Result<Vec<rusty_music_transcription::Note>, String> {
             let mut garde = verrou(&etat.muscriptor);
             if garde.valeur.is_none() {
-                garde.valeur = Some(muscriptor::Muscriptor::charger(&poids, &muscriptor::appareil()).map_err(echec)?);
+                garde.valeur = Some(
+                    muscriptor::Muscriptor::charger(&poids, &muscriptor::appareil())
+                        .map_err(echec)?,
+                );
             }
             let m = garde.valeur.as_ref().expect("chargé juste au-dessus");
             let (notes, bilan) = m
-                .transcrire(&mono, rusty_music_editor::SR, muscriptor::BASSES, muscriptor::LOT, |faits, total| {
-                    let mut t = verrou(&etat.transcription);
-                    (t.faits, t.total) = (faits, total);
-                })
+                .transcrire(
+                    &mono,
+                    rusty_music_editor::SR,
+                    muscriptor::BASSES,
+                    muscriptor::LOT,
+                    |faits, total| {
+                        let mut t = verrou(&etat.transcription);
+                        (t.faits, t.total) = (faits, total);
+                    },
+                )
                 .map_err(echec)?;
             garde.touche = Some(Instant::now());
             tracing::info!(segments = bilan.segments, jetons = bilan.jetons, boucles = ?bilan.boucles, "MuScriptor");
@@ -6800,11 +7214,21 @@ fn transcrire(
         &pulsation.premiers_temps,
         pulsation.metrique().unwrap_or(4),
     );
-    tracing::info!(ms = debut.elapsed().as_millis() as u64, notes = notes.len(), mesures = mesures.len(), "transcription");
+    tracing::info!(
+        ms = debut.elapsed().as_millis() as u64,
+        notes = notes.len(),
+        mesures = mesures.len(),
+        "transcription"
+    );
     let vue = VueTranscription {
         version: VERSION_TRANSCRIPTION,
         instrument,
-        modele: if qualite { "muscriptor-medium" } else { "basic-pitch" }.into(),
+        modele: if qualite {
+            "muscriptor-medium"
+        } else {
+            "basic-pitch"
+        }
+        .into(),
         notes,
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
@@ -6816,7 +7240,10 @@ fn transcrire(
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {
-            tracing::warn!("transcription : cache non écrit ({}) : {e}", cache.display());
+            tracing::warn!(
+                "transcription : cache non écrit ({}) : {e}",
+                cache.display()
+            );
         }
     }
     Ok(vue)
@@ -6907,11 +7334,20 @@ fn sections_de(etat: &State<Etat>, id: i64) -> Result<VueSections, String> {
         .valeur
         .as_ref()
         .expect("chargé juste au-dessus")
-        .analyser(std::array::from_fn(|i| (quatre[i].0.as_slice(), quatre[i].1.as_slice())));
+        .analyser(std::array::from_fn(|i| {
+            (quatre[i].0.as_slice(), quatre[i].1.as_slice())
+        }));
     garde.touche = Some(Instant::now());
     drop(garde);
-    tracing::info!(ms = debut.elapsed().as_millis() as u64, sections = sections.len(), "sections");
-    let vue = VueSections { version: VERSION_SECTIONS, sections };
+    tracing::info!(
+        ms = debut.elapsed().as_millis() as u64,
+        sections = sections.len(),
+        "sections"
+    );
+    let vue = VueSections {
+        version: VERSION_SECTIONS,
+        sections,
+    };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {
             tracing::warn!("sections : cache non écrit ({}) : {e}", cache.display());
@@ -6943,7 +7379,8 @@ struct EtatStems {
     boucle: Option<(f64, f64)>,
     /// Retours au début de boucle depuis qu'elle est posée — l'interface
     /// s'en sert pour accélérer d'un cran à chaque passage.
-    passages: u32,    /// Latence de la sortie audio : ce que l'on entend a ce retard sur
+    passages: u32,
+    /// Latence de la sortie audio : ce que l'on entend a ce retard sur
     /// `position_ms` (plus de 200 ms en Bluetooth). L'interface la retranche
     /// pour que le curseur de la partition suive l'oreille.
     latence_ms: u64,
@@ -7425,7 +7862,16 @@ fn stems_greffer(
         )?;
         let sections = if sections_disponibles() {
             sections_de(&etat, tid)
-                .map(|v| v.sections.into_iter().map(|x| greffe::Partie { debut_s: x.debut_s, fin_s: x.fin_s, etiquette: x.etiquette }).collect())
+                .map(|v| {
+                    v.sections
+                        .into_iter()
+                        .map(|x| greffe::Partie {
+                            debut_s: x.debut_s,
+                            fin_s: x.fin_s,
+                            etiquette: x.etiquette,
+                        })
+                        .collect()
+                })
                 .unwrap_or_else(|e| {
                     tracing::warn!("greffe : sections indisponibles : {e}");
                     Vec::new()
@@ -7433,13 +7879,21 @@ fn stems_greffer(
         } else {
             Vec::new()
         };
-        Ok(greffe::Grille { metrique: p.metrique(), premiers_temps: p.premiers_temps, sections })
+        Ok(greffe::Grille {
+            metrique: p.metrique(),
+            premiers_temps: p.premiers_temps,
+            sections,
+        })
     };
     let par_mesures = grille_de(&source.path, id)
         .and_then(|a| Ok((a, grille_de(&autre.path, voisin)?)))
         .and_then(|(a, b)| greffe::mesure_a_mesure(&a, &b).map(|()| (a, b)));
     let (plan, repli) = match par_mesures {
-        Ok((a, b)) => (greffe::greffer_par_mesures(Path::new(&remplace), &greffon, &a, &b, &sortie).map_err(echec)?, None),
+        Ok((a, b)) => (
+            greffe::greffer_par_mesures(Path::new(&remplace), &greffon, &a, &b, &sortie)
+                .map_err(echec)?,
+            None,
+        ),
         Err(raison) => {
             tracing::info!("greffe d'un bloc : {raison}");
             let grilles = grilles_des_stems(Path::new(&remplace), &greffon);
@@ -7566,11 +8020,13 @@ fn start_scan(
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.scan);
 
-        let issue = Library::open(&db).map_err(|e| e.to_string()).and_then(|lib| {
-            let jobs = coeurs_arriere_plan();
-            rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, force)
-                .map_err(|e| e.to_string())
-        });
+        let issue = Library::open(&db)
+            .map_err(|e| e.to_string())
+            .and_then(|lib| {
+                let jobs = coeurs_arriere_plan();
+                rusty_music_core::scan::scan_root_jobs(&lib, &racine, jobs, force)
+                    .map_err(|e| e.to_string())
+            });
 
         let succes = issue.is_ok();
         let bilan = match issue {
@@ -7633,12 +8089,18 @@ async fn cover(etat: State<'_, Etat>, path: String) -> Result<Option<String>, St
         .map_err(echec)?
 }
 
-fn cover_extraire(dossier_cache: &Path, db_path: &Path, path: &str) -> Result<Option<String>, String> {
+fn cover_extraire(
+    dossier_cache: &Path,
+    db_path: &Path,
+    path: &str,
+) -> Result<Option<String>, String> {
     let chemin = Path::new(path);
 
     // Sans métadonnées lisibles (fichier disparu, permission refusée), pas de
     // clé de cache fiable : on extrait directement, comme avant ce cache.
-    let mtime = std::fs::metadata(chemin).ok().and_then(|m| m.modified().ok());
+    let mtime = std::fs::metadata(chemin)
+        .ok()
+        .and_then(|m| m.modified().ok());
     let cle = mtime.map(|m| cle_pochette(chemin, m));
 
     if let Some(cle) = &cle {
@@ -7651,7 +8113,10 @@ fn cover_extraire(dossier_cache: &Path, db_path: &Path, path: &str) -> Result<Op
     let (valeur, definitif) = match cover {
         Some(c) => {
             let mime = c.mime.as_deref().unwrap_or("image/jpeg");
-            (Some(format!("data:{mime};base64,{}", base64(&c.data))), true)
+            (
+                Some(format!("data:{mime};base64,{}", base64(&c.data))),
+                true,
+            )
         }
         None => match cover_depuis_reseau(dossier_cache, db_path, chemin) {
             Repli::Trouvee(v) => (Some(v), true),
@@ -7728,8 +8193,7 @@ fn source_de_pochette(
     }
     match appel() {
         Ok(octets) => {
-            let valeur =
-                octets.map(|o| format!("data:image/jpeg;base64,{}", base64(&o)));
+            let valeur = octets.map(|o| format!("data:image/jpeg;base64,{}", base64(&o)));
             ecrire_cache_pochette(dossier_cache, cle, valeur.as_deref());
             valeur.map_or(Reponse::Non, Reponse::Image)
         }
@@ -7857,7 +8321,8 @@ async fn artist_covers(
 ) -> Result<Vec<String>, String> {
     let albums = {
         let lib = verrou(&etat.lib);
-        lib.albums_of_artist(mbid.as_deref(), &name).map_err(echec)?
+        lib.albums_of_artist(mbid.as_deref(), &name)
+            .map_err(echec)?
     };
     // Borne dure : un artiste prolifique ne doit pas faire lire les tags de
     // cent albums pour une vignette qui n'en montre que quatre.
@@ -7926,7 +8391,11 @@ fn lire_cache_pochette(dossier: &Path, cle: &str) -> Option<Option<String>> {
     lire_cache_pochette_avec(dossier, cle, NEGATIF_VALIDITE)
 }
 
-fn lire_cache_pochette_avec(dossier: &Path, cle: &str, validite: Duration) -> Option<Option<String>> {
+fn lire_cache_pochette_avec(
+    dossier: &Path,
+    cle: &str,
+    validite: Duration,
+) -> Option<Option<String>> {
     let chemin = dossier.join(cle);
     let octets = std::fs::read(&chemin).ok()?;
     if octets == SANS_POCHETTE {
@@ -7975,7 +8444,10 @@ fn ecrire_cache_pochette(dossier: &Path, cle: &str, valeur: Option<&str>) {
     if std::fs::create_dir_all(dossier).is_err() {
         return;
     }
-    let _ = std::fs::write(dossier.join(cle), valeur.map_or(SANS_POCHETTE, str::as_bytes));
+    let _ = std::fs::write(
+        dossier.join(cle),
+        valeur.map_or(SANS_POCHETTE, str::as_bytes),
+    );
 }
 
 /// Tempo, tonalité et énergie d'un morceau — ce que la passe a mesuré.
@@ -8076,9 +8548,7 @@ struct PisteIgnoree {
 fn play(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     couper_stems(&etat);
-    verrou(&etat.player)
-        .play(&chemins)
-        .map_err(echec)
+    verrou(&etat.player).play(&chemins).map_err(echec)
 }
 
 /// Comme `play`, mais ne redémarre pas si le premier morceau ne change pas —
@@ -8115,9 +8585,7 @@ fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     // Tête de file différente de ce qu'on écoute (ou rien en lecture) :
     // `play` suffit, rien à rouvrir.
     if courant.as_deref() != chemins.first().map(PathBuf::as_path) {
-        return verrou(&etat.player)
-            .play(&chemins)
-            .map_err(echec);
+        return verrou(&etat.player).play(&chemins).map_err(echec);
     }
     let chemin = courant.expect("tête de file == piste en cours");
 
@@ -8175,9 +8643,7 @@ fn previous(etat: State<Etat>) -> Result<(), String> {
 #[tauri::command(async)]
 fn jump_to(etat: State<Etat>, index: usize) -> Result<(), String> {
     couper_stems(&etat);
-    verrou(&etat.player)
-        .jump_to(index)
-        .map_err(echec)
+    verrou(&etat.player).jump_to(index).map_err(echec)
 }
 
 /// File d'attente dans l'ordre courant — après un mélange ou une
@@ -8324,7 +8790,11 @@ fn precharger_suivante(etat: &Etat) -> Result<(), String> {
         player.a_precharger().map(|(rang, piste)| {
             // Chemin de bibliothèque (avant résolution HD), pour le gain de
             // normalisation — voir `gain_pour` et `Player::completer`.
-            let original = player.queue().get(rang).cloned().unwrap_or_else(|| piste.clone());
+            let original = player
+                .queue()
+                .get(rang)
+                .cloned()
+                .unwrap_or_else(|| piste.clone());
             (epoque, rang, piste, original)
         })
     };
@@ -8451,7 +8921,10 @@ fn album_a_venir(etat: &Etat, courant: &Path) -> Vec<PathBuf> {
         let p = verrou(&etat.player);
         let queue = p.queue();
         let debut = queue.iter().position(|c| c == courant).unwrap_or(0);
-        queue[debut..].iter().map(|c| c.display().to_string()).collect()
+        queue[debut..]
+            .iter()
+            .map(|c| c.display().to_string())
+            .collect()
     };
     let Ok(pistes) = verrou(&etat.lib).pistes_par_chemins(&a_venir) else {
         return vec![courant.to_path_buf()];
@@ -8530,7 +9003,9 @@ fn file_courante(etat: State<Etat>) -> Result<Vec<TrackRow>, String> {
         .iter()
         .map(|p| p.display().to_string())
         .collect();
-    verrou(&etat.lib).pistes_par_chemins(&chemins).map_err(echec)
+    verrou(&etat.lib)
+        .pistes_par_chemins(&chemins)
+        .map_err(echec)
 }
 
 /// Les playlists enregistrées, la plus récemment modifiée d'abord.
@@ -8620,7 +9095,10 @@ fn exporter_playlist(etat: State<Etat>, id: i64, dossier: String) -> Result<Stri
 
 #[tauri::command(async)]
 fn renommer_playlist(etat: State<Etat>, id: i64, nom: String) -> Result<(), String> {
-    match verrou(&etat.lib).renommer_playlist(id, &nom).map_err(echec)? {
+    match verrou(&etat.lib)
+        .renommer_playlist(id, &nom)
+        .map_err(echec)?
+    {
         true => Ok(()),
         false => Err("cette playlist n'existe plus".into()),
     }
@@ -8640,7 +9118,11 @@ fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
     let ecoule = s.battement();
     let (courant, en_pause, position) = {
         let p = verrou(&etat.player);
-        (p.current().map(Path::to_path_buf), p.is_paused(), p.position())
+        (
+            p.current().map(Path::to_path_buf),
+            p.is_paused(),
+            p.position(),
+        )
     };
     let ecoute = s.avancer(courant, en_pause, position, ecoule, |c| {
         verrou(&etat.lib)
@@ -8675,7 +9157,10 @@ fn sauvegarder_session(etat: &Etat, memo: &mut MemoSession) -> Result<(), String
     // Pendant le fondu d'un minuteur, le volume du lecteur est en train de
     // baisser : c'est le volume d'avant qu'on retient, sans quoi on le
     // retrouverait presque éteint au lancement suivant.
-    if let Some(nominal) = verrou(&etat.minuteur).as_ref().and_then(minuteur::Minuteur::volume_nominal) {
+    if let Some(nominal) = verrou(&etat.minuteur)
+        .as_ref()
+        .and_then(minuteur::Minuteur::volume_nominal)
+    {
         i.volume = nominal;
     }
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -8697,9 +9182,8 @@ fn sauvegarder_session(etat: &Etat, memo: &mut MemoSession) -> Result<(), String
     // La file a changé (ou la ligne n'existe pas) : écriture complète, en
     // identifiants. Une piste que la bibliothèque ne connaît pas est omise, et
     // le rang recalé : il compte les pistes retenues avant la piste en cours.
-    let chemins = |v: &[PathBuf]| -> Vec<String> {
-        v.iter().map(|p| p.display().to_string()).collect()
-    };
+    let chemins =
+        |v: &[PathBuf]| -> Vec<String> { v.iter().map(|p| p.display().to_string()).collect() };
     let ids = lib.ids_par_chemins(&chemins(&i.file)).map_err(echec)?;
     let (file, rang, _) = retenir(ids, i.rang);
     if file.is_empty() {
@@ -9436,11 +9920,10 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        composer_route, parties_du_plan, Composition, PlanTexte, BRUIT_DEFAUT,
-        cle_pochette, dans_le_contour, ecrire_cache_pochette, lire_cache_pochette,
-        fin_de_trace, liberer_si_inactif, morceaux_le_long, purger_negatifs_pochettes,
-        sous_une_racine, verrou, AccrochageVoirie, Cache, EtatScan, GardePasse,
-        RepereLocal,
+        cle_pochette, composer_route, dans_le_contour, ecrire_cache_pochette, fin_de_trace,
+        liberer_si_inactif, lire_cache_pochette, morceaux_le_long, parties_du_plan,
+        purger_negatifs_pochettes, sous_une_racine, verrou, AccrochageVoirie, Cache, Composition,
+        EtatScan, GardePasse, PlanTexte, RepereLocal, BRUIT_DEFAUT,
     };
     use std::collections::{HashMap, HashSet};
     use std::path::Path;
@@ -9452,15 +9935,25 @@ mod tests {
     /// qui ne se construit pas hors de Tauri.
     #[test]
     fn cache_libere_apres_le_seuil_dinactivite() {
-        let cache = Mutex::new(Cache { valeur: Some(42), touche: Some(Instant::now()) });
+        let cache = Mutex::new(Cache {
+            valeur: Some(42),
+            touche: Some(Instant::now()),
+        });
         liberer_si_inactif(&cache, "essai");
-        assert_eq!(verrou(&cache).valeur, Some(42), "encore récent : rien à décharger");
+        assert_eq!(
+            verrou(&cache).valeur,
+            Some(42),
+            "encore récent : rien à décharger"
+        );
 
         let vieux = Instant::now() - Duration::from_secs(3 * 60 + 1);
         verrou(&cache).touche = Some(vieux);
         liberer_si_inactif(&cache, "essai");
         let g = verrou(&cache);
-        assert_eq!(g.valeur, None, "inactif depuis plus de SEUIL_EVICTION_POIDS : déchargé");
+        assert_eq!(
+            g.valeur, None,
+            "inactif depuis plus de SEUIL_EVICTION_POIDS : déchargé"
+        );
         assert_eq!(g.touche, None, "l'horodatage repart à zéro avec le contenu");
     }
 
@@ -9479,14 +9972,20 @@ mod tests {
     /// panique) doit rester sans effet, la garde restant silencieuse.
     #[test]
     fn garde_passe_cloture_en_cours_apres_une_panique() {
-        let etat = Mutex::new(EtatScan { en_cours: true, ..Default::default() });
+        let etat = Mutex::new(EtatScan {
+            en_cours: true,
+            ..Default::default()
+        });
         let issue = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _garde = GardePasse::nouvelle(&etat);
             panic!("simulation d'un décodage qui tourne mal");
         }));
         assert!(issue.is_err(), "la panique doit bien traverser le test");
         let s = verrou(&etat);
-        assert!(!s.en_cours, "la garde doit clore la passe malgré la panique");
+        assert!(
+            !s.en_cours,
+            "la garde doit clore la passe malgré la panique"
+        );
         assert_eq!(s.resultat.as_deref(), Some("échec : panique interne"));
     }
 
@@ -9494,7 +9993,10 @@ mod tests {
     /// explicitement avant sa destruction doit survivre.
     #[test]
     fn garde_passe_silencieuse_sur_le_chemin_normal() {
-        let etat = Mutex::new(EtatScan { en_cours: true, ..Default::default() });
+        let etat = Mutex::new(EtatScan {
+            en_cours: true,
+            ..Default::default()
+        });
         {
             let _garde = GardePasse::nouvelle(&etat);
             let mut s = verrou(&etat);
@@ -9585,8 +10087,16 @@ mod tests {
         let t1 = t0 + std::time::Duration::from_secs(1);
         let a = Path::new("/a.mp3");
         let b = Path::new("/b.mp3");
-        assert_ne!(cle_pochette(a, t0), cle_pochette(b, t0), "chemins différents");
-        assert_ne!(cle_pochette(a, t0), cle_pochette(a, t1), "mtimes différentes");
+        assert_ne!(
+            cle_pochette(a, t0),
+            cle_pochette(b, t0),
+            "chemins différents"
+        );
+        assert_ne!(
+            cle_pochette(a, t0),
+            cle_pochette(a, t1),
+            "mtimes différentes"
+        );
         assert_eq!(cle_pochette(a, t0), cle_pochette(a, t0), "déterministe");
     }
 
@@ -9625,11 +10135,18 @@ mod tests {
         ecrire_cache_pochette(&dossier, "sans", None);
         ecrire_cache_pochette(&dossier, "avec", Some("data:image/jpeg;base64,zzz"));
         for cle in ["sans", "avec"] {
-            let f = std::fs::File::options().write(true).open(dossier.join(cle)).unwrap();
+            let f = std::fs::File::options()
+                .write(true)
+                .open(dossier.join(cle))
+                .unwrap();
             f.set_modified(std::time::SystemTime::now() - Duration::from_secs(40 * 24 * 3600))
                 .unwrap();
         }
-        assert_eq!(lire_cache_pochette(&dossier, "sans"), None, "négatif de 40 j : à redemander");
+        assert_eq!(
+            lire_cache_pochette(&dossier, "sans"),
+            None,
+            "négatif de 40 j : à redemander"
+        );
         assert_eq!(
             lire_cache_pochette(&dossier, "avec"),
             Some(Some("data:image/jpeg;base64,zzz".to_string())),
@@ -9681,7 +10198,10 @@ mod tests {
             sommet_de.insert(id, s);
             morceaux_a.entry(s).or_default().push(id);
         }
-        AccrochageVoirie { sommet_de, morceaux_a }
+        AccrochageVoirie {
+            sommet_de,
+            morceaux_a,
+        }
     }
 
     #[test]
@@ -9700,7 +10220,7 @@ mod tests {
         let acc = accrochage_dessai();
         let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
         let duree = |_id: i64| 10 * 60_000u64; // 10 min chacun
-        // Cible 25 min, tolérance 90 s : 10 (0) + 20 (10) + 30 (20) → 30 min ≥ 23,5.
+                                               // Cible 25 min, tolérance 90 s : 10 (0) + 20 (10) + 30 (20) → 30 min ≥ 23,5.
         let suite = morceaux_le_long(&acc, &couloir, 10, None, None, Some(25 * 60_000), &duree);
         assert_eq!(suite, vec![10, 20, 30]);
     }
@@ -9712,16 +10232,23 @@ mod tests {
         let duree = |_id: i64| 10 * 60_000u64;
         // Arrivée 40 posée : « va jusque-là » l'emporte, la durée (15 min) est
         // ignorée — la playlist va jusqu'à 40.
-        let suite = morceaux_le_long(&acc, &couloir, 10, Some(40), None, Some(15 * 60_000), &duree);
+        let suite = morceaux_le_long(
+            &acc,
+            &couloir,
+            10,
+            Some(40),
+            None,
+            Some(15 * 60_000),
+            &duree,
+        );
         assert_eq!(suite, vec![10, 20, 30, 40]);
     }
 
     #[test]
     fn fin_de_trace_sarrete_au_dernier_morceau_pas_a_la_destination() {
         let acc = accrochage_dessai(); // 10@sommet0, 20&30@sommet1, 40@sommet2
-        // Tracé de 10 sommets ; le couloir place le sommet 1 au rang 3.
-        let couloir: HashMap<u32, usize> =
-            [(0u32, 0usize), (1, 3), (2, 8)].into_iter().collect();
+                                       // Tracé de 10 sommets ; le couloir place le sommet 1 au rang 3.
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 3), (2, 8)].into_iter().collect();
         // Playlist = [10, 20] → dernier morceau au rang 3 → tracé coupé à 4.
         assert_eq!(fin_de_trace(&[10, 20], &acc, &couloir, 10), 4);
         // Playlist qui va jusqu'à 40 (rang 8) → coupé à 9.
@@ -9744,19 +10271,22 @@ mod tests {
 
         // En degrés bruts, un écart de 0,01° pèse pareil au nord et à l'est —
         // c'est justement le biais que la projection corrige.
-        let d2_deg = |a: (i64, f32, f32), b: (i64, f32, f32)| {
-            (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)
-        };
+        let d2_deg =
+            |a: (i64, f32, f32), b: (i64, f32, f32)| (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2);
         assert!((d2_deg(ancre, est) - d2_deg(ancre, nord)).abs() < 1e-6);
 
         RepereLocal::projeter_liste(&mut pts);
-        let d2 = |a: usize, b: usize| {
-            (pts[a].1 - pts[b].1).powi(2) + (pts[a].2 - pts[b].2).powi(2)
-        };
+        let d2 = |a: usize, b: usize| (pts[a].1 - pts[b].1).powi(2) + (pts[a].2 - pts[b].2).powi(2);
         // 0 = ancre, 1 = est (~730 m), 2 = nord (~1110 m).
-        assert!(d2(0, 1) < d2(0, 2), "après projection, l'est doit être le plus proche");
+        assert!(
+            d2(0, 1) < d2(0, 2),
+            "après projection, l'est doit être le plus proche"
+        );
         let est_m = d2(0, 1).sqrt();
-        assert!((est_m - 730.0).abs() < 40.0, "~730 m attendus, obtenu {est_m}");
+        assert!(
+            (est_m - 730.0).abs() < 40.0,
+            "~730 m attendus, obtenu {est_m}"
+        );
     }
 
     // ---- composition d'une playlist par texte (`composer_route`) ----------
@@ -9790,7 +10320,11 @@ mod tests {
                 energie: Some(i as f32 / N as f32),
                 popularite: None,
                 jours_depuis_ecoute: None,
-                genres: vec![if i % 2 == 0 { "rock".into() } else { "jazz".into() }],
+                genres: vec![if i % 2 == 0 {
+                    "rock".into()
+                } else {
+                    "jazz".into()
+                }],
             })
             .collect();
         let graphe = Graphe::construire(&vecteurs, 8, 1);
@@ -9843,7 +10377,11 @@ mod tests {
         // Un « encodeur » de poche : le rock vise le début de l'arc, tout le
         // reste (jazz, étapes ordinaires) la fin.
         let parties = parties_du_plan(plan, |t| {
-            Ok(if t.contains("rock") { vec![1.0, 0.0, 0.0] } else { vec![0.0, 1.0, 0.0] })
+            Ok(if t.contains("rock") {
+                vec![1.0, 0.0, 0.0]
+            } else {
+                vec![0.0, 1.0, 0.0]
+            })
         })?;
         composer_route(plan, &parties, &carac, &vecteurs, &graphe, 7, BRUIT_DEFAUT)
     }
@@ -9865,7 +10403,11 @@ mod tests {
         let mut plan = plan_de(20);
         plan.depart = Some(piste(0));
         let (route, relaches) = composer(&plan).unwrap();
-        assert!(route.len() >= 15 && route.len() <= 20, "{} morceaux", route.len());
+        assert!(
+            route.len() >= 15 && route.len() <= 20,
+            "{} morceaux",
+            route.len()
+        );
         assert_eq!(doublons(&route), 0);
         assert!(relaches.is_empty(), "{relaches:?}");
     }
@@ -9884,7 +10426,10 @@ mod tests {
         for (a, n) in &par_artiste {
             assert!(*n <= 2 || *a == depart, "artiste {a} : {n} morceaux");
         }
-        assert!(!relaches.is_empty(), "des morceaux ont été retirés : il faut le dire");
+        assert!(
+            !relaches.is_empty(),
+            "des morceaux ont été retirés : il faut le dire"
+        );
     }
 
     #[test]
@@ -9899,7 +10444,10 @@ mod tests {
             route.len(),
             total / 60_000
         );
-        assert!(relaches.iter().all(|r| !r.contains("durée visée")), "{relaches:?}");
+        assert!(
+            relaches.iter().all(|r| !r.contains("durée visée")),
+            "{relaches:?}"
+        );
     }
 
     #[test]
@@ -9907,7 +10455,10 @@ mod tests {
         let mut plan = plan_de(10);
         plan.duree_minutes = Some(1000); // 333 morceaux : la bibliothèque n'en a que 300
         let (_, relaches) = composer(&plan).unwrap();
-        assert!(relaches.iter().any(|r| r.contains("durée visée")), "{relaches:?}");
+        assert!(
+            relaches.iter().any(|r| r.contains("durée visée")),
+            "{relaches:?}"
+        );
     }
 
     /// Large sélection : découpée dans le graphe complet (`restreint`).
@@ -9917,7 +10468,10 @@ mod tests {
         plan.filtres.exclure_genres = vec!["rock".into()];
         let (route, _) = composer(&plan).unwrap();
         assert!(!route.is_empty());
-        assert!(route.iter().all(|id| id % 2 == 1), "un rock s'est glissé : {route:?}");
+        assert!(
+            route.iter().all(|id| id % 2 == 1),
+            "un rock s'est glissé : {route:?}"
+        );
     }
 
     /// Sélection étroite (un tiers) : graphe des voisins bâti sur les seuls
@@ -9970,13 +10524,20 @@ mod tests {
         plan.filtres.annee_min = Some(2000); // aucun morceau n'est de 2000
         let (route, relaches) = composer(&plan).unwrap();
         assert!(!route.is_empty());
-        assert!(relaches.iter().any(|r| r.contains("période")), "{relaches:?}");
+        assert!(
+            relaches.iter().any(|r| r.contains("période")),
+            "{relaches:?}"
+        );
     }
 
     // ---- parties : « X pendant 12 minutes, puis Y pendant 20 minutes » ----
 
     fn genre_de(id: i64) -> &'static str {
-        if id % 2 == 0 { "rock" } else { "jazz" }
+        if id % 2 == 0 {
+            "rock"
+        } else {
+            "jazz"
+        }
     }
 
     fn duree_min(route: &[i64]) -> i64 {
@@ -9993,14 +10554,38 @@ mod tests {
         assert_eq!(c.parties.len(), 2);
         let (a, b) = (&c.parties[0], &c.parties[1]);
         // Chaque partie ne contient que son genre.
-        assert!(c.route[a.debut..a.fin].iter().all(|id| genre_de(*id) == "rock"), "{:?}", &c.route[a.debut..a.fin]);
-        assert!(c.route[b.debut..b.fin].iter().all(|id| genre_de(*id) == "jazz"), "{:?}", &c.route[b.debut..b.fin]);
+        assert!(
+            c.route[a.debut..a.fin]
+                .iter()
+                .all(|id| genre_de(*id) == "rock"),
+            "{:?}",
+            &c.route[a.debut..a.fin]
+        );
+        assert!(
+            c.route[b.debut..b.fin]
+                .iter()
+                .all(|id| genre_de(*id) == "jazz"),
+            "{:?}",
+            &c.route[b.debut..b.fin]
+        );
         // Les durées visées, à un morceau près.
-        assert!((a.duree_ms / 60_000 - 12).abs() <= 3, "partie 1 : {} min", a.duree_ms / 60_000);
-        assert!((b.duree_ms / 60_000 - 21).abs() <= 3, "partie 2 : {} min", b.duree_ms / 60_000);
+        assert!(
+            (a.duree_ms / 60_000 - 12).abs() <= 3,
+            "partie 1 : {} min",
+            a.duree_ms / 60_000
+        );
+        assert!(
+            (b.duree_ms / 60_000 - 21).abs() <= 3,
+            "partie 2 : {} min",
+            b.duree_ms / 60_000
+        );
         assert_eq!(a.fin, b.debut, "les parties se suivent sans trou");
         assert_eq!(b.fin, c.route.len());
-        assert_eq!(doublons(&c.route), 0, "une partie ne reprend pas un morceau d'une autre");
+        assert_eq!(
+            doublons(&c.route),
+            0,
+            "une partie ne reprend pas un morceau d'une autre"
+        );
         assert_eq!(duree_min(&c.route), (a.duree_ms + b.duree_ms) / 60_000);
     }
 
@@ -10013,8 +10598,13 @@ mod tests {
         let c = composer_complet(&plan).unwrap();
         let fin_rock = c.route[c.parties[0].fin - 1];
         let debut_jazz = c.route[c.parties[1].debut];
-        assert!((fin_rock - debut_jazz).abs() <= 2, "fin {fin_rock} → début {debut_jazz}");
-        assert!(c.parties[1].depart_pourquoi.contains("fin de la partie précédente"));
+        assert!(
+            (fin_rock - debut_jazz).abs() <= 2,
+            "fin {fin_rock} → début {debut_jazz}"
+        );
+        assert!(c.parties[1]
+            .depart_pourquoi
+            .contains("fin de la partie précédente"));
         assert!(c.parties[0].depart_pourquoi.contains("description"));
     }
 
@@ -10034,13 +10624,23 @@ mod tests {
         plan.filtres.annee_min = Some(1980);
         let c = composer_complet(&plan).unwrap();
         for p in &c.parties {
-            assert_eq!(p.entonnoir.first().map(|(l, n)| (l.as_str(), *n)), Some(("Bibliothèque", N)));
-            assert!(p.entonnoir.iter().any(|(l, _)| l.starts_with("genre")), "{:?}", p.entonnoir);
+            assert_eq!(
+                p.entonnoir.first().map(|(l, n)| (l.as_str(), *n)),
+                Some(("Bibliothèque", N))
+            );
+            assert!(
+                p.entonnoir.iter().any(|(l, _)| l.starts_with("genre")),
+                "{:?}",
+                p.entonnoir
+            );
             assert!(p.n_admissibles > 0 && p.n_admissibles <= N);
             assert_eq!(p.ids_admissibles.len(), p.n_admissibles);
         }
         // Les deux parties admettent des morceaux différents (rock / jazz).
-        assert!(c.parties[0].ids_admissibles.iter().all(|id| genre_de(*id) == "rock"));
+        assert!(c.parties[0]
+            .ids_admissibles
+            .iter()
+            .all(|id| genre_de(*id) == "rock"));
     }
 
     /// Une partie dont plus rien ne convient (tout est pris, ou aucun morceau)
@@ -10054,7 +10654,13 @@ mod tests {
         plan.filtres.annee_max = Some(1980); // tous de 1990 : le critère s'assouplit
         let c = composer_complet(&plan).unwrap();
         assert!(!c.route.is_empty());
-        assert!(c.relaches.iter().any(|r| r.contains("assoupli") || r.contains("abandonné")), "{:?}", c.relaches);
+        assert!(
+            c.relaches
+                .iter()
+                .any(|r| r.contains("assoupli") || r.contains("abandonné")),
+            "{:?}",
+            c.relaches
+        );
     }
 
     #[test]
@@ -10078,7 +10684,11 @@ mod tests {
         plan.parties = vec![a, b];
         let c = composer_complet(&plan).unwrap();
         for p in &c.parties {
-            assert!((p.fin - p.debut) as i64 >= 3 && (p.fin - p.debut) <= 8, "{} morceaux", p.fin - p.debut);
+            assert!(
+                (p.fin - p.debut) as i64 >= 3 && (p.fin - p.debut) <= 8,
+                "{} morceaux",
+                p.fin - p.debut
+            );
         }
     }
 
@@ -10093,11 +10703,16 @@ mod tests {
     fn composition_sur_la_vraie_bibliotheque() {
         use rusty_music_core::ollama;
         let base = std::env::var("RUSTY_DB").expect("RUSTY_DB=chemin/vers/copie.db");
-        let m: usize = std::env::var("RUSTY_SOUS_ECH").ok().and_then(|v| v.parse().ok()).unwrap_or(6000);
+        let m: usize = std::env::var("RUSTY_SOUS_ECH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(6000);
         let modele = std::env::var("OLLAMA_MODELE").unwrap_or_else(|_| "gemma4:e4b-mlx".into());
         let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
 
-        let tout = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let tout = lib
+            .embeddings(rusty_music_analysis::passe::MODELE)
+            .expect("empreintes");
         let pas = (tout.len() / m).max(1);
         let vecteurs: Vec<Empreinte> = tout.into_iter().step_by(pas).collect();
         let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
@@ -10109,7 +10724,11 @@ mod tests {
             rusty_music_analysis::chemin::K_VOISINS,
             super::coeurs_arriere_plan(),
         );
-        eprintln!("{} morceaux, graphe en {:.1} s", vecteurs.len(), t.elapsed().as_secs_f64());
+        eprintln!(
+            "{} morceaux, graphe en {:.1} s",
+            vecteurs.len(),
+            t.elapsed().as_secs_f64()
+        );
         let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
         let vocab = lib.vocabulaire_genres(usize::MAX).unwrap();
 
@@ -10119,7 +10738,8 @@ mod tests {
             "Des morceaux de jazz peu connus, 20 morceaux",
             "Une playlist qui commence doucement et monte vers du rock énergique, 15 morceaux",
         ] {
-            let i = ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
+            let i =
+                ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
             let plan = PlanTexte {
                 depart: None,
                 arrivee: None,
@@ -10135,25 +10755,50 @@ mod tests {
             };
             let parties = parties_du_plan(&plan, |e| Ok(encodeur.embed(e).unwrap())).unwrap();
             let t = Instant::now();
-            let resultat = composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT)
-                .map(|c| (c.route, c.relaches));
-            eprintln!("\n« {prompt} »\n  filtres : {:?} · durée {:?} · n {}", plan.filtres, plan.duree_minutes, plan.n);
+            let resultat =
+                composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT)
+                    .map(|c| (c.route, c.relaches));
+            eprintln!(
+                "\n« {prompt} »\n  filtres : {:?} · durée {:?} · n {}",
+                plan.filtres, plan.duree_minutes, plan.n
+            );
             match resultat {
                 Err(e) => eprintln!("  ERREUR : {e}"),
                 Ok((route, relaches)) => {
                     let total: i64 = route
                         .iter()
-                        .map(|id| carac.iter().find(|p| p.id == *id).and_then(|p| p.duree_ms).unwrap_or(0))
+                        .map(|id| {
+                            carac
+                                .iter()
+                                .find(|p| p.id == *id)
+                                .and_then(|p| p.duree_ms)
+                                .unwrap_or(0)
+                        })
                         .sum();
-                    eprintln!("  {} morceaux, {} min, en {} ms ; assouplis : {relaches:?}", route.len(), total / 60_000, t.elapsed().as_millis());
+                    eprintln!(
+                        "  {} morceaux, {} min, en {} ms ; assouplis : {relaches:?}",
+                        route.len(),
+                        total / 60_000,
+                        t.elapsed().as_millis()
+                    );
                     for id in route.iter().take(12) {
                         let c = carac.iter().find(|p| p.id == *id).unwrap();
                         let t = lib.track(*id).unwrap().unwrap();
                         eprintln!(
                             "    {:<28} {:<26} énergie {:.2} bpm {:>5.0} {:?}",
-                            t.artist.unwrap_or_default().chars().take(28).collect::<String>(),
-                            t.title.unwrap_or_default().chars().take(26).collect::<String>(),
-                            c.energie.unwrap_or(-1.0), c.bpm.unwrap_or(-1.0), c.genres
+                            t.artist
+                                .unwrap_or_default()
+                                .chars()
+                                .take(28)
+                                .collect::<String>(),
+                            t.title
+                                .unwrap_or_default()
+                                .chars()
+                                .take(26)
+                                .collect::<String>(),
+                            c.energie.unwrap_or(-1.0),
+                            c.bpm.unwrap_or(-1.0),
+                            c.genres
                         );
                     }
                 }
@@ -10172,28 +10817,57 @@ mod tests {
     fn exporter_pour_maquette() {
         use rusty_music_core::ollama;
         let base = std::env::var("RUSTY_DB").expect("RUSTY_DB");
-        let dossier = std::path::PathBuf::from(std::env::var("RUSTY_EXPORT").expect("RUSTY_EXPORT"));
+        let dossier =
+            std::path::PathBuf::from(std::env::var("RUSTY_EXPORT").expect("RUSTY_EXPORT"));
         let modele = std::env::var("OLLAMA_MODELE").unwrap_or_else(|_| "gemma4:e4b-mlx".into());
         let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
-        let vecteurs: Vec<Empreinte> = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let vecteurs: Vec<Empreinte> = lib
+            .embeddings(rusty_music_analysis::passe::MODELE)
+            .expect("empreintes");
         let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
         let mut carac = lib.caracteristiques_pistes().expect("caractéristiques");
         carac.retain(|p| analyses.contains(&p.id));
-        let graphe = Graphe::construire(&vecteurs, rusty_music_analysis::chemin::K_VOISINS, super::coeurs_arriere_plan());
+        let graphe = Graphe::construire(
+            &vecteurs,
+            rusty_music_analysis::chemin::K_VOISINS,
+            super::coeurs_arriere_plan(),
+        );
         let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
         let vocab = lib.vocabulaire_genres(usize::MAX).unwrap();
 
-        let points = lib.map_view(rusty_music_analysis::passe::MODELE).expect("map_view");
-        std::fs::write(dossier.join("points.json"), serde_json::to_string(&points).unwrap()).unwrap();
-        let familles = lib.familles(rusty_music_analysis::passe::MODELE).expect("familles");
-        std::fs::write(dossier.join("familles.json"), serde_json::to_string(&familles).unwrap()).unwrap();
+        let points = lib
+            .map_view(rusty_music_analysis::passe::MODELE)
+            .expect("map_view");
+        std::fs::write(
+            dossier.join("points.json"),
+            serde_json::to_string(&points).unwrap(),
+        )
+        .unwrap();
+        let familles = lib
+            .familles(rusty_music_analysis::passe::MODELE)
+            .expect("familles");
+        std::fs::write(
+            dossier.join("familles.json"),
+            serde_json::to_string(&familles).unwrap(),
+        )
+        .unwrap();
 
         for (nom, prompt) in [
-            ("parties", "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes"),
-            ("duree", "Une playlist calme de 60 minutes, sans rock, années 70"),
-            ("trajet", "Commencer par du Portishead, finir par du Massive Attack, 15 morceaux"),
+            (
+                "parties",
+                "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes",
+            ),
+            (
+                "duree",
+                "Une playlist calme de 60 minutes, sans rock, années 70",
+            ),
+            (
+                "trajet",
+                "Commencer par du Portishead, finir par du Massive Attack, 15 morceaux",
+            ),
         ] {
-            let i = ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
+            let i =
+                ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab).expect("Ollama");
             let plan = PlanTexte {
                 depart: None,
                 arrivee: None,
@@ -10208,13 +10882,35 @@ mod tests {
                 brut: i.brut.clone(),
             };
             let parties = parties_du_plan(&plan, |e| Ok(encodeur.embed(e).unwrap())).unwrap();
-            let c = composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT).expect("composition");
-            let pistes: Vec<TrackRow> = c.route.iter().filter_map(|id| lib.track(*id).unwrap()).collect();
+            let c = composer_route(&plan, &parties, &carac, &vecteurs, &graphe, 3, BRUIT_DEFAUT)
+                .expect("composition");
+            let pistes: Vec<TrackRow> = c
+                .route
+                .iter()
+                .filter_map(|id| lib.track(*id).unwrap())
+                .collect();
             let duree_ms = pistes.iter().map(|t| t.duration_ms.unwrap_or(0)).sum();
-            let r = super::CompositionTexte { pistes, relaches: c.relaches, duree_ms, parties: c.parties };
-            std::fs::write(dossier.join(format!("{nom}-plan.json")), serde_json::to_string(&plan).unwrap()).unwrap();
-            std::fs::write(dossier.join(format!("{nom}-compo.json")), serde_json::to_string(&r).unwrap()).unwrap();
-            eprintln!("{nom} : {} morceaux, {} min", r.pistes.len(), r.duree_ms / 60_000);
+            let r = super::CompositionTexte {
+                pistes,
+                relaches: c.relaches,
+                duree_ms,
+                parties: c.parties,
+            };
+            std::fs::write(
+                dossier.join(format!("{nom}-plan.json")),
+                serde_json::to_string(&plan).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                dossier.join(format!("{nom}-compo.json")),
+                serde_json::to_string(&r).unwrap(),
+            )
+            .unwrap();
+            eprintln!(
+                "{nom} : {} morceaux, {} min",
+                r.pistes.len(),
+                r.duree_ms / 60_000
+            );
         }
     }
 
@@ -10236,9 +10932,14 @@ mod tests {
     fn robustesse_de_la_composition() {
         let base = std::env::var("RUSTY_DB").expect("RUSTY_DB");
         let res = std::env::var("RUSTY_RESULTATS").expect("RUSTY_RESULTATS");
-        let m: usize = std::env::var("RUSTY_SOUS_ECH").ok().and_then(|v| v.parse().ok()).unwrap_or(6000);
+        let m: usize = std::env::var("RUSTY_SOUS_ECH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(6000);
         let lib = rusty_music_core::db::Library::open(Path::new(&base)).expect("base");
-        let tout = lib.embeddings(rusty_music_analysis::passe::MODELE).expect("empreintes");
+        let tout = lib
+            .embeddings(rusty_music_analysis::passe::MODELE)
+            .expect("empreintes");
         let pas = (tout.len() / m).max(1);
         let vecteurs: Vec<Empreinte> = tout.into_iter().step_by(pas).collect();
         let analyses: HashSet<i64> = vecteurs.iter().map(|(id, _)| *id).collect();
@@ -10250,7 +10951,8 @@ mod tests {
             super::coeurs_arriere_plan(),
         );
         let encodeur = rusty_music_analysis::EmbedderTexte::charger(None).expect("CLAP texte");
-        let par_id: HashMap<i64, &CaracteristiquesPiste> = carac.iter().map(|p| (p.id, p)).collect();
+        let par_id: HashMap<i64, &CaracteristiquesPiste> =
+            carac.iter().map(|p| (p.id, p)).collect();
         eprintln!("{} morceaux placables", vecteurs.len());
 
         let fichier: serde_json::Value =
@@ -10311,7 +11013,11 @@ mod tests {
 
             let mut pb: Vec<String> = Vec::new();
             let artiste_de = |id: &i64| -> String {
-                par_id.get(id).and_then(|p| p.artiste.clone()).unwrap_or_default().to_lowercase()
+                par_id
+                    .get(id)
+                    .and_then(|p| p.artiste.clone())
+                    .unwrap_or_default()
+                    .to_lowercase()
             };
             // Exclusions dures : aucun genre ni artiste ne contient le mot (mot entier).
             let mot_dans = |texte: &str, mot: &str| -> bool {
@@ -10324,11 +11030,20 @@ mod tests {
                 for mot in mots.iter().filter_map(|m| m.as_str()) {
                     let n_genre = route
                         .iter()
-                        .filter(|id| par_id.get(id).is_some_and(|p| p.genres.iter().any(|g| mot_dans(g, mot))))
+                        .filter(|id| {
+                            par_id
+                                .get(id)
+                                .is_some_and(|p| p.genres.iter().any(|g| mot_dans(g, mot)))
+                        })
                         .count();
-                    let n_art = route.iter().filter(|id| artiste_de(id).contains(mot)).count();
+                    let n_art = route
+                        .iter()
+                        .filter(|id| artiste_de(id).contains(mot))
+                        .count();
                     if n_genre + n_art > 0 {
-                        pb.push(format!("« {mot} » : {n_genre} morceau(x) de ce genre, {n_art} de cet artiste"));
+                        pb.push(format!(
+                            "« {mot} » : {n_genre} morceau(x) de ce genre, {n_art} de cet artiste"
+                        ));
                     }
                 }
             }
@@ -10336,13 +11051,19 @@ mod tests {
             if route.iter().any(|id| !vus.insert(*id)) {
                 pb.push("doublon".into());
             }
-            let duree: i64 = route.iter().map(|id| par_id.get(id).and_then(|p| p.duree_ms).unwrap_or(0)).sum();
+            let duree: i64 = route
+                .iter()
+                .map(|id| par_id.get(id).and_then(|p| p.duree_ms).unwrap_or(0))
+                .sum();
             if let Some(d) = plan.duree_minutes {
                 let cible = i64::from(d) * 60_000;
                 let ecart = (duree - cible).abs() as f64 / cible as f64;
                 let dit = relaches.iter().any(|r| r.contains("durée visée"));
                 if ecart > 0.12 && !dit {
-                    pb.push(format!("durée {} min pour {d} visées, sans le dire", duree / 60_000));
+                    pb.push(format!(
+                        "durée {} min pour {d} visées, sans le dire",
+                        duree / 60_000
+                    ));
                 }
             }
             if let Some(p) = plan.plafond_par_artiste {
@@ -10355,13 +11076,29 @@ mod tests {
                 }
             }
             if let Some(min) = plan.filtres.annee_min {
-                let hors = route.iter().filter(|id| par_id.get(id).and_then(|p| p.annee).is_some_and(|a| a < min)).count();
+                let hors = route
+                    .iter()
+                    .filter(|id| {
+                        par_id
+                            .get(id)
+                            .and_then(|p| p.annee)
+                            .is_some_and(|a| a < min)
+                    })
+                    .count();
                 if hors > 0 && !relaches.iter().any(|r| r.contains("période")) {
                     pb.push(format!("{hors} morceau(x) avant {min}, sans le dire"));
                 }
             }
             if let Some(max) = plan.filtres.annee_max {
-                let hors = route.iter().filter(|id| par_id.get(id).and_then(|p| p.annee).is_some_and(|a| a > max)).count();
+                let hors = route
+                    .iter()
+                    .filter(|id| {
+                        par_id
+                            .get(id)
+                            .and_then(|p| p.annee)
+                            .is_some_and(|a| a > max)
+                    })
+                    .count();
                 if hors > 0 && !relaches.iter().any(|r| r.contains("période")) {
                     pb.push(format!("{hors} morceau(x) après {max}, sans le dire"));
                 }
@@ -10374,18 +11111,36 @@ mod tests {
             let mut attendu_debut = 0;
             for (k, pr) in parties_res.iter().enumerate() {
                 if pr.debut != attendu_debut {
-                    pb.push(format!("partie {k} : début {} au lieu de {attendu_debut}", pr.debut));
+                    pb.push(format!(
+                        "partie {k} : début {} au lieu de {attendu_debut}",
+                        pr.debut
+                    ));
                 }
                 attendu_debut = pr.fin;
                 if let Some(partie) = plan.parties.get(k) {
-                    let dit = pr.relaches.iter().any(|r| r.contains("abandonn") || r.contains("déjà pris") || r.contains("durée visée"));
+                    let dit = pr.relaches.iter().any(|r| {
+                        r.contains("abandonn")
+                            || r.contains("déjà pris")
+                            || r.contains("durée visée")
+                    });
                     if !partie.genres.is_empty() && !dit {
                         let hors = route[pr.debut..pr.fin]
                             .iter()
                             .filter(|id| {
                                 // Départ nommé exclu : seuls comptent les morceaux choisis.
-                                !par_id.get(id).is_some_and(|p| partie.genres.iter().any(|g| p.genres.iter().any(|pg| pg.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|m| g.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|x| x == m))))
-                                    )
+                                !par_id.get(id).is_some_and(|p| {
+                                    partie.genres.iter().any(|g| {
+                                        p.genres.iter().any(|pg| {
+                                            pg.to_lowercase()
+                                                .split(|c: char| !c.is_alphanumeric())
+                                                .any(|m| {
+                                                    g.to_lowercase()
+                                                        .split(|c: char| !c.is_alphanumeric())
+                                                        .any(|x| x == m)
+                                                })
+                                        })
+                                    })
+                                })
                             })
                             .count();
                         if hors > 0 {
@@ -10396,18 +11151,32 @@ mod tests {
                         let cible = i64::from(m) * 60_000;
                         let ecart = (pr.duree_ms - cible).abs() as f64 / cible as f64;
                         if ecart > 0.25 && !dit {
-                            pb.push(format!("partie {k} : {} min pour {m} visées, sans le dire", pr.duree_ms / 60_000));
+                            pb.push(format!(
+                                "partie {k} : {} min pour {m} visées, sans le dire",
+                                pr.duree_ms / 60_000
+                            ));
                         }
                     }
                 }
             }
             if attendu_debut != route.len() {
-                pb.push(format!("les parties couvrent {attendu_debut} morceaux sur {}", route.len()));
+                pb.push(format!(
+                    "les parties couvrent {attendu_debut} morceaux sur {}",
+                    route.len()
+                ));
             }
             if pb.is_empty() {
                 ok += 1;
-                eprintln!("✓ {id:<22} {:>3} morceaux, {:>3} min, {ms} ms{}", route.len(), duree / 60_000,
-                    if relaches.is_empty() { String::new() } else { format!(" — assouplis : {}", relaches.len()) });
+                eprintln!(
+                    "✓ {id:<22} {:>3} morceaux, {:>3} min, {ms} ms{}",
+                    route.len(),
+                    duree / 60_000,
+                    if relaches.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — assouplis : {}", relaches.len())
+                    }
+                );
                 if parties_res.len() > 1 || !relaches.is_empty() {
                     for pr in &parties_res {
                         eprintln!(
@@ -10422,7 +11191,11 @@ mod tests {
                     }
                 }
             } else {
-                eprintln!("✗ {id:<22} {:>3} morceaux, {:>3} min", route.len(), duree / 60_000);
+                eprintln!(
+                    "✗ {id:<22} {:>3} morceaux, {:>3} min",
+                    route.len(),
+                    duree / 60_000
+                );
                 for p in pb {
                     eprintln!("      {p}");
                 }
@@ -10438,7 +11211,8 @@ mod tests {
                 "artistes": artistes,
                 "morceaux_placables": carac.len(),
             });
-            std::fs::write(chemin, serde_json::to_string(&sortie).unwrap()).expect("écriture de RUSTY_SORTIE");
+            std::fs::write(chemin, serde_json::to_string(&sortie).unwrap())
+                .expect("écriture de RUSTY_SORTIE");
         }
     }
 }

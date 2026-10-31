@@ -97,7 +97,10 @@ fn groupe(nom: &str) -> Option<&'static (&'static str, u32, Option<u8>)> {
 /// Identifiants de groupe pour le conditionnement, dans l'ordre donné. Un nom
 /// inconnu est ignoré.
 pub fn groupes_de(instruments: &[&str]) -> Vec<u32> {
-    instruments.iter().filter_map(|n| groupe(n).map(|g| g.1)).collect()
+    instruments
+        .iter()
+        .filter_map(|n| groupe(n).map(|g| g.1))
+        .collect()
 }
 
 /// Jetons interdits quand seuls `instruments` peuvent apparaître : tout
@@ -105,8 +108,14 @@ pub fn groupes_de(instruments: &[&str]) -> Vec<u32> {
 /// si « drums » n'est pas demandée (`MT3Tokenizer.forbidden_token_ids`).
 pub fn interdits(instruments: &[&str]) -> Vec<u32> {
     let batterie = instruments.contains(&"drums");
-    let permis: Vec<u8> = instruments.iter().filter_map(|n| groupe(n).and_then(|g| g.2)).collect();
-    let mut v: Vec<u32> = (0..130u32).filter(|p| !permis.contains(&(*p as u8))).map(|p| PROGRAMME + p).collect();
+    let permis: Vec<u8> = instruments
+        .iter()
+        .filter_map(|n| groupe(n).and_then(|g| g.2))
+        .collect();
+    let mut v: Vec<u32> = (0..130u32)
+        .filter(|p| !permis.contains(&(*p as u8)))
+        .map(|p| PROGRAMME + p)
+        .collect();
     if !batterie {
         v.extend(BATTERIE..VOCABULAIRE);
     }
@@ -169,13 +178,23 @@ impl Suivi {
     fn fermer(&mut self, cle: (u8, u8), t: f32) {
         if let Some(i) = self.ouvertes.iter().position(|(k, _)| *k == cle) {
             let (_, debut) = self.ouvertes.remove(i);
-            self.notes.push(NoteBrute { debut_s: debut, fin_s: t, hauteur: cle.1, programme: cle.0 });
+            self.notes.push(NoteBrute {
+                debut_s: debut,
+                fin_s: t,
+                hauteur: cle.1,
+                programme: cle.0,
+            });
         }
     }
 
     fn tout_fermer(&mut self, t: f32) {
         for (cle, debut) in std::mem::take(&mut self.ouvertes) {
-            self.notes.push(NoteBrute { debut_s: debut, fin_s: t, hauteur: cle.1, programme: cle.0 });
+            self.notes.push(NoteBrute {
+                debut_s: debut,
+                fin_s: t,
+                hauteur: cle.1,
+                programme: cle.0,
+            });
         }
     }
 
@@ -204,8 +223,12 @@ impl Suivi {
                 Evenement::Tie => {
                     self.prologue = false;
                     self.velocite = None;
-                    let finies: Vec<(u8, u8)> =
-                        self.ouvertes.iter().map(|(k, _)| *k).filter(|k| !self.tenues.contains(k)).collect();
+                    let finies: Vec<(u8, u8)> = self
+                        .ouvertes
+                        .iter()
+                        .map(|(k, _)| *k)
+                        .filter(|k| !self.tenues.contains(k))
+                        .collect();
                     for k in finies {
                         self.fermer(k, self.debut_segment);
                     }
@@ -243,11 +266,18 @@ impl Suivi {
             Evenement::Velocite(v) => self.velocite = Some(v),
             Evenement::Batterie(h) => {
                 if self.fin_segment.is_none_or(|f| t < f) {
-                    self.notes.push(NoteBrute { debut_s: t, fin_s: t + DUREE_MIN_S, hauteur: h, programme: PROGRAMME_BATTERIE });
+                    self.notes.push(NoteBrute {
+                        debut_s: t,
+                        fin_s: t + DUREE_MIN_S,
+                        hauteur: h,
+                        programme: PROGRAMME_BATTERIE,
+                    });
                 }
             }
             Evenement::Hauteur(h) => {
-                let (Some(p), Some(v)) = (self.programme, self.velocite) else { return };
+                let (Some(p), Some(v)) = (self.programme, self.velocite) else {
+                    return;
+                };
                 if self.fin_segment.is_some_and(|f| t >= f) {
                     return;
                 }
@@ -273,7 +303,12 @@ impl Suivi {
             self.tout_fermer(self.debut_segment);
         } else {
             for (cle, debut) in std::mem::take(&mut self.ouvertes) {
-                self.notes.push(NoteBrute { debut_s: debut, fin_s: debut + DUREE_MIN_S, hauteur: cle.1, programme: cle.0 });
+                self.notes.push(NoteBrute {
+                    debut_s: debut,
+                    fin_s: debut + DUREE_MIN_S,
+                    hauteur: cle.1,
+                    programme: cle.0,
+                });
             }
         }
         self.notes
@@ -372,10 +407,27 @@ mod tests {
     fn une_note_s_ouvre_et_se_ferme() {
         let mut s = Suivi::new();
         s.frontiere(0.0, Some(5.0));
-        for j in [TIE, decalage(10), programme(33), DEBUT, hauteur(40), decalage(60), FIN, hauteur(40)] {
+        for j in [
+            TIE,
+            decalage(10),
+            programme(33),
+            DEBUT,
+            hauteur(40),
+            decalage(60),
+            FIN,
+            hauteur(40),
+        ] {
             s.jeton(j);
         }
-        assert_eq!(s.finir(), vec![NoteBrute { debut_s: 0.1, fin_s: 0.6, hauteur: 40, programme: 33 }]);
+        assert_eq!(
+            s.finir(),
+            vec![NoteBrute {
+                debut_s: 0.1,
+                fin_s: 0.6,
+                hauteur: 40,
+                programme: 33
+            }]
+        );
     }
 
     #[test]
@@ -393,7 +445,15 @@ mod tests {
         for j in [decalage(50), programme(33), FIN, hauteur(40)] {
             s.jeton(j);
         }
-        assert_eq!(s.finir(), vec![NoteBrute { debut_s: 4.0, fin_s: 5.5, hauteur: 40, programme: 33 }]);
+        assert_eq!(
+            s.finir(),
+            vec![NoteBrute {
+                debut_s: 4.0,
+                fin_s: 5.5,
+                hauteur: 40,
+                programme: 33
+            }]
+        );
     }
 
     #[test]
@@ -405,7 +465,15 @@ mod tests {
         }
         s.frontiere(5.0, None);
         s.jeton(TIE);
-        assert_eq!(s.finir(), vec![NoteBrute { debut_s: 4.0, fin_s: 5.0, hauteur: 40, programme: 33 }]);
+        assert_eq!(
+            s.finir(),
+            vec![NoteBrute {
+                debut_s: 4.0,
+                fin_s: 5.0,
+                hauteur: 40,
+                programme: 33
+            }]
+        );
     }
 
     #[test]
@@ -419,7 +487,14 @@ mod tests {
 
     #[test]
     fn une_note_rejouee_en_rafale_est_une_boucle() {
-        let mut v = vec![TIE, decalage(10), programme(0), DEBUT, hauteur(60), hauteur(64)];
+        let mut v = vec![
+            TIE,
+            decalage(10),
+            programme(0),
+            DEBUT,
+            hauteur(60),
+            hauteur(64),
+        ];
         let boucle = v.len() + 1;
         for t in 11..20 {
             v.extend([decalage(t), hauteur(64)]);
@@ -436,7 +511,13 @@ mod tests {
         }
         assert_eq!(debut_de_boucle(&v), None);
         // Une seule répétition au même instant : un doublon, pas une boucle.
-        v.extend([decalage(200), hauteur(72), hauteur(72), decalage(210), hauteur(74)]);
+        v.extend([
+            decalage(200),
+            hauteur(72),
+            hauteur(72),
+            decalage(210),
+            hauteur(74),
+        ]);
         assert_eq!(debut_de_boucle(&v), None);
     }
 }

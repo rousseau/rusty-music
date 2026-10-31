@@ -42,7 +42,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     vals.get(vals.len() / 2).copied()
                 };
 
-                let mut bruts: Vec<f32> = diagnostics.iter().filter_map(|d| d.map(|d| d.bpm)).collect();
+                let mut bruts: Vec<f32> = diagnostics
+                    .iter()
+                    .filter_map(|d| d.map(|d| d.bpm))
+                    .collect();
                 let mediane_brute = mediane(&mut bruts);
 
                 let mut stabilises: Vec<_> = diagnostics.iter().filter_map(|d| *d).collect();

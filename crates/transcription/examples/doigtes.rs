@@ -35,7 +35,10 @@ struct Morceau {
 /// (`"uniformiser": true`), un seul doigté par motif répété.
 fn doigter(m: &Morceau, g: &Value, k: &Couts) -> Vec<Note> {
     let mut x = m.notes.clone();
-    let a = Accordage { cordes: m.cordes.clone(), frettes: 24 };
+    let a = Accordage {
+        cordes: m.cordes.clone(),
+        frettes: 24,
+    };
     tablature::poser_avec(&mut x, &a, k);
     if g["uniformiser"].as_bool() == Some(true) {
         tablature::uniformiser(&mut x, &a, k, &m.premiers);
@@ -76,7 +79,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .iter()
                                 .map(|m| {
                                     let x = doigter(m, g, &k);
-                                    let ok = x.iter().zip(&m.verite).filter(|(n, v)| (n.corde, n.frette) == (Some(v.0), Some(v.1))).count();
+                                    let ok = x
+                                        .iter()
+                                        .zip(&m.verite)
+                                        .filter(|(n, v)| {
+                                            (n.corde, n.frette) == (Some(v.0), Some(v.1))
+                                        })
+                                        .count();
                                     (m.nom.as_str(), (ok, m.verite.len()))
                                 })
                                 .collect();
@@ -101,6 +110,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect();
         std::fs::write(chemin, serde_json::to_string(&detail)?)?;
     }
-    println!("{} réglages × {} morceaux → {}", grille.len(), corpus.len(), a[2]);
+    println!(
+        "{} réglages × {} morceaux → {}",
+        grille.len(),
+        corpus.len(),
+        a[2]
+    );
     Ok(())
 }

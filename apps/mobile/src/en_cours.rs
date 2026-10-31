@@ -27,7 +27,9 @@ impl Suivi {
 
     pub(crate) fn battement(&mut self, lecture: Option<&EtatLecture>) {
         let cle = lecture.map(|l| (l.titre.clone(), l.album_id.clone(), l.pause));
-        let perime = self.publie_le.is_none_or(|t| t.elapsed() >= Self::RAFRAICHIR);
+        let perime = self
+            .publie_le
+            .is_none_or(|t| t.elapsed() >= Self::RAFRAICHIR);
         if cle == self.dernier && !(lecture.is_some() && perime) {
             return;
         }
@@ -69,11 +71,10 @@ mod ios {
     use objc2_foundation::{NSData, NSDictionary, NSNumber, NSString};
     use objc2_media_player::{
         MPChangePlaybackPositionCommandEvent, MPMediaItemArtwork, MPMediaItemPropertyAlbumTitle,
-        MPMediaItemPropertyArtist, MPMediaItemPropertyArtwork,
-        MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle,
-        MPNowPlayingInfoCenter, MPNowPlayingInfoPropertyElapsedPlaybackTime,
-        MPNowPlayingInfoPropertyPlaybackRate, MPRemoteCommand, MPRemoteCommandCenter,
-        MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
+        MPMediaItemPropertyArtist, MPMediaItemPropertyArtwork, MPMediaItemPropertyPlaybackDuration,
+        MPMediaItemPropertyTitle, MPNowPlayingInfoCenter,
+        MPNowPlayingInfoPropertyElapsedPlaybackTime, MPNowPlayingInfoPropertyPlaybackRate,
+        MPRemoteCommand, MPRemoteCommandCenter, MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
     };
     use tauri::Manager;
 
@@ -112,9 +113,8 @@ mod ios {
                 msg_send![class!(UIImage), imageWithData: &*donnees];
             let image = image?;
             let taille: CGSize = msg_send![&*image, size];
-            let bloc = RcBlock::new(move |_: CGSize| -> NonNull<AnyObject> {
-                NonNull::from(&*image)
-            });
+            let bloc =
+                RcBlock::new(move |_: CGSize| -> NonNull<AnyObject> { NonNull::from(&*image) });
             let oeuvre: Retained<MPMediaItemArtwork> = msg_send![
                 MPMediaItemArtwork::alloc(),
                 initWithBoundsSize: taille,
@@ -194,7 +194,9 @@ mod ios {
             let centre = MPRemoteCommandCenter::sharedCommandCenter();
             relier(&centre.playCommand(), &app, |_| Geste::Pause(Some(false)));
             relier(&centre.pauseCommand(), &app, |_| Geste::Pause(Some(true)));
-            relier(&centre.togglePlayPauseCommand(), &app, |_| Geste::Pause(None));
+            relier(&centre.togglePlayPauseCommand(), &app, |_| {
+                Geste::Pause(None)
+            });
             relier(&centre.nextTrackCommand(), &app, |_| Geste::Suivante);
             relier(&centre.previousTrackCommand(), &app, |_| Geste::Precedente);
             relier(&centre.changePlaybackPositionCommand(), &app, |evenement| {

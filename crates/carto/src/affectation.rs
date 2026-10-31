@@ -112,7 +112,9 @@ pub struct Rue {
 pub fn rassembler_rues(extrait: &Extrait, repere: &Repere) -> Vec<Rue> {
     let mut acc: HashMap<&str, (f64, f64, f64)> = HashMap::new();
     for t in &extrait.troncons {
-        let Some(nom) = t.nom.as_deref() else { continue };
+        let Some(nom) = t.nom.as_deref() else {
+            continue;
+        };
         if let Some(f) = &extrait.frontiere {
             let dedans = t.points.iter().filter(|p| f.contient(**p)).count();
             if dedans * 2 <= t.points.len() {
@@ -172,7 +174,13 @@ fn moments(points: &[([f64; 2], f64)]) -> ([f64; 2], [[f64; 2]; 2]) {
         b += w * dx * dy;
         c += w * dy * dy;
     }
-    (centre, [[a / poids_total, b / poids_total], [b / poids_total, c / poids_total]])
+    (
+        centre,
+        [
+            [a / poids_total, b / poids_total],
+            [b / poids_total, c / poids_total],
+        ],
+    )
 }
 
 /// Angle de l'axe principal d'une covariance 2×2 symétrique — forme close,
@@ -235,7 +243,12 @@ fn semer_impl(
 ) -> (HashMap<i64, [f64; 2]>, Transformation) {
     let pts_f: Vec<([f64; 2], f64)> = familles
         .iter()
-        .map(|f| ([f.centroide[0] as f64, f.centroide[1] as f64], f.effectif as f64))
+        .map(|f| {
+            (
+                [f.centroide[0] as f64, f.centroide[1] as f64],
+                f.effectif as f64,
+            )
+        })
         .collect();
     let pts_r: Vec<([f64; 2], f64)> = rues.iter().map(|r| (r.centre, r.longueur)).collect();
 
@@ -246,15 +259,28 @@ fn semer_impl(
     let centre_cible = centre_impose.unwrap_or(centre_r);
 
     let candidate = |reflexion: bool| {
-        let t = Transformation { centre_f, centre_cible, rotation, echelle, reflexion };
-        let seeds: HashMap<i64, [f64; 2]> =
-            familles.iter().map(|f| (f.id, t.appliquer(f.centroide))).collect();
+        let t = Transformation {
+            centre_f,
+            centre_cible,
+            rotation,
+            echelle,
+            reflexion,
+        };
+        let seeds: HashMap<i64, [f64; 2]> = familles
+            .iter()
+            .map(|f| (f.id, t.appliquer(f.centroide)))
+            .collect();
         // Coût de transport du découpage qui suivra : plus il est bas, mieux
         // les familles tombent sur leurs rues.
         let quartiers = partitionner(familles, rues, &seeds);
         let cout: f64 = rues
             .iter()
-            .filter_map(|r| quartiers.assignation.get(&r.nom).map(|fam| distance2(r.centre, seeds[fam])))
+            .filter_map(|r| {
+                quartiers
+                    .assignation
+                    .get(&r.nom)
+                    .map(|fam| distance2(r.centre, seeds[fam]))
+            })
             .sum();
         (cout, seeds, t)
     };
@@ -301,7 +327,10 @@ impl Transformation {
         if self.reflexion {
             ry = -ry;
         }
-        [self.centre_cible[0] + rx * self.echelle, self.centre_cible[1] + ry * self.echelle]
+        [
+            self.centre_cible[0] + rx * self.echelle,
+            self.centre_cible[1] + ry * self.echelle,
+        ]
     }
 }
 
@@ -348,9 +377,17 @@ impl Quartiers {
 /// rapport à son nombre de morceaux — typiquement, elle avalerait les bois de
 /// Boulogne et Vincennes, presque sans rues, et resterait minuscule en
 /// capacité réelle (`carto-ville.md`, objection V3).
-pub fn partitionner(familles: &[Famille], rues: &[Rue], seeds: &HashMap<i64, [f64; 2]>) -> Quartiers {
+pub fn partitionner(
+    familles: &[Famille],
+    rues: &[Rue],
+    seeds: &HashMap<i64, [f64; 2]>,
+) -> Quartiers {
     let total_longueur: f64 = rues.iter().map(|r| r.longueur).sum();
-    let total_effectif: f64 = familles.iter().map(|f| f.effectif as f64).sum::<f64>().max(1.0);
+    let total_effectif: f64 = familles
+        .iter()
+        .map(|f| f.effectif as f64)
+        .sum::<f64>()
+        .max(1.0);
     let cible: HashMap<i64, f64> = familles
         .iter()
         .map(|f| (f.id, f.effectif as f64 / total_effectif * total_longueur))
@@ -368,7 +405,8 @@ pub fn partitionner(familles: &[Famille], rues: &[Rue], seeds: &HashMap<i64, [f6
     // Échelle du pas d'ajustement : l'étalement spatial des rues au carré.
     // Sans cette dimension, le pas serait sans rapport avec les distances
     // au carré qu'il doit contrebalancer dans le coût du diagramme.
-    let (centre_rues, cov_rues) = moments(&rues.iter().map(|r| (r.centre, 1.0)).collect::<Vec<_>>());
+    let (centre_rues, cov_rues) =
+        moments(&rues.iter().map(|r| (r.centre, 1.0)).collect::<Vec<_>>());
     let _ = centre_rues;
     let portee2 = (cov_rues[0][0] + cov_rues[1][1]).max(1.0);
 
@@ -484,7 +522,12 @@ pub fn territoires(
 /// par le diagramme de puissance ([`territoires`]) et par le peuplement
 /// chronologique, qui dessine les quartiers d'après les habitants réels
 /// (`ville::territoires_des_habitants`).
-pub fn contourer(gagnante: &[i64], ids: &[i64], bornes: [f64; 4], resolution: usize) -> Vec<Territoire> {
+pub fn contourer(
+    gagnante: &[i64],
+    ids: &[i64],
+    bornes: [f64; 4],
+    resolution: usize,
+) -> Vec<Territoire> {
     let gn = resolution.max(2);
     let [xmin, ymin, xmax, ymax] = bornes;
     let pas_x = ((xmax - xmin) / gn as f64).max(1e-6);
@@ -497,8 +540,13 @@ pub fn contourer(gagnante: &[i64], ids: &[i64], bornes: [f64; 4], resolution: us
 
     let mut sortie = Vec::new();
     for &f in ids {
-        let champ: Vec<f64> = gagnante.iter().map(|&g| if g == f { 1.0 } else { 0.0 }).collect();
-        let Ok(bandes) = constructeur.isobands(&champ, &[0.5, 1.5]) else { continue };
+        let champ: Vec<f64> = gagnante
+            .iter()
+            .map(|&g| if g == f { 1.0 } else { 0.0 })
+            .collect();
+        let Ok(bandes) = constructeur.isobands(&champ, &[0.5, 1.5]) else {
+            continue;
+        };
         let polygones: Vec<Vec<Vec<[f64; 2]>>> = bandes
             .into_iter()
             .flat_map(|b| {
@@ -514,7 +562,10 @@ pub fn contourer(gagnante: &[i64], ids: &[i64], bornes: [f64; 4], resolution: us
             })
             .collect();
         if !polygones.is_empty() {
-            sortie.push(Territoire { famille: f, polygones });
+            sortie.push(Territoire {
+                famille: f,
+                polygones,
+            });
         }
     }
     sortie
@@ -664,8 +715,7 @@ pub fn loger_artistes(
             // logeable : prendre une rue vide n'avancerait pas `capacite_prise`
             // et l'artiste avalerait toute la voirie déserte de sa zone avant
             // d'en sortir.
-            let a_de_la_place =
-                |n: &&str| capacite_rue.get(*n).copied().unwrap_or(0) > 0;
+            let a_de_la_place = |n: &&str| capacite_rue.get(*n).copied().unwrap_or(0) > 0;
             let zone: Vec<&str> = disponibles
                 .get(&artiste.famille)
                 .map(|v| v.iter().copied().filter(a_de_la_place).collect())
@@ -673,13 +723,20 @@ pub fn loger_artistes(
             let (candidats, hors_zone) = if !zone.is_empty() {
                 (zone, false)
             } else {
-                let secours: Vec<&str> =
-                    disponibles.values().flatten().copied().filter(a_de_la_place).collect();
+                let secours: Vec<&str> = disponibles
+                    .values()
+                    .flatten()
+                    .copied()
+                    .filter(a_de_la_place)
+                    .collect();
                 (secours, true)
             };
             let Some(plus_proche) = candidats
                 .iter()
-                .min_by(|a, b| distance2(par_nom[*a].centre, cible).total_cmp(&distance2(par_nom[*b].centre, cible)))
+                .min_by(|a, b| {
+                    distance2(par_nom[*a].centre, cible)
+                        .total_cmp(&distance2(par_nom[*b].centre, cible))
+                })
                 .copied()
             else {
                 break; // plus aucune rue avec des bâtiments, nulle part
@@ -757,7 +814,10 @@ impl Trace {
     /// trace, bornée à ses deux extrémités.
     pub fn au(&self, s: f64) -> ([f64; 2], [f64; 2]) {
         if self.points.len() < 2 {
-            return (self.points.first().copied().unwrap_or([0.0, 0.0]), [1.0, 0.0]);
+            return (
+                self.points.first().copied().unwrap_or([0.0, 0.0]),
+                [1.0, 0.0],
+            );
         }
         let s = s.clamp(0.0, self.longueur());
         let i = self
@@ -804,8 +864,10 @@ fn assembler_trace(troncons: &[&Troncon], repere: &Repere) -> Vec<[f64; 2]> {
 
     let mut ordre: Vec<usize> = (0..converses.len()).collect();
     ordre.sort_by(|&i, &j| {
-        let pi = converses[i].iter().copied().map(projection).sum::<f64>() / converses[i].len().max(1) as f64;
-        let pj = converses[j].iter().copied().map(projection).sum::<f64>() / converses[j].len().max(1) as f64;
+        let pi = converses[i].iter().copied().map(projection).sum::<f64>()
+            / converses[i].len().max(1) as f64;
+        let pj = converses[j].iter().copied().map(projection).sum::<f64>()
+            / converses[j].len().max(1) as f64;
         pi.total_cmp(&pj)
     });
 
@@ -834,7 +896,12 @@ pub fn traces_des_rues(extrait: &Extrait, repere: &Repere) -> HashMap<String, Tr
     extrait
         .rues_par_nom()
         .into_iter()
-        .map(|(nom, troncons)| (nom.to_string(), Trace::nouvelle(assembler_trace(&troncons, repere))))
+        .map(|(nom, troncons)| {
+            (
+                nom.to_string(),
+                Trace::nouvelle(assembler_trace(&troncons, repere)),
+            )
+        })
         .collect()
 }
 
@@ -907,13 +974,37 @@ pub fn loger_dans_batiments(
     let mut i = 0usize;
     let pas_echantillon = (espacement * 4.0).max(1.0);
 
-    chercher_et_loger(&logement.rues, false, pistes, &mut i, traces, grille, batiments_pris, pas_echantillon, &mut sortie);
+    chercher_et_loger(
+        &logement.rues,
+        false,
+        pistes,
+        &mut i,
+        traces,
+        grille,
+        batiments_pris,
+        pas_echantillon,
+        &mut sortie,
+    );
 
     if i < pistes.len() {
         // Le reste du quartier : les rues de la famille jamais tentées
         // ci-dessus (celles de l'artiste l'ont déjà été).
-        let autres: Vec<String> = quartier_rues.iter().filter(|r| !logement.rues.contains(r)).cloned().collect();
-        chercher_et_loger(&autres, true, pistes, &mut i, traces, grille, batiments_pris, pas_echantillon, &mut sortie);
+        let autres: Vec<String> = quartier_rues
+            .iter()
+            .filter(|r| !logement.rues.contains(r))
+            .cloned()
+            .collect();
+        chercher_et_loger(
+            &autres,
+            true,
+            pistes,
+            &mut i,
+            traces,
+            grille,
+            batiments_pris,
+            pas_echantillon,
+            &mut sortie,
+        );
     }
 
     // Dernier recours : le quartier entier est épuisé, il reste des
@@ -986,7 +1077,9 @@ fn chercher_et_loger(
         if bassin.len() >= besoin {
             break;
         }
-        let Some(trace) = traces.get(rue) else { continue };
+        let Some(trace) = traces.get(rue) else {
+            continue;
+        };
         let mut s = 0.0;
         loop {
             let (pos, _) = trace.au(s);
@@ -1042,7 +1135,10 @@ mod tests {
                 id: i,
                 nom: Some(format!("Rue {i}")),
                 classe: Classe::Residentielle,
-                points: vec![[2.30 + i as f64 * 0.01, 48.85], [2.30 + i as f64 * 0.01 + 0.005, 48.85]],
+                points: vec![
+                    [2.30 + i as f64 * 0.01, 48.85],
+                    [2.30 + i as f64 * 0.01 + 0.005, 48.85],
+                ],
             })
             .collect();
         Extrait {
@@ -1069,8 +1165,14 @@ mod tests {
         for lon_lat in [[2.30, 48.85], [2.45, 48.90], [2.20, 48.81]] {
             let m = repere.vers_m(lon_lat);
             let retour = repere.depuis_m(m);
-            assert!((retour[0] - lon_lat[0]).abs() < 1e-9, "lon {retour:?} vs {lon_lat:?}");
-            assert!((retour[1] - lon_lat[1]).abs() < 1e-9, "lat {retour:?} vs {lon_lat:?}");
+            assert!(
+                (retour[0] - lon_lat[0]).abs() < 1e-9,
+                "lon {retour:?} vs {lon_lat:?}"
+            );
+            assert!(
+                (retour[1] - lon_lat[1]).abs() < 1e-9,
+                "lat {retour:?} vs {lon_lat:?}"
+            );
         }
     }
 
@@ -1096,21 +1198,40 @@ mod tests {
         // Deux familles alignées sur x dans l'espace t-SNE ; les rues aussi
         // s'étalent sur x. L'ordre relatif doit survivre à la transformation.
         let familles = vec![
-            Famille { id: 1, centroide: [-0.5, 0.0], effectif: 100 },
-            Famille { id: 2, centroide: [0.5, 0.0], effectif: 100 },
+            Famille {
+                id: 1,
+                centroide: [-0.5, 0.0],
+                effectif: 100,
+            },
+            Famille {
+                id: 2,
+                centroide: [0.5, 0.0],
+                effectif: 100,
+            },
         ];
         let extrait = extrait_lineaire();
         let repere = Repere::centre_de(&extrait);
         let rues = rassembler_rues(&extrait, &repere);
         let (seeds, _transfo) = semer(&familles, &rues);
-        assert!(seeds[&1][0] < seeds[&2][0], "l'ordre le long de l'axe est préservé");
+        assert!(
+            seeds[&1][0] < seeds[&2][0],
+            "l'ordre le long de l'axe est préservé"
+        );
     }
 
     #[test]
     fn partitionner_respecte_la_capacite_a_deux_familles_tres_inegales() {
         let familles = vec![
-            Famille { id: 1, centroide: [-0.8, 0.0], effectif: 900 },
-            Famille { id: 2, centroide: [0.8, 0.0], effectif: 100 },
+            Famille {
+                id: 1,
+                centroide: [-0.8, 0.0],
+                effectif: 900,
+            },
+            Famille {
+                id: 2,
+                centroide: [0.8, 0.0],
+                effectif: 100,
+            },
         ];
         let extrait = extrait_lineaire();
         let repere = Repere::centre_de(&extrait);
@@ -1120,11 +1241,18 @@ mod tests {
 
         assert_eq!(q.assignation.len(), rues.len(), "chaque rue est assignée");
         let erreur = q.erreur_relative_max();
-        assert!(erreur < 0.35, "erreur relative maximale {erreur:.2}, attendu < 0,35");
+        assert!(
+            erreur < 0.35,
+            "erreur relative maximale {erreur:.2}, attendu < 0,35"
+        );
 
         // La grosse famille doit avoir reçu la majorité des rues.
         let total: f64 = q.capacite.values().sum();
-        assert!(q.capacite[&1] > total * 0.7, "famille 1 : {:.0} / {total:.0}", q.capacite[&1]);
+        assert!(
+            q.capacite[&1] > total * 0.7,
+            "famille 1 : {:.0} / {total:.0}",
+            q.capacite[&1]
+        );
     }
 
     #[test]
@@ -1140,14 +1268,22 @@ mod tests {
         use rusty_music_osm::Frontiere;
         // Frontière = carré [2.30, 48.84]..[2.32, 48.86].
         let frontiere = Frontiere::nouvelle(vec![vec![
-            [2.30, 48.84], [2.32, 48.84], [2.32, 48.86], [2.30, 48.86], [2.30, 48.84],
+            [2.30, 48.84],
+            [2.32, 48.84],
+            [2.32, 48.86],
+            [2.30, 48.86],
+            [2.30, 48.84],
         ]]);
         let dedans = Troncon {
-            id: 1, nom: Some("Rue Dedans".into()), classe: Classe::Residentielle,
+            id: 1,
+            nom: Some("Rue Dedans".into()),
+            classe: Classe::Residentielle,
             points: vec![[2.305, 48.85], [2.310, 48.851]],
         };
         let dehors = Troncon {
-            id: 2, nom: Some("Rue Dehors".into()), classe: Classe::Residentielle,
+            id: 2,
+            nom: Some("Rue Dehors".into()),
+            classe: Classe::Residentielle,
             points: vec![[2.340, 48.85], [2.345, 48.851]],
         };
         let extrait = Extrait {
@@ -1156,9 +1292,15 @@ mod tests {
             ..Default::default()
         };
         let repere = Repere::centre_de(&extrait);
-        let noms: Vec<String> = rassembler_rues(&extrait, &repere).into_iter().map(|r| r.nom).collect();
+        let noms: Vec<String> = rassembler_rues(&extrait, &repere)
+            .into_iter()
+            .map(|r| r.nom)
+            .collect();
         assert!(noms.iter().any(|n| n == "Rue Dedans"), "{noms:?}");
-        assert!(!noms.iter().any(|n| n == "Rue Dehors"), "le halo a été assigné : {noms:?}");
+        assert!(
+            !noms.iter().any(|n| n == "Rue Dehors"),
+            "le halo a été assigné : {noms:?}"
+        );
     }
 
     #[test]
@@ -1166,38 +1308,79 @@ mod tests {
         // Une seule famille, cinq rues de 100 m : à 10 m d'espacement,
         // chaque rue loge 10 morceaux. Le gros artiste (25 morceaux) doit en
         // prendre trois ; les petits (5 chacun) tiennent sur une seule.
-        let familles = vec![Famille { id: 1, centroide: [0.0, 0.0], effectif: 40 }];
+        let familles = vec![Famille {
+            id: 1,
+            centroide: [0.0, 0.0],
+            effectif: 40,
+        }];
         let troncons: Vec<Troncon> = (0..5)
             .map(|i| Troncon {
                 id: i,
                 nom: Some(format!("Rue {i}")),
                 classe: Classe::Residentielle,
-                points: vec![[2.30 + i as f64 * 0.01, 48.85], [2.30 + i as f64 * 0.01 + 0.0009, 48.85]],
+                points: vec![
+                    [2.30 + i as f64 * 0.01, 48.85],
+                    [2.30 + i as f64 * 0.01 + 0.0009, 48.85],
+                ],
             })
             .collect();
-        let extrait = Extrait { troncons, ..Default::default() };
+        let extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let rues = rassembler_rues(&extrait, &repere);
         // ~66 m par rue à cette latitude, pour ce pas de longitude.
-        assert!(rues.iter().all(|r| (50.0..80.0).contains(&r.longueur)), "{:?}", rues.iter().map(|r| r.longueur).collect::<Vec<_>>());
+        assert!(
+            rues.iter().all(|r| (50.0..80.0).contains(&r.longueur)),
+            "{:?}",
+            rues.iter().map(|r| r.longueur).collect::<Vec<_>>()
+        );
 
         let (seeds, transfo) = semer(&familles, &rues);
         let quartiers = partitionner(&familles, &rues, &seeds);
 
         let artistes = vec![
-            Artiste { nom: "Gros".into(), famille: 1, centroide: [0.0, 0.0], effectif: 25 },
-            Artiste { nom: "Petit A".into(), famille: 1, centroide: [0.0, 0.0], effectif: 5 },
-            Artiste { nom: "Petit B".into(), famille: 1, centroide: [0.0, 0.0], effectif: 5 },
-            Artiste { nom: "Petit C".into(), famille: 1, centroide: [0.0, 0.0], effectif: 5 },
+            Artiste {
+                nom: "Gros".into(),
+                famille: 1,
+                centroide: [0.0, 0.0],
+                effectif: 25,
+            },
+            Artiste {
+                nom: "Petit A".into(),
+                famille: 1,
+                centroide: [0.0, 0.0],
+                effectif: 5,
+            },
+            Artiste {
+                nom: "Petit B".into(),
+                famille: 1,
+                centroide: [0.0, 0.0],
+                effectif: 5,
+            },
+            Artiste {
+                nom: "Petit C".into(),
+                famille: 1,
+                centroide: [0.0, 0.0],
+                effectif: 5,
+            },
         ];
         // 13 bâtiments logeables par rue : "Gros" (25) tient sur deux rues,
         // les petits (5) sur une.
         let capacites: HashMap<String, usize> = (0..5).map(|i| (format!("Rue {i}"), 13)).collect();
         let voirie = loger_artistes(&artistes, &rues, &quartiers, &transfo, &capacites);
 
-        assert!(voirie.debordements.is_empty(), "tout tient dans la seule famille");
+        assert!(
+            voirie.debordements.is_empty(),
+            "tout tient dans la seule famille"
+        );
         let gros = &voirie.logements["Gros"];
-        assert!(gros.rues.len() >= 2, "25 morceaux à 10/rue tiennent difficilement sur une seule : {:?}", gros.rues);
+        assert!(
+            gros.rues.len() >= 2,
+            "25 morceaux à 10/rue tiennent difficilement sur une seule : {:?}",
+            gros.rues
+        );
         assert!(gros.capacite >= 25);
         for petit in ["Petit A", "Petit B", "Petit C"] {
             let l = &voirie.logements[petit];
@@ -1205,11 +1388,19 @@ mod tests {
             assert!(l.capacite >= 5);
         }
         // Aucune rue prêtée deux fois.
-        let mut toutes: Vec<&str> = voirie.logements.values().flat_map(|l| l.rues.iter().map(|s| s.as_str())).collect();
+        let mut toutes: Vec<&str> = voirie
+            .logements
+            .values()
+            .flat_map(|l| l.rues.iter().map(|s| s.as_str()))
+            .collect();
         toutes.sort_unstable();
         let avant = toutes.len();
         toutes.dedup();
-        assert_eq!(toutes.len(), avant, "une rue ne doit appartenir qu'à un seul artiste");
+        assert_eq!(
+            toutes.len(),
+            avant,
+            "une rue ne doit appartenir qu'à un seul artiste"
+        );
     }
 
     #[test]
@@ -1217,15 +1408,26 @@ mod tests {
         // Deux familles ; la famille 2 n'a qu'une rue minuscule pour un
         // artiste qui a besoin de plus — il doit emprunter chez la famille 1.
         let familles = vec![
-            Famille { id: 1, centroide: [-0.9, 0.0], effectif: 90 },
-            Famille { id: 2, centroide: [0.9, 0.0], effectif: 10 },
+            Famille {
+                id: 1,
+                centroide: [-0.9, 0.0],
+                effectif: 90,
+            },
+            Famille {
+                id: 2,
+                centroide: [0.9, 0.0],
+                effectif: 10,
+            },
         ];
         let mut troncons: Vec<Troncon> = (0..9)
             .map(|i| Troncon {
                 id: i,
                 nom: Some(format!("Grande rue {i}")),
                 classe: Classe::Residentielle,
-                points: vec![[2.20 + i as f64 * 0.01, 48.85], [2.20 + i as f64 * 0.01 + 0.0009, 48.85]],
+                points: vec![
+                    [2.20 + i as f64 * 0.01, 48.85],
+                    [2.20 + i as f64 * 0.01 + 0.0009, 48.85],
+                ],
             })
             .collect();
         troncons.push(Troncon {
@@ -1234,7 +1436,10 @@ mod tests {
             classe: Classe::Residentielle,
             points: vec![[2.45, 48.85], [2.4501, 48.85]],
         });
-        let extrait = Extrait { troncons, ..Default::default() };
+        let extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let rues = rassembler_rues(&extrait, &repere);
         let (seeds, transfo) = semer(&familles, &rues);
@@ -1262,30 +1467,49 @@ mod tests {
         // Deux rues dans la même zone : la plus proche de l'artiste n'a aucun
         // bâtiment logeable, la plus loin en a assez. L'artiste doit prendre
         // la seconde, pas s'accrocher à la première.
-        let familles = vec![Famille { id: 1, centroide: [0.0, 0.0], effectif: 10 }];
+        let familles = vec![Famille {
+            id: 1,
+            centroide: [0.0, 0.0],
+            effectif: 10,
+        }];
         let troncons: Vec<Troncon> = (0..2)
             .map(|i| Troncon {
                 id: i,
                 nom: Some(format!("Rue {i}")),
                 classe: Classe::Residentielle,
-                points: vec![[2.30 + i as f64 * 0.02, 48.85], [2.30 + i as f64 * 0.02 + 0.005, 48.85]],
+                points: vec![
+                    [2.30 + i as f64 * 0.02, 48.85],
+                    [2.30 + i as f64 * 0.02 + 0.005, 48.85],
+                ],
             })
             .collect();
-        let extrait = Extrait { troncons, ..Default::default() };
+        let extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let rues = rassembler_rues(&extrait, &repere);
         let (seeds, transfo) = semer(&familles, &rues);
         let quartiers = partitionner(&familles, &rues, &seeds);
 
         // Artiste au niveau de "Rue 0" (x ~ -1), mais "Rue 0" n'a rien.
-        let artistes = vec![Artiste { nom: "A".into(), famille: 1, centroide: [-1.0, 0.0], effectif: 5 }];
+        let artistes = vec![Artiste {
+            nom: "A".into(),
+            famille: 1,
+            centroide: [-1.0, 0.0],
+            effectif: 5,
+        }];
         let mut capacites: HashMap<String, usize> = HashMap::new();
         capacites.insert("Rue 0".into(), 0);
         capacites.insert("Rue 1".into(), 8);
 
         let voirie = loger_artistes(&artistes, &rues, &quartiers, &transfo, &capacites);
         let logement = &voirie.logements["A"];
-        assert_eq!(logement.rues, vec!["Rue 1".to_string()], "a sauté la rue sans bâtiment");
+        assert_eq!(
+            logement.rues,
+            vec!["Rue 1".to_string()],
+            "a sauté la rue sans bâtiment"
+        );
         assert!(logement.capacite >= 5);
     }
 
@@ -1299,10 +1523,19 @@ mod tests {
         seeds.insert(2, [500.0, 0.0]);
         let poids: HashMap<i64, f64> = [(1, 0.0), (2, 0.0)].into_iter().collect();
 
-        let terrs = territoires(&seeds, &poids, [-1000.0, -1000.0, 1000.0, 1000.0], 80, |_| true);
+        let terrs = territoires(
+            &seeds,
+            &poids,
+            [-1000.0, -1000.0, 1000.0, 1000.0],
+            80,
+            |_| true,
+        );
         assert_eq!(terrs.len(), 2, "une zone par famille");
         for t in &terrs {
-            assert!(t.polygones.iter().any(|p| p.first().is_some_and(|a| a.len() >= 4)));
+            assert!(t
+                .polygones
+                .iter()
+                .any(|p| p.first().is_some_and(|a| a.len() >= 4)));
         }
 
         // La zone de la famille 1 couvre l'ouest, celle de la famille 2 l'est.
@@ -1311,7 +1544,10 @@ mod tests {
             let anneau = &ouest.polygones[0][0];
             anneau.iter().map(|p| p[0]).sum::<f64>() / anneau.len() as f64
         };
-        assert!(centre_x < 0.0, "la zone de la famille 1 doit pencher à l'ouest : {centre_x}");
+        assert!(
+            centre_x < 0.0,
+            "la zone de la famille 1 doit pencher à l'ouest : {centre_x}"
+        );
     }
 
     #[test]
@@ -1320,19 +1556,37 @@ mod tests {
         seeds.insert(1, [0.0, 0.0]);
         let poids: HashMap<i64, f64> = [(1, 0.0)].into_iter().collect();
         // Masque qui ne garde que le quart nord-est.
-        let terrs = territoires(&seeds, &poids, [-100.0, -100.0, 100.0, 100.0], 60, |p| p[0] > 0.0 && p[1] > 0.0);
+        let terrs = territoires(&seeds, &poids, [-100.0, -100.0, 100.0, 100.0], 60, |p| {
+            p[0] > 0.0 && p[1] > 0.0
+        });
         assert_eq!(terrs.len(), 1);
         let anneau = &terrs[0].polygones[0][0];
-        assert!(anneau.iter().all(|p| p[0] > -2.0 && p[1] > -2.0), "la zone déborde le masque : {anneau:?}");
+        assert!(
+            anneau.iter().all(|p| p[0] > -2.0 && p[1] > -2.0),
+            "la zone déborde le masque : {anneau:?}"
+        );
     }
 
     #[test]
     fn capacites_par_rue_compte_les_batiments_de_chaque_rue() {
         let troncons = vec![
-            Troncon { id: 1, nom: Some("Peuplée".into()), classe: Classe::Residentielle, points: vec![[2.30, 48.85], [2.31, 48.85]] },
-            Troncon { id: 2, nom: Some("Déserte".into()), classe: Classe::Residentielle, points: vec![[2.30, 48.86], [2.31, 48.86]] },
+            Troncon {
+                id: 1,
+                nom: Some("Peuplée".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.30, 48.85], [2.31, 48.85]],
+            },
+            Troncon {
+                id: 2,
+                nom: Some("Déserte".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.30, 48.86], [2.31, 48.86]],
+            },
         ];
-        let mut extrait = Extrait { troncons, ..Default::default() };
+        let mut extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
 
@@ -1340,7 +1594,9 @@ mod tests {
         let trace = &traces["Peuplée"];
         for k in 0..3 {
             let (pos, _) = trace.au(trace.longueur() * k as f64 / 3.0);
-            extrait.batis.push(contour_carre(&repere, 10 + k, [pos[0], pos[1] + 8.0], 12.0));
+            extrait
+                .batis
+                .push(contour_carre(&repere, 10 + k, [pos[0], pos[1] + 8.0], 12.0));
         }
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
@@ -1365,20 +1621,45 @@ mod tests {
     fn assembler_trace_met_bout_a_bout_deux_troncons_inverses() {
         // Deux tronçons colinéaires sur l'axe des x, le second donné dans le
         // sens retour — comme OSM les fournit parfois.
-        let a = Troncon { id: 1, nom: Some("Rue".into()), classe: Classe::Residentielle, points: vec![[2.30, 48.85], [2.301, 48.85]] };
-        let b = Troncon { id: 2, nom: Some("Rue".into()), classe: Classe::Residentielle, points: vec![[2.303, 48.85], [2.302, 48.85]] };
-        let extrait = Extrait { troncons: vec![a, b], ..Default::default() };
+        let a = Troncon {
+            id: 1,
+            nom: Some("Rue".into()),
+            classe: Classe::Residentielle,
+            points: vec![[2.30, 48.85], [2.301, 48.85]],
+        };
+        let b = Troncon {
+            id: 2,
+            nom: Some("Rue".into()),
+            classe: Classe::Residentielle,
+            points: vec![[2.303, 48.85], [2.302, 48.85]],
+        };
+        let extrait = Extrait {
+            troncons: vec![a, b],
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
-        let trace = Trace::nouvelle(assembler_trace(&[&extrait.troncons[0], &extrait.troncons[1]], &repere));
+        let trace = Trace::nouvelle(assembler_trace(
+            &[&extrait.troncons[0], &extrait.troncons[1]],
+            &repere,
+        ));
         // La longueur doit être proche de la somme des deux segments, pas
         // d'un aller-retour qui compterait le trou entre eux deux fois.
         let attendu = extrait.troncons[0].longueur_m() + extrait.troncons[1].longueur_m();
-        assert!((trace.longueur() - attendu).abs() < attendu * 0.5, "trace {} vs troncons {attendu}", trace.longueur());
+        assert!(
+            (trace.longueur() - attendu).abs() < attendu * 0.5,
+            "trace {} vs troncons {attendu}",
+            trace.longueur()
+        );
     }
 
     /// Un bâtiment carré, construit en mètres locaux puis reconverti en
     /// lon/lat — l'inverse de ce que `GrilleBatiments` applique en interne.
-    fn contour_carre(repere: &Repere, id: i64, centre_m: [f64; 2], cote: f64) -> rusty_music_osm::Contour {
+    fn contour_carre(
+        repere: &Repere,
+        id: i64,
+        centre_m: [f64; 2],
+        cote: f64,
+    ) -> rusty_music_osm::Contour {
         let r = cote / 2.0;
         let anneau_m = [
             [centre_m[0] - r, centre_m[1] - r],
@@ -1387,7 +1668,10 @@ mod tests {
             [centre_m[0] - r, centre_m[1] + r],
             [centre_m[0] - r, centre_m[1] - r],
         ];
-        rusty_music_osm::Contour { id, points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect() }
+        rusty_music_osm::Contour {
+            id,
+            points: anneau_m.iter().map(|p| repere.depuis_m(*p)).collect(),
+        }
     }
 
     #[test]
@@ -1398,7 +1682,10 @@ mod tests {
             classe: Classe::Residentielle,
             points: vec![[2.30, 48.85], [2.31, 48.85]],
         };
-        let mut extrait = Extrait { troncons: vec![troncon], ..Default::default() };
+        let mut extrait = Extrait {
+            troncons: vec![troncon],
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
         let trace = &traces["Rue Test"];
@@ -1407,24 +1694,53 @@ mod tests {
 
         // Un petit bâtiment (16 m²) près du début, un grand (400 m²) près du
         // milieu — la taille ne décide plus, la cible du morceau si.
-        extrait.batis.push(contour_carre(&repere, 1, [debut[0], debut[1] + 10.0], 4.0));
-        extrait.batis.push(contour_carre(&repere, 2, [milieu[0], milieu[1] + 10.0], 20.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [debut[0], debut[1] + 10.0], 4.0));
+        extrait.batis.push(contour_carre(
+            &repere,
+            2,
+            [milieu[0], milieu[1] + 10.0],
+            20.0,
+        ));
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
-        let logement = Logement { rues: vec!["Rue Test".into()], capacite: 100 };
+        let logement = Logement {
+            rues: vec!["Rue Test".into()],
+            capacite: 100,
+        };
 
         // Cible près du début : le petit bâtiment, pas le grand.
         let mut pris = HashSet::new();
-        let pres_du_debut = loger_dans_batiments(&[(42, debut)], &logement, &[], &traces, &grille, &mut pris, 10.0);
+        let pres_du_debut = loger_dans_batiments(
+            &[(42, debut)],
+            &logement,
+            &[],
+            &traces,
+            &grille,
+            &mut pris,
+            10.0,
+        );
         assert_eq!(pres_du_debut.len(), 1);
-        assert_eq!(pres_du_debut[0].batiment_id, 1, "le bâtiment le plus proche de la cible, pas le plus grand");
+        assert_eq!(
+            pres_du_debut[0].batiment_id, 1,
+            "le bâtiment le plus proche de la cible, pas le plus grand"
+        );
         assert!(!pres_du_debut[0].repli_quartier);
         assert!(!pres_du_debut[0].hors_zone);
 
         // Cible près du milieu : le grand bâtiment, parce qu'il est là, pas
         // parce qu'il est grand.
         let mut pris = HashSet::new();
-        let pres_du_milieu = loger_dans_batiments(&[(7, milieu)], &logement, &[], &traces, &grille, &mut pris, 10.0);
+        let pres_du_milieu = loger_dans_batiments(
+            &[(7, milieu)],
+            &logement,
+            &[],
+            &traces,
+            &grille,
+            &mut pris,
+            10.0,
+        );
         assert_eq!(pres_du_milieu[0].batiment_id, 2);
     }
 
@@ -1436,18 +1752,28 @@ mod tests {
             classe: Classe::Residentielle,
             points: vec![[2.30, 48.85], [2.32, 48.85]],
         };
-        let mut extrait = Extrait { troncons: vec![troncon], ..Default::default() };
+        let mut extrait = Extrait {
+            troncons: vec![troncon],
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
         let trace = &traces["Rue Test"];
         let debut = trace.au(0.0).0;
         let fin = trace.au(trace.longueur()).0;
 
-        extrait.batis.push(contour_carre(&repere, 1, [debut[0], debut[1] + 10.0], 10.0));
-        extrait.batis.push(contour_carre(&repere, 2, [fin[0], fin[1] + 10.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [debut[0], debut[1] + 10.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 2, [fin[0], fin[1] + 10.0], 10.0));
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
-        let logement = Logement { rues: vec!["Rue Test".into()], capacite: 100 };
+        let logement = Logement {
+            rues: vec!["Rue Test".into()],
+            capacite: 100,
+        };
         let mut pris = HashSet::new();
 
         // Le morceau donné en premier vise la fin de la rue, le second vise le
@@ -1463,44 +1789,95 @@ mod tests {
         );
         let dix = adresses.iter().find(|a| a.track_id == 10).unwrap();
         let vingt = adresses.iter().find(|a| a.track_id == 20).unwrap();
-        assert_eq!(dix.batiment_id, 2, "le morceau visant la fin habite le bâtiment de la fin");
-        assert_eq!(vingt.batiment_id, 1, "celui visant le début habite le bâtiment du début");
+        assert_eq!(
+            dix.batiment_id, 2,
+            "le morceau visant la fin habite le bâtiment de la fin"
+        );
+        assert_eq!(
+            vingt.batiment_id, 1,
+            "celui visant le début habite le bâtiment du début"
+        );
     }
 
     #[test]
     fn loger_dans_batiments_deborde_sur_la_rue_suivante_quand_les_batiments_manquent() {
         let troncons = vec![
-            Troncon { id: 1, nom: Some("Courte".into()), classe: Classe::Residentielle, points: vec![[2.30, 48.85], [2.3003, 48.85]] },
-            Troncon { id: 2, nom: Some("Longue".into()), classe: Classe::Residentielle, points: vec![[2.31, 48.85], [2.35, 48.85]] },
+            Troncon {
+                id: 1,
+                nom: Some("Courte".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.30, 48.85], [2.3003, 48.85]],
+            },
+            Troncon {
+                id: 2,
+                nom: Some("Longue".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.31, 48.85], [2.35, 48.85]],
+            },
         ];
-        let mut extrait = Extrait { troncons, ..Default::default() };
+        let mut extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
 
         // Un seul bâtiment logeable près de « Courte ».
         let m_courte = traces["Courte"].au(0.0).0;
-        extrait.batis.push(contour_carre(&repere, 100, [m_courte[0], m_courte[1] + 10.0], 10.0));
+        extrait.batis.push(contour_carre(
+            &repere,
+            100,
+            [m_courte[0], m_courte[1] + 10.0],
+            10.0,
+        ));
 
         // Trois bâtiments espacés le long de « Longue ».
         let longue = traces["Longue"].longueur();
         for (n, s) in [0.0, longue / 2.0, longue].into_iter().enumerate() {
             let (pos, _) = traces["Longue"].au(s);
-            extrait.batis.push(contour_carre(&repere, 200 + n as i64, [pos[0], pos[1] + 10.0], 10.0));
+            extrait.batis.push(contour_carre(
+                &repere,
+                200 + n as i64,
+                [pos[0], pos[1] + 10.0],
+                10.0,
+            ));
         }
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
-        let logement = Logement { rues: vec!["Courte".into(), "Longue".into()], capacite: 100 };
+        let logement = Logement {
+            rues: vec!["Courte".into(), "Longue".into()],
+            capacite: 100,
+        };
         // Quatre morceaux qui visent tous le début de « Courte » : un seul
         // bâtiment y loge, les trois autres débordent sur « Longue ».
         let pistes: Vec<(i64, [f64; 2])> = (0..4).map(|n| (n, m_courte)).collect();
         let mut pris = HashSet::new();
 
-        let adresses = loger_dans_batiments(&pistes, &logement, &[], &traces, &grille, &mut pris, 10.0);
-        assert_eq!(adresses.len(), 4, "les quatre bâtiments disponibles doivent tous être pris");
-        assert_eq!(adresses.iter().filter(|a| a.rue == "Courte").count(), 1, "un seul bâtiment logeait près de Courte");
-        assert_eq!(adresses.iter().filter(|a| a.rue == "Longue").count(), 3, "les morceaux restants débordent sur Longue");
-        assert!(adresses.iter().all(|a| !a.repli_quartier), "tout devait tenir dans les rues assignées à l'artiste, sans repli");
-        assert!(adresses.iter().all(|a| !a.hors_zone), "tout devait tenir dans les rues assignées");
+        let adresses =
+            loger_dans_batiments(&pistes, &logement, &[], &traces, &grille, &mut pris, 10.0);
+        assert_eq!(
+            adresses.len(),
+            4,
+            "les quatre bâtiments disponibles doivent tous être pris"
+        );
+        assert_eq!(
+            adresses.iter().filter(|a| a.rue == "Courte").count(),
+            1,
+            "un seul bâtiment logeait près de Courte"
+        );
+        assert_eq!(
+            adresses.iter().filter(|a| a.rue == "Longue").count(),
+            3,
+            "les morceaux restants débordent sur Longue"
+        );
+        assert!(
+            adresses.iter().all(|a| !a.repli_quartier),
+            "tout devait tenir dans les rues assignées à l'artiste, sans repli"
+        );
+        assert!(
+            adresses.iter().all(|a| !a.hors_zone),
+            "tout devait tenir dans les rues assignées"
+        );
     }
 
     #[test]
@@ -1511,19 +1888,32 @@ mod tests {
             classe: Classe::Residentielle,
             points: vec![[2.30, 48.85], [2.31, 48.85]],
         };
-        let mut extrait = Extrait { troncons: vec![troncon], ..Default::default() };
+        let mut extrait = Extrait {
+            troncons: vec![troncon],
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
         let m = traces["Rue Test"].au(0.0).0;
 
         // Un seul bâtiment près de la rue.
-        extrait.batis.push(contour_carre(&repere, 1, [m[0], m[1] + 10.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [m[0], m[1] + 10.0], 10.0));
         // Un second, loin de toute rue assignée — seul le repli hors zone
         // doit pouvoir le trouver.
-        extrait.batis.push(contour_carre(&repere, 2, [m[0] + 5000.0, m[1] + 5000.0], 10.0));
+        extrait.batis.push(contour_carre(
+            &repere,
+            2,
+            [m[0] + 5000.0, m[1] + 5000.0],
+            10.0,
+        ));
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
-        let logement = Logement { rues: vec!["Rue Test".into()], capacite: 100 };
+        let logement = Logement {
+            rues: vec!["Rue Test".into()],
+            capacite: 100,
+        };
         let mut pris = HashSet::new();
 
         let a = loger_dans_batiments(&[(1, m)], &logement, &[], &traces, &grille, &mut pris, 10.0);
@@ -1536,46 +1926,99 @@ mod tests {
         // Quartier vide : rien à essayer au deuxième cercle, direct au repli
         // hors zone.
         let b = loger_dans_batiments(&[(2, m)], &logement, &[], &traces, &grille, &mut pris, 10.0);
-        assert_eq!(b.len(), 1, "le second artiste doit quand même être logé, ailleurs");
-        assert_eq!(b[0].batiment_id, 2, "jamais le même bâtiment que le premier artiste");
-        assert!(!b[0].repli_quartier, "aucune rue de quartier fournie, ce cercle ne peut pas avoir joué");
-        assert!(b[0].hors_zone, "le seul bâtiment restant est hors de la zone assignée");
+        assert_eq!(
+            b.len(),
+            1,
+            "le second artiste doit quand même être logé, ailleurs"
+        );
+        assert_eq!(
+            b[0].batiment_id, 2,
+            "jamais le même bâtiment que le premier artiste"
+        );
+        assert!(
+            !b[0].repli_quartier,
+            "aucune rue de quartier fournie, ce cercle ne peut pas avoir joué"
+        );
+        assert!(
+            b[0].hors_zone,
+            "le seul bâtiment restant est hors de la zone assignée"
+        );
     }
 
     #[test]
     fn loger_dans_batiments_replie_dabord_sur_le_quartier_avant_paris_entier() {
         let troncons = vec![
-            Troncon { id: 1, nom: Some("Rue Artiste".into()), classe: Classe::Residentielle, points: vec![[2.30, 48.85], [2.3003, 48.85]] },
-            Troncon { id: 2, nom: Some("Rue Voisine".into()), classe: Classe::Residentielle, points: vec![[2.31, 48.85], [2.3103, 48.85]] },
+            Troncon {
+                id: 1,
+                nom: Some("Rue Artiste".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.30, 48.85], [2.3003, 48.85]],
+            },
+            Troncon {
+                id: 2,
+                nom: Some("Rue Voisine".into()),
+                classe: Classe::Residentielle,
+                points: vec![[2.31, 48.85], [2.3103, 48.85]],
+            },
         ];
-        let mut extrait = Extrait { troncons, ..Default::default() };
+        let mut extrait = Extrait {
+            troncons,
+            ..Default::default()
+        };
         let repere = Repere::centre_de(&extrait);
         let traces = traces_des_rues(&extrait, &repere);
 
         // Aucun bâtiment sur la rue de l'artiste — un seul, sur une autre
         // rue du même quartier.
         let m = traces["Rue Voisine"].au(0.0).0;
-        extrait.batis.push(contour_carre(&repere, 1, [m[0], m[1] + 10.0], 10.0));
+        extrait
+            .batis
+            .push(contour_carre(&repere, 1, [m[0], m[1] + 10.0], 10.0));
         // Et un second, très loin, hors de tout quartier — seul le repli
         // final « Paris entier » doit pouvoir le trouver.
-        extrait.batis.push(contour_carre(&repere, 2, [m[0] + 5000.0, m[1] + 5000.0], 10.0));
+        extrait.batis.push(contour_carre(
+            &repere,
+            2,
+            [m[0] + 5000.0, m[1] + 5000.0],
+            10.0,
+        ));
 
         let grille = GrilleBatiments::nouvelle(&extrait, &repere);
-        let logement = Logement { rues: vec!["Rue Artiste".into()], capacite: 100 };
+        let logement = Logement {
+            rues: vec!["Rue Artiste".into()],
+            capacite: 100,
+        };
         let quartier_rues = vec!["Rue Artiste".into(), "Rue Voisine".into()];
         let mut pris = HashSet::new();
 
         let cible = traces["Rue Artiste"].au(0.0).0;
-        let adresses = loger_dans_batiments(&[(1, cible), (2, cible)], &logement, &quartier_rues, &traces, &grille, &mut pris, 10.0);
+        let adresses = loger_dans_batiments(
+            &[(1, cible), (2, cible)],
+            &logement,
+            &quartier_rues,
+            &traces,
+            &grille,
+            &mut pris,
+            10.0,
+        );
         assert_eq!(adresses.len(), 2);
 
         let premier = adresses.iter().find(|a| a.track_id == 1).unwrap();
-        assert_eq!(premier.batiment_id, 1, "le premier morceau prend le bâtiment du quartier, pas celui hors zone");
-        assert!(premier.repli_quartier, "logé sur une rue du quartier, pas sur celle de l'artiste");
+        assert_eq!(
+            premier.batiment_id, 1,
+            "le premier morceau prend le bâtiment du quartier, pas celui hors zone"
+        );
+        assert!(
+            premier.repli_quartier,
+            "logé sur une rue du quartier, pas sur celle de l'artiste"
+        );
         assert!(!premier.hors_zone);
 
         let second = adresses.iter().find(|a| a.track_id == 2).unwrap();
-        assert_eq!(second.batiment_id, 2, "le quartier est épuisé, dernier recours Paris entier");
+        assert_eq!(
+            second.batiment_id, 2,
+            "le quartier est épuisé, dernier recours Paris entier"
+        );
         assert!(second.hors_zone);
     }
 }

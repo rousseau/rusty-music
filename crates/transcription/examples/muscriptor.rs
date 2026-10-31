@@ -17,7 +17,7 @@ mod commun;
 use std::time::Instant;
 
 use rodio::{Decoder, Source};
-use rusty_music_transcription::muscriptor::{self, ProduitMince, Muscriptor, BASSES};
+use rusty_music_transcription::muscriptor::{self, Muscriptor, ProduitMince, BASSES};
 
 fn executer<B: ProduitMince>() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().skip(1).collect();
@@ -25,9 +25,17 @@ fn executer<B: ProduitMince>() -> Result<(), Box<dyn std::error::Error>> {
     let dec = Decoder::try_from(std::fs::File::open(&a[0])?)?;
     let (sr, canaux) = (dec.sample_rate().get(), dec.channels().get() as usize);
     let brut: Vec<f32> = dec.collect();
-    let mono: Vec<f32> = brut.chunks(canaux).map(|c| c.iter().sum::<f32>() / canaux as f32).collect();
-    let poids = std::env::var_os("MUSCRIPTOR_POIDS").map(std::path::PathBuf::from).or_else(|| muscriptor::poids_hugging_face("medium"));
-    let mut m = Muscriptor::<B>::charger(&poids.ok_or("poids MuScriptor introuvables")?, &Default::default())?;
+    let mono: Vec<f32> = brut
+        .chunks(canaux)
+        .map(|c| c.iter().sum::<f32>() / canaux as f32)
+        .collect();
+    let poids = std::env::var_os("MUSCRIPTOR_POIDS")
+        .map(std::path::PathBuf::from)
+        .or_else(|| muscriptor::poids_hugging_face("medium"));
+    let mut m = Muscriptor::<B>::charger(
+        &poids.ok_or("poids MuScriptor introuvables")?,
+        &Default::default(),
+    )?;
     if let Some(l) = a.get(3).and_then(|x| x.parse().ok()) {
         m.longueur_max = l;
     }
@@ -40,7 +48,11 @@ fn executer<B: ProduitMince>() -> Result<(), Box<dyn std::error::Error>> {
             (notes.len(), bilan)
         }
         Some(liste) => {
-            let instruments: Vec<&str> = if liste == "tous" { vec![] } else { liste.split(',').collect() };
+            let instruments: Vec<&str> = if liste == "tous" {
+                vec![]
+            } else {
+                liste.split(',').collect()
+            };
             let (notes, bilan) = m.transcrire_brut(&mono, sr, &instruments, lot, progres)?;
             std::fs::write(&a[1], serde_json::to_string(&notes)?)?;
             (notes.len(), bilan)

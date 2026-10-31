@@ -21,7 +21,9 @@ pub const SEUIL_DB: f32 = 30.0;
 /// Énergie (RMS) par trame de 20 ms.
 fn energies(mono: &[f32], sr: u32) -> Vec<f32> {
     let n = ((sr as f32 * TRAME_S) as usize).max(1);
-    mono.chunks(n).map(|c| (c.iter().map(|x| x * x).sum::<f32>() / c.len() as f32).sqrt()).collect()
+    mono.chunks(n)
+        .map(|c| (c.iter().map(|x| x * x).sum::<f32>() / c.len() as f32).sqrt())
+        .collect()
 }
 
 /// Niveau de jeu : le 95ᵉ centile des trames — robuste aux silences, qui
@@ -44,8 +46,11 @@ pub fn filtrer(notes: Vec<Note>, mono: &[f32], sr: u32, seuil_db: f32) -> Vec<No
         .into_iter()
         .filter(|n| {
             let a = (n.debut_s / TRAME_S).max(0.0) as usize;
-            let b = (((n.debut_s + ATTAQUE_S.min((n.fin_s - n.debut_s).max(TRAME_S))) / TRAME_S).ceil() as usize).min(e.len());
-            e.get(a..b.max(a + 1).min(e.len())).is_some_and(|f| f.iter().any(|&x| x >= seuil))
+            let b = (((n.debut_s + ATTAQUE_S.min((n.fin_s - n.debut_s).max(TRAME_S))) / TRAME_S)
+                .ceil() as usize)
+                .min(e.len());
+            e.get(a..b.max(a + 1).min(e.len()))
+                .is_some_and(|f| f.iter().any(|&x| x >= seuil))
         })
         .collect()
 }
@@ -55,7 +60,14 @@ mod tests {
     use super::*;
 
     fn note(debut: f32) -> Note {
-        Note { debut_s: debut, fin_s: debut + 0.3, hauteur: 40, amplitude: 0.5, corde: None, frette: None }
+        Note {
+            debut_s: debut,
+            fin_s: debut + 0.3,
+            hauteur: 40,
+            amplitude: 0.5,
+            corde: None,
+            frette: None,
+        }
     }
 
     #[test]
@@ -64,7 +76,12 @@ mod tests {
         // 2 s de fuite à −60 dB, puis 2 s de basse.
         let mut mono: Vec<f32> = (0..2000).map(|i| 0.001 * (i as f32 * 0.3).sin()).collect();
         mono.extend((0..2000).map(|i| (i as f32 * 0.3).sin()));
-        let gardees = filtrer(vec![note(0.5), note(1.2), note(2.5), note(3.1)], &mono, sr, SEUIL_DB);
+        let gardees = filtrer(
+            vec![note(0.5), note(1.2), note(2.5), note(3.1)],
+            &mono,
+            sr,
+            SEUIL_DB,
+        );
         let debuts: Vec<f32> = gardees.iter().map(|n| n.debut_s).collect();
         assert_eq!(debuts, vec![2.5, 3.1]);
     }
@@ -75,6 +92,9 @@ mod tests {
         // Un passage joué 20 dB plus doux que le reste : ce n'est pas un silence.
         let mut mono: Vec<f32> = (0..2000).map(|i| 0.1 * (i as f32 * 0.3).sin()).collect();
         mono.extend((0..6000).map(|i| (i as f32 * 0.3).sin()));
-        assert_eq!(filtrer(vec![note(0.5), note(4.0)], &mono, sr, SEUIL_DB).len(), 2);
+        assert_eq!(
+            filtrer(vec![note(0.5), note(4.0)], &mono, sr, SEUIL_DB).len(),
+            2
+        );
     }
 }

@@ -23,13 +23,24 @@ fn main() {
         .map(|p| {
             let nom = p
                 .file_stem()
-                .map(|s| s.to_string_lossy().rsplit('—').next().unwrap_or("").trim().to_string())
+                .map(|s| {
+                    s.to_string_lossy()
+                        .rsplit('—')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                })
                 .unwrap_or_default();
             (nom, p)
         })
         .collect();
     stems.sort();
-    println!("{} stems : {:?}", stems.len(), stems.iter().map(|(n, _)| n).collect::<Vec<_>>());
+    println!(
+        "{} stems : {:?}",
+        stems.len(),
+        stems.iter().map(|(n, _)| n).collect::<Vec<_>>()
+    );
 
     let m = rusty_music_player::Multipiste::charger(&stems).expect("chargement");
 

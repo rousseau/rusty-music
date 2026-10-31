@@ -11,7 +11,11 @@ use std::time::Instant;
 use rusty_music_analysis::decode::{fenetres, FENETRES};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = PathBuf::from(std::env::args().nth(1).expect("usage: diag_fichier <fichier>"));
+    let path = PathBuf::from(
+        std::env::args()
+            .nth(1)
+            .expect("usage: diag_fichier <fichier>"),
+    );
     println!("décodage de {} ...", path.display());
     let debut = Instant::now();
     let blocs = fenetres(&path, FENETRES)?;

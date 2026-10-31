@@ -47,9 +47,15 @@ fn main() -> anyhow::Result<()> {
 
     let lib = Library::open(&lib_path)?;
     let vue = lib.map_view(MODELE)?;
-    anyhow::ensure!(!vue.is_empty(), "aucun morceau positionné — lancer `carte` d'abord");
-    let noms: HashMap<i64, String> =
-        lib.familles(MODELE)?.into_iter().map(|(id, nom, _)| (id, nom)).collect();
+    anyhow::ensure!(
+        !vue.is_empty(),
+        "aucun morceau positionné — lancer `carte` d'abord"
+    );
+    let noms: HashMap<i64, String> = lib
+        .familles(MODELE)?
+        .into_iter()
+        .map(|(id, nom, _)| (id, nom))
+        .collect();
     let empreintes = lib.embeddings(MODELE)?;
 
     let extrait = rusty_music_osm::base::lire(&ville_path)?;
@@ -57,7 +63,12 @@ fn main() -> anyhow::Result<()> {
     let centre_m = repere.vers_m(ILE_DE_LA_CITE);
 
     let t = std::time::Instant::now();
-    let prep = ville::preparer(&extrait, &vue, ville::ESPACEMENT_PAR_DEFAUT, Some(ILE_DE_LA_CITE));
+    let prep = ville::preparer(
+        &extrait,
+        &vue,
+        ville::ESPACEMENT_PAR_DEFAUT,
+        Some(ILE_DE_LA_CITE),
+    );
     let autorises = prep.autorises.clone();
     let r = ville::rassembler(&extrait, &vue, &noms, Some(ILE_DE_LA_CITE));
     println!(
@@ -81,8 +92,15 @@ fn main() -> anyhow::Result<()> {
         .map(|(br, c)| {
             let contour: Vec<[f64; 2]> = br.points.iter().map(|p| repere.vers_m(*p)).collect();
             let n = contour.len().max(1) as f64;
-            let centre = contour.iter().fold([0.0, 0.0], |a, p| [a[0] + p[0] / n, a[1] + p[1] / n]);
-            Bati { id: c.id, centre, famille: br.famille, contour }
+            let centre = contour
+                .iter()
+                .fold([0.0, 0.0], |a, p| [a[0] + p[0] / n, a[1] + p[1] / n]);
+            Bati {
+                id: c.id,
+                centre,
+                famille: br.famille,
+                contour,
+            }
         })
         .collect();
 
@@ -91,12 +109,38 @@ fn main() -> anyhow::Result<()> {
     let pal = *Palette::par_id("osm-clair").expect("palette osm-clair");
     let cadre = cadre_frontiere(&r.source, &repere);
     let grille = rusty_music_carto::batiments::GrilleBatiments::nouvelle(&extrait, &repere);
-    let euclide: HashSet<i64> =
-        grille.n_plus_proches(centre_m, autorises.len()).iter().map(|b| b.id).collect();
+    let euclide: HashSet<i64> = grille
+        .n_plus_proches(centre_m, autorises.len())
+        .iter()
+        .map(|b| b.id)
+        .collect();
 
-    image_zone(&sortie.join("01-zone.svg"), &r.source, &repere, &pal, &batis, &autorises, &euclide, centre_m, cadre)?;
-    image_familles(&sortie.join("02-familles.svg"), &r.source, &repere, &pal, &batis, cadre)?;
-    image_quartiers(&sortie.join("03-quartiers.svg"), &r.source, &repere, &pal, cadre)?;
+    image_zone(
+        &sortie.join("01-zone.svg"),
+        &r.source,
+        &repere,
+        &pal,
+        &batis,
+        &autorises,
+        &euclide,
+        centre_m,
+        cadre,
+    )?;
+    image_familles(
+        &sortie.join("02-familles.svg"),
+        &r.source,
+        &repere,
+        &pal,
+        &batis,
+        cadre,
+    )?;
+    image_quartiers(
+        &sortie.join("03-quartiers.svg"),
+        &r.source,
+        &repere,
+        &pal,
+        cadre,
+    )?;
     image_cout(&sortie.join("04-cout.svg"), &extrait, &repere, cadre)?;
     let z = 1250.0;
     image_centre(
@@ -105,10 +149,24 @@ fn main() -> anyhow::Result<()> {
         &repere,
         &pal,
         &batis,
-        [centre_m[0] - z, centre_m[1] - z, centre_m[0] + z, centre_m[1] + z],
+        [
+            centre_m[0] - z,
+            centre_m[1] - z,
+            centre_m[0] + z,
+            centre_m[1] + z,
+        ],
     )?;
 
-    let eval = evaluation(&r.source, &repere, &batis, &autorises, &euclide, centre_m, &empreintes, &vue);
+    let eval = evaluation(
+        &r.source,
+        &repere,
+        &batis,
+        &autorises,
+        &euclide,
+        centre_m,
+        &empreintes,
+        &vue,
+    );
     std::fs::write(sortie.join("evaluation.md"), &eval)?;
     std::fs::write(sortie.join("index.html"), INDEX_HTML)?;
     println!("\n{eval}");
@@ -143,11 +201,19 @@ impl Toile {
             "<svg xmlns='http://www.w3.org/2000/svg' width='{largeur:.0}' height='{h:.0}' \
              viewBox='0 0 {largeur:.0} {h:.0}'><rect width='100%' height='100%' fill='{fond}'/>"
         ));
-        Toile { buf, w: largeur, h, cadre }
+        Toile {
+            buf,
+            w: largeur,
+            h,
+            cadre,
+        }
     }
     fn xy(&self, p: [f64; 2]) -> (f64, f64) {
         let [x0, y0, x1, y1] = self.cadre;
-        ((p[0] - x0) / (x1 - x0).max(1.0) * self.w, (y1 - p[1]) / (y1 - y0).max(1.0) * self.h)
+        (
+            (p[0] - x0) / (x1 - x0).max(1.0) * self.w,
+            (y1 - p[1]) / (y1 - y0).max(1.0) * self.h,
+        )
     }
     fn forme(&mut self, pts: &[[f64; 2]], fill: &str, stroke: &str, sw: f64, fill_op: f64) {
         if pts.len() < 2 {
@@ -165,11 +231,16 @@ impl Toile {
     }
     fn point(&mut self, p: [f64; 2], r: f64, fill: &str, op: f64) {
         let (x, y) = self.xy(p);
-        self.buf.push_str(&format!("<circle cx='{x:.1}' cy='{y:.1}' r='{r}' fill='{fill}' fill-opacity='{op}'/>"));
+        self.buf.push_str(&format!(
+            "<circle cx='{x:.1}' cy='{y:.1}' r='{r}' fill='{fill}' fill-opacity='{op}'/>"
+        ));
     }
     fn texte(&mut self, p: [f64; 2], s: &str, couleur: &str) {
         let (x, y) = self.xy(p);
-        let s: String = s.chars().map(|c| if "<>&".contains(c) { ' ' } else { c }).collect();
+        let s: String = s
+            .chars()
+            .map(|c| if "<>&".contains(c) { ' ' } else { c })
+            .collect();
         self.buf.push_str(&format!(
             "<text x='{x:.1}' y='{y:.1}' font-family='sans-serif' font-size='12' fill='{couleur}' \
              stroke='#fff' stroke-width='3' paint-order='stroke'>{s}</text>"
@@ -190,7 +261,12 @@ fn coul_fam(pal: &Palette, id: i64) -> &'static str {
 }
 
 fn cadre_frontiere(source: &Source, repere: &Repere) -> [f64; 4] {
-    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
     if let Some(anneaux) = &source.frontiere {
         for a in anneaux {
             for p in a {
@@ -281,7 +357,11 @@ fn image_familles(
         if let Some(artiste) = &p.artiste {
             let m = repere.vers_m(p.point);
             t.point(m, 4.0, "#111", 1.0);
-            t.texte([m[0] + 45.0, m[1]], &format!("{artiste} ({})", p.nom), "#111");
+            t.texte(
+                [m[0] + 45.0, m[1]],
+                &format!("{artiste} ({})", p.nom),
+                "#111",
+            );
         }
     }
     let mut fams: Vec<&rusty_music_carto::source::Famille> = source.familles.iter().collect();
@@ -290,7 +370,11 @@ fn image_familles(
     for (i, f) in fams.iter().enumerate() {
         let y = cadre[1] + (cadre[3] - cadre[1]) * 0.06 + i as f64 * (cadre[3] - cadre[1]) * 0.028;
         t.point([x, y], 6.0, coul_fam(pal, f.id), 1.0);
-        t.texte([x + 90.0, y + 40.0], &format!("{} ({})", f.nom, f.effectif), "#222");
+        t.texte(
+            [x + 90.0, y + 40.0],
+            &format!("{} ({})", f.nom, f.effectif),
+            "#222",
+        );
     }
     t.finir(chemin)
 }
@@ -323,9 +407,18 @@ fn image_cout(
     cadre: [f64; 4],
 ) -> std::io::Result<()> {
     let champ = cout_voirie::champ_de_cout(extrait, repere, ILE_DE_LA_CITE, 360);
-    let mut finis: Vec<f64> = champ.valeurs.iter().copied().filter(|v| v.is_finite()).collect();
+    let mut finis: Vec<f64> = champ
+        .valeurs
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
     finis.sort_by(f64::total_cmp);
-    let haut = finis.get((finis.len() as f64 * 0.95) as usize).copied().unwrap_or(champ.cout_max).max(1.0);
+    let haut = finis
+        .get((finis.len() as f64 * 0.95) as usize)
+        .copied()
+        .unwrap_or(champ.cout_max)
+        .max(1.0);
     let seuils: Vec<f64> = (1..13).map(|i| haut * i as f64 / 13.0).collect();
     let smax = *seuils.last().unwrap_or(&1.0);
     let bandes = cout_voirie::isobandes(&champ, &seuils);
@@ -357,7 +450,8 @@ fn image_centre(
 ) -> std::io::Result<()> {
     let mut t = Toile::nouvelle(cadre, 1600.0, "#f4f2ee");
     let dans = |p: &[[f64; 2]]| {
-        p.iter().any(|m| m[0] >= cadre[0] && m[0] <= cadre[2] && m[1] >= cadre[1] && m[1] <= cadre[3])
+        p.iter()
+            .any(|m| m[0] >= cadre[0] && m[0] <= cadre[2] && m[1] >= cadre[1] && m[1] <= cadre[3])
     };
     for c in &source.eaux {
         let p: Vec<[f64; 2]> = c.points.iter().map(|q| repere.vers_m(*q)).collect();
@@ -427,17 +521,24 @@ fn evaluation(
         let mut d: Vec<f64> = batis
             .iter()
             .filter(|b| ids.contains(&b.id))
-            .map(|b| ((b.centre[0] - centre_m[0]).powi(2) + (b.centre[1] - centre_m[1]).powi(2)).sqrt())
+            .map(|b| {
+                ((b.centre[0] - centre_m[0]).powi(2) + (b.centre[1] - centre_m[1]).powi(2)).sqrt()
+            })
             .collect();
         d.sort_by(f64::total_cmp);
-        let p = |q: f64| d.get(((d.len() as f64) * q) as usize).copied().unwrap_or(0.0);
+        let p = |q: f64| {
+            d.get(((d.len() as f64) * q) as usize)
+                .copied()
+                .unwrap_or(0.0)
+        };
         (p(0.5), p(0.95), d.last().copied().unwrap_or(0.0))
     };
     let (c50, c95, cmax) = rayons(autorises);
     let (e50, e95, emax) = rayons(euclide);
     let commun = autorises.intersection(euclide).count();
     let aire_bat = 22.0 * 22.0;
-    let remplissage = (autorises.len() as f64 * aire_bat) / (std::f64::consts::PI * cmax * cmax).max(1.0);
+    let remplissage =
+        (autorises.len() as f64 * aire_bat) / (std::f64::consts::PI * cmax * cmax).max(1.0);
     s.push_str(&format!(
         "## Forme de la zone peuplée\n\n\
          Rayon depuis l'île de la Cité (médiane / p95 / max), mètres :\n\
@@ -459,7 +560,11 @@ fn evaluation(
             par_fam.entry(f).or_default().push(b.centre);
         }
     }
-    let noms: HashMap<i64, &str> = source.familles.iter().map(|f| (f.id, f.nom.as_str())).collect();
+    let noms: HashMap<i64, &str> = source
+        .familles
+        .iter()
+        .map(|f| (f.id, f.nom.as_str()))
+        .collect();
     let mut ids: Vec<i64> = par_fam.keys().copied().collect();
     ids.sort_by_key(|f| std::cmp::Reverse(par_fam[f].len()));
     s.push_str("## Compacité des familles\n\n| famille | bâtiments | giration (m) | amas ≥ 30 | plus gros amas |\n|---|--:|--:|--:|--:|\n");
@@ -467,8 +572,15 @@ fn evaluation(
     for f in &ids {
         let pts = &par_fam[f];
         let n = pts.len() as f64;
-        let bary = pts.iter().fold([0.0, 0.0], |a, p| [a[0] + p[0] / n, a[1] + p[1] / n]);
-        let gir = (pts.iter().map(|p| (p[0] - bary[0]).powi(2) + (p[1] - bary[1]).powi(2)).sum::<f64>() / n).sqrt();
+        let bary = pts
+            .iter()
+            .fold([0.0, 0.0], |a, p| [a[0] + p[0] / n, a[1] + p[1] / n]);
+        let gir = (pts
+            .iter()
+            .map(|p| (p[0] - bary[0]).powi(2) + (p[1] - bary[1]).powi(2))
+            .sum::<f64>()
+            / n)
+            .sqrt();
         gir_moy += gir / ids.len() as f64;
         let (amas, gros) = composantes(pts, 45.0);
         s.push_str(&format!(
@@ -538,7 +650,11 @@ fn evaluation(
     s.push_str(&format!(
         "## Ancrage aux monuments\n\n{} artistes ancrés.\n{}\n",
         ancres.len(),
-        if ancres.is_empty() { "_(aucun — bibliothèque sans données de popularité ?)_".into() } else { ancres.join("\n") },
+        if ancres.is_empty() {
+            "_(aucun — bibliothèque sans données de popularité ?)_".into()
+        } else {
+            ancres.join("\n")
+        },
     ));
 
     s
@@ -549,7 +665,9 @@ fn evaluation(
 fn composantes(pts: &[[f64; 2]], d: f64) -> (usize, usize) {
     let mut cell: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (i, p) in pts.iter().enumerate() {
-        cell.entry(((p[0] / d).floor() as i64, (p[1] / d).floor() as i64)).or_default().push(i);
+        cell.entry(((p[0] / d).floor() as i64, (p[1] / d).floor() as i64))
+            .or_default()
+            .push(i);
     }
     let mut vu = vec![false; pts.len()];
     let (mut amas, mut gros) = (0usize, 0usize);
@@ -562,13 +680,19 @@ fn composantes(pts: &[[f64; 2]], d: f64) -> (usize, usize) {
         let mut taille = 0usize;
         while let Some(i) = pile.pop() {
             taille += 1;
-            let (cx, cy) = ((pts[i][0] / d).floor() as i64, (pts[i][1] / d).floor() as i64);
+            let (cx, cy) = (
+                (pts[i][0] / d).floor() as i64,
+                (pts[i][1] / d).floor() as i64,
+            );
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    let Some(v) = cell.get(&(cx + dx, cy + dy)) else { continue };
+                    let Some(v) = cell.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
                     for &j in v {
                         if !vu[j]
-                            && (pts[i][0] - pts[j][0]).powi(2) + (pts[i][1] - pts[j][1]).powi(2) <= d * d
+                            && (pts[i][0] - pts[j][0]).powi(2) + (pts[i][1] - pts[j][1]).powi(2)
+                                <= d * d
                         {
                             vu[j] = true;
                             pile.push(j);

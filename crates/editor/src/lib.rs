@@ -121,7 +121,14 @@ pub enum Variante {
 }
 
 /// Les stems de SW, dans l'ordre de ses têtes de masque.
-const STEMS_SW: [StemId; 6] = [StemId::Bass, StemId::Drums, StemId::Other, StemId::Vocals, StemId::Guitar, StemId::Piano];
+const STEMS_SW: [StemId; 6] = [
+    StemId::Bass,
+    StemId::Drums,
+    StemId::Other,
+    StemId::Vocals,
+    StemId::Guitar,
+    StemId::Piano,
+];
 
 /// Source des poids de SW — le miroir qui a pris le relais du dépôt
 /// d'origine supprimé, à une révision épinglée (`scripts/preparer-roformer.sh`).
@@ -401,7 +408,11 @@ impl Demixeur {
                     .map_err(|e| Error::Modele(e.to_string()))?,
             )
         } else {
-            Modele::Roformer(Box::new(roformer::Roformer::charger(&poids, roformer::Config::sw(), &Default::default())?))
+            Modele::Roformer(Box::new(roformer::Roformer::charger(
+                &poids,
+                roformer::Config::sw(),
+                &Default::default(),
+            )?))
         };
         Ok(Self { modele, variante })
     }
@@ -422,9 +433,22 @@ impl Demixeur {
     }
 
     /// BS-RoFormer : les stems d'un morceau, `avancer(fait, total)` par segment.
-    fn separer_roformer(m: &roformer::Roformer<Moteur>, audio: &Stereo, avancer: impl FnMut(usize, usize)) -> Result<Vec<Piste>> {
+    fn separer_roformer(
+        m: &roformer::Roformer<Moteur>,
+        audio: &Stereo,
+        avancer: impl FnMut(usize, usize),
+    ) -> Result<Vec<Piste>> {
         let stems = m.separer(&audio.gauche, &audio.droite, avancer)?;
-        Ok(m.config().stems.iter().zip(stems).map(|(&nom, [gauche, droite])| Piste { nom, gauche, droite }).collect())
+        Ok(m.config()
+            .stems
+            .iter()
+            .zip(stems)
+            .map(|(&nom, [gauche, droite])| Piste {
+                nom,
+                gauche,
+                droite,
+            })
+            .collect())
     }
 
     /// Sépare un morceau déjà décodé.
@@ -482,13 +506,9 @@ impl Demixeur {
             stems: self.variante.stems(),
             affinee: self.variante == Variante::Affinee,
         };
-        let stems = attendre(m.separate_with_listener(
-            &audio.gauche,
-            &audio.droite,
-            SR,
-            &mut ecouteur,
-        ))
-        .map_err(|e| Error::Modele(e.to_string()))?;
+        let stems =
+            attendre(m.separate_with_listener(&audio.gauche, &audio.droite, SR, &mut ecouteur))
+                .map_err(|e| Error::Modele(e.to_string()))?;
 
         let pistes: Vec<Piste> = stems
             .into_iter()

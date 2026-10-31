@@ -32,27 +32,47 @@ mod macos {
     use std::time::Duration;
 
     use objc2_core_audio::{
-        kAudioDevicePropertyBufferFrameSize, kAudioDevicePropertyLatency, kAudioDevicePropertyNominalSampleRate,
-        kAudioDevicePropertySafetyOffset, kAudioDevicePropertyStreams, kAudioHardwareNoError,
-        kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyScopeOutput, kAudioObjectSystemObject, kAudioStreamPropertyLatency,
-        AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize, AudioObjectID, AudioObjectPropertyAddress,
-        AudioObjectPropertyScope, AudioObjectPropertySelector,
+        kAudioDevicePropertyBufferFrameSize, kAudioDevicePropertyLatency,
+        kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertySafetyOffset,
+        kAudioDevicePropertyStreams, kAudioHardwareNoError,
+        kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyElementMain,
+        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyScopeOutput, kAudioObjectSystemObject,
+        kAudioStreamPropertyLatency, AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize,
+        AudioObjectID, AudioObjectPropertyAddress, AudioObjectPropertyScope,
+        AudioObjectPropertySelector,
     };
 
-    fn adresse(selecteur: AudioObjectPropertySelector, portee: AudioObjectPropertyScope) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress { mSelector: selecteur, mScope: portee, mElement: kAudioObjectPropertyElementMain }
+    fn adresse(
+        selecteur: AudioObjectPropertySelector,
+        portee: AudioObjectPropertyScope,
+    ) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress {
+            mSelector: selecteur,
+            mScope: portee,
+            mElement: kAudioObjectPropertyElementMain,
+        }
     }
 
     /// Une propriété de taille fixe (entier, flottant).
-    fn lire<T: Copy + Default>(objet: AudioObjectID, selecteur: AudioObjectPropertySelector, portee: AudioObjectPropertyScope) -> Option<T> {
+    fn lire<T: Copy + Default>(
+        objet: AudioObjectID,
+        selecteur: AudioObjectPropertySelector,
+        portee: AudioObjectPropertyScope,
+    ) -> Option<T> {
         let a = adresse(selecteur, portee);
         let mut valeur = T::default();
         let mut taille = size_of::<T>() as u32;
         // SAFETY : `valeur` occupe `taille` octets, et CoreAudio n'écrit pas
         // au-delà de la taille annoncée.
         let statut = unsafe {
-            AudioObjectGetPropertyData(objet, NonNull::from(&a), 0, null(), NonNull::from(&mut taille), NonNull::from(&mut valeur).cast())
+            AudioObjectGetPropertyData(
+                objet,
+                NonNull::from(&a),
+                0,
+                null(),
+                NonNull::from(&mut taille),
+                NonNull::from(&mut valeur).cast(),
+            )
         };
         (statut == kAudioHardwareNoError).then_some(valeur)
     }
@@ -62,7 +82,15 @@ mod macos {
         let a = adresse(kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput);
         let mut taille = 0u32;
         // SAFETY : on ne lit que la taille.
-        let statut = unsafe { AudioObjectGetPropertyDataSize(appareil, NonNull::from(&a), 0, null(), NonNull::from(&mut taille)) };
+        let statut = unsafe {
+            AudioObjectGetPropertyDataSize(
+                appareil,
+                NonNull::from(&a),
+                0,
+                null(),
+                NonNull::from(&mut taille),
+            )
+        };
         if statut != kAudioHardwareNoError {
             return None;
         }
@@ -72,7 +100,14 @@ mod macos {
         }
         // SAFETY : `flux` a la taille que CoreAudio vient d'annoncer.
         let statut = unsafe {
-            AudioObjectGetPropertyData(appareil, NonNull::from(&a), 0, null(), NonNull::from(&mut taille), NonNull::new(flux.as_mut_ptr())?.cast())
+            AudioObjectGetPropertyData(
+                appareil,
+                NonNull::from(&a),
+                0,
+                null(),
+                NonNull::from(&mut taille),
+                NonNull::new(flux.as_mut_ptr())?.cast(),
+            )
         };
         (statut == kAudioHardwareNoError).then(|| flux[0])
     }
@@ -80,14 +115,21 @@ mod macos {
     pub(super) fn latence() -> Option<Duration> {
         let global = kAudioObjectPropertyScopeGlobal;
         let sortie = kAudioObjectPropertyScopeOutput;
-        let appareil: AudioObjectID = lire(kAudioObjectSystemObject as AudioObjectID, kAudioHardwarePropertyDefaultOutputDevice, global)?;
+        let appareil: AudioObjectID = lire(
+            kAudioObjectSystemObject as AudioObjectID,
+            kAudioHardwarePropertyDefaultOutputDevice,
+            global,
+        )?;
         let taux: f64 = lire(appareil, kAudioDevicePropertyNominalSampleRate, global)?;
         if taux <= 0.0 {
             return None;
         }
-        let mut trames = lire::<u32>(appareil, kAudioDevicePropertyLatency, sortie).unwrap_or(0) as u64;
-        trames += lire::<u32>(appareil, kAudioDevicePropertySafetyOffset, sortie).unwrap_or(0) as u64;
-        trames += lire::<u32>(appareil, kAudioDevicePropertyBufferFrameSize, global).unwrap_or(0) as u64;
+        let mut trames =
+            lire::<u32>(appareil, kAudioDevicePropertyLatency, sortie).unwrap_or(0) as u64;
+        trames +=
+            lire::<u32>(appareil, kAudioDevicePropertySafetyOffset, sortie).unwrap_or(0) as u64;
+        trames +=
+            lire::<u32>(appareil, kAudioDevicePropertyBufferFrameSize, global).unwrap_or(0) as u64;
         if let Some(flux) = premier_flux(appareil) {
             trames += lire::<u32>(flux, kAudioStreamPropertyLatency, global).unwrap_or(0) as u64;
         }

@@ -16,14 +16,29 @@ use rusty_music_transcription::{monophonie, quantification};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().skip(1).collect();
-    let (wav, puls, dossier, mode) = (PathBuf::from(&a[0]), PathBuf::from(&a[1]), PathBuf::from(&a[2]), a[3].as_str());
+    let (wav, puls, dossier, mode) = (
+        PathBuf::from(&a[0]),
+        PathBuf::from(&a[1]),
+        PathBuf::from(&a[2]),
+        a[3].as_str(),
+    );
     std::fs::create_dir_all(&dossier)?;
     let dec = Decoder::try_from(std::fs::File::open(&wav)?)?;
     let (sr, canaux) = (dec.sample_rate().get(), dec.channels().get() as usize);
-    let brut: Vec<f32> = UniformSourceIterator::new(dec, (canaux as u16).try_into()?, sr.try_into()?).collect();
-    let mono: Vec<f32> = brut.chunks(canaux).map(|c| c.iter().sum::<f32>() / canaux as f32).collect();
+    let brut: Vec<f32> =
+        UniformSourceIterator::new(dec, (canaux as u16).try_into()?, sr.try_into()?).collect();
+    let mono: Vec<f32> = brut
+        .chunks(canaux)
+        .map(|c| c.iter().sum::<f32>() / canaux as f32)
+        .collect();
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(puls)?)?;
-    let f = |k: &str| -> Vec<f32> { v[k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
+    let f = |k: &str| -> Vec<f32> {
+        v[k].as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect()
+    };
     let (temps, premiers) = (f("temps"), f("premiers_temps"));
     let mut t = Transcripteur::charger_installe()?;
     let act = t.activations(&mono, sr)?;
@@ -32,18 +47,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut notes = monophonie::monophonique(basic_pitch::notes(&act, r));
         tablature::poser_avec(&mut notes, &Accordage::basse4(), k);
         let m = quantification::quantifier(&notes, &temps, &premiers, 4);
-        std::fs::write(dossier.join(format!("{nom}.json")), serde_json::to_string(&m)?)?;
+        std::fs::write(
+            dossier.join(format!("{nom}.json")),
+            serde_json::to_string(&m)?,
+        )?;
         Ok(())
     };
     let mut n = 0;
     // Réglages retenus après le premier banc (10 oct.) : base des suivants.
-    let base = Reglages { seuil_attaque: 0.6, seuil_trame: 0.3, duree_min: 8, ..Reglages::basse() };
+    let base = Reglages {
+        seuil_attaque: 0.6,
+        seuil_trame: 0.3,
+        duree_min: 8,
+        ..Reglages::basse()
+    };
     let doigte = Couts::default();
     if mode == "bp" {
         for &sa in &[0.3f32, 0.4, 0.5, 0.6, 0.7] {
             for &st in &[0.2f32, 0.3, 0.4] {
                 for &d in &[6usize, 8, 11] {
-                    let r = Reglages { seuil_attaque: sa, seuil_trame: st, duree_min: d, ..Reglages::basse() };
+                    let r = Reglages {
+                        seuil_attaque: sa,
+                        seuil_trame: st,
+                        duree_min: d,
+                        ..Reglages::basse()
+                    };
                     ecrire(format!("bp_{sa}_{st}_{d}"), &r, &Couts::default())?;
                     n += 1;
                 }
@@ -51,7 +79,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if mode == "harm" {
         for &h in &[0.0f32, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8] {
-            let r = Reglages { harmoniques: (h > 0.0).then_some(h), ..base };
+            let r = Reglages {
+                harmoniques: (h > 0.0).then_some(h),
+                ..base
+            };
             ecrire(format!("hm_{h}"), &r, &doigte)?;
             n += 1;
         }
@@ -60,7 +91,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for &pb in &[0.0f32, 0.03] {
                 for &dh in &[5u8, 9, 12] {
                     for &ph in &[0.0f32, 0.1, 0.3] {
-                        let k = Couts { corde: c, deplacement: 1.0, pente_bas: pb, debut_haut: dh, pente_haut: ph, ..Couts::default() };
+                        let k = Couts {
+                            corde: c,
+                            deplacement: 1.0,
+                            pente_bas: pb,
+                            debut_haut: dh,
+                            pente_haut: ph,
+                            ..Couts::default()
+                        };
                         ecrire(format!("dg_{c}_{pb}_{dh}_{ph}"), &Reglages::basse(), &k)?;
                         n += 1;
                     }

@@ -161,7 +161,11 @@ pub fn familles_par_genre(
     genres: &[Option<String>],
     vocabulaire: &[(String, Vec<String>)],
 ) -> Vec<Option<usize>> {
-    assert_eq!(points.len(), genres.len(), "un genre par morceau, même absent");
+    assert_eq!(
+        points.len(),
+        genres.len(),
+        "un genre par morceau, même absent"
+    );
     if points.is_empty() || vocabulaire.is_empty() {
         return vec![None; points.len()];
     }
@@ -197,9 +201,7 @@ pub fn familles_par_genre(
     let centroides: Vec<Option<Vec<f32>>> = sommes
         .into_iter()
         .zip(&effectifs)
-        .map(|(somme, &n)| {
-            (n > 0).then(|| somme.into_iter().map(|s| s / n as f32).collect())
-        })
+        .map(|(somme, &n)| (n > 0).then(|| somme.into_iter().map(|s| s / n as f32).collect()))
         .collect();
 
     for i in a_ancrer {
@@ -266,7 +268,10 @@ mod tests {
     /// contrat de la fonction.
     fn vocabulaire_essai() -> Vec<(String, Vec<String>)> {
         vec![
-            ("Reggae".to_string(), vec!["reggae".to_string(), "dub".to_string()]),
+            (
+                "Reggae".to_string(),
+                vec!["reggae".to_string(), "dub".to_string()],
+            ),
             ("Rock".to_string(), vec!["rock".to_string()]),
             ("Jazz".to_string(), vec!["jazz".to_string()]),
             ("Classique".to_string(), vec!["classical".to_string()]),
@@ -293,10 +298,17 @@ mod tests {
         // Une ancre "Rock" nette à (10, 0) ; un morceau de genre inconnu
         // tout près doit la rejoindre au repli.
         let points = vec![vec![10.0, 0.0], vec![10.1, 0.0]];
-        let genres = vec![Some("rock".to_string()), Some("un genre que rien ne connaît".to_string())];
+        let genres = vec![
+            Some("rock".to_string()),
+            Some("un genre que rien ne connaît".to_string()),
+        ];
         let familles = familles_par_genre(&points, &genres, &vocabulaire_essai());
         assert_eq!(familles[0], Some(ROCK));
-        assert_eq!(familles[1], Some(ROCK), "devrait rejoindre le centroïde le plus proche");
+        assert_eq!(
+            familles[1],
+            Some(ROCK),
+            "devrait rejoindre le centroïde le plus proche"
+        );
     }
 
     #[test]

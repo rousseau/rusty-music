@@ -194,7 +194,9 @@ impl Reseau {
     }
     /// Popularité normalisée d'un morceau, dans `[0, 1]`.
     pub fn popularite(&self, id: i64) -> Option<f32> {
-        self.rang.get(&id).map(|&r| self.popularite[r as usize] as f32)
+        self.rang
+            .get(&id)
+            .map(|&r| self.popularite[r as usize] as f32)
     }
 
     /// Les tronçons du réseau en coordonnées de carte, prêts à devenir des
@@ -248,7 +250,11 @@ impl Reseau {
             meilleure[a.a as usize] = meilleure[a.a as usize].min(a.distance);
             meilleure[a.b as usize] = meilleure[a.b as usize].min(a.distance);
         }
-        let mut triees: Vec<f32> = meilleure.iter().copied().filter(|d| d.is_finite()).collect();
+        let mut triees: Vec<f32> = meilleure
+            .iter()
+            .copied()
+            .filter(|d| d.is_finite())
+            .collect();
         if triees.is_empty() {
             return Vec::new();
         }
@@ -279,7 +285,11 @@ impl Reseau {
         let ms_graphe = t0.elapsed().as_millis();
 
         let ids: Vec<i64> = graphe.identifiants().to_vec();
-        let rang: HashMap<i64, u32> = ids.iter().enumerate().map(|(r, i)| (*i, r as u32)).collect();
+        let rang: HashMap<i64, u32> = ids
+            .iter()
+            .enumerate()
+            .map(|(r, i)| (*i, r as u32))
+            .collect();
 
         // Les morceaux, remis dans l'ordre des rangs du graphe.
         let par_id: HashMap<i64, &Morceau> = morceaux.iter().map(|m| (m.id, m)).collect();
@@ -357,8 +367,10 @@ impl Reseau {
         for a in &reseau.aretes {
             *comptes.entry(nom_classe(a.classe)).or_default() += 1;
         }
-        let mut par_classe: Vec<(String, usize)> =
-            comptes.into_iter().map(|(n, c)| (n.to_string(), c)).collect();
+        let mut par_classe: Vec<(String, usize)> = comptes
+            .into_iter()
+            .map(|(n, c)| (n.to_string(), c))
+            .collect();
         par_classe.sort_by_key(|(n, _)| n.clone());
 
         reseau.rapport.morceaux = reseau.taille();
@@ -442,8 +454,8 @@ impl Reseau {
         let seuil = if restantes.is_empty() {
             f32::MAX
         } else {
-            let i = ((restantes.len() as f64 * p.quantile_nationale) as usize)
-                .min(restantes.len() - 1);
+            let i =
+                ((restantes.len() as f64 * p.quantile_nationale) as usize).min(restantes.len() - 1);
             restantes[i]
         };
 
@@ -525,9 +537,9 @@ impl Reseau {
                 continue;
             }
             let cle = (ia.min(ib), ia.max(ib));
-            couloir.entry(cle).or_insert_with(|| {
-                g.add_edge(noeuds[cle.0], noeuds[cle.1], ()).index()
-            });
+            couloir
+                .entry(cle)
+                .or_insert_with(|| g.add_edge(noeuds[cle.0], noeuds[cle.1], ()).index());
         }
 
         let par_couloir = edge_betweenness_centrality(&g, true, SEUIL_PARALLELE);
@@ -603,7 +615,11 @@ impl Reseau {
             .collect();
         // Départage par rang : deux exécutions doivent rendre les mêmes pôles.
         candidats.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        candidats.into_iter().take(combien).map(|(r, _)| r).collect()
+        candidats
+            .into_iter()
+            .take(combien)
+            .map(|(r, _)| r)
+            .collect()
     }
 
     /// L'arbre de crête : relie les pôles en suivant les hauteurs de densité.
@@ -671,8 +687,7 @@ impl Reseau {
         }
 
         // Deuxième passe : l'arbre couvrant, puis les chemins redéployés.
-        let arbre: UnGraph<(), u64> =
-            UnGraph::from_elements(min_spanning_tree(&g));
+        let arbre: UnGraph<(), u64> = UnGraph::from_elements(min_spanning_tree(&g));
         let mut sur_la_crete = HashSet::new();
         for arete in arbre.edge_indices() {
             let Some((u, v)) = arbre.edge_endpoints(arete) else {
@@ -693,13 +708,10 @@ impl Reseau {
 
     /// L'indice de l'arête reliant deux rangs, s'il y en a une.
     fn arete_entre(&self, a: u32, b: u32) -> Option<u32> {
-        self.incidence[a as usize]
-            .iter()
-            .copied()
-            .find(|&i| {
-                let e = &self.aretes[i as usize];
-                (e.a == a && e.b == b) || (e.a == b && e.b == a)
-            })
+        self.incidence[a as usize].iter().copied().find(|&i| {
+            let e = &self.aretes[i as usize];
+            (e.a == a && e.b == b) || (e.a == b && e.b == a)
+        })
     }
 }
 
@@ -868,13 +880,19 @@ impl Reseau {
                 let depuis = if a.a == vers { a.b } else { a.a };
                 // Rester dans le même territoire coûte le triple : le trajet
                 // préfère alors changer de famille dès qu'il le peut.
-                let meme = self.morceaux[depuis as usize].famille
-                    == self.morceaux[vers as usize].famille;
+                let meme =
+                    self.morceaux[depuis as usize].famille == self.morceaux[vers as usize].famille;
                 d * if meme { 3.0 } else { 1.0 }
             }
             Profil::Etapes(_) => d,
         };
-        entier(base * if o.eviter_autoroutes { a.classe.penalite_evitement() } else { 1.0 })
+        entier(
+            base * if o.eviter_autoroutes {
+                a.classe.penalite_evitement()
+            } else {
+                1.0
+            },
+        )
     }
 
     /// Le trajet a-t-il le droit de passer par ce morceau ? Toujours, sans
@@ -903,7 +921,8 @@ impl Reseau {
             .filter_map(|&i| {
                 let a = &self.aretes[i as usize];
                 let autre = if a.a == r { a.b } else { a.a };
-                self.admis(o, autre).then(|| (autre, self.cout(o, i, autre)))
+                self.admis(o, autre)
+                    .then(|| (autre, self.cout(o, i, autre)))
             })
             .collect()
     }
@@ -968,7 +987,10 @@ impl Reseau {
         if variantes.is_empty() {
             return Err(Erreur::Injoignable);
         }
-        Ok(variantes.into_iter().map(|(c, _)| self.decrire(&c)).collect())
+        Ok(variantes
+            .into_iter()
+            .map(|(c, _)| self.decrire(&c))
+            .collect())
     }
 
     /// Trajet à durée cible — la contrainte prioritaire.
@@ -992,76 +1014,76 @@ impl Reseau {
     ///   moins cher au plus cher, et on retient celui dont la durée colle.
     fn par_duree(&self, o: &Options, depart: u32, cible: u64) -> Result<Vec<Itineraire>, Erreur> {
         let ecart = |ms: u64| ms.abs_diff(cible);
-        let mut candidats: Vec<Itineraire> = match o.arrivee.and_then(|id| self.rang.get(&id).copied())
-        {
-            Some(arrivee) => {
-                let mut v: Vec<Itineraire> = yen(
-                    &depart,
-                    |&r| self.successeurs(o, r),
-                    |&r| r == arrivee,
-                    (o.alternatives * ALTERNATIVES_PAR_CANDIDAT).max(ALTERNATIVES_MINIMUM),
-                )
-                .into_iter()
-                .map(|(c, _)| self.decrire(&c))
-                .collect();
-                v.sort_by_key(|i| ecart(i.duree_ms));
-                v
-            }
-            None => {
-                let arbre = dijkstra_all(&depart, |&r| self.successeurs(o, r));
-
-                // Durée cumulée le long de l'arbre. Chaque nœud n'a qu'un
-                // parent : la remontée est unique, et mémoïsée pour ne pas
-                // reparcourir la même branche à chaque feuille.
-                let mut duree: HashMap<u32, u64> = HashMap::with_capacity(arbre.len() + 1);
-                duree.insert(depart, self.morceaux[depart as usize].duree_ms);
-                let remonter = |n: u32, duree: &mut HashMap<u32, u64>| -> u64 {
-                    let mut pile = Vec::new();
-                    let mut courant = n;
-                    while !duree.contains_key(&courant) {
-                        let Some((parent, _)) = arbre.get(&courant) else {
-                            break;
-                        };
-                        pile.push(courant);
-                        courant = *parent;
-                    }
-                    let mut cumul = duree.get(&courant).copied().unwrap_or(0);
-                    while let Some(n) = pile.pop() {
-                        cumul += self.morceaux[n as usize].duree_ms;
-                        duree.insert(n, cumul);
-                    }
-                    cumul
-                };
-
-                let mut classes: Vec<(u32, u64)> = arbre
-                    .keys()
-                    .copied()
-                    .map(|n| {
-                        let d = remonter(n, &mut duree);
-                        (n, d)
-                    })
-                    .filter(|(_, d)| ecart(*d) <= o.tolerance_ms)
-                    .collect();
-                // Le plus proche de la cible d'abord ; à égalité, le plus
-                // petit rang, pour que deux exécutions rendent le même trajet.
-                classes.sort_by(|a, b| ecart(a.1).cmp(&ecart(b.1)).then_with(|| a.0.cmp(&b.0)));
-
-                classes
+        let mut candidats: Vec<Itineraire> =
+            match o.arrivee.and_then(|id| self.rang.get(&id).copied()) {
+                Some(arrivee) => {
+                    let mut v: Vec<Itineraire> = yen(
+                        &depart,
+                        |&r| self.successeurs(o, r),
+                        |&r| r == arrivee,
+                        (o.alternatives * ALTERNATIVES_PAR_CANDIDAT).max(ALTERNATIVES_MINIMUM),
+                    )
                     .into_iter()
-                    .filter_map(|(n, _)| {
-                        let mut chemin = vec![n];
+                    .map(|(c, _)| self.decrire(&c))
+                    .collect();
+                    v.sort_by_key(|i| ecart(i.duree_ms));
+                    v
+                }
+                None => {
+                    let arbre = dijkstra_all(&depart, |&r| self.successeurs(o, r));
+
+                    // Durée cumulée le long de l'arbre. Chaque nœud n'a qu'un
+                    // parent : la remontée est unique, et mémoïsée pour ne pas
+                    // reparcourir la même branche à chaque feuille.
+                    let mut duree: HashMap<u32, u64> = HashMap::with_capacity(arbre.len() + 1);
+                    duree.insert(depart, self.morceaux[depart as usize].duree_ms);
+                    let remonter = |n: u32, duree: &mut HashMap<u32, u64>| -> u64 {
+                        let mut pile = Vec::new();
                         let mut courant = n;
-                        while courant != depart {
-                            let (parent, _) = arbre.get(&courant)?;
+                        while !duree.contains_key(&courant) {
+                            let Some((parent, _)) = arbre.get(&courant) else {
+                                break;
+                            };
+                            pile.push(courant);
                             courant = *parent;
-                            chemin.push(courant);
                         }
-                        chemin.reverse();
-                        Some(self.decrire(&chemin))
-                    })
-                    .collect()
-            }
-        };
+                        let mut cumul = duree.get(&courant).copied().unwrap_or(0);
+                        while let Some(n) = pile.pop() {
+                            cumul += self.morceaux[n as usize].duree_ms;
+                            duree.insert(n, cumul);
+                        }
+                        cumul
+                    };
+
+                    let mut classes: Vec<(u32, u64)> = arbre
+                        .keys()
+                        .copied()
+                        .map(|n| {
+                            let d = remonter(n, &mut duree);
+                            (n, d)
+                        })
+                        .filter(|(_, d)| ecart(*d) <= o.tolerance_ms)
+                        .collect();
+                    // Le plus proche de la cible d'abord ; à égalité, le plus
+                    // petit rang, pour que deux exécutions rendent le même trajet.
+                    classes.sort_by(|a, b| ecart(a.1).cmp(&ecart(b.1)).then_with(|| a.0.cmp(&b.0)));
+
+                    classes
+                        .into_iter()
+                        .filter_map(|(n, _)| {
+                            let mut chemin = vec![n];
+                            let mut courant = n;
+                            while courant != depart {
+                                let (parent, _) = arbre.get(&courant)?;
+                                courant = *parent;
+                                chemin.push(courant);
+                            }
+                            chemin.reverse();
+                            Some(self.decrire(&chemin))
+                        })
+                        .collect()
+                }
+            };
 
         candidats.retain(|i| ecart(i.duree_ms) <= o.tolerance_ms);
         if candidats.is_empty() {
@@ -1072,7 +1094,10 @@ impl Reseau {
         // partagent leurs neuf premiers morceaux n'aide personne.
         let mut sortie: Vec<Itineraire> = Vec::new();
         for c in candidats {
-            if sortie.iter().any(|d: &Itineraire| se_ressemblent(&d.morceaux, &c.morceaux)) {
+            if sortie
+                .iter()
+                .any(|d: &Itineraire| se_ressemblent(&d.morceaux, &c.morceaux))
+            {
                 continue;
             }
             sortie.push(c);
@@ -1266,14 +1291,14 @@ mod tests {
         // seule leur popularité les distingue. Un couple quelconque laissait
         // la longueur décider, et les deux profils prenaient la même route.
         let (a, b) = (r.identifiants()[0], r.identifiants()[30]);
-        let moyenne = |i: &Itineraire| {
-            i.popularite.iter().sum::<f32>() / i.popularite.len() as f32
-        };
+        let moyenne = |i: &Itineraire| i.popularite.iter().sum::<f32>() / i.popularite.len() as f32;
 
-        let par_autoroute =
-            &r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap()[0];
-        let par_sentier =
-            &r.itineraires(&Options::nouveau(a, Profil::Sentier).vers(b)).unwrap()[0];
+        let par_autoroute = &r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b))
+            .unwrap()[0];
+        let par_sentier = &r
+            .itineraires(&Options::nouveau(a, Profil::Sentier).vers(b))
+            .unwrap()[0];
 
         assert!(
             moyenne(par_autoroute) > moyenne(par_sentier),
@@ -1335,7 +1360,10 @@ mod tests {
                 .iter()
                 .map(|id| r.morceaux[r.rang[id] as usize].duree_ms)
                 .sum();
-            assert_eq!(t.duree_ms, somme, "la durée rendue n'est pas la vraie somme");
+            assert_eq!(
+                t.duree_ms, somme,
+                "la durée rendue n'est pas la vraie somme"
+            );
             assert_eq!(t.popularite.len(), t.morceaux.len());
             assert_eq!(t.classes.len(), t.morceaux.len() - 1);
         }
@@ -1352,7 +1380,9 @@ mod tests {
         let depart = r.identifiants()[0];
         for minutes in [10u64, 25, 40, 60] {
             let o = Options::nouveau(depart, Profil::Sentier).duree(minutes * 60_000);
-            let Ok(trajets) = r.itineraires(&o) else { continue };
+            let Ok(trajets) = r.itineraires(&o) else {
+                continue;
+            };
             for t in &trajets {
                 let uniques: HashSet<_> = t.morceaux.iter().collect();
                 assert_eq!(
@@ -1377,7 +1407,11 @@ mod tests {
         let o = Options::nouveau(a, Profil::Autoroute).vers(b).duree(cible);
         match r.itineraires(&o) {
             Ok(t) => {
-                assert_eq!(*t[0].morceaux.last().unwrap(), b, "l'arrivée n'est pas la bonne");
+                assert_eq!(
+                    *t[0].morceaux.last().unwrap(),
+                    b,
+                    "l'arrivée n'est pas la bonne"
+                );
                 assert!(t[0].duree_ms.abs_diff(cible) <= o.tolerance_ms);
             }
             // Un refus explicite est une réponse acceptable : il n'existe pas
@@ -1425,8 +1459,12 @@ mod tests {
                 .collect::<HashSet<_>>()
                 .len()
         };
-        let ordinaire = &r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap()[0];
-        let panorama = &r.itineraires(&Options::nouveau(a, Profil::Panoramique).vers(b)).unwrap()[0];
+        let ordinaire = &r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b))
+            .unwrap()[0];
+        let panorama = &r
+            .itineraires(&Options::nouveau(a, Profil::Panoramique).vers(b))
+            .unwrap()[0];
         assert!(
             familles(panorama) >= familles(ordinaire),
             "panoramique {} territoires, ordinaire {}",
@@ -1442,11 +1480,18 @@ mod tests {
         let r = reseau();
         let (a, b) = (r.identifiants()[1], r.identifiants()[45]);
         let t = r
-            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).alternatives(3))
+            .itineraires(
+                &Options::nouveau(a, Profil::Autoroute)
+                    .vers(b)
+                    .alternatives(3),
+            )
             .unwrap();
         assert!(t.len() >= 2, "une seule variante rendue");
         for i in 1..t.len() {
-            assert_ne!(t[0].morceaux, t[i].morceaux, "variante {i} identique à la première");
+            assert_ne!(
+                t[0].morceaux, t[i].morceaux,
+                "variante {i} identique à la première"
+            );
         }
         // Yen classe par **coût du profil**, pas par distance sonique : un
         // trajet moins cher peut être sonorement plus long, puisque le coût
@@ -1535,17 +1580,24 @@ mod tests {
             assert!(n(Classe::Autoroute) > 0, "{echelle:?} : aucune autoroute");
             assert!(n(Classe::Nationale) > 0, "{echelle:?} : aucune nationale");
             assert_eq!(
-                n(Classe::Autoroute) + n(Classe::Nationale) + n(Classe::Secondaire) + n(Classe::Sentier),
+                n(Classe::Autoroute)
+                    + n(Classe::Nationale)
+                    + n(Classe::Secondaire)
+                    + n(Classe::Sentier),
                 r.aretes().len(),
                 "{echelle:?} : des arêtes sans classe"
             );
             assert!(
-                r.aretes().iter().all(|a| (0.0..=1.0).contains(&a.centralite)),
+                r.aretes()
+                    .iter()
+                    .all(|a| (0.0..=1.0).contains(&a.centralite)),
                 "{echelle:?} : centralité hors de [0, 1]"
             );
             // Et le routage reste possible d'un bout à l'autre.
             let (a, b) = (r.identifiants()[0], r.identifiants()[30]);
-            assert!(r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).is_ok());
+            assert!(r
+                .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b))
+                .is_ok());
         }
     }
 
@@ -1559,11 +1611,20 @@ mod tests {
         // Les familles 0 et 1 se touchent à leur couture ; la 2 est de l'autre côté.
         let (a, b) = (ids[2], ids[35]);
         assert_eq!((famille(&a), famille(&b)), (0, 1));
-        let libre = &r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap()[0];
-        let borne = &r
-            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([0, 1]))
+        let libre = &r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b))
             .unwrap()[0];
-        assert!(borne.morceaux.iter().all(|id| [0, 1].contains(&famille(id))));
+        let borne = &r
+            .itineraires(
+                &Options::nouveau(a, Profil::Autoroute)
+                    .vers(b)
+                    .dans_les_familles([0, 1]),
+            )
+            .unwrap()[0];
+        assert!(borne
+            .morceaux
+            .iter()
+            .all(|id| [0, 1].contains(&famille(id))));
         assert!(libre.morceaux.len() >= 2 && borne.morceaux.len() >= 2);
     }
 
@@ -1578,7 +1639,11 @@ mod tests {
         // Seule la famille 1 est permise : le départ (famille 0) y échappe,
         // l'arrivée est dedans, et le trajet n'entre que par la couture.
         let t = &r
-            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([1]))
+            .itineraires(
+                &Options::nouveau(a, Profil::Autoroute)
+                    .vers(b)
+                    .dans_les_familles([1]),
+            )
             .map(|v| v[0].clone());
         match t {
             Ok(t) => {
@@ -1592,7 +1657,11 @@ mod tests {
         // en n'autorisant que la 0, rien n'y mène.
         let loin = ids[45];
         assert_eq!(famille(&loin), 2);
-        let direct = r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(loin).dans_les_familles([0]));
+        let direct = r.itineraires(
+            &Options::nouveau(a, Profil::Autoroute)
+                .vers(loin)
+                .dans_les_familles([0]),
+        );
         assert!(matches!(direct, Err(Erreur::Injoignable)), "{direct:?}");
     }
 
@@ -1601,9 +1670,15 @@ mod tests {
     fn des_familles_vides_ne_restreignent_rien() {
         let r = reseau();
         let (a, b) = (r.identifiants()[2], r.identifiants()[35]);
-        let sans = r.itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b)).unwrap();
+        let sans = r
+            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b))
+            .unwrap();
         let vide = r
-            .itineraires(&Options::nouveau(a, Profil::Autoroute).vers(b).dans_les_familles([]))
+            .itineraires(
+                &Options::nouveau(a, Profil::Autoroute)
+                    .vers(b)
+                    .dans_les_familles([]),
+            )
             .unwrap();
         assert_eq!(sans[0].morceaux, vide[0].morceaux);
     }

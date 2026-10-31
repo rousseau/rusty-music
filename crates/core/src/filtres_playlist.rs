@@ -94,7 +94,9 @@ impl NiveauEcoute {
     pub fn depuis_texte(s: &str) -> Option<Self> {
         match s.trim().to_lowercase().as_str() {
             "oublie" | "oublié" | "oublies" | "oubliés" | "forgotten" => Some(Self::Oublie),
-            "jamais" | "jamais_ecoute" | "jamais écouté" | "never" | "unheard" => Some(Self::Jamais),
+            "jamais" | "jamais_ecoute" | "jamais écouté" | "never" | "unheard" => {
+                Some(Self::Jamais)
+            }
             _ => None,
         }
     }
@@ -193,8 +195,27 @@ fn artistes_de(mention: &str) -> Vec<String> {
     let mut noms = vec![nom_artiste(mention)];
     let bas = mention.to_lowercase();
     let mut morceaux = vec![bas];
-    for sep in [" & ", " and ", " et ", " feat. ", " feat ", " featuring ", " ft. ", " with ", " vs. ", " vs ", " x ", " + ", ", ", "; ", " / "] {
-        morceaux = morceaux.iter().flat_map(|m| m.split(sep).map(str::to_string).collect::<Vec<_>>()).collect();
+    for sep in [
+        " & ",
+        " and ",
+        " et ",
+        " feat. ",
+        " feat ",
+        " featuring ",
+        " ft. ",
+        " with ",
+        " vs. ",
+        " vs ",
+        " x ",
+        " + ",
+        ", ",
+        "; ",
+        " / ",
+    ] {
+        morceaux = morceaux
+            .iter()
+            .flat_map(|m| m.split(sep).map(str::to_string).collect::<Vec<_>>())
+            .collect();
     }
     noms.extend(morceaux.iter().map(|m| nom_artiste(m)));
     noms
@@ -275,11 +296,17 @@ fn convient(
             return false;
         }
     }
-    if f.exclure_genres.iter().any(|g| p.genres.iter().any(|pg| genre_correspond(pg, g))) {
+    if f.exclure_genres
+        .iter()
+        .any(|g| p.genres.iter().any(|pg| genre_correspond(pg, g)))
+    {
         return false;
     }
     if !f.genres.is_empty()
-        && !f.genres.iter().any(|g| p.genres.iter().any(|pg| genre_correspond(pg, g)))
+        && !f
+            .genres
+            .iter()
+            .any(|g| p.genres.iter().any(|pg| genre_correspond(pg, g)))
     {
         return false;
     }
@@ -306,7 +333,9 @@ fn convient(
         }
     }
     if let Some(niveau) = f.energie {
-        let Some((bas, haut)) = seuils else { return false };
+        let Some((bas, haut)) = seuils else {
+            return false;
+        };
         let Some(e) = p.energie else { return false };
         let ok = match niveau {
             NiveauEnergie::Calme => e <= bas,
@@ -329,7 +358,9 @@ fn convient(
     }
     if let Some(niveau) = f.ecoute {
         let ok = match niveau {
-            NiveauEcoute::Oublie => p.jours_depuis_ecoute.is_some_and(|j| j >= OUBLIE_APRES_JOURS),
+            NiveauEcoute::Oublie => p
+                .jours_depuis_ecoute
+                .is_some_and(|j| j >= OUBLIE_APRES_JOURS),
             NiveauEcoute::Jamais => p.jours_depuis_ecoute.is_none(),
         };
         if !ok {
@@ -359,18 +390,27 @@ fn filtrer(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> HashSet<i64
 pub fn entonnoir(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> Vec<(String, usize)> {
     let mut etapes = vec![("Bibliothèque".to_string(), pistes.len())];
     let mut courant = FiltresPlaylist::default();
-    let ajouter = |libelle: String, courant: &FiltresPlaylist, etapes: &mut Vec<(String, usize)>| {
-        etapes.push((libelle, filtrer(pistes, courant).len()));
-    };
+    let ajouter =
+        |libelle: String, courant: &FiltresPlaylist, etapes: &mut Vec<(String, usize)>| {
+            etapes.push((libelle, filtrer(pistes, courant).len()));
+        };
     if !f.genres.is_empty() {
         courant.genres = f.genres.clone();
-        ajouter(format!("genre : {}", f.genres.join(", ")), &courant, &mut etapes);
+        ajouter(
+            format!("genre : {}", f.genres.join(", ")),
+            &courant,
+            &mut etapes,
+        );
     }
     if !f.exclure_genres.is_empty() || !f.exclure_artistes.is_empty() {
         courant.exclure_genres = f.exclure_genres.clone();
         courant.exclure_artistes = f.exclure_artistes.clone();
-        let refus: Vec<&str> =
-            f.exclure_genres.iter().chain(&f.exclure_artistes).map(String::as_str).collect();
+        let refus: Vec<&str> = f
+            .exclure_genres
+            .iter()
+            .chain(&f.exclure_artistes)
+            .map(String::as_str)
+            .collect();
         ajouter(format!("sans {}", refus.join(", ")), &courant, &mut etapes);
     }
     if f.annee_min.is_some() || f.annee_max.is_some() {
@@ -401,7 +441,11 @@ pub fn entonnoir(pistes: &[CaracteristiquesPiste], f: &FiltresPlaylist) -> Vec<(
     }
     if let Some(p) = f.popularite {
         courant.popularite = Some(p);
-        ajouter(format!("popularité : {}", p.libelle()), &courant, &mut etapes);
+        ajouter(
+            format!("popularité : {}", p.libelle()),
+            &courant,
+            &mut etapes,
+        );
     }
     if let Some(e) = f.ecoute {
         courant.ecoute = Some(e);
@@ -479,7 +523,11 @@ pub fn duree_moyenne_ms(pistes: &[CaracteristiquesPiste], ids: Option<&HashSet<i
         .filter_map(|p| p.duree_ms)
         .filter(|d| *d > 0)
         .fold((0i64, 0i64), |(s, n), d| (s + d, n + 1));
-    if n == 0 { DUREE_DEFAUT_MS } else { somme / n }
+    if n == 0 {
+        DUREE_DEFAUT_MS
+    } else {
+        somme / n
+    }
 }
 
 /// Retire d'une `route` les morceaux d'un artiste déjà présent `plafond` fois
@@ -503,7 +551,9 @@ pub fn plafonner_par_artiste(
             .iter()
             .copied()
             .filter(|id| {
-                let Some(a) = artiste_de.get(id) else { return true };
+                let Some(a) = artiste_de.get(id) else {
+                    return true;
+                };
                 let n = compte.entry(nom_artiste(a)).or_insert(0);
                 if proteges.contains(id) || *n < plafond {
                     *n += 1;
@@ -538,7 +588,15 @@ pub fn ajuster_a_duree(
     garder_fin: bool,
 ) -> Vec<i64> {
     let total = |r: &[i64]| -> i64 {
-        r.iter().map(|id| duree_ms_de.get(id).copied().filter(|d| *d > 0).unwrap_or(DUREE_DEFAUT_MS)).sum()
+        r.iter()
+            .map(|id| {
+                duree_ms_de
+                    .get(id)
+                    .copied()
+                    .filter(|d| *d > 0)
+                    .unwrap_or(DUREE_DEFAUT_MS)
+            })
+            .sum()
     };
     let mut meilleur = route.to_vec();
     let mut ecart = (total(&meilleur) - cible_ms).abs();
@@ -562,7 +620,13 @@ pub fn ajuster_a_duree(
 mod tests {
     use super::*;
 
-    fn piste(id: i64, artiste: &str, genre: &str, annee: i32, energie: f32) -> CaracteristiquesPiste {
+    fn piste(
+        id: i64,
+        artiste: &str,
+        genre: &str,
+        annee: i32,
+        energie: f32,
+    ) -> CaracteristiquesPiste {
         CaracteristiquesPiste {
             id,
             artiste: Some(artiste.into()),
@@ -597,7 +661,10 @@ mod tests {
 
     #[test]
     fn calme_prend_le_tiers_bas_de_la_distribution() {
-        let f = FiltresPlaylist { energie: Some(NiveauEnergie::Calme), ..Default::default() };
+        let f = FiltresPlaylist {
+            energie: Some(NiveauEnergie::Calme),
+            ..Default::default()
+        };
         let s = selectionner(&corpus(), &f, 1).unwrap();
         assert!(s.relaches.is_empty());
         assert!(s.ids.iter().all(|id| *id <= 4), "{:?}", s.ids);
@@ -606,9 +673,15 @@ mod tests {
 
     #[test]
     fn exclure_un_genre_est_dur_meme_sans_assez_de_morceaux() {
-        let f = FiltresPlaylist { exclure_genres: vec!["Rock".into()], ..Default::default() };
+        let f = FiltresPlaylist {
+            exclure_genres: vec!["Rock".into()],
+            ..Default::default()
+        };
         let s = selectionner(&corpus(), &f, 100).unwrap();
-        assert!(s.ids.iter().all(|id| id % 2 == 1), "aucun rock ne doit rester");
+        assert!(
+            s.ids.iter().all(|id| id % 2 == 1),
+            "aucun rock ne doit rester"
+        );
         assert!(s.relaches.is_empty(), "une exclusion ne se relâche jamais");
     }
 
@@ -622,7 +695,13 @@ mod tests {
         assert!(!genre_correspond("rocksteady", "rock"));
         assert!(!genre_correspond("jazz", "rock"));
         // rap et hip hop sont une même famille, sous toutes leurs graphies.
-        for g in ["rap", "hip hop", "hip-hop", "rap/hip hop", "east coast hip hop"] {
+        for g in [
+            "rap",
+            "hip hop",
+            "hip-hop",
+            "rap/hip hop",
+            "east coast hip hop",
+        ] {
             assert!(genre_correspond(g, "rap"), "{g} / rap");
             assert!(genre_correspond(g, "hip hop"), "{g} / hip hop");
         }
@@ -664,7 +743,15 @@ mod tests {
         };
         let e = entonnoir(&c, &f);
         let libelles: Vec<&str> = e.iter().map(|(l, _)| l.as_str()).collect();
-        assert_eq!(libelles, ["Bibliothèque", "sans rock", "période : jusqu'en 1970", "énergie : calme"]);
+        assert_eq!(
+            libelles,
+            [
+                "Bibliothèque",
+                "sans rock",
+                "période : jusqu'en 1970",
+                "énergie : calme"
+            ]
+        );
         let comptes: Vec<usize> = e.iter().map(|(_, n)| *n).collect();
         assert_eq!(comptes[0], 9);
         assert!(comptes.windows(2).all(|w| w[0] >= w[1]), "{comptes:?}");
@@ -677,7 +764,10 @@ mod tests {
 
     #[test]
     fn exclure_un_artiste_ignore_larticle_et_la_casse() {
-        let f = FiltresPlaylist { exclure_artistes: vec!["rockers".into()], ..Default::default() };
+        let f = FiltresPlaylist {
+            exclure_artistes: vec!["rockers".into()],
+            ..Default::default()
+        };
         let s = selectionner(&corpus(), &f, 1).unwrap();
         assert!(s.ids.iter().all(|id| id % 2 == 1));
     }
@@ -686,7 +776,10 @@ mod tests {
     fn une_borne_dannee_ecarte_les_morceaux_sans_date() {
         let mut c = corpus();
         c[0].annee = None;
-        let f = FiltresPlaylist { annee_max: Some(1970), ..Default::default() };
+        let f = FiltresPlaylist {
+            annee_max: Some(1970),
+            ..Default::default()
+        };
         let s = selectionner(&c, &f, 1).unwrap();
         assert!(!s.ids.contains(&1));
         assert!(s.ids.contains(&3));
@@ -721,8 +814,10 @@ mod tests {
     #[test]
     fn plafond_par_artiste_se_relache_sauf_sil_est_impose() {
         let route: Vec<i64> = (1..=8).collect();
-        let artistes: HashMap<i64, String> =
-            route.iter().map(|id| (*id, if id % 2 == 0 { "A".into() } else { "B".into() })).collect();
+        let artistes: HashMap<i64, String> = route
+            .iter()
+            .map(|id| (*id, if id % 2 == 0 { "A".into() } else { "B".into() }))
+            .collect();
         let aucun = HashSet::new();
         // Plafond par défaut 1, 8 voulus : monte jusqu'à 4 (4 A + 4 B).
         let r = plafonner_par_artiste(&route, &artistes, 8, 1, false, &aucun);
@@ -756,22 +851,38 @@ mod tests {
         assert_eq!(r.len(), 20);
         // Sans `garder_fin`, les préfixes affinent : des morceaux de durées
         // inégales (4, 5 et 6 min…) tombent plus près de la cible.
-        let inegales: HashMap<i64, i64> =
-            route.iter().map(|id| (*id, if id % 2 == 0 { 300_000 } else { 240_000 })).collect();
+        let inegales: HashMap<i64, i64> = route
+            .iter()
+            .map(|id| (*id, if id % 2 == 0 { 300_000 } else { 240_000 }))
+            .collect();
         let cible = 12 * 60_000;
         let ecart = |r: &[i64]| (r.iter().map(|id| inegales[id]).sum::<i64>() - cible).abs();
         let avec = ajuster_a_duree(&route, &inegales, cible, reduire, false);
         let sans = ajuster_a_duree(&route, &inegales, cible, reduire, true);
-        assert!(ecart(&avec) <= ecart(&sans), "préfixes : {} contre {}", ecart(&avec), ecart(&sans));
+        assert!(
+            ecart(&avec) <= ecart(&sans),
+            "préfixes : {} contre {}",
+            ecart(&avec),
+            ecart(&sans)
+        );
         assert_eq!(avec.first(), Some(&1), "le départ reste");
     }
 
     #[test]
     fn niveaux_tolerent_les_variantes_de_modele() {
-        assert_eq!(NiveauEnergie::depuis_texte(" Calm "), Some(NiveauEnergie::Calme));
-        assert_eq!(NiveauEnergie::depuis_texte("énergique"), Some(NiveauEnergie::Intense));
+        assert_eq!(
+            NiveauEnergie::depuis_texte(" Calm "),
+            Some(NiveauEnergie::Calme)
+        );
+        assert_eq!(
+            NiveauEnergie::depuis_texte("énergique"),
+            Some(NiveauEnergie::Intense)
+        );
         assert_eq!(NiveauEnergie::depuis_texte("bof"), None);
-        assert_eq!(NiveauPopularite::depuis_texte("peu connu"), Some(NiveauPopularite::PeuConnu));
+        assert_eq!(
+            NiveauPopularite::depuis_texte("peu connu"),
+            Some(NiveauPopularite::PeuConnu)
+        );
     }
 
     #[test]
@@ -788,10 +899,17 @@ mod tests {
         c[1].jours_depuis_ecoute = Some(10);
         c[2].jours_depuis_ecoute = Some(OUBLIE_APRES_JOURS);
         c[3].jours_depuis_ecoute = Some(OUBLIE_APRES_JOURS - 1);
-        let avec = |e| FiltresPlaylist { ecoute: Some(e), ..Default::default() };
+        let avec = |e| FiltresPlaylist {
+            ecoute: Some(e),
+            ..Default::default()
+        };
 
         let oublies = filtrer(&c, &avec(NiveauEcoute::Oublie));
-        assert_eq!(oublies, HashSet::from([c[0].id, c[2].id]), "la limite est incluse, la veille non");
+        assert_eq!(
+            oublies,
+            HashSet::from([c[0].id, c[2].id]),
+            "la limite est incluse, la veille non"
+        );
 
         let jamais = filtrer(&c, &avec(NiveauEcoute::Jamais));
         assert_eq!(jamais.len(), c.len() - 4);
@@ -809,8 +927,16 @@ mod tests {
             ..Default::default()
         };
         let s = selectionner(&c, &f, 2).unwrap();
-        assert!(s.relaches.iter().any(|r| r.contains("« écoute »")), "{:?}", s.relaches);
-        assert!(!s.relaches.iter().any(|r| r.contains("énergie")), "l'énergie est gardée : {:?}", s.relaches);
+        assert!(
+            s.relaches.iter().any(|r| r.contains("« écoute »")),
+            "{:?}",
+            s.relaches
+        );
+        assert!(
+            !s.relaches.iter().any(|r| r.contains("énergie")),
+            "l'énergie est gardée : {:?}",
+            s.relaches
+        );
         assert!(s.ids.len() >= 2);
     }
 
@@ -818,10 +944,16 @@ mod tests {
     fn lentonnoir_montre_lecoute() {
         let mut c = corpus();
         c[0].jours_depuis_ecoute = Some(500);
-        let f = FiltresPlaylist { ecoute: Some(NiveauEcoute::Oublie), ..Default::default() };
+        let f = FiltresPlaylist {
+            ecoute: Some(NiveauEcoute::Oublie),
+            ..Default::default()
+        };
         let e = entonnoir(&c, &f);
         assert_eq!(e.last().unwrap(), &("écoute : oubliés".to_string(), 1));
-        assert_eq!(NiveauEcoute::depuis_texte("jamais"), Some(NiveauEcoute::Jamais));
+        assert_eq!(
+            NiveauEcoute::depuis_texte("jamais"),
+            Some(NiveauEcoute::Jamais)
+        );
         assert!(!f.est_vide());
     }
 }

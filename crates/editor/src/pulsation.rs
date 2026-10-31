@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use beat_this::{BeatThis, Runtime, RtenRuntime};
+use beat_this::{BeatThis, RtenRuntime, Runtime};
 use serde::{Deserialize, Serialize};
 
 use crate::{decode, Error, Result};
@@ -103,8 +103,14 @@ impl Modele {
             if rusty_music_core::modeles::trouver(p.nom).is_some() {
                 continue;
             }
-            rusty_music_core::modeles::telecharger(p.nom, p.url, p.octets, Some(p.sha256), &mut avancer)
-                .map_err(|e| Error::Telechargement(e.to_string()))?;
+            rusty_music_core::modeles::telecharger(
+                p.nom,
+                p.url,
+                p.octets,
+                Some(p.sha256),
+                &mut avancer,
+            )
+            .map_err(|e| Error::Telechargement(e.to_string()))?;
         }
         Ok(())
     }
@@ -137,7 +143,12 @@ impl Pulsation {
     /// Tempo médian, en BPM — la médiane plutôt que la moyenne, pour qu'un
     /// temps manqué ou un point d'orgue ne tire pas tout.
     pub fn bpm(&self) -> Option<f32> {
-        let mut ecarts: Vec<f32> = self.temps.windows(2).map(|w| w[1] - w[0]).filter(|d| *d > 0.0).collect();
+        let mut ecarts: Vec<f32> = self
+            .temps
+            .windows(2)
+            .map(|w| w[1] - w[0])
+            .filter(|d| *d > 0.0)
+            .collect();
         if ecarts.is_empty() {
             return None;
         }
@@ -157,7 +168,11 @@ impl Pulsation {
                     .into_iter()
                     .flatten()
                     .filter(|&k| k < self.temps.len())
-                    .min_by(|&a, &b| (self.temps[a] - p).abs().total_cmp(&(self.temps[b] - p).abs()))
+                    .min_by(|&a, &b| {
+                        (self.temps[a] - p)
+                            .abs()
+                            .total_cmp(&(self.temps[b] - p).abs())
+                    })
             })
             .collect()
     }
@@ -214,9 +229,15 @@ impl Pulsation {
             // Anacrouse : compter à rebours depuis la première mesure, avec la
             // métrique du morceau.
             let metrique = self.metrique().unwrap_or(4) as f32;
-            return Some(Position { mesure: -1, temps: (x - premier).rem_euclid(metrique) });
+            return Some(Position {
+                mesure: -1,
+                temps: (x - premier).rem_euclid(metrique),
+            });
         }
-        Some(Position { mesure: m as i32 - 1, temps: x - idx[m - 1] as f32 })
+        Some(Position {
+            mesure: m as i32 - 1,
+            temps: x - idx[m - 1] as f32,
+        })
     }
 
     /// Début et fin de la mesure qui contient `t`, en secondes. La dernière
@@ -292,7 +313,10 @@ impl Pulsation {
     /// Écrit la pulsation en cache, par fichier temporaire renommé.
     pub fn ecrire(&self, chemin: &Path) -> std::io::Result<()> {
         let tmp = chemin.with_extension("json.partiel");
-        std::fs::write(&tmp, serde_json::to_vec(self).map_err(std::io::Error::other)?)?;
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec(self).map_err(std::io::Error::other)?,
+        )?;
         std::fs::rename(tmp, chemin)
     }
 }
@@ -317,7 +341,8 @@ impl Pisteur {
     pub fn charger(modele: Modele) -> Result<Self> {
         let mel = chemin_poids(MEL)?;
         let reseau = chemin_poids(modele.poids())?;
-        let reseau = BeatThis::new(&RtenRuntime, &mel, &reseau).map_err(|e| Error::Modele(e.to_string()))?;
+        let reseau =
+            BeatThis::new(&RtenRuntime, &mel, &reseau).map_err(|e| Error::Modele(e.to_string()))?;
         Ok(Self { modele, reseau })
     }
 
@@ -331,7 +356,8 @@ impl Pisteur {
             .reseau
             .analyze_owned(mono, frequence)
             .map_err(|e| Error::Modele(e.to_string()))?;
-        let corriger = |v: Vec<f32>| -> Vec<f32> { v.into_iter().map(|t| t + CORRECTION_S).collect() };
+        let corriger =
+            |v: Vec<f32>| -> Vec<f32> { v.into_iter().map(|t| t + CORRECTION_S).collect() };
         Ok(Pulsation {
             version: VERSION,
             modele: self.modele,
@@ -345,7 +371,12 @@ impl Pisteur {
     /// c'est ce sur quoi le réseau a été entraîné.
     pub fn analyser_fichier(&mut self, chemin: &Path) -> Result<Pulsation> {
         let s = decode::stereo(chemin)?;
-        let mono: Vec<f32> = s.gauche.iter().zip(&s.droite).map(|(g, d)| 0.5 * (g + d)).collect();
+        let mono: Vec<f32> = s
+            .gauche
+            .iter()
+            .zip(&s.droite)
+            .map(|(g, d)| 0.5 * (g + d))
+            .collect();
         drop(s);
         self.analyser(mono, decode::SR)
     }
@@ -374,7 +405,12 @@ mod tests {
     fn quatre_quatre() -> Pulsation {
         let temps: Vec<f32> = (1..=17).map(|k| k as f32 * 0.5).collect();
         let premiers_temps = vec![1.0, 3.0, 5.0, 7.0];
-        Pulsation { version: VERSION, modele: Modele::Petit, temps, premiers_temps }
+        Pulsation {
+            version: VERSION,
+            modele: Modele::Petit,
+            temps,
+            premiers_temps,
+        }
     }
 
     #[test]
@@ -387,7 +423,13 @@ mod tests {
     #[test]
     fn position_dans_la_mesure() {
         let p = quatre_quatre();
-        assert_eq!(p.position(1.0), Some(Position { mesure: 0, temps: 0.0 }));
+        assert_eq!(
+            p.position(1.0),
+            Some(Position {
+                mesure: 0,
+                temps: 0.0
+            })
+        );
         let q = p.position(4.25).unwrap();
         assert_eq!(q.mesure, 1);
         assert!((q.temps - 2.5).abs() < 1e-4);
@@ -411,7 +453,12 @@ mod tests {
         // Les temps s'écartent : 0,5 s puis 0,6 s. La position suit les temps,
         // pas un tempo moyen.
         let temps = vec![0.0, 0.5, 1.0, 1.5, 2.0, 2.6, 3.2, 3.8, 4.4];
-        let p = Pulsation { version: VERSION, modele: Modele::Petit, temps, premiers_temps: vec![0.0, 2.0, 4.4] };
+        let p = Pulsation {
+            version: VERSION,
+            modele: Modele::Petit,
+            temps,
+            premiers_temps: vec![0.0, 2.0, 4.4],
+        };
         let q = p.position(2.9).unwrap();
         assert_eq!(q.mesure, 1);
         assert!((q.temps - 1.5).abs() < 1e-4);
@@ -433,16 +480,33 @@ mod tests {
         // 4/4, un temps toutes les 0,5 s ; le réseau a coupé la deuxième
         // mesure en deux (temps 6) et marqué la fin tous les deux temps.
         let temps: Vec<f32> = (0..=48).map(|k| k as f32 * 0.5).collect();
-        let premiers: Vec<f32> =
-            [0, 4, 6, 8, 12, 16, 20, 24, 28, 32, 36, 38, 40, 42, 44].iter().map(|&k| k as f32 * 0.5).collect();
-        let p = Pulsation { version: VERSION, modele: Modele::Petit, temps: temps.clone(), premiers_temps: premiers }.regularisee();
+        let premiers: Vec<f32> = [0, 4, 6, 8, 12, 16, 20, 24, 28, 32, 36, 38, 40, 42, 44]
+            .iter()
+            .map(|&k| k as f32 * 0.5)
+            .collect();
+        let p = Pulsation {
+            version: VERSION,
+            modele: Modele::Petit,
+            temps: temps.clone(),
+            premiers_temps: premiers,
+        }
+        .regularisee();
         let attendu: Vec<f32> = (0..=44).step_by(4).map(|k| k as f32 * 0.5).collect();
         assert_eq!(p.premiers_temps, attendu);
         assert_eq!(p.clone().regularisee(), p, "idempotente");
 
         // Une vraie mesure de 2/4 (la grille repart d'elle) reste.
-        let premiers: Vec<f32> = [0, 4, 8, 10, 14, 18, 22, 26].iter().map(|&k| k as f32 * 0.5).collect();
-        let q = Pulsation { version: VERSION, modele: Modele::Petit, temps, premiers_temps: premiers.clone() }.regularisee();
+        let premiers: Vec<f32> = [0, 4, 8, 10, 14, 18, 22, 26]
+            .iter()
+            .map(|&k| k as f32 * 0.5)
+            .collect();
+        let q = Pulsation {
+            version: VERSION,
+            modele: Modele::Petit,
+            temps,
+            premiers_temps: premiers.clone(),
+        }
+        .regularisee();
         assert_eq!(q.premiers_temps, premiers);
     }
 

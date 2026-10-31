@@ -341,14 +341,32 @@ mod tests {
         for p in Palette::toutes() {
             assert_eq!(p.familles.len(), 12, "{}", p.id);
             for c in p.familles.iter().chain(std::iter::once(&p.autres)).chain([
-                &p.mer, &p.terre, &p.cote, &p.niveau, &p.encre, &p.halo, &p.encre_region,
-                &p.autoroute, &p.nationale, &p.secondaire, &p.tertiaire, &p.residentielle,
-                &p.autoroute_lisere, &p.nationale_lisere, &p.sentier,
-                &p.bati, &p.bati_bord, &p.riviere, &p.vert,
+                &p.mer,
+                &p.terre,
+                &p.cote,
+                &p.niveau,
+                &p.encre,
+                &p.halo,
+                &p.encre_region,
+                &p.autoroute,
+                &p.nationale,
+                &p.secondaire,
+                &p.tertiaire,
+                &p.residentielle,
+                &p.autoroute_lisere,
+                &p.nationale_lisere,
+                &p.sentier,
+                &p.bati,
+                &p.bati_bord,
+                &p.riviere,
+                &p.vert,
             ]) {
                 assert!(
-                    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|d| d.is_ascii_hexdigit()),
-                    "{} : couleur invalide {c:?}", p.id
+                    c.len() == 7
+                        && c.starts_with('#')
+                        && c[1..].chars().all(|d| d.is_ascii_hexdigit()),
+                    "{} : couleur invalide {c:?}",
+                    p.id
                 );
             }
         }

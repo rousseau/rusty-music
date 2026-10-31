@@ -119,14 +119,22 @@ fn chercher_dump(agent: &ureq::Agent, annee: i32) -> Result<Option<String>> {
     // Les liens sont `?download=data%2F{annee}%2Fdiscogs_YYYYMMDD_releases.xml.gz`,
     // dans l'ordre chronologique : le dernier trouvé est le plus récent.
     let motif = "_releases.xml.gz";
-    let Some(fin) = page.match_indices(motif).last().map(|(i, _)| i + motif.len()) else {
+    let Some(fin) = page
+        .match_indices(motif)
+        .last()
+        .map(|(i, _)| i + motif.len())
+    else {
         return Ok(None);
     };
     let Some(debut) = page[..fin].rfind("discogs_") else {
-        return Err(Error::Reseau("listing Discogs illisible : nom de fichier introuvable".into()));
+        return Err(Error::Reseau(
+            "listing Discogs illisible : nom de fichier introuvable".into(),
+        ));
     };
     let fichier = &page[debut..fin];
-    Ok(Some(format!("https://data.discogs.com/?download=data%2F{annee}%2F{fichier}")))
+    Ok(Some(format!(
+        "https://data.discogs.com/?download=data%2F{annee}%2F{fichier}"
+    )))
 }
 
 /// Télécharge `url` dans `dest`, en flux — jamais entièrement en mémoire.
@@ -219,7 +227,11 @@ pub fn pour_chaque_release(
             match parser_fragment(&fragment) {
                 Ok((credits, labels)) => {
                     bilan.editions_retenues += 1;
-                    f(ReleaseDiscogs { id, credits, labels });
+                    f(ReleaseDiscogs {
+                        id,
+                        credits,
+                        labels,
+                    });
                 }
                 Err(e) => {
                     bilan.fragments_malformes += 1;
@@ -245,7 +257,10 @@ struct FluxReleases<R> {
 
 impl<R: Read> FluxReleases<R> {
     fn new(source: R) -> Self {
-        Self { source, tampon: Vec::new() }
+        Self {
+            source,
+            tampon: Vec::new(),
+        }
     }
 
     /// Le prochain fragment `(id, xml)`, ou `None` en fin de flux. Un
@@ -326,7 +341,9 @@ impl CreditEnCours {
 
     /// Ajoute un fragment de texte au champ actuellement ouvert (`champ`).
     fn accumuler(courant: &mut Option<Self>, champ: Option<&str>, texte: &str) {
-        let (Some(c), Some(nom)) = (courant.as_mut(), champ) else { return };
+        let (Some(c), Some(nom)) = (courant.as_mut(), champ) else {
+            return;
+        };
         match nom {
             "id" => c.id.push_str(texte),
             "name" => c.name.push_str(texte),
@@ -362,7 +379,9 @@ fn label_depuis_attributs(e: &quick_xml::events::BytesStart) -> Option<LabelBrut
     let mut catno = String::new();
     let mut discogs_label_id = None;
     for attr in e.attributes().flatten() {
-        let Ok(valeur) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) else { continue };
+        let Ok(valeur) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) else {
+            continue;
+        };
         match attr.key.local_name().as_ref() {
             "name" => nom = valeur.trim().to_string(),
             "catno" => catno = valeur.trim().to_string(),
@@ -373,7 +392,11 @@ fn label_depuis_attributs(e: &quick_xml::events::BytesStart) -> Option<LabelBrut
     if nom.is_empty() {
         return None;
     }
-    Some(LabelBrut { nom, catno, discogs_label_id })
+    Some(LabelBrut {
+        nom,
+        catno,
+        discogs_label_id,
+    })
 }
 
 /// Analyse un fragment `<release>...</release>` déjà isolé et rend ses
@@ -529,7 +552,10 @@ mod tests {
 
     #[test]
     fn id_depuis_tag_lit_lattribut() {
-        assert_eq!(id_depuis_tag(br#"<release id="249504" status="Accepted">"#), Some(249504));
+        assert_eq!(
+            id_depuis_tag(br#"<release id="249504" status="Accepted">"#),
+            Some(249504)
+        );
         assert_eq!(id_depuis_tag(b"<release>"), None);
     }
 
@@ -571,7 +597,8 @@ mod tests {
 <release id="3"><extraartists></extraartists></release>
 </releases>"#;
 
-        let dir = std::env::temp_dir().join(format!("rusty-music-discogs-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("rusty-music-discogs-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let chemin = dir.join("releases.xml.gz");
         {

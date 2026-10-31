@@ -38,9 +38,24 @@ pub struct Config {
 }
 
 impl Config {
-    pub const SMALL: Config = Config { dim: 768, tetes: 12, couches: 14, card: 1393 };
-    pub const MEDIUM: Config = Config { dim: 1024, tetes: 16, couches: 24, card: 1395 };
-    pub const LARGE: Config = Config { dim: 1536, tetes: 24, couches: 48, card: 1395 };
+    pub const SMALL: Config = Config {
+        dim: 768,
+        tetes: 12,
+        couches: 14,
+        card: 1393,
+    };
+    pub const MEDIUM: Config = Config {
+        dim: 1024,
+        tetes: 16,
+        couches: 24,
+        card: 1395,
+    };
+    pub const LARGE: Config = Config {
+        dim: 1536,
+        tetes: 24,
+        couches: 48,
+        card: 1395,
+    };
 }
 
 const MELS: usize = 512;
@@ -57,7 +72,10 @@ pub struct Lineaire<B: Backend> {
 /// `x` `[n, entrée]` · `w` `[sortie, entrée]`ᵀ — par le produit mince
 /// pour un lot de quelques séquences (voir [`ProduitMince`]).
 fn produit<B: ProduitMince>(x: Tensor<B, 2>, w: Tensor<B, 2>) -> Tensor<B, 2> {
-    Tensor::from_primitive(TensorPrimitive::Float(B::produit_mince(x.into_primitive().tensor(), w.into_primitive().tensor())))
+    Tensor::from_primitive(TensorPrimitive::Float(B::produit_mince(
+        x.into_primitive().tensor(),
+        w.into_primitive().tensor(),
+    )))
 }
 
 impl<B: Backend> Lineaire<B> {
@@ -166,13 +184,24 @@ impl<B: Backend> Reseau<B> {
                 conditioners: Conditionneurs {
                     self_wav: CondMel {
                         mel_spec_transform: TransformeeMel {
-                            spectrogram: Fenetre { window: Param::from_tensor(Tensor::zeros([spectre::N_FFT], device)) },
-                            mel_scale: Banc { fb: Param::from_tensor(Tensor::zeros([spectre::BINS, MELS], device)) },
+                            spectrogram: Fenetre {
+                                window: Param::from_tensor(Tensor::zeros([spectre::N_FFT], device)),
+                            },
+                            mel_scale: Banc {
+                                fb: Param::from_tensor(Tensor::zeros(
+                                    [spectre::BINS, MELS],
+                                    device,
+                                )),
+                            },
                         },
                         output_proj: lin(MELS, c.dim, true),
                     },
-                    instrument_group: CondClasse { embed: EmbeddingConfig::new(1001, c.dim).init(device) },
-                    dataset_name: CondClasse { embed: EmbeddingConfig::new(5, c.dim).init(device) },
+                    instrument_group: CondClasse {
+                        embed: EmbeddingConfig::new(1001, c.dim).init(device),
+                    },
+                    dataset_name: CondClasse {
+                        embed: EmbeddingConfig::new(5, c.dim).init(device),
+                    },
                 },
             },
             emb: EmbeddingConfig::new(c.card + 1, c.dim).init(device),
@@ -180,7 +209,10 @@ impl<B: Backend> Reseau<B> {
                 layers: (0..c.couches)
                     .map(|_| Couche {
                         self_attn: Attention {
-                            in_proj_weight: Param::from_tensor(Tensor::zeros([3 * c.dim, c.dim], device)),
+                            in_proj_weight: Param::from_tensor(Tensor::zeros(
+                                [3 * c.dim, c.dim],
+                                device,
+                            )),
                             out_proj: lin(c.dim, c.dim, false),
                         },
                         norm1: norme(),
@@ -217,9 +249,27 @@ pub struct Generateur<B: Backend> {
 
 impl<B: ProduitMince> Generateur<B> {
     pub fn new(reseau: Reseau<B>, config: Config, longueur_max: usize, device: &B::Device) -> Self {
-        let fenetre = reseau.condition_provider.conditioners.self_wav.mel_spec_transform.spectrogram.window.val().into_data();
-        let fenetre = fenetre.convert::<f32>().into_vec::<f32>().expect("fenêtre en f32");
-        Self { positions: positions(longueur_max, config.dim, device), reseau, config, longueur_max, fenetre, device: device.clone() }
+        let fenetre = reseau
+            .condition_provider
+            .conditioners
+            .self_wav
+            .mel_spec_transform
+            .spectrogram
+            .window
+            .val()
+            .into_data();
+        let fenetre = fenetre
+            .convert::<f32>()
+            .into_vec::<f32>()
+            .expect("fenêtre en f32");
+        Self {
+            positions: positions(longueur_max, config.dim, device),
+            reseau,
+            config,
+            longueur_max,
+            fenetre,
+            device: device.clone(),
+        }
     }
 
     pub fn device(&self) -> &B::Device {
@@ -232,7 +282,11 @@ impl<B: ProduitMince> Generateur<B> {
         let (h, d) = (self.config.tetes, self.config.dim / self.config.tetes);
         let longueur = longueur.min(self.longueur_max);
         let vide = || Some(Tensor::zeros([lot, h, longueur, d], &self.device));
-        Cache { k: (0..self.config.couches).map(|_| vide()).collect(), v: (0..self.config.couches).map(|_| vide()).collect(), position: 0 }
+        Cache {
+            k: (0..self.config.couches).map(|_| vide()).collect(),
+            v: (0..self.config.couches).map(|_| vide()).collect(),
+            position: 0,
+        }
     }
 
     /// Préfixe de conditionnement d'un segment `[prefixe, dim]` : log-mel
@@ -241,12 +295,21 @@ impl<B: ProduitMince> Generateur<B> {
     pub fn prefixe(&self, segment: &[f32], groupes: &[u32]) -> Tensor<B, 2> {
         let c = &self.reseau.condition_provider.conditioners;
         let (module, trames) = spectre::module(segment, &self.fenetre);
-        let spec = Tensor::<B, 2>::from_data(TensorData::new(module, [trames, spectre::BINS]), &self.device);
-        let mel = spec.matmul(c.self_wav.mel_spec_transform.mel_scale.fb.val()).add_scalar(EPS_LOG).log();
+        let spec = Tensor::<B, 2>::from_data(
+            TensorData::new(module, [trames, spectre::BINS]),
+            &self.device,
+        );
+        let mel = spec
+            .matmul(c.self_wav.mel_spec_transform.mel_scale.fb.val())
+            .add_scalar(EPS_LOG)
+            .log();
         let mel = c.self_wav.output_proj.forward(mel);
         let utiles = segment.len() / spectre::PAS;
-        let masque: Vec<f32> = (0..trames).map(|t| if t < utiles { 1.0 } else { 0.0 }).collect();
-        let mel = mel * Tensor::<B, 2>::from_data(TensorData::new(masque, [trames, 1]), &self.device);
+        let masque: Vec<f32> = (0..trames)
+            .map(|t| if t < utiles { 1.0 } else { 0.0 })
+            .collect();
+        let mel =
+            mel * Tensor::<B, 2>::from_data(TensorData::new(masque, [trames, 1]), &self.device);
         // `ClassConditioner` : indice = classe + 2 ; « aucune » = 1.
         let classes = |ids: Vec<i64>, e: &Embedding<B>| {
             let n = ids.len();
@@ -254,7 +317,11 @@ impl<B: ProduitMince> Generateur<B> {
             e.forward(t).squeeze_dim::<2>(0)
         };
         let jeu = classes(vec![1], &c.dataset_name.embed);
-        let ids: Vec<i64> = if groupes.is_empty() { vec![1] } else { groupes.iter().map(|&g| g as i64 + 2).collect() };
+        let ids: Vec<i64> = if groupes.is_empty() {
+            vec![1]
+        } else {
+            groupes.iter().map(|&g| g as i64 + 2).collect()
+        };
         let inst = classes(ids, &c.instrument_group.embed);
         Tensor::cat(vec![mel, jeu, inst], 0)
     }
@@ -262,7 +329,8 @@ impl<B: ProduitMince> Generateur<B> {
     /// Plonge des jetons : `[1, T, dim]`.
     pub fn plonger(&self, jetons: &[u32]) -> Tensor<B, 3> {
         let ids: Vec<i64> = jetons.iter().map(|&j| j as i64).collect();
-        let t = Tensor::<B, 2, Int>::from_data(TensorData::new(ids, [1, jetons.len()]), &self.device);
+        let t =
+            Tensor::<B, 2, Int>::from_data(TensorData::new(ids, [1, jetons.len()]), &self.device);
         self.reseau.emb.forward(t)
     }
 
@@ -272,38 +340,67 @@ impl<B: ProduitMince> Generateur<B> {
         let [b, t, dim] = x.dims();
         let p = cache.position;
         assert!(t == 1 || p == 0, "préremplissage seulement au premier pas");
-        let mut x = x + self.positions.clone().slice([p..p + t, 0..dim]).unsqueeze_dim::<3>(0);
+        let mut x = x + self
+            .positions
+            .clone()
+            .slice([p..p + t, 0..dim])
+            .unsqueeze_dim::<3>(0);
         for (i, couche) in self.reseau.transformer.layers.iter().enumerate() {
             let a = self.attention(&couche.self_attn, couche.norm1.forward(x.clone()), cache, i);
             x = x + a;
-            let f = couche.linear2.forward(gelu(couche.linear1.forward(couche.norm2.forward(x.clone()))));
+            let f = couche.linear2.forward(gelu(
+                couche.linear1.forward(couche.norm2.forward(x.clone())),
+            ));
             x = x + f;
         }
         cache.position += t;
         let dernier = x.slice([0..b, t - 1..t, 0..dim]).reshape([b, dim]);
-        self.reseau.linear.forward(self.reseau.out_norm.forward(dernier))
+        self.reseau
+            .linear
+            .forward(self.reseau.out_norm.forward(dernier))
     }
 
-    fn attention(&self, a: &Attention<B>, x: Tensor<B, 3>, cache: &mut Cache<B>, couche: usize) -> Tensor<B, 3> {
+    fn attention(
+        &self,
+        a: &Attention<B>,
+        x: Tensor<B, 3>,
+        cache: &mut Cache<B>,
+        couche: usize,
+    ) -> Tensor<B, 3> {
         let [b, t, dim] = x.dims();
         let (h, d) = (self.config.tetes, dim / self.config.tetes);
         let qkv = produit(x.reshape([b * t, dim]), a.in_proj_weight.val()).reshape([b, t, 3 * dim]);
-        let tete = |r: std::ops::Range<usize>| qkv.clone().slice([0..b, 0..t, r]).reshape([b, t, h, d]).swap_dims(1, 2);
+        let tete = |r: std::ops::Range<usize>| {
+            qkv.clone()
+                .slice([0..b, 0..t, r])
+                .reshape([b, t, h, d])
+                .swap_dims(1, 2)
+        };
         let (q, k, v) = (tete(0..dim), tete(dim..2 * dim), tete(2 * dim..3 * dim));
         let p = cache.position;
         let kc = cache.k[couche].take().unwrap();
         assert!(p + t <= kc.dims()[2], "séquence plus longue que le cache");
         let kc = kc.slice_assign([0..b, 0..h, p..p + t, 0..d], k);
-        let vc = cache.v[couche].take().unwrap().slice_assign([0..b, 0..h, p..p + t, 0..d], v);
+        let vc = cache.v[couche]
+            .take()
+            .unwrap()
+            .slice_assign([0..b, 0..h, p..p + t, 0..d], v);
         let ka = kc.clone().slice([0..b, 0..h, 0..p + t, 0..d]);
         let va = vc.clone().slice([0..b, 0..h, 0..p + t, 0..d]);
         cache.k[couche] = Some(kc);
         cache.v[couche] = Some(vc);
-        let mut s = q.matmul(ka.swap_dims(2, 3)).mul_scalar(1.0 / (d as f32).sqrt());
+        let mut s = q
+            .matmul(ka.swap_dims(2, 3))
+            .mul_scalar(1.0 / (d as f32).sqrt());
         if t > 1 {
             // Préremplissage (p = 0) : causal, carré. `tril_mask` vaut vrai
             // au-dessus de la diagonale (Burn nomme la partie gardée).
-            s = s.mask_fill(Tensor::<B, 2, burn::tensor::Bool>::tril_mask([t, t], 0, &self.device).unsqueeze::<4>().expand([b, h, t, t]), f32::NEG_INFINITY);
+            s = s.mask_fill(
+                Tensor::<B, 2, burn::tensor::Bool>::tril_mask([t, t], 0, &self.device)
+                    .unsqueeze::<4>()
+                    .expand([b, h, t, t]),
+                f32::NEG_INFINITY,
+            );
         }
         let o = softmax(s, 3).matmul(va);
         a.out_proj.forward(o.swap_dims(1, 2).reshape([b, t, dim]))

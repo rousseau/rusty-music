@@ -32,7 +32,10 @@ fn decoder_mono(p: &Path) -> Vec<f32> {
     use rodio::Source;
     let s = rodio::Decoder::try_from(std::fs::File::open(p).unwrap()).unwrap();
     let ch = s.channels().get() as usize;
-    s.collect::<Vec<f32>>().chunks(ch).map(|c| c.iter().sum::<f32>() / ch as f32).collect()
+    s.collect::<Vec<f32>>()
+        .chunks(ch)
+        .map(|c| c.iter().sum::<f32>() / ch as f32)
+        .collect()
 }
 
 fn dit(quoi: &str, o: &[f32], a: &[f32]) {
@@ -44,8 +47,17 @@ fn dit(quoi: &str, o: &[f32], a: &[f32]) {
         db += (*y as f64).powi(2);
         mx = mx.max((x - y).abs());
     }
-    let err: f64 = o[..n].iter().zip(&a[..n]).map(|(x, y)| ((x - y) as f64).powi(2)).sum();
-    println!("  {quoi:<40} cos {:.6}  rel {:.2e}  maxabs {:.2e}", num / (da.sqrt() * db.sqrt()), (err / db).sqrt(), mx);
+    let err: f64 = o[..n]
+        .iter()
+        .zip(&a[..n])
+        .map(|(x, y)| ((x - y) as f64).powi(2))
+        .sum();
+    println!(
+        "  {quoi:<40} cos {:.6}  rel {:.2e}  maxabs {:.2e}",
+        num / (da.sqrt() * db.sqrt()),
+        (err / db).sqrt(),
+        mx
+    );
 }
 
 fn main() {
@@ -78,5 +90,8 @@ fn main() {
     dit("Rust vs PyTorch entier", &got, &hr_ref);
 
     let audio = hr_ref.len() as f32 / rusty_music_superres::HR_SR as f32;
-    println!("\n{dt:.1}s pour {audio:.1}s d'audio  (×{:.1} le temps réel, mono)", audio / dt);
+    println!(
+        "\n{dt:.1}s pour {audio:.1}s d'audio  (×{:.1} le temps réel, mono)",
+        audio / dt
+    );
 }

@@ -156,11 +156,22 @@ mod tests {
 
         // Zone centrale, hors effets de bord de fenêtrage.
         let marge = 2000;
-        let (a, b) = (&x[marge..n - marge], &y[marge..y.len() - marge.min(y.len())]);
+        let (a, b) = (
+            &x[marge..n - marge],
+            &y[marge..y.len() - marge.min(y.len())],
+        );
         let m = a.len().min(b.len());
-        let err: f32 = a[..m].iter().zip(&b[..m]).map(|(u, v)| (u - v).powi(2)).sum();
+        let err: f32 = a[..m]
+            .iter()
+            .zip(&b[..m])
+            .map(|(u, v)| (u - v).powi(2))
+            .sum();
         let ref_e: f32 = a[..m].iter().map(|u| u * u).sum();
-        assert!((err / ref_e).sqrt() < 1e-3, "reconstruction : {}", (err / ref_e).sqrt());
+        assert!(
+            (err / ref_e).sqrt() < 1e-3,
+            "reconstruction : {}",
+            (err / ref_e).sqrt()
+        );
     }
 
     /// Variante d'`ispec` avec hop arbitraire, pour le test de reconstruction.
@@ -183,7 +194,10 @@ mod tests {
         for t in 0..t_frames {
             buf[0] = rustfft::num_complex::Complex::new(reel[t], imag[t]);
             for k in 1..BINS {
-                let c = rustfft::num_complex::Complex::new(reel[k * t_frames + t], imag[k * t_frames + t]);
+                let c = rustfft::num_complex::Complex::new(
+                    reel[k * t_frames + t],
+                    imag[k * t_frames + t],
+                );
                 buf[k] = c;
                 buf[NFFT - k] = c.conj();
             }

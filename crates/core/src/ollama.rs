@@ -155,7 +155,11 @@ fn position_du_genre(genre: &str, texte: &[String]) -> Option<usize> {
         .iter()
         .flat_map(|v| mots_sans_accent(v))
         .filter(|m| m != "music")
-        .filter_map(|m| texte.iter().position(|t| genre_nomme(&m, std::slice::from_ref(t))))
+        .filter_map(|m| {
+            texte
+                .iter()
+                .position(|t| genre_nomme(&m, std::slice::from_ref(t)))
+        })
         .min()
 }
 
@@ -165,8 +169,16 @@ fn a_une_faute_pres(a: &str, b: &str) -> bool {
     if a.len().abs_diff(b.len()) > 1 {
         return false;
     }
-    let (court, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
-    let debut = court.iter().zip(long.iter()).take_while(|(x, y)| x == y).count();
+    let (court, long) = if a.len() <= b.len() {
+        (&a, &b)
+    } else {
+        (&b, &a)
+    };
+    let debut = court
+        .iter()
+        .zip(long.iter())
+        .take_while(|(x, y)| x == y)
+        .count();
     if court.len() == long.len() {
         court[debut + 1..] == long[debut + 1..]
     } else {
@@ -183,10 +195,17 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
             if t == mot {
                 return true;
             }
-            if GENRES_FR.iter().any(|(fr, en)| *fr == t.as_str() && *en == mot) {
+            if GENRES_FR
+                .iter()
+                .any(|(fr, en)| *fr == t.as_str() && *en == mot)
+            {
                 return true;
             }
-            let prefixe_commun = t.chars().zip(mot.chars()).take_while(|(a, b)| a == b).count();
+            let prefixe_commun = t
+                .chars()
+                .zip(mot.chars())
+                .take_while(|(a, b)| a == b)
+                .count();
             // Un préfixe de 5 lettres (« electronique » ~ `electronic`), ou une
             // faute de frappe (« roc » ~ `rock`, « jaz » ~ `jazz`) — mesuré :
             // « plylist calm de 1h san roc » perdait son refus du rock.
@@ -194,18 +213,20 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
                 || (mot.len() >= 4 && t.len() >= 3 && a_une_faute_pres(t, mot))
         })
     };
-    crate::filtres_playlist::variantes_de_genre(genre).iter().any(|variante| {
-        let mut mots_genre = mots_sans_accent(variante);
-        // « music » est le mot le plus courant d'une demande de musique : il ne
-        // doit pas, à lui seul, ancrer « world music » ou « children's music ».
-        if mots_genre.len() > 1 {
-            mots_genre.retain(|m| m != "music");
-        }
-        // « triphop », « bigbeat » : un genre écrit d'un bloc nomme « trip hop »,
-        // « big beat ».
-        let colle = mots_genre.len() > 1 && texte.iter().any(|t| *t == mots_genre.concat());
-        !mots_genre.is_empty() && (colle || mots_genre.iter().all(|m| retrouve(m)))
-    })
+    crate::filtres_playlist::variantes_de_genre(genre)
+        .iter()
+        .any(|variante| {
+            let mut mots_genre = mots_sans_accent(variante);
+            // « music » est le mot le plus courant d'une demande de musique : il ne
+            // doit pas, à lui seul, ancrer « world music » ou « children's music ».
+            if mots_genre.len() > 1 {
+                mots_genre.retain(|m| m != "music");
+            }
+            // « triphop », « bigbeat » : un genre écrit d'un bloc nomme « trip hop »,
+            // « big beat ».
+            let colle = mots_genre.len() > 1 && texte.iter().any(|t| *t == mots_genre.concat());
+            !mots_genre.is_empty() && (colle || mots_genre.iter().all(|m| retrouve(m)))
+        })
 }
 
 /// Mots (sans accents) par lesquels un utilisateur **dit** une énergie, en
@@ -221,29 +242,117 @@ fn genre_nomme(genre: &str, texte: &[String]) -> bool {
 /// « sweet »), qui vont aussi bien avec un tempo lent qu'avec un tempo vif.
 const INDICES_ENERGIE: &[&str] = &[
     // calme
-    "calm", "calme", "chill", "relax", "detend", "mellow", "soft", "soothing", "quiet",
-    "peaceful", "gentle", "slow", "doux", "douce", "douceur", "douceurs", "doucement",
-    "tranquill", "apais", "serein", "paisible", "lent", "lente", "lents", "lentes",
-    "lentement", "zen", "sleep", "dorm", "sommeil", "endorm", "lullab", "berceuse",
-    "meditat", "yoga", "spa", "sieste", "cosy", "cozy", "lofi", "diner", "dinner",
+    "calm",
+    "calme",
+    "chill",
+    "relax",
+    "detend",
+    "mellow",
+    "soft",
+    "soothing",
+    "quiet",
+    "peaceful",
+    "gentle",
+    "slow",
+    "doux",
+    "douce",
+    "douceur",
+    "douceurs",
+    "doucement",
+    "tranquill",
+    "apais",
+    "serein",
+    "paisible",
+    "lent",
+    "lente",
+    "lents",
+    "lentes",
+    "lentement",
+    "zen",
+    "sleep",
+    "dorm",
+    "sommeil",
+    "endorm",
+    "lullab",
+    "berceuse",
+    "meditat",
+    "yoga",
+    "spa",
+    "sieste",
+    "cosy",
+    "cozy",
+    "lofi",
+    "diner",
+    "dinner",
     // calme — humeurs dont la direction d'énergie est nette
-    "sad", "triste", "melanc", "dreamy", "reveur", "depress", "gloomy", "wistful", "somber",
+    "sad",
+    "triste",
+    "melanc",
+    "dreamy",
+    "reveur",
+    "depress",
+    "gloomy",
+    "wistful",
+    "somber",
     // intense
-    "energ", "intense", "dynamiq", "dynamic", "upbeat", "lively", "fast", "rapide",
-    "aggress", "loud", "puissant", "pump", "workout", "gym", "fitness", "muscu", "sport",
-    "run", "running", "courir", "jogging", "cardio", "exercis", "party", "fete", "dance",
-    "danse", "danser", "hype", "banger", "motiv", "entrain", "festif", "survolt",
-    "punchy", "explosi", "nerveux",
+    "energ",
+    "intense",
+    "dynamiq",
+    "dynamic",
+    "upbeat",
+    "lively",
+    "fast",
+    "rapide",
+    "aggress",
+    "loud",
+    "puissant",
+    "pump",
+    "workout",
+    "gym",
+    "fitness",
+    "muscu",
+    "sport",
+    "run",
+    "running",
+    "courir",
+    "jogging",
+    "cardio",
+    "exercis",
+    "party",
+    "fete",
+    "dance",
+    "danse",
+    "danser",
+    "hype",
+    "banger",
+    "motiv",
+    "entrain",
+    "festif",
+    "survolt",
+    "punchy",
+    "explosi",
+    "nerveux",
     // intense — humeurs dont la direction d'énergie est nette
-    "angry", "colere", "furious", "furieux", "rage", "brutal", "euphori",
+    "angry",
+    "colere",
+    "furious",
+    "furieux",
+    "rage",
+    "brutal",
+    "euphori",
     // moyenne
-    "moyen", "moyenne", "medium", "moderat", "modere", "midtempo",
+    "moyen",
+    "moyenne",
+    "medium",
+    "moderat",
+    "modere",
+    "midtempo",
 ];
 
 /// Négations (sans accents, contractions coupées : « isn't » → « isn », « t »).
 const NEGATIONS: &[&str] = &[
-    "not", "non", "no", "sans", "pas", "never", "without", "less", "t", "isn", "aren",
-    "don", "doesn", "won", "ni", "nor",
+    "not", "non", "no", "sans", "pas", "never", "without", "less", "t", "isn", "aren", "don",
+    "doesn", "won", "ni", "nor",
 ];
 
 /// Le texte dit-il une énergie ? Voir [`INDICES_ENERGIE`]. Un indice précédé
@@ -279,7 +388,10 @@ fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
     // Un mot de `a` suivi, dans les `fenetre` mots suivants, d'un mot de `b`.
     let suivi = |a: &[&str], b: &[&str], fenetre: usize| {
         texte.iter().enumerate().any(|(i, m)| {
-            est(m, a) && texte[i + 1..(i + 1 + fenetre).min(texte.len())].iter().any(|x| est(x, b))
+            est(m, a)
+                && texte[i + 1..(i + 1 + fenetre).min(texte.len())]
+                    .iter()
+                    .any(|x| est(x, b))
         })
     };
     let mot = |m: &str| texte.iter().any(|t| t == m);
@@ -288,19 +400,23 @@ fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
     if suivi(&["jamais", "never"], ECOUTE, 3)
         || mot("unheard")
         || (mot("encore") && mot("pas") && texte.iter().any(|m| est(m, ECOUTE)))
-        || (mot("yet") && texte.iter().any(|m| est(m, ECOUTE)) && texte.iter().any(|m| m == "not" || m == "t"))
+        || (mot("yet")
+            && texte.iter().any(|m| est(m, ECOUTE))
+            && texte.iter().any(|m| m == "not" || m == "t"))
     {
         return Some(NiveauEcoute::Jamais);
     }
     // « oubliés ».
     let nie = |i: usize, fenetre: usize| {
         texte[i.saturating_sub(fenetre)..i].iter().any(|x| {
-            NEGATIONS.contains(&x.as_str()) || ["n", "ne", "haven", "hasn", "hadn"].contains(&x.as_str())
+            NEGATIONS.contains(&x.as_str())
+                || ["n", "ne", "haven", "hasn", "hadn"].contains(&x.as_str())
         })
     };
-    let oublie_nomme = texte.iter().enumerate().any(|(i, m)| {
-        est(m, &["oubli", "forgot", "neglect"]) && !nie(i, 2)
-    });
+    let oublie_nomme = texte
+        .iter()
+        .enumerate()
+        .any(|(i, m)| est(m, &["oubli", "forgot", "neglect"]) && !nie(i, 2));
     // Une écoute **niée** et datée : « n'écoute plus », « pas écouté depuis »,
     // « ne plus écouter », « haven't listened in a while ». Sans négation,
     // « que j'écoute le plus » dirait l'inverse.
@@ -311,7 +427,9 @@ fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
         let apres = &texte[i + 1..(i + 5).min(texte.len())];
         let plus_avant = i > 0 && texte[i - 1] == "plus" && nie(i - 1, 2);
         let date = apres.iter().take(2).any(|x| x == "plus" || x == "depuis")
-            || apres.iter().any(|x| ["while", "ages", "longtemps", "long", "moment"].contains(&x.as_str()));
+            || apres
+                .iter()
+                .any(|x| ["while", "ages", "longtemps", "long", "moment"].contains(&x.as_str()));
         plus_avant || (nie(i, 2) && date)
     });
     if oublie_nomme || ecoute_niee {
@@ -326,9 +444,19 @@ fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
 fn notoriete_nommee(texte: &[String]) -> bool {
     texte.iter().any(|m| {
         m.contains("connu")
-            || ["obscur", "confidentiel", "rare", "underrat", "unknown", "perle", "gem", "hidden", "niche"]
-                .iter()
-                .any(|p| m.starts_with(p))
+            || [
+                "obscur",
+                "confidentiel",
+                "rare",
+                "underrat",
+                "unknown",
+                "perle",
+                "gem",
+                "hidden",
+                "niche",
+            ]
+            .iter()
+            .any(|p| m.starts_with(p))
     })
 }
 
@@ -361,8 +489,10 @@ fn sous_genres(genre: &str) -> Vec<(String, bool)> {
     let tete = mots.len() - 1;
     let mut v: Vec<(usize, String, bool)> = Vec::new();
     for masque in 1..(1u32 << mots.len()) - 1 {
-        let sel: Vec<&str> =
-            (0..mots.len()).filter(|i| masque & (1 << i) != 0).map(|i| mots[i]).collect();
+        let sel: Vec<&str> = (0..mots.len())
+            .filter(|i| masque & (1 << i) != 0)
+            .map(|i| mots[i])
+            .collect();
         v.push((sel.len(), sel.join(" "), masque & (1 << tete) != 0));
     }
     v.sort_by_key(|a| std::cmp::Reverse(a.0));
@@ -397,10 +527,38 @@ fn qualificatif_generique(mot: &str, vocabulaire: &[String]) -> bool {
 /// sont **seuls** ; en groupe (« new age », « world music ») ils redeviennent
 /// des genres. Voir [`InterpretationLlm::completer_genres`].
 const GENRES_TROP_COURANTS: &[&str] = &[
-    "dance", "beat", "est", "france", "unknown", "divers", "other", "instrumental", "vocal",
-    "experimental", "fusion", "ethnic", "musical", "comedy", "medieval", "general",
-    "alternative", "alternatif", "classic", "jungle", "swing", "contemporary", "acoustic",
-    "oldies", "boogie", "breaks", "singer", "songwriter", "bass", "world", "children", "new",
+    "dance",
+    "beat",
+    "est",
+    "france",
+    "unknown",
+    "divers",
+    "other",
+    "instrumental",
+    "vocal",
+    "experimental",
+    "fusion",
+    "ethnic",
+    "musical",
+    "comedy",
+    "medieval",
+    "general",
+    "alternative",
+    "alternatif",
+    "classic",
+    "jungle",
+    "swing",
+    "contemporary",
+    "acoustic",
+    "oldies",
+    "boogie",
+    "breaks",
+    "singer",
+    "songwriter",
+    "bass",
+    "world",
+    "children",
+    "new",
 ];
 
 /// Mots qui refusent ce qui les suit de près (trois mots) : « not grime », « I hate
@@ -408,10 +566,42 @@ const GENRES_TROP_COURANTS: &[&str] = &[
 /// (« but » y retirerait l'énergie de « calm but upbeat ») ; propre aux genres, où
 /// l'inverse (ajouter un genre refusé) est le pire échec.
 const REFUS_GENRE: &[&str] = &[
-    "not", "non", "no", "sans", "pas", "never", "without", "less", "t", "isn", "aren", "don",
-    "doesn", "won", "ni", "nor", "isnt", "arent", "dont", "doesnt", "wont", "outside", "except",
-    "excluding", "exclude", "avoid", "minus", "hate", "hates", "dislike", "unlike", "sauf",
-    "hors", "evite", "but", "other",
+    "not",
+    "non",
+    "no",
+    "sans",
+    "pas",
+    "never",
+    "without",
+    "less",
+    "t",
+    "isn",
+    "aren",
+    "don",
+    "doesn",
+    "won",
+    "ni",
+    "nor",
+    "isnt",
+    "arent",
+    "dont",
+    "doesnt",
+    "wont",
+    "outside",
+    "except",
+    "excluding",
+    "exclude",
+    "avoid",
+    "minus",
+    "hate",
+    "hates",
+    "dislike",
+    "unlike",
+    "sauf",
+    "hors",
+    "evite",
+    "but",
+    "other",
 ];
 
 /// Un moment d'une playlist en plusieurs parties. Les exclusions, années,
@@ -448,8 +638,14 @@ impl InterpretationLlm {
             annee_max: self.annee_max,
             bpm_min: self.bpm_min,
             bpm_max: self.bpm_max,
-            energie: self.energie.as_deref().and_then(NiveauEnergie::depuis_texte),
-            popularite: self.popularite.as_deref().and_then(NiveauPopularite::depuis_texte),
+            energie: self
+                .energie
+                .as_deref()
+                .and_then(NiveauEnergie::depuis_texte),
+            popularite: self
+                .popularite
+                .as_deref()
+                .and_then(NiveauPopularite::depuis_texte),
             ecoute: self.ecoute.as_deref().and_then(NiveauEcoute::depuis_texte),
         }
     }
@@ -482,7 +678,11 @@ impl InterpretationLlm {
             self.genres.clear();
         }
         // Un genre à la fois désiré et exclu : le rejet l'emporte.
-        let exclus: Vec<String> = self.exclure_genres.iter().map(|g| g.to_lowercase()).collect();
+        let exclus: Vec<String> = self
+            .exclure_genres
+            .iter()
+            .map(|g| g.to_lowercase())
+            .collect();
         self.genres.retain(|g| !exclus.contains(&g.to_lowercase()));
 
         let annee = |a: Option<i32>| a.filter(|a| (1900..=2100).contains(a));
@@ -565,7 +765,9 @@ impl InterpretationLlm {
                 // précisément ce qu'on a observé avant les parties.
                 self.genres.clear();
                 // Sans taille par partie, la taille globale se partage également.
-                let sans_taille = parties.iter().all(|p| p.duree_minutes.is_none() && p.n.is_none());
+                let sans_taille = parties
+                    .iter()
+                    .all(|p| p.duree_minutes.is_none() && p.n.is_none());
                 if sans_taille {
                     let k = parties.len() as u32;
                     if let Some(d) = self.duree_minutes.take() {
@@ -639,8 +841,11 @@ impl InterpretationLlm {
         }
         let texte = mots_sans_accent(prompt);
         let ensemble = |g: &str| -> HashSet<String> { mots_sans_accent(g).into_iter().collect() };
-        let visibles: Vec<HashSet<String>> =
-            vocabulaire.iter().take(GENRES_DANS_LE_PROMPT).map(|g| ensemble(g)).collect();
+        let visibles: Vec<HashSet<String>> = vocabulaire
+            .iter()
+            .take(GENRES_DANS_LE_PROMPT)
+            .map(|g| ensemble(g))
+            .collect();
 
         // Les formes candidates : les alternatives (« a/b », « a, b ») des genres que
         // le modèle ne voit pas.
@@ -669,7 +874,9 @@ impl InterpretationLlm {
             let place = (0..=texte.len().saturating_sub(n)).find(|&i| {
                 i + n <= texte.len()
                     && texte[i..i + n] == c[..]
-                    && !texte[i.saturating_sub(3)..i].iter().any(|m| REFUS_GENRE.contains(&m.as_str()))
+                    && !texte[i.saturating_sub(3)..i]
+                        .iter()
+                        .any(|m| REFUS_GENRE.contains(&m.as_str()))
             });
             if place.is_some() {
                 trouves.push(c.clone());
@@ -678,10 +885,14 @@ impl InterpretationLlm {
         // Un genre contenu dans un autre trouvé est redondant (« rock » dans « psychedelic rock »).
         let ens: Vec<HashSet<&String>> = trouves.iter().map(|t| t.iter().collect()).collect();
         let deja: Vec<HashSet<String>> = self.genres.iter().map(|g| ensemble(g)).collect();
-        let refuses: Vec<HashSet<String>> = self.exclure_genres.iter().map(|g| ensemble(g)).collect();
+        let refuses: Vec<HashSet<String>> =
+            self.exclure_genres.iter().map(|g| ensemble(g)).collect();
         let mut ajoutes = Vec::new();
         for (k, t) in trouves.iter().enumerate() {
-            let redondant = ens.iter().enumerate().any(|(j, autre)| j != k && ens[k].is_subset(autre) && ens[k].len() < autre.len());
+            let redondant = ens
+                .iter()
+                .enumerate()
+                .any(|(j, autre)| j != k && ens[k].is_subset(autre) && ens[k].len() < autre.len());
             let couvert = deja.iter().any(|d| t.iter().all(|m| d.contains(m)));
             let refuse = refuses.iter().any(|r| t.iter().all(|m| r.contains(m)));
             if !redondant && !couvert && !refuse {
@@ -723,7 +934,10 @@ impl InterpretationLlm {
             NiveauEcoute::Jamais => "jamais".to_string(),
         });
         if dite.is_some()
-            && self.popularite.as_deref().and_then(NiveauPopularite::depuis_texte)
+            && self
+                .popularite
+                .as_deref()
+                .and_then(NiveauPopularite::depuis_texte)
                 == Some(NiveauPopularite::PeuConnu)
             && !notoriete_nommee(&texte)
         {
@@ -743,8 +957,9 @@ impl InterpretationLlm {
     /// sont alors tous nommés par le texte. Rend vrai si des parties ont été
     /// déduites.
     pub fn inferer_parties(&mut self, prompt: &str) -> bool {
-        const SEQUENCE: &[&str] =
-            &["puis", "ensuite", "apres", "then", "d'abord", "dabord", "suivi", "finir", "finis"];
+        const SEQUENCE: &[&str] = &[
+            "puis", "ensuite", "apres", "then", "d'abord", "dabord", "suivi", "finir", "finis",
+        ];
         if !self.parties.is_empty() || self.genres.len() < 2 {
             return false;
         }
@@ -764,7 +979,11 @@ impl InterpretationLlm {
         ordonnes.sort_by_key(|(i, _)| *i);
         self.parties = ordonnes
             .into_iter()
-            .map(|(_, g)| PartieLlm { description: format!("{g} music"), genres: vec![g], ..Default::default() })
+            .map(|(_, g)| PartieLlm {
+                description: format!("{g} music"),
+                genres: vec![g],
+                ..Default::default()
+            })
             .collect();
         self.normaliser_parties();
         true
@@ -783,7 +1002,11 @@ impl InterpretationLlm {
     /// « sans black metal » en « sans metal » écarterait trop. À appeler **avant**
     /// [`Self::restreindre_au_vocabulaire`] et [`Self::ancrer_genres`]. Rend les
     /// remplacements `(avant, après)`, pour le journal.
-    pub fn ramener_genres(&mut self, prompt: &str, vocabulaire: &[String]) -> Vec<(String, String)> {
+    pub fn ramener_genres(
+        &mut self,
+        prompt: &str,
+        vocabulaire: &[String],
+    ) -> Vec<(String, String)> {
         let texte = mots_sans_accent(prompt);
         let mut remplaces = Vec::new();
         let ramener = |genre: &String, elargir: bool| -> Option<String> {
@@ -833,7 +1056,11 @@ impl InterpretationLlm {
         }
         // Un genre voulu ne peut pas être aussi refusé : le rejet l'emporte
         // (même règle que `normaliser`, après les remplacements).
-        let exclus: Vec<String> = self.exclure_genres.iter().map(|g| g.to_lowercase()).collect();
+        let exclus: Vec<String> = self
+            .exclure_genres
+            .iter()
+            .map(|g| g.to_lowercase())
+            .collect();
         self.genres.retain(|g| !exclus.contains(&g.to_lowercase()));
         remplaces
     }
@@ -1039,7 +1266,8 @@ fn schema() -> Value {
     let entier_ou_null = json!({ "type": ["integer", "null"] });
     let nombre_ou_null = json!({ "type": ["number", "null"] });
     let liste = json!({ "type": "array", "items": { "type": "string" } });
-    let energie = json!({ "type": ["string", "null"], "enum": ["calme", "moyenne", "intense", null] });
+    let energie =
+        json!({ "type": ["string", "null"], "enum": ["calme", "moyenne", "intense", null] });
     // L'ordre des clés est celui où le modèle les écrit (`preserve_order`) :
     // `reformulation` d'abord, `parties` en dernier — c'est la plus lourde, et
     // une réponse coupée par le plafond de jetons perd plutôt la fin que le
@@ -1150,7 +1378,10 @@ pub fn interpreter(
 
     let url = format!("{hote}/api/generate");
     let (statut, brut_reponse) = requete(&url, TIMEOUT_GENERATION, |agent| {
-        agent.post(&url).content_type("application/json").send(corps.as_str())
+        agent
+            .post(&url)
+            .content_type("application/json")
+            .send(corps.as_str())
     })?;
 
     let v: Value = serde_json::from_str(&brut_reponse)
@@ -1167,7 +1398,9 @@ pub fn interpreter(
     }
     if !(200..300).contains(&statut) {
         let message = v["error"].as_str().unwrap_or(brut_reponse.as_str());
-        return Err(Error::Reseau(format!("Ollama a refusé la requête ({statut}) : {message}")));
+        return Err(Error::Reseau(format!(
+            "Ollama a refusé la requête ({statut}) : {message}"
+        )));
     }
 
     // `response` d'abord ; `thinking` en repli — un modèle qui raisonne peut y
@@ -1190,26 +1423,45 @@ pub fn interpreter(
             .join("\n");
         let remplaces = p.ramener_genres(prompt, vocabulaire);
         if !remplaces.is_empty() {
-            tracing::info!(?remplaces, "champ d'intention : genres ramenés à ce que le texte dit");
+            tracing::info!(
+                ?remplaces,
+                "champ d'intention : genres ramenés à ce que le texte dit"
+            );
         }
         let ecartes = p.restreindre_au_vocabulaire(vocabulaire);
         if !ecartes.is_empty() {
-            tracing::info!(?ecartes, "champ d'intention : genres inconnus de la bibliothèque, écartés");
+            tracing::info!(
+                ?ecartes,
+                "champ d'intention : genres inconnus de la bibliothèque, écartés"
+            );
         }
         let inventes = p.ancrer_genres(prompt);
         if !inventes.is_empty() {
-            tracing::info!(?inventes, "champ d'intention : genres que le texte ne nomme pas, écartés");
+            tracing::info!(
+                ?inventes,
+                "champ d'intention : genres que le texte ne nomme pas, écartés"
+            );
         }
         let ajoutes = p.completer_genres(prompt, vocabulaire);
         if !ajoutes.is_empty() {
-            tracing::info!(?ajoutes, "champ d'intention : genres écrits par le texte, invisibles du modèle, ajoutés");
+            tracing::info!(
+                ?ajoutes,
+                "champ d'intention : genres écrits par le texte, invisibles du modèle, ajoutés"
+            );
         }
         let deduites = p.ancrer_energie(prompt);
         if !deduites.is_empty() {
-            tracing::info!(?deduites, "champ d'intention : énergie que le texte ne dit pas, écartée");
+            tracing::info!(
+                ?deduites,
+                "champ d'intention : énergie que le texte ne dit pas, écartée"
+            );
         }
         if let Some((avant, apres)) = p.ancrer_ecoute(prompt) {
-            tracing::info!(?avant, ?apres, "champ d'intention : écoute fixée d'après le texte");
+            tracing::info!(
+                ?avant,
+                ?apres,
+                "champ d'intention : écoute fixée d'après le texte"
+            );
         }
         if p.inferer_parties(prompt) {
             tracing::info!("champ d'intention : suite de genres lue comme des parties");
@@ -1232,7 +1484,9 @@ pub fn modeles(hote: &str) -> crate::Result<Vec<String>> {
     let url = format!("{hote}/api/tags");
     let (statut, brut) = requete(&url, TIMEOUT_LISTE, |agent| agent.get(&url).call())?;
     if !(200..300).contains(&statut) {
-        return Err(Error::Reseau(format!("Ollama a refusé la requête ({statut}) : {brut}")));
+        return Err(Error::Reseau(format!(
+            "Ollama a refusé la requête ({statut}) : {brut}"
+        )));
     }
     let v: Value = serde_json::from_str(&brut)
         .map_err(|e| Error::Parsing(format!("réponse d'Ollama illisible : {e}")))?;
@@ -1291,8 +1545,8 @@ fn requete(
         .build()
         .into();
 
-    let mut reponse =
-        faire(&agent).map_err(|e| Error::Reseau(format!("Ollama ne répond pas sur {url} : {e}")))?;
+    let mut reponse = faire(&agent)
+        .map_err(|e| Error::Reseau(format!("Ollama ne répond pas sur {url} : {e}")))?;
     let statut = reponse.status().as_u16();
     let corps = reponse
         .body_mut()
@@ -1460,7 +1714,8 @@ mod tests {
 
     #[test]
     fn interpretation_de_refuse_des_etapes_toutes_vides() {
-        let brut = r#"{"seed_artiste": null, "seed_morceau": null, "etapes": ["  ", ""], "n": null}"#;
+        let brut =
+            r#"{"seed_artiste": null, "seed_morceau": null, "etapes": ["  ", ""], "n": null}"#;
         assert!(matches!(interpretation_de(brut), Err(Error::Parsing(_))));
     }
 
@@ -1508,10 +1763,26 @@ mod tests {
         assert_eq!(p.n, None);
         assert_eq!(p.duree_minutes, None);
         assert_eq!(p.plafond_par_artiste, None);
-        assert!(p.genres.is_empty(), "un genre exclu ne peut pas être aussi voulu : {:?}", p.genres);
-        assert_eq!((p.annee_min, p.annee_max), (Some(1970), Some(1979)), "bornes remises dans l'ordre");
-        assert_eq!((p.bpm_min, p.bpm_max), (None, Some(120.0)), "500 BPM est absurde");
-        assert_eq!(p.filtres().energie, None, "niveau inconnu ignoré, pas une erreur");
+        assert!(
+            p.genres.is_empty(),
+            "un genre exclu ne peut pas être aussi voulu : {:?}",
+            p.genres
+        );
+        assert_eq!(
+            (p.annee_min, p.annee_max),
+            (Some(1970), Some(1979)),
+            "bornes remises dans l'ordre"
+        );
+        assert_eq!(
+            (p.bpm_min, p.bpm_max),
+            (None, Some(120.0)),
+            "500 BPM est absurde"
+        );
+        assert_eq!(
+            p.filtres().energie,
+            None,
+            "niveau inconnu ignoré, pas une erreur"
+        );
     }
 
     /// « De X à RATM en passant par du hip hop » : le genre est une étape du
@@ -1527,8 +1798,15 @@ mod tests {
         // Sans arrivée, le genre voulu est gardé — avec ou sans départ nommé.
         let q = interpretation_de(r#"{"etapes": ["jazz"], "genres": ["jazz"]}"#).unwrap();
         assert_eq!(q.genres, vec!["jazz".to_string()]);
-        let d = interpretation_de(r#"{"seed_artiste": "Ella Mai", "etapes": ["r&b"], "genres": ["r&b"]}"#).unwrap();
-        assert_eq!(d.genres, vec!["r&b".to_string()], "un départ seul n'est pas un trajet");
+        let d = interpretation_de(
+            r#"{"seed_artiste": "Ella Mai", "etapes": ["r&b"], "genres": ["r&b"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            d.genres,
+            vec!["r&b".to_string()],
+            "un départ seul n'est pas un trajet"
+        );
     }
 
     #[test]
@@ -1538,7 +1816,10 @@ mod tests {
             ("inconnu".to_string(), None),
             ("petit:4b".to_string(), Some(9_000_000_000)),
         ];
-        assert_eq!(trier_par_taille(installes), vec!["petit:4b", "gros:27b", "inconnu"]);
+        assert_eq!(
+            trier_par_taille(installes),
+            vec!["petit:4b", "gros:27b", "inconnu"]
+        );
     }
 
     /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 26 genres sur 285 se perdaient
@@ -1546,9 +1827,19 @@ mod tests {
     /// → `heavy metal`, `power metal` absent de la bibliothèque).
     #[test]
     fn un_genre_sur_precis_est_ramene_a_ce_que_le_texte_dit() {
-        let vocab: Vec<String> =
-            ["rock", "indie rock", "indie pop", "metal", "heavy metal", "trip hop", "big beat", "hip hop"]
-                .iter().map(|s| s.to_string()).collect();
+        let vocab: Vec<String> = [
+            "rock",
+            "indie rock",
+            "indie pop",
+            "metal",
+            "heavy metal",
+            "trip hop",
+            "big beat",
+            "hip hop",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let cas = |genres: &[&str], exclure: &[&str], texte: &str| {
             let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
             p.genres = genres.iter().map(|s| s.to_string()).collect();
@@ -1559,26 +1850,59 @@ mod tests {
             p
         };
         // Le modèle sur-précise : le texte dit « indie », « metal ».
-        assert_eq!(cas(&["indie rock"], &[], "i like indie, not pop").genres, vec!["indie"]);
-        assert_eq!(cas(&["heavy metal", "heavy metal"], &[], "good metal bands").genres, vec!["metal"]);
+        assert_eq!(
+            cas(&["indie rock"], &[], "i like indie, not pop").genres,
+            vec!["indie"]
+        );
+        assert_eq!(
+            cas(&["heavy metal", "heavy metal"], &[], "good metal bands").genres,
+            vec!["metal"]
+        );
         // Doublons non adjacents : « metal », « hard rock » (écarté), « nu metal ».
-        assert_eq!(cas(&["metal", "hard rock", "nu metal"], &[], "good metal bands").genres, vec!["metal"]);
+        assert_eq!(
+            cas(&["metal", "hard rock", "nu metal"], &[], "good metal bands").genres,
+            vec!["metal"]
+        );
         // Un sous-genre que la bibliothèque n'a pas : son parent, nommé par le texte.
-        assert_eq!(cas(&["power metal"], &[], "recommend me some power metal").genres, vec!["metal"]);
+        assert_eq!(
+            cas(&["power metal"], &[], "recommend me some power metal").genres,
+            vec!["metal"]
+        );
         // Graphie collée.
-        assert_eq!(cas(&["trip hop"], &[], "upbeat triphop songs").genres, vec!["trip hop"]);
-        assert_eq!(cas(&["big beat"], &[], "happy bigbeat music").genres, vec!["big beat"]);
+        assert_eq!(
+            cas(&["trip hop"], &[], "upbeat triphop songs").genres,
+            vec!["trip hop"]
+        );
+        assert_eq!(
+            cas(&["big beat"], &[], "happy bigbeat music").genres,
+            vec!["big beat"]
+        );
         // Ni nommé ni connu : écarté, comme avant.
         assert!(cas(&["disco"], &[], "soho disco hold on").genres.is_empty());
-        assert!(cas(&["jazz"], &[], "something that carries a lonely vibe").genres.is_empty());
+        assert!(cas(&["jazz"], &[], "something that carries a lonely vibe")
+            .genres
+            .is_empty());
         // Un refus n'est pas élargi quand le texte le nomme en entier : « sans
         // black metal » ne devient pas « sans metal ».
-        assert!(cas(&[], &["black metal"], "metal but no black metal").exclure_genres.is_empty());
+        assert!(cas(&[], &["black metal"], "metal but no black metal")
+            .exclure_genres
+            .is_empty());
         // …mais un refus sur-précisé est ramené à ce que le texte dit.
-        assert_eq!(cas(&[], &["heavy metal"], "no metal please").exclure_genres, vec!["metal"]);
+        assert_eq!(
+            cas(&[], &["heavy metal"], "no metal please").exclure_genres,
+            vec!["metal"]
+        );
         // « pas trop heavy » est une ambiance : ni refus ni filtre « heavy ».
-        assert!(cas(&[], &["heavy metal"], "instrumental beats not too heavy").exclure_genres.is_empty());
-        assert!(cas(&["heavy metal"], &[], "instrumental beats not too heavy").genres.is_empty());
+        assert!(
+            cas(&[], &["heavy metal"], "instrumental beats not too heavy")
+                .exclure_genres
+                .is_empty()
+        );
+        assert!(
+            cas(&["heavy metal"], &[], "instrumental beats not too heavy")
+                .genres
+                .is_empty()
+        );
         // Un « & » n'est pas un mot : « country & folk » donne « country », pas « country & ».
         let v2: Vec<String> = vec!["country & folk".into(), "country".into()];
         let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
@@ -1586,19 +1910,35 @@ mod tests {
         p.ramener_genres("some country singers", &v2);
         assert_eq!(p.genres, vec!["country"]);
         // Voulu et refusé à la fois : le rejet l'emporte.
-        assert!(cas(&["indie rock"], &["indie"], "indie but no indie").genres.is_empty());
+        assert!(cas(&["indie rock"], &["indie"], "indie but no indie")
+            .genres
+            .is_empty());
     }
 
     /// Mesuré sur MusicRecoIntent : « grime », « gospel », « techno », « synth pop »
     /// (rangs 150-218) restaient sans filtre de genre.
     #[test]
     fn un_genre_ecrit_que_le_modele_ne_voyait_pas_est_ajoute() {
-        let mut vocab: Vec<String> = (0..GENRES_DANS_LE_PROMPT).map(|i| format!("genre{i}")).collect();
+        let mut vocab: Vec<String> = (0..GENRES_DANS_LE_PROMPT)
+            .map(|i| format!("genre{i}"))
+            .collect();
         vocab[0] = "jazz".into();
         vocab[1] = "rock".into();
         vocab.extend(
-            ["grime", "gospel", "synth-pop", "electro/techno/house", "singer/songwriter", "2 stars", "dance", "new age", "psychedelic rock", "jazz / soul & funk"]
-                .iter().map(|s| s.to_string()),
+            [
+                "grime",
+                "gospel",
+                "synth-pop",
+                "electro/techno/house",
+                "singer/songwriter",
+                "2 stars",
+                "dance",
+                "new age",
+                "psychedelic rock",
+                "jazz / soul & funk",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
         );
         let ajoute = |texte: &str| {
             let mut p = interpretation_de(r#"{"etapes": ["x"]}"#).unwrap();
@@ -1608,16 +1948,37 @@ mod tests {
         assert_eq!(ajoute("grime artists needed").0, vec!["grime"]);
         assert_eq!(ajoute("high quality gospel songs").0, vec!["gospel"]);
         assert_eq!(ajoute("modern 80s synth pop").0, vec!["synth pop"]);
-        assert_eq!(ajoute("a calm techno I like").0, vec!["techno"], "alternative d'une étiquette composée");
+        assert_eq!(
+            ajoute("a calm techno I like").0,
+            vec!["techno"],
+            "alternative d'une étiquette composée"
+        );
         assert_eq!(ajoute("healing meditation new age").0, vec!["new age"]);
         // La formulation de l'utilisateur est celle qui est ajoutée, par mots.
-        assert_eq!(ajoute("some psychedelic rock please").0, vec!["psychedelic rock"], "rock seul est déjà visible");
+        assert_eq!(
+            ajoute("some psychedelic rock please").0,
+            vec!["psychedelic rock"],
+            "rock seul est déjà visible"
+        );
         // Jamais un refus.
-        for texte in ["not grime please", "I hate grime", "anything outside of gospel", "sans techno", "something that isn't gospel", "everything but grime"] {
+        for texte in [
+            "not grime please",
+            "I hate grime",
+            "anything outside of gospel",
+            "sans techno",
+            "something that isn't gospel",
+            "everything but grime",
+        ] {
             assert!(ajoute(texte).0.is_empty(), "refus ajouté : {texte}");
         }
         // Jamais un mot trop courant, un genre déjà visible, un numéro, ni du texte sans genre.
-        for texte in ["dance music for the night", "a singer with a nice voice", "some jazz and rock", "I gave it 2 stars", "something calm for the evening"] {
+        for texte in [
+            "dance music for the night",
+            "a singer with a nice voice",
+            "some jazz and rock",
+            "I gave it 2 stars",
+            "something calm for the evening",
+        ] {
             assert!(ajoute(texte).0.is_empty(), "ajout à tort : {texte}");
         }
         // Déjà couvert par le modèle ; déjà refusé par lui.
@@ -1627,7 +1988,9 @@ mod tests {
         assert!(p.completer_genres("grime and rap", &vocab).is_empty());
         // Une arrivée nommée : le trajet a ses étapes, pas de filtre de genre.
         let mut p = interpretation_de(r#"{"etapes": ["x"], "arrivee_artiste": "Y"}"#).unwrap();
-        assert!(p.completer_genres("de X à Y en passant par du grime", &vocab).is_empty());
+        assert!(p
+            .completer_genres("de X à Y en passant par du grime", &vocab)
+            .is_empty());
     }
 
     /// Mesuré sur MusicRecoIntent (gemma4:e4b) : 24 % des demandes recevaient
@@ -1664,20 +2027,34 @@ mod tests {
             "sans rap mais calme",
         ] {
             let mut p = interpretation_de(brut).unwrap();
-            assert!(p.ancrer_energie(texte).is_empty(), "énergie écartée à tort : {texte}");
+            assert!(
+                p.ancrer_energie(texte).is_empty(),
+                "énergie écartée à tort : {texte}"
+            );
             assert_eq!(p.energie.as_deref(), Some("intense"), "{texte}");
         }
         // Ni un genre ni une référence ne disent une énergie.
         for texte in [
-            "heavy metal", "r&b songs like ella mai", "hard rock of course", "Quelques morceaux sympas",
+            "heavy metal",
+            "r&b songs like ella mai",
+            "hard rock of course",
+            "Quelques morceaux sympas",
             // Un indice nié ne dit rien de ce qu'on veut.
             "music that carries a lonely vibe but not like sad",
-            "pas calme", "something that isn't too calm", "non romantic and no sad songs",
+            "pas calme",
+            "something that isn't too calm",
+            "non romantic and no sad songs",
             // Humeurs ambiguës : exclues du lexique.
-            "romantic songs", "something happy", "dark and sweet",
+            "romantic songs",
+            "something happy",
+            "dark and sweet",
         ] {
             let mut p = interpretation_de(brut).unwrap();
-            assert_eq!(p.ancrer_energie(texte).len(), 3, "énergie gardée à tort : {texte}");
+            assert_eq!(
+                p.ancrer_energie(texte).len(),
+                3,
+                "énergie gardée à tort : {texte}"
+            );
         }
     }
 
@@ -1690,7 +2067,10 @@ mod tests {
             ("Des morceaux que j'ai oubliés", Some("oublie")),
             ("Des chansons oubliées de ma bibliothèque", Some("oublie")),
             ("Que je n'écoute plus depuis longtemps", Some("oublie")),
-            ("Des titres que je n'ai pas écoutés depuis des mois", Some("oublie")),
+            (
+                "Des titres que je n'ai pas écoutés depuis des mois",
+                Some("oublie"),
+            ),
             ("Songs I haven't listened to in a while", Some("oublie")),
             ("Forgotten tracks", Some("oublie")),
             ("Des morceaux que je n'ai jamais écoutés", Some("jamais")),
@@ -1721,16 +2101,27 @@ mod tests {
         let mut p = interpretation_de(brut).unwrap();
         assert!(p.ancrer_ecoute("De la musique calme").is_some());
         assert_eq!(p.ecoute, None);
-        assert_eq!(p.popularite.as_deref(), Some("peu_connu"), "le texte ne parle pas d'écoute");
+        assert_eq!(
+            p.popularite.as_deref(),
+            Some("peu_connu"),
+            "le texte ne parle pas d'écoute"
+        );
 
         let mut p = interpretation_de(brut).unwrap();
-        assert!(p.ancrer_ecoute("Des morceaux que j'ai oubliés").is_none(), "déjà juste");
+        assert!(
+            p.ancrer_ecoute("Des morceaux que j'ai oubliés").is_none(),
+            "déjà juste"
+        );
         assert_eq!(p.ecoute.as_deref(), Some("oublie"));
         assert_eq!(p.popularite, None, "« oubliés » ne dit pas « peu connu »");
 
         let mut p = interpretation_de(brut).unwrap();
         p.ancrer_ecoute("Des perles méconnues que j'ai oubliées");
-        assert_eq!(p.popularite.as_deref(), Some("peu_connu"), "le texte parle de notoriété");
+        assert_eq!(
+            p.popularite.as_deref(),
+            Some("peu_connu"),
+            "le texte parle de notoriété"
+        );
         assert_eq!(p.filtres().ecoute, Some(NiveauEcoute::Oublie));
     }
 
@@ -1797,9 +2188,17 @@ mod tests {
         p.ancrer_genres(prompt);
         assert!(p.inferer_parties(prompt));
         let genres: Vec<&str> = p.parties.iter().map(|x| x.genres[0].as_str()).collect();
-        assert_eq!(genres, ["folk", "electronic"], "dans l'ordre du texte, pas celui du modèle");
+        assert_eq!(
+            genres,
+            ["folk", "electronic"],
+            "dans l'ordre du texte, pas celui du modèle"
+        );
         assert!(p.genres.is_empty());
-        assert!(p.parties.iter().all(|x| x.duree_minutes == Some(20)), "{:?}", p.parties);
+        assert!(
+            p.parties.iter().all(|x| x.duree_minutes == Some(20)),
+            "{:?}",
+            p.parties
+        );
         // Sans mot de séquence : un mélange, pas des parties.
         let mut q = interpretation_de(r#"{"etapes": ["x"], "genres": ["rock", "jazz"]}"#).unwrap();
         assert!(!q.inferer_parties("Du rock et du jazz"));
@@ -1843,8 +2242,12 @@ mod tests {
     #[test]
     fn le_schema_couvre_exactement_les_champs_lus() {
         let s = schema();
-        let mut cles: Vec<String> =
-            s["properties"].as_object().unwrap().keys().cloned().collect();
+        let mut cles: Vec<String> = s["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
         let mut requises: Vec<String> = s["required"]
             .as_array()
             .unwrap()
@@ -1867,7 +2270,10 @@ mod tests {
         });
         let mut lues: Vec<String> = complet.as_object().unwrap().keys().cloned().collect();
         lues.sort();
-        assert_eq!(cles, lues, "le schéma décrit toutes les clés de la structure");
+        assert_eq!(
+            cles, lues,
+            "le schéma décrit toutes les clés de la structure"
+        );
         let p: InterpretationLlm = serde_json::from_value(complet).expect("tout se lit");
         assert_eq!(p.plafond_par_artiste, Some(2));
         assert_eq!(p.ecoute.as_deref(), Some("oublie"));
@@ -1902,9 +2308,15 @@ mod tests {
         let p = interpretation_de(r#"{"etapes": ["il dit \"ok\"", "b"#).expect("tableau refermé");
         assert_eq!(p.etapes.len(), 2);
         // Rien à réparer : l'erreur d'origine reste une erreur.
-        assert!(matches!(interpretation_de("pas du json"), Err(Error::Parsing(_))));
+        assert!(matches!(
+            interpretation_de("pas du json"),
+            Err(Error::Parsing(_))
+        ));
         // Réparable en JSON mais sans étapes : refusé comme avant.
-        assert!(matches!(interpretation_de(r#"{"n": 5,"#), Err(Error::Parsing(_))));
+        assert!(matches!(
+            interpretation_de(r#"{"n": 5,"#),
+            Err(Error::Parsing(_))
+        ));
     }
 
     /// « Rock pendant 12 minutes, puis hip hop pendant 20 minutes » : avant les
@@ -1926,10 +2338,22 @@ mod tests {
         assert_eq!(p.parties.len(), 2);
         assert_eq!(p.parties[0].duree_minutes, Some(12));
         assert_eq!(p.parties[1].genres, vec!["hip hop".to_string()]);
-        assert!(p.genres.is_empty(), "un genre « puis » n'est pas un filtre commun");
-        assert_eq!(p.duree_minutes, None, "la durée totale est la somme des parties");
-        assert_eq!(p.etapes, vec!["rock music".to_string(), "hip hop music".to_string()]);
-        assert!(p.reformulation.as_deref().is_some_and(|r| r.contains("rock")));
+        assert!(
+            p.genres.is_empty(),
+            "un genre « puis » n'est pas un filtre commun"
+        );
+        assert_eq!(
+            p.duree_minutes, None,
+            "la durée totale est la somme des parties"
+        );
+        assert_eq!(
+            p.etapes,
+            vec!["rock music".to_string(), "hip hop music".to_string()]
+        );
+        assert!(p
+            .reformulation
+            .as_deref()
+            .is_some_and(|r| r.contains("rock")));
     }
 
     #[test]
@@ -1960,7 +2384,9 @@ mod tests {
     fn les_parties_vides_ou_en_trop_sont_ecartees() {
         let mut parties = String::new();
         for i in 0..9 {
-            parties.push_str(&format!(r#"{{"description": "p{i}", "duree_minutes": 5}},"#));
+            parties.push_str(&format!(
+                r#"{{"description": "p{i}", "duree_minutes": 5}},"#
+            ));
         }
         let brut = format!(
             r#"{{"etapes": ["x"], "parties": [{{"description": "  "}}, {{"genres": []}}, {parties} {{"description": "dernière"}}]}}"#
@@ -2039,7 +2465,9 @@ mod tests {
             .or_else(|| modele_par_defaut(HOTE_DEFAUT).ok())
             .expect("un modèle installé");
         let vocab: Vec<String> = std::env::var("OLLAMA_VOCAB")
-            .unwrap_or_else(|_| "rock,jazz,hip hop,electronic,pop,classical,reggae,metal,folk,soul".into())
+            .unwrap_or_else(|_| {
+                "rock,jazz,hip hop,electronic,pop,classical,reggae,metal,folk,soul".into()
+            })
             .split(',')
             .map(|g| g.trim().to_string())
             .collect();
@@ -2053,7 +2481,11 @@ mod tests {
         ] {
             let debut = std::time::Instant::now();
             let p = interpreter(HOTE_DEFAUT, &modele, prompt, &vocab);
-            eprintln!("\n« {prompt} » ({} s)\n{p:#?}\nfiltres : {:?}", debut.elapsed().as_secs(), p.as_ref().ok().map(|p| p.filtres()));
+            eprintln!(
+                "\n« {prompt} » ({} s)\n{p:#?}\nfiltres : {:?}",
+                debut.elapsed().as_secs(),
+                p.as_ref().ok().map(|p| p.filtres())
+            );
             assert!(p.is_ok(), "{p:?}");
         }
     }

@@ -221,9 +221,7 @@ pub fn contour_bati(e: &Etablissement, pas: f32, cotes: usize) -> Vec<[f32; 2]> 
         let a = i as f32 / cotes as f32 * std::f32::consts::TAU;
         // Deux harmoniques suffisent à casser le cercle sans le déformer.
         let graine = e.id as f32 * 0.7351;
-        let bruit = 1.0
-            + 0.18 * (a * 3.0 + graine).sin()
-            + 0.10 * (a * 5.0 - graine * 1.7).sin();
+        let bruit = 1.0 + 0.18 * (a * 3.0 + graine).sin() + 0.10 * (a * 5.0 - graine * 1.7).sin();
         let r = base * bruit;
         points.push([e.cx + r * a.cos(), e.cy + r * a.sin()]);
     }
@@ -407,8 +405,10 @@ pub fn peupler(arrivants: &[Arrivant], p: &Parametres) -> Peuplement {
             .entry(Rang::depuis_population(e.population).nom())
             .or_default() += 1;
     }
-    let mut par_rang: Vec<(String, usize)> =
-        comptes.into_iter().map(|(n, c)| (n.to_string(), c)).collect();
+    let mut par_rang: Vec<(String, usize)> = comptes
+        .into_iter()
+        .map(|(n, c)| (n.to_string(), c))
+        .collect();
     par_rang.sort_by_key(|(n, _)| {
         ["ferme", "hameau", "village", "bourg", "ville", "métropole"]
             .iter()
@@ -420,7 +420,11 @@ pub fn peupler(arrivants: &[Arrivant], p: &Parametres) -> Peuplement {
         habitants: habitants.len(),
         etablissements: etablissements.len(),
         iles: etablissements.iter().filter(|e| e.ile).count(),
-        plus_grand: etablissements.iter().map(|e| e.population).max().unwrap_or(0),
+        plus_grand: etablissements
+            .iter()
+            .map(|e| e.population)
+            .max()
+            .unwrap_or(0),
         par_rang,
         ms: debut.elapsed().as_millis(),
         niveau_mer,
@@ -454,12 +458,26 @@ mod tests {
     #[test]
     fn un_arrivant_ne_deplace_jamais_personne() {
         let mut v: Vec<Arrivant> = (0..40)
-            .map(|i| arrivant(i, 0.01 * (i % 3) as f32, 0.0, 19_800_000 + i as u32, &[1.0, 0.0]))
+            .map(|i| {
+                arrivant(
+                    i,
+                    0.01 * (i % 3) as f32,
+                    0.0,
+                    19_800_000 + i as u32,
+                    &[1.0, 0.0],
+                )
+            })
             .collect();
         let avant = peupler(&v, &Parametres::default());
 
         for i in 40..80 {
-            v.push(arrivant(i, 0.01 * (i % 3) as f32, 0.0, 20_000_000 + i as u32, &[1.0, 0.0]));
+            v.push(arrivant(
+                i,
+                0.01 * (i % 3) as f32,
+                0.0,
+                20_000_000 + i as u32,
+                &[1.0, 0.0],
+            ));
         }
         let apres = peupler(&v, &Parametres::default());
 
@@ -484,7 +502,13 @@ mod tests {
             arrivant(3, 0.002, 0.0, 19_720_000, &[0.0, 1.0]), // orthogonal
         ];
         let p = peupler(&v, &Parametres::default());
-        let de = |id: i64| p.habitants.iter().find(|h| h.track_id == id).unwrap().etablissement;
+        let de = |id: i64| {
+            p.habitants
+                .iter()
+                .find(|h| h.track_id == id)
+                .unwrap()
+                .etablissement
+        };
         assert_eq!(de(1), de(2), "deux morceaux identiques devraient cohabiter");
         assert_ne!(de(1), de(3), "un son étranger devrait fonder ailleurs");
     }
@@ -573,7 +597,13 @@ mod tests {
         let v: Vec<Arrivant> = (0..200)
             .map(|i| {
                 let t = i as f32 / 200.0 * std::f32::consts::TAU;
-                arrivant(i, t.cos() * 0.6, t.sin() * 0.6, 19_600_000 + i as u32, &[t.cos(), t.sin()])
+                arrivant(
+                    i,
+                    t.cos() * 0.6,
+                    t.sin() * 0.6,
+                    19_600_000 + i as u32,
+                    &[t.cos(), t.sin()],
+                )
             })
             .collect();
         let p = peupler(&v, &Parametres::default());

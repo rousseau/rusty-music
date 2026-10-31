@@ -89,7 +89,9 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self { http: ClientCadence::new(agent, CADENCE) }
+        Self {
+            http: ClientCadence::new(agent, CADENCE),
+        }
     }
 
     /// Une requête GET rendant du JSON, réessayée sur échec temporaire.
@@ -136,7 +138,11 @@ impl Client {
         }
         let url = format!("https://api.listenbrainz.org/1/popularity/{chemin}");
         let v = self
-            .post_json(&url, &serde_json::json!({ champ_requete: mbids }), "popularity")?
+            .post_json(
+                &url,
+                &serde_json::json!({ champ_requete: mbids }),
+                "popularity",
+            )?
             .unwrap_or(Value::Null);
         Ok(v.as_array()
             .map(|a| {
@@ -226,7 +232,12 @@ fn sorties_de(v: &Value) -> Vec<SortieFraiche> {
                     let titre = r["release_name"].as_str()?.to_string();
                     let artistes_mbids: Vec<String> = r["artist_mbids"]
                         .as_array()
-                        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
                         .unwrap_or_default();
                     let artistes: Vec<String> = r["artist_credit_name"]
                         .as_str()
@@ -251,7 +262,10 @@ fn sorties_de(v: &Value) -> Vec<SortieFraiche> {
                         types_secondaires: r["release_group_secondary_type"]
                             .as_array()
                             .map(|a| {
-                                a.iter().filter_map(Value::as_str).map(str::to_string).collect()
+                                a.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
                             })
                             .unwrap_or_default(),
                     })

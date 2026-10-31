@@ -221,14 +221,24 @@ impl Minuteur {
             } => {
                 let Some(courant) = &lecteur.courant else {
                     // La file s'est épuisée d'elle-même : rien à arrêter.
-                    return (Action::Annuler { rendre_volume: None }, true);
+                    return (
+                        Action::Annuler {
+                            rendre_volume: None,
+                        },
+                        true,
+                    );
                 };
                 let recommence = lecteur.repetition_une
                     && courant == cible
                     && lecteur.position + RECOMMENCE < *derniere_position;
                 *derniere_position = lecteur.position;
                 if courant != cible || recommence || (courant == cible && fin_imminente(lecteur)) {
-                    return (Action::Pause { rendre_volume: None }, true);
+                    return (
+                        Action::Pause {
+                            rendre_volume: None,
+                        },
+                        true,
+                    );
                 }
                 (Action::Rien, false)
             }
@@ -240,7 +250,12 @@ impl Minuteur {
                 derniere_position,
             } => {
                 let Some(courant) = &lecteur.courant else {
-                    return (Action::Annuler { rendre_volume: None }, true);
+                    return (
+                        Action::Annuler {
+                            rendre_volume: None,
+                        },
+                        true,
+                    );
                 };
                 let recommence = lecteur.repetition_une
                     && courant == dernier
@@ -253,7 +268,12 @@ impl Minuteur {
                     // Dans l'album ; seuls la fin du dernier morceau et sa boucle
                     // l'arrêtent.
                     if recommence || (courant == dernier && fin_imminente(lecteur)) {
-                        return (Action::Pause { rendre_volume: None }, true);
+                        return (
+                            Action::Pause {
+                                rendre_volume: None,
+                            },
+                            true,
+                        );
                     }
                     return (Action::Rien, false);
                 }
@@ -261,9 +281,19 @@ impl Minuteur {
                 // s'arrête. Avant, une autre lecture a pris la main (un autre
                 // album, un saut ailleurs) et le minuteur n'a plus de sens.
                 if *atteint {
-                    (Action::Pause { rendre_volume: None }, true)
+                    (
+                        Action::Pause {
+                            rendre_volume: None,
+                        },
+                        true,
+                    )
                 } else {
-                    (Action::Annuler { rendre_volume: None }, true)
+                    (
+                        Action::Annuler {
+                            rendre_volume: None,
+                        },
+                        true,
+                    )
                 }
             }
         }
@@ -348,7 +378,10 @@ mod tests {
         let mut l = lecteur(Some("/m/a"), s(10));
         l.volume = 0.5;
         let (a, _) = m.avancer(t0 + s(95), &l);
-        assert!(matches!(a, Action::Volume(v) if (v - 0.2).abs() < 1e-6), "{a:?}");
+        assert!(
+            matches!(a, Action::Volume(v) if (v - 0.2).abs() < 1e-6),
+            "{a:?}"
+        );
         assert_eq!(m.volume_nominal(), Some(0.8));
         // Le volume ne remonte jamais pendant le fondu.
         let mut dernier = f32::MAX;
@@ -367,9 +400,15 @@ mod tests {
         // Au premier tour, le volume part de sa valeur nominale, pas d'une
         // fraction : le fondu s'étale sur les 4 secondes, pas sur 10.
         let (a, _) = m.avancer(t0, &lecteur(Some("/m/a"), s(0)));
-        assert!(matches!(a, Action::Volume(v) if (v - 0.8).abs() < 1e-6), "{a:?}");
+        assert!(
+            matches!(a, Action::Volume(v) if (v - 0.8).abs() < 1e-6),
+            "{a:?}"
+        );
         let (a, _) = m.avancer(t0 + s(2), &lecteur(Some("/m/a"), s(2)));
-        assert!(matches!(a, Action::Volume(v) if (v - 0.2).abs() < 1e-6), "{a:?}");
+        assert!(
+            matches!(a, Action::Volume(v) if (v - 0.2).abs() < 1e-6),
+            "{a:?}"
+        );
     }
 
     #[test]
@@ -378,7 +417,12 @@ mod tests {
         let mut m = Minuteur::dans(t0, s(100));
         m.avancer(t0 + s(95), &lecteur(Some("/m/a"), s(5)));
         let (a, fini) = m.avancer(t0 + s(100), &lecteur(Some("/m/a"), s(10)));
-        assert_eq!(a, Action::Pause { rendre_volume: Some(0.8) });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: Some(0.8)
+            }
+        );
         assert!(fini);
     }
 
@@ -388,7 +432,12 @@ mod tests {
         let t0 = Instant::now();
         let mut m = Minuteur::dans(t0, s(5));
         let (a, fini) = m.avancer(t0 + s(6), &lecteur(Some("/m/a"), s(5)));
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -419,7 +468,12 @@ mod tests {
             assert_eq!((a, fini), (Action::Rien, false));
         }
         let (a, fini) = m.avancer(t0, &lecteur(Some("/m/b"), Duration::from_millis(10)));
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -428,14 +482,23 @@ mod tests {
         let t0 = Instant::now();
         let mut m = Minuteur::fin_de_piste(p("/m/a"), s(0));
         // À 1 s de la fin (durée 200 s) : on laisse jouer.
-        assert_eq!(m.avancer(t0, &lecteur(Some("/m/a"), s(199))).0, Action::Rien);
+        assert_eq!(
+            m.avancer(t0, &lecteur(Some("/m/a"), s(199))).0,
+            Action::Rien
+        );
         // À 41 ms : pas encore. À 40 ms : pause, **sur le même morceau**.
         assert_eq!(
-            m.avancer(t0, &lecteur(Some("/m/a"), Duration::from_millis(199_959))).0,
+            m.avancer(t0, &lecteur(Some("/m/a"), Duration::from_millis(199_959)))
+                .0,
             Action::Rien
         );
         let (a, fini) = m.avancer(t0, &lecteur(Some("/m/a"), Duration::from_millis(199_960)));
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -451,7 +514,12 @@ mod tests {
         assert_eq!(m.avancer(t0, &l).0, Action::Rien);
         l.courant = Some(p("/m/b"));
         l.position = Duration::from_millis(10);
-        assert_eq!(m.avancer(t0, &l).0, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            m.avancer(t0, &l).0,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
     }
 
     #[test]
@@ -460,12 +528,18 @@ mod tests {
         let mut m = Minuteur::fin_d_album(vec![p("/m/1"), p("/m/2")], s(0)).expect("minuteur");
         // Fin du premier morceau : l'album continue.
         assert_eq!(
-            m.avancer(t0, &lecteur(Some("/m/1"), Duration::from_millis(199_990))).0,
+            m.avancer(t0, &lecteur(Some("/m/1"), Duration::from_millis(199_990)))
+                .0,
             Action::Rien
         );
         // Fin du dernier : pause juste avant, sans sortir de l'album.
         let (a, fini) = m.avancer(t0, &lecteur(Some("/m/2"), Duration::from_millis(199_990)));
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -478,7 +552,12 @@ mod tests {
         assert_eq!(m.avancer(t0, &l).0, Action::Rien);
         l.position = Duration::from_millis(20); // le même chemin, depuis le début
         let (a, fini) = m.avancer(t0, &l);
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -497,7 +576,12 @@ mod tests {
         let t0 = Instant::now();
         let mut m = Minuteur::fin_de_piste(p("/m/a"), s(0));
         let (a, fini) = m.avancer(t0, &lecteur(None, s(0)));
-        assert_eq!(a, Action::Annuler { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Annuler {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -507,21 +591,36 @@ mod tests {
         let mut m =
             Minuteur::fin_d_album(vec![p("/m/1"), p("/m/2"), p("/m/3")], s(0)).expect("minuteur");
         for piste in ["/m/1", "/m/2", "/m/3"] {
-            assert_eq!(m.avancer(t0, &lecteur(Some(piste), s(5))).0, Action::Rien, "{piste}");
+            assert_eq!(
+                m.avancer(t0, &lecteur(Some(piste), s(5))).0,
+                Action::Rien,
+                "{piste}"
+            );
         }
         let (a, fini) = m.avancer(t0, &lecteur(Some("/m/autre-album"), s(0)));
-        assert_eq!(a, Action::Pause { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Pause {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
     #[test]
     fn quitter_l_album_avant_sa_fin_efface_le_minuteur_sans_rien_arreter() {
         let t0 = Instant::now();
-        let mut m = Minuteur::fin_d_album(vec![p("/m/1"), p("/m/2"), p("/m/3")], s(0)).expect("minuteur");
+        let mut m =
+            Minuteur::fin_d_album(vec![p("/m/1"), p("/m/2"), p("/m/3")], s(0)).expect("minuteur");
         assert_eq!(m.avancer(t0, &lecteur(Some("/m/1"), s(5))).0, Action::Rien);
         // Une autre lecture est lancée avant d'arriver au dernier morceau.
         let (a, fini) = m.avancer(t0, &lecteur(Some("/autre/1"), s(0)));
-        assert_eq!(a, Action::Annuler { rendre_volume: None });
+        assert_eq!(
+            a,
+            Action::Annuler {
+                rendre_volume: None
+            }
+        );
         assert!(fini);
     }
 
@@ -535,23 +634,56 @@ mod tests {
         let t0 = Instant::now();
         let l = lecteur(Some("/m/a"), s(150)); // durée 200 s
         let m = Minuteur::dans(t0, s(90));
-        assert_eq!(m.etat(t0 + s(30), &l), EtatMinuteur { mode: "duree", reste_ms: Some(60_000) });
+        assert_eq!(
+            m.etat(t0 + s(30), &l),
+            EtatMinuteur {
+                mode: "duree",
+                reste_ms: Some(60_000)
+            }
+        );
         let m = Minuteur::fin_de_piste(p("/m/a"), s(150));
-        assert_eq!(m.etat(t0, &l), EtatMinuteur { mode: "piste", reste_ms: Some(50_000) });
+        assert_eq!(
+            m.etat(t0, &l),
+            EtatMinuteur {
+                mode: "piste",
+                reste_ms: Some(50_000)
+            }
+        );
         let m = Minuteur::fin_d_album(vec![p("/m/a"), p("/m/b")], s(150)).expect("minuteur");
-        assert_eq!(m.etat(t0, &l), EtatMinuteur { mode: "album", reste_ms: None });
+        assert_eq!(
+            m.etat(t0, &l),
+            EtatMinuteur {
+                mode: "album",
+                reste_ms: None
+            }
+        );
         let l2 = lecteur(Some("/m/b"), s(150));
-        assert_eq!(m.etat(t0, &l2), EtatMinuteur { mode: "album", reste_ms: Some(50_000) });
+        assert_eq!(
+            m.etat(t0, &l2),
+            EtatMinuteur {
+                mode: "album",
+                reste_ms: Some(50_000)
+            }
+        );
     }
 
     #[test]
     fn le_battement_se_resserre_a_la_fin_d_un_morceau_seulement() {
         let t0 = Instant::now();
         let piste = Minuteur::fin_de_piste(p("/m/a"), s(0));
-        assert_eq!(piste.battement(&lecteur(Some("/m/a"), s(100))), Duration::from_millis(100));
-        assert_eq!(piste.battement(&lecteur(Some("/m/a"), s(199))), Duration::from_millis(20));
+        assert_eq!(
+            piste.battement(&lecteur(Some("/m/a"), s(100))),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            piste.battement(&lecteur(Some("/m/a"), s(199))),
+            Duration::from_millis(20)
+        );
         let duree = Minuteur::dans(t0, s(60));
-        assert_eq!(duree.battement(&lecteur(Some("/m/a"), s(199))), Duration::from_millis(100));
+        assert_eq!(
+            duree.battement(&lecteur(Some("/m/a"), s(199))),
+            Duration::from_millis(100)
+        );
         // Sans durée connue, on veille serré tout du long (voir `battement`).
         let mut sans_duree = lecteur(Some("/m/a"), s(10));
         sans_duree.duree = None;
@@ -626,7 +758,11 @@ mod tests {
             }
             std::thread::sleep(m.battement(&l));
         }
-        (player.current().map(Path::to_path_buf), player.position(), volumes)
+        (
+            player.current().map(Path::to_path_buf),
+            player.position(),
+            volumes,
+        )
     }
 
     /// Deux morceaux de 1,5 s et 3 s, lancés, avec un minuteur « fin du morceau »
@@ -672,7 +808,10 @@ mod tests {
         let (courant, position, _, b) = jouer_deux_morceaux(false);
         eprintln!("morceau suivant audible avant la pause : {position:?}");
         assert_eq!(courant, Some(b), "la pause tombe sur le morceau suivant");
-        assert!(position < Duration::from_millis(120), "{position:?} du suivant audibles");
+        assert!(
+            position < Duration::from_millis(120),
+            "{position:?} du suivant audibles"
+        );
     }
 
     /// Le fondu d'une durée fixe : le volume ne remonte jamais, finit près de
@@ -680,7 +819,8 @@ mod tests {
     #[test]
     #[ignore]
     fn la_duree_fait_un_fondu_puis_une_pause_et_remet_le_volume() {
-        let dossier = std::env::temp_dir().join(format!("rusty-music-fondu-{}", std::process::id()));
+        let dossier =
+            std::env::temp_dir().join(format!("rusty-music-fondu-{}", std::process::id()));
         std::fs::create_dir_all(&dossier).expect("dossier");
         let a = dossier.join("a.wav");
         ecrire_wav(&a, 8000 * 20);
@@ -691,10 +831,23 @@ mod tests {
         let mut m = Minuteur::dans(Instant::now(), s(3));
         let (_, _, volumes) = derouler(&mut m, &mut player, true, s(8));
         assert!(player.is_paused());
-        assert!((player.volume() - 0.8).abs() < 1e-6, "volume remis : {}", player.volume());
-        assert!(volumes.len() > 10, "le fondu doit avoir de nombreuses étapes");
-        assert!(volumes.windows(2).all(|w| w[1] <= w[0] + 1e-6), "le volume remonte");
-        assert!(*volumes.last().expect("volumes") < 0.05, "le fondu finit près de zéro");
+        assert!(
+            (player.volume() - 0.8).abs() < 1e-6,
+            "volume remis : {}",
+            player.volume()
+        );
+        assert!(
+            volumes.len() > 10,
+            "le fondu doit avoir de nombreuses étapes"
+        );
+        assert!(
+            volumes.windows(2).all(|w| w[1] <= w[0] + 1e-6),
+            "le volume remonte"
+        );
+        assert!(
+            *volumes.last().expect("volumes") < 0.05,
+            "le fondu finit près de zéro"
+        );
         let _ = std::fs::remove_dir_all(&dossier);
     }
 }

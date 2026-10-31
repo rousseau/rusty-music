@@ -134,6 +134,9 @@ mod tests {
         let variance =
             tirages.iter().map(|x| (x - moyenne).powi(2)).sum::<f32>() / tirages.len() as f32;
         assert!(moyenne.abs() < 0.05, "moyenne trop loin de 0 : {moyenne}");
-        assert!((variance - 1.0).abs() < 0.1, "variance trop loin de 1 : {variance}");
+        assert!(
+            (variance - 1.0).abs() < 0.1,
+            "variance trop loin de 1 : {variance}"
+        );
     }
 }

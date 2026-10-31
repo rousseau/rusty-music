@@ -309,8 +309,8 @@ fn tuile(
 
             let pente = (dzdx * dzdx + dzdy * dzdy).sqrt().atan();
             let aspect = dzdy.atan2(-dzdx);
-            let eclat = zenith.cos() * pente.cos()
-                + zenith.sin() * pente.sin() * (azimut - aspect).cos();
+            let eclat =
+                zenith.cos() * pente.cos() + zenith.sin() * pente.sin() * (azimut - aspect).cos();
             let eclat = eclat.clamp(0.0, 1.0);
 
             // Le point neutre n'est pas 0,5 mais l'éclairement d'un sol
@@ -398,7 +398,8 @@ mod tests {
         let c = gn as f64 / 2.0;
         for y in 0..gn {
             for x in 0..gn {
-                let d = (((x as f64 - c).powi(2) + (y as f64 - c).powi(2)).sqrt()) / (gn as f64 / 3.0);
+                let d =
+                    (((x as f64 - c).powi(2) + (y as f64 - c).powi(2)).sqrt()) / (gn as f64 / 3.0);
                 champ[y * gn + x] = (1.0 - d).max(0.0);
             }
         }
@@ -505,7 +506,10 @@ mod tests {
             milieu[1]
         );
         // Et rester borné par l'amplitude demandée.
-        assert!(trace.iter().all(|p| p[1].abs() <= 0.36), "détour hors bornes");
+        assert!(
+            trace.iter().all(|p| p[1].abs() <= 0.36),
+            "détour hors bornes"
+        );
         // Déterministe.
         assert_eq!(trace, epouser_le_relief(a, b, &champ, gn, 0.35));
     }
@@ -517,7 +521,9 @@ mod tests {
         let gn = 64;
         let champ = vec![0.0; gn * gn];
         let png = tuile(&champ, gn, &Ombrage::default(), 0, 0, 0).unwrap();
-        let mut lecture = png::Decoder::new(std::io::Cursor::new(&png[..])).read_info().unwrap();
+        let mut lecture = png::Decoder::new(std::io::Cursor::new(&png[..]))
+            .read_info()
+            .unwrap();
         let mut t = vec![0; lecture.output_buffer_size().unwrap()];
         lecture.next_frame(&mut t).unwrap();
         let max_alpha = t.chunks(4).map(|p| p[3]).max().unwrap();

@@ -131,7 +131,11 @@ impl Transcripteur {
 
     /// Les activations d'un signal mono à `frequence` Hz.
     pub fn activations(&mut self, mono: &[f32], frequence: u32) -> Result<Activations> {
-        let audio = if frequence == SR { mono.to_vec() } else { reechantillonner(mono, frequence, SR)? };
+        let audio = if frequence == SR {
+            mono.to_vec()
+        } else {
+            reechantillonner(mono, frequence, SR)?
+        };
         let longueur = audio.len();
         // Demi-recouvrement de silence devant, comme `get_audio_input`.
         let mut rembourre = vec![0.0f32; RECOUVREMENT * FFT_HOP / 2];
@@ -148,18 +152,26 @@ impl Transcripteur {
                 entree[k * N_ECH..k * N_ECH + (fin - d)].copy_from_slice(&rembourre[d..fin]);
             }
             let tenseur = ort::value::Tensor::from_array(
-                ndarray::Array::from_shape_vec((lot.len(), N_ECH, 1), entree).expect("forme d'entrée"),
+                ndarray::Array::from_shape_vec((lot.len(), N_ECH, 1), entree)
+                    .expect("forme d'entrée"),
             )?;
-            let sortie = self.session.run(ort::inputs!["serving_default_input_2:0" => tenseur.view()])?;
+            let sortie = self
+                .session
+                .run(ort::inputs!["serving_default_input_2:0" => tenseur.view()])?;
             let (_, n) = sortie["StatefulPartitionedCall:1"].try_extract_tensor::<f32>()?;
             let (_, o) = sortie["StatefulPartitionedCall:2"].try_extract_tensor::<f32>()?;
             if n.len() != lot.len() * TRAMES_FENETRE * NOTES || o.len() != n.len() {
-                return Err(Error::Sortie(format!("{} valeurs pour {} fenêtres", n.len(), lot.len())));
+                return Err(Error::Sortie(format!(
+                    "{} valeurs pour {} fenêtres",
+                    n.len(),
+                    lot.len()
+                )));
             }
             // On retire la moitié du recouvrement de chaque côté de chaque fenêtre.
             for k in 0..lot.len() {
                 let base = k * TRAMES_FENETRE * NOTES;
-                let garde = base + RECOUVREMENT / 2 * NOTES..base + (TRAMES_FENETRE - RECOUVREMENT / 2) * NOTES;
+                let garde = base + RECOUVREMENT / 2 * NOTES
+                    ..base + (TRAMES_FENETRE - RECOUVREMENT / 2) * NOTES;
                 note.extend_from_slice(&n[garde.clone()]);
                 attaque.extend_from_slice(&o[garde]);
             }
@@ -169,14 +181,19 @@ impl Transcripteur {
         let trames = trames.min(note.len() / NOTES);
         note.truncate(trames * NOTES);
         attaque.truncate(trames * NOTES);
-        Ok(Activations { trames, note, attaque })
+        Ok(Activations {
+            trames,
+            note,
+            attaque,
+        })
     }
 }
 
 /// Instant de début de chaque trame, en secondes — `model_frames_to_time`,
 /// alignement par fenêtre compris.
 pub fn instant_trame(i: usize) -> f32 {
-    let decalage = (FFT_HOP as f32 / SR as f32) * (TRAMES_FENETRE as f32 - N_ECH as f32 / FFT_HOP as f32)
+    let decalage = (FFT_HOP as f32 / SR as f32)
+        * (TRAMES_FENETRE as f32 - N_ECH as f32 / FFT_HOP as f32)
         + ALIGNEMENT_MAGIQUE;
     i as f32 * FFT_HOP as f32 / SR as f32 - decalage * (i / TRAMES_FENETRE) as f32
 }
@@ -195,8 +212,12 @@ pub fn notes(a: &Activations, r: &Reglages) -> Vec<Note> {
     let mut attaques = a.attaque.clone();
 
     // Hors de la plage demandée, tout à zéro.
-    let bas = r.freq_min.map_or(0, |f| (hz_vers_midi(f) - MIDI_BAS as f32).round().max(0.0) as usize);
-    let haut = r.freq_max.map_or(NOTES, |f| ((hz_vers_midi(f) - MIDI_BAS as f32).round().max(0.0) as usize).min(NOTES));
+    let bas = r.freq_min.map_or(0, |f| {
+        (hz_vers_midi(f) - MIDI_BAS as f32).round().max(0.0) as usize
+    });
+    let haut = r.freq_max.map_or(NOTES, |f| {
+        ((hz_vers_midi(f) - MIDI_BAS as f32).round().max(0.0) as usize).min(NOTES)
+    });
     for t in 0..n {
         for f in (0..bas.min(NOTES)).chain(haut..NOTES) {
             trames[t * NOTES + f] = 0.0;
@@ -214,7 +235,10 @@ pub fn notes(a: &Activations, r: &Reglages) -> Vec<Note> {
     for t in 1..n - 1 {
         for f in 0..NOTES {
             let v = attaques[t * NOTES + f];
-            if v >= r.seuil_attaque && v > attaques[(t - 1) * NOTES + f] && v > attaques[(t + 1) * NOTES + f] {
+            if v >= r.seuil_attaque
+                && v > attaques[(t - 1) * NOTES + f]
+                && v > attaques[(t + 1) * NOTES + f]
+            {
                 pics.push((t, f));
             }
         }
@@ -348,7 +372,11 @@ pub fn notes(a: &Activations, r: &Reglages) -> Vec<Note> {
             frette: None,
         })
         .collect();
-    notes.sort_by(|a, b| a.debut_s.total_cmp(&b.debut_s).then(a.hauteur.cmp(&b.hauteur)));
+    notes.sort_by(|a, b| {
+        a.debut_s
+            .total_cmp(&b.debut_s)
+            .then(a.hauteur.cmp(&b.hauteur))
+    });
     notes
 }
 
@@ -381,7 +409,13 @@ fn attaques_deduites(attaques: &[f32], trames: &[f32], n: usize) -> Vec<f32> {
         for f in 0..NOTES {
             let v = trames[t * NOTES + f];
             let d = (1..=N_DIFF)
-                .map(|m| v - if t >= m { trames[(t - m) * NOTES + f] } else { 0.0 })
+                .map(|m| {
+                    v - if t >= m {
+                        trames[(t - m) * NOTES + f]
+                    } else {
+                        0.0
+                    }
+                })
                 .fold(f32::INFINITY, f32::min);
             ecart[t * NOTES + f] = if t < N_DIFF { 0.0 } else { d.max(0.0) };
         }
@@ -392,7 +426,11 @@ fn attaques_deduites(attaques: &[f32], trames: &[f32], n: usize) -> Vec<f32> {
         .iter()
         .zip(&ecart)
         .map(|(a, e)| {
-            let e = if max_ecart > 0.0 { max_attaque * e / max_ecart } else { 0.0 };
+            let e = if max_ecart > 0.0 {
+                max_attaque * e / max_ecart
+            } else {
+                0.0
+            };
             a.max(e)
         })
         .collect()
@@ -418,8 +456,16 @@ pub(crate) fn reechantillonner(x: &[f32], de: u32, vers: u32) -> Result<Vec<f32>
     let mut rembourre = Vec::with_capacity(x.len() + amorce);
     rembourre.extend((1..=amorce).rev().map(|i| x[i.min(x.len() - 1)]));
     rembourre.extend_from_slice(x);
-    let mut r = Fft::<f32>::new_custom(de as usize, vers as usize, BLOC, 1, 1, WindowFunction::Hann, FixedSync::Input)
-        .map_err(|e| Error::Reechantillonnage(e.to_string()))?;
+    let mut r = Fft::<f32>::new_custom(
+        de as usize,
+        vers as usize,
+        BLOC,
+        1,
+        1,
+        WindowFunction::Hann,
+        FixedSync::Input,
+    )
+    .map_err(|e| Error::Reechantillonnage(e.to_string()))?;
     let entree = InterleavedSlice::new(&rembourre, 1, rembourre.len())
         .map_err(|e| Error::Reechantillonnage(e.to_string()))?;
     let sortie = r
@@ -438,7 +484,11 @@ mod tests {
     use super::*;
 
     fn activations_vides(trames: usize) -> Activations {
-        Activations { trames, note: vec![0.0; trames * NOTES], attaque: vec![0.0; trames * NOTES] }
+        Activations {
+            trames,
+            note: vec![0.0; trames * NOTES],
+            attaque: vec![0.0; trames * NOTES],
+        }
     }
 
     #[test]
@@ -449,7 +499,11 @@ mod tests {
             a.note[t * NOTES + f] = 0.8;
         }
         a.attaque[10 * NOTES + f] = 0.9;
-        let r = Reglages { deduire_attaques: false, melodia: false, ..Reglages::default() };
+        let r = Reglages {
+            deduire_attaques: false,
+            melodia: false,
+            ..Reglages::default()
+        };
         let n = notes(&a, &r);
         assert_eq!(n.len(), 1);
         assert_eq!(n[0].hauteur, 40);
@@ -466,7 +520,11 @@ mod tests {
             a.note[t * NOTES + f] = 0.8;
         }
         a.attaque[10 * NOTES + f] = 0.9;
-        let r = Reglages { deduire_attaques: false, melodia: false, ..Reglages::default() };
+        let r = Reglages {
+            deduire_attaques: false,
+            melodia: false,
+            ..Reglages::default()
+        };
         assert!(notes(&a, &r).is_empty());
     }
 
@@ -477,7 +535,10 @@ mod tests {
         for t in 20..70 {
             a.note[t * NOTES + f] = 0.6;
         }
-        let r = Reglages { deduire_attaques: false, ..Reglages::default() };
+        let r = Reglages {
+            deduire_attaques: false,
+            ..Reglages::default()
+        };
         let n = notes(&a, &r);
         assert_eq!(n.len(), 1);
         assert_eq!(n[0].hauteur as usize, f + MIDI_BAS);

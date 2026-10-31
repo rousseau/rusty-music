@@ -97,7 +97,9 @@ impl Grille {
     /// Les instants des battements, en secondes, jusqu'à `duree_s`.
     pub fn battements(&self, duree_s: f32) -> impl Iterator<Item = f32> + '_ {
         let p = self.periode();
-        (0..).map(move |i| self.phase_s + i as f32 * p).take_while(move |t| *t < duree_s)
+        (0..)
+            .map(move |i| self.phase_s + i as f32 * p)
+            .take_while(move |t| *t < duree_s)
     }
 
     /// Le battement le plus proche de `t`, en secondes. C'est ce qui sert à

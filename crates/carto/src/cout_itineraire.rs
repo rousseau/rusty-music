@@ -132,7 +132,14 @@ impl ProximiteAgrement {
         }
         if min[0] > max[0] {
             // Aucun contour exploitable — grille vide, `proche` répondra `false`.
-            return ProximiteAgrement { repere, valeurs: Vec::new(), nx: 0, ny: 0, min: [0.0; 2], pas };
+            return ProximiteAgrement {
+                repere,
+                valeurs: Vec::new(),
+                nx: 0,
+                ny: 0,
+                min: [0.0; 2],
+                pas,
+            };
         }
         min[0] -= portee_m;
         min[1] -= portee_m;
@@ -190,7 +197,14 @@ impl ProximiteAgrement {
             }
         }
 
-        ProximiteAgrement { repere, valeurs, nx, ny, min, pas }
+        ProximiteAgrement {
+            repere,
+            valeurs,
+            nx,
+            ny,
+            min,
+            pas,
+        }
     }
 
     /// `p` (`[lon, lat]`) est-il aux abords d'un parc ou d'un plan d'eau ?
@@ -254,10 +268,22 @@ mod tests {
 
     #[test]
     fn depuis_nom_reconnait_les_trois_profils() {
-        assert_eq!(ProfilVoirie::depuis_nom("autoroute"), ProfilVoirie::ParLeConnu);
-        assert_eq!(ProfilVoirie::depuis_nom("sentier"), ProfilVoirie::Redecouvrir);
-        assert_eq!(ProfilVoirie::depuis_nom("panoramique"), ProfilVoirie::Panoramique);
-        assert_eq!(ProfilVoirie::depuis_nom("n'importe quoi"), ProfilVoirie::ParLeConnu);
+        assert_eq!(
+            ProfilVoirie::depuis_nom("autoroute"),
+            ProfilVoirie::ParLeConnu
+        );
+        assert_eq!(
+            ProfilVoirie::depuis_nom("sentier"),
+            ProfilVoirie::Redecouvrir
+        );
+        assert_eq!(
+            ProfilVoirie::depuis_nom("panoramique"),
+            ProfilVoirie::Panoramique
+        );
+        assert_eq!(
+            ProfilVoirie::depuis_nom("n'importe quoi"),
+            ProfilVoirie::ParLeConnu
+        );
     }
 
     #[test]
@@ -286,7 +312,11 @@ mod tests {
     #[test]
     fn lautoroute_est_chere_dans_tous_les_profils() {
         let o = [0.0, 0.0];
-        for p in [ProfilVoirie::ParLeConnu, ProfilVoirie::Redecouvrir, ProfilVoirie::Panoramique] {
+        for p in [
+            ProfilVoirie::ParLeConnu,
+            ProfilVoirie::Redecouvrir,
+            ProfilVoirie::Panoramique,
+        ] {
             let f = friction_itineraire(p, None);
             assert!(
                 f(Classe::Autoroute, o) >= 2.0,
@@ -325,6 +355,9 @@ mod tests {
         let f = friction_itineraire(ProfilVoirie::Panoramique, Some(&agrement));
         let pres = f(Classe::Residentielle, [2.30, 48.86]);
         let loin = f(Classe::Residentielle, [2.35, 48.86]);
-        assert!(pres < loin, "une rue au bord du parc doit être préférée : {pres} vs {loin}");
+        assert!(
+            pres < loin,
+            "une rue au bord du parc doit être préférée : {pres} vs {loin}"
+        );
     }
 }

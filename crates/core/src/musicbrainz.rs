@@ -104,7 +104,9 @@ impl Client {
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
             .into();
-        Self { http: ClientCadence::new(agent, CADENCE) }
+        Self {
+            http: ClientCadence::new(agent, CADENCE),
+        }
     }
 
     /// Une requête, réessayée sur échec temporaire.
@@ -168,7 +170,12 @@ impl Client {
                         .map(str::to_string),
                     types_secondaires: rg["secondary-types"]
                         .as_array()
-                        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
                         .unwrap_or_default(),
                 });
             }
@@ -335,7 +342,18 @@ pub fn normaliser_titre(titre: &str) -> String {
 pub fn cle_artiste(nom: &str) -> String {
     let bas = nom.to_lowercase();
     let mut s = bas.as_str();
-    for coupe in [" feat.", " feat ", " ft.", " ft ", " featuring ", " & ", " and ", " x ", " vs ", " vs."] {
+    for coupe in [
+        " feat.",
+        " feat ",
+        " ft.",
+        " ft ",
+        " featuring ",
+        " & ",
+        " and ",
+        " x ",
+        " vs ",
+        " vs.",
+    ] {
         if let Some(i) = s.find(coupe) {
             s = &s[..i];
         }
@@ -459,7 +477,11 @@ mod tests {
         )
         .expect("JSON de test");
         let r = relations_de(&v);
-        assert_eq!(r.len(), 2, "la relation vers un label doit être écartée : {r:?}");
+        assert_eq!(
+            r.len(),
+            2,
+            "la relation vers un label doit être écartée : {r:?}"
+        );
         assert_eq!(
             r[0],
             Relation {
@@ -468,7 +490,10 @@ mod tests {
                 relation: "instrumental supporting musician (guitar)".to_string(),
             }
         );
-        assert_eq!(r[1].relation, "member of band", "pas d'attribut, pas de parenthèses");
+        assert_eq!(
+            r[1].relation, "member of band",
+            "pas d'attribut, pas de parenthèses"
+        );
     }
 
     #[test]
@@ -509,7 +534,10 @@ mod tests {
             ),
             Some(249504)
         );
-        assert_eq!(discogs_id_depuis_url("https://www.discogs.com/master/12345"), None);
+        assert_eq!(
+            discogs_id_depuis_url("https://www.discogs.com/master/12345"),
+            None
+        );
         assert_eq!(discogs_id_depuis_url("n'importe quoi"), None);
     }
 
@@ -518,7 +546,10 @@ mod tests {
         assert_eq!(completer_date("2026").as_deref(), Some("2026-01-01"));
         assert_eq!(completer_date("2026-08").as_deref(), Some("2026-08-01"));
         assert_eq!(completer_date("2026-08-15").as_deref(), Some("2026-08-15"));
-        assert_eq!(completer_date(" 2026-08-15 ").as_deref(), Some("2026-08-15"));
+        assert_eq!(
+            completer_date(" 2026-08-15 ").as_deref(),
+            Some("2026-08-15")
+        );
         // Une comparaison de chaînes suffit alors à ordonner deux sorties.
         assert!(completer_date("2026-08-01") > completer_date("2026-07-31"));
     }

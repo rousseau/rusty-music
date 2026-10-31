@@ -204,9 +204,12 @@ impl SuiviEcoute {
         ecoule: Duration,
         duree: impl FnOnce(&Path) -> Option<i64>,
     ) -> Option<PathBuf> {
-        let recommence = courant == self.chemin && position + Duration::from_secs(5) < self.position;
+        let recommence =
+            courant == self.chemin && position + Duration::from_secs(5) < self.position;
         if courant != self.chemin || recommence {
-            self.seuil = courant.as_deref().map_or(SEUIL_ECOUTE, |c| seuil_ecoute(duree(c)));
+            self.seuil = courant
+                .as_deref()
+                .map_or(SEUIL_ECOUTE, |c| seuil_ecoute(duree(c)));
             self.chemin = courant;
             self.joue = Duration::ZERO;
             self.compte = false;
@@ -302,7 +305,9 @@ mod tests {
     #[test]
     fn rien_en_lecture_ne_compte() {
         let mut s = SuiviEcoute::nouveau();
-        let r = s.avancer(None, false, Duration::ZERO, Duration::from_secs(60), |_| None);
+        let r = s.avancer(None, false, Duration::ZERO, Duration::from_secs(60), |_| {
+            None
+        });
         assert!(r.is_none());
     }
 
@@ -322,7 +327,10 @@ mod tests {
     /// Écoute à un instant précis, pour ne pas dépendre de l'horloge.
     fn ecoute_a(lib: &Library, chemin: &str, le: i64) {
         lib.conn
-            .execute("INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)", rusqlite::params![chemin, le])
+            .execute(
+                "INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)",
+                rusqlite::params![chemin, le],
+            )
             .unwrap();
     }
 
@@ -341,7 +349,11 @@ mod tests {
             titres(lib.pistes_recentes(10).unwrap()),
             vec!["titre de /m/a", "titre de /m/b"]
         );
-        assert_eq!(lib.pistes_recentes(1).unwrap().len(), 1, "la limite s'applique");
+        assert_eq!(
+            lib.pistes_recentes(1).unwrap().len(),
+            1,
+            "la limite s'applique"
+        );
     }
 
     #[test]
@@ -366,9 +378,15 @@ mod tests {
         assert!(lib.basculer_favori("/m/a").unwrap());
         assert!(lib.basculer_favori("/m/b").unwrap());
         assert_eq!(lib.chemins_favoris().unwrap(), vec!["/m/b", "/m/a"]);
-        assert!(!lib.basculer_favori("/m/a").unwrap(), "second appel : retiré");
+        assert!(
+            !lib.basculer_favori("/m/a").unwrap(),
+            "second appel : retiré"
+        );
         assert_eq!(lib.chemins_favoris().unwrap(), vec!["/m/b"]);
-        assert_eq!(titres(lib.pistes_favorites().unwrap()), vec!["titre de /m/b"]);
+        assert_eq!(
+            titres(lib.pistes_favorites().unwrap()),
+            vec!["titre de /m/b"]
+        );
     }
 
     #[test]
@@ -377,7 +395,10 @@ mod tests {
         lib.basculer_favori("/m/disque").unwrap();
         assert!(lib.pistes_favorites().unwrap().is_empty());
         lib.conn
-            .execute("INSERT INTO tracks(path, title) VALUES ('/m/disque', 'revenu')", [])
+            .execute(
+                "INSERT INTO tracks(path, title) VALUES ('/m/disque', 'revenu')",
+                [],
+            )
             .unwrap();
         assert_eq!(titres(lib.pistes_favorites().unwrap()), vec!["revenu"]);
     }
@@ -388,8 +409,17 @@ mod tests {
         assert!(lib.listes_intelligentes().unwrap().is_empty());
 
         lib.noter_ecoute("/m/a").unwrap();
-        let noms: Vec<_> = lib.listes_intelligentes().unwrap().into_iter().map(|l| l.quoi).collect();
-        assert_eq!(noms, vec!["recents"], "une écoute : ni « plus écoutés » ni favoris");
+        let noms: Vec<_> = lib
+            .listes_intelligentes()
+            .unwrap()
+            .into_iter()
+            .map(|l| l.quoi)
+            .collect();
+        assert_eq!(
+            noms,
+            vec!["recents"],
+            "une écoute : ni « plus écoutés » ni favoris"
+        );
 
         lib.noter_ecoute("/m/a").unwrap();
         lib.basculer_favori("/m/b").unwrap();

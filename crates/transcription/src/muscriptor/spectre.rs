@@ -52,12 +52,18 @@ mod tests {
     #[test]
     fn une_sinusoide_tombe_dans_son_bin() {
         let sr = 16_000.0;
-        let x: Vec<f32> = (0..16_000).map(|i| (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / sr).sin()).collect();
-        let fen: Vec<f32> = (0..N_FFT).map(|k| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / N_FFT as f32).cos()).collect();
+        let x: Vec<f32> = (0..16_000)
+            .map(|i| (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / sr).sin())
+            .collect();
+        let fen: Vec<f32> = (0..N_FFT)
+            .map(|k| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / N_FFT as f32).cos())
+            .collect();
         let (s, trames) = module(&x, &fen);
         assert_eq!(trames, 101);
         let t = 50;
-        let pic = (0..BINS).max_by(|&a, &b| s[t * BINS + a].total_cmp(&s[t * BINS + b])).unwrap();
+        let pic = (0..BINS)
+            .max_by(|&a, &b| s[t * BINS + a].total_cmp(&s[t * BINS + b]))
+            .unwrap();
         assert_eq!(pic, (1000.0 * N_FFT as f32 / sr).round() as usize); // 128
     }
 }

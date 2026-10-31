@@ -108,7 +108,10 @@ impl SemisSommets {
     /// Le sommet porteur d'un coût le plus proche de `p`, en élargissant
     /// l'anneau de cellules jusqu'à en trouver un (ou abandonner).
     fn plus_proche(&self, p: [f64; 2], points_m: &[[f64; 2]]) -> Option<u32> {
-        let (cx, cy) = ((p[0] / self.pas).floor() as i32, (p[1] / self.pas).floor() as i32);
+        let (cx, cy) = (
+            (p[0] / self.pas).floor() as i32,
+            (p[1] / self.pas).floor() as i32,
+        );
         for anneau in 0..40_i32 {
             let mut meilleur: Option<(u32, f64)> = None;
             for dx in -anneau..=anneau {
@@ -117,7 +120,9 @@ impl SemisSommets {
                     if anneau > 0 && dx.abs() != anneau && dy.abs() != anneau {
                         continue;
                     }
-                    let Some(v) = self.cellules.get(&(cx + dx, cy + dy)) else { continue };
+                    let Some(v) = self.cellules.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
                     for &i in v {
                         let q = points_m[i as usize];
                         let d = (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2);
@@ -151,8 +156,10 @@ pub fn champ_de_cout(
     let graphe = Graphe::construire_pondere(extrait, friction_locale);
     let couts_mm = graphe.couts_depuis(source);
     let points_m: Vec<[f64; 2]> = graphe.points().iter().map(|p| repere.vers_m(*p)).collect();
-    let couts_m: Vec<Option<f64>> =
-        couts_mm.iter().map(|c| c.map(|v| v as f64 / 1000.0)).collect();
+    let couts_m: Vec<Option<f64>> = couts_mm
+        .iter()
+        .map(|c| c.map(|v| v as f64 / 1000.0))
+        .collect();
 
     let gn = resolution.max(2);
     let bornes_m = bornes(extrait, repere, &points_m);
@@ -186,7 +193,12 @@ pub fn champ_de_cout(
         }
     }
 
-    ChampCout { valeurs, resolution: gn, bornes_m, cout_max }
+    ChampCout {
+        valeurs,
+        resolution: gn,
+        bornes_m,
+        cout_max,
+    }
 }
 
 /// Coût de déplacement sur la voirie, de `source` (`[lon, lat]`) à **chaque
@@ -210,7 +222,10 @@ pub fn couts_batiments(
     const PORTEE_ACCROCHE: f64 = 160.0;
     let graphe = Graphe::construire_pondere(extrait, friction_locale);
     if graphe.est_vide() {
-        return batiments.iter().map(|(id, _)| (*id, f64::INFINITY)).collect();
+        return batiments
+            .iter()
+            .map(|(id, _)| (*id, f64::INFINITY))
+            .collect();
     }
     let couts_m: Vec<Option<f64>> = graphe
         .couts_depuis(source)
@@ -242,7 +257,12 @@ pub fn couts_batiments(
 /// Rectangle englobant, mètres locaux : la frontière communale si elle existe,
 /// sinon l'enveloppe des sommets du graphe.
 fn bornes(extrait: &Extrait, repere: &Repere, points_m: &[[f64; 2]]) -> [f64; 4] {
-    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
     let mut voir = |p: [f64; 2]| {
         b[0] = b[0].min(p[0]);
         b[1] = b[1].min(p[1]);
@@ -301,7 +321,9 @@ pub fn isobandes(champ: &ChampCout, seuils: &[f64]) -> Vec<Bande> {
 
     let mut sortie = Vec::new();
     for paire in bornes_seuils.windows(2) {
-        let Ok(bandes) = constructeur.isobands(&borne, &[paire[0], paire[1]]) else { continue };
+        let Ok(bandes) = constructeur.isobands(&borne, &[paire[0], paire[1]]) else {
+            continue;
+        };
         let polygones: Vec<Vec<Vec<[f64; 2]>>> = bandes
             .into_iter()
             .flat_map(|b| {
@@ -317,7 +339,10 @@ pub fn isobandes(champ: &ChampCout, seuils: &[f64]) -> Vec<Bande> {
             })
             .collect();
         if !polygones.is_empty() {
-            sortie.push(Bande { seuil: paire[0], polygones });
+            sortie.push(Bande {
+                seuil: paire[0],
+                polygones,
+            });
         }
     }
     sortie
@@ -348,7 +373,10 @@ mod tests {
                 points: vec![[2.31, 48.84], [2.31, 48.85], [2.31, 48.86]],
             },
         ];
-        Extrait { troncons, ..Default::default() }
+        Extrait {
+            troncons,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -361,10 +389,16 @@ mod tests {
         // (nord) — distances géographiques comparables, coût très différent.
         let pts = g.points();
         let est = pts.iter().position(|p| (p[0] - 2.32).abs() < 1e-9).unwrap();
-        let nord = pts.iter().position(|p| (p[1] - 48.86).abs() < 1e-9).unwrap();
+        let nord = pts
+            .iter()
+            .position(|p| (p[1] - 48.86).abs() < 1e-9)
+            .unwrap();
         let ce = couts[est].unwrap();
         let cn = couts[nord].unwrap();
-        assert!(ce < cn, "l'avenue ({ce}) doit coûter moins que la ruelle ({cn})");
+        assert!(
+            ce < cn,
+            "l'avenue ({ce}) doit coûter moins que la ruelle ({cn})"
+        );
         let _ = repere;
     }
 
@@ -375,7 +409,10 @@ mod tests {
         let champ = champ_de_cout(&extrait, &repere, [2.31, 48.85], 40);
         assert_eq!(champ.valeurs.len(), 40 * 40);
         assert!(champ.cout_max.is_finite() && champ.cout_max >= 0.0);
-        assert!(champ.valeurs.iter().any(|v| v.is_finite()), "au moins une cellule sur la voirie");
+        assert!(
+            champ.valeurs.iter().any(|v| v.is_finite()),
+            "au moins une cellule sur la voirie"
+        );
     }
 
     #[test]

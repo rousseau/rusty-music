@@ -63,7 +63,11 @@ impl ClientCadence {
     /// son propre `User-Agent` (certains y ajoutent une adresse de contact,
     /// comme MusicBrainz l'exige), ce que ce type n'a pas à savoir.
     pub fn new(agent: ureq::Agent, cadence: Duration) -> Self {
-        Self { agent, cadence, dernier: Mutex::new(None) }
+        Self {
+            agent,
+            cadence,
+            dernier: Mutex::new(None),
+        }
     }
 
     /// Patiente le temps qu'il faut pour ne pas dépasser la cadence.
@@ -73,7 +77,10 @@ impl ClientCadence {
     /// respecter la cadence sur une requête qui n'en est pas une au sens de
     /// ce module.
     pub fn cadencer(&self) {
-        let mut dernier = self.dernier.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut dernier = self
+            .dernier
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(precedent) = *dernier {
             let ecoule = precedent.elapsed();
             if ecoule < self.cadence {
@@ -112,14 +119,23 @@ impl ClientCadence {
     /// encodés par `ureq` (`?query("q", "artist:\"a b\"")` → `%22a+b%22`,
     /// entre autres) — nécessaire dès qu'un paramètre porte du texte libre
     /// (une recherche Deezer), jamais sûr à interpoler tel quel dans l'URL.
-    pub fn get_json_requete(&self, url: &str, query: &[(&str, &str)], ctx: &str) -> Result<Option<Value>> {
-        match self.requete(ctx, |_| false, |agent| {
-            let mut req = agent.get(url);
-            for (cle, valeur) in query {
-                req = req.query(*cle, *valeur);
-            }
-            req.call()
-        })? {
+    pub fn get_json_requete(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        ctx: &str,
+    ) -> Result<Option<Value>> {
+        match self.requete(
+            ctx,
+            |_| false,
+            |agent| {
+                let mut req = agent.get(url);
+                for (cle, valeur) in query {
+                    req = req.query(*cle, *valeur);
+                }
+                req.call()
+            },
+        )? {
             Reponse::Trouvee(v) => Ok(Some(v)),
             Reponse::Absente => Ok(None),
             Reponse::ArretImmediat(_) => unreachable!("arret_immediat toujours faux ici"),
@@ -131,9 +147,16 @@ impl ClientCadence {
     pub fn post_json(&self, url: &str, corps: &Value, ctx: &str) -> Result<Option<Value>> {
         let texte = serde_json::to_string(corps)
             .map_err(|e| Error::Reseau(format!("{ctx} : encodage JSON : {e}")))?;
-        match self.requete(ctx, |_| false, |agent| {
-            agent.post(url).content_type("application/json").send(texte.as_str())
-        })? {
+        match self.requete(
+            ctx,
+            |_| false,
+            |agent| {
+                agent
+                    .post(url)
+                    .content_type("application/json")
+                    .send(texte.as_str())
+            },
+        )? {
             Reponse::Trouvee(v) => Ok(Some(v)),
             Reponse::Absente => Ok(None),
             Reponse::ArretImmediat(_) => unreachable!("arret_immediat toujours faux ici"),
@@ -146,7 +169,8 @@ impl ClientCadence {
         arret_immediat: impl Fn(u16) -> bool,
         mut appel: impl FnMut(
             &ureq::Agent,
-        ) -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+        )
+            -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>,
     ) -> Result<Reponse> {
         let mut derniere = String::new();
         for essai in 0..ESSAIS {
@@ -157,9 +181,9 @@ impl ClientCadence {
                         .body_mut()
                         .read_to_string()
                         .map_err(|e| Error::Reseau(format!("{ctx} : lecture du corps : {e}")))?;
-                    return serde_json::from_str(&corps).map(Reponse::Trouvee).map_err(|e| {
-                        Error::Reseau(format!("{ctx} : JSON illisible : {e}"))
-                    });
+                    return serde_json::from_str(&corps)
+                        .map(Reponse::Trouvee)
+                        .map_err(|e| Error::Reseau(format!("{ctx} : JSON illisible : {e}")));
                 }
                 Err(ureq::Error::StatusCode(404)) => return Ok(Reponse::Absente),
                 Err(ureq::Error::StatusCode(code)) if arret_immediat(code) => {
@@ -177,6 +201,8 @@ impl ClientCadence {
                 }
             }
         }
-        Err(Error::Reseau(format!("{ctx} : {ESSAIS} tentatives sans succès — {derniere}")))
+        Err(Error::Reseau(format!(
+            "{ctx} : {ESSAIS} tentatives sans succès — {derniere}"
+        )))
     }
 }

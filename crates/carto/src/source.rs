@@ -316,9 +316,9 @@ impl Source {
             if m.artiste.is_empty() {
                 continue;
             }
-            let e = cumul.entry(m.artiste.as_str()).or_insert_with(|| {
-                (0.0, 0.0, 0, HashMap::new(), None)
-            });
+            let e = cumul
+                .entry(m.artiste.as_str())
+                .or_insert_with(|| (0.0, 0.0, 0, HashMap::new(), None));
             e.0 += m.x as f64;
             e.1 += m.y as f64;
             e.2 += 1;
@@ -424,7 +424,9 @@ pub fn reseau_entre_lieux(
         if ea == eb {
             continue; // un lien interne ne sort pas de la ville
         }
-        let e = couloirs.entry((ea.min(eb), ea.max(eb))).or_insert((classe, 0));
+        let e = couloirs
+            .entry((ea.min(eb), ea.max(eb)))
+            .or_insert((classe, 0));
         e.0 = e.0.min(classe);
         e.1 += 1;
     }
@@ -459,7 +461,6 @@ pub fn reseau_entre_lieux(
     sortie.sort_by_key(|(cle, _)| *cle);
     sortie.into_iter().map(|(_, r)| r).collect()
 }
-
 
 /// Choisit les points remarquables d'une carte.
 ///
@@ -540,7 +541,14 @@ mod tests {
         morceau_datee(id, x, y, famille, artiste, Some(2000))
     }
 
-    fn morceau_datee(id: i64, x: f32, y: f32, famille: i64, artiste: &str, annee: Option<i32>) -> Morceau {
+    fn morceau_datee(
+        id: i64,
+        x: f32,
+        y: f32,
+        famille: i64,
+        artiste: &str,
+        annee: Option<i32>,
+    ) -> Morceau {
         Morceau {
             id,
             x,
@@ -603,7 +611,10 @@ mod tests {
             ..Default::default()
         };
         let villes = s.artistes();
-        assert_eq!(villes.iter().find(|v| v.nom == "A").unwrap().annee, Some(1998));
+        assert_eq!(
+            villes.iter().find(|v| v.nom == "A").unwrap().annee,
+            Some(1998)
+        );
         assert_eq!(villes.iter().find(|v| v.nom == "B").unwrap().annee, None);
     }
 
@@ -616,7 +627,10 @@ mod tests {
             morceaux.push(morceau(i, -0.8 + (i as f32) * 0.001, 0.0, 0, "gauche"));
             morceaux.push(morceau(100 + i, 0.8 + (i as f32) * 0.001, 0.0, 0, "droite"));
         }
-        let s = Source { morceaux: morceaux.clone(), ..Default::default() };
+        let s = Source {
+            morceaux: morceaux.clone(),
+            ..Default::default()
+        };
         let (ax, _) = s.ancres_de_familles()[&0];
         assert!(
             ax.abs() > 0.5,

@@ -93,8 +93,14 @@ fn renommage() -> std::result::Result<KeyRemapper, String> {
         (r"\.layers\.(\d+)\.1\.net\.1\.", ".layers.$1.ff.entree."),
         (r"\.layers\.(\d+)\.1\.net\.4\.", ".layers.$1.ff.sortie."),
         (r"\.to_out\.0\.", ".to_out."),
-        (r"^band_split\.to_features\.(\d+)\.0\.", "band_split.to_features.$1.norme."),
-        (r"^band_split\.to_features\.(\d+)\.1\.", "band_split.to_features.$1.lineaire."),
+        (
+            r"^band_split\.to_features\.(\d+)\.0\.",
+            "band_split.to_features.$1.norme.",
+        ),
+        (
+            r"^band_split\.to_features\.(\d+)\.1\.",
+            "band_split.to_features.$1.lineaire.",
+        ),
         (r"\.to_freqs\.(\d+)\.0\.0\.", ".to_freqs.$1.couches.0."),
         (r"\.to_freqs\.(\d+)\.0\.2\.", ".to_freqs.$1.couches.1."),
     ];
@@ -118,13 +124,25 @@ impl<B: Backend> Roformer<B> {
     pub fn charger(poids: &Path, config: Config, device: &B::Device) -> Result<Self> {
         let mut reseau = reseau::Reseau::<B>::new(&config, device);
         let mut store = PytorchStore::from_file(poids).remap(renommage().map_err(Error::Modele)?);
-        let r = reseau.load_from(&mut store).map_err(|e| Error::PoidsAbsents(format!("{} : {e}", poids.display())))?;
+        let r = reseau
+            .load_from(&mut store)
+            .map_err(|e| Error::PoidsAbsents(format!("{} : {e}", poids.display())))?;
         if !r.missing.is_empty() || !r.errors.is_empty() {
-            return Err(Error::Modele(format!("poids manquants {:?}, erreurs {:?}", r.missing, r.errors)));
+            return Err(Error::Modele(format!(
+                "poids manquants {:?}, erreurs {:?}",
+                r.missing, r.errors
+            )));
         }
-        let tetes = reseau::Tetes::depuis(std::mem::take(&mut reseau.mask_estimators), &config.bandes);
+        let tetes =
+            reseau::Tetes::depuis(std::mem::take(&mut reseau.mask_estimators), &config.bandes);
         let fenetre = stft::hann(config.n_fft);
-        Ok(Self { reseau, tetes, config, fenetre, device: device.clone() })
+        Ok(Self {
+            reseau,
+            tetes,
+            config,
+            fenetre,
+            device: device.clone(),
+        })
     }
 
     pub fn config(&self) -> &Config {
@@ -159,7 +177,8 @@ impl<B: Backend> Roformer<B> {
     /// `[stems, trames, (fréquence, canal, réel/imaginaire)]`.
     pub fn masques(&self, spectre: Vec<f32>, trames: usize) -> Tensor<B, 3> {
         let largeur = spectre.len() / trames;
-        let x = Tensor::<B, 2>::from_data(TensorData::new(spectre, [trames, largeur]), &self.device);
+        let x =
+            Tensor::<B, 2>::from_data(TensorData::new(spectre, [trames, largeur]), &self.device);
         let mut x = self.reseau.decouper(x, &self.config.bandes);
         for i in 0..self.config.profondeur {
             x = self.reseau.bloc(i, x, &self.config);
@@ -178,7 +197,12 @@ impl<B: Backend> Roformer<B> {
     pub fn segment(&self, gauche: &[f32], droite: &[f32]) -> Result<Vec<[Vec<f32>; 2]>> {
         let c = &self.config;
         let (spectre, trames) = self.spectre(gauche, droite);
-        let masques: Vec<f32> = self.masques(spectre.clone(), trames).into_data().convert::<f32>().into_vec().map_err(|e| Error::Modele(format!("{e:?}")))?;
+        let masques: Vec<f32> = self
+            .masques(spectre.clone(), trames)
+            .into_data()
+            .convert::<f32>()
+            .into_vec()
+            .map_err(|e| Error::Modele(format!("{e:?}")))?;
         let cases = c.n_fft / 2 + 1;
         let largeur = cases * 4;
         let mut sorties = Vec::with_capacity(c.stems.len());
@@ -204,7 +228,12 @@ impl<B: Backend> Roformer<B> {
 
     /// Un morceau entier, comme `demix` de MSST : `[stems][canal][échantillon]`.
     /// `avancer(fait, total)` après chaque segment.
-    pub fn separer(&self, gauche: &[f32], droite: &[f32], mut avancer: impl FnMut(usize, usize)) -> Result<Vec<[Vec<f32>; 2]>> {
+    pub fn separer(
+        &self,
+        gauche: &[f32],
+        droite: &[f32],
+        mut avancer: impl FnMut(usize, usize),
+    ) -> Result<Vec<[Vec<f32>; 2]>> {
         let c = &self.config;
         let n = gauche.len();
         let taille = c.segment;
@@ -213,7 +242,13 @@ impl<B: Backend> Roformer<B> {
         let bord = taille - pas;
         // Prolonge les deux bords par réflexion quand le morceau est assez long.
         let rembourre = n > 2 * bord && bord > 0;
-        let etendre = |x: &[f32]| if rembourre { reflechir(x, bord, bord) } else { x.to_vec() };
+        let etendre = |x: &[f32]| {
+            if rembourre {
+                reflechir(x, bord, bord)
+            } else {
+                x.to_vec()
+            }
+        };
         let (g, d) = (etendre(gauche), etendre(droite));
         let longueur = g.len();
         let mut fenetre = vec![1.0f32; taille];
@@ -231,7 +266,15 @@ impl<B: Backend> Roformer<B> {
             let fin = (i + taille).min(longueur);
             let lu = fin - i;
             // Segment incomplet : réflexion s'il dépasse la moitié, zéros sinon.
-            let completer = |x: &[f32]| if lu > taille / 2 { reflechir(&x[i..fin], 0, taille - lu) } else { let mut v = x[i..fin].to_vec(); v.resize(taille, 0.0); v };
+            let completer = |x: &[f32]| {
+                if lu > taille / 2 {
+                    reflechir(&x[i..fin], 0, taille - lu)
+                } else {
+                    let mut v = x[i..fin].to_vec();
+                    v.resize(taille, 0.0);
+                    v
+                }
+            };
             let sortie = self.segment(&completer(&g), &completer(&d))?;
             let mut f = fenetre.clone();
             if i == 0 {
@@ -257,7 +300,13 @@ impl<B: Backend> Roformer<B> {
         Ok(resultat
             .into_iter()
             .map(|[a, b]| {
-                let couper = |v: Vec<f32>| v[debut..debut + n].iter().zip(&compte[debut..debut + n]).map(|(x, c)| x / c).collect();
+                let couper = |v: Vec<f32>| {
+                    v[debut..debut + n]
+                        .iter()
+                        .zip(&compte[debut..debut + n])
+                        .map(|(x, c)| x / c)
+                        .collect()
+                };
                 [couper(a), couper(b)]
             })
             .collect())
@@ -292,17 +341,26 @@ mod tests {
     #[test]
     fn la_reflexion_ne_repete_pas_le_bord() {
         // torch : F.pad(tensor([0, 1, 2, 3]), (2, 3), mode="reflect")
-        assert_eq!(reflechir(&[0.0, 1.0, 2.0, 3.0], 2, 3), vec![2.0, 1.0, 0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0]);
+        assert_eq!(
+            reflechir(&[0.0, 1.0, 2.0, 3.0], 2, 3),
+            vec![2.0, 1.0, 0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0]
+        );
     }
 
     #[test]
     fn la_stft_se_defait() {
         let (n, saut) = (2048, 512);
         let fenetre = stft::hann(n);
-        let x: Vec<f32> = (0..20_000).map(|i| ((i as f32 * 0.013).sin() + (i as f32 * 0.0007).cos()) * 0.5).collect();
+        let x: Vec<f32> = (0..20_000)
+            .map(|i| ((i as f32 * 0.013).sin() + (i as f32 * 0.0007).cos()) * 0.5)
+            .collect();
         let z = stft::directe(&x, n, saut, &fenetre);
         let y = stft::inverse(&z, n / 2 + 1, n, saut, &fenetre, x.len());
-        let ecart = x.iter().zip(&y).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+        let ecart = x
+            .iter()
+            .zip(&y)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f32::max);
         assert!(ecart < 1e-5, "écart {ecart}");
     }
 
@@ -311,10 +369,21 @@ mod tests {
     #[test]
     fn les_tetes_regroupees_rendent_les_masques_bande_par_bande() {
         let device = Default::default();
-        let config = Config { dim: 8, profondeur: 1, tetes: 2, dim_tete: 4, bandes: vec![2, 2, 3, 3, 3, 5], stems: &["a", "b"], expansion_masque: 2, ..Config::sw() };
+        let config = Config {
+            dim: 8,
+            profondeur: 1,
+            tetes: 2,
+            dim_tete: 4,
+            bandes: vec![2, 2, 3, 3, 3, 5],
+            stems: &["a", "b"],
+            expansion_masque: 2,
+            ..Config::sw()
+        };
         let reseau = reseau::Reseau::<Moteur>::new(&config, &device);
         let forme = [7, config.bandes.len(), config.dim];
-        let valeurs: Vec<f32> = (0..forme.iter().product::<usize>()).map(|i| (i as f32 * 0.37).sin()).collect();
+        let valeurs: Vec<f32> = (0..forme.iter().product::<usize>())
+            .map(|i| (i as f32 * 0.37).sin())
+            .collect();
         let x = Tensor::<Moteur, 3>::from_data(TensorData::new(valeurs, forme), &device);
         let mut attendu = Vec::new();
         for m in &reseau.mask_estimators {
@@ -326,10 +395,16 @@ mod tests {
                     let xb = x.clone().slice_dim(1, i..i + 1).squeeze_dim::<2>(1);
                     let y = p.couches[1].forward(p.couches[0].forward(xb).tanh());
                     let moitie = y.dims()[1] / 2;
-                    y.clone().slice_dim(1, 0..moitie) * burn::tensor::activation::sigmoid(y.slice_dim(1, moitie..2 * moitie))
+                    y.clone().slice_dim(1, 0..moitie)
+                        * burn::tensor::activation::sigmoid(y.slice_dim(1, moitie..2 * moitie))
                 })
                 .collect();
-            attendu.extend(Tensor::cat(parties, 1).into_data().into_vec::<f32>().unwrap());
+            attendu.extend(
+                Tensor::cat(parties, 1)
+                    .into_data()
+                    .into_vec::<f32>()
+                    .unwrap(),
+            );
         }
         // Après le calcul de référence : les paramètres d'un `Linear` neuf
         // ne sont tirés qu'au premier accès, et un clone pris avant tirerait
@@ -337,7 +412,11 @@ mod tests {
         let tetes = reseau::Tetes::depuis(reseau.mask_estimators.clone(), &config.bandes);
         let groupees: Vec<f32> = tetes.forward(x).into_data().into_vec().unwrap();
         assert_eq!(groupees.len(), attendu.len());
-        assert!(cosinus(&groupees, &attendu) > 0.999_999, "{}", cosinus(&groupees, &attendu));
+        assert!(
+            cosinus(&groupees, &attendu) > 0.999_999,
+            "{}",
+            cosinus(&groupees, &attendu)
+        );
     }
 
     /// Parité avec le code d'origine sur un segment de SW : références de
@@ -348,9 +427,20 @@ mod tests {
     #[test]
     #[ignore = "poids de 700 Mo et références à préparer"]
     fn parite_sw_avec_msst() {
-        let dossier = std::path::PathBuf::from(std::env::var("ROFORMER_REF").expect("ROFORMER_REF"));
-        let poids = std::env::var("ROFORMER_POIDS").map(std::path::PathBuf::from).ok().or_else(|| rusty_music_core::modeles::trouver(FICHIER_SW)).expect("poids de SW");
-        let lire = |nom: &str| -> Vec<f32> { std::fs::read(dossier.join(nom)).unwrap().chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect() };
+        let dossier =
+            std::path::PathBuf::from(std::env::var("ROFORMER_REF").expect("ROFORMER_REF"));
+        let poids = std::env::var("ROFORMER_POIDS")
+            .map(std::path::PathBuf::from)
+            .ok()
+            .or_else(|| rusty_music_core::modeles::trouver(FICHIER_SW))
+            .expect("poids de SW");
+        let lire = |nom: &str| -> Vec<f32> {
+            std::fs::read(dossier.join(nom))
+                .unwrap()
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        };
         let m = Roformer::<Moteur>::charger(&poids, Config::sw(), &Default::default()).unwrap();
         let audio = lire("audio.f32");
         let (g, d) = audio.split_at(audio.len() / 2);

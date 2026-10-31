@@ -19,7 +19,8 @@ fn main() {
         config.tranche_temps = t.parse().unwrap();
     }
     let device = Default::default();
-    let m = Roformer::<Moteur>::charger(a[0].as_ref(), config.clone(), &device).expect("chargement");
+    let m =
+        Roformer::<Moteur>::charger(a[0].as_ref(), config.clone(), &device).expect("chargement");
     let r = m.reseau();
     let trames = config.segment / config.saut + 1;
     let bandes = config.bandes.len();
@@ -35,15 +36,30 @@ fn main() {
     };
     for rep in 0..repetitions {
         println!("passe {rep}");
-        let x = Tensor::<Moteur, 2>::random([trames, largeur], Distribution::Normal(0.0, 1.0), &device);
+        let x =
+            Tensor::<Moteur, 2>::random([trames, largeur], Distribution::Normal(0.0, 1.0), &device);
         let y = chrono("découpe", &|| r.decouper(x.clone(), &config.bandes));
         let b = &r.layers[0];
         let yt = y.clone().swap_dims(0, 1);
         let temps = &b.temps.layers[0];
         let frequence = &b.frequence.layers[0];
-        chrono(&format!("temps : attention ({bandes} × {trames})"), &|| temps.attn.forward(yt.clone(), config.tetes, config.tranche_temps));
+        chrono(
+            &format!("temps : attention ({bandes} × {trames})"),
+            &|| {
+                temps
+                    .attn
+                    .forward(yt.clone(), config.tetes, config.tranche_temps)
+            },
+        );
         chrono("temps : anticipation", &|| temps.ff.forward(yt.clone()));
-        chrono(&format!("fréq. : attention ({trames} × {bandes})"), &|| frequence.attn.forward(y.clone(), config.tetes, config.tranche_frequence));
+        chrono(
+            &format!("fréq. : attention ({trames} × {bandes})"),
+            &|| {
+                frequence
+                    .attn
+                    .forward(y.clone(), config.tetes, config.tranche_frequence)
+            },
+        );
         chrono("fréq. : anticipation", &|| frequence.ff.forward(y.clone()));
         chrono("un bloc entier", &|| r.bloc(0, y.clone(), &config));
         chrono("masques", &|| m.tetes(y.clone()));

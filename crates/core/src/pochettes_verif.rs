@@ -112,7 +112,10 @@ fn verifier_fin_jpeg(data: &[u8]) -> std::result::Result<(), String> {
     if data[debut..].windows(2).any(|w| w == [0xFF, 0xD9]) {
         Ok(())
     } else {
-        Err(format!("JPEG tronqué ({} octets, pas de marqueur de fin)", data.len()))
+        Err(format!(
+            "JPEG tronqué ({} octets, pas de marqueur de fin)",
+            data.len()
+        ))
     }
 }
 
@@ -141,7 +144,10 @@ fn distance(a: &[f32], b: &[f32]) -> f64 {
 }
 
 fn hacher(data: &[u8]) -> String {
-    Sha256::digest(data).iter().map(|o| format!("{o:02x}")).collect()
+    Sha256::digest(data)
+        .iter()
+        .map(|o| format!("{o:02x}"))
+        .collect()
 }
 
 /* --------------------------------------------------- un dossier d'album */
@@ -256,7 +262,9 @@ pub fn actualiser(
     let pistes = lib.pistes_pour_verif_pochettes()?;
     let mut par_dossier: BTreeMap<String, Vec<PisteVerifPochette>> = BTreeMap::new();
     for p in pistes {
-        let Some(dir) = Path::new(&p.path).parent() else { continue };
+        let Some(dir) = Path::new(&p.path).parent() else {
+            continue;
+        };
         par_dossier
             .entry(dir.to_string_lossy().into_owned())
             .or_default()
@@ -493,14 +501,25 @@ mod tests {
     fn partagee_seulement_entre_artistes_et_albums_differents() {
         let lib = Library::open_in_memory().unwrap();
         // Même image sur deux artistes différents : signalé des deux côtés.
-        lib.enregistrer_verif_pochette(&ligne("/a", "Meat Beat Manifesto", "Subliminal", Some("h1"))).unwrap();
-        lib.enregistrer_verif_pochette(&ligne("/b", "Inner City", "Paradise", Some("h1"))).unwrap();
+        lib.enregistrer_verif_pochette(&ligne(
+            "/a",
+            "Meat Beat Manifesto",
+            "Subliminal",
+            Some("h1"),
+        ))
+        .unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/b", "Inner City", "Paradise", Some("h1")))
+            .unwrap();
         // Deux disques d'un même album (même artiste, même titre) : normal.
-        lib.enregistrer_verif_pochette(&ligne("/c/cd1", "Moriarty", "Epitaph", Some("h2"))).unwrap();
-        lib.enregistrer_verif_pochette(&ligne("/c/cd2", "Moriarty", "Epitaph", Some("h2"))).unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/c/cd1", "Moriarty", "Epitaph", Some("h2")))
+            .unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/c/cd2", "Moriarty", "Epitaph", Some("h2")))
+            .unwrap();
         // Deux albums du même artiste : une série, pas un défaut.
-        lib.enregistrer_verif_pochette(&ligne("/d", "Aphex Twin", "Vol 1", Some("h3"))).unwrap();
-        lib.enregistrer_verif_pochette(&ligne("/e", "Aphex Twin", "Vol 2", Some("h3"))).unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/d", "Aphex Twin", "Vol 1", Some("h3")))
+            .unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/e", "Aphex Twin", "Vol 2", Some("h3")))
+            .unwrap();
 
         let s = suspectes(&lib).unwrap();
         let dossiers: Vec<&str> = s.iter().map(|p| p.dossier.as_str()).collect();
@@ -530,8 +549,10 @@ mod tests {
     #[test]
     fn elaguer_retire_les_dossiers_disparus() {
         let lib = Library::open_in_memory().unwrap();
-        lib.enregistrer_verif_pochette(&ligne("/a", "X", "Y", None)).unwrap();
-        lib.enregistrer_verif_pochette(&ligne("/b", "X", "Z", None)).unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/a", "X", "Y", None))
+            .unwrap();
+        lib.enregistrer_verif_pochette(&ligne("/b", "X", "Z", None))
+            .unwrap();
         let presents: HashSet<String> = ["/a".to_string()].into();
         assert_eq!(lib.elaguer_verif_pochettes(&presents).unwrap(), 1);
         assert_eq!(lib.verifs_pochettes().unwrap().len(), 1);

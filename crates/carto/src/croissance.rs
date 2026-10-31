@@ -182,7 +182,12 @@ fn bissecter(ids: &mut [usize], parcelles: &[Parcelle], max: usize, sortie: &mut
         }
         return;
     }
-    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut b = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
     for &i in ids.iter() {
         let c = parcelles[i].centre;
         b[0] = b[0].min(c[0]);
@@ -227,11 +232,22 @@ pub fn decouper(parcelles: &[Parcelle], p: &Parametres) -> Vec<Cellule> {
         .map(|(ids, couloir)| {
             let n = ids.len() as f64;
             let centre = ids.iter().fold([0.0, 0.0], |a, &i| {
-                [a[0] + parcelles[i].centre[0] / n, a[1] + parcelles[i].centre[1] / n]
+                [
+                    a[0] + parcelles[i].centre[0] / n,
+                    a[1] + parcelles[i].centre[1] / n,
+                ]
             });
             let cout = mediane(ids.iter().map(|&i| parcelles[i].cout).collect());
             let artere = ids.iter().map(|&i| parcelles[i].artere).sum::<f64>() / n;
-            Cellule { id: 0, parcelles: ids, couloir, centre, cout, artere, voisines: Vec::new() }
+            Cellule {
+                id: 0,
+                parcelles: ids,
+                couloir,
+                centre,
+                cout,
+                artere,
+                voisines: Vec::new(),
+            }
         })
         .collect();
     // Numérotation stable : par coût croissant (donc par « âge » de la cellule),
@@ -266,7 +282,9 @@ pub fn decouper(parcelles: &[Parcelle], p: &Parametres) -> Vec<Cellule> {
         let (cx, cy) = cle(pc.centre);
         for dx in -1..=1 {
             for dy in -1..=1 {
-                let Some(v) = grille.get(&(cx + dx, cy + dy)) else { continue };
+                let Some(v) = grille.get(&(cx + dx, cy + dy)) else {
+                    continue;
+                };
                 for &j in v {
                     if cellule_de[j] == cellule_de[i] {
                         continue;
@@ -334,14 +352,19 @@ fn regrouper(arrivants: &[Arrivant]) -> Vec<Arrivee> {
         let n = artistes.len() as u32;
         artistes.entry(a.artiste.as_str()).or_insert(n);
         if let Some(p) = a.popularite {
-            let e = moyenne_artiste.entry(a.artiste.as_str()).or_insert((0.0, 0));
+            let e = moyenne_artiste
+                .entry(a.artiste.as_str())
+                .or_insert((0.0, 0));
             e.0 += p;
             e.1 += 1;
         }
     }
     let mut groupes: HashMap<(&str, &str, Option<i32>), Vec<usize>> = HashMap::new();
     for (i, a) in arrivants.iter().enumerate() {
-        groupes.entry((a.artiste.as_str(), a.album.as_str(), a.annee)).or_default().push(i);
+        groupes
+            .entry((a.artiste.as_str(), a.album.as_str(), a.annee))
+            .or_default()
+            .push(i);
     }
     let mut arrivees: Vec<Arrivee> = groupes
         .into_iter()
@@ -349,7 +372,10 @@ fn regrouper(arrivants: &[Arrivant]) -> Vec<Arrivee> {
             pistes.sort_by_key(|&i| (arrivants[i].piste, arrivants[i].id));
             let n = pistes.len() as f64;
             let xy = pistes.iter().fold([0.0, 0.0], |s, &i| {
-                [s[0] + arrivants[i].xy[0] as f64 / n, s[1] + arrivants[i].xy[1] as f64 / n]
+                [
+                    s[0] + arrivants[i].xy[0] as f64 / n,
+                    s[1] + arrivants[i].xy[1] as f64 / n,
+                ]
             });
             let mut parts: HashMap<i64, usize> = HashMap::new();
             for &i in &pistes {
@@ -360,18 +386,32 @@ fn regrouper(arrivants: &[Arrivant]) -> Vec<Arrivee> {
                 .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
                 .map(|(f, _)| f)
                 .unwrap_or(-1);
-            let connues: Vec<f64> = pistes.iter().filter_map(|&i| arrivants[i].popularite).collect();
+            let connues: Vec<f64> = pistes
+                .iter()
+                .filter_map(|&i| arrivants[i].popularite)
+                .collect();
             let popularite = if connues.is_empty() {
                 // Repli : la popularité moyenne de l'artiste, sinon neutre — un
                 // morceau inconnu des sources n'est ni tête d'affiche ni
                 // confidentiel, il ne tire pas vers les artères.
-                moyenne_artiste.get(artiste).map(|(s, n)| s / *n as f64).unwrap_or(0.5)
+                moyenne_artiste
+                    .get(artiste)
+                    .map(|(s, n)| s / *n as f64)
+                    .unwrap_or(0.5)
             } else {
                 connues.iter().sum::<f64>() / connues.len() as f64
             };
             let date = annee.unwrap_or(i32::MAX);
             let cle = fnv(&[artiste, album, &date.to_string()]);
-            Arrivee { pistes, date, cle, xy, famille, popularite, artiste: artistes[artiste] }
+            Arrivee {
+                pistes,
+                date,
+                cle,
+                xy,
+                famille,
+                popularite,
+                artiste: artistes[artiste],
+            }
         })
         .collect();
     arrivees.sort_by_key(|a| (a.date, a.cle));
@@ -381,15 +421,18 @@ fn regrouper(arrivants: &[Arrivant]) -> Vec<Arrivee> {
 /// Étalement t-SNE du nuage : p95 de la distance au barycentre.
 fn etalement(arrivants: &[Arrivant]) -> f64 {
     let n = arrivants.len().max(1) as f64;
-    let b = arrivants
-        .iter()
-        .fold([0.0, 0.0], |s, a| [s[0] + a.xy[0] as f64 / n, s[1] + a.xy[1] as f64 / n]);
+    let b = arrivants.iter().fold([0.0, 0.0], |s, a| {
+        [s[0] + a.xy[0] as f64 / n, s[1] + a.xy[1] as f64 / n]
+    });
     let mut d: Vec<f64> = arrivants
         .iter()
         .map(|a| ((a.xy[0] as f64 - b[0]).powi(2) + (a.xy[1] as f64 - b[1]).powi(2)).sqrt())
         .collect();
     d.sort_by(f64::total_cmp);
-    d.get(((d.len() as f64) * 0.95) as usize).copied().unwrap_or(1.0).max(1e-9)
+    d.get(((d.len() as f64) * 0.95) as usize)
+        .copied()
+        .unwrap_or(1.0)
+        .max(1e-9)
 }
 
 /// Fait croître la ville : loge chaque arrivant dans une parcelle.
@@ -414,9 +457,15 @@ pub fn peupler(parcelles: &[Parcelle], arrivants: &[Arrivant], p: &Parametres) -
         .map(|c| {
             let mut libres = c.parcelles.clone();
             libres.sort_by(|&a, &b| {
-                parcelles[a].cout.total_cmp(&parcelles[b].cout).then(parcelles[a].id.cmp(&parcelles[b].id))
+                parcelles[a]
+                    .cout
+                    .total_cmp(&parcelles[b].cout)
+                    .then(parcelles[a].id.cmp(&parcelles[b].id))
             });
-            Habitat { libres, ..Default::default() }
+            Habitat {
+                libres,
+                ..Default::default()
+            }
         })
         .collect();
 
@@ -435,7 +484,8 @@ pub fn peupler(parcelles: &[Parcelle], arrivants: &[Arrivant], p: &Parametres) -
         while !restantes.is_empty() {
             // Le front : assez de places pour ceux qui sont arrivés, plus la
             // marge. Il ne recule jamais.
-            let cible = ((places as f64 + restantes.len() as f64) * (1.0 + p.marge_ouverture)) as usize
+            let cible = ((places as f64 + restantes.len() as f64) * (1.0 + p.marge_ouverture))
+                as usize
                 + p.base_ouverture;
             while ouvertes < k && capacite_ouverte < cible {
                 capacite_ouverte += cellules[ouvertes].parcelles.len();
@@ -447,7 +497,13 @@ pub fn peupler(parcelles: &[Parcelle], arrivants: &[Arrivant], p: &Parametres) -
                 ouvertes += 1;
             }
             let Some(choix) = meilleure_cellule(
-                &cellules, &habitats, ouvertes, arrivee, restantes.len(), sigma2, p,
+                &cellules,
+                &habitats,
+                ouvertes,
+                arrivee,
+                restantes.len(),
+                sigma2,
+                p,
             ) else {
                 // Plus aucune parcelle libre dans toute la ville.
                 sans_adresse.extend(restantes.iter().map(|&i| arrivants[i].id));
@@ -489,7 +545,11 @@ pub fn peupler(parcelles: &[Parcelle], arrivants: &[Arrivant], p: &Parametres) -
                 h.somme[1] += arrivants[i].xy[1] as f64;
                 h.n += 1;
                 *h.familles.entry(arrivants[i].famille).or_default() += 1;
-                adresses.push(Adresse { id: arrivants[i].id, parcelle, cellule: choix as u32 });
+                adresses.push(Adresse {
+                    id: arrivants[i].id,
+                    parcelle,
+                    cellule: choix as u32,
+                });
             }
             h.artistes.insert(arrivee.artiste);
             places += m;
@@ -497,7 +557,13 @@ pub fn peupler(parcelles: &[Parcelle], arrivants: &[Arrivant], p: &Parametres) -
         }
     }
 
-    Croissance { adresses, cellules, cellule_de_parcelle, fondation, sans_adresse }
+    Croissance {
+        adresses,
+        cellules,
+        cellule_de_parcelle,
+        fondation,
+        sans_adresse,
+    }
 }
 
 /// Barycentre t-SNE et part de la famille d'une cellule. Une cellule vierge
@@ -568,7 +634,12 @@ fn meilleure_cellule(
         // d'entrer dans la bibliothèque, donc il va là où la ville s'étend
         // encore, pas dans les trous du vieux centre.
         let eloignement = k as f64 / ouvertes.max(1) as f64;
-        s -= p.w_proche * if a.date == i32::MAX { 1.0 - eloignement } else { eloignement };
+        s -= p.w_proche
+            * if a.date == i32::MAX {
+                1.0 - eloignement
+            } else {
+                eloignement
+            };
         if h.artistes.contains(&a.artiste) {
             s += p.w_artiste;
         }
@@ -658,7 +729,11 @@ mod tests {
         assert_eq!(c.adresses.len(), arrivants.len());
         let parcelles_prises: HashSet<usize> = c.adresses.iter().map(|a| a.parcelle).collect();
         let morceaux_loges: HashSet<i64> = c.adresses.iter().map(|a| a.id).collect();
-        assert_eq!(parcelles_prises.len(), arrivants.len(), "une parcelle ne loge qu'un morceau");
+        assert_eq!(
+            parcelles_prises.len(),
+            arrivants.len(),
+            "une parcelle ne loge qu'un morceau"
+        );
         assert_eq!(morceaux_loges.len(), arrivants.len());
     }
 
@@ -677,8 +752,16 @@ mod tests {
         let (parcelles, arrivants) = (ville(), morceaux());
         let c = peupler(&parcelles, &arrivants, &Parametres::default());
         let par_id: HashMap<i64, &Arrivant> = arrivants.iter().map(|a| (a.id, a)).collect();
-        let annees: Vec<f64> = c.adresses.iter().map(|a| par_id[&a.id].annee.unwrap() as f64).collect();
-        let couts: Vec<f64> = c.adresses.iter().map(|a| parcelles[a.parcelle].cout).collect();
+        let annees: Vec<f64> = c
+            .adresses
+            .iter()
+            .map(|a| par_id[&a.id].annee.unwrap() as f64)
+            .collect();
+        let couts: Vec<f64> = c
+            .adresses
+            .iter()
+            .map(|a| parcelles[a.parcelle].cout)
+            .collect();
         let rho = spearman(&annees, &couts);
         assert!(rho > 0.6, "âge ↔ coût de voirie : ρ = {rho:.2}");
         // Les cinquante premiers morceaux sont dans les cinquante parcelles
@@ -692,7 +775,10 @@ mod tests {
             .iter()
             .filter(|a| a.id < 120 && parcelles[a.parcelle].cout <= seuil)
             .count();
-        assert!(proches * 10 >= premiers * 9, "{proches}/{premiers} dans le premier décile");
+        assert!(
+            proches * 10 >= premiers * 9,
+            "{proches}/{premiers} dans le premier décile"
+        );
     }
 
     #[test]
@@ -710,7 +796,10 @@ mod tests {
             v.iter().sum::<f64>() / v.len() as f64
         };
         let (sur, hors) = (moyenne(true), moyenne(false));
-        assert!(sur > hors + 0.1, "popularité moyenne : artères {sur:.2}, quartiers {hors:.2}");
+        assert!(
+            sur > hors + 0.1,
+            "popularité moyenne : artères {sur:.2}, quartiers {hors:.2}"
+        );
     }
 
     #[test]
@@ -721,7 +810,11 @@ mod tests {
         // Pureté moyenne des cellules habitées : part de la famille majoritaire.
         let mut par_cellule: HashMap<u32, HashMap<i64, usize>> = HashMap::new();
         for a in &c.adresses {
-            *par_cellule.entry(a.cellule).or_default().entry(par_id[&a.id].famille).or_default() += 1;
+            *par_cellule
+                .entry(a.cellule)
+                .or_default()
+                .entry(par_id[&a.id].famille)
+                .or_default() += 1;
         }
         let (mut dominant, mut total) = (0usize, 0usize);
         for fam in par_cellule.values() {
@@ -729,7 +822,10 @@ mod tests {
             total += fam.values().sum::<usize>();
         }
         let purete = dominant as f64 / total as f64;
-        assert!(purete > 0.6, "pureté des cellules : {purete:.2} (le hasard fait ~0,33)");
+        assert!(
+            purete > 0.6,
+            "pureté des cellules : {purete:.2} (le hasard fait ~0,33)"
+        );
     }
 
     #[test]

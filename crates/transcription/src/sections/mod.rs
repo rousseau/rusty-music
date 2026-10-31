@@ -38,7 +38,9 @@ use reseau::{AllInOne, BANDES, FONCTIONS, INSTRUMENTS};
 use voisinage::Indices;
 
 /// Les étiquettes de Harmonix, dans l'ordre des sorties du réseau.
-pub const ETIQUETTES: [&str; FONCTIONS] = ["start", "end", "intro", "outro", "break", "bridge", "inst", "solo", "verse", "chorus"];
+pub const ETIQUETTES: [&str; FONCTIONS] = [
+    "start", "end", "intro", "outro", "break", "bridge", "inst", "solo", "verse", "chorus",
+];
 /// Trames par seconde.
 pub const FPS: usize = madmom::FPS;
 const FMIN: f64 = 30.0;
@@ -119,7 +121,10 @@ pub fn fichier(i: usize) -> String {
 
 /// Les plis présents dans le dossier des modèles, tous ou aucun.
 pub fn installes() -> Option<Vec<PathBuf>> {
-    POIDS.iter().map(|p| rusty_music_core::modeles::trouver(p.nom)).collect()
+    POIDS
+        .iter()
+        .map(|p| rusty_music_core::modeles::trouver(p.nom))
+        .collect()
 }
 
 /// Télécharge les plis qui manquent, empreintes vérifiées.
@@ -174,26 +179,42 @@ pub struct Sections<B: Backend> {
 impl<B: Backend> Sections<B> {
     /// Charge des plis convertis (`harmonix-fold<i>.safetensors`).
     pub fn charger(fichiers: &[PathBuf], device: &B::Device) -> Result<Self> {
-        let remap = KeyRemapper::new().add_pattern(r"\.self\.", ".soi.").map_err(|e| Error::Sortie(format!("renommage des clés : {e}")))?;
+        let remap = KeyRemapper::new()
+            .add_pattern(r"\.self\.", ".soi.")
+            .map_err(|e| Error::Sortie(format!("renommage des clés : {e}")))?;
         let mut plis = Vec::new();
         for f in fichiers {
             let mut pli = AllInOne::<B>::new(device);
-            let mut store = SafetensorsStore::from_file(f).with_from_adapter(PyTorchToBurnAdapter).remap(remap.clone());
-            let r = pli.load_from(&mut store).map_err(|e| Error::PoidsAbsents(format!("{} : {e}", f.display())))?;
+            let mut store = SafetensorsStore::from_file(f)
+                .with_from_adapter(PyTorchToBurnAdapter)
+                .remap(remap.clone());
+            let r = pli
+                .load_from(&mut store)
+                .map_err(|e| Error::PoidsAbsents(format!("{} : {e}", f.display())))?;
             if !r.missing.is_empty() || !r.errors.is_empty() {
-                return Err(Error::Sortie(format!("{} : poids manquants {:?}, erreurs {:?}", f.display(), r.missing, r.errors)));
+                return Err(Error::Sortie(format!(
+                    "{} : poids manquants {:?}, erreurs {:?}",
+                    f.display(),
+                    r.missing,
+                    r.errors
+                )));
             }
             plis.push(pli.map(&mut VersFlottant(<B::FloatElem as Element>::dtype())));
         }
         if plis.is_empty() {
             return Err(Error::PoidsAbsents("aucun pli d'all-in-one".into()));
         }
-        Ok(Self { plis, device: device.clone() })
+        Ok(Self {
+            plis,
+            device: device.clone(),
+        })
     }
 
     /// Les plis installés (voir [`installes`]).
     pub fn charger_installes(device: &B::Device) -> Result<Self> {
-        let f = installes().ok_or_else(|| Error::PoidsAbsents(rusty_music_core::modeles::introuvable(&fichier(0))))?;
+        let f = installes().ok_or_else(|| {
+            Error::PoidsAbsents(rusty_music_core::modeles::introuvable(&fichier(0)))
+        })?;
         Self::charger(&f, device)
     }
 
@@ -203,7 +224,11 @@ impl<B: Backend> Sections<B> {
             .map_err(|e| Error::PoidsAbsents(format!("{} : {e}", dossier.display())))?
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("harmonix-fold") && n.ends_with(".safetensors")))
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains("harmonix-fold") && n.ends_with(".safetensors"))
+            })
             .collect();
         f.sort();
         Self::charger(&f, device)
@@ -215,7 +240,10 @@ impl<B: Backend> Sections<B> {
 
     /// Logits moyennés sur les `n` premiers plis (tous si `None`).
     pub fn activations(&self, spec: &[f32], trames: usize, n: Option<usize>) -> Activations {
-        let x = Tensor::<B, 3>::from_data(TensorData::new(spec.to_vec(), [INSTRUMENTS, trames, BANDES]), &self.device);
+        let x = Tensor::<B, 3>::from_data(
+            TensorData::new(spec.to_vec(), [INSTRUMENTS, trames, BANDES]),
+            &self.device,
+        );
         let mut indices = Indices::new(&self.device);
         let plis = &self.plis[..n.unwrap_or(self.plis.len()).min(self.plis.len())];
         let mut somme: Option<[Tensor<B, 2>; 4]> = None;
@@ -231,8 +259,15 @@ impl<B: Backend> Sections<B> {
                 }
             });
         }
-        let [beat, downbeat, section, function] = somme.expect("au moins un pli").map(|t| t / plis.len() as f64);
-        let vers = |t: Tensor<B, 2>| t.into_data().convert::<f32>().into_vec::<f32>().expect("f32");
+        let [beat, downbeat, section, function] = somme
+            .expect("au moins un pli")
+            .map(|t| t / plis.len() as f64);
+        let vers = |t: Tensor<B, 2>| {
+            t.into_data()
+                .convert::<f32>()
+                .into_vec::<f32>()
+                .expect("f32")
+        };
         Activations {
             trames,
             beat: vers(beat),
@@ -259,16 +294,27 @@ pub fn segments(a: &Activations) -> Vec<Section> {
     let r = 2 * TRAMES_PAR_TEMPS_MIN;
     let maxima: Vec<f32> = (0..t)
         .map(|i| {
-            let m = prob[i.saturating_sub(r)..(i + r + 1).min(t)].iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            if prob[i] == m { prob[i] } else { 0.0 }
+            let m = prob[i.saturating_sub(r)..(i + r + 1).min(t)]
+                .iter()
+                .copied()
+                .fold(f32::NEG_INFINITY, f32::max);
+            if prob[i] == m {
+                prob[i]
+            } else {
+                0.0
+            }
         })
         .collect();
     let frontieres = choisir_pics(&maxima, FENETRE, FENETRE);
     // Étiquettes : softmax par trame, moyenne par section.
     let mut fonctions = a.function.clone();
     for i in 0..t {
-        let m = (0..FONCTIONS).map(|e| fonctions[e * t + i]).fold(f32::NEG_INFINITY, f32::max);
-        let z: f32 = (0..FONCTIONS).map(|e| (fonctions[e * t + i] - m).exp()).sum();
+        let m = (0..FONCTIONS)
+            .map(|e| fonctions[e * t + i])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let z: f32 = (0..FONCTIONS)
+            .map(|e| (fonctions[e * t + i] - m).exp())
+            .sum();
         for e in 0..FONCTIONS {
             fonctions[e * t + i] = (fonctions[e * t + i] - m).exp() / z;
         }
@@ -282,8 +328,14 @@ pub fn segments(a: &Activations) -> Vec<Section> {
         .filter(|w| w[1] > w[0])
         .map(|w| {
             let moy = |e: usize| fonctions[e * t + w[0]..e * t + w[1]].iter().sum::<f32>();
-            let e = (0..FONCTIONS).max_by(|&x, &y| moy(x).total_cmp(&moy(y))).unwrap_or(0);
-            Section { debut_s: w[0] as f32 / FPS as f32, fin_s: (w[1] as f32 / FPS as f32).min(duree), etiquette: ETIQUETTES[e].into() }
+            let e = (0..FONCTIONS)
+                .max_by(|&x, &y| moy(x).total_cmp(&moy(y)))
+                .unwrap_or(0);
+            Section {
+                debut_s: w[0] as f32 / FPS as f32,
+                fin_s: (w[1] as f32 / FPS as f32).min(duree),
+                etiquette: ETIQUETTES[e].into(),
+            }
         })
         .collect()
 }
@@ -292,7 +344,13 @@ pub fn segments(a: &Activations) -> Vec<Section> {
 /// moyenne des fenêtres passée et future (signal complété de zéros).
 fn choisir_pics(act: &[f32], passe: usize, futur: usize) -> Vec<usize> {
     let t = act.len();
-    let val = |i: i64| if i >= 0 && (i as usize) < t { act[i as usize] } else { 0.0 };
+    let val = |i: i64| {
+        if i >= 0 && (i as usize) < t {
+            act[i as usize]
+        } else {
+            0.0
+        }
+    };
     let mut pics = Vec::new();
     for (i, &x) in act.iter().enumerate() {
         if x <= 0.0 {
@@ -341,9 +399,20 @@ mod tests {
         for i in 1500..t {
             function[9 * t + i] = 5.0; // chorus
         }
-        let s = segments(&Activations { trames: t, section, function, ..Default::default() });
+        let s = segments(&Activations {
+            trames: t,
+            section,
+            function,
+            ..Default::default()
+        });
         assert_eq!(s.len(), 2);
-        assert_eq!((s[0].debut_s, s[0].fin_s, s[0].etiquette.as_str()), (0.0, 15.0, "verse"));
-        assert_eq!((s[1].debut_s, s[1].fin_s, s[1].etiquette.as_str()), (15.0, 30.0, "chorus"));
+        assert_eq!(
+            (s[0].debut_s, s[0].fin_s, s[0].etiquette.as_str()),
+            (0.0, 15.0, "verse")
+        );
+        assert_eq!(
+            (s[1].debut_s, s[1].fin_s, s[1].etiquette.as_str()),
+            (15.0, 30.0, "chorus")
+        );
     }
 }

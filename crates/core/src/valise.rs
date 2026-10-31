@@ -124,12 +124,20 @@ pub struct Part {
 impl Part {
     /// Une part égale du budget, sans compte d'albums.
     pub fn budget(regle: Regle) -> Self {
-        Self { regle, albums: None, famille: None }
+        Self {
+            regle,
+            albums: None,
+            famille: None,
+        }
     }
 
     /// Au plus `albums` albums.
     pub fn albums(regle: Regle, albums: usize) -> Self {
-        Self { regle, albums: Some(albums), famille: None }
+        Self {
+            regle,
+            albums: Some(albums),
+            famille: None,
+        }
     }
 }
 
@@ -165,7 +173,10 @@ pub struct Reglages {
 impl Default for Reglages {
     fn default() -> Self {
         Self {
-            parts: vec![Part::budget(Regle::Recents), Part::budget(Regle::PeuEcoutes)],
+            parts: vec![
+                Part::budget(Regle::Recents),
+                Part::budget(Regle::PeuEcoutes),
+            ],
             budget_octets: 4 * 1024 * 1024 * 1024,
             pistes_min: 3,
             par_artiste: 2,
@@ -331,10 +342,10 @@ impl Library {
         let mut reste_total = reglages.budget_octets;
 
         let retenir = |c: &Candidat,
-                           regle: Regle,
-                           retenus: &mut Vec<AlbumValise>,
-                           pris: &mut HashSet<u64>,
-                           par_artiste: &mut HashMap<String, usize>|
+                       regle: Regle,
+                       retenus: &mut Vec<AlbumValise>,
+                       pris: &mut HashSet<u64>,
+                       par_artiste: &mut HashMap<String, usize>|
          -> Result<()> {
             *par_artiste.entry(c.artiste.to_lowercase()).or_default() += 1;
             pris.insert(c.hache);
@@ -418,7 +429,10 @@ impl Library {
                     || exclus.contains(format!("{:016x}", c.hache).as_str())
                     || c.octets == 0
                     || c.octets > plafond
-                    || par_artiste.get(&c.artiste.to_lowercase()).copied().unwrap_or(0)
+                    || par_artiste
+                        .get(&c.artiste.to_lowercase())
+                        .copied()
+                        .unwrap_or(0)
                         >= reglages.par_artiste.max(1)
                 {
                     continue;
@@ -441,9 +455,11 @@ impl Library {
     pub fn reglages_valise(&self) -> Result<Reglages> {
         let json: Option<String> = self
             .conn
-            .query_row("SELECT reglages FROM valise_preparation WHERE id = 1", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT reglages FROM valise_preparation WHERE id = 1",
+                [],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(json
             .and_then(|j| serde_json::from_str(&j).ok())
@@ -822,7 +838,12 @@ pub fn exporter(
     let manifeste = Manifeste {
         format: VERSION_FORMAT,
         cree_le: maintenant(),
-        regles: selection.reglages.parts.iter().map(|p| p.regle.code()).collect(),
+        regles: selection
+            .reglages
+            .parts
+            .iter()
+            .map(|p| p.regle.code())
+            .collect(),
         budget_octets: selection.reglages.budget_octets,
         octets: rapport.octets,
         albums: &selection.albums,
@@ -937,10 +958,8 @@ pub fn lire_journal(chemin: &Path) -> Result<Journal> {
         chemin.to_path_buf()
     };
     let texte = std::fs::read_to_string(&fichier)?;
-    serde_json::from_str(&texte)
-        .map_err(|e| Error::Parsing(format!("{} : {e}", fichier.display())))
+    serde_json::from_str(&texte).map_err(|e| Error::Parsing(format!("{} : {e}", fichier.display())))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1050,10 +1069,18 @@ mod tests {
     fn parts_comptees_epingles_et_exclus() {
         let racine = racine_test("parts");
         let lib = bibliotheque(&racine, 9, 100);
-        let id = |k: usize| format!("{:016x}", hacher(&format!("Artiste {}", k % 3), &format!("Album {k}")));
+        let id = |k: usize| {
+            format!(
+                "{:016x}",
+                hacher(&format!("Artiste {}", k % 3), &format!("Album {k}"))
+            )
+        };
         let sel = lib
             .selectionner_valise(&Reglages {
-                parts: vec![Part::albums(Regle::Recents, 2), Part::albums(Regle::Hasard, 1)],
+                parts: vec![
+                    Part::albums(Regle::Recents, 2),
+                    Part::albums(Regle::Hasard, 1),
+                ],
                 budget_octets: 100_000,
                 par_artiste: 9,
                 epingles: vec![id(0)],
@@ -1061,8 +1088,11 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        let noms: Vec<(&str, Regle)> =
-            sel.albums.iter().map(|a| (a.album.as_str(), a.regle)).collect();
+        let noms: Vec<(&str, Regle)> = sel
+            .albums
+            .iter()
+            .map(|a| (a.album.as_str(), a.regle))
+            .collect();
         // L'épinglé d'abord, puis deux récents sans l'exclu, puis un tirage.
         assert_eq!(noms.len(), 4);
         assert_eq!(noms[0], ("Album 0", Regle::Choisi));
@@ -1158,12 +1188,18 @@ mod tests {
         for le in [5000, 6000] {
             telephone
                 .conn
-                .execute("INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)", params![a, le])
+                .execute(
+                    "INSERT INTO ecoute(chemin, le) VALUES (?1, ?2)",
+                    params![a, le],
+                )
                 .unwrap();
         }
         telephone
             .conn
-            .execute("INSERT INTO ecoute(chemin, le) VALUES ('/ailleurs.mp3', 7000)", [])
+            .execute(
+                "INSERT INTO ecoute(chemin, le) VALUES ('/ailleurs.mp3', 7000)",
+                [],
+            )
             .unwrap();
         ecrire_journal(&telephone, &racine).unwrap();
 
@@ -1171,16 +1207,26 @@ mod tests {
         assert_eq!(journal.ecoutes.len(), 3);
         assert_eq!(
             mac.importer_journal(&journal).unwrap(),
-            Import { nouvelles: 3, deja: 0, inconnues: 1 }
+            Import {
+                nouvelles: 3,
+                deja: 0,
+                inconnues: 1
+            }
         );
         // Deuxième import du même journal : rien de neuf.
         assert_eq!(
             mac.importer_journal(&journal).unwrap(),
-            Import { nouvelles: 0, deja: 3, inconnues: 0 }
+            Import {
+                nouvelles: 0,
+                deja: 3,
+                inconnues: 0
+            }
         );
         let n: i64 = mac
             .conn
-            .query_row("SELECT COUNT(*) FROM ecoute WHERE chemin = ?1", [&a], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM ecoute WHERE chemin = ?1", [&a], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 2);
     }

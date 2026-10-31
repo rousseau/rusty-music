@@ -44,7 +44,9 @@ pub struct Dense<B: Backend> {
 
 impl<B: Backend> Dense<B> {
     fn new(entree: usize, sortie: usize, device: &B::Device) -> Self {
-        Self { dense: LinearConfig::new(entree, sortie).init(device) }
+        Self {
+            dense: LinearConfig::new(entree, sortie).init(device),
+        }
     }
 }
 
@@ -70,13 +72,23 @@ impl<B: Backend, const R: usize> ModuleAttention<B, R> {
         let forme: [usize; R] = std::array::from_fn(|i| if i == 0 { TETES } else { large });
         let lin = || LinearConfig::new(DIM, DIM).init(device);
         Self {
-            soi: Attention { query: lin(), key: lin(), value: lin(), rpb: Param::from_tensor(Tensor::zeros(forme, device)) },
+            soi: Attention {
+                query: lin(),
+                key: lin(),
+                value: lin(),
+                rpb: Param::from_tensor(Tensor::zeros(forme, device)),
+            },
             output: Dense::new(DIM, DIM, device),
         }
     }
 
     /// `h` `[B, X, Y, C]`, grille complète → `[B, X, Y, C]`.
-    fn forward(&self, h: Tensor<B, 4>, dilatation: usize, indices: &mut Indices<B>) -> Tensor<B, 4> {
+    fn forward(
+        &self,
+        h: Tensor<B, 4>,
+        dilatation: usize,
+        indices: &mut Indices<B>,
+    ) -> Tensor<B, 4> {
         let [b, x, y, c] = h.dims();
         let dh = c / TETES;
         let tetes = |t: Tensor<B, 4>| t.reshape([b, x * y, TETES, dh]).swap_dims(1, 2);
@@ -86,7 +98,9 @@ impl<B: Backend, const R: usize> ModuleAttention<B, R> {
         let (idx, bidx) = indices.de(x, y, NOYAU, dilatation);
         let n = if x == 1 { NOYAU } else { NOYAU * NOYAU };
         let rpb = self.soi.rpb.val().reshape([TETES as i32, -1]);
-        let ctx = attention(q, k, v, rpb, idx, bidx, n).swap_dims(1, 2).reshape([b, x, y, c]);
+        let ctx = attention(q, k, v, rpb, idx, bidx, n)
+            .swap_dims(1, 2)
+            .reshape([b, x, y, c]);
         self.output.dense.forward(ctx)
     }
 }
@@ -118,7 +132,14 @@ impl<B: Backend, const R: usize> Couche<B, R> {
 
     /// `x` `[B, X, Y, C]` ; la grille est complétée de zéros jusqu'à
     /// `x_min × y_min` après la normalisation, puis recoupée.
-    fn forward(&self, x: Tensor<B, 4>, dilatation: usize, x_min: usize, y_min: usize, indices: &mut Indices<B>) -> Tensor<B, 4> {
+    fn forward(
+        &self,
+        x: Tensor<B, 4>,
+        dilatation: usize,
+        x_min: usize,
+        y_min: usize,
+        indices: &mut Indices<B>,
+    ) -> Tensor<B, 4> {
         let [b, gx, gy, c] = x.dims();
         let device = x.device();
         let mut h = self.layernorm_before.forward(x.clone());
@@ -134,11 +155,18 @@ impl<B: Backend, const R: usize> Couche<B, R> {
         let (milieu, raccourci) = match &self.attention2 {
             Some(a2) => {
                 let h2 = x + recouper(a2.forward(h, 2 * dilatation, indices));
-                (Tensor::cat(vec![h1.clone(), h2.clone()], 3), (h1 + h2) / 2.0)
+                (
+                    Tensor::cat(vec![h1.clone(), h2.clone()], 3),
+                    (h1 + h2) / 2.0,
+                )
             }
             None => (h1.clone(), h1),
         };
-        let m = self.output.dense.forward(gelu(self.intermediate.dense.forward(self.layernorm_after.forward(milieu))));
+        let m = self.output.dense.forward(gelu(
+            self.intermediate
+                .dense
+                .forward(self.layernorm_after.forward(milieu)),
+        ));
         raccourci + m
     }
 }
@@ -172,13 +200,16 @@ pub struct Tete<B: Backend> {
 
 impl<B: Backend> Tete<B> {
     fn new(classes: usize, device: &B::Device) -> Self {
-        Self { classifier: LinearConfig::new(INSTRUMENTS * DIM, classes).init(device) }
+        Self {
+            classifier: LinearConfig::new(INSTRUMENTS * DIM, classes).init(device),
+        }
     }
 
     /// `h` `[1, K, T, C]` → `[T, classes]`.
     fn forward(&self, h: Tensor<B, 4>) -> Tensor<B, 2> {
         let [_, k, t, c] = h.dims();
-        self.classifier.forward(h.swap_dims(1, 2).reshape([t, k * c]))
+        self.classifier
+            .forward(h.swap_dims(1, 2).reshape([t, k * c]))
     }
 }
 
@@ -205,7 +236,11 @@ pub struct Logits<B: Backend> {
 impl<B: Backend> AllInOne<B> {
     pub fn new(device: &B::Device) -> Self {
         let pool = || MaxPool2dConfig::new([1, 3]).with_strides([1, 3]).init();
-        let conv = |e, s, noyau: [usize; 2], pad: usize| Conv2dConfig::new([e, s], noyau).with_padding(PaddingConfig2d::Explicit(pad, 0, pad, 0)).init(device);
+        let conv = |e, s, noyau: [usize; 2], pad: usize| {
+            Conv2dConfig::new([e, s], noyau)
+                .with_padding(PaddingConfig2d::Explicit(pad, 0, pad, 0))
+                .init(device)
+        };
         Self {
             embeddings: Plongement {
                 conv0: conv(1, DIM / 2, [3, 3], 1),
@@ -217,7 +252,12 @@ impl<B: Backend> AllInOne<B> {
                 norm: LayerNormConfig::new(DIM).init(device),
             },
             encoder: Encodeur {
-                layers: (0..PROFONDEUR).map(|_| Bloc { timelayer: Couche::new(true, device), instlayer: Couche::new(false, device) }).collect(),
+                layers: (0..PROFONDEUR)
+                    .map(|_| Bloc {
+                        timelayer: Couche::new(true, device),
+                        instlayer: Couche::new(false, device),
+                    })
+                    .collect(),
             },
             norm: LayerNormConfig::new(DIM).with_epsilon(EPS).init(device),
             beat_classifier: Tete::new(1, device),
@@ -239,9 +279,13 @@ impl<B: Backend> AllInOne<B> {
         for (i, bloc) in self.encoder.layers.iter().enumerate() {
             let d = 1usize << i;
             // Temps : chaque stem est une séquence (grille 1 × T).
-            let ht = bloc.timelayer.forward(h.reshape([k, 1, t, DIM]), d, 1, NOYAU * d * 2, indices);
+            let ht =
+                bloc.timelayer
+                    .forward(h.reshape([k, 1, t, DIM]), d, 1, NOYAU * d * 2, indices);
             // Instruments × temps : une grille K × T.
-            let hi = bloc.instlayer.forward(ht.reshape([1, k, t, DIM]), 1, NOYAU, NOYAU, indices);
+            let hi = bloc
+                .instlayer
+                .forward(ht.reshape([1, k, t, DIM]), 1, NOYAU, NOYAU, indices);
             h = hi.reshape([k, t, DIM]);
         }
         let h = self.norm.forward(h.reshape([1, k, t, DIM]));

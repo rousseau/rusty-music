@@ -30,12 +30,19 @@ pub struct NormeRms<B: Backend> {
 
 impl<B: Backend> NormeRms<B> {
     fn new(dim: usize, device: &B::Device) -> Self {
-        Self { gamma: Param::from_tensor(Tensor::ones([dim], device)) }
+        Self {
+            gamma: Param::from_tensor(Tensor::ones([dim], device)),
+        }
     }
 
     pub fn forward<const D: usize>(&self, x: Tensor<B, D>) -> Tensor<B, D> {
         let dim = x.dims()[D - 1];
-        let norme = x.clone().powi_scalar(2).sum_dim(D - 1).sqrt().clamp_min(1e-12);
+        let norme = x
+            .clone()
+            .powi_scalar(2)
+            .sum_dim(D - 1)
+            .sqrt()
+            .clamp_min(1e-12);
         x / norme * (dim as f32).sqrt() * self.gamma.val().unsqueeze::<D>()
     }
 }
@@ -55,8 +62,15 @@ fn appliquer<B: Backend>(l: &Linear<B>, x: Tensor<B, 3>) -> Tensor<B, 3> {
     y.reshape([lot, n, sortie])
 }
 
-fn lineaire<B: Backend>(entree: usize, sortie: usize, biais: bool, device: &B::Device) -> Linear<B> {
-    LinearConfig::new(entree, sortie).with_bias(biais).init(device)
+fn lineaire<B: Backend>(
+    entree: usize,
+    sortie: usize,
+    biais: bool,
+    device: &B::Device,
+) -> Linear<B> {
+    LinearConfig::new(entree, sortie)
+        .with_bias(biais)
+        .init(device)
 }
 
 /// Fréquences de RoPE (`rotary_embed.freqs`, une par paire de la tête).
@@ -74,7 +88,10 @@ impl<B: Backend> Rotation<B> {
         let positions = Tensor::<B, 1, burn::tensor::Int>::arange(0..n as i64, &device).float();
         // [n, d/2]
         let angles = positions.unsqueeze_dim::<2>(1) * self.freqs.val().unsqueeze_dim::<2>(0);
-        let (cos, sin) = (angles.clone().cos().reshape([1, 1, n, d / 2, 1]), angles.sin().reshape([1, 1, n, d / 2, 1]));
+        let (cos, sin) = (
+            angles.clone().cos().reshape([1, 1, n, d / 2, 1]),
+            angles.sin().reshape([1, 1, n, d / 2, 1]),
+        );
         let paires = x.reshape([lot, tetes, n, d / 2, 2]);
         let x0 = paires.clone().slice_dim(4, 0..1);
         let x1 = paires.slice_dim(4, 1..2);
@@ -105,7 +122,12 @@ impl<B: Backend> Attention<B> {
         let interne = qkv.dims()[2] / 3;
         let d = interne / tetes;
         // 'b n (qkv h d) -> qkv b h n d'
-        let part = |i: usize| qkv.clone().slice_dim(2, i * interne..(i + 1) * interne).reshape([lot, n, tetes, d]).swap_dims(1, 2);
+        let part = |i: usize| {
+            qkv.clone()
+                .slice_dim(2, i * interne..(i + 1) * interne)
+                .reshape([lot, n, tetes, d])
+                .swap_dims(1, 2)
+        };
         let q = self.rotary_embed.appliquer(part(0));
         let k = self.rotary_embed.appliquer(part(1));
         let v = part(2);
@@ -113,12 +135,22 @@ impl<B: Backend> Attention<B> {
         let mut sorties = Vec::with_capacity(lot.div_ceil(tranche));
         for debut in (0..lot).step_by(tranche) {
             let fin = (debut + tranche).min(lot);
-            let (q, k, v) = (q.clone().slice_dim(0, debut..fin), k.clone().slice_dim(0, debut..fin), v.clone().slice_dim(0, debut..fin));
+            let (q, k, v) = (
+                q.clone().slice_dim(0, debut..fin),
+                k.clone().slice_dim(0, debut..fin),
+                v.clone().slice_dim(0, debut..fin),
+            );
             let scores = softmax(q.matmul(k.swap_dims(2, 3)) * echelle, 3);
             sorties.push(scores.matmul(v));
         }
-        let sortie = if sorties.len() == 1 { sorties.pop().unwrap() } else { Tensor::cat(sorties, 0) };
-        let portes = sigmoid(appliquer(&self.to_gates, x)).swap_dims(1, 2).unsqueeze_dim::<4>(3);
+        let sortie = if sorties.len() == 1 {
+            sorties.pop().unwrap()
+        } else {
+            Tensor::cat(sorties, 0)
+        };
+        let portes = sigmoid(appliquer(&self.to_gates, x))
+            .swap_dims(1, 2)
+            .unsqueeze_dim::<4>(3);
         let sortie = (sortie * portes).swap_dims(1, 2).reshape([lot, n, interne]);
         appliquer(&self.to_out, sortie)
     }
@@ -133,7 +165,10 @@ pub struct Anticipation<B: Backend> {
 
 impl<B: Backend> Anticipation<B> {
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
-        appliquer(&self.sortie, gelu(appliquer(&self.entree, self.norme.forward(x))))
+        appliquer(
+            &self.sortie,
+            gelu(appliquer(&self.entree, self.norme.forward(x))),
+        )
     }
 }
 
@@ -205,7 +240,9 @@ impl<B: Backend> Reseau<B> {
                     to_qkv: lineaire(c.dim, 3 * interne, false, device),
                     to_gates: lineaire(c.dim, c.tetes, true, device),
                     to_out: lineaire(interne, c.dim, false, device),
-                    rotary_embed: Rotation { freqs: Param::from_tensor(Tensor::zeros([c.dim_tete / 2], device)) },
+                    rotary_embed: Rotation {
+                        freqs: Param::from_tensor(Tensor::zeros([c.dim_tete / 2], device)),
+                    },
                 },
                 ff: Anticipation {
                     norme: NormeRms::new(c.dim, device),
@@ -217,16 +254,33 @@ impl<B: Backend> Reseau<B> {
         let cache = c.dim * c.expansion_masque;
         Self {
             band_split: Decoupe {
-                to_features: c.bandes.iter().map(|&b| Projection { norme: NormeRms::new(4 * b, device), lineaire: lineaire(4 * b, c.dim, true, device) }).collect(),
+                to_features: c
+                    .bandes
+                    .iter()
+                    .map(|&b| Projection {
+                        norme: NormeRms::new(4 * b, device),
+                        lineaire: lineaire(4 * b, c.dim, true, device),
+                    })
+                    .collect(),
             },
-            layers: (0..c.profondeur).map(|_| Bloc { temps: transformer(), frequence: transformer() }).collect(),
+            layers: (0..c.profondeur)
+                .map(|_| Bloc {
+                    temps: transformer(),
+                    frequence: transformer(),
+                })
+                .collect(),
             final_norm: NormeRms::new(c.dim, device),
             mask_estimators: (0..c.stems.len())
                 .map(|_| Masque {
                     to_freqs: c
                         .bandes
                         .iter()
-                        .map(|&b| Perceptron { couches: vec![lineaire(c.dim, cache, true, device), lineaire(cache, 2 * 4 * b, true, device)] })
+                        .map(|&b| Perceptron {
+                            couches: vec![
+                                lineaire(c.dim, cache, true, device),
+                                lineaire(cache, 2 * 4 * b, true, device),
+                            ],
+                        })
                         .collect(),
                 })
                 .collect(),
@@ -250,7 +304,10 @@ impl<B: Backend> Reseau<B> {
     /// `x` `[trames, bandes, dim]`.
     pub fn bloc(&self, i: usize, x: Tensor<B, 3>, c: &Config) -> Tensor<B, 3> {
         let b = &self.layers[i];
-        let x = b.temps.forward(x.swap_dims(0, 1), c.tetes, c.tranche_temps).swap_dims(0, 1);
+        let x = b
+            .temps
+            .forward(x.swap_dims(0, 1), c.tetes, c.tranche_temps)
+            .swap_dims(0, 1);
         b.frequence.forward(x, c.tetes, c.tranche_frequence)
     }
 }
@@ -283,18 +340,32 @@ impl<B: Backend> Tetes<B> {
         }
         let empiler = |l: Vec<&Linear<B>>| {
             let poids = Tensor::stack::<3>(l.iter().map(|l| l.weight.val()).collect(), 0);
-            let biais = Tensor::stack::<2>(l.iter().map(|l| l.bias.as_ref().expect("biais").val()).collect(), 0).unsqueeze_dim::<3>(1);
+            let biais = Tensor::stack::<2>(
+                l.iter()
+                    .map(|l| l.bias.as_ref().expect("biais").val())
+                    .collect(),
+                0,
+            )
+            .unsqueeze_dim::<3>(1);
             (poids, biais)
         };
         let stems = masques
             .iter()
             .map(|m| {
-                assert!(m.to_freqs.iter().all(|p| p.couches.len() == 2), "tête de masque de profondeur 2 seulement");
+                assert!(
+                    m.to_freqs.iter().all(|p| p.couches.len() == 2),
+                    "tête de masque de profondeur 2 seulement"
+                );
                 let entree = empiler(m.to_freqs.iter().map(|p| &p.couches[0]).collect());
                 let sorties = groupes
                     .iter()
                     .map(|g| {
-                        let (w, b) = empiler(m.to_freqs[g.clone()].iter().map(|p| &p.couches[1]).collect());
+                        let (w, b) = empiler(
+                            m.to_freqs[g.clone()]
+                                .iter()
+                                .map(|p| &p.couches[1])
+                                .collect(),
+                        );
                         (g.clone(), w, b)
                     })
                     .collect();
@@ -320,7 +391,8 @@ impl<B: Backend> Tetes<B> {
                     .map(|(g, w, b)| {
                         let y = h.clone().slice_dim(0, g.clone()).matmul(w.clone()) + b.clone();
                         let moitie = y.dims()[2] / 2;
-                        let y = y.clone().slice_dim(2, 0..moitie) * sigmoid(y.slice_dim(2, moitie..2 * moitie));
+                        let y = y.clone().slice_dim(2, 0..moitie)
+                            * sigmoid(y.slice_dim(2, moitie..2 * moitie));
                         y.swap_dims(0, 1).reshape([trames as i32, -1])
                     })
                     .collect::<Vec<Tensor<B, 2>>>();

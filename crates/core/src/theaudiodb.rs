@@ -79,8 +79,13 @@ impl Client {
     /// `strMusicBrainzID` de la réponse est vérifié contre `mbid` demandé —
     /// défense bon marché contre une réponse mal alignée.
     pub fn artiste_par_mbid(&self, mbid: &str) -> Result<Option<Artiste>> {
-        let url = format!("https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}", self.cle);
-        let Some(v) = self.json(&url)? else { return Ok(None) };
+        let url = format!(
+            "https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}",
+            self.cle
+        );
+        let Some(v) = self.json(&url)? else {
+            return Ok(None);
+        };
         Ok(artiste_de(&v, mbid))
     }
 
@@ -92,8 +97,13 @@ impl Client {
     /// `Ok(None)` : pas de photo (réponse définitive). `Err` : panne réseau ou
     /// image illisible — à ne pas mettre en cache.
     pub fn vignette_par_mbid(&self, mbid: &str) -> Result<Option<Vec<u8>>> {
-        let url = format!("https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}", self.cle);
-        let Some(v) = self.json(&url)? else { return Ok(None) };
+        let url = format!(
+            "https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}",
+            self.cle
+        );
+        let Some(v) = self.json(&url)? else {
+            return Ok(None);
+        };
         match vignette_de(&v, mbid) {
             Some(image) => crate::pochette::telecharger(&image),
             None => Ok(None),
@@ -108,7 +118,12 @@ fn artiste_de(v: &Value, mbid_demande: &str) -> Option<Artiste> {
     if a["strMusicBrainzID"].as_str() != Some(mbid_demande) {
         return None;
     }
-    let texte = |champ: &str| a[champ].as_str().filter(|s| !s.is_empty()).map(str::to_string);
+    let texte = |champ: &str| {
+        a[champ]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
     Some(Artiste {
         id_theaudiodb: a["idArtist"].as_str().unwrap_or_default().to_string(),
         biographie_en: texte("strBiography"),
@@ -123,7 +138,10 @@ fn vignette_de(v: &Value, mbid_demande: &str) -> Option<String> {
     if a["strMusicBrainzID"].as_str() != Some(mbid_demande) {
         return None;
     }
-    a["strArtistThumb"].as_str().filter(|s| !s.is_empty()).map(str::to_string)
+    a["strArtistThumb"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -184,10 +202,9 @@ mod tests {
 
     #[test]
     fn vignette_de_sans_image_ou_sans_resultat_rend_rien() {
-        let vide: Value = serde_json::from_str(
-            r#"{"artists":[{"strMusicBrainzID":"m","strArtistThumb":""}]}"#,
-        )
-        .expect("JSON de test");
+        let vide: Value =
+            serde_json::from_str(r#"{"artists":[{"strMusicBrainzID":"m","strArtistThumb":""}]}"#)
+                .expect("JSON de test");
         assert_eq!(vignette_de(&vide, "m"), None);
         let nul: Value = serde_json::from_str(r#"{"artists":null}"#).expect("JSON de test");
         assert_eq!(vignette_de(&nul, "m"), None);

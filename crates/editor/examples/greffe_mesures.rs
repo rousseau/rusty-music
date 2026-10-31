@@ -26,7 +26,13 @@ fn stems(dossier: &Path) -> Vec<(String, PathBuf)> {
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "wav"))
         .filter_map(|p| {
-            let n = p.file_stem()?.to_string_lossy().rsplit('—').next()?.trim().to_string();
+            let n = p
+                .file_stem()?
+                .to_string_lossy()
+                .rsplit('—')
+                .next()?
+                .trim()
+                .to_string();
             Some((n, p))
         })
         .collect();
@@ -64,16 +70,36 @@ fn grille(dossier: &Path) -> Result<(Grille, Vec<f32>), Box<dyn std::error::Erro
             })
         })
         .unwrap_or_default();
-    Ok((Grille { metrique: p.metrique(), premiers_temps: p.premiers_temps, sections }, p.temps))
+    Ok((
+        Grille {
+            metrique: p.metrique(),
+            premiers_temps: p.premiers_temps,
+            sections,
+        },
+        p.temps,
+    ))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().skip(1).collect();
     if a.len() != 4 {
-        return Err("usage : greffe_mesures <dossier source> <dossier greffon> <stem> <sortie.wav>".into());
+        return Err(
+            "usage : greffe_mesures <dossier source> <dossier greffon> <stem> <sortie.wav>".into(),
+        );
     }
-    let (ds, dg, stem, sortie) = (Path::new(&a[0]), Path::new(&a[1]), a[2].as_str(), PathBuf::from(&a[3]));
-    let trouver = |d: &Path| stems(d).into_iter().find(|(n, _)| n == stem).map(|(_, p)| p).ok_or(format!("pas de stem {stem} dans {}", d.display()));
+    let (ds, dg, stem, sortie) = (
+        Path::new(&a[0]),
+        Path::new(&a[1]),
+        a[2].as_str(),
+        PathBuf::from(&a[3]),
+    );
+    let trouver = |d: &Path| {
+        stems(d)
+            .into_iter()
+            .find(|(n, _)| n == stem)
+            .map(|(_, p)| p)
+            .ok_or(format!("pas de stem {stem} dans {}", d.display()))
+    };
     let (remplace, greffon) = (trouver(ds)?, trouver(dg)?);
     let ((gs, ts), (gg, tg)) = (grille(ds)?, grille(dg)?);
     println!(
@@ -92,8 +118,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             d.sort_by(f32::total_cmp);
             d[d.len() / 2]
         };
-        let cale = greffe::Cale { phase_remplace_s: ts[0], phase_greffon_s: tg[0], periode_greffon_s: periode(&tg) };
-        greffe::greffer(&remplace, &greffon, Some(60.0 / periode(&ts)), Some(60.0 / periode(&tg)), Some(cale), &sortie)?
+        let cale = greffe::Cale {
+            phase_remplace_s: ts[0],
+            phase_greffon_s: tg[0],
+            periode_greffon_s: periode(&tg),
+        };
+        greffe::greffer(
+            &remplace,
+            &greffon,
+            Some(60.0 / periode(&ts)),
+            Some(60.0 / periode(&tg)),
+            Some(cale),
+            &sortie,
+        )?
     } else {
         greffe::mesure_a_mesure(&gs, &gg)?;
         greffe::greffer_par_mesures(&remplace, &greffon, &gs, &gg, &sortie)?
@@ -103,16 +140,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Le mélange : les autres stems de la source et le greffon.
     let mut g: Vec<f32> = Vec::new();
     let mut d: Vec<f32> = Vec::new();
-    for p in stems(ds).into_iter().filter(|(n, _)| n != stem).map(|(_, p)| p).chain([sortie.clone()]) {
+    for p in stems(ds)
+        .into_iter()
+        .filter(|(n, _)| n != stem)
+        .map(|(_, p)| p)
+        .chain([sortie.clone()])
+    {
         let s = decode::stereo(&p)?;
         g.resize(g.len().max(s.gauche.len()), 0.0);
         d.resize(d.len().max(s.droite.len()), 0.0);
         g.iter_mut().zip(&s.gauche).for_each(|(x, y)| *x += y);
         d.iter_mut().zip(&s.droite).for_each(|(x, y)| *x += y);
     }
-    let crete = g.iter().chain(&d).fold(0.0f32, |m, x| m.max(x.abs())).max(1.0);
+    let crete = g
+        .iter()
+        .chain(&d)
+        .fold(0.0f32, |m, x| m.max(x.abs()))
+        .max(1.0);
     g.iter_mut().chain(d.iter_mut()).for_each(|x| *x /= crete);
-    let mix = sortie.with_file_name(format!("{}-mix.wav", sortie.file_stem().unwrap_or_default().to_string_lossy()));
+    let mix = sortie.with_file_name(format!(
+        "{}-mix.wav",
+        sortie.file_stem().unwrap_or_default().to_string_lossy()
+    ));
     wav::ecrire(&mix, &g, &d, SR)?;
     println!("écrit : {} et {}", sortie.display(), mix.display());
     Ok(())

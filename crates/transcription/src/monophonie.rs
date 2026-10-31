@@ -51,7 +51,14 @@ mod tests {
     use super::*;
 
     fn n(debut: f32, fin: f32, hauteur: u8, amplitude: f32) -> Note {
-        Note { debut_s: debut, fin_s: fin, hauteur, amplitude, corde: None, frette: None }
+        Note {
+            debut_s: debut,
+            fin_s: fin,
+            hauteur,
+            amplitude,
+            corde: None,
+            frette: None,
+        }
     }
 
     #[test]

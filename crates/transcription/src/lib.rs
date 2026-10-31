@@ -74,9 +74,15 @@ impl Poids {
         if self.present() {
             return Ok(());
         }
-        rusty_music_core::modeles::telecharger(self.nom, self.url, self.octets, Some(self.sha256), avancer)
-            .map(|_| ())
-            .map_err(|e| Error::Telechargement(e.to_string()))
+        rusty_music_core::modeles::telecharger(
+            self.nom,
+            self.url,
+            self.octets,
+            Some(self.sha256),
+            avancer,
+        )
+        .map(|_| ())
+        .map_err(|e| Error::Telechargement(e.to_string()))
     }
 }
 

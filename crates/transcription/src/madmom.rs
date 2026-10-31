@@ -32,9 +32,16 @@ pub fn banc_de_filtres(fmin: f64, fmax: f64) -> (Vec<f32>, usize) {
     let mut bins: Vec<usize> = freqs
         .iter()
         .map(|&f| {
-            let i = (0..n_bins).position(|k| freq_bin(k) >= f).unwrap_or(n_bins).clamp(1, n_bins - 1);
+            let i = (0..n_bins)
+                .position(|k| freq_bin(k) >= f)
+                .unwrap_or(n_bins)
+                .clamp(1, n_bins - 1);
             let (g, d) = (freq_bin(i - 1), freq_bin(i));
-            if f - g < d - f { i - 1 } else { i }
+            if f - g < d - f {
+                i - 1
+            } else {
+                i
+            }
         })
         .collect();
     bins.dedup();
@@ -70,7 +77,12 @@ pub fn banc_de_filtres(fmin: f64, fmax: f64) -> (Vec<f32>, usize) {
 /// `gauche`/`droite` : le signal stéréo à 44,1 kHz, en `f32` dans [−1, 1]
 /// (tel que le rendent nos décodeurs depuis un WAV 16 bits). Comme madmom, on
 /// repasse en entiers 16 bits et on moyenne les canaux **en tronquant**.
-pub fn spectre_log(gauche: &[f32], droite: &[f32], fmin: f64, fmax: f64) -> (Vec<f32>, usize, usize) {
+pub fn spectre_log(
+    gauche: &[f32],
+    droite: &[f32],
+    fmin: f64,
+    fmax: f64,
+) -> (Vec<f32>, usize, usize) {
     let mono: Vec<f64> = gauche
         .iter()
         .zip(droite)
@@ -84,7 +96,10 @@ pub fn spectre_log(gauche: &[f32], droite: &[f32], fmin: f64, fmax: f64) -> (Vec
     let trames = (n as f64 / SAUT).ceil() as usize;
     let (fb, bandes) = banc_de_filtres(fmin, fmax);
     let fenetre: Vec<f64> = (0..TRAME)
-        .map(|k| (0.5 - 0.5 * (2.0 * std::f64::consts::PI * k as f64 / (TRAME - 1) as f64).cos()) / 32767.0)
+        .map(|k| {
+            (0.5 - 0.5 * (2.0 * std::f64::consts::PI * k as f64 / (TRAME - 1) as f64).cos())
+                / 32767.0
+        })
         .collect();
     let fft: Arc<dyn rustfft::Fft<f64>> = rustfft::FftPlanner::new().plan_fft_forward(TRAME);
     let mut tampon = vec![rustfft::num_complex::Complex::new(0.0f64, 0.0); TRAME];
@@ -92,13 +107,23 @@ pub fn spectre_log(gauche: &[f32], droite: &[f32], fmin: f64, fmax: f64) -> (Vec
     let mut spectre = vec![0.0f32; TRAME / 2];
     // Chaque filtre ne couvre que quelques cases : on ne garde que celles-là,
     // dans l'ordre (même somme, au bit près).
-    let creux: Vec<Vec<(usize, f32)>> =
-        (0..bandes).map(|b| (0..TRAME / 2).map(|k| (k, fb[k * bandes + b])).filter(|&(_, w)| w != 0.0).collect()).collect();
+    let creux: Vec<Vec<(usize, f32)>> = (0..bandes)
+        .map(|b| {
+            (0..TRAME / 2)
+                .map(|k| (k, fb[k * bandes + b]))
+                .filter(|&(_, w)| w != 0.0)
+                .collect()
+        })
+        .collect();
     for t in 0..trames {
         let debut = (t as f64 * SAUT) as i64 - (TRAME / 2) as i64;
         for (k, c) in tampon.iter_mut().enumerate() {
             let i = debut + k as i64;
-            let x = if i >= 0 && (i as usize) < n { mono[i as usize] } else { 0.0 };
+            let x = if i >= 0 && (i as usize) < n {
+                mono[i as usize]
+            } else {
+                0.0
+            };
             *c = rustfft::num_complex::Complex::new(x * fenetre[k], 0.0);
         }
         fft.process(&mut tampon);

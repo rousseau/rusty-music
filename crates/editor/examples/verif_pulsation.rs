@@ -19,10 +19,11 @@ fn fichiers(dossier: &Path, sortie: &mut Vec<PathBuf>) -> std::io::Result<()> {
         let p = e?.path();
         if p.is_dir() {
             fichiers(&p, sortie)?;
-        } else if p
-            .extension()
-            .is_some_and(|x| ["wav", "mp3", "flac", "ogg", "m4a", "au"].iter().any(|y| x.eq_ignore_ascii_case(y)))
-        {
+        } else if p.extension().is_some_and(|x| {
+            ["wav", "mp3", "flac", "ogg", "m4a", "au"]
+                .iter()
+                .any(|y| x.eq_ignore_ascii_case(y))
+        }) {
             sortie.push(p);
         }
     }
@@ -31,7 +32,10 @@ fn fichiers(dossier: &Path, sortie: &mut Vec<PathBuf>) -> std::io::Result<()> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let entree = PathBuf::from(args.next().ok_or("usage : verif_pulsation <fichier|dossier|liste> [petit|complet] [fils]")?);
+    let entree = PathBuf::from(
+        args.next()
+            .ok_or("usage : verif_pulsation <fichier|dossier|liste> [petit|complet] [fils]")?,
+    );
     let modele = match args.next().as_deref() {
         Some("petit") => Modele::Petit,
         _ => Modele::Complet,
@@ -44,7 +48,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut v = Vec::new();
     let liste = entree.is_file() && entree.extension().is_some_and(|x| x == "txt");
     if liste {
-        v = std::fs::read_to_string(&entree)?.lines().map(PathBuf::from).collect();
+        v = std::fs::read_to_string(&entree)?
+            .lines()
+            .map(PathBuf::from)
+            .collect();
     } else if entree.is_file() {
         v.push(entree.clone());
     } else {
@@ -67,10 +74,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("chargement du réseau : {} ms", t0.elapsed().as_millis());
                 }
                 for p in v.iter().skip(k).step_by(fils) {
-                    let rel = if entree.is_dir() { p.strip_prefix(entree).unwrap_or(p) } else { p.as_path() };
+                    let rel = if entree.is_dir() {
+                        p.strip_prefix(entree).unwrap_or(p)
+                    } else {
+                        p.as_path()
+                    };
                     let t = Instant::now();
                     // symphonia panique sur certains fichiers tronqués.
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pisteur.analyser_fichier(p)));
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        pisteur.analyser_fichier(p)
+                    }));
                     let ms = t.elapsed().as_millis();
                     match r {
                         Ok(Ok(a)) => println!(
