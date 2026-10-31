@@ -8,6 +8,9 @@ pub enum Error {
     #[error("erreur de base de données : {0}")]
     Db(#[from] rusqlite::Error),
 
+    #[error("mise à niveau de la base impossible : {0}")]
+    Migration(#[from] rusqlite_migration::Error),
+
     #[error("erreur d'entrée/sortie : {0}")]
     Io(#[from] std::io::Error),
 

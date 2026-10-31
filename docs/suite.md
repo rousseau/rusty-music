@@ -10,7 +10,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 
 | Brique | État | Restes, et où les lire |
 |---|---|---|
-| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | migrations versionnées de la base (chantier d'assainissement, ci-dessous) |
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | — (migrations versionnées depuis le 31 oct. : `db::migrations`) |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; Lama dépend d'Ollama, processus externe (chantier d'assainissement, phase 7) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
@@ -27,11 +27,12 @@ mention contraire.
 
 0. Point de départ : `scripts/verifier.sh` mesuré (`journal.md`, 31 oct.).
 1. Hygiène de la documentation : README, `CLAUDE.md` ramené aux décisions et à
-   l'index, historique sous `archives/`, ce document.
+   l'index, historique sous `archives/`, ce document — fait.
 2. Filet de sécurité : `crates/analysis` testable sans le modèle CLAP, CI
    GitHub Actions minimale (macOS), tests de fumée de l'interface (Chrome
-   headless, `invoke` simulé).
-3. Migrations versionnées de la base (`PRAGMA user_version`).
+   headless, `invoke` simulé) — fait.
+3. Migrations versionnées de la base (`PRAGMA user_version`,
+   `rusqlite_migration`) — fait.
 4. Découper `apps/desktop/src/main.rs` : un module de commandes par mode, un
    type générique de passe de fond, progression par `tauri::ipc::Channel`.
 5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un magasin d'état

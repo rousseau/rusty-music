@@ -2341,3 +2341,32 @@ page, pas le fonctionnement.
   tâches. L'ancienne (retirée le 17 oct.) était rouge surtout à cause de
   `cargo deny` : nouveaux avis, et action Docker incompatible avec
   `rust-toolchain.toml`.
+
+### Migrations versionnées (phase 3)
+
+- **`rusqlite_migration` 1.3.1** (cljoly, Apache-2.0, dernière version en mai
+  2026) : la 1.3 est la dernière qui suit `rusqlite` 0.32, la 2.x demande
+  0.34+. Monter `rusqlite` n'est pas nécessaire pour ça, donc pas fait.
+- **Migration n°1** = `sql/schema.sql` (tout en `IF NOT EXISTS`) puis l'ancien
+  `migrate` (ajouts de colonnes selon `pragma_table_info`), en crochet. Elle
+  reconnaît toute base à `user_version` 0. Les `PRAGMA` de connexion sortent
+  dans `sql/connexion.sql`, joués à chaque ouverture : `journal_mode` et
+  `foreign_keys` sont sans effet dans une transaction.
+- **Effet de bord voulu** : le rattrapage (années « 0 », reconstruction de
+  l'index de recherche, colonnes) ne se rejoue plus à chaque ouverture.
+- **Essais**, tous sur des copies :
+  - les 14 versions historiques de `schema.sql`, du 19 août au 19 oct., une
+    base chacune avec une piste : après ouverture, `user_version` = 1 et un
+    schéma identique à celui d'une base neuve (colonnes, types, défauts,
+    index, déclencheurs), piste conservée et trouvée par la recherche ;
+  - copie de `rusty-music.db` (174 Mo, 27 044 pistes) : schéma et comptes de
+    toutes les tables inchangés, `integrity_check` ok, 0,02 s ;
+  - copie de la sauvegarde du 5 sept. : comptes inchangés, les 18 tables
+    apparues depuis créées vides, plus la ligne sentinelle de purge ;
+  - six ouvertures simultanées de cette même copie, trois fois : aucun échec.
+    Les migrations prennent le verrou dès `BEGIN` (`IMMEDIATE`).
+  - Originaux : SHA-256 identiques avant et après.
+- **Changement de comportement** : une base qui a reçu une migration plus
+  récente que le binaire est refusée (`DatabaseTooFarAhead`), au lieu d'être
+  lue avec un schéma inconnu. Ça ne touche que les allers-retours entre
+  branches.

@@ -11,6 +11,7 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 anyhow.workspace    = true
 thiserror.workspace = true
 rusqlite.workspace  = true
+rusqlite_migration.workspace = true
 lofty.workspace     = true
 notify.workspace    = true
 walkdir.workspace   = true

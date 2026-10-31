@@ -1,15 +1,12 @@
--- Schéma de la base locale. Exécuté à chaque ouverture (idempotent).
+-- Schéma de la base locale : migration n°1 (`db::migrations`), jouée une
+-- fois sur une base dont `PRAGMA user_version` vaut 0 — base neuve, ou base
+-- de n'importe quelle génération antérieure aux migrations versionnées. Tout
+-- y est `IF NOT EXISTS` pour cette seconde raison ; `db::migrate` ajoute
+-- ensuite les colonnes que les anciennes tables n'ont pas.
 -- Une seule base alimentée par le dossier surveillé, consommée par les
 -- trois modules (lecteur, exploration, éditeur).
-
-PRAGMA journal_mode = WAL;
--- Plusieurs processus partagent la base : l'application, la CLI, une passe
--- d'analyse qui écrit pendant des heures. Sans délai d'attente, la moindre
--- contention rend un échec immédiat au lieu de patienter quelques
--- millisecondes. WAL autorise un rédacteur et des lecteurs simultanés ; ce
--- délai couvre le cas où deux rédacteurs se croisent.
-PRAGMA busy_timeout = 5000;
-PRAGMA foreign_keys = ON;
+--
+-- Ne plus modifier : un changement de schéma est une nouvelle migration.
 
 CREATE TABLE IF NOT EXISTS tracks (
     id            INTEGER PRIMARY KEY,

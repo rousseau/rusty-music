@@ -73,6 +73,12 @@ mis en forme d'un coup, commit listé dans `.git-blame-ignore-revs` ; pour que
 `git blame` l'ignore en local : `git config blame.ignoreRevsFile
 .git-blame-ignore-revs`).
 
+**Changer le schéma de la base = ajouter une migration** à la fin de
+`migrations()` (`crates/core/src/db.rs`), en SQL simple ; ne jamais modifier
+une migration déjà publiée, ni `crates/core/sql/schema.sql` (la migration
+n°1). `PRAGMA user_version` dit combien sont jouées. Essayer sur une copie de
+la base, jamais sur l'originale.
+
 ## Style des commits
 
 Messages en français. Une ligne de résumé, puis un corps qui explique le

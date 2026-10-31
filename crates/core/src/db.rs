@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rusqlite::functions::FunctionFlags;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite_migration::{Migrations, M};
 
 use crate::error::Result;
 use crate::tags::TrackMeta;
@@ -737,13 +738,54 @@ fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> HashMap<i64, f
 pub(crate) const TRACK_COLS: &str =
     "id, path, title, artist, album, track_no, year, duration_ms, mb_artist_id";
 
-/// Met à niveau une base créée par une version antérieure.
+/// Les migrations de la base, dans l'ordre ; `PRAGMA user_version` dit
+/// combien sont déjà jouées (`rusqlite_migration`). Chacune est jouée une
+/// seule fois, dans une transaction.
+///
+/// La n°1 reconnaît toutes les bases d'avant les migrations versionnées
+/// (`user_version` à 0, quelle que soit leur génération) : le schéma, tout en
+/// `IF NOT EXISTS`, puis [`migrate`], qui ajoute ce qui manque en comparant à
+/// `pragma_table_info`. Ne plus la modifier : un changement de schéma
+/// s'ajoute à la fin, en SQL simple.
+///
+/// Une base ouverte par une version plus ancienne que la dernière migration
+/// qu'elle a reçue est refusée (`DatabaseTooFarAhead`), plutôt que lue avec
+/// un schéma qu'on ne connaît pas.
+fn migrations() -> Migrations<'static> {
+    Migrations::new(vec![M::up_with_hook(
+        include_str!("../sql/schema.sql"),
+        |tx: &Transaction| Ok(migrate(tx)?),
+    )])
+}
+
+/// Ouvre une connexion : réglages, puis migrations en attente.
+///
+/// Les migrations prennent le verrou d'écriture dès leur `BEGIN`
+/// (`IMMEDIATE`) : l'application, la CLI et les passes de fond ouvrent la
+/// même base, et deux migrations lancées ensemble en transaction différée
+/// se heurteraient à `SQLITE_BUSY` sans attendre `busy_timeout`. La seconde
+/// attend donc, puis rejoue ce qu'elle croyait en retard (elle a lu
+/// `user_version` avant le verrou) : sans effet pour la n°1, rejouable ; une
+/// migration suivante qui ne l'est pas échouerait proprement, et la
+/// réouverture suivante passerait.
+fn preparer(mut conn: Connection) -> Result<Connection> {
+    conn.execute_batch(include_str!("../sql/connexion.sql"))?;
+    conn.set_transaction_behavior(TransactionBehavior::Immediate);
+    let issue = migrations().to_latest(&mut conn);
+    conn.set_transaction_behavior(TransactionBehavior::Deferred);
+    issue?;
+    enregistrer_fonctions(&conn)?;
+    Ok(conn)
+}
+
+/// Met à niveau une base créée avant les migrations versionnées — corps de
+/// la migration n°1, après le schéma.
 ///
 /// `CREATE TABLE IF NOT EXISTS` ne touche pas à une table existante : sans
 /// cela, une base déjà peuplée n'obtiendrait jamais les colonnes ajoutées
-/// depuis. On compare à `pragma_table_info` plutôt que de tenir un numéro de
-/// version — idempotent, et insensible aux allers-retours entre branches.
-fn migrate(conn: &Connection) -> Result<()> {
+/// depuis. Tout est conditionnel (`pragma_table_info`, ligne sentinelle),
+/// donc rejouable sans effet sur une base déjà à jour.
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('tracks')")?;
     let existantes: std::collections::HashSet<String> = stmt
         .query_map([], |r| r.get::<_, String>(0))?
@@ -985,24 +1027,18 @@ pub(crate) fn track_from_row(r: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
 }
 
 impl Library {
-    /// Ouvre (ou crée) la base et applique le schéma. Idempotent.
+    /// Ouvre (ou crée) la base et joue les migrations en attente.
     pub fn open(db_path: &Path) -> Result<Self> {
         if let Some(dir) = db_path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let conn = Connection::open(db_path)?;
-        conn.execute_batch(include_str!("../sql/schema.sql"))?;
-        migrate(&conn)?;
-        enregistrer_fonctions(&conn)?;
+        let conn = preparer(Connection::open(db_path)?)?;
         Ok(Self { conn })
     }
 
     /// Base en mémoire — pratique pour les tests.
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        conn.execute_batch(include_str!("../sql/schema.sql"))?;
-        migrate(&conn)?;
-        enregistrer_fonctions(&conn)?;
+        let conn = preparer(Connection::open_in_memory()?)?;
         Ok(Self { conn })
     }
 
@@ -6254,6 +6290,103 @@ mod tests {
             lib.mb_artistes_en_attente("artist", 10).unwrap().is_empty(),
             "la purge ne doit jouer qu'une fois"
         );
+    }
+
+    #[test]
+    fn migrations_bien_formees() {
+        migrations().validate().unwrap();
+    }
+
+    /// Une base neuve sort numérotée ; rouverte, elle ne rejoue rien. Témoin :
+    /// une année « 0 », que la migration n°1 efface, posée après la première
+    /// ouverture et toujours là après la seconde.
+    #[test]
+    fn migration_jouee_une_seule_fois() {
+        let chemin =
+            std::env::temp_dir().join(format!("rusty-music-migr-{}.db", std::process::id()));
+        let nettoyer = || {
+            for suffixe in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{suffixe}", chemin.display()));
+            }
+        };
+        nettoyer();
+        {
+            let lib = Library::open(&chemin).unwrap();
+            let v: i64 = lib
+                .conn
+                .query_row("PRAGMA user_version", [], |r| r.get(0))
+                .unwrap();
+            assert!(v >= 1, "user_version = {v}");
+            lib.conn
+                .execute("INSERT INTO tracks(path, year) VALUES ('/m/a.mp3', 0)", [])
+                .unwrap();
+        }
+        let lib = Library::open(&chemin).unwrap();
+        let annee: Option<i64> = lib
+            .conn
+            .query_row("SELECT year FROM tracks", [], |r| r.get(0))
+            .unwrap();
+        drop(lib);
+        nettoyer();
+        assert_eq!(annee, Some(0), "la migration n°1 a été rejouée");
+    }
+
+    /// Une base de la toute première génération (schéma du 19 août 2026,
+    /// sans numéro de version) : la migration n°1 la complète sans rien
+    /// perdre.
+    #[test]
+    fn migration_reconnait_la_premiere_generation() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tracks (
+                 id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, size_bytes INTEGER,
+                 mtime INTEGER, title TEXT, artist TEXT, album TEXT, album_artist TEXT,
+                 genre TEXT, year INTEGER, track_no INTEGER, duration_ms INTEGER,
+                 sample_rate INTEGER, channels INTEGER, mb_recording_id TEXT,
+                 mb_artist_id TEXT, mb_album_artist_id TEXT,
+                 added_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), analyzed_at INTEGER);
+             CREATE TABLE descriptors (
+                 track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+                 bpm REAL, musical_key TEXT, energy REAL, loudness REAL);
+             CREATE TABLE artist_links (
+                 src_mbid TEXT NOT NULL, dst_mbid TEXT NOT NULL, relation TEXT NOT NULL,
+                 PRIMARY KEY (src_mbid, dst_mbid, relation));
+             INSERT INTO tracks(path, title, artist, album, year)
+                 VALUES ('/m/a.flac', 'Bizied', 'Denez', 'Kanañ a ri!', 0);
+             INSERT INTO descriptors(track_id, bpm) VALUES (1, 92.0);",
+        )
+        .unwrap();
+
+        let conn = preparer(conn).unwrap();
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert!(v >= 1);
+        for (table, colonne) in [
+            ("tracks", "mb_release_id"),
+            ("tracks", "bit_depth"),
+            ("descriptors", "algo_version"),
+            ("artist_links", "dst_name"),
+        ] {
+            let n: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+                    [colonne],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "{table}.{colonne} manque");
+        }
+        let (bpm, annee): (f64, Option<i64>) = conn
+            .query_row(
+                "SELECT d.bpm, t.year FROM tracks t JOIN descriptors d ON d.track_id = t.id",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((bpm, annee), (92.0, None));
+        let lib = Library { conn };
+        assert_eq!(lib.search("kanan", 10).unwrap().len(), 1);
     }
 
     #[test]
