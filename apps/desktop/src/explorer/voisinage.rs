@@ -992,3 +992,70 @@ pub(crate) fn subdiviser_famille(
         .collect();
     lib.sous_groupes_votes(modele, &assignations).map_err(echec)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un lasso tracé à la main est presque toujours concave : c'est le cas
+    /// que la règle pair-impair doit tenir, et qu'une enveloppe convexe
+    /// raterait.
+    #[test]
+    fn le_contour_tient_les_formes_concaves() {
+        // Un « U » : ouvert vers le haut, avec un creux au milieu.
+        let u = [
+            (-1.0, -1.0),
+            (-1.0, 1.0),
+            (-0.5, 1.0),
+            (-0.5, -0.5),
+            (0.5, -0.5),
+            (0.5, 1.0),
+            (1.0, 1.0),
+            (1.0, -1.0),
+        ];
+        assert!(dans_le_contour(&u, -0.75, 0.0), "branche gauche");
+        assert!(dans_le_contour(&u, 0.75, 0.0), "branche droite");
+        assert!(!dans_le_contour(&u, 0.0, 0.5), "le creux est dehors");
+        assert!(dans_le_contour(&u, 0.0, -0.75), "le fond est dedans");
+        assert!(!dans_le_contour(&u, 2.0, 0.0), "loin dehors");
+    }
+
+    #[test]
+    fn un_carre_se_comporte_comme_un_carre() {
+        let c = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)];
+        assert!(dans_le_contour(&c, 0.5, 0.5));
+        assert!(!dans_le_contour(&c, 1.5, 0.5));
+        assert!(!dans_le_contour(&c, 0.5, 1.5));
+        assert!(!dans_le_contour(&c, -0.5, 0.5));
+    }
+
+    #[test]
+    fn repere_local_corrige_lanisotropie_lon_lat() {
+        // Trois points autour de Notre-Dame : l'un ~730 m à l'est (Δlon), l'autre
+        // ~1110 m au nord (Δlat). En degrés bruts, 0,01° dans les deux sens
+        // paraîtraient à égale distance ; en mètres, l'est est bien plus proche.
+        let ancre = (0i64, 2.35_f32, 48.85_f32);
+        let est = (1i64, 2.36_f32, 48.85_f32);
+        let nord = (2i64, 2.35_f32, 48.86_f32);
+        let mut pts = vec![ancre, est, nord];
+
+        // En degrés bruts, un écart de 0,01° pèse pareil au nord et à l'est —
+        // c'est justement le biais que la projection corrige.
+        let d2_deg =
+            |a: (i64, f32, f32), b: (i64, f32, f32)| (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2);
+        assert!((d2_deg(ancre, est) - d2_deg(ancre, nord)).abs() < 1e-6);
+
+        RepereLocal::projeter_liste(&mut pts);
+        let d2 = |a: usize, b: usize| (pts[a].1 - pts[b].1).powi(2) + (pts[a].2 - pts[b].2).powi(2);
+        // 0 = ancre, 1 = est (~730 m), 2 = nord (~1110 m).
+        assert!(
+            d2(0, 1) < d2(0, 2),
+            "après projection, l'est doit être le plus proche"
+        );
+        let est_m = d2(0, 1).sqrt();
+        assert!(
+            (est_m - 730.0).abs() < 40.0,
+            "~730 m attendus, obtenu {est_m}"
+        );
+    }
+}

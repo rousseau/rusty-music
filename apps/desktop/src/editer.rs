@@ -1990,3 +1990,40 @@ pub(crate) fn stems_greffer(
 // ---------------------------------------------------------------------------
 // Réglages : source de la bibliothèque
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::Path;
+
+    /// Un rendu ne doit jamais atterrir sous une racine surveillée : il y
+    /// serait ingéré, analysé et placé sur la carte alors que ce n'est pas un
+    /// morceau.
+    #[test]
+    fn un_rendu_ne_sort_pas_dans_la_bibliotheque() {
+        let racines = vec![
+            "/Volumes/CarteSD/Music".to_string(),
+            "/Users/x/Musique".to_string(),
+        ];
+        let sous = |p: &str| sous_une_racine(Path::new(p), &racines);
+
+        assert!(
+            sous("/Volumes/CarteSD/Music").is_some(),
+            "la racine elle-même"
+        );
+        assert!(
+            sous("/Volumes/CarteSD/Music/rendus").is_some(),
+            "un sous-dossier"
+        );
+        assert!(sous("/Users/x/Musique/a/b").is_some());
+
+        assert!(sous("/Users/x/Bureau").is_none());
+        assert!(sous("/Volumes/CarteSD").is_none(), "au-dessus de la racine");
+        // Le piège d'une comparaison de chaînes : ce dossier-là est ailleurs.
+        assert!(
+            sous("/Users/x/Musique2").is_none(),
+            "préfixe textuel trompeur"
+        );
+    }
+}

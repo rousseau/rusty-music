@@ -1406,3 +1406,79 @@ pub(crate) fn trace_rues(
     );
     Ok(segments)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    /// Un accrochage monté à la main : trois sommets alignés, un morceau par
+    /// sommet, plus un intrus d'une autre famille sur le sommet du milieu.
+    fn accrochage_dessai() -> AccrochageVoirie {
+        let mut sommet_de = HashMap::new();
+        let mut morceaux_a: HashMap<u32, Vec<i64>> = HashMap::new();
+        for (id, s) in [(10, 0u32), (20, 1), (30, 1), (40, 2)] {
+            sommet_de.insert(id, s);
+            morceaux_a.entry(s).or_default().push(id);
+        }
+        AccrochageVoirie {
+            sommet_de,
+            morceaux_a,
+        }
+    }
+
+    #[test]
+    fn morceaux_le_long_ordonne_dedoublonne_et_borne_la_famille() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let famille: HashSet<i64> = [10, 20, 40].into_iter().collect(); // 30 exclu
+        let duree = |_id: i64| 0u64;
+        let suite = morceaux_le_long(&acc, &couloir, 10, Some(40), Some(&famille), None, &duree);
+        // départ 10 en tête, arrivée 40 en queue, 30 filtré, 20 au milieu.
+        assert_eq!(suite, vec![10, 20, 40]);
+    }
+
+    #[test]
+    fn morceaux_le_long_coupe_a_la_duree_cible() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let duree = |_id: i64| 10 * 60_000u64; // 10 min chacun
+                                               // Cible 25 min, tolérance 90 s : 10 (0) + 20 (10) + 30 (20) → 30 min ≥ 23,5.
+        let suite = morceaux_le_long(&acc, &couloir, 10, None, None, Some(25 * 60_000), &duree);
+        assert_eq!(suite, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn morceaux_le_long_larrivee_prime_sur_la_duree() {
+        let acc = accrochage_dessai();
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
+        let duree = |_id: i64| 10 * 60_000u64;
+        // Arrivée 40 posée : « va jusque-là » l'emporte, la durée (15 min) est
+        // ignorée — la playlist va jusqu'à 40.
+        let suite = morceaux_le_long(
+            &acc,
+            &couloir,
+            10,
+            Some(40),
+            None,
+            Some(15 * 60_000),
+            &duree,
+        );
+        assert_eq!(suite, vec![10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn fin_de_trace_sarrete_au_dernier_morceau_pas_a_la_destination() {
+        let acc = accrochage_dessai(); // 10@sommet0, 20&30@sommet1, 40@sommet2
+                                       // Tracé de 10 sommets ; le couloir place le sommet 1 au rang 3.
+        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 3), (2, 8)].into_iter().collect();
+        // Playlist = [10, 20] → dernier morceau au rang 3 → tracé coupé à 4.
+        assert_eq!(fin_de_trace(&[10, 20], &acc, &couloir, 10), 4);
+        // Playlist qui va jusqu'à 40 (rang 8) → coupé à 9.
+        assert_eq!(fin_de_trace(&[10, 20, 40], &acc, &couloir, 10), 9);
+        // Morceaux hors couloir → tout le tracé.
+        assert_eq!(fin_de_trace(&[99], &acc, &couloir, 10), 10);
+        // Tracé dégénéré.
+        assert_eq!(fin_de_trace(&[10], &acc, &couloir, 1), 1);
+    }
+}

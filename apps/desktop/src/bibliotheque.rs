@@ -1912,3 +1912,131 @@ pub(crate) fn base64(data: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::Path;
+
+    use std::time::Duration;
+
+    fn dossier_de_test(nom: &str) -> std::path::PathBuf {
+        // `std::env::temp_dir()`, jamais un chemin fixe du dépôt — voir la
+        // consigne de l'incident des 199 Go.
+        let d = std::env::temp_dir().join(format!(
+            "rusty-music-test-pochettes-{nom}-{}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&d).ok();
+        d
+    }
+
+    #[test]
+    fn une_cle_change_avec_le_chemin_et_la_mtime() {
+        let t0 = std::time::UNIX_EPOCH;
+        let t1 = t0 + std::time::Duration::from_secs(1);
+        let a = Path::new("/a.mp3");
+        let b = Path::new("/b.mp3");
+        assert_ne!(
+            cle_pochette(a, t0),
+            cle_pochette(b, t0),
+            "chemins différents"
+        );
+        assert_ne!(
+            cle_pochette(a, t0),
+            cle_pochette(a, t1),
+            "mtimes différentes"
+        );
+        assert_eq!(cle_pochette(a, t0), cle_pochette(a, t0), "déterministe");
+    }
+
+    #[test]
+    fn le_cache_sert_ce_quil_a_recu() {
+        let dossier = dossier_de_test("sert");
+        let cle = "abc";
+        ecrire_cache_pochette(&dossier, cle, Some("data:image/jpeg;base64,zzz"));
+        assert_eq!(
+            lire_cache_pochette(&dossier, cle),
+            Some(Some("data:image/jpeg;base64,zzz".to_string()))
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn le_cache_distingue_absent_de_confirme_sans_pochette() {
+        let dossier = dossier_de_test("sans");
+        assert_eq!(
+            lire_cache_pochette(&dossier, "jamais-vu"),
+            None,
+            "pas encore en cache"
+        );
+        ecrire_cache_pochette(&dossier, "sans-art", None);
+        assert_eq!(
+            lire_cache_pochette(&dossier, "sans-art"),
+            Some(None),
+            "en cache, confirmé sans pochette"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn un_negatif_perime_est_redemande_pas_une_pochette_trouvee() {
+        let dossier = dossier_de_test("negatif-perime");
+        ecrire_cache_pochette(&dossier, "sans", None);
+        ecrire_cache_pochette(&dossier, "avec", Some("data:image/jpeg;base64,zzz"));
+        for cle in ["sans", "avec"] {
+            let f = std::fs::File::options()
+                .write(true)
+                .open(dossier.join(cle))
+                .unwrap();
+            f.set_modified(std::time::SystemTime::now() - Duration::from_secs(40 * 24 * 3600))
+                .unwrap();
+        }
+        assert_eq!(
+            lire_cache_pochette(&dossier, "sans"),
+            None,
+            "négatif de 40 j : à redemander"
+        );
+        assert_eq!(
+            lire_cache_pochette(&dossier, "avec"),
+            Some(Some("data:image/jpeg;base64,zzz".to_string())),
+            "une pochette trouvée ne périme pas"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn la_purge_efface_les_negatifs_une_seule_fois() {
+        let dossier = dossier_de_test("purge");
+        ecrire_cache_pochette(&dossier, "sans", None);
+        ecrire_cache_pochette(&dossier, "avec", Some("data:image/jpeg;base64,zzz"));
+        purger_negatifs_pochettes(&dossier);
+        assert!(!dossier.join("sans").exists());
+        assert!(dossier.join("avec").exists());
+        // Un négatif écrit après la purge est un vrai 404 : on le garde.
+        ecrire_cache_pochette(&dossier, "sans2", None);
+        purger_negatifs_pochettes(&dossier);
+        assert!(dossier.join("sans2").exists());
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+
+    #[test]
+    fn une_mtime_differente_retrouve_une_cle_differente_donc_pas_lentree_perimee() {
+        let dossier = dossier_de_test("perime");
+        let chemin = Path::new("/musique/piste.mp3");
+        let ancienne = cle_pochette(chemin, std::time::UNIX_EPOCH);
+        ecrire_cache_pochette(&dossier, &ancienne, Some("vieille-pochette"));
+
+        let nouvelle = cle_pochette(
+            chemin,
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(60),
+        );
+        assert_eq!(
+            lire_cache_pochette(&dossier, &nouvelle),
+            None,
+            "le fichier a changé : la clé change, l'ancienne entrée ne sert plus"
+        );
+        std::fs::remove_dir_all(&dossier).ok();
+    }
+}
