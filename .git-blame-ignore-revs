@@ -1,0 +1,5 @@
+# Commits purement mécaniques, ignorés par `git blame`
+# (git config blame.ignoreRevsFile .git-blame-ignore-revs ; GitHub le lit seul).
+
+# cargo fmt --all, première mise en forme
+5ad145018d9607a4472a5a46b8cf37fd2539e2f2

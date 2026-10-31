@@ -1,0 +1,74 @@
+name: CI
+
+# Vérification minimale, sans les modèles : forme, lint, tests, politique de
+# dépendances, tests de fumée de l'interface. Pas un build de release. Même
+# chose en local : `./scripts/verifier.sh`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Sans informations de débogage : un dossier cible bien plus petit (18 Go
+  # avec, en local) et un cache qui tient.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  # Forme, lint et tests. `sans-modeles` : `crates/analysis` compile sans les
+  # deux tours de CLAP (bouchons), qui pèsent 620 Mo et ne servent qu'à
+  # l'exécution des empreintes — aucun test ne les charge.
+  rust:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      # `rust-toolchain.toml` épingle `stable` avec rustfmt et clippy : rustup
+      # l'installe au premier appel de cargo.
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Forme
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --features rusty-music-analysis/sans-modeles -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --features rusty-music-analysis/sans-modeles
+
+  # Licences, avis de sécurité, sources (`deny.toml`). À part : un avis publié
+  # du jour ne doit pas masquer le résultat des tests.
+  deny:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: cargo deny check
+
+  # L'interface réelle dans Chrome headless, Tauri simulé
+  # (`apps/desktop/ui-tests/`). Chrome est déjà sur les runners macOS.
+  interface:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/desktop/ui-tests
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/ui-tests/package-lock.json
+      - run: npm ci
+      - run: npx playwright test

@@ -89,8 +89,12 @@ livre/                notes de l'auteur — ne jamais modifier sans demande
 ```
 
 Build : Rust 1.82+, un compilateur C, les deux tours de CLAP dans `models/`
-(`./scripts/telecharger-modeles.sh clap`) — sans elles `crates/analysis` ne
-compile pas. Vérification avant push : `./scripts/verifier.sh`. Pièges : README.
+(`./scripts/telecharger-modeles.sh clap`) ; sans elles, seulement avec
+`--features rusty-music-analysis/sans-modeles` (bouchons, pour la CI).
+Vérification avant push : `./scripts/verifier.sh` (fmt, deny, clippy, test,
+tests de fumée de l'interface `apps/desktop/ui-tests/`), la même que la CI
+GitHub. Une commande Tauri qui change de forme : mettre à jour
+`apps/desktop/ui-tests/fixtures.js`. Pièges : README.
 
 ## Index des documents
 

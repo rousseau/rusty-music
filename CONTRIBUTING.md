@@ -9,15 +9,19 @@ Prérequis :
 
 - **Rust 1.82+** (`rustup` ; le dépôt épingle `stable` via `rust-toolchain.toml`)
   et un **compilateur C** (`rusqlite` compile SQLite depuis les sources).
-- **Les modèles** (~0,35 Go, hors dépôt) :
+- **Les modèles**, hors dépôt (liste et tailles : `README.md`, section
+  « Modèles ») :
 
   ```bash
-  ./scripts/telecharger-modeles.sh        # les trois
-  ./scripts/telecharger-modeles.sh clap   # suffit pour le binaire `rusty-music` seul
+  ./scripts/telecharger-modeles.sh        # CLAP audio + texte, HTDemucs, AERO (~0,86 Go)
+  ./scripts/telecharger-modeles.sh clap   # les deux tours de CLAP : de quoi compiler
   ```
 
-  `crates/analysis/build.rs` traduit l'encodeur CLAP depuis l'ONNX au moment
-  du build : sans au moins ce fichier, rien ne compile. Détail :
+  `crates/analysis/build.rs` traduit les deux tours de CLAP depuis l'ONNX au
+  moment du build. **Sans elles**, le workspace compile et se teste quand
+  même avec `--features rusty-music-analysis/sans-modeles` (encodeurs
+  remplacés par des bouchons qui refusent de se charger) — c'est ce que fait
+  la CI ; l'application ainsi construite ne calcule aucune empreinte. Détail :
   `models/README.md`.
 
 ```bash
@@ -35,10 +39,12 @@ cargo run -p rusty-music-cli -- --help      # le moteur en ligne de commande
 | `crates/analysis` | module 2 — empreintes CLAP (Burn), projection 2D, descripteurs |
 | `crates/carto` | module 2 — tuiles vectorielles de la carte (MVT / PMTiles) |
 | `crates/osm` | import d'un plan de ville OpenStreetMap (jamais lié à l'app) |
-| `crates/editor` | module 3 — démixage (`demucs-core` / Burn), étirement, greffe |
+| `crates/editor` | module 3 — démixage (HTDemucs via `demucs-core`, BS-RoFormer ; Burn), pulsation, étirement, greffe |
+| `crates/transcription` | module 3 — transcription basse et batterie, sections |
 | `crates/superres` | super-résolution audio hors ligne (AERO via ONNX Runtime) |
 | `crates/cli` | binaire `rusty-music` |
-| `apps/desktop` | application Tauri (interface HTML/CSS/JS + WebGL) |
+| `apps/desktop` | application Tauri (interface HTML/CSS/JS + WebGL) ; `ui-tests/` : tests de fumée de l'interface |
+| `apps/mobile` | compagnon iOS « Rusty Valise » |
 
 `docs/` porte les décisions et leur pourquoi ; `docs/journal.md` est le journal
 de développement ; `experiments/` garde les sondages qui ont tranché les choix.
@@ -46,16 +52,26 @@ de développement ; `experiments/` garde les sondages qui ont tranché les choix
 ## Avant de proposer un changement
 
 ```bash
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo deny check          # licences, avis de sécurité — cargo install --locked cargo-deny
+./scripts/verifier.sh     # tout ; ou une étape : fmt · deny · clippy · test · fumee
 ```
 
-Ces trois-là doivent passer ; `./scripts/verifier.sh` les enchaîne (pas de CI
-GitHub : la vérification se fait en local avant le push).
+| Étape | Commande | Ce qu'elle vérifie |
+|---|---|---|
+| `fmt` | `cargo fmt --all -- --check` | la forme (rustfmt par défaut) |
+| `deny` | `cargo deny check` | licences, avis de sécurité, sources — `cargo install --locked cargo-deny` |
+| `clippy` | `cargo clippy --workspace --all-targets -- -D warnings` | lint |
+| `test` | `cargo test --workspace` | tests Rust |
+| `fumee` | `npx playwright test` dans `apps/desktop/ui-tests/` | l'interface dans Chrome headless, Tauri simulé ; Node et Chrome requis |
 
-**`cargo fmt` n'est pas imposé.** Le style suit le code alentour ; certaines
-lignes dépassent 100 colonnes à dessein. Ne reformate pas un fichier entier.
+La CI GitHub (`.github/workflows/ci.yml`, runner macOS) passe les mêmes
+contrôles sans les modèles. Après une modification de mise en page, lancer
+aussi `scripts/audit-interface.sh` (l'application réelle, sur une copie de la
+base, ~3 min).
+
+**`cargo fmt` est imposé depuis le 31 oct. 2026** (tout le workspace a été
+mis en forme d'un coup, commit listé dans `.git-blame-ignore-revs` ; pour que
+`git blame` l'ignore en local : `git config blame.ignoreRevsFile
+.git-blame-ignore-revs`).
 
 ## Style des commits
 

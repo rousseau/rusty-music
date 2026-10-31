@@ -10,17 +10,25 @@ Réponse visée sous une semaine.
 
 ## Périmètre
 
-Rusty Music est un logiciel **local et hors ligne**. La surface d'attaque est
-limitée à ce qu'il lit et aux quelques requêtes sortantes qu'il émet :
+Rusty Music calcule tout en local ; il ne va sur le réseau que pour
+enrichir la bibliothèque et télécharger des modèles. La surface d'attaque est
+limitée à ce qu'il lit et aux requêtes sortantes qu'il émet :
 
 - **analyse de fichiers non fiables** : tags audio (`lofty`), flux audio
-  (`symphonia`, `opus-decoder`), extraits OpenStreetMap `.osm.pbf` (`osmpbf`) —
-  un fichier malveillant dans le dossier surveillé ou un extrait OSM piégé ;
-- **requêtes sortantes** en HTTP vers MusicBrainz, ListenBrainz, Deezer et
-  Cover Art Archive (`ureq` + `rustls`), déclenchées par les passes
-  d'enrichissement — jamais automatiques ;
-- **modèles** : les poids sont téléchargés depuis les *release assets* du
-  dépôt avec vérification SHA-256 (`scripts/telecharger-modeles.sh`).
+  (`symphonia`, `opus-decoder`), extraits OpenStreetMap `.osm.pbf` (`osmpbf`),
+  dump Discogs (XML compressé) — un fichier malveillant dans le dossier
+  surveillé ou une source piégée ;
+- **réponses d'API** en HTTPS (`ureq` + `rustls`) : MusicBrainz, Cover Art
+  Archive, ListenBrainz, Deezer, TheAudioDB, CritiqueBrainz, Discogs, Last.fm.
+  Déclenchées par l'utilisateur (« Scanner », passes d'enrichissement, mode
+  Découvrir) ou à l'affichage d'une pochette manquante ; seul un lien
+  `https://www.deezer.com/` venu d'une réponse est ouvert dans le navigateur ;
+- **Ollama** (`http://localhost:11434`), seulement pour le champ « Lama » : sa
+  réponse est interprétée en spécification typée, jamais exécutée ;
+- **modèles** : téléchargés depuis les *release assets* du dépôt
+  (`scripts/telecharger-modeles.sh`), GitHub ou Hugging Face au premier usage,
+  avec vérification de la taille et, quand elle est connue, du SHA-256
+  (`crates/core/src/modeles.rs`).
 
 Ne sont **pas** dans le périmètre : les vulnérabilités des dépendances tierces
 (signale-les en amont ; `cargo deny check` suit les avis RUSTSEC, lancé avant chaque publication), et
