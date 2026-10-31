@@ -85,8 +85,11 @@ Lecture :
   +1,8 dB) et en voix (+2,8 et +2,9 dB) ; SCNet un peu en basse (+0,6 dB),
   pas BS-RoFormer (−0,2 dB). SCNet est le deuxième partout sur V2, et le
   premier en voix V1 (contaminé). Ce sont des replis de provenance connue
-  si SW devait être écarté, mais SCNet XL demande 13-14 Go de mémoire GPU
-  (lot de 1) : hors de portée de l'application.
+  si SW devait être écarté. SCNet XL (53,5 M paramètres, licence MIT,
+  appris sur MUSDB seul) tourne sur ce Mac de 24 Go : 13-14 Go de pointe
+  sous PyTorch MPS en lot de 1, à 1,1-1,4 × le temps réel quand il a le
+  GPU pour lui seul (il s'effondre s'il le partage). Un port Burn est
+  envisageable ; c'est le candidat de provenance connue.
 - **Sur la basse V2, le gain est fragile** : +1,5 dB d'écart entre médianes,
   mais seulement +0,5 dB apparié, 13 morceaux sur 21. La basse de V2 est
   surtout de la contrebasse classique et jazz, où tous les modèles sont

@@ -153,8 +153,9 @@ côté des trois HTDemucs, qui ne changent pas.
   reste premier sur tous les stems de V2 devant les deux témoins appris
   sur MUSDB seul (SCNet XL deuxième, BS-RoFormer troisième). Sur la basse
   transcrite de vraie musique (MedleyDB, pYIN), il n'a plus d'avance :
-  égal à `htdemucs_ft`, un peu derrière SCNet XL (trop gourmand en
-  mémoire pour l'application).
+  égal à `htdemucs_ft`, un peu derrière SCNet XL (provenance connue,
+  MIT, MUSDB seul ; 13-14 Go de pointe sous PyTorch MPS, tient sur un Mac
+  de 24 Go : candidat à un port si SW devait être écarté).
 - **Repli** si la provenance de SW devenait un obstacle : `htdemucs_ft`
   pour pratiquer, pas `htdemucs_6s`.
 - **Où il sert** : variante par défaut du mode Éditer quand l'usage est
