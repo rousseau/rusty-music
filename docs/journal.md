@@ -2331,7 +2331,7 @@ page, pas le fonctionnement.
   qu'évoque ce journal étaient faits à la main), il est écrit de zéro. 8 tests,
   ~12 s ; une erreur glissée exprès dans `dessinerStems` les fait échouer.
   En écrivant les réponses figées : l'interface supporte presque partout une
-  réponse `null`, sauf l'Aperçu de Bibliothèque, l'anneau, la Valise et le
+  réponse `null`, sauf l'Aperçu de Bibliothèque, l'inspecteur, l'anneau, la Valise et le
   démarrage des stems (`start_etirer`), qui la déréférencent — sans
   conséquence avec le vrai moteur, qui ne rend jamais `null` à ces commandes.
 - **`cargo fmt --all`** appliqué une fois (1 486 endroits, 132 fichiers), pour
