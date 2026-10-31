@@ -34,7 +34,8 @@ mention contraire.
 3. Migrations versionnées de la base (`PRAGMA user_version`,
    `rusqlite_migration`) — fait.
 4. Découper `apps/desktop/src/main.rs` : un module de commandes par mode, un
-   type générique de passe de fond, progression par `tauri::ipc::Channel`.
+   type générique de passe de fond — fait ; progression par
+   `tauri::ipc::Channel` (4c), après la phase 5.
 5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un magasin d'état
    par mode.
 6. Découper `crates/core/src/db.rs` par domaine.

@@ -2370,3 +2370,25 @@ page, pas le fonctionnement.
   récente que le binaire est refusée (`DatabaseTooFarAhead`), au lieu d'être
   lue avec un schéma inconnu. Ça ne touche que les allers-retours entre
   branches.
+
+### Découpage de `main.rs` (phase 4a, 4b)
+
+- **4a, déplacements purs** (`31ff097`, `38e8c99`) : 11 218 lignes → un module
+  de commandes par mode. `bibliotheque` (1 900), `ecouter` (980), `explorer/`
+  (`carte`, `voisinage`, `lama`, 3 400), `editer` (2 000), `decouvrir`,
+  `valise`, `systeme`. `main.rs` passe à 1 200 lignes (état partagé,
+  `main()`). Les tests ont suivi leur module. Contrôle : mêmes jetons avant et
+  après, aux `pub(crate)` et aux replis de rustfmt près ; mêmes 64 tests.
+- **4b, type générique** (`40b13b9`) : `passe::Passe<A>` et `passe::lancer`
+  pour 18 passes de fond. Le JSON sondé par l'interface garde sa forme
+  (avancement aplati par `serde(flatten)`, figé par un test). Restent hors
+  du type : la transposition (champ `erreur`), la transcription, l'iPhone,
+  les stems et le lecteur, qui n'ont pas ce cycle de vie.
+  - **Pas d'annulation** : aucune fonction du cœur appelée par ces passes ne
+    sait s'arrêter en cours de route (leurs rappels de progression ne
+    rendent rien). L'ajouter, c'est toucher chaque passe du cœur ; à faire
+    passe par passe, quand une interface la demandera.
+- **Bug corrigé** (`f6703e0`) : le scan de rattrapage au démarrage n'avait
+  pas de garde anti-panique.
+- **4c** (progression par `tauri::ipc::Channel`, démixage et analyse) :
+  reportée après la phase 5, pour ne toucher `app.js` qu'une fois découpé.
