@@ -50,3 +50,8 @@ experiments/musicbrainz-genres/genres.json
 experiments/musicbrainz-genres/aspiration.log
 experiments/popularite/cache.json
 experiments/popularite/echantillon.json
+
+# Tests de fumée de l'interface (apps/desktop/ui-tests)
+node_modules/
+test-results/
+playwright-report/
