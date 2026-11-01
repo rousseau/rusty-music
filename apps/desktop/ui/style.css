@@ -1824,6 +1824,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   margin: 0 0 8px;
 }
 .lama__accueil-texte { color: var(--mut); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
+.lama__indisponible {
+  display: flex; gap: 14px; align-items: baseline; margin: 0 0 20px; padding: 10px 2px;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.lama__indisponible p { flex: 1; margin: 0; font-size: 13px; line-height: 1.5; }
 .lama__liste-exemples { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .lama__liste-exemples li { border-bottom: 1px solid var(--line); }
 .lama__exemple {

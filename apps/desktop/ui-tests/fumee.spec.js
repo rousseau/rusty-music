@@ -90,6 +90,26 @@ test("le transport suit les stems que le moteur garde", async ({ page }) => {
   expect(await page.evaluate(() => window.__ETAT_FAUX__.stems?.length)).toBe(4);
 });
 
+test("Lama sans Ollama : l'accueil dit quoi faire, rien n'est interrogé", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.lama_disponibilite = { etat: "absent", modeles: [], detail: "refusé" };
+  });
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="lama"]');
+  await expect(page.locator("#lama-indisponible")).toBeVisible();
+  await expect(page.locator("#lama-indisponible-texte")).toContainText("ollama pull");
+  await page.fill("#intention-texte", "du jazz calme");
+  await page.press("#intention-texte", "Enter");
+  await expect.poll(() => appels(page, "lama_disponibilite").then((a) => a.length)).toBeGreaterThan(1);
+  expect(await appels(page, "path_texte_interpreter")).toEqual([]);
+  // Ollama revient : « Réessayer » efface la note.
+  await page.evaluate(() => {
+    window.__FIXTURES__.lama_disponibilite = { etat: "pret", modeles: ["gemma4:e4b"], detail: null };
+  });
+  await page.click("#lama-reessayer");
+  await expect(page.locator("#lama-indisponible")).toBeHidden();
+});
+
 test("retour en Écouter après chaque mode", async ({ page }) => {
   for (const m of ["bibliotheque", "explorer", "editer", "decouvrir", "valise", "ecoute"]) {
     await page.click(`button.mode[data-mode="${m}"]`);

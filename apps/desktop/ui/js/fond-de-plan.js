@@ -3,7 +3,7 @@ import {
   $, fileAttente, invoke, navigation, remonter, txt,
 } from "./socle.js";
 import {
-  dessinerMiniNuage,
+  dessinerMiniNuage, verifierOllama,
 } from "./lama.js";
 
 import {
@@ -208,6 +208,7 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
       majModesChemin();
       $("fil-titre").textContent = "Lama";
       dessinerMiniNuage();
+      verifierOllama();
       $("intention-texte").focus();
       return;
     }

@@ -233,6 +233,40 @@ pub(crate) fn path_texte_interpreter(
     })
 }
 
+/// Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau.
+#[derive(serde::Serialize)]
+pub(crate) struct DisponibiliteLama {
+    /// `pret`, `sans_modele` (Ollama répond, rien d'installé) ou `absent`.
+    etat: &'static str,
+    modeles: Vec<String>,
+    /// Pourquoi Ollama est tenu pour absent, tel que le client l'a vu.
+    detail: Option<String>,
+}
+
+/// Ollama répond-il, et avec quels modèles ? Ne lève jamais : un serveur
+/// absent est un état du panneau, pas une erreur (Lama dit alors quoi faire
+/// avant qu'on écrive une demande, au lieu d'échouer après).
+#[tauri::command(async)]
+pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
+    match rusty_music_core::ollama::modeles(rusty_music_core::ollama::HOTE_DEFAUT) {
+        Ok(modeles) if modeles.is_empty() => DisponibiliteLama {
+            etat: "sans_modele",
+            modeles,
+            detail: None,
+        },
+        Ok(modeles) => DisponibiliteLama {
+            etat: "pret",
+            modeles,
+            detail: None,
+        },
+        Err(e) => DisponibiliteLama {
+            etat: "absent",
+            modeles: Vec::new(),
+            detail: Some(e.to_string()),
+        },
+    }
+}
+
 /// Modèles Ollama déjà installés localement — sélecteur du champ d'intention
 /// (icône 🦙).
 #[tauri::command(async)]

@@ -38,6 +38,8 @@ const lama = {
   routeEcran: [], // la route dans le mini-nuage, pour le survol et le clic
   base: null, // canevas hors écran : tous les morceaux, estompés
   cleBase: "", // ce qui invalide `base` (taille, nombre de points, thème)
+  // Ce qu'Ollama permet : `pret`, `sans_modele` ou `absent` (`verifierOllama`).
+  disponibilite: null,
   // Le dernier plan interprété par Ollama, affiché dans la carte « Ollama a
   // compris » pour correction — `null` tant qu'aucune interprétation n'a réussi.
   planTexte: null,
@@ -89,6 +91,38 @@ $("lama-exemples-lien").addEventListener("click", () => {
 
 /// Une erreur du moteur ou d'Ollama, dans le panneau — le bloc « Chemin » du
 /// rail, où `signalerErreur` écrivait avant, est masqué ici.
+// Le modèle du banc d'essai de Lama (`experiments/musicrecointent`).
+const MODELE_CONSEILLE = "gemma4:e4b";
+
+/// Ollama répond-il, avec un modèle ? Sondé à chaque entrée dans le panneau et
+/// avant chaque demande : sans lui, l'accueil dit quoi faire, plutôt qu'une
+/// erreur de connexion après coup. Rend vrai si Lama peut interpréter.
+async function verifierOllama() {
+  let d;
+  try {
+    d = await invoke("lama_disponibilite");
+  } catch (e) {
+    // Le sondage lui-même a échoué : on laisse la demande se faire, son
+    // erreur dira ce qui ne va pas.
+    remonter(e, "disponibilité de Lama");
+    return true;
+  }
+  lama.disponibilite = d.etat;
+  $("lama-indisponible").hidden = d.etat === "pret";
+  if (d.etat === "absent") {
+    $("lama-indisponible-texte").textContent =
+      "Lama passe par Ollama, qui fait tourner un modèle de langue sur cette machine, et Ollama " +
+      "ne répond pas. Installez-le (ollama.com) ou lancez-le, puis téléchargez un modèle : " +
+      "« ollama pull " + MODELE_CONSEILLE + " ».";
+  } else if (d.etat === "sans_modele") {
+    $("lama-indisponible-texte").textContent =
+      "Ollama répond, mais aucun modèle n'est installé. Dans un terminal : « ollama pull " +
+      MODELE_CONSEILLE + " ».";
+  }
+  return d.etat === "pret";
+}
+$("lama-reessayer").addEventListener("click", () => verifierOllama());
+
 function erreurLama(texte, e, source) {
   signalerErreur("lama-erreur", texte, e, source);
   $("lama-erreur").hidden = false;
@@ -116,6 +150,11 @@ async function interpreterIntention() {
   if (!prompt) return;
 
   $("lama-erreur").hidden = true;
+  if (!(await verifierOllama())) {
+    // L'accueil porte la marche à suivre : on le rouvre plutôt que d'échouer.
+    $("lama-accueil").hidden = false;
+    return;
+  }
   lama.prompt = prompt;
   // Une nouvelle demande efface le récit précédent : on le reconstruit au fil
   // de l'eau, étape par étape. La carte, elle, reste (elle se vide de la
@@ -234,8 +273,13 @@ $("intention-ollama").addEventListener("click", async () => {
     liste.hidden = false;
     liste.focus();
   } catch (e) {
-    erreurLama(String(e), e, "ollama_modeles");
     $("intention-ollama").classList.remove("intention__ollama--actif");
+    // Ollama absent : l'accueil le dit déjà, avec la marche à suivre.
+    if (!(await verifierOllama())) {
+      $("lama-accueil").hidden = false;
+      return;
+    }
+    erreurLama(String(e), e, "ollama_modeles");
   }
 });
 
@@ -1066,4 +1110,5 @@ window.addEventListener("resize", () => {
 export {
   demarrerCompositionFile, dessinerMiniNuage, finirCompositionFile, interpreterIntention, lama,
   montrerComposition, montrerPlanTexte, phaseCompositionFile, revelerFile, sonderGrapheProgres,
+  verifierOllama,
 };

@@ -6,7 +6,7 @@ import {
   chargerPopulariteFraicheur,
 } from "./vues.js";
 import {
-  dessinerMiniNuage,
+  dessinerMiniNuage, verifierOllama,
 } from "./lama.js";
 import {
   dernierArtisteOuvert, majAutourArtiste, masquerAutourArtiste, pisteSelectionnee, poser,
@@ -158,6 +158,7 @@ async function basculerMode(mode) {
     if (enLama) {
       $("fil-titre").textContent = "Lama";
       dessinerMiniNuage();
+      verifierOllama();
     }
   } else if (bibliotheque) {
     $("fil-titre").textContent = "Bibliothèque";

@@ -965,6 +965,7 @@ fn main() {
             path_texte_interpreter,
             path_texte,
             ollama_modeles,
+            lama_disponibilite,
             essai_lama,
             essai_fenetre,
             voyage,
