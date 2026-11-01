@@ -98,6 +98,12 @@ async function pochette(path) {
   return entree.promesse;
 }
 
+/// Oublie toutes les pochettes : une a changé de source (« Image du dossier »).
+function viderPochettes() {
+  pochettes.clear();
+  pochettesPoids = 0;
+}
+
 /* ------------------------------------------------------------------- état */
 
 const vue = {
@@ -151,17 +157,13 @@ function affecterFileCourante(v) {
 function affecterOrigineFile(v) {
   return (origineFile = v);
 }
-function affecterPochettesPoids(v) {
-  return (pochettesPoids = v);
-}
 function affecterSommet(v) {
   return (sommet = v);
 }
 
 export {
   $, affecterAlchimieEnCours, affecterFileCompositionActive, affecterFileCourante,
-  affecterOrigineFile, affecterPochettesPoids, affecterSommet, alchimieEnCours, duree,
-  estListePistes, fileCompositionActive, fileCourante, horloge, invoke, journal, LIGNE,
-  origineFile, ouvrirLien, pochette, pochettesPoids, remonter, signalerErreur, sommet, txt, vue,
-  vueEnGrille,
+  affecterOrigineFile, affecterSommet, alchimieEnCours, duree, estListePistes,
+  fileCompositionActive, fileCourante, horloge, invoke, journal, LIGNE, origineFile, ouvrirLien,
+  pochette, remonter, signalerErreur, sommet, txt, viderPochettes, vue, vueEnGrille,
 };

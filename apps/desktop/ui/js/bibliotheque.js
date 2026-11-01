@@ -1,6 +1,6 @@
 import "./decouvrir.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterPochettesPoids, horloge, invoke, pochettesPoids, remonter, txt,
+  $, horloge, invoke, remonter, txt, viderPochettes,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur, popARecalculee,
@@ -446,8 +446,9 @@ async function chargerVerifications() {
         dossier.title = "Afficher l'image du dossier (cover.jpg…) au lieu de celle des tags";
         dossier.addEventListener("click", async () => {
           await invoke("pochette_du_dossier", { dossier: p.dossier });
-          pochettes.clear();
-          affecterPochettesPoids(0);
+          // Le cache de `socle.js`, pas la liste locale du même nom :
+          // `pochettes.clear()` visait celle-ci et levait une TypeError.
+          viderPochettes();
           await chargerVerifications();
         });
         actions.appendChild(dossier);
