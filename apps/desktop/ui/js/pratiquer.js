@@ -8,7 +8,7 @@ import {
 } from "./vues.js";
 
 import {
-  pisteSelectionnee,
+  pisteSelectionnee, texteCompte,
 } from "./ecouter.js";
 import {
   battement, chargerSpectreTransport, peindreTransport, poserImage, poserLecture, sonder,
@@ -18,7 +18,7 @@ import {
   rampe,
 } from "./carte.js";
 import {
-  indexAlphaUtile, indexAnneesUtile, lignesCourantes,
+  indexAlphaUtile, indexAnneesUtile,
 } from "./ecouter-familles.js";
 import {
   bpmSource, edition, majPulsation, majSections, majTempoSource, marquerSectionCourante,
@@ -1546,10 +1546,7 @@ function majEtatEditer() {
     $("index-alpha").hidden = !indexAlphaUtile();
     $("index-annees").hidden = !indexAnneesUtile();
     $("fil-titre").textContent = vue.titre;
-    const compte = vue.quoi === "albums" ? lignesCourantes().length : vue.lignes.length;
-    $("fil-compte").textContent = `${compte} ${
-      vue.quoi === "artistes" ? "artistes" : vue.quoi === "albums" ? "albums" : "morceaux"
-    }`;
+    $("fil-compte").textContent = texteCompte(vue.quoi, vue.lignes);
     $("retour").hidden = vue.retour === null;
     $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
     // Raccourci vers la séparation du morceau en lecture — seulement s'il

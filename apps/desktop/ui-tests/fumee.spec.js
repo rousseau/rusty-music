@@ -233,3 +233,11 @@ test("thème : « Système » suit le réglage clair ou sombre", async ({ page }
   await page.keyboard.press("Enter");
   await expect(page.locator('[data-choix-theme="clair"]')).toHaveClass(/segment--actif/);
 });
+
+test("familles d'Écouter : une famille cochée estompe les autres sans rien retirer", async ({ page }) => {
+  await expect(page.locator("#bloc-familles-ecoute")).toBeVisible();
+  await page.locator("#familles-ecoute button.famille").first().click();
+  await expect(page.locator("#grille .album")).toHaveCount(3);
+  await expect(page.locator("#grille .album--estompe")).toHaveCount(1);
+  await expect(page.locator("#fil-compte")).toHaveText("2 sur 3 albums");
+});

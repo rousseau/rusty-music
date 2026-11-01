@@ -1,7 +1,7 @@
 import "./socle.js"; // l'ordre d'exécution : voir main.js
 import {
   $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, pochette, remonter,
-  repondAuFiltre, signalerErreur, txt, vue,
+  signalerErreur, txt, vue,
 } from "./socle.js";
 import {
   demarrerCompositionFile, finirCompositionFile, phaseCompositionFile, revelerFile,
@@ -18,7 +18,7 @@ import {
   tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  cleAlbum, lignesCourantes,
+  cleAlbum, estRetenu, lignesCourantes,
 } from "./ecouter-familles.js";
 import {
   bruitChemin, preparerGraphe,
@@ -77,7 +77,7 @@ function ligne(item, index) {
   el.dataset.index = index;
   // Le filtre du rail estompe, il ne retire rien (Règle 2) : la ligne garde sa
   // place, son rang dans la liste et ses gestes.
-  if (!repondAuFiltre(item)) el.classList.add("ligne--estompe");
+  if (!estRetenu(item)) el.classList.add("ligne--estompe");
   // Une playlist n'a pas de `path` : le comparer à `pisteSelectionnee?.path`
   // (lui aussi `undefined` tant que rien n'est choisi) la surlignerait à tort.
   if (vue.quoi === "playlists") return lignePlaylist(el, item);
@@ -438,9 +438,9 @@ function dessinerGrille() {
       el = carte(item);
       grilleCartes.set(cle, el);
     }
-    // Les cases gardées d'un dessin à l'autre suivent le filtre du rail : estompées,
-    // jamais retirées (Règle 2).
-    el.classList.toggle("album--estompe", !repondAuFiltre(item));
+    // Les cases gardées d'un dessin à l'autre suivent les filtres (rail, famille) :
+    // estompées, jamais retirées (Règle 2).
+    el.classList.toggle("album--estompe", !estRetenu(item));
     // Déplace le nœud à sa place dans l'ordre voulu s'il y est déjà — pas de
     // retrait/réinsertion, donc pas de repeinture parasite.
     grilleFenetre.appendChild(el);

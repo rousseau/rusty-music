@@ -1,6 +1,6 @@
 import "./maplibre.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, invoke, navigation, plier, remonter, vue, vueEnGrille,
+  $, ecoute, invoke, navigation, plier, remonter, repondAuFiltre, vue, vueEnGrille,
 } from "./socle.js";
 import {
   cleCarteGrille, dessiner, dessinerGrille,
@@ -26,8 +26,9 @@ import {
 
 /* ------------------------------------------- filtre par famille — mode Écoute
  *
- * La grille de pochettes ne montre que les albums dont la famille sonique
- * dominante est cochée. Ensemble vide = tout est montré. Même légende que le
+ * Les albums dont la famille sonique dominante n'est pas cochée s'estompent
+ * dans la grille, à leur place (Règle 2 — comme Découvrir et le filtre du
+ * rail) ; ensemble vide = aucun filtre. Même légende que le
  * mode Explorer (`rendreFamilles`), mais multi-sélection et sans lien avec la
  * carte. Les familles viennent du même clustering ; le filtre n'a de sens
  * qu'une fois la carte calculée.
@@ -51,11 +52,17 @@ async function chargerFamillesParAlbum() {
   }
 }
 
-/// Les albums réellement affichés dans la grille : `vue.lignes` filtré par les
-/// familles cochées. Sans filtre, ou sans données de famille, on rend tout.
-function albumsAffiches() {
-  if (filtreFamilles.size === 0 || !ecoute.famillesParAlbum) return vue.lignes;
-  return vue.lignes.filter((a) => filtreFamilles.has(ecoute.famillesParAlbum.get(cleAlbum(a))));
+/// Vrai si l'album `a` passe le filtre par famille. Sans filtre, ou sans données
+/// de famille, tout passe.
+function passeFamille(a) {
+  if (filtreFamilles.size === 0 || !ecoute.famillesParAlbum) return true;
+  return filtreFamilles.has(ecoute.famillesParAlbum.get(cleAlbum(a)));
+}
+
+/// Vrai si `item` reste plein dans la vue affichée : il répond au filtre du rail
+/// et, dans la grille d'albums, au filtre par famille. Sinon il s'estompe.
+function estRetenu(item) {
+  return repondAuFiltre(item) && (vue.quoi !== "albums" || passeFamille(item));
 }
 
 /// Sens de chaque ordre : `1` = croissant (A→Z, plus ancien d'abord), `-1` =
@@ -151,11 +158,11 @@ function trierAlbums(lignes) {
   return lignes;
 }
 
-/// Les lignes de la vue courante — la grille d'albums peut être filtrée et
-/// retriée, celle d'artistes retriée ; tout le reste (pistes d'un album,
-/// recherche) passe tel quel.
+/// Les lignes de la vue courante — les grilles d'albums et d'artistes peuvent
+/// être retriées ; tout le reste (pistes d'un album, playlists) passe tel quel.
+/// Rien n'est retiré : un filtre estompe (`estRetenu`).
 function lignesCourantes() {
-  if (vue.quoi === "albums") return trierAlbums(albumsAffiches());
+  if (vue.quoi === "albums") return trierAlbums(vue.lignes);
   if (vue.quoi === "artistes") return trierAlbums(vue.lignes);
   return vue.lignes;
 }
@@ -272,8 +279,8 @@ document.querySelectorAll("[data-couleur]").forEach((b) =>
 
 
 export {
-  chargerFamillesParAlbum, cleAlbum, dessinerFamillesEcoute, familleARecalculee, filtrerEcoute,
-  grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
+  chargerFamillesParAlbum, cleAlbum, dessinerFamillesEcoute, estRetenu, familleARecalculee,
+  filtrerEcoute, grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
   majBlocFamillesEcoute, majSegmentsCouleur, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe,
   sensTri, triCourant,
 };

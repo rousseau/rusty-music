@@ -63,8 +63,9 @@ Un commit par étape.
    d'édition MusicBrainz face à face, état de la bibliothèque, passage
    Mac ↔ iPhone, captures sur collection fictive.
 
-Relevé en route, non corrigé : le filtre par famille d'Écouter retire des
-albums au lieu de les estomper (`interface-guidelines.md`, Écouter, Règle 2).
+Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
+retirait des albums au lieu de les estomper (`interface-guidelines.md`,
+Écouter, Règle 2).
 
 ## Ce qui n'est pas prévu, et pourquoi
 

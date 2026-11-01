@@ -1,7 +1,7 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
   $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, ouvrirLien, pochette,
-  remonter, repondAuFiltre, signalerErreur, txt, vue, vueEnGrille,
+  remonter, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopularites, colonnesGrille, composerAlchimie,
@@ -18,7 +18,7 @@ import {
   chargerFamilles, tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
+  estRetenu, grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
   majBlocFamillesEcoute, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri,
   triCourant,
 } from "./ecouter-familles.js";
@@ -412,12 +412,13 @@ function scrollActuel() {
   return (vueEnGrille() ? grille : liste).scrollTop;
 }
 
-/// Le compte du fil : « 12 albums », ou « 3 sur 12 albums » quand le filtre du
-/// rail en estompe une partie — le total reste celui de ce qui est affiché.
+/// Le compte du fil : « 12 albums », ou « 3 sur 12 albums » quand un filtre
+/// (rail, famille) en estompe une partie — le total reste celui de ce qui est
+/// affiché.
 function texteCompte(quoi, lignes) {
   const unite = { artistes: "artistes", albums: "albums", playlists: "listes" }[quoi] ?? "morceaux";
-  if (!ecoute.filtre) return `${lignes.length} ${unite}`;
-  return `${lignes.filter(repondAuFiltre).length} sur ${lignes.length} ${unite}`;
+  const retenus = lignes.filter(estRetenu).length;
+  return retenus === lignes.length ? `${lignes.length} ${unite}` : `${retenus} sur ${lignes.length} ${unite}`;
 }
 
 function poser(quoi, titre, lignes, retour = null, scroll = 0) {
@@ -438,9 +439,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   const horsEcoute = navigation.mode !== "ecoute";
   if (!horsEcoute) {
     $("fil-titre").textContent = titre;
-    // La grille d'albums peut être filtrée par famille : le compte suit ce qui
-    // est réellement montré, pas le total.
-    $("fil-compte").textContent = texteCompte(quoi, quoi === "albums" ? lignesCourantes() : lignes);
+    $("fil-compte").textContent = texteCompte(quoi, lignes);
   }
   $("retour").hidden = retour === null;
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
