@@ -72,6 +72,14 @@ async function chargerStatsBibliotheque() {
 
   dessinerBarres("stats-humeur", s.humeur, ["non mesuré"]);
 
+  majEtat(
+    "identites",
+    s.sans_mbid ? `${pluriel(s.sans_mbid, "morceau", "morceaux")} sans identifiant` : "toutes connues",
+    s.sans_mbid > 0,
+  );
+  genresEtat.sansGenre = s.genres.find(([g]) => g === "—")?.[1] ?? 0;
+  majEtatGenres();
+
   const completude = $("stats-completude");
   completude.replaceChildren();
   for (const [libelle, n] of [
@@ -404,11 +412,43 @@ $("densite-bandes").addEventListener("input", (e) => {
 });
 
 
+/* ---------------------------------------------------------- état
+ *
+ * En tête de Bibliothèque, une ligne par manque (`#etat`) : un compte, et la
+ * liste qui se déplie sur place. Les comptes viennent des mêmes réponses que
+ * les listes (`chargerVerifications`, `chargerStatsBibliotheque`, la recherche
+ * de doublons) : rien de plus n'est demandé au moteur.
+ */
+
+const nombre = (n) => n.toLocaleString("fr-FR");
+const pluriel = (n, un, plusieurs = `${un}s`) => `${nombre(n)} ${n > 1 ? plusieurs : un}`;
+const genresEtat = { suspects: null, sansGenre: null };
+
+/// Pose le compte d'une ligne de l'état ; `aVoir` : il y a quelque chose à
+/// examiner (le compte passe en `--txt`).
+function majEtat(cle, texte, aVoir) {
+  const el = $(`etat-${cle}-compte`);
+  if (!el) return;
+  el.textContent = texte;
+  el.classList.toggle("etat__compte--a-voir", aVoir);
+}
+
+function majEtatGenres() {
+  const { suspects, sansGenre } = genresEtat;
+  const bouts = [];
+  if (suspects) bouts.push(pluriel(suspects, "suspect"));
+  if (sansGenre) bouts.push(`${nombre(sansGenre)} sans genre`);
+  const connu = suspects !== null || sansGenre !== null;
+  majEtat("genres", bouts.join(" · ") || (connu ? "rien à signaler" : "…"), bouts.length > 0);
+}
+
 /// Genres suspects et éditions multiples : peu coûteux (une requête
 /// d'agrégation), rejoués à chaque entrée dans le mode comme le reste des
 /// statistiques.
 async function chargerVerifications() {
   const suspects = await invoke("suspect_genres");
+  genresEtat.suspects = suspects.length;
+  majEtatGenres();
   dessinerListeVerif(
     "genres-suspects",
     suspects.map(([, ligne, genre, dominants]) => ({
@@ -418,6 +458,7 @@ async function chargerVerifications() {
   );
 
   const editions = await invoke("multiple_editions");
+  majEtat("editions", editions.length ? pluriel(editions.length, "album") : "aucune", editions.length > 0);
   dessinerListeVerif(
     "editions-multiples",
     editions.map(([artiste, titre, versions]) => ({
@@ -427,6 +468,7 @@ async function chargerVerifications() {
   );
 
   const pochettes = await invoke("pochettes_suspectes");
+  majEtat("pochettes", pochettes.length ? pluriel(pochettes.length, "à examiner", "à examiner") : "aucune", pochettes.length > 0);
   $("pochettes-suspectes-vide").textContent = pochettes.length
     ? `${pochettes.length.toLocaleString("fr-FR")} pochette${pochettes.length > 1 ? "s" : ""} à examiner.`
     : "Aucune pochette suspecte.";
@@ -475,6 +517,7 @@ async function chargerVerifications() {
   );
 
   const echecs = await invoke("scan_failures");
+  majEtat("echecs", echecs.length ? pluriel(echecs.length, "fichier") : "aucun", echecs.length > 0);
   $("echecs-scan-vide").textContent = echecs.length
     ? `${echecs.length.toLocaleString("fr-FR")} fichier${echecs.length > 1 ? "s" : ""} qu'un scan n'a pas su lire.`
     : "Aucun échec de scan connu.";
@@ -520,6 +563,7 @@ $("chercher-doublons").addEventListener("click", async () => {
         mesure: `d² = ${d.distance2.toFixed(5)}`,
       })),
     );
+    majEtat("doublons", doublons.length ? pluriel(doublons.length, "paire") : "aucun", doublons.length > 0);
     $("graphe-attente").textContent = doublons.length
       ? `${doublons.length.toLocaleString("fr-FR")} paire${doublons.length > 1 ? "s" : ""} probable${doublons.length > 1 ? "s" : ""}.`
       : "Aucun doublon probable trouvé.";

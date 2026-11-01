@@ -436,10 +436,10 @@ dans son journal que la composition va au bout.
 | 2 | Estomper, jamais masquer | — | Rien à filtrer dans ce mode dans son état actuel. |
 | 3 | Palette unique | — | Pas de rendu coloré par famille ici. |
 | 4 | Stabilité des positions | ✅ | Page de réglages classique, rien qui se réorganise au clic. |
-| 5 | Sobriété stricte | ❌ | `index.html:426-548` empile, toujours visibles simultanément dès l'entrée dans le mode : Paramètres de la carte (perplexité, époques, familles, itérations), Vocabulaire des familles, Nappe de densité (résolution, noyau, bandes, force d'ombre), et quatre blocs de Vérifications (genres suspects, éditions multiples, doublons/points isolés, échecs de scan) — aucun de ces blocs n'est masqué par défaut ni replié derrière un geste. C'est la définition même du « panneau d'administration » qu'`ui-spec.md` cite comme repoussoir. |
+| 5 | Sobriété stricte | ✅ | **Corrigé le 1ᵉʳ novembre 2026.** La page empilait, ouverts d'emblée, une dizaine de blocs de réglages et de vérifications — le « panneau d'administration » qu'`ui-spec.md` cite comme repoussoir. Ne restent ouverts que la source (dossiers, « Ajouter », « Tout rafraîchir » ; ses options repliées sous « Options de la chaîne ») et l'**état de la bibliothèque** : six lignes (identités, pochettes suspectes, genres, éditions multiples, doublons probables, fichiers en échec), chacune un compte. Tout le reste — Discogs, stockage, apparence, aperçu, paramètres de la carte, vocabulaire, nappe, à propos — est un `<details>` fermé derrière son titre. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom dans ce mode. |
-| 8 | Révélation par échelle | ❌ | Même constat qu'à la Règle 5 : ce sont exactement les « options avancées » que la Règle 8 vise nommément, et elles sont toutes à l'écran en permanence plutôt que rétractables. Contraste net avec le panneau par stem de l'Éditeur (Règle 8 là-bas), qui applique la même idée correctement. |
+| 8 | Révélation par échelle | ✅ | Chaque ligne de l'état déplie sa liste sur place (les listes des anciennes « Vérifications », mêmes identifiants) ; un compte nul se lit atténué, un compte à examiner en `--txt`. Les réglages avancés attendent l'ouverture de leur section. |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées. |
 
 ### Éditer
@@ -597,8 +597,8 @@ terminé — dans n'importe lequel des cinq écrans :
 4. **Sélection → mise en page** — cliquer un élément déplace-t-il, réordonne-
    t-il ou fait-il défiler autre chose que ce qui était prévu ?
 5. **Sobriété** — combien de contrôles sont visibles en même temps sans
-   geste ? Si la réponse ressemble à la page Bibliothèque actuelle
-   (dix blocs de réglages ouverts d'un coup), reculer.
+   geste ? Si la réponse ressemble à l'ancienne page Bibliothèque (dix blocs
+   de réglages ouverts d'un coup, avant le 1ᵉʳ novembre 2026), reculer.
 6. **Thème** — l'écran a-t-il été vérifié en clair **et** en sombre
    (Bibliothèque → Apparence, ou ⌘K « thème ») ? Une couleur nouvelle est-elle
    un jeton dessiné dans les deux blocs, et `scripts/contraste-interface.py`

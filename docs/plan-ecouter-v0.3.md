@@ -146,7 +146,17 @@ qui s'écoute (Règle 1).
 l'album ouvert au centre ; C seulement si A laisse beaucoup d'albums sans
 candidate.
 
-### 4. État de la bibliothèque · **L** — **retenu : B, puis A**
+### 4. État de la bibliothèque · **L** — **retenu : B, puis A** — **B fait (1ᵉʳ novembre 2026)**
+
+**Fait (B).** En tête de Bibliothèque, sous la source : six lignes —
+identités (morceaux sans MBID d'artiste), pochettes suspectes (seules : le
+compte des albums sans aucune pochette demanderait de relire les fichiers),
+genres (suspects et sans genre), éditions multiples, doublons probables (« à
+chercher » : le graphe reste un geste explicite), fichiers en échec. Chaque
+compte vient des réponses déjà demandées pour les listes ; chaque ligne
+déplie sa liste sur place. Le reste de la page est replié (Règles 5 et 8, ✅
+à l'audit). Reste l'option A : la passe « Compléter » journalisée et
+annulable.
 
 **Chez Disc Player.** Un récapitulatif de ce qui manque, et une passe qui
 complète, annulable.

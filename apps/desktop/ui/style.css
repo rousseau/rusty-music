@@ -446,6 +446,48 @@ html, body {
   border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
 }
 
+/* ---------- Bibliothèque : sections repliées, état ---------- */
+/* Règles 5 et 8 : un réglage avancé attend un geste. Chaque section est un
+   `<details>` fermé, son titre (`rail__titre`) ouvre ; seuls la source et
+   l'état restent ouverts. */
+.replie { margin-top: 26px; }
+.replie__titre {
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  margin: 0;
+}
+.replie__titre::-webkit-details-marker { display: none; }
+.replie__titre::before {
+  content: "›"; display: inline-block; width: 10px; color: var(--mut);
+  transition: transform .15s ease;
+}
+.replie[open] > .replie__titre::before { transform: rotate(90deg); }
+.replie__titre:hover, .replie__titre:focus-visible { color: var(--txt); outline: none; }
+.replie > :not(summary) { margin-top: 12px; }
+.replie--interne { margin-top: 14px; }
+.replie--interne > .replie__titre { font-size: var(--t-second); letter-spacing: 0; text-transform: none; font-family: var(--sans); color: var(--mut); }
+
+/* L'état : une ligne par manque, son compte à droite ; la ligne déplie la
+   liste existante. Un compte nul se lit en `--mut`, un compte à examiner en
+   `--txt`. */
+.etat { border-top: 1px solid var(--line); }
+.etat__ligne { border-bottom: 1px solid var(--line); }
+.etat__ligne > summary {
+  display: flex; align-items: baseline; gap: 12px; padding: 10px 0;
+  cursor: pointer; list-style: none;
+}
+.etat__ligne > summary::-webkit-details-marker { display: none; }
+.etat__ligne > summary::before {
+  content: "›"; display: inline-block; width: 10px; color: var(--mut);
+  transition: transform .15s ease;
+}
+.etat__ligne[open] > summary::before { transform: rotate(90deg); }
+.etat__ligne > summary:hover .etat__nom, .etat__ligne > summary:focus-visible .etat__nom { color: var(--accent); }
+.etat__ligne > summary:focus-visible { outline: none; }
+.etat__nom { flex: 1; }
+.etat__compte { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
+.etat__compte--a-voir { color: var(--txt); }
+.etat__corps { padding: 0 0 14px 22px; }
+
 /* ---------- vue plein écran « En cours » ---------- */
 /* Couvre rail, centre et inspecteur ; s'arrête au transport, qui reste
    utilisable. Sous la file (z 10) et la palette (z 50). Les fonds seuls

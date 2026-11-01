@@ -63,6 +63,10 @@ function jetonAudit(nom, repli) {
 
 const visibleAudit = (el) => {
   if (!el) return false;
+  // Dans un `<details>` fermé (sections repliées de Bibliothèque), seul le titre
+  // est affiché ; WebKit garde pourtant une boîte au reste du contenu.
+  const ferme = el.closest("details:not([open])");
+  if (ferme && !ferme.querySelector(":scope > summary")?.contains(el)) return false;
   const cs = getComputedStyle(el);
   if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
   const r = el.getBoundingClientRect();

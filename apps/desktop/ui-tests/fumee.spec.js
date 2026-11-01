@@ -204,6 +204,7 @@ test("filtre du rail : estompe la grille sans rien retirer, Entrée ouvre la pal
 
 test("thème : Bibliothèque choisit Clair, gardé au rechargement, posé avant le premier affichage", async ({ page }) => {
   await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Apparence')");
   await page.click('[data-choix-theme="clair"]');
   await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
   await expect(page.locator('[data-choix-theme="clair"]')).toHaveClass(/segment--actif/);
@@ -223,6 +224,7 @@ test("thème : Bibliothèque choisit Clair, gardé au rechargement, posé avant 
 test("thème : « Système » suit le réglage clair ou sombre", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Apparence')");
   await page.click('[data-choix-theme="systeme"]');
   await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -276,4 +278,23 @@ test("vue « En cours » : sans mouvement si le système le demande", async ({ p
   await expect(page.locator("#en-cours")).toBeVisible();
   await expect(page.locator("#en-cours-spectre")).toBeHidden();
   expect(await page.locator("#en-cours-disque").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+});
+
+test("Bibliothèque : l'état en tête, une ligne déplie sa liste, les réglages repliés", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.scan_failures = [["/Musique/abime.mp3", "en-tête illisible", 1_700_000_000]];
+  });
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await expect(page.locator("#etat-echecs-compte")).toHaveText("1 fichier");
+  await expect(page.locator("#etat-echecs-compte")).toHaveClass(/etat__compte--a-voir/);
+  await expect(page.locator("#etat-editions-compte")).toHaveText("aucune");
+  await expect(page.locator("#etat-doublons-compte")).toHaveText("à chercher");
+  // Fermée, la ligne cache sa liste ; ouverte, elle la montre sur place.
+  await expect(page.locator("#echecs-scan")).toBeHidden();
+  await page.click("#etat-echecs summary");
+  await expect(page.locator("#echecs-scan")).toContainText("abime.mp3");
+  // Les réglages avancés attendent un geste (Règles 5 et 8).
+  await expect(page.locator("#recalculer-carte")).toBeHidden();
+  await page.click("summary:has-text('Paramètres de la carte')");
+  await expect(page.locator("#recalculer-carte")).toBeVisible();
 });
