@@ -986,6 +986,7 @@ async function battement() {
   if (battementEnVol) return;
   battementEnVol = true;
   let e;
+  const versionStems = lecture.stems.version;
   try {
     e = await invoke("playback_state");
     battementEnErreur = false;
@@ -997,6 +998,16 @@ async function battement() {
     return;
   } finally {
     battementEnVol = false;
+  }
+
+  // Le moteur tient des stems que l'interface croyait partis (une commande de
+  // lecture a échoué avant de les couper) : ils sonnent, c'est eux que le
+  // transport doit suivre. `battementStems` les compare à ceux du dock, et les
+  // coupe s'ils n'en sont pas. Une réponse partie avant que l'interface ne
+  // charge ou n'oublie les stems ne dit plus rien : on l'ignore.
+  if (e.stems && !lecture.stems.charges && versionStems === lecture.stems.version) {
+    lecture.stems.charges = true;
+    return battementStems();
   }
 
   // Aléatoire, répétition et verrou de réordonnance : le moteur reste seul

@@ -188,6 +188,9 @@ pub(crate) struct EtatLecture {
     ignorees: Vec<PisteIgnoree>,
     /// Minuteur d'arrêt armé, avec ce qu'il reste — l'interface l'affiche.
     minuteur: Option<minuteur::EtatMinuteur>,
+    /// Un multipiste de stems est chargé. L'interface s'y aligne : c'est le
+    /// moteur qui sait ce qui sonne, pas la copie qu'elle en garde.
+    stems: bool,
 }
 
 /// Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé.
@@ -478,8 +481,10 @@ pub(crate) fn precharger_suivante(etat: &Etat) -> Result<(), String> {
 #[tauri::command(async)]
 pub(crate) fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
     precharger_suivante(&etat)?;
-    // Avant de tenir le verrou du lecteur : le minuteur le prend lui-même.
+    // Avant de tenir le verrou du lecteur : le minuteur le prend lui-même, et
+    // aucune commande ne tient les stems et le lecteur à la fois.
     let minuteur = etat_du_minuteur(&etat);
+    let stems = verrou(&etat.stems).is_some();
     let mut player = verrou(&etat.player);
     let ignorees = player
         .prendre_echecs()
@@ -501,6 +506,7 @@ pub(crate) fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
         verrou: player.verrou(),
         ignorees,
         minuteur,
+        stems,
     })
 }
 

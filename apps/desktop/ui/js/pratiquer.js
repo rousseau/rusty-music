@@ -25,7 +25,7 @@ import {
   bpmSource, edition, majPulsation, majSections, majTempoSource, marquerSectionCourante,
   NOMS_SECTIONS, octaveVitesse, pasReglage, positionnerBande, reposerBoucle, vitesseEnBpm,
 } from "./editer.js";
-import { lecture, transport } from "./etat-lecture.js";
+import { lecture, poserStemsCharges, transport } from "./etat-lecture.js";
 
 /* ------------------------------------------------ éditer : pratiquer */
 
@@ -1322,7 +1322,7 @@ async function appliquerReglages() {
       // le mélange depuis zéro ne s'entendent pendant qu'on reposera position
       // et vitesses.
       const noms = await invoke("stems_play", { stems: traites, niveaux: niveaux() });
-      lecture.stems.charges = true;
+      poserStemsCharges(true);
       verifierNoms(noms);
       await appliquerVitesses();
       await reposerBoucle();
@@ -2589,12 +2589,12 @@ async function lireStems() {
     const noms = await invoke("stems_play", { stems, niveaux: niveaux() });
     // Posé avant les vitesses : `appliquerVitesses` ne parle au moteur que si
     // un multipiste est chargé, et il l'est à partir d'ici.
-    lecture.stems.charges = true;
+    poserStemsCharges(true);
     verifierNoms(noms);
     await appliquerVitesses();
     await reposerBoucle();
   } catch (e) {
-    lecture.stems.charges = false;
+    poserStemsCharges(false);
     // `stems_play` a pu réussir avant qu'une étape suivante échoue : on coupe
     // le multipiste côté moteur, sans quoi il resterait chargé sans que rien ne
     // le pilote (le sondage suit `lecture.stems.charges`).
@@ -2638,7 +2638,7 @@ function enSerie(travail) {
 /// déjà coupés (commande de lecture ordinaire) ou va le faire.
 function oublierStems() {
   const jouait = lecture.stems.charges;
-  lecture.stems.charges = false;
+  poserStemsCharges(false);
   $("dock-aide").textContent = "";
   if (jouait) poserTete(0);
 }

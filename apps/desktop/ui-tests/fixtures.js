@@ -63,15 +63,19 @@ const fixtures = {
     verrou: 0,
     ignorees: [],
     minuteur: null,
+    stems: !!e.stems,
   }),
   tracks_of_album: (a) => window.__DONNEES__.PISTES.filter((p) => p.album === a.album),
   cover: null,
+  // Comme le moteur, toute commande de lecture coupe les stems.
   play: (a, e) => {
     e.file = a.paths;
+    e.stems = null;
     return null;
   },
   set_queue: (a, e) => {
     e.file = a.paths;
+    e.stems = null;
     return null;
   },
 };
@@ -187,7 +191,10 @@ Object.assign(fixtures, {
   },
   // Réglages neutres : le moteur rend les chemins d'origine sans calcul.
   start_etirer: (a) => ({ en_cours: false, faits: 0, total: 0, stems: a.stems, erreur: null }),
-  stems_transport: null,
+  stems_transport: (a, e) => {
+    if (a.action === "arreter") e.stems = null;
+    return null;
+  },
   stem_spectre: (a) => ({ largeur: a.width, hauteur: a.height, pixels: new Array(a.width * a.height).fill(40) }),
   spectre_transport: { largeur: 4, hauteur: 2, pixels: [0, 50, 100, 150, 200, 250, 30, 60], pixels_ref: null, hd: false },
   pulsation: { temps: [0.5, 1.0, 1.5, 2.0], premiers_temps: [0.5], bpm: 120, metrique: 4 },

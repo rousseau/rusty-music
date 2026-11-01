@@ -72,6 +72,24 @@ test("Éditer : les stems du morceau en lecture prennent la main", async ({ page
   expect(charges.length).toBe(4);
 });
 
+test("le transport suit les stems que le moteur garde", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="editer"]');
+  await expect(page.locator("#np-titre")).toHaveText("4 stems");
+  // ⏭ : l'interface oublie les stems, mais ce moteur-ci ne les coupe pas
+  // (une commande qui échoue en route). Le sondage doit les lui rendre.
+  await page.evaluate(() => {
+    window.__FIXTURES__.skip = () => null;
+  });
+  await page.click("#suivant");
+  await expect.poll(() => appels(page, "skip").then((a) => a.length)).toBe(1);
+  // Le transport se remet à sonder les stems (le titre, lui, n'aurait pas
+  // bougé de toute façon : même morceau).
+  const avant = (await appels(page, "stems_state")).length;
+  await expect.poll(() => appels(page, "stems_state").then((a) => a.length)).toBeGreaterThan(avant + 2);
+  expect(await page.evaluate(() => window.__ETAT_FAUX__.stems?.length)).toBe(4);
+});
+
 test("retour en Écouter après chaque mode", async ({ page }) => {
   for (const m of ["bibliotheque", "explorer", "editer", "decouvrir", "valise", "ecoute"]) {
     await page.click(`button.mode[data-mode="${m}"]`);

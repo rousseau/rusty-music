@@ -9,6 +9,12 @@
 //
 // Ce module ne fait que déclarer : il peut être importé de partout sans
 // entrer dans la chaîne d'exécution décrite dans `main.js`.
+//
+// Que des stems soient chargés, l'interface le sait avant le moteur (elle
+// vient de les charger ou de les oublier) ; le moteur le sait mieux qu'elle
+// ensuite (une commande a pu échouer en route). `poserStemsCharges` note le
+// premier cas ; le sondage du lecteur (`playback_state`, champ `stems`)
+// ramène l'autre, sauf si sa réponse date d'avant le dernier changement.
 
 const lecture = {
   // Le lecteur ordinaire, relu par `battement` (`playback_state`).
@@ -16,9 +22,10 @@ const lecture = {
   fini: false, // la file est épuisée, plus rien à reprendre
   positionMs: 0,
   // Le multipiste des stems, relu par `battementStems` (`stems_state`).
-  // Les champs autres que `charges` restent vides jusqu'au premier relevé.
+  // Les relevés (position, pause…) restent vides jusqu'au premier.
   stems: {
     charges: false, // un multipiste est-il chargé côté moteur ?
+    version: 0, // compte les changements de `charges` faits par l'interface
     positionMs: undefined,
     lueA: undefined, // `performance.now()` du relevé, pour extrapoler
     ancreMs: undefined, // d'où la lecture est repartie
@@ -45,4 +52,10 @@ const transport = {
   apercu: false,
 };
 
-export { lecture, transport };
+/// L'interface vient de charger (ou d'oublier) les stems.
+function poserStemsCharges(v) {
+  lecture.stems.charges = v;
+  lecture.stems.version += 1;
+}
+
+export { lecture, poserStemsCharges, transport };
