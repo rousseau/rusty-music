@@ -443,8 +443,13 @@ impl Iterator for Melange {
         // Tant qu'un seul stem a de la matière, la lecture continue : à
         // vitesses différentes, le plus rapide finit le premier et ce n'est pas
         // une raison pour couper les autres.
+        //
+        // Plus aucun : du silence, pas `None`. Une source qui rend `None`,
+        // rodio la retire, et le multipiste ne pouvait plus sonner — il
+        // fallait recharger les stems pour réécouter. Il reste chargé ;
+        // [`Multipiste::arreter_au_bout`] le met en pause au début.
         if !vivante {
-            return None;
+            return Some(self.clic.clamp(-1.0, 1.0));
         }
         // La somme des stems reconstitue le mélange d'origine, qui pouvait
         // déjà frôler la pleine échelle : sans écrêtage, un solo à plein
@@ -806,6 +811,18 @@ impl Multipiste {
         self.boucle.passages.load(Ordering::Relaxed)
     }
 
+    /// Arrivé au bout, se met en pause au début du morceau, comme un lecteur
+    /// qu'on a laissé finir : ▶ le relance sans rien recharger. Rend vrai s'il
+    /// vient de le faire.
+    pub fn arreter_au_bout(&self) -> bool {
+        if !self.fini() || self.en_pause() {
+            return false;
+        }
+        self.pause();
+        self.deplacer(Duration::ZERO);
+        true
+    }
+
     /// Vrai quand plus aucun stem n'a de matière — pas quand le premier finit.
     pub fn fini(&self) -> bool {
         self.curseurs
@@ -1006,11 +1023,12 @@ mod tests {
             "une seule piste"
         );
 
-        // Épuisement au bout des trames disponibles — pour toutes les voix.
+        // Épuisement au bout des trames disponibles — pour toutes les voix :
+        // du silence, la source reste en place (voir `next`).
         for c in &b.curseurs {
             c.store(4 << FRAC, Ordering::Relaxed);
         }
-        assert_eq!(b.melange.next(), None);
+        assert_eq!(b.melange.next(), Some(0.0));
     }
 
     /// Une piste plus courte se tait ; elle n'arrête pas les autres. C'est la

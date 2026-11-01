@@ -2545,8 +2545,8 @@ async function deplacerLecture(frac) {
   poserTete(frac);
 }
 
-/// En Éditer, des stems affichés que plus rien ne pilote (arrivés au bout du
-/// morceau, coupés par le moteur) : on les recharge, en pause. Sans ça, ▶ et
+/// En Éditer, des stems affichés que plus rien ne pilote (coupés par le
+/// moteur : ⏮, ⏭, touches média) : on les recharge, en pause. Sans ça, ▶ et
 /// les clics sur un spectrogramme partaient au lecteur ordinaire — le morceau
 /// d'origine jouait, solo et coupure ne touchaient plus rien et la partition
 /// restait figée. Rend vrai si les stems sont de nouveau chargés.

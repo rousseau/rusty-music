@@ -1559,6 +1559,9 @@ async function battementStems() {
   } finally {
     battementStemsEnVol = false;
   }
+  // Plus rien de chargé côté moteur (une commande du lecteur ordinaire les a
+  // coupés) : arrivés au bout, les stems attendent en pause, ils ne passent
+  // pas par ici.
   if (!e.actif && !e.en_pause) {
     await arreterStems();
     dessinerStems();

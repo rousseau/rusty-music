@@ -1412,6 +1412,9 @@ pub(crate) fn sections_de(etat: &State<Etat>, id: i64) -> Result<VueSections, St
 /// État du multipiste, sondé par l'interface pour animer sa barre.
 #[derive(Clone, Default, serde::Serialize)]
 pub(crate) struct EtatStems {
+    /// Un multipiste est chargé et n'est pas au bout. Arrivé au bout, il se
+    /// remet en pause au début (`arreter_au_bout`) : `actif` et `en_pause`
+    /// tous deux faux ne veulent dire que « rien de chargé ».
     actif: bool,
     en_pause: bool,
     position_ms: u64,
@@ -1443,6 +1446,11 @@ pub(crate) struct EtatStems {
 pub(crate) fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
     let etat_stems = {
         let garde = verrou(&etat.stems);
+        // Le sondage fait aussi la fin de morceau : arrivés au bout, les
+        // stems restent chargés, en pause au début (`arreter_au_bout`).
+        if let Some(m) = garde.as_ref() {
+            m.arreter_au_bout();
+        }
         match garde.as_ref() {
             Some(m) => EtatStems {
                 actif: !m.fini(),
