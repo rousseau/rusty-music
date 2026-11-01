@@ -438,22 +438,36 @@ fn ecoute_dite(texte: &[String]) -> Option<NiveauEcoute> {
     None
 }
 
-/// Le texte parle-t-il de **notoriété** (« méconnus », « confidentiels »,
-/// « hidden gems ») ? Sert à ne retirer la popularité que le modèle a lue dans
-/// « oubliés » que si rien d'autre ne la justifie.
+/// Le texte parle-t-il de **notoriété**, dans un sens (« méconnus »,
+/// « confidentiels », « hidden gems ») ou dans l'autre (« tubes », « hits »,
+/// « populaires », « well known ») ? Seule une notoriété dite justifie une
+/// popularité ([`InterpretationLlm::ancrer_popularite`]).
 fn notoriete_nommee(texte: &[String]) -> bool {
     texte.iter().any(|m| {
         m.contains("connu")
+            || [
+                "tube",
+                "tubes",
+                "hit",
+                "hits",
+                "famous",
+                "mainstream",
+                "succes",
+            ]
+            .contains(&m.as_str())
             || [
                 "obscur",
                 "confidentiel",
                 "rare",
                 "underrat",
                 "unknown",
+                "known",
                 "perle",
                 "gem",
                 "hidden",
                 "niche",
+                "popula",
+                "chart",
             ]
             .iter()
             .any(|p| m.starts_with(p))
@@ -918,6 +932,19 @@ impl InterpretationLlm {
         let mut ecartes: Vec<String> = self.energie.take().into_iter().collect();
         ecartes.extend(self.parties.iter_mut().filter_map(|p| p.energie.take()));
         ecartes
+    }
+
+    /// Écarte la popularité quand **le texte ne parle pas de notoriété**
+    /// ([`notoriete_nommee`]). Même défaut que pour l'énergie : un modèle la
+    /// déduit d'une référence (« like Elvis » → `connu`) ou d'une ambiance
+    /// (« not generic » → `peu_connu`). Mesuré sur MusicRecoIntent : 13 % des
+    /// demandes avec Gemma 4 E4B exécuté dans le processus, 0,7 % par Ollama.
+    /// Rend le niveau écarté, pour le journal.
+    pub fn ancrer_popularite(&mut self, prompt: &str) -> Option<String> {
+        if notoriete_nommee(&mots_sans_accent(prompt)) {
+            return None;
+        }
+        self.popularite.take()
     }
 
     /// Fixe `ecoute` d'après **ce que le texte dit** de l'historique d'écoute
@@ -1466,6 +1493,12 @@ pub fn depuis_reponse(
             tracing::info!(
                 ?deduites,
                 "champ d'intention : énergie que le texte ne dit pas, écartée"
+            );
+        }
+        if let Some(ecartee) = p.ancrer_popularite(prompt) {
+            tracing::info!(
+                %ecartee,
+                "champ d'intention : popularité que le texte ne dit pas, écartée"
             );
         }
         if let Some((avant, apres)) = p.ancrer_ecoute(prompt) {
@@ -2107,6 +2140,25 @@ mod tests {
     /// Le modèle qui rend `ecoute` sans que le texte en parle est corrigé ; et
     /// la popularité qu'il a lue dans « oubliés » (ancienne consigne) tombe,
     /// sauf si le texte parle aussi de notoriété.
+    #[test]
+    fn la_popularite_seulement_quand_le_texte_parle_de_notoriete() {
+        let brut = r#"{"etapes": ["x"], "popularite": "connu"}"#;
+        for (prompt, gardee) in [
+            ("a song similar to elvis presleys love me", false),
+            ("gentle smooth music that isnt generic", false),
+            ("Des tubes des années 80", true),
+            ("some popular indie hits", true),
+            ("well known jazz standards", true),
+            ("des perles méconnues", true),
+            ("hidden gems of shoegaze", true),
+        ] {
+            let mut p = interpretation_de(brut).unwrap();
+            let ecartee = p.ancrer_popularite(prompt);
+            assert_eq!(p.popularite.is_some(), gardee, "{prompt}");
+            assert_eq!(ecartee.is_some(), !gardee, "{prompt}");
+        }
+    }
+
     #[test]
     fn lecoute_corrige_le_modele_et_la_popularite_deduite() {
         let brut = r#"{"etapes": ["x"], "ecoute": "oublie", "popularite": "peu_connu"}"#;
