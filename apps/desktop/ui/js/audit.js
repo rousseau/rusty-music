@@ -1,3 +1,25 @@
+import {
+  $, affecterFileCourante, fileCourante, invoke,
+} from "./socle.js";
+import {
+  affecterPlanTexte, dessinerMiniNuage, montrerComposition, montrerPlanTexte, planTexte,
+} from "./lama.js";
+import {
+  selectionner,
+} from "./ecouter.js";
+import {
+  basculerFile,
+} from "./lecteur.js";
+import {
+  carte,
+} from "./carte.js";
+import {
+  journalCarte,
+} from "./maplibre.js";
+import {
+  basculerMode,
+} from "./modes.js";
+
 /* Audit de gabarit de l'interface — `scripts/audit-interface.sh`.
  *
  * Chargé **à la demande** par `RUSTY_MUSIC_AUDIT=1` (jamais en usage normal).
@@ -19,8 +41,6 @@
  * de repli : l'audit tourne aussi sur un état d'avant les jetons, ce qui
  * permet de vérifier qu'il attrape bien les défauts qu'il vise.
  */
-
-/* eslint-disable no-undef -- utilise les globales de app.js (basculerMode, carte…) */
 
 const AUDIT_ATTENTE = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -210,7 +230,7 @@ function fabriquerLamaAudit() {
   });
   const pistes = pts.map(piste);
   const duree = (a, b) => pistes.slice(a, b).reduce((t, x) => t + x.duration_ms, 0);
-  planTexte = {
+  affecterPlanTexte({
     depart: null, arrivee: null, arrivee_demandee: null, etapes: ["rock music", "hip hop music"], n: 12,
     duree_minutes: null, plafond_par_artiste: null,
     filtres: { genres: [], exclure_genres: ["rock"], exclure_artistes: ["Prince"], annee_min: 1970, annee_max: 1979, bpm_min: null, bpm_max: null, energie: "calme", popularite: null },
@@ -220,7 +240,7 @@ function fabriquerLamaAudit() {
       { description: "hip hop music", genres: ["hip hop"], energie: null, duree_minutes: 20, n: null },
     ],
     brut: "{}",
-  };
+  });
   const ids = pts.map((p) => p.id);
   const compo = {
     pistes, relaches: [], duree_ms: duree(0, pistes.length),
@@ -233,7 +253,7 @@ function fabriquerLamaAudit() {
   $("intention-texte").value = "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes";
   montrerPlanTexte(planTexte);
   montrerComposition(compo);
-  fileCourante = pistes;
+  affecterFileCourante(pistes);
 }
 
 async function auditerInterface() {
@@ -275,7 +295,7 @@ async function auditerInterface() {
         await attendre(350);
         for (const etat of ["base", "file ouverte", "morceau sélectionné"]) {
           if (etat === "file ouverte") {
-            if (ecran !== "explorer:lama+playlist") fileCourante = fileCourante.length ? fileCourante : [piste];
+            if (ecran !== "explorer:lama+playlist") affecterFileCourante(fileCourante.length ? fileCourante : [piste]);
             basculerFile(true);
           } else {
             basculerFile(false);
@@ -293,3 +313,5 @@ async function auditerInterface() {
   basculerFile(false);
   journalCarte(`AUDIT FIN cellules=${cellules} violations=${total}`, total ? "warn" : "log");
 }
+
+export { auditerInterface };
