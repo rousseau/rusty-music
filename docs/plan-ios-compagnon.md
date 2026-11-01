@@ -496,6 +496,49 @@ tirages, et l'envoi remplace l'ancienne valise après en avoir repris les
 écoutes. Restent les points 2 (retirer ce qui est écouté en entier) et 4 (la
 différence).
 
+## Passage de la lecture Mac ↔ iPhone · **M** — à trancher (1ᵉʳ nov. 2026)
+
+**L'idée** : quitter le bureau en emportant ce qui joue — piste, position,
+file — et le retrouver sur l'iPhone ; au retour, l'inverse. Idée et méthode
+reprises du `handoff.ts` de [Disc Player](https://github.com/eudj1n/snowsky-disc-player)
+(MIT, `MODELES.md`), qui fait passer la musique entre le baladeur et le
+navigateur.
+
+**Ce que Disc Player en enseigne.** Chaque pas est **confirmé par une
+lecture** de l'autre côté, et rien n'est rejoué après une issue incertaine :
+la source est mise en pause *avec confirmation* avant que la destination ne
+sonne, depuis la position lue sur la source ; au retour, la file de la
+destination reprend **au même rang si elle n'a pas changé**, sinon on rejoue
+la source depuis la piste ; un geste fait à la main sur la source pendant ce
+temps reprend la main (la destination se met en pause). Jamais deux appareils
+qui jouent à la fois, jamais un morceau perdu sans le dire.
+
+**Constaté chez nous.** Les deux côtés savent déjà ce qu'il faut transporter :
+la session (file, position) est la même table `session`, écrite par les mêmes
+fonctions du cœur (`rusty_music_core::session`) au bureau et dans la valise
+(étape 5). Deux différences de fond avec Disc Player :
+- **l'iPhone ne porte qu'une valise**, pas toute la bibliothèque : une piste
+  du Mac n'y est que si son album est parti ; la file se réduit alors à ce que
+  la valise contient (et le dit) ;
+- **pas de canal en direct** aujourd'hui : l'envoi passe par `xcrun devicectl`
+  (fichiers déposés, quelques secondes, iPhone déverrouillé) ; la
+  synchronisation Wi-Fi (étape 4B) n'existe pas encore.
+
+| Option | Effort | Pour | Contre |
+|---|---|---|---|
+| A. **Par fichier, avec l'envoi** : « Emporter la lecture » dépose une `session-passage.json` (chemins → identifiants de la valise, position, file) par `devicectl`, met le Mac en pause **après** le dépôt confirmé ; l'app la lit au lancement et revient en pause à la position | S | réutilise l'étape 4A et la reprise de session (22 oct.) ; aucun réseau | pas de retour iPhone → Mac en direct ; il faut le câble ou le Wi-Fi d'appairage ; quelques secondes |
+| B. **Par le Wi-Fi local** (avec l'étape 4B) : le Mac sert sa session en HTTP, l'iPhone la découvre (Bonjour) ; dans les deux sens, chaque pas confirmé comme chez Disc Player | M | les deux sens, sans câble, en une seconde ; même serveur que la synchronisation par différence | dépend de 4B (autorisation « réseau local » d'iOS, un serveur de plus) |
+| C. Handoff d'Apple (`NSUserActivity`) | M | le geste natif (icône dans le Dock, la barre des apps) | les deux apps doivent être signées par la même équipe, avec les droits Handoff : à vérifier avec un compte gratuit à 7 jours ; Tauri n'expose pas `NSUserActivity` (à écrire en `objc2`, comme « En cours de lecture ») |
+
+Règles communes, quelle que soit l'option : la source se met en pause avant
+que la destination ne joue ; la destination reprend **en pause** (un passage
+ne doit jamais faire sonner un iPhone dans une poche) ; une piste absente de la
+valise est dite (« 3 morceaux de la file ne sont pas dans la valise »), jamais
+sautée en silence ; les écoutes suivent le journal existant (étape 6).
+
+**Recommandation : A tout de suite, B avec l'étape 4B** ; C seulement si le
+compte de signature le permet.
+
 ## Distribution
 
 - **Usage personnel** : compilation par Xcode sur son propre iPhone. Avec un
@@ -532,6 +575,7 @@ différence).
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
 | 4B | Synchronisation Wi-Fi | M | 6 | à faire |
+| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | à trancher (1ᵉʳ nov.) |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement
 (« récents » et « peu écoutés ») réglées en ligne de commande. Les thèmes,

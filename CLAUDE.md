@@ -106,6 +106,7 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   des écrans) ; après une modification de mise en page :
   `scripts/audit-interface.sh`.
 - **Écouter** : `docs/ui-spec-lecteur.md`, `docs/plan-ecouter-v0.2.md`,
+  `docs/plan-ecouter-v0.3.md` (idées reprises de Disc Player),
   `docs/amelioration-audio.md` (« E »), `docs/module3-superresolution.md` (« HD »).
 - **Explorer** : `docs/ui-spec.md`, `docs/carto-ville.md`,
   `docs/carto-etat-de-lart.md` (aspect, palettes), `docs/carto-direction.md`,

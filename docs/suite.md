@@ -62,7 +62,10 @@ Un commit par étape.
    (21 tailles → 6 rôles et un décor ; 97 déclarations sous 12 px → 0).
 4. Plan, sans coder : vue « En cours » plein écran, couleurs d'album, choix
    d'édition MusicBrainz face à face, état de la bibliothèque, passage
-   Mac ↔ iPhone, captures sur collection fictive.
+   Mac ↔ iPhone, captures sur collection fictive — fait :
+   `plan-ecouter-v0.3.md` et `plan-ios-compagnon.md` (« Passage de la
+   lecture »). **À trancher** : l'exception à la Règle 3 pour les couleurs
+   d'album (aucune, bornée à Écouter, ou à la seule vue « En cours »).
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

@@ -1,5 +1,8 @@
 # Mode Écouter — ce qu'il reste pour la v0.2
 
+> Plan soldé ; la suite, dont les idées reprises de Disc Player :
+> `plan-ecouter-v0.3.md`.
+
 Établi après la v0.1.0 (3 oct. 2026), à partir de `ui-spec-lecteur.md`, du code
 du lecteur (`crates/player`, `apps/desktop`) et du chapitre `livre/ecouter.qmd`.
 Chaque chantier donne l'état **constaté**, des **options** comparées, et une
