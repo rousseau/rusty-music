@@ -7,7 +7,7 @@ qu'on y trouve.**
 ## D'où viennent les étiquettes actuelles
 
 Des **tags de genre des fichiers**, agrégés par famille et classés par
-`part × log₂(sur-représentation)` (`nommer_les_familles`, `crates/core/src/db.rs`).
+`part × log₂(sur-représentation)` (`nommer_les_familles`, `crates/core/src/db/carte.rs`).
 C'est déjà la première des deux sources qu'on pourrait envisager — et elle ne
 suffit pas.
 

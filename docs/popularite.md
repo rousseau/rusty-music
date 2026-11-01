@@ -304,7 +304,7 @@ titre. Spotify / YouTube non nécessaires. Détail : `experiments/popularite/REA
   `enrichir` — reprenable (`popularite_fetched` marqué dans la même
   transaction), tolérante aux coupures, puis `recalculer_track_popularite` en
   fin de passe.
-- `crates/core/src/db.rs` : `pop_recordings_candidats`, `pop_rg_candidats`
+- `crates/core/src/db/enrichissement.rs` : `pop_recordings_candidats`, `pop_rg_candidats`
   (lien morceau → release-group en Rust, comme les genres), `pop_deja_fait`,
   `pop_poser`, `recalculer_track_popularite` (rang percentile par source,
   médiane) ; `PisteAPopulariser`, `PopulariteBrute`, `rangs_percentiles`.

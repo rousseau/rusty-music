@@ -74,7 +74,7 @@ comme `sonder.py calibrer` le fait dans l'essai.
 
 ## 2. Le vote à trois sources
 
-`crates/core/src/db.rs::nommer_les_familles` (score `part ×
+`crates/core/src/db/carte.rs::nommer_les_familles` (score `part ×
 log₂(sur-représentation)`, déjà en place) est appelé **trois fois**, une
 par source, sans y toucher :
 
@@ -95,7 +95,7 @@ par source, sans y toucher :
   usage, faute de clé gratuite ; ici la clé est demandée à l'utilisateur
   (gratuite, `last.fm/api`), sans clé de test partagée.
 
-**Règle de combinaison** (`crates/core/src/db.rs::arbitrer_vote`),
+**Règle de combinaison** (`crates/core/src/db/carte.rs::arbitrer_vote`),
 volontairement simple :
 
 - **au moins deux des trois libellés de tête s'accordent** (comparaison
@@ -157,9 +157,10 @@ ce qui dépend déjà du découpage à 12 restent strictement intacts.
   l'affinage local.
 - `crates/core/src/lastfm.rs`, `src/lastfm_pass.rs` — client et passe
   Last.fm.
-- `crates/core/src/db.rs` — `VoteFamille`, `familles_votees`,
-  `sous_groupes_votes`, `nommer_par_groupe`, `arbitrer_vote`,
-  `genres_candidats`, `lastfm_tags`, migration `features.texte_label`.
+- `crates/core/src/db/carte.rs` — `VoteFamille`, `familles_votees`,
+  `sous_groupes_votes`, `nommer_par_groupe`, `arbitrer_vote` ;
+  `crates/core/src/db/enrichissement.rs` — `genres_candidats`, `lastfm_tags` ;
+  `crates/core/src/db/schema.rs` — migration `features.texte_label`.
 - `crates/cli/src/main.rs` — `rusty-music genres-candidats`,
   `rusty-music lastfm`.
 - `apps/desktop/src/main.rs` — `start_lastfm`/`lastfm_state`,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Réponses figées des commandes Tauri, sur une bibliothèque fictive : deux
 // artistes, trois albums. Formes recopiées des types Rust renvoyés
-// (`apps/desktop/src/main.rs`, `crates/core/src/db.rs`) ; une commande
+// (`apps/desktop/src/`, `crates/core/src/db/`) ; une commande
 // absente d'ici rend `null` et apparaît dans le rapport du test.
 //
 // Les réponses calculées (fonctions) passent dans la page sous forme de texte :

@@ -32,13 +32,13 @@ focal suit la lecture ».
     (poids inter-familles, § Ordre des bandes) n'est qu'une passe de somme
     dessus — O(nombre d'arcs), pas un calcul neuf.
 - **Familles** — `Famille{id, nom, effectif}` (`crates/carto/src/source.rs`),
-  12 par défaut (`VOCABULAIRE_DEFAUT`, `crates/core/src/db.rs:120-155`,
+  12 par défaut (`VOCABULAIRE_DEFAUT`, `crates/core/src/db/carte.rs`,
   personnalisable par l'utilisateur). Couleurs : `FAMILLES_VIVES`
   (`crates/carto/src/palette.rs:29-32`), déjà les couleurs de `--familles`
   utilisées par le nuage de points et la légende — reprises sans changement
   pour les bandes.
 - **Année d'album fiable** — `annee_fiable_album`
-  (`crates/core/src/db.rs:336-343`) : date de l'œuvre MusicBrainz sauf
+  (`crates/core/src/db/pistes.rs`) : date de l'œuvre MusicBrainz sauf
   compilation, sinon le tag. C'est la date qui positionne un album sur l'axe
   horizontal.
 - **Compression chronologique existante** — `bucket_annee`

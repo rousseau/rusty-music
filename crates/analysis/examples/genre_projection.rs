@@ -18,7 +18,7 @@
 //!
 //! Le repère « grunge » en fin de sortie tranche une troisième cause,
 //! indépendante des deux autres : la famille « Rock » du vocabulaire réunit
-//! treize genres (`crates/core/src/db.rs`, `VOCABULAIRE_DEFAUT`). Si le tag
+//! treize genres (`crates/core/src/db/carte.rs`, `VOCABULAIRE_DEFAUT`). Si le tag
 //! *littéral* « grunge » se regroupe alors que la famille « Rock » entière non,
 //! le problème est la largeur du seau, pas l'espace ni la projection.
 //!

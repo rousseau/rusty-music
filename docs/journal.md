@@ -2451,3 +2451,24 @@ page, pas le fonctionnement.
   gain faible (sondage de 200 ms à 2 s sur un mutex, passes de 30 s à des
   heures). Si le sondage gêne un jour : un évènement Tauri global émis par
   `passe::lancer`, pour toutes les passes à la fois.
+
+### Découpage de `crates/core/src/db.rs` par domaine (phase 6)
+
+- **6a, méthodes** (`2bdb0ab`) : les 144 méthodes de `impl Library` partent dans
+  six sous-modules de `crates/core/src/db/`, chacun son bloc `impl Library` :
+  `pistes`, `analyse`, `carte`, `bibliotheque` (statistiques, vérifications),
+  `decouvrir`, `enrichissement`. Playlists, valise et session avaient déjà le
+  leur. `db.rs` reste à sa place (sous-modules dans `db/`), d'où des
+  `include_str!` inchangés à cette étape.
+- **6b, le reste** (`cbbfa1a`) : types, constantes et aides rejoignent leur
+  domaine, toujours nommés `db::…` (`pub use`) ; le schéma part dans
+  `db/schema.rs`, les tests dans `db/tests.rs` (ceux du vote et de l'ordre
+  d'arrivée dans `db/carte.rs`). `db.rs` garde ce que plusieurs domaines
+  partagent : 8 328 → 217 lignes.
+- **Contrôles** : déplacement pur, vérifié ligne à ligne (mêmes lignes non
+  vides, aux en-têtes, visibilités et replis de rustfmt près) ; douze aides en
+  `pub(super)` pour les tests ; mêmes 282 tests ; `verifier.sh` passe.
+- Les mentions de `db.rs` dans la doc pointent vers le nouveau fichier. Restent
+  telles quelles celles de `docs/frise-filiations.md` qui visaient déjà du code
+  disparu (`flux_temporel`, `bucket_annee`), et `docs/plan-ios-compagnon.md`
+  (historique).

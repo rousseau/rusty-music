@@ -10,7 +10,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 
 | Brique | État | Restes, et où les lire |
 |---|---|---|
-| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | — (migrations versionnées depuis le 31 oct. : `db::migrations`) |
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | — (migrations versionnées depuis le 31 oct. : `db::schema::migrations`) |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; Lama dépend d'Ollama, processus externe (chantier d'assainissement, phase 7) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
@@ -38,7 +38,7 @@ mention contraire.
    `tauri::ipc::Channel` (4c) abandonnée (`docs/journal.md`, phase 5b).
 5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un état par mode,
    une seule copie de l'état de lecture — fait.
-6. Découper `crates/core/src/db.rs` par domaine.
+6. Découper `crates/core/src/db.rs` par domaine (`crates/core/src/db/`) — fait.
 7. Lama sans Ollama obligatoire : étude d'un modèle exécuté dans le processus,
    rapport avant toute implémentation.
 8. Préparer la publication de crates autonomes : `publication-crates.md`.
