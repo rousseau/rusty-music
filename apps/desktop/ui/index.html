@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rusty Music</title>
+  <!-- Le thème mémorisé, posé avant que la feuille ne peigne (pas de flash). -->
+  <script src="theme-avant.js"></script>
   <link rel="stylesheet" href="vendor/maplibre-gl.css">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -799,6 +801,14 @@
               dérivé, refait à la demande. La base, les empreintes et la carte ne
               sont pas touchées.</p>
           </div>
+
+          <p class="rail__titre" style="margin-top:32px">Apparence</p>
+          <div class="segments" id="theme-choix" role="group" aria-label="Thème">
+            <button class="segment" data-choix-theme="sombre">Sombre</button>
+            <button class="segment" data-choix-theme="clair">Clair</button>
+            <button class="segment" data-choix-theme="systeme">Système</button>
+          </div>
+          <p class="aide">« Système » suit le réglage clair ou sombre de macOS.</p>
 
           <p class="rail__titre" style="margin-top:32px">Aperçu</p>
           <p class="aide" id="stats-total">—</p>

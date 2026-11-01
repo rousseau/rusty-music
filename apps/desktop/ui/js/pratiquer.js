@@ -2435,6 +2435,10 @@ function poserTete(frac) {
 
 /// Table de 256 couleurs interpolée sur `--rampe`, calculée une fois.
 let tableRampe = null;
+// La rampe change avec le thème : la table se refait au prochain spectrogramme.
+document.addEventListener("theme", () => {
+  tableRampe = null;
+});
 function rampeRGB() {
   if (tableRampe) return tableRampe;
   const etapes = rampe().map((c) => {

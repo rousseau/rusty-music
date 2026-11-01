@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Audit de gabarit de l'interface — cohérence des marges, des panneaux et des
-# surimpressions sur tous les écrans (voir `apps/desktop/ui/js/audit.js` et la
-# Règle 10 de `docs/interface-guidelines.md`).
+# Audit de l'interface — contraste des couleurs dans les deux thèmes
+# (`scripts/contraste-interface.py`), puis gabarit : cohérence des marges, des
+# panneaux et des surimpressions sur tous les écrans (voir `apps/desktop/ui/js/audit.js`,
+# Règles 6 et 10 de `docs/interface-guidelines.md`).
 #
 # La webview du système ne se capture pas hors de son Espace macOS : l'interface
 # se mesure de l'intérieur. L'application est lancée en mode d'essai sur une
@@ -18,6 +19,16 @@
 # de l'application sous macOS), RUSTY_AUDIT_DELAI (secondes, 900 par défaut).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Contraste des jetons de couleur, dans les deux thèmes (Règle 6) : statique,
+# lu dans `style.css`, avant de lancer quoi que ce soit.
+echo "contraste…"
+if contraste="$(python3 scripts/contraste-interface.py)"; then
+  echo "$contraste" | tail -n 1
+else
+  echo "$contraste"
+  exit 1
+fi
 
 SOURCE="${RUSTY_DONNEES_SOURCE:-$HOME/Library/Application Support/fm.rustymusic.desktop}"
 DELAI="${RUSTY_AUDIT_DELAI:-900}"

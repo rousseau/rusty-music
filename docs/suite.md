@@ -56,7 +56,7 @@ Un commit par étape.
 1. Palette de recherche (⌘K, « / ») au-dessus de l'écran courant ; `#q`
    devient un filtre qui estompe (Règle 2) — fait.
 2. Thème clair atteignable (sombre / clair / système, sans flash) et contraste
-   vérifié par `audit-interface.sh` (Règle 6).
+   vérifié par `audit-interface.sh` (Règle 6) — fait.
 3. Règle 11, typographie mesurée : jeu réduit de tailles et de graisses,
    rien sous 12 px, noms isolés pour le bidi et balisés `lang`.
 4. Plan, sans coder : vue « En cours » plein écran, couleurs d'album, choix

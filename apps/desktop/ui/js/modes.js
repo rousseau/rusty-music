@@ -16,7 +16,7 @@ import {
   carte,
 } from "./carte.js";
 import {
-  majVisibiliteIntervalleAnnees, tracerRouteSurCarte,
+  dessinerCarte, majVisibiliteIntervalleAnnees, tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
   chargerFamillesParAlbum, dessinerFamillesEcoute, majBarreTri, rafraichirGrille,
@@ -43,6 +43,7 @@ import {
   arreterStems, cacherPartition, majVariantes, poserSourceEdition, prendreLaMain,
 } from "./pratiquer.js";
 import { lecture } from "./etat-lecture.js";
+import { choisirTheme, themeChoisi } from "./theme.js";
 
 /* ---------------------------------------------------------- modes */
 
@@ -224,6 +225,32 @@ async function basculerMode(mode) {
 
 document.querySelectorAll(".mode").forEach((b) => {
   if (!b.disabled) b.addEventListener("click", () => basculerMode(b.dataset.mode));
+});
+
+/* ---------------------------------------------------------- thème */
+
+// Le choix de Bibliothèque (Sombre / Clair / Système) ; la palette (⌘K) bascule
+// aussi, d'où l'écoute de `theme-choisi` pour garder le segment juste.
+function majChoixTheme(choix = themeChoisi()) {
+  document.querySelectorAll("[data-choix-theme]").forEach((b) =>
+    b.classList.toggle("segment--actif", b.dataset.choixTheme === choix),
+  );
+}
+document.querySelectorAll("[data-choix-theme]").forEach((b) =>
+  b.addEventListener("click", () => choisirTheme(b.dataset.choixTheme)),
+);
+document.addEventListener("theme-choisi", (e) => majChoixTheme(e.detail));
+majChoixTheme();
+
+// Les canevas lisent leurs couleurs dans les jetons au moment de dessiner : un
+// changement de thème les redessine (le HTML, lui, suit la feuille seul).
+document.addEventListener("theme", () => {
+  if (navigation.mode === "explorer") {
+    if (carte.affichage === "lama") dessinerMiniNuage();
+    else dessinerCarte();
+  }
+  if (navigation.mode === "ecoute") dessinerFamillesEcoute();
+  if (navigation.mode === "decouvrir") dessinerFamillesDecouvrir();
 });
 
 export {

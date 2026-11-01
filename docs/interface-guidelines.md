@@ -181,7 +181,8 @@ permanence — dans les cinq écrans, pas seulement Explorer où la règle a ét
 Sombre et clair sont **dessinés** séparément — pas l'un dérivé
 mécaniquement de l'autre — dans les deux sens : le contrat porte sur la
 conception **et** sur l'accessibilité réelle du second thème depuis
-l'interface.
+l'interface. Tout texte tient 4,5:1 sur ses fonds (3:1 pour un glyphe ou du
+grand texte), dans chaque thème ; `scripts/contraste-interface.py` le vérifie.
 
 ### 7. Zoom et pan cohérents
 Mêmes gestes, mêmes contrôles, partout où zoom et pan existent — y compris un
@@ -269,7 +270,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `ui/js/` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `js/ecouter.js`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
-| 6 | Deux thèmes sérieux | ❌ | Voir constat transversal ci-dessous — s'applique à l'identique ici, Écouter n'a pas de bascule propre non plus. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous (résolu le 1ᵉʳ novembre 2026). Grille, liste, filtre et palette vérifiés dans les deux thèmes. |
 | 7 | Zoom/pan cohérents | — | Pas de zoom en Écouter (listes/grille classiques). |
 | 8 | Révélation par échelle | ✅ | Bio/crédits/critiques restent des blocs `hidden` tant qu'ils n'ont pas de contenu (`bloc-bio`, `bloc-credits`, `bloc-critiques`, `index.html:627-649`), pas affichés vides en permanence. |
 | 9 | Langage de force unique | — | Aucune relation entre morceaux affichée en Écouter. |
@@ -283,7 +284,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 3 | Palette unique | ✅ | Voir Règle 3 : `palette.rs` recalibre par thème de fond, exception documentée et actée dans `CLAUDE.md`. |
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
 | 5 | Sobriété stricte | ✅ | Réglages avancés (perplexité, époques, k-means) déportés dans le mode Bibliothèque plutôt que dans le rail d'Explorer — conforme à la contrainte de `ui-spec.md` (« les réglages avancés restent dans un tiroir rétractable, pas dans le rail »), même si le rangement choisi (un autre mode entier plutôt qu'un tiroir) est plus lourd qu'un tiroir — voir Bibliothèque, Règle 8. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal ci-dessous. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous. Le canevas se redessine au changement de thème ; les tuiles gardent leur propre fond de plan (Règle 3). |
 | 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`, `index.html:135-139`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
@@ -297,7 +298,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 3 | Palette unique | ⚠️ | Six teintes de **parties** (`--partie-1..6`), prises dans la même encre que `--familles` mais distinctes d'elles : les parties et les familles ne se lisent pas ensemble (le mini-nuage montre les premières, pas les secondes). Dessinées pour les deux thèmes. |
 | 4 | Stabilité des positions | ✅ | Les points du mini-nuage ne bougent jamais (t-SNE) ; survoler une partie ne réordonne rien. |
 | 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, zoom, Familles et Chercher y sont masqués en bloc (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute du modèle repliée, sections séparées par des filets plutôt qu'encadrées. Le choix du modèle (intégré ou d'Ollama) reste derrière l'icône 🦙 ; sans modèle utilisable, une note de l'accueil dit quoi faire. |
-| 6 | Deux thèmes sérieux | ✅ | Vérifié sombre et clair le 1ᵉʳ octobre (maquette navigateur, voir ci-dessous) ; le thème clair reste inatteignable par un geste de l'application (constat transversal). |
+| 6 | Deux thèmes sérieux | ✅ | Vérifié sombre et clair le 1ᵉʳ octobre (maquette navigateur, voir ci-dessous) ; atteignable depuis le 1ᵉʳ novembre (constat transversal). |
 | 7 | Zoom/pan cohérents | — | Le mini-nuage n'a ni zoom ni pan : c'est un aperçu, le Nuage et la Carte portent les gestes. |
 | 8 | Révélation par échelle | ✅ | Détails à la demande : survol d'une partie (barre, liste, résultat, route), bulle du morceau au survol d'un point de la route, dépliants. |
 | 9 | Langage de force unique | — | Aucune relation entre morceaux n'est encodée par un trait (la route est un ordre, pas une force). |
@@ -318,7 +319,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | ✅ | Même lecture de `--familles`. |
 | 4 | Stabilité des positions | ✅ | Décidé et implémenté conformément à `carto-anneau.md` (« la position d'un album sur l'anneau ne dépend jamais du focal sélectionné »). |
 | 5 | Sobriété stricte | ✅ | Pas de contrôle superflu ; `k`/`beta` du bundling sont deux réglettes, pas un panneau. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | ✅ | Corrigé : l'exception (« un cercle de rayon fixe n'a rien à agrandir ») ne tenait plus dès lors que l'anneau grandit à l'usage — familles denses, noms serrés — sans que rien n'empêchait de l'agrandir à l'écran. `zoomerAnneau()` reprend le principe du repli sans MapLibre du nuage (un seul facteur `anneau.vue.k`, `dx`/`dy` pour glisser), branché sur `zoomer()` comme les autres sous-modes ; `#bloc-zoom` n'est plus masqué en Anneau. |
 | 8 | Révélation par échelle | ✅ | Noms au survol, pas en permanence sur chaque segment — conforme à `carto-anneau.md`. |
 | 9 | Langage de force unique | ✅ | `setLineDash` n'est jamais utilisé pour coder la force d'un lien (seulement pour le lasso, le tracé en cours, la colonne « incertain ») ; force = largeur + opacité par sélection (`ui/js/`), exactement la correction actée dans `carto-anneau.md` (« un seul style de trait, force = largeur + opacité »). |
@@ -332,7 +333,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | ✅ | Bandes colorées par la même famille/`--familles`. |
 | 4 | Stabilité des positions | ✅ | Par construction : `frise-filiations.md` § 1 retient les bandes par famille comme mode par défaut précisément parce qu'« une bande est une structure stable [qui] accueille les nouveaux albums sans redistribuer l'existant » — writen avant l'implémentation, respecté dedans. |
 | 5 | Sobriété stricte | ✅ | Un seuil de connexions (réglette), rien de plus dans le rail. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | ✅ | `zoomerTemps()` (`js/maplibre.js`) est décrit dans son propre commentaire comme suivant « exactement » le même principe que le zoom du nuage — un seul facteur `k`, même geste molette, même lecture `zoom-val`. |
 | 8 | Révélation par échelle | ✅ | Année affichée au survol seulement (`frise-filiations.md` § 5), pas d'empilement de labels sur l'axe. |
 | 9 | Langage de force unique | ✅ | Même mécanique que l'Anneau : fond permanent en trace ténue, force encodée par largeur/opacité à la sélection — aucun `setLineDash` sur les arcs eux-mêmes. |
@@ -353,7 +354,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | — | Pas de rendu coloré par famille ici. |
 | 4 | Stabilité des positions | ✅ | Page de réglages classique, rien qui se réorganise au clic. |
 | 5 | Sobriété stricte | ❌ | `index.html:426-548` empile, toujours visibles simultanément dès l'entrée dans le mode : Paramètres de la carte (perplexité, époques, familles, itérations), Vocabulaire des familles, Nappe de densité (résolution, noyau, bandes, force d'ombre), et quatre blocs de Vérifications (genres suspects, éditions multiples, doublons/points isolés, échecs de scan) — aucun de ces blocs n'est masqué par défaut ni replié derrière un geste. C'est la définition même du « panneau d'administration » qu'`ui-spec.md` cite comme repoussoir. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom dans ce mode. |
 | 8 | Révélation par échelle | ❌ | Même constat qu'à la Règle 5 : ce sont exactement les « options avancées » que la Règle 8 vise nommément, et elles sont toutes à l'écran en permanence plutôt que rétractables. Contraste net avec le panneau par stem de l'Éditeur (Règle 8 là-bas), qui applique la même idée correctement. |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées. |
@@ -367,7 +368,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | — | La pile de stems ne colore rien par famille (le mini-nuage de greffe, quand il existera, devra lire `--familles`). |
 | 4 | Stabilité des positions | ✅ | Sélectionner un stem (`edition.stemSel`) souligne sa ligne et peuple l'inspecteur, sans déplacer les lignes de la pile ni les réordonner. |
 | 5 | Sobriété stricte | ✅ | Barre d'outils : deux pas-à-pas d'ensemble (vitesse, hauteur), la dérive quand elle existe, Exporter. La pile : nom, solo, muet, badge, niveau, spectrogramme — le reste attend la sélection, dans l'inspecteur. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas encore de zoom temporel de la pile. Le contrat de la Règle 7 s'appliquera dès qu'il existera : mêmes gestes que `zoomer()`/`zoomerTemps()`, et le playhead unique (`positionnerPlayhead`) devra suivre le même facteur. |
 | 8 | Révélation par échelle | ✅ | Le détail vitesse/hauteur/greffe d'un stem n'apparaît qu'à la sélection de sa ligne (`majInspecteurStem`), dans l'inspecteur commun — divulgation progressive que Bibliothèque n'applique pas à ses propres réglages avancés. |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées ; la liste de voisins pour la greffe (`zoneGreffe`) est une liste classée. À surveiller si le mini-nuage de greffe (prévu, `ui-spec-editeur.md`) affiche un jour des liens. |
@@ -382,7 +383,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `js/maplibre.js`). |
 | 4 | Stabilité des positions | ✅ | Naviguer entre artistes pousse sur un fil d'Ariane (`decouvrirFil`) sans réordonner la liste de collaborations déjà affichée ; le filtre par famille estompe sans recomposer la grille. |
 | 5 | Sobriété stricte | ✅ | Trois onglets (Sorties/Collaborations/À écouter ailleurs), un fil, une légende de familles repliable — pas d'empilement. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom dans ce mode. |
 | 8 | Révélation par échelle | ✅ | Le bloc Familles ne s'affiche que quand il a un sens (`majBlocFamillesDecouvrir`, carte déjà calculée) plutôt qu'en permanence. |
 | 9 | Langage de force unique | — | Pas de relations graphiques dans ce mode (des listes, pas un anneau ou une frise). |
@@ -396,7 +397,7 @@ dans son journal que la composition va au bout.
 | 3 | Palette unique | ✅ | Pastille de famille par `couleursFamilles()` (`--familles`). |
 | 4 | Stabilité des positions | ✅ | Garder un album ne réordonne pas la liste au-delà de ce que la sélection change (l'album gardé passe en tête : il est pris avant les règles). |
 | 5 | Sobriété stricte | ✅ | Trois blocs (composition, limites, contenu) ; l'iPhone et ses gestes dans le rail ; « Renouveler l'app » n'apparaît que sur une machine qui a le dépôt et Xcode. |
-| 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
+| 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom. |
 | 8 | Révélation par échelle | ✅ | Le choix de famille n'apparaît que sur une ligne « Famille » ; les albums écartés ne se comptent que s'il y en a ; l'avancement de l'envoi seulement pendant l'envoi. |
 | 9 | Langage de force unique | — | Pas de relations. |
@@ -419,29 +420,43 @@ Première exécution de `scripts/audit-interface.sh` sur l'état d'avant les jet
 Après correction : **0 violation sur 180 cellules** (10 écrans — Nuage, Carte,
 Temps, Anneau, Lama vide, Lama après playlist, Écoute, Éditer, Découvrir,
 Bibliothèque — × 3 états × 2 thèmes × 3 tailles). **Non couvert** : l'établi
-d'Éditer avec des stems chargés (il faut une séparation faite), l'esthétique, les
-contrastes et les polices — l'audit ne mesure que la géométrie, le débordement
-et l'occultation.
+d'Éditer avec des stems chargés (il faut une séparation faite), l'esthétique et
+les polices — l'audit ne mesure que la géométrie, le débordement et
+l'occultation. (Les contrastes : `scripts/contraste-interface.py`, Règle 6,
+depuis le 1ᵉʳ novembre 2026.)
 
-### Constat transversal — Règle 6, les deux thèmes
+### Constat transversal — Règle 6, les deux thèmes (résolu le 1ᵉʳ novembre 2026)
 
-Le même verdict traverse les sept lignes, il est donc écrit une seule fois
-plutôt que répété : la conception est sérieuse des deux côtés — `style.css`
-dessine `:root` (sombre) et `:root[data-theme="clair"]` séparément, avec des
-rampes de couleur recalibrées indépendamment (contraste vérifié, paliers
-OKLCH propres à chaque fond, commentaire explicite : « Les deux thèmes sont
-dessinés, pas dérivés l'un de l'autre »). **Mais rien dans `ui/js/` ne pose
-jamais `data-theme="clair"`** : aucune occurrence de
-`document.documentElement.dataset.theme`, d'un `setAttribute("data-theme", …)`
-visant la racine, ni d'une détection `matchMedia("(prefers-color-scheme)")`.
-Le seul usage de `data-theme` dans `ui/js/` cible `#carte-theme
-[data-theme]` (`ui/js/`) — les cinq **fonds de plan de la carte**
-(`osm-clair`/`sepia`/`encre`/`nuit`/`bleu-plan`), un concept différent et sans
-rapport avec le thème sombre/clair de l'interface (voir Règle 3). Résultat :
-le thème clair de `style.css` est un code mort du point de vue de
-l'utilisateur — personne ne peut l'atteindre depuis l'application. Non
-conforme, sur la moitié « accessible » de la règle plutôt que sur la moitié
-« dessinée ».
+Le verdict traversait les sept lignes : `style.css` dessinait bien `:root`
+(sombre) et `:root[data-theme="clair"]` séparément, mais rien dans `ui/js/` ne
+posait jamais `data-theme="clair"` hors du mode d'essai — le thème clair était
+du code mort pour l'utilisateur. Corrigé, sur les deux moitiés de la règle :
+
+- **Atteignable.** Bibliothèque → Apparence : *Sombre*, *Clair* ou *Système*
+  (`prefers-color-scheme`, suivi en direct), mémorisé (`localStorage`,
+  `js/theme.js`) ; la palette (⌘K) bascule aussi. Sombre reste le défaut.
+  `theme-avant.js`, script classique chargé dans `<head>` (la politique de
+  Tauri interdit les scripts en ligne), pose le thème **avant le premier
+  affichage** : pas de flash sombre (test de fumée). Les canevas, qui lisent
+  leurs couleurs dans les jetons en dessinant, se redessinent sur l'évènement
+  `theme` ; un spectrogramme déjà composé garde ses couleurs jusqu'au morceau
+  suivant.
+- **Contrasté, mesuré.** `scripts/contraste-interface.py`, appelé en tête de
+  `scripts/audit-interface.sh`, lit les deux blocs de jetons dans la feuille
+  et vérifie chaque texte (`--txt`, `--mut`, `--accent`, `--alerte`) sur chaque
+  fond (`--bg`, `--panel`, `--panel2`) à 4,5:1, les libellés de partie du Lama,
+  la partition, les glyphes posés sur les boutons (3:1) et les initiales
+  d'artiste sur leurs 360 teintes ; il échoue aussi si un jeton du sombre n'est
+  pas redessiné dans le clair, ou si une couleur de texte est codée en dur hors
+  des jetons. Première exécution : **23 violations**. Corrigé thème par thème —
+  `--accent` clair #A85F2C → #9A5426 (4,0:1 → 4,8:1 sur `--panel2`) ; le rouge
+  des erreurs, codé en dur (#C0503A, 3,5:1 en sombre, 3,9:1 en clair), devient
+  `--alerte`, dessiné pour chaque thème ; `--partie-3` clair #00895D → #007A53 ;
+  la feuille de partition et les initiales d'artiste passent par des jetons
+  (aplat clair et encre sombre en thème clair, plutôt que l'aplat sombre du
+  thème sombre posé sur du papier). Après : **0 violation**.
+
+Pas de palettes multiples par thème (Règle 5).
 
 ### Constat transversal — légende des familles, résolu le 13 septembre 2026
 
@@ -480,10 +495,10 @@ terminé — dans n'importe lequel des cinq écrans :
 5. **Sobriété** — combien de contrôles sont visibles en même temps sans
    geste ? Si la réponse ressemble à la page Bibliothèque actuelle
    (dix blocs de réglages ouverts d'un coup), reculer.
-6. **Thème** — l'écran a-t-il été vérifié en clair **et** en sombre ? (Note à
-   ce jour : le thème clair n'est atteignable par aucun geste dans
-   l'application — le vérifier veut dire forcer `data-theme="clair"` à la
-   main tant que ce manque n'est pas comblé.)
+6. **Thème** — l'écran a-t-il été vérifié en clair **et** en sombre
+   (Bibliothèque → Apparence, ou ⌘K « thème ») ? Une couleur nouvelle est-elle
+   un jeton dessiné dans les deux blocs, et `scripts/contraste-interface.py`
+   rend-il 0 violation ?
 7. **Zoom/pan** — si l'écran en a un, appelle-t-il la même fonction/le même
    geste que la carte et la frise, ou une troisième mécanique ?
 8. **Divulgation progressive** — un réglage avancé est-il caché derrière un

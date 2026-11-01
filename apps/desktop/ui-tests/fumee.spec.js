@@ -201,3 +201,35 @@ test("filtre du rail : estompe la grille sans rien retirer, Entrée ouvre la pal
   await expect(page.locator("#palette")).toBeVisible();
   await expect(page.locator("#palette-q")).toHaveValue("essais");
 });
+
+test("thème : Bibliothèque choisit Clair, gardé au rechargement, posé avant le premier affichage", async ({ page }) => {
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click('[data-choix-theme="clair"]');
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
+  await expect(page.locator('[data-choix-theme="clair"]')).toHaveClass(/segment--actif/);
+  // Au rechargement, le thème est là quand le <body> apparaît : pas de flash sombre.
+  await page.addInitScript(() => {
+    new MutationObserver((_, obs) => {
+      if (!document.body) return;
+      window.__THEME_AU_BODY__ = document.documentElement.dataset.theme ?? null;
+      obs.disconnect();
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await expect(page.locator("#grille .album")).toHaveCount(3);
+  expect(await page.evaluate(() => window.__THEME_AU_BODY__)).toBe("clair");
+});
+
+test("thème : « Système » suit le réglage clair ou sombre", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click('[data-choix-theme="systeme"]');
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
+  // La palette bascule explicitement : le choix quitte « Système ».
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("theme clair");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-choix-theme="clair"]')).toHaveClass(/segment--actif/);
+});

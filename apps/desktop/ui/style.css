@@ -10,6 +10,16 @@
   --txt:     #EDE8DC;
   --mut:     #9A9284;
   --accent:  #C07C4A;
+  /* Erreurs et gestes destructeurs : un rouge brique, éclairci pour tenir
+     4,5:1 sur les trois fonds sombres (l'ancien var(--alerte) n'y tenait que 3,5). */
+  --alerte:  #DE6A50;
+  /* La feuille de partition (alphaTab) reste du papier dans les deux thèmes :
+     une partition se lit noir sur blanc. Mêmes valeurs dans le bloc clair. */
+  --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
+  /* Initiales d'un artiste sans pochette, sur un aplat teinté par son nom
+     (`--teinte`) : saturation et clarté du fond, puis de l'encre. Vérifié
+     sur les 360 teintes par `scripts/contraste-interface.py`. */
+  --initiales-fond: 22% 30%; --initiales-encre: 30% 82%;
   /* Le gabarit : une seule source pour les largeurs, les marges et les hauteurs
      que plusieurs règles doivent partager. La file d'attente, en surimpression,
      **recouvre exactement** l'inspecteur (`--largeur-droite`) : plus large, elle
@@ -69,7 +79,14 @@
   --line:   #DCD4C4;
   --txt:    #241F18;
   --mut:    #6B6355;
-  --accent: #A85F2C;
+  /* Assombri le 1ᵉʳ novembre 2026 : #A85F2C ne tenait que 4,0:1 sur
+     `--panel2` (contrôle de `scripts/contraste-interface.py`). */
+  --accent: #9A5426;
+  --alerte: #A63B27;
+  --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
+  /* Aplat clair, encre sombre : pas l'aplat sombre du thème sombre posé sur
+     du papier. */
+  --initiales-fond: 30% 86%; --initiales-encre: 35% 28%;
   /* Même trajectoire bleu → sarcelle → vert → jaune qu'en sombre, mais
      rétamée en clarté : sur fond clair un jaune franc (haute clarté) se
      fondrait dans le papier — plafonnée à un jaune moutarde plutôt que citron
@@ -80,7 +97,7 @@
   --familles: #B24B58, #B05323, #9E6300, #7E7400, #4C8227, #00895D,
               #00888A, #0080AC, #3472BE, #6B63BC, #8F56A7, #A74D83;
   /* Mêmes six parties, assombries pour tenir sur un fond clair. */
-  --partie-1: #3472BE; --partie-2: #B05323; --partie-3: #00895D;
+  --partie-1: #3472BE; --partie-2: #B05323; --partie-3: #007A53;
   --partie-4: #8F56A7; --partie-5: #9E6300; --partie-6: #A74D83;
   --partie-texte: #FBF8F1;
 }
@@ -280,9 +297,9 @@ html, body {
 .etabli--pratiquer .stem__spectre { display: none; }
 .partition {
   flex: 1; min-height: 0; overflow-y: auto; position: relative;
-  background: #EFE9DC; color: #2A251D; border: 1px solid var(--line);
+  background: var(--feuille); color: var(--feuille-encre); border: 1px solid var(--line);
 }
-.partition__aide { font-size: 12px; color: #6B6255; padding: 18px; margin: 0; }
+.partition__aide { font-size: 12px; color: var(--feuille-mut); padding: 18px; margin: 0; }
 .partition__jauge { width: calc(100% - 36px); margin: 0 18px 18px; }
 /* Bloc « Partitions » du rail : instrument, état, geste. */
 .partition-ligne { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; }
@@ -443,10 +460,10 @@ html, body {
   font-family: var(--mono); font-size: 12px; color: var(--mut);
 }
 .palette__vignette--artiste {
-  border-radius: 50%; color: var(--txt);
-  background: oklch(.42 .05 var(--teinte));
+  border-radius: 50%;
+  background: hsl(var(--teinte, 220) var(--initiales-fond));
+  color: hsl(var(--teinte, 220) var(--initiales-encre));
 }
-:root[data-theme="clair"] .palette__vignette--artiste { background: oklch(.86 .04 var(--teinte)); }
 /* Une commande tient sur une ligne : vignette réduite, pas de second texte. */
 .palette__vignette--commande { width: 24px; height: 24px; margin: 0 6px; background: none; border: 1px solid var(--line); }
 .palette__corps { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -744,8 +761,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .proche-pochette:hover .proche-pochette__image { border-color: var(--accent); }
 .proche-pochette__image--vide {
-  background: hsl(var(--teinte, 220) 22% 30%);
-  color: hsl(var(--teinte, 220) 30% 82%);
+  background: hsl(var(--teinte, 220) var(--initiales-fond));
+  color: hsl(var(--teinte, 220) var(--initiales-encre));
   font-size: 20px; font-weight: 600; letter-spacing: .5px;
 }
 .proche-pochette__nom {
@@ -850,8 +867,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Repli sans aucune pochette : initiales sur aplat teinté par le nom. */
 .mosaique--vide {
   display: grid; place-items: center;
-  background: hsl(var(--teinte, 220) 22% 30%);
-  color: hsl(var(--teinte, 220) 30% 82%);
+  background: hsl(var(--teinte, 220) var(--initiales-fond));
+  color: hsl(var(--teinte, 220) var(--initiales-encre));
   font-size: 34px; font-weight: 600; letter-spacing: 1px;
 }
 
@@ -929,8 +946,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Arrivée demandée par le champ d'intention mais introuvable dans la
    bibliothèque — même couleur d'alerte que `.bouton--danger`, pour que
    l'échec de résolution ne se confonde pas avec une arrivée bien posée. */
-.borne--introuvable { border-color: #C0503A; }
-.borne--introuvable .borne__nom { color: #C0503A; }
+.borne--introuvable { border-color: var(--alerte); }
+.borne--introuvable .borne__nom { color: var(--alerte); }
 .borne__role {
   font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
   text-transform: uppercase; color: var(--mut); flex: none; width: 44px;
@@ -957,7 +974,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   font-size: 11.5px;
 }
 .plan-texte__filtres li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plan-texte__filtres .filtre--exclu { border-color: #C0503A; }
+.plan-texte__filtres .filtre--exclu { border-color: var(--alerte); }
 .plan-texte__taille { display: flex; gap: 8px; margin-bottom: 12px; }
 .plan-texte__taille > div { flex: 1; min-width: 0; }
 #plan-texte-n, #plan-texte-duree { width: 100%; }
@@ -1545,7 +1562,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .bouton:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .bouton:disabled { opacity: .4; cursor: default; }
-.bouton--danger:hover:not(:disabled) { border-color: #C0503A; color: #C0503A; }
+.bouton--danger:hover:not(:disabled) { border-color: var(--alerte); color: var(--alerte); }
 
 .ajout { margin-top: 22px; }
 .ajout__ligne { display: flex; gap: 10px; }
@@ -1780,7 +1797,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .np__mesures:empty { display: none; }
 /* Piste sautée : même couleur d'alerte que `.bouton--danger`. */
 /* `.transport__now span` colore en `--mut` : il faut sa spécificité pour l'emporter. */
-.transport__now .np__mesures--alerte { color: #C0503A; opacity: 1; font-family: inherit; }
+.transport__now .np__mesures--alerte { color: var(--alerte); opacity: 1; font-family: inherit; }
 
 .reglage__val {
   min-width: 46px;
@@ -1868,7 +1885,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    thèmes (Règle 6). */
 .lama { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .lama__tete { flex: none; padding: 14px var(--gouttiere) 10px; border-bottom: 1px solid var(--line); }
-.lama__erreur { color: #C0503A; margin: 8px 0 0; }
+.lama__erreur { color: var(--alerte); margin: 8px 0 0; }
 .lama__exemples-lien { display: block; margin-top: 8px; font-size: 11.5px; }
 /* `scrollbar-gutter: stable both-edges` : avec des barres de défilement
    permanentes (souris externe), la marge de droite ne grossit pas d'une
@@ -1977,7 +1994,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama__entonnoir-barre i { display: block; height: 100%; background: var(--couleur); }
 .lama__entonnoir-n { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--mut); }
 .lama__relache { color: var(--accent); }
-.lama__relache--erreur { color: #C0503A; }
+.lama__relache--erreur { color: var(--alerte); }
 .lama__point { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
 
 .lama__groupe { padding: 4px 0 2px; }
@@ -2001,7 +2018,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .ligne__action:hover, .ligne__action:focus-visible { color: var(--txt); border-color: var(--line); }
 /* Confirmation en deux temps : même rouge que `.bouton--danger`. */
-.ligne__action--danger { color: #C0503A; border-color: #C0503A; }
+.ligne__action--danger { color: var(--alerte); border-color: var(--alerte); }
 .ligne__champ {
   flex: 1; min-width: 0; font: inherit; color: var(--txt);
   background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px;
