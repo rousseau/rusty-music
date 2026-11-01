@@ -171,7 +171,17 @@ parce que tout est en base, jamais dans les fichiers.
 **Recommandation : B d'abord, A ensuite.** B range Bibliothèque (Règle 5) et
 montre où sont les manques avant d'écrire une passe ; C écartée.
 
-### 5. Captures sur collection fictive · **S** — **retenu : A**
+### 5. Captures sur collection fictive · **S** — **retenu : A, fait (1ᵉʳ novembre 2026)**
+
+**Fait.** `apps/desktop/ui-tests/collection-fictive.js` : dix artistes et dix-neuf
+albums inventés (dont un nom arabe et un nom japonais, pour la Règle 11), 121
+pistes, cinq familles, un nuage factice, des pochettes SVG engendrées à graine
+fixe. `captures.spec.js` en tire cinq écrans × deux thèmes (Écouter, un album
+en lecture, la palette, le nuage, la frise) en JPEG 1 280 × 800, ~65 Ko
+chacun, vers `docs/images/` ; le README les montre par `<picture>`, clair ou
+sombre selon le thème du lecteur. Hors des tests de fumée : `npm run
+captures`. Pour la page du livre, les images sont prêtes ; `livre/` n'est pas
+touché.
 
 **Chez Disc Player.** Les captures du README et de la documentation sont faites
 par Playwright sur une **collection fictive** (`tests/e2e/mock-collection.mjs`),

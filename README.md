@@ -22,6 +22,28 @@ demande un serveur [Ollama](https://ollama.com) lancé sur la machine
 
 Notes sur le développement de ce logiciel et les réflexions associées : [https://rousseau.github.io/rusty-music](https://rousseau.github.io/rusty-music)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ecouter-sombre.jpg">
+  <img src="docs/images/ecouter-clair.jpg" alt="Écouter : la grille des albums" width="640">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/album-sombre.jpg">
+  <img src="docs/images/album-clair.jpg" alt="Un album ouvert, une piste en lecture, l'inspecteur" width="640">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/palette-sombre.jpg">
+  <img src="docs/images/palette-clair.jpg" alt="La palette de recherche (⌘K) au-dessus de l'écran" width="640">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/explorer-nuage-sombre.jpg">
+  <img src="docs/images/explorer-nuage-clair.jpg" alt="Explorer : le nuage des morceaux, coloré par famille" width="640">
+</picture>
+
+*Captures sur une collection inventée (pochettes engendrées), dans le thème
+clair ou sombre selon celui de votre navigateur ; refaites par
+`npm run captures` dans `apps/desktop/ui-tests/`.*
+
 En Rust de bout en bout à l'exécution. Les réseaux tournent sur
 [Burn](https://github.com/tracel-ai/burn) (CLAP, démixage HTDemucs via
 `demucs-core` et BS-RoFormer, all-in-one, MuScriptor), sauf trois qui passent

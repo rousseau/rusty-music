@@ -3,6 +3,8 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: ".",
+  // Les captures (`captures.spec.js`) ne sont pas un test : seulement sur demande.
+  testIgnore: process.env.CAPTURES ? [] : ["captures.spec.js"],
   timeout: 60_000,
   retries: 0,
   reporter: [["list"]],

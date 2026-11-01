@@ -66,8 +66,9 @@ Un commit par étape.
    `plan-ecouter-v0.3.md` et `plan-ios-compagnon.md` (« Passage de la
    lecture »). Tranché le même jour : options recommandées partout ; couleurs
    d'album dans la seule vue « En cours » (exception écrite à la Règle 3) ;
-   thème par défaut : sombre. Ordre : captures, vue « En cours » (et ses
-   couleurs), bloc « État », éditions face à face, passage Mac → iPhone.
+   thème par défaut : sombre. Ordre : captures (faites, `docs/images/`), vue
+   « En cours » (et ses couleurs), bloc « État », éditions face à face,
+   passage Mac → iPhone.
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,
