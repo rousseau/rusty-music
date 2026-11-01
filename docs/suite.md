@@ -64,8 +64,10 @@ Un commit par étape.
    d'édition MusicBrainz face à face, état de la bibliothèque, passage
    Mac ↔ iPhone, captures sur collection fictive — fait :
    `plan-ecouter-v0.3.md` et `plan-ios-compagnon.md` (« Passage de la
-   lecture »). **À trancher** : l'exception à la Règle 3 pour les couleurs
-   d'album (aucune, bornée à Écouter, ou à la seule vue « En cours »).
+   lecture »). Tranché le même jour : options recommandées partout ; couleurs
+   d'album dans la seule vue « En cours » (exception écrite à la Règle 3) ;
+   thème par défaut : sombre. Ordre : captures, vue « En cours » (et ses
+   couleurs), bloc « État », éditions face à face, passage Mac → iPhone.
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

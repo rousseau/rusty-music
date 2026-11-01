@@ -166,6 +166,16 @@ fichier documente lui-même la frontière (« La carte seulement. Le nuage de
 points t-SNE, la légende et le reste de l'application gardent la palette de
 `--familles` »).
 
+**Seconde exception, tranchée le 1ᵉʳ novembre 2026 : les couleurs d'album,
+dans la seule vue plein écran « En cours ».** Deux couleurs tirées de la
+pochette (méthode de Disc Player, `plan-ecouter-v0.3.md`, point 2), recalées
+en OKLCH pour chaque thème, y colorent **les fonds seulement** : jamais un
+contrôle, un trait ni un point, jamais ailleurs dans Écouter, jamais dans
+Explorer. La vue n'affiche aucune famille : rien n'y lit la couleur comme une
+famille. Le contrôle de contraste devra couvrir le pire cas du recalage avant
+que la vue ne soit livrée. Élargir l'exception (en-tête d'un album ouvert…)
+demande une nouvelle décision.
+
 ### 4. Stabilité des positions et de la mise en page
 Sélectionner un élément ne réorganise jamais ce qui l'entoure. Une liste ne
 saute pas au clic, l'anneau et la frise ne redistribuent pas leurs positions
@@ -264,8 +274,9 @@ coréen balisé.
   boutons forts (700 fondu dans 600).
 - **Aucun texte sous 12 px, sans exception** : étiquettes en capitales (leur
   interlettrage plafonné à 0,1 em), glyphes, repère A–Z, noms dessinés sur le
-  canevas, étiquettes de la carte (`crates/carto/src/style.rs` ; le style
-  d'une ville déjà importée change à la prochaine régénération des tuiles).
+  canevas, étiquettes de la carte (`crates/carto/src/style.rs` ; un style
+  écrit avant la règle est remonté à 12 px quand l'application le sert,
+  `plancher_etiquettes`, sans régénérer les tuiles).
   Seule la gravure de la partition, rendue par alphaTab à l'échelle de la
   portée, n'est pas du texte d'interface.
 - **Les noms propres** (titres, artistes, albums) **sont isolés pour le bidi** :

@@ -963,7 +963,11 @@ pub(crate) fn style_carte(
     };
     let texte = std::fs::read_to_string(&chemin)
         .map_err(|e| format!("style introuvable ({}) : {e}", chemin.display()))?;
-    serde_json::from_str(&texte).map_err(echec)
+    let mut style: serde_json::Value = serde_json::from_str(&texte).map_err(echec)?;
+    // Un style écrit avant la Règle 11 garde des étiquettes sous 12 px : on les
+    // remonte en le servant, sans régénérer les tuiles.
+    rusty_music_carto::style::plancher_etiquettes(&mut style);
+    Ok(style)
 }
 
 /// Les positions réelles (lon/lat) des morceaux sur le plan de ville, écrites

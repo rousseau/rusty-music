@@ -43,6 +43,46 @@ use crate::tuiles::Paliers;
 // sont portées de maptoposter et ne changent que ce fond — jamais l'overlay
 // de familles ci-dessous.
 
+/// Plus petite taille d'étiquette, en pixels (Règle 11 de
+/// `docs/interface-guidelines.md`).
+pub const ETIQUETTE_MIN: f64 = 12.0;
+
+/// Remonte à [`ETIQUETTE_MIN`] toute taille d'étiquette plus petite dans un
+/// style déjà écrit : un nombre, ou les sorties d'un `interpolate` et d'un
+/// `match`. Les styles engendrés depuis le 1ᵉʳ novembre 2026 n'en ont pas
+/// besoin ; l'application l'applique en servant le style, pour qu'une ville
+/// importée avant ne demande pas de régénérer ses tuiles.
+pub fn plancher_etiquettes(style: &mut Value) {
+    fn plancher(v: &mut Value) {
+        match v {
+            Value::Number(n) if n.as_f64().is_some_and(|t| t < ETIQUETTE_MIN) => {
+                *v = json!(ETIQUETTE_MIN);
+            }
+            Value::Array(a) if a.first().and_then(Value::as_str) == Some("interpolate") => {
+                // ["interpolate", type, ["zoom"], z0, t0, z1, t1, …]
+                a.iter_mut().skip(4).step_by(2).for_each(plancher);
+            }
+            Value::Array(a) if a.first().and_then(Value::as_str) == Some("match") => {
+                // ["match", entrée, étiquette, sortie, …, défaut]
+                let n = a.len();
+                for (i, t) in a.iter_mut().enumerate() {
+                    if (i >= 3 && i % 2 == 1) || (i == n - 1 && n % 2 == 1) {
+                        plancher(t);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(couches) = style["layers"].as_array_mut() {
+        for couche in couches {
+            if let Some(taille) = couche.pointer_mut("/layout/text-size") {
+                plancher(taille);
+            }
+        }
+    }
+}
+
 /// Construit le style complet.
 ///
 /// `base` est le préfixe des tuiles (`tuiles://tuiles` — intercepté côté JS par
@@ -1436,6 +1476,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Un style écrit avant la Règle 11 (étiquettes de 9 à 11 px) : le plancher
+    /// remonte chaque sortie à 12, sans toucher aux paliers de zoom.
+    #[test]
+    fn le_plancher_remonte_un_ancien_style() {
+        let mut s = json!({"layers": [
+            {"id": "a", "layout": {"text-size": 11}},
+            {"id": "b", "layout": {"text-size": ["interpolate", ["linear"], ["zoom"], 8, 9.5, 12, 11.5]}},
+            {"id": "c", "layout": {"text-size": ["interpolate", ["linear"], ["zoom"],
+                2, ["match", ["get", "rang"], 5, 13.0, 4, 11.0, 9.0]]}},
+            {"id": "d", "layout": {"text-size": 14}},
+            {"id": "e", "paint": {}},
+        ]});
+        plancher_etiquettes(&mut s);
+        assert_eq!(s["layers"][0]["layout"]["text-size"], json!(12.0));
+        assert_eq!(
+            s["layers"][1]["layout"]["text-size"],
+            json!(["interpolate", ["linear"], ["zoom"], 8, 12.0, 12, 12.0])
+        );
+        assert_eq!(
+            s["layers"][2]["layout"]["text-size"][4],
+            json!(["match", ["get", "rang"], 5, 13.0, 4, 12.0, 12.0])
+        );
+        assert_eq!(s["layers"][3]["layout"]["text-size"], json!(14));
     }
 
     #[test]

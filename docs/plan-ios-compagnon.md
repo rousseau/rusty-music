@@ -496,7 +496,7 @@ tirages, et l'envoi remplace l'ancienne valise après en avoir repris les
 écoutes. Restent les points 2 (retirer ce qui est écouté en entier) et 4 (la
 différence).
 
-## Passage de la lecture Mac ↔ iPhone · **M** — à trancher (1ᵉʳ nov. 2026)
+## Passage de la lecture Mac ↔ iPhone · **M** — **retenu : A, puis B avec l'étape 4B** (1ᵉʳ nov. 2026)
 
 **L'idée** : quitter le bureau en emportant ce qui joue — piste, position,
 file — et le retrouver sur l'iPhone ; au retour, l'inverse. Idée et méthode
@@ -575,7 +575,7 @@ compte de signature le permet.
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
 | 4B | Synchronisation Wi-Fi | M | 6 | à faire |
-| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | à trancher (1ᵉʳ nov.) |
+| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | retenu : A, puis B (1ᵉʳ nov.) ; à faire |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement
 (« récents » et « peu écoutés ») réglées en ligne de commande. Les thèmes,

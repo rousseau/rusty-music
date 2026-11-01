@@ -2,7 +2,8 @@
 
 Établi le 1ᵉʳ novembre 2026, une fois le plan 0.2 soldé (`plan-ecouter-v0.2.md`).
 Même forme : l'état **constaté**, des **options** comparées, une
-recommandation. Rien ici n'est engagé : c'est une liste à trancher.
+recommandation. **Tranché le 1ᵉʳ novembre 2026** : pour chaque point, l'option
+retenue est indiquée en titre ; rien n'est encore codé.
 
 Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
 
@@ -19,7 +20,7 @@ l'iPhone, vit dans `plan-ios-compagnon.md` (« Passage de la lecture »).
 Hors périmètre, à ne pas rouvrir : égaliseur et AutoEq, paroles et karaoké
 (écartés en 0.2, points 9 et 10).
 
-### 1. Vue plein écran « En cours » · **M**
+### 1. Vue plein écran « En cours » · **M** — **retenu : A**
 
 **Chez Disc Player.** La pochette posée sur un disque qui tourne, un spectre
 autour (`src/layout/VisualizerMode.vue`), les deux couleurs de la pochette en
@@ -47,7 +48,7 @@ spectre : la rampe `--rampe` (Règle 3 : une rampe, pas des familles).
 **Recommandation : A.** Le calcul existe et il est en cache ; B ne vaut que si
 l'on veut voir l'effet du « E », ce que personne n'a demandé.
 
-### 2. Couleurs d'album · **M** — décision à prendre (Règle 3)
+### 2. Couleurs d'album · **M** — **retenu : C, la vue « En cours » seule** (Règle 3, exception écrite)
 
 **Chez Disc Player** (`src/domain/coverColours.ts`, `docs/themes.md`). Deux
 couleurs plutôt que la moyenne des pixels (qui rend grises les pochettes
@@ -82,10 +83,11 @@ Si B ou C est retenue, le contrôle de contraste (`scripts/contraste-interface.p
 doit s'étendre au pire cas du recalage (texte du thème sur un fond de clarté
 0,80 en clair, 0,36 en sombre), et la Règle 3 recevoir l'exception par écrit.
 
-**Recommandation** : aucune — c'est une règle du contrat ; à trancher. C
-permet d'essayer sans engager le reste d'Écouter.
+**Décision (1ᵉʳ novembre 2026) : C.** L'exception est écrite dans la Règle 3
+d'`interface-guidelines.md` ; l'élargir vers B demandera une nouvelle
+décision.
 
-### 3. Choisir l'édition MusicBrainz face à face · **M**
+### 3. Choisir l'édition MusicBrainz face à face · **M** — **retenu : A**
 
 **Chez Disc Player** (`docs/images/readme-editions.jpg`, `src/layout/AlbumCompare.vue`).
 Une boîte à deux colonnes : à gauche les éditions que propose MusicBrainz
@@ -129,7 +131,7 @@ qui s'écoute (Règle 1).
 l'album ouvert au centre ; C seulement si A laisse beaucoup d'albums sans
 candidate.
 
-### 4. État de la bibliothèque · **L**
+### 4. État de la bibliothèque · **L** — **retenu : B, puis A**
 
 **Chez Disc Player.** Un récapitulatif de ce qui manque, et une passe qui
 complète, annulable.
@@ -169,7 +171,7 @@ parce que tout est en base, jamais dans les fichiers.
 **Recommandation : B d'abord, A ensuite.** B range Bibliothèque (Règle 5) et
 montre où sont les manques avant d'écrire une passe ; C écartée.
 
-### 5. Captures sur collection fictive · **S**
+### 5. Captures sur collection fictive · **S** — **retenu : A**
 
 **Chez Disc Player.** Les captures du README et de la documentation sont faites
 par Playwright sur une **collection fictive** (`tests/e2e/mock-collection.mjs`),
@@ -199,6 +201,7 @@ sont prêtes, l'auteur décide de les y mettre.
 2. **1** (vue « En cours », option A) — sans décision de contrat.
 3. **4**, option B (bloc « État »), puis **3** (éditions face à face), qui
    alimentera la passe de l'option A du point 4.
-4. **2** (couleurs d'album) une fois la Règle 3 tranchée.
+4. **2** (couleurs d'album), avec ou juste après **1** : la Règle 3 est
+   tranchée (vue « En cours » seule).
 5. Passage de la lecture Mac ↔ iPhone : avec l'étape 4B du compagnon
    (`plan-ios-compagnon.md`).
