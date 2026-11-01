@@ -36,8 +36,8 @@ mention contraire.
 4. Découper `apps/desktop/src/main.rs` : un module de commandes par mode, un
    type générique de passe de fond — fait ; progression par
    `tauri::ipc::Channel` (4c), après la phase 5.
-5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un magasin d'état
-   par mode.
+5. Découper `apps/desktop/ui/app.js` en modules ES natifs (5a) — fait ; un
+   magasin d'état par mode (5b).
 6. Découper `crates/core/src/db.rs` par domaine.
 7. Lama sans Ollama obligatoire : étude d'un modèle exécuté dans le processus,
    rapport avant toute implémentation.

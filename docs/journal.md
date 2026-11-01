@@ -2392,3 +2392,25 @@ page, pas le fonctionnement.
   pas de garde anti-panique.
 - **4c** (progression par `tauri::ipc::Channel`, démixage et analyse) :
   reportée après la phase 5, pour ne toucher `app.js` qu'une fois découpé.
+
+### Découpage de `app.js` (phase 5a)
+
+- **Déplacement pur** (`fd5ba3e`, mentions mises à jour dans `d9038fb`) :
+  `ui/app.js` (15 037 lignes) → 18 modules ES natifs dans `ui/js/`, coupés
+  aux sections du fichier (`socle`, `vues`, `lama`, `ecouter`, `lecteur`,
+  `carte`, `maplibre`, …, `pratiquer`, `demarrage`), plus `main.js` et
+  `audit.js` (chargé à la demande). Pas de bundler.
+- **Ordre d'exécution inchangé** : chaque module importe d'abord le précédent,
+  `main.js` n'importe que le dernier ; le graphe s'évalue d'un trait, dans
+  l'ordre de l'ancien fichier. Plusieurs scripts classiques auraient laissé
+  passer des rappels (`setTimeout(sonder)`, `invoke("favoris").then(…)`)
+  entre deux fichiers, avant que leur code soit chargé.
+- **Seul changement de code** : 18 variables affectées depuis un autre module
+  (une liaison importée est en lecture seule) passent par `affecterX(v)`.
+- **Contrôles** : les modules, privés de leurs imports, exports et
+  affectateurs, redonnent `app.js` à une ligne vide près ; `verifier.sh` passe
+  (une erreur injectée dans un module fait échouer les 8 tests de fumée) ;
+  `audit-interface.sh` : 198 cellules, 0 violation.
+- **Piège** : session macOS verrouillée, WebKit suspend la page au bout de
+  ~30 s et l'audit attendait sans fin ; le script s'arrête désormais net
+  (`809ed1e`).
