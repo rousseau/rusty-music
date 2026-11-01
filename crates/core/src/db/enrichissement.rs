@@ -1133,3 +1133,124 @@ impl Library {
         Ok((couverts, total))
     }
 }
+
+/// Un album MusicBrainz prêt à ranger : identifiant, titre tel qu'il est
+/// publié, titre normalisé pour le rapprochement, genres avec leurs votes,
+/// date de première parution du release-group (`first-release-date`,
+/// souvent partielle) et types secondaires joints par une virgule
+/// (« Live,Compilation ») — c'est de ces deux derniers champs que dépendent
+/// [`Library::ordre_darrivee`] et [`Library::albums`] pour préférer la date
+/// de l'œuvre à celle, moins sûre, du tag.
+pub type AlbumRange = (
+    String,
+    String,
+    String,
+    Vec<(String, i64)>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Une piste vue par le recalcul de popularité : son id, son MBID
+/// d'enregistrement, son MBID d'artiste, son album.
+type PistePop = (i64, Option<String>, Option<String>, Option<String>);
+
+/// Un enregistrement dont la popularité reste à récupérer. `artiste` et
+/// `titre` servent à la recherche Deezer, qui n'a pas de MBID.
+#[derive(Debug, Clone)]
+pub struct PisteAPopulariser {
+    pub recording_mbid: String,
+    pub artiste: Option<String>,
+    pub titre: Option<String>,
+}
+
+/// Une popularité brute à ranger : `ecoutes` porte la métrique principale de
+/// la source (écoutes ListenBrainz, `rank` Deezer), `auditeurs` le compte
+/// d'auditeurs distincts quand la source le donne.
+#[derive(Debug, Clone, Copy)]
+pub struct PopulariteBrute<'a> {
+    pub mbid: &'a str,
+    pub ecoutes: i64,
+    pub auditeurs: Option<i64>,
+}
+
+/// Une biographie TheAudioDB à ranger, résolue par MBID d'artiste.
+#[derive(Debug, Clone)]
+pub struct BioBrute {
+    pub mb_artist_id: String,
+    pub id_theaudiodb: Option<String>,
+    pub biographie_en: Option<String>,
+    pub biographie_fr: Option<String>,
+}
+
+/// Une biographie telle que servie à l'inspecteur.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BioArtiste {
+    pub mb_artist_id: String,
+    pub biographie_en: Option<String>,
+    pub biographie_fr: Option<String>,
+}
+
+/// Un crédit Discogs à ranger — voir `credits_discogs` du schéma.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CreditDiscogs {
+    pub personne: String,
+    pub role: String,
+    pub pistes: String,
+    pub discogs_artist_id: Option<i64>,
+}
+
+/// Un label Discogs à ranger — voir `labels_discogs` du schéma.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LabelDiscogs {
+    pub nom: String,
+    pub catno: String,
+    pub discogs_label_id: Option<i64>,
+}
+
+/// Une critique CritiqueBrainz à ranger.
+#[derive(Debug, Clone)]
+pub struct CritiqueBrute {
+    pub id: String,
+    pub auteur: Option<String>,
+    pub licence_id: String,
+    pub licence_nom: Option<String>,
+    pub langue: Option<String>,
+    pub texte: String,
+    pub url_originale: Option<String>,
+}
+
+/// Une critique telle que servie à l'inspecteur — l'attribution est
+/// obligatoire partout où `texte` apparaît (licence CC).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Critique {
+    pub id: String,
+    pub auteur: Option<String>,
+    pub licence_id: String,
+    pub licence_nom: Option<String>,
+    pub langue: Option<String>,
+    pub texte: String,
+    pub url_originale: Option<String>,
+}
+
+/// Convertit une liste `(id, valeur)` en `id → rang percentile` dans `[0, 1]` :
+/// la part des valeurs strictement inférieures. Insensible à l'échelle et aux
+/// distributions à longue traîne — c'est pourquoi on mélange des rangs, pas
+/// des comptes bruts (`docs/popularite.md`).
+pub(super) fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> HashMap<i64, f64> {
+    let paires: Vec<(i64, f64)> = paires.collect();
+    let mut triees: Vec<f64> = paires.iter().map(|(_, v)| *v).collect();
+    triees.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let n = triees.len();
+    paires
+        .into_iter()
+        .map(|(id, v)| {
+            let moins = triees.partition_point(|x| *x < v);
+            let rang = if n > 1 {
+                moins as f64 / (n - 1) as f64
+            } else {
+                0.5
+            };
+            (id, rang)
+        })
+        .collect()
+}

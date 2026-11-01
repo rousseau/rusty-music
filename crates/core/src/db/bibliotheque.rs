@@ -486,3 +486,138 @@ impl Library {
         crate::tags::read_cover(path)
     }
 }
+
+/// Une piste vue par la vérification des pochettes.
+#[derive(Debug, Clone)]
+pub struct PisteVerifPochette {
+    pub path: String,
+    pub taille: i64,
+    pub mtime: i64,
+    pub artiste: String,
+    pub album: String,
+}
+
+/// Le résultat de la vérification d'un dossier (ligne de `pochettes_verif`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerifPochette {
+    pub dossier: String,
+    pub artiste: String,
+    pub album: String,
+    pub signature: String,
+    pub version: i32,
+    /// Hachage de l'image intégrée — sert à repérer une même image sur des
+    /// albums différents.
+    pub emb_hash: Option<String>,
+    /// `None`, `"illisible"` ou `"divergente"`.
+    pub anomalie: Option<String>,
+    pub detail: String,
+    pub mesure: Option<f64>,
+}
+
+/// Répartition d'une valeur continue en tranches régulières (mode
+/// Bibliothèque). `comptes[i]` couvre `[min + i*pas, min + (i+1)*pas)` ; ce
+/// qui déborde par le haut tombe dans `hors_gamme`, ce qui manque dans
+/// `sans_valeur` — deux absences de nature différente qu'il ne faut pas
+/// confondre dans une même barre.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Histogramme {
+    pub min: f64,
+    pub pas: f64,
+    pub comptes: Vec<i64>,
+    pub hors_gamme: i64,
+    pub sans_valeur: i64,
+}
+
+/// Un album et ses éditions multiples : l'artiste, le titre brut le plus
+/// représenté, puis chaque édition (titre publié, nombre de pistes).
+pub type EditionsAlbum = (String, String, Vec<(String, i64)>);
+
+/// Les genres d'un morceau, de la source la plus précise à la plus grossière.
+///
+/// **L'album l'emporte sur l'artiste, l'artiste sur le fichier.** Chaque
+/// échelon a sa raison :
+///
+/// - l'**album** distingue deux disques d'un même artiste : un enregistrement
+///   acoustique d'un groupe électrique doit être étiqueté pour ce qu'il est.
+///   Nos fichiers ne portent pas d'identifiant d'album, le rapprochement passe
+///   donc par le titre normalisé ;
+/// - l'**artiste** couvre le plus de morceaux, et son vocabulaire est curé —
+///   `boom bap`, `nu metal`, `anti-folk` là où les fichiers disent « Rock » ;
+/// - le **tag du fichier** reste en dernier recours, et il n'est pas
+///   décoratif : les chanteurs bretons de la bibliothèque de test n'ont aucun
+///   genre chez MusicBrainz, et c'est le fichier qui sait alors de quoi il
+///   s'agit.
+///
+/// On ne mélange pas les sources pour un même morceau. Les verser ensemble
+/// ferait cohabiter « Rock » et « rock », et le genre le plus grossier
+/// redeviendrait le plus lourd — exactement ce qu'on cherche à quitter.
+/// Le titre d'album jusqu'à la première parenthèse ou le premier crochet,
+/// en minuscules — sert à rapprocher « Kid A » et « Kid A (Remaster) » sans
+/// registre d'éditions à tenir à jour. Voir [`Library::editions_multiples`].
+pub(super) fn titre_album_normalise(titre: &str) -> String {
+    let t = titre.to_lowercase();
+    let fin = t.find(['(', '[']).unwrap_or(t.len());
+    t[..fin].trim().to_string()
+}
+
+// Tranches de 10 BPM : assez fin pour distinguer un tempo lent d'un modéré,
+// assez large pour qu'une mesure à quelques BPM près reste dans sa tranche.
+// 40 couvre les morceaux les plus lents de la bibliothèque de test, 220 les
+// plus rapides sans avoir à étendre `hors_gamme` — voir `Library::stats_tempo`.
+pub(super) const TEMPO_MIN: f64 = 40.0;
+
+pub(super) const TEMPO_PAS: f64 = 10.0;
+
+const TEMPO_TRANCHES: usize = 18;
+
+// Tranches d'une minute, de 0 à 12 — au-delà, `hors_gamme` regroupe les
+// morceaux longs (mix, live) plutôt que d'étirer l'histogramme pour eux.
+const DUREE_MIN: f64 = 0.0;
+
+const DUREE_PAS: f64 = 60_000.0;
+
+const DUREE_TRANCHES: usize = 12;
+
+// Tranches de 32 kb/s, de 32 à 320 — le domaine habituel du MP3/AAC (128 et
+// 320 en sont les repères les plus lus). Un format sans débit constant
+// (FLAC, WavPack…) atterrit largement au-delà : `hors_gamme` en dit alors le
+// compte, pas une tranche étirée qui écraserait le MP3 dans un coin.
+const BITRATE_MIN: f64 = 32.0;
+
+const BITRATE_PAS: f64 = 32.0;
+
+// 10, pas 9 : la tranche [320, 352) doit exister pour accueillir 320 kb/s
+// pile — le repère « qualité maximale » du MP3 — dans une tranche plutôt
+// que dans `hors_gamme`, où il se confondrait avec les formats sans perte.
+const BITRATE_TRANCHES: usize = 10;
+
+/// Répartit `valeurs` en tranches régulières de largeur `pas` à partir de
+/// `min` — voir [`Histogramme`]. Sert au tempo (BPM) comme à la durée (ms) :
+/// même forme, seules les bornes changent.
+pub(super) fn histogrammer(
+    valeurs: &[Option<f64>],
+    min: f64,
+    pas: f64,
+    tranches: usize,
+) -> Histogramme {
+    let mut comptes = vec![0i64; tranches];
+    let mut hors_gamme = 0i64;
+    let mut sans_valeur = 0i64;
+    for v in valeurs {
+        match v {
+            None => sans_valeur += 1,
+            Some(v) if *v < min => hors_gamme += 1,
+            Some(v) => match ((v - min) / pas) as usize {
+                i if i < tranches => comptes[i] += 1,
+                _ => hors_gamme += 1,
+            },
+        }
+    }
+    Histogramme {
+        min,
+        pas,
+        comptes,
+        hors_gamme,
+        sans_valeur,
+    }
+}

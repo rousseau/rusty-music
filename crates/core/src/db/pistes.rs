@@ -442,3 +442,87 @@ impl Library {
         Ok(self.paths_under(root)?.len() as i64)
     }
 }
+
+/// Un artiste et son volume dans la bibliothèque.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArtistRow {
+    pub name: String,
+    /// Identifiant MusicBrainz d'artiste d'album, quand les fichiers le
+    /// portent. C'est la clé de regroupement ; `None` = regroupé sur le nom.
+    pub mbid: Option<String>,
+    pub tracks: i64,
+    pub albums: i64,
+}
+
+/// Un album et son volume. `artist` est l'artiste d'album quand il est
+/// renseigné, sinon celui de la piste — c'est ce qui tient les compilations.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AlbumRow {
+    pub name: String,
+    pub artist: Option<String>,
+    pub year: Option<i64>,
+    pub tracks: i64,
+    // Chemin d'une piste de l'album, pour en tirer la pochette (`tags::read_cover`).
+    // N'importe laquelle convient : c'est la même pochette pour tout l'album,
+    // embarquée ou dans le dossier.
+    pub path: String,
+    /// Quand l'album est arrivé dans la bibliothèque, en secondes depuis
+    /// l'époque : la **date de modification la plus récente** de ses fichiers.
+    /// Ce n'est pas `added_at` (la date de passage du scan : tout ce qu'un même
+    /// scan trouve y a le même jour) mais celle des fichiers, qui dit quand on
+    /// les a posés là. La plus récente des pistes : un morceau ajouté à un album
+    /// existant le remonte. `None` si aucune piste n'a de date.
+    pub ajoute_le: Option<i64>,
+}
+
+/// Année d'un album, la plus fiable connue : `first_release_date` de
+/// MusicBrainz (la date de l'œuvre, pas du pressage — corrige les rééditions),
+/// sauf compilation dont la date de release-group ne dit rien de ses titres ;
+/// sinon le tag. Même arbitrage que la table de fiabilité de
+/// [`Library::ordre_darrivee`], réduit à ce dont un album a besoin — sans les
+/// médianes de secours, qui n'ont de sens que faute d'aucune date pour un
+/// morceau isolé.
+fn annee_fiable_album(
+    mb_date: Option<&str>,
+    compilation: bool,
+    tag_annee: Option<i64>,
+) -> Option<i64> {
+    if !compilation {
+        if let Some(a) = mb_date
+            .and_then(date_iso_vers_cle)
+            .map(|k| (k / 10_000) as i64)
+        {
+            return Some(a);
+        }
+    }
+    tag_annee.filter(|a| (1900..=2100).contains(a))
+}
+
+/// Construit une [`AlbumRow`] depuis une ligne `(album, artiste, année tag,
+/// pistes, chemin, date MusicBrainz, types secondaires)` — la forme commune
+/// aux requêtes de [`Library::albums`] et [`Library::albums_of_artist`].
+fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
+    let tag_annee: Option<i64> = r.get(2)?;
+    let mb_date: Option<String> = r.get(5)?;
+    let types: Option<String> = r.get(6)?;
+    let compilation = types
+        .as_deref()
+        .is_some_and(|t| t.to_lowercase().contains("compilation"));
+    Ok(AlbumRow {
+        name: r.get(0)?,
+        artist: r.get(1)?,
+        year: annee_fiable_album(mb_date.as_deref(), compilation, tag_annee),
+        tracks: r.get(3)?,
+        path: r.get(4)?,
+        ajoute_le: r.get::<_, Option<i64>>(7)?.filter(|&t| t > 0),
+    })
+}
+
+/// Une racine surveillée, telle qu'affichée dans les réglages.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootRow {
+    pub path: String,
+    pub added_at: i64,
+    pub last_scan: Option<i64>,
+    pub tracks: i64,
+}

@@ -511,3 +511,62 @@ impl Library {
         Ok(rows)
     }
 }
+
+/// Une piste en attente de mesure de loudness — chemin et clé d'album
+/// (normalisée comme `album_loudness` : chaîne vide si absente) pour que
+/// `crate::loudness::actualiser` sache quels albums une passe touche.
+pub struct PisteLoudness {
+    pub id: i64,
+    pub path: String,
+    pub album: String,
+    pub album_artist: String,
+}
+
+/// Un point de la carte.
+///
+/// Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
+/// l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
+/// d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
+/// minutage se retrouvent sans durée selon d'où l'on a cliqué.
+/// Ce que la passe de descripteurs a mesuré d'un morceau.
+///
+/// Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
+/// sans tonalité lisible, et l'inverse.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DescripteursVus {
+    /// Battements par minute. **Ambiguïté d'octave connue** : un morceau à
+    /// 174 BPM peut être rendu à 87, la préférence du détecteur allant vers
+    /// 120 (`crates/analysis/src/descripteurs.rs`).
+    pub bpm: Option<f32>,
+    /// Notée à l'anglaise — « F min », « C maj ».
+    pub tonalite: Option<String>,
+    /// Valeur efficace, entre 0 et 1.
+    pub energie: Option<f32>,
+    /// Taux de passage par zéro — élevé pour un son bruité/percussif.
+    pub zcr: Option<f32>,
+    /// Centroïde spectral (Hz), moyenne puis écart-type entre trames.
+    pub centroide_moy: Option<f32>,
+    pub centroide_ecart: Option<f32>,
+    /// Rolloff spectral (Hz, seuil 85 %), même paire.
+    pub rolloff_moy: Option<f32>,
+    pub rolloff_ecart: Option<f32>,
+    /// Aplatissement spectral (0..1, bruit vs tonal), même paire.
+    pub flatness_moy: Option<f32>,
+    pub flatness_ecart: Option<f32>,
+}
+
+/// Qualité d'encodage d'un morceau, telle que `tags::read` l'a lue sur le
+/// disque. Chaque champ est facultatif **séparément** : un morceau scanné avant
+/// que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
+/// sens que pour les conteneurs sans perte.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QualitePiste {
+    pub codec: Option<String>,
+    /// kb/s.
+    pub bitrate: Option<i64>,
+    /// Hz.
+    pub sample_rate: Option<i64>,
+    pub channels: Option<i64>,
+    /// Bits — renseigné pour les formats sans perte seulement.
+    pub bit_depth: Option<i64>,
+}

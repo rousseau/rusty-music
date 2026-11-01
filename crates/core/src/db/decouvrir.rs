@@ -282,3 +282,62 @@ impl Library {
         Ok(())
     }
 }
+
+/// Une sortie repérée pour le mode Découvrir, prête à ranger. Le titre
+/// normalisé n'a pas sa place ici — on ne rapproche pas ces sorties d'un
+/// fichier, elles ne sont pas (encore) dans la bibliothèque.
+#[derive(Debug, Clone)]
+pub struct SortieARanger {
+    pub rg_mbid: String,
+    pub titre: String,
+    /// Date brute telle que MusicBrainz la donne, pour l'affichage.
+    pub date_sortie: Option<String>,
+    /// Date complétée en `YYYY-MM-DD` ([`crate::musicbrainz::completer_date`]),
+    /// pour le filtre de fenêtre et le tri.
+    pub date_sortie_norm: Option<String>,
+    pub type_primaire: Option<String>,
+    /// Types secondaires joints par une virgule (« Live,Compilation »).
+    pub types_secondaires: Option<String>,
+    /// Noms crédités hors artiste-ancre, joints par « · ». `None` ou vide = pas
+    /// une collaboration.
+    pub collaborateurs: Option<String>,
+}
+
+/// Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SortieFil {
+    pub rg_mbid: String,
+    pub artiste_mbid: String,
+    pub artiste_nom: String,
+    pub titre: String,
+    pub date_sortie: Option<String>,
+    pub type_primaire: Option<String>,
+    pub collaborateurs: Option<String>,
+    pub vu: bool,
+}
+
+/// Un artiste voisin proposé, avec les artistes de la bibliothèque qui y mènent.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoisinFil {
+    pub dst_mbid: String,
+    pub dst_nom: String,
+    pub score: f64,
+    pub source: String,
+    /// Noms des artistes-ancre — « proche de X, Y que vous écoutez ».
+    pub portes: Vec<String>,
+    /// `mb_album_artist_id` des artistes-ancre — pour filtrer le fil par famille
+    /// sonique côté interface (un voisin passe si l'une de ses ancres est dans
+    /// une famille cochée).
+    pub src_mbids: Vec<String>,
+    pub vu: bool,
+}
+
+/// Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
+/// écouter ailleurs, plus la date de la dernière passe.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FilDecouvrir {
+    pub derniere_passe: Option<i64>,
+    pub sorties: Vec<SortieFil>,
+    pub collaborations: Vec<SortieFil>,
+    pub voisins: Vec<VoisinFil>,
+}

@@ -1160,3 +1160,885 @@ impl Library {
         Ok(rows)
     }
 }
+
+/// Paramètres du calcul de la carte — projection t-SNE et clustering
+/// k-means. Rien pour les empreintes elles-mêmes : le modèle CLAP importé
+/// est figé au moment du build (`crates/analysis/src/encodeur.rs`), il n'y a
+/// pas de bouton à tourner de ce côté-là.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct ParametresCarte {
+    /// Voisinage que t-SNE cherche à préserver. Doit rester bien en dessous
+    /// du nombre de morceaux — `projeter` s'en charge, ce n'est pas à
+    /// l'appelant d'y penser.
+    pub perplexite: f32,
+    /// Passes de descente de gradient. Plus haut stabilise le dessin, plus
+    /// lentement.
+    pub epoques: usize,
+    /// Nombre de familles (k de k-means), sur la carte comme dans le rail
+    /// « Familles ».
+    pub familles: usize,
+    /// Passes de k-means++. Au-delà d'une poignée de dizaines, les centres
+    /// ont déjà cessé de bouger sur une bibliothèque de cette taille.
+    pub iterations_kmeans: usize,
+    /// Écart-type du noyau gaussien de la nappe de densité — voir
+    /// [`crate::density::ParametresDensite`], que ce champ (et les deux
+    /// suivants) alimente directement.
+    pub densite_noyau: f64,
+    /// Cellules par côté de la grille de densité.
+    pub densite_resolution: usize,
+    /// Bandes par nappe de densité.
+    pub densite_bandes: usize,
+}
+
+impl Default for ParametresCarte {
+    /// Les valeurs mesurées jusqu'ici, gardées à l'identique : changer de
+    /// défaut ici changerait le dessin de la carte de quiconque n'a jamais
+    /// ouvert ce réglage.
+    fn default() -> Self {
+        let d = crate::density::ParametresDensite::default();
+        Self {
+            perplexite: 30.0,
+            epoques: 1000,
+            familles: 12,
+            iterations_kmeans: 50,
+            densite_noyau: d.noyau,
+            densite_resolution: d.resolution,
+            densite_bandes: d.bandes,
+        }
+    }
+}
+
+impl ParametresCarte {
+    /// Les trois champs de densité, sous la forme qu'attend
+    /// [`crate::density::calculer`].
+    pub fn parametres_densite(&self) -> crate::density::ParametresDensite {
+        crate::density::ParametresDensite {
+            noyau: self.densite_noyau,
+            resolution: self.densite_resolution,
+            bandes: self.densite_bandes,
+        }
+    }
+}
+
+/// Vocabulaire par défaut des familles par genre — voir
+/// [`Library::vocabulaire_familles`]. Vit ici, à côté de `ParametresCarte`,
+/// et non dans `rusty-music-analysis` : c'est une donnée de configuration de
+/// la bibliothèque (réglable, persistée), pas un algorithme ; `analysis` en
+/// dépend, pas l'inverse.
+///
+/// **Mesuré sur une bibliothèque réelle avant d'être écrit** — les genres
+/// les mieux votés d'au moins cinq artistes (`mb_genres`) : `hip hop` (130
+/// artistes), `jazz` (81), `alternative rock` (67), `electronic` (52),
+/// `rock` (50), `folk` (40), `reggae` (21), `pop` (21), `chanson française`
+/// (19), `funk` (17), `soul` (15), `blues` (15), `nu metal` (14), `dub`
+/// (14), etc. Une bibliothèque différente peut vouloir une autre liste —
+/// c'est justement pour ça qu'elle est réglable plutôt que figée dans le
+/// code.
+const VOCABULAIRE_DEFAUT: &[(&str, &[&str])] = &[
+    (
+        "Rock",
+        &[
+            "rock",
+            "alternative rock",
+            "hard rock",
+            "psychedelic rock",
+            "folk rock",
+            "blues rock",
+            "pop rock",
+            "progressive rock",
+            "punk",
+            "grunge",
+            "indie rock",
+            "post-punk",
+            "garage rock",
+        ],
+    ),
+    (
+        "Metal",
+        &[
+            "metal",
+            "nu metal",
+            "alternative metal",
+            "thrash metal",
+            "industrial metal",
+            "groove metal",
+            "heavy metal",
+            "death metal",
+            "black metal",
+            "doom metal",
+        ],
+    ),
+    ("Hip Hop", &["hip hop", "boom bap", "rap", "trap"]),
+    (
+        "Électronique",
+        &[
+            "electronic",
+            "drum and bass",
+            "big beat",
+            "ambient",
+            "downtempo",
+            "trip hop",
+            "house",
+            "techno",
+            "idm",
+            "electronica",
+            "synthwave",
+        ],
+    ),
+    ("Jazz", &["jazz", "acid jazz", "fusion", "bebop", "swing"]),
+    ("Reggae", &["reggae", "dub", "dancehall", "ska"]),
+    ("Soul · Funk", &["funk", "soul", "r&b", "disco", "motown"]),
+    (
+        "Folk",
+        &[
+            "folk",
+            "celtic",
+            "bluegrass",
+            "country",
+            "americana",
+            "singer-songwriter",
+        ],
+    ),
+    (
+        "Chanson",
+        &["chanson française", "chanson", "variété française"],
+    ),
+    (
+        "Classique",
+        &["classical", "baroque", "opera", "contemporary classical"],
+    ),
+    ("Pop", &["pop", "synthpop", "dance pop", "indie pop"]),
+    ("Monde", &["afrobeat", "world", "latin", "flamenco"]),
+];
+
+/// Un album annoté pour le mode Explorer → Anneau : identité, famille
+/// dominante, date de sortie, chemin d'une piste pour la pochette.
+///
+/// `id` est [`hacher`]`(artiste, album)`, casté en `i64` — le même hachage
+/// que celui qui regroupe déjà les pistes d'un disque dans
+/// [`Library::ordre_darrivee`] ; aucune autre identité d'album n'existe dans
+/// le schéma (voir [`Library::albums`], une simple agrégation SQL sans id
+/// stable). Voir [`Library::albums_annotes`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AlbumNoeud {
+    pub id: i64,
+    pub name: String,
+    pub artist: String,
+    /// Cluster dominant, `None` tant qu'aucun morceau de l'album n'est
+    /// projeté (voir [`Library::familles_des_albums`]).
+    pub famille: Option<i64>,
+    /// AAAAMMJJ, le plus ancien parmi les morceaux de l'album — voir la table
+    /// de fiabilité de [`Library::ordre_darrivee`].
+    pub date: u32,
+    pub path: Option<String>,
+    /// Somme des durées de ses morceaux — sert l'épaisseur de l'arc d'album
+    /// sur le second anneau du mode Explorer → Anneau. Choisie plutôt que la
+    /// popularité générale : toujours disponible, même sans passe
+    /// popularité, voir `docs/popularite.md`.
+    pub duree_ms: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MapPoint {
+    pub id: i64,
+    pub path: String,
+    pub x: f32,
+    pub y: f32,
+    pub cluster: i64,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    /// Artiste de regroupement (`tracks.album_artist`), distinct de `artist`
+    /// qui peut lister un featuring entier (« X feat. Y »). C'est ce champ
+    /// qu'il faut utiliser pour identifier *un* artiste, pas `artist` — voir
+    /// le commentaire sur `mb_album_artist_id` dans le schéma.
+    pub album_artist: Option<String>,
+    pub album: Option<String>,
+    pub track_no: Option<i64>,
+    /// La meilleure date connue, pas la seule colonne `tracks.year` — voir
+    /// le repli documenté sur [`Library::map_view`]. `None` seulement quand
+    /// aucune source ne donne de date, pas seulement le tag.
+    pub year: Option<i64>,
+    pub duration_ms: Option<i64>,
+    /// Descripteurs mesurés. Absents tant que `rusty-music descripteurs` n'est
+    /// pas passé — la carte doit savoir colorer sans eux.
+    pub bpm: Option<f32>,
+    pub energy: Option<f32>,
+    /// Popularité générale, rang percentile `0..1` dans la bibliothèque
+    /// (`track_popularite.relative`). Absente tant que les passes `enrich` +
+    /// `popularité` ne sont pas passées, ou si l'entité est inconnue de
+    /// ListenBrainz et Deezer. La carte s'en sert pour ancrer les artistes les
+    /// plus connus sur les monuments (`crate::ancrage`, dans `rusty_music_carto`).
+    pub popularite: Option<f64>,
+}
+
+/// Un morceau et sa place dans l'ordre du peuplement.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArriveeBrute {
+    pub track_id: i64,
+    /// AAAAMMJJ. Le mois et le jour valent 00 quand on ne les connaît pas.
+    pub date: u32,
+    pub source: String,
+    /// Hachage stable de (artiste, album) : regroupe les pistes d'un disque.
+    pub album: u64,
+    pub piste: u16,
+}
+
+/// Un instant epoch vers la même clé AAAAMMJJ, sans dépendance de date : on
+/// n'a besoin que d'un ordre, et l'arithmétique civile grégorienne tient en
+/// quinze lignes (algorithme de Howard Hinnant).
+fn epoch_vers_cle(secondes: i64) -> u32 {
+    let jours = secondes.div_euclid(86_400) + 719_468;
+    let ere = jours.div_euclid(146_097);
+    let doe = jours - ere * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + ere * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y.clamp(1900, 2100) as u32) * 10_000 + (m as u32) * 100 + (d as u32)
+}
+
+/// Une piste vue par le nommage des familles : sa famille, son artiste
+/// MusicBrainz, son album, et le genre inscrit dans le fichier.
+type PisteNommage = (i64, Option<String>, Option<String>, Option<String>);
+
+/// `(groupe, artiste MusicBrainz, album, tag de fichier, genre gagnant
+/// CLAP-texte)` — l'entrée du vote à trois sources, voir
+/// [`Library::nommer_par_groupe`].
+type PisteVote = (
+    i64,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Une famille nommée par vote entre trois sources indépendantes —
+/// MusicBrainz, le vocabulaire CLAP-texte et Last.fm. Voir
+/// `docs/nommage-familles.md`.
+///
+/// `fiable` distingue un nom sur lequel au moins deux sources s'accordent
+/// (ou qu'une critique CritiqueBrainz est venue confirmer) d'un simple repli
+/// sur MusicBrainz seul quand les trois divergent — c'est ce dernier cas que
+/// l'inspecteur affiche comme « nom incertain », avec les trois propositions
+/// visibles plutôt qu'un choix silencieux.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct VoteFamille {
+    pub cluster: i64,
+    pub effectif: i64,
+    pub fiable: bool,
+    /// Ce que la carte, l'anneau et la frise affichent — toujours renseigné,
+    /// même quand `fiable` est faux (repli sur le nom MusicBrainz).
+    pub nom_affiche: String,
+    pub musicbrainz: String,
+    pub clap_texte: String,
+    pub lastfm: String,
+}
+
+/// Combien des genres les mieux représentés d'une famille comptent comme
+/// « dominants », pour [`Library::genres_suspects`]. Plus d'un seul : une
+/// famille mêle légitimement des genres voisins (« Reggae · Afrobeat ») sans
+/// qu'aucun morceau n'y soit pour autant suspect.
+const GENRES_DOMINANTS: usize = 3;
+
+/// Sous ce poids, un tag Last.fm est trop marginal pour compter — l'échelle
+/// (0-100) n'est pas celle des votes MusicBrainz, un plancher bas suffit à
+/// écarter le bruit occasionnel sans perdre les tags réels.
+const LASTFM_POIDS_MINIMUM: u32 = 5;
+
+/// Sous ce plancher, un genre décrit une poche et non une famille : son score
+/// serait tiré par le hasard de quelques morceaux. Le seuil est relatif à la
+/// taille de la famille, plus un minimum absolu pour les petites bibliothèques.
+const PLANCHER_RELATIF: f64 = 0.01;
+
+const PLANCHER_ABSOLU: i64 = 5;
+
+/// Nomme chaque famille par ses genres, à partir des comptes bruts.
+///
+/// `effectifs` donne `(famille, nombre de morceaux)`, du plus grand au plus
+/// petit ; `comptes` donne `(famille, genre, nombre de morceaux de ce genre)`.
+///
+/// **Ni le genre le plus fréquent, ni le plus caractéristique.** Le plus
+/// fréquent ne distingue rien : « Rock » domine six des douze familles de la
+/// bibliothèque de test. Le plus caractéristique — celui dont la part dans la
+/// famille dépasse le plus sa part dans la bibliothèque — décrit une poche
+/// marginale : il nommait « Ska Rock · Latin » une famille de 4 321 morceaux
+/// menée par Bob Marley, Femi Kuti et James Brown, sur la foi de 52 morceaux.
+///
+/// Le score retenu, `part × log₂(sur-représentation)`, exige les deux : le
+/// genre doit peser dans la famille **et** y être plus présent qu'ailleurs. La
+/// même famille devient « Reggae · Pop ».
+pub(super) fn nommer_les_familles(
+    effectifs: &[(i64, i64)],
+    comptes: &[(i64, String, i64)],
+) -> Vec<(i64, String, i64)> {
+    nommer_les_familles_option(effectifs, comptes)
+        .into_iter()
+        .enumerate()
+        .map(|(rang, (famille, nom, effectif))| {
+            (
+                famille,
+                nom.unwrap_or_else(|| format!("Famille {}", rang + 1)),
+                effectif,
+            )
+        })
+        .collect()
+}
+
+/// Le cœur de [`nommer_les_familles`], sans son repli « Famille N ».
+///
+/// Le repli est le bon choix pour une légende, qui doit toujours montrer un
+/// nom — mais c'est un aveu d'absence, pas une proposition, et le vote à
+/// trois sources ([`Library::nommer_par_groupe`]) ne doit jamais le traiter
+/// comme telle : sans cette distinction, deux sources qui n'ont *toutes les
+/// deux* rien à dire tombent sur le même « Famille N » (même rang, même
+/// bibliothèque de familles) et semblent s'accorder — un faux consensus qui
+/// a fait disparaître les vrais noms MusicBrainz derrière un désaccord
+/// fantôme, mesuré en développant ce chantier.
+fn nommer_les_familles_option(
+    effectifs: &[(i64, i64)],
+    comptes: &[(i64, String, i64)],
+) -> Vec<(i64, Option<String>, i64)> {
+    // La population de référence, c'est l'ensemble des morceaux classés : la
+    // sur-représentation se mesure contre ce que la carte montre, pas contre
+    // une bibliothèque dont une partie n'est pas encore analysée.
+    let mut global: HashMap<&str, i64> = HashMap::new();
+    let mut total = 0i64;
+    for (_, genre, n) in comptes {
+        *global.entry(genre.as_str()).or_default() += n;
+        total += n;
+    }
+
+    let mut par_famille: HashMap<i64, Vec<(&str, i64)>> = HashMap::new();
+    for (famille, genre, n) in comptes {
+        par_famille
+            .entry(*famille)
+            .or_default()
+            .push((genre.as_str(), *n));
+    }
+
+    let mut vus: HashSet<String> = HashSet::new();
+    let mut sortie = Vec::with_capacity(effectifs.len());
+    for (famille, effectif) in effectifs {
+        let mut classe: Vec<(&str, f64)> = Vec::new();
+        if let Some(genres) = par_famille.get(famille) {
+            let dans_la_famille: i64 = genres.iter().map(|(_, n)| n).sum();
+            let plancher =
+                PLANCHER_ABSOLU.max((dans_la_famille as f64 * PLANCHER_RELATIF).round() as i64);
+            for (genre, n) in genres {
+                if *n < plancher || total == 0 || dans_la_famille == 0 {
+                    continue;
+                }
+                let part = *n as f64 / dans_la_famille as f64;
+                let ailleurs = global[genre] as f64 / total as f64;
+                let score = part * (part / ailleurs).log2();
+                // Un score négatif signale un genre sous-représenté : il dit
+                // ce que la famille n'est pas, ce qui ne la nomme pas.
+                if score > 0.0 {
+                    classe.push((genre, score));
+                }
+            }
+        }
+        classe.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let genres: Vec<&str> = classe.into_iter().map(|(g, _)| g).collect();
+
+        let nom = libeller(&genres, &vus);
+        if let Some(n) = &nom {
+            vus.insert(empreinte_libelle(n));
+        }
+        sortie.push((*famille, nom, *effectif));
+    }
+    sortie
+}
+
+/// Le libellé d'une famille : son meilleur genre, précisé par le meilleur
+/// suivant qui ne le redise pas et ne donne pas un nom déjà pris.
+///
+/// Les deux règles sont chacune tirées d'un libellé qui n'apprenait rien :
+/// « Electronic · Electro », où le second mot redit le premier ; et deux
+/// familles ressorties « Metal · Rock », le rock dominant la moitié de la
+/// bibliothèque. La seconde descend alors son classement — « Metal · Grunge ».
+/// Met une majuscule aux mots entièrement minuscules d'un genre.
+///
+/// Les deux sources n'écrivent pas pareil : MusicBrainz impose le tout en
+/// minuscules (`trip hop`, `boom bap`), les tags des fichiers arrivent en
+/// capitales (`Reggae`, `Hip-Hop`). Mélangés dans une même légende, ça se voit.
+/// On ne touche qu'aux mots tout en minuscules, pour ne pas défigurer `R&B`
+/// ni `IDM`.
+pub(super) fn capitaliser(genre: &str) -> String {
+    genre
+        .split_inclusive([' ', '-', '/'])
+        .map(|mot| {
+            if mot.chars().any(char::is_uppercase) {
+                return mot.to_string();
+            }
+            let mut c = mot.chars();
+            match c.next() {
+                Some(p) => p.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Forme canonique d'un libellé : ses mots, triés.
+///
+/// Sert à repérer les permutations. « Electronic · Hip Hop » et « Hip Hop ·
+/// Electronic » sont deux libellés distincts au sens des chaînes, et la même
+/// chose pour qui lit la légende.
+fn empreinte_libelle(nom: &str) -> String {
+    let mut mots: Vec<&str> = nom.split(" · ").collect();
+    mots.sort_unstable();
+    mots.join("\u{0}")
+}
+
+fn libeller(genres: &[&str], vus: &HashSet<String>) -> Option<String> {
+    let tete = capitaliser(genres.first()?);
+    let tete = tete.as_str();
+    let mut repli = None;
+    for g in &genres[1..] {
+        if se_redisent(tete, g) {
+            continue;
+        }
+        let nom = format!("{tete} · {}", capitaliser(g));
+        if !vus.contains(&empreinte_libelle(&nom)) {
+            return Some(nom);
+        }
+        // Le meilleur doublon, gardé au cas où aucune paire ne soit libre :
+        // mieux vaut un nom en double qu'un nom amputé.
+        repli.get_or_insert(nom);
+    }
+    if !vus.contains(&empreinte_libelle(tete)) {
+        return Some(tete.to_string());
+    }
+    repli.or_else(|| Some(tete.to_string()))
+}
+
+/// Deux genres se redisent-ils ?
+///
+/// Purement lexical : un mot commun, ou l'un préfixe de l'autre sur au moins
+/// cinq lettres. Ça attrape « Electro » dans « Electronic » et « Hip-Hop »
+/// dans « Rap/Hip Hop » sans confondre « Rock » et « Rockabilly ». Ça ne
+/// rapproche pas deux synonymes qui ne se ressemblent pas — « Rap » et
+/// « Hip-Hop » — ce qui demanderait un vocabulaire des genres, propre à
+/// chaque bibliothèque.
+pub(super) fn se_redisent(a: &str, b: &str) -> bool {
+    let mots = |g: &str| -> Vec<String> {
+        g.split(|c: char| !c.is_alphanumeric())
+            .filter(|m| m.chars().count() >= 3)
+            .map(str::to_lowercase)
+            .collect()
+    };
+    let (ma, mb) = (mots(a), mots(b));
+    ma.iter().any(|x| {
+        mb.iter().any(|y| {
+            x == y || (x.len().min(y.len()) >= 5 && (x.starts_with(y) || y.starts_with(x)))
+        })
+    })
+}
+
+/// Le libellé de tête d'un nom de famille (« X · Y » → « X »), normalisé
+/// pour comparer trois sources qui n'écrivent pas pareil (casse, ponctuation)
+/// — sert au vote de [`arbitrer_vote`], pas à l'affichage.
+fn tete_normalisee(nom: &str) -> String {
+    let tete = nom.split(" · ").next().unwrap_or(nom);
+    tete.chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Combine les trois votes d'une famille en un nom affiché et un drapeau de
+/// confiance — voir `docs/nommage-familles.md`.
+///
+/// Volontairement simple, comme demandé : **au moins deux des trois
+/// libellés de tête s'accordent** → fiable, ce libellé est affiché. Si les
+/// trois divergent, une critique CritiqueBrainz disponible peut confirmer
+/// l'un des trois (`critique_confirme`) ; sinon, repli sur le nom
+/// MusicBrainz seul — le filet de sécurité déjà en place avant ce chantier,
+/// pour que la carte garde toujours un nom.
+fn arbitrer_vote(
+    nom_mb: &str,
+    nom_clap: &str,
+    nom_lastfm: &str,
+    critique_confirme: impl Fn(&str) -> bool,
+) -> (bool, String) {
+    let sources = [nom_mb, nom_clap, nom_lastfm];
+    let normalises: Vec<Option<String>> = sources
+        .iter()
+        .map(|s| {
+            let t = tete_normalisee(s);
+            (!t.is_empty()).then_some(t)
+        })
+        .collect();
+
+    for (i, a) in normalises.iter().enumerate() {
+        let Some(a) = a else { continue };
+        for (j, b) in normalises.iter().enumerate().skip(i + 1) {
+            let Some(b) = b else { continue };
+            if a == b {
+                // Préfère la casse MusicBrainz quand elle est du bon côté de
+                // l'accord — c'est la convention de capitalisation établie.
+                let choisi = if i == 0 || j == 0 { nom_mb } else { sources[i] };
+                return (true, choisi.to_string());
+            }
+        }
+    }
+
+    for nom in sources {
+        if !nom.is_empty() && critique_confirme(nom) {
+            return (true, nom.to_string());
+        }
+    }
+
+    (false, nom_mb.to_string())
+}
+
+#[cfg(test)]
+mod tests_vote {
+    use super::arbitrer_vote;
+
+    #[test]
+    fn deux_sources_daccord_lemportent() {
+        let (fiable, nom) = arbitrer_vote(
+            "Alternative Metal",
+            "A Heavy Metal Band With Screamed Vocals",
+            "alternative metal",
+            |_| false,
+        );
+        assert!(fiable);
+        assert_eq!(nom, "Alternative Metal");
+    }
+
+    #[test]
+    fn trois_sources_en_desaccord_replient_sur_musicbrainz() {
+        let (fiable, nom) = arbitrer_vote(
+            "Reggae · Rock",
+            "An African Percussion Ensemble",
+            "worldbeat",
+            |_| false,
+        );
+        assert!(!fiable);
+        assert_eq!(nom, "Reggae · Rock");
+    }
+
+    #[test]
+    fn une_critique_confirme_une_proposition_divergente() {
+        let (fiable, nom) = arbitrer_vote(
+            "Reggae · Rock",
+            "An African Percussion Ensemble",
+            "worldbeat",
+            |candidat| candidat == "An African Percussion Ensemble",
+        );
+        assert!(fiable);
+        assert_eq!(nom, "An African Percussion Ensemble");
+    }
+
+    #[test]
+    fn des_sources_vides_ne_saccordent_jamais_entre_elles() {
+        let (fiable, nom) = arbitrer_vote("Reggae · Rock", "", "", |_| false);
+        assert!(!fiable);
+        assert_eq!(nom, "Reggae · Rock");
+    }
+
+    /// `arbitrer_vote` compare des chaînes, il ne sait pas qu'un repli
+    /// « Famille N » n'est pas une vraie proposition — la garantie que deux
+    /// replis identiques ne s'accordent jamais vient d'ailleurs : voir
+    /// `nommer_les_familles_option` et le test de régression
+    /// `db::tests::familles_votees_ignore_le_faux_accord_de_deux_replis`.
+    /// Documenté ici pour que ce piège ne se réintroduise pas au niveau du
+    /// vote lui-même : lui refiler « Famille 1 »/« Famille 1 » les ferait
+    /// s'accorder à tort, exactement le bug mesuré en développant ce
+    /// chantier.
+    #[test]
+    fn arbitrer_vote_ne_distingue_pas_un_repli_dune_vraie_proposition() {
+        let (fiable, _) = arbitrer_vote("Rock · Grunge", "Famille 1", "Famille 1", |_| false);
+        assert!(
+            fiable,
+            "arbitrer_vote seul ne peut pas le détecter — c'est voulu, voir le commentaire"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_ordre {
+    use super::*;
+
+    #[test]
+    fn les_dates_iso_se_convertissent_en_cle() {
+        assert_eq!(date_iso_vers_cle("1973-03-01"), Some(19_730_301));
+        assert_eq!(date_iso_vers_cle("1973-03"), Some(19_730_300));
+        assert_eq!(date_iso_vers_cle("1973"), Some(19_730_000));
+        // Une date partielle doit rester **avant** toute date complète de la
+        // même année : c'est ce que le remplissage par des zéros garantit.
+        assert!(date_iso_vers_cle("1973").unwrap() < date_iso_vers_cle("1973-01-01").unwrap());
+        assert_eq!(date_iso_vers_cle("pas une date"), None);
+        assert_eq!(date_iso_vers_cle("1650-01-01"), None);
+    }
+
+    #[test]
+    fn lepoch_se_convertit_en_cle() {
+        // Valeurs de référence, vérifiées contre une bibliothèque de dates.
+        assert_eq!(epoch_vers_cle(1_787_000_000), 20_260_817);
+        assert_eq!(epoch_vers_cle(1_000_000_000), 20_010_909);
+        assert_eq!(epoch_vers_cle(1_700_000_000), 20_231_114);
+        assert_eq!(epoch_vers_cle(0), 19_700_101);
+        // Monotone : c'est tout ce que l'ordre du peuplement lui demande.
+        assert!(epoch_vers_cle(1_000_000_000) < epoch_vers_cle(1_700_000_000));
+    }
+
+    #[test]
+    fn le_hachage_dalbum_est_stable_et_discriminant() {
+        assert_eq!(hacher("a", "b"), hacher("a", "b"));
+        assert_ne!(hacher("a", "b"), hacher("b", "a"));
+        // Le séparateur évite qu'« ab » + « c » collisionne avec « a » + « bc ».
+        assert_ne!(hacher("ab", "c"), hacher("a", "bc"));
+    }
+
+    /// L'échelle de datation, de bout en bout : chaque échelon doit prendre le
+    /// relais du précédent, et un morceau sans rien doit tout de même arriver.
+    #[test]
+    fn lechelle_de_datation_rattrape_les_trous() {
+        let lib = Library::open_in_memory().unwrap();
+        let poser = |id: i64, annee: Option<i64>, album: &str, artiste: &str| {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (id, path, year, album, album_artist, track_no, added_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, 1, 1000000000)",
+                    params![id, format!("/x/{id}.flac"), annee, album, artiste],
+                )
+                .unwrap();
+        };
+        poser(1, Some(1990), "Disque", "Groupe");
+        poser(2, None, "Disque", "Groupe"); // rattrapé par l'album
+        poser(3, None, "Autre", "Groupe"); // rattrapé par l'artiste
+        poser(4, None, "Seul", "Inconnu"); // rien : date d'ingestion
+
+        let ordre = lib.ordre_darrivee().unwrap();
+        let par_id: HashMap<i64, &ArriveeBrute> = ordre.iter().map(|a| (a.track_id, a)).collect();
+        assert_eq!(par_id[&1].source, "tag");
+        assert_eq!(par_id[&2].source, "album");
+        assert_eq!(par_id[&2].date, 19_900_000);
+        assert_eq!(par_id[&3].source, "artiste");
+        assert_eq!(par_id[&4].source, "ingestion");
+        // Aucun morceau n'est perdu en route.
+        assert_eq!(ordre.len(), 4);
+    }
+
+    /// `mb_poser_albums` doit garder la date de parution et les types
+    /// secondaires du release-group, pas seulement son titre — sinon
+    /// `ordre_darrivee` et `albums` n'ont jamais rien à corriger et
+    /// retombent silencieusement sur le seul tag, même après une passe
+    /// `enrich` réussie.
+    #[test]
+    fn mb_poser_albums_conserve_la_date_et_corrige_le_tag() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Disque".into()),
+            album_artist: Some("Groupe".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(1999), // année de réédition, portée par le tag
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Disque".into(),
+                "disque".into(),
+                Vec::new(),
+                Some("1973-03-01".into()), // date de l'œuvre, antérieure au tag
+                None,
+            )],
+        )
+        .unwrap();
+
+        let ordre = lib.ordre_darrivee().unwrap();
+        assert_eq!(ordre.len(), 1);
+        assert_eq!(ordre[0].source, "musicbrainz");
+        assert_eq!(ordre[0].date, 19_730_301);
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(
+            albums[0].year,
+            Some(1973),
+            "l'année de l'album doit suivre MusicBrainz, pas le seul tag"
+        );
+    }
+
+    /// Un titre à plusieurs mots doit rejoindre son release-group tout
+    /// autant qu'un titre d'un seul mot. `title_norm` retire les espaces
+    /// (`normaliser_titre`) : la jointure doit appliquer la même
+    /// normalisation, pas un simple `lower(trim(...))` qui les garde — sinon
+    /// la jointure ne matche jamais et l'année retombe silencieusement sur
+    /// celle du tag (ex. réédition 2016 au lieu de la sortie 1991).
+    #[test]
+    fn mb_poser_albums_rejoint_un_titre_a_plusieurs_mots() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Temple of the Dog".into()),
+            album_artist: Some("Temple of the Dog".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(2016), // année de la réédition 25e anniversaire
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Temple of the Dog".into(),
+                crate::musicbrainz::normaliser_titre("Temple of the Dog"),
+                Vec::new(),
+                Some("1991-04-16".into()),
+                None,
+            )],
+        )
+        .unwrap();
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(albums.len(), 1);
+        assert_eq!(
+            albums[0].year,
+            Some(1991),
+            "l'année doit suivre MusicBrainz (sortie d'origine), pas le tag (réédition)"
+        );
+    }
+
+    /// Une compilation date d'elle-même, pas des œuvres qu'elle rassemble :
+    /// sa `first_release_date` de release-group ne doit pas écraser le tag.
+    #[test]
+    fn mb_poser_albums_ignore_la_date_dune_compilation() {
+        let mut lib = Library::open_in_memory().unwrap();
+        lib.upsert(&TrackMeta {
+            path: "/m/1.flac".into(),
+            album: Some("Spawn".into()),
+            album_artist: Some("Various".into()),
+            mb_album_artist_id: Some("artiste-1".into()),
+            year: Some(1997),
+            ..Default::default()
+        })
+        .unwrap();
+
+        lib.mb_poser_albums(
+            "artiste-1",
+            &[(
+                "rg-1".into(),
+                "Spawn".into(),
+                "spawn".into(),
+                Vec::new(),
+                Some("2010-01-01".into()), // date d'une réédition de la compilation
+                Some("Compilation".into()),
+            )],
+        )
+        .unwrap();
+
+        let albums = lib.albums(None).unwrap();
+        assert_eq!(
+            albums[0].year,
+            Some(1997),
+            "le tag doit l'emporter sur la compilation"
+        );
+    }
+
+    /// Les pistes d'un album arrivent **ensemble**. Sans cela, les 1 341
+    /// arrivées d'une même année les éparpilleraient et chacune irait fonder
+    /// son propre établissement.
+    #[test]
+    fn un_album_arrive_en_bloc() {
+        let lib = Library::open_in_memory().unwrap();
+        for (id, album, piste) in [
+            (1i64, "A", 1i64),
+            (2, "B", 1),
+            (3, "A", 2),
+            (4, "B", 2),
+            (5, "A", 3),
+        ] {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (id, path, year, album, album_artist, track_no, added_at)
+                     VALUES (?1, ?2, 2000, ?3, 'G', ?4, 0)",
+                    params![id, format!("/x/{id}.flac"), album, piste],
+                )
+                .unwrap();
+        }
+        let ordre = lib.ordre_darrivee().unwrap();
+        let albums: Vec<u64> = ordre.iter().map(|a| a.album).collect();
+        // Trois pistes du même album, puis deux de l'autre : jamais alternés.
+        let mut changements = 0;
+        for p in albums.windows(2) {
+            if p[0] != p[1] {
+                changements += 1;
+            }
+        }
+        assert_eq!(changements, 1, "les albums s'entremêlent : {albums:?}");
+        // Et dans l'ordre des pistes à l'intérieur d'un album.
+        let premier = albums[0];
+        let pistes: Vec<u16> = ordre
+            .iter()
+            .filter(|a| a.album == premier)
+            .map(|a| a.piste)
+            .collect();
+        assert!(pistes.windows(2).all(|p| p[0] <= p[1]), "{pistes:?}");
+    }
+
+    /// « Image du dossier » : le choix vit dans la base et l'emporte sur les
+    /// tags, même quand le fichier audio est illisible — une recopie des MP3
+    /// ne l'efface donc pas.
+    #[test]
+    fn le_choix_de_pochette_du_dossier_l_emporte_sur_les_tags() {
+        let racine =
+            std::env::temp_dir().join(format!("rusty-music-pochette-choix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&racine);
+        let dossier = racine.join("Artiste_1/Album 100%");
+        std::fs::create_dir_all(dossier.join("CD2")).unwrap();
+        let piste = dossier.join("01.mp3");
+        std::fs::write(&piste, b"pas un mp3").unwrap();
+        std::fs::write(dossier.join("cover.jpg"), b"jpeg du dossier").unwrap();
+
+        let lib = Library::open_in_memory().unwrap();
+        for p in [
+            &piste,
+            &dossier.join("CD2/01.mp3"),
+            &racine.join("Artiste_1/autre.mp3"),
+        ] {
+            lib.conn
+                .execute(
+                    "INSERT INTO tracks (path) VALUES (?1)",
+                    params![p.to_string_lossy()],
+                )
+                .unwrap();
+        }
+        let d = dossier.to_string_lossy();
+        assert_eq!(
+            lib.pistes_du_dossier(&d).unwrap(),
+            vec![piste.to_string_lossy()]
+        );
+
+        // Sans choix : les tags d'abord, et ce fichier n'en a pas de lisibles.
+        assert!(lib.lire_pochette(&piste).is_err());
+        lib.choisir_pochette_dossier(&d, true).unwrap();
+        let c = lib.lire_pochette(&piste).unwrap().unwrap();
+        assert_eq!(c.data, b"jpeg du dossier");
+        assert_eq!(c.source, crate::tags::CoverSource::Folder);
+        lib.choisir_pochette_dossier(&d, false).unwrap();
+        assert!(!lib.pochette_dossier_choisie(&d).unwrap());
+        let _ = std::fs::remove_dir_all(&racine);
+    }
+}
