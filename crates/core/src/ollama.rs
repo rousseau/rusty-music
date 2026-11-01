@@ -1242,7 +1242,8 @@ seule ambiance, rends une liste à un seul élément."#;
 const GENRES_DANS_LE_PROMPT: usize = 60;
 
 /// La consigne complète : [`SYSTEME`] avec le vocabulaire réel des genres.
-fn systeme(vocabulaire: &[String]) -> String {
+/// Publique pour les autres moteurs (`crate::llm_local`) : même consigne.
+pub fn systeme(vocabulaire: &[String]) -> String {
     let genres = if vocabulaire.is_empty() {
         "(aucune liste : laisse \"genres\" et \"exclure_genres\" vides)".to_string()
     } else {
@@ -1260,8 +1261,8 @@ fn systeme(vocabulaire: &[String]) -> String {
 /// **contraint** (clés et types garantis), la consigne n'a plus à y veiller —
 /// voir `docs/recherche-llm-playlist.md`. Tout est requis (un champ sans objet
 /// se rend `null` ou `[]`) : un petit modèle qui peut omettre une clé en omet
-/// trop.
-fn schema() -> Value {
+/// trop. Public pour les autres moteurs (`crate::llm_local`).
+pub fn schema() -> Value {
     let texte_ou_null = json!({ "type": ["string", "null"] });
     let entier_ou_null = json!({ "type": ["integer", "null"] });
     let nombre_ou_null = json!({ "type": ["number", "null"] });
@@ -1413,7 +1414,18 @@ pub fn interpreter(
         .or_else(|| v["thinking"].as_str())
         .unwrap_or_default();
     tracing::info!(%brut_json, "champ d'intention : réponse brute d'Ollama");
+    depuis_reponse(brut_json, prompt, vocabulaire)
+}
 
+/// La réponse brute d'un modèle (le JSON contraint par [`schema`]) devenue
+/// interprétation : lue, puis ramenée à ce que le texte dit et à ce que la
+/// bibliothèque contient. Commune à Ollama et aux autres moteurs
+/// (`crate::llm_local`), pour qu'ils ne diffèrent que par la génération.
+pub fn depuis_reponse(
+    brut_json: &str,
+    prompt: &str,
+    vocabulaire: &[String],
+) -> crate::Result<InterpretationLlm> {
     let mut resultat = interpretation_de(brut_json);
     if let Ok(p) = &mut resultat {
         p.brut = brut_json

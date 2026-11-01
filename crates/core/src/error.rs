@@ -67,4 +67,9 @@ pub enum Error {
     /// d'autres.
     #[error("panique interne pendant le traitement de {path} : {message}")]
     Panique { path: PathBuf, message: String },
+
+    /// Le modèle de langue exécuté dans le processus (`crate::llm_local`) :
+    /// chargement, contexte, génération.
+    #[error("modèle de langue local : {0}")]
+    ModeleLocal(String),
 }

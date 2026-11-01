@@ -32,6 +32,7 @@ allow = [
     "CDLA-Permissive-2.0", # webpki-roots / webpki-root-certs (via ureq)
     "0BSD",                # varint-rs (via pmtiles)
     "BSL-1.0",             # xxhash-rust (via burn-store)
+    "MIT-0",               # borrow-or-share (via llguidance, feature lama-local)
     "bzip2-1.0.6",         # libbz2-rs-sys (via zip → burn-store)
     "MPL-2.0",
     "LGPL-2.1-or-later",

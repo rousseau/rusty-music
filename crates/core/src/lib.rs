@@ -24,6 +24,8 @@ pub mod http;
 pub mod lastfm;
 pub mod lastfm_pass;
 pub mod listenbrainz;
+#[cfg(feature = "lama-local")]
+pub mod llm_local;
 pub mod loudness;
 pub mod memoire;
 pub mod modeles;

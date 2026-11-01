@@ -6,6 +6,15 @@
 //!    <base.db> <modele> [sortie.json]`
 //! (`ROB_CAS=autre.json` pour un autre jeu de prompts, `ROB_IDS=a,b` pour n'en rejouer que quelques-uns.)
 //!
+//! Avec `--features lama-local` et `ROB_LOCAL=modele.gguf`, le modèle tourne
+//! dans le processus (`llm_local`) au lieu d'Ollama ; `<modele>` n'est
+//! alors qu'une étiquette.
+//!
+//! `ROB_REJOUER=sortie.json` ne réinterroge aucun modèle : il reprend les
+//! réponses brutes d'une sortie précédente (`spec.brut`) et refait seulement
+//! leur traitement (`ollama::depuis_reponse`) — pour mesurer un changement
+//! de ce traitement sans le bruit d'une nouvelle génération.
+//!
 //! Ouvrir une **copie** de la base. Écrit, pour chaque prompt, la spec rendue,
 //! la latence et le verdict ; `composition_sur_la_vraie_bibliotheque`
 //! (`apps/desktop`) relit ce fichier pour tester la composition.
@@ -193,6 +202,51 @@ fn main() -> anyhow::Result<()> {
     let jeu: Value = serde_json::from_str(&std::fs::read_to_string(chemin)?)?;
     let cas = jeu["cas"].as_array().expect("cas");
 
+    #[cfg(feature = "lama-local")]
+    let local = match std::env::var("ROB_LOCAL") {
+        Ok(gguf) => {
+            let t = std::time::Instant::now();
+            let m = rusty_music_core::llm_local::ModeleLocal::charger(std::path::Path::new(&gguf))?;
+            println!(
+                "modèle local chargé en {:.1} s : {gguf}",
+                t.elapsed().as_secs_f64()
+            );
+            Some(m)
+        }
+        Err(_) => None,
+    };
+    let rejoues: Option<std::collections::HashMap<String, String>> =
+        match std::env::var("ROB_REJOUER") {
+            Ok(f) => {
+                let v: Value = serde_json::from_str(&std::fs::read_to_string(f)?)?;
+                Some(
+                    v["resultats"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|r| {
+                            Some((
+                                r["prompt"].as_str()?.to_string(),
+                                r["spec"]["brut"].as_str()?.to_string(),
+                            ))
+                        })
+                        .collect(),
+                )
+            }
+            Err(_) => None,
+        };
+    let interpreter = |prompt: &str| -> rusty_music_core::Result<InterpretationLlm> {
+        if let Some(r) = &rejoues {
+            let brut = r.get(prompt).map(String::as_str).unwrap_or_default();
+            return ollama::depuis_reponse(brut, prompt, &vocab);
+        }
+        #[cfg(feature = "lama-local")]
+        if let Some(m) = &local {
+            return m.interpreter(prompt, &vocab);
+        }
+        ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab)
+    };
+
     println!(
         "modèle {modele} — {} prompts, {} genres connus\n",
         cas.len(),
@@ -216,8 +270,7 @@ fn main() -> anyhow::Result<()> {
         let cat = c["categorie"].as_str().unwrap_or("?").to_string();
         let prompt = c["prompt"].as_str().unwrap_or("");
         let t = std::time::Instant::now();
-        let r: Result<InterpretationLlm, _> =
-            ollama::interpreter(ollama::HOTE_DEFAUT, &modele, prompt, &vocab);
+        let r = interpreter(prompt);
         let s = t.elapsed().as_secs_f64();
         total_s += s;
         latences.push(s);
