@@ -92,7 +92,7 @@ test("le transport suit les stems que le moteur garde", async ({ page }) => {
 
 test("Lama sans Ollama : l'accueil dit quoi faire, rien n'est interrogé", async ({ page }) => {
   await page.evaluate(() => {
-    window.__FIXTURES__.lama_disponibilite = { etat: "absent", modeles: [], detail: "refusé" };
+    window.__FIXTURES__.lama_disponibilite = { local: "absent", etat: "absent", modeles: [], detail: "refusé" };
   });
   await page.click('button.mode[data-mode="explorer"]');
   await page.click('[data-affichage="lama"]');
@@ -104,10 +104,31 @@ test("Lama sans Ollama : l'accueil dit quoi faire, rien n'est interrogé", async
   expect(await appels(page, "path_texte_interpreter")).toEqual([]);
   // Ollama revient : « Réessayer » efface la note.
   await page.evaluate(() => {
-    window.__FIXTURES__.lama_disponibilite = { etat: "pret", modeles: ["gemma4:e4b"], detail: null };
+    window.__FIXTURES__.lama_disponibilite = { local: "absent", etat: "pret", modeles: ["gemma4:e4b"], detail: null };
   });
   await page.click("#lama-reessayer");
   await expect(page.locator("#lama-indisponible")).toBeHidden();
+});
+
+test("Lama sans modèle : l'accueil propose de télécharger le modèle intégré", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.lama_disponibilite = { local: "a_telecharger", etat: "absent", modeles: [], detail: "refusé" };
+  });
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="lama"]');
+  await expect(page.locator("#lama-indisponible-texte")).toContainText("Gemma 4 E4B");
+  await expect(page.locator("#lama-telecharger")).toBeVisible();
+  await page.click("#lama-telecharger");
+  await expect.poll(() => appels(page, "lama_telecharger").then((a) => a.length)).toBe(1);
+  // Téléchargé : le moteur répond « prêt », la note s'efface au sondage suivant.
+  await page.evaluate(() => {
+    window.__FIXTURES__.lama_disponibilite = { local: "pret", etat: "absent", modeles: [], detail: "refusé" };
+  });
+  await page.click("#lama-reessayer");
+  await expect(page.locator("#lama-indisponible")).toBeHidden();
+  // Le sélecteur propose alors le modèle intégré.
+  await page.click("#intention-ollama");
+  await expect(page.locator("#intention-modele-liste option")).toHaveText(["Gemma 4 E4B (intégré)"]);
 });
 
 test("retour en Écouter après chaque mode", async ({ page }) => {

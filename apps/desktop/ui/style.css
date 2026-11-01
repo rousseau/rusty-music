@@ -1829,6 +1829,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
 .lama__indisponible p { flex: 1; margin: 0; font-size: 13px; line-height: 1.5; }
+.lama__indisponible-gestes { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.lama__indisponible-gestes .aide { margin: 0; }
 .lama__liste-exemples { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .lama__liste-exemples li { border-bottom: 1px solid var(--line); }
 .lama__exemple {

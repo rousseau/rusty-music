@@ -7,10 +7,14 @@ use super::*;
 
 mod carte;
 mod lama;
+mod modele_local;
 mod voisinage;
 
 pub(crate) use carte::*;
 pub(crate) use lama::*;
+pub(crate) use modele_local::{
+    lama_telechargement_state, lama_telecharger, EtatTelechargementLama,
+};
 pub(crate) use voisinage::*;
 
 /// Charge les empreintes si leur nombre a changé depuis la dernière fois.

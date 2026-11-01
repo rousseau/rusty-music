@@ -158,6 +158,12 @@ struct Etat {
     /// gardé — 83 Mo de poids, 30 ms à charger : le garder évite surtout de
     /// relire le disque à chaque morceau ouvert.
     pisteur: Mutex<Option<rusty_music_editor::pulsation::Pisteur>>,
+    /// Le modèle de langue intégré de Lama (Gemma 4 E4B, 4,6 Go), chargé à
+    /// la première demande, déchargé après inactivité.
+    #[cfg(feature = "lama-local")]
+    lama_local: Mutex<Cache<Arc<rusty_music_core::llm_local::ModeleLocal>>>,
+    /// Avancement du téléchargement de ce modèle.
+    lama_telechargement: Mutex<EtatTelechargementLama>,
     /// Basic Pitch (transcription), chargé au premier usage puis gardé —
     /// 230 Ko de poids, une session ONNX Runtime.
     transcripteur: Mutex<Option<rusty_music_transcription::basic_pitch::Transcripteur>>,
@@ -567,6 +573,9 @@ fn main() {
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 pisteur: Mutex::new(None),
+                #[cfg(feature = "lama-local")]
+                lama_local: Mutex::new(Cache::default()),
+                lama_telechargement: Mutex::new(EtatTelechargementLama::default()),
                 transcripteur: Mutex::new(None),
                 batteur: Mutex::new(None),
                 muscriptor: Mutex::new(Cache::default()),
@@ -672,6 +681,8 @@ fn main() {
                     liberer_si_inactif(&etat.texte_modele, "encodeur texte CLAP");
                     liberer_si_inactif(&etat.superres_modele, "modèle AERO");
                     liberer_si_inactif(&etat.muscriptor, "MuScriptor");
+                    #[cfg(feature = "lama-local")]
+                    liberer_si_inactif(&etat.lama_local, "modèle de langue de Lama");
                     liberer_si_inactif(&etat.sections, "all-in-one");
                     // Même patron pour la continuation automatique (errance/
                     // sonique) : ses caches survivent, eux aussi, bien après
@@ -966,6 +977,8 @@ fn main() {
             path_texte,
             ollama_modeles,
             lama_disponibilite,
+            lama_telecharger,
+            lama_telechargement_state,
             essai_lama,
             essai_fenetre,
             voyage,

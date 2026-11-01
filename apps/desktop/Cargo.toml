@@ -43,3 +43,8 @@ tokio = { version = "1", features = ["rt", "fs"] }
 # autres plateformes gardent les raccourcis globaux (`global-hotkey`). Licence MIT.
 [target.'cfg(target_os = "macos")'.dependencies]
 souvlaki = { version = "0.8", default-features = false }
+
+[features]
+# Lama sans Ollama : le modèle de langue intégré (`explorer/modele_local.rs`).
+# Compile llama.cpp (cmake requis) ; activée par `scripts/release.sh`.
+lama-local = ["rusty-music-core/lama-local"]

@@ -21,6 +21,9 @@ import {
   bruitChemin,
 } from "./fond-de-plan.js";
 import {
+  attendreFin,
+} from "./bibliotheque.js";
+import {
   positionnerPlayhead,
 } from "./pratiquer.js";
 
@@ -38,7 +41,7 @@ const lama = {
   routeEcran: [], // la route dans le mini-nuage, pour le survol et le clic
   base: null, // canevas hors écran : tous les morceaux, estompés
   cleBase: "", // ce qui invalide `base` (taille, nombre de points, thème)
-  // Ce qu'Ollama permet : `pret`, `sans_modele` ou `absent` (`verifierOllama`).
+  // Ce qu'Ollama permet : `pret`, `sans_modele` ou `absent` (`verifierLama`).
   disponibilite: null,
   // Le dernier plan interprété par Ollama, affiché dans la carte « Ollama a
   // compris » pour correction — `null` tant qu'aucune interprétation n'a réussi.
@@ -89,15 +92,19 @@ $("lama-exemples-lien").addEventListener("click", () => {
   if (!accueil.hidden) $("lama-corps").scrollTop = 0;
 });
 
-/// Une erreur du moteur ou d'Ollama, dans le panneau — le bloc « Chemin » du
-/// rail, où `signalerErreur` écrivait avant, est masqué ici.
-// Le modèle du banc d'essai de Lama (`experiments/musicrecointent`).
+// Le modèle Ollama conseillé, celui du banc d'essai de Lama
+// (`experiments/musicrecointent`).
 const MODELE_CONSEILLE = "gemma4:e4b";
+// Ce que le sélecteur (icône 🦙) et le moteur appellent le modèle intégré
+// (`explorer/modele_local.rs`).
+const MODELE_INTEGRE = "integre";
 
-/// Ollama répond-il, avec un modèle ? Sondé à chaque entrée dans le panneau et
-/// avant chaque demande : sans lui, l'accueil dit quoi faire, plutôt qu'une
-/// erreur de connexion après coup. Rend vrai si Lama peut interpréter.
-async function verifierOllama() {
+/// Lama peut-il interpréter, avec le modèle intégré ou avec Ollama ? Sondé à
+/// chaque entrée dans le panneau et avant chaque demande : sinon, l'accueil
+/// dit quoi faire (télécharger le modèle intégré, ou installer Ollama),
+/// plutôt qu'une erreur de connexion après coup. Rend vrai si Lama peut
+/// interpréter.
+async function verifierLama() {
   let d;
   try {
     d = await invoke("lama_disponibilite");
@@ -107,9 +114,17 @@ async function verifierOllama() {
     remonter(e, "disponibilité de Lama");
     return true;
   }
-  lama.disponibilite = d.etat;
-  $("lama-indisponible").hidden = d.etat === "pret";
-  if (d.etat === "absent") {
+  lama.disponibilite = d;
+  const pret = d.local === "pret" || d.etat === "pret";
+  $("lama-indisponible").hidden = pret;
+  $("lama-telecharger").hidden = d.local !== "a_telecharger";
+  if (d.local === "a_telecharger") {
+    $("lama-indisponible-texte").textContent =
+      "Lama a besoin d'un modèle de langue. Rusty Music peut télécharger le sien, Gemma 4 E4B " +
+      "de Google (4,6 Go, licence Apache-2.0), qui tourne ensuite sur cette machine sans " +
+      "connexion. Ollama convient aussi, s'il est installé.";
+    suivreTelechargement();
+  } else if (d.etat === "absent") {
     $("lama-indisponible-texte").textContent =
       "Lama passe par Ollama, qui fait tourner un modèle de langue sur cette machine, et Ollama " +
       "ne répond pas. Installez-le (ollama.com) ou lancez-le, puis téléchargez un modèle : " +
@@ -119,10 +134,52 @@ async function verifierOllama() {
       "Ollama répond, mais aucun modèle n'est installé. Dans un terminal : « ollama pull " +
       MODELE_CONSEILLE + " ».";
   }
-  return d.etat === "pret";
+  return pret;
 }
-$("lama-reessayer").addEventListener("click", () => verifierOllama());
+$("lama-reessayer").addEventListener("click", () => verifierLama());
 
+/// Le téléchargement du modèle intégré, suivi dans la note de l'accueil. Une
+/// seule boucle de suivi à la fois ; reprise si l'on revient dans le panneau
+/// pendant qu'il continue.
+let suiviTelechargement = false;
+async function suivreTelechargement() {
+  if (suiviTelechargement) return;
+  let t;
+  try {
+    t = await invoke("lama_telechargement_state");
+  } catch (e) {
+    remonter(e, "téléchargement du modèle de Lama");
+    return;
+  }
+  if (!t.en_cours) return;
+  suiviTelechargement = true;
+  $("lama-telecharger").disabled = true;
+  const go = (o) => (o / 1e9).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  try {
+    const fin = await attendreFin("lama_telechargement_state", 1000, (e) => {
+      if (e.en_cours) $("lama-telecharger-etat").textContent = `${go(e.faits)} Go sur ${go(e.total)}`;
+    });
+    $("lama-telecharger-etat").textContent = fin.resultat ?? "";
+  } catch (e) {
+    remonter(e, "téléchargement du modèle de Lama");
+  } finally {
+    suiviTelechargement = false;
+    $("lama-telecharger").disabled = false;
+  }
+  verifierLama();
+}
+$("lama-telecharger").addEventListener("click", async () => {
+  try {
+    await invoke("lama_telecharger");
+  } catch (e) {
+    erreurLama(String(e), e, "lama_telecharger");
+    return;
+  }
+  suivreTelechargement();
+});
+
+/// Une erreur du moteur ou d'Ollama, dans le panneau — le bloc « Chemin » du
+/// rail, où `signalerErreur` écrivait avant, est masqué ici.
 function erreurLama(texte, e, source) {
   signalerErreur("lama-erreur", texte, e, source);
   $("lama-erreur").hidden = false;
@@ -150,7 +207,7 @@ async function interpreterIntention() {
   if (!prompt) return;
 
   $("lama-erreur").hidden = true;
-  if (!(await verifierOllama())) {
+  if (!(await verifierLama())) {
     // L'accueil porte la marche à suivre : on le rouvre plutôt que d'échouer.
     $("lama-accueil").hidden = false;
     return;
@@ -169,15 +226,22 @@ async function interpreterIntention() {
   dessinerMiniNuage();
 
   champ.disabled = true;
+  // Le moteur prend le modèle intégré quand rien n'est choisi et qu'il est là.
+  const integre =
+    modeleChoisi === MODELE_INTEGRE || (!modeleChoisi && lama.disponibilite?.local === "pret");
   const minuteur = demarrerProgresIntention(
-    modeleOllama ? `Interrogation d'Ollama (${modeleOllama})…` : "Interrogation d'Ollama…",
+    integre
+      ? "Interprétation par le modèle intégré…"
+      : modeleChoisi
+        ? `Interrogation d'Ollama (${modeleChoisi})…`
+        : "Interrogation d'Ollama…",
   );
   let interprete = false;
   try {
     lama.planTexte = await invoke("path_texte_interpreter", {
       prompt,
       nDefaut: longueurChemin(),
-      modele: modeleOllama,
+      modele: modeleChoisi,
       // Un tirage frais par interprétation : un artiste sans titre précis
       // (« un morceau de Shootyz Groove ») en choisit un au hasard parmi les
       // siens, pas toujours le même — la redécouverte, but de l'application,
@@ -230,18 +294,19 @@ $("intention-texte").addEventListener("keydown", (e) => {
   if (e.key === "Enter") interpreterIntention();
 });
 
-/// Le modèle Ollama choisi par l'utilisateur (icône 🦙) — mémorisé d'une
-/// session à l'autre. `null` tant qu'aucun choix n'a été fait : le moteur
-/// retombe alors sur le plus petit modèle installé (`ollama::modele_par_defaut`),
-/// pas sur un nom fixe qui n'existe peut-être pas sur cette machine (observé :
-/// `qwen2.5:3b` absent rend un 404 qu'Ollama ne distingue pas clairement d'un
-/// serveur injoignable).
-const CLE_MODELE_OLLAMA = "ollama-modele";
-let modeleOllama = localStorage.getItem(CLE_MODELE_OLLAMA) || null;
+/// Le modèle choisi par l'utilisateur (icône 🦙) : `MODELE_INTEGRE` ou un
+/// modèle d'Ollama — mémorisé d'une session à l'autre (clé d'origine,
+/// `ollama-modele`, gardée). `null` tant qu'aucun choix n'a été fait : le
+/// moteur prend alors le modèle intégré s'il est téléchargé, sinon le plus
+/// petit modèle d'Ollama (`ollama::modele_par_defaut`), pas un nom fixe qui
+/// n'existe peut-être pas sur cette machine (observé : `qwen2.5:3b` absent
+/// rend un 404 qu'Ollama ne distingue pas clairement d'un serveur injoignable).
+const CLE_MODELE = "ollama-modele";
+let modeleChoisi = localStorage.getItem(CLE_MODELE) || null;
 
-/// Icône 🦙 : déplie la liste des modèles déjà installés (`ollama list`),
-/// repliée par défaut (Règle 5, sobriété) — pas un réglage à garder ouvert en
-/// permanence pour un choix qui change rarement.
+/// Icône 🦙 : déplie la liste des modèles utilisables — l'intégré s'il est
+/// téléchargé, puis ceux d'Ollama (`ollama list`) — repliée par défaut
+/// (Règle 5, sobriété) : un choix qui change rarement.
 $("intention-ollama").addEventListener("click", async () => {
   const liste = $("intention-modele-liste");
   $("intention-ollama").classList.toggle("intention__ollama--actif", liste.hidden);
@@ -251,46 +316,39 @@ $("intention-ollama").addEventListener("click", async () => {
   }
 
   $("intention-modele-etat").hidden = true;
-  try {
-    const modeles = await invoke("ollama_modeles");
-    if (modeles.length === 0) {
-      $("intention-modele-etat").textContent =
-        "Aucun modèle Ollama installé — « ollama pull <modèle> »";
-      $("intention-modele-etat").hidden = false;
-      $("intention-ollama").classList.remove("intention__ollama--actif");
-      return;
-    }
-    liste.replaceChildren(
-      ...modeles.map((m) => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        return opt;
-      }),
-    );
-    if (!modeleOllama || !modeles.includes(modeleOllama)) modeleOllama = modeles[0];
-    liste.value = modeleOllama;
-    liste.hidden = false;
-    liste.focus();
-  } catch (e) {
+  if (!(await verifierLama())) {
+    // Rien d'utilisable : l'accueil le dit déjà, avec la marche à suivre.
     $("intention-ollama").classList.remove("intention__ollama--actif");
-    // Ollama absent : l'accueil le dit déjà, avec la marche à suivre.
-    if (!(await verifierOllama())) {
-      $("lama-accueil").hidden = false;
-      return;
-    }
-    erreurLama(String(e), e, "ollama_modeles");
+    $("lama-accueil").hidden = false;
+    return;
   }
+  const d = lama.disponibilite;
+  const choix = [
+    ...(d.local === "pret" ? [[MODELE_INTEGRE, "Gemma 4 E4B (intégré)"]] : []),
+    ...d.modeles.map((m) => [m, `${m} (Ollama)`]),
+  ];
+  liste.replaceChildren(
+    ...choix.map(([valeur, libelle]) => {
+      const opt = document.createElement("option");
+      opt.value = valeur;
+      opt.textContent = libelle;
+      return opt;
+    }),
+  );
+  if (!modeleChoisi || !choix.some(([v]) => v === modeleChoisi)) modeleChoisi = choix[0][0];
+  liste.value = modeleChoisi;
+  liste.hidden = false;
+  liste.focus();
 });
 
 $("intention-modele-liste").addEventListener("change", () => {
-  modeleOllama = $("intention-modele-liste").value;
-  localStorage.setItem(CLE_MODELE_OLLAMA, modeleOllama);
+  modeleChoisi = $("intention-modele-liste").value;
+  localStorage.setItem(CLE_MODELE, modeleChoisi);
   $("intention-modele-liste").hidden = true;
   $("intention-ollama").classList.remove("intention__ollama--actif");
 });
 
-/* ---- ce qu'Ollama a compris ---- */
+/* ---- ce que Lama a compris ---- */
 
 /// Le nom d'une partie : ses genres, sinon le début de sa description.
 function libellePartie(p) {
@@ -1110,5 +1168,5 @@ window.addEventListener("resize", () => {
 export {
   demarrerCompositionFile, dessinerMiniNuage, finirCompositionFile, interpreterIntention, lama,
   montrerComposition, montrerPlanTexte, phaseCompositionFile, revelerFile, sonderGrapheProgres,
-  verifierOllama,
+  verifierLama,
 };

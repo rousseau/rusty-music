@@ -65,7 +65,9 @@ const fixtures = {
     minuteur: null,
     stems: !!e.stems,
   }),
-  lama_disponibilite: { etat: "pret", modeles: ["gemma4:e4b"], detail: null },
+  lama_disponibilite: { local: "absent", etat: "pret", modeles: ["gemma4:e4b"], detail: null },
+  lama_telecharger: null,
+  lama_telechargement_state: { en_cours: false, faits: 0, total: 0, resultat: null },
   tracks_of_album: (a) => window.__DONNEES__.PISTES.filter((p) => p.album === a.album),
   cover: null,
   // Comme le moteur, toute commande de lecture coupe les stems.

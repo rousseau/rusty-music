@@ -537,13 +537,13 @@
           <div class="lama__tete">
             <div class="intention" id="bloc-intention">
               <div class="intention__ligne">
-                <!-- Le modèle Ollama à interroger : un choix de machine (quels
+                <!-- Le modèle de langue (intégré ou d'Ollama) : un choix de machine (quels
                      modèles sont installés), pas une préférence à exposer en
                      permanence — replié derrière cette icône (Règle 5,
                      sobriété), dépliée sur clic (Règle 8, révélation
                      progressive). -->
                 <button id="intention-ollama" type="button" class="intention__ollama"
-                        title="Choisir le modèle Ollama" aria-label="Choisir le modèle Ollama">
+                        title="Choisir le modèle de langue" aria-label="Choisir le modèle de langue">
                   <!-- Marche (`.intention__ollama--travail`) le temps de
                        l'interrogation d'Ollama — voir `interpreterIntention`.
                        Sur son propre `span` : le bouton reste immobile, seul
@@ -576,14 +576,18 @@
               <p class="lama__accueil-texte">
                 Décrivez la playlist en français ou en anglais : une durée, des
                 genres, une époque, des artistes à éviter, ou une suite (« du rock
-                pendant 12 minutes, puis du hip hop »). Ollama traduit votre
+                pendant 12 minutes, puis du hip hop »). Un modèle de langue traduit votre
                 demande ; Rusty Music la compose dans votre bibliothèque — et vous
                 montre ici comment.
               </p>
-              <!-- Sans Ollama, ce qu'il faut faire, dit avant la première demande. -->
+              <!-- Sans modèle de langue utilisable, ce qu'il faut faire, dit avant la première demande. -->
               <div id="lama-indisponible" class="lama__indisponible" hidden>
                 <p id="lama-indisponible-texte"></p>
-                <button id="lama-reessayer" class="bouton" type="button">Réessayer</button>
+                <div class="lama__indisponible-gestes">
+                  <button id="lama-telecharger" class="bouton" type="button" hidden>Télécharger (4,6 Go)</button>
+                  <button id="lama-reessayer" class="bouton" type="button">Réessayer</button>
+                  <span id="lama-telecharger-etat" class="aide"></span>
+                </div>
               </div>
               <ul id="lama-exemples" class="lama__liste-exemples" aria-label="Exemples de demandes"></ul>
             </section>
@@ -599,7 +603,7 @@
               </div>
 
               <section id="lama-compris" class="lama__compris" hidden>
-                <h3 class="lama__titre">🦙 Ollama a compris</h3>
+                <h3 class="lama__titre">🦙 Lama a compris</h3>
                 <p id="lama-reformulation" class="lama__reformulation"></p>
                 <div id="lama-parties-barre" class="lama__barre" hidden></div>
                 <ol id="lama-parties" class="lama__parties"></ol>
@@ -635,7 +639,7 @@
                 </p>
                 <button id="plan-texte-composer" class="bouton lama__recomposer">Recomposer</button>
                 <details class="lama__brut">
-                  <summary>Réponse brute d'Ollama</summary>
+                  <summary>Réponse brute du modèle</summary>
                   <pre id="lama-brut"></pre>
                 </details>
               </section>

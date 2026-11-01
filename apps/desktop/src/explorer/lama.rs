@@ -124,17 +124,19 @@ pub(crate) struct PartieResultat {
     ids_admissibles: Vec<i64>,
 }
 
-/// Interprète un prompt de playlist en texte libre via Ollama, et résout son
+/// Interprète un prompt de playlist en texte libre (modèle intégré ou Ollama),
+/// et résout son
 /// morceau ou artiste de départ dans la bibliothèque — sans encore calculer
 /// d'empreinte CLAP-texte ni construire de trajet, pour rester rapide :
 /// l'utilisateur doit pouvoir corriger l'interprétation dans l'inspecteur
 /// avant qu'elle ne remplace sa file d'écoute (`path_texte` fait le reste).
 ///
 /// `modele` : celui choisi par l'utilisateur via l'icône 🦙 (mémorisé côté
-/// interface). `None` — rien choisi encore — retombe sur
-/// `ollama::modele_par_defaut`, pas sur un nom fixe : deviner un modèle qui
-/// n'est pas installé rend un 404 qu'Ollama ne distingue pas clairement d'un
-/// serveur injoignable (observé en pratique).
+/// interface) — [`modele_local::NOM`] pour le modèle intégré, sinon un modèle
+/// d'Ollama. `None` — rien choisi encore — prend le modèle intégré s'il est
+/// téléchargé, sinon `ollama::modele_par_defaut`, pas un nom fixe : deviner
+/// un modèle qui n'est pas installé rend un 404 qu'Ollama ne distingue pas
+/// clairement d'un serveur injoignable (observé en pratique).
 ///
 /// `seed` : un tirage frais côté interface à chaque interprétation, jamais
 /// réutilisé — voir la documentation de [`resoudre_piste_nommee`] sur
@@ -147,10 +149,10 @@ pub(crate) fn path_texte_interpreter(
     modele: Option<String>,
     seed: u64,
 ) -> Result<PlanTexte, String> {
-    let modele = match modele.filter(|m| !m.is_empty()) {
-        Some(m) => m,
-        None => rusty_music_core::ollama::modele_par_defaut(rusty_music_core::ollama::HOTE_DEFAUT)
-            .map_err(echec)?,
+    let modele = modele.filter(|m| !m.is_empty());
+    let integre = match modele.as_deref() {
+        Some(m) => m == modele_local::NOM,
+        None => modele_local::disponibilite() == "pret",
     };
     // Les genres réels de la bibliothèque : montrés au LLM pour qu'il ne parle
     // que de ce qui existe, puis utilisés pour écarter ce qu'il inventerait
@@ -162,13 +164,17 @@ pub(crate) fn path_texte_interpreter(
             tracing::warn!(erreur = %e, "vocabulaire de genres illisible, interprétation sans");
             Vec::new()
         });
-    let interpretation = rusty_music_core::ollama::interpreter(
-        rusty_music_core::ollama::HOTE_DEFAUT,
-        &modele,
-        &prompt,
-        &vocabulaire,
-    )
-    .map_err(echec)?;
+    let interpretation = if integre {
+        modele_local::interpreter(&etat, &prompt, &vocabulaire)?
+    } else {
+        let hote = rusty_music_core::ollama::HOTE_DEFAUT;
+        let modele = match modele {
+            Some(m) => m,
+            None => rusty_music_core::ollama::modele_par_defaut(hote).map_err(echec)?,
+        };
+        rusty_music_core::ollama::interpreter(hote, &modele, &prompt, &vocabulaire)
+            .map_err(echec)?
+    };
 
     let n = interpretation
         .n
@@ -236,7 +242,10 @@ pub(crate) fn path_texte_interpreter(
 /// Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau.
 #[derive(serde::Serialize)]
 pub(crate) struct DisponibiliteLama {
-    /// `pret`, `sans_modele` (Ollama répond, rien d'installé) ou `absent`.
+    /// Le modèle intégré : `pret`, `a_telecharger`, ou `absent` (version
+    /// compilée sans) — voir [`modele_local::disponibilite`].
+    local: &'static str,
+    /// Ollama : `pret`, `sans_modele` (il répond, rien d'installé) ou `absent`.
     etat: &'static str,
     modeles: Vec<String>,
     /// Pourquoi Ollama est tenu pour absent, tel que le client l'a vu.
@@ -250,16 +259,19 @@ pub(crate) struct DisponibiliteLama {
 pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
     match rusty_music_core::ollama::modeles(rusty_music_core::ollama::HOTE_DEFAUT) {
         Ok(modeles) if modeles.is_empty() => DisponibiliteLama {
+            local: modele_local::disponibilite(),
             etat: "sans_modele",
             modeles,
             detail: None,
         },
         Ok(modeles) => DisponibiliteLama {
+            local: modele_local::disponibilite(),
             etat: "pret",
             modeles,
             detail: None,
         },
         Err(e) => DisponibiliteLama {
+            local: modele_local::disponibilite(),
             etat: "absent",
             modeles: Vec::new(),
             detail: Some(e.to_string()),

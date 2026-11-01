@@ -27,6 +27,11 @@ command -v cc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1 || {
   echo "  (xcode-select --install)" >&2
   exit 1
 }
+# Le modèle de langue intégré de Lama (feature `lama-local`) compile llama.cpp.
+command -v cmake >/dev/null 2>&1 || {
+  echo "cmake absent : brew install cmake (ou pip install cmake)" >&2
+  exit 1
+}
 command -v cargo-tauri >/dev/null 2>&1 || {
   echo "→ tauri-cli (une fois — quelques minutes)"
   cargo install --locked tauri-cli --version "^2"
@@ -47,11 +52,11 @@ if [ "${1:-}" = "--universal" ]; then
 fi
 
 if [ -n "$CIBLE" ]; then
-  echo "→ cargo tauri build --target $CIBLE"
-  cargo tauri build --target "$CIBLE"
+  echo "→ cargo tauri build --target $CIBLE --features lama-local"
+  cargo tauri build --target "$CIBLE" --features lama-local
 else
-  echo "→ cargo tauri build"
-  cargo tauri build
+  echo "→ cargo tauri build --features lama-local"
+  cargo tauri build --features lama-local
 fi
 
 echo
