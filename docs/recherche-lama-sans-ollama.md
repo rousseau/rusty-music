@@ -1,9 +1,9 @@
 # Lama sans Ollama : un modèle exécuté dans le processus
 
-Étude de la phase 7 (1ᵉʳ nov. 2026). **Rien n'est implémenté côté modèle** :
-ce document décrit l'état de l'art et la recommandation. L'implémentation attend un
-accord. Seule l'absence d'Ollama est désormais propre dans l'interface (voir
-la fin du document).
+Étude de la phase 7 (1ᵉʳ nov. 2026), puis, après accord, sondage et
+intégration le même jour : **Lama a désormais un modèle intégré** (Gemma 4
+E4B, llama.cpp lié), Ollama reste un choix. Les chiffres sont plus bas
+(« Sondage »).
 
 ## Ce que Lama demande au modèle
 
@@ -84,35 +84,75 @@ faut les mesurer.
 - **Qualité.** La quantification Q4_0 peut dégrader l'interprétation par rapport
   au modèle servi par Ollama. Seul le banc le dira.
 
-## Plan proposé, si tu donnes ton accord
+## Sondage : les chiffres (300 demandes de MusicRecoIntent)
 
-1. **Sondage** (`experiments/lama-en-processus/`, hors workspace) : un
-   exemple Rust avec `llama-cpp-2` (`metal`, `common`, `llguidance`), Gemma 4
-   E4B en Q4_0 puis Q8_0, **notre schéma tel quel**, sur les 300 prompts de
-   `musicrecointent`. On compare à Ollama les erreurs JSON, les notes de
-   `noter.py` et `noter_playlist.py`, la latence et la mémoire. On mesure aussi
-   la taille du binaire et on passe `cargo deny`. Décision prise sur ces
-   chiffres.
-2. **Intégration** (si le sondage est concluant) :
-   - un second moteur derrière `ollama::interpreter` : même consigne, même
-     schéma, même `normaliser` ;
-   - les poids téléchargés à la source au premier usage, inscrits dans
-     `MODELES.md` et dans « À propos » ;
-   - Ollama reste un choix possible (icône 🦙), le moteur embarqué devient le
-     défaut ;
-   - une feature de compilation, pour que la CI et les machines sans
-     compilateur C++ s'en passent.
+Même schéma, même consigne, même lecture de la réponse que par Ollama
+(`ollama::depuis_reponse`), Gemma 4 E4B en GGUF Q4_0, M4 Pro 24 Go. Les deux
+moteurs ont tourné l'un après l'autre sur le même code
+(`crates/core/examples/robustesse.rs`, `ROB_LOCAL=`), notés par
+`experiments/musicrecointent/noter.py`.
 
-## Déjà fait : l'absence d'Ollama dans l'interface
+| [spec] | Ollama (`gemma4:e4b-mlx`) | Intégré (Q4_0) |
+|---|---|---|
+| Erreurs JSON | 0 | 0 |
+| Genre voulu dans `genres` | 82,2 % | 83,7 % |
+| Genre voulu retenu (genres ou étapes) | 94,8 % | 97,0 % |
+| Genre refusé exclu | 66,7 % | 66,7 % |
+| Entité nommée → départ ou étape | 87,2 % | 87,8 % |
+| Décennie exacte | 6/8 | 7/8 |
+| Genre / énergie / exclusion inventés | 2,7 / 0,7 / 1,0 % | 2,3 / 0,7 / 0,3 % |
+| Popularité inventée | 0,7 % | **13,3 %**, puis 0 % (voir ci-dessous) |
+| Latence médiane / max | **2,1 s** / 17,6 s | 4,7 s / 11,4 s |
+
+- **Qualité égale.** Le seul écart, la popularité déduite d'une référence
+  (« like Elvis » → `connu`), est corrigé pour les deux moteurs par
+  `ancrer_popularite` : rejoué sur les mêmes réponses (`ROB_REJOUER`),
+  0 % des deux côtés, les deux popularités dites (« workout hits »,
+  « most underrated ») gardées, aucune autre mesure changée.
+- **Plus lent qu'Ollama** : 4,7 s contre 2,1 s. Le chemin pour y arriver :
+  13,6 s au premier essai ; 8,9 s en gardant l'état du contexte après la
+  consigne (2 600 jetons lus une seule fois, 4 à 5 s gagnées) ; 5,3 s avec
+  llguidance au lieu de la grammaire GBNF de llama.cpp (mêmes réponses), sur
+  cinq demandes ; 4,7 s sur les 300. Sans contrainte, la génération mesurée
+  était de 54 jetons/s ; celle sous llguidance n'a pas été chronométrée seule.
+- **Chargement** : 3,9 s depuis le SSD (90 à 160 s depuis un disque USB).
+  **Mémoire** : 5,1 Go résidents pendant l'usage, rendus après 3 minutes
+  d'inactivité. **Binaire** : 14,4 Mo de plus.
+- **Gabarit de conversation** : `llama_chat_apply_template` ne connaît pas
+  celui de Gemma 4 (un programme Jinja de 18 Ko). minijinja (Apache-2.0) le
+  rend tel que le GGUF le fournit, rien n'est réécrit à la main.
+- `cargo deny` : une licence de plus, MIT-0 (`borrow-or-share`, via
+  llguidance), compatible GPL-3.
+
+## Intégration
+
+- `crates/core/src/llm_local.rs` (feature `lama-local`) : chargement,
+  génération contrainte, cache de la consigne.
+- `apps/desktop/src/explorer/modele_local.rs` : téléchargement en passe de
+  fond (révision `a69f018` épinglée, SHA-256 vérifié), chargement à la
+  première demande, éviction après inactivité (`liberer_si_inactif`).
+- Lama prend le modèle intégré quand rien n'est choisi et qu'il est
+  téléchargé ; le sélecteur 🦙 le propose à côté des modèles d'Ollama.
+  Sans aucun modèle utilisable, l'accueil propose de le télécharger.
+- `scripts/release.sh` construit avec `--features lama-local` (cmake requis).
+  La CI et `verifier.sh` ne la construisent pas : seul `cargo deny` voit ces
+  dépendances.
+- **Non vérifié** : le paquet universel (`release.sh --universal`, llama.cpp
+  compilé pour x86_64 depuis arm64) ; Linux et CUDA.
+
+## Sans modèle utilisable, dans l'interface
 
 Avant, la demande partait, et une erreur de connexion revenait après coup.
 Désormais :
 - à l'entrée du panneau Lama et avant chaque demande, l'interface interroge
-  `lama_disponibilite` (`apps/desktop/src/explorer/lama.rs`) ;
-- si Ollama ne répond pas, ou n'a aucun modèle, l'accueil dit quoi faire
-  (`ollama pull gemma4:e4b`, étiquette vérifiée dans le registre d'Ollama)
-  avec un bouton « Réessayer » ;
-- le champ reste visible, et une demande faite sans Ollama ramène à cette note
+  `lama_disponibilite` (`apps/desktop/src/explorer/lama.rs`) : le modèle
+  intégré (prêt, à télécharger, ou absent de cette version) et Ollama (prêt,
+  sans modèle, absent) ;
+- si aucun des deux ne peut servir, l'accueil dit quoi faire : télécharger le
+  modèle intégré (bouton, avancement en Go), ou, dans une version compilée
+  sans lui, installer Ollama (`ollama pull gemma4:e4b`, étiquette vérifiée
+  dans le registre d'Ollama) ; « Réessayer » relance le sondage ;
+- le champ reste visible, et une demande faite sans modèle ramène à cette note
   au lieu d'échouer.
 
-Un test de fumée couvre ce cas.
+Deux tests de fumée couvrent ces cas.

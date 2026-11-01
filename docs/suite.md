@@ -39,10 +39,9 @@ mention contraire.
 5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un état par mode,
    une seule copie de l'état de lecture — fait.
 6. Découper `crates/core/src/db.rs` par domaine (`crates/core/src/db/`) — fait.
-7. Lama sans Ollama obligatoire : étude faite
-   (`docs/recherche-lama-sans-ollama.md`, `llama-cpp-2` recommandé), en
-   attente d'accord avant le sondage ; l'absence d'Ollama est propre dans
-   l'interface.
+7. Lama sans Ollama obligatoire — fait : modèle intégré (Gemma 4 E4B,
+   llama.cpp lié, feature `lama-local`), qualité égale à Ollama sur
+   MusicRecoIntent, 4,7 s contre 2,1 s (`docs/recherche-lama-sans-ollama.md`).
 8. Préparer la publication de crates autonomes : `publication-crates.md`.
 
 ## Ce qui n'est pas prévu, et pourquoi

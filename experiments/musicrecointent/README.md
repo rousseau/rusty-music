@@ -236,3 +236,31 @@ rares morceaux du genre en tête de playlist, puis compléter par proximité son
 l'indicateur comptait comme « dur » des filtres posés par la spec mais abandonnés par le moteur.
 `noter_playlist.py` sépare maintenant « appliqué » et « posé puis abandonné ».)
 
+
+## Moteur intégré, sans Ollama (1ᵉʳ nov. 2026)
+
+Gemma 4 E4B en GGUF Q4_0, exécuté dans le processus (`llm_local`, feature
+`lama-local`, cmake requis), contre `gemma4:e4b-mlx` par Ollama, sur le même
+code et les mêmes 300 prompts :
+
+```bash
+cargo build --release -p rusty-music-core --features lama-local --example robustesse
+ROB_CAS=experiments/musicrecointent/data/cas.json ROB_LOCAL=<gemma-4-E4B-it-Q4_0.gguf> \
+  target/release/examples/robustesse /tmp/lib.db gemma4-e4b-q4-local \
+  experiments/musicrecointent/data/sortie-gemma4-e4b-q4-local.json
+# refaire seulement le traitement des réponses déjà obtenues :
+ROB_REJOUER=experiments/musicrecointent/data/sortie-X.json ... sortie-X-rejoue.json
+```
+
+| [spec] | Ollama | Intégré |
+|---|---|---|
+| Erreurs JSON | 0 | 0 |
+| Genre `+` dans `genres` | 82,2 % | 83,7 % |
+| Genre `−` exclu | 66,7 % | 66,7 % |
+| Décennie exacte | 6/8 | 7/8 |
+| Popularité inventée (avant / après `ancrer_popularite`) | 0,7 % / 0 % | 13,3 % / 0 % |
+| Latence médiane | 2,1 s | 4,7 s |
+
+Qualité égale ; le modèle intégré déduisait une popularité d'une référence
+(« like Elvis » → `connu`), défaut corrigé pour les deux moteurs. Détail et
+chemin de la latence (13,6 → 4,7 s) : `docs/recherche-lama-sans-ollama.md`.

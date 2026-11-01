@@ -2473,3 +2473,28 @@ page, pas le fonctionnement.
   telles quelles celles de `docs/frise-filiations.md` qui visaient déjà du code
   disparu (`flux_temporel`, `bucket_annee`), et `docs/plan-ios-compagnon.md`
   (historique).
+
+### Lama sans Ollama (phase 7)
+
+- **Étude** (`docs/recherche-lama-sans-ollama.md`) : besoin réel = décodage
+  contraint par le schéma JSON de Lama ; `llama-cpp-2` retenu (mistral.rs en
+  alternative ; candle, Burn, kalosm écartés) ; Gemma 4 E4B sous Apache-2.0.
+- **Interface sans modèle** : l'accueil de Lama dit quoi faire avant la
+  première demande (`lama_disponibilite`), au lieu d'une erreur de connexion.
+- **Moteur intégré** (`6eb2594`) : `crates/core/src/llm_local.rs`, feature
+  `lama-local`. Gabarit du GGUF rendu par minijinja (llama.cpp ne connaît pas
+  celui de Gemma 4), contrainte par llguidance, état du contexte gardé après
+  la consigne. 13,6 s → 4,7 s de médiane.
+- **Banc** (300 demandes MusicRecoIntent, même code) : qualité égale à
+  Ollama, 0 erreur JSON ; 4,7 s contre 2,1 s ; 3,9 s de chargement depuis le
+  SSD, 5,1 Go de mémoire, 14,4 Mo de binaire.
+- **Correctif de traitement** (`4423e82`, les deux moteurs) : popularité gardée
+  seulement si le texte parle de notoriété ; inventée dans 13,3 % des cas par
+  le modèle intégré, 0,7 % par Ollama, 0 % après.
+- **Intégration** : téléchargement au premier usage (révision et SHA-256
+  épinglés), chargement à la demande, éviction après 3 minutes, choix dans le
+  sélecteur 🦙 ; `release.sh` construit avec la feature (cmake). Essayé dans
+  l'application : demande interprétée par le modèle intégré.
+- **Non vérifié** : paquet universel (x86_64 depuis arm64), Linux, CUDA ; la
+  mise en page de la note « sans modèle » (l'audit tourne avec Ollama
+  présent).

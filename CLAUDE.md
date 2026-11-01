@@ -14,7 +14,9 @@ multipiste, ni projet sauvegardé, ni mixage DJ. Deux usages : *pratiquer*
 
 **Exécution : Rust uniquement**, pas de Python ni de processus externe.
 Python sert seulement à préparer (convertir des poids) et à vérifier (parité,
-bancs). Exception à résorber : Lama appelle Ollama (`crates/core/src/ollama.rs`).
+bancs). Lama interprète par un modèle intégré (Gemma 4 E4B, llama.cpp lié
+par `llama-cpp-2`, feature `lama-local` activée par `scripts/release.sh`,
+cmake requis) ; Ollama reste un choix (`crates/core/src/ollama.rs`).
 
 **Stack.**
 - Calcul : [Burn](https://github.com/tracel-ai/burn), backend `wgpu` ou

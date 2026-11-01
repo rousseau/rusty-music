@@ -64,12 +64,12 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   cinquième affichage, **Lama** (`data-affichage="lama"`, `#lama-vue`), dont le
   panneau central est dédié à l'interprète : le champ, un accueil avec des
   exemples de prompts, puis — sans cadres, des filets — la carte (un mini-nuage
-  où la demande et la bibliothèque se répondent) en tête à côté de ce qu'Ollama
+  où la demande et la bibliothèque se répondent) en tête à côté de ce que Lama
   a compris, et dessous ce que Rusty Music a cherché et ce qui en sort. Le rail
   n'y garde que le sélecteur d'Affichage (en colonne). Le lama reste **dans Explorer** :
   demander une playlist en mots est une façon d'explorer la bibliothèque, pas
   un sixième écran du rail. Le plan interprété quitte l'inspecteur (le dernier
-  bloc qu'il avait de plus que « ce qui s'écoute ») pour la carte « Ollama a
+  bloc qu'il avait de plus que « ce qui s'écoute ») pour la carte « Lama a
   compris » — même précédent que la bio d'artiste au centre (Règle 1). Les
   autres affichages n'ont plus de champ ; la route de la playlist y garde sa
   couleur par partie.
@@ -279,11 +279,11 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | Cliquer un morceau du résultat (liste, point de la route) le sélectionne et peuple le même `#insp` (`selectionner`) ; le plan, lui, vit dans la carte « Ollama a compris » au centre — l'inspecteur ne garde que ce qui s'écoute. |
+| 1 | Inspecteur unique | ✅ | Cliquer un morceau du résultat (liste, point de la route) le sélectionne et peuple le même `#insp` (`selectionner`) ; le plan, lui, vit dans la carte « Lama a compris » au centre — l'inspecteur ne garde que ce qui s'écoute. |
 | 2 | Estomper, jamais masquer | ✅ | Le mini-nuage dessine toute la bibliothèque, estompée, et colore par-dessus ce que les filtres retiennent ; la partie non survolée s'atténue (`globalAlpha`), jamais ne disparaît. |
 | 3 | Palette unique | ⚠️ | Six teintes de **parties** (`--partie-1..6`), prises dans la même encre que `--familles` mais distinctes d'elles : les parties et les familles ne se lisent pas ensemble (le mini-nuage montre les premières, pas les secondes). Dessinées pour les deux thèmes. |
 | 4 | Stabilité des positions | ✅ | Les points du mini-nuage ne bougent jamais (t-SNE) ; survoler une partie ne réordonne rien. |
-| 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, zoom, Familles et Chercher y sont masqués en bloc (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute d'Ollama repliée, sections séparées par des filets plutôt qu'encadrées. Le modèle Ollama reste derrière l'icône 🦙. |
+| 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, zoom, Familles et Chercher y sont masqués en bloc (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute du modèle repliée, sections séparées par des filets plutôt qu'encadrées. Le choix du modèle (intégré ou d'Ollama) reste derrière l'icône 🦙 ; sans modèle utilisable, une note de l'accueil dit quoi faire. |
 | 6 | Deux thèmes sérieux | ✅ | Vérifié sombre et clair le 1ᵉʳ octobre (maquette navigateur, voir ci-dessous) ; le thème clair reste inatteignable par un geste de l'application (constat transversal). |
 | 7 | Zoom/pan cohérents | — | Le mini-nuage n'a ni zoom ni pan : c'est un aperçu, le Nuage et la Carte portent les gestes. |
 | 8 | Révélation par échelle | ✅ | Détails à la demande : survol d'une partie (barre, liste, résultat, route), bulle du morceau au survol d'un point de la route, dépliants. |
@@ -400,7 +400,7 @@ Première exécution de `scripts/audit-interface.sh` sur l'état d'avant les jet
 | Gouttière de **28 px** au lieu de 26 | Bibliothèque | `--gouttiere` |
 | Gouttière de **38 px** au lieu de 26 | Éditer (« séparer ») | `38px var(--gouttiere)` |
 | Colonne de lecture collée à gauche : marge de droite jusqu'à **656 px** (G2) | Bibliothèque | padding centré (`max(--gouttiere, (100 % − --colonne-lecture)/2)`) |
-| Boutons de la carte « Ollama a compris » qui **débordent** du panneau de 7 à 10 px dans une fenêtre de 960 px (G3) | Lama | grille `auto-fit minmax(300px, 1fr)` : la carte et le récit s'empilent |
+| Boutons de la carte « Lama a compris » (alors « Ollama a compris ») qui **débordent** du panneau de 7 à 10 px dans une fenêtre de 960 px (G3) | Lama | grille `auto-fit minmax(300px, 1fr)` : la carte et le récit s'empilent |
 | Marges intérieures des panneaux : 16 px (rail) contre 18 (inspecteur, file, transport, dock) | rail | `--gouttiere-panneau` |
 
 Après correction : **0 violation sur 180 cellules** (10 écrans — Nuage, Carte,
