@@ -21,7 +21,7 @@ mode Explorer (`docs/nommage-familles.md`).
 critiques d'albums — **c'est devenu faux** : CritiqueBrainz couvre ce besoin.
 
 Toutes trois affichent dans l'inspecteur déjà partagé par la carte, l'anneau
-et la frise (`apps/desktop/ui/app.js`, `inspecter`/`inspecterAlbum`), et
+et la frise (`apps/desktop/ui/js/ecouter.js`, `inspecter`/`inspecterAlbum`), et
 réutilisent le même mécanisme de « cache » que la popularité : **pas un cache
 HTTP générique** (il n'en existe pas dans le code), mais le patron à deux
 tables « données + déjà-demandé » déjà employé trois fois (`mb_genres`/
@@ -224,7 +224,7 @@ la seule case ci-dessus — deux boutons dédiés (« Lier maintenant »,
 jugés après coup comme de la complexité d'interface superflue une fois
 l'enchaînement automatique fiable :
 
-1. **Liaison** — `passeDiscogsLiaison` (`app.js`), retrouve l'édition
+1. **Liaison** — `passeDiscogsLiaison` (`js/bibliotheque.js`), retrouve l'édition
    Discogs de chaque édition MusicBrainz connue. Fait partie de la chaîne
    « Scanner » comme n'importe quelle autre étape ; rejouée à chaque passage,
    incrémentale (ne revérifie jamais une édition déjà réglée).
@@ -263,7 +263,7 @@ liaison et à l'import, n'est ni incrémental ni borné par la bibliothèque
 (l'intégralité du catalogue Discogs, ~11 Go, quelle que soit la taille de la
 bibliothèque locale) : un geste délibéré, mensuel, jamais automatique.
 
-Inspecteur (`apps/desktop/ui/app.js`, `montrerBio`/`montrerCredits`/
+Inspecteur (`apps/desktop/ui/js/ecouter.js`, `montrerBio`/`montrerCredits`/
 `montrerCritiques`, appelées par `inspecter`) : même patron que
 `montrerDescripteurs` — garde de course sur le morceau visé, tiret ou bloc
 caché quand l'information manque, jamais une valeur inventée. Ces trois blocs

@@ -139,7 +139,7 @@ et `deny.toml`.
 Le plan de ville affiché sur la carte (`crates/osm`, module 2) vient
 d'OpenStreetMap et est sous **ODbL** : attribution obligatoire — « © les
 contributeurs OpenStreetMap », affichée dans le coin de la carte
-(`apps/desktop/ui/app.js`, `attributionControl`) — et toute base dérivée
+(`apps/desktop/ui/js/`, `attributionControl`) — et toute base dérivée
 partagée à l'identique. Voir `docs/carto-ville.md`.
 
 Les poids de modèles ont leur propre licence, distincte du code — certaines

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use contour::ContourBuilder;
 
 /// Le domaine de la carte déborde un peu [-1, 1] — même marge que
-/// l'interface (`DENSITE_MARGE` côté `app.js`) — pour que les bandes du bord
+/// l'interface (`DENSITE_MARGE` côté `ui/js/`) — pour que les bandes du bord
 /// ne soient pas coupées à vif.
 pub const MARGE: f64 = 0.08;
 
@@ -29,7 +29,7 @@ const FAMILLES_MAX: usize = 7;
 /// plus petites) et points sans cluster. Négatif et distinct de `-1`, le
 /// sentinel déjà utilisé ailleurs (`COALESCE(cluster, -1)`) pour « pas de
 /// cluster » — assez petit pour tenir sans perte de précision une fois
-/// sérialisé en JSON (voir `apps/desktop/ui/app.js`, qui compare sur cette
+/// sérialisé en JSON (voir `apps/desktop/ui/js/`, qui compare sur cette
 /// même valeur).
 pub const AUTRES: i64 = -2;
 

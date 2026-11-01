@@ -7,7 +7,7 @@ const { test, expect } = require("@playwright/test");
 const { ouvrir, appelsInconnus } = require("./outils");
 const { fixtures, donnees, PISTES } = require("./fixtures");
 
-/// Erreurs de la page, plus celles que `app.js` remonte lui-même au moteur.
+/// Erreurs de la page, plus celles que `ui/js/` remonte lui-même au moteur.
 async function erreursJs(page, erreurs) {
   const remontees = await page.evaluate(() =>
     window.__APPELS__.filter((a) => a.cmd === "js_error").map((a) => JSON.stringify(a.args)),

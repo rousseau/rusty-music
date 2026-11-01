@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Audit de gabarit de l'interface — cohérence des marges, des panneaux et des
-# surimpressions sur tous les écrans (voir `apps/desktop/ui/audit.js` et la
+# surimpressions sur tous les écrans (voir `apps/desktop/ui/js/audit.js` et la
 # Règle 10 de `docs/interface-guidelines.md`).
 #
 # La webview du système ne se capture pas hors de son Espace macOS : l'interface

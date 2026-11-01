@@ -110,14 +110,14 @@ volontairement simple :
   place avant ce chantier, pour que la carte garde toujours un nom.
 
 `Library::familles(model)` (signature et forme du triplet inchangées — les
-cinq points de lecture de `app.js`, tous alimentés par `invoke("families")`)
+cinq points de lecture de `ui/js/`, tous alimentés par `invoke("families")`)
 reste un mince projeté de `Library::familles_votees(model)`, qui rend le
 détail complet (`VoteFamille` : `fiable`, `nom_affiche`, et les trois
 propositions).
 
 ## 3. L'inspecteur : « nom incertain », et l'affinage suggéré
 
-Nouveau bloc « Famille » dans l'inspecteur (`apps/desktop/ui/app.js`,
+Nouveau bloc « Famille » dans l'inspecteur (`apps/desktop/ui/js/ecouter.js`,
 `montrerNomFamille`) — pas selon le patron piste-par-piste de
 `montrerBio`/`montrerCredits`/`montrerCritiques` : le vote est **par
 famille**, chargé une fois par `chargerFamilles()` et mis en cache
@@ -164,7 +164,7 @@ ce qui dépend déjà du découpage à 12 restent strictement intacts.
   `rusty-music lastfm`.
 - `apps/desktop/src/main.rs` — `start_lastfm`/`lastfm_state`,
   `families_detail`, `famille_piste`, `subdiviser_famille`.
-- `apps/desktop/ui/index.html`/`app.js` — case + clé Last.fm dans le rail
+- `apps/desktop/ui/index.html`/`ui/js/` — case + clé Last.fm dans le rail
   d'analyse, bloc « Famille » de l'inspecteur.
 
 ## Ce qui reste à faire, à la main

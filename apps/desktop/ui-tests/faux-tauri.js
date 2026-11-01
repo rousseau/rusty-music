@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// `window.__TAURI__` simulé, chargé avant `app.js` (addInitScript).
+// `window.__TAURI__` simulé, chargé avant `ui/js/` (addInitScript).
 //
 // Chaque `invoke` répond par `window.__FIXTURES__[commande]` : une valeur
 // figée, ou une fonction (args, etat) → valeur. Une commande sans réponse

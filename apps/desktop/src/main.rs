@@ -759,7 +759,7 @@ fn main() {
             // La fenêtre est bâtie ici, pas déclarée dans `tauri.conf.json`, pour
             // une seule raison : y accrocher `on_web_resource_request`.
             //
-            // **Sans cache-control, la webview sert un `app.js` périmé.** Tauri
+            // **Sans cache-control, la webview sert une interface (`ui/`) périmée.** Tauri
             // renvoie les fichiers embarqués sans le moindre en-tête de fraîcheur ;
             // WKWebView les garde alors sur disque et continue de servir la
             // version d'un ancien build même après recompilation — le pendant
@@ -782,7 +782,7 @@ fn main() {
                     // Sans ça, la webview capte le glisser-déposer au niveau
                     // natif (macOS/Windows) pour son propre dépôt de fichiers
                     // — jamais utilisé ici — et les évènements DOM
-                    // `dragover`/`drop` de la file d'attente (`app.js`) ne
+                    // `dragover`/`drop` de la file d'attente (`ui/js/`) ne
                     // sont plus délivrés du tout.
                     .disable_drag_drop_handler()
                     .on_web_resource_request(|req, resp| {

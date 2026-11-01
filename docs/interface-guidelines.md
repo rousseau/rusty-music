@@ -22,7 +22,7 @@
 > **Correction de périmètre au moment d'écrire ce document (7 septembre
 > 2026)** : la commande qui a produit ce document supposait Éditer et
 > Découvrir sans interface construite. C'est faux pour les deux —
-> `apps/desktop/ui/app.js` porte ~15 fonctions dédiées à Découvrir (fil
+> `apps/desktop/ui/js/` porte ~15 fonctions dédiées à Découvrir (fil
 > d'actualité, explorateur de collaborations) et une dizaine à Éditer (dock de
 > stems, greffe, spectrogrammes), toutes branchées à un écran du rail. L'audit
 > couvre donc les **sept lignes** (cinq écrans, dont les trois sous-modes
@@ -37,7 +37,7 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   isolée (point de départ, pas un mode), puis le sélecteur de mode à quatre
   boutons (`Écouter / Explorer / Éditer / Découvrir`), puis des blocs propres
   à l'écran courant, montrés ou masqués par `basculerMode()`
-  (`apps/desktop/ui/app.js:5831`).
+  (`apps/desktop/ui/js/modes.js`).
 - **Zone centrale propre à chaque mode** — pas le même composant partout : le
   nuage/la carte/l'anneau/la frise pour Explorer, la grille d'albums ou la
   liste d'artistes pour Écouter et pour Éditer (on y choisit quoi ouvrir), le
@@ -51,7 +51,7 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
 - **Transport pleine largeur en bas** — `footer.transport`
   (`index.html:698`), en dehors de tout conteneur conditionné par le mode ;
   aucun code ne le masque (vérifié : aucune occurrence de `.transport` suivie
-  de `.hidden` dans `app.js`). Persiste tel quel dans les cinq écrans, y
+  de `.hidden` dans `ui/js/`). Persiste tel quel dans les cinq écrans, y
   compris Bibliothèque et Découvrir où on ne s'y attend pas forcément.
 - **Dock optionnel** — `#dock` (`index.html:661`), réservé à Éditer, pousse le
   centre vers le haut sans reproduire la mécanique du rail ou de l'inspecteur.
@@ -96,7 +96,7 @@ inspecteur — elle vit dans un seul arbre DOM selon le contexte (« quel
 artiste j'explore » vs « quel morceau j'écoute »), exactement comme la
 Règle « Sélectionner n'est pas écouter » sépare déjà le clic silencieux du
 geste ▶. Chantier de code ouvert : `bio_piste` résout aujourd'hui la bio
-par MBID de piste (`app.js:1993-2010`), pas par MBID d'artiste indépendant
+par MBID de piste (`ui/js/`), pas par MBID d'artiste indépendant
 d'une piste sélectionnée — il faut une route côté moteur qui prenne
 directement l'artiste ouvert au centre.
 
@@ -117,7 +117,7 @@ depuis l'Anneau/la Frise où il est le seul recours.
 
 **Étendu à Écouter et à Éditer le 21 septembre 2026.** Dans une liste de
 morceaux (résultats de recherche, pistes d'un album), le clic sur la ligne
-**sélectionne** (`selectionner`, `pisteSelectionnee` dans `app.js`) : filet
+**sélectionne** (`selectionner`, `pisteSelectionnee` dans `js/ecouter.js`) : filet
 d'accent à gauche (`ligne--select`), inspecteur peuplé, rien ne sonne. La
 lecture est un geste à part : le numéro (→ ▶ au survol) ou le double-clic. La
 sélection est un état propre, **distinct de la lecture** : `inspecter` suit
@@ -131,7 +131,7 @@ file, bouton ▶ de l'inspecteur) la pose. Deux conséquences :
   rien tant qu'on ne lit pas. Le spectrogramme de la barre suit ce qui est
   affiché — morceau joué, aperçu (calculé après 400 ms, donc déjà en cache au
   départ de la lecture) ou, quand les stems ont la main, morceau édité
-  (`estAffiche` dans `app.js`).
+  (`estAffiche` dans `js/lecteur.js`).
 - **Éditer** prend la sélection pour source (`morceauAEditer`), sans passer par la
   file de lecture : sélectionner puis entrer en Éditer ouvre directement
   l'état « séparer », sans lecture préalable.
@@ -212,7 +212,7 @@ central), `--gouttiere-panneau` (18, marge intérieure des panneaux),
 - **Deux colonnes seulement si chacune a la place** : `auto-fit` plutôt qu'un
   rapport fixe (le Lama s'empile dans une fenêtre étroite au lieu de déborder).
 
-Cette règle se **vérifie par `scripts/audit-interface.sh`** (`apps/desktop/ui/audit.js`) :
+Cette règle se **vérifie par `scripts/audit-interface.sh`** (`apps/desktop/ui/js/audit.js`) :
 l'application, lancée en mode d'essai sur une copie de la base, parcourt écrans
 × états (de base, file ouverte, morceau sélectionné) × thèmes × tailles de
 fenêtre (960×620, 1 400×900, 1 920×1080) et contrôle G1 jetons, G2 symétrie des
@@ -251,10 +251,10 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | 🔧 | `inspecter()` (`app.js:1017`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
+| 1 | Inspecteur unique | 🔧 | `inspecter()` (`js/ecouter.js`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
 | 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : clic sur la ligne → sélection silencieuse, numéro ou double-clic → lecture, album/artiste → navigation). Les pistes d'un album (`lignePiste`) suivent le même geste depuis le 21 septembre (clic = sélection, ▶ / double-clic = lecture, voir Règle 1) ; le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
-| 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `app.js` ; tout passe par `--familles`. |
-| 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `app.js:814`), jamais par une sélection. |
+| 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `ui/js/` ; tout passe par `--familles`. |
+| 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `js/ecouter.js`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
 | 6 | Deux thèmes sérieux | ❌ | Voir constat transversal ci-dessous — s'applique à l'identique ici, Écouter n'a pas de bascule propre non plus. |
 | 7 | Zoom/pan cohérents | — | Pas de zoom en Écouter (listes/grille classiques). |
@@ -266,12 +266,12 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | Même `inspecter()` que partout ailleurs. **Corrigé** : le clic sur un point jouait le morceau directement (`cnv` → `click`), contrairement au clic sur l'Anneau/la Frise qui ne fait que sélectionner — même geste, deux effets différents. Le clic est maintenant silencieux ici aussi (sélectionne, peuple l'inspecteur, devient le départ de chemin), et le bouton ▶ de l'inspecteur (`insp-lecture`) reste en permanence visible sur la pochette, plus seulement au survol — c'est lui qui lance l'écoute, dans les quatre visualisations. |
-| 2 | Estomper, jamais masquer | ✅ | Trois mécanismes distincts et tous conformes : isolement de famille (`app.js:3542-3563`, `globalAlpha` réduit), filtre texte (`app.js:1493-1503`, commentaire explicite « les morceaux qui ne correspondent pas s'estompent »), intervalle d'années (`app.js:3591-3599`, voile semi-opaque plutôt que masquage). |
+| 2 | Estomper, jamais masquer | ✅ | Trois mécanismes distincts et tous conformes : isolement de famille (`ui/js/`, `globalAlpha` réduit), filtre texte (`ui/js/`, commentaire explicite « les morceaux qui ne correspondent pas s'estompent »), intervalle d'années (`ui/js/`, voile semi-opaque plutôt que masquage). |
 | 3 | Palette unique | ✅ | Voir Règle 3 : `palette.rs` recalibre par thème de fond, exception documentée et actée dans `CLAUDE.md`. |
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
 | 5 | Sobriété stricte | ✅ | Réglages avancés (perplexité, époques, k-means) déportés dans le mode Bibliothèque plutôt que dans le rail d'Explorer — conforme à la contrainte de `ui-spec.md` (« les réglages avancés restent dans un tiroir rétractable, pas dans le rail »), même si le rangement choisi (un autre mode entier plutôt qu'un tiroir) est plus lourd qu'un tiroir — voir Bibliothèque, Règle 8. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal ci-dessous. |
-| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`app.js:4660-4698`) est la fonction unique appelée par la molette (`app.js:4707-4723`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`, `index.html:135-139`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`, `index.html:135-139`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
 
@@ -300,27 +300,27 @@ dans son journal que la composition va au bout.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | `inspecterAlbum()` (`app.js:1058-1094`) réutilise explicitement le même composant : commentaire « le même composant que pour un morceau (`inspecter`), généralisé plutôt que dupliqué » (`app.js:1051-1053`). Cas exemplaire de la règle bien appliquée. Manquait un geste pour être *utile*, pas seulement unique : cliquer un album de l'anneau le rend focal (`chargerAnneau`) sans le jouer, et le panneau n'offrait aucun moyen de l'écouter — corrigé par un bouton ▶ (`insp-lecture`) posé sur la pochette, symétrique du ✦ existant, qui appelle `lireAlbum()` pour un album ou joue directement le morceau affiché sinon (même composant, même geste, dans les deux cas). |
-| 2 | Estomper, jamais masquer | ✅ | `app.js:3691-3717` : fond permanent de liens en trace ténue (`globalAlpha` 0,15) et sélection qui fait ressortir sans jamais faire disparaître le reste — corrige explicitement le premier défaut relevé dans `carto-anneau.md` (« seuls les voisins du focal sont visibles »). |
+| 1 | Inspecteur unique | ✅ | `inspecterAlbum()` (`js/ecouter.js`) réutilise explicitement le même composant : commentaire « le même composant que pour un morceau (`inspecter`), généralisé plutôt que dupliqué » (`js/ecouter.js`). Cas exemplaire de la règle bien appliquée. Manquait un geste pour être *utile*, pas seulement unique : cliquer un album de l'anneau le rend focal (`chargerAnneau`) sans le jouer, et le panneau n'offrait aucun moyen de l'écouter — corrigé par un bouton ▶ (`insp-lecture`) posé sur la pochette, symétrique du ✦ existant, qui appelle `lireAlbum()` pour un album ou joue directement le morceau affiché sinon (même composant, même geste, dans les deux cas). |
+| 2 | Estomper, jamais masquer | ✅ | `ui/js/` : fond permanent de liens en trace ténue (`globalAlpha` 0,15) et sélection qui fait ressortir sans jamais faire disparaître le reste — corrige explicitement le premier défaut relevé dans `carto-anneau.md` (« seuls les voisins du focal sont visibles »). |
 | 3 | Palette unique | ✅ | Même lecture de `--familles`. |
 | 4 | Stabilité des positions | ✅ | Décidé et implémenté conformément à `carto-anneau.md` (« la position d'un album sur l'anneau ne dépend jamais du focal sélectionné »). |
 | 5 | Sobriété stricte | ✅ | Pas de contrôle superflu ; `k`/`beta` du bundling sont deux réglettes, pas un panneau. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
 | 7 | Zoom/pan cohérents | ✅ | Corrigé : l'exception (« un cercle de rayon fixe n'a rien à agrandir ») ne tenait plus dès lors que l'anneau grandit à l'usage — familles denses, noms serrés — sans que rien n'empêchait de l'agrandir à l'écran. `zoomerAnneau()` reprend le principe du repli sans MapLibre du nuage (un seul facteur `anneau.vue.k`, `dx`/`dy` pour glisser), branché sur `zoomer()` comme les autres sous-modes ; `#bloc-zoom` n'est plus masqué en Anneau. |
 | 8 | Révélation par échelle | ✅ | Noms au survol, pas en permanence sur chaque segment — conforme à `carto-anneau.md`. |
-| 9 | Langage de force unique | ✅ | `setLineDash` n'est jamais utilisé pour coder la force d'un lien (seulement pour le lasso, le tracé en cours, la colonne « incertain ») ; force = largeur + opacité par sélection (`app.js:3626-3629`), exactement la correction actée dans `carto-anneau.md` (« un seul style de trait, force = largeur + opacité »). |
+| 9 | Langage de force unique | ✅ | `setLineDash` n'est jamais utilisé pour coder la force d'un lien (seulement pour le lasso, le tracé en cours, la colonne « incertain ») ; force = largeur + opacité par sélection (`ui/js/`), exactement la correction actée dans `carto-anneau.md` (« un seul style de trait, force = largeur + opacité »). |
 
 ### Explorer → Temps (frise des filiations)
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | Même mécanisme que l'Anneau (le clic sur un album de la frise appelle la même voie d'inspection) — hérite donc aussi du bouton ▶ ajouté là-bas (`insp-lecture`), même geste, même composant. |
-| 2 | Estomper, jamais masquer | ✅ | Colonne « dates incertaines » en trait pointillé atténué plutôt que morceaux exclus (`app.js:3601-3618`) ; intervalle d'années : voile, pas masquage (même mécanisme que Carte). |
+| 2 | Estomper, jamais masquer | ✅ | Colonne « dates incertaines » en trait pointillé atténué plutôt que morceaux exclus (`ui/js/`) ; intervalle d'années : voile, pas masquage (même mécanisme que Carte). |
 | 3 | Palette unique | ✅ | Bandes colorées par la même famille/`--familles`. |
 | 4 | Stabilité des positions | ✅ | Par construction : `frise-filiations.md` § 1 retient les bandes par famille comme mode par défaut précisément parce qu'« une bande est une structure stable [qui] accueille les nouveaux albums sans redistribuer l'existant » — writen avant l'implémentation, respecté dedans. |
 | 5 | Sobriété stricte | ✅ | Un seuil de connexions (réglette), rien de plus dans le rail. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
-| 7 | Zoom/pan cohérents | ✅ | `zoomerTemps()` (`app.js:4646-4658`) est décrit dans son propre commentaire comme suivant « exactement » le même principe que le zoom du nuage — un seul facteur `k`, même geste molette, même lecture `zoom-val`. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomerTemps()` (`js/maplibre.js`) est décrit dans son propre commentaire comme suivant « exactement » le même principe que le zoom du nuage — un seul facteur `k`, même geste molette, même lecture `zoom-val`. |
 | 8 | Révélation par échelle | ✅ | Année affichée au survol seulement (`frise-filiations.md` § 5), pas d'empilement de labels sur l'axe. |
 | 9 | Langage de force unique | ✅ | Même mécanique que l'Anneau : fond permanent en trace ténue, force encodée par largeur/opacité à la sélection — aucun `setLineDash` sur les arcs eux-mêmes. |
 
@@ -335,7 +335,7 @@ dans son journal que la composition va au bout.
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | — | Aucune sélection de morceau dans ce mode : les listes de vérification (genres suspects, éditions multiples, doublons, points isolés) n'ont pas de gestionnaire de clic vers l'inspecteur (`chargerVerifications`, `app.js:6889-6929` — chaque ligne n'a qu'un texte et parfois un bouton d'action, jamais un `onClick` de sélection). |
+| 1 | Inspecteur unique | — | Aucune sélection de morceau dans ce mode : les listes de vérification (genres suspects, éditions multiples, doublons, points isolés) n'ont pas de gestionnaire de clic vers l'inspecteur (`chargerVerifications`, `js/bibliotheque.js` — chaque ligne n'a qu'un texte et parfois un bouton d'action, jamais un `onClick` de sélection). |
 | 2 | Estomper, jamais masquer | — | Rien à filtrer dans ce mode dans son état actuel. |
 | 3 | Palette unique | — | Pas de rendu coloré par famille ici. |
 | 4 | Stabilité des positions | ✅ | Page de réglages classique, rien qui se réorganise au clic. |
@@ -366,7 +366,7 @@ dans son journal que la composition va au bout.
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | `#decouvrir-centre` (nom d'artiste, fil de collaborations) n'est pas un inspecteur de morceau redondant : c'est le contenu central propre à ce mode, au même titre que la grille d'albums l'est pour Écouter. Aucune métadonnée de morceau (pochette, tempo, durée…) n'y est dupliquée. |
 | 2 | Estomper, jamais masquer | ✅ | **Résolu le 20 septembre 2026** avec le passage du fil en grille de pochettes : `rendreFilDecouvrir()` construit toutes les cartes, et celles hors du filtre par famille (`sortiePasseFamille` / `voisinPasseFamille`) reçoivent `.album--estompe` (opacité .25, pleine au survol) au lieu d'être retirées. La grille ne se recompose donc pas ; seuls les compteurs d'onglets suivent le filtre. |
-| 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `app.js:6266`). |
+| 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `js/maplibre.js`). |
 | 4 | Stabilité des positions | ✅ | Naviguer entre artistes pousse sur un fil d'Ariane (`decouvrirFil`) sans réordonner la liste de collaborations déjà affichée ; le filtre par famille estompe sans recomposer la grille. |
 | 5 | Sobriété stricte | ✅ | Trois onglets (Sorties/Collaborations/À écouter ailleurs), un fil, une légende de familles repliable — pas d'empilement. |
 | 6 | Deux thèmes sérieux | ❌ | Constat transversal. |
@@ -417,12 +417,12 @@ plutôt que répété : la conception est sérieuse des deux côtés — `style.
 dessine `:root` (sombre) et `:root[data-theme="clair"]` séparément, avec des
 rampes de couleur recalibrées indépendamment (contraste vérifié, paliers
 OKLCH propres à chaque fond, commentaire explicite : « Les deux thèmes sont
-dessinés, pas dérivés l'un de l'autre »). **Mais rien dans `app.js` ne pose
+dessinés, pas dérivés l'un de l'autre »). **Mais rien dans `ui/js/` ne pose
 jamais `data-theme="clair"`** : aucune occurrence de
 `document.documentElement.dataset.theme`, d'un `setAttribute("data-theme", …)`
 visant la racine, ni d'une détection `matchMedia("(prefers-color-scheme)")`.
-Le seul usage de `data-theme` dans `app.js` cible `#carte-theme
-[data-theme]` (`app.js:5316-5321`) — les cinq **fonds de plan de la carte**
+Le seul usage de `data-theme` dans `ui/js/` cible `#carte-theme
+[data-theme]` (`ui/js/`) — les cinq **fonds de plan de la carte**
 (`osm-clair`/`sepia`/`encre`/`nuit`/`bleu-plan`), un concept différent et sans
 rapport avec le thème sombre/clair de l'interface (voir Règle 3). Résultat :
 le thème clair de `style.css` est un code mort du point de vue de

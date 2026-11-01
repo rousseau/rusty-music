@@ -80,7 +80,7 @@ pub fn construire(source: &Source, paliers: &Paliers, base: &str, palette: &Pale
         "layers": couches(source, paliers, palette),
     });
     // Sur le plan de ville réel, la caméra doit s'ouvrir sur Paris — sans
-    // cela `apps/desktop/ui/app.js` retombe sur le centre du monde fictif
+    // cela `apps/desktop/ui/js/` retombe sur le centre du monde fictif
     // (`[0, 0]`), à des milliers de kilomètres, et la carte réelle générée
     // paraît vide (rien à cette échelle avant le zoom d'une avenue).
     if let Some((ouest, sud, est, nord)) = crate::tuiles::bbox_reelle(source) {
@@ -1129,7 +1129,7 @@ fn bati_morceaux_reel(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value>
 /// visible avant le zoom 14 (`morceaux_des`) ; en deçà, chaque bâtiment habité
 /// est un **point** (couche `habites`, `tuiles::Paliers::habites_des`) coloré
 /// comme lui — par famille, ou par année/tempo/énergie
-/// (`app.js::couleurBatimentsMorceaux`, qui remplace cette teinte de départ).
+/// (`js/maplibre.js::couleurBatimentsMorceaux`, qui remplace cette teinte de départ).
 /// Il s'efface en fondu pendant que le bâtiment apparaît.
 ///
 /// Ces points **remplacent** les pastilles d'artiste (grises) et d'album
@@ -1428,7 +1428,7 @@ mod tests {
         assert!(rang("habites-point") < rang("artistes-etiquette"));
     }
 
-    /// Sans `center`/`zoom` explicites, `app.js` retombe sur le centre du
+    /// Sans `center`/`zoom` explicites, `ui/js/` retombe sur le centre du
     /// monde fictif (`[0, 0]`) — sur un plan de ville réel, la caméra doit
     /// s'ouvrir sur la ville, pas au large du golfe de Guinée.
     #[test]
@@ -1445,7 +1445,7 @@ mod tests {
         assert!((centre[1].as_f64().unwrap() - 48.85).abs() < 1e-9);
         assert!(s["zoom"].as_f64().unwrap() > 0.0);
 
-        // Le monde fictif, lui, n'en porte pas : `app.js` doit pouvoir
+        // Le monde fictif, lui, n'en porte pas : `ui/js/` doit pouvoir
         // continuer à retomber sur ses propres valeurs par défaut.
         let f = construire(&source(), &Paliers::default(), "x", &Palette::osm_clair());
         assert!(f.get("center").is_none());

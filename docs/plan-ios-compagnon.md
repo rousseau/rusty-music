@@ -426,7 +426,7 @@ sobre : pas d'en-tête, un toucher pour lancer.
 **Reste** : biographie, critique, crédits, jauge ; avis ; « N » / « E » ;
 section mobile d'`interface-guidelines.md`.
 
-Interface à part de `apps/desktop/ui/app.js` (14 000 lignes, pensées pour le
+Interface à part de `apps/desktop/ui/js/` (14 000 lignes, pensées pour le
 rail et l'inspecteur). On en reprend les **jetons** (couleurs, typographie,
 `--familles`) et la logique de jauge de popularité, pas la mise en page.
 

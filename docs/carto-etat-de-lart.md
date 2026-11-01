@@ -145,7 +145,7 @@ Chaque `Palette` porte **aussi ses 12 teintes de familles**, calées sur son fon
 `nuit`/`bleu-plan`) : sur un fond monochrome, les teintes vives de `--familles`
 faisaient des confettis. Ces couleurs-là ne valent **que pour la carte** — bâti
 habité, quartiers, points de morceau. Le nuage t-SNE, la légende et le mode
-Écoute gardent `--familles` (thème clair/sombre de l'appli). `app.js`
+Écoute gardent `--familles` (thème clair/sombre de l'appli). `js/maplibre.js`
 (`FAMILLES_CARTE`) miroite `palette.rs`, comme `--familles` miroitait `style.rs`.
 
 `engendrer_tuiles` écrit un `style-<id>.json` par palette à côté des tuiles ; la
@@ -167,7 +167,7 @@ Le réseau apparaît dense dès z12 (`tuiles::classe_reelle_visible_des`) : c'es
 texture de mille rues fines qui fait l'aspect poster. Un **halo de petite
 couronne** (voirie/eau/verts jusqu'à ~2 km au-delà du périph, jamais habité,
 `crates/osm`) donne au **fondu de bordure** de la carte
-(`apps/desktop/ui/app.js::poserVignetteCarte`, teinté avec le fond du thème, plein
+(`apps/desktop/ui/js/maplibre.js::poserVignetteCarte`, teinté avec le fond du thème, plein
 en vue d'ensemble, éteint à l'échelle de la rue) de la matière à dissoudre.
 
 **Reste à faire** (`docs/…` du plan « rendu par couche ») : étape 2 le bâti

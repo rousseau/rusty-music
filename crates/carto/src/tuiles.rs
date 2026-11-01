@@ -249,7 +249,7 @@ struct Anneau {
     famille: i64,
     palier: i64,
     /// Identifiant du morceau qui habite ce bâtiment, `-1` sinon (tout ce qui
-    /// n'est pas du bâti réel). C'est ce qui permet à `app.js` de retrouver
+    /// n'est pas du bâti réel). C'est ce qui permet à `ui/js/` de retrouver
     /// le morceau exact sous le curseur via `queryRenderedFeatures` plutôt
     /// que d'approcher un centroïde à quelques pixels près — un bâtiment
     /// est une forme, pas un point (`carto-etapes.md`).
@@ -266,7 +266,7 @@ struct Anneau {
     /// si vacant ou si les descripteurs manquent. Contrairement à `annee`, le
     /// tag est **absent** (pas -1) quand la valeur manque : la peinture le lit
     /// par `coalesce` et rend alors la teinte neutre
-    /// (`app.js::couleurBatimentsMorceaux`) — la coloration par tempo et par
+    /// (`js/maplibre.js::couleurBatimentsMorceaux`) — la coloration par tempo et par
     /// énergie sur le plan de ville réel.
     bpm: Option<f32>,
     energie: Option<f32>,
@@ -1319,7 +1319,7 @@ fn couche_polygones(
             entite.set_id(compte);
             entite.add_tag_int("famille", famille);
             entite.add_tag_int("palier", palier);
-            // -1 pour tout ce qui n'est pas un bâtiment habité : `app.js` ne
+            // -1 pour tout ce qui n'est pas un bâtiment habité : `ui/js/` ne
             // s'en sert que sur la couche `batiments-morceaux`, mais l'écrire
             // uniformément évite un `if famille == FAMILLE_BATIMENT_REEL`
             // ici — quelques octets par entité, jamais consultés ailleurs.
@@ -1708,7 +1708,7 @@ fn metadonnees(source: &Source, paliers: &Paliers) -> String {
         "name": "rusty-music",
         "format": "pbf",
         // `true` : plan de ville réel (OpenStreetMap, ODbL — attribution
-        // requise, voir `apps/desktop/ui/app.js`). `false` : monde fictif.
+        // requise, voir `apps/desktop/ui/js/`). `false` : monde fictif.
         "ville_reelle": source.est_ville_reelle(),
         "familles": familles,
         "paliers": {

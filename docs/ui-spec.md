@@ -258,7 +258,7 @@ texte libre la playlist voulue, pas seulement nommer une famille.
   - **Essais sans clavier** : `RUSTY_MUSIC_AFFICHAGE=lama`,
     `RUSTY_MUSIC_PROMPT="…"`, `RUSTY_MUSIC_THEME=clair` (commande `essai_lama`) ;
     `RUSTY_MUSIC_DONNEES=<dossier>` pour un autre dossier de données ; et
-    **`scripts/audit-interface.sh`** (`RUSTY_MUSIC_AUDIT=1`, `apps/desktop/ui/audit.js`,
+    **`scripts/audit-interface.sh`** (`RUSTY_MUSIC_AUDIT=1`, `apps/desktop/ui/js/audit.js`,
     commande `essai_fenetre`) : la webview ne se capture pas hors de son Espace
     macOS, on la mesure de l'intérieur — marges, jetons de gabarit, débordements,
     contrôles recouverts, sur tous les écrans, états, thèmes et tailles de

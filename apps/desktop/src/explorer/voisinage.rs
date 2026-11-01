@@ -83,7 +83,7 @@ pub(crate) fn points_de_carte(etat: &State<Etat>) -> Result<Vec<(i64, f32, f32)>
 /// Les identifiants des morceaux d'une ou plusieurs familles (clusters de la
 /// carte).
 ///
-/// Le filtre par famille du mode Explorer (`carte.isolees`, `app.js`) borne
+/// Le filtre par famille du mode Explorer (`carte.isolees`, `ui/js/`) borne
 /// aussi le calcul d'un chemin : quand des familles sont isolées, la
 /// playlist ne doit contenir que des morceaux de ces familles — les points
 /// hors familles sont retirés du nuage avant `chemin::direct`/`dessine`, et
@@ -104,7 +104,7 @@ pub(crate) fn morceaux_des_familles(
 }
 
 /// Les coordonnées **effectivement affichées** — celles que `versEcran`/
-/// `versCarte` d'`app.js` utilisent, dans le même repère.
+/// `versCarte` d'`js/maplibre.js` utilisent, dans le même repère.
 ///
 /// Sur le plan de ville réel, un morceau n'habite plus sa position t-SNE
 /// mais une adresse (`positions.json`, écrit par `engendrer_tuiles` à côté
@@ -256,7 +256,7 @@ pub(crate) fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, Str
 }
 
 /// La famille sonique dominante de chaque album — le filtre par famille de la
-/// grille de pochettes du mode Écoute (`app.js`), qui réutilise la légende des
+/// grille de pochettes du mode Écoute (`ui/js/`), qui réutilise la légende des
 /// familles du mode Explorer.
 #[tauri::command(async)]
 pub(crate) fn album_families(
@@ -268,7 +268,7 @@ pub(crate) fn album_families(
 }
 
 /// La famille sonique dominante de chaque artiste (`mb_album_artist_id`) — le
-/// filtre par famille du fil du mode Découvrir (`app.js`), qui réutilise la
+/// filtre par famille du fil du mode Découvrir (`ui/js/`), qui réutilise la
 /// légende des familles du mode Explorer.
 #[tauri::command(async)]
 pub(crate) fn artist_families(etat: State<Etat>) -> Result<Vec<(String, i64)>, String> {

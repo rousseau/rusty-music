@@ -193,7 +193,7 @@ pub fn actualiser(
 4. en fin de passe, **recalculer `track_popularite` en entier** (voir « la
    valeur affichée »).
 
-**Place dans la chaîne** — `apps/desktop/ui/app.js`, `analyserRacine` et
+**Place dans la chaîne** — `apps/desktop/ui/js/bibliotheque.js`, `analyserRacine` et
 `lancerChaineComplete` : nouvelle étape après les genres.
 
 - `passeScan` → `passeEmpreintes` → `passeDescripteurs` → `passeGenres` →
@@ -252,7 +252,7 @@ Un composant `.jauge-pop` — **cinq segments**, `round(relative * 5)` remplis,
 teinte muette → accent. Vide (aucun segment, contour seul) quand la popularité
 est inconnue : un morceau qui n'est pas encore passé dans la passe n'a pas de
 jauge, **jamais une valeur inventée** — même règle que les descripteurs de
-l'inspecteur (`montrerDescripteurs`, `app.js`).
+l'inspecteur (`montrerDescripteurs`, `js/ecouter.js`).
 
 Infobulle : le rang en clair (« popularité : élevée »), l'échelon (« mesurée
 sur le morceau » / « sur l'album ») et les sources ayant répondu.
@@ -312,7 +312,7 @@ titre. Spotify / YouTube non nécessaires. Détail : `experiments/popularite/REA
   (`EtatPopularite`) — tourne sans clé, `contact` seulement pour le
   `User-Agent`.
 - CLI : `rusty-music popularite [--contact] [--limite] [--rafraichir-des]`.
-- `app.js` : `passePopularite`, étape **5/5** de `lancerChaineComplete` et
+- `js/bibliotheque.js` : `passePopularite`, étape **5/5** de `lancerChaineComplete` et
   suite de `analyserRacine` ; `reprendreActualisationEnCours` la reprend.
 - Tests : `rangs_percentiles`, `recalcul_track_popularite`,
   `pop_candidats_excluent_ce_qui_est_deja_fait` ; `deezer::concorde`.
@@ -327,7 +327,7 @@ genres, et reprenable. `--limite` la borne.
 - `Library::popularites(&[i64]) -> Vec<(id, relative, echelon)>` +
   commande Tauri `popularites { ids }` — lot pour ce qui est visible, séparée
   comme `descripteurs` (rien dans `TrackRow`).
-- `app.js` : cache `popParPiste` (`{relative, echelon}` / `null` = pas de
+- `js/vues.js` : cache `popParPiste` (`{relative, echelon}` / `null` = pas de
   popularité / absent = pas demandé) ; `chargerPopularites(ids, apres)` —
   une requête pour les ids inconnus, ne repeint que s'il y avait à charger ;
   `jaugePop(pop)` — cinq segments façon indicateur de signal, `round(relative
@@ -363,7 +363,7 @@ passent. À regarder à l'œil au prochain lancement — jauge et ligne d'alerte
   `now − POP_PEREMPTION_JOURS` (90 j).
 - `Library::popularite_fraicheur(90) -> (couverts, plus_ancienne_at, perimes)`
   + commande `popularite_fraicheur`.
-- `app.js` : case « Rafraîchir aussi la popularité de plus de 90 jours » dans le
+- `js/bibliotheque.js` : case « Rafraîchir aussi la popularité de plus de 90 jours » dans le
   rail (à côté de « Refaire ce qui est déjà mesuré ») — lue par `analyserRacine`
   et `lancerChaineComplete`. `chargerPopulariteFraicheur` : ligne d'alerte à
   l'entrée du mode Bibliothèque, visible **seulement** si de la popularité

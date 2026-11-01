@@ -2,7 +2,7 @@
 //! Construction Tauri, plus une chose que `tauri_build` ne fait pas : dire à
 //! Cargo de **recompiler `main.rs`** quand l'interface change.
 //!
-//! **Sans cela, le binaire sert un `app.js` périmé.** Les fichiers de `ui/` sont
+//! **Sans cela, le binaire sert une interface (`ui/`) périmée.** Les fichiers de `ui/` sont
 //! embarqués par la macro `tauri::generate_context!` au moment où `main.rs`
 //! compile. Or `cargo:rerun-if-changed` ne fait que relancer *ce script* ; il
 //! ne recompile `main.rs` que si la **sortie** du script change. On modifiait

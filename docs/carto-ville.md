@@ -267,7 +267,7 @@ Le modèle n'est pas jeté — il trouve son support.
 > style « vacant »/masqué déjà en place — aucune apparence inventée pour
 > l'occasion. Mécanique **`setFilter`/`setPaintProperty`**, pas
 > `feature-state` : le codebase portait déjà ce geste pour isoler une famille
-> (`app.js::majFiltreGL`/`CIBLES_FILTRE_GL`), une comparaison à un seuil
+> (`js/maplibre.js::majFiltreGL`/`CIBLES_FILTRE_GL`), une comparaison à un seuil
 > global est un filtre, pas un état par entité, et `feature-state` aurait
 > exigé de plomber un id stable par tuile qui n'existe pas aujourd'hui. Un
 > morceau sans année fiable compte comme **toujours déjà là** (cohérent avec
@@ -326,7 +326,7 @@ itineraire_voirie_paris -- ville-paris.db`.
 Les données OSM sont sous **ODbL**. Deux obligations : afficher
 « © les contributeurs OpenStreetMap » sur la carte, et partager à l'identique
 toute base dérivée. Compatible avec la GPL-3.0 du projet. **Fait** :
-attribution affichée (`apps/desktop/ui/app.js`, `attributionControl`) et
+attribution affichée (`apps/desktop/ui/js/`, `attributionControl`) et
 documentée dans le README.
 
 ## Où c'est dans le dépôt

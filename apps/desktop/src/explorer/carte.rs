@@ -393,10 +393,10 @@ pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Resu
 
     // Les positions réelles (lon/lat) des morceaux, pour que la surcouche du
     // canevas (lasso, survol, chemin dessiné) retrouve chaque morceau là où
-    // les tuiles le montrent. Sans ce fichier, `app.js` n'a que les
+    // les tuiles le montrent. Sans ce fichier, l'interface (`ui/js/`) n'a que les
     // coordonnées t-SNE de `map_view` — sans aucun rapport avec une adresse
     // de rue une fois le plan de ville réel actif. Absent (donc en échec à
-    // la lecture) sur le chemin fictif : c'est le signal qu'`app.js` utilise
+    // la lecture) sur le chemin fictif : c'est le signal que l'interface (`ui/js/`) utilise
     // pour savoir dans quel repère il travaille.
     let chemin_positions = tuiles::dossier(&app).map_err(echec)?.join("positions.json");
     if src.est_ville_reelle() {
@@ -968,7 +968,7 @@ pub(crate) fn style_carte(
 
 /// Les positions réelles (lon/lat) des morceaux sur le plan de ville, écrites
 /// par `engendrer_tuiles` à côté du style. Échoue sur le chemin fictif — pas
-/// d'erreur applicative, `app.js` lit cet échec comme « pas de plan de ville
+/// d'erreur applicative, `ui/js/` lit cet échec comme « pas de plan de ville
 /// réel actif » et retombe sur les coordonnées t-SNE de `map_view`.
 #[tauri::command(async)]
 pub(crate) fn positions_carte(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -1256,7 +1256,7 @@ pub(crate) fn path(
 }
 
 /// Voyage dans le temps depuis `from` : le seul mode de chemin du mode
-/// Explorer → Temps (voir `MODES_CHEMIN.temps` côté `app.js`) — une marche
+/// Explorer → Temps (voir `MODES_CHEMIN.temps` côté `ui/js/`) — une marche
 /// sonique qui n'avance jamais en arrière chronologiquement, voir
 /// [`rusty_music_analysis::chemin::Graphe::voyage`]. `bruit` et `seed`
 /// jouent le même rôle que pour [`path`].
@@ -1365,7 +1365,7 @@ pub(crate) fn path_drawn(
 /// résultat a un élément de moins, un `Vec` de points `[lon, lat]` par paire
 /// consécutive. Un `Vec` vide en position `i` marque un segment sans chemin
 /// trouvé (l'une des deux adresses n'a pas de position réelle, ou les deux
-/// n'appartiennent pas à la même composante routable) — `app.js` retombe
+/// n'appartiennent pas à la même composante routable) — `ui/js/` retombe
 /// alors sur le trait synthétique existant pour ce segment précis, pas pour
 /// tout l'itinéraire.
 #[tauri::command(async)]

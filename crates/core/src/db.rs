@@ -1783,7 +1783,7 @@ impl Library {
     /// Pour chaque artiste (`mb_album_artist_id`), sa famille sonique dominante
     /// — le cluster de la carte le plus représenté parmi ses morceaux projetés.
     ///
-    /// Sert le filtre par famille du fil du mode Découvrir (`app.js`), qui
+    /// Sert le filtre par famille du fil du mode Découvrir (`ui/js/`), qui
     /// réutilise la légende des familles du mode Explorer. Même arbitrage que
     /// [`Library::familles_des_albums`] : majorité, et le plus petit numéro à
     /// égalité pour que le classement soit stable d'une session à l'autre.

@@ -1304,7 +1304,7 @@ pub(crate) fn scan_state(etat: State<Etat>) -> Result<EtatScan, String> {
 /// Pochette d'un morceau, en `data:` URI directement consommable par `<img>`.
 ///
 /// **Mise en cache sur disque**, sous `<données app>/pochettes/` — voir
-/// [`cle_pochette`]. Le cache mémoire côté interface (`app.js`) évite de
+/// [`cle_pochette`]. Le cache mémoire côté interface (`ui/js/`) évite de
 /// repayer les 50 à 210 ms d'extraction pendant une session, mais repart à
 /// froid à chaque lancement ; celui-ci persiste, et une pochette déjà servie
 /// une fois ne relit plus jamais le fichier source tant qu'il n'a pas changé.
@@ -1676,7 +1676,7 @@ pub(crate) fn purger_negatifs_pochettes(dossier: &Path) {
 /// recompilation), le nombre de pochettes distinctes est borné par celui des
 /// albums de la bibliothèque, et chaque entrée pèse au plus quelques centaines
 /// de Ko. Si ça devient un problème mesuré, appliquer la même politique que
-/// `POCHETTES_MAX` côté JS (`app.js`) plutôt qu'inventer une seconde règle.
+/// `POCHETTES_MAX` côté JS (`js/socle.js`) plutôt qu'inventer une seconde règle.
 pub(crate) fn ecrire_cache_pochette(dossier: &Path, cle: &str, valeur: Option<&str>) {
     if std::fs::create_dir_all(dossier).is_err() {
         return;

@@ -620,7 +620,7 @@ double croche le garde (`legato` : la transcription coupe court, une
 partition écrit la note jusqu'à la suivante) ; accordage donné par le moteur.
 **Décidé le 10 oct.** : la notation en clé de fa au-dessus de la tablature
 par défaut, comme dans les livres ; bascule « Partition + tab / Tablature »
-dans le rail (`notationBasse` dans `app.js`). Encore absents des livres : les
+dans le rail (`notationBasse` dans `js/pratiquer.js`). Encore absents des livres : les
 accords chiffrés, les sections (Intro, Verse, Chorus — port d'all-in-one,
 2.4), les reprises et figures (« Bass Fig. 1 ») qui raccourcissent la
 lecture.

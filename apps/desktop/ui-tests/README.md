@@ -17,7 +17,7 @@ SONDE=1 npx playwright test   # liste, par test, les commandes sans réponse fig
 | `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Éditer avec quatre stems factices |
 
 Un test échoue sur **toute** erreur JavaScript : exception non rattrapée,
-`console.error`, ou erreur que `app.js` remonte lui-même au moteur
+`console.error`, ou erreur que `ui/js/` remonte lui-même au moteur
 (`js_error`). Une commande sans réponse figée rend `null` : l'interface doit
 le supporter, et `SONDE=1` dit lesquelles manquent.
 
