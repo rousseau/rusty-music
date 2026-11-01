@@ -2466,8 +2466,9 @@ page, pas le fonctionnement.
   d'arrivée dans `db/carte.rs`). `db.rs` garde ce que plusieurs domaines
   partagent : 8 328 → 217 lignes.
 - **Contrôles** : déplacement pur, vérifié ligne à ligne (mêmes lignes non
-  vides, aux en-têtes, visibilités et replis de rustfmt près) ; douze aides en
-  `pub(super)` pour les tests ; mêmes 282 tests ; `verifier.sh` passe.
+  vides, aux en-têtes, visibilités et replis de rustfmt près) ; douze éléments
+  en `pub(super)` (onze appelés par les tests, `preparer` par l'ouverture) ;
+  mêmes 282 tests ; `verifier.sh` passe.
 - Les mentions de `db.rs` dans la doc pointent vers le nouveau fichier. Restent
   telles quelles celles de `docs/frise-filiations.md` qui visaient déjà du code
   disparu (`flux_temporel`, `bucket_annee`), et `docs/plan-ios-compagnon.md`
