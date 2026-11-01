@@ -35,6 +35,14 @@ trap nettoyer EXIT
 cp "$SOURCE/rusty-music.db" "$TMP/"
 [ -f "$SOURCE/ville-paris.db" ] && cp "$SOURCE/ville-paris.db" "$TMP/" || true
 
+# Session verrouillée : WebKit tient la fenêtre pour invisible et suspend la
+# page au bout de ~30 s ; l'audit attendrait alors jusqu'au délai, sans un mot.
+if [ "$(uname)" = Darwin ] && ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+  echo "session verrouillée : l'audit a besoin de l'écran déverrouillé et de sa fenêtre visible" >&2
+  exit 2
+fi
+
+echo "compilation…"
 cargo build -q -p rusty-music-desktop
 
 RUSTY_MUSIC_DONNEES="$TMP" RUSTY_MUSIC_INCOGNITO=1 RUSTY_MUSIC_AUDIT=1 \
