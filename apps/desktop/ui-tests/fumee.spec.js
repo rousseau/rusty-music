@@ -138,3 +138,66 @@ test("retour en Écouter après chaque mode", async ({ page }) => {
   }
   await expect(page.locator("#grille .album")).toHaveCount(3);
 });
+
+test("palette : ⌘K, sans accents, Entrée ouvre l'album ; l'écran reste derrière", async ({ page }) => {
+  await page.keyboard.press("Meta+k");
+  await expect(page.locator("#palette")).toBeVisible();
+  // Règle 2 : l'écran courant n'est pas masqué, seulement atténué.
+  await expect(page.locator("#grille .album").first()).toBeVisible();
+  await page.keyboard.type("FUMEE");
+  const meilleur = page.locator("#palette-liste [role=group]").first();
+  await expect(meilleur.locator(".palette__groupe")).toHaveText("Meilleur résultat");
+  await expect(meilleur.locator(".palette__nom")).toHaveText("Fumée");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#palette")).toBeHidden();
+  await expect(page.locator("#fil-titre")).toHaveText("Fumée");
+  await expect(page.locator("#liste .ligne")).toHaveCount(2);
+});
+
+test("palette : « / » ouvre, Échap ferme sans toucher la file", async ({ page }) => {
+  await page.click("#bascule-file");
+  await expect(page.locator("#file")).toBeVisible();
+  await page.locator("body").press("/");
+  await expect(page.locator("#palette")).toBeVisible();
+  // Sans demande : les commandes, groupées.
+  await expect(page.locator(".palette__groupe")).toHaveText(["Aller à", "Commandes"]);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#palette")).toBeHidden();
+  await expect(page.locator("#file")).toBeVisible();
+});
+
+test("palette : ↓ puis Entrée lance une piste", async ({ page }) => {
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("orchestre");
+  // Meilleur résultat : l'artiste ; puis les pistes de l'orchestre.
+  await expect(page.locator(".palette__option").first().locator(".palette__nom")).toHaveText("Orchestre Témoin");
+  await expect(page.locator(".palette__option", { hasText: "Presto" })).toBeVisible();
+  const rang = await page.locator(".palette__option").evaluateAll((els) =>
+    els.findIndex((el) => el.textContent.includes("Presto")));
+  for (let i = 0; i < rang; i++) await page.keyboard.press("ArrowDown");
+  await expect(page.locator(".palette__option[aria-selected=true]")).toContainText("Presto");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => appels(page, "play").then((a) => a.at(-1)?.paths)).toEqual([PISTES[4].path]);
+});
+
+test("palette : une commande change de mode, une autre de thème", async ({ page }) => {
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("explorer");
+  await expect(page.locator(".palette__groupe").first()).toHaveText("Commandes");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('button.mode[data-mode="explorer"]')).toHaveClass(/mode--actif/);
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("theme clair");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
+});
+
+test("filtre du rail : estompe la grille sans rien retirer, Entrée ouvre la palette", async ({ page }) => {
+  await page.fill("#q", "essais");
+  await expect(page.locator("#grille .album--estompe")).toHaveCount(1);
+  await expect(page.locator("#grille .album")).toHaveCount(3);
+  await expect(page.locator("#fil-compte")).toHaveText("2 sur 3 albums");
+  await page.press("#q", "Enter");
+  await expect(page.locator("#palette")).toBeVisible();
+  await expect(page.locator("#palette-q")).toHaveValue("essais");
+});

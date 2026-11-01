@@ -1,6 +1,6 @@
 # Où en est le projet, et ce qui reste
 
-État au **31 oct. 2026**. Ce document dit où en est chaque brique et ce qui
+État au **1ᵉʳ nov. 2026**. Ce document dit où en est chaque brique et ce qui
 reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
 version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
 dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Ce qui a été
@@ -12,7 +12,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 |---|---|---|
 | Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | — (migrations versionnées depuis le 31 oct. : `db::schema::migrations`) |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
-| Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
+| Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) ; palette de recherche ⌘K (1ᵉʳ nov.) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; Lama dépend d'Ollama, processus externe (chantier d'assainissement, phase 7) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
 | Module 3 — Éditer | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem |
 | Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
@@ -46,6 +46,25 @@ mention contraire.
    (`docs/publication-crates.md`) : trois portages en Burn proposés
    (all-in-one, BS-RoFormer, MuScriptor). Décision : on garde les crates,
    sans publier.
+
+## Chantier en cours : idées d'interface reprises de Disc Player (ouvert le 1ᵉʳ nov. 2026)
+
+Des idées et des méthodes de [Disc Player](https://github.com/eudj1n/snowsky-disc-player)
+(MIT), sans son code ni son cadre (Vue, Tailwind) ; citées dans `MODELES.md`.
+Un commit par étape.
+
+1. Palette de recherche (⌘K, « / ») au-dessus de l'écran courant ; `#q`
+   devient un filtre qui estompe (Règle 2) — fait.
+2. Thème clair atteignable (sombre / clair / système, sans flash) et contraste
+   vérifié par `audit-interface.sh` (Règle 6).
+3. Règle 11, typographie mesurée : jeu réduit de tailles et de graisses,
+   rien sous 12 px, noms isolés pour le bidi et balisés `lang`.
+4. Plan, sans coder : vue « En cours » plein écran, couleurs d'album, choix
+   d'édition MusicBrainz face à face, état de la bibliothèque, passage
+   Mac ↔ iPhone, captures sur collection fictive.
+
+Relevé en route, non corrigé : le filtre par famille d'Écouter retire des
+albums au lieu de les estomper (`interface-guidelines.md`, Écouter, Règle 2).
 
 ## Ce qui n'est pas prévu, et pourquoi
 

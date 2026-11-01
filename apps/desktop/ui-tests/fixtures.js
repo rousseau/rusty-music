@@ -50,6 +50,14 @@ const fixtures = {
     { name: "Orchestre Témoin", mbid: null, tracks: 2, albums: 1 },
   ],
   albums: ALBUMS,
+  popularites: [],
+  // Comme l'index FTS du moteur : insensible à la casse et aux diacritiques.
+  search: (a) => {
+    const plier = (t) => String(t ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    const mots = plier(a.query).split(/\s+/).filter(Boolean);
+    return window.__DONNEES__.PISTES.filter((p) =>
+      mots.every((m) => plier(`${p.title} ${p.artist} ${p.album}`).includes(m)));
+  },
   // Le lecteur : `play` remplit la file, `playback_state` la rend.
   playback_state: (_, e) => ({
     current: e.file?.[0] ?? null,

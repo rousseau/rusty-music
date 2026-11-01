@@ -1,7 +1,7 @@
 import "./socle.js"; // l'ordre d'exécution : voir main.js
 import {
   $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, pochette, remonter,
-  signalerErreur, txt, vue,
+  repondAuFiltre, signalerErreur, txt, vue,
 } from "./socle.js";
 import {
   demarrerCompositionFile, finirCompositionFile, phaseCompositionFile, revelerFile,
@@ -75,12 +75,15 @@ function ligne(item, index) {
   const el = document.createElement("div");
   el.className = "ligne";
   el.dataset.index = index;
+  // Le filtre du rail estompe, il ne retire rien (Règle 2) : la ligne garde sa
+  // place, son rang dans la liste et ses gestes.
+  if (!repondAuFiltre(item)) el.classList.add("ligne--estompe");
   // Une playlist n'a pas de `path` : le comparer à `pisteSelectionnee?.path`
   // (lui aussi `undefined` tant que rien n'est choisi) la surlignerait à tort.
   if (vue.quoi === "playlists") return lignePlaylist(el, item);
   if (item.path === lecture.courant) el.classList.add("ligne--joue");
   if (item.path === pisteSelectionnee?.path) el.classList.add("ligne--select");
-  return vue.quoi === "recherche" ? ligneRecherche(el, item) : lignePiste(el, item);
+  return lignePiste(el, item);
 }
 
 /// Une ligne de la liste des pistes d'un album. **Un clic sélectionne, il ne
@@ -101,7 +104,7 @@ function lignePiste(el, item) {
   el.appendChild(titre);
 
   // Le nom d'artiste mène à ses albums, sans sélectionner la piste — même geste
-  // que dans les résultats de recherche et l'inspecteur. `stopPropagation` (dans
+  // que dans la palette de recherche et l'inspecteur. `stopPropagation` (dans
   // `lienLigne`) le sépare du clic de la ligne, qui sélectionne.
   if (item.artist) {
     el.appendChild(
@@ -113,39 +116,6 @@ function lignePiste(el, item) {
     const sec = document.createElement("span");
     sec.className = "ligne__sec";
     el.appendChild(sec);
-  }
-
-  ajouterPopEtDuree(el, item);
-  cablerSelection(el, item);
-  return el;
-}
-
-/// Une ligne de résultat de recherche. Le clic sur la ligne (titre compris)
-/// **sélectionne** le morceau sans le lire ; le numéro (→ ▶ au survol) ou le
-/// double-clic lance la lecture (la file se forme avec la suite des résultats,
-/// comme `activer`). L'album et le nom d'artiste restent des liens : ils mènent
-/// à l'album et à ses albums, sans rien sélectionner ni lancer.
-function ligneRecherche(el, item) {
-  el.classList.add("ligne--recherche");
-
-  el.appendChild(boutonJouer(item, "·"));
-
-  const titre = document.createElement("span");
-  titre.className = "ligne__nom";
-  titre.textContent = txt(item.title, "(sans titre)");
-  titre.title = "Sélectionner · double-clic pour lire";
-  el.appendChild(titre);
-  if (item.album) {
-    el.appendChild(
-      lienLigne(item.album, "ligne__meta", () => ouvrirAlbumDePiste(item)),
-    );
-  }
-  if (item.artist) {
-    el.appendChild(
-      lienLigne(item.artist, "ligne__meta", () =>
-        ouvrirAlbumsArtiste(item.artist, item.artist_mbid, snapVue()),
-      ),
-    );
   }
 
   ajouterPopEtDuree(el, item);
@@ -221,8 +191,8 @@ function lienLigne(texte, cls, onClick) {
 }
 
 /// Instantané de la vue de liste courante, à garder comme cible de retour quand
-/// on descend d'une ligne vers un album ou un artiste (résultat de recherche ou
-/// piste d'un album) — même forme que les instantanés construits par `activer`.
+/// on descend d'une ligne vers un album ou un artiste (piste d'un album, choix
+/// dans la palette) — même forme que les instantanés construits par `activer`.
 function snapVue() {
   return {
     quoi: vue.quoi,
@@ -233,8 +203,9 @@ function snapVue() {
   };
 }
 
-/// Ouvre au centre les pistes de l'album qui contient `item`. À défaut d'album
-/// (résultat sans métadonnée d'album), retombe sur l'inspecteur du morceau.
+/// Ouvre au centre les pistes de l'album qui contient `item` (une piste, ou
+/// `{ album, artist }` depuis la palette). À défaut d'album (morceau sans
+/// métadonnée d'album), retombe sur l'inspecteur du morceau.
 async function ouvrirAlbumDePiste(item) {
   if (!item.album) {
     selectionner(item);
@@ -467,6 +438,9 @@ function dessinerGrille() {
       el = carte(item);
       grilleCartes.set(cle, el);
     }
+    // Les cases gardées d'un dessin à l'autre suivent le filtre du rail : estompées,
+    // jamais retirées (Règle 2).
+    el.classList.toggle("album--estompe", !repondAuFiltre(item));
     // Déplace le nœud à sa place dans l'ordre voulu s'il y est déjà — pas de
     // retrait/réinsertion, donc pas de repeinture parasite.
     grilleFenetre.appendChild(el);
@@ -849,5 +823,6 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
 export {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopulariteFraicheur, chargerPopularites,
   cleCarteGrille, colonnesGrille, composerAlchimie, dessiner, dessinerGrille, fenetre, grille,
-  initiales, jaugePop, lireAlbum, liste, popARecalculee, popParPiste, teinteNom,
+  initiales, jaugePop, lireAlbum, liste, ouvrirAlbumDePiste, popARecalculee, popParPiste, snapVue,
+  teinteNom,
 };

@@ -26,6 +26,16 @@ quand celle-ci le permet.
 | **all-in-one** (`allinone-harmonix-fold0` à `fold7.safetensors`, ensemble des 8 plis) | sections d'un morceau : intro, couplet, refrain… (Éditer : bandeau des sections, boucle et greffe par section) | Kim, Nam, « All-In-One Metrical and Functional Structure Analysis with Neighborhood Attentions on Demixed Audio », WASPAA 2023 | [mir-aidj/all-in-one](https://github.com/mir-aidj/all-in-one), poids [HF](https://huggingface.co/taejunkim/allinone) ; convertis : [rousseau/allinone-harmonix](https://huggingface.co/rousseau/allinone-harmonix) | MIT | MIT | réseau, attention de voisinage dilatée (NATTEN réécrit par gather + softmax), spectrogramme madmom et choix des frontières portés en Burn (`crates/transcription/src/sections/`) ; `.pth` → safetensors par `experiments/structure/exporter_safetensors.py` ; parité avec le code d'origine : logits à 1e-5 près, mêmes sections sur 94 morceaux (`examples/sections_parite.rs`) ; f32 obligatoire (f16 diverge) |
 | **Gemma 4 E4B** (`gemma-4-E4B-it`, GGUF Q4_0) | interprétation des demandes en mots (Explorer → Lama), sans Ollama | Gemma Team, Google DeepMind, Gemma 4, 2026 ([fiche](https://huggingface.co/google/gemma-4-E4B-it)) | poids [google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) ; GGUF [ggml-org/gemma-4-E4B-it-GGUF](https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF) ; exécution [llama.cpp](https://github.com/ggml-org/llama.cpp) par [`llama-cpp-2`](https://github.com/utilityai/llama-cpp-rs) | MIT (llama.cpp) ; MIT ou Apache-2.0 (`llama-cpp-2`) | Apache-2.0 | GGUF de `ggml-org` lu tel quel, téléchargé à la source au premier usage (révision `a69f018`, SHA-256 vérifié, 4,6 Go) ; décodage contraint par le schéma de Lama (llguidance) ; même consigne et même lecture de la réponse qu'Ollama ; banc MusicRecoIntent à égalité avec Ollama (`docs/recherche-lama-sans-ollama.md`) ; seulement dans les versions construites avec la feature `lama-local` |
 
+## Idées d'interface reprises
+
+Pas de code repris, mais des idées et des méthodes ; on cite la source, comme
+pour les modèles.
+
+| Projet | Licence | Ce que nous en reprenons | Où |
+|---|---|---|---|
+| [Disc Player](https://github.com/eudj1n/snowsky-disc-player) (© 2026 eudj1n) | MIT | la palette de recherche ⌘K / « / » : résultats groupés (meilleur résultat, artistes, albums, pistes) et commandes dans la même boîte, conduite au clavier | `apps/desktop/ui/js/palette.js` |
+| [maptoposter](https://github.com/originalankur/maptoposter) (Ankur Gupta) | MIT | les palettes de fond de carte | `crates/carto/src/palette.rs` |
+
 ## À venir
 
 Les modèles prévus par `docs/plan-editer-pratique-creation.md` (ADT_STR, LarsNet, COCOLA, GrooVAE, MusicGen-Stem,

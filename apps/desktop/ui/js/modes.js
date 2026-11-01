@@ -98,9 +98,9 @@ async function basculerMode(mode) {
   $("index-alpha").hidden = $("index-alpha").hidden || explorer || bibliotheque || decouvrir || valise;
   $("index-annees").hidden = $("index-annees").hidden || explorer || bibliotheque || decouvrir || valise;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir || valise;
-  // « Chercher » (recherche globale de la bibliothèque) alimente #liste, masquée
-  // en Bibliothèque et Découvrir : le champ n'y ferait rien de visible. En
-  // Explorer il change de rôle (filtre de la carte), on le garde.
+  // « Filtrer » estompe ce qui est affiché — la carte en Explorer, la grille ou
+  // la liste en Écouter et en Éditer. Bibliothèque, Découvrir et Valise n'ont
+  // rien qu'il filtrerait : masqué (la palette, ⌘K, reste partout).
   // (`majRailExplorer` cache aussi ce champ dans le Lama.)
   $("bloc-chercher").hidden = bibliotheque || decouvrir || valise || enLama;
   $("bloc-colorer").hidden = !explorer;

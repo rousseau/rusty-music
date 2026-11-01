@@ -392,6 +392,76 @@ html, body {
   padding: 7px 9px;
 }
 .chercher:focus { outline: none; border-color: var(--accent); }
+/* « Filtrer » et, à droite du même titre, le chemin vers la palette. */
+.rail__titre--action { display: flex; align-items: baseline; justify-content: space-between; }
+.rail__raccourci { margin: 0; letter-spacing: 0; text-transform: none; }
+.rail__raccourci kbd, .palette kbd {
+  font-family: var(--mono); font-size: 11px; color: var(--mut);
+  border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
+}
+
+/* ---------- palette de recherche (⌘K) ---------- */
+/* Au-dessus de tout, mais l'écran reste lisible derrière : un voile du fond à
+   moitié transparent, sans flou (Règle 2 — estomper, jamais masquer). */
+.palette {
+  position: fixed; inset: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 12vh 16px 16px;
+}
+.palette__boite {
+  width: min(620px, 100%); max-height: 72vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / .35);
+}
+.palette__tete {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px var(--gouttiere-panneau); border-bottom: 1px solid var(--line);
+}
+.palette__loupe { color: var(--mut); font-size: 18px; }
+.palette__champ {
+  flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
+  font: inherit; font-size: 17px; color: var(--txt);
+}
+.palette__champ::placeholder { color: var(--mut); }
+.palette__liste { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+.palette__groupe {
+  margin: 0; padding: 10px 12px 6px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--mut);
+}
+.palette__option {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px; border-radius: 3px; cursor: pointer;
+}
+.palette__option[aria-selected="true"] { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.palette__vignette {
+  width: 36px; height: 36px; flex: none; border-radius: 2px;
+  background: var(--panel2) center / cover no-repeat;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 12px; color: var(--mut);
+}
+.palette__vignette--artiste {
+  border-radius: 50%; color: var(--txt);
+  background: oklch(.42 .05 var(--teinte));
+}
+:root[data-theme="clair"] .palette__vignette--artiste { background: oklch(.86 .04 var(--teinte)); }
+/* Une commande tient sur une ligne : vignette réduite, pas de second texte. */
+.palette__vignette--commande { width: 24px; height: 24px; margin: 0 6px; background: none; border: 1px solid var(--line); }
+.palette__corps { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.palette__nom, .palette__sec { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette__sec { font-size: 12px; color: var(--mut); }
+.palette__lire { font-size: 12px; color: var(--accent); opacity: 0; }
+.palette__option[aria-selected="true"] .palette__lire { opacity: 1; }
+.palette__rien { margin: 0; padding: 26px 12px; text-align: center; color: var(--mut); }
+.palette__aide {
+  margin: 0; display: flex; gap: 18px; justify-content: flex-end;
+  padding: 8px var(--gouttiere-panneau); border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--mut);
+}
+.palette__aide kbd { margin-right: 3px; }
+.palette__touche { flex: none; }
 
 .sommaire { font-family: var(--mono); font-size: 11px; color: var(--mut); line-height: 1.7; }
 
@@ -547,12 +617,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Morceau sélectionné (clic) : distinct de « joue » — on peut choisir sans
    lire, et le filet d'accent à gauche ne bouge pas la mise en page. */
 .ligne--select { background: var(--panel); box-shadow: inset 2px 0 0 var(--accent); }
-.ligne--recherche .ligne__nom { cursor: pointer; }
 .ligne__nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Pistes d'un album : deux zones distinctes se signalent séparément. Survoler
    le titre le passe à l'accent et change le n° de piste en ▶ (le clic lance
    l'écoute) ; survoler le nom d'artiste ne colore que lui (le clic ouvre ses
-   albums). La vue `recherche` ne rend jamais la ligne cliquable — voir plus bas. */
+   albums). */
 .ligne--pistes .ligne__nom { cursor: pointer; }
 .ligne--pistes .ligne__nom:hover { color: var(--accent); }
 .ligne--pistes:has(.ligne__nom:hover) .jouer__no { opacity: 0; }
@@ -568,9 +637,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
 .ligne__pop, .file__pop { flex: none; display: flex; align-items: center; }
 
-/* Fragments de texte cliquables dans une ligne de liste (bouton nu) : le titre
-   mène à l'album, le nom d'artiste à ses albums — sans lancer la piste. Servent
-   dans les résultats de recherche et dans les pistes d'un album. */
+/* Fragments de texte cliquables dans une ligne de liste (bouton nu) : le nom
+   d'artiste mène à ses albums — sans lancer la piste. */
 .ligne__lien {
   background: none; border: 0; padding: 0; margin: 0;
   font-family: inherit; font-size: inherit; font-weight: inherit;
@@ -579,17 +647,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 /* Métadonnées secondaires en lien : gardent leur gris et leur petit corps
    (la combinaison de classes l'emporte quel que soit l'ordre des règles). */
-.ligne__lien.ligne__sec,
-.ligne__lien.ligne__meta { font-size: 12px; color: var(--mut); }
-.ligne__meta { flex: 0 1 auto; }
+.ligne__lien.ligne__sec { font-size: 12px; color: var(--mut); }
 /* Zone cliquable signalée par la seule couleur — pas de soulignement, pour
    alléger l'interface (même parti pris que `.album__nom`/`.album__artiste`). */
 .ligne__lien:hover { color: var(--accent); }
 
-/* Résultats de recherche : rien n'est cliquable au niveau de la ligne — le
-   numéro lance la lecture, le texte mène ailleurs. (Dans les pistes d'un
-   album, la ligne joue toujours ; seul le nom d'artiste s'en détache.) */
-.ligne--recherche { cursor: default; gap: 10px; }
 /* Le numéro de piste : bouton nu de 26 px, le chiffre cédant la place à ▶ au
    survol ou au focus (et en continu sur le morceau qui joue). `align-self:
    stretch` lui donne la hauteur de la ligne pour que ▶ s'y centre. */
@@ -1405,8 +1467,9 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .album--decouvrir { min-width: 0; transition: opacity .15s ease; }
 .album--decouvrir:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
 /* Hors filtre par famille : estompée, pas retirée (R2) — la grille ne bouge pas. */
-.album--estompe { opacity: .25; }
-.album--estompe:hover, .album--estompe:focus-within { opacity: 1; }
+.album--estompe, .ligne--estompe { opacity: .25; }
+.album--estompe:hover, .album--estompe:focus-within,
+.ligne--estompe:hover, .ligne--estompe:focus-within { opacity: 1; }
 /* Le repli `.mosaique--vide` et le bandeau de survol suivent l'arrondi de la pochette. */
 .album--decouvrir .album__pochette { overflow: hidden; }
 

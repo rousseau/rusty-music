@@ -38,7 +38,7 @@ L'interface ne relit jamais le disque : tout vient de `rusty-music-core` et de
 | Liste d'artistes | `Library::artists()` → nom, nb de morceaux, nb d'albums |
 | Liste d'albums (tous, ou d'un artiste) | `Library::albums(Option<&str>)` |
 | Contenu d'un album | `Library::tracks_of_album(album, artist)`, déjà trié |
-| Recherche | `Library::search(q, limit)` |
+| Recherche (palette ⌘K, pistes) | `Library::search(q, limit)` ; artistes et albums filtrés côté interface |
 | Inspecteur d'un morceau | `Library::track(id)` |
 | Pochette | `tags::read_cover(path)` → octets, MIME, origine |
 | Transport | `Player` : `play`, `pause`, `resume`, `skip`, `seek`, `position`, `volume`, `current` |

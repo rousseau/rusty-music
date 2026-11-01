@@ -1,15 +1,21 @@
 import "./ecouter.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, ecoute, fileAttente, horloge, invoke, navigation, pochette, remonter, txt,
+  $, duree, fileAttente, horloge, invoke, navigation, pochette, remonter, txt,
 } from "./socle.js";
 import {
   chargerPopularites, dessiner, jaugePop, popParPiste,
 } from "./vues.js";
 import {
   alerteTransportActive, inspecter, lancerLecture, majMinuteur, mesuresDuTransport,
-  pisteSelectionnee, poser, qualiteDuTransport, rafraichirMinuteur, selectionner,
+  pisteSelectionnee, qualiteDuTransport, rafraichirMinuteur, selectionner,
   signalerPistesIgnorees,
 } from "./ecouter.js";
+import {
+  filtrerEcoute,
+} from "./ecouter-familles.js";
+import {
+  ouvrirPalette,
+} from "./palette.js";
 import {
   anneau, carte, chargerAnneau, chercherAlbums, retenu, suivreAlbumEnLecture,
 } from "./carte.js";
@@ -28,23 +34,29 @@ import {
 import {
   deplacerLecture, lancerDecompte, oublierStems, poserTete, rampeRGB, rattacherStems,
 } from "./pratiquer.js";
-import {
-  charger,
-} from "./demarrage.js";
 import { lecture, transport } from "./etat-lecture.js";
 
-/* ---------------------------------------------------------- recherche */
+/* ---------------------------------------------------------- filtre du rail */
 
+// `#q` filtre ce qui est affiché, dans tous les écrans où il apparaît : la
+// carte en Explorer, la grille ou la liste en Écouter et en Éditer. Ce qui n'y
+// répond pas s'estompe (Règle 2). Chercher dans toute la bibliothèque, c'est la
+// palette (⌘K, `palette.js`) : Entrée l'ouvre, hors Explorer, avec le texte
+// déjà tapé.
 let minuteur;
-// Entrée dans la barre de recherche, en mode Explorer : le premier morceau
-// filtré devient une borne du chemin.
+// Entrée dans la barre, en mode Explorer : le premier morceau filtré devient
+// une borne du chemin.
 //
 // `ui-spec.md` retenait « le choix des 2 morceaux via la barre de recherche »
 // sans dire comment. La barre y sert déjà à filtrer la carte ; lui ajouter un
 // second rôle plutôt qu'un second champ garde le rail lisible, et le geste est
 // d'une touche : on cherche, on valide, la borne se pose.
 $("q").addEventListener("keydown", async (e) => {
-  if (e.key !== "Enter" || navigation.mode !== "explorer") return;
+  if (e.key !== "Enter") return;
+  if (navigation.mode !== "explorer") {
+    ouvrirPalette(e.target.value);
+    return;
+  }
   // Anneau : la barre choisit un album, pas une borne de chemin — le
   // premier résultat de la recherche en cours devient l'album focal.
   if (modeAnneau()) {
@@ -74,6 +86,10 @@ $("q").addEventListener("input", (e) => {
   clearTimeout(minuteur);
   const q = e.target.value.trim();
   minuteur = setTimeout(async () => {
+    // Un seul champ pour tous les écrans : l'état de chaque filtre suit le
+    // texte, même hors de son écran — on retrouve en changeant de mode ce que
+    // dit le champ.
+    filtrerEcoute(q);
     // Anneau : la barre cherche des albums, pas des morceaux — l'identité
     // (le hachage) est calculée une fois côté moteur, jamais ici.
     if (navigation.mode === "explorer" && modeAnneau()) {
@@ -90,11 +106,7 @@ $("q").addEventListener("input", (e) => {
         ? `${n.toLocaleString("fr-FR")} sur ${carte.points.length.toLocaleString("fr-FR")}`
         : `${carte.points.length.toLocaleString("fr-FR")} morceaux`;
       dessinerCarte();
-      return;
     }
-    if (!q) return charger();
-    const r = await invoke("search", { query: q, limit: 200 });
-    poser("recherche", `« ${q} »`, r, ecoute.sommet);
   }, 180);
 });
 

@@ -56,6 +56,13 @@ function horloge(ms) {
 }
 
 // Les titres viennent des tags : ils peuvent contenir n'importe quoi.
+/// Un texte ramené à sa forme de comparaison : minuscules, sans diacritiques
+/// (« Björk » → « bjork », « Kanañ » → « kanan »). La recherche du moteur replie
+/// déjà ainsi (`tracks_fts`) ; le filtre du rail et la palette font de même côté
+/// interface.
+const plier = (texte) =>
+  String(texte ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
 function txt(v, defaut = "") {
   return v === null || v === undefined || v === "" ? defaut : String(v);
 }
@@ -107,7 +114,7 @@ function viderPochettes() {
 /* ------------------------------------------------------------------- état */
 
 const vue = {
-  quoi: "albums", // artistes | albums | pistes | recherche
+  quoi: "albums", // artistes | albums | pistes | playlists
   lignes: [],
   titre: "Albums",
   retour: null, // état à restaurer en remontant
@@ -131,6 +138,10 @@ const ecoute = {
   // d'année, un artiste n'en a pas. Mémorisé à part de `ecoute.triAlbums`.
   triArtistes: "alpha",
   famillesParAlbum: null, // Map "nom\nartiste" → cluster dominant
+  // Le filtre du rail (`#q`), plié (`plier`) : ce qui n'y répond pas s'estompe
+  // dans la grille ou la liste affichée, rien n'est retiré (Règle 2). Vide =
+  // aucun filtre.
+  filtre: "",
   // La bande de rangées de la grille dessinée en dernier (voir
   // `dessinerGrilleAuDefilement`) ; -1 force le prochain dessin.
   grilleDernierRang: -1,
@@ -142,9 +153,17 @@ const ecoute = {
 // recherche restent en liste.
 const vueEnGrille = (quoi = vue.quoi) => quoi === "albums" || quoi === "artistes";
 
-// Une liste de morceaux avec jauge de popularité : les pistes d'un album ou
-// les résultats de recherche (mêmes lignes `TrackRow`, même chargement en lot).
-const estListePistes = (quoi = vue.quoi) => quoi === "pistes" || quoi === "recherche";
+// Une liste de morceaux avec jauge de popularité : les pistes d'un album.
+const estListePistes = (quoi = vue.quoi) => quoi === "pistes";
+
+/// Vrai si `item` (album, artiste, piste ou playlist) répond au filtre du rail —
+/// tous les mots du filtre se retrouvent dans ses noms, dans n'importe quel
+/// ordre.
+function repondAuFiltre(item) {
+  if (!ecoute.filtre) return true;
+  const texte = plier([item.name, item.title, item.artist, item.album, item.year].join(" "));
+  return ecoute.filtre.split(/\s+/).every((mot) => texte.includes(mot));
+}
 
 // La file d'attente, telle que l'interface l'affiche.
 const fileAttente = {
@@ -167,5 +186,6 @@ const fileAttente = {
 
 export {
   $, duree, ecoute, estListePistes, fileAttente, horloge, invoke, journal, LIGNE, navigation,
-  ouvrirLien, pochette, remonter, signalerErreur, txt, viderPochettes, vue, vueEnGrille,
+  ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, txt, viderPochettes, vue,
+  vueEnGrille,
 };

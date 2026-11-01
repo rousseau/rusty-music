@@ -74,6 +74,19 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   autres affichages n'ont plus de champ ; la route de la playlist y garde sa
   couleur par partie.
 
+- **Palette de recherche — au-dessus de tous les écrans** (1ᵉʳ novembre 2026,
+  idée reprise de Disc Player, `MODELES.md`). ⌘K ou « / » ouvrent une boîte
+  flottante (`#palette`, `js/palette.js`) au-dessus de l'écran courant, qui
+  reste visible derrière un voile léger : chercher ne remplace rien (Règle 2).
+  Résultats groupés — meilleur résultat, artistes, albums, pistes —,
+  insensibles à la casse et aux accents ; ↑/↓, Entrée (ouvre l'artiste ou
+  l'album, lance la piste), Échap. Les commandes de l'application vivent dans
+  la même boîte (aller à un mode ou un affichage, thème, transport, file,
+  favori, E/HD/N, ajouter un dossier, tout rafraîchir) : elles appellent des
+  gestes qui existent déjà, jamais une action propre à la palette. Le champ
+  `#q` du rail redevient un **filtre** de ce qui est affiché, dans tous les
+  écrans où il apparaît (voir l'audit d'Écouter, Règle 2).
+
 ## Règles universelles — dans les cinq écrans, sans exception
 
 ### 1. Un seul inspecteur, partagé
@@ -252,7 +265,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | 🔧 | `inspecter()` (`js/ecouter.js`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
-| 2 | Estomper, jamais masquer | ❌ | La recherche du rail (`#q`), hors mode Explorer, remplace la liste affichée par une liste de résultats plate (`invoke("search")` puis `poser("recherche", …)`) au lieu d'atténuer les albums/artistes qui ne correspondent pas dans la grille en cours. La vue `recherche` sépare en revanche ses gestes (`ligneRecherche` : clic sur la ligne → sélection silencieuse, numéro ou double-clic → lecture, album/artiste → navigation). Les pistes d'un album (`lignePiste`) suivent le même geste depuis le 21 septembre (clic = sélection, ▶ / double-clic = lecture, voir Règle 1) ; le nom d'artiste ne colore que lui et mène à ses albums (`lienLigne` + `ouvrirAlbumsArtiste`) — cohérent avec la recherche et l'inspecteur. Signalement par la couleur seule, jamais de soulignement. |
+| 2 | Estomper, jamais masquer | ❌ | **Le champ du rail : corrigé le 1ᵉʳ novembre 2026.** `#q` remplaçait la grille par une liste de résultats (`invoke("search")`, vue `recherche`). Deux voies étaient possibles : qu'il ouvre la palette, ou qu'il estompe la grille. **Retenu : il estompe** (`filtrerEcoute`, `repondAuFiltre`) — albums, artistes, pistes d'un album ou playlists qui ne répondent pas passent à 25 % d'opacité (`.album--estompe`, `.ligne--estompe`, pleine au survol), à leur place ; le fil dit « 2 sur 3 albums ». Raison : c'est déjà ce que le même champ fait en Explorer (il estompe la carte) — un champ qui filtrerait ici et ouvrirait une boîte là serait la faute de cohérence que le principe de Nielsen interdit ; et « chercher partout » a désormais son geste à soi, la palette, qui ne remplace rien non plus. Les deux se rejoignent : Entrée dans `#q` ouvre la palette avec le texte tapé, et le titre « Filtrer » porte son raccourci ⌘K. La vue `recherche` et `ligneRecherche` sont retirées. **Reste non conforme : le filtre par famille d'Écouter** (`albumsAffiches`, `js/ecouter-familles.js`) retire de la grille les albums des familles non cochées au lieu de les estomper, contrairement à Découvrir (`.album--estompe`) — relevé le 1ᵉʳ novembre, non corrigé (changement de comportement visible, à décider). Pistes d'un album (`lignePiste`) : clic = sélection, ▶ / double-clic = lecture (Règle 1) ; le nom d'artiste ne colore que lui et mène à ses albums. Signalement par la couleur seule, jamais de soulignement. |
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `ui/js/` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `js/ecouter.js`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
@@ -350,7 +363,7 @@ dans son journal que la composition va au bout.
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | Le morceau source passe par le même inspecteur ; **le détail d'un stem sélectionné y va aussi** (`#bloc-stem`, `majInspecteurStem`), plus de panneau déplié sous la ligne dans la pile. |
-| 2 | Estomper, jamais masquer | — | Pas de filtre/recherche dans la pile ni la barre d'outils ; les candidats de greffe (`zoneGreffe`) sont une liste de résultats, pas un filtre sur un ensemble déjà visible. |
+| 2 | Estomper, jamais masquer | ✅ | Le sélecteur (grille ou liste, avant « séparer ») suit le filtre du rail comme en Écouter : estompé, rien de retiré. Pas de filtre dans la pile ni la barre d'outils ; les candidats de greffe (`zoneGreffe`) sont une liste de résultats, pas un filtre sur un ensemble déjà visible. |
 | 3 | Palette unique | — | La pile de stems ne colore rien par famille (le mini-nuage de greffe, quand il existera, devra lire `--familles`). |
 | 4 | Stabilité des positions | ✅ | Sélectionner un stem (`edition.stemSel`) souligne sa ligne et peuple l'inspecteur, sans déplacer les lignes de la pile ni les réordonner. |
 | 5 | Sobriété stricte | ✅ | Barre d'outils : deux pas-à-pas d'ensemble (vitesse, hauteur), la dérive quand elle existe, Exporter. La pile : nom, solo, muet, badge, niveau, spectrogramme — le reste attend la sélection, dans l'inspecteur. |

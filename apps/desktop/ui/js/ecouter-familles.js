@@ -1,13 +1,13 @@
 import "./maplibre.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, invoke, navigation, remonter, vue, vueEnGrille,
+  $, ecoute, invoke, navigation, plier, remonter, vue, vueEnGrille,
 } from "./socle.js";
 import {
-  cleCarteGrille, dessinerGrille,
+  cleCarteGrille, dessiner, dessinerGrille,
 } from "./vues.js";
 
 import {
-  construireIndexAlpha, construireIndexAnnees,
+  construireIndexAlpha, construireIndexAnnees, texteCompte,
 } from "./ecouter.js";
 
 import {
@@ -192,11 +192,26 @@ function majBlocFamillesEcoute() {
 function rafraichirGrille() {
   majBlocFamillesEcoute();
   if ($("grille").hidden) return;
-  $("fil-compte").textContent = `${lignesCourantes().length} ${vue.quoi === "artistes" ? "artistes" : "albums"}`;
+  $("fil-compte").textContent = texteCompte(vue.quoi, lignesCourantes());
   construireIndexAlpha();
   if (indexAnneesUtile()) construireIndexAnnees();
   ecoute.grilleDernierRang = -1;
   dessinerGrille();
+}
+
+/// Le filtre du rail (`#q`) côté Écouter et Éditer : pose le texte plié et, si
+/// la grille ou la liste est à l'écran, la redessine — ce qui n'y répond pas
+/// s'estompe (`repondAuFiltre`), le compte devient « n sur N ».
+function filtrerEcoute(q) {
+  ecoute.filtre = plier(q.trim());
+  if (navigation.mode !== "ecoute" && navigation.mode !== "editer") return;
+  if (vueEnGrille()) {
+    rafraichirGrille();
+    return;
+  }
+  if ($("liste").hidden) return;
+  dessiner();
+  if (navigation.mode === "ecoute") $("fil-compte").textContent = texteCompte(vue.quoi, vue.lignes);
 }
 
 $("familles-ecoute-tout").addEventListener("click", () => {
@@ -257,7 +272,8 @@ document.querySelectorAll("[data-couleur]").forEach((b) =>
 
 
 export {
-  chargerFamillesParAlbum, cleAlbum, dessinerFamillesEcoute, familleARecalculee, grilleDeTri,
-  indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri, majBlocFamillesEcoute,
-  majSegmentsCouleur, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri, triCourant,
+  chargerFamillesParAlbum, cleAlbum, dessinerFamillesEcoute, familleARecalculee, filtrerEcoute,
+  grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
+  majBlocFamillesEcoute, majSegmentsCouleur, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe,
+  sensTri, triCourant,
 };

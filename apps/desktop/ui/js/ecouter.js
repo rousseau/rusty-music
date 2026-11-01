@@ -1,7 +1,7 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
   $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, ouvrirLien, pochette,
-  remonter, signalerErreur, txt, vue, vueEnGrille,
+  remonter, repondAuFiltre, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopularites, colonnesGrille, composerAlchimie,
@@ -412,6 +412,14 @@ function scrollActuel() {
   return (vueEnGrille() ? grille : liste).scrollTop;
 }
 
+/// Le compte du fil : « 12 albums », ou « 3 sur 12 albums » quand le filtre du
+/// rail en estompe une partie — le total reste celui de ce qui est affiché.
+function texteCompte(quoi, lignes) {
+  const unite = { artistes: "artistes", albums: "albums", playlists: "listes" }[quoi] ?? "morceaux";
+  if (!ecoute.filtre) return `${lignes.length} ${unite}`;
+  return `${lignes.filter(repondAuFiltre).length} sur ${lignes.length} ${unite}`;
+}
+
 function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   vue.quoi = quoi;
   vue.titre = titre;
@@ -432,9 +440,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     $("fil-titre").textContent = titre;
     // La grille d'albums peut être filtrée par famille : le compte suit ce qui
     // est réellement montré, pas le total.
-    const compte = quoi === "albums" ? lignesCourantes().length : lignes.length;
-    const unite = { artistes: "artistes", albums: "albums", playlists: "listes" }[quoi] ?? "morceaux";
-    $("fil-compte").textContent = `${compte} ${unite}`;
+    $("fil-compte").textContent = texteCompte(quoi, quoi === "albums" ? lignesCourantes() : lignes);
   }
   $("retour").hidden = retour === null;
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
@@ -1648,5 +1654,5 @@ export {
   dernierArtisteOuvert, favorisChemins, inspecter, inspecterAlbum, lancerLecture, lignePlaylist,
   majAutourArtiste, majIndexActif, majMinuteur, masquerAutourArtiste, mesuresDuTransport,
   ouvrirAlbumsArtiste, pisteSelectionnee, poser, qualiteDuTransport, rafraichirMinuteur,
-  scrollActuel, selectionner, signalerPistesIgnorees,
+  scrollActuel, selectionner, signalerPistesIgnorees, texteCompte,
 };

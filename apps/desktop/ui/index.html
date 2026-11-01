@@ -28,9 +28,16 @@
         <button class="mode" data-mode="valise">Valise</button>
       </nav>
 
+      <!-- Filtre de ce qui est affiché (carte, grille, liste) : ce qui n'y répond
+           pas s'estompe. Chercher dans toute la bibliothèque : la palette (⌘K). -->
       <div class="bloc" id="bloc-chercher">
-        <p class="rail__titre">Chercher</p>
-        <input id="q" class="chercher" type="search" placeholder="titre, artiste, album" autocomplete="off">
+        <p class="rail__titre rail__titre--action">Filtrer
+          <button id="ouvrir-palette" class="lien rail__raccourci" type="button"
+                  aria-label="Chercher partout"
+                  title="Chercher dans toute la bibliothèque et les commandes (⌘K ou /)"><kbd>⌘K</kbd></button>
+        </p>
+        <input id="q" class="chercher" type="search" placeholder="titre, artiste, album" autocomplete="off"
+               aria-label="Filtrer ce qui est affiché" title="Estompe ce qui ne répond pas · Entrée : chercher partout">
       </div>
 
       <!-- Mode Écoute : deux entrées de premier niveau dans la bibliothèque. -->
@@ -1352,6 +1359,27 @@
       <div id="file-liste" class="file__liste"></div>
     </aside>
 
+  </div>
+
+  <!-- Palette de recherche (⌘K, /) : au-dessus de l'écran courant, qui reste
+       visible derrière un voile léger (Règle 2). `js/palette.js`. -->
+  <div id="palette" class="palette" hidden>
+    <div class="palette__boite" role="dialog" aria-modal="true" aria-label="Chercher">
+      <label class="palette__tete">
+        <span class="palette__loupe" aria-hidden="true">⌕</span>
+        <input id="palette-q" class="palette__champ" type="text" role="combobox"
+               autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-expanded="true"
+               aria-controls="palette-liste" aria-label="Chercher un artiste, un album, une piste ou une commande"
+               placeholder="Artiste, album, piste ou commande">
+        <kbd class="palette__touche">esc</kbd>
+      </label>
+      <div id="palette-liste" class="palette__liste" role="listbox" aria-label="Résultats"></div>
+      <p class="palette__aide" aria-hidden="true">
+        <span><kbd>↑</kbd><kbd>↓</kbd> se déplacer</span>
+        <span><kbd>↵</kbd> ouvrir · lire</span>
+        <span><kbd>esc</kbd> fermer</span>
+      </p>
+    </div>
   </div>
   <script src="vendor/maplibre-gl.js"></script>
     <script type="module" src="js/main.js"></script>
