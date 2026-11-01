@@ -2498,3 +2498,11 @@ page, pas le fonctionnement.
 - **Non vérifié** : paquet universel (x86_64 depuis arm64), Linux, CUDA ; la
   mise en page de la note « sans modèle » (l'audit tourne avec Ollama
   présent).
+
+### Préparer la publication de crates (phase 8)
+
+- `docs/publication-crates.md` : les crates de l'application restent privées ;
+  trois portages en Burn, presque détachés du reste (all-in-one, BS-RoFormer
+  « SW », MuScriptor), sont proposés, noms libres sur crates.io au 1ᵉʳ nov.
+- En attente de décision : licence des crates publiées (GPL-3 ou MIT/Apache),
+  langue de l'API, noms, compte. Rien n'est publié.

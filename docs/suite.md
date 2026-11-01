@@ -42,7 +42,10 @@ mention contraire.
 7. Lama sans Ollama obligatoire — fait : modèle intégré (Gemma 4 E4B,
    llama.cpp lié, feature `lama-local`), qualité égale à Ollama sur
    MusicRecoIntent, 4,7 s contre 2,1 s (`docs/recherche-lama-sans-ollama.md`).
-8. Préparer la publication de crates autonomes : `publication-crates.md`.
+8. Préparer la publication de crates autonomes — fait
+   (`docs/publication-crates.md`) : trois portages en Burn proposés
+   (all-in-one, BS-RoFormer, MuScriptor) ; quatre décisions en attente
+   (licence, langue, noms, compte). Rien n'est publié.
 
 ## Ce qui n'est pas prévu, et pourquoi
 
