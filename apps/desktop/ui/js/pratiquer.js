@@ -1,19 +1,18 @@
 import "./editer.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileCourante, invoke, journal, ouvrirLien, remonter, signalerErreur, txt, vue, vueEnGrille,
+  $, ecoute, fileAttente, invoke, journal, navigation, ouvrirLien, remonter, signalerErreur, txt,
+  vue, vueEnGrille,
 } from "./socle.js";
 import {
   dessiner, dessinerGrille,
 } from "./vues.js";
-import {
-  affecterGrilleDernierRang, grilleDernierRang,
-} from "./lama.js";
+
 import {
   pisteSelectionnee,
 } from "./ecouter.js";
 import {
-  battement, chargerSpectreTransport, modeCourant, peindreTransport, poserImage, poserLecture,
-  sonder, teteCourante,
+  battement, chargerSpectreTransport, peindreTransport, poserImage, poserLecture, sonder,
+  teteCourante,
 } from "./lecteur.js";
 import {
   rampe,
@@ -684,7 +683,7 @@ function placerCurseur() {
   const rendu = $("partition-rendu");
   const surface = rendu.querySelector(".at-surface");
   let c = partition.curseur;
-  if (!P?.length || !table || !surface || edition.usage !== "pratiquer" || modeCourant !== "editer") {
+  if (!P?.length || !table || !surface || edition.usage !== "pratiquer" || navigation.mode !== "editer") {
     if (c) c.hidden = true;
     return;
   }
@@ -778,7 +777,7 @@ async function montrerPartition() {
   clearInterval(partition.minuteur);
   partition.minuteur = setInterval(() => {
     const out = partition.api?.player?.output;
-    if (!out || edition.usage !== "pratiquer" || modeCourant !== "editer") return;
+    if (!out || edition.usage !== "pratiquer" || navigation.mode !== "editer") return;
     // alphaTab anime le curseur d'une note à la suivante sur la durée de la
     // note à *sa* vitesse : restée à 1 quand on ralentit les stems, le curseur
     // arrivait trop tôt puis attendait — en avance et par à-coups (24 oct.).
@@ -1309,7 +1308,7 @@ async function appliquerReglages() {
       // Le calcul dure des dizaines de secondes : on a pu changer de morceau
       // ou de mode entre-temps. Charger alors ces stems-là remplacerait ceux
       // de l'écran par ceux d'un autre morceau.
-      if (edition.stems !== cibles || modeCourant !== "editer") {
+      if (edition.stems !== cibles || navigation.mode !== "editer") {
         $("dock-aide").textContent = "";
         return;
       }
@@ -1472,7 +1471,7 @@ function morceauAEditer() {
   // pour pouvoir le séparer. À défaut de sélection, le morceau en lecture.
   if (pisteSelectionnee) return pisteSelectionnee;
   const path = $("insp-titre").dataset.path || lecture.courant;
-  return fileCourante.find((t) => t.path === path) ?? null;
+  return fileAttente.pistes.find((t) => t.path === path) ?? null;
 }
 
 async function poserSourceEdition() {
@@ -1513,7 +1512,7 @@ async function poserSourceEdition() {
 ///     (`#dock`), le détail d'un stem dans l'inspecteur (`#bloc-stem`).
 /// `montrerChoix` force le retour à l'état 1 depuis l'établi sans décharger.
 function majEtatEditer() {
-  if (modeCourant !== "editer") return;
+  if (navigation.mode !== "editer") return;
   const aStems = edition.stems.length > 0;
   // Par défaut on choisit ; on ne passe à « séparer » que sur un choix
   // explicite (clic sur une piste), et à « retoucher » dès qu'il y a des stems.
@@ -1539,7 +1538,7 @@ function majEtatEditer() {
     $("liste").hidden = enGrille;
     $("grille").hidden = !enGrille;
     if (enGrille) {
-      affecterGrilleDernierRang(-1);
+      ecoute.grilleDernierRang = -1;
       dessinerGrille();
     } else {
       dessiner();
@@ -1555,7 +1554,7 @@ function majEtatEditer() {
     $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
     // Raccourci vers la séparation du morceau en lecture — seulement s'il
     // diffère de la sélection (qui, elle, ouvre directement « séparer »).
-    const jouee = fileCourante.find((t) => t.path === lecture.courant) ?? null;
+    const jouee = fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
     const cand = jouee && jouee.path !== pisteSelectionnee?.path ? jouee : null;
     $("editer-candidat").hidden = !cand;
     if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
@@ -1585,7 +1584,13 @@ function positionnerPlayhead() {
   const etabli = $("editer-etabli");
   const pistes = $("dock-pistes");
   const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
-  if (modeCourant !== "editer" || etabli.hidden || !premier || !pistes.children.length || edition.usage === "pratiquer") {
+  if (
+    navigation.mode !== "editer" ||
+    etabli.hidden ||
+    !premier ||
+    !pistes.children.length ||
+    edition.usage === "pratiquer"
+  ) {
     ph.hidden = true;
     return;
   }
@@ -1605,7 +1610,7 @@ function positionnerPlayhead() {
 function majInspecteurStem() {
   const hote = $("insp-stem");
   const s = edition.stems.find((x) => x.nom === edition.stemSel);
-  const montrer = !!s && modeCourant === "editer" && edition.stems.length > 0;
+  const montrer = !!s && navigation.mode === "editer" && edition.stems.length > 0;
   $("bloc-stem").hidden = !montrer;
   if (!montrer) {
     hote.replaceChildren();
@@ -1698,7 +1703,7 @@ async function chargerStemsExistants(t) {
     majTempoSource();
     majPulsation();
     majSections();
-    if (modeCourant === "editer") await prendreLaMain();
+    if (navigation.mode === "editer") await prendreLaMain();
   } else {
     edition.stems = [];
     dessinerStems();
@@ -2539,7 +2544,7 @@ async function deplacerLecture(frac) {
     await battement();
     return;
   }
-  const t = fileCourante.find((x) => x.path === lecture.courant);
+  const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
   if (!t?.duration_ms) return;
   await invoke("seek", { positionMs: Math.round(frac * t.duration_ms) });
   poserTete(frac);
@@ -2551,7 +2556,7 @@ async function deplacerLecture(frac) {
 /// d'origine jouait, solo et coupure ne touchaient plus rien et la partition
 /// restait figée. Rend vrai si les stems sont de nouveau chargés.
 async function rattacherStems() {
-  if (modeCourant !== "editer" || !edition.stems.length || lecture.stems.charges) return false;
+  if (navigation.mode !== "editer" || !edition.stems.length || lecture.stems.charges) return false;
   await prendreLaMain();
   return lecture.stems.charges;
 }
@@ -2582,7 +2587,7 @@ async function lireStems() {
     // Pendant le décodage on a pu quitter le mode ou changer de morceau :
     // charger alors ces stems ferait jouer un autre morceau que celui affiché,
     // ou des stems en dehors de l'éditeur.
-    if (edition.stems !== cibles || modeCourant !== "editer") {
+    if (edition.stems !== cibles || navigation.mode !== "editer") {
       $("dock-aide").textContent = "";
       return false;
     }

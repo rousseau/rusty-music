@@ -1,22 +1,21 @@
 import "./decouvrir.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, horloge, invoke, remonter, txt, viderPochettes,
+  $, ecoute, horloge, invoke, navigation, remonter, txt, viderPochettes,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur, popARecalculee,
 } from "./vues.js";
 import {
-  modeCourant, peindreTransport, poserLecture,
+  peindreTransport, poserLecture,
 } from "./lecteur.js";
 import {
   carte,
 } from "./carte.js";
 import {
-  affecterGl, affecterGlPret, dessinerFamilles, gl, glPret, majAffichageGL,
+  dessinerFamilles, majAffichageGL,
 } from "./maplibre.js";
 import {
-  affecterFamillesParAlbum, chargerFamillesParAlbum, dessinerFamillesEcoute, familleARecalculee,
-  famillesParAlbum, rafraichirGrille,
+  chargerFamillesParAlbum, dessinerFamillesEcoute, familleARecalculee, rafraichirGrille,
 } from "./ecouter-familles.js";
 import {
   chargerCarte,
@@ -325,7 +324,7 @@ $("recalculer-carte").addEventListener("click", async () => {
     // La carte affichée, si elle l'est, montre des positions périmées ; les
     // familles nommées et le filtre par famille de l'Écoute le sont tout autant.
     await familleARecalculee();
-    if (modeCourant === "explorer") {
+    if (navigation.mode === "explorer") {
       await chargerCarte();
       await dessinerFamilles();
     }
@@ -355,12 +354,12 @@ $("regenerer-tuiles").addEventListener("click", async () => {
     // Les tuiles ont changé sous l'instance MapLibre en place : la relancer
     // à neuf plutôt que d'espérer qu'elle redemande ce qu'elle a déjà en
     // cache.
-    if (gl) {
-      gl.remove();
-      affecterGl(null);
-      affecterGlPret(false);
+    if (carte.gl) {
+      carte.gl.remove();
+      carte.gl = null;
+      carte.glPret = false;
     }
-    if (modeCourant === "explorer" && carte.affichage === "carte") {
+    if (navigation.mode === "explorer" && carte.affichage === "carte") {
       majAffichageGL();
     }
   } catch (e) {
@@ -804,7 +803,7 @@ async function analyserRacine(chemin) {
     });
     // La projection a replacé tous les points : la carte affichée est
     // périmée, y compris ses familles et le filtre par famille de l'Écoute.
-    if (modeCourant === "explorer") await chargerCarte();
+    if (navigation.mode === "explorer") await chargerCarte();
     await familleARecalculee();
 
     etat.textContent = `${chemin} — tempo, tonalité, énergie…`;
@@ -835,10 +834,10 @@ async function analyserRacine(chemin) {
       // famille de l'Écoute reste donc valide — on ne rafraîchit que les noms.
       carte.familles = null;
       carte.familleVotes = null;
-      affecterFamillesParAlbum(null);
+      ecoute.famillesParAlbum = null;
       await chargerFamillesParAlbum();
-      if (modeCourant === "explorer") await dessinerFamilles();
-      else if (modeCourant === "ecoute") {
+      if (navigation.mode === "explorer") await dessinerFamilles();
+      else if (navigation.mode === "ecoute") {
         await dessinerFamillesEcoute();
         rafraichirGrille();
       }
@@ -959,7 +958,7 @@ async function passeEmpreintes(phase) {
     );
   });
   // La projection a replacé tous les points — mêmes suites qu'`analyserRacine`.
-  if (modeCourant === "explorer") await chargerCarte();
+  if (navigation.mode === "explorer") await chargerCarte();
   await familleARecalculee();
 }
 
@@ -1040,10 +1039,10 @@ async function passeGenres(contact, phase) {
   });
   carte.familles = null;
   carte.familleVotes = null;
-  affecterFamillesParAlbum(null);
+  ecoute.famillesParAlbum = null;
   await chargerFamillesParAlbum();
-  if (modeCourant === "explorer") await dessinerFamilles();
-  else if (modeCourant === "ecoute") {
+  if (navigation.mode === "explorer") await dessinerFamilles();
+  else if (navigation.mode === "ecoute") {
     await dessinerFamillesEcoute();
     rafraichirGrille();
   }

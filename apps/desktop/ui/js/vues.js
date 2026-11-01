@@ -1,8 +1,7 @@
 import "./socle.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterAlchimieEnCours, affecterFileCompositionActive, affecterFileCourante,
-  affecterOrigineFile, alchimieEnCours, duree, estListePistes, fileCompositionActive,
-  fileCourante, invoke, LIGNE, origineFile, pochette, remonter, signalerErreur, txt, vue,
+  $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, pochette, remonter,
+  signalerErreur, txt, vue,
 } from "./socle.js";
 import {
   demarrerCompositionFile, finirCompositionFile, phaseCompositionFile, revelerFile,
@@ -13,13 +12,13 @@ import {
   pisteSelectionnee, poser, scrollActuel, selectionner,
 } from "./ecouter.js";
 import {
-  basculerFile, demarrerLecture, dessinerFile, modeCourant,
+  basculerFile, demarrerLecture, dessinerFile,
 } from "./lecteur.js";
 import {
   tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  cleAlbum, lignesCourantes, triAlbums,
+  cleAlbum, lignesCourantes,
 } from "./ecouter-familles.js";
 import {
   bruitChemin, preparerGraphe,
@@ -246,7 +245,7 @@ async function ouvrirAlbumDePiste(item) {
     album: item.album,
     artist: item.artist ?? null,
   });
-  if (modeCourant !== "ecoute") await basculerMode("ecoute");
+  if (navigation.mode !== "ecoute") await basculerMode("ecoute");
   poser("pistes", item.album, pistes, retour);
 }
 
@@ -319,7 +318,7 @@ function jaugePop(pop) {
 /// nouvelles valeurs arrivent.
 function popARecalculee() {
   popParPiste.clear();
-  if (!$("file").hidden && !fileCompositionActive) dessinerFile();
+  if (!$("file").hidden && !fileAttente.compositionActive) dessinerFile();
   if (!$("liste").hidden && estListePistes()) {
     dessiner();
     chargerPopularites(
@@ -446,7 +445,8 @@ function dessinerGrille() {
 
   // Les cases d'albums montrent la date d'ajout sous « Ajoutés » et l'année
   // sinon : changer d'un affichage à l'autre doit les refaire, pas les déplacer.
-  const affichageCartes = `${vue.quoi}${vue.quoi === "albums" && triAlbums === "ajoutes" ? ":ajoutes" : ""}`;
+  const ajoutes = vue.quoi === "albums" && ecoute.triAlbums === "ajoutes";
+  const affichageCartes = `${vue.quoi}${ajoutes ? ":ajoutes" : ""}`;
   if (affichageCartes !== grilleCartesQuoi) {
     // Vider la Map ne suffit pas : les nœuds restent dans `grilleFenetre`, et
     // les cartes de l'ancienne vue s'affichent devant les nouvelles (Artistes
@@ -498,7 +498,7 @@ function carteAlbum(item) {
   artiste.textContent = txt(item.artist, "(sans artiste)");
   // Sous l'ordre « Ajoutés », la date d'arrivée remplace l'année : sans elle,
   // on ne comprendrait pas l'ordre. L'année reste dans l'infobulle.
-  if (triAlbums === "ajoutes" && item.ajoute_le) {
+  if (ecoute.triAlbums === "ajoutes" && item.ajoute_le) {
     const date = new Date(item.ajoute_le * 1000).toLocaleDateString("fr-FR", {
       day: "numeric", month: "short", year: "numeric",
     });
@@ -730,7 +730,7 @@ async function lireAlbum(item) {
   const pistes = await invoke("tracks_of_album", { album: item.name, artist: item.artist ?? null });
   if (pistes.length === 0) return;
   selectionner(pistes[0]);
-  affecterFileCourante(pistes);
+  fileAttente.pistes = pistes;
   tracerRouteSurCarte(pistes);
   await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
 }
@@ -785,8 +785,8 @@ function genererAlchimie(item, bouton) {
 /// du graphe de voisins ni route sur la carte, et pas de piste « graine »
 /// dans la file (aucun pivot, juste un mélange).
 async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PISTES, graphe = true, origine = null }) {
-  if (alchimieEnCours) return;
-  affecterAlchimieEnCours(true);
+  if (fileAttente.alchimieEnCours) return;
+  fileAttente.alchimieEnCours = true;
   const fileEtaitOuverte = !$("file").hidden;
   let pistes = null;
   let echec = false;
@@ -808,13 +808,13 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
     if (!pistes || pistes.length === 0) return;
 
     selectionner(pistes[0]);
-    affecterFileCourante(pistes);
+    fileAttente.pistes = pistes;
     // D'où vient cette file, pour la proposer en nom et la garder si elle est
     // enregistrée (`origineDeLaFile`).
-    affecterOrigineFile(origine ? { texte: origine, premier: pistes[0].path, n: pistes.length } : null);
+    fileAttente.origine = origine ? { texte: origine, premier: pistes[0].path, n: pistes.length } : null;
     if (graphe) tracerRouteSurCarte(pistes);
     // Lecture tout de suite ; le sondage d'état qui démarre avec elle
-    // voudra redessiner la file, `fileCompositionActive` l'en empêche
+    // voudra redessiner la file, `fileAttente.compositionActive` l'en empêche
     // jusqu'à la fin du défilement.
     demarrerLecture(() => demarrer(pistes)).catch((e) => remonter(e, "composerAlchimie"));
     await revelerFile(pistes, { graine: graphe });
@@ -827,12 +827,12 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
     if (jauge) clearInterval(jauge);
     bouton.disabled = false;
     bouton.classList.remove("alchimie--travail");
-    affecterAlchimieEnCours(false);
+    fileAttente.alchimieEnCours = false;
     if (echec) {
       // Laisse le message ci-dessus visible un instant plutôt que de
       // refermer aussitôt le panneau — `finirCompositionFile` l'effacerait
       // avec lui.
-      affecterFileCompositionActive(false);
+      fileAttente.compositionActive = false;
       setTimeout(() => {
         finirCompositionFile();
         if (!fileEtaitOuverte) basculerFile(false);

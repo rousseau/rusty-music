@@ -1,17 +1,15 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterFileCourante, affecterSommet, duree, estListePistes, fileCourante, invoke, LIGNE,
-  origineFile, ouvrirLien, pochette, remonter, signalerErreur, sommet, txt, vue, vueEnGrille,
+  $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, ouvrirLien, pochette,
+  remonter, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopularites, colonnesGrille, composerAlchimie,
   dessiner, dessinerGrille, fenetre, grille, initiales, lireAlbum, liste, teinteNom,
 } from "./vues.js";
+
 import {
-  affecterGrilleDernierRang, grilleDernierRang,
-} from "./lama.js";
-import {
-  demarrerLecture, dureeFile, estAffiche, majApercuTransport, modeCourant,
+  demarrerLecture, dureeFile, estAffiche, majApercuTransport,
 } from "./lecteur.js";
 import {
   anneau, carte, chargerAnneau,
@@ -20,9 +18,9 @@ import {
   chargerFamilles, tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  affecterTriAlbums, affecterTriArtistes, grilleDeTri, indexAlphaUtile, indexAnneesUtile,
-  lignesCourantes, majBarreTri, majBlocFamillesEcoute, rafraichirGrille, rebrasserAlea,
-  SENS_ORIGINE, sensDe, sensTri, triAlbums, triArtistes, triCourant,
+  grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
+  majBlocFamillesEcoute, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri,
+  triCourant,
 } from "./ecouter-familles.js";
 import {
   bruitChemin,
@@ -124,8 +122,9 @@ $("file-minuteur-annuler").addEventListener("click", async () => {
 /// La demande ou le point de départ de la file en cours — seulement si la file
 /// n'a pas changé depuis qu'on l'a composée.
 function origineDeLaFile() {
-  const o = origineFile;
-  if (!o || fileCourante.length !== o.n || !fileCourante.some((t) => t.path === o.premier)) return null;
+  const o = fileAttente.origine;
+  const pistes = fileAttente.pistes;
+  if (!o || pistes.length !== o.n || !pistes.some((t) => t.path === o.premier)) return null;
   return o.texte;
 }
 
@@ -149,7 +148,7 @@ function fermerEnregistrement() {
 $("file-enregistrer").addEventListener("click", () => {
   const form = $("file-enregistrer-form");
   if (!form.hidden) return fermerEnregistrement();
-  if (!fileCourante.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
+  if (!fileAttente.pistes.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
   etatEnregistrement("");
   form.hidden = false;
   const champ = $("file-enregistrer-nom");
@@ -166,7 +165,7 @@ $("file-enregistrer-nom").addEventListener("keydown", (e) => {
 
 $("file-enregistrer-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const paths = fileCourante.map((t) => t.path);
+  const paths = fileAttente.pistes.map((t) => t.path);
   if (!paths.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
   const nom = $("file-enregistrer-nom").value.trim() || nomParDefaut();
   try {
@@ -390,7 +389,7 @@ async function jouerPlaylist(item) {
     return;
   }
   selectionner(pistes[0]);
-  affecterFileCourante(pistes);
+  fileAttente.pistes = pistes;
   tracerRouteSurCarte(pistes);
   await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
 }
@@ -418,7 +417,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   vue.titre = titre;
   vue.lignes = lignes;
   vue.retour = retour;
-  if (retour === null) affecterSommet({ quoi, titre, lignes });
+  if (retour === null) ecoute.sommet = { quoi, titre, lignes };
 
   // Bandeau « autour de cet artiste » : propre à la grille d'albums d'un
   // artiste précis (`retour` non nul — voir `ouvrirAlbumsArtiste`), jamais à
@@ -428,7 +427,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
 
   // Hors mode Écoute, l'en-tête appartient à l'autre mode (« Découvrir »,
   // « Bibliothèque ») : `poser` met à jour `vue` mais n'y touche pas.
-  const horsEcoute = modeCourant !== "ecoute";
+  const horsEcoute = navigation.mode !== "ecoute";
   if (!horsEcoute) {
     $("fil-titre").textContent = titre;
     // La grille d'albums peut être filtrée par famille : le compte suit ce qui
@@ -467,7 +466,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     // continuent de le construire à la demande ; le premier geste de la
     // session qui en a besoin paie simplement le prix une fois.
     grille.scrollTop = scroll;
-    affecterGrilleDernierRang(-1);
+    ecoute.grilleDernierRang = -1;
     dessinerGrille();
   } else {
     liste.scrollTop = scroll;
@@ -495,7 +494,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // En Éditer, `poser` a masqué grille et liste (gate `horsEcoute`) : c'est
   // `majEtatEditer` qui décide de les ré-afficher, selon l'état du parcours,
   // et qui les redessine une fois visibles.
-  if (modeCourant === "editer") majEtatEditer();
+  if (navigation.mode === "editer") majEtatEditer();
 }
 
 /* -------------------------------------------------------- index alphabétique */
@@ -564,7 +563,7 @@ function sauterALettre(l) {
 function sauterAuRang(rang) {
   if (vueEnGrille()) {
     grille.scrollTop = Math.floor(rang / colonnesGrille()) * ALBUM_HAUT;
-    affecterGrilleDernierRang(-1);
+    ecoute.grilleDernierRang = -1;
     dessinerGrille();
   } else {
     liste.scrollTop = rang * LIGNE;
@@ -668,8 +667,8 @@ function choisirTriAlbums(tri) {
   // remet au sens d'origine.
   else if (tri === triCourant()) etat[tri] = -sensDe(tri);
   else etat[tri] = SENS_ORIGINE[tri] ?? 1;
-  if (vue.quoi === "artistes") affecterTriArtistes(tri);
-  else affecterTriAlbums(tri);
+  if (vue.quoi === "artistes") ecoute.triArtistes = tri;
+  else ecoute.triAlbums = tri;
   majBarreTri();
   majIndexLateraux();
   grille.scrollTop = 0;
@@ -703,9 +702,9 @@ async function lancerLecture(item) {
   // Non attendue : le son ne doit pas patienter derrière la pochette de
   // l'inspecteur (`demarrerLecture` existe pour que le clic réponde vite).
   const choix = selectionner(item);
-  affecterFileCourante(depart >= 0 ? vue.lignes.slice(depart) : [item]);
-  tracerRouteSurCarte(fileCourante);
-  await demarrerLecture(() => invoke("play", { paths: fileCourante.map((t) => t.path) }));
+  fileAttente.pistes = depart >= 0 ? vue.lignes.slice(depart) : [item];
+  tracerRouteSurCarte(fileAttente.pistes);
+  await demarrerLecture(() => invoke("play", { paths: fileAttente.pistes.map((t) => t.path) }));
   await choix;
 }
 
@@ -736,7 +735,7 @@ async function selectionner(t) {
   majApercuTransport();
   // En Éditer, choisir une piste, c'est choisir le morceau à travailler : on
   // passe de l'état « choisir » à « séparer / retoucher » — sans lecture.
-  if (modeCourant === "editer") {
+  if (navigation.mode === "editer") {
     edition.montrerChoix = false;
     edition.sourceChoisie = true;
     await poserSourceEdition();
@@ -750,7 +749,7 @@ $("retour").addEventListener("click", () => {
   // (`docs/ui-spec-editeur.md`, état 1). En état 1, le bouton retrouve son
   // rôle de fil de navigation ordinaire.
   if (
-    modeCourant === "editer" &&
+    navigation.mode === "editer" &&
     !edition.montrerChoix &&
     (edition.stems.length || (edition.sourceChoisie && edition.source))
   ) {
@@ -766,7 +765,7 @@ $("retour").addEventListener("click", () => {
 // Raccourci « Séparer « … » » de l'en-tête, en Éditer : le morceau en lecture
 // devient le morceau choisi, sans avoir à le retrouver dans la liste.
 $("editer-candidat").addEventListener("click", async () => {
-  const cand = fileCourante.find((t) => t.path === lecture.courant);
+  const cand = fileAttente.pistes.find((t) => t.path === lecture.courant);
   if (!cand) return;
   await selectionner(cand);
 });
@@ -907,12 +906,12 @@ function montrerVoisinsAlbum() {
 
 /// Ouvre au centre la grille de tous les albums d'un artiste — le geste
 /// partagé par le nom de l'artiste dans l'inspecteur et dans le transport.
-async function ouvrirAlbumsArtiste(artiste, mbid, retour = sommet) {
+async function ouvrirAlbumsArtiste(artiste, mbid, retour = ecoute.sommet) {
   if (!artiste) return;
   const albums = await invoke("albums", { artist: artiste, mbid: mbid || null });
   // « Au centre » suppose le mode Écoute : depuis Explorer ou Éditer, le
   // centre montre la carte ou le dock, pas la grille.
-  if (modeCourant !== "ecoute") await basculerMode("ecoute");
+  if (navigation.mode !== "ecoute") await basculerMode("ecoute");
   poser("albums", artiste, albums, retour);
   majAutourArtiste(artiste, mbid);
 }
@@ -955,7 +954,7 @@ function majAutourArtiste(artiste, mbid) {
   // `clientHeight` change, donc la fenêtre de rangées déjà posée par `poser`
   // (calculée sous l'ancien mode) doit être redessinée pour couvrir tous les
   // albums, pas seulement ceux qui tenaient dans l'ancienne fenêtre bornée.
-  affecterGrilleDernierRang(-1);
+  ecoute.grilleDernierRang = -1;
   dessinerGrille();
   montrerBio(mbid, jeton);
   majAutourSonore(artiste, jeton);
@@ -1111,8 +1110,8 @@ $("insp-album").addEventListener("click", async () => {
   if (!album) return;
   const artiste = $("insp-album").dataset.artiste || null;
   const pistes = await invoke("tracks_of_album", { album, artist: artiste });
-  if (modeCourant !== "ecoute") await basculerMode("ecoute");
-  poser("pistes", album, pistes, sommet);
+  if (navigation.mode !== "ecoute") await basculerMode("ecoute");
+  poser("pistes", album, pistes, ecoute.sommet);
 });
 
 /// Le titre du morceau en cours, dans le transport, peuple l'inspecteur —
@@ -1120,7 +1119,7 @@ $("insp-album").addEventListener("click", async () => {
 /// albums de l'artiste (les deux gestionnaires juste au-dessus). Rien ne
 /// joue : `dataset.path` est vide, `find` ne trouve rien, no-op.
 $("np-titre").addEventListener("click", () => {
-  const t = fileCourante.find((x) => x.path === $("np-titre").dataset.path);
+  const t = fileAttente.pistes.find((x) => x.path === $("np-titre").dataset.path);
   if (t) inspecter(t);
 });
 
@@ -1147,8 +1146,8 @@ $("insp-lecture").addEventListener("click", async () => {
   }
   if (!inspectionPiste) return;
   selectionner(inspectionPiste);
-  affecterFileCourante([inspectionPiste]);
-  tracerRouteSurCarte(fileCourante);
+  fileAttente.pistes = [inspectionPiste];
+  tracerRouteSurCarte(fileAttente.pistes);
   await demarrerLecture(() => invoke("play", { paths: [inspectionPiste.path] }));
 });
 
@@ -1231,7 +1230,7 @@ function alerteTransport(texte) {
     el.title = "";
     el.textContent = "";
     // Rend la ligne à ce qu'elle montre d'ordinaire (tempo, tonalité).
-    const t = fileCourante.find((x) => x.path === lecture.courant);
+    const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
     if (t) mesuresDuTransport(t);
   }, ALERTE_TRANSPORT_MS);
 }
@@ -1245,7 +1244,7 @@ function signalerPistesIgnorees(ignorees) {
     return;
   }
   const { path } = ignorees[0];
-  const t = fileCourante.find((x) => x.path === path);
+  const t = fileAttente.pistes.find((x) => x.path === path);
   const nom = t ? txt(t.title, "(sans titre)") : path.split("/").pop();
   alerteTransport(`Illisible : ${nom} — suivante`);
 }
@@ -1399,8 +1398,8 @@ async function montrerVoisins(t) {
     el.children[1].textContent = txt(v.artist, "(sans artiste)");
     el.addEventListener("click", async () => {
       selectionner(v);
-      affecterFileCourante([v]);
-      tracerRouteSurCarte(fileCourante);
+      fileAttente.pistes = [v];
+      tracerRouteSurCarte(fileAttente.pistes);
       await demarrerLecture(() => invoke("play", { paths: [v.path] }));
     });
     hote.appendChild(el);

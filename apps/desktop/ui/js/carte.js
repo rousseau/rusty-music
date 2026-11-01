@@ -1,13 +1,11 @@
 import "./lecteur.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileCourante, invoke, remonter, signalerErreur,
+  $, fileAttente, invoke, navigation, remonter, signalerErreur,
 } from "./socle.js";
 import {
   inspecterAlbum,
 } from "./ecouter.js";
-import {
-  modeCourant,
-} from "./lecteur.js";
+
 import {
   chargerFamilles, dessinerCarte, modeAnneau, modeTemps, patienter,
 } from "./maplibre.js";
@@ -20,7 +18,7 @@ import { lecture } from "./etat-lecture.js";
 const carte = {
   points: [],
   // Adresse réelle (lon/lat) de chaque morceau logé, `id -> [x, y]` — vide
-  // sur le monde fictif. Voir `villeReelle` et `chargerCarte`.
+  // sur le monde fictif. Voir `carte.villeReelle` et `chargerCarte`.
   positionsReelles: new Map(),
   vue: { k: 1, dx: 0, dy: 0 },
   isolees: new Set(), // familles mises en avant (multi-sélection), vide = tout
@@ -48,6 +46,20 @@ const carte = {
   trace: null, // tracé en cours de dessin, en coordonnées de carte
   graine: 1, // graine de l'errance ; « Autre tirage » l'incrémente
   refaire: null, // de quoi rejouer le dernier chemin avec une autre graine
+  // Le fond de plan de la carte MapLibre — eau, terre, voirie, bâti, toponymes.
+  // Chaque thème est un `style-<id>.json` déjà écrit par `engendrer_tuiles` (côté
+  // Rust, `rusty_music_carto::Palette`) ; basculer ne régénère aucune tuile.
+  // `osm-clair` = le `style.json` sans suffixe. L'overlay de familles (nuage,
+  // pastilles, territoires) ne dépend pas de ce choix.
+  theme: localStorage.getItem("carte-theme") || "osm-clair",
+  gl: null, // l'instance MapLibre, ou null tant que les tuiles manquent
+  glPret: false,
+  // `true` quand un plan de ville réel est actif (`positions_carte` a rendu
+  // quelque chose côté Rust) : `carte.points[i].x/y` valent alors des lon/lat
+  // réels — une adresse de rue, pas une position t-SNE — et
+  // `geoDepuisCarte`/`carteDepuisGeo` doivent être l'identité plutôt que la
+  // projection du monde fictif. Mis à jour par `chargerCarte`.
+  villeReelle: false,
 };
 
 /// Ce que chaque mode attend de la souris, et ce qu'il fabrique. Phrase
@@ -576,7 +588,7 @@ const cleAlbumLecture = (nom, artiste) => JSON.stringify([nom ?? null, artiste ?
 /// est effacée, jamais laissée sur le disque précédent. Ne touche pas
 /// l'inspecteur — en lecture il suit le morceau, pas le disque.
 async function suivreAlbumEnLecture() {
-  if (modeCourant !== "explorer" || (!modeTemps() && !modeAnneau())) {
+  if (navigation.mode !== "explorer" || (!modeTemps() && !modeAnneau())) {
     albumFocalLecture = null;
     suiviAlbumEnVol = null;
     return;
@@ -585,7 +597,7 @@ async function suivreAlbumEnLecture() {
   // le morceau d'avant finit de jouer pendant que la nouvelle playlist prend
   // la main. État transitoire, on ne touche à rien (le prochain morceau de la
   // file résoudra).
-  const piste = fileCourante.find((x) => x.path === lecture.courant);
+  const piste = fileAttente.pistes.find((x) => x.path === lecture.courant);
   if (!piste) return;
   const nom = piste.album || null;
   const artiste = piste.artist || "";

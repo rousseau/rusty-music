@@ -1,19 +1,15 @@
 import "./maplibre.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, remonter, vue, vueEnGrille,
+  $, ecoute, invoke, navigation, remonter, vue, vueEnGrille,
 } from "./socle.js";
 import {
   cleCarteGrille, dessinerGrille,
 } from "./vues.js";
-import {
-  affecterGrilleDernierRang, grilleDernierRang,
-} from "./lama.js";
+
 import {
   construireIndexAlpha, construireIndexAnnees,
 } from "./ecouter.js";
-import {
-  modeCourant,
-} from "./lecteur.js";
+
 import {
   carte,
 } from "./carte.js";
@@ -24,8 +20,8 @@ import {
   majLegendeContinue,
 } from "./fond-de-plan.js";
 import {
-  affecterFamillesParArtiste, chargerFamillesParArtiste, dessinerFamillesDecouvrir,
-  famillesParArtiste, filtreFamillesDecouvrir, rendreFilDecouvrir,
+  chargerFamillesParArtiste, decouverte, dessinerFamillesDecouvrir, filtreFamillesDecouvrir,
+  rendreFilDecouvrir,
 } from "./decouvrir.js";
 
 /* ------------------------------------------- filtre par famille — mode Écoute
@@ -38,7 +34,6 @@ import {
  */
 
 const filtreFamilles = new Set();
-let famillesParAlbum = null; // Map "nom\nartiste" → cluster dominant
 
 function cleAlbum(a) {
   return `${a.name}\n${a.artist ?? ""}`;
@@ -47,29 +42,22 @@ function cleAlbum(a) {
 async function chargerFamillesParAlbum() {
   try {
     const paires = await invoke("album_families");
-    famillesParAlbum = new Map(
+    ecoute.famillesParAlbum = new Map(
       paires.map(([nom, artiste, c]) => [`${nom}\n${artiste ?? ""}`, c]),
     );
   } catch (e) {
     remonter(e, "familles des albums");
-    famillesParAlbum = new Map();
+    ecoute.famillesParAlbum = new Map();
   }
 }
 
 /// Les albums réellement affichés dans la grille : `vue.lignes` filtré par les
 /// familles cochées. Sans filtre, ou sans données de famille, on rend tout.
 function albumsAffiches() {
-  if (filtreFamilles.size === 0 || !famillesParAlbum) return vue.lignes;
-  return vue.lignes.filter((a) => filtreFamilles.has(famillesParAlbum.get(cleAlbum(a))));
+  if (filtreFamilles.size === 0 || !ecoute.famillesParAlbum) return vue.lignes;
+  return vue.lignes.filter((a) => filtreFamilles.has(ecoute.famillesParAlbum.get(cleAlbum(a))));
 }
 
-/// Ordre de la grille d'albums. `alpha` est l'ordre rendu par le moteur
-/// (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee`, `ajoutes` et
-/// `alea` retrient une copie côté interface.
-let triAlbums = "alpha";
-/// Ordre de la grille d'artistes : `alpha` (celui du moteur) ou `alea` — pas
-/// d'année, un artiste n'en a pas. Mémorisé à part de `triAlbums`.
-let triArtistes = "alpha";
 /// Sens de chaque ordre : `1` = croissant (A→Z, plus ancien d'abord), `-1` =
 /// décroissant. Un second clic sur l'ordre actif l'inverse ; y revenir depuis un
 /// autre le remet au sens d'origine — A–Z croissant, Année et Ajoutés
@@ -97,14 +85,15 @@ function libelleTri(tri, actif) {
 const grainesAlea = { artistes: new Map(), albums: new Map() };
 
 /// L'ordre en vigueur pour la vue de premier niveau affichée.
-const triCourant = () => (vue.quoi === "artistes" ? triArtistes : triAlbums);
+const triCourant = () => (vue.quoi === "artistes" ? ecoute.triArtistes : ecoute.triAlbums);
 
 /// Le repère alphabétique n'a de sens que si l'ordre affiché est celui des noms.
 const indexAlphaUtile = (quoi = vue.quoi) =>
-  (quoi === "artistes" && triArtistes === "alpha") || (quoi === "albums" && triAlbums === "alpha");
+  (quoi === "artistes" && ecoute.triArtistes === "alpha") ||
+  (quoi === "albums" && ecoute.triAlbums === "alpha");
 
 /// Le repère des années n'a de sens que si l'ordre affiché est celui des années.
-const indexAnneesUtile = (quoi = vue.quoi) => quoi === "albums" && triAlbums === "annee";
+const indexAnneesUtile = (quoi = vue.quoi) => quoi === "albums" && ecoute.triAlbums === "annee";
 
 function rebrasserAlea(lignes) {
   const table = grainesAlea[vue.quoi === "artistes" ? "artistes" : "albums"];
@@ -114,7 +103,7 @@ function rebrasserAlea(lignes) {
 
 /// La barre d'ordre sert aux grilles d'albums et d'artistes du mode Écoute ;
 /// « Année » n'a de sens que pour les albums.
-function majBarreTri(horsEcoute = modeCourant !== "ecoute") {
+function majBarreTri(horsEcoute = navigation.mode !== "ecoute") {
   $("tri-albums").hidden = horsEcoute || !vueEnGrille();
   // « Année » et « Ajoutés » n'ont de sens que pour les albums.
   document.querySelector('[data-tri="annee"]').hidden = vue.quoi === "artistes";
@@ -145,15 +134,17 @@ function parValeur(cle, sens) {
 
 function trierAlbums(lignes) {
   if (vue.quoi === "artistes") {
-    if (triArtistes === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
-    if (triArtistes !== "alea") return lignes;
+    if (ecoute.triArtistes === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
+    if (ecoute.triArtistes !== "alea") return lignes;
     const g = grainesAlea.artistes;
     return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
   }
-  if (triAlbums === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
-  if (triAlbums === "annee") return [...lignes].sort(parValeur((a) => a.year, sensDe("annee")));
-  if (triAlbums === "ajoutes") return [...lignes].sort(parValeur((a) => a.ajoute_le, sensDe("ajoutes")));
-  if (triAlbums === "alea") {
+  if (ecoute.triAlbums === "alpha") return sensDe("alpha") === 1 ? lignes : [...lignes].reverse();
+  if (ecoute.triAlbums === "annee") return [...lignes].sort(parValeur((a) => a.year, sensDe("annee")));
+  if (ecoute.triAlbums === "ajoutes") {
+    return [...lignes].sort(parValeur((a) => a.ajoute_le, sensDe("ajoutes")));
+  }
+  if (ecoute.triAlbums === "alea") {
     const g = grainesAlea.albums;
     return [...lignes].sort((a, b) => (g.get(cleCarteGrille(a)) ?? 0) - (g.get(cleCarteGrille(b)) ?? 0));
   }
@@ -189,10 +180,10 @@ async function dessinerFamillesEcoute() {
 /// proposer).
 function majBlocFamillesEcoute() {
   const utile =
-    modeCourant === "ecoute" &&
+    navigation.mode === "ecoute" &&
     vue.quoi === "albums" &&
-    famillesParAlbum &&
-    famillesParAlbum.size > 0;
+    ecoute.famillesParAlbum &&
+    ecoute.famillesParAlbum.size > 0;
   $("bloc-familles-ecoute").hidden = !utile;
 }
 
@@ -204,7 +195,7 @@ function rafraichirGrille() {
   $("fil-compte").textContent = `${lignesCourantes().length} ${vue.quoi === "artistes" ? "artistes" : "albums"}`;
   construireIndexAlpha();
   if (indexAnneesUtile()) construireIndexAnnees();
-  affecterGrilleDernierRang(-1);
+  ecoute.grilleDernierRang = -1;
   dessinerGrille();
 }
 
@@ -220,16 +211,16 @@ $("familles-ecoute-tout").addEventListener("click", () => {
 async function familleARecalculee() {
   carte.familles = null;
   carte.familleVotes = null;
-  famillesParAlbum = null;
-  affecterFamillesParArtiste(null);
+  ecoute.famillesParAlbum = null;
+  decouverte.famillesParArtiste = null;
   filtreFamilles.clear();
   filtreFamillesDecouvrir.clear();
   await chargerFamillesParAlbum();
-  if (modeCourant === "ecoute") {
+  if (navigation.mode === "ecoute") {
     await dessinerFamillesEcoute();
     rafraichirGrille();
   }
-  if (modeCourant === "decouvrir") {
+  if (navigation.mode === "decouvrir") {
     await chargerFamillesParArtiste();
     await dessinerFamillesDecouvrir();
     rendreFilDecouvrir();
@@ -264,21 +255,9 @@ document.querySelectorAll("[data-couleur]").forEach((b) =>
   }),
 );
 
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterFamillesParAlbum(v) {
-  return (famillesParAlbum = v);
-}
-function affecterTriAlbums(v) {
-  return (triAlbums = v);
-}
-function affecterTriArtistes(v) {
-  return (triArtistes = v);
-}
 
 export {
-  affecterFamillesParAlbum, affecterTriAlbums, affecterTriArtistes, chargerFamillesParAlbum,
-  cleAlbum, dessinerFamillesEcoute, familleARecalculee, famillesParAlbum, grilleDeTri,
+  chargerFamillesParAlbum, cleAlbum, dessinerFamillesEcoute, familleARecalculee, grilleDeTri,
   indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri, majBlocFamillesEcoute,
-  majSegmentsCouleur, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri, triAlbums,
-  triArtistes, triCourant,
+  majSegmentsCouleur, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri, triCourant,
 };

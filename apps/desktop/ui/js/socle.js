@@ -113,10 +113,28 @@ const vue = {
   retour: null, // état à restaurer en remontant
 };
 
-// Dernière vue de premier niveau posée (Artistes ou Albums, `retour === null`).
-// Sert de cible de retour à la recherche, qui ne connaît pas d'où l'on vient,
-// et de vue par défaut de `charger()` quand elle est appelée sans argument.
-let sommet = { quoi: "albums", titre: "Albums", lignes: [] };
+// Le mode ouvert dans le rail : ecoute | explorer | editer | bibliotheque |
+// decouvrir | valise.
+const navigation = { mode: "ecoute" };
+
+// Ce qu'Écouter garde en dehors de la vue courante (`vue`).
+const ecoute = {
+  // Dernière vue de premier niveau posée (Artistes ou Albums, `retour === null`).
+  // Sert de cible de retour à la recherche, qui ne connaît pas d'où l'on vient,
+  // et de vue par défaut de `charger()` quand elle est appelée sans argument.
+  sommet: { quoi: "albums", titre: "Albums", lignes: [] },
+  // Ordre de la grille d'albums. `alpha` est l'ordre rendu par le moteur
+  // (`ORDER BY … COLLATE NOCASE`) — on le laisse tel quel. `annee`, `ajoutes` et
+  // `alea` retrient une copie côté interface.
+  triAlbums: "alpha",
+  // Ordre de la grille d'artistes : `alpha` (celui du moteur) ou `alea` — pas
+  // d'année, un artiste n'en a pas. Mémorisé à part de `ecoute.triAlbums`.
+  triArtistes: "alpha",
+  famillesParAlbum: null, // Map "nom\nartiste" → cluster dominant
+  // La bande de rangées de la grille dessinée en dernier (voir
+  // `dessinerGrilleAuDefilement`) ; -1 force le prochain dessin.
+  grilleDernierRang: -1,
+};
 
 // Artistes et Albums s'affichent tous deux dans la grille virtualisée
 // (`dessinerGrille`) — une tuile carrée par entrée, pochette pour un album,
@@ -128,42 +146,26 @@ const vueEnGrille = (quoi = vue.quoi) => quoi === "albums" || quoi === "artistes
 // les résultats de recherche (mêmes lignes `TrackRow`, même chargement en lot).
 const estListePistes = (quoi = vue.quoi) => quoi === "pistes" || quoi === "recherche";
 
-let fileCourante = []; // pistes envoyées au lecteur, pour l'affichage
-// D'où vient la file en cours, quand l'interface le sait — la demande faite à
-// Lama, « Dans l'esprit de … » : `{ texte, premier, n }`. `origineDeLaFile` ne
-// la croit que si la file n'a pas changé depuis (même longueur, même premier
-// morceau) : aucune remise à zéro à répartir sur tous les chemins de lecture.
-let origineFile = null;
+// La file d'attente, telle que l'interface l'affiche.
+const fileAttente = {
+  pistes: [], // pistes envoyées au lecteur, pour l'affichage
+  // D'où vient la file en cours, quand l'interface le sait — la demande faite à
+  // Lama, « Dans l'esprit de … » : `{ texte, premier, n }`. `origineDeLaFile` ne
+  // la croit que si la file n'a pas changé depuis (même longueur, même premier
+  // morceau) : aucune remise à zéro à répartir sur tous les chemins de lecture.
+  origine: null,
+  // Un bouton ✦ à la fois (case d'album ou inspecteur) : les deux partagent le
+  // graphe des voisins et le panneau de composition, deux lancements concurrents
+  // se marcheraient dessus.
+  alchimieEnCours: false,
+  // Vrai pendant qu'une playlist ✦ se compose dans la file d'attente : `dessinerFile`
+  // s'efface alors, pour ne pas écraser l'animation de remplissage avec un rendu
+  // ordinaire au premier battement de sondage de la lecture.
+  compositionActive: false,
+};
 
-// Un bouton ✦ à la fois (case d'album ou inspecteur) : les deux partagent le
-// graphe des voisins et le panneau de composition, deux lancements concurrents
-// se marcheraient dessus.
-let alchimieEnCours = false;
-// Vrai pendant qu'une playlist ✦ se compose dans la file d'attente : `dessinerFile`
-// s'efface alors, pour ne pas écraser l'animation de remplissage avec un rendu
-// ordinaire au premier battement de sondage de la lecture.
-let fileCompositionActive = false;
-
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterAlchimieEnCours(v) {
-  return (alchimieEnCours = v);
-}
-function affecterFileCompositionActive(v) {
-  return (fileCompositionActive = v);
-}
-function affecterFileCourante(v) {
-  return (fileCourante = v);
-}
-function affecterOrigineFile(v) {
-  return (origineFile = v);
-}
-function affecterSommet(v) {
-  return (sommet = v);
-}
 
 export {
-  $, affecterAlchimieEnCours, affecterFileCompositionActive, affecterFileCourante,
-  affecterOrigineFile, affecterSommet, alchimieEnCours, duree, estListePistes,
-  fileCompositionActive, fileCourante, horloge, invoke, journal, LIGNE, origineFile, ouvrirLien,
-  pochette, remonter, signalerErreur, sommet, txt, viderPochettes, vue, vueEnGrille,
+  $, duree, ecoute, estListePistes, fileAttente, horloge, invoke, journal, LIGNE, navigation,
+  ouvrirLien, pochette, remonter, signalerErreur, txt, viderPochettes, vue, vueEnGrille,
 };

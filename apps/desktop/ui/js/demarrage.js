@@ -1,6 +1,6 @@
 import "./pratiquer.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, sommet,
+  $, ecoute, invoke,
 } from "./socle.js";
 import {
   interpreterIntention,
@@ -24,7 +24,7 @@ import {
 /// Artistes/Albums depuis le commutateur du rail. Aussi le point de retour
 /// après un scan, l'oubli d'une racine, ou l'effacement de la recherche : dans
 /// ces trois cas `quoi` est omis, et c'est la vue déjà affichée qui revient.
-async function charger(quoi = sommet.quoi) {
+async function charger(quoi = ecoute.sommet.quoi) {
   const [artistes, racines] = await Promise.all([invoke("artists"), invoke("roots")]);
   if (quoi === "albums") {
     poser("albums", "Albums", await invoke("albums", { artist: null, mbid: null }));

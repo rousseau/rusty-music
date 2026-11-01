@@ -1,7 +1,6 @@
 import "./ecouter.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterFileCourante, duree, fileCompositionActive, fileCourante, horloge, invoke, pochette,
-  remonter, sommet, txt,
+  $, duree, ecoute, fileAttente, horloge, invoke, navigation, pochette, remonter, txt,
 } from "./socle.js";
 import {
   chargerPopularites, dessiner, jaugePop, popParPiste,
@@ -36,7 +35,6 @@ import { lecture, transport } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- recherche */
 
-let modeCourant = "ecoute";
 let minuteur;
 // Entrée dans la barre de recherche, en mode Explorer : le premier morceau
 // filtré devient une borne du chemin.
@@ -46,7 +44,7 @@ let minuteur;
 // second rôle plutôt qu'un second champ garde le rail lisible, et le geste est
 // d'une touche : on cherche, on valide, la borne se pose.
 $("q").addEventListener("keydown", async (e) => {
-  if (e.key !== "Enter" || modeCourant !== "explorer") return;
+  if (e.key !== "Enter" || navigation.mode !== "explorer") return;
   // Anneau : la barre choisit un album, pas une borne de chemin — le
   // premier résultat de la recherche en cours devient l'album focal.
   if (modeAnneau()) {
@@ -78,14 +76,14 @@ $("q").addEventListener("input", (e) => {
   minuteur = setTimeout(async () => {
     // Anneau : la barre cherche des albums, pas des morceaux — l'identité
     // (le hachage) est calculée une fois côté moteur, jamais ici.
-    if (modeCourant === "explorer" && modeAnneau()) {
+    if (navigation.mode === "explorer" && modeAnneau()) {
       await chercherAlbums(q);
       return;
     }
     // Sur la carte, chercher ne remplace pas la vue : les morceaux qui ne
     // correspondent pas s'estompent et restent en fond. `ui-spec.md` le
     // tranche ainsi — le contexte de la bibliothèque ne doit pas disparaître.
-    if (modeCourant === "explorer") {
+    if (navigation.mode === "explorer") {
       carte.filtre = q.toLowerCase();
       const n = carte.points.filter(retenu).length;
       $("fil-compte").textContent = q
@@ -96,7 +94,7 @@ $("q").addEventListener("input", (e) => {
     }
     if (!q) return charger();
     const r = await invoke("search", { query: q, limit: 200 });
-    poser("recherche", `« ${q} »`, r, sommet);
+    poser("recherche", `« ${q} »`, r, ecoute.sommet);
   }, 180);
 });
 
@@ -140,9 +138,9 @@ function refletRepetition() {
 /// ce qui est déjà confié à la sortie. Les métadonnées déjà chargées
 /// (titre, popularité…) suivent chaque piste par son chemin.
 function resynchroniserFile(chemins) {
-  const parChemin = new Map(fileCourante.map((t) => [t.path, t]));
+  const parChemin = new Map(fileAttente.pistes.map((t) => [t.path, t]));
   const reordonnee = chemins.map((c) => parChemin.get(c)).filter(Boolean);
-  if (reordonnee.length === chemins.length) affecterFileCourante(reordonnee);
+  if (reordonnee.length === chemins.length) fileAttente.pistes = reordonnee;
   dessinerFile();
 }
 
@@ -195,8 +193,8 @@ function texteDureeFile(pistes, rang, positionMs, repetition) {
 /// calculé tant que le panneau est fermé.
 function majDureeFile() {
   if ($("file").hidden) return;
-  const rang = fileCourante.findIndex((t) => t.path === lecture.courant);
-  const texte = texteDureeFile(fileCourante, rang, lecture.positionMs, etatRepetition);
+  const rang = fileAttente.pistes.findIndex((t) => t.path === lecture.courant);
+  const texte = texteDureeFile(fileAttente.pistes, rang, lecture.positionMs, etatRepetition);
   const el = $("file-duree");
   if (el.textContent !== texte) el.textContent = texte;
 }
@@ -205,23 +203,23 @@ function dessinerFile() {
   // La composition d'une playlist ✦ tient la main sur le panneau : elle y
   // fait défiler ses pistes elle-même (`revelerFile`), un rendu ordinaire
   // par-dessus effacerait l'animation.
-  if (fileCompositionActive) return;
+  if (fileAttente.compositionActive) return;
   // Un glissement en cours tient la ligne saisie : la remplacer sous la main
   // (un morceau qui avance, une pochette qui arrive) casserait le geste.
   if (glissementEnCours) return;
   const hote = $("file-liste");
-  $("file-compte").textContent = `${fileCourante.length} morceaux`;
+  $("file-compte").textContent = `${fileAttente.pistes.length} morceaux`;
   majDureeFile();
 
-  if (fileCourante.length === 0) {
+  if (fileAttente.pistes.length === 0) {
     hote.innerHTML = '<p class="file__vide">Rien en file. Choisissez un morceau.</p>';
     return;
   }
 
-  const rangCourant = fileCourante.findIndex((t) => t.path === lecture.courant);
+  const rangCourant = fileAttente.pistes.findIndex((t) => t.path === lecture.courant);
   hote.replaceChildren();
 
-  fileCourante.forEach((t, i) => {
+  fileAttente.pistes.forEach((t, i) => {
     const el = document.createElement("div");
     el.className = "file__ligne";
     if (i === rangCourant) el.classList.add("file__ligne--joue");
@@ -279,10 +277,10 @@ function dessinerFile() {
         if (rangGlisse === null || rangGlisse === i) return;
         // Par identité plutôt qu'un calcul de rang : sans ça, un décalage
         // suivant que la source est au-dessus ou en dessous de la cible est
-        // facile à rater. `fileCourante` ne bouge pas pendant un glissement
+        // facile à rater. `fileAttente.pistes` ne bouge pas pendant un glissement
         // (`glissementEnCours` ci-dessus), `t`/`piste` restent valides.
-        const piste = fileCourante[rangGlisse];
-        const sansGlissee = fileCourante.filter((x) => x !== piste);
+        const piste = fileAttente.pistes[rangGlisse];
+        const sansGlissee = fileAttente.pistes.filter((x) => x !== piste);
         let a = sansGlissee.indexOf(t);
         if (dessous) a += 1;
         resynchroniserFile(await invoke("deplacer_file", { de: rangGlisse, a }));
@@ -299,9 +297,9 @@ function dessinerFile() {
 
   // La popularité, en lot puis repaint — comme les pochettes de la grille.
   chargerPopularites(
-    fileCourante.map((t) => t.id),
+    fileAttente.pistes.map((t) => t.id),
     () => {
-      if (!$("file").hidden && !fileCompositionActive) dessinerFile();
+      if (!$("file").hidden && !fileAttente.compositionActive) dessinerFile();
     },
   );
 }
@@ -643,13 +641,6 @@ const btnHd = $("hd");
 let lectureHd = localStorage.getItem("lecture-hd") === "1";
 let hdSonde = null; // intervalle de suivi d'une régénération en cours
 
-// Le fond de plan de la carte MapLibre — eau, terre, voirie, bâti, toponymes.
-// Chaque thème est un `style-<id>.json` déjà écrit par `engendrer_tuiles` (côté
-// Rust, `rusty_music_carto::Palette`) ; basculer ne régénère aucune tuile.
-// `osm-clair` = le `style.json` sans suffixe. L'overlay de familles (nuage,
-// pastilles, territoires) ne dépend pas de ce choix. Déclaré ici, avec les
-// autres préférences en `localStorage`, parce qu'`initialiserGL` le lit.
-let carteTheme = localStorage.getItem("carte-theme") || "osm-clair";
 
 if (lectureHd) invoke("set_lecture_hd", { actif: true }).catch(() => {});
 
@@ -706,7 +697,7 @@ function suivreHd(t) {
       clearInterval(hdSonde);
       hdSonde = null;
       // lecture.courant peut avoir changé entre-temps.
-      const cour = fileCourante.find((x) => x.path === lecture.courant);
+      const cour = fileAttente.pistes.find((x) => x.path === lecture.courant);
       majHd(cour);
       spectres.clear(); // le cache HD vient d'apparaître
       if (lectureHd) rafraichirSpectreTransport();
@@ -715,7 +706,7 @@ function suivreHd(t) {
 }
 
 btnHd.addEventListener("click", async () => {
-  const t = fileCourante.find((x) => x.path === lecture.courant);
+  const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
   if (!t || btnHd.disabled) return;
   if (btnHd.dataset.dispo === "1") {
     // Le cache existe : bascule lecture originale ↔ HD.
@@ -940,7 +931,7 @@ async function calculerSpectre(vise, largeur, cle) {
 
 /// À rappeler quand le son joué change sans changer de morceau (E ou HD).
 function rafraichirSpectreTransport() {
-  const t = fileCourante.find((x) => x.path === lecture.courant);
+  const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
   chargerSpectreTransport(t);
 }
 
@@ -1033,13 +1024,13 @@ async function battement() {
   if (
     e.current &&
     e.current !== courantResynchronise &&
-    !fileCourante.some((x) => x.path === e.current)
+    !fileAttente.pistes.some((x) => x.path === e.current)
   ) {
     courantResynchronise = e.current;
     try {
       const pistes = await invoke("file_courante");
       if (pistes.length) {
-        affecterFileCourante(pistes);
+        fileAttente.pistes = pistes;
         dessinerFile();
       }
     } catch (err) {
@@ -1061,7 +1052,7 @@ async function battement() {
     transport.apercu = false;
     document.querySelector(".transport").classList.remove("transport--apercu");
     lecture.courant = e.current;
-    const t = fileCourante.find((x) => x.path === lecture.courant);
+    const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
     $("np-titre").textContent = t ? txt(t.title, "(sans titre)") : "Rien en lecture";
     // Sert aux clics ci-dessous (§ « le transport navigue ») — même motif
     // que les `dataset.*` posés par `inspecter()`.
@@ -1112,14 +1103,14 @@ async function battement() {
     // Sans ça, le halo « en écoute » de la carte reste figé sur le premier
     // morceau : rien d'autre ne redessine la carte au fil d'une playlist qui
     // avance toute seule, hors interaction avec elle.
-    if (modeCourant === "explorer") dessinerCarte();
+    if (navigation.mode === "explorer") dessinerCarte();
   }
 
   if (Date.now() >= transport.ignorerEtatJusqua) {
     poserLecture(!(e.paused || e.finished));
   }
 
-  const t = fileCourante.find((x) => x.path === lecture.courant);
+  const t = fileAttente.pistes.find((x) => x.path === lecture.courant);
   const total = t?.duration_ms ?? 0;
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(total)}`;
 
@@ -1127,7 +1118,7 @@ async function battement() {
   peindreTransport(frac);
   // Les spectrogrammes suivent aussi la lecture ordinaire : tant que les
   // stems ne jouent pas, ils montrent où en est le morceau d'origine.
-  if (modeCourant === "editer") poserTete(frac);
+  if (navigation.mode === "editer") poserTete(frac);
 
   // Frise et anneau : l'album focal partagé suit le morceau joué. Appelé à
   // chaque battement, hors du bloc de changement de morceau ci-dessus (qui met
@@ -1141,17 +1132,9 @@ async function battement() {
   if (e.finished || e.paused) sonder(false);
 }
 
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterCarteTheme(v) {
-  return (carteTheme = v);
-}
-function affecterModeCourant(v) {
-  return (modeCourant = v);
-}
 
 export {
-  affecterCarteTheme, affecterModeCourant, basculerFile, battement, carteTheme,
-  chargerSpectreTransport, demarrerLecture, dessinerFile, dureeFile, estAffiche,
-  majApercuTransport, modeCourant, peindreTransport, poserImage, poserLecture, sonder,
+  basculerFile, battement, chargerSpectreTransport, demarrerLecture, dessinerFile, dureeFile,
+  estAffiche, majApercuTransport, peindreTransport, poserImage, poserLecture, sonder,
   teteCourante,
 };

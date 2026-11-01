@@ -1,6 +1,6 @@
 import "./vues.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterFileCompositionActive, duree, fileCompositionActive, invoke, signalerErreur, txt,
+  $, duree, ecoute, fileAttente, invoke, signalerErreur, txt,
 } from "./socle.js";
 import {
   ALBUM_HAUT, composerAlchimie, dessinerGrille, grille,
@@ -26,22 +26,21 @@ import {
 
 /* ------------------------------------------------ Lama : l'interprète (Explorer) */
 
-/// Le dernier plan interprété par Ollama, affiché dans la carte « Ollama a
-/// compris » pour correction — `null` tant qu'aucune interprétation n'a réussi.
-let planTexte = null;
-
 /// Ce que le panneau Lama retient de la dernière demande : de quoi redessiner
 /// le mini-nuage, colorer la route par partie sur les autres affichages, et
 /// relier chaque morceau à la partie qui l'a produit.
 const lama = {
   prompt: "",
   resultat: null, // le `CompositionTexte` rendu par `path_texte`
-  fileComposee: null, // le tableau de pistes tel que posé dans `fileCourante`
+  fileComposee: null, // le tableau de pistes tel que posé dans `fileAttente.pistes`
   partieDeId: new Map(), // id de morceau → rang de sa partie
   survol: null, // rang de la partie survolée (barre, liste ou route)
   routeEcran: [], // la route dans le mini-nuage, pour le survol et le clic
   base: null, // canevas hors écran : tous les morceaux, estompés
   cleBase: "", // ce qui invalide `base` (taille, nombre de points, thème)
+  // Le dernier plan interprété par Ollama, affiché dans la carte « Ollama a
+  // compris » pour correction — `null` tant qu'aucune interprétation n'a réussi.
+  planTexte: null,
 };
 
 /// Des exemples de demandes, chacun montrant une capacité — tous éprouvés sur
@@ -136,7 +135,7 @@ async function interpreterIntention() {
   );
   let interprete = false;
   try {
-    planTexte = await invoke("path_texte_interpreter", {
+    lama.planTexte = await invoke("path_texte_interpreter", {
       prompt,
       nDefaut: longueurChemin(),
       modele: modeleOllama,
@@ -146,7 +145,7 @@ async function interpreterIntention() {
       // veut une entrée différente à chaque essai plutôt qu'un pivot figé.
       seed: Math.floor(Math.random() * 2 ** 31),
     });
-    montrerPlanTexte(planTexte);
+    montrerPlanTexte(lama.planTexte);
     interprete = true;
   } catch (e) {
     // Le message vient du moteur (`ollama::interpreter`/`error.rs`) — il
@@ -304,7 +303,7 @@ function montrerPlanTexte(plan) {
     // interprétation, seulement d'une nouvelle empreinte CLAP-texte, que
     // `composerPlanTexte` calcule de toute façon à la composition.
     champ.addEventListener("change", () => {
-      planTexte.etapes[i] = champ.value;
+      lama.planTexte.etapes[i] = champ.value;
     });
     li.appendChild(champ);
     liste.appendChild(li);
@@ -500,32 +499,32 @@ function montrerFiltresPlan(plan) {
 }
 
 $("plan-texte-depart-effacer").addEventListener("click", () => {
-  if (!planTexte) return;
-  planTexte.depart = null;
-  montrerPlanTexte(planTexte);
+  if (!lama.planTexte) return;
+  lama.planTexte.depart = null;
+  montrerPlanTexte(lama.planTexte);
 });
 
 $("plan-texte-arrivee-effacer").addEventListener("click", () => {
-  if (!planTexte) return;
+  if (!lama.planTexte) return;
   // Revient à une simple dérive, sans arrivée visée — `path_texte` ne fait
   // alors plus le raccordement exact (`Graphe::sonique`) en fin de marche.
-  planTexte.arrivee = null;
-  montrerPlanTexte(planTexte);
+  lama.planTexte.arrivee = null;
+  montrerPlanTexte(lama.planTexte);
 });
 
 $("plan-texte-n").addEventListener("change", () => {
-  if (!planTexte) return;
+  if (!lama.planTexte) return;
   const n = Number.parseInt($("plan-texte-n").value, 10);
-  planTexte.n = Number.isFinite(n) ? Math.min(200, Math.max(1, n)) : planTexte.n;
+  lama.planTexte.n = Number.isFinite(n) ? Math.min(200, Math.max(1, n)) : lama.planTexte.n;
 });
 
 $("plan-texte-duree").addEventListener("change", () => {
-  if (!planTexte) return;
+  if (!lama.planTexte) return;
   const d = Number.parseInt($("plan-texte-duree").value, 10);
   // Vide ou invalide : plus de durée, on revient au nombre de morceaux.
-  planTexte.duree_minutes = Number.isFinite(d) && d >= 1 ? Math.min(1440, d) : null;
-  $("plan-texte-duree").value = planTexte.duree_minutes ?? "";
-  $("plan-texte-n").disabled = !!planTexte.duree_minutes;
+  lama.planTexte.duree_minutes = Number.isFinite(d) && d >= 1 ? Math.min(1440, d) : null;
+  $("plan-texte-duree").value = lama.planTexte.duree_minutes ?? "";
+  $("plan-texte-n").disabled = !!lama.planTexte.duree_minutes;
 });
 
 /* ---- ce que Rusty Music a cherché, et ce qui en sort ---- */
@@ -611,7 +610,7 @@ function montrerComposition(r) {
   const total = r.pistes.length;
   $("lama-resultat-resume").textContent =
     `${total} morceaux · ${dureeMin(r.duree_ms)}` +
-    (planTexte?.duree_minutes ? ` (visé : ${planTexte.duree_minutes} min)` : "") +
+    (lama.planTexte?.duree_minutes ? ` (visé : ${lama.planTexte.duree_minutes} min)` : "") +
     (multi ? ` · ${r.parties.length} parties` : "");
   const res = $("lama-resultat-corps");
   res.replaceChildren();
@@ -890,18 +889,19 @@ function cibleDuPlan(plan) {
 /// partir de là, sans geste de plus à faire. Le bouton « Recomposer » reste
 /// disponible pour relancer après une modification du plan.
 function composerPlanTexte() {
-  if (!planTexte || (planTexte.etapes.length === 0 && !(planTexte.parties || []).length)) return;
+  const plan = lama.planTexte;
+  if (!plan || (plan.etapes.length === 0 && !(plan.parties || []).length)) return;
   $("lama-cherche").hidden = true;
   $("lama-resultat").hidden = true;
   composerAlchimie({
     bouton: $("plan-texte-composer"),
     // La demande faite à Lama : elle nomme la playlist et se garde avec elle.
     origine: lama.prompt || null,
-    cible: cibleDuPlan(planTexte),
+    cible: cibleDuPlan(lama.planTexte),
     chemin: async () => {
       try {
         const r = await invoke("path_texte", {
-          plan: planTexte,
+          plan: lama.planTexte,
           seed: Math.floor(Math.random() * 2 ** 31),
           bruit: bruitChemin,
         });
@@ -922,7 +922,7 @@ $("plan-texte-composer").addEventListener("click", composerPlanTexte);
 /// pistes attendues, la phase en cours au-dessus. `revelerFile` viendra
 /// ensuite y poser les vraies pistes une à une.
 function demarrerCompositionFile(cible) {
-  affecterFileCompositionActive(true);
+  fileAttente.compositionActive = true;
   $("file-compo").hidden = false;
   $("file-compo-phase").textContent = "Préparation du graphe des voisins…";
   majBarreCompo(0, 0);
@@ -939,7 +939,7 @@ function phaseCompositionFile(texte) {
 }
 
 function finirCompositionFile() {
-  affecterFileCompositionActive(false);
+  fileAttente.compositionActive = false;
   $("file-compo").hidden = true;
 }
 
@@ -1038,18 +1038,17 @@ async function revelerFile(pistes, { graine = true } = {}) {
 // répondait pas. On ne redessine qu'une fois par trame, et seulement quand la
 // bande de rangées visibles a réellement changé (un cran = `ALBUM_HAUT`).
 let grilleRedessinArme = false;
-let grilleDernierRang = -1;
 function dessinerGrilleAuDefilement() {
   if (grilleRedessinArme) return;
   grilleRedessinArme = true;
   requestAnimationFrame(() => {
     grilleRedessinArme = false;
     const rang = Math.floor(grille.scrollTop / ALBUM_HAUT);
-    if (rang === grilleDernierRang) {
+    if (rang === ecoute.grilleDernierRang) {
       majIndexActif();
       return;
     }
-    grilleDernierRang = rang;
+    ecoute.grilleDernierRang = rang;
     dessinerGrille();
   });
 }
@@ -1057,22 +1056,14 @@ function dessinerGrilleAuDefilement() {
 grille.addEventListener("scroll", dessinerGrilleAuDefilement, { passive: true });
 window.addEventListener("resize", () => {
   if (!grille.hidden) {
-    grilleDernierRang = -1;
+    ecoute.grilleDernierRang = -1;
     dessinerGrille();
   }
   positionnerPlayhead();
 });
 
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterGrilleDernierRang(v) {
-  return (grilleDernierRang = v);
-}
-function affecterPlanTexte(v) {
-  return (planTexte = v);
-}
 
 export {
-  affecterGrilleDernierRang, affecterPlanTexte, demarrerCompositionFile, dessinerMiniNuage,
-  finirCompositionFile, grilleDernierRang, interpreterIntention, lama, montrerComposition,
-  montrerPlanTexte, phaseCompositionFile, planTexte, revelerFile, sonderGrapheProgres,
+  demarrerCompositionFile, dessinerMiniNuage, finirCompositionFile, interpreterIntention, lama,
+  montrerComposition, montrerPlanTexte, phaseCompositionFile, revelerFile, sonderGrapheProgres,
 };

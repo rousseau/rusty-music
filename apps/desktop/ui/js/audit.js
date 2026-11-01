@@ -1,8 +1,8 @@
 import {
-  $, affecterFileCourante, fileCourante, invoke,
+  $, fileAttente, invoke,
 } from "./socle.js";
 import {
-  affecterPlanTexte, dessinerMiniNuage, montrerComposition, montrerPlanTexte, planTexte,
+  dessinerMiniNuage, lama, montrerComposition, montrerPlanTexte,
 } from "./lama.js";
 import {
   selectionner,
@@ -230,7 +230,7 @@ function fabriquerLamaAudit() {
   });
   const pistes = pts.map(piste);
   const duree = (a, b) => pistes.slice(a, b).reduce((t, x) => t + x.duration_ms, 0);
-  affecterPlanTexte({
+  lama.planTexte = {
     depart: null, arrivee: null, arrivee_demandee: null, etapes: ["rock music", "hip hop music"], n: 12,
     duree_minutes: null, plafond_par_artiste: null,
     filtres: { genres: [], exclure_genres: ["rock"], exclure_artistes: ["Prince"], annee_min: 1970, annee_max: 1979, bpm_min: null, bpm_max: null, energie: "calme", popularite: null },
@@ -240,7 +240,7 @@ function fabriquerLamaAudit() {
       { description: "hip hop music", genres: ["hip hop"], energie: null, duree_minutes: 20, n: null },
     ],
     brut: "{}",
-  });
+  };
   const ids = pts.map((p) => p.id);
   const compo = {
     pistes, relaches: [], duree_ms: duree(0, pistes.length),
@@ -251,9 +251,9 @@ function fabriquerLamaAudit() {
   };
   $("lama-accueil").hidden = true;
   $("intention-texte").value = "Rock, pendant 12 minutes, puis hip hop pendant 20 minutes";
-  montrerPlanTexte(planTexte);
+  montrerPlanTexte(lama.planTexte);
   montrerComposition(compo);
-  affecterFileCourante(pistes);
+  fileAttente.pistes = pistes;
 }
 
 async function auditerInterface() {
@@ -295,7 +295,9 @@ async function auditerInterface() {
         await attendre(350);
         for (const etat of ["base", "file ouverte", "morceau sélectionné"]) {
           if (etat === "file ouverte") {
-            if (ecran !== "explorer:lama+playlist") affecterFileCourante(fileCourante.length ? fileCourante : [piste]);
+            if (ecran !== "explorer:lama+playlist") {
+              fileAttente.pistes = fileAttente.pistes.length ? fileAttente.pistes : [piste];
+            }
             basculerFile(true);
           } else {
             basculerFile(false);

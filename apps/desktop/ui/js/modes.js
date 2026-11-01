@@ -1,6 +1,6 @@
 import "./fond-de-plan.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileCourante, invoke, remonter, vue, vueEnGrille,
+  $, ecoute, fileAttente, invoke, navigation, remonter, vue, vueEnGrille,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur,
@@ -11,9 +11,7 @@ import {
 import {
   dernierArtisteOuvert, majAutourArtiste, masquerAutourArtiste, pisteSelectionnee, poser,
 } from "./ecouter.js";
-import {
-  affecterModeCourant, modeCourant,
-} from "./lecteur.js";
+
 import {
   carte,
 } from "./carte.js";
@@ -21,8 +19,7 @@ import {
   majVisibiliteIntervalleAnnees, tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  chargerFamillesParAlbum, dessinerFamillesEcoute, famillesParAlbum, majBarreTri,
-  rafraichirGrille,
+  chargerFamillesParAlbum, dessinerFamillesEcoute, majBarreTri, rafraichirGrille,
 } from "./ecouter-familles.js";
 import {
   chargerCarte, majAffichageAnneau, majAffichageTemps, majRailExplorer, poserModeChemin,
@@ -31,8 +28,8 @@ import {
   arreterSuiviValise, entrerValise,
 } from "./valise.js";
 import {
-  chargerAPropos, chargerArtistesDecouvrir, chargerFamillesParArtiste, dessinerFamillesDecouvrir,
-  entrerDecouvrir, famillesParArtiste, rendreFilDecouvrir,
+  chargerAPropos, chargerArtistesDecouvrir, chargerFamillesParArtiste, decouverte,
+  dessinerFamillesDecouvrir, entrerDecouvrir, rendreFilDecouvrir,
 } from "./decouvrir.js";
 import {
   chargerDossierDonnees, chargerDumpDiscogs, chargerParametresCarte, chargerStatsBibliotheque,
@@ -57,13 +54,13 @@ async function basculerMode(mode) {
   const valise = mode === "valise";
   // Quitter Découvrir éteint les pastilles « nouveau » : ce qu'on vient de
   // voir n'est plus une nouveauté au prochain passage.
-  if (modeCourant === "decouvrir" && mode !== "decouvrir") {
+  if (navigation.mode === "decouvrir" && mode !== "decouvrir") {
     invoke("decouvrir_tout_vu").catch((e) => remonter(e, "découvrir"));
   }
   document.querySelectorAll(".mode").forEach((b) =>
     b.classList.toggle("mode--actif", b.dataset.mode === mode),
   );
-  affecterModeCourant(mode);
+  navigation.mode = mode;
   // Le mode courant, lisible par la feuille de style : le repère A–Z (propre aux
   // listes de l'Écoute) s'y masque par une règle CSS, que le code asynchrone qui
   // réaffiche `#index-alpha` (rendu de la grille, familles chargées…) ne peut
@@ -157,7 +154,7 @@ async function basculerMode(mode) {
     // Rattrape une file lancée depuis l'Écoute avant la première visite
     // d'Explorer : la carte n'avait alors pas encore ses points pour y
     // tracer quoi que ce soit.
-    tracerRouteSurCarte(fileCourante);
+    tracerRouteSurCarte(fileAttente.pistes);
     if (enLama) {
       $("fil-titre").textContent = "Lama";
       dessinerMiniNuage();
@@ -193,7 +190,7 @@ async function basculerMode(mode) {
         dessinerFamillesDecouvrir();
         rendreFilDecouvrir();
       };
-      if (famillesParArtiste) rendre();
+      if (decouverte.famillesParArtiste) rendre();
       else
         chargerFamillesParArtiste()
           .then(rendre)
@@ -212,7 +209,7 @@ async function basculerMode(mode) {
         dessinerFamillesEcoute();
         rafraichirGrille();
       };
-      if (famillesParAlbum) rendre();
+      if (ecoute.famillesParAlbum) rendre();
       else chargerFamillesParAlbum().then(rendre).catch((e) => remonter(e, "familles des albums"));
       // Revenir à l'Écoute sur la même grille d'artiste restaure son
       // bandeau — `poser` ci-dessus venait de le masquer sans rien savoir de

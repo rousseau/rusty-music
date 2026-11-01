@@ -1,6 +1,6 @@
 import "./carte.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, affecterFileCourante, duree, fileCourante, invoke, remonter, signalerErreur, txt,
+  $, duree, fileAttente, invoke, navigation, remonter, signalerErreur, txt,
 } from "./socle.js";
 import {
   lama,
@@ -9,7 +9,7 @@ import {
   selectionner,
 } from "./ecouter.js";
 import {
-  carteTheme, demarrerLecture, dessinerFile, modeCourant,
+  demarrerLecture, dessinerFile,
 } from "./lecteur.js";
 import {
   anneau, carte, chargerAnneau, cnv, CONTINUES, ctx, dansIntervalleAnnee, filtreAnnee,
@@ -45,11 +45,9 @@ import { lecture } from "./etat-lecture.js";
 
 /// Demi-étendue du domaine de la carte. **Doit valoir exactement celle de
 /// `crates/carto/src/projection.rs`**, sinon la surcouche se décale des tuiles.
-/// Ne sert que sur le monde fictif — voir `villeReelle`.
+/// Ne sert que sur le monde fictif — voir `carte.villeReelle`.
 const DEMI_ETENDUE = 1.08;
 
-let gl = null; // l'instance MapLibre, ou null tant que les tuiles manquent
-let glPret = false;
 
 /// Ce sur quoi le bouton « Vue d'ensemble » ramène la caméra MapLibre :
 /// `bounds` (l'emprise de la limite communale, `metadata["rusty:bounds"]` du
@@ -57,12 +55,6 @@ let glPret = false;
 /// dernier repli. Rempli par `initialiserGL`.
 let vueInitialeGL = null;
 
-/// `true` quand un plan de ville réel est actif (`positions_carte` a rendu
-/// quelque chose côté Rust) : `carte.points[i].x/y` valent alors des lon/lat
-/// réels — une adresse de rue, pas une position t-SNE — et
-/// `geoDepuisCarte`/`carteDepuisGeo` doivent être l'identité plutôt que la
-/// projection du monde fictif. Mis à jour par `chargerCarte`.
-let villeReelle = false;
 
 /// `true` quand ce sont les adresses réelles du plan de ville qui sont à
 /// l'écran — donc le repère dans lequel `versEcran`/`versCarte` travaillent.
@@ -71,7 +63,7 @@ let villeReelle = false;
 /// à l'écran (direct, dessiné, lasso) passent ce drapeau au moteur pour qu'il
 /// interpole dans le bon repère — sans lui, un trait tracé sur le nuage était
 /// testé contre des positions parisiennes et n'attrapait rien.
-const carteReelle = () => carte.affichage === "carte" && villeReelle;
+const carteReelle = () => carte.affichage === "carte" && carte.villeReelle;
 
 /// Le zoom maximal accordé à la caméra MapLibre — repris de `initialiserGL`
 /// pour que `zoomer()` (molette, pincement) ne plafonne pas avant le zoom
@@ -87,7 +79,7 @@ let zoomMax = 14;
 /// nuage laissait MapLibre projeter les points et le mode devenait
 /// inatteignable.
 function carteGL() {
-  return carte.affichage === "carte" && gl ? gl : null;
+  return carte.affichage === "carte" && carte.gl ? carte.gl : null;
 }
 
 /// `true` sur le streamgraph temporel — voir l'objet `temps` et
@@ -110,14 +102,14 @@ function journalCarte(message, niveau = "log") {
 function geoDepuisCarte(x, y) {
   // Plan de ville réel : `x`/`y` sont déjà des lon/lat (une adresse de rue),
   // pas un point du carré `[-1.08, 1.08]²` du monde fictif — rien à projeter.
-  if (villeReelle) return [x, y];
+  if (carte.villeReelle) return [x, y];
   const u = (x / DEMI_ETENDUE + 1) / 2;
   const v = (1 - y / DEMI_ETENDUE) / 2;
   return [(u * 2 - 1) * 180, (Math.atan(Math.sinh(Math.PI * (1 - 2 * v))) * 180) / Math.PI];
 }
 
 function carteDepuisGeo(lng, lat) {
-  if (villeReelle) return [lng, lat];
+  if (carte.villeReelle) return [lng, lat];
   const phi = (lat * Math.PI) / 180;
   const u = (lng / 180 + 1) / 2;
   const v = (1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2;
@@ -129,12 +121,12 @@ function carteDepuisGeo(lng, lat) {
 /// travaillent en mètres locaux côté moteur (`RepereLocal`) : le rayon de
 /// cueillette doit être dans la même unité, pas dans le repère t-SNE.
 function metresParPixels(px) {
-  if (!gl) return px;
+  if (!carte.gl) return px;
   const r = cnv.getBoundingClientRect();
   const cx = r.width / 2;
   const cy = r.height / 2;
-  const a = gl.unproject([cx, cy]);
-  const b = gl.unproject([cx + px, cy]);
+  const a = carte.gl.unproject([cx, cy]);
+  const b = carte.gl.unproject([cx + px, cy]);
   const latM = (((a.lat + b.lat) / 2) * Math.PI) / 180;
   const dx = (((b.lng - a.lng) * Math.PI) / 180) * Math.cos(latM) * 6371000;
   const dy = (((b.lat - a.lat) * Math.PI) / 180) * 6371000;
@@ -154,7 +146,7 @@ function bornesGeoPoints() {
     if (lat < s) s = lat;
     if (lat > n) n = lat;
   };
-  if (villeReelle) {
+  if (carte.villeReelle) {
     // Sur le plan de ville, seules les adresses réelles comptent. `p.x/p.y`
     // restent des coordonnées t-SNE (~[-1, 1]) : les passer pour des lon/lat
     // renverrait la caméra au large de l'Afrique — c'était la cause de
@@ -185,10 +177,10 @@ if (window.maplibregl) {
 }
 
 async function initialiserGL() {
-  if (gl || !window.maplibregl) return;
+  if (carte.gl || !window.maplibregl) return;
   let style;
   try {
-    style = await invoke("style_carte", { theme: carteTheme });
+    style = await invoke("style_carte", { theme: carte.theme });
   } catch (e) {
     // Pas encore de tuiles : le nuage dessiné à la main prend le relais.
     console.warn("[carte] tuiles absentes :", e);
@@ -212,7 +204,7 @@ async function initialiserGL() {
         ? [[bb[0], bb[1]], [bb[2], bb[3]]]
         : null,
   };
-  gl = new maplibregl.Map({
+  carte.gl = new maplibregl.Map({
     container: "carte-gl",
     style,
     center: style.center || [0, 0],
@@ -231,24 +223,24 @@ async function initialiserGL() {
     fadeDuration: 120,
     localIdeographFontFamily: "'Hiragino Sans', 'Noto Sans CJK JP', sans-serif",
   });
-  gl.on("load", () => {
-    glPret = true;
+  carte.gl.on("load", () => {
+    carte.glPret = true;
     journalCarte(
-      "tuiles chargées : " + gl.getStyle().layers.length + " couches, zoom " +
-      gl.getZoom().toFixed(2),
+      "tuiles chargées : " + carte.gl.getStyle().layers.length + " couches, zoom " +
+      carte.gl.getZoom().toFixed(2),
     );
     majCouleurGL();
     majFiltreGL();
     majAffichageGL();
-    poserVignetteCarte(gl.getStyle());
+    poserVignetteCarte(carte.gl.getStyle());
     dessinerCarte();
   });
-  gl.on("zoom", majVignetteZoom);
-  gl.on("render", () => {
+  carte.gl.on("zoom", majVignetteZoom);
+  carte.gl.on("render", () => {
     synchroniserVue();
     dessinerSurcouche();
   });
-  gl.on("error", (e) => {
+  carte.gl.on("error", (e) => {
     const m = e && e.error ? e.error.message || String(e.error) : "";
     if (/204|empty|Not Found/i.test(m)) return; // tuile absente : ordinaire
     journalCarte(m, "warn");
@@ -257,8 +249,8 @@ async function initialiserGL() {
 
 /// Combien d'unités de carte tient un pixel, à la vue courante.
 function uniteParPixel() {
-  const a = gl.unproject([0, 0]);
-  const b = gl.unproject([1, 0]);
+  const a = carte.gl.unproject([0, 0]);
+  const b = carte.gl.unproject([1, 0]);
   return Math.abs(carteDepuisGeo(b.lng, b.lat)[0] - carteDepuisGeo(a.lng, a.lat)[0]);
 }
 
@@ -294,7 +286,7 @@ function majAffichageGL() {
   if (blocFond) blocFond.hidden = !enCarte;
   majVisibiliteIntervalleAnnees();
   majSegmentsCouleur();
-  if (enCarte && !gl) {
+  if (enCarte && !carte.gl) {
     initialiserGL()
       .then(() => {
         majCouleurGL();
@@ -304,7 +296,7 @@ function majAffichageGL() {
       .catch((e) => journalCarte("tuiles indisponibles : " + e, "warn"));
     return;
   }
-  if (enCarte && gl) gl.resize();
+  if (enCarte && carte.gl) carte.gl.resize();
   const vignette = $("carte-vignette");
   if (vignette) vignette.style.display = enCarte ? "" : "none";
   dessinerCarte();
@@ -351,17 +343,17 @@ function poserVignetteCarte(style) {
 /// éteinte à z16 (échelle de la façade, où un voile gênerait la lecture).
 function majVignetteZoom() {
   const el = $("carte-vignette");
-  if (!el || el.dataset.actif !== "1" || !gl) return;
-  el.style.opacity = String(Math.max(0, Math.min(1, (16 - gl.getZoom()) / 3)));
+  if (!el || el.dataset.actif !== "1" || !carte.gl) return;
+  el.style.opacity = String(Math.max(0, Math.min(1, (16 - carte.gl.getZoom()) / 3)));
 }
 
 function majCouleurGL() {
-  if (!gl || !glPret) return;
+  if (!carte.gl || !carte.glPret) return;
   // Le plan de ville réel n'a pas de point de morceau (`style::couches`,
   // depuis que le bâtiment habité porte le morceau) — l'un des deux
   // existe selon le chemin, jamais les deux.
-  const pointMorceaux = gl.getLayer("morceaux-point");
-  const batimentsMorceaux = gl.getLayer("batiments-morceaux");
+  const pointMorceaux = carte.gl.getLayer("morceaux-point");
+  const batimentsMorceaux = carte.gl.getLayer("batiments-morceaux");
   if (!pointMorceaux && !batimentsMorceaux) return;
   const teintes = couleursFamillesCarte();
   let expr;
@@ -378,7 +370,7 @@ function majCouleurGL() {
     etapes.forEach((t, n) => i.push(v0 + ((v1 - v0) * n) / (etapes.length - 1), t));
     expr = i;
   }
-  if (pointMorceaux) gl.setPaintProperty("morceaux-point", "circle-color", expr);
+  if (pointMorceaux) carte.gl.setPaintProperty("morceaux-point", "circle-color", expr);
   // Le bâtiment habité porte les attributs de son occupant (`palier` = famille,
   // `annee`, `bpm`, `energie` — `tuiles::Anneau`) : il se colore par famille
   // comme par année, tempo ou énergie. Passe par le même constructeur que
@@ -389,8 +381,8 @@ function majCouleurGL() {
   // continue (année, tempo, énergie) ils mentiraient sur la couleur de la
   // ville — la couleur vient alors des bâtiments et de leurs points.
   for (const couche of ["territoires", "territoires-reels", "territoires-reels-contour"]) {
-    if (gl.getLayer(couche))
-      gl.setLayoutProperty(couche, "visibility", carte.couleur === "famille" ? "visible" : "none");
+    if (carte.gl.getLayer(couche))
+      carte.gl.setLayoutProperty(couche, "visibility", carte.couleur === "famille" ? "visible" : "none");
   }
 }
 
@@ -450,11 +442,11 @@ function clauseAnneeHorsIntervalle() {
 /// voir — `crates/carto/src/style.rs::habites_reels`) : la ville garde la
 /// coloration choisie (famille, année, tempo, énergie) à tous les zooms.
 function poserCouleurHabites() {
-  if (!gl || !glPret) return;
-  if (gl.getLayer("batiments-morceaux"))
-    gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux("palier"));
-  if (gl.getLayer("habites-point"))
-    gl.setPaintProperty("habites-point", "circle-color", couleurBatimentsMorceaux("famille"));
+  if (!carte.gl || !carte.glPret) return;
+  if (carte.gl.getLayer("batiments-morceaux"))
+    carte.gl.setPaintProperty("batiments-morceaux", "fill-color", couleurBatimentsMorceaux("palier"));
+  if (carte.gl.getLayer("habites-point"))
+    carte.gl.setPaintProperty("habites-point", "circle-color", couleurBatimentsMorceaux("famille"));
 }
 
 /// Le bâti habité coloré par famille : la teinte de l'occupant (champ `palier`).
@@ -518,7 +510,7 @@ function couleurBatimentsMorceaux(champFamille = "palier") {
 const filtreOriginal = new Map();
 function filtreBase(layer) {
   if (!filtreOriginal.has(layer)) {
-    filtreOriginal.set(layer, gl.getFilter(layer) ?? null);
+    filtreOriginal.set(layer, carte.gl.getFilter(layer) ?? null);
   }
   return filtreOriginal.get(layer);
 }
@@ -528,20 +520,23 @@ function filtreBase(layer) {
 /// familles disparaissent (territoires, points et étiquettes) ; leur bâti
 /// habité vire au gris.
 function majFiltreGL() {
-  if (!gl || !glPret) return;
+  if (!carte.gl || !carte.glPret) return;
 
   poserCouleurHabites();
 
   const hors = clauseAnneeHorsIntervalle();
   const dansIntervalle = hors && ["!", hors];
   for (const [layer, champ] of CIBLES_FILTRE_GL) {
-    if (!gl.getLayer(layer)) continue;
+    if (!carte.gl.getLayer(layer)) continue;
     const base = filtreBase(layer);
     const clauses = base ? [base] : [];
     if (carte.isolees.size > 0)
       clauses.push(["in", ["get", champ], ["literal", [...carte.isolees]]]);
     if (dansIntervalle && CIBLES_FILTRE_ANNEE_GL.includes(layer)) clauses.push(dansIntervalle);
-    gl.setFilter(layer, clauses.length === 0 ? null : clauses.length === 1 ? clauses[0] : ["all", ...clauses]);
+    carte.gl.setFilter(
+      layer,
+      clauses.length === 0 ? null : clauses.length === 1 ? clauses[0] : ["all", ...clauses],
+    );
   }
 }
 
@@ -550,7 +545,7 @@ function majFiltreGL() {
 /// délimiter.
 function majVisibiliteIntervalleAnnees() {
   const bloc = $("bloc-intervalle-annees");
-  if (bloc) bloc.hidden = !(modeCourant === "explorer" && filtreAnnee.min != null);
+  if (bloc) bloc.hidden = !(navigation.mode === "explorer" && filtreAnnee.min != null);
 }
 
 /// Bornes de l'intervalle : les mêmes que celles déjà calculées pour la
@@ -614,7 +609,7 @@ function versEcran(p, r) {
   if (g) {
     // Sur le plan de ville réel, l'adresse (si ce morceau en a une) prime
     // sur la position t-SNE — c'est elle que les tuiles montrent.
-    const [x, y] = (villeReelle && carte.positionsReelles.get(p.id)) || [p.x, p.y];
+    const [x, y] = (carte.villeReelle && carte.positionsReelles.get(p.id)) || [p.x, p.y];
     const q = g.project(geoDepuisCarte(x, y));
     return [q.x, q.y];
   }
@@ -692,15 +687,15 @@ const FAMILLES_CARTE = {
 /// Le jeu de familles pour la carte : celui du fond de plan actif, ou celui de
 /// la feuille de style (`osm-clair`, qui suit le thème de l'appli).
 function couleursFamillesCarte() {
-  return FAMILLES_CARTE[carteTheme]?.familles ?? couleursFamilles();
+  return FAMILLES_CARTE[carte.theme]?.familles ?? couleursFamilles();
 }
 /// Le gris « fourre-tout » (`#6E6656` par défaut) accordé au fond de plan.
 function autresCarte() {
-  return FAMILLES_CARTE[carteTheme]?.autres ?? "#6E6656";
+  return FAMILLES_CARTE[carte.theme]?.autres ?? "#6E6656";
 }
 /// Le gris du bâti (vacant, ou d'une famille non isolée) accordé au fond.
 function grisBatiCarte() {
-  return FAMILLES_CARTE[carteTheme]?.bati ?? GRIS_BATI;
+  return FAMILLES_CARTE[carte.theme]?.bati ?? GRIS_BATI;
 }
 
 /// Pastilles pré-dessinées, une par couleur.
@@ -1133,8 +1128,8 @@ function dessinerTemps(r, encre, accent) {
 
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) — le morceau en cours se ramène à son album par la
-  // même clé que `parCle` ci-dessus, `fileCourante` n'ayant que le nom.
-  const pisteEnLecture = fileCourante.find((x) => x.path === lecture.courant);
+  // même clé que `parCle` ci-dessus, `fileAttente.pistes` n'ayant que le nom.
+  const pisteEnLecture = fileAttente.pistes.find((x) => x.path === lecture.courant);
   const albumEnLecture =
     pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
   if (albumEnLecture) {
@@ -1475,7 +1470,7 @@ function dessinerAnneau(r, encre, accent) {
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) et que sur la frise (`dessinerTemps`) — même clé
   // `parCle` que ci-dessus pour ramener le morceau en cours à son album.
-  const pisteEnLecture = fileCourante.find((x) => x.path === lecture.courant);
+  const pisteEnLecture = fileAttente.pistes.find((x) => x.path === lecture.courant);
   const albumEnLecture =
     pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
   const posEnLecture = albumEnLecture && positions.get(albumEnLecture.id);
@@ -1679,7 +1674,8 @@ function surcoucheSur(r, encre, accent) {
     // Une playlist composée par le Lama garde ses parties : le trait et les
     // repères y prennent la couleur de leur partie (la même que dans le panneau),
     // pour retrouver sur la carte ce que le récit a expliqué.
-    const parties = lama.fileComposee && lama.fileComposee === fileCourante && lama.partieDeId.size > 1;
+    const parties =
+      lama.fileComposee && lama.fileComposee === fileAttente.pistes && lama.partieDeId.size > 1;
     const racine = getComputedStyle(document.documentElement);
     const couleurPartie = (id) =>
       parties && lama.partieDeId.has(id)
@@ -1778,7 +1774,7 @@ function pointSous(mx, my) {
   // par `survolerAnneau`/`anneau.puces`, pas par `carte.points`.
   if (modeTemps() || modeAnneau()) return null;
   const g = carteGL();
-  if (g && villeReelle && g.getLayer("batiments-morceaux")) {
+  if (g && carte.villeReelle && g.getLayer("batiments-morceaux")) {
     const feats = g.queryRenderedFeatures([mx, my], { layers: ["batiments-morceaux"] });
     const id = feats[0]?.properties?.morceau;
     if (id != null && id >= 0 && (carte.isolees.size === 0 || carte.isolees.has(feats[0].properties.palier))) {
@@ -2401,7 +2397,7 @@ function tracerRouteSurCarte(pistes, polyligne = null) {
   // l'affiche telle quelle, sans repasser par `trace_rues` (qui router-ait
   // entre les morceaux dans l'ordre de la playlist et pourrait boucler).
   // `{x, y}` = lon/lat, comme les segments de `trace_rues`.
-  if (villeReelle && polyligne && polyligne.length && carte.route) {
+  if (carte.villeReelle && polyligne && polyligne.length && carte.route) {
     carte.routeTrace =
       polyligne.length >= 2
         ? [
@@ -2410,17 +2406,17 @@ function tracerRouteSurCarte(pistes, polyligne = null) {
             carte.route[carte.route.length - 1],
           ]
         : carte.route; // polyligne dégénérée : la droite entre morceaux, mais pas d'habillage
-    if (modeCourant === "explorer") dessinerCarte();
+    if (navigation.mode === "explorer") dessinerCarte();
     return;
   }
 
-  if (modeCourant === "explorer") dessinerCarte();
+  if (navigation.mode === "explorer") dessinerCarte();
 
   // Sur le plan de ville réel, habiller ce trait avec les vraies rues entre
   // chaque paire consécutive — **le choix des morceaux ne change pas**,
   // seule la ligne dessinée. Asynchrone et non bloquant : le trait droit
   // reste affiché jusqu'à ce que les rues arrivent, puis le remplace.
-  if (villeReelle && carte.route && carte.route.length >= 2) {
+  if (carte.villeReelle && carte.route && carte.route.length >= 2) {
     const ids = carte.route.map((p) => p.id);
     const graine = traceRuesGraine;
     invoke("trace_rues", { ids })
@@ -2434,7 +2430,7 @@ function tracerRouteSurCarte(pistes, polyligne = null) {
           habille.push(carte.route[i + 1]);
         });
         carte.routeTrace = habille;
-        if (modeCourant === "explorer") dessinerCarte();
+        if (navigation.mode === "explorer") dessinerCarte();
       })
       .catch((e) => journalCarte("habillage du trait par les rues : " + e, "warn"));
   }
@@ -2449,7 +2445,7 @@ async function poserChemin(pistes, vide = "aucun chemin trouvé", polyligne = nu
   }
 
   tracerRouteSurCarte(pistes, polyligne);
-  affecterFileCourante(pistes);
+  fileAttente.pistes = pistes;
   // Sans ce redessin, le panneau « file » resté ouvert continue de montrer
   // l'ancienne liste : rien d'autre ne le rafraîchit ici tant que le premier
   // morceau ne change pas — exactement le cas quand on ajuste la pondération
@@ -2608,23 +2604,12 @@ $("familles-tout").addEventListener("click", () => {
   rejouerSelonFamilles();
 });
 
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterGl(v) {
-  return (gl = v);
-}
-function affecterGlPret(v) {
-  return (glPret = v);
-}
-function affecterVilleReelle(v) {
-  return (villeReelle = v);
-}
 
 export {
-  affecterGl, affecterGlPret, affecterVilleReelle, bornesGeoPoints, carteGL, carteReelle,
-  chargerFamilles, couleursFamilles, dessinerCarte, dessinerFamilles, gl, glPret,
-  initialiserFiltreAnnee, journalCarte, longueurChemin, majAffichageGL, majCouleurGL,
-  majEtiquetteIntervalleAnnees, majFiltreGL, majVisibiliteIntervalleAnnees, modeAnneau, modeTemps,
-  patienter, pointSous, poserChemin, poserVignetteCarte, rafraichirFiltreAnnee, rejouerChemin,
-  rendreFamilles, tracerChemin, tracerRouteSurCarte, versCarte, versEcran, villeReelle,
-  vueInitialeGL, zoomer,
+  bornesGeoPoints, carteGL, carteReelle, chargerFamilles, couleursFamilles, dessinerCarte,
+  dessinerFamilles, initialiserFiltreAnnee, journalCarte, longueurChemin, majAffichageGL,
+  majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majVisibiliteIntervalleAnnees,
+  modeAnneau, modeTemps, patienter, pointSous, poserChemin, poserVignetteCarte,
+  rafraichirFiltreAnnee, rejouerChemin, rendreFamilles, tracerChemin, tracerRouteSurCarte,
+  versCarte, versEcran, vueInitialeGL, zoomer,
 };

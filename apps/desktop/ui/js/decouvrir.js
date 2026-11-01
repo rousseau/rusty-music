@@ -1,6 +1,6 @@
 import "./valise.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, ouvrirLien, remonter, sommet,
+  $, ecoute, invoke, navigation, ouvrirLien, remonter,
 } from "./socle.js";
 import {
   initiales, teinteNom,
@@ -8,9 +8,7 @@ import {
 import {
   majAutourArtiste, poser,
 } from "./ecouter.js";
-import {
-  modeCourant,
-} from "./lecteur.js";
+
 import {
   carte,
 } from "./carte.js";
@@ -147,8 +145,8 @@ async function afficherArtisteDecouvrir(mbid, nom) {
         bouton.addEventListener("click", async (e) => {
           e.stopPropagation();
           const albums = await invoke("albums", { artist: local.name, mbid: local.mbid });
-          if (modeCourant !== "ecoute") await basculerMode("ecoute");
-          poser("albums", local.name, albums, sommet);
+          if (navigation.mode !== "ecoute") await basculerMode("ecoute");
+          poser("albums", local.name, albums, ecoute.sommet);
           majAutourArtiste(local.name, local.mbid);
         });
         item.action = bouton;
@@ -367,15 +365,15 @@ let filDecouvrir = null;
 /// fil ne bouge pas, seul le filtre change. Ensemble vide, ou familles pas
 /// encore chargées : tout passe.
 function sortiePasseFamille(s) {
-  if (filtreFamillesDecouvrir.size === 0 || !famillesParArtiste) return true;
-  return filtreFamillesDecouvrir.has(famillesParArtiste.get(s.artiste_mbid));
+  if (filtreFamillesDecouvrir.size === 0 || !decouverte.famillesParArtiste) return true;
+  return filtreFamillesDecouvrir.has(decouverte.famillesParArtiste.get(s.artiste_mbid));
 }
 
 /// Un voisin passe si l'une de ses ancres (`src_mbids`) est dans une famille
 /// cochée — il a pu être proposé par plusieurs artistes de familles différentes.
 function voisinPasseFamille(v) {
-  if (filtreFamillesDecouvrir.size === 0 || !famillesParArtiste) return true;
-  return (v.src_mbids ?? []).some((m) => filtreFamillesDecouvrir.has(famillesParArtiste.get(m)));
+  if (filtreFamillesDecouvrir.size === 0 || !decouverte.famillesParArtiste) return true;
+  return (v.src_mbids ?? []).some((m) => filtreFamillesDecouvrir.has(decouverte.famillesParArtiste.get(m)));
 }
 
 /// Redessine les trois onglets. Le filtre par famille n'ôte rien : les cartes
@@ -418,15 +416,18 @@ function rendreFilDecouvrir() {
  */
 
 const filtreFamillesDecouvrir = new Set();
-let famillesParArtiste = null; // Map mb_album_artist_id → cluster dominant
+// Ce que Découvrir partage avec les autres modes.
+const decouverte = {
+  famillesParArtiste: null, // Map mb_album_artist_id → cluster dominant
+};
 
 async function chargerFamillesParArtiste() {
   try {
     const paires = await invoke("artist_families");
-    famillesParArtiste = new Map(paires);
+    decouverte.famillesParArtiste = new Map(paires);
   } catch (e) {
     remonter(e, "familles des artistes");
-    famillesParArtiste = new Map();
+    decouverte.famillesParArtiste = new Map();
   }
 }
 
@@ -449,9 +450,9 @@ async function dessinerFamillesDecouvrir() {
 /// Découvrir, familles des artistes chargées, et carte déjà calculée.
 function majBlocFamillesDecouvrir() {
   const utile =
-    modeCourant === "decouvrir" &&
-    famillesParArtiste &&
-    famillesParArtiste.size > 0 &&
+    navigation.mode === "decouvrir" &&
+    decouverte.famillesParArtiste &&
+    decouverte.famillesParArtiste.size > 0 &&
     (carte.familles?.length ?? 0) > 0;
   $("bloc-familles-decouvrir").hidden = !utile;
 }
@@ -747,14 +748,9 @@ $("decouvrir-vu-tout").addEventListener("click", async () => {
   await chargerFilDecouvrir().catch((e) => remonter(e, "découvrir"));
 });
 
-// Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterFamillesParArtiste(v) {
-  return (famillesParArtiste = v);
-}
 
 export {
-  affecterFamillesParArtiste, artistesDecouvrables, boutonLien, chargerAPropos,
-  chargerArtistesDecouvrir, chargerFamillesParArtiste, contactMb, depuisTexte,
-  dessinerFamillesDecouvrir, entrerDecouvrir, famillesParArtiste, filtreFamillesDecouvrir,
-  rendreFilDecouvrir,
+  artistesDecouvrables, boutonLien, chargerAPropos, chargerArtistesDecouvrir,
+  chargerFamillesParArtiste, contactMb, decouverte, depuisTexte, dessinerFamillesDecouvrir,
+  entrerDecouvrir, filtreFamillesDecouvrir, rendreFilDecouvrir,
 };

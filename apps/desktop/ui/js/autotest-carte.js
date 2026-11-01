@@ -1,16 +1,14 @@
 import "./itineraires.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke,
+  $, invoke, navigation,
 } from "./socle.js";
-import {
-  modeCourant,
-} from "./lecteur.js";
+
 import {
   carte, cnv,
 } from "./carte.js";
 import {
-  bornesGeoPoints, carteGL, carteReelle, gl, glPret, journalCarte, majAffichageGL, pointSous,
-  versCarte, versEcran, villeReelle, vueInitialeGL, zoomer,
+  bornesGeoPoints, carteGL, carteReelle, journalCarte, majAffichageGL, pointSous, versCarte,
+  versEcran, vueInitialeGL, zoomer,
 } from "./maplibre.js";
 import {
   basculerMode,
@@ -42,7 +40,7 @@ async function autotestCarte() {
 
   try {
     etape("bascule en mode explorer");
-    if (modeCourant !== "explorer") await basculerMode("explorer");
+    if (navigation.mode !== "explorer") await basculerMode("explorer");
     await attendre(500);
     verifier("morceaux chargés", carte.points.length > 0, carte.points.length);
 
@@ -73,22 +71,24 @@ async function autotestCarte() {
     carte.affichage = "carte";
     const t0 = performance.now();
     majAffichageGL();
-    for (let i = 0; i < 240 && !glPret; i++) await attendre(250);
+    for (let i = 0; i < 240 && !carte.glPret; i++) await attendre(250);
     const ms = performance.now() - t0;
     verifier(
       "carte : tuiles chargées",
-      glPret,
-      glPret ? `${gl.getStyle().layers.length} couches en ${(ms / 1000).toFixed(1)} s` : "délai dépassé",
+      carte.glPret,
+      carte.glPret
+        ? `${carte.gl.getStyle().layers.length} couches en ${(ms / 1000).toFixed(1)} s`
+        : "délai dépassé",
     );
     // Une carte qui met plus de trois secondes à paraître passe pour cassée.
-    verifier("carte : délai d'apparition", glPret && ms < 3000, `${(ms / 1000).toFixed(1)} s`);
+    verifier("carte : délai d'apparition", carte.glPret && ms < 3000, `${(ms / 1000).toFixed(1)} s`);
 
-    if (glPret) {
+    if (carte.glPret) {
       const [gx, gy] = versEcran(p0, r);
       const [gxr, gyr] = versCarte(gx, gy, r);
       // Sur le plan de ville, `versEcran` place le morceau à son adresse, pas
       // à sa position t-SNE : c'est elle que l'aller-retour doit retrouver.
-      const [attX, attY] = (villeReelle && carte.positionsReelles.get(p0.id)) || [p0.x, p0.y];
+      const [attX, attY] = (carte.villeReelle && carte.positionsReelles.get(p0.id)) || [p0.x, p0.y];
       verifier(
         "carte : aller-retour des coordonnées",
         Math.abs(gxr - attX) < 1e-3 && Math.abs(gyr - attY) < 1e-3,
@@ -96,13 +96,17 @@ async function autotestCarte() {
       );
       verifier("carte : pointage", pointSous(gx, gy)?.id === p0.id, pointSous(gx, gy)?.id);
 
-      const zAvant = gl.getZoom();
+      const zAvant = carte.gl.getZoom();
       zoomer(1.4, r.width / 2, r.height / 2);
-      verifier("carte : zoom", gl.getZoom() > zAvant, `${zAvant.toFixed(2)}→${gl.getZoom().toFixed(2)}`);
+      verifier(
+        "carte : zoom",
+        carte.gl.getZoom() > zAvant,
+        `${zAvant.toFixed(2)}→${carte.gl.getZoom().toFixed(2)}`,
+      );
 
       // Les boutons +/− appellent `zoomer` sans coordonnées : ne doit pas
       // lever dans MapLibre (`unproject` d'un point indéfini).
-      const zB = gl.getZoom();
+      const zB = carte.gl.getZoom();
       let boutonOk = true;
       try {
         $("zoom-plus").click();
@@ -110,12 +114,20 @@ async function autotestCarte() {
       } catch (err) {
         boutonOk = false;
       }
-      verifier("carte : boutons +/−", boutonOk && Math.abs(gl.getZoom() - zB) < 1e-6, gl.getZoom().toFixed(2));
+      verifier(
+        "carte : boutons +/−",
+        boutonOk && Math.abs(carte.gl.getZoom() - zB) < 1e-6,
+        carte.gl.getZoom().toFixed(2),
+      );
 
-      const cAvant = gl.getCenter().lng;
+      const cAvant = carte.gl.getCenter().lng;
       const g2 = carteGL();
       g2.panBy([-50, 0], { duration: 0 });
-      verifier("carte : déplacement", gl.getCenter().lng !== cAvant, gl.getCenter().lng.toFixed(3));
+      verifier(
+        "carte : déplacement",
+        carte.gl.getCenter().lng !== cAvant,
+        carte.gl.getCenter().lng.toFixed(3),
+      );
 
       // La vue d'ensemble cadre l'emprise cible (limite communale, ou les
       // points sur le monde fictif) : elle dézoome sous le niveau d'accueil et
@@ -123,28 +135,30 @@ async function autotestCarte() {
       const b = vueInitialeGL?.bounds || bornesGeoPoints();
       $("zoom-reset").click();
       const dedans = b && (() => {
-        const sw = gl.project(b[0]);
-        const ne = gl.project(b[1]);
+        const sw = carte.gl.project(b[0]);
+        const ne = carte.gl.project(b[1]);
         const { width, height } = cnv.getBoundingClientRect();
         return sw.x >= -2 && ne.x <= width + 2 && ne.y >= -2 && sw.y <= height + 2;
       })();
       verifier(
         "carte : vue d'ensemble",
-        !!b && dedans && gl.getZoom() < (vueInitialeGL?.zoom ?? 14),
-        `zoom ${gl.getZoom().toFixed(2)}`,
+        !!b && dedans && carte.gl.getZoom() < (vueInitialeGL?.zoom ?? 14),
+        `zoom ${carte.gl.getZoom().toFixed(2)}`,
       );
 
       // Les entités des tuiles répondent-elles au pointage ?
       // Après la vue d'ensemble (animée), les tuiles du nouveau cadrage se
       // chargent : on attend qu'elles le soient avant d'interroger.
-      const couche = villeReelle ? "territoires-reels" : "territoires";
-      for (let i = 0; i < 40 && !(gl.areTilesLoaded() && !gl.isMoving()); i++) await attendre(250);
-      const rendues = gl.queryRenderedFeatures({ layers: [couche] });
-      const source = gl.querySourceFeatures("carte", { sourceLayer: couche });
+      const couche = carte.villeReelle ? "territoires-reels" : "territoires";
+      for (let i = 0; i < 40 && !(carte.gl.areTilesLoaded() && !carte.gl.isMoving()); i++) {
+        await attendre(250);
+      }
+      const rendues = carte.gl.queryRenderedFeatures({ layers: [couche] });
+      const source = carte.gl.querySourceFeatures("carte", { sourceLayer: couche });
       verifier(
         "carte : entités interrogeables",
         rendues.length > 0,
-        `${rendues.length} rendues, ${source.length} en source (zoom ${gl.getZoom().toFixed(1)})`,
+        `${rendues.length} rendues, ${source.length} en source (zoom ${carte.gl.getZoom().toFixed(1)})`,
       );
     }
 
@@ -217,7 +231,7 @@ async function autotestCarte() {
     }
 
     // --- l'itinéraire sur voirie réelle (si une ville est importée) ------
-    if (villeReelle) {
+    if (carte.villeReelle) {
       try {
         etape("itinéraire sur voirie — accrochage des morceaux aux rues");
         const rep = await invoke("itineraire_voirie", {

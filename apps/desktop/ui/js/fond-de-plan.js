@@ -1,22 +1,20 @@
 import "./ecouter-familles.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileCourante, invoke, remonter, txt,
+  $, fileAttente, invoke, navigation, remonter, txt,
 } from "./socle.js";
 import {
   dessinerMiniNuage,
 } from "./lama.js";
-import {
-  affecterCarteTheme, carteTheme, modeCourant,
-} from "./lecteur.js";
+
 import {
   AIDE_CHEMIN, anneau, carte, chargerAnneau, chargerReseauAnneau, chargerTemps, CONTINUES,
   filtreAnnee, suivreAlbumEnLecture, temps,
 } from "./carte.js";
 import {
-  affecterVilleReelle, carteReelle, dessinerCarte, dessinerFamilles, gl, initialiserFiltreAnnee,
-  journalCarte, majAffichageGL, majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL,
-  modeAnneau, modeTemps, patienter, poserVignetteCarte, rafraichirFiltreAnnee, rejouerChemin,
-  tracerChemin, tracerRouteSurCarte, villeReelle,
+  carteReelle, dessinerCarte, dessinerFamilles, initialiserFiltreAnnee, journalCarte,
+  majAffichageGL, majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, modeAnneau, modeTemps,
+  patienter, poserVignetteCarte, rafraichirFiltreAnnee, rejouerChemin, tracerChemin,
+  tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
   majSegmentsCouleur,
@@ -30,37 +28,37 @@ import {
 function majBoutonsTheme() {
   document
     .querySelectorAll("#carte-theme [data-theme]")
-    .forEach((b) => b.classList.toggle("segment--actif", b.dataset.theme === carteTheme));
+    .forEach((b) => b.classList.toggle("segment--actif", b.dataset.theme === carte.theme));
 }
 majBoutonsTheme();
 
 document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
   b.addEventListener("click", async () => {
-    if (b.dataset.theme === carteTheme) return;
-    affecterCarteTheme(b.dataset.theme);
-    localStorage.setItem("carte-theme", carteTheme);
+    if (b.dataset.theme === carte.theme) return;
+    carte.theme = b.dataset.theme;
+    localStorage.setItem("carte-theme", carte.theme);
     majBoutonsTheme();
-    // Pas d'instance MapLibre encore : `initialiserGL` relira `carteTheme`.
-    if (!gl) return;
+    // Pas d'instance MapLibre encore : `initialiserGL` relira `carte.theme`.
+    if (!carte.gl) return;
     try {
-      const style = await invoke("style_carte", { theme: carteTheme });
+      const style = await invoke("style_carte", { theme: carte.theme });
       // `setStyle` diffe : mêmes sources, mêmes couches, mêmes ids — seules les
       // couleurs de peinture changent, donc pas de rechargement de tuile et la
       // caméra ne bouge pas.
-      gl.setStyle(style);
+      carte.gl.setStyle(style);
       // Les mutations de style au runtime (couleur par famille, isolement,
       // visibilité des territoires) portaient sur l'ancien style : les rejouer
       // une fois le nouveau prêt. `setStyle` peut émettre plusieurs `styledata`
       // avant que le style soit complet — on attend `isStyleLoaded`.
       const rejouer = () => {
-        if (!gl || !gl.isStyleLoaded()) return;
-        gl.off("styledata", rejouer);
+        if (!carte.gl || !carte.gl.isStyleLoaded()) return;
+        carte.gl.off("styledata", rejouer);
         majCouleurGL();
         majFiltreGL();
         majAffichageGL();
-        poserVignetteCarte(gl.getStyle());
+        poserVignetteCarte(carte.gl.getStyle());
       };
-      gl.on("styledata", rejouer);
+      carte.gl.on("styledata", rejouer);
       rejouer();
     } catch (e) {
       remonter(e, "thème de la carte");
@@ -74,12 +72,15 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
 /// affichages retrouvent leurs réglages, chacun avec sa propre logique
 /// (`majAffichageTemps`, `majAffichageAnneau`, `majVisibiliteIntervalleAnnees`).
 function majRailExplorer() {
-  const explorer = modeCourant === "explorer";
+  const explorer = navigation.mode === "explorer";
   const enLama = explorer && carte.affichage === "lama";
   $("reglages-explorer").hidden = enLama;
   $("bloc-familles").hidden = !explorer || enLama || carte.couleur !== "famille";
   $("bloc-chercher").hidden =
-    modeCourant === "bibliotheque" || modeCourant === "decouvrir" || modeCourant === "valise" || enLama;
+    navigation.mode === "bibliotheque" ||
+    navigation.mode === "decouvrir" ||
+    navigation.mode === "valise" ||
+    enLama;
 }
 
 /// Les modes de chemin qui ont un sens dans chaque affichage.
@@ -197,8 +198,8 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
     // redessins de la carte, et la route de la playlist en cours reste intacte
     // pour le jour où l'on revient sur le Nuage ou la Carte.
     const enLama = carte.affichage === "lama";
-    $("carte-vue").hidden = enLama || modeCourant !== "explorer";
-    $("lama-vue").hidden = !enLama || modeCourant !== "explorer";
+    $("carte-vue").hidden = enLama || navigation.mode !== "explorer";
+    $("lama-vue").hidden = !enLama || navigation.mode !== "explorer";
     document
       .querySelectorAll("[data-affichage]")
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
@@ -215,7 +216,7 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
     // dans un repère précis (t-SNE, lon-lat, temps) et n'a plus de sens dans
     // un autre : on l'efface plutôt que de rejouer des coordonnées
     // étrangères au repère courant. La playlist EN COURS DE LECTURE
-    // (`fileCourante`) est une donnée complètement différente — elle ne doit
+    // (`fileAttente.pistes`) est une donnée complètement différente — elle ne doit
     // jamais dépendre de l'affichage, voir `tracerRouteSurCarte` juste après.
     carte.refaire = null;
     carte.route = null;
@@ -243,10 +244,10 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
     // Redessine la playlist en cours dans le nouveau repère — nuage et carte
     // en ont besoin pour reconstruire `carte.route`/`carte.routeTrace`,
-    // effacés juste au-dessus ; l'anneau, lui, lit `fileCourante` directement
+    // effacés juste au-dessus ; l'anneau, lui, lit `fileAttente.pistes` directement
     // à chaque image (voir `dessinerAnneau`) et n'en a pas besoin, mais
     // l'appeler ne coûte rien de plus qu'un redessin déjà prévu.
-    tracerRouteSurCarte(fileCourante);
+    tracerRouteSurCarte(fileAttente.pistes);
     dessinerCarte();
   }),
 );
@@ -364,7 +365,7 @@ function texteAideChemin(mode) {
 /// Explorer — passent `false` : la visualisation ne doit jamais avoir
 /// d'effet de bord sur la playlist en cours de lecture. Sans cette
 /// distinction, changer d'affichage avec un vieux départ/arrivée encore posé
-/// relançait un chemin et écrasait silencieusement `fileCourante`.
+/// relançait un chemin et écrasait silencieusement `fileAttente.pistes`.
 function poserModeChemin(mode, retracer = true) {
   carte.chemin = mode;
   majReglagesChemin();
@@ -547,7 +548,7 @@ async function chargerCarte() {
   // **à côté** de `p.x`/`p.y` — jamais à la place. `p.x`/`p.y` restent la
   // position t-SNE partout : c'est ce que lit le mode Nuage, qui doit rester
   // correct que la ville soit active ou non. `versEcran` choisit laquelle
-  // utiliser selon `villeReelle` et l'affichage courant. `positions_carte`
+  // utiliser selon `carte.villeReelle` et l'affichage courant. `positions_carte`
   // échoue sur le chemin fictif : c'est le signal, pas une erreur à
   // remonter.
   let positionsReelles = null;
@@ -556,10 +557,12 @@ async function chargerCarte() {
   } catch {
     positionsReelles = null;
   }
-  affecterVilleReelle(!!(positionsReelles && Object.keys(positionsReelles).length > 0));
-  carte.positionsReelles = villeReelle ? new Map(Object.entries(positionsReelles).map(([id, p]) => [+id, p])) : new Map();
+  carte.villeReelle = !!(positionsReelles && Object.keys(positionsReelles).length > 0);
+  carte.positionsReelles = carte.villeReelle
+    ? new Map(Object.entries(positionsReelles).map(([id, p]) => [+id, p]))
+    : new Map();
   majSegmentsCouleur();
-  if (villeReelle) {
+  if (carte.villeReelle) {
     const sansAdresse = carte.points.filter((p) => !carte.positionsReelles.has(p.id)).length;
     if (sansAdresse) {
       // Un morceau que l'affectation n'a pas logé n'a pas d'entrée ici :
