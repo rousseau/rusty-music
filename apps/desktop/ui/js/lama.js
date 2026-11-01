@@ -1,6 +1,6 @@
 import "./vues.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, ecoute, fileAttente, invoke, signalerErreur, txt,
+  $, duree, ecoute, fileAttente, invoke, isoler, signalerErreur, txt,
 } from "./socle.js";
 import {
   ALBUM_HAUT, composerAlchimie, dessinerGrille, grille,
@@ -369,7 +369,7 @@ function montrerPlanTexte(plan) {
   $("lama-brut").textContent = plan.brut || "(pas de réponse brute conservée)";
 
   $("plan-texte-depart-nom").textContent = plan.depart
-    ? `${txt(plan.depart.title, "(sans titre)")} — ${txt(plan.depart.artist, "(sans artiste)")}`
+    ? `${isoler(txt(plan.depart.title, "(sans titre)"))} — ${isoler(txt(plan.depart.artist, "(sans artiste)"))}`
     : "par description (aucun départ nommé)";
   $("plan-texte-depart-effacer").hidden = !plan.depart;
 
@@ -385,7 +385,7 @@ function montrerPlanTexte(plan) {
   if (plan.arrivee) {
     $("plan-texte-arrivee").classList.remove("borne--introuvable");
     $("plan-texte-arrivee-nom").textContent =
-      `${txt(plan.arrivee.title, "(sans titre)")} — ${txt(plan.arrivee.artist, "(sans artiste)")}`;
+      `${isoler(txt(plan.arrivee.title, "(sans titre)"))} — ${isoler(txt(plan.arrivee.artist, "(sans artiste)"))}`;
   } else if (plan.arrivee_demandee) {
     $("plan-texte-arrivee").classList.add("borne--introuvable");
     $("plan-texte-arrivee-nom").textContent =
@@ -744,7 +744,7 @@ function montrerComposition(r) {
       const li = document.createElement("li");
       li.value = i + 1;
       const titre = document.createElement("span");
-      titre.textContent = `${txt(t.title, "(sans titre)")} — ${txt(t.artist, "(sans artiste)")}`;
+      titre.textContent = `${isoler(txt(t.title, "(sans titre)"))} — ${isoler(txt(t.artist, "(sans artiste)"))}`;
       const d = document.createElement("span");
       d.className = "lama__piste-duree";
       d.textContent = duree(t.duration_ms);
@@ -942,7 +942,7 @@ $("lama-nuage").addEventListener("mousemove", (ev) => {
   const { e } = hit;
   const part = lama.resultat.parties[e.partie];
   bulle.textContent =
-    `${e.index + 1}. ${txt(e.piste.title, "(sans titre)")} — ${txt(e.piste.artist, "(sans artiste)")}` +
+    `${e.index + 1}. ${isoler(txt(e.piste.title, "(sans titre)"))} — ${isoler(txt(e.piste.artist, "(sans artiste)"))}` +
     (lama.resultat.parties.length > 1 && part ? ` · ${part.libelle}` : "");
   bulle.style.left = `${Math.min(hit.x + 12, $("lama-nuage").clientWidth - 160)}px`;
   bulle.style.top = `${hit.y + 12}px`;
@@ -1102,7 +1102,7 @@ function ligneComposee(t, i, graine = true) {
   el.children[0].textContent = estGraine ? "✦" : i + 1;
   el.children[1].children[0].textContent = txt(t.title, "(sans titre)");
   el.children[1].children[1].textContent = estGraine
-    ? `graine · ${txt(t.artist, "(sans artiste)")}`
+    ? `graine · ${isoler(txt(t.artist, "(sans artiste)"))}`
     : txt(t.artist, "(sans artiste)");
   el.children[2].textContent = duree(t.duration_ms);
   el.addEventListener("click", async () => {

@@ -1,6 +1,6 @@
 import "./decouvrir.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, horloge, invoke, navigation, remonter, txt, viderPochettes,
+  $, ecoute, horloge, invoke, isoler, navigation, remonter, txt, viderPochettes,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur, popARecalculee,
@@ -421,7 +421,7 @@ async function chargerVerifications() {
   dessinerListeVerif(
     "editions-multiples",
     editions.map(([artiste, titre, versions]) => ({
-      ligne: `${artiste} — ${titre}`,
+      ligne: `${isoler(artiste)} — ${isoler(titre)}`,
       detail: versions.map(([album, n]) => `${album} (${n})`).join(" · "),
     })),
   );
@@ -467,7 +467,7 @@ async function chargerVerifications() {
       }[p.anomalie] ?? p.anomalie;
       const ecart = p.mesure == null ? "" : ` (écart ${p.mesure.toFixed(2).replace(".", ",")})`;
       return {
-        ligne: `${txt(p.artiste, "?")} — ${txt(p.album, p.dossier.split("/").pop())}`,
+        ligne: `${isoler(txt(p.artiste, "?"))} — ${isoler(txt(p.album, p.dossier.split("/").pop()))}`,
         detail: `${nature}${ecart} — ${p.detail}`,
         action: actions,
       };
@@ -500,7 +500,7 @@ async function chargerVerifications() {
 /// Le texte d'une piste dans une liste de vérification : artiste — titre,
 /// avec le nom de fichier en repli pour un morceau sans titre en tag.
 function ligneTrack(t) {
-  return `${txt(t.artist, "?")} — ${txt(t.title, t.path.split("/").pop())}`;
+  return `${isoler(txt(t.artist, "?"))} — ${isoler(txt(t.title, t.path.split("/").pop()))}`;
 }
 
 /// Doublons probables et points isolés partagent le même graphe des
@@ -1587,7 +1587,7 @@ async function battementStems() {
   majDerive();
   $("np-titre").textContent = `${edition.stems.length} stems`;
   $("np-artiste").textContent = edition.source
-    ? `${txt(edition.source.artist, "?")} — ${txt(edition.source.title, "?")}`
+    ? `${isoler(txt(edition.source.artist, "?"))} — ${isoler(txt(edition.source.title, "?"))}`
     : "";
 
   const frac = e.duree_ms ? Math.min(1, e.position_ms / e.duree_ms) : 0;

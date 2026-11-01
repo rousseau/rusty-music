@@ -19,6 +19,9 @@ import {
 import {
   basculerMode,
 } from "./modes.js";
+import {
+  langueDe,
+} from "./ecritures.js";
 
 /* Audit de gabarit de l'interface — `scripts/audit-interface.sh`.
  *
@@ -36,6 +39,10 @@ import {
  *  G3 débordement aucun défilement horizontal, aucun élément hors de sa zone
  *  G4 occultation tout contrôle visible reçoit le clic en son centre
  *  G5 repères     le repère A–Z n'existe qu'en Écoute
+ *  G6 typographie tout texte visible dans l'une des tailles de la Règle 11 (rien
+ *                 sous 12 px) et l'une de ses trois graisses
+ *  G7 écritures   un texte en kana ou en hangul porte `lang` (ja, ko) ; un nom en
+ *                 écriture de droite à gauche joint à d'autres textes est isolé
  *
  * Les variables lues dans la feuille de style (`--largeur-rail`…) ont une valeur
  * de repli : l'audit tourne aussi sur un état d'avant les jetons, ce qui
@@ -214,6 +221,34 @@ function auditerGabarit(ecran) {
   const ia = q("#index-alpha");
   if (ia && ecran !== "ecoute" && visibleAudit(ia))
     viol.push({ regle: "G5", detail: "le repère A–Z est affiché hors de l'Écoute" });
+
+  // --- G6 typographie, G7 écritures (Règle 11) -------------------------------
+  // La gravure de la partition est celle d'alphaTab (notation musicale à
+  // l'échelle de la portée) : hors du contrôle, comme les tuiles de la carte.
+  const tailles = new Set(
+    ["--t-legende", "--t-second", "--t-corps", "--t-intertitre", "--t-titre", "--t-fil", "--t-decor"]
+      .map((n) => jetonAudit(n, NaN)),
+  );
+  const graisses = new Set(["400", "500", "600"]);
+  const typo = new Map();
+  for (const el of document.body.querySelectorAll("*")) {
+    let propre = "";
+    for (const n of el.childNodes) if (n.nodeType === Node.TEXT_NODE) propre += n.data;
+    if (!propre.trim() || el.closest(".partition, script, style") || !visibleAudit(el)) continue;
+    const cs = getComputedStyle(el);
+    const px = parseFloat(cs.fontSize);
+    if (!tailles.has(px) || !graisses.has(cs.fontWeight)) {
+      const cle = `${px} px · ${cs.fontWeight}`;
+      if (!typo.has(cle)) typo.set(cle, nomAudit(el));
+    }
+    const langue = langueDe(propre);
+    if (langue && el.closest("[lang]")?.getAttribute("lang") !== langue)
+      viol.push({ regle: "G7", detail: `${nomAudit(el)} : texte ${langue} sans lang="${langue}"` });
+    if (/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(propre) && /[·—]/.test(propre) && !propre.includes("\u2068"))
+      viol.push({ regle: "G7", detail: `${nomAudit(el)} : nom de droite à gauche joint sans isolat` });
+  }
+  for (const [cle, ou] of typo)
+    viol.push({ regle: "G6", detail: `${ou} : ${cle} hors de l'échelle (Règle 11)` });
 
   return { violations: viol, mesures: mes };
 }

@@ -1,6 +1,6 @@
 import "./modes.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, remonter,
+  $, invoke, isoler, remonter,
 } from "./socle.js";
 import {
   carte,
@@ -173,7 +173,7 @@ function dessinerApercuValise() {
     corps.className = "verif__corps";
     const titre = document.createElement("div");
     titre.className = "verif__ligne";
-    titre.textContent = `${a.artiste} — ${a.album}${a.annee ? ` (${a.annee})` : ""}`;
+    titre.textContent = `${isoler(a.artiste)} — ${isoler(a.album)}${a.annee ? ` (${a.annee})` : ""}`;
     const detail = document.createElement("div");
     detail.className = "verif__detail";
     const ecoutes = a.ecoutes === 0 ? "jamais écouté" : `écouté ${a.ecoutes} fois`;

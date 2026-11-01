@@ -1,6 +1,6 @@
 import "./carte.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, fileAttente, invoke, navigation, remonter, signalerErreur, txt,
+  $, duree, fileAttente, invoke, isoler, navigation, remonter, signalerErreur, txt,
 } from "./socle.js";
 import {
   lama,
@@ -939,7 +939,7 @@ function dessinerTemps(r, encre, accent) {
     ctx.stroke();
   }
   ctx.textAlign = "left";
-  ctx.font = "11px system-ui";
+  ctx.font = "12px system-ui"; // Règle 11 : rien sous 12 px, canevas compris
   temps.bandes.forEach((f, i) => {
     const estompee = carte.isolees.size > 0 && !carte.isolees.has(f);
     ctx.fillStyle = teintes[f % teintes.length] ?? encre;
@@ -995,7 +995,7 @@ function dessinerTemps(r, encre, accent) {
     ctx.setLineDash([]);
     ctx.fillStyle = encre;
     ctx.globalAlpha = 0.5;
-    ctx.font = "10px system-ui";
+    ctx.font = "12px system-ui";
     ctx.textAlign = "center";
     ctx.fillText("incertain", xi + largeurIncertain / 2, yBas + 14);
     ctx.globalAlpha = 1;
@@ -1257,7 +1257,7 @@ function dessinerRappel(pos, nom, cx, cy, rayonExt, encre) {
   ctx.rotate(gauche ? angle + Math.PI : angle);
   ctx.fillStyle = encre;
   ctx.globalAlpha = 0.9;
-  ctx.font = "10px system-ui";
+  ctx.font = "12px system-ui";
   ctx.textAlign = gauche ? "right" : "left";
   ctx.fillText(nom, 0, 0);
   ctx.restore();
@@ -1325,7 +1325,7 @@ function dessinerAnneau(r, encre, accent) {
     ctx.rotate(gauche ? milieu + Math.PI : milieu);
     ctx.fillStyle = encre;
     ctx.globalAlpha = 0.8;
-    ctx.font = "11px system-ui";
+    ctx.font = "12px system-ui";
     ctx.textAlign = gauche ? "right" : "left";
     ctx.fillText(nom || `famille ${cluster + 1}`, 0, 0);
     ctx.restore();
@@ -1844,7 +1844,7 @@ function survolerTemps(mx, my, r) {
     const hub = a.sortants >= temps.seuilHub ? " · hub" : "";
     info.hidden = false;
     info.innerHTML = "<b></b><span></span>";
-    info.children[0].textContent = `${a.name} — ${a.artist}`;
+    info.children[0].textContent = `${isoler(a.name)} — ${isoler(a.artist)}`;
     info.children[1].textContent = `${a.annee ?? "date incertaine"} · ${fam}${secondaire}${hub}`;
     info.style.left = `${Math.min(mx + 14, r.width - 290)}px`;
     info.style.top = `${my + 14}px`;

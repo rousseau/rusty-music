@@ -1,6 +1,6 @@
 import "./lecteur.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileAttente, invoke, navigation, remonter, signalerErreur,
+  $, fileAttente, invoke, isoler, navigation, remonter, signalerErreur,
 } from "./socle.js";
 import {
   inspecterAlbum,
@@ -532,7 +532,7 @@ async function chargerAnneau(id, { discret = false, avecInspecteur = true } = {}
   anneau.focal = vue.focal;
   anneau.voisins = vue.voisins;
   $("anneau-resultats").hidden = true;
-  $("fil-compte").textContent = `${anneau.focal.name} — ${anneau.voisins.length} voisin(s)`;
+  $("fil-compte").textContent = `${isoler(anneau.focal.name)} — ${anneau.voisins.length} voisin(s)`;
   if (avecInspecteur) await inspecterAlbum(anneau.focal);
   dessinerCarte();
 }

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Audit de l'interface — contraste des couleurs dans les deux thèmes
-# (`scripts/contraste-interface.py`), puis gabarit : cohérence des marges, des
-# panneaux et des surimpressions sur tous les écrans (voir `apps/desktop/ui/js/audit.js`,
-# Règles 6 et 10 de `docs/interface-guidelines.md`).
+# (`scripts/contraste-interface.py`) et typographie (`scripts/typographie-interface.py`),
+# puis, dans l'application : gabarit (marges, panneaux, surimpressions), tailles
+# réellement affichées et écritures, sur tous les écrans (voir
+# `apps/desktop/ui/js/audit.js`, Règles 6, 10 et 11 de `docs/interface-guidelines.md`).
 #
 # La webview du système ne se capture pas hors de son Espace macOS : l'interface
 # se mesure de l'intérieur. L'application est lancée en mode d'essai sur une
@@ -20,15 +21,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Contraste des jetons de couleur, dans les deux thèmes (Règle 6) : statique,
-# lu dans `style.css`, avant de lancer quoi que ce soit.
-echo "contraste…"
-if contraste="$(python3 scripts/contraste-interface.py)"; then
-  echo "$contraste" | tail -n 1
-else
-  echo "$contraste"
-  exit 1
-fi
+# Contraste des jetons de couleur dans les deux thèmes (Règle 6) et typographie
+# (Règle 11) : statiques, lus dans les sources, avant de lancer quoi que ce soit.
+echo "contraste, typographie…"
+for controle in contraste typographie; do
+  if sortie="$(python3 "scripts/$controle-interface.py")"; then
+    echo "$sortie" | tail -n 1
+  else
+    echo "$sortie"
+    exit 1
+  fi
+done
 
 SOURCE="${RUSTY_DONNEES_SOURCE:-$HOME/Library/Application Support/fm.rustymusic.desktop}"
 DELAI="${RUSTY_AUDIT_DELAI:-900}"
@@ -48,7 +51,8 @@ cp "$SOURCE/rusty-music.db" "$TMP/"
 
 # Session verrouillée : WebKit tient la fenêtre pour invisible et suspend la
 # page au bout de ~30 s ; l'audit attendrait alors jusqu'au délai, sans un mot.
-if [ "$(uname)" = Darwin ] && ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+verrouillee() { [ "$(uname)" = Darwin ] && ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; }
+if verrouillee; then
   echo "session verrouillée : l'audit a besoin de l'écran déverrouillé et de sa fenêtre visible" >&2
   exit 2
 fi
@@ -65,6 +69,9 @@ echo "audit lancé (pid $PID, copie de la base dans $TMP)…"
 debut=$SECONDS
 until grep -aq "AUDIT FIN\|AUDIT ERREUR" "$LOG"; do
   if ! kill -0 "$PID" 2>/dev/null; then echo "l'application s'est arrêtée avant la fin de l'audit" >&2; tail -5 "$LOG" >&2; exit 2; fi
+  # Verrouillée en cours de route, la page est suspendue : le dire plutôt
+  # qu'attendre le délai sans un mot.
+  if verrouillee; then echo "session verrouillée pendant l'audit : relancer écran déverrouillé" >&2; exit 2; fi
   if [ $((SECONDS - debut)) -gt "$DELAI" ]; then echo "délai dépassé (${DELAI} s)" >&2; exit 2; fi
   sleep 2
 done

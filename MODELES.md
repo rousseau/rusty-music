@@ -33,7 +33,7 @@ pour les modèles.
 
 | Projet | Licence | Ce que nous en reprenons | Où |
 |---|---|---|---|
-| [Disc Player](https://github.com/eudj1n/snowsky-disc-player) (© 2026 eudj1n) | MIT | la palette de recherche ⌘K / « / » : résultats groupés (meilleur résultat, artistes, albums, pistes) et commandes dans la même boîte, conduite au clavier ; le thème posé avant le premier affichage par un script classique ; le contrôle de contraste qui lit les jetons dans la feuille elle-même | `apps/desktop/ui/js/palette.js`, `apps/desktop/ui/theme-avant.js`, `scripts/contraste-interface.py` |
+| [Disc Player](https://github.com/eudj1n/snowsky-disc-player) (© 2026 eudj1n) | MIT | la palette de recherche ⌘K / « / » : résultats groupés (meilleur résultat, artistes, albums, pistes) et commandes dans la même boîte, conduite au clavier ; le thème posé avant le premier affichage par un script classique ; le contrôle de contraste qui lit les jetons dans la feuille elle-même ; l'audit typographique (échelle de rôles, rien sous 12 px) et le traitement des noms dans toutes les écritures (isolats bidi, `lang` d'après kana et hangul) | `apps/desktop/ui/js/palette.js`, `apps/desktop/ui/theme-avant.js`, `scripts/contraste-interface.py`, `apps/desktop/ui/js/ecritures.js` |
 | [maptoposter](https://github.com/originalankur/maptoposter) (Ankur Gupta) | MIT | les palettes de fond de carte | `crates/carto/src/palette.rs` |
 
 ## À venir

@@ -1,7 +1,7 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, ecoute, estListePistes, fileAttente, invoke, LIGNE, navigation, ouvrirLien, pochette,
-  remonter, signalerErreur, txt, vue, vueEnGrille,
+  $, duree, ecoute, estListePistes, fileAttente, invoke, isoler, LIGNE, navigation, ouvrirLien,
+  pochette, remonter, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopularites, colonnesGrille, composerAlchimie,
@@ -1545,7 +1545,7 @@ async function montrerCredits(t) {
   hote.replaceChildren();
   for (const c of credits) {
     const li = document.createElement("li");
-    li.textContent = c.pistes ? `${c.personne} — ${c.role} (${c.pistes})` : `${c.personne} — ${c.role}`;
+    li.textContent = c.pistes ? `${isoler(c.personne)} — ${c.role} (${c.pistes})` : `${isoler(c.personne)} — ${c.role}`;
     hote.appendChild(li);
   }
   bloc.hidden = false;

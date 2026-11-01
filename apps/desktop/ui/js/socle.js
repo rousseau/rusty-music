@@ -1,6 +1,8 @@
 // Interface du mode Écoute. Pas de framework ni de bundler : `CLAUDE.md`
 // retient HTML/CSS/JS simple, la carte WebGL du module 2 n'impose rien ici.
 
+import { isoler, observerEcritures } from "./ecritures.js";
+
 const { invoke } = window.__TAURI__.core;
 // Ouvre un lien dans le navigateur du système (tauri-plugin-opener) — la
 // webview ne navigue pas vers l'extérieur, et c'est voulu.
@@ -24,6 +26,10 @@ const journal = (source, message, niveau = "info") =>
   invoke("journal_ui", { niveau, source, message: String(message) }).catch(() => {});
 
 const $ = (id) => document.getElementById(id);
+
+// Langue des noms en japonais et en coréen (`ecritures.js`, Règle 11) : dès le
+// départ, avant que la première vue ne se peigne.
+observerEcritures();
 
 /// Affiche `texte` dans le petit slot de statut `idStatut` — la convention
 /// déjà en place ailleurs dans l'appli (`#chemin-aide`, `#demix-etat`,
@@ -185,7 +191,7 @@ const fileAttente = {
 
 
 export {
-  $, duree, ecoute, estListePistes, fileAttente, horloge, invoke, journal, LIGNE, navigation,
-  ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, txt, viderPochettes, vue,
+  $, duree, ecoute, estListePistes, fileAttente, horloge, invoke, isoler, journal, LIGNE,
+  navigation, ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, txt, viderPochettes, vue,
   vueEnGrille,
 };

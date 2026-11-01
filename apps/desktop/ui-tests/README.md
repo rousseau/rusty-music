@@ -14,7 +14,8 @@ SONDE=1 npx playwright test   # liste, par test, les commandes sans réponse fig
 | `faux-tauri.js` | `invoke`, `event.listen`, `dialog`, `opener` simulés ; note chaque appel dans `window.__APPELS__` |
 | `fixtures.js` | réponses figées, sur une bibliothèque fictive (deux artistes, trois albums) ; formes recopiées des types Rust |
 | `outils.js` | sert `../ui/` depuis le disque (`page.route`, pas de serveur), coupe le réseau, injecte faux Tauri et réponses |
-| `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Éditer avec quatre stems factices |
+| `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Éditer avec quatre stems factices, palette ⌘K, filtres qui estompent, thème |
+| `ecritures.spec.js` | noms en arabe et en japonais sur une bibliothèque à part : `lang`, isolats bidi (Règle 11) |
 
 Un test échoue sur **toute** erreur JavaScript : exception non rattrapée,
 `console.error`, ou erreur que `ui/js/` remonte lui-même au moteur

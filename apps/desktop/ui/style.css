@@ -36,6 +36,19 @@
   --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
 
+  /* La typographie (Règle 11 de `docs/interface-guidelines.md`) : six tailles,
+     chacune avec un rôle, rien sous 12 px — pas même une étiquette en
+     capitales ni un glyphe. Mesuré le 1ᵉʳ novembre 2026 avant la règle : 21
+     tailles de 8,5 à 34 px, dont 97 déclarations sous 12. Trois graisses :
+     400 courant, 500 noms et navigation, 600 titres et boutons forts. */
+  --t-legende:    12px;  /* étiquettes en capitales, compteurs, durées, aides */
+  --t-second:     13px;  /* texte secondaire : artiste d'une ligne, liens, notes */
+  --t-corps:      14px;  /* corps : racine, titres en liste, champs, navigation */
+  --t-intertitre: 16px;  /* titre de l'inspecteur, champ de la palette, glyphes forts */
+  --t-titre:      20px;  /* titres de panneau */
+  --t-fil:        26px;  /* titre du fil (serif) */
+  --t-decor:      34px;  /* initiales d'artiste sur l'aplat : un décor, pas un rôle */
+
   /* Rampe séquentielle pour les variables continues (année, tempo, énergie).
      Deux essais plus sobres (teinte unique, puis un balayage de 33° dans les
      bruns-ambre) sont restés peu lisibles à l'usage sur un nuage de petits
@@ -111,13 +124,19 @@
    plein écran avale tous les clics. */
 [hidden] { display: none !important; }
 
+/* Règle 11 : chaque élément en ligne est son propre isolat bidi. Un nom en
+   écriture de droite à gauche (« فيروز ») posé dans un `<span>` ne réordonne
+   plus ce qui l'entoure (« · 1991 »). Les noms joints dans une même chaîne
+   passent par `isoler()` (`js/ecritures.js`). */
+span, a, b, strong, em, bdi, button, label, kbd { unicode-bidi: isolate; }
+
 html, body {
   margin: 0;
   height: 100%;
   background: var(--bg);
   color: var(--txt);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--t-corps);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -153,7 +172,7 @@ html, body {
 #dock-source { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock__pistes { display: flex; flex-direction: column; gap: 8px; }
 .dock__aide {
-  margin-left: auto; font-family: var(--mono); font-size: 9.5px;
+  margin-left: auto; font-family: var(--mono); font-size: var(--t-legende);
   letter-spacing: .1em; text-transform: uppercase; color: var(--mut); opacity: .7;
 }
 .dock__tete .file__fermer { margin-left: 12px; }
@@ -190,14 +209,14 @@ html, body {
   margin-bottom: 4px; border: 1px solid transparent;
 }
 .sections__titre {
-  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); opacity: .7;
   padding: 0 7px; align-self: center;
 }
 .sections__pistes { position: relative; height: 20px; }
 .section {
   position: absolute; top: 0; bottom: 0; padding: 0 4px;
-  font: inherit; font-size: 10.5px; line-height: 18px; text-align: left;
+  font: inherit; font-size: var(--t-legende); line-height: 18px; text-align: left;
   color: var(--mut); background: var(--panel2); cursor: pointer;
   border: 1px solid var(--line); border-right: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -245,12 +264,12 @@ html, body {
 .stem__tete:hover { color: var(--txt); }
 .stem--sel .stem__tete { color: var(--accent); }
 .stem__nom {
-  font-size: 12px; line-height: 1.15; text-transform: capitalize;
+  font-size: var(--t-legende); line-height: 1.15; text-transform: capitalize;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* Ce qui écarte le stem de l'ensemble (« +3 · greffé »…), vide sinon. */
 .stem__etat {
-  font-family: var(--mono); font-size: 9px; letter-spacing: .04em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .04em;
   color: var(--accent); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; width: 100%;
 }
@@ -258,7 +277,7 @@ html, body {
 
 .stem__actions { display: flex; gap: 4px; }
 .stem__b {
-  font: inherit; font-size: 10px; line-height: 1.4; cursor: pointer;
+  font: inherit; font-size: var(--t-legende); line-height: 1.4; cursor: pointer;
   padding: 2px 5px; background: none; border: 1px solid var(--line); color: var(--mut);
 }
 .stem__b:hover { color: var(--txt); }
@@ -299,10 +318,10 @@ html, body {
   flex: 1; min-height: 0; overflow-y: auto; position: relative;
   background: var(--feuille); color: var(--feuille-encre); border: 1px solid var(--line);
 }
-.partition__aide { font-size: 12px; color: var(--feuille-mut); padding: 18px; margin: 0; }
+.partition__aide { font-size: var(--t-legende); color: var(--feuille-mut); padding: 18px; margin: 0; }
 .partition__jauge { width: calc(100% - 36px); margin: 0 18px 18px; }
 /* Bloc « Partitions » du rail : instrument, état, geste. */
-.partition-ligne { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; }
+.partition-ligne { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--t-second); }
 .partition-ligne[hidden] { display: none; }
 .partition-ligne__etat { color: var(--mut); flex: 1; min-width: 0; }
 .partition-ligne__jauge { margin-top: 6px; }
@@ -318,7 +337,7 @@ html, body {
 }
 .partition .at-highlight * { fill: var(--accent); stroke: var(--accent); }
 .insp__stem-nom {
-  font-family: var(--serif); font-size: 19px; font-weight: 500;
+  font-family: var(--serif); font-size: var(--t-titre); font-weight: 500;
   letter-spacing: -.01em; margin: 4px 0 12px; text-transform: capitalize;
 }
 .stem__pan {
@@ -329,7 +348,7 @@ html, body {
 .stem__pan .reglage:first-child { margin-left: 0; }
 .stem__ligne { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .stem__note {
-  font-size: 11px; color: var(--mut); line-height: 1.5; margin: 0;
+  font-size: var(--t-legende); color: var(--mut); line-height: 1.5; margin: 0;
 }
 /* Le badge de la ligne : neutre il ne dit rien, réglé il dit quoi. */
 .stem__b--regle { color: var(--accent); border-color: var(--accent); }
@@ -344,17 +363,17 @@ html, body {
 }
 .candidat:hover { color: var(--accent); }
 .candidat:disabled { opacity: .45; cursor: default; }
-.candidat b { font-size: 12px; font-weight: 500; flex: 1 1 auto;
+.candidat b { font-size: var(--t-legende); font-weight: 500; flex: 1 1 auto;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .candidat span {
-  font-family: var(--mono); font-size: 10px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   flex: none; font-variant-numeric: tabular-nums;
 }
 
 /* Dérive : n'apparaît que lorsque les stems n'avancent plus du même pas. */
 .derive { display: flex; align-items: center; gap: 8px; margin-left: 14px; }
 .derive b {
-  font-size: 11px; font-weight: 500; color: var(--accent);
+  font-size: var(--t-legende); font-weight: 500; color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -368,21 +387,21 @@ html, body {
 }
 .marque { display: flex; align-items: baseline; gap: 7px; margin-bottom: 26px; }
 .marque__nom {
-  font-size: 14px; font-weight: 700;
+  font-size: var(--t-corps); font-weight: 600;
   letter-spacing: .04em; text-transform: uppercase;
 }
-.marque__ver { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--mut); }
+.marque__ver { font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .14em; color: var(--mut); }
 
 .rail__titre {
-  font-family: var(--mono); font-size: 9.5px;
-  letter-spacing: .17em; text-transform: uppercase;
+  font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .1em; text-transform: uppercase;
   color: var(--mut); margin: 0 0 9px;
 }
 .bloc { margin-top: 26px; }
 
 .modes { display: flex; flex-direction: column; }
 .mode {
-  text-align: left; font: inherit; font-size: 13.5px;
+  text-align: left; font: inherit; font-size: var(--t-corps);
   background: none; border: none; color: var(--mut);
   border-left: 2px solid var(--line);
   padding: 6px 0 6px 11px; cursor: pointer;
@@ -403,7 +422,7 @@ html, body {
 .bibliotheque-entree.mode--actif { border-color: var(--accent); color: var(--accent); }
 
 .chercher {
-  width: 100%; font: inherit; font-size: 13px;
+  width: 100%; font: inherit; font-size: var(--t-second);
   background: var(--panel2); color: var(--txt);
   border: 1px solid var(--line); border-radius: 2px;
   padding: 7px 9px;
@@ -413,7 +432,7 @@ html, body {
 .rail__titre--action { display: flex; align-items: baseline; justify-content: space-between; }
 .rail__raccourci { margin: 0; letter-spacing: 0; text-transform: none; }
 .rail__raccourci kbd, .palette kbd {
-  font-family: var(--mono); font-size: 11px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
 }
 
@@ -436,16 +455,16 @@ html, body {
   display: flex; align-items: center; gap: 12px;
   padding: 14px var(--gouttiere-panneau); border-bottom: 1px solid var(--line);
 }
-.palette__loupe { color: var(--mut); font-size: 18px; }
+.palette__loupe { color: var(--mut); font-size: var(--t-intertitre); }
 .palette__champ {
   flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
-  font: inherit; font-size: 17px; color: var(--txt);
+  font: inherit; font-size: var(--t-intertitre); color: var(--txt);
 }
 .palette__champ::placeholder { color: var(--mut); }
 .palette__liste { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
 .palette__groupe {
   margin: 0; padding: 10px 12px 6px;
-  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut);
 }
 .palette__option {
@@ -457,7 +476,7 @@ html, body {
   width: 36px; height: 36px; flex: none; border-radius: 2px;
   background: var(--panel2) center / cover no-repeat;
   display: grid; place-items: center;
-  font-family: var(--mono); font-size: 12px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
 }
 .palette__vignette--artiste {
   border-radius: 50%;
@@ -468,19 +487,19 @@ html, body {
 .palette__vignette--commande { width: 24px; height: 24px; margin: 0 6px; background: none; border: 1px solid var(--line); }
 .palette__corps { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .palette__nom, .palette__sec { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette__sec { font-size: 12px; color: var(--mut); }
-.palette__lire { font-size: 12px; color: var(--accent); opacity: 0; }
+.palette__sec { font-size: var(--t-legende); color: var(--mut); }
+.palette__lire { font-size: var(--t-legende); color: var(--accent); opacity: 0; }
 .palette__option[aria-selected="true"] .palette__lire { opacity: 1; }
 .palette__rien { margin: 0; padding: 26px 12px; text-align: center; color: var(--mut); }
 .palette__aide {
   margin: 0; display: flex; gap: 18px; justify-content: flex-end;
   padding: 8px var(--gouttiere-panneau); border-top: 1px solid var(--line);
-  font-size: 12px; color: var(--mut);
+  font-size: var(--t-legende); color: var(--mut);
 }
 .palette__aide kbd { margin-right: 3px; }
 .palette__touche { flex: none; }
 
-.sommaire { font-family: var(--mono); font-size: 11px; color: var(--mut); line-height: 1.7; }
+.sommaire { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); line-height: 1.7; }
 
 /* ---------- centre ---------- */
 /* `min-height: 0` n'est pas décoratif : la taille minimale automatique d'une
@@ -523,7 +542,7 @@ html, body {
    rail (`.borne__x`) — pas de fond, un accent seulement au survol/actif. */
 .intention__ollama {
   flex: none; width: 34px;
-  font-size: 16px; line-height: 1;
+  font-size: var(--t-intertitre); line-height: 1;
   background: var(--panel2); border: 1px solid var(--line); border-radius: 2px;
   cursor: pointer; overflow: visible;
 }
@@ -549,15 +568,15 @@ html, body {
   65%           { transform: translate(1px, -5px)  scale(.92, 1.1); }
   80%           { transform: translate(1px, 0)     scale(1.08, .9); }
 }
-.fil h1 { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -.01em; margin: 0; }
-.fil__compte { font-family: var(--mono); font-size: 10.5px; color: var(--mut); margin-left: auto; }
+.fil h1 { font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; letter-spacing: -.01em; margin: 0; }
+.fil__compte { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); margin-left: auto; }
 .fil__retour {
-  font: inherit; font-size: 12.5px; background: none; border: none;
+  font: inherit; font-size: var(--t-second); background: none; border: none;
   color: var(--mut); cursor: pointer; padding: 0;
 }
 .fil__retour:hover { color: var(--accent); }
 .fil__candidat {
-  font: inherit; font-size: 11.5px; cursor: pointer;
+  font: inherit; font-size: var(--t-legende); cursor: pointer;
   background: none; border: 1px solid var(--line); color: var(--mut);
   padding: 4px 10px; align-self: center;
 }
@@ -566,7 +585,7 @@ html, body {
 /* Ordre de la grille d'albums : posé à droite de l'en-tête, après le compte. */
 .tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; }
 .tri__opt {
-  font: inherit; font-size: 11px; font-family: var(--mono);
+  font: inherit; font-size: var(--t-legende); font-family: var(--mono);
   background: none; border: none; color: var(--mut);
   cursor: pointer; padding: 4px 8px;
 }
@@ -606,19 +625,19 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .index-alpha__lettre {
   flex: 1; min-height: 0;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono); font-size: 8.5px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   background: none; border: none; cursor: pointer; padding: 0;
 }
 .index-alpha__lettre:hover { color: var(--txt); }
 .index-alpha__lettre--vide { color: var(--line); cursor: default; }
 .index-alpha__lettre--actif {
-  color: var(--accent); font-size: 14px; font-weight: 700;
+  color: var(--accent); font-size: var(--t-corps); font-weight: 600;
 }
 /* Année sans étiquette : trop de bandes pour les nommer toutes. Reste cliquable
    (infobulle) et reprend son chiffre quand elle est en tête de liste — d'où
    cette règle avant `--actif`, qui l'emporte. */
 .index-annees .index-alpha__lettre--muette { font-size: 0; }
-.index-annees .index-alpha__lettre--actif { font-size: 11px; }
+.index-annees .index-alpha__lettre--actif { font-size: var(--t-legende); }
 
 /* `height: 44px` doit rester égal à `LIGNE` dans `app.js` (`const LIGNE =
    44`) : la liste virtualisée s'en sert pour calculer quelles lignes sont
@@ -646,12 +665,12 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Le nom d'artiste (ou le résumé d'une playlist) se tronque à 40 % de la ligne :
    en `flex: none`, un nom très long chassait le titre et la durée hors de l'écran. */
 .ligne__sec {
-  font-size: 12px; color: var(--mut); flex: 0 1 auto; min-width: 0; max-width: 40%;
+  font-size: var(--t-legende); color: var(--mut); flex: 0 1 auto; min-width: 0; max-width: 40%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* Morceau favori : un ♥ discret dans les listes de pistes. */
-.ligne__fav { flex: none; font-size: 11px; color: var(--accent); }
-.ligne__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.ligne__fav { flex: none; font-size: var(--t-legende); color: var(--accent); }
+.ligne__cpt { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); flex: none; }
 .ligne__pop, .file__pop { flex: none; display: flex; align-items: center; }
 
 /* Fragments de texte cliquables dans une ligne de liste (bouton nu) : le nom
@@ -664,7 +683,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 /* Métadonnées secondaires en lien : gardent leur gris et leur petit corps
    (la combinaison de classes l'emporte quel que soit l'ordre des règles). */
-.ligne__lien.ligne__sec { font-size: 12px; color: var(--mut); }
+.ligne__lien.ligne__sec { font-size: var(--t-legende); color: var(--mut); }
 /* Zone cliquable signalée par la seule couleur — pas de soulignement, pour
    alléger l'interface (même parti pris que `.album__nom`/`.album__artiste`). */
 .ligne__lien:hover { color: var(--accent); }
@@ -677,11 +696,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   display: flex; align-items: center; justify-content: flex-end;
   background: none; border: 0; padding: 0; cursor: pointer;
 }
-.jouer__no { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.jouer__no { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
 .jouer__ic {
   position: absolute; inset: 0; display: flex;
   align-items: center; justify-content: flex-end;
-  font-size: 9px; color: var(--accent); opacity: 0;
+  font-size: var(--t-legende); color: var(--accent); opacity: 0;
 }
 .ligne__jouer:hover .jouer__no,
 .ligne__jouer:focus-visible .jouer__no,
@@ -739,7 +758,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .proches { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; }
 .proche {
   flex: 0 0 auto; background: none; border: 1px solid var(--line); border-radius: 999px;
-  padding: 5px 14px; font: inherit; font-size: 12.5px; color: var(--txt);
+  padding: 5px 14px; font: inherit; font-size: var(--t-second); color: var(--txt);
   cursor: pointer; white-space: nowrap;
 }
 .proche:hover { color: var(--accent); border-color: var(--accent); }
@@ -763,10 +782,10 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .proche-pochette__image--vide {
   background: hsl(var(--teinte, 220) var(--initiales-fond));
   color: hsl(var(--teinte, 220) var(--initiales-encre));
-  font-size: 20px; font-weight: 600; letter-spacing: .5px;
+  font-size: var(--t-titre); font-weight: 600; letter-spacing: .5px;
 }
 .proche-pochette__nom {
-  max-width: 76px; font-size: 11.5px; line-height: 1.25; text-align: center;
+  max-width: 76px; font-size: var(--t-legende); line-height: 1.25; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .proche-pochette:hover .proche-pochette__nom { color: var(--accent); }
@@ -781,7 +800,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .autour-artiste__radio {
   display: inline-flex; align-items: center; gap: 8px;
 }
-.autour-artiste__radio-glyphe { font-size: 15px; line-height: 1; }
+.autour-artiste__radio-glyphe { font-size: var(--t-corps); line-height: 1; }
 .autour-artiste__radio.alchimie--travail { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .autour-artiste__radio.alchimie--travail .autour-artiste__radio-glyphe {
   display: inline-block; animation: alchimie-tourne 1.5s linear infinite;
@@ -814,7 +833,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   position: absolute; right: 7px; bottom: 7px;
   width: 28px; height: 28px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 10px;
+  background: var(--txt); color: var(--bg); font-size: var(--t-legende);
   opacity: 0; transform: translateY(3px);
   transition: opacity .15s ease, transform .15s ease, background .15s ease;
 }
@@ -828,7 +847,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   position: absolute; left: 7px; bottom: 7px;
   width: 28px; height: 28px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 17px;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre);
   opacity: 0; transform: translateY(3px);
   transition: opacity .15s ease, transform .15s ease, background .15s ease;
 }
@@ -838,11 +857,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .album__alchimie:disabled { opacity: .6; cursor: wait; }
 
 .album__nom {
-  height: 16px; font-size: 12.5px; line-height: 16px; font-weight: 500;
+  height: 16px; font-size: var(--t-second); line-height: 16px; font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .album__sec {
-  height: 14px; font-size: 11.5px; line-height: 14px; color: var(--mut); margin-top: 2px;
+  height: 14px; font-size: var(--t-legende); line-height: 14px; color: var(--mut); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .album:hover .album__nom { color: var(--accent); }
@@ -869,7 +888,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   display: grid; place-items: center;
   background: hsl(var(--teinte, 220) var(--initiales-fond));
   color: hsl(var(--teinte, 220) var(--initiales-encre));
-  font-size: 34px; font-weight: 600; letter-spacing: 1px;
+  font-size: var(--t-decor); font-weight: 600; letter-spacing: 1px;
 }
 
 /* ---------- carte (mode Explorer) ---------- */
@@ -884,11 +903,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
 }
 .carte__info b {
-  display: block; font-size: 12.5px; font-weight: 600;
+  display: block; font-size: var(--t-second); font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .carte__info span {
-  display: block; font-size: 11.5px; color: var(--mut);
+  display: block; font-size: var(--t-legende); color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .carte__aide {
@@ -896,26 +915,26 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   /* Le texte change avec le mode de chemin : il lui faut de quoi passer à la
      ligne plutôt que de déborder du cadre. */
   max-width: calc(100% - 52px);
-  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); opacity: .7;
 }
 
 /* Réglage du zoom : la molette d'un trackpad est trop vive pour viser. */
 .zoom { display: flex; gap: 4px; margin-top: 10px; }
 .zoom button {
-  flex: 1; font: inherit; font-size: 12px; cursor: pointer; padding: 4px 0;
+  flex: 1; font: inherit; font-size: var(--t-legende); cursor: pointer; padding: 4px 0;
   background: none; border: 1px solid var(--line); color: var(--mut);
 }
 .zoom button:hover { color: var(--txt); border-color: var(--accent); }
 .zoom__val {
-  font-family: var(--mono); font-size: 10px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   align-self: center; min-width: 42px; text-align: center;
 }
 
 /* Sélecteur « colorer par » */
 .segments { display: flex; border: 1px solid var(--line); }
 .segment {
-  flex: 1; font: inherit; font-size: 12px; cursor: pointer;
+  flex: 1; font: inherit; font-size: var(--t-legende); cursor: pointer;
   background: none; border: none; color: var(--mut); padding: 5px 0;
 }
 .segment + .segment { border-left: 1px solid var(--line); }
@@ -949,15 +968,15 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .borne--introuvable { border-color: var(--alerte); }
 .borne--introuvable .borne__nom { color: var(--alerte); }
 .borne__role {
-  font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); flex: none; width: 44px;
 }
 .borne__nom {
-  font-size: 11.5px; flex: 1; min-width: 0;
+  font-size: var(--t-legende); flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .borne__x {
-  font: inherit; font-size: 12px; line-height: 1; padding: 0 2px;
+  font: inherit; font-size: var(--t-legende); line-height: 1; padding: 0 2px;
   background: none; border: none; color: var(--mut); cursor: pointer; flex: none;
 }
 .borne__x:hover { color: var(--accent); }
@@ -971,7 +990,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .plan-texte__filtres li {
   display: flex; align-items: baseline; gap: 8px;
   padding: 4px 7px; border: 1px solid var(--line); background: var(--panel2);
-  font-size: 11.5px;
+  font-size: var(--t-legende);
 }
 .plan-texte__filtres li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-texte__filtres .filtre--exclu { border-color: var(--alerte); }
@@ -985,16 +1004,16 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Le geste attendu change avec le mode : il est écrit sous les boutons plutôt
    qu'appris. */
 .aide {
-  margin-top: 9px; font-size: 11.5px; line-height: 1.45; color: var(--mut);
+  margin-top: 9px; font-size: var(--t-legende); line-height: 1.45; color: var(--mut);
 }
 .case {
   display: flex; align-items: flex-start; gap: 8px; margin-top: 10px;
-  font-size: 11.5px; line-height: 1.4; color: var(--mut); cursor: pointer;
+  font-size: var(--t-legende); line-height: 1.4; color: var(--mut); cursor: pointer;
 }
 .case input { margin-top: 2px; flex: none; }
 .reglette {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
-  font-size: 11.5px; color: var(--mut);
+  font-size: var(--t-legende); color: var(--mut);
 }
 .reglette input {
   width: 58px; margin-left: auto; padding: 4px 6px;
@@ -1013,12 +1032,12 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    repérer les deux-points et les virgules d'un coup d'œil. */
 .reglette__texte {
   display: block; width: 100%; margin-top: 10px; padding: 8px 10px;
-  font: inherit; font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+  font: inherit; font-family: var(--mono); font-size: var(--t-legende); line-height: 1.6;
   background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
   resize: vertical;
 }
 .reglette__val {
-  font-family: var(--mono); font-size: 10.5px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   font-variant-numeric: tabular-nums; min-width: 26px; text-align: right;
 }
 
@@ -1031,7 +1050,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .legende__bornes {
   display: flex; justify-content: space-between; margin-top: 4px;
-  font-family: var(--mono); font-size: 10px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
 }
 
 /* Familles : la couleur ne distingue qu'une famille à la fois — un nuage
@@ -1049,7 +1068,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .famille {
   display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0;
   background: none; border: none; padding: 3px 0; cursor: pointer;
-  font: inherit; font-size: 12.5px; color: var(--mut); text-align: left;
+  font: inherit; font-size: var(--t-second); color: var(--mut); text-align: left;
 }
 .famille:hover { color: var(--txt); }
 .famille--isolee { color: var(--accent); }
@@ -1058,7 +1077,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    plafonne d'ailleurs à trois sur ce type de graphique. */
 .famille--isolee { border-left: 2px solid var(--accent); padding-left: 7px; margin-left: -9px; }
 .famille__n {
-  margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+  margin-left: auto; font-family: var(--mono); font-size: var(--t-legende);
   font-variant-numeric: tabular-nums;
 }
 /* Zoom vertical ciblé de la frise (§ 3) : étendre/réduire une bande depuis sa
@@ -1068,7 +1087,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .famille__etendre {
   flex: none; align-self: center; cursor: pointer;
   width: 17px; height: 17px; line-height: 15px; text-align: center; padding: 0;
-  font: inherit; font-size: 11px; background: none;
+  font: inherit; font-size: var(--t-legende); background: none;
   border: 1px solid var(--line); border-radius: 2px; color: var(--mut);
 }
 .famille__etendre:hover { color: var(--txt); border-color: var(--accent); }
@@ -1091,8 +1110,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   background-size: cover; background-position: center;
 }
 .pochette span {
-  font-family: var(--mono); font-size: 10px;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mut);
 }
 .pochette--pleine span { display: none; }
 
@@ -1109,7 +1128,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   position: absolute; left: 8px; bottom: 8px;
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 18px;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre);
   transition: background .15s ease;
 }
 .insp__alchimie:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
@@ -1121,7 +1140,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   position: absolute; left: 46px; bottom: 8px;
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 16px; line-height: 1;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre); line-height: 1;
   transition: background .15s ease;
 }
 .insp__favori[hidden] { display: none; }
@@ -1134,7 +1153,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   position: absolute; right: 8px; bottom: 8px;
   width: 30px; height: 30px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 13px;
+  background: var(--txt); color: var(--bg); font-size: var(--t-second);
   transition: background .15s ease;
 }
 .insp__lecture:hover { background: var(--accent); color: var(--bg); }
@@ -1150,13 +1169,13 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   animation: alchimie-tourne 1.5s linear infinite;
 }
 
-.insp__vide { font-size: 12.5px; color: var(--mut); }
-.inspecteur h3 { font-family: var(--serif); font-size: 25px; font-weight: 500; line-height: 1.12; margin: 0; }
-.insp__artiste { font-size: 13px; color: var(--mut); margin: 5px 0 18px; cursor: pointer; }
+.insp__vide { font-size: var(--t-second); color: var(--mut); }
+.inspecteur h3 { font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; line-height: 1.12; margin: 0; }
+.insp__artiste { font-size: var(--t-second); color: var(--mut); margin: 5px 0 18px; cursor: pointer; }
 .insp__artiste:hover { color: var(--accent); }
-.meta { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
-.meta dt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); align-self: center; }
-.meta dd { margin: 0; font-family: var(--mono); font-size: 12px; }
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: var(--t-second); }
+.meta dt { font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em; text-transform: uppercase; color: var(--mut); align-self: center; }
+.meta dd { margin: 0; font-family: var(--mono); font-size: var(--t-legende); }
 .meta dd.lien { cursor: pointer; }
 .meta dd.lien:hover { color: var(--accent); }
 
@@ -1170,11 +1189,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .voisin:hover { color: var(--accent); }
 .voisin b {
-  display: block; font-size: 12.5px; font-weight: 500;
+  display: block; font-size: var(--t-second); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .voisin span {
-  display: block; font-size: 11.5px; color: var(--mut);
+  display: block; font-size: var(--t-legende); color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -1182,31 +1201,31 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    Last.fm (`docs/nommage-familles.md`). Les trois propositions ne
    s'affichent que quand elles divergent (« nom incertain ») — jamais fondues
    en une ligne, pour que le désaccord reste lisible plutôt que caché. */
-.insp__famille-nom { font-size: 12.5px; margin: 0; }
-.insp__famille-propositions { list-style: none; margin: 6px 0; padding: 0; font-size: 11.5px; color: var(--mut); }
+.insp__famille-nom { font-size: var(--t-second); margin: 0; }
+.insp__famille-propositions { list-style: none; margin: 6px 0; padding: 0; font-size: var(--t-legende); color: var(--mut); }
 .insp__famille-propositions li { padding: 2px 0; }
 
 /* Biographie (TheAudioDB), crédits par édition (Discogs) et critiques
    (CritiqueBrainz) — trois sources de plus dans l'inspecteur partagé,
    `docs/enrichissement-lecteur.md`. */
-.insp__bio { font-size: 12.5px; line-height: 1.5; white-space: pre-line; margin: 0; }
+.insp__bio { font-size: var(--t-second); line-height: 1.5; white-space: pre-line; margin: 0; }
 
-.credits { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.credits { list-style: none; margin: 0; padding: 0; font-size: var(--t-second); }
 .credits li { padding: 5px 0; border-top: 1px solid var(--line); }
 .credits li:first-child { border-top: none; }
 /* Mention discrète, par courtoisie — ni la licence CC0 de Discogs ni
    TheAudioDB ne l'exigent, contrairement à l'attribution CritiqueBrainz
    ci-dessous. */
-.credit-source { font-size: 10.5px; color: var(--mut); margin: 6px 0 0; }
+.credit-source { font-size: var(--t-legende); color: var(--mut); margin: 6px 0 0; }
 
 .critiques { display: flex; flex-direction: column; gap: 14px; }
 .critique { border-top: 1px solid var(--line); padding-top: 10px; margin: 0; }
-.critique p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.critique p { margin: 0; font-size: var(--t-second); line-height: 1.5; }
 /* Attribution obligatoire — auteur, mention CritiqueBrainz, licence exacte —
    visible partout où le texte apparaît, jamais mutualisée en une seule
    mention pour toutes les critiques. Contrastée, à la différence de la
    mention Discogs ci-dessus : ici c'est une obligation de licence. */
-.critique-attribution { margin-top: 6px !important; font-size: 11px; color: var(--mut); }
+.critique-attribution { margin-top: 6px !important; font-size: var(--t-legende); color: var(--mut); }
 .critique-attribution a { color: var(--accent); }
 
 /* ---------- transport ---------- */
@@ -1220,11 +1239,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .transport__play {
   width: 34px; height: 34px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: none; cursor: pointer;
-  background: var(--txt); color: var(--bg); font-size: 11px;
+  background: var(--txt); color: var(--bg); font-size: var(--t-legende);
 }
 .transport__nav {
   background: none; border: none; color: var(--mut);
-  font-size: 20px; cursor: pointer; padding: 0 2px; line-height: 1;
+  font-size: var(--t-titre); cursor: pointer; padding: 0 2px; line-height: 1;
 }
 .transport__nav:hover { color: var(--txt); }
 .transport__art {
@@ -1235,11 +1254,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .transport__now { min-width: 0; width: 210px; }
 .transport__now b {
-  display: block; font-size: 13px; font-weight: 600;
+  display: block; font-size: var(--t-second); font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .transport__now span {
-  display: block; font-size: 12px; color: var(--mut);
+  display: block; font-size: var(--t-legende); color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* Titre et artiste naviguent (voir leurs `addEventListener` dans app.js) —
@@ -1264,7 +1283,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   image-rendering: pixelated;
 }
 
-.tc { font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.tc { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
 .tc-bloc { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
 /* Bouton « E » — amélioration du son. Même carré arrondi que `.reglage button`
    du dock des stems. */
@@ -1272,7 +1291,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   width: 22px; height: 22px; flex: none;
   border: 1px solid var(--line); border-radius: 5px;
   background: transparent; color: var(--mut);
-  font: 600 12px var(--mono); line-height: 1; cursor: pointer;
+  font: 600 var(--t-legende) var(--mono); line-height: 1; cursor: pointer;
 }
 .transport__e:hover:not(:disabled) { color: var(--txt); border-color: var(--mut); }
 .transport__e[aria-pressed="true"] {
@@ -1282,7 +1301,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .transport__e:disabled { opacity: .4; cursor: default; }
 /* « HD » : deux caractères (et jusqu'à « 100% » pendant une régénération),
    donc largeur libre — centré sous « E » dans la colonne. */
-#hd { width: auto; min-width: 22px; padding: 0 5px; font-size: 10px; letter-spacing: .04em; }
+#hd { width: auto; min-width: 22px; padding: 0 5px; font-size: var(--t-legende); letter-spacing: .04em; }
 #hd.travaille { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
 .transport__amelio { display: flex; align-items: center; gap: 7px; flex: none; }
 /* « E » au-dessus de « HD » : deux boutons de 22 px de haut, ~47 px en tout,
@@ -1291,8 +1310,8 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .transport__e-force { width: 60px; accent-color: var(--accent); }
 .transport__e-force[hidden] { display: none; }
 .transport__file {
-  font-family: var(--mono); font-size: 9.5px;
-  letter-spacing: .12em; text-transform: uppercase;
+  font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .1em; text-transform: uppercase;
   background: none; color: var(--mut); cursor: pointer;
   border: 1px solid var(--line); border-radius: 2px;
   padding: 5px 9px; flex: none;
@@ -1302,7 +1321,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* ---------- réglages ---------- */
 .lien {
   background: none; border: none; padding: 0; margin-top: 12px;
-  font: inherit; font-size: 12.5px; color: var(--mut);
+  font: inherit; font-size: var(--t-second); color: var(--mut);
   cursor: pointer; text-align: left; text-decoration: none;
 }
 .lien:hover { color: var(--accent); }
@@ -1333,12 +1352,12 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .stats__carte--large { grid-column: 1 / -1; }
 .meta--completude { grid-template-columns: auto 1fr auto 1fr; column-gap: 24px; }
 .stats__titre {
-  font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); margin: 0 0 12px;
 }
 
 .barres-genres { display: flex; flex-direction: column; gap: 7px; max-height: 260px; overflow-y: auto; }
-.barre-genre { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
+.barre-genre { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 8px; font-size: var(--t-legende); }
 .barre-genre__nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barre-genre__piste { background: var(--panel2); border-radius: 2px; height: 8px; overflow: hidden; }
 .barre-genre__remplissage { background: var(--accent); height: 100%; }
@@ -1347,7 +1366,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    confondent dans une liste triée par taille. */
 .barre-genre--indetermine .barre-genre__remplissage { background: var(--mut); }
 .barre-genre--indetermine .barre-genre__nom { color: var(--mut); font-style: italic; }
-.barre-genre__valeur { font-family: var(--mono); font-size: 10.5px; color: var(--mut); text-align: right; }
+.barre-genre__valeur { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); text-align: right; }
 
 .histogramme {
   display: flex; align-items: flex-end; gap: 2px; height: 130px;
@@ -1366,19 +1385,19 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    en lignes superposées — les licences sont parfois longues, une colonne
    les écraserait. */
 .credits { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
-.credit { background: var(--panel); padding: 9px 12px; font-size: 11.5px; }
-.credit__detail { color: var(--mut); font-size: 10.5px; margin-top: 2px; }
-.credit__licences { font-family: var(--mono); font-size: 10.5px; color: var(--mut); margin-top: 4px; }
+.credit { background: var(--panel); padding: 9px 12px; font-size: var(--t-legende); }
+.credit__detail { color: var(--mut); font-size: var(--t-legende); margin-top: 2px; }
+.credit__licences { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); margin-top: 4px; }
 .credit__liens { display: flex; flex-wrap: wrap; gap: 0 14px; }
-.credit__liens .lien { margin-top: 4px; font-size: 11.5px; }
+.credit__liens .lien { margin-top: 4px; font-size: var(--t-legende); }
 .verif {
   display: flex; align-items: center; gap: 10px;
-  background: var(--panel); padding: 9px 12px; font-size: 11.5px;
+  background: var(--panel); padding: 9px 12px; font-size: var(--t-legende);
 }
 .verif__corps { flex: 1; min-width: 0; }
 .verif__ligne { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.verif__detail { color: var(--mut); font-size: 10.5px; margin-top: 2px; }
-.verif__mesure { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.verif__detail { color: var(--mut); font-size: var(--t-legende); margin-top: 2px; }
+.verif__mesure { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); flex: none; }
 .verif__actions { display: flex; gap: 6px; flex: none; }
 .verif--clic { cursor: pointer; }
 .verif--clic:hover { background: var(--panel2); }
@@ -1389,9 +1408,9 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .valise-parts { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .valise-part {
   display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 64px auto auto;
-  align-items: center; gap: 8px; font-size: 11.5px; color: var(--mut);
+  align-items: center; gap: 8px; font-size: var(--t-legende); color: var(--mut);
 }
-.valise-part select, .valise-part input { font-size: 12px; padding: 5px 7px; }
+.valise-part select, .valise-part input { font-size: var(--t-legende); padding: 5px 7px; }
 .valise-part input { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .valise-part__retirer { margin-top: 0; padding: 0 4px; }
 .valise-limites { max-width: 380px; }
@@ -1405,23 +1424,23 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .valise-albums { max-height: none; overflow: visible; }
 .valise-albums .famille__pastille { flex: none; }
 .verif__geste {
-  background: none; border: none; padding: 0; font: inherit; font-size: 10.5px;
+  background: none; border: none; padding: 0; font: inherit; font-size: var(--t-legende);
   color: var(--mut); cursor: pointer;
 }
 .verif__geste:hover { color: var(--accent); }
 .verif__geste--actif { color: var(--accent); }
 .verif--garde { box-shadow: inset 2px 0 0 var(--accent); }
 
-.iphone__nom { font-size: 13px; color: var(--txt); margin: 4px 0 0; }
-.iphone__echeance { margin: 10px 0 0; font-size: 12px; color: var(--txt); }
+.iphone__nom { font-size: var(--t-second); color: var(--txt); margin: 4px 0 0; }
+.iphone__echeance { margin: 10px 0 0; font-size: var(--t-legende); color: var(--txt); }
 .iphone__echeance--proche { color: var(--accent); }
-.iphone__valises { font-size: 11.5px; color: var(--mut); line-height: 1.7; margin-top: 4px; }
+.iphone__valises { font-size: var(--t-legende); color: var(--mut); line-height: 1.7; margin-top: 4px; }
 #bloc-valise .bouton--mince { margin: 10px 0 0; }
 
 /* Mode Découvrir */
 .decouvrir-fil {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  margin-bottom: 18px; font-size: 12.5px; color: var(--mut);
+  margin-bottom: 18px; font-size: var(--t-second); color: var(--mut);
 }
 .decouvrir-fil button {
   background: none; border: none; padding: 0; font: inherit; color: var(--accent);
@@ -1429,11 +1448,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .decouvrir-fil button:hover { color: var(--txt); }
 .decouvrir-fil span { color: var(--mut); }
-#decouvrir-nom { font-family: var(--serif); font-size: 25px; font-weight: 500; margin: 0 0 4px; }
+#decouvrir-nom { font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; margin: 0 0 4px; }
 #decouvrir-liens { max-height: none; }
 .verif__albums {
   flex: none; background: none; border: 1px solid var(--line); border-radius: 2px;
-  padding: 3px 8px; font: inherit; font-size: 10.5px; color: var(--mut); cursor: pointer;
+  padding: 3px 8px; font: inherit; font-size: var(--t-legende); color: var(--mut); cursor: pointer;
 }
 .verif__albums:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -1444,7 +1463,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .decouvrir-tete .aide { margin-top: 0; }
 #decouvrir-avancement {
-  font-family: var(--mono); font-size: 11px; margin: 4px 0 0; min-height: 1.4em;
+  font-family: var(--mono); font-size: var(--t-legende); margin: 4px 0 0; min-height: 1.4em;
 }
 /* Onglets du panneau central — collants, pour rester en vue au défilement.
    Les marges de part et d'autre sont peintes du fond (ombres pleines), sinon
@@ -1457,7 +1476,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   box-shadow: 0 -14px 0 var(--bg), 0 12px 0 var(--bg);
 }
 .segment__n {
-  font-family: var(--mono); font-size: 9.5px; opacity: .7; margin-left: 4px;
+  font-family: var(--mono); font-size: var(--t-legende); opacity: .7; margin-left: 4px;
 }
 .decouvrir-panneau { min-height: 60px; }
 
@@ -1473,7 +1492,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 
 .decouvrir-periode + .decouvrir-periode { margin-top: 22px; }
 .decouvrir-periode__titre {
-  font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: .1em;
+  font-family: var(--mono); font-size: var(--t-legende); font-weight: 400; letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); margin: 0 0 10px;
 }
 .decouvrir-grille {
@@ -1494,11 +1513,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .album__pochette--photo { background-position: center 25%; }
 
 .album__meta {
-  font-family: var(--mono); font-size: 10.5px; line-height: 14px; color: var(--mut);
+  font-family: var(--mono); font-size: var(--t-legende); line-height: 14px; color: var(--mut);
   margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .album__collab {
-  font-size: 11px; line-height: 14px; font-style: italic; color: var(--mut);
+  font-size: var(--t-legende); line-height: 14px; font-style: italic; color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -1511,7 +1530,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* EP / Single ; l'album, cas courant, n'a pas de pastille. */
 .album__type {
   position: absolute; top: 7px; left: 7px; z-index: 1;
-  font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+  font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .06em; text-transform: uppercase;
   background: var(--bg); color: var(--txt); padding: 2px 6px; border-radius: 2px;
 }
 /* Liens sortants, étiquetés en toutes lettres, révélés au survol ou au clavier
@@ -1528,7 +1547,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .album--decouvrir:focus-within .album__actions { opacity: 1; transform: translateY(0); }
 .album__action {
   border: none; border-radius: 999px; cursor: pointer;
-  background: var(--txt); color: var(--bg); font: inherit; font-size: 10px;
+  background: var(--txt); color: var(--bg); font: inherit; font-size: var(--t-legende);
   padding: 3px 7px; transition: background .15s ease;
 }
 .album__action:hover:not(:disabled), .album__action:focus-visible { background: var(--accent); }
@@ -1544,19 +1563,19 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .histogramme__axe { position: relative; height: 13px; margin-top: 3px; }
 .histogramme__axe span {
   position: absolute; top: 0;
-  font-family: var(--mono); font-size: 9px; color: var(--mut); white-space: nowrap;
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); white-space: nowrap;
 }
 
 .racine {
   display: flex; align-items: center; gap: 14px;
   padding: 12px 0; border-bottom: 1px solid var(--line);
 }
-.racine__chemin { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px;
+.racine__chemin { flex: 1; min-width: 0; font-family: var(--mono); font-size: var(--t-legende);
                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.racine__cpt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.racine__cpt { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); flex: none; }
 
 .bouton {
-  font: inherit; font-size: 12.5px; cursor: pointer; flex: none;
+  font: inherit; font-size: var(--t-second); cursor: pointer; flex: none;
   background: var(--panel2); color: var(--txt);
   border: 1px solid var(--line); border-radius: 2px; padding: 7px 13px;
 }
@@ -1566,7 +1585,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 
 .ajout { margin-top: 22px; }
 .ajout__ligne { display: flex; gap: 10px; }
-.scan-etat { font-family: var(--mono); font-size: 11px; color: var(--mut); margin: 12px 0 0; min-height: 1.4em; }
+.scan-etat { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); margin: 12px 0 0; min-height: 1.4em; }
 
 /* « Scanner » : l'action de départ du mode, teintée comme l'accent. */
 #lancer-scan { border-color: var(--accent); color: var(--accent); }
@@ -1574,7 +1593,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Le dossier de stockage : un chemin qu'on doit pouvoir lire en entier et
    copier, donc pas d'ellipse — il passe à la ligne. */
 .chemin-donnees {
-  font-family: var(--mono); font-size: 12px; color: var(--txt);
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--txt);
   word-break: break-all; margin: 8px 0 0;
   background: var(--panel); border: 1px solid var(--line); padding: 8px 10px;
 }
@@ -1629,7 +1648,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .file__tete .rail__titre { margin: 0; }
 .file__fermer {
   background: none; border: none; color: var(--mut);
-  font-size: 18px; line-height: 1; cursor: pointer; padding: 0;
+  font-size: var(--t-intertitre); line-height: 1; cursor: pointer; padding: 0;
 }
 .file__fermer:hover { color: var(--txt); }
 
@@ -1643,7 +1662,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .file__bouton {
   flex: 1; padding: 5px 0; border: 1px solid var(--line); border-radius: 5px;
   background: transparent; color: var(--mut);
-  font: 500 11px var(--sans); cursor: pointer;
+  font: 500 var(--t-legende) var(--sans); cursor: pointer;
 }
 .file__bouton:hover { color: var(--txt); border-color: var(--mut); }
 .file__bouton[aria-pressed="true"] {
@@ -1652,7 +1671,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 
 .file__liste { flex: 1; overflow-y: auto; }
-.file__vide { padding: var(--gouttiere-panneau); font-size: 12.5px; color: var(--mut); }
+.file__vide { padding: var(--gouttiere-panneau); font-size: var(--t-second); color: var(--mut); }
 
 .file__ligne {
   display: flex; align-items: center; gap: 11px;
@@ -1662,11 +1681,11 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .file__ligne:hover { background: var(--panel2); }
 .file__ligne--joue { color: var(--accent); }
 .file__ligne--passe { opacity: .42; }
-.file__rang { font-family: var(--mono); font-size: 10px; color: var(--mut); width: 22px; flex: none; text-align: right; }
+.file__rang { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); width: 22px; flex: none; text-align: right; }
 .file__txt { min-width: 0; flex: 1; }
-.file__txt b { display: block; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file__txt span { display: block; font-size: 11.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file__duree { font-family: var(--mono); font-size: 10.5px; color: var(--mut); flex: none; }
+.file__txt b { display: block; font-size: var(--t-second); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__txt span { display: block; font-size: var(--t-legende); color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file__duree { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); flex: none; }
 
 /* Réordonnance manuelle : glisser-déposer natif d'une ligne sur une autre.
    `box-shadow` plutôt que `border` pour le repère d'insertion, afin de ne pas
@@ -1688,7 +1707,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   padding: 12px var(--gouttiere-panneau) 14px; border-bottom: 1px solid var(--line); flex: none;
 }
 .file__compo-phase {
-  display: block; font-family: var(--mono); font-size: 10.5px; color: var(--mut);
+  display: block; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   letter-spacing: .03em; margin-bottom: 9px;
 }
 .file__compo-jauge { height: 3px; background: var(--panel2); border-radius: 2px; overflow: hidden; }
@@ -1739,7 +1758,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   .file__ligne--pose { opacity: 1; transform: none; }
 }
 .vol { display: flex; align-items: center; gap: 7px; flex: none; }
-.vol span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+.vol span { font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em; text-transform: uppercase; color: var(--mut); }
 .vol input { width: 74px; accent-color: var(--accent); }
 
 /* Vitesse et tonalité, dans l'en-tête du dock. Deux pas-à-pas plutôt que des
@@ -1752,7 +1771,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   margin-left: 14px;
 }
 .reglage b {
-  font-size: 10px;
+  font-size: var(--t-legende);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1767,7 +1786,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   background: transparent;
   color: var(--mut);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--t-second);
   line-height: 1;
 }
 .reglage button:hover:not(:disabled) { color: var(--txt); border-color: var(--mut); }
@@ -1775,7 +1794,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .reglage span {
   min-width: 46px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--t-legende);
   color: var(--mut);
   font-variant-numeric: tabular-nums;
 }
@@ -1789,7 +1808,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    place avec un tiret — le transport est déjà dense. */
 .np__mesures {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--t-legende);
   color: var(--mut);
   opacity: .75;
   font-variant-numeric: tabular-nums;
@@ -1803,7 +1822,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   min-width: 46px;
   width: 46px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--t-legende);
   font-family: inherit;
   color: var(--mut);
   font-variant-numeric: tabular-nums;
@@ -1843,7 +1862,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   width: auto;
   min-width: 22px;
   padding: 0 6px;
-  font-size: 10px;
+  font-size: var(--t-legende);
   letter-spacing: 0.04em;
 }
 .reglage button.reglage__unite--actif {
@@ -1852,7 +1871,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 /* Unité d'une valeur écrite sans elle (vitesse d'un stem : % ou BPM). */
 .reglage__suffixe {
-  font-size: 10px;
+  font-size: var(--t-legende);
   letter-spacing: 0.04em;
   color: var(--mut);
 }
@@ -1861,7 +1880,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .bouton--mince {
   margin-left: 14px;
   padding: 3px 10px;
-  font-size: 11px;
+  font-size: var(--t-legende);
 }
 
 /* Carte MapLibre : les tuiles dessous, la surcouche de dessin dessus. Le
@@ -1886,7 +1905,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .lama__tete { flex: none; padding: 14px var(--gouttiere) 10px; border-bottom: 1px solid var(--line); }
 .lama__erreur { color: var(--alerte); margin: 8px 0 0; }
-.lama__exemples-lien { display: block; margin-top: 8px; font-size: 11.5px; }
+.lama__exemples-lien { display: block; margin-top: 8px; font-size: var(--t-legende); }
 /* `scrollbar-gutter: stable both-edges` : avec des barres de défilement
    permanentes (souris externe), la marge de droite ne grossit pas d'une
    barre — on réserve la même largeur à gauche, pour que le contenu reste
@@ -1900,27 +1919,27 @@ body[data-mode="explorer"] .index-alpha { display: none; }
    accent, filets, rien d'encadré. */
 .lama__accueil { padding: 26px 0 10px; max-width: 66ch; margin-inline: auto; }
 .lama__accueil-titre {
-  font-family: var(--serif); font-weight: 500; font-size: 26px; letter-spacing: -.01em;
+  font-family: var(--serif); font-weight: 500; font-size: var(--t-fil); letter-spacing: -.01em;
   margin: 0 0 8px;
 }
-.lama__accueil-texte { color: var(--mut); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
+.lama__accueil-texte { color: var(--mut); font-size: var(--t-second); line-height: 1.6; margin: 0 0 20px; }
 .lama__indisponible {
   display: flex; gap: 14px; align-items: baseline; margin: 0 0 20px; padding: 10px 2px;
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
-.lama__indisponible p { flex: 1; margin: 0; font-size: 13px; line-height: 1.5; }
+.lama__indisponible p { flex: 1; margin: 0; font-size: var(--t-second); line-height: 1.5; }
 .lama__indisponible-gestes { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .lama__indisponible-gestes .aide { margin: 0; }
 .lama__liste-exemples { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .lama__liste-exemples li { border-bottom: 1px solid var(--line); }
 .lama__exemple {
   display: flex; gap: 14px; align-items: baseline; width: 100%; text-align: left;
-  font: inherit; font-size: 13px; line-height: 1.4; padding: 9px 2px;
+  font: inherit; font-size: var(--t-second); line-height: 1.4; padding: 9px 2px;
   background: none; border: none; color: var(--txt); cursor: pointer;
 }
 .lama__exemple:hover { color: var(--accent); }
 .lama__exemple-tag {
-  flex: 0 0 96px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  flex: 0 0 96px; font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .1em;
   text-transform: uppercase; color: var(--accent);
 }
 
@@ -1937,7 +1956,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama__nuage-col .aide { margin-top: 8px; }
 .lama__bulle {
   position: absolute; pointer-events: none; z-index: 5; max-width: 240px;
-  background: var(--panel); border: 1px solid var(--line); padding: 5px 8px; font-size: 11.5px;
+  background: var(--panel); border: 1px solid var(--line); padding: 5px 8px; font-size: var(--t-legende);
   box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
 }
 .lama__compris { min-width: 0; }
@@ -1945,15 +1964,15 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 @keyframes lama-pose { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 .lama__titre {
-  font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .12em;
+  font-family: var(--mono); font-size: var(--t-legende); font-weight: 500; letter-spacing: .1em;
   text-transform: uppercase; color: var(--mut); margin: 0 0 10px;
 }
-.lama__reformulation { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.4; margin: 0 0 14px; }
+.lama__reformulation { font-family: var(--serif); font-style: italic; font-size: var(--t-intertitre); line-height: 1.4; margin: 0 0 14px; }
 
 .lama__barre { display: flex; gap: 2px; height: 32px; margin: 4px 0 12px; }
 .lama__segment {
   display: flex; align-items: center; min-width: 0; padding: 0 9px; cursor: default;
-  font-size: 11.5px; font-weight: 600; color: var(--partie-texte);
+  font-size: var(--t-legende); font-weight: 600; color: var(--partie-texte);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 .lama__segment.lama--survol { outline: 2px solid var(--txt); outline-offset: -2px; }
@@ -1964,35 +1983,35 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama__partie.lama--survol { background: var(--panel2); }
 .lama__partie-ligne { display: flex; align-items: center; gap: 6px 8px; }
 .lama__partie-ligne + .lama__partie-ligne { margin-top: 5px; }
-.lama__partie-nom { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; }
+.lama__partie-nom { flex: 0 0 auto; font-size: var(--t-second); font-weight: 600; }
 .lama__partie-genres { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .lama__partie .chercher { flex: 1 1 0; min-width: 0; padding: 5px 8px; }
 .lama__partie .lama__partie-duree { flex: 0 0 64px; }
 .lama__chip {
-  font: inherit; font-size: 11px; padding: 1px 7px; cursor: pointer;
+  font: inherit; font-size: var(--t-legende); padding: 1px 7px; cursor: pointer;
   background: var(--bg); border: 1px solid var(--line); border-radius: 2px; color: var(--txt);
 }
 .lama__chip:hover { border-color: var(--accent); }
 .lama__recomposer { width: 100%; margin-top: 12px; }
 .lama__brut { margin-top: 12px; }
-.lama__brut summary { cursor: pointer; font-size: 11.5px; color: var(--mut); }
+.lama__brut summary { cursor: pointer; font-size: var(--t-legende); color: var(--mut); }
 .lama__brut pre {
   max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 10px;
-  font: 11px/1.45 var(--mono); white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line);
+  font: var(--t-legende)/1.45 var(--mono); white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line);
 }
 
 /* Les sections du dessous : un filet, pas un cadre. */
 .lama__section { border-top: 1px solid var(--line); padding: 18px 0 8px; }
 .lama__cherche { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px 30px; }
 .lama__cherche-partie { --couleur: var(--accent); }
-.lama__cherche-partie h4 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.lama__cherche-partie h4 { display: flex; align-items: center; gap: 8px; font-size: var(--t-second); font-weight: 600; margin: 0 0 8px; }
 .lama__cherche-partie.lama--survol { background: var(--panel2); }
 .lama__entonnoir { list-style: none; margin: 0 0 6px; padding: 0; }
-.lama__entonnoir li { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 54px; gap: 8px; align-items: center; font-size: 11.5px; padding: 2px 0; }
+.lama__entonnoir li { display: grid; grid-template-columns: minmax(90px, 150px) 1fr 54px; gap: 8px; align-items: center; font-size: var(--t-legende); padding: 2px 0; }
 .lama__entonnoir-nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lama__entonnoir-barre { height: 8px; background: var(--panel2); display: block; }
 .lama__entonnoir-barre i { display: block; height: 100%; background: var(--couleur); }
-.lama__entonnoir-n { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--mut); }
+.lama__entonnoir-n { text-align: right; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
 .lama__relache { color: var(--accent); }
 .lama__relache--erreur { color: var(--alerte); }
 .lama__point { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
@@ -2001,18 +2020,18 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .lama__groupe.lama--survol { background: var(--panel2); }
 .lama__groupe-tete { display: flex; align-items: center; gap: 8px; }
 .lama__groupe-tete .aide { margin: 0; }
-.lama__pistes { margin: 6px 0 12px; padding-left: 30px; font-size: 12.5px; }
+.lama__pistes { margin: 6px 0 12px; padding-left: 30px; font-size: var(--t-second); }
 .lama__pistes li { display: list-item; padding: 2px 4px; cursor: pointer; }
 .lama__pistes li:hover { background: var(--panel2); }
 .lama__pistes li > span:first-child { display: inline; }
-.lama__piste-duree { float: right; font-family: var(--mono); font-size: 11px; color: var(--mut); margin-left: 12px; }
+.lama__piste-duree { float: right; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); margin-left: 12px; }
 
 /* ---------- playlists enregistrées ---------- */
 /* Liste d'Écouter (`vue.quoi === "playlists"`) : ▶, nom, résumé, deux actions. */
 .ligne--playlist { gap: 10px; }
 .ligne--playlist .ligne__nom:hover { color: var(--accent); }
 .ligne__action {
-  flex: none; font: inherit; font-size: 12px; color: var(--mut);
+  flex: none; font: inherit; font-size: var(--t-legende); color: var(--mut);
   background: none; border: 1px solid transparent; border-radius: 4px;
   padding: 2px 7px; cursor: pointer;
 }
@@ -2035,7 +2054,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .file__enregistrer[hidden] { display: none; }
 .file__enregistrer input {
-  flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--txt);
+  flex: 1; min-width: 0; font: inherit; font-size: var(--t-legende); color: var(--txt);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
   padding: 5px 8px;
 }
@@ -2057,7 +2076,7 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Durée totale et temps restant, sous l'en-tête de la file. */
 .file__total {
   margin: 0; padding: 0 var(--gouttiere-panneau) 10px; flex: none;
-  font: 10.5px var(--mono); color: var(--mut); font-variant-numeric: tabular-nums;
+  font: var(--t-legende) var(--mono); color: var(--mut); font-variant-numeric: tabular-nums;
 }
 .file__total:empty { display: none; }
 .file__etat:empty { display: none; }

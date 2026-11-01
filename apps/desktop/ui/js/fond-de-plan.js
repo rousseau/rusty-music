@@ -1,6 +1,6 @@
 import "./ecouter-familles.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, fileAttente, invoke, navigation, remonter, txt,
+  $, fileAttente, invoke, isoler, navigation, remonter, txt,
 } from "./socle.js";
 import {
   dessinerMiniNuage, verifierLama,
@@ -291,7 +291,7 @@ function dessinerBornes() {
     const el = $(`borne-${role}`);
     el.classList.toggle("borne--pose", !!t);
     el.querySelector(".borne__nom").textContent = t
-      ? `${txt(t.artist, "?")} — ${txt(t.title, "?")}`
+      ? `${isoler(txt(t.artist, "?"))} — ${isoler(txt(t.title, "?"))}`
       : "—";
   }
   majDureeItin();

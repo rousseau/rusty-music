@@ -231,18 +231,72 @@ l'application, lancée en mode d'essai sur une copie de la base, parcourt écran
 × états (de base, file ouverte, morceau sélectionné) × thèmes × tailles de
 fenêtre (960×620, 1 400×900, 1 920×1080) et contrôle G1 jetons, G2 symétrie des
 marges, G3 absence de débordement, G4 aucun contrôle recouvert, G5 repère A–Z
-réservé à l'Écoute. À lancer après toute modification de la mise en page.
+réservé à l'Écoute (et, depuis le 1ᵉʳ novembre 2026, G6 typographie et G7
+écritures, Règle 11 ; le contraste des deux thèmes en tête, Règle 6). À lancer
+après toute modification de la mise en page.
+
+## Règle de typographie — mesurée, pas regardée
+
+### 11. Un jeu réduit de tailles, rien sous 12 px, des noms dans toutes les écritures
+Décidée le 1ᵉʳ novembre 2026, sur le modèle de l'audit typographique de Disc
+Player (`MODELES.md`).
+
+**Mesure de départ** (`style.css`, avant la règle) : **21 tailles** distinctes,
+de 8,5 à 34 px, souvent à un demi-pixel l'une de l'autre (9, 9,5, 10, 10,5, 11,
+11,5, 12, 12,5…) ; **168 déclarations**, dont **97 sous 12 px** — 49 d'entre
+elles les étiquettes en capitales monospace (titres de blocs du rail à 9,5 px,
+compteurs, durées) ; quatre graisses (400 ×2, 500 ×12, 600 ×8, 700 ×2) ; sur
+le canevas, des noms à 10 et 11 px ; sur la carte, des étiquettes de 9 à 11 px.
+Les polices déclarées (Newsreader, IBM Plex) ne sont pas embarquées : ce qui
+s'affiche sur macOS est Georgia (titres), SF (texte) et SF Mono (données).
+Aucun nom en écriture de droite à gauche n'était isolé, aucun nom japonais ou
+coréen balisé.
+
+**La règle.**
+- **Six tailles, chacune un rôle** — des jetons de `:root`, jamais un nombre :
+  `--t-legende` 12 (étiquettes en capitales, compteurs, durées, aides),
+  `--t-second` 13 (texte secondaire : artiste d'une ligne, liens, notes),
+  `--t-corps` 14 (racine, titres en liste, champs, navigation),
+  `--t-intertitre` 16 (titre de l'inspecteur, champ de la palette),
+  `--t-titre` 20 (titres de panneau), `--t-fil` 26 (titre du fil, serif) ;
+  plus `--t-decor` 34, les initiales d'un artiste sur leur aplat (un décor).
+- **Trois graisses** : 400 courant, 500 noms et navigation, 600 titres et
+  boutons forts (700 fondu dans 600).
+- **Aucun texte sous 12 px, sans exception** : étiquettes en capitales (leur
+  interlettrage plafonné à 0,1 em), glyphes, repère A–Z, noms dessinés sur le
+  canevas, étiquettes de la carte (`crates/carto/src/style.rs` ; le style
+  d'une ville déjà importée change à la prochaine régénération des tuiles).
+  Seule la gravure de la partition, rendue par alphaTab à l'échelle de la
+  portée, n'est pas du texte d'interface.
+- **Les noms propres** (titres, artistes, albums) **sont isolés pour le bidi** :
+  tout élément en ligne est un isolat (`unicode-bidi: isolate`), et un nom
+  joint à d'autres textes dans une même chaîne passe par `isoler()` (isolats
+  U+2068 … U+2069 quand il porte une lettre de droite à gauche). **`lang` quand
+  l'écriture le dit** : `ja` pour des kana, `ko` pour du hangul, posé par
+  `observerEcritures()` (`js/ecritures.js`) sur l'élément qui porte le texte ;
+  des idéogrammes seuls gardent la langue du document, rien ne distinguant
+  alors le chinois du japonais.
+
+**Vérifiée** par `scripts/audit-interface.sh` : en tête,
+`scripts/typographie-interface.py` (toute taille de `style.css` passe par un
+jeton, les jetons valent l'échelle, graisses 400/500/600, aucune police de
+canevas sous 12 px, aucune taille en style en ligne) ; dans l'application, G6
+(chaque texte visible dans l'une des sept tailles et l'une des trois graisses)
+et G7 (un texte en kana ou en hangul porte son `lang`, un nom de droite à
+gauche joint à d'autres textes est isolé) ; pour la carte, le test
+`aucune_etiquette_sous_douze_pixels` (`cargo test`). Après application : 7
+tailles (119 × 12, 30 × 13, 5 × 14, 8 × 16, 3 × 20, 4 × 26, 1 × 34), 0 violation.
 
 ## Principes généraux
 
-Les huit règles ne couvrent pas tous les cas. Deux principes tranchent le
+Les onze règles ne couvrent pas tous les cas. Deux principes tranchent le
 reste :
 
 - **Cohérence et standards (Nielsen).** L'utilisateur ne doit jamais se
   demander si des mots, des situations ou des actions différentes signifient
   la même chose. Un bouton « régler » qui ouvre un tiroir dans Éditer et un
   bouton « régler » qui bascule un état ailleurs sont la même faute, même si
-  aucune des huit règles ne la nomme explicitement. Face à un cas nouveau : la
+  aucune des onze règles ne la nomme explicitement. Face à un cas nouveau : la
   question n'est pas « qu'est-ce qui est joli ici » mais « qu'est-ce que ce
   mot, ce geste, cette couleur signifient déjà ailleurs dans l'application ».
 - **Divulgation progressive.** Montrer seulement ce qui est nécessaire à
@@ -508,7 +562,10 @@ terminé — dans n'importe lequel des cinq écrans :
    différent par valeur ?
 10. **Gabarit** — les dimensions partagées viennent-elles des jetons de `:root`,
     et `scripts/audit-interface.sh` rend-il 0 violation ?
+11. **Typographie** — une taille nouvelle est-elle l'un des jetons `--t-*`
+    (rien sous 12 px), une graisse 400/500/600 ? Un nom joint dans une chaîne
+    passe-t-il par `isoler()` ?
 
-Et le principe de dernier recours : si aucune des dix règles ne tranche,
+Et le principe de dernier recours : si aucune des onze règles ne tranche,
 qu'est-ce que ce mot, ce geste ou cette couleur signifient déjà ailleurs dans
 l'application — et l'écran en cours le respecte-t-il ?

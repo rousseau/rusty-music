@@ -1,6 +1,6 @@
 import "./autotest-carte.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, navigation, plier, pochette, remonter, txt,
+  $, invoke, isoler, navigation, plier, pochette, remonter, txt,
 } from "./socle.js";
 import {
   initiales, ouvrirAlbumDePiste, teinteNom,
@@ -281,9 +281,9 @@ function textes(option) {
     return [item.name, `artiste · ${alb}`];
   }
   if (genre === "albums") {
-    return [item.name, ["album", txt(item.artist, "(sans artiste)"), item.year].filter(Boolean).join(" · ")];
+    return [item.name, ["album", isoler(txt(item.artist, "(sans artiste)")), item.year].filter(Boolean).join(" · ")];
   }
-  return [txt(item.title, "(sans titre)"), [txt(item.artist), txt(item.album)].filter(Boolean).join(" · ")];
+  return [txt(item.title, "(sans titre)"), [isoler(txt(item.artist)), isoler(txt(item.album))].filter(Boolean).join(" · ")];
 }
 
 function rendre() {

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Le style MapLibre, engendré depuis Rust.
 //!
+//! **Aucune étiquette sous 12 px** (Règle 11 de `docs/interface-guidelines.md`,
+//! 1ᵉʳ novembre 2026) : les plus petites tailles de `text-size` valent 12, la
+//! hiérarchie se lit dans ce qui grandit au-dessus et dans le zoom d'apparition.
+//!
 //! **Pourquoi ne pas l'écrire à la main en JSON.** Le style et les tuiles
 //! partagent une seule vérité : les paliers de zoom. Ce qui n'est pas dans la
 //! tuile ne peut pas s'afficher, et une couche déclarée à un zoom où sa tuile
@@ -493,9 +497,9 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "text-transform": ["case", ["==", ["get", "rang"], 5], "uppercase", "none"],
                 "text-letter-spacing": ["case", ["==", ["get", "rang"], 5], 0.12, 0.0],
                 "text-size": ["interpolate", ["linear"], ["zoom"],
-                    2, ["match", ["get", "rang"], 5, 13.0, 4, 11.0, 9.0],
-                    6, ["match", ["get", "rang"], 5, 17.0, 4, 14.0, 3, 12.0, 2, 11.0, 10.0],
-                    zmax, ["match", ["get", "rang"], 5, 21.0, 4, 17.0, 3, 14.0, 2, 12.0, 11.0]],
+                    2, ["match", ["get", "rang"], 5, 13.0, 12.0],
+                    6, ["match", ["get", "rang"], 5, 17.0, 4, 14.0, 3, 13.0, 12.0],
+                    zmax, ["match", ["get", "rang"], 5, 21.0, 4, 17.0, 3, 14.0, 2, 13.0, 12.0]],
                 "text-anchor": "top",
                 "text-offset": [0, 0.65],
                 "text-max-width": 9,
@@ -552,7 +556,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "text-font": ["Noto Sans Bold"],
                 "text-transform": "uppercase",
                 "text-letter-spacing": 0.22,
-                "text-size": ["interpolate", ["linear"], ["zoom"], 0, 11, 3, 17, 6, 24],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 0, 12, 3, 17, 6, 24],
                 "text-max-width": 8,
                 "text-padding": 6,
                 "symbol-sort-key": ["-", 0, ["get", "effectif"]]
@@ -578,7 +582,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
             "layout": {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": ["interpolate", ["linear"], ["zoom"], 8, 9.5, 12, 11.5],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 8, 12.0, 12, 13.0],
                 "text-anchor": "top",
                 "text-offset": [0, 0.7],
                 "text-max-width": 9,
@@ -626,7 +630,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
                     ["concat", ["get", "nom"], " · ", ["to-string", ["get", "annee"]]],
                     ["get", "nom"]],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": ["interpolate", ["linear"], ["zoom"], 5, 10.0, zmax, 12.5],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 5, 12.0, zmax, 13.0],
                 "text-anchor": "left",
                 "text-offset": [0.7, 0],
                 "text-max-width": 12,
@@ -653,7 +657,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
             "layout": {
                 "text-field": ["get", "titre"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": 11,
+                "text-size": 12,
                 "text-anchor": "left",
                 "text-offset": [0.6, 0],
                 "text-max-width": 12,
@@ -838,7 +842,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "symbol-placement": "line",
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": 11
+                "text-size": 12
             },
             "paint": {
                 "text-color": pal.encre,
@@ -872,7 +876,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
             "layout": {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": ["interpolate", ["linear"], ["zoom"], 11, 10.0, zmax, 12.5],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 11, 12.0, zmax, 13.0],
                 "text-anchor": "left",
                 "text-offset": [0.7, 0],
                 "text-max-width": 12,
@@ -921,7 +925,7 @@ fn couches_fictif(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
                 "text-size": ["interpolate", ["linear"], ["zoom"],
-                    p.albums_des as f64, 9.0, p.morceaux_des as f64, 11.0],
+                    p.albums_des as f64, 12.0, p.morceaux_des as f64, 13.0],
                 "text-anchor": "left",
                 "text-offset": [0.6, 0],
                 "text-max-width": 10,
@@ -1176,7 +1180,7 @@ fn points_musicaux_reel(p: &Paliers, pal: &Palette) -> Vec<Value> {
             "layout": {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": ["interpolate", ["linear"], ["zoom"], 8, 9.5, 12, 11.5],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 8, 12.0, 12, 13.0],
                 "text-anchor": "top",
                 "text-offset": [0, 0.7],
                 "text-max-width": 9,
@@ -1203,7 +1207,7 @@ fn points_musicaux_reel(p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
                 "text-size": ["interpolate", ["linear"], ["zoom"],
-                    p.albums_des as f64, 9.0, p.morceaux_des as f64, 11.0],
+                    p.albums_des as f64, 12.0, p.morceaux_des as f64, 13.0],
                 "text-anchor": "left",
                 "text-offset": [0.6, 0],
                 "text-max-width": 10,
@@ -1225,7 +1229,7 @@ fn points_musicaux_reel(p: &Paliers, pal: &Palette) -> Vec<Value> {
             "layout": {
                 "text-field": ["get", "titre"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": 11,
+                "text-size": 12,
                 "text-anchor": "left",
                 "text-offset": [0.6, 0],
                 "text-max-width": 12,
@@ -1249,7 +1253,7 @@ fn points_musicaux_reel(p: &Paliers, pal: &Palette) -> Vec<Value> {
                 "symbol-placement": "line",
                 "text-field": ["get", "nom"],
                 "text-font": ["Noto Sans Regular"],
-                "text-size": ["interpolate", ["linear"], ["zoom"], 14, 9.5, 17, 11.5]
+                "text-size": ["interpolate", ["linear"], ["zoom"], 14, 12.0, 17, 13.0]
             },
             "paint": {
                 "text-color": pal.encre_region,
@@ -1387,6 +1391,53 @@ mod tests {
     /// La règle `["zoom"]` en tête d'expression vaut aussi pour le plan de ville
     /// (le test `aucune_expression_de_zoom_nest_imbriquee` ne couvre que le
     /// monde fictif).
+    /// Les tailles que rend une expression `text-size` : un nombre, ou les
+    /// sorties d'un `interpolate` / d'un `match` (récursivement).
+    fn tailles_de(v: &Value, sortie: &mut Vec<f64>) {
+        match v {
+            Value::Number(n) => sortie.push(n.as_f64().unwrap()),
+            Value::Array(a) if a.first().and_then(Value::as_str) == Some("interpolate") => {
+                // ["interpolate", type, ["zoom"], z0, t0, z1, t1, …]
+                for t in a.iter().skip(4).step_by(2) {
+                    tailles_de(t, sortie);
+                }
+            }
+            Value::Array(a) if a.first().and_then(Value::as_str) == Some("match") => {
+                // ["match", entrée, étiquette, sortie, …, défaut]
+                for t in a.iter().skip(3).step_by(2) {
+                    tailles_de(t, sortie);
+                }
+                if let Some(defaut) = a.last() {
+                    tailles_de(defaut, sortie);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Règle 11 de `docs/interface-guidelines.md` : aucune étiquette de la
+    /// carte sous 12 px, sur le monde fictif comme sur le plan de ville.
+    #[test]
+    fn aucune_etiquette_sous_douze_pixels() {
+        for s in [
+            construire(&source(), &Paliers::default(), "x", &Palette::osm_clair()),
+            construire(
+                &source_ville(),
+                &Paliers::ville(),
+                "x",
+                &Palette::osm_clair(),
+            ),
+        ] {
+            for couche in s["layers"].as_array().unwrap() {
+                let mut tailles = Vec::new();
+                tailles_de(&couche["layout"]["text-size"], &mut tailles);
+                for t in tailles {
+                    assert!(t >= 12.0, "{} : text-size {t} < 12", couche["id"]);
+                }
+            }
+        }
+    }
+
     #[test]
     fn le_plan_de_ville_respecte_les_expressions_de_zoom() {
         let s = construire(&source_ville(), &Paliers::ville(), "x", &Palette::encre());

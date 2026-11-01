@@ -58,7 +58,8 @@ Un commit par étape.
 2. Thème clair atteignable (sombre / clair / système, sans flash) et contraste
    vérifié par `audit-interface.sh` (Règle 6) — fait.
 3. Règle 11, typographie mesurée : jeu réduit de tailles et de graisses,
-   rien sous 12 px, noms isolés pour le bidi et balisés `lang`.
+   rien sous 12 px, noms isolés pour le bidi et balisés `lang` — fait
+   (21 tailles → 6 rôles et un décor ; 97 déclarations sous 12 px → 0).
 4. Plan, sans coder : vue « En cours » plein écran, couleurs d'album, choix
    d'édition MusicBrainz face à face, état de la bibliothèque, passage
    Mac ↔ iPhone, captures sur collection fictive.
