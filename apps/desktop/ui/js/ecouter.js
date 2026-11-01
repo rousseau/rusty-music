@@ -443,6 +443,9 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   }
   $("retour").hidden = retour === null;
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
+  // « Choisir l'édition… » : seulement sur les pistes de l'album ouvert.
+  if (quoi !== "pistes" || ecoute.albumOuvert?.name !== titre) ecoute.albumOuvert = null;
+  $("choisir-edition").hidden = horsEcoute || !ecoute.albumOuvert;
 
   // Artistes et albums partagent le même geste de premier niveau ; le
   // commutateur du rail suit celui qui a produit la vue affichée, y compris
@@ -691,6 +694,7 @@ async function activer(item) {
     majAutourArtiste(item.name, item.mbid ?? null);
   } else if (vue.quoi === "albums") {
     const pistes = await invoke("tracks_of_album", { album: item.name, artist: item.artist ?? null });
+    ecoute.albumOuvert = { name: item.name, artist: item.artist ?? null };
     poser("pistes", item.name, pistes, {
       quoi: vue.quoi, titre: vue.titre, lignes: vue.lignes, retour: vue.retour, scroll: scrollActuel(),
     });

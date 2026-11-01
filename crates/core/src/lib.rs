@@ -16,6 +16,7 @@ pub mod deezer;
 pub mod density;
 pub mod discogs;
 pub mod discogs_import;
+pub mod editions;
 pub mod enrichir;
 pub mod error;
 pub mod filtres_playlist;

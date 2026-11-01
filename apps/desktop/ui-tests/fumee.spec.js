@@ -298,3 +298,54 @@ test("Bibliothèque : l'état en tête, une ligne déplie sa liste, les réglage
   await page.click("summary:has-text('Paramètres de la carte')");
   await expect(page.locator("#recalculer-carte")).toBeVisible();
 });
+
+test("éditions face à face : ce qui part sur le réseau, les pistes alignées, retenir puis oublier", async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem("mb-contact", "essai@example.org");
+    const f = window.__FIXTURES__;
+    f.editions_proposees = [
+      { id: "ed-2", titre: "Premier banc", artiste: "Les Essais", date: "1999", pays: "FR", label: "Banc", catalogue: "B-1", format: "CD", pistes: 2, concorde: true },
+      { id: "ed-3", titre: "Premier banc (deluxe)", artiste: "Les Essais", date: "2009", pays: null, label: null, catalogue: null, format: "2×CD", pistes: 3, concorde: false },
+    ];
+    f.edition_comparee = (a) => {
+      const locales = window.__DONNEES__.PISTES.filter((p) => p.album === "Premier banc");
+      const pistes = [
+        { disque: 1, position: 1, titre: "Ouverture", duree_ms: locales[0].duration_ms, recording_id: "r1", artiste_mbid: null },
+        { disque: 1, position: 2, titre: "Deuxième prise", duree_ms: locales[1].duration_ms + 8000, recording_id: "r2", artiste_mbid: null },
+      ];
+      if (a.id === "ed-3") pistes.push({ disque: 2, position: 1, titre: "Bonus", duree_ms: 100000, recording_id: "r3", artiste_mbid: null });
+      return {
+        edition: { id: a.id, titre: "Premier banc", artiste: "Les Essais", artiste_mbid: "art", release_group: null, pistes },
+        locales,
+        paires: pistes.map((p, i) => ({
+          locale: i < locales.length ? i : null, edition: i,
+          ecart_ms: i < locales.length ? p.duree_ms - locales[i].duration_ms : null, titre_differe: false,
+        })),
+      };
+    };
+    f.retenir_edition = (a, e) => { e.edition = { release_id: a.id, titre: "Premier banc", choisie_le: 1_762_000_000 }; return null; };
+    f.edition_retenue = (_, e) => e.edition ?? null;
+    f.oublier_edition = (_, e) => { e.edition = null; return 2; };
+  });
+  await page.locator("#grille .album").first().click();
+  await expect(page.locator("#choisir-edition")).toBeVisible();
+  await page.click("#choisir-edition");
+  await expect(page.locator("#editions")).toBeVisible();
+  await expect(page.locator("#editions-reseau")).toContainText("musicbrainz.org");
+  // La première édition est comparée, pas retenue ; l'écart de 8 s est marqué.
+  await expect(page.locator("#editions-pistes-corps tr")).toHaveCount(2);
+  await expect(page.locator(".editions__ligne--marquee")).toHaveCount(1);
+  await expect(page.locator(".editions__ligne--marquee .editions__marque")).toHaveText("+8 s");
+  expect(await appels(page, "retenir_edition")).toEqual([]);
+  // Une autre édition : une piste en trop, marquée.
+  await page.locator(".editions__option").nth(1).click();
+  await expect(page.locator("#editions-pistes-corps tr")).toHaveCount(3);
+  await expect(page.locator("#editions-pistes-corps tr").nth(2)).toContainText("absente de l'album");
+  await page.click("#editions-retenir");
+  await expect(page.locator("#editions-retenue")).toBeVisible();
+  expect((await appels(page, "retenir_edition")).at(-1)).toMatchObject({ id: "ed-3", album: "Premier banc" });
+  await page.click("#editions-oublier");
+  await expect(page.locator("#editions-retenue")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#editions")).toBeHidden();
+});

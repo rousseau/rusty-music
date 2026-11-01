@@ -217,6 +217,7 @@ async function ouvrirAlbumDePiste(item) {
     artist: item.artist ?? null,
   });
   if (navigation.mode !== "ecoute") await basculerMode("ecoute");
+  ecoute.albumOuvert = { name: item.album, artist: item.artist ?? null };
   poser("pistes", item.album, pistes, retour);
 }
 

@@ -36,6 +36,7 @@ mod bibliotheque;
 mod decouvrir;
 mod ecouter;
 mod editer;
+mod editions;
 mod explorer;
 mod iphone;
 mod minuteur;
@@ -51,6 +52,7 @@ use bibliotheque::*;
 use decouvrir::*;
 use ecouter::*;
 use editer::*;
+use editions::*;
 use explorer::*;
 use passe::*;
 use systeme::*;
@@ -877,6 +879,11 @@ fn main() {
             isolated_points,
             suspect_genres,
             multiple_editions,
+            editions_proposees,
+            edition_comparee,
+            retenir_edition,
+            edition_retenue,
+            oublier_edition,
             scan_failures,
             dismiss_scan_failure,
             map_parameters,

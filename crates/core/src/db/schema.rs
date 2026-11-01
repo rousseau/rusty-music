@@ -36,10 +36,16 @@ fn enregistrer_fonctions(conn: &Connection) -> rusqlite::Result<()> {
 /// qu'elle a reçue est refusée (`DatabaseTooFarAhead`), plutôt que lue avec
 /// un schéma qu'on ne connaît pas.
 pub(super) fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up_with_hook(
-        include_str!("../../sql/schema.sql"),
-        |tx: &Transaction| Ok(migrate(tx)?),
-    )])
+    Migrations::new(vec![
+        M::up_with_hook(include_str!("../../sql/schema.sql"), |tx: &Transaction| {
+            Ok(migrate(tx)?)
+        }),
+        // N° 2 (1ᵉʳ nov. 2026) : l'édition MusicBrainz retenue à la main pour
+        // un album, et ses identifiants piste à piste — réappliqués par
+        // `upsert` à chaque scan, pour qu'un rescan ne les efface pas
+        // (`Library::retenir_edition`, `docs/plan-ecouter-v0.3.md`, point 3).
+        M::up(include_str!("../../sql/migration-002-editions.sql")),
+    ])
 }
 
 /// Ouvre une connexion : réglages, puis migrations en attente.

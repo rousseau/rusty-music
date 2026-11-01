@@ -102,7 +102,27 @@ doit s'étendre au pire cas du recalage (texte du thème sur un fond de clarté
 d'`interface-guidelines.md` ; l'élargir vers B demandera une nouvelle
 décision.
 
-### 3. Choisir l'édition MusicBrainz face à face · **M** — **retenu : A**
+### 3. Choisir l'édition MusicBrainz face à face · **M** — **retenu : A, fait (1ᵉʳ novembre 2026)**
+
+**Fait.** Décisions du même jour : édition gardée dans une table à part que
+le scan réapplique ; « Retenir » remplit l'édition, l'enregistrement de
+chaque piste et les identifiants d'artiste (la ligne « Identités » baisse) ;
+une seule entrée, l'album ouvert au centre ; classement par titre et artiste
+puis nombre de pistes.
+- Cœur : `crates/core/src/editions.rs` (lecture des réponses, classement,
+  appariement rang à rang, testés sans réseau) ; deux méthodes du client
+  (`chercher_editions`, `edition`). **La recherche de MusicBrainz ne rend pas
+  les durées** : elles viennent avec l'édition sélectionnée (une requête),
+  d'où un classement sur le seul nombre de pistes.
+- Base : migration n° 2 (`edition_choisie`, `edition_piste`) ; `upsert`
+  préfère leurs identifiants à ceux des tags, un rescan ne défait rien ;
+  « Oublier » supprime le choix et relit les tags des pistes.
+- Commandes `editions_proposees`, `edition_comparee`, `retenir_edition`
+  (la comparaison est refaite côté moteur : ce qui s'écrit est ce que
+  MusicBrainz dit à cet instant), `edition_retenue`, `oublier_edition`.
+- Interface : `js/editions.js`, test de fumée avec MusicBrainz simulé.
+  **Pas encore essayé contre le vrai MusicBrainz** ; genres et crédits
+  Discogs suivent au prochain « Tout rafraîchir ».
 
 **Chez Disc Player** (`docs/images/readme-editions.jpg`, `src/layout/AlbumCompare.vue`).
 Une boîte à deux colonnes : à gauche les éditions que propose MusicBrainz

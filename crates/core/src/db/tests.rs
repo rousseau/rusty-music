@@ -2549,3 +2549,88 @@ fn familles_votees_ignore_le_faux_accord_de_deux_replis() {
         "pas de faux consensus entre les deux familles"
     );
 }
+
+/// Une édition retenue survit au rescan (les tags n'ont pas d'identifiant, ou
+/// en ont un autre) ; l'oublier rend les chemins, et un rescan rend aux pistes
+/// les identifiants de leurs tags.
+#[test]
+fn une_edition_retenue_survit_au_rescan_et_s_oublie() {
+    use crate::editions::{EditionDetaillee, PisteEdition};
+    let mut lib = Library::open_in_memory().unwrap();
+    let meta = |i: usize| TrackMeta {
+        path: std::path::PathBuf::from(format!("/m/{i}.flac")),
+        album: Some("Night Drive".into()),
+        artist: Some("Northline".into()),
+        mb_release_id: Some("tag-release".into()),
+        ..Default::default()
+    };
+    for i in 0..2 {
+        lib.upsert(&meta(i)).unwrap();
+    }
+    let piste = |n: u32| PisteEdition {
+        disque: 1,
+        position: n,
+        titre: format!("piste {n}"),
+        duree_ms: Some(200_000),
+        recording_id: format!("rec-{n}"),
+        artiste_mbid: None,
+    };
+    let ed = EditionDetaillee {
+        id: "rel-choisie".into(),
+        titre: "Night Drive".into(),
+        artiste: "Northline".into(),
+        artiste_mbid: Some("art".into()),
+        release_group: None,
+        pistes: vec![piste(1), piste(2)],
+    };
+    let chemins: Vec<_> = (0..2).map(|i| (meta(i).path, i)).collect();
+    lib.retenir_edition("Night Drive", "Northline", &ed, &chemins)
+        .unwrap();
+    let ids = |lib: &Library| -> Vec<(String, Option<String>, Option<String>)> {
+        let mut stmt = lib
+            .conn
+            .prepare(
+                "SELECT mb_release_id, mb_recording_id, mb_artist_id FROM tracks ORDER BY path",
+            )
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap()
+    };
+    let attendu = vec![
+        (
+            "rel-choisie".to_string(),
+            Some("rec-1".to_string()),
+            Some("art".to_string()),
+        ),
+        (
+            "rel-choisie".to_string(),
+            Some("rec-2".to_string()),
+            Some("art".to_string()),
+        ),
+    ];
+    assert_eq!(ids(&lib), attendu);
+    // Rescan : les tags redisent « tag-release », le choix tient.
+    lib.upsert(&meta(0)).unwrap();
+    assert_eq!(ids(&lib), attendu);
+    assert_eq!(
+        lib.edition_retenue("Night Drive", "Northline")
+            .unwrap()
+            .map(|e| e.release_id),
+        Some("rel-choisie".to_string())
+    );
+
+    let oublies = lib.oublier_edition("Night Drive", "Northline").unwrap();
+    assert_eq!(oublies.len(), 2);
+    assert_eq!(
+        lib.edition_retenue("Night Drive", "Northline").unwrap(),
+        None
+    );
+    for i in 0..2 {
+        lib.upsert(&meta(i)).unwrap();
+    }
+    assert!(ids(&lib)
+        .iter()
+        .all(|(r, rec, _)| r == "tag-release" && rec.is_none()));
+}

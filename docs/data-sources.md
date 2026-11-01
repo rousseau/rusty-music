@@ -19,6 +19,15 @@
 - Approche envisagée : pour chaque artiste présent dans la bibliothèque locale, interroger l'API MusicBrainz (`artist-rels`) et construire un graphe d'arêtes (artiste A — type de relation — artiste B).
 - Projet de référence pour l'architecture de graphe : *discogsography* (open source, Neo4j) — fonctionnalités « Path Finder » (plus court chemin entre deux entités) et « Collaboration Network » (graphe + centralité), à partir de données Discogs + MusicBrainz.
 
+- **Éditions d'un album** (« Choisir l'édition… », 1ᵉʳ nov. 2026,
+  `crates/core/src/editions.rs`) : à la demande, pour un album ouvert,
+  recherche `ws/2/release?query=release:"titre" AND artist:"artiste"` (titre
+  et artiste seuls, avec l'adresse de contact), puis
+  `ws/2/release/{id}?inc=recordings+artist-credits+release-groups` pour
+  l'édition sélectionnée. L'édition retenue s'écrit en base
+  (`edition_choisie`, `edition_piste`), jamais dans les fichiers ; le scan la
+  réapplique.
+
 ## Ingestion locale (source primaire à terme)
 - Point d'entrée réel du logiciel : un **répertoire surveillé** (`notify`), tags lus via `lofty`, base SQLite (`rusqlite`).
 - Plex n'est qu'une **source de test** au démarrage ; la version cible ingère directement depuis le dossier.

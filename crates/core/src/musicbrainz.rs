@@ -222,6 +222,44 @@ impl Client {
             .and_then(|v| discogs_url_de(&v))
             .and_then(|u| discogs_id_depuis_url(&u)))
     }
+
+    /// Les éditions (releases) d'un album, par titre et artiste, classées pour
+    /// un album local de `pistes_locales` pistes
+    /// ([`crate::editions::editions_de_recherche`]). Une requête : seuls le titre
+    /// et l'artiste partent sur le réseau.
+    pub fn chercher_editions(
+        &self,
+        titre: &str,
+        artiste: &str,
+        pistes_locales: u32,
+    ) -> Result<Vec<crate::editions::EditionProposee>> {
+        // Guillemets retirés : ils fermeraient la phrase de la requête Lucene.
+        let propre = |s: &str| s.replace('"', " ");
+        let mut requete = format!("release:\"{}\"", propre(titre));
+        if !artiste.trim().is_empty() {
+            requete.push_str(&format!(" AND artist:\"{}\"", propre(artiste)));
+        }
+        let v = self.http.get_json_requete(
+            "https://musicbrainz.org/ws/2/release",
+            &[("query", &requete), ("limit", "15"), ("fmt", "json")],
+            "ws/2",
+        )?;
+        Ok(
+            v.map(|v| crate::editions::editions_de_recherche(&v, pistes_locales))
+                .unwrap_or_default(),
+        )
+    }
+
+    /// Une édition et ses pistes (durées, enregistrements, artistes crédités).
+    /// `None` pour un identifiant inconnu.
+    pub fn edition(&self, id: &str) -> Result<Option<crate::editions::EditionDetaillee>> {
+        let url = format!(
+            "https://musicbrainz.org/ws/2/release/{id}?inc=recordings+artist-credits+release-groups&fmt=json"
+        );
+        Ok(self
+            .json(&url)?
+            .and_then(|v| crate::editions::edition_detaillee(&v)))
+    }
 }
 
 /// Extrait l'URL Discogs d'une réponse `url-rels`, si elle en porte une.

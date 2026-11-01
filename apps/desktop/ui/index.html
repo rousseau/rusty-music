@@ -421,6 +421,9 @@
              morceau en lecture, sans avoir à le retrouver dans la liste. -->
         <button id="editer-candidat" class="fil__candidat" hidden></button>
         <span id="fil-compte" class="fil__compte"></span>
+        <!-- Pistes d'un album : choisir son édition chez MusicBrainz (`js/editions.js`). -->
+        <button id="choisir-edition" class="fil__candidat" hidden
+                title="Comparer l'album aux éditions de MusicBrainz et en retenir une">Choisir l'édition…</button>
         <!-- Ordre des grilles d'albums et d'artistes (mode Écoute). L'ordre alphabétique
              vient déjà trié du moteur ; « année », « aléatoire » et « ajoutés »
              retrient côté interface. -->
@@ -1425,6 +1428,49 @@
       <h2 id="en-cours-titre" class="en-cours__titre"></h2>
       <p id="en-cours-artiste" class="en-cours__artiste"></p>
       <p id="en-cours-album" class="en-cours__album"></p>
+    </div>
+  </div>
+
+  <!-- Choisir l'édition MusicBrainz d'un album, face à face (`js/editions.js`).
+       Même voile que la palette : l'écran reste visible derrière. -->
+  <div id="editions" class="palette editions" hidden>
+    <div class="palette__boite editions__boite" role="dialog" aria-modal="true" aria-labelledby="editions-album">
+      <header class="editions__tete">
+        <p class="rail__titre">MusicBrainz</p>
+        <h2 id="editions-album" class="editions__album"></h2>
+        <p id="editions-reseau" class="aide"></p>
+        <p id="editions-retenue" class="aide editions__retenue" hidden>
+          <span id="editions-retenue-texte"></span>
+          <button id="editions-oublier" class="lien lien--inline" type="button">Oublier ce choix</button>
+        </p>
+        <button id="editions-fermer" class="file__fermer editions__fermer" type="button" aria-label="Fermer">×</button>
+      </header>
+      <div class="editions__corps">
+        <div class="editions__colonnes">
+          <section>
+            <p class="rail__titre">Proposées par MusicBrainz</p>
+            <div id="editions-liste" class="editions__liste" role="listbox" aria-label="Éditions"></div>
+            <p id="editions-total-edition" class="editions__total"></p>
+          </section>
+          <section>
+            <p class="rail__titre">Dans la bibliothèque</p>
+            <p id="editions-local-titre" class="editions__titre"></p>
+            <p id="editions-local-artiste" class="editions__sec"></p>
+            <p id="editions-total-local" class="editions__total"></p>
+          </section>
+        </div>
+        <table id="editions-pistes" class="editions__pistes" hidden>
+          <thead><tr>
+            <th colspan="3">Bibliothèque</th><th colspan="3">Édition</th><th></th>
+          </tr></thead>
+          <tbody id="editions-pistes-corps"></tbody>
+        </table>
+      </div>
+      <footer class="editions__pied">
+        <p id="editions-etat" class="aide" aria-live="polite"></p>
+        <button id="editions-annuler" class="bouton" type="button">Annuler</button>
+        <button id="editions-retenir" class="bouton" type="button" disabled>Retenir</button>
+      </footer>
     </div>
   </div>
 

@@ -97,6 +97,16 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   pochette : la seule exception à la Règle 3 (voir là). Avec
   `prefers-reduced-motion`, ni rotation ni spectre.
 
+- **Choisir l'édition, face à face** (1ᵉʳ novembre 2026, idée de Disc
+  Player). Sur les pistes d'un album ouvert, « Choisir l'édition… » ouvre une
+  boîte au même voile que la palette (`#editions`, `js/editions.js`) : une
+  phrase dit ce qui part sur le réseau (titre, artiste, adresse de contact,
+  vers musicbrainz.org) ; à gauche les éditions proposées, une coche pour un
+  même nombre de pistes (une concordance, pas une décision) ; à droite
+  l'album de la bibliothèque ; dessous, les pistes alignées rang à rang, les
+  lignes qui diffèrent marquées (piste seule, écart ≥ 3 s, titre). Rien n'est
+  appliqué sans « Retenir » ; « Oublier ce choix » rend aux pistes leurs tags.
+
 ## Règles universelles — dans les cinq écrans, sans exception
 
 ### 1. Un seul inspecteur, partagé

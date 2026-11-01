@@ -148,6 +148,9 @@ const ecoute = {
   // dans la grille ou la liste affichée, rien n'est retiré (Règle 2). Vide =
   // aucun filtre.
   filtre: "",
+  // L'album dont les pistes sont ouvertes au centre (`{ name, artist }`), pour
+  // « Choisir l'édition… » (`editions.js`) ; `null` hors d'une liste de pistes.
+  albumOuvert: null,
   // La bande de rangées de la grille dessinée en dernier (voir
   // `dessinerGrilleAuDefilement`) ; -1 force le prochain dessin.
   grilleDernierRang: -1,

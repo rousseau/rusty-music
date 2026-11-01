@@ -488,6 +488,46 @@ html, body {
 .etat__compte--a-voir { color: var(--txt); }
 .etat__corps { padding: 0 0 14px 22px; }
 
+/* ---------- choisir l'édition, face à face ---------- */
+/* Même voile que la palette (`.palette`) ; une boîte plus large, en trois
+   temps : ce qui part sur le réseau, les deux colonnes, les pistes alignées. */
+.editions__boite { width: min(980px, 100%); max-height: 80vh; }
+.editions__tete { position: relative; padding: 16px var(--gouttiere-panneau) 10px; border-bottom: 1px solid var(--line); }
+.editions__tete .rail__titre { margin: 0 0 6px; }
+.editions__album { margin: 0 0 6px; font-family: var(--serif); font-size: var(--t-titre); font-weight: 500; padding-right: 30px; }
+.editions__tete .aide { margin: 4px 0 0; }
+.editions__fermer { position: absolute; top: 12px; right: var(--gouttiere-panneau); }
+.editions__corps { flex: 1; min-height: 0; overflow-y: auto; padding: 14px var(--gouttiere-panneau); }
+.editions__colonnes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; }
+.editions__liste { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.editions__option {
+  position: relative; text-align: left; font: inherit; color: var(--txt);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  padding: 8px 30px 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+}
+.editions__option:hover { border-color: var(--mut); }
+.editions__option[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.editions__titre { margin: 0; font-weight: 500; }
+.editions__sec { margin: 0; font-size: var(--t-second); color: var(--mut); }
+.editions__coche { position: absolute; right: 10px; top: 8px; color: var(--accent); }
+.editions__total { margin: 8px 0 0; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
+.editions__pistes { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: var(--t-second); }
+.editions__pistes th {
+  text-align: left; font-family: var(--mono); font-size: var(--t-legende); font-weight: 400;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mut); padding: 0 6px 6px;
+}
+.editions__pistes td { padding: 5px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+.editions__pistes td:nth-child(1), .editions__pistes td:nth-child(4) { color: var(--mut); font-family: var(--mono); font-size: var(--t-legende); }
+.editions__pistes td:nth-child(3), .editions__pistes td:nth-child(6) { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
+.editions__nom { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.editions__marque { color: var(--alerte); }
+.editions__ligne--marquee td { background: var(--panel2); }
+.editions__pied {
+  display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+  padding: 10px var(--gouttiere-panneau); border-top: 1px solid var(--line);
+}
+.editions__pied .aide { margin: 0 auto 0 0; }
+
 /* ---------- vue plein écran « En cours » ---------- */
 /* Couvre rail, centre et inspecteur ; s'arrête au transport, qui reste
    utilisable. Sous la file (z 10) et la palette (z 50). Les fonds seuls

@@ -15,13 +15,21 @@ impl Library {
     /// Insère ou met à jour un morceau. Le chemin fait office de clé d'identité.
     /// Ne touche pas à `analyzed_at` : l'analyse reste valable tant que le
     /// fichier n'a pas changé.
+    ///
+    /// Les identifiants MusicBrainz d'une édition retenue à la main
+    /// (`edition_piste`, [`Library::retenir_edition`]) l'emportent sur ceux des
+    /// tags : un rescan ne défait pas le choix.
     pub fn upsert(&self, m: &TrackMeta) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO tracks
                (path, size_bytes, mtime, title, artist, album, album_artist,
                 genre, year, track_no, duration_ms, sample_rate, channels, bitrate, codec,
                 bit_depth, mb_recording_id, mb_artist_id, mb_album_artist_id, mb_release_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,
+               COALESCE((SELECT recording_id FROM edition_piste WHERE path = ?1), ?17),
+               COALESCE((SELECT artist_mbid FROM edition_piste WHERE path = ?1), ?18),
+               COALESCE((SELECT album_artist_mbid FROM edition_piste WHERE path = ?1), ?19),
+               COALESCE((SELECT release_id FROM edition_piste WHERE path = ?1), ?20))
              ON CONFLICT(path) DO UPDATE SET
                size_bytes=excluded.size_bytes, mtime=excluded.mtime,
                title=excluded.title, artist=excluded.artist, album=excluded.album,
