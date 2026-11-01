@@ -2414,3 +2414,32 @@ page, pas le fonctionnement.
 - **Piège** : session macOS verrouillée, WebKit suspend la page au bout de
   ~30 s et l'audit attendait sans fin ; le script s'arrête désormais net
   (`809ed1e`).
+
+### Une seule source de vérité pour la lecture, un état par mode (phase 5b)
+
+- **5b-1** (`ea4d66a`) : ce que joue le moteur (morceau, fin de file, position ;
+  stems chargés, position, pause, durée, dérive, latence) tient dans un seul
+  objet, `lecture` (`ui/js/etat-lecture.js`), écrit par les sondages et par le
+  chargement ou l'arrêt des stems. Ce que l'interface a demandé sans
+  confirmation (`veutJouer`, `ignorerEtatJusqua`, aperçu) est rangé à part,
+  dans `transport`.
+- **5b-3, changement de comportement voulu** (`b0f7cfe`) : des stems arrivés au
+  bout restent chargés, en pause au début. Le mélange rendait `None` à la fin,
+  rodio retirait la source et il fallait recharger 186 Mo pour réécouter :
+  c'est la cause du défaut du 28 oct. (`8e1a643`). `rattacherStems` reste pour
+  les stems coupés par ⏮, ⏭ ou les touches média.
+- **5b-2** (`174e1e2`) : `playback_state` dit si le moteur tient des stems ;
+  l'interface s'y aligne si elle les croyait partis (commande rejetée avant de
+  les couper). Les réponses antérieures au dernier changement sont écartées
+  (version). Test de fumée qui échoue sans l'alignement (vérifié).
+- **5b-4** (`f532be4`) : les 15 variables réaffectées d'un module à l'autre
+  deviennent des champs d'objets par mode (`navigation`, `ecoute`,
+  `fileAttente`, `carte`, `lama`, `decouverte`) ; plus aucun affectateur.
+- **Bug corrigé** (`a3c4dbe`) : « Image du dossier » (vérifications) levait une
+  `TypeError` — une liste locale `pochettes` masquait le cache du même nom — et
+  ne rafraîchissait rien. Présent depuis `90af4b0`.
+- **Contrôles** à chaque étape : `verifier.sh`, audit d'interface (198
+  cellules, 0 violation). Autotest de la carte : 18/19, comme sur HEAD ; le
+  délai d'apparition des tuiles (27,7 s en debug, seuil 3 s) échouait déjà.
+- **Non vérifié** : la fin de morceau des stems avec une vraie sortie audio
+  (pas de test automatique du passage en pause).
