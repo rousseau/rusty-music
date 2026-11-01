@@ -35,7 +35,7 @@ mention contraire.
    `rusqlite_migration`) — fait.
 4. Découper `apps/desktop/src/main.rs` : un module de commandes par mode, un
    type générique de passe de fond — fait ; progression par
-   `tauri::ipc::Channel` (4c), après la phase 5.
+   `tauri::ipc::Channel` (4c) abandonnée (`docs/journal.md`, phase 5b).
 5. Découper `apps/desktop/ui/app.js` en modules ES natifs, un état par mode,
    une seule copie de l'état de lecture — fait.
 6. Découper `crates/core/src/db.rs` par domaine.

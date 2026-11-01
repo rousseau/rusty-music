@@ -2443,3 +2443,11 @@ page, pas le fonctionnement.
   délai d'apparition des tuiles (27,7 s en debug, seuil 3 s) échouait déjà.
 - **Non vérifié** : la fin de morceau des stems avec une vraie sortie audio
   (pas de test automatique du passage en pause).
+- **4c abandonnée** (décision du 1ᵉʳ nov.) : la progression du démixage et de
+  l'analyse par `tauri::ipc::Channel`. Un `Channel` est lié à l'appel qui l'a
+  créé ; or l'interface retrouve les passes en cours en revenant dans un mode
+  (`reprendreActualisationEnCours`, `attendreDemix`), en sondant `*_state`.
+  Le `Channel` aurait fait une seconde voie pour la même progression, pour un
+  gain faible (sondage de 200 ms à 2 s sur un mutex, passes de 30 s à des
+  heures). Si le sondage gêne un jour : un évènement Tauri global émis par
+  `passe::lancer`, pour toutes les passes à la fois.
