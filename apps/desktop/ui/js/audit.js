@@ -291,6 +291,23 @@ function fabriquerLamaAudit() {
   fileAttente.pistes = pistes;
 }
 
+/// Entrer dans Découvrir lance une passe MusicBrainz quand la dernière est
+/// périmée et qu'une adresse de contact est là (`entrerDecouvrir`) : un appel
+/// par seconde pendant des minutes, qui occupe le moteur — l'écran suivant
+/// attendait derrière elle jusqu'au délai de l'audit. L'audit mesure l'écran
+/// sans la lancer : l'adresse est retirée le temps d'entrer, puis remise.
+async function sansPasseDecouvrir(entrer) {
+  const cle = "mb-contact"; // `CONTACT_MB_CLE`, `js/decouvrir.js`
+  let contact = null;
+  try {
+    contact = localStorage.getItem(cle);
+    localStorage.removeItem(cle);
+    await entrer();
+  } finally {
+    if (contact !== null) localStorage.setItem(cle, contact);
+  }
+}
+
 async function auditerInterface() {
   const attendre = AUDIT_ATTENTE;
   const clic = (aff) => document.querySelector(`[data-affichage="${aff}"]`)?.click();
@@ -309,7 +326,7 @@ async function auditerInterface() {
     ["explorer:lama+playlist", async () => { await basculerMode("explorer"); clic("lama"); fabriquerLamaAudit(); await attendre(300); dessinerMiniNuage(); }],
     ["ecoute", async () => { await basculerMode("ecoute"); await attendre(700); }],
     ["editer", async () => { await basculerMode("editer"); await attendre(500); }],
-    ["decouvrir", async () => { await basculerMode("decouvrir"); await attendre(900); }],
+    ["decouvrir", async () => { await sansPasseDecouvrir(() => basculerMode("decouvrir")); await attendre(900); }],
     ["valise", async () => { await basculerMode("valise"); await attendre(900); }],
     ["bibliotheque", async () => { await basculerMode("bibliotheque"); await attendre(900); }],
   ];

@@ -296,7 +296,11 @@ canevas sous 12 px, aucune taille en style en ligne) ; dans l'application, G6
 et G7 (un texte en kana ou en hangul porte son `lang`, un nom de droite à
 gauche joint à d'autres textes est isolé) ; pour la carte, le test
 `aucune_etiquette_sous_douze_pixels` (`cargo test`). Après application : 7
-tailles (119 × 12, 30 × 13, 5 × 14, 8 × 16, 3 × 20, 4 × 26, 1 × 34), 0 violation.
+tailles (119 × 12, 30 × 13, 5 × 14, 8 × 16, 3 × 20, 4 × 26, 1 × 34). Le premier
+audit complet a relevé deux défauts que les maquettes ne montraient pas : un
+`<b>` du Lama au gras du navigateur (700 ; `b, strong` valent désormais 600) et
+l'en-tête d'Écouter qui débordait de 5 px à 960 px sous WebKit (il passe à la
+ligne). Ensuite : **198 cellules, 0 violation**.
 
 ## Principes généraux
 

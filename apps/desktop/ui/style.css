@@ -129,6 +129,8 @@
    plus ce qui l'entoure (« · 1991 »). Les noms joints dans une même chaîne
    passent par `isoler()` (`js/ecritures.js`). */
 span, a, b, strong, em, bdi, button, label, kbd { unicode-bidi: isolate; }
+/* Règle 11 : trois graisses ; le gras du navigateur (700) devient 600. */
+b, strong { font-weight: 600; }
 
 html, body {
   margin: 0;
@@ -512,8 +514,11 @@ html, body {
   min-width: 0; min-height: 0;
 }
 
+/* `flex-wrap` : dans une fenêtre étroite, l'ordre de la grille passe sous le
+   titre plutôt que de déborder (mesuré à 960 px depuis la Règle 11 : 5 px de
+   trop sous WebKit). */
 .fil {
-  display: flex; align-items: baseline; gap: 14px;
+  display: flex; align-items: baseline; gap: 8px 14px; flex-wrap: wrap;
   padding: 20px var(--gouttiere) 14px;
   border-bottom: 1px solid var(--line);
   flex: none;
@@ -583,7 +588,7 @@ html, body {
 .fil__candidat:hover { color: var(--txt); border-color: var(--accent); }
 
 /* Ordre de la grille d'albums : posé à droite de l'en-tête, après le compte. */
-.tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; }
+.tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; margin-left: auto; }
 .tri__opt {
   font: inherit; font-size: var(--t-legende); font-family: var(--mono);
   background: none; border: none; color: var(--mut);
