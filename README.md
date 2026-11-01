@@ -17,8 +17,11 @@ se décochent dans le mode Bibliothèque ; la popularité et les pochettes de
 repli n'ont pas encore de case. Les modèles se téléchargent depuis GitHub ou
 Hugging Face au premier usage. Aucune clé d'API n'est requise, sauf pour
 Last.fm. Le champ d'intention « Lama » (texte → playlist, mode Explorer)
-demande un serveur [Ollama](https://ollama.com) lancé sur la machine
-(`localhost:11434`) ; sans lui, le reste de l'application fonctionne.
+interprète la demande avec un modèle intégré (Gemma 4 E4B, par llama.cpp,
+4,6 Go téléchargés au premier usage) dans les versions construites avec la
+feature `lama-local` (`scripts/release.sh` l'active ; cmake requis) ; un
+serveur [Ollama](https://ollama.com) local reste un choix. Sans modèle, le
+reste de l'application fonctionne.
 
 Notes sur le développement de ce logiciel et les réflexions associées : [https://rousseau.github.io/rusty-music](https://rousseau.github.io/rusty-music)
 
@@ -93,6 +96,7 @@ Aucun n'est dans le dépôt Git. Remerciements, articles et licences :
 | Basic Pitch | transcription de la basse | 0,2 Mo | ONNX Runtime | au premier usage |
 | MuScriptor medium | transcription de qualité | 1,2 Go | Burn | par l'utilisateur, après acceptation de ses conditions |
 | ADTOF | transcription de la batterie | 1,8 Mo | ONNX Runtime | `scripts/preparer-adtof.sh` |
+| Gemma 4 E4B (GGUF Q4_0) | interprétation des demandes (Lama) | 4,6 Go | llama.cpp (`llama-cpp-2`, feature `lama-local`) | au premier usage, ou Ollama à la place |
 
 ## État
 
