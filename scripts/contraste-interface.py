@@ -12,6 +12,9 @@ Lit `apps/desktop/ui/style.css` : le bloc `:root` (thème sombre) et le bloc
 - les initiales d'artiste (`--initiales-encre` sur `--initiales-fond`, une
   saturation et une clarté posées sur la teinte du nom) tiennent 4,5:1 sur
   les 360 teintes ;
+- `--txt` tient 4,5:1 sur les fonds de la vue « En cours » : les couleurs
+  d'album recalées en OKLCH dans `--album-clarte` (clarté min et max) et sous
+  `--album-chroma`, sur toutes les teintes (`js/couleurs-album.js`) ;
 - aucune déclaration `color:` hors de `:root` ne code une couleur en dur : le
   texte passe par les jetons, sans quoi ce contrôle ne le verrait pas.
 
@@ -26,6 +29,7 @@ Sort avec le code 1 s'il y a une violation.
 """
 
 import colorsys
+import math
 import re
 import sys
 from pathlib import Path
@@ -65,6 +69,36 @@ def sl(css, selecteur):
 def hsl(teinte, s, l):
     r, v, b = colorsys.hls_to_rgb(teinte / 360, l, s)
     return "#%02x%02x%02x" % (round(r * 255), round(v * 255), round(b * 255))
+
+
+def oklch_vers_hex(L, C, h):
+    """OKLCH → sRGB, chaque canal ramené dans le gamut (comme `couleurs-album.js`)."""
+    a, b = C * math.cos(h), C * math.sin(h)
+    l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
+
+    def canal(c):
+        c = 12.92 * c if c <= 0.0031308 else 1.055 * max(c, 0) ** (1 / 2.4) - 0.055
+        return round(min(1, max(0, c)) * 255)
+
+    rgb = (
+        canal(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+        canal(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+        canal(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+    )
+    return "#%02x%02x%02x" % rgb
+
+
+def plage_album(css, selecteur):
+    """`--album-clarte: min max` et `--album-chroma: c` d'un bloc, ou None."""
+    debut = css.find(f"{selecteur} {{")
+    corps = css[debut : css.index("\n}", debut)]
+    clarte = re.search(r"--album-clarte:\s*([\d.]+)\s+([\d.]+)", corps)
+    chroma = re.search(r"--album-chroma:\s*([\d.]+)", corps)
+    if not clarte or not chroma:
+        return None
+    return float(clarte.group(1)), float(clarte.group(2)), float(chroma.group(1))
 
 
 def luminance(hexa):
@@ -114,6 +148,24 @@ def main():
         else:
             violations.append(f"{theme:8} --initiales-fond / --initiales-encre : jeton absent")
 
+        # Fonds de la vue « En cours » : le pire cas des couleurs d'album recalées.
+        plage = plage_album(css, ":root" if theme == "sombre" else ':root[data-theme="clair"]')
+        if plage is None:
+            violations.append(f"{theme:8} --album-clarte / --album-chroma : jeton absent")
+        else:
+            lmin, lmax, cmax = plage
+            r, fond = min(
+                (rapport(jetons["txt"], f), f)
+                for L in (lmin, (lmin + lmax) / 2, lmax)
+                for C in (0, cmax / 2, cmax)
+                for t in range(0, 360, 5)
+                for f in [oklch_vers_hex(L, C, math.radians(t))]
+            )
+            marque = "ok" if r >= TEXTE else "ÉCHEC"
+            print(f"   {marque:5} {r:5.2f}:1 ≥ {TEXTE}  --txt sur les fonds d'album  (pire : {fond})")
+            if r < TEXTE:
+                violations.append(f"{theme:8} --txt sur un fond d'album {fond} : {r:.2f}:1 < {TEXTE}:1")
+
     # Hors des deux blocs de jetons, une couleur de texte en dur échappe au contrôle.
     sans_jetons = re.sub(r":root(\[data-theme=\"clair\"\])? \{.*?\n\}", "", css, flags=re.S)
     for numero, ligne in enumerate(css.splitlines(), 1):
@@ -128,7 +180,7 @@ def main():
         print(f"{len(violations)} violation(s) de contraste :")
         print("\n".join(f"   {v}" for v in violations))
         return 1
-    print(f"Contraste : {len(COUPLES)} couples et les initiales × 2 thèmes, aucune violation.")
+    print(f"Contraste : {len(COUPLES)} couples, les initiales et les fonds d'album × 2 thèmes, aucune violation.")
     return 0
 
 

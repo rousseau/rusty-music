@@ -20,7 +20,15 @@ l'iPhone, vit dans `plan-ios-compagnon.md` (« Passage de la lecture »).
 Hors périmètre, à ne pas rouvrir : égaliseur et AutoEq, paroles et karaoké
 (écartés en 0.2, points 9 et 10).
 
-### 1. Vue plein écran « En cours » · **M** — **retenu : A**
+### 1. Vue plein écran « En cours » · **M** — **retenu : A, fait (1ᵉʳ novembre 2026)**
+
+**Fait.** `js/en-cours.js` : ouverte par la pochette du transport ou ⌘K
+« en cours », au-dessus des panneaux, sous la file et la palette ; le disque
+tourne pendant la lecture (14 s le tour), le spectre lit à chaque image la
+colonne du spectrogramme du transport à la tête de lecture (`spectreCourant`
+garde désormais les intensités brutes à côté de l'image), lissée ; graves en
+haut, aigus en bas, en miroir ; `--rampe`. `prefers-reduced-motion` : ni
+rotation ni spectre. Tests de fumée et capture dans les deux thèmes.
 
 **Chez Disc Player.** La pochette posée sur un disque qui tourne, un spectre
 autour (`src/layout/VisualizerMode.vue`), les deux couleurs de la pochette en
@@ -48,7 +56,14 @@ spectre : la rampe `--rampe` (Règle 3 : une rampe, pas des familles).
 **Recommandation : A.** Le calcul existe et il est en cache ; B ne vaut que si
 l'on veut voir l'effet du « E », ce que personne n'a demandé.
 
-### 2. Couleurs d'album · **M** — **retenu : C, la vue « En cours » seule** (Règle 3, exception écrite)
+### 2. Couleurs d'album · **M** — **retenu : C, la vue « En cours » seule** (Règle 3, exception écrite) — **fait (1ᵉʳ novembre 2026)**
+
+**Fait.** `js/couleurs-album.js` : la méthode de Disc Player réécrite (cases
+de couleur sur une copie 48 × 48, poids à la saturation et à la fréquence,
+seconde couleur écartée de 0,13 en OKLab), recalée dans les bornes de chaque
+thème (`--album-clarte`, `--album-chroma`) : clarté 0,22 à 0,36 et chroma ≤
+0,09 en sombre, 0,80 à 0,93 et ≤ 0,11 en clair. Contraste de `--txt` sur le
+pire cas vérifié par `scripts/contraste-interface.py` (≥ 8,1:1).
 
 **Chez Disc Player** (`src/domain/coverColours.ts`, `docs/themes.md`). Deux
 couleurs plutôt que la moyenne des pixels (qui rend grises les pochettes
@@ -176,8 +191,8 @@ montre où sont les manques avant d'écrire une passe ; C écartée.
 **Fait.** `apps/desktop/ui-tests/collection-fictive.js` : dix artistes et dix-neuf
 albums inventés (dont un nom arabe et un nom japonais, pour la Règle 11), 121
 pistes, cinq familles, un nuage factice, des pochettes SVG engendrées à graine
-fixe. `captures.spec.js` en tire cinq écrans × deux thèmes (Écouter, un album
-en lecture, la palette, le nuage, la frise) en JPEG 1 280 × 800, ~65 Ko
+fixe. `captures.spec.js` en tire six écrans × deux thèmes (Écouter, un album
+en lecture, la vue « En cours », la palette, le nuage, la frise) en JPEG 1 280 × 800, ~65 Ko
 chacun, vers `docs/images/` ; le README les montre par `<picture>`, clair ou
 sombre selon le thème du lecteur. Hors des tests de fumée : `npm run
 captures`. Pour la page du livre, les images sont prêtes ; `livre/` n'est pas

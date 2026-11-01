@@ -20,6 +20,11 @@
      (`--teinte`) : saturation et clarté du fond, puis de l'encre. Vérifié
      sur les 360 teintes par `scripts/contraste-interface.py`. */
   --initiales-fond: 22% 30%; --initiales-encre: 30% 82%;
+  /* Fonds de la vue « En cours » : les deux couleurs d'une pochette, recalées
+     en OKLCH dans cette plage de clarté et sous ce chroma (`js/couleurs-album.js`).
+     Calculées pour que `--txt` y tienne ≥ 7,5:1 sur toutes les teintes ;
+     `--mut` n'y sert pas. Vérifié par `scripts/contraste-interface.py`. */
+  --album-clarte: 0.22 0.36; --album-chroma: 0.09;
   /* Le gabarit : une seule source pour les largeurs, les marges et les hauteurs
      que plusieurs règles doivent partager. La file d'attente, en surimpression,
      **recouvre exactement** l'inspecteur (`--largeur-droite`) : plus large, elle
@@ -86,6 +91,9 @@
 }
 
 :root[data-theme="clair"] {
+  /* Fonds de la vue « En cours » (couleurs d'album, Règle 3) : clairs et doux
+     en thème clair. `--txt` y tient ≥ 8:1 sur toutes les teintes. */
+  --album-clarte: 0.80 0.93; --album-chroma: 0.11;
   --bg:     #F3EFE6;
   --panel:  #FBF8F1;
   --panel2: #EFEADF;
@@ -437,6 +445,53 @@ html, body {
   font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
 }
+
+/* ---------- vue plein écran « En cours » ---------- */
+/* Couvre rail, centre et inspecteur ; s'arrête au transport, qui reste
+   utilisable. Sous la file (z 10) et la palette (z 50). Les fonds seuls
+   prennent les couleurs de la pochette ; le texte reste `--txt`. */
+.en-cours {
+  position: fixed; inset: 0 0 var(--hauteur-transport) 0; z-index: 8;
+  display: grid; place-items: center; overflow: hidden;
+  background: linear-gradient(160deg, var(--album-haut, var(--panel)), var(--album-bas, var(--bg)));
+  color: var(--txt);
+}
+/* La file ouverte par-dessus : la vue s'arrête à son bord, comme toute
+   surimpression (Règle 10), et son × reste atteignable. */
+body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
+.en-cours__fermer { position: absolute; top: var(--gouttiere-panneau); right: var(--gouttiere-panneau); color: var(--txt); }
+.en-cours__scene {
+  --disque: min(46vh, 40vw);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: calc(100% - 2 * var(--gouttiere)); text-align: center;
+}
+.en-cours__platine { position: relative; width: calc(var(--disque) * 1.5); height: calc(var(--disque) * 1.5); margin-bottom: 8px; }
+.en-cours__spectre { position: absolute; inset: 0; width: 100%; height: 100%; }
+.en-cours__disque {
+  position: absolute; inset: calc(var(--disque) * .25); border-radius: 50%;
+  background: var(--panel2) center / cover no-repeat;
+  box-shadow: 0 18px 50px rgb(0 0 0 / .3);
+  animation: en-cours-tourner 14s linear infinite; animation-play-state: paused;
+}
+/* L'axe du disque : un trou au centre, couleur du fond. */
+.en-cours__disque::after {
+  content: ""; position: absolute; inset: 46%; border-radius: 50%;
+  background: var(--album-haut, var(--bg)); box-shadow: inset 0 0 0 2px rgb(0 0 0 / .25);
+}
+.en-cours--joue .en-cours__disque { animation-play-state: running; }
+@keyframes en-cours-tourner { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) {
+  .en-cours__disque { animation: none; }
+  .en-cours__spectre { display: none; }
+}
+.en-cours__titre { margin: 0; font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; }
+.en-cours__artiste { margin: 0; font-size: var(--t-intertitre); font-weight: 500; }
+.en-cours__album { margin: 0; font-size: var(--t-second); }
+.en-cours__titre, .en-cours__artiste, .en-cours__album {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.transport__art { cursor: pointer; }
+.transport__art:hover, .transport__art:focus-visible { border-color: var(--accent); outline: none; }
 
 /* ---------- palette de recherche (⌘K) ---------- */
 /* Au-dessus de tout, mais l'écran reste lisible derrière : un voile du fond à

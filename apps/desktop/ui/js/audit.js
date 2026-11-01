@@ -22,6 +22,9 @@ import {
 import {
   langueDe,
 } from "./ecritures.js";
+import {
+  fermerEnCours, ouvrirEnCours,
+} from "./en-cours.js";
 
 /* Audit de gabarit de l'interface — `scripts/audit-interface.sh`.
  *
@@ -114,6 +117,7 @@ const COLONNES_LECTURE = new Set(["bibliotheque", "valise"]);
 const DEFILEMENTS_AUDIT = [
   ".rail", ".centre", ".inspecteur", "#file", "#liste", "#grille", "#lama-corps",
   "#bibliotheque-vue", "#decouvrir-vue", "#valise-vue", "#editer-etabli", "#editer-separer",
+  "#en-cours",
 ];
 
 function auditerGabarit(ecran) {
@@ -213,13 +217,22 @@ function auditerGabarit(ecran) {
     if (!haut || haut === el || el.contains(haut) || haut.contains(el)) continue;
     // La file recouvre l'inspecteur, c'est sa raison d'être.
     if (fileOuverte && el.closest(".inspecteur") && haut.closest("#file")) continue;
+    // La vue « En cours » recouvre rail, centre et inspecteur : c'est voulu.
+    if (haut.closest("#en-cours") && !el.closest("#en-cours")) continue;
     occultes++;
     if (occultes <= 4) viol.push({ regle: "G4", detail: `${nomAudit(el)} est recouvert par ${nomAudit(haut)}` });
   }
 
   // --- G5 repères propres à un écran ----------------------------------------
+  // Visible veut dire vu : recouvert par une surimpression (vue « En cours »),
+  // le repère n'est pas affiché.
   const ia = q("#index-alpha");
-  if (ia && ecran !== "ecoute" && visibleAudit(ia))
+  const iaVu = () => {
+    const r = ia.getBoundingClientRect();
+    const haut = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!haut && ia.contains(haut);
+  };
+  if (ia && ecran !== "ecoute" && visibleAudit(ia) && iaVu())
     viol.push({ regle: "G5", detail: "le repère A–Z est affiché hors de l'Écoute" });
 
   // --- G6 typographie, G7 écritures (Règle 11) -------------------------------
@@ -329,6 +342,7 @@ async function auditerInterface() {
     ["decouvrir", async () => { await sansPasseDecouvrir(() => basculerMode("decouvrir")); await attendre(900); }],
     ["valise", async () => { await basculerMode("valise"); await attendre(900); }],
     ["bibliotheque", async () => { await basculerMode("bibliotheque"); await attendre(900); }],
+    ["en-cours", async () => { await basculerMode("ecoute"); ouvrirEnCours(); await attendre(600); }],
   ];
   const FENETRES = [[960, 620], [1400, 900], [1920, 1080]];
   const THEMES = ["sombre", "clair"];
@@ -343,6 +357,7 @@ async function auditerInterface() {
       else delete document.documentElement.dataset.theme;
       for (const [ecran, aller] of ECRANS) {
         await basculerFile(false);
+        fermerEnCours();
         await aller();
         await attendre(350);
         for (const etat of ["base", "file ouverte", "morceau sélectionné"]) {
@@ -365,6 +380,7 @@ async function auditerInterface() {
     }
   }
   basculerFile(false);
+  fermerEnCours();
   journalCarte(`AUDIT FIN cellules=${cellules} violations=${total}`, total ? "warn" : "log");
 }
 

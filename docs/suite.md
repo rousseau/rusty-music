@@ -67,8 +67,8 @@ Un commit par étape.
    lecture »). Tranché le même jour : options recommandées partout ; couleurs
    d'album dans la seule vue « En cours » (exception écrite à la Règle 3) ;
    thème par défaut : sombre. Ordre : captures (faites, `docs/images/`), vue
-   « En cours » (et ses couleurs), bloc « État », éditions face à face,
-   passage Mac → iPhone.
+   « En cours » et ses couleurs (faites, 1ᵉʳ nov.), bloc « État », éditions
+   face à face, passage Mac → iPhone.
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

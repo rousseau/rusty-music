@@ -14,6 +14,10 @@ import {
 import {
   basculerTheme, clairActif,
 } from "./theme.js";
+import {
+  ouvrirEnCours,
+} from "./en-cours.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ---------------------------------------------------- palette de recherche
  *
@@ -93,6 +97,10 @@ function commandes() {
       groupe: "Commandes", libelle: clairActif() ? "Thème sombre" : "Thème clair",
       mots: "thème apparence couleurs clair sombre",
       pret: () => true, lancer: basculerTheme,
+    },
+    {
+      groupe: "Commandes", libelle: "Vue « En cours »", mots: "plein écran disque spectre pochette",
+      pret: () => !!lecture.courant, lancer: ouvrirEnCours,
     },
     { groupe: "Commandes", libelle: "Lecture / pause", mots: "jouer lire arrêter", pret: () => true, lancer: clic("lecture") },
     { groupe: "Commandes", libelle: "Piste suivante", mots: "suivant", pret: () => true, lancer: clic("suivant") },

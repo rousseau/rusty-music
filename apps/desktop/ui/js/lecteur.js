@@ -799,7 +799,10 @@ function garderSpectre(cle, fond) {
   spectres.set(cle, fond);
   while (spectres.size > SPECTRES_MAX) spectres.delete(spectres.keys().next().value);
 }
-let spectreCourant = null; // le { img } affiché
+// Le spectrogramme affiché : `{ img, pixels, largeur, hauteur }` — l'image
+// composée pour le transport, et les intensités brutes (un octet par case,
+// rangée 0 = aigus) que la vue « En cours » lit à la tête de lecture.
+let spectreCourant = null;
 
 /// Pose une image gardée côté CPU sur un canevas de w×h.
 ///
@@ -840,7 +843,8 @@ function peindreTransport(frac) {
   waveCtx.fillRect(x, 0, 1, h);
 }
 
-/// Compose l'image du spectrogramme, une fois — teinte l'ajout du HD.
+/// Compose l'image du spectrogramme, une fois — teinte l'ajout du HD. Garde
+/// aussi les intensités brutes (`pixels`), pour la vue « En cours ».
 function composerSpectre(s) {
   const { largeur: w, hauteur: h, pixels, pixels_ref, hd } = s;
   const img = new ImageData(w, h);
@@ -872,7 +876,7 @@ function composerSpectre(s) {
     img.data[i * 4 + 2] = c[2];
     img.data[i * 4 + 3] = 255;
   }
-  return { img };
+  return { img, pixels, largeur: w, hauteur: h };
 }
 
 /// Demande le spectrogramme du son joué ; le fichier décodé prend quelques
@@ -1148,5 +1152,5 @@ async function battement() {
 export {
   basculerFile, battement, chargerSpectreTransport, demarrerLecture, dessinerFile, dureeFile,
   estAffiche, majApercuTransport, peindreTransport, poserImage, poserLecture, sonder,
-  teteCourante,
+  spectreCourant, teteCourante,
 };

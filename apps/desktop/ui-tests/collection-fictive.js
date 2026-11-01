@@ -138,6 +138,23 @@ const fixturesCollection = {
   artist_families: ARTISTES.map((a) => [a.name, famille(a.name)]),
   map_view: MAP_VIEW,
   map_progress: [PISTES.length, PISTES.length],
+  // Un spectrogramme engendré : des graves soutenus, des médiums qui pulsent,
+  // des aigus plus rares — assez pour que le transport et la vue « En cours »
+  // aient quelque chose à montrer.
+  spectre_transport: (a) => {
+    const w = a.width, h = a.height, pixels = new Array(w * h);
+    for (let x = 0; x < w; x++) {
+      const temps = x / w;
+      for (let y = 0; y < h; y++) {
+        // Comme `crates/player/src/spectre.rs` : la rangée du haut = les aigus.
+        const grave = y / (h - 1); // 1 en bas (graves), 0 en haut
+        const pulse = 0.5 + 0.5 * Math.sin(temps * 90 + y * 0.6);
+        const v = 255 * Math.min(1, grave ** 1.6 * 0.9 + pulse * 0.35 * (0.3 + grave));
+        pixels[y * w + x] = Math.round(v);
+      }
+    }
+    return { largeur: w, hauteur: h, pixels, pixels_ref: null, hd: false };
+  },
   famille_piste: (a) => {
     const p = window.__DONNEES__.PISTES.find((x) => x.id === a.id);
     return p ? window.__DONNEES__.FAMILLE_PAR_ARTISTE[p.artist] : null;

@@ -241,3 +241,39 @@ test("familles d'Écouter : une famille cochée estompe les autres sans rien ret
   await expect(page.locator("#grille .album--estompe")).toHaveCount(1);
   await expect(page.locator("#fil-compte")).toHaveText("2 sur 3 albums");
 });
+
+test("vue « En cours » : le morceau joué, des fonds aux couleurs de la pochette, Échap ferme", async ({ page }) => {
+  // Une pochette d'une couleur franche, pour que l'extraction ait de quoi faire —
+  // posée avant le rechargement : la grille a déjà mis en cache des pochettes vides.
+  await page.addInitScript(() => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#2a6fb0"/><circle cx="5" cy="5" r="3" fill="#e0b040"/></svg>';
+    window.__FIXTURES__.cover = `data:image/svg+xml;base64,${btoa(svg)}`;
+  });
+  await page.reload();
+  await expect(page.locator("#grille .album")).toHaveCount(3);
+  await lireUnAlbum(page);
+  await page.click("#transport-art");
+  await expect(page.locator("#en-cours")).toBeVisible();
+  await expect(page.locator("#en-cours-titre")).toHaveText(PISTES[0].title);
+  await expect(page.locator("#en-cours-album")).toHaveText("Premier banc · 1999");
+  // Les fonds seulement prennent la couleur ; recalée, elle reste sombre en thème sombre.
+  await expect.poll(() => page.locator("#en-cours").evaluate((el) => el.style.getPropertyValue("--album-haut"))).toMatch(/^rgb\(/);
+  // La file s'ouvre par-dessus ; Échap la ferme d'abord, puis la vue.
+  await page.click("#bascule-file");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#file")).toBeHidden();
+  await expect(page.locator("#en-cours")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#en-cours")).toBeHidden();
+});
+
+test("vue « En cours » : sans mouvement si le système le demande", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await lireUnAlbum(page);
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("en cours");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#en-cours")).toBeVisible();
+  await expect(page.locator("#en-cours-spectre")).toBeHidden();
+  expect(await page.locator("#en-cours-disque").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+});

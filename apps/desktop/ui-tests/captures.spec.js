@@ -31,6 +31,13 @@ for (const theme of ["sombre", "clair"]) {
     await page.waitForTimeout(900);
     await capture(page, "album", theme);
 
+    // La vue plein écran « En cours » : la pochette sur un disque, le spectre
+    // autour, les fonds aux couleurs de la pochette.
+    await page.click("#transport-art");
+    await page.waitForTimeout(1200);
+    await capture(page, "en-cours", theme);
+    await page.keyboard.press("Escape");
+
     // La palette de recherche, au-dessus de l'écran.
     await page.keyboard.press("Meta+k");
     await page.keyboard.type("lan");

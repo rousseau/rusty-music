@@ -39,6 +39,10 @@ Notes sur le développement de ce logiciel et les réflexions associées : [http
   <img src="docs/images/palette-clair.jpg" alt="La palette de recherche (⌘K) au-dessus de l'écran" width="640">
 </picture>
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/en-cours-sombre.jpg">
+  <img src="docs/images/en-cours-clair.jpg" alt="La vue « En cours » : la pochette sur un disque, le spectre autour" width="640">
+</picture>
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/explorer-nuage-sombre.jpg">
   <img src="docs/images/explorer-nuage-clair.jpg" alt="Explorer : le nuage des morceaux, coloré par famille" width="640">
 </picture>

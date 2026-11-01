@@ -87,6 +87,16 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   `#q` du rail redevient un **filtre** de ce qui est affiché, dans tous les
   écrans où il apparaît (voir l'audit d'Écouter, Règle 2).
 
+- **Vue plein écran « En cours »** (1ᵉʳ novembre 2026, idée de Disc Player).
+  Un clic sur la pochette du transport (ou ⌘K « en cours ») ouvre, par-dessus
+  rail, centre et inspecteur, le morceau qui joue : sa pochette sur un disque
+  qui tourne pendant la lecture, le spectre autour (la colonne du spectrogramme
+  du transport à la tête de lecture, aux couleurs de `--rampe`), titre,
+  artiste, album. Le transport et la file restent utilisables ; Échap ferme
+  (`#en-cours`, `js/en-cours.js`). Les fonds prennent les deux couleurs de la
+  pochette : la seule exception à la Règle 3 (voir là). Avec
+  `prefers-reduced-motion`, ni rotation ni spectre.
+
 ## Règles universelles — dans les cinq écrans, sans exception
 
 ### 1. Un seul inspecteur, partagé
@@ -174,7 +184,11 @@ contrôle, un trait ni un point, jamais ailleurs dans Écouter, jamais dans
 Explorer. La vue n'affiche aucune famille : rien n'y lit la couleur comme une
 famille. Le contrôle de contraste devra couvrir le pire cas du recalage avant
 que la vue ne soit livrée. Élargir l'exception (en-tête d'un album ouvert…)
-demande une nouvelle décision.
+demande une nouvelle décision. **Livrée le même jour** (`js/couleurs-album.js`) :
+les bornes du recalage sont des jetons de chaque thème (`--album-clarte`,
+`--album-chroma`), et `scripts/contraste-interface.py` vérifie `--txt` sur leur
+pire cas, toutes teintes : 8,1:1 en sombre, 8,3:1 en clair. Le texte de la vue
+est entièrement en `--txt` : `--mut` n'y tiendrait pas.
 
 ### 4. Stabilité des positions et de la mise en page
 Sélectionner un élément ne réorganise jamais ce qui l'entoure. Une liste ne
@@ -470,6 +484,27 @@ dans son journal que la composition va au bout.
 | 7 | Zoom/pan cohérents | — | Pas de zoom. |
 | 8 | Révélation par échelle | ✅ | Le choix de famille n'apparaît que sur une ligne « Famille » ; les albums écartés ne se comptent que s'il y en a ; l'avancement de l'envoi seulement pendant l'envoi. |
 | 9 | Langage de force unique | — | Pas de relations. |
+
+### Vue « En cours » (1ᵉʳ novembre 2026)
+
+| # | Règle | Verdict | Raison |
+|---|---|---|---|
+| 1 | Inspecteur unique | ✅ | La vue montre ce que montre le transport (pochette, titre, artiste) et l'album, en grand ; rien du détail de l'inspecteur (crédits, critiques, famille, voisins), qui reste le seul à les porter. |
+| 2 | Estomper, jamais masquer | — | Pas de filtre. |
+| 3 | Palette unique | ✅ | Exception écrite et bornée (Règle 3) : couleurs d'album sur les fonds seulement, dans cette vue seulement ; le spectre suit `--rampe`, aucune famille n'est affichée. |
+| 4 | Stabilité des positions | ✅ | Rien ne se réorganise : le disque tourne sur place, les barres du spectre ne bougent qu'en longueur. |
+| 5 | Sobriété stricte | ✅ | Un seul contrôle propre (×) ; le transport en dessous garde les siens. |
+| 6 | Deux thèmes sérieux | ✅ | Bornes de recalage dessinées pour chaque thème, contraste vérifié sur leur pire cas ; captures dans les deux thèmes (`docs/images/en-cours-*.jpg`). |
+| 7 | Zoom/pan cohérents | — | Pas de zoom. |
+| 8 | Révélation par échelle | ✅ | La vue attend un geste (pochette du transport, ⌘K) ; elle n'est jamais affichée d'office. |
+| 9 | Langage de force unique | — | Le spectre est une rampe d'énergie, pas une relation entre morceaux. |
+| 11 | Typographie | ✅ | Titre `--t-fil` (serif), artiste `--t-intertitre`, album `--t-second`. |
+
+L'audit la parcourt comme un douzième écran (`en-cours`), la vue recouvrant
+par construction ce qu'elle recouvre (exception G4 ; G5 ne compte plus un
+repère recouvert). Le premier passage a relevé un vrai défaut : la file,
+ouverte par-dessus, cachait le × de la vue ; la vue s'arrête désormais au bord
+de la file (Règle 10). Ensuite : **216 cellules, 0 violation**.
 
 ### Constat transversal — Règle 10, le gabarit (1ᵉʳ octobre 2026)
 
