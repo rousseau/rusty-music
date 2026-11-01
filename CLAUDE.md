@@ -109,7 +109,8 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   `docs/carto-etat-de-lart.md` (aspect, palettes), `docs/carto-direction.md`,
   `docs/carto-peuplement-architecture.md`, `docs/carto-google-maps.md`
   (réseau, routage), `docs/carto-anneau.md`, `docs/frise-filiations.md`,
-  `docs/nommage-familles.md`, `docs/recherche-llm-playlist.md` (Lama).
+  `docs/nommage-familles.md`, `docs/recherche-llm-playlist.md` (Lama),
+  `docs/recherche-lama-sans-ollama.md` (Lama sans Ollama).
 - **Éditer** : `docs/ui-spec-editeur.md` (l'établi), `docs/plan-editer-pratique-creation.md`
   et `docs/recherche-editer-pratique-creation.md`, `docs/module3-demixage.md`,
   `docs/module3-roformer.md`.
