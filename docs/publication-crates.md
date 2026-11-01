@@ -1,7 +1,9 @@
 # Publier des crates autonomes
 
-Préparation de la phase 8 (1ᵉʳ nov. 2026). **Rien n'est publié** : ce
-document dit quoi publier, ce qu'il reste à faire et ce qui reste à décider.
+Préparation de la phase 8 (1ᵉʳ nov. 2026). **Décision (même jour) : on
+garde les crates dans le workspace, sans rien publier.** Ce document reste
+comme l'état des lieux à reprendre si la question revient : quoi publier, ce
+qu'il resterait à faire et à décider.
 Une publication sur crates.io est définitive : une version peut être
 retirée (`yank`), jamais effacée.
 

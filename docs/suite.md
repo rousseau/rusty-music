@@ -44,8 +44,8 @@ mention contraire.
    MusicRecoIntent, 4,7 s contre 2,1 s (`docs/recherche-lama-sans-ollama.md`).
 8. Préparer la publication de crates autonomes — fait
    (`docs/publication-crates.md`) : trois portages en Burn proposés
-   (all-in-one, BS-RoFormer, MuScriptor) ; quatre décisions en attente
-   (licence, langue, noms, compte). Rien n'est publié.
+   (all-in-one, BS-RoFormer, MuScriptor). Décision : on garde les crates,
+   sans publier.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

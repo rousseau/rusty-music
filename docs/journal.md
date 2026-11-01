@@ -2504,5 +2504,5 @@ page, pas le fonctionnement.
 - `docs/publication-crates.md` : les crates de l'application restent privées ;
   trois portages en Burn, presque détachés du reste (all-in-one, BS-RoFormer
   « SW », MuScriptor), sont proposés, noms libres sur crates.io au 1ᵉʳ nov.
-- En attente de décision : licence des crates publiées (GPL-3 ou MIT/Apache),
-  langue de l'API, noms, compte. Rien n'est publié.
+- Décision : on garde les crates dans le workspace, sans publier. Le
+  document reste l'état des lieux si la question revient.
