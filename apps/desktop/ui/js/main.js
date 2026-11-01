@@ -11,5 +11,7 @@
 // (promesse, minuteur) ne passe avant la fin du dernier module.
 //
 // Ajouter un module : l'insérer dans la chaîne (son `import` de tête, celui
-// du suivant) ; le dernier reste celui qu'importe ce fichier.
+// du suivant) ; le dernier reste celui qu'importe ce fichier. Un module qui
+// ne fait que déclarer (`etat-lecture.js`) n'a pas d'ordre à tenir : il reste
+// hors de la chaîne.
 import "./autotest-carte.js";

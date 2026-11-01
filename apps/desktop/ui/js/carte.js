@@ -6,11 +6,12 @@ import {
   inspecterAlbum,
 } from "./ecouter.js";
 import {
-  enLecture, modeCourant,
+  modeCourant,
 } from "./lecteur.js";
 import {
   chargerFamilles, dessinerCarte, modeAnneau, modeTemps, patienter,
 } from "./maplibre.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------------------- carte */
 
@@ -584,7 +585,7 @@ async function suivreAlbumEnLecture() {
   // le morceau d'avant finit de jouer pendant que la nouvelle playlist prend
   // la main. État transitoire, on ne touche à rien (le prochain morceau de la
   // file résoudra).
-  const piste = fileCourante.find((x) => x.path === enLecture);
+  const piste = fileCourante.find((x) => x.path === lecture.courant);
   if (!piste) return;
   const nom = piste.album || null;
   const artiste = piste.artist || "";

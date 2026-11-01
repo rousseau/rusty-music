@@ -5,6 +5,7 @@ import {
 import {
   appliquerVitesses, deplacerLecture, dessinerReglages, majUsage, montrerPartition, REGLAGES,
 } from "./pratiquer.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- éditer */
 
@@ -33,7 +34,6 @@ const edition = {
   // passe alors de « choisir » à « séparer ». Sans ça, entrer dans le mode
   // reste sur le sélecteur, le morceau en lecture n'étant qu'un candidat.
   sourceChoisie: false,
-  enLecture: false, // un multipiste est-il chargé côté moteur ?
   tete: 0, // position de lecture, de 0 à 1 — partagée par tous les affichages
   // Vitesse et tonalité **d'ensemble**. Elles pilotent tous les stems que rien
   // n'en écarte ; un stem peut avoir les siennes (`docs/ui-spec-editeur.md`,
@@ -271,13 +271,13 @@ function bornesMesures(t, n) {
   const derniere = p[p.length - 1] - p[p.length - 2];
   const j = i + n;
   const fin = j < p.length ? p[j] : p[p.length - 1] + (j - (p.length - 1)) * derniere;
-  return { debut, fin: Math.min(fin, edition.dureeMs / 1000 || fin) };
+  return { debut, fin: Math.min(fin, lecture.stems.dureeMs / 1000 || fin) };
 }
 
 /// Pose (ou repose) la boucle côté moteur. Le multipiste est recréé à chaque
 /// rechargement des stems (transposition, greffe) : la boucle doit le suivre.
 async function reposerBoucle() {
-  if (!edition.enLecture) return;
+  if (!lecture.stems.charges) return;
   if (edition.boucle) {
     await invoke("stems_boucle", { debut: edition.boucle.debut, fin: edition.boucle.fin });
   } else {
@@ -293,7 +293,7 @@ async function basculerBoucle() {
   if (edition.boucle) {
     edition.boucle = null;
   } else {
-    const t = (edition.tete * edition.dureeMs) / 1000;
+    const t = (edition.tete * lecture.stems.dureeMs) / 1000;
     const b = bornesMesures(t, edition.mesuresBoucle);
     if (!b) return;
     edition.boucle = { ...b, mesures: edition.mesuresBoucle };
@@ -346,14 +346,20 @@ function positionnerBande() {
   const bande = $("boucle-bande");
   const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
   const etabli = $("editer-etabli");
-  if (!edition.boucle || !premier || etabli.hidden || !edition.dureeMs || edition.usage === "pratiquer") {
+  if (
+    !edition.boucle ||
+    !premier ||
+    etabli.hidden ||
+    !lecture.stems.dureeMs ||
+    edition.usage === "pratiquer"
+  ) {
     bande.hidden = true;
     return;
   }
   const rc = premier.canvas.getBoundingClientRect();
   const re = etabli.getBoundingClientRect();
   const rp = $("dock-pistes").getBoundingClientRect();
-  const d = edition.dureeMs / 1000;
+  const d = lecture.stems.dureeMs / 1000;
   const x0 = rc.left - re.left + etabli.scrollLeft + (edition.boucle.debut / d) * rc.width;
   const x1 = rc.left - re.left + etabli.scrollLeft + (edition.boucle.fin / d) * rc.width;
   bande.style.left = `${Math.round(x0)}px`;

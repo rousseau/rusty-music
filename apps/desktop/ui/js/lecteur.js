@@ -32,6 +32,7 @@ import {
 import {
   charger,
 } from "./demarrage.js";
+import { lecture, transport } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- recherche */
 
@@ -189,17 +190,13 @@ function texteDureeFile(pistes, rang, positionMs, repetition) {
   return texte;
 }
 
-/// Dernière position lue par le battement : la ligne « reste » s'en sert entre
-/// deux redessins de la file.
-let dernierePositionMs = 0;
-
 /// Remet à jour la ligne de durée du panneau de file. Légère — un battement
 /// l'appelle à 5 Hz — : le texte n'est réécrit que s'il change, et rien n'est
 /// calculé tant que le panneau est fermé.
 function majDureeFile() {
   if ($("file").hidden) return;
-  const rang = fileCourante.findIndex((t) => t.path === enLecture);
-  const texte = texteDureeFile(fileCourante, rang, dernierePositionMs, etatRepetition);
+  const rang = fileCourante.findIndex((t) => t.path === lecture.courant);
+  const texte = texteDureeFile(fileCourante, rang, lecture.positionMs, etatRepetition);
   const el = $("file-duree");
   if (el.textContent !== texte) el.textContent = texte;
 }
@@ -221,7 +218,7 @@ function dessinerFile() {
     return;
   }
 
-  const rangCourant = fileCourante.findIndex((t) => t.path === enLecture);
+  const rangCourant = fileCourante.findIndex((t) => t.path === lecture.courant);
   hote.replaceChildren();
 
   fileCourante.forEach((t, i) => {
@@ -331,18 +328,7 @@ document.addEventListener("keydown", (e) => {
 
 /* ---------------------------------------------------------- transport */
 
-let enLecture = null;
-
-// Le libellé bascule tout de suite, sans attendre l'aller-retour : sur un
-// clic, un décalage de quelques dizaines de millisecondes se voit.
-// `ignorerEtatJusqua` empêche un sondage déjà en vol de le remettre à l'ancien
-// état avec une réponse antérieure au clic.
-let ignorerEtatJusqua = 0;
-// Ce que l'utilisateur veut entendre, indépendamment de ce que le moteur a eu
-// le temps de faire. **Le DOM ne peut pas servir de mémoire ici** : le sondage
-// réécrit l'icône, et un second clic lisait alors l'état d'avant le premier —
-// il envoyait l'action inverse, et la lecture repartait au lieu de s'arrêter.
-let veutJouer = false;
+// Ce qui est chargé et ce que l'utilisateur a demandé : `etat-lecture.js`.
 let clicEnVol = false;
 
 /// Pose l'icône du transport **et** l'intention, ensemble.
@@ -350,7 +336,7 @@ let clicEnVol = false;
 /// Les deux ne peuvent pas diverger si un seul endroit les écrit. Divergentes,
 /// elles produisaient un clic qui envoyait l'action inverse.
 function poserLecture(joue) {
-  veutJouer = joue;
+  transport.veutJouer = joue;
   $("lecture").textContent = joue ? "⏸" : "▶";
 }
 
@@ -359,25 +345,24 @@ function poserLecture(joue) {
 /// ne parte. Purement interface : le moteur n'a rien chargé, ▶ lance alors la
 /// lecture de la sélection (`basculerLecture`). Un morceau en cours, lui, garde
 /// le transport : choisir autre chose ne coupe rien et ne perd aucune position.
-let apercuActif = false;
-// Dernier état vu par `battement` : la file est épuisée, plus rien à reprendre.
-let derniereLectureFinie = false;
+/// (L'indicateur : `transport.apercu`.)
 
-// `veutJouer` : une lecture vient d'être demandée, le moteur n'a juste pas encore
-// répondu (`enLecture` est encore vide) — ce n'est pas « rien de chargé ».
-const rienDeCharge = () => (!enLecture || derniereLectureFinie) && !edition.enLecture && !veutJouer;
+// `transport.veutJouer` : une lecture vient d'être demandée, le moteur n'a juste pas encore
+// répondu (`lecture.courant` est encore vide) — ce n'est pas « rien de chargé ».
+const rienDeCharge = () =>
+  (!lecture.courant || lecture.fini) && !lecture.stems.charges && !transport.veutJouer;
 
 /// Ce que le transport montre à cet instant : le morceau joué, l'aperçu, ou —
 /// quand les stems ont pris la main — le morceau qu'on est en train d'éditer.
 const estAffiche = (chemin) =>
-  enLecture === chemin ||
-  (apercuActif && pisteSelectionnee?.path === chemin) ||
-  (edition.enLecture && edition.source?.path === chemin);
+  lecture.courant === chemin ||
+  (transport.apercu && pisteSelectionnee?.path === chemin) ||
+  (lecture.stems.charges && edition.source?.path === chemin);
 
 function majApercuTransport() {
   const t = pisteSelectionnee;
   if (!t || !rienDeCharge()) return;
-  apercuActif = true;
+  transport.apercu = true;
   document.querySelector(".transport").classList.add("transport--apercu");
   $("np-titre").textContent = txt(t.title, "(sans titre)");
   // Sans chemin : le clic sur le titre (navigation vers l'album) ne trouve
@@ -394,7 +379,7 @@ function majApercuTransport() {
   $("transport-art").style.backgroundImage = "";
   pochette(t.path).then((img) => {
     // La sélection a pu changer, ou une lecture démarrer, entre-temps.
-    if (img && apercuActif && pisteSelectionnee?.path === t.path) {
+    if (img && transport.apercu && pisteSelectionnee?.path === t.path) {
       $("transport-art").style.backgroundImage = `url("${img}")`;
     }
   });
@@ -405,18 +390,18 @@ function majApercuTransport() {
   peindreTransport(0);
   clearTimeout(minuteurSpectreApercu);
   minuteurSpectreApercu = setTimeout(() => {
-    if (apercuActif && pisteSelectionnee?.path === t.path) chargerSpectreTransport(t);
+    if (transport.apercu && pisteSelectionnee?.path === t.path) chargerSpectreTransport(t);
   }, 400);
 }
 let minuteurSpectreApercu = null;
 
-/// Quitte l'aperçu : une lecture démarre. `enLecture` retombe à `null` pour que
+/// Quitte l'aperçu : une lecture démarre. `lecture.courant` retombe à `null` pour que
 /// le prochain battement réécrive tout le transport, même si le moteur rejoue le
 /// morceau qu'il avait fini.
 function finApercuTransport() {
-  if (!apercuActif) return;
-  apercuActif = false;
-  enLecture = null;
+  if (!transport.apercu) return;
+  transport.apercu = false;
+  lecture.courant = null;
   clearTimeout(minuteurSpectreApercu);
   document.querySelector(".transport").classList.remove("transport--apercu");
 }
@@ -428,7 +413,7 @@ function finApercuTransport() {
 /// jusqu'à ~1 s sur support lent. Poser l'icône après cet `await` (l'ancien
 /// schéma) laissait le bouton sur ▶ pendant tout ce temps : le clic sur la
 /// pochette paraissait ignoré. On bascule donc l'icône tout de suite ;
-/// `ignorerEtatJusqua` empêche un battement de sondage de remettre ▶ tant que
+/// `transport.ignorerEtatJusqua` empêche un battement de sondage de remettre ▶ tant que
 /// le moteur n'a pas confirmé la lecture.
 ///
 /// Le sondage, lui, ne démarre qu'**après** que le moteur a répondu : lancé
@@ -449,9 +434,9 @@ async function demarrerLecture(demarrer) {
   // `remplacer_file` sur la même piste sans personne pour relancer le lecteur.
   oublierStems();
   finApercuTransport();
-  derniereLectureFinie = false;
+  lecture.fini = false;
   poserLecture(true);
-  ignorerEtatJusqua = Date.now() + 2000;
+  transport.ignorerEtatJusqua = Date.now() + 2000;
   try {
     await demarrer();
   } catch (e) {
@@ -479,11 +464,11 @@ $("lecture").addEventListener("click", lireOuPauser);
 async function basculerLecture() {
   // Rien de chargé, un morceau seulement sélectionné : ▶ le lit — depuis sa
   // liste s'il en fait partie (la suite forme la file), seul sinon.
-  if (apercuActif && pisteSelectionnee && rienDeCharge()) {
+  if (transport.apercu && pisteSelectionnee && rienDeCharge()) {
     await lancerLecture(pisteSelectionnee);
     return;
   }
-  const versPause = veutJouer;
+  const versPause = transport.veutJouer;
   if (!versPause && (await rattacherStems())) {
     await invoke("stems_transport", { action: "reprendre", position: null });
     poserLecture(true);
@@ -491,10 +476,10 @@ async function basculerLecture() {
     return;
   }
   poserLecture(!versPause);
-  ignorerEtatJusqua = Date.now() + 400;
+  transport.ignorerEtatJusqua = Date.now() + 400;
 
-  if (edition.enLecture && !versPause && (await lancerDecompte())) return;
-  if (edition.enLecture) {
+  if (lecture.stems.charges && !versPause && (await lancerDecompte())) return;
+  if (lecture.stems.charges) {
     // **On n'interroge pas le moteur avant d'agir.** L'aller-retour ajoutait
     // un appel à la file d'un pool déjà encombré par les sondages, et le clic
     // attendait derrière eux : on cliquait trois fois avant que la lecture ne
@@ -527,10 +512,10 @@ async function pisteSuivante() {
 /// annonce la lecture — le moteur relance le lecteur. Hors stems, rien à
 /// changer : ⏭ sur un lecteur en pause le laisse en pause, l'icône aussi.
 function reprendreLaMainDuLecteur() {
-  if (!edition.enLecture) return;
+  if (!lecture.stems.charges) return;
   oublierStems();
   poserLecture(true);
-  ignorerEtatJusqua = Date.now() + 2000;
+  transport.ignorerEtatJusqua = Date.now() + 2000;
 }
 $("precedent").addEventListener("click", pistePrecedente);
 $("suivant").addEventListener("click", pisteSuivante);
@@ -720,8 +705,8 @@ function suivreHd(t) {
     } else {
       clearInterval(hdSonde);
       hdSonde = null;
-      // enLecture peut avoir changé entre-temps.
-      const cour = fileCourante.find((x) => x.path === enLecture);
+      // lecture.courant peut avoir changé entre-temps.
+      const cour = fileCourante.find((x) => x.path === lecture.courant);
       majHd(cour);
       spectres.clear(); // le cache HD vient d'apparaître
       if (lectureHd) rafraichirSpectreTransport();
@@ -730,7 +715,7 @@ function suivreHd(t) {
 }
 
 btnHd.addEventListener("click", async () => {
-  const t = fileCourante.find((x) => x.path === enLecture);
+  const t = fileCourante.find((x) => x.path === lecture.courant);
   if (!t || btnHd.disabled) return;
   if (btnHd.dataset.dispo === "1") {
     // Le cache existe : bascule lecture originale ↔ HD.
@@ -955,7 +940,7 @@ async function calculerSpectre(vise, largeur, cle) {
 
 /// À rappeler quand le son joué change sans changer de morceau (E ou HD).
 function rafraichirSpectreTransport() {
-  const t = fileCourante.find((x) => x.path === enLecture);
+  const t = fileCourante.find((x) => x.path === lecture.courant);
   chargerSpectreTransport(t);
 }
 
@@ -997,7 +982,7 @@ let courantResynchronise = null;
 let battementEnErreur = false;
 
 async function battement() {
-  if (edition.enLecture) return battementStems();
+  if (lecture.stems.charges) return battementStems();
   if (battementEnVol) return;
   battementEnVol = true;
   let e;
@@ -1019,7 +1004,7 @@ async function battement() {
   // sur un vrai changement de morceau ou une action du panneau — sans quoi
   // la file se reconstruirait à 5 Hz sous le curseur de qui la parcourt.
   etatVerrou = e.verrou;
-  dernierePositionMs = e.position_ms;
+  lecture.positionMs = e.position_ms;
   majDureeFile();
   majMinuteur(e.minuteur);
   signalerPistesIgnorees(e.ignorees);
@@ -1059,13 +1044,13 @@ async function battement() {
     refletRepetition();
   }
 
-  derniereLectureFinie = e.finished;
-  if (e.current !== enLecture) {
+  lecture.fini = e.finished;
+  if (e.current !== lecture.courant) {
     // Un morceau joué reprend le transport, l'aperçu s'efface.
-    apercuActif = false;
+    transport.apercu = false;
     document.querySelector(".transport").classList.remove("transport--apercu");
-    enLecture = e.current;
-    const t = fileCourante.find((x) => x.path === enLecture);
+    lecture.courant = e.current;
+    const t = fileCourante.find((x) => x.path === lecture.courant);
     $("np-titre").textContent = t ? txt(t.title, "(sans titre)") : "Rien en lecture";
     // Sert aux clics ci-dessous (§ « le transport navigue ») — même motif
     // que les `dataset.*` posés par `inspecter()`.
@@ -1084,7 +1069,7 @@ async function battement() {
     // morceau sur lequel on a cliqué en premier : sans ça, il restait figé
     // sur le départ d'un album ou d'une playlist « dans l'esprit de » pendant
     // que la lecture avançait. Ce bloc ne s'exécute qu'au changement de
-    // morceau joué (`e.current !== enLecture` ci-dessus), pas à chaque
+    // morceau joué (`e.current !== lecture.courant` ci-dessus), pas à chaque
     // sondage : inspecter autre chose en explorant, pendant que la lecture se
     // poursuit ailleurs, n'est donc pas immédiatement écrasé — seulement au
     // prochain vrai changement de morceau.
@@ -1105,7 +1090,7 @@ async function battement() {
       const vise = t.path;
       pochette(vise).then((img) => {
         // La piste a pu changer entre-temps.
-        if (img && enLecture === vise) {
+        if (img && lecture.courant === vise) {
           $("transport-art").style.backgroundImage = `url("${img}")`;
         }
       });
@@ -1119,11 +1104,11 @@ async function battement() {
     if (modeCourant === "explorer") dessinerCarte();
   }
 
-  if (Date.now() >= ignorerEtatJusqua) {
+  if (Date.now() >= transport.ignorerEtatJusqua) {
     poserLecture(!(e.paused || e.finished));
   }
 
-  const t = fileCourante.find((x) => x.path === enLecture);
+  const t = fileCourante.find((x) => x.path === lecture.courant);
   const total = t?.duration_ms ?? 0;
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(total)}`;
 
@@ -1135,7 +1120,7 @@ async function battement() {
 
   // Frise et anneau : l'album focal partagé suit le morceau joué. Appelé à
   // chaque battement, hors du bloc de changement de morceau ci-dessus (qui met
-  // à jour `enLecture` en première ligne puis peut lever avant la fin) —
+  // à jour `lecture.courant` en première ligne puis peut lever avant la fin) —
   // `suivreAlbumEnLecture` est idempotente, elle sort aussitôt si l'album focal
   // est déjà le bon.
   suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (anneau/frise)"));
@@ -1146,22 +1131,16 @@ async function battement() {
 }
 
 // Les autres modules ne peuvent pas affecter une liaison importée.
-function affecterApercuActif(v) {
-  return (apercuActif = v);
-}
 function affecterCarteTheme(v) {
   return (carteTheme = v);
-}
-function affecterIgnorerEtatJusqua(v) {
-  return (ignorerEtatJusqua = v);
 }
 function affecterModeCourant(v) {
   return (modeCourant = v);
 }
 
 export {
-  affecterApercuActif, affecterCarteTheme, affecterIgnorerEtatJusqua, affecterModeCourant,
-  apercuActif, basculerFile, battement, carteTheme, chargerSpectreTransport, demarrerLecture,
-  dessinerFile, dureeFile, enLecture, estAffiche, ignorerEtatJusqua, majApercuTransport,
-  modeCourant, peindreTransport, poserImage, poserLecture, sonder, teteCourante,
+  affecterCarteTheme, affecterModeCourant, basculerFile, battement, carteTheme,
+  chargerSpectreTransport, demarrerLecture, dessinerFile, dureeFile, estAffiche,
+  majApercuTransport, modeCourant, peindreTransport, poserImage, poserLecture, sonder,
+  teteCourante,
 };

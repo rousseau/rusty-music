@@ -11,7 +11,7 @@ import {
   affecterGrilleDernierRang, grilleDernierRang,
 } from "./lama.js";
 import {
-  demarrerLecture, dureeFile, enLecture, estAffiche, majApercuTransport, modeCourant,
+  demarrerLecture, dureeFile, estAffiche, majApercuTransport, modeCourant,
 } from "./lecteur.js";
 import {
   anneau, carte, chargerAnneau,
@@ -45,6 +45,7 @@ import {
 import {
   charger,
 } from "./demarrage.js";
+import { lecture } from "./etat-lecture.js";
 
 /* --------------------------------------------------- minuteur d'arrêt
  *
@@ -765,7 +766,7 @@ $("retour").addEventListener("click", () => {
 // Raccourci « Séparer « … » » de l'en-tête, en Éditer : le morceau en lecture
 // devient le morceau choisi, sans avoir à le retrouver dans la liste.
 $("editer-candidat").addEventListener("click", async () => {
-  const cand = fileCourante.find((t) => t.path === enLecture);
+  const cand = fileCourante.find((t) => t.path === lecture.courant);
   if (!cand) return;
   await selectionner(cand);
 });
@@ -1230,7 +1231,7 @@ function alerteTransport(texte) {
     el.title = "";
     el.textContent = "";
     // Rend la ligne à ce qu'elle montre d'ordinaire (tempo, tonalité).
-    const t = fileCourante.find((x) => x.path === enLecture);
+    const t = fileCourante.find((x) => x.path === lecture.courant);
     if (t) mesuresDuTransport(t);
   }, ALERTE_TRANSPORT_MS);
 }

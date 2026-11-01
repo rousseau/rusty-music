@@ -13,7 +13,7 @@ import {
   pisteSelectionnee, poser, scrollActuel, selectionner,
 } from "./ecouter.js";
 import {
-  basculerFile, demarrerLecture, dessinerFile, enLecture, modeCourant,
+  basculerFile, demarrerLecture, dessinerFile, modeCourant,
 } from "./lecteur.js";
 import {
   tracerRouteSurCarte,
@@ -33,6 +33,7 @@ import {
 import {
   passePopularite, verrouillerActualisation,
 } from "./bibliotheque.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- liste virtualisée */
 
@@ -78,7 +79,7 @@ function ligne(item, index) {
   // Une playlist n'a pas de `path` : le comparer à `pisteSelectionnee?.path`
   // (lui aussi `undefined` tant que rien n'est choisi) la surlignerait à tort.
   if (vue.quoi === "playlists") return lignePlaylist(el, item);
-  if (item.path === enLecture) el.classList.add("ligne--joue");
+  if (item.path === lecture.courant) el.classList.add("ligne--joue");
   if (item.path === pisteSelectionnee?.path) el.classList.add("ligne--select");
   return vue.quoi === "recherche" ? ligneRecherche(el, item) : lignePiste(el, item);
 }

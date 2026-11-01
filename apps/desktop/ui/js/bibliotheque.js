@@ -6,8 +6,7 @@ import {
   chargerPopulariteFraicheur, popARecalculee,
 } from "./vues.js";
 import {
-  affecterApercuActif, apercuActif, ignorerEtatJusqua, modeCourant, peindreTransport,
-  poserLecture,
+  modeCourant, peindreTransport, poserLecture,
 } from "./lecteur.js";
 import {
   carte,
@@ -35,6 +34,7 @@ import {
 import {
   charger,
 } from "./demarrage.js";
+import { lecture, transport } from "./etat-lecture.js";
 
 /* --------------------------------------------------- mode Bibliothèque */
 
@@ -1548,8 +1548,8 @@ async function battementStems() {
   // arrive après — un clic, par exemple — attend son tour.
   if (battementStemsEnVol) return;
   // Les stems ont pris le transport : l'aperçu d'un morceau sélectionné s'efface.
-  if (apercuActif) {
-    affecterApercuActif(false);
+  if (transport.apercu) {
+    transport.apercu = false;
     document.querySelector(".transport").classList.remove("transport--apercu");
   }
   battementStemsEnVol = true;
@@ -1564,21 +1564,23 @@ async function battementStems() {
     dessinerStems();
     return;
   }
-  if (Date.now() >= ignorerEtatJusqua) {
+  if (Date.now() >= transport.ignorerEtatJusqua) {
     poserLecture(!e.en_pause);
   }
   reconcilierStems(e);
-  edition.dureeMs = e.duree_ms;
+  lecture.stems.dureeMs = e.duree_ms;
   // Un saut de la position (déplacement, retour de boucle) ou l'arrêt : la
   // nouvelle écoute part de là.
-  if (e.en_pause || Math.abs(e.position_ms - positionMoteur()) > 250) edition.ancreMs = e.position_ms;
-  edition.latenceMs = e.latence_ms ?? 0;
-  edition.posMs = e.position_ms;
-  edition.posLueA = performance.now();
-  edition.enPause = e.en_pause;
+  if (e.en_pause || Math.abs(e.position_ms - positionMoteur()) > 250) {
+    lecture.stems.ancreMs = e.position_ms;
+  }
+  lecture.stems.latenceMs = e.latence_ms ?? 0;
+  lecture.stems.positionMs = e.position_ms;
+  lecture.stems.lueA = performance.now();
+  lecture.stems.enPause = e.en_pause;
   accelererAuPassage(e.passages ?? 0);
   $("tc").textContent = `${horloge(e.position_ms)} / ${horloge(e.duree_ms)}`;
-  edition.deriveMs = e.derive_ms;
+  lecture.stems.deriveMs = e.derive_ms;
   majDerive();
   $("np-titre").textContent = `${edition.stems.length} stems`;
   $("np-artiste").textContent = edition.source

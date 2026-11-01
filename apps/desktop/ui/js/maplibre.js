@@ -9,7 +9,7 @@ import {
   selectionner,
 } from "./ecouter.js";
 import {
-  carteTheme, demarrerLecture, dessinerFile, enLecture, modeCourant,
+  carteTheme, demarrerLecture, dessinerFile, modeCourant,
 } from "./lecteur.js";
 import {
   anneau, carte, chargerAnneau, cnv, CONTINUES, ctx, dansIntervalleAnnee, filtreAnnee,
@@ -24,6 +24,7 @@ import {
 import {
   tracerItineraire,
 } from "./itineraires.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
  *
@@ -1133,7 +1134,7 @@ function dessinerTemps(r, encre, accent) {
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) — le morceau en cours se ramène à son album par la
   // même clé que `parCle` ci-dessus, `fileCourante` n'ayant que le nom.
-  const pisteEnLecture = fileCourante.find((x) => x.path === enLecture);
+  const pisteEnLecture = fileCourante.find((x) => x.path === lecture.courant);
   const albumEnLecture =
     pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
   if (albumEnLecture) {
@@ -1474,7 +1475,7 @@ function dessinerAnneau(r, encre, accent) {
   // L'album en écoute : même halo que le morceau en écoute sur Nuage/Carte
   // (`surcoucheSur`) et que sur la frise (`dessinerTemps`) — même clé
   // `parCle` que ci-dessus pour ramener le morceau en cours à son album.
-  const pisteEnLecture = fileCourante.find((x) => x.path === enLecture);
+  const pisteEnLecture = fileCourante.find((x) => x.path === lecture.courant);
   const albumEnLecture =
     pisteEnLecture && parCle.get(`${pisteEnLecture.album || ""} ${pisteEnLecture.artist || ""}`);
   const posEnLecture = albumEnLecture && positions.get(albumEnLecture.id);
@@ -1736,7 +1737,7 @@ function surcoucheSur(r, encre, accent) {
   }
 
   // Le morceau en écoute : un halo qui le retrouve dans 27 000 points.
-  const joue = carte.points.find((p) => p.path === enLecture);
+  const joue = carte.points.find((p) => p.path === lecture.courant);
   if (joue) {
     const [x, y] = versEcran(joue, r);
     ctx.strokeStyle = encre;
@@ -2379,7 +2380,7 @@ async function jouerSelection(contour) {
 /// Affiche un chemin reçu du moteur et le met en lecture.
 /// Reflète une file sur la carte : le chemin entre ses morceaux, s'il y en a
 /// au moins deux — un seul morceau est déjà signalé par le halo de lecture
-/// (`enLecture`), indépendant de `carte.route`. Sans effet tant que la carte
+/// (`lecture.courant`), indépendant de `carte.route`. Sans effet tant que la carte
 /// n'a pas chargé ses points ; `basculerMode` rejoue l'appel pour la file en
 /// cours en entrant dans Explorer, pour rattraper une file lancée avant.
 let traceRuesGraine = 0; // écarte une réponse `trace_rues` périmée par un trajet plus récent

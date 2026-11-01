@@ -12,8 +12,8 @@ import {
   pisteSelectionnee,
 } from "./ecouter.js";
 import {
-  affecterIgnorerEtatJusqua, battement, chargerSpectreTransport, enLecture, ignorerEtatJusqua,
-  modeCourant, peindreTransport, poserImage, poserLecture, sonder, teteCourante,
+  battement, chargerSpectreTransport, modeCourant, peindreTransport, poserImage, poserLecture,
+  sonder, teteCourante,
 } from "./lecteur.js";
 import {
   rampe,
@@ -25,6 +25,7 @@ import {
   bpmSource, edition, majPulsation, majSections, majTempoSource, marquerSectionCourante,
   NOMS_SECTIONS, octaveVitesse, pasReglage, positionnerBande, reposerBoucle, vitesseEnBpm,
 } from "./editer.js";
+import { lecture, transport } from "./etat-lecture.js";
 
 /* ------------------------------------------------ éditer : pratiquer */
 
@@ -513,8 +514,10 @@ function instrumentPratique() {
 
 /// La position du moteur, extrapolée depuis le dernier sondage.
 function positionMoteur() {
-  if (edition.enPause || performance.now() < edition.decompteJusqua) return edition.posMs;
-  return edition.posMs + (performance.now() - edition.posLueA) * edition.vitesse;
+  if (lecture.stems.enPause || performance.now() < edition.decompteJusqua) {
+    return lecture.stems.positionMs;
+  }
+  return lecture.stems.positionMs + (performance.now() - lecture.stems.lueA) * edition.vitesse;
 }
 
 /// La position qu'on entend : celle du moteur moins la latence de la sortie
@@ -523,8 +526,8 @@ function positionMoteur() {
 /// est repartie ; à l'arrêt, là où elle reprendra.
 function positionEstimee() {
   const moteur = positionMoteur();
-  if (edition.enPause) return moteur;
-  return Math.max(moteur - edition.latenceMs * edition.vitesse, edition.ancreMs);
+  if (lecture.stems.enPause) return moteur;
+  return Math.max(moteur - lecture.stems.latenceMs * edition.vitesse, lecture.stems.ancreMs);
 }
 
 /// La position donnée à alphaTab, lissée : elle avance à la vitesse de
@@ -536,7 +539,7 @@ const lissage = { sortie: null, a: 0 };
 function positionLissee() {
   const cible = positionEstimee();
   const maintenant = performance.now();
-  if (lissage.sortie === null || edition.enPause || Math.abs(cible - lissage.sortie) > 250) {
+  if (lissage.sortie === null || lecture.stems.enPause || Math.abs(cible - lissage.sortie) > 250) {
     lissage.sortie = cible;
     lissage.a = maintenant;
     return cible;
@@ -600,7 +603,7 @@ async function creerPartition() {
   // restent ceux de la barre d'outils : la partition ne les règle pas.
   const commandes = {
     get backingTrackDuration() {
-      return edition.dureeMs;
+      return lecture.stems.dureeMs;
     },
     get playbackRate() {
       return edition.vitesse || 1;
@@ -611,17 +614,17 @@ async function creerPartition() {
     },
     set masterVolume(_) {},
     seekTo(ms) {
-      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      if (!lecture.stems.charges || performance.now() - partition.gesteA > 1500) return;
       invoke("stems_transport", { action: "deplacer", position: ms / 1000 }).catch(console.warn);
     },
     // alphaTab arrête son lecteur à chaque partition chargée : sans le
     // garde-fou du geste, changer d'instrument mettait les stems en pause.
     play() {
-      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      if (!lecture.stems.charges || performance.now() - partition.gesteA > 1500) return;
       invoke("stems_transport", { action: "reprendre", position: null }).catch(console.warn);
     },
     pause() {
-      if (!edition.enLecture || performance.now() - partition.gesteA > 1500) return;
+      if (!lecture.stems.charges || performance.now() - partition.gesteA > 1500) return;
       invoke("stems_transport", { action: "pause", position: null }).catch(console.warn);
     },
   };
@@ -954,7 +957,7 @@ function planDecompte(posS) {
 /// ▶ en Pratiquer : décompte, puis la musique. Rend vrai si le moteur l'a pris.
 async function lancerDecompte() {
   if (edition.usage !== "pratiquer" || $("partition").hidden) return false;
-  const plan = planDecompte(edition.posMs / 1000);
+  const plan = planDecompte(lecture.stems.positionMs / 1000);
   if (!plan) return false;
   const attente = Math.max(0, plan.debut - plan.clics[0][0]) / (edition.vitesse || 1);
   try {
@@ -963,9 +966,9 @@ async function lancerDecompte() {
     console.warn("décompte", e);
     return false;
   }
-  edition.posMs = plan.debut * 1000;
-  edition.ancreMs = edition.posMs;
-  edition.posLueA = performance.now();
+  lecture.stems.positionMs = plan.debut * 1000;
+  lecture.stems.ancreMs = lecture.stems.positionMs;
+  lecture.stems.lueA = performance.now();
   edition.decompteJusqua = performance.now() + attente * 1000;
   return true;
 }
@@ -1233,7 +1236,7 @@ function stemEcarte(s) {
 /// moteur — après quoi on repose ceux qui s'en écartent. Rien n'est recalculé :
 /// ce sont des flottants que la lecture relit à chaque trame.
 async function appliquerVitesses() {
-  if (!edition.enLecture) return;
+  if (!lecture.stems.charges) return;
   // L'ordre compte : la vitesse d'ensemble écrit sur **tous** les stems, les
   // écarts se reposent donc après, jamais avant.
   await invoke("stems_vitesse", { vitesse: edition.vitesse });
@@ -1313,13 +1316,13 @@ async function appliquerReglages() {
       // **L'état de lecture se relève après le calcul, pas avant** : la
       // lecture a continué (ou été mise en pause) pendant qu'il tournait, et
       // rendre la position d'avant le calcul faisait revenir en arrière d'autant.
-      const avant = edition.enLecture ? await invoke("stems_state") : null;
-      if (avant && !avant.en_pause) affecterIgnorerEtatJusqua(Date.now() + 2000);
+      const avant = lecture.stems.charges ? await invoke("stems_state") : null;
+      if (avant && !avant.en_pause) transport.ignorerEtatJusqua = Date.now() + 2000;
       // Le nouveau jeu naît en pause, à ses niveaux : ni la batterie coupée ni
       // le mélange depuis zéro ne s'entendent pendant qu'on reposera position
       // et vitesses.
       const noms = await invoke("stems_play", { stems: traites, niveaux: niveaux() });
-      edition.enLecture = true;
+      lecture.stems.charges = true;
       verifierNoms(noms);
       await appliquerVitesses();
       await reposerBoucle();
@@ -1446,9 +1449,9 @@ function majDerive() {
   const ecarte = edition.stems.some(
     (s) => s.vitesse !== null && Math.abs(s.vitesse - edition.vitesse) > 1e-3,
   );
-  el.hidden = !ecarte || !edition.enLecture;
+  el.hidden = !ecarte || !lecture.stems.charges;
   if (el.hidden) return;
-  const ms = edition.deriveMs || 0;
+  const ms = lecture.stems.deriveMs || 0;
   $("derive-txt").textContent =
     ms > 250 ? `vitesses différentes — ${(ms / 1000).toFixed(1)} s d'écart` : "vitesses différentes";
 }
@@ -1468,7 +1471,7 @@ function morceauAEditer() {
   // simplement choisi (recherche, carte) n'y est pas, et il faudrait le lire
   // pour pouvoir le séparer. À défaut de sélection, le morceau en lecture.
   if (pisteSelectionnee) return pisteSelectionnee;
-  const path = $("insp-titre").dataset.path || enLecture;
+  const path = $("insp-titre").dataset.path || lecture.courant;
   return fileCourante.find((t) => t.path === path) ?? null;
 }
 
@@ -1478,7 +1481,7 @@ async function poserSourceEdition() {
   // Changer de morceau abandonne les stems du précédent — et coupe leur
   // lecture : sans ça, les anciens stems continuaient de sonner par-dessus le
   // nouveau morceau.
-  if (change && edition.enLecture) await arreterStems();
+  if (change && lecture.stems.charges) await arreterStems();
   edition.source = t;
   $("demix-source").textContent = t
     ? `${txt(t.artist, "?")} — ${txt(t.title, "?")}`
@@ -1552,7 +1555,7 @@ function majEtatEditer() {
     $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
     // Raccourci vers la séparation du morceau en lecture — seulement s'il
     // diffère de la sélection (qui, elle, ouvre directement « séparer »).
-    const jouee = fileCourante.find((t) => t.path === enLecture) ?? null;
+    const jouee = fileCourante.find((t) => t.path === lecture.courant) ?? null;
     const cand = jouee && jouee.path !== pisteSelectionnee?.path ? jouee : null;
     $("editer-candidat").hidden = !cand;
     if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
@@ -1633,7 +1636,7 @@ function majResumeLigne(s) {
 /// dans son état de lecture.
 async function prendreLaMain() {
   return enSerie(async () => {
-    if (!edition.stems.length || edition.enLecture) return;
+    if (!edition.stems.length || lecture.stems.charges) return;
     const avant = await invoke("playback_state");
     // Reprendre la position n'a de sens que si on écoutait bien ce morceau-là.
     const memeMorceau = avant.current && edition.source && avant.current === edition.source.path;
@@ -1840,7 +1843,7 @@ $("lancer-demix").addEventListener("click", async () => {
     if (edition.source?.path !== cible) return;
     // Le moteur a retiré les partitions calculées sur les anciens stems.
     oublierPartitions(edition.source.id);
-    if (edition.enLecture) await arreterStems();
+    if (lecture.stems.charges) await arreterStems();
     edition.stems = d.stems.map(stemNeuf);
     edition.solo = null;
     edition.muets.clear();
@@ -1859,7 +1862,7 @@ function dessinerStems() {
   const hote = $("dock-pistes");
   hote.replaceChildren();
   $("dock-source").textContent = edition.source ? txt(edition.source.title, "?") : "";
-  if (!edition.enLecture) {
+  if (!lecture.stems.charges) {
     $("dock-aide").textContent = edition.stems.length ? "▶ en bas pour écouter les stems" : "";
   }
   majDerive();
@@ -2474,7 +2477,7 @@ let niveauxEnVol = false;
 let niveauxARenvoyer = false;
 let dernierEchecNiveaux = "";
 async function appliquerNiveaux() {
-  if (!edition.enLecture) return;
+  if (!lecture.stems.charges) return;
   if (niveauxEnVol) {
     niveauxARenvoyer = true;
     return;
@@ -2485,7 +2488,7 @@ async function appliquerNiveaux() {
       niveauxARenvoyer = false;
       await invoke("stems_gain", { levels: niveaux() });
       dernierEchecNiveaux = "";
-    } while (niveauxARenvoyer && edition.enLecture);
+    } while (niveauxARenvoyer && lecture.stems.charges);
   } catch (e) {
     // Une fois par cause : le battement réessaie à 5 Hz.
     if (String(e) !== dernierEchecNiveaux) {
@@ -2506,7 +2509,7 @@ async function appliquerNiveaux() {
 ///   (chargement lancé pour un morceau qu'on a quitté), on ne peut pas
 ///   « corriger » des niveaux qui ne parlent pas des mêmes pistes : on recharge.
 function reconcilierStems(e) {
-  if (!edition.enLecture) return;
+  if (!lecture.stems.charges) return;
   const noms = edition.stems.map((s) => s.nom);
   if (e.noms?.length && e.noms.join("|") !== noms.join("|")) {
     remonter(`moteur : ${e.noms.join(",")} · écran : ${noms.join(",")}`, "stems désaccordés");
@@ -2526,7 +2529,7 @@ function reconcilierStems(e) {
 /// n'importe quel spectrogramme revient au même, et la tête bouge partout.
 async function deplacerLecture(frac) {
   frac = Math.min(1, Math.max(0, frac));
-  if (edition.enLecture || (await rattacherStems())) {
+  if (lecture.stems.charges || (await rattacherStems())) {
     const e = await invoke("stems_state");
     await invoke("stems_transport", {
       action: "deplacer",
@@ -2536,7 +2539,7 @@ async function deplacerLecture(frac) {
     await battement();
     return;
   }
-  const t = fileCourante.find((x) => x.path === enLecture);
+  const t = fileCourante.find((x) => x.path === lecture.courant);
   if (!t?.duration_ms) return;
   await invoke("seek", { positionMs: Math.round(frac * t.duration_ms) });
   poserTete(frac);
@@ -2548,9 +2551,9 @@ async function deplacerLecture(frac) {
 /// d'origine jouait, solo et coupure ne touchaient plus rien et la partition
 /// restait figée. Rend vrai si les stems sont de nouveau chargés.
 async function rattacherStems() {
-  if (modeCourant !== "editer" || !edition.stems.length || edition.enLecture) return false;
+  if (modeCourant !== "editer" || !edition.stems.length || lecture.stems.charges) return false;
   await prendreLaMain();
-  return edition.enLecture;
+  return lecture.stems.charges;
 }
 
 /// Charge les stems dans le moteur, **en pause**, à leurs niveaux et vitesses.
@@ -2565,7 +2568,7 @@ async function rattacherStems() {
 /// laissaient deux multipistes sonner un instant l'un sur l'autre, et le
 /// second repartait à pleine échelle.
 async function lireStems() {
-  if (!edition.stems.length || edition.enLecture) return false;
+  if (!edition.stems.length || lecture.stems.charges) return false;
   $("dock-aide").textContent = "chargement des stems…";
   const cibles = edition.stems;
   try {
@@ -2586,15 +2589,15 @@ async function lireStems() {
     const noms = await invoke("stems_play", { stems, niveaux: niveaux() });
     // Posé avant les vitesses : `appliquerVitesses` ne parle au moteur que si
     // un multipiste est chargé, et il l'est à partir d'ici.
-    edition.enLecture = true;
+    lecture.stems.charges = true;
     verifierNoms(noms);
     await appliquerVitesses();
     await reposerBoucle();
   } catch (e) {
-    edition.enLecture = false;
+    lecture.stems.charges = false;
     // `stems_play` a pu réussir avant qu'une étape suivante échoue : on coupe
     // le multipiste côté moteur, sans quoi il resterait chargé sans que rien ne
-    // le pilote (le sondage suit `edition.enLecture`).
+    // le pilote (le sondage suit `lecture.stems.charges`).
     await invoke("stems_transport", { action: "arreter", position: null }).catch(() => {});
     $("dock-aide").textContent = "";
     $("demix-etat").textContent = String(e);
@@ -2621,7 +2624,7 @@ function verifierNoms(noms) {
 }
 
 /// Une seule opération de chargement de stems à la fois, dans l'ordre
-/// d'arrivée. Les gardes (`edition.enLecture`, stems affichés) sont relues
+/// d'arrivée. Les gardes (`lecture.stems.charges`, stems affichés) sont relues
 /// **à l'intérieur**, quand le tour vient : la suivante voit le résultat de la
 /// précédente au lieu d'en refaire un doublon.
 let chaineStems = Promise.resolve();
@@ -2634,8 +2637,8 @@ function enSerie(travail) {
 /// L'interface cesse de suivre les stems, sans parler au moteur — qui les a
 /// déjà coupés (commande de lecture ordinaire) ou va le faire.
 function oublierStems() {
-  const jouait = edition.enLecture;
-  edition.enLecture = false;
+  const jouait = lecture.stems.charges;
+  lecture.stems.charges = false;
   $("dock-aide").textContent = "";
   if (jouait) poserTete(0);
 }
@@ -2649,7 +2652,7 @@ async function arreterStems() {
 }
 
 $("dock-fermer").addEventListener("click", async () => {
-  if (edition.enLecture) await arreterStems();
+  if (lecture.stems.charges) await arreterStems();
   // Ferme l'établi : on repart de la carte de séparation, sans recalcul si on
   // rouvre (`stems_existants` les retrouve).
   edition.stems = [];

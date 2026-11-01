@@ -45,6 +45,7 @@ import {
 import {
   arreterStems, cacherPartition, majVariantes, poserSourceEdition, prendreLaMain,
 } from "./pratiquer.js";
+import { lecture } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- modes */
 
@@ -143,7 +144,7 @@ async function basculerMode(mode) {
 
   // Sortir de l'édition rend la sortie au lecteur ordinaire : garder les
   // stems chargés tiendrait 186 Mo et une sortie audio pour rien.
-  if (!editer && edition.enLecture) await arreterStems();
+  if (!editer && lecture.stems.charges) await arreterStems();
 
   if (explorer) {
     // `false` : ré-affirme juste l'état du rail en entrant dans Explorer, ne
