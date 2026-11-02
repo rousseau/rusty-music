@@ -847,6 +847,20 @@
               </div>
             </details>
           </div>
+          <!-- « Compléter » : enchaîne les passes qui comblent les manques
+               (genres MusicBrainz, tags Last.fm), dit avant de partir ce qui
+               ira sur le réseau, s'arrête et s'annule en bloc (journal en
+               base, jamais les fichiers). -->
+          <div class="completer" id="completer">
+            <p class="aide" id="completer-reseau"></p>
+            <div class="completer__gestes">
+              <button id="completer-lancer" class="bouton" disabled>Compléter</button>
+              <button id="completer-arreter" class="lien" hidden>Arrêter</button>
+              <button id="completer-annuler" class="lien" hidden>Annuler cette passe</button>
+            </div>
+            <progress id="completer-jauge" class="jauge" hidden max="1" value="0"></progress>
+            <p class="aide" id="completer-etat" aria-live="polite" hidden></p>
+          </div>
 
           <details class="replie">
           <summary class="rail__titre replie__titre">Dump Discogs</summary>
@@ -1047,7 +1061,7 @@
               <div class="credit"><div class="credit__nom">Crédits et labels</div><div class="credit__detail">Discogs, dumps mensuels</div><div class="credit__licences">CC0</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://data.discogs.com">Site</button></div></div>
               <div class="credit"><div class="credit__nom">Popularité</div><div class="credit__detail">ListenBrainz et Deezer</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://listenbrainz.org">Site</button></div></div>
               <div class="credit"><div class="credit__nom">Palettes du fond de plan</div><div class="credit__detail">maptoposter</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/originalankur/maptoposter">Dépôt</button></div></div>
-              <div class="credit"><div class="credit__nom">Palette de recherche, vue « En cours », couleurs d'album, typographie, choix d'édition, passage vers l'iPhone</div><div class="credit__detail">idées et méthodes de Disc Player (eudj1n)</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/eudj1n/snowsky-disc-player">Dépôt</button></div></div>
+              <div class="credit"><div class="credit__nom">Palette de recherche, vue « En cours », couleurs d'album, typographie, choix d'édition, passage vers l'iPhone, passe « Compléter »</div><div class="credit__detail">idées et méthodes de Disc Player (eudj1n)</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/eudj1n/snowsky-disc-player">Dépôt</button></div></div>
             </div>
           </div>
           </details>

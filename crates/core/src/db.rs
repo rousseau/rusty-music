@@ -17,6 +17,7 @@ mod carte;
 mod decouvrir;
 mod editions;
 mod enrichissement;
+mod passes;
 mod pistes;
 mod schema;
 #[cfg(test)]
@@ -29,6 +30,7 @@ pub use self::carte::*;
 pub use self::decouvrir::*;
 pub use self::editions::*;
 pub use self::enrichissement::*;
+pub use self::passes::*;
 pub use self::pistes::*;
 use self::schema::preparer;
 

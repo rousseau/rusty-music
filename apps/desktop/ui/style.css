@@ -484,6 +484,8 @@ html, body {
 .etat__ligne > summary:hover .etat__nom, .etat__ligne > summary:focus-visible .etat__nom { color: var(--accent); }
 .etat__ligne > summary:focus-visible { outline: none; }
 .etat__nom { flex: 1; }
+.completer { margin-top: 12px; }
+.completer__gestes { display: flex; align-items: center; gap: 16px; margin: 8px 0; }
 .etat__compte { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
 .etat__compte--a-voir { color: var(--txt); }
 .etat__corps { padding: 0 0 14px 22px; }

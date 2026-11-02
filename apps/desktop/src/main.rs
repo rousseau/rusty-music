@@ -133,6 +133,10 @@ struct Etat {
     /// Avancement de la passe de tags Last.fm — sert le nommage des
     /// familles (`docs/nommage-familles.md`), pas la popularité.
     lastfm: Mutex<EtatLastfm>,
+    /// Avancement de la passe « Compléter » (bloc « État » de Bibliothèque),
+    /// et la demande d'arrêt, lue entre deux tranches d'artistes.
+    completer: Mutex<EtatCompleter>,
+    completer_arret: AtomicBool,
     /// Avancement de la passe de liaison Discogs (légère — retrouve l'édition
     /// Discogs de chaque édition MusicBrainz connue).
     discogs_liaison: Mutex<EtatDiscogsLiaison>,
@@ -565,6 +569,8 @@ fn main() {
                 biographies: Mutex::new(EtatBio::default()),
                 critiques: Mutex::new(EtatCritiques::default()),
                 lastfm: Mutex::new(EtatLastfm::default()),
+                completer: Mutex::new(EtatCompleter::default()),
+                completer_arret: AtomicBool::new(false),
                 discogs_liaison: Mutex::new(EtatDiscogsLiaison::default()),
                 discogs_dump: Mutex::new(EtatDiscogsDump::default()),
                 discogs_import: Mutex::new(EtatDiscogsImport::default()),
@@ -943,6 +949,11 @@ fn main() {
             valise_renouveler,
             valise_etat,
             emporter_lecture,
+            completer_apercu,
+            completer_lancer,
+            completer_arreter,
+            completer_etat,
+            completer_annuler,
             decouvrir_pochette,
             decouvrir_photo_artiste,
             decouvrir_lien_deezer,

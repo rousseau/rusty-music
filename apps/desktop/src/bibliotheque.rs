@@ -1883,3 +1883,210 @@ mod tests {
         std::fs::remove_dir_all(&dossier).ok();
     }
 }
+
+/* ------------------------------------------- passe « Compléter » (État) */
+
+/// Avancement de la passe « Compléter ».
+#[derive(Clone, Default, serde::Serialize)]
+pub(crate) struct AvancementCompleter {
+    pub(crate) etape: String,
+    pub(crate) faits: usize,
+    pub(crate) total: usize,
+}
+pub(crate) type EtatCompleter = Passe<AvancementCompleter>;
+
+/// Artistes interrogés entre deux lectures de la demande d'arrêt : une
+/// vingtaine de secondes chez MusicBrainz (deux requêtes par artiste).
+const TRANCHE_COMPLETER: usize = 10;
+
+/// Ce que « Compléter » interrogerait : la phrase d'avant le geste.
+#[derive(serde::Serialize)]
+pub(crate) struct ApercuCompleter {
+    musicbrainz: usize,
+    lastfm: usize,
+    secondes: u64,
+}
+
+#[tauri::command(async)]
+pub(crate) fn completer_apercu(
+    etat: State<Etat>,
+    contact: String,
+    cle_lastfm: String,
+) -> Result<ApercuCompleter, String> {
+    let lib = verrou(&etat.lib);
+    let musicbrainz = if contact.contains('@') {
+        lib.mb_artistes_en_attente("artist", usize::MAX)
+            .map_err(echec)?
+            .len()
+    } else {
+        0
+    };
+    let lastfm = if cle_lastfm.trim().is_empty() {
+        0
+    } else {
+        lib.lastfm_candidats(0, usize::MAX).map_err(echec)?.len()
+    };
+    Ok(ApercuCompleter {
+        musicbrainz,
+        lastfm,
+        // MusicBrainz : deux requêtes par artiste à une par seconde ;
+        // Last.fm : une toutes les 300 ms.
+        secondes: musicbrainz as u64 * 2 + lastfm as u64 * 3 / 10,
+    })
+}
+
+/// Lance « Compléter » : les genres MusicBrainz des artistes en attente, puis
+/// leurs tags Last.fm si une clé est posée — ce qui existe déjà, enchaîné, sur
+/// une connexion dont le journal note chaque écriture
+/// (`Library::ouvrir_passe`). Arrêtable entre deux tranches ; annulable en
+/// bloc une fois finie ou arrêtée ([`completer_annuler`]).
+#[tauri::command(async)]
+pub(crate) fn completer_lancer(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    contact: String,
+    cle_lastfm: String,
+) -> Result<(), String> {
+    let contact = contact.trim().to_string();
+    let cle_lastfm = cle_lastfm.trim().to_string();
+    if !contact.contains('@') && cle_lastfm.is_empty() {
+        return Err(
+            "il faut une adresse de contact MusicBrainz ou une clé Last.fm (Options de la chaîne)"
+                .into(),
+        );
+    }
+    if verrou(&etat.enrichissement).en_cours || verrou(&etat.lastfm).en_cours {
+        return Err("une passe de genres ou de tags tourne déjà".into());
+    }
+    etat.completer_arret.store(false, Ordering::Relaxed);
+    let db = etat.db.clone();
+    passe::lancer(
+        app,
+        |e| &e.completer,
+        "« Compléter » tourne déjà",
+        AvancementCompleter {
+            etape: "Préparation".into(),
+            ..Default::default()
+        },
+        move |etat| {
+            let etape = |texte: &str, faits: usize, total: usize| {
+                let mut e = verrou(&etat.completer);
+                e.avancement.etape = texte.to_string();
+                e.avancement.faits = faits;
+                e.avancement.total = total;
+            };
+            let arret = || etat.completer_arret.load(Ordering::Relaxed);
+            let mut lib = match Library::open(&db) {
+                Ok(l) => l,
+                Err(e) => return format!("échec : {e}"),
+            };
+            let id = match lib.ouvrir_passe("completer") {
+                Ok(id) => id,
+                Err(e) => return format!("échec : {e}"),
+            };
+            let issue = (|| -> Result<String, String> {
+                let mut bouts = Vec::new();
+                if contact.contains('@') {
+                    let client = rusty_music_core::musicbrainz::Client::new(&contact);
+                    let total = lib
+                        .mb_artistes_en_attente("artist", usize::MAX)
+                        .map_err(echec)?
+                        .len();
+                    let (mut faits, mut avec_genre, mut albums) = (0, 0, 0);
+                    etape("Genres MusicBrainz", 0, total);
+                    while !arret() {
+                        let b = rusty_music_core::enrichir::enrichir(
+                            &mut lib,
+                            &client,
+                            TRANCHE_COMPLETER,
+                            |b| etape("Genres MusicBrainz", faits + b.artistes + b.echecs, total),
+                        )
+                        .map_err(echec)?;
+                        faits += b.artistes;
+                        avec_genre += b.avec_genre;
+                        albums += b.albums;
+                        // Rien d'interrogé avec succès : plus personne en
+                        // attente, ou seulement des artistes qui échouent.
+                        if b.artistes == 0 {
+                            break;
+                        }
+                    }
+                    bouts.push(format!(
+                        "{faits} artistes chez MusicBrainz, {avec_genre} avec un genre, {albums} albums"
+                    ));
+                }
+                if !cle_lastfm.is_empty() && !arret() {
+                    let client = rusty_music_core::lastfm::Client::new(cle_lastfm.clone());
+                    let total = lib.lastfm_candidats(0, usize::MAX).map_err(echec)?.len();
+                    let (mut faits, mut avec_tags) = (0, 0);
+                    etape("Tags Last.fm", 0, total);
+                    while !arret() {
+                        let b = rusty_music_core::lastfm_pass::actualiser(
+                            &mut lib,
+                            &client,
+                            0,
+                            TRANCHE_COMPLETER,
+                            |b| etape("Tags Last.fm", faits + b.faits, total),
+                        )
+                        .map_err(echec)?;
+                        faits += b.faits - b.echecs;
+                        avec_tags += b.artistes_avec_tags;
+                        if b.faits == b.echecs {
+                            break;
+                        }
+                    }
+                    bouts.push(format!(
+                        "{faits} artistes chez Last.fm, {avec_tags} avec des tags"
+                    ));
+                }
+                let mut bilan = bouts.join(" ; ");
+                if arret() {
+                    bilan = format!("arrêtée : {bilan}");
+                }
+                Ok(bilan)
+            })();
+            let bilan = issue.unwrap_or_else(|e| format!("échec : {e}"));
+            if let Err(e) = lib.fermer_passe(id, &bilan) {
+                tracing::warn!(erreur = %e, "journal de « Compléter » non fermé");
+            }
+            tracing::info!(%bilan, "passe « Compléter » terminée");
+            bilan
+        },
+    )
+}
+
+/// Demande l'arrêt de « Compléter » : pris en compte à la fin de la tranche
+/// en cours. Ce qui a été écrit reste au journal, donc annulable.
+#[tauri::command]
+pub(crate) fn completer_arreter(etat: State<Etat>) {
+    etat.completer_arret.store(true, Ordering::Relaxed);
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct EtatCompleterVue {
+    passe: EtatCompleter,
+    /// La dernière passe journalisée, pour « Annuler cette passe ».
+    derniere: Option<rusty_music_core::db::PasseJournal>,
+}
+
+#[tauri::command(async)]
+pub(crate) fn completer_etat(etat: State<Etat>) -> Result<EtatCompleterVue, String> {
+    Ok(EtatCompleterVue {
+        passe: verrou(&etat.completer).clone(),
+        derniere: verrou(&etat.lib)
+            .derniere_passe("completer")
+            .map_err(echec)?,
+    })
+}
+
+/// Annule en bloc la dernière passe « Compléter » : rend le nombre de lignes
+/// rétablies.
+#[tauri::command(async)]
+pub(crate) fn completer_annuler(etat: State<Etat>, id: i64) -> Result<usize, String> {
+    if verrou(&etat.completer).en_cours {
+        return Err("arrêtez d'abord la passe en cours".into());
+    }
+    let n = verrou(&etat.lib).annuler_passe(id).map_err(echec)?;
+    tracing::info!(passe = id, lignes = n, "passe « Compléter » annulée");
+    Ok(n)
+}

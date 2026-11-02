@@ -45,6 +45,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // `upsert` à chaque scan, pour qu'un rescan ne les efface pas
         // (`Library::retenir_edition`, `docs/plan-ecouter-v0.3.md`, point 3).
         M::up(include_str!("../../sql/migration-002-editions.sql")),
+        // N° 3 (2 nov. 2026) : le journal des passes « Compléter », pour les
+        // annuler en bloc (`Library::ouvrir_passe`, `db/passes.rs`).
+        M::up(include_str!("../../sql/migration-003-passes.sql")),
     ])
 }
 

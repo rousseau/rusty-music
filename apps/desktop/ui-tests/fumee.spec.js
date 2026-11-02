@@ -370,3 +370,38 @@ test("passage vers l'iPhone : ⌘K emporte la lecture, le Mac dit où elle atten
   await expect(page.locator("#iphone-emporter-etat")).toContainText("0:12");
   expect((await appels(page, "emporter_lecture")).at(-1)).toEqual({ udid: "u1" });
 });
+
+test("Compléter : la phrase dit ce qui part, la passe se lance puis s'annule en bloc", async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem("mb-contact", "essai@example.org");
+    const f = window.__FIXTURES__;
+    f.completer_apercu = (_, e) => (e.complete ? { musicbrainz: 0, lastfm: 0, secondes: 0 } : { musicbrainz: 12, lastfm: 0, secondes: 24 });
+    f.completer_lancer = (_, e) => { e.tours = 0; return null; };
+    f.completer_etat = (_, e) => {
+      if (e.tours !== undefined && e.tours < 2) {
+        e.tours++;
+        return { passe: { en_cours: true, etape: "Genres MusicBrainz", faits: 5, total: 12, resultat: null }, derniere: null };
+      }
+      if (e.tours === undefined) return { passe: { en_cours: false, etape: "", faits: 0, total: 0, resultat: null }, derniere: null };
+      e.complete = !e.annulee;
+      return {
+        passe: { en_cours: false, etape: "", faits: 12, total: 12, resultat: "fini" },
+        derniere: { id: 1, nom: "completer", debut: 1_762_000_000, fin: 1_762_000_030, annulee_le: e.annulee ? 1_762_000_100 : null, bilan: "12 artistes chez MusicBrainz, 9 avec un genre, 40 albums", ecritures: 80 },
+      };
+    };
+    f.completer_annuler = (_, e) => { e.annulee = true; e.complete = false; return 80; };
+  });
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await expect(page.locator("#completer-reseau")).toContainText("musicbrainz.org pour 12 artistes");
+  await expect(page.locator("#completer-lancer")).toBeEnabled();
+  await page.click("#completer-lancer");
+  await expect(page.locator("#completer-arreter")).toBeVisible();
+  await expect(page.locator("#completer-etat")).toContainText("5 / 12 artistes");
+  await expect(page.locator("#completer-etat")).toContainText("Dernière passe", { timeout: 5000 });
+  await expect(page.locator("#completer-lancer")).toBeDisabled();
+  page.once("dialog", (d) => d.accept());
+  await page.click("#completer-annuler");
+  await expect(page.locator("#completer-etat")).toContainText("annulée");
+  await expect(page.locator("#completer-annuler")).toBeHidden();
+  expect((await appels(page, "completer_annuler")).at(-1)).toEqual({ id: 1 });
+});

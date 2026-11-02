@@ -442,10 +442,120 @@ function majEtatGenres() {
   majEtat("genres", bouts.join(" · ") || (connu ? "rien à signaler" : "…"), bouts.length > 0);
 }
 
+/* ---------------------------------------------------- passe « Compléter » */
+
+/// « Compléter » sous le bloc « État » (`docs/plan-ecouter-v0.3.md`, point 4,
+/// option A ; idée de Disc Player, licence MIT) : la phrase dit avant le geste
+/// ce qui partira sur le réseau ; la passe s'arrête entre deux tranches et
+/// s'annule en bloc — son journal est en base (`Library::ouvrir_passe`), rien
+/// n'est écrit dans les fichiers.
+const completer = { suivi: null, enCours: false };
+
+const cleLastfm = () => ($("lastfm-active").checked ? $("lastfm-cle").value.trim() : "");
+
+async function majCompleter() {
+  const { passe, derniere } = await invoke("completer_etat");
+  const enCours = passe.en_cours;
+  const fini = completer.enCours && !enCours;
+  completer.enCours = enCours;
+  $("completer-lancer").hidden = enCours;
+  $("completer-arreter").hidden = !enCours;
+  majJauge("completer-jauge", enCours, passe.faits, passe.total);
+  const etat = $("completer-etat");
+  const annulable = !enCours && derniere && derniere.annulee_le == null && derniere.ecritures > 0;
+  $("completer-annuler").hidden = !annulable;
+  if (enCours) {
+    etat.hidden = false;
+    etat.textContent = passe.total
+      ? `${passe.etape} : ${nombre(passe.faits)} / ${nombre(passe.total)} artistes.`
+      : `${passe.etape}…`;
+  } else if (derniere) {
+    const le = new Date(derniere.debut * 1000).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    etat.hidden = false;
+    etat.textContent = derniere.annulee_le != null
+      ? `Passe du ${le} annulée.`
+      : `Dernière passe, le ${le} : ${derniere.bilan || "coupée avant la fin"}.`;
+  } else {
+    etat.hidden = true;
+  }
+  if (!enCours) await majApercuCompleter();
+  if (fini) await apresCompleter();
+  if (enCours && !completer.suivi) completer.suivi = setInterval(() => majCompleter().catch((e) => remonter(e, "compléter")), 1000);
+  if (!enCours && completer.suivi) {
+    clearInterval(completer.suivi);
+    completer.suivi = null;
+  }
+}
+
+/// La phrase d'avant le geste : vers quels sites, pour combien d'artistes,
+/// combien de temps.
+async function majApercuCompleter() {
+  const contact = contactMb();
+  const a = await invoke("completer_apercu", { contact, cleLastfm: cleLastfm() });
+  const bouts = [];
+  if (a.musicbrainz) bouts.push(`musicbrainz.org pour ${pluriel(a.musicbrainz, "artiste")} (genres et albums, avec votre adresse de contact)`);
+  if (a.lastfm) bouts.push(`last.fm pour ${pluriel(a.lastfm, "artiste")} (tags, avec votre clé)`);
+  const phrase = $("completer-reseau");
+  $("completer-lancer").disabled = !bouts.length;
+  if (!bouts.length) {
+    phrase.textContent = contact.includes("@")
+      ? "Rien à compléter : chaque artiste identifié a déjà été interrogé."
+      : "Compléter interroge MusicBrainz et Last.fm : il faut une adresse de contact ou une clé (Options de la chaîne).";
+    return;
+  }
+  phrase.textContent = `Interroge ${bouts.join(", puis ")} — ≈ ${dureeLongue(a.secondes)}. ` +
+    "Rien n'est écrit dans vos fichiers ; la passe s'arrête et s'annule en bloc.";
+}
+
+/// Les genres ont pu changer : les noms de familles se redemandent, les
+/// comptes du bloc « État » se relisent.
+async function apresCompleter() {
+  carte.familles = null;
+  carte.familleVotes = null;
+  ecoute.famillesParAlbum = null;
+  await chargerFamillesParAlbum();
+  await chargerStatsBibliotheque();
+  await chargerVerifications();
+}
+
+$("completer-lancer").addEventListener("click", async () => {
+  try {
+    await invoke("completer_lancer", { contact: contactMb(), cleLastfm: cleLastfm() });
+  } catch (e) {
+    $("completer-etat").hidden = false;
+    $("completer-etat").textContent = `Rien n'a été lancé : ${e}`;
+    return;
+  }
+  await majCompleter();
+});
+$("completer-arreter").addEventListener("click", async () => {
+  await invoke("completer_arreter");
+  $("completer-etat").textContent = "Arrêt à la fin de la tranche en cours…";
+});
+$("completer-annuler").addEventListener("click", async () => {
+  const { derniere } = await invoke("completer_etat");
+  if (!derniere) return;
+  const ok = confirm(
+    `Annuler la dernière passe « Compléter » ?\n\nSes ${nombre(derniere.ecritures)} écritures en base ` +
+      "seront défaites ; les artistes qu'elle a interrogés redeviendront à interroger.",
+  );
+  if (!ok) return;
+  try {
+    await invoke("completer_annuler", { id: derniere.id });
+  } catch (e) {
+    $("completer-etat").textContent = `Rien n'a été annulé : ${e}`;
+    remonter(e, "annuler la passe");
+    return;
+  }
+  await majCompleter();
+  await apresCompleter();
+});
+
 /// Genres suspects et éditions multiples : peu coûteux (une requête
 /// d'agrégation), rejoués à chaque entrée dans le mode comme le reste des
 /// statistiques.
 async function chargerVerifications() {
+  majCompleter().catch((e) => remonter(e, "compléter"));
   const suspects = await invoke("suspect_genres");
   genresEtat.suspects = suspects.length;
   majEtatGenres();

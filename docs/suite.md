@@ -71,8 +71,10 @@ Un commit par étape.
    Bibliothèque repliée : Règles 5 et 8 ✅), éditions face à face (faites,
    pas encore essayées contre le vrai MusicBrainz), passage Mac → iPhone
    (option A faite le 2 nov. : « Emporter la lecture » dans Valise et ⌘K ;
-   pas encore essayé sur l'iPhone). Restent : la passe « Compléter »
-   annulable du bloc « État », le passage par Wi-Fi (option B, avec 4B).
+   pas encore essayé sur l'iPhone). « Compléter » sous le bloc
+   « État » (2 nov. : genres MusicBrainz puis tags Last.fm, journal en base,
+   la dernière passe s'annule en bloc). Reste : le passage par Wi-Fi
+   (option B, avec 4B).
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

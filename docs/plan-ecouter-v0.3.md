@@ -166,7 +166,24 @@ qui s'écoute (Règle 1).
 l'album ouvert au centre ; C seulement si A laisse beaucoup d'albums sans
 candidate.
 
-### 4. État de la bibliothèque · **L** — **retenu : B, puis A** — **B fait (1ᵉʳ novembre 2026)**
+### 4. État de la bibliothèque · **L** — **retenu : B, puis A** — **B fait (1ᵉʳ novembre 2026), A fait (2 novembre)**
+
+**Fait (A), tranché le 2 novembre : ce qui existe, la dernière passe annulée
+en bloc, une phrase et un bouton.** Sous le bloc « État », « Compléter »
+enchaîne les genres MusicBrainz des artistes jamais interrogés (genres de
+l'artiste et parcours de ses albums, `enrichir::enrichir`) puis, si une clé
+est posée, leurs tags Last.fm (`lastfm_pass::actualiser`). La phrase d'avant
+le geste dit vers quels sites, pour combien d'artistes, combien de temps.
+La passe tourne par tranches de dix artistes et « Arrêter » est lu entre deux.
+Le journal (migration n° 3, tables `passe` et `passe_ecriture`) est tenu par
+des déclencheurs temporaires posés sur la seule connexion de la passe
+(`Library::ouvrir_passe`, `crates/core/src/db/passes.rs`) : chaque ligne
+ajoutée, modifiée ou retirée dans `mb_genres`, `mb_release_groups`,
+`mb_fetched`, `lastfm_tags` et `lastfm_fetched` est notée avec sa valeur
+d'avant, sans toucher aux fonctions d'écriture. « Annuler cette passe »
+rejoue le journal à l'envers, marques comprises (les artistes redeviennent à
+interroger) ; seule la dernière s'annule. Écartés pour l'instant : la
+recherche d'identité par nom et les pochettes de repli.
 
 **Fait (B).** En tête de Bibliothèque, sous la source : six lignes —
 identités (morceaux sans MBID d'artiste), pochettes suspectes (seules : le

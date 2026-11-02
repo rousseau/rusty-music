@@ -72,7 +72,14 @@ until grep -aq "AUDIT FIN\|AUDIT ERREUR" "$LOG"; do
   # Verrouillée en cours de route, la page est suspendue : le dire plutôt
   # qu'attendre le délai sans un mot.
   if verrouillee; then echo "session verrouillée pendant l'audit : relancer écran déverrouillé" >&2; exit 2; fi
-  if [ $((SECONDS - debut)) -gt "$DELAI" ]; then echo "délai dépassé (${DELAI} s)" >&2; exit 2; fi
+  if [ $((SECONDS - debut)) -gt "$DELAI" ]; then
+    # Le journal part avec le dossier temporaire : dire au moins où l'audit
+    # s'est arrêté (la dernière cellule mesurée, les dernières lignes).
+    echo "délai dépassé (${DELAI} s) ; $(grep -ac 'AUDIT {' "$LOG") cellules mesurées, la dernière :" >&2
+    grep -a 'AUDIT {' "$LOG" | tail -1 | cut -c1-200 >&2
+    tail -4 "$LOG" | cut -c1-200 >&2
+    exit 2
+  fi
   sleep 2
 done
 
