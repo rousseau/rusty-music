@@ -8,6 +8,7 @@
 //! la base) ; `Player::set_resolveur` les traduit en fichiers de la valise.
 
 mod en_cours;
+mod passage;
 mod session;
 mod session_audio;
 
@@ -276,6 +277,17 @@ fn reprendre(etat: State<Etat>) -> Result<Option<Reprise>, String> {
     }
     en_cours::afficher(lecture_courante(&etat).as_ref());
     Ok(Some(Reprise { nom, albums }))
+}
+
+/// Un passage déposé par le Mac (`passage.rs`) : demandé au lancement, avant
+/// [`reprendre`], et à chaque retour au premier plan.
+#[tauri::command]
+fn recevoir_passage(etat: State<Etat>) -> Result<Option<passage::Recu>, String> {
+    let recu = passage::recevoir(&etat)?;
+    if recu.is_some() {
+        en_cours::afficher(lecture_courante(&etat).as_ref());
+    }
+    Ok(recu)
 }
 
 /// Les pistes d'un album de la valise, dans l'ordre du disque (les fichiers
@@ -788,6 +800,7 @@ pub fn run() {
             pistes,
             pochette,
             reprendre,
+            recevoir_passage,
             jouer,
             ajouter_album,
             file_lecture,

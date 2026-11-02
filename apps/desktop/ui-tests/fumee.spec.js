@@ -349,3 +349,24 @@ test("éditions face à face : ce qui part sur le réseau, les pistes alignées,
   await page.keyboard.press("Escape");
   await expect(page.locator("#editions")).toBeHidden();
 });
+
+test("passage vers l'iPhone : ⌘K emporte la lecture, le Mac dit où elle attend", async ({ page }) => {
+  await page.evaluate(() => {
+    const f = window.__FIXTURES__;
+    f.valise_iphone = {
+      xcode: true, udid: "u1", app_installee: true, echeance: null, valises: [], renouvelable: false, erreur: null,
+      appareils: [{ udid: "u1", nom: "iPhone d'essai", modele: "iPhone 15", filaire: true }],
+    };
+    f.emporter_lecture = (a) => ({ pistes: 2, titre: "Ouverture", position_ms: 12_000, mac_en_pause: true });
+  });
+  await lireUnAlbum(page);
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("emporter");
+  await expect(page.locator(".palette__option", { hasText: "Emporter la lecture" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#valise-vue")).toBeVisible();
+  await expect(page.locator("#iphone-emporter")).toBeVisible();
+  await expect(page.locator("#iphone-emporter-etat")).toContainText("attend sur l'iPhone, en pause");
+  await expect(page.locator("#iphone-emporter-etat")).toContainText("0:12");
+  expect((await appels(page, "emporter_lecture")).at(-1)).toEqual({ udid: "u1" });
+});

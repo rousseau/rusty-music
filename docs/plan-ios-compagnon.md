@@ -539,6 +539,26 @@ sautée en silence ; les écoutes suivent le journal existant (étape 6).
 **Recommandation : A tout de suite, B avec l'étape 4B** ; C seulement si le
 compte de signature le permet.
 
+**A, fait le 2 nov. 2026** (pas encore essayé sur l'iPhone) :
+- format : `rusty_music_core::passage` (`session-passage.json`, version 1) —
+  la file en **chemins d'origine**, que la base d'une valise garde dans
+  `tracks.path` : rien à traduire côté téléphone ;
+- Mac : « Emporter la lecture » dans le bloc iPhone du mode Valise, et la
+  commande ⌘K du même nom (`emporter_lecture`, `apps/desktop/src/valise.rs`).
+  Le dépôt passe par `devicectl` ; le Mac se met en pause **après** le dépôt
+  confirmé, et seulement si la piste n'a pas changé entre-temps (un geste fait
+  sur le Mac garde la main, comme chez Disc Player). La position est lue avant
+  le dépôt : l'iPhone reprend quelques secondes plus tôt, jamais plus tard ;
+- iPhone : `apps/mobile/src/passage.rs`. Le fichier est lu au lancement (avant
+  la dernière session du téléphone) et à chaque retour au premier plan, puis
+  effacé, qu'il serve ou non. La valise rouverte est celle qui porte le plus
+  de morceaux de la file ; la file s'y réduit, la lecture revient **en pause**,
+  et une ligne au-dessus de l'écran dit ce qui manque (« 3 morceaux de la file
+  ne sont pas dans la valise », ou que le morceau en cours n'y est pas et qu'on
+  part du suivant). Le volume reste celui du téléphone ;
+- à essayer pour de vrai : branché en USB, puis en Wi-Fi d'appairage ; app
+  ouverte au premier plan, en arrière-plan, fermée.
+
 ## Distribution
 
 - **Usage personnel** : compilation par Xcode sur son propre iPhone. Avec un
@@ -575,7 +595,7 @@ compte de signature le permet.
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
 | 4B | Synchronisation Wi-Fi | M | 6 | à faire |
-| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | retenu : A, puis B (1ᵉʳ nov.) ; à faire |
+| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | A **fait** (2 nov., à essayer sur l'iPhone) ; B avec 4B |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement
 (« récents » et « peu écoutés ») réglées en ligne de commande. Les thèmes,

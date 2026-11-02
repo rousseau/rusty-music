@@ -942,6 +942,7 @@ fn main() {
             valise_envoyer,
             valise_renouveler,
             valise_etat,
+            emporter_lecture,
             decouvrir_pochette,
             decouvrir_photo_artiste,
             decouvrir_lien_deezer,

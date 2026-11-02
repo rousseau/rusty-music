@@ -277,8 +277,49 @@ function placerCurseur(part, position_ms, duree_ms) {
   $('l-reste').textContent = duree_ms ? `−${duree(Math.max(0, duree_ms - position_ms))}` : '';
 }
 
+/* ------------------------------------------------------------ passage */
+
+/** Dit ce qu'un passage du Mac a repris, et ce qui manque : un morceau
+ *  absent de la valise n'est jamais sauté en silence. */
+function annoncerPassage(p) {
+  const n = (k, mot) => `${k} ${mot}${k > 1 ? 's' : ''}`;
+  let texte;
+  if (!p.nom) {
+    texte = `Lecture reçue du Mac, mais aucun de ses ${n(p.absents, 'morceau')} n'est dans les valises.`;
+  } else {
+    texte = 'Reprise depuis le Mac, en pause.';
+    if (!p.courante_presente) texte += ' Le morceau en cours n’est pas dans la valise : on part du suivant.';
+    if (p.absents) {
+      texte += p.absents > 1
+        ? ` ${p.absents} morceaux de la file ne sont pas dans la valise.`
+        : ' 1 morceau de la file n’est pas dans la valise.';
+    }
+  }
+  $('passage').textContent = texte;
+  $('passage').hidden = false;
+}
+
+const effacerPassage = () => { $('passage').hidden = true; };
+$('passage').onclick = effacerPassage;
+
+/** Un passage déposé pendant que l'app était en arrière-plan. */
+async function recevoirPassage() {
+  const p = await invoke('recevoir_passage').catch(() => null);
+  if (!p) return;
+  annoncerPassage(p);
+  if (!p.nom) return;
+  etat.albums = p.albums;
+  etat.pochettes.clear();
+  afficherAlbums();
+  rafraichir();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') recevoirPassage();
+});
+
 $('file').onclick = ouvrirFile;
-$('pause').onclick = () => invoke('basculer_pause').then(rafraichir);
+$('pause').onclick = () => { effacerPassage(); invoke('basculer_pause').then(rafraichir); };
 $('suivante').onclick = () => invoke('suivante').then(rafraichir);
 $('precedente').onclick = () => invoke('precedente').then(rafraichir);
 
@@ -304,9 +345,19 @@ curseur.addEventListener('change', () => {
   invoke('aller_a', { positionMs: Math.round((curseur.value / 1000) * l.duree_ms) }).then(rafraichir);
 });
 
-/** Au lancement : la valise de la dernière session, sa file reprise en
- *  pause ; sinon la liste des valises. */
+/** Au lancement : un passage du Mac s'il y en a un, sinon la valise de la
+ *  dernière session, sa file reprise en pause ; sinon la liste des valises. */
 async function demarrer() {
+  // Un passage du Mac passe avant la dernière session du téléphone.
+  const p = await invoke('recevoir_passage').catch(() => null);
+  if (p) annoncerPassage(p);
+  if (p && p.nom) {
+    etat.nbValises = (await invoke('valises')).length;
+    etat.albums = p.albums;
+    afficherAlbums();
+    rafraichir();
+    return;
+  }
   const r = await invoke('reprendre').catch(() => null);
   if (!r) {
     afficherValises();

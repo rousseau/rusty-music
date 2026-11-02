@@ -324,3 +324,86 @@ pub(crate) fn valise_etat(etat: State<Etat>) -> EtatValise {
         renouvellement: verrou(&etat.valise_renouvellement).clone(),
     }
 }
+
+/// Ce que le passage a emporté, pour la phrase de l'interface.
+#[derive(serde::Serialize)]
+pub(crate) struct LectureEmportee {
+    pistes: usize,
+    titre: Option<String>,
+    position_ms: u64,
+    /// Le Mac s'est mis en pause. `false` quand la lecture a changé pendant
+    /// le dépôt : le geste fait sur le Mac garde la main.
+    mac_en_pause: bool,
+}
+
+/// Emporte la lecture sur l'iPhone (option A du passage,
+/// `rusty_music_core::passage`) : dépose la file et la position dans les
+/// Documents de l'app par `devicectl`, puis met le Mac en pause — **après**
+/// le dépôt confirmé, pour qu'un échec laisse la musique où elle était. Le
+/// téléphone reprend en pause, à la position lue avant le dépôt : quelques
+/// secondes plus tôt, jamais plus tard.
+#[tauri::command(async)]
+pub(crate) fn emporter_lecture(etat: State<Etat>, udid: String) -> Result<LectureEmportee, String> {
+    use rusty_music_core::passage::{Passage, FICHIER, VERSION};
+    let Some(mut i) = verrou(&etat.player).instantane() else {
+        return Err("rien en lecture".into());
+    };
+    // Pendant le fondu d'un minuteur, c'est le volume d'avant qui compte
+    // (comme `sauvegarder_session`).
+    if let Some(nominal) = verrou(&etat.minuteur)
+        .as_ref()
+        .and_then(minuteur::Minuteur::volume_nominal)
+    {
+        i.volume = nominal;
+    }
+    let courant = i.file.get(i.rang).cloned();
+    let chemins =
+        |v: &[PathBuf]| -> Vec<String> { v.iter().map(|p| p.display().to_string()).collect() };
+    let passage = Passage {
+        version: VERSION,
+        emis_le: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64),
+        file: chemins(&i.file),
+        avant_melange: chemins(&i.avant_melange),
+        rang: i.rang,
+        position_ms: i.position.as_millis() as u64,
+        alea: i.alea,
+        repetition: i.repetition.nom().to_string(),
+        volume: i.volume,
+    };
+    let local = etat
+        .db
+        .parent()
+        .map_or_else(std::env::temp_dir, Path::to_path_buf)
+        .join(FICHIER);
+    passage.ecrire(&local).map_err(echec)?;
+    let depot = iphone::copier_vers(&udid, &local, FICHIER);
+    let _ = std::fs::remove_file(&local);
+    depot?;
+
+    let player = verrou(&etat.player);
+    let mac_en_pause = player.current() == courant.as_deref();
+    if mac_en_pause {
+        player.pause();
+    }
+    let titre = courant.as_ref().and_then(|c| {
+        verrou(&etat.lib)
+            .pistes_par_chemins(&[c.display().to_string()])
+            .ok()?
+            .into_iter()
+            .next()?
+            .title
+    });
+    tracing::info!(
+        pistes = passage.file.len(),
+        mac_en_pause,
+        "lecture emportée sur l'iPhone"
+    );
+    Ok(LectureEmportee {
+        pistes: passage.file.len(),
+        titre,
+        position_ms: passage.position_ms,
+        mac_en_pause,
+    })
+}

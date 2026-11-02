@@ -17,6 +17,9 @@ import {
 import {
   ouvrirEnCours,
 } from "./en-cours.js";
+import {
+  emporterLecture,
+} from "./valise.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ---------------------------------------------------- palette de recherche
@@ -101,6 +104,14 @@ function commandes() {
     {
       groupe: "Commandes", libelle: "Vue « En cours »", mots: "plein écran disque spectre pochette",
       pret: () => !!lecture.courant, lancer: ouvrirEnCours,
+    },
+    {
+      groupe: "Commandes", libelle: "Emporter la lecture sur l'iPhone", mots: "passage valise téléphone compagnon",
+      pret: () => !!lecture.courant && utilisable(mode("valise")),
+      lancer: async () => {
+        await versMode("valise");
+        emporterLecture();
+      },
     },
     { groupe: "Commandes", libelle: "Lecture / pause", mots: "jouer lire arrêter", pret: () => true, lancer: clic("lecture") },
     { groupe: "Commandes", libelle: "Piste suivante", mots: "suivant", pret: () => true, lancer: clic("suivant") },

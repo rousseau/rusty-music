@@ -1,7 +1,8 @@
 import "./modes.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, invoke, isoler, remonter,
+  $, duree, invoke, isoler, remonter,
 } from "./socle.js";
+import { lecture } from "./etat-lecture.js";
 import {
   carte,
 } from "./carte.js";
@@ -23,6 +24,8 @@ const etatValise = {
   minuterie: null, // l'aperçu attend la fin d'une frappe
   suivi: null, // sondage de l'envoi et de la réinstallation
   occupe: false, // un envoi ou une réinstallation tourne
+  lectureIphone: null, // la lecture de l'iPhone en cours (promesse)
+  emporte: false, // un passage est en cours de dépôt
 };
 
 const REGLES_VALISE = [
@@ -216,11 +219,20 @@ function majBoutonEnvoyer() {
     etatValise.occupe || !i?.udid || !i.app_installee || !etatValise.apercu?.albums.length;
 }
 
-async function lireIphone() {
-  $("iphone-nom").textContent = "Recherche de l'iPhone…";
-  $("iphone-etat").textContent = "";
-  etatValise.iphone = await invoke("valise_iphone", { udid: etatValise.iphone?.udid ?? null });
-  dessinerIphone();
+/// Une seule lecture de l'iPhone à la fois : « Emporter la lecture » depuis ⌘K
+/// entre dans Valise, qui en lance une, et attend la même.
+function lireIphone() {
+  etatValise.lectureIphone ??= (async () => {
+    $("iphone-nom").textContent = "Recherche de l'iPhone…";
+    $("iphone-etat").textContent = "";
+    try {
+      etatValise.iphone = await invoke("valise_iphone", { udid: etatValise.iphone?.udid ?? null });
+    } finally {
+      etatValise.lectureIphone = null;
+    }
+    dessinerIphone();
+  })();
+  return etatValise.lectureIphone;
 }
 
 function dessinerIphone() {
@@ -230,6 +242,8 @@ function dessinerIphone() {
   const echeance = $("iphone-echeance");
   echeance.hidden = true;
   $("valise-renouveler").hidden = true;
+  $("iphone-emporter").hidden = !(i.xcode && i.udid && i.app_installee);
+  majBoutonEmporter();
   $("iphone-valises").textContent = "—";
   majBoutonEnvoyer();
   if (!i.xcode) {
@@ -273,6 +287,48 @@ function dessinerIphone() {
         return l;
       }),
     );
+  }
+}
+
+function majBoutonEmporter() {
+  $("iphone-emporter").disabled = etatValise.emporte || etatValise.occupe;
+}
+
+/// Emporte ce qui joue sur l'iPhone (`emporter_lecture`, passage par fichier :
+/// `docs/plan-ios-compagnon.md`). Le Mac se met en pause une fois le dépôt
+/// confirmé ; l'app reprend en pause, à la position.
+async function emporterLecture() {
+  const statut = $("iphone-emporter-etat");
+  const dire = (texte) => {
+    statut.hidden = false;
+    statut.textContent = texte;
+  };
+  if (etatValise.lectureIphone) await etatValise.lectureIphone;
+  else if (!etatValise.iphone) await lireIphone();
+  const i = etatValise.iphone;
+  if (!i?.udid || !i.app_installee) {
+    dire("Aucun iPhone avec Rusty Valise : voir ci-dessus.");
+    return;
+  }
+  if (!lecture.courant) {
+    dire("Rien en lecture à emporter.");
+    return;
+  }
+  etatValise.emporte = true;
+  majBoutonEmporter();
+  dire("Dépôt de la lecture sur l'iPhone…");
+  try {
+    const r = await invoke("emporter_lecture", { udid: i.udid });
+    const quoi = r.titre ? `« ${isoler(r.titre)} » à ${duree(r.position_ms)}` : `La file (${r.pistes} pistes)`;
+    dire(r.mac_en_pause
+      ? `${quoi} attend sur l'iPhone, en pause ; le Mac s'est arrêté. Ouvrez Rusty Valise.`
+      : `${quoi} attend sur l'iPhone. La lecture a changé ici pendant le dépôt : le Mac continue.`);
+  } catch (e) {
+    dire(`Rien n'a été emporté : ${e}`);
+    remonter(e, "emporter la lecture");
+  } finally {
+    etatValise.emporte = false;
+    majBoutonEmporter();
   }
 }
 
@@ -320,6 +376,7 @@ function suivreValise() {
     r.textContent = ren.en_cours ? ren.ligne : ren.resultat ?? "";
     $("valise-renouveler").disabled = occupe;
     majBoutonEnvoyer();
+    majBoutonEmporter();
 
     if (fini) lireIphone().catch((err) => remonter(err, "iPhone"));
     if (!occupe) arreterSuiviValise();
@@ -358,6 +415,7 @@ $("valise-tirage").addEventListener("click", () => {
   changerValise();
 });
 $("iphone-actualiser").addEventListener("click", () => lireIphone().catch((e) => remonter(e, "iPhone")));
+$("iphone-emporter").addEventListener("click", () => emporterLecture());
 $("valise-envoyer").addEventListener("click", async () => {
   // Les réglages partent avec l'aperçu : finir celui qui attend.
   if (etatValise.minuterie) {
@@ -389,5 +447,5 @@ $("valise-renouveler").addEventListener("click", async () => {
 });
 
 export {
-  arreterSuiviValise, entrerValise,
+  arreterSuiviValise, emporterLecture, entrerValise,
 };

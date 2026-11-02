@@ -17,7 +17,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 | Module 3 — Éditer | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem |
 | Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
 | Super-résolution « HD » | livrée (`crates/superres`, AERO via ONNX Runtime) | — (`module3-superresolution.md`) |
-| Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) | étapes 1 (découper le code), 3 (sélection, en partie), 4B (transfert sans Xcode), 7 (rotation) ; mesures de batterie ; `plan-ios-compagnon.md` |
+| Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) ; passage Mac → iPhone par fichier (2 nov.) | étapes 1 (découper le code), 3 (sélection, en partie), 4B (transfert sans Xcode), 7 (rotation) ; mesures de batterie ; `plan-ios-compagnon.md` |
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 
@@ -69,7 +69,10 @@ Un commit par étape.
    thème par défaut : sombre. Ordre : captures (faites, `docs/images/`), vue
    « En cours » et ses couleurs (faites, 1ᵉʳ nov.), bloc « État » (fait, et
    Bibliothèque repliée : Règles 5 et 8 ✅), éditions face à face (faites,
-   pas encore essayées contre le vrai MusicBrainz), passage Mac → iPhone.
+   pas encore essayées contre le vrai MusicBrainz), passage Mac → iPhone
+   (option A faite le 2 nov. : « Emporter la lecture » dans Valise et ⌘K ;
+   pas encore essayé sur l'iPhone). Restent : la passe « Compléter »
+   annulable du bloc « État », le passage par Wi-Fi (option B, avec 4B).
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

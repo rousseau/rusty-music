@@ -85,8 +85,9 @@
       </div>
 
       <!-- Mode Valise : l'iPhone du compagnon « Rusty Valise » — qui est
-           appairé, quand l'app expire, ce qu'il porte, et les deux gestes
-           (envoyer, renouveler). La composition est au centre. -->
+           appairé, quand l'app expire, ce qu'il porte, et les gestes
+           (envoyer, renouveler, emporter la lecture). La composition est au
+           centre. -->
       <div class="bloc" id="bloc-valise" hidden>
         <p class="rail__titre">iPhone</p>
         <p id="iphone-nom" class="iphone__nom">—</p>
@@ -94,6 +95,8 @@
         <p id="iphone-echeance" class="iphone__echeance" hidden></p>
         <button id="valise-renouveler" class="bouton bouton--mince" hidden>Renouveler l'app</button>
         <p id="valise-renouveler-etat" class="aide" hidden></p>
+        <button id="iphone-emporter" class="bouton bouton--mince" hidden>Emporter la lecture</button>
+        <p id="iphone-emporter-etat" class="aide" aria-live="polite" hidden></p>
         <button id="iphone-actualiser" class="lien">Actualiser</button>
 
         <p class="rail__titre" style="margin-top:22px">Sur le téléphone</p>
@@ -1044,7 +1047,7 @@
               <div class="credit"><div class="credit__nom">Crédits et labels</div><div class="credit__detail">Discogs, dumps mensuels</div><div class="credit__licences">CC0</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://data.discogs.com">Site</button></div></div>
               <div class="credit"><div class="credit__nom">Popularité</div><div class="credit__detail">ListenBrainz et Deezer</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://listenbrainz.org">Site</button></div></div>
               <div class="credit"><div class="credit__nom">Palettes du fond de plan</div><div class="credit__detail">maptoposter</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/originalankur/maptoposter">Dépôt</button></div></div>
-              <div class="credit"><div class="credit__nom">Palette de recherche, vue « En cours », couleurs d'album, typographie</div><div class="credit__detail">idées et méthodes de Disc Player (eudj1n)</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/eudj1n/snowsky-disc-player">Dépôt</button></div></div>
+              <div class="credit"><div class="credit__nom">Palette de recherche, vue « En cours », couleurs d'album, typographie, choix d'édition, passage vers l'iPhone</div><div class="credit__detail">idées et méthodes de Disc Player (eudj1n)</div><div class="credit__licences">MIT</div><div class="credit__liens"><button class="lien a-propos__lien" data-url="https://github.com/eudj1n/snowsky-disc-player">Dépôt</button></div></div>
             </div>
           </div>
           </details>

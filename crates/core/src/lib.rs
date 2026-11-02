@@ -34,6 +34,7 @@ pub mod musicbrainz;
 pub mod ollama;
 pub mod opus;
 pub mod panique;
+pub mod passage;
 pub mod playlists;
 pub mod pochette;
 pub mod pochettes_verif;
