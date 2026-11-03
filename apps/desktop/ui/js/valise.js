@@ -216,9 +216,8 @@ function dessinerApercuValise() {
 }
 
 function majBoutonEnvoyer() {
-  const i = etatValise.iphone;
   $("valise-envoyer").disabled =
-    etatValise.occupe || !i?.udid || !i.app_installee || !etatValise.apercu?.albums.length;
+    etatValise.occupe || !(parCable() || etatValise.wifi?.ecoute) || !etatValise.apercu?.albums.length;
 }
 
 /// Une seule lecture de l'iPhone à la fois : « Emporter la lecture » depuis ⌘K
@@ -324,12 +323,14 @@ function dessinerWifi() {
       ? "Wi-Fi : appairé, l'iPhone retrouve ce Mac sur le réseau local."
       : `Wi-Fi : appairé, mais ce Mac n'écoute pas : ${w.erreur ?? "raison inconnue"}.`,
     w.en_attente ? "Une lecture attend que l'iPhone la prenne." : null,
+    // Espaces insécables : le guillemet ne reste pas seul en bout de ligne.
+    w.valise ? `«\u00a0${w.valise}\u00a0» attend que l'iPhone la prenne.` : null,
     w.dernier,
   ].filter(Boolean).join(" ");
 }
 
-/// Tant qu'une lecture attend l'iPhone, la ligne Wi-Fi suit : elle dit quand
-/// il l'a prise.
+/// Tant qu'une lecture ou une valise attend l'iPhone, la ligne Wi-Fi suit :
+/// elle dit quand il l'a prise.
 async function suivreAttente() {
   if (etatValise.suiviWifi) return;
   etatValise.suiviWifi = true;
@@ -338,7 +339,7 @@ async function suivreAttente() {
       await new Promise((r) => setTimeout(r, 2000));
       etatValise.wifi = await invoke("wifi_etat");
       dessinerWifi();
-      if (!etatValise.wifi.en_attente) break;
+      if (!etatValise.wifi.en_attente && !etatValise.wifi.valise) break;
     }
   } finally {
     etatValise.suiviWifi = false;
@@ -445,7 +446,11 @@ function suivreValise() {
     majBoutonEnvoyer();
     majBoutonEmporter();
 
-    if (fini) lireIphone().catch((err) => remonter(err, "iPhone"));
+    if (fini) {
+      lireIphone()
+        .then(() => etatValise.wifi?.valise && suivreAttente())
+        .catch((err) => remonter(err, "iPhone"));
+    }
     if (!occupe) arreterSuiviValise();
   };
   etatValise.suivi = setInterval(tour, 800);
@@ -500,7 +505,8 @@ $("valise-envoyer").addEventListener("click", async () => {
     await rafraichirApercuValise();
   }
   try {
-    await invoke("valise_envoyer", { udid: etatValise.iphone.udid, nom: nomValise() });
+    // Par le câble si possible ; sinon l'iPhone appairé la prendra par le Wi-Fi.
+    await invoke("valise_envoyer", { udid: parCable() ? etatValise.iphone.udid : null, nom: nomValise() });
   } catch (e) {
     $("valise-avancement").hidden = false;
     $("valise-avancement").textContent = `échec : ${e}`;

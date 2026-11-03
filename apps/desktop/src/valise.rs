@@ -121,7 +121,8 @@ pub(crate) fn valise_iphone(udid: Option<String>) -> EtatIphone {
     e
 }
 
-/// Envoie une nouvelle valise sur l'iPhone, selon les réglages gardés :
+/// Envoie une nouvelle valise sur l'iPhone, selon les réglages gardés. Sans
+/// `udid`, par le Wi-Fi ([`valise_preparer_wifi`]) ; sinon par le câble :
 ///
 /// 1. reprend les écoutes des valises déjà sur le téléphone (`journal.json`) ;
 /// 2. prépare la valise dans les données de l'app ;
@@ -134,12 +135,15 @@ pub(crate) fn valise_iphone(udid: Option<String>) -> EtatIphone {
 pub(crate) fn valise_envoyer(
     app: tauri::AppHandle,
     etat: State<Etat>,
-    udid: String,
+    udid: Option<String>,
     nom: String,
 ) -> Result<(), String> {
     if nom.is_empty() || nom.contains(['/', '\\']) || nom.starts_with('.') {
         return Err(format!("nom de valise invalide : « {nom} »"));
     }
+    let Some(udid) = udid else {
+        return valise_preparer_wifi(app, &etat, nom);
+    };
     let db = etat.db.clone();
     let app_wifi = app.clone();
     let depart = AvancementEnvoiValise {
@@ -220,8 +224,10 @@ pub(crate) fn valise_envoyer(
                     iphone::copier_vers(&udid, &liste, iphone::A_RETIRER)?;
                 }
 
-                // 5. Ménage, et l'appairage Wi-Fi au passage (`wifi.rs`).
+                // 5. Ménage, et l'appairage Wi-Fi au passage (`wifi.rs`) ; une
+                // valise qui attendait le Wi-Fi n'a plus lieu d'être.
                 let _ = std::fs::remove_dir_all(&travail);
+                wifi::retirer_valise(etat);
                 if let Err(e) = wifi::appairer(&app_wifi, etat, &udid) {
                     tracing::warn!(erreur = %e, "appairage Wi-Fi impossible");
                 }
@@ -240,6 +246,53 @@ pub(crate) fn valise_envoyer(
                         retirables.join(", ")
                     );
                 }
+                if !rapport.manquants.is_empty() {
+                    msg += &format!(" ; {} fichier(s) introuvable(s)", rapport.manquants.len());
+                }
+                Ok(msg)
+            })();
+            issue.unwrap_or_else(|err| format!("échec : {err}"))
+        },
+    )
+}
+
+/// L'envoi sans câble (`wifi.rs`) : la base, les pochettes et le manifeste
+/// sont préparés ici, sans recopier l'audio ; l'iPhone appairé prend la
+/// valise à sa prochaine ouverture, en ne téléchargeant que ce qu'il n'a pas.
+fn valise_preparer_wifi(app: tauri::AppHandle, etat: &Etat, nom: String) -> Result<(), String> {
+    if !wifi::ecoute(etat) {
+        return Err("aucun iPhone branché ni appairé pour le Wi-Fi".into());
+    }
+    let db = etat.db.clone();
+    let depart = AvancementEnvoiValise {
+        etape: "Préparation pour le Wi-Fi".into(),
+        ..Default::default()
+    };
+    passe::lancer(
+        app,
+        |e| &e.valise_envoi,
+        "un envoi est déjà en cours",
+        depart,
+        move |etat| {
+            let issue = (|| -> Result<String, String> {
+                let lib = Library::open(&db).map_err(echec)?;
+                let mut reglages = lib.reglages_valise().map_err(echec)?;
+                reglages.modele = rusty_music_analysis::passe::MODELE.to_string();
+                let sel = lib.selectionner_valise(&reglages).map_err(echec)?;
+                if sel.albums.is_empty() {
+                    return Err("la sélection est vide".into());
+                }
+                let rapport = wifi::preparer_valise(etat, &lib, &sel, &nom, |i, n, _| {
+                    let mut e = verrou(&etat.valise_envoi);
+                    e.avancement.faits = i;
+                    e.avancement.total = n;
+                })?;
+                let mut msg = format!(
+                    "« {nom} » prête pour le Wi-Fi : {} albums, {:.1} Go ; l'iPhone la prendra \
+                     à sa prochaine ouverture, sans retélécharger ce qu'il porte déjà",
+                    rapport.albums,
+                    rapport.octets as f64 / (1024.0 * 1024.0 * 1024.0)
+                );
                 if !rapport.manquants.is_empty() {
                     msg += &format!(" ; {} fichier(s) introuvable(s)", rapport.manquants.len());
                 }

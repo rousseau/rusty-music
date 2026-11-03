@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Le serveur Wi-Fi du compagnon iOS (étape 4B de `docs/plan-ios-compagnon.md`) :
-//! le passage de la lecture dans les deux sens, sans câble (option B). Le
-//! protocole et le client de l'iPhone vivent dans `rusty_music_core::appairage`.
+//! le passage de la lecture dans les deux sens, sans câble (option B), et la
+//! valise par différence. Le protocole et le client de l'iPhone vivent dans
+//! `rusty_music_core::appairage`.
 //!
 //! Il écoute tant que l'app est ouverte, dès qu'un iPhone a été appairé — au
 //! câble, par [`appairer`], appelé après un envoi de valise ou un passage par
@@ -13,8 +14,12 @@
 
 use std::io::Read;
 
-use rusty_music_core::appairage::{self, route, Accuse, Appairage, Bonjour, Recu};
+use rusty_music_core::appairage::{
+    self, route, Accuse, Appairage, Bonjour, DemandeFichier, EnvoiValise, JournalVerse, Recu,
+    ValiseRecue,
+};
 use rusty_music_core::passage::Passage;
+use rusty_music_core::valise::{self, Journal, Rapport, Selection};
 
 use super::*;
 
@@ -22,8 +27,9 @@ use super::*;
 /// après une demi-heure : la lecture du Mac a continué.
 const ATTENTE_MAX: Duration = Duration::from_secs(30 * 60);
 
-/// Un passage tient en quelques kilo-octets ; au-delà, on ne lit pas.
-const CORPS_MAX: u64 = 1 << 20;
+/// Un passage tient en quelques kilo-octets, un journal d'écoutes en quelques
+/// centaines ; au-delà, on ne lit pas.
+const CORPS_MAX: u64 = 8 << 20;
 
 #[derive(Default)]
 pub(crate) struct EtatWifi {
@@ -33,8 +39,27 @@ pub(crate) struct EtatWifi {
     erreur: Option<String>,
     /// Le passage Mac → iPhone que l'iPhone n'a pas encore pris.
     en_attente: Option<(Passage, Instant)>,
+    /// La valise prête pour le Wi-Fi, que l'iPhone n'a pas encore prise.
+    valise: Option<ValisePrete>,
     /// Ce qui s'est passé en dernier, pour le bloc iPhone de Valise.
     dernier: Option<String>,
+}
+
+/// Une valise préparée sans son audio ([`valise::preparer`]) : la base, les
+/// pochettes et le manifeste dans `dossier`, l'audio servi depuis la
+/// bibliothèque.
+struct ValisePrete {
+    envoi: EnvoiValise,
+    dossier: PathBuf,
+}
+
+/// Où vit la valise prête, avec `envoi.json` qui la décrit : elle survit à un
+/// redémarrage du Mac.
+fn dossier_envoi(etat: &Etat) -> PathBuf {
+    etat.db
+        .parent()
+        .map_or_else(std::env::temp_dir, Path::to_path_buf)
+        .join("valise-wifi")
 }
 
 fn fichier(etat: &Etat) -> PathBuf {
@@ -49,6 +74,79 @@ pub(crate) fn demarrer(app: &tauri::AppHandle) {
     let etat = app.state::<Etat>();
     if let Ok(a) = Appairage::lire(&fichier(&etat)) {
         ecouter(app, &etat, a);
+    }
+    let racine = dossier_envoi(&etat);
+    if let Some(envoi) = std::fs::read(racine.join("envoi.json"))
+        .ok()
+        .and_then(|o| serde_json::from_slice::<EnvoiValise>(&o).ok())
+    {
+        verrou(&etat.wifi).valise = Some(ValisePrete {
+            dossier: racine.join(&envoi.nom),
+            envoi,
+        });
+    }
+}
+
+/// `true` si le serveur écoute : un iPhone est appairé.
+pub(crate) fn ecoute(etat: &Etat) -> bool {
+    verrou(&etat.wifi).serveur.is_some()
+}
+
+/// Prépare `selection` pour le Wi-Fi sous le nom `nom` et la tient à la
+/// disposition de l'iPhone, à la place d'une précédente.
+pub(crate) fn preparer_valise(
+    etat: &Etat,
+    lib: &Library,
+    selection: &Selection,
+    nom: &str,
+    progres: impl FnMut(usize, usize, &valise::AlbumValise),
+) -> Result<Rapport, String> {
+    let racine = dossier_envoi(etat);
+    verrou(&etat.wifi).valise = None;
+    let _ = std::fs::remove_dir_all(&racine);
+    let dossier = racine.join(nom);
+    let (rapport, fichiers) = valise::preparer(lib, selection, &dossier, progres).map_err(echec)?;
+    let mut annexes = Vec::new();
+    lister(&dossier, "", &mut annexes).map_err(echec)?;
+    annexes.sort();
+    // Le manifeste en dernier : une valise n'existe pour l'app qu'avec lui.
+    annexes.retain(|a| a != "valise.json");
+    annexes.push("valise.json".into());
+    let envoi = EnvoiValise {
+        nom: nom.into(),
+        cree_le: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64),
+        fichiers,
+        annexes,
+    };
+    std::fs::write(
+        racine.join("envoi.json"),
+        serde_json::to_vec(&envoi).map_err(echec)?,
+    )
+    .map_err(echec)?;
+    verrou(&etat.wifi).valise = Some(ValisePrete { envoi, dossier });
+    Ok(rapport)
+}
+
+/// Les fichiers sous `dossier`, en chemins relatifs à `/`.
+fn lister(dossier: &Path, prefixe: &str, out: &mut Vec<String>) -> std::io::Result<()> {
+    for e in std::fs::read_dir(dossier)? {
+        let e = e?;
+        let nom = format!("{prefixe}{}", e.file_name().to_string_lossy());
+        if e.file_type()?.is_dir() {
+            lister(&e.path(), &format!("{nom}/"), out)?;
+        } else {
+            out.push(nom);
+        }
+    }
+    Ok(())
+}
+
+/// Une valise partie par le câble rend caduque celle qui attendait le Wi-Fi.
+pub(crate) fn retirer_valise(etat: &Etat) {
+    if verrou(&etat.wifi).valise.take().is_some() {
+        let _ = std::fs::remove_dir_all(dossier_envoi(etat));
     }
 }
 
@@ -173,39 +271,88 @@ pub(crate) trait Cote {
     fn recu(&self, emis_le: i64);
     /// L'iPhone rend la lecture.
     fn recevoir(&self, passage: Passage) -> Result<Accuse, String>;
+    fn valise(&self) -> Option<EnvoiValise>;
+    /// Le fichier à servir pour `rel` (déjà vérifié par
+    /// [`appairage::chemin_sur`]), s'il est de la valise prête.
+    fn fichier_valise(&self, rel: &str) -> Option<PathBuf>;
+    fn valise_recue(&self, nom: &str);
+    /// Verse un journal d'écoutes du téléphone ; rend les nouvelles.
+    fn journal(&self, journal: Journal) -> Result<usize, String>;
 }
 
-/// Le protocole : (code HTTP, corps JSON).
-pub(crate) fn traiter(a: &Appairage, r: &Requete, cote: &impl Cote) -> (u16, Option<Vec<u8>>) {
+/// Ce que le serveur répond.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Corps {
+    Rien,
+    /// JSON en réponse 200, texte d'erreur sinon.
+    Octets(Vec<u8>),
+    /// Un fichier de la valise, envoyé tel quel.
+    Fichier(PathBuf),
+}
+
+/// Le protocole : (code HTTP, corps).
+pub(crate) fn traiter(a: &Appairage, r: &Requete, cote: &impl Cote) -> (u16, Corps) {
     if !a.autorise(r.autorisation) {
-        return (401, None);
+        return (401, Corps::Rien);
     }
+    let illisible = |e: &dyn std::fmt::Display| (400, Corps::Octets(e.to_string().into_bytes()));
     match (r.methode, r.chemin) {
         ("GET", route::BONJOUR) => json(&cote.bonjour()),
         ("GET", route::PASSAGE) => match cote.en_attente() {
             Some(p) => json(&p),
-            None => (204, None),
+            None => (204, Corps::Rien),
         },
         ("POST", route::PASSAGE_RECU) => match serde_json::from_slice::<Recu>(r.corps) {
             Ok(recu) => {
                 cote.recu(recu.emis_le);
-                (204, None)
+                (204, Corps::Rien)
             }
-            Err(e) => (400, Some(e.to_string().into_bytes())),
+            Err(e) => illisible(&e),
         },
         ("POST", route::PASSAGE) => match Passage::depuis_json(r.corps) {
             Ok(p) => match cote.recevoir(p) {
                 Ok(accuse) => json(&accuse),
-                Err(e) => (422, Some(e.into_bytes())),
+                Err(e) => (422, Corps::Octets(e.into_bytes())),
             },
-            Err(e) => (400, Some(e.to_string().into_bytes())),
+            Err(e) => illisible(&e),
         },
-        _ => (404, None),
+        ("GET", route::VALISE) => match cote.valise() {
+            Some(v) => json(&v),
+            None => (204, Corps::Rien),
+        },
+        ("POST", route::VALISE_FICHIER) => {
+            match serde_json::from_slice::<DemandeFichier>(r.corps) {
+                Ok(d) if appairage::chemin_sur(&d.rel) => match cote.fichier_valise(&d.rel) {
+                    Some(f) => (200, Corps::Fichier(f)),
+                    None => (404, Corps::Rien),
+                },
+                Ok(_) => (400, Corps::Rien),
+                Err(e) => illisible(&e),
+            }
+        }
+        ("POST", route::VALISE_RECUE) => match serde_json::from_slice::<ValiseRecue>(r.corps) {
+            Ok(v) => {
+                cote.valise_recue(&v.nom);
+                (204, Corps::Rien)
+            }
+            Err(e) => illisible(&e),
+        },
+        ("POST", route::JOURNAL) => match serde_json::from_slice::<Journal>(r.corps) {
+            Ok(j) => match cote.journal(j) {
+                Ok(nouvelles) => json(&JournalVerse { nouvelles }),
+                Err(e) => (500, Corps::Octets(e.into_bytes())),
+            },
+            Err(e) => illisible(&e),
+        },
+        _ => (404, Corps::Rien),
     }
 }
 
-fn json(v: &impl serde::Serialize) -> (u16, Option<Vec<u8>>) {
-    (200, Some(serde_json::to_vec(v).unwrap_or_default()))
+fn json(v: &impl serde::Serialize) -> (u16, Corps) {
+    (
+        200,
+        Corps::Octets(serde_json::to_vec(v).unwrap_or_default()),
+    )
 }
 
 fn servir(app: &tauri::AppHandle, mut requete: tiny_http::Request) {
@@ -238,14 +385,30 @@ fn servir(app: &tauri::AppHandle, mut requete: tiny_http::Request) {
     if code == 401 {
         tracing::warn!(%chemin, "requête Wi-Fi sans le bon jeton, refusée");
     }
-    let mut r = tiny_http::Response::from_data(reponse.unwrap_or_default()).with_status_code(code);
-    if code == 200 {
-        r.add_header(
-            tiny_http::Header::from_bytes("Content-Type", "application/json")
-                .expect("en-tête valide"),
-        );
-    }
-    let _ = requete.respond(r);
+    repondre(requete, code, reponse);
+}
+
+fn repondre(requete: tiny_http::Request, code: u16, corps: Corps) {
+    let _ = match corps {
+        Corps::Fichier(f) => match std::fs::File::open(&f) {
+            Ok(ouvert) => requete.respond(tiny_http::Response::from_file(ouvert)),
+            Err(e) => {
+                tracing::warn!(fichier = %f.display(), erreur = %e, "fichier de valise illisible");
+                requete.respond(tiny_http::Response::empty(404))
+            }
+        },
+        Corps::Octets(o) => {
+            let mut r = tiny_http::Response::from_data(o).with_status_code(code);
+            if code == 200 {
+                r.add_header(
+                    tiny_http::Header::from_bytes("Content-Type", "application/json")
+                        .expect("en-tête valide"),
+                );
+            }
+            requete.respond(r)
+        }
+        Corps::Rien => requete.respond(tiny_http::Response::empty(code)),
+    };
 }
 
 struct CoteMac<'a> {
@@ -350,6 +513,48 @@ impl Cote for CoteMac<'_> {
             courante_presente: r.courante_presente,
         })
     }
+
+    fn valise(&self) -> Option<EnvoiValise> {
+        verrou(&self.etat.wifi)
+            .valise
+            .as_ref()
+            .map(|v| v.envoi.clone())
+    }
+
+    fn fichier_valise(&self, rel: &str) -> Option<PathBuf> {
+        let w = verrou(&self.etat.wifi);
+        let v = w.valise.as_ref()?;
+        if let Some(f) = v.envoi.fichiers.iter().find(|f| f.rel == rel) {
+            return Some(PathBuf::from(&f.origine));
+        }
+        v.envoi
+            .annexes
+            .iter()
+            .any(|a| a == rel)
+            .then(|| v.dossier.join(rel))
+    }
+
+    fn valise_recue(&self, nom: &str) {
+        let mut w = verrou(&self.etat.wifi);
+        if w.valise.as_ref().is_some_and(|v| v.envoi.nom == nom) {
+            w.valise = None;
+            w.dernier = Some(format!("« {nom} » est arrivée sur l'iPhone."));
+            drop(w);
+            let _ = std::fs::remove_dir_all(dossier_envoi(self.etat));
+            tracing::info!(valise = nom, "valise arrivée sur l'iPhone par le Wi-Fi");
+        }
+    }
+
+    fn journal(&self, journal: Journal) -> Result<usize, String> {
+        let import = verrou(&self.etat.lib)
+            .importer_journal(&journal)
+            .map_err(echec)?;
+        tracing::info!(
+            nouvelles = import.nouvelles,
+            "journal du téléphone repris par le Wi-Fi"
+        );
+        Ok(import.nouvelles)
+    }
 }
 
 /// Ce que le bloc iPhone de Valise montre du Wi-Fi.
@@ -361,6 +566,8 @@ pub(crate) struct EtatWifiVue {
     adresses: Vec<String>,
     erreur: Option<String>,
     en_attente: bool,
+    /// Le nom de la valise prête que l'iPhone n'a pas encore prise.
+    valise: Option<String>,
     dernier: Option<String>,
 }
 
@@ -381,6 +588,7 @@ pub(crate) fn wifi_etat(etat: State<Etat>) -> EtatWifiVue {
             .en_attente
             .as_ref()
             .is_some_and(|(_, depuis)| depuis.elapsed() <= ATTENTE_MAX),
+        valise: w.valise.as_ref().map(|v| v.envoi.nom.clone()),
         dernier: w.dernier.clone(),
     }
 }
@@ -399,6 +607,8 @@ pub(crate) fn oublier_iphone(etat: State<Etat>) -> Result<(), String> {
         serveur.unblock();
     }
     *w = EtatWifi::default();
+    drop(w);
+    let _ = std::fs::remove_dir_all(dossier_envoi(&etat));
     tracing::info!("iPhone oublié : serveur Wi-Fi arrêté");
     Ok(())
 }
@@ -413,6 +623,11 @@ mod tests {
         attente: Option<Passage>,
         recus: RefCell<Vec<i64>>,
         rendus: RefCell<Vec<Passage>>,
+        valise: Option<EnvoiValise>,
+        /// rel → fichier servi.
+        fichiers: HashMap<String, PathBuf>,
+        valises_recues: RefCell<Vec<String>>,
+        journaux: RefCell<Vec<Journal>>,
     }
 
     impl Cote for Faux {
@@ -439,6 +654,20 @@ mod tests {
                 absents: 0,
                 courante_presente: true,
             })
+        }
+        fn valise(&self) -> Option<EnvoiValise> {
+            self.valise.clone()
+        }
+        fn fichier_valise(&self, rel: &str) -> Option<PathBuf> {
+            self.fichiers.get(rel).cloned()
+        }
+        fn valise_recue(&self, nom: &str) {
+            self.valises_recues.borrow_mut().push(nom.into());
+        }
+        fn journal(&self, journal: Journal) -> Result<usize, String> {
+            let n = journal.ecoutes.len();
+            self.journaux.borrow_mut().push(journal);
+            Ok(n)
         }
     }
 
@@ -469,6 +698,13 @@ mod tests {
         }
     }
 
+    fn octets(c: Corps) -> Vec<u8> {
+        match c {
+            Corps::Octets(o) => o,
+            autre => panic!("pas des octets : {autre:?}"),
+        }
+    }
+
     #[test]
     fn sans_le_jeton_rien_ne_passe() {
         let a = appairage();
@@ -482,7 +718,7 @@ mod tests {
             autorisation: Some("Bearer faux"),
             corps: b"",
         };
-        assert_eq!(traiter(&a, &r, &f), (401, None));
+        assert_eq!(traiter(&a, &r, &f), (401, Corps::Rien));
         let sans = Requete {
             autorisation: None,
             ..r
@@ -506,7 +742,7 @@ mod tests {
         };
         let (code, corps) = traiter(&a, &requete(&jeton, "GET", route::PASSAGE, b""), &f);
         assert_eq!(code, 200);
-        assert_eq!(Passage::depuis_json(&corps.unwrap()).unwrap(), passage(42));
+        assert_eq!(Passage::depuis_json(&octets(corps)).unwrap(), passage(42));
 
         let recu = serde_json::to_vec(&Recu { emis_le: 42 }).unwrap();
         assert_eq!(
@@ -524,7 +760,7 @@ mod tests {
         let corps = serde_json::to_vec(&passage(7)).unwrap();
         let (code, reponse) = traiter(&a, &requete(&jeton, "POST", route::PASSAGE, &corps), &f);
         assert_eq!(code, 200);
-        let accuse: Accuse = serde_json::from_slice(&reponse.unwrap()).unwrap();
+        let accuse: Accuse = serde_json::from_slice(&octets(reponse)).unwrap();
         assert_eq!(accuse.pistes, 1);
         assert_eq!(f.rendus.borrow().len(), 1);
 
@@ -532,8 +768,8 @@ mod tests {
         let mut vide = passage(8);
         vide.file.clear();
         let corps = serde_json::to_vec(&vide).unwrap();
-        let (code, raison) = traiter(&a, &requete(&jeton, "POST", route::PASSAGE, &corps), &f);
-        assert_eq!((code, raison.as_deref()), (422, Some(&b"vide"[..])));
+        let reponse = traiter(&a, &requete(&jeton, "POST", route::PASSAGE, &corps), &f);
+        assert_eq!(reponse, (422, Corps::Octets(b"vide".to_vec())));
         assert_eq!(
             traiter(&a, &requete(&jeton, "POST", route::PASSAGE, b"{"), &f).0,
             400
@@ -544,10 +780,60 @@ mod tests {
         );
     }
 
+    #[test]
+    fn la_valise_ne_sert_que_ses_fichiers() {
+        let a = appairage();
+        let jeton = a.autorisation();
+        let f = Faux {
+            fichiers: HashMap::from([("audio/a/01.mp3".into(), PathBuf::from("/m/a.mp3"))]),
+            ..Default::default()
+        };
+        let demande = |rel: &str| serde_json::to_vec(&DemandeFichier { rel: rel.into() }).unwrap();
+        let corps = demande("audio/a/01.mp3");
+        assert_eq!(
+            traiter(
+                &a,
+                &requete(&jeton, "POST", route::VALISE_FICHIER, &corps),
+                &f
+            ),
+            (200, Corps::Fichier("/m/a.mp3".into()))
+        );
+        let corps = demande("audio/a/02.mp3");
+        assert_eq!(
+            traiter(
+                &a,
+                &requete(&jeton, "POST", route::VALISE_FICHIER, &corps),
+                &f
+            )
+            .0,
+            404
+        );
+        // Un chemin qui sort de la valise n'est même pas demandé au Mac.
+        let corps = demande("../../etc/passwd");
+        assert_eq!(
+            traiter(
+                &a,
+                &requete(&jeton, "POST", route::VALISE_FICHIER, &corps),
+                &f
+            )
+            .0,
+            400
+        );
+        assert_eq!(
+            traiter(&a, &requete(&jeton, "GET", route::VALISE, b""), &f).0,
+            204
+        );
+    }
+
     /// Le client de l'iPhone (`rusty_music_core::appairage::Client`) contre un
-    /// vrai `tiny_http` sur la boucle locale.
+    /// vrai `tiny_http` sur la boucle locale : passage, puis valise.
     #[test]
     fn le_client_de_l_iphone_parle_au_serveur() {
+        let dossier = std::env::temp_dir().join(format!("rusty-wifi-mac-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).unwrap();
+        let source = dossier.join("source.mp3");
+        std::fs::write(&source, vec![7u8; 300_000]).unwrap();
+
         let serveur = Arc::new(tiny_http::Server::http("127.0.0.1:0").unwrap());
         let port = serveur.server_addr().to_ip().unwrap().port();
         let a = Appairage {
@@ -555,11 +841,23 @@ mod tests {
             adresses: vec!["127.0.0.2".into(), "127.0.0.1".into()],
             ..appairage()
         };
-        let pour_le_fil = (serveur.clone(), a.clone());
+        let envoi = EnvoiValise {
+            nom: "valise-essai".into(),
+            cree_le: 1,
+            fichiers: vec![valise::FichierEnvoi {
+                rel: "audio/a/01.mp3".into(),
+                origine: source.display().to_string(),
+                octets: 300_000,
+            }],
+            annexes: vec!["valise.json".into()],
+        };
+        let pour_le_fil = (serveur.clone(), a.clone(), envoi.clone(), source.clone());
         let fil = std::thread::spawn(move || {
-            let (serveur, a) = pour_le_fil;
+            let (serveur, a, envoi, source) = pour_le_fil;
             let f = Faux {
                 attente: Some(passage(5)),
+                valise: Some(envoi),
+                fichiers: HashMap::from([("audio/a/01.mp3".into(), source)]),
                 ..Default::default()
             };
             for mut req in serveur.incoming_requests() {
@@ -582,12 +880,13 @@ mod tests {
                     },
                     &f,
                 );
-                req.respond(
-                    tiny_http::Response::from_data(rep.unwrap_or_default()).with_status_code(code),
-                )
-                .unwrap();
+                repondre(req, code, rep);
             }
-            f.recus.into_inner()
+            (
+                f.recus.into_inner(),
+                f.valises_recues.into_inner(),
+                f.journaux.into_inner().len(),
+            )
         });
 
         let (client, bonjour) = appairage::Client::joindre(&a, None).unwrap();
@@ -596,6 +895,28 @@ mod tests {
         let p = client.passage_en_attente().unwrap().unwrap();
         client.accuser(p.emis_le).unwrap();
         assert_eq!(client.rendre(&passage(6)).unwrap().pistes, 1);
+
+        let v = client.valise_en_attente().unwrap().unwrap();
+        assert_eq!(v, envoi);
+        let dest = dossier.join("recu.mp3");
+        assert_eq!(
+            client.telecharger("audio/a/01.mp3", &dest).unwrap(),
+            300_000
+        );
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            std::fs::read(&source).unwrap()
+        );
+        assert!(client.telecharger("audio/a/99.mp3", &dest).is_err());
+        let journal = Journal {
+            format: 1,
+            ecoutes: vec![valise::EcouteJournal {
+                chemin: "/m/a.mp3".into(),
+                le: 10,
+            }],
+        };
+        assert_eq!(client.envoyer_journal(&journal).unwrap(), 1);
+        client.accuser_valise("valise-essai").unwrap();
 
         // Un autre jeton : le client le dit, sans chercher plus loin.
         let intrus = Appairage {
@@ -608,6 +929,10 @@ mod tests {
         ));
 
         serveur.unblock();
-        assert_eq!(fil.join().unwrap(), [5]);
+        let (recus, valises, journaux) = fil.join().unwrap();
+        assert_eq!(recus, [5]);
+        assert_eq!(valises, ["valise-essai"]);
+        assert_eq!(journaux, 1);
+        std::fs::remove_dir_all(&dossier).unwrap();
     }
 }

@@ -320,6 +320,34 @@ async function recevoirPassage() {
     }
   }
   majMac();
+  prendreValise();
+}
+
+/* ------------------------------------------------------- valise Wi-Fi */
+
+const go = (o) => (o / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
+/** La valise que le Mac tient prête, prise par différence (`synchro.rs`) :
+ *  une ligne dit l'avancement, puis l'arrivée ou l'interruption. */
+let suiviValise = null;
+async function prendreValise() {
+  if (suiviValise) return;
+  const lancee = await invoke('synchro_lancer').catch(() => false);
+  if (!lancee) return;
+  suiviValise = setInterval(async () => {
+    const s = await invoke('synchro_etat').catch(() => null);
+    if (!s) return;
+    if (s.en_cours) {
+      if (s.nom && s.total) {
+        dire(`Valise « ${s.nom} » en route : ${s.faits} / ${s.total} morceaux · ${go(s.octets)} / ${go(s.octets_total)} Go.`);
+      }
+      return;
+    }
+    clearInterval(suiviValise);
+    suiviValise = null;
+    if (s.issue) dire(s.issue);
+    if (s.arrivee && etat.ecran === 'valises') afficherValises();
+  }, 1000);
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -391,6 +419,7 @@ async function demarrer() {
   // Un passage du Mac passe avant la dernière session du téléphone.
   const p = await invoke('recevoir_passage').catch(() => null);
   majMac();
+  prendreValise();
   if (p) annoncerPassage(p);
   if (p && p.nom) {
     etat.nbValises = (await invoke('valises')).length;

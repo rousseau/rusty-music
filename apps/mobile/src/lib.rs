@@ -11,6 +11,7 @@ mod en_cours;
 mod passage;
 mod session;
 mod session_audio;
+mod synchro;
 mod wifi;
 
 use std::collections::HashMap;
@@ -55,6 +56,8 @@ pub(crate) struct Etat {
     /// Instant d'émission du dernier passage reçu : celui du Wi-Fi reste en
     /// attente sur le Mac tant que l'accusé n'est pas arrivé.
     dernier_passage: Mutex<i64>,
+    /// La valise en route par le Wi-Fi (`synchro.rs`).
+    synchro: Mutex<synchro::EtatSynchro>,
 }
 
 fn verrou<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -134,7 +137,7 @@ pub(crate) struct EtatLecture {
 /// `a-retirer.json` après avoir repris leurs écoutes (`devicectl` ne sait pas
 /// supprimer un fichier sur l'iPhone). La valise ouverte attend le prochain
 /// passage ; la liste est réécrite sans les noms traités.
-fn retirer_valises_remplacees(dossier: &Path, ouverte: Option<&Path>) {
+pub(crate) fn retirer_valises_remplacees(dossier: &Path, ouverte: Option<&Path>) {
     let liste = dossier.join("a-retirer.json");
     let Some(noms) = std::fs::read(&liste)
         .ok()
@@ -302,6 +305,18 @@ fn recevoir_passage(etat: State<Etat>) -> Result<Option<passage::Recu>, String> 
 #[tauri::command(async)]
 fn mac_wifi(etat: State<Etat>) -> Option<String> {
     wifi::joindre(&etat).map(|(_, bonjour)| bonjour.mac)
+}
+
+/// Prend la valise que le Mac tient prête, s'il y en a une (`synchro.rs`) :
+/// rend tout de suite, la suite se sonde par [`synchro_etat`].
+#[tauri::command]
+fn synchro_lancer(app: tauri::AppHandle) -> bool {
+    synchro::lancer(&app)
+}
+
+#[tauri::command]
+fn synchro_etat(etat: State<Etat>) -> synchro::EtatSynchro {
+    verrou(&etat.synchro).clone()
 }
 
 /// Rend la lecture au Mac par le Wi-Fi.
@@ -787,6 +802,7 @@ pub fn run() {
                 precharge: Mutex::new(()),
                 adresse_mac: Mutex::new(None),
                 dernier_passage: Mutex::new(0),
+                synchro: Mutex::new(synchro::EtatSynchro::default()),
             });
             // Le préchargement tourne côté natif : les minuteries JS d'une
             // webview en arrière-plan sont suspendues, et l'enchaînement des
@@ -825,6 +841,8 @@ pub fn run() {
             recevoir_passage,
             mac_wifi,
             rendre_au_mac,
+            synchro_lancer,
+            synchro_etat,
             jouer,
             ajouter_album,
             file_lecture,

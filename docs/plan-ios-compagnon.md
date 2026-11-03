@@ -9,7 +9,7 @@ recommandation. Décidé : développement lancé le 18 oct. 2026, usage personne
 **Où on en est (19 oct. 2026)** : l'app « Rusty Valise » (`apps/mobile/`)
 tourne sur l'iPhone. Étapes 0 (sauf les mesures), 2, 4A et 6 (sans les avis)
 livrées ; étape 5 en version minimale (valises, albums, lecture) ; étapes 1,
-3 (au-delà de « récents » et « peu écoutés »), 4B (la synchronisation des valises ; le passage par le Wi-Fi est fait) et 7 restent. Le tableau
+3 (au-delà de « récents » et « peu écoutés »), et 7 restent ; 4B est faite, pas encore essayée sur l'iPhone. Le tableau
 « Ordre et charge » porte l'état de chaque étape.
 
 Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
@@ -384,7 +384,32 @@ déverrouillé, même réseau) :
 5. efface la copie locale.
 Une écoute faite entre l'envoi et le prochain affichage de la liste sur le
 téléphone est perdue avec l'ancienne valise (rare, accepté). Tout recopier à
-chaque envoi : pas encore de différence (option B).
+chaque envoi : la différence ne passe que par le Wi-Fi (ci-dessous).
+
+**Fait (3 nov. 2026) : B, par différence.** Tranché le même jour : le Mac
+envoie, l'iPhone prend. « Envoyer sur l'iPhone » sans câble, iPhone appairé
+(voir « Passage de la lecture », B), prépare la valise dans
+`valise-wifi/<nom>` des données de l'app **sans recopier l'audio**
+(`valise::preparer` : base, pochettes, manifeste, et la liste des fichiers
+avec leur chemin d'origine et leur taille), décrite par `envoi.json` pour
+survivre à un redémarrage. Le serveur Wi-Fi (`apps/desktop/src/wifi.rs`) sert
+l'audio depuis la bibliothèque, et rien d'autre que les fichiers de cette
+valise. Au lancement et à chaque retour au premier plan, l'app
+(`apps/mobile/src/synchro.rs`), sur son propre fil :
+1. renvoie au Mac le journal de chaque valise du téléphone ; un échec arrête
+   tout, rien n'est remplacé ;
+2. monte la nouvelle valise dans `.<nom>.partielle` : un fichier que le
+   téléphone porte déjà (même chemin d'origine, même taille) est repris par
+   **lien dur**, les autres sont téléchargés (fichier provisoire puis
+   renommage) ; le manifeste arrive en dernier ;
+3. la met à sa place, retire les anciennes (la valise ouverte attend, comme
+   après le câble) et accuse réception ; le Mac efface sa copie.
+iOS suspend l'app peu après sa sortie du premier plan : le fil s'arrête sur
+une erreur réseau, la prochaine ouverture reprend où il en était. Une ligne
+dit l'avancement (« 120 / 340 morceaux · 1,2 / 3,4 Go »), puis l'arrivée
+(« dont 280 déjà sur l'iPhone »). Un envoi par le câble rend caduque la
+valise qui attendait le Wi-Fi. À essayer pour de vrai : une valise de
+plusieurs Go, l'app quittée puis rouverte en cours de route.
 
 Le rail montre l'iPhone appairé, l'**échéance** de l'app (expiration du profil
 de signature, `devicectl device profile list`) et les valises qu'il porte.
@@ -559,9 +584,8 @@ compte de signature le permet.
 - à essayer pour de vrai : branché en USB, puis en Wi-Fi d'appairage ; app
   ouverte au premier plan, en arrière-plan, fermée.
 
-**B, fait le 3 nov. 2026 pour le passage seul** (pas encore essayé sur
-l'iPhone ; la synchronisation des valises par différence, sur le même
-serveur, reste l'autre moitié de 4B). Tranché le même jour : appairage par un
+**B, fait le 3 nov. 2026** (pas encore essayé sur l'iPhone ; la valise par
+différence, sur le même serveur, est décrite à l'étape 4). Tranché le même jour : appairage par un
 jeton déposé au câble, le passage avant la synchronisation, serveur à
 l'écoute tant que l'app est ouverte dès qu'un iPhone est appairé.
 - appairage : `rusty_music_core::appairage`. Le premier envoi de valise ou
@@ -633,7 +657,7 @@ l'écoute tant que l'app est ouverte dès qu'un iPhone est appairé.
 | 6 | Retour des écoutes (`valise importer`) | M | 5 | **fait**, sans les avis |
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
-| 4B | Synchronisation Wi-Fi | M | 6 | serveur, appairage et passage **faits** (3 nov.) ; reste la synchronisation des valises par différence |
+| 4B | Synchronisation Wi-Fi | M | 6 | **faite** (3 nov.) : appairage, passage, valise par différence ; à essayer sur l'iPhone |
 | — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | A **fait** (2 nov.), B **fait** (3 nov.) ; les deux à essayer sur l'iPhone |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement

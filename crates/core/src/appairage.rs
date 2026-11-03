@@ -24,6 +24,14 @@
 //!   pause.
 //! - iPhone → Mac : l'iPhone envoie sa lecture ; le Mac la charge en pause et
 //!   répond un [`Accuse`], après quoi l'iPhone se met en pause.
+//!
+//! **Valise par différence.** « Envoyer sur l'iPhone » sans câble prépare la
+//! base, les pochettes et le manifeste ([`crate::valise::preparer`]) et tient
+//! un [`EnvoiValise`] en attente ([`route::VALISE`]). L'iPhone renvoie d'abord
+//! ses journaux d'écoutes ([`route::JOURNAL`]), reprend par lien dur les
+//! fichiers qu'il porte déjà (même chemin d'origine, même taille), télécharge
+//! les autres ([`route::VALISE_FICHIER`]), puis accuse réception
+//! ([`route::VALISE_RECUE`]). Interrompu, il reprend où il en était.
 
 use std::io::Read;
 use std::path::Path;
@@ -53,6 +61,15 @@ pub mod route {
     pub const PASSAGE: &str = "/v1/passage";
     /// `POST` : l'iPhone accuse réception d'un passage ([`super::Recu`]).
     pub const PASSAGE_RECU: &str = "/v1/passage/recu";
+    /// `GET` : la valise que le Mac tient prête ([`super::EnvoiValise`], 204
+    /// s'il n'y en a pas).
+    pub const VALISE: &str = "/v1/valise";
+    /// `POST` `{"rel": …}` : un fichier de la valise prête, en octets.
+    pub const VALISE_FICHIER: &str = "/v1/valise/fichier";
+    /// `POST` `{"nom": …}` : la valise est arrivée, le Mac l'oublie.
+    pub const VALISE_RECUE: &str = "/v1/valise/recue";
+    /// `POST` : un journal d'écoutes du téléphone ([`crate::valise::Journal`]).
+    pub const JOURNAL: &str = "/v1/journal";
 }
 
 /// Ce que le câble dépose sur l'iPhone.
@@ -80,6 +97,47 @@ pub struct Bonjour {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Recu {
     pub emis_le: i64,
+}
+
+/// La valise que le Mac tient prête pour le Wi-Fi.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnvoiValise {
+    /// Nom du dossier de la valise sur le téléphone.
+    pub nom: String,
+    pub cree_le: i64,
+    /// L'audio, servi depuis la bibliothèque du Mac.
+    pub fichiers: Vec<crate::valise::FichierEnvoi>,
+    /// Le reste (base, pochettes), `valise.json` en dernier : une valise
+    /// n'existe pour l'app qu'une fois son manifeste arrivé.
+    pub annexes: Vec<String>,
+}
+
+/// `rel` est-il un chemin sûr dans une valise : relatif, sans `..` ?
+pub fn chemin_sur(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.starts_with('/')
+        && !rel.contains('\\')
+        && rel
+            .split('/')
+            .all(|c| !c.is_empty() && c != "." && c != "..")
+}
+
+/// Corps de [`route::VALISE_FICHIER`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DemandeFichier {
+    pub rel: String,
+}
+
+/// Corps de [`route::VALISE_RECUE`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ValiseRecue {
+    pub nom: String,
+}
+
+/// Réponse de [`route::JOURNAL`] : écoutes ajoutées à la base du Mac.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JournalVerse {
+    pub nouvelles: usize,
 }
 
 /// Ce que le Mac a repris d'une lecture rendue par l'iPhone.
@@ -149,6 +207,8 @@ fn nouveau_jeton() -> Result<String> {
 /// au premier plan, et un Mac absent ne doit pas faire attendre l'écran.
 pub struct Client {
     agent: ureq::Agent,
+    /// Sans délai global : un fichier audio peut mettre une minute à venir.
+    fichiers: ureq::Agent,
     base: String,
     autorisation: String,
 }
@@ -164,6 +224,12 @@ impl Client {
             .http_status_as_error(false)
             .build()
             .into();
+        let fichiers: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_millis(1500)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .http_status_as_error(false)
+            .build()
+            .into();
         let mut derniere = Error::Reseau("aucune adresse où chercher le Mac".into());
         let adresses = preferee.into_iter().chain(
             a.adresses
@@ -174,6 +240,7 @@ impl Client {
         for adresse in adresses {
             let client = Self {
                 agent: agent.clone(),
+                fichiers: fichiers.clone(),
                 base: format!("http://{adresse}:{}", a.port),
                 autorisation: a.autorisation(),
             };
@@ -229,6 +296,58 @@ impl Client {
         json(&reponse)
     }
 
+    /// La valise que le Mac tient prête, s'il y en a une.
+    pub fn valise_en_attente(&self) -> Result<Option<EnvoiValise>> {
+        let (code, corps) = self.envoyer("GET", route::VALISE, None)?;
+        if code == 204 {
+            return Ok(None);
+        }
+        attendre(code, 200, route::VALISE)?;
+        json(&corps).map(Some)
+    }
+
+    /// Télécharge le fichier `rel` de la valise prête dans `dest`, par un
+    /// fichier provisoire : un fichier présent est toujours complet.
+    pub fn telecharger(&self, rel: &str, dest: &Path) -> Result<u64> {
+        let corps = serde_json::to_vec(&DemandeFichier { rel: rel.into() })
+            .map_err(|e| Error::Parsing(e.to_string()))?;
+        let reseau = |e: ureq::Error| Error::Reseau(format!("{rel} : {e}"));
+        let mut reponse = self
+            .fichiers
+            .post(format!("{}{}", self.base, route::VALISE_FICHIER))
+            .header("Authorization", &self.autorisation)
+            .header("Content-Type", "application/json")
+            .send(&corps[..])
+            .map_err(reseau)?;
+        let code = reponse.status().as_u16();
+        if code == 401 {
+            return Err(refus());
+        }
+        attendre(code, 200, rel)?;
+        let provisoire = dest.with_extension("partiel");
+        let mut sortie = std::fs::File::create(&provisoire)?;
+        let n = std::io::copy(&mut reponse.body_mut().as_reader(), &mut sortie)?;
+        sortie.sync_all()?;
+        std::fs::rename(&provisoire, dest)?;
+        Ok(n)
+    }
+
+    /// Verse un journal d'écoutes du téléphone dans la base du Mac.
+    pub fn envoyer_journal(&self, journal: &crate::valise::Journal) -> Result<usize> {
+        let corps = serde_json::to_vec(journal).map_err(|e| Error::Parsing(e.to_string()))?;
+        let (code, reponse) = self.envoyer("POST", route::JOURNAL, Some(&corps))?;
+        attendre(code, 200, route::JOURNAL)?;
+        json::<JournalVerse>(&reponse).map(|v| v.nouvelles)
+    }
+
+    /// Dit au Mac que la valise `nom` est arrivée.
+    pub fn accuser_valise(&self, nom: &str) -> Result<()> {
+        let corps = serde_json::to_vec(&ValiseRecue { nom: nom.into() })
+            .map_err(|e| Error::Parsing(e.to_string()))?;
+        let (code, _) = self.envoyer("POST", route::VALISE_RECUE, Some(&corps))?;
+        attendre(code, 204, route::VALISE_RECUE)
+    }
+
     fn envoyer(&self, methode: &str, route: &str, corps: Option<&[u8]>) -> Result<(u16, Vec<u8>)> {
         let url = format!("{}{route}", self.base);
         let reseau = |e: ureq::Error| Error::Reseau(format!("{route} : {e}"));
@@ -248,13 +367,17 @@ impl Client {
         .map_err(reseau)?;
         let code = reponse.status().as_u16();
         if code == 401 {
-            return Err(Error::AccesRefuse(
-                "le Mac ne reconnaît plus cet iPhone : rebrancher le câble pour l'appairer".into(),
-            ));
+            return Err(refus());
         }
         let corps = reponse.body_mut().read_to_vec().map_err(reseau)?;
         Ok((code, corps))
     }
+}
+
+fn refus() -> Error {
+    Error::AccesRefuse(
+        "le Mac ne reconnaît plus cet iPhone : rebrancher le câble pour l'appairer".into(),
+    )
 }
 
 fn attendre(code: u16, attendu: u16, route: &str) -> Result<()> {
@@ -300,6 +423,24 @@ mod tests {
             assert_eq!(mode & 0o777, 0o600);
         }
         std::fs::remove_dir_all(&dossier).unwrap();
+    }
+
+    #[test]
+    fn seuls_les_chemins_de_valise_passent() {
+        for bon in ["valise.json", "pochettes/a1.jpg", "audio/a1/01 - Titre.mp3"] {
+            assert!(chemin_sur(bon), "{bon}");
+        }
+        for mauvais in [
+            "",
+            "/etc/passwd",
+            "../x",
+            "audio/../../x",
+            "a//b",
+            "a\\b",
+            "./x",
+        ] {
+            assert!(!chemin_sur(mauvais), "{mauvais}");
+        }
     }
 
     #[test]

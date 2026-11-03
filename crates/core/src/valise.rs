@@ -764,6 +764,18 @@ fn nom_piste(rang: usize, titre: Option<&str>, source: &Path) -> String {
     }
 }
 
+/// Un fichier audio de la valise, tel que [`preparer`] le laisse à sa place :
+/// le Mac le sert au téléphone par le Wi-Fi (`crate::appairage`), qui ne
+/// télécharge que ceux qu'il n'a pas déjà.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FichierEnvoi {
+    /// Chemin dans la valise (`audio/<album>/NN - Titre.ext`).
+    pub rel: String,
+    /// Chemin d'origine sur le Mac : l'identité du morceau, et le fichier servi.
+    pub origine: String,
+    pub octets: u64,
+}
+
 /// Exporte `selection` dans le dossier `sortie`, qui doit être absent ou vide.
 ///
 /// `progres(i, n, album)` est appelé avant la copie de chaque album.
@@ -771,18 +783,44 @@ pub fn exporter(
     lib: &Library,
     selection: &Selection,
     sortie: &Path,
-    mut progres: impl FnMut(usize, usize, &AlbumValise),
+    progres: impl FnMut(usize, usize, &AlbumValise),
 ) -> Result<Rapport> {
+    ecrire_valise(lib, selection, sortie, true, progres).map(|(r, _)| r)
+}
+
+/// Comme [`exporter`], sans recopier l'audio : `sortie` reçoit la base, les
+/// pochettes et le manifeste, et la liste rendue dit où chaque fichier audio
+/// irait dans la valise. Pour l'envoi par le Wi-Fi, où le Mac sert les
+/// fichiers depuis la bibliothèque.
+pub fn preparer(
+    lib: &Library,
+    selection: &Selection,
+    sortie: &Path,
+    progres: impl FnMut(usize, usize, &AlbumValise),
+) -> Result<(Rapport, Vec<FichierEnvoi>)> {
+    ecrire_valise(lib, selection, sortie, false, progres)
+}
+
+fn ecrire_valise(
+    lib: &Library,
+    selection: &Selection,
+    sortie: &Path,
+    copier: bool,
+    mut progres: impl FnMut(usize, usize, &AlbumValise),
+) -> Result<(Rapport, Vec<FichierEnvoi>)> {
     if sortie.exists() && std::fs::read_dir(sortie)?.next().is_some() {
         return Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             format!("le dossier {} n'est pas vide", sortie.display()),
         )));
     }
-    std::fs::create_dir_all(sortie.join("audio"))?;
+    if copier {
+        std::fs::create_dir_all(sortie.join("audio"))?;
+    }
     std::fs::create_dir_all(sortie.join("pochettes"))?;
 
     let mut rapport = Rapport::default();
+    let mut envoi = Vec::new();
     let mut fichiers: Vec<(i64, String, String)> = Vec::new();
     let mut pochettes: HashMap<String, String> = HashMap::new();
     let mut lecture = lib
@@ -792,7 +830,9 @@ pub fn exporter(
     for (i, album) in selection.albums.iter().enumerate() {
         progres(i, selection.albums.len(), album);
         let dossier_rel = format!("audio/{}", album.id);
-        std::fs::create_dir_all(sortie.join(&dossier_rel))?;
+        if copier {
+            std::fs::create_dir_all(sortie.join(&dossier_rel))?;
+        }
 
         let mut premiere: Option<PathBuf> = None;
         for (rang, &id) in album.pistes.iter().enumerate() {
@@ -803,10 +843,22 @@ pub fn exporter(
                 "{dossier_rel}/{}",
                 nom_piste(rang, titre.as_deref(), &source)
             );
-            match std::fs::copy(&source, sortie.join(&rel)) {
+            let copie = if copier {
+                std::fs::copy(&source, sortie.join(&rel))
+            } else {
+                std::fs::metadata(&source).map(|m| m.len())
+            };
+            match copie {
                 Ok(n) => {
                     rapport.pistes += 1;
                     rapport.octets += n;
+                    if !copier {
+                        envoi.push(FichierEnvoi {
+                            rel: rel.clone(),
+                            origine: path,
+                            octets: n,
+                        });
+                    }
                     fichiers.push((id, album.id.clone(), rel));
                     premiere.get_or_insert(source);
                 }
@@ -852,7 +904,7 @@ pub fn exporter(
         .map_err(|e| Error::Parsing(format!("manifeste : {e}")))?;
     std::fs::write(sortie.join("valise.json"), json)?;
 
-    Ok(rapport)
+    Ok((rapport, envoi))
 }
 
 /// Nom du journal d'écoutes que le téléphone tient à la racine de sa valise.
@@ -1174,6 +1226,46 @@ mod tests {
 
         // Un second export dans le même dossier est refusé.
         assert!(exporter(&lib, &sel, &sortie, |_, _, _| {}).is_err());
+        let _ = std::fs::remove_dir_all(&racine);
+    }
+
+    /// La préparation pour le Wi-Fi écrit la même base sans copier l'audio,
+    /// et dit où chaque fichier irait : la base et la liste concordent.
+    #[test]
+    fn preparer_laisse_l_audio_et_le_decrit() {
+        let racine = racine_test("preparer");
+        let lib = bibliotheque(&racine, 2, 64);
+        let sel = lib
+            .selectionner_valise(&Reglages {
+                parts: vec![Part::budget(Regle::Recents)],
+                budget_octets: 10_000,
+                ..Default::default()
+            })
+            .unwrap();
+        let sortie = racine.join("prete");
+        let (rapport, fichiers) = preparer(&lib, &sel, &sortie, |_, _, _| {}).unwrap();
+        assert!(!sortie.join("audio").exists());
+        assert!(sortie.join("valise.json").is_file());
+        assert_eq!(fichiers.len(), rapport.pistes);
+        assert_eq!(
+            fichiers.iter().map(|f| f.octets).sum::<u64>(),
+            rapport.octets
+        );
+
+        let v = Library::open(&sortie.join("base.sqlite")).unwrap();
+        for f in &fichiers {
+            assert!(Path::new(&f.origine).is_file());
+            let dans_la_base: String = v
+                .conn
+                .query_row(
+                    "SELECT f.fichier FROM tracks t JOIN valise_fichier f ON f.track_id = t.id
+                      WHERE t.path = ?1",
+                    [&f.origine],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(dans_la_base, f.rel);
+        }
         let _ = std::fs::remove_dir_all(&racine);
     }
 

@@ -167,6 +167,7 @@ mod tests {
             precharge: Mutex::new(()),
             adresse_mac: Mutex::new(None),
             dernier_passage: Mutex::new(0),
+            synchro: Mutex::new(crate::synchro::EtatSynchro::default()),
         }
     }
 

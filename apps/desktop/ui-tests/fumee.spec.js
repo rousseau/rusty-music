@@ -376,7 +376,7 @@ test("passage par le Wi-Fi : sans Xcode, la lecture attend l'iPhone appairé, pu
     const f = window.__FIXTURES__;
     f.wifi_etat = (_, e) => e.oublie
       ? { appaire: false, ecoute: false, port: null, adresses: [], erreur: null, en_attente: false, dernier: null }
-      : { appaire: true, ecoute: true, port: 47391, adresses: ["mac.local"], erreur: null, en_attente: Boolean(e.attente), dernier: null };
+      : { appaire: true, ecoute: true, port: 47391, adresses: ["mac.local"], erreur: null, en_attente: Boolean(e.attente), valise: null, dernier: null };
     f.emporter_lecture = (_, e) => { e.attente = true; return { pistes: 2, titre: "Ouverture", position_ms: 12_000, mac_en_pause: false, par_wifi: true, cable_echec: null }; };
     f.oublier_iphone = (_, e) => { e.oublie = true; return null; };
   });
@@ -392,6 +392,35 @@ test("passage par le Wi-Fi : sans Xcode, la lecture attend l'iPhone appairé, pu
   await page.click("#iphone-oublier");
   await expect(page.locator("#iphone-oublier")).toBeHidden();
   await expect(page.locator("#iphone-emporter")).toBeHidden();
+});
+
+test("valise par le Wi-Fi : sans câble, Envoyer prépare et la ligne dit qu'elle attend l'iPhone", async ({ page }) => {
+  await page.evaluate(() => {
+    const f = window.__FIXTURES__;
+    f.valise_apercu = {
+      albums: [{ id: "a1", album: "Premier disque", artiste: "Quatuor fictif", annee: 2020, regle: "recents", famille: null, nb_pistes: 8, octets: 80_000_000, duree_ms: 2_400_000, ajoute_le: null, ecoutes: 0 }],
+      octets: 80_000_000, budget_octets: 8_000_000_000,
+    };
+    f.wifi_etat = (_, e) => ({ appaire: true, ecoute: true, port: 47391, adresses: ["mac.local"], erreur: null, en_attente: false,
+      valise: e.prete ? "valise-essai" : null, dernier: null });
+    f.valise_envoyer = (_, e) => { e.tours = 0; return null; };
+    f.valise_etat = (_, e) => {
+      const fini = e.tours !== undefined && ++e.tours > 1;
+      if (fini) e.prete = true;
+      return {
+        envoi: e.tours === undefined || fini
+          ? { en_cours: false, etape: "", faits: 0, total: 0, resultat: fini ? "« valise-essai » prête pour le Wi-Fi : 1 albums, 0.1 Go" : null }
+          : { en_cours: true, etape: "Préparation pour le Wi-Fi", faits: 0, total: 1, resultat: null },
+        renouvellement: { en_cours: false, ligne: "", resultat: null },
+      };
+    };
+  });
+  await page.click('button.mode[data-mode="valise"]');
+  await expect(page.locator("#valise-envoyer")).toBeEnabled();
+  await page.click("#valise-envoyer");
+  await expect(page.locator("#valise-avancement")).toContainText("prête pour le Wi-Fi");
+  await expect(page.locator("#iphone-wifi")).toContainText("«\u00a0valise-essai\u00a0» attend que l'iPhone la prenne");
+  expect((await appels(page, "valise_envoyer")).at(-1).udid).toBeNull();
 });
 
 test("Compléter : la phrase dit ce qui part, la passe se lance puis s'annule en bloc", async ({ page }) => {
