@@ -38,6 +38,11 @@ serde_json.workspace = true
 pmtiles = { version = "0.24", default-features = false, features = ["mmap-async-tokio"] }
 tokio = { version = "1", features = ["rt", "fs"] }
 
+# Le serveur Wi-Fi du compagnon iOS (`src/wifi.rs`, étape 4B) : quelques
+# requêtes JSON par jour, sur son propre fil. Synchrone et sans tokio, plutôt
+# qu'un `axum`/`hyper` serveur pour si peu. Licence MIT OU Apache-2.0.
+tiny_http = "0.12"
+
 # « En cours de lecture » de macOS (centre de contrôle, AirPods, écran verrouillé)
 # et commandes à distance — voir `src/systeme_media.rs`. macOS seulement : les
 # autres plateformes gardent les raccourcis globaux (`global-hotkey`). Licence MIT.

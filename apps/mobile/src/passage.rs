@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Réception du passage de la lecture Mac → iPhone (option A,
-//! `rusty_music_core::passage`). Le Mac dépose `session-passage.json` dans les
-//! Documents de l'app puis se met en pause ; l'app le lit au lancement et à
-//! chaque retour au premier plan, rouvre la valise qui porte le plus de
-//! morceaux de la file et la reprend **en pause** — un passage ne doit jamais
-//! faire sonner un iPhone dans une poche. Le fichier est consommé, qu'il
-//! serve ou non : un passage ne se rejoue pas.
+//! Réception du passage de la lecture Mac → iPhone (`rusty_music_core::passage`).
+//! Par le câble (option A), le Mac dépose `session-passage.json` dans les
+//! Documents de l'app puis se met en pause ; par le Wi-Fi (option B,
+//! `wifi.rs`), il le tient en attente et ne se tait qu'à l'accusé de l'app.
+//! L'app regarde au lancement et à chaque retour au premier plan, rouvre la
+//! valise qui porte le plus de morceaux de la file et la reprend **en pause**
+//! — un passage ne doit jamais faire sonner un iPhone dans une poche. Un
+//! passage ne se rejoue pas : le fichier est consommé, qu'il serve ou non, et
+//! celui du Wi-Fi est reconnu à son instant d'émission.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -15,7 +17,7 @@ use rusty_music_core::passage::{Passage, FICHIER};
 use rusty_music_player::{Instantane, Repetition};
 use serde::Serialize;
 
-use crate::{echec, lecteur, ouvrir, session, AlbumVue, Etat};
+use crate::{echec, lecteur, ouvrir, session, verrou, wifi, AlbumVue, Etat};
 
 /// Ce que l'app dit du passage reçu.
 #[derive(Serialize)]
@@ -56,27 +58,63 @@ fn valise_pour(dossier: &Path, passage: &Passage) -> Option<String> {
         .map(|(_, nom)| nom)
 }
 
-/// Lit et applique le passage déposé par le Mac, s'il y en a un.
+/// Lit et applique le passage du Mac, déposé au câble ou en attente sur le
+/// Wi-Fi, s'il y en a un.
 pub(crate) fn recevoir(etat: &Etat) -> Result<Option<Recu>, String> {
     let chemin = etat.dossier.join(FICHIER);
-    if !chemin.is_file() {
+    if chemin.is_file() {
+        let lu = Passage::lire(&chemin);
+        // Consommé avant d'être appliqué : un passage illisible ou qui échoue
+        // ne doit pas revenir à chaque lancement.
+        let _ = std::fs::remove_file(&chemin);
+        let passage = lu.map_err(echec)?;
+        *verrou(&etat.dernier_passage) = passage.emis_le;
+        tracing::info!(
+            pistes = passage.file.len(),
+            "passage reçu du Mac, par le câble"
+        );
+        return appliquer(etat, &passage).map(Some);
+    }
+
+    let Some((client, _)) = wifi::joindre(etat) else {
+        return Ok(None);
+    };
+    let passage = match client.passage_en_attente() {
+        Ok(Some(p)) => p,
+        Ok(None) => return Ok(None),
+        Err(e) => {
+            tracing::warn!(erreur = %e, "passage du Mac illisible");
+            return Ok(None);
+        }
+    };
+    if std::mem::replace(&mut *verrou(&etat.dernier_passage), passage.emis_le) == passage.emis_le {
         return Ok(None);
     }
-    let lu = Passage::lire(&chemin);
-    // Consommé avant d'être appliqué : un passage illisible ou qui échoue ne
-    // doit pas revenir à chaque lancement.
-    let _ = std::fs::remove_file(&chemin);
-    let passage = lu.map_err(echec)?;
-    tracing::info!(pistes = passage.file.len(), "passage reçu du Mac");
+    tracing::info!(
+        pistes = passage.file.len(),
+        "passage reçu du Mac, par le Wi-Fi"
+    );
+    let recu = appliquer(etat, &passage)?;
+    // Le Mac ne se tait qu'à l'accusé : sans valise qui porte la file, rien
+    // n'a été repris ici, il continue de jouer.
+    if recu.nom.is_some() {
+        if let Err(e) = client.accuser(passage.emis_le) {
+            tracing::warn!(erreur = %e, "accusé du passage perdu : le Mac continue");
+        }
+    }
+    Ok(Some(recu))
+}
 
-    let Some(nom) = valise_pour(&etat.dossier, &passage) else {
-        return Ok(Some(Recu {
+/// Rouvre la valise qui porte le plus de la file et y reprend le passage.
+fn appliquer(etat: &Etat, passage: &Passage) -> Result<Recu, String> {
+    let Some(nom) = valise_pour(&etat.dossier, passage) else {
+        return Ok(Recu {
             nom: None,
             albums: Vec::new(),
             pistes: 0,
             absents: passage.file.len(),
             courante_presente: false,
-        }));
+        });
     };
     let albums = ouvrir(etat, &nom)?;
     let r = {
@@ -108,13 +146,13 @@ pub(crate) fn recevoir(etat: &Etat) -> Result<Option<Recu>, String> {
     if let Err(e) = session::sauvegarder(etat, &mut session::Memo::default()) {
         tracing::warn!(erreur = %e, "sauvegarde du passage impossible");
     }
-    Ok(Some(Recu {
+    Ok(Recu {
         nom: Some(nom),
         albums,
         pistes: r.file.len(),
         absents: r.absents,
         courante_presente: r.courante_presente,
-    }))
+    })
 }
 
 #[cfg(test)]

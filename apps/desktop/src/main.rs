@@ -45,6 +45,7 @@ mod systeme;
 mod systeme_media;
 mod tuiles;
 mod valise;
+mod wifi;
 
 // Les commandes vivent dans un module par mode ; tout est rendu visible ici,
 // pour `generate_handler!` et `main`.
@@ -153,6 +154,9 @@ struct Etat {
     valise_envoi: Mutex<EtatEnvoiValise>,
     /// Avancement de la réinstallation de l'app compagnon (mode Valise).
     valise_renouvellement: Mutex<EtatRenouvellement>,
+    /// Le serveur Wi-Fi du compagnon : appairage, passage en attente
+    /// (`wifi.rs`). Ordre des verrous : `wifi` avant `player`.
+    wifi: Mutex<wifi::EtatWifi>,
     demix: Mutex<EtatDemix>,
     /// Où en est la transposition des stems. Elle tourne dans son fil : c'est
     /// une vingtaine de secondes par stem, et l'interface doit rester servie.
@@ -577,6 +581,7 @@ fn main() {
                 decouvrir: Mutex::new(EtatDecouvrir::default()),
                 valise_envoi: Mutex::new(EtatEnvoiValise::default()),
                 valise_renouvellement: Mutex::new(EtatRenouvellement::default()),
+                wifi: Mutex::new(wifi::EtatWifi::default()),
                 demix: Mutex::new(EtatDemix::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
@@ -610,6 +615,9 @@ fn main() {
                 precharge: Mutex::new(()),
             });
             app.manage(tuiles::Archives::default());
+
+            // Le serveur Wi-Fi du compagnon iOS, si un iPhone a été appairé.
+            wifi::demarrer(app.handle());
 
             // Réalimente la file indépendamment du sondage de l'interface —
             // voir `precharger_suivante`. Fil dédié plutôt que raccroché à un
@@ -949,6 +957,8 @@ fn main() {
             valise_renouveler,
             valise_etat,
             emporter_lecture,
+            wifi::wifi_etat,
+            wifi::oublier_iphone,
             completer_apercu,
             completer_lancer,
             completer_arreter,

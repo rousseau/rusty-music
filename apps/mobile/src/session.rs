@@ -165,6 +165,8 @@ mod tests {
             fichiers: Arc::new(RwLock::new(HashMap::new())),
             gains: Arc::new(RwLock::new(HashMap::new())),
             precharge: Mutex::new(()),
+            adresse_mac: Mutex::new(None),
+            dernier_passage: Mutex::new(0),
         }
     }
 

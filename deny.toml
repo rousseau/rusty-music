@@ -65,12 +65,14 @@ yanked = "deny"
 unmaintained = "workspace"
 ignore = [
     # zip 8.6, tiré par burn-store 0.21 (correctif en zip ≥ 9, hors de portée
-    # sans monter Burn) : les trois avis visent `extract()`, que burn-store
-    # n'appelle pas — il lit les archives `.pt` sans rien extraire sur disque.
+    # sans monter Burn) : les quatre avis visent `extract()`, que burn-store
+    # n'appelle pas — il lit les archives `.pt` sans rien extraire sur disque
+    # (revérifié dans burn-store 0.21.0 le 3 nov. 2026 pour le quatrième).
     # À retirer à la prochaine montée de Burn.
     { id = "RUSTSEC-2026-0367", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0368", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0369", reason = "zip::extract non appelé (burn-store lit seulement)" },
+    { id = "RUSTSEC-2026-0429", reason = "zip::extract non appelé (burn-store lit seulement)" },
     # zstd 0.13 / zstd-safe 7, tirés par le même zip 8.6 (correctif en
     # zstd ≥ 0.14, que zip 8 n'accepte pas). Ils ne servent qu'aux entrées
     # compressées en zstd ; les `.pt`/`.ckpt` que lit burn-store sortent de

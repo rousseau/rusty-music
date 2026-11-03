@@ -36,6 +36,12 @@
       <rect x="17.4" y="12.5" width="2.2" height="9" rx="1.1"/>
       <rect x="14" y="15.9" width="9" height="2.2" rx="1.1"/>
     </symbol>
+    <!-- Un portable, la flèche vers lui : rendre la lecture au Mac. -->
+    <symbol id="i-vers-mac" viewBox="0 0 24 24">
+      <path d="M4 6.5c0-.8.7-1.5 1.5-1.5h13c.8 0 1.5.7 1.5 1.5V15H4z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <rect x="2" y="16.5" width="20" height="2.4" rx="1.2"/>
+      <path d="M9 10h5.5M12.5 7.8 14.8 10l-2.3 2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
     <symbol id="i-retirer" viewBox="0 0 24 24">
       <path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
     </symbol>
@@ -64,6 +70,10 @@
           <span class="lecteur__titre" id="l-titre"></span>
           <span class="lecteur__artiste" id="l-artiste"></span>
         </span>
+      </button>
+      <!-- Montré seulement quand le Mac appairé répond sur le Wi-Fi. -->
+      <button class="bouton-icone bouton-icone--petit" id="vers-mac" aria-label="Reprendre sur le Mac" hidden>
+        <svg class="icone"><use href="#i-vers-mac"/></svg>
       </button>
       <button class="bouton-icone bouton-icone--petit" id="file" aria-label="File de lecture">
         <svg class="icone"><use href="#i-file"/></svg>

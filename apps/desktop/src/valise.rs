@@ -141,6 +141,7 @@ pub(crate) fn valise_envoyer(
         return Err(format!("nom de valise invalide : « {nom} »"));
     }
     let db = etat.db.clone();
+    let app_wifi = app.clone();
     let depart = AvancementEnvoiValise {
         etape: "Lecture de l'iPhone".into(),
         ..Default::default()
@@ -219,8 +220,11 @@ pub(crate) fn valise_envoyer(
                     iphone::copier_vers(&udid, &liste, iphone::A_RETIRER)?;
                 }
 
-                // 5. Ménage.
+                // 5. Ménage, et l'appairage Wi-Fi au passage (`wifi.rs`).
                 let _ = std::fs::remove_dir_all(&travail);
+                if let Err(e) = wifi::appairer(&app_wifi, etat, &udid) {
+                    tracing::warn!(erreur = %e, "appairage Wi-Fi impossible");
+                }
 
                 let mut msg = format!(
                     "« {nom} » envoyée : {} albums, {:.1} Go",
@@ -332,18 +336,30 @@ pub(crate) struct LectureEmportee {
     titre: Option<String>,
     position_ms: u64,
     /// Le Mac s'est mis en pause. `false` quand la lecture a changé pendant
-    /// le dépôt : le geste fait sur le Mac garde la main.
+    /// le dépôt, ou par le Wi-Fi tant que l'iPhone ne l'a pas prise.
     mac_en_pause: bool,
+    /// Par le Wi-Fi (`wifi.rs`) : la lecture attend que l'iPhone la prenne.
+    par_wifi: bool,
+    /// Pourquoi le câble n'a pas servi, quand il a été essayé.
+    cable_echec: Option<String>,
 }
 
-/// Emporte la lecture sur l'iPhone (option A du passage,
-/// `rusty_music_core::passage`) : dépose la file et la position dans les
-/// Documents de l'app par `devicectl`, puis met le Mac en pause — **après**
-/// le dépôt confirmé, pour qu'un échec laisse la musique où elle était. Le
-/// téléphone reprend en pause, à la position lue avant le dépôt : quelques
-/// secondes plus tôt, jamais plus tard.
+/// Emporte la lecture sur l'iPhone (`rusty_music_core::passage`).
+///
+/// Par le câble d'abord (option A), si `udid` est donné : la file et la
+/// position sont déposées dans les Documents de l'app par `devicectl`, puis
+/// le Mac se met en pause — **après** le dépôt confirmé, pour qu'un échec
+/// laisse la musique où elle était ; l'iPhone est appairé au passage pour le
+/// Wi-Fi. Sinon, ou si le câble échoue, par le Wi-Fi (option B) : le passage
+/// attend que l'iPhone vienne le prendre, et le Mac ne se tait qu'à son
+/// accusé. Le téléphone reprend en pause, à la position lue au départ :
+/// quelques secondes plus tôt, jamais plus tard.
 #[tauri::command(async)]
-pub(crate) fn emporter_lecture(etat: State<Etat>, udid: String) -> Result<LectureEmportee, String> {
+pub(crate) fn emporter_lecture(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    udid: Option<String>,
+) -> Result<LectureEmportee, String> {
     use rusty_music_core::passage::{Passage, FICHIER, VERSION};
     let Some(mut i) = verrou(&etat.player).instantane() else {
         return Err("rien en lecture".into());
@@ -363,7 +379,7 @@ pub(crate) fn emporter_lecture(etat: State<Etat>, udid: String) -> Result<Lectur
         version: VERSION,
         emis_le: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs() as i64),
+            .map_or(0, |d| d.as_millis() as i64),
         file: chemins(&i.file),
         avant_melange: chemins(&i.avant_melange),
         rang: i.rang,
@@ -372,21 +388,6 @@ pub(crate) fn emporter_lecture(etat: State<Etat>, udid: String) -> Result<Lectur
         repetition: i.repetition.nom().to_string(),
         volume: i.volume,
     };
-    let local = etat
-        .db
-        .parent()
-        .map_or_else(std::env::temp_dir, Path::to_path_buf)
-        .join(FICHIER);
-    passage.ecrire(&local).map_err(echec)?;
-    let depot = iphone::copier_vers(&udid, &local, FICHIER);
-    let _ = std::fs::remove_file(&local);
-    depot?;
-
-    let player = verrou(&etat.player);
-    let mac_en_pause = player.current() == courant.as_deref();
-    if mac_en_pause {
-        player.pause();
-    }
     let titre = courant.as_ref().and_then(|c| {
         verrou(&etat.lib)
             .pistes_par_chemins(&[c.display().to_string()])
@@ -395,15 +396,52 @@ pub(crate) fn emporter_lecture(etat: State<Etat>, udid: String) -> Result<Lectur
             .next()?
             .title
     });
-    tracing::info!(
-        pistes = passage.file.len(),
-        mac_en_pause,
-        "lecture emportée sur l'iPhone"
-    );
-    Ok(LectureEmportee {
+    let emportee = |mac_en_pause, par_wifi, cable_echec| LectureEmportee {
         pistes: passage.file.len(),
-        titre,
+        titre: titre.clone(),
         position_ms: passage.position_ms,
         mac_en_pause,
-    })
+        par_wifi,
+        cable_echec,
+    };
+
+    let mut cable_echec = None;
+    if let Some(udid) = udid.as_deref() {
+        let local = etat
+            .db
+            .parent()
+            .map_or_else(std::env::temp_dir, Path::to_path_buf)
+            .join(FICHIER);
+        passage.ecrire(&local).map_err(echec)?;
+        let depot = iphone::copier_vers(udid, &local, FICHIER);
+        let _ = std::fs::remove_file(&local);
+        match depot {
+            Ok(()) => {
+                wifi::retirer_attente(&etat);
+                if let Err(e) = wifi::appairer(&app, &etat, udid) {
+                    tracing::warn!(erreur = %e, "appairage Wi-Fi impossible");
+                }
+                let player = verrou(&etat.player);
+                let mac_en_pause = player.current() == courant.as_deref();
+                if mac_en_pause {
+                    player.pause();
+                }
+                tracing::info!(
+                    pistes = passage.file.len(),
+                    mac_en_pause,
+                    "lecture emportée sur l'iPhone par le câble"
+                );
+                return Ok(emportee(mac_en_pause, false, None));
+            }
+            Err(e) => cable_echec = Some(e),
+        }
+    }
+    if wifi::mettre_en_attente(&etat, passage.clone()) {
+        tracing::info!(
+            pistes = passage.file.len(),
+            "lecture en attente pour l'iPhone, par le Wi-Fi"
+        );
+        return Ok(emportee(false, true, cable_echec));
+    }
+    Err(cable_echec.unwrap_or_else(|| "aucun iPhone branché ni appairé".into()))
 }

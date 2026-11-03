@@ -26,6 +26,8 @@ const etatValise = {
   occupe: false, // un envoi ou une réinstallation tourne
   lectureIphone: null, // la lecture de l'iPhone en cours (promesse)
   emporte: false, // un passage est en cours de dépôt
+  wifi: null, // `EtatWifiVue` (`wifi.rs`)
+  suiviWifi: false, // la ligne Wi-Fi suit une lecture en attente
 };
 
 const REGLES_VALISE = [
@@ -226,7 +228,10 @@ function lireIphone() {
     $("iphone-nom").textContent = "Recherche de l'iPhone…";
     $("iphone-etat").textContent = "";
     try {
-      etatValise.iphone = await invoke("valise_iphone", { udid: etatValise.iphone?.udid ?? null });
+      [etatValise.iphone, etatValise.wifi] = await Promise.all([
+        invoke("valise_iphone", { udid: etatValise.iphone?.udid ?? null }),
+        invoke("wifi_etat"),
+      ]);
     } finally {
       etatValise.lectureIphone = null;
     }
@@ -242,8 +247,9 @@ function dessinerIphone() {
   const echeance = $("iphone-echeance");
   echeance.hidden = true;
   $("valise-renouveler").hidden = true;
-  $("iphone-emporter").hidden = !(i.xcode && i.udid && i.app_installee);
+  $("iphone-emporter").hidden = !(parCable() || etatValise.wifi?.ecoute);
   majBoutonEmporter();
+  dessinerWifi();
   $("iphone-valises").textContent = "—";
   majBoutonEnvoyer();
   if (!i.xcode) {
@@ -252,6 +258,11 @@ function dessinerIphone() {
     return;
   }
   const a = i.appareils.find((x) => x.udid === i.udid);
+  if (!a && etatValise.wifi?.appaire) {
+    nom.textContent = "iPhone appairé pour le Wi-Fi";
+    etat.textContent = i.erreur ?? "Hors de portée de devicectl : l'envoi d'une valise attend le câble.";
+    return;
+  }
   if (!a) {
     nom.textContent = "Aucun iPhone appairé";
     etat.textContent = i.erreur ?? "Branchez l'iPhone en USB une première fois et faites confiance à ce Mac.";
@@ -290,13 +301,58 @@ function dessinerIphone() {
   }
 }
 
+/// Le passage par le câble est possible : Xcode, un iPhone, l'app dessus.
+function parCable() {
+  const i = etatValise.iphone;
+  return Boolean(i?.xcode && i.udid && i.app_installee);
+}
+
+/// La ligne Wi-Fi du bloc iPhone (`wifi.rs`) : appairé ou non, une lecture
+/// en attente, ce qui s'est passé en dernier.
+function dessinerWifi() {
+  const w = etatValise.wifi;
+  const ligne = $("iphone-wifi");
+  $("iphone-oublier").hidden = !w?.appaire;
+  if (!w?.appaire) {
+    ligne.hidden = !parCable();
+    ligne.textContent = "Wi-Fi : le prochain envoi ou passage par le câble appairera l'iPhone.";
+    return;
+  }
+  ligne.hidden = false;
+  ligne.textContent = [
+    w.ecoute
+      ? "Wi-Fi : appairé, l'iPhone retrouve ce Mac sur le réseau local."
+      : `Wi-Fi : appairé, mais ce Mac n'écoute pas : ${w.erreur ?? "raison inconnue"}.`,
+    w.en_attente ? "Une lecture attend que l'iPhone la prenne." : null,
+    w.dernier,
+  ].filter(Boolean).join(" ");
+}
+
+/// Tant qu'une lecture attend l'iPhone, la ligne Wi-Fi suit : elle dit quand
+/// il l'a prise.
+async function suivreAttente() {
+  if (etatValise.suiviWifi) return;
+  etatValise.suiviWifi = true;
+  try {
+    while (!$("bloc-valise").hidden) {
+      await new Promise((r) => setTimeout(r, 2000));
+      etatValise.wifi = await invoke("wifi_etat");
+      dessinerWifi();
+      if (!etatValise.wifi.en_attente) break;
+    }
+  } finally {
+    etatValise.suiviWifi = false;
+  }
+}
+
 function majBoutonEmporter() {
   $("iphone-emporter").disabled = etatValise.emporte || etatValise.occupe;
 }
 
-/// Emporte ce qui joue sur l'iPhone (`emporter_lecture`, passage par fichier :
-/// `docs/plan-ios-compagnon.md`). Le Mac se met en pause une fois le dépôt
-/// confirmé ; l'app reprend en pause, à la position.
+/// Emporte ce qui joue sur l'iPhone (`emporter_lecture`,
+/// `docs/plan-ios-compagnon.md`) : par le câble si possible, le Mac se met en
+/// pause une fois le dépôt confirmé ; sinon par le Wi-Fi, et il se met en
+/// pause quand l'iPhone l'a prise. L'app reprend en pause, à la position.
 async function emporterLecture() {
   const statut = $("iphone-emporter-etat");
   const dire = (texte) => {
@@ -305,9 +361,9 @@ async function emporterLecture() {
   };
   if (etatValise.lectureIphone) await etatValise.lectureIphone;
   else if (!etatValise.iphone) await lireIphone();
-  const i = etatValise.iphone;
-  if (!i?.udid || !i.app_installee) {
-    dire("Aucun iPhone avec Rusty Valise : voir ci-dessus.");
+  const cable = parCable();
+  if (!cable && !etatValise.wifi?.ecoute) {
+    dire("Aucun iPhone branché ni appairé pour le Wi-Fi : voir ci-dessus.");
     return;
   }
   if (!lecture.courant) {
@@ -316,13 +372,24 @@ async function emporterLecture() {
   }
   etatValise.emporte = true;
   majBoutonEmporter();
-  dire("Dépôt de la lecture sur l'iPhone…");
+  dire(cable ? "Dépôt de la lecture sur l'iPhone…" : "La lecture attend l'iPhone sur le Wi-Fi…");
   try {
-    const r = await invoke("emporter_lecture", { udid: i.udid });
+    const r = await invoke("emporter_lecture", { udid: cable ? etatValise.iphone.udid : null });
     const quoi = r.titre ? `« ${isoler(r.titre)} » à ${duree(r.position_ms)}` : `La file (${r.pistes} pistes)`;
-    dire(r.mac_en_pause
-      ? `${quoi} attend sur l'iPhone, en pause ; le Mac s'est arrêté. Ouvrez Rusty Valise.`
-      : `${quoi} attend sur l'iPhone. La lecture a changé ici pendant le dépôt : le Mac continue.`);
+    if (r.par_wifi) {
+      dire(`${quoi} attend l'iPhone sur le Wi-Fi${r.cable_echec ? ` (le câble n'a pas servi : ${r.cable_echec})` : ""}. `
+        + "Ouvrez Rusty Valise : le Mac se mettra en pause quand elle l'aura prise.");
+      etatValise.wifi = await invoke("wifi_etat");
+      dessinerWifi();
+      suivreAttente();
+    } else {
+      dire(r.mac_en_pause
+        ? `${quoi} attend sur l'iPhone, en pause ; le Mac s'est arrêté. Ouvrez Rusty Valise.`
+        : `${quoi} attend sur l'iPhone. La lecture a changé ici pendant le dépôt : le Mac continue.`);
+      // Le câble appaire au passage : la ligne Wi-Fi peut avoir changé.
+      etatValise.wifi = await invoke("wifi_etat");
+      dessinerWifi();
+    }
   } catch (e) {
     dire(`Rien n'a été emporté : ${e}`);
     remonter(e, "emporter la lecture");
@@ -416,6 +483,15 @@ $("valise-tirage").addEventListener("click", () => {
 });
 $("iphone-actualiser").addEventListener("click", () => lireIphone().catch((e) => remonter(e, "iPhone")));
 $("iphone-emporter").addEventListener("click", () => emporterLecture());
+$("iphone-oublier").addEventListener("click", async () => {
+  try {
+    await invoke("oublier_iphone");
+    etatValise.wifi = await invoke("wifi_etat");
+    dessinerIphone();
+  } catch (e) {
+    remonter(e, "oublier l'iPhone");
+  }
+});
 $("valise-envoyer").addEventListener("click", async () => {
   // Les réglages partent avec l'aperçu : finir celui qui attend.
   if (etatValise.minuterie) {

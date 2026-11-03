@@ -240,7 +240,9 @@ Object.assign(fixtures, {
   // « Compléter » : rien en attente, aucune passe passée.
   completer_apercu: { musicbrainz: 0, lastfm: 0, secondes: 0 },
   completer_etat: { passe: { en_cours: false, etape: "", faits: 0, total: 0, resultat: null }, derniere: null },
-  emporter_lecture: { pistes: 0, titre: null, position_ms: 0, mac_en_pause: true },
+  emporter_lecture: { pistes: 0, titre: null, position_ms: 0, mac_en_pause: true, par_wifi: false, cable_echec: null },
+  wifi_etat: { appaire: false, ecoute: false, port: null, adresses: [], erreur: null, en_attente: false, dernier: null },
+  oublier_iphone: null,
   valise_iphone: { xcode: false, appareils: [], udid: null, app_installee: false, echeance: null, valises: [], renouvelable: false, erreur: null },
   valise_etat: {
     envoi: { en_cours: false, etape: "", faits: 0, total: 0, resultat: null },

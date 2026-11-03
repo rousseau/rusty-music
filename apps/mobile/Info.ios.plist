@@ -13,6 +13,12 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- Le passage de la lecture par le Wi-Fi (`src/wifi.rs`) joint le Mac sur
+	     le réseau local : iOS demande l'autorisation une fois, avec ce texte.
+	     Pas de `NSBonjourServices` : l'app ne cherche pas le Mac par Bonjour,
+	     elle connaît ses adresses (`appairage.json`, déposé au câble). -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Rusty Valise retrouve votre Mac sur ce réseau pour y reprendre la lecture, dans un sens ou dans l'autre.</string>
 	<!-- iOS 27 arrête au lancement une app qui n'adopte pas le cycle de vie
 	     par scènes (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption).
 	     `tao` ne branche son délégué de scène que si ce manifeste annonce

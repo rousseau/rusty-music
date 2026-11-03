@@ -295,6 +295,10 @@ function annoncerPassage(p) {
         : ' 1 morceau de la file n’est pas dans la valise.';
     }
   }
+  dire(texte);
+}
+
+function dire(texte) {
   $('passage').textContent = texte;
   $('passage').hidden = false;
 }
@@ -302,21 +306,57 @@ function annoncerPassage(p) {
 const effacerPassage = () => { $('passage').hidden = true; };
 $('passage').onclick = effacerPassage;
 
-/** Un passage déposé pendant que l'app était en arrière-plan. */
+/** Un passage du Mac, déposé au câble ou en attente sur le Wi-Fi, arrivé
+ *  pendant que l'app était en arrière-plan. */
 async function recevoirPassage() {
   const p = await invoke('recevoir_passage').catch(() => null);
-  if (!p) return;
-  annoncerPassage(p);
-  if (!p.nom) return;
-  etat.albums = p.albums;
-  etat.pochettes.clear();
-  afficherAlbums();
-  rafraichir();
+  if (p) {
+    annoncerPassage(p);
+    if (p.nom) {
+      etat.albums = p.albums;
+      etat.pochettes.clear();
+      afficherAlbums();
+      rafraichir();
+    }
+  }
+  majMac();
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') recevoirPassage();
 });
+
+/** « Sur le Mac » : seulement quand le Mac appairé répond sur le Wi-Fi. */
+async function majMac() {
+  const mac = await invoke('mac_wifi').catch(() => null);
+  const b = $('vers-mac');
+  b.hidden = !mac;
+  if (mac) b.setAttribute('aria-label', `Reprendre sur ${mac}`);
+}
+
+/** Rend la lecture au Mac : il la charge en pause, l'iPhone se tait ensuite. */
+$('vers-mac').onclick = async () => {
+  const b = $('vers-mac');
+  b.disabled = true;
+  try {
+    const r = await invoke('rendre_au_mac');
+    let texte = `Reprise sur ${r.mac}, en pause.`;
+    if (!r.courante_presente) texte += ' Le morceau en cours n’y est pas : il part du suivant.';
+    if (r.absents) {
+      texte += r.absents > 1
+        ? ` ${r.absents} morceaux de la file n’y sont pas.`
+        : ' 1 morceau de la file n’y est pas.';
+    }
+    if (!r.en_pause) texte += ' La lecture a changé ici entre-temps : l’iPhone continue.';
+    dire(texte);
+    rafraichir();
+  } catch (e) {
+    dire(`Le Mac n’a rien repris : ${e}`);
+    majMac();
+  } finally {
+    b.disabled = false;
+  }
+};
 
 $('file').onclick = ouvrirFile;
 $('pause').onclick = () => { effacerPassage(); invoke('basculer_pause').then(rafraichir); };
@@ -350,6 +390,7 @@ curseur.addEventListener('change', () => {
 async function demarrer() {
   // Un passage du Mac passe avant la dernière session du téléphone.
   const p = await invoke('recevoir_passage').catch(() => null);
+  majMac();
   if (p) annoncerPassage(p);
   if (p && p.nom) {
     etat.nbValises = (await invoke('valises')).length;

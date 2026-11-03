@@ -1,6 +1,6 @@
 # Où en est le projet, et ce qui reste
 
-État au **1ᵉʳ nov. 2026**. Ce document dit où en est chaque brique et ce qui
+État au **3 nov. 2026**. Ce document dit où en est chaque brique et ce qui
 reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
 version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
 dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Ce qui a été
@@ -17,7 +17,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 | Module 3 — Éditer | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem |
 | Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
 | Super-résolution « HD » | livrée (`crates/superres`, AERO via ONNX Runtime) | — (`module3-superresolution.md`) |
-| Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) ; passage Mac → iPhone par fichier (2 nov.) | étapes 1 (découper le code), 3 (sélection, en partie), 4B (transfert sans Xcode), 7 (rotation) ; mesures de batterie ; `plan-ios-compagnon.md` |
+| Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) ; passage Mac → iPhone par fichier (2 nov.) ; passage dans les deux sens par le Wi-Fi, appairage au câble (3 nov.) | étapes 1 (découper le code), 3 (sélection, en partie), 4B (reste la synchronisation des valises par différence), 7 (rotation) ; essais des deux passages sur l'iPhone ; mesures de batterie ; `plan-ios-compagnon.md` |
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 
@@ -73,8 +73,10 @@ Un commit par étape.
    (option A faite le 2 nov. : « Emporter la lecture » dans Valise et ⌘K ;
    pas encore essayé sur l'iPhone). « Compléter » sous le bloc
    « État » (2 nov. : genres MusicBrainz puis tags Last.fm, journal en base,
-   la dernière passe s'annule en bloc). Reste : le passage par Wi-Fi
-   (option B, avec 4B).
+   la dernière passe s'annule en bloc). Passage par le Wi-Fi (option B,
+   3 nov.) : dans les deux sens, appairage par jeton déposé au câble, chaque
+   pas accusé par l'autre côté ; pas encore essayé sur l'iPhone. Rien ne
+   reste de ce chantier hors des essais sur l'appareil.
 
 Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,

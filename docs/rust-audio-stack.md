@@ -119,6 +119,7 @@ La projection 2D reste le maillon faible côté Rust. Démarrer en t-SNE (`bhtsn
 | `wgpu` | WebGPU/WebGL, cible native et navigateur | MIT/Apache-2.0 | ? |
 | `tauri` | app de bureau, backend Rust + frontend web | MIT/Apache-2.0 | ? |
 | `egui` | UI immédiate Rust (repli si Tauri ne convient pas) | MIT/Apache-2.0 | ? |
+| `tiny_http` | serveur HTTP du compagnon iOS sur le Wi-Fi (`apps/desktop/src/wifi.rs`, passage de la lecture) : synchrone, sur son fil, quatre dépendances (`ascii`, `chunked_transfer`, `httpdate`, `log`) ; préféré à un serveur `hyper`/`axum` pour quelques requêtes JSON par jour. Le client de l'iPhone reprend `ureq`, déjà lié au cœur. Pas de Bonjour (`mdns-sd`) : le multicast brut demande sur iOS un droit qu'Apple accorde au cas par cas ; l'iPhone connaît les adresses du Mac par le fichier d'appairage | MIT/Apache-2.0 | ✅ `cargo deny` (3 nov. 2026) |
 
 ### Démixage (module 3)
 Retenu : **`demucs-core`** (fork de `demucs-rs` épinglé, Apache-2.0), poids HTDemucs

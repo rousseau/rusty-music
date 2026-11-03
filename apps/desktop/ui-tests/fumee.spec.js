@@ -357,7 +357,7 @@ test("passage vers l'iPhone : ⌘K emporte la lecture, le Mac dit où elle atten
       xcode: true, udid: "u1", app_installee: true, echeance: null, valises: [], renouvelable: false, erreur: null,
       appareils: [{ udid: "u1", nom: "iPhone d'essai", modele: "iPhone 15", filaire: true }],
     };
-    f.emporter_lecture = (a) => ({ pistes: 2, titre: "Ouverture", position_ms: 12_000, mac_en_pause: true });
+    f.emporter_lecture = (a) => ({ pistes: 2, titre: "Ouverture", position_ms: 12_000, mac_en_pause: true, par_wifi: false, cable_echec: null });
   });
   await lireUnAlbum(page);
   await page.keyboard.press("Meta+k");
@@ -369,6 +369,29 @@ test("passage vers l'iPhone : ⌘K emporte la lecture, le Mac dit où elle atten
   await expect(page.locator("#iphone-emporter-etat")).toContainText("attend sur l'iPhone, en pause");
   await expect(page.locator("#iphone-emporter-etat")).toContainText("0:12");
   expect((await appels(page, "emporter_lecture")).at(-1)).toEqual({ udid: "u1" });
+});
+
+test("passage par le Wi-Fi : sans Xcode, la lecture attend l'iPhone appairé, puis on l'oublie", async ({ page }) => {
+  await page.evaluate(() => {
+    const f = window.__FIXTURES__;
+    f.wifi_etat = (_, e) => e.oublie
+      ? { appaire: false, ecoute: false, port: null, adresses: [], erreur: null, en_attente: false, dernier: null }
+      : { appaire: true, ecoute: true, port: 47391, adresses: ["mac.local"], erreur: null, en_attente: Boolean(e.attente), dernier: null };
+    f.emporter_lecture = (_, e) => { e.attente = true; return { pistes: 2, titre: "Ouverture", position_ms: 12_000, mac_en_pause: false, par_wifi: true, cable_echec: null }; };
+    f.oublier_iphone = (_, e) => { e.oublie = true; return null; };
+  });
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="valise"]');
+  await expect(page.locator("#iphone-wifi")).toContainText("appairé, l'iPhone retrouve ce Mac");
+  await expect(page.locator("#iphone-emporter")).toBeVisible();
+  await page.click("#iphone-emporter");
+  await expect(page.locator("#iphone-emporter-etat")).toContainText("attend l'iPhone sur le Wi-Fi");
+  await expect(page.locator("#iphone-wifi")).toContainText("Une lecture attend que l'iPhone la prenne");
+  expect((await appels(page, "emporter_lecture")).at(-1)).toEqual({ udid: null });
+
+  await page.click("#iphone-oublier");
+  await expect(page.locator("#iphone-oublier")).toBeHidden();
+  await expect(page.locator("#iphone-emporter")).toBeHidden();
 });
 
 test("Compléter : la phrase dit ce qui part, la passe se lance puis s'annule en bloc", async ({ page }) => {

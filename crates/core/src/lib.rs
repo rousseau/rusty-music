@@ -6,6 +6,7 @@
 //! modules (lecteur, exploration, éditeur). Aucun module ne relit le disque
 //! directement.
 
+pub mod appairage;
 pub mod biographies;
 pub mod critiquebrainz;
 pub mod critiques;

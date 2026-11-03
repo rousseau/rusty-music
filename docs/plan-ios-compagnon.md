@@ -9,7 +9,7 @@ recommandation. Décidé : développement lancé le 18 oct. 2026, usage personne
 **Où on en est (19 oct. 2026)** : l'app « Rusty Valise » (`apps/mobile/`)
 tourne sur l'iPhone. Étapes 0 (sauf les mesures), 2, 4A et 6 (sans les avis)
 livrées ; étape 5 en version minimale (valises, albums, lecture) ; étapes 1,
-3 (au-delà de « récents » et « peu écoutés »), 4B et 7 restent. Le tableau
+3 (au-delà de « récents » et « peu écoutés »), 4B (la synchronisation des valises ; le passage par le Wi-Fi est fait) et 7 restent. Le tableau
 « Ordre et charge » porte l'état de chaque étape.
 
 Légende d'effort : **S** < 1 jour · **M** 1 à 3 jours · **L** > 3 jours.
@@ -496,7 +496,7 @@ tirages, et l'envoi remplace l'ancienne valise après en avoir repris les
 écoutes. Restent les points 2 (retirer ce qui est écouté en entier) et 4 (la
 différence).
 
-## Passage de la lecture Mac ↔ iPhone · **M** — **retenu : A, puis B avec l'étape 4B** (1ᵉʳ nov. 2026)
+## Passage de la lecture Mac ↔ iPhone · **M** — **A et B faits** (2 et 3 nov. 2026)
 
 **L'idée** : quitter le bureau en emportant ce qui joue — piste, position,
 file — et le retrouver sur l'iPhone ; au retour, l'inverse. Idée et méthode
@@ -559,6 +559,45 @@ compte de signature le permet.
 - à essayer pour de vrai : branché en USB, puis en Wi-Fi d'appairage ; app
   ouverte au premier plan, en arrière-plan, fermée.
 
+**B, fait le 3 nov. 2026 pour le passage seul** (pas encore essayé sur
+l'iPhone ; la synchronisation des valises par différence, sur le même
+serveur, reste l'autre moitié de 4B). Tranché le même jour : appairage par un
+jeton déposé au câble, le passage avant la synchronisation, serveur à
+l'écoute tant que l'app est ouverte dès qu'un iPhone est appairé.
+- appairage : `rusty_music_core::appairage`. Le premier envoi de valise ou
+  passage par le câble tire un jeton (24 octets de `/dev/urandom`) et dépose
+  `appairage.json` dans les Documents de l'app : nom du Mac, jeton, port
+  (47391), adresses. Toute requête sans le jeton reçoit un 401 ; « Oublier
+  l'iPhone » (bloc iPhone de Valise) efface le jeton et arrête le serveur, et
+  l'iPhone efface son appairage au premier refus. Le jeton circule en clair
+  (HTTP sur le réseau local, sans TLS) : il arrête un voisin de Wi-Fi
+  curieux, pas quelqu'un qui écoute le réseau ;
+- **pas de Bonjour**, contrairement au plan : sur iOS, le multicast brut
+  (`mdns-sd`) demande le droit `com.apple.developer.networking.multicast`,
+  qu'Apple accorde au cas par cas. Le fichier porte les adresses où chercher
+  le Mac, dans l'ordre : son nom `.local` (résolu par le système, sans ce
+  droit), son adresse sur la route par défaut, son adresse Tailscale s'il en a
+  une. Seule autorisation demandée : « réseau local »
+  (`NSLocalNetworkUsageDescription`) ;
+- Mac : `apps/desktop/src/wifi.rs`, un serveur `tiny_http` sur son fil.
+  « Emporter la lecture » essaie le câble d'abord ; sans câble, ou s'il
+  échoue, le passage **attend** l'iPhone (une demi-heure au plus) et le Mac
+  continue de jouer ; il ne se met en pause qu'à l'**accusé** de l'iPhone, et
+  seulement s'il joue encore ce qu'il a confié. Le bouton se montre aussi sans
+  Xcode, dès qu'un iPhone est appairé ;
+- iPhone : `apps/mobile/src/wifi.rs`. Au lancement et à chaque retour au
+  premier plan, l'app demande au Mac s'il tient un passage (après le fichier
+  du câble), le reprend comme en A, puis l'accuse ; un passage déjà reçu
+  (même instant d'émission) n'est pas rejoué. Sans valise qui porte la file,
+  rien n'est accusé : le Mac continue. Dans l'autre sens, l'icône « Reprendre
+  sur le Mac » du lecteur (montrée seulement quand le Mac répond) envoie la
+  lecture ; le Mac la charge **en pause**, à son propre volume, en omettant
+  les morceaux introuvables chez lui, et répond ce qu'il a repris ; l'iPhone
+  se met alors en pause, sauf si sa lecture a changé entre-temps ;
+- à essayer pour de vrai : l'autorisation « réseau local » au premier
+  lancement ; le nom `.local` sur le Wi-Fi de la maison ; Tailscale hors de
+  la maison ; les deux sens, app au premier plan puis revenue d'arrière-plan.
+
 ## Distribution
 
 - **Usage personnel** : compilation par Xcode sur son propre iPhone. Avec un
@@ -594,8 +633,8 @@ compte de signature le permet.
 | 6 | Retour des écoutes (`valise importer`) | M | 5 | **fait**, sans les avis |
 | 3 | Sélection complète + panneau « Préparer une valise » | L | 2 (une règle simple suffit avant) | **mode Valise** (19 oct.) : récents, peu écoutés, famille, hasard ; gardés / écartés |
 | 7 | Rotation | M | 3, 6 | remplacement avec reprise des écoutes ; reste la différence |
-| 4B | Synchronisation Wi-Fi | M | 6 | à faire |
-| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | A **fait** (2 nov., à essayer sur l'iPhone) ; B avec 4B |
+| 4B | Synchronisation Wi-Fi | M | 6 | serveur, appairage et passage **faits** (3 nov.) ; reste la synchronisation des valises par différence |
+| — | Passage de la lecture Mac ↔ iPhone | S puis M | 4A (option A), 4B (option B) | A **fait** (2 nov.), B **fait** (3 nov.) ; les deux à essayer sur l'iPhone |
 
 Une **v1 utilisable** = 0, 1, 2, 4A, 5, 6, avec deux règles seulement
 (« récents » et « peu écoutés ») réglées en ligne de commande. Les thèmes,

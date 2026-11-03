@@ -11,6 +11,7 @@ mod en_cours;
 mod passage;
 mod session;
 mod session_audio;
+mod wifi;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -49,6 +50,11 @@ pub(crate) struct Etat {
     /// Un seul préchargement à la fois — même raison que sur le bureau
     /// (`precharger_suivante` dans `apps/desktop/src/main.rs`).
     precharge: Mutex<()>,
+    /// L'adresse du Mac qui a répondu en dernier (`wifi.rs`), essayée d'abord.
+    adresse_mac: Mutex<Option<String>>,
+    /// Instant d'émission du dernier passage reçu : celui du Wi-Fi reste en
+    /// attente sur le Mac tant que l'accusé n'est pas arrivé.
+    dernier_passage: Mutex<i64>,
 }
 
 fn verrou<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -279,15 +285,29 @@ fn reprendre(etat: State<Etat>) -> Result<Option<Reprise>, String> {
     Ok(Some(Reprise { nom, albums }))
 }
 
-/// Un passage déposé par le Mac (`passage.rs`) : demandé au lancement, avant
-/// [`reprendre`], et à chaque retour au premier plan.
-#[tauri::command]
+/// Un passage du Mac (`passage.rs`) : demandé au lancement, avant
+/// [`reprendre`], et à chaque retour au premier plan. Hors du fil principal :
+/// il peut attendre le Mac sur le Wi-Fi.
+#[tauri::command(async)]
 fn recevoir_passage(etat: State<Etat>) -> Result<Option<passage::Recu>, String> {
     let recu = passage::recevoir(&etat)?;
     if recu.is_some() {
         en_cours::afficher(lecture_courante(&etat).as_ref());
     }
     Ok(recu)
+}
+
+/// Le nom du Mac appairé s'il répond sur le Wi-Fi (`wifi.rs`) : le bouton
+/// « Sur le Mac » ne se montre qu'alors.
+#[tauri::command(async)]
+fn mac_wifi(etat: State<Etat>) -> Option<String> {
+    wifi::joindre(&etat).map(|(_, bonjour)| bonjour.mac)
+}
+
+/// Rend la lecture au Mac par le Wi-Fi.
+#[tauri::command(async)]
+fn rendre_au_mac(etat: State<Etat>) -> Result<wifi::Rendu, String> {
+    wifi::rendre(&etat)
 }
 
 /// Les pistes d'un album de la valise, dans l'ordre du disque (les fichiers
@@ -765,6 +785,8 @@ pub fn run() {
                 fichiers: Arc::new(RwLock::new(HashMap::new())),
                 gains: Arc::new(RwLock::new(HashMap::new())),
                 precharge: Mutex::new(()),
+                adresse_mac: Mutex::new(None),
+                dernier_passage: Mutex::new(0),
             });
             // Le préchargement tourne côté natif : les minuteries JS d'une
             // webview en arrière-plan sont suspendues, et l'enchaînement des
@@ -801,6 +823,8 @@ pub fn run() {
             pochette,
             reprendre,
             recevoir_passage,
+            mac_wifi,
+            rendre_au_mac,
             jouer,
             ajouter_album,
             file_lecture,

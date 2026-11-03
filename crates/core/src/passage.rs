@@ -33,7 +33,8 @@ pub const VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Passage {
     pub version: u32,
-    /// Instant du dépôt (secondes Unix).
+    /// Instant du dépôt (millisecondes Unix) : identifie le passage, que
+    /// l'iPhone accuse par le Wi-Fi ([`crate::appairage::Recu`]).
     pub emis_le: i64,
     /// File dans l'ordre courant, en chemins d'origine.
     pub file: Vec<String>,
@@ -77,12 +78,16 @@ pub struct Reduction {
 
 impl Passage {
     pub fn lire(chemin: &Path) -> Result<Self> {
-        let texte = std::fs::read_to_string(chemin)?;
-        let p: Self = serde_json::from_str(&texte)
-            .map_err(|e| Error::Parsing(format!("{} : {e}", chemin.display())))?;
+        Self::depuis_json(&std::fs::read(chemin)?)
+    }
+
+    /// Le même contrôle que [`Self::lire`], pour un passage reçu par le Wi-Fi
+    /// ([`crate::appairage`]).
+    pub fn depuis_json(octets: &[u8]) -> Result<Self> {
+        let p: Self = serde_json::from_slice(octets).map_err(|e| Error::Parsing(e.to_string()))?;
         if p.version > VERSION {
             return Err(Error::Parsing(format!(
-                "passage au format {} (ce téléphone lit le format {VERSION}) : mettre l'app à jour",
+                "passage au format {} (cet appareil lit le format {VERSION}) : mettre l'app à jour",
                 p.version
             )));
         }
