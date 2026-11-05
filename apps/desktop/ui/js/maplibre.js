@@ -25,7 +25,7 @@ import {
   tracerItineraire,
 } from "./itineraires.js";
 import {
-  dessinerBalade,
+  cliquerVoie, dessinerBalade,
 } from "./balade.js";
 import { lecture } from "./etat-lecture.js";
 
@@ -2212,6 +2212,13 @@ cnv.addEventListener("click", async (e) => {
     return;
   }
 
+  // Au carrefour d'une balade, un clic sur une rue tracée la prend
+  // (`balade.js`) : il passe avant le morceau sous le curseur.
+  {
+    const r = cnv.getBoundingClientRect();
+    if (!e.shiftKey && cliquerVoie(e.clientX - r.left, e.clientY - r.top)) return;
+  }
+
   const p = carte.survole;
   if (!p) return;
 
@@ -2615,7 +2622,8 @@ $("familles-tout").addEventListener("click", () => {
 
 
 export {
-  bornesGeoPoints, carteGL, carteReelle, chargerFamilles, couleursFamilles, dessinerCarte,
+  bornesGeoPoints, carteGL, carteReelle, chargerFamilles, couleursFamilles,
+  couleursFamillesCarte, dessinerCarte,
   dessinerFamilles, initialiserFiltreAnnee, journalCarte, longueurChemin, majAffichageGL,
   majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majVisibiliteIntervalleAnnees,
   modeAnneau, modeTemps, patienter, pointSous, poserChemin, poserVignetteCarte,

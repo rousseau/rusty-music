@@ -6,7 +6,8 @@ import {
   carte, cnv, ctx,
 } from "./carte.js";
 import {
-  carteGL, dessinerCarte, pointSous, tracerRouteSurCarte, versEcran,
+  carteGL, couleursFamilles, couleursFamillesCarte, dessinerCarte, pointSous,
+  tracerRouteSurCarte, versEcran,
 } from "./maplibre.js";
 import {
   demarrerLecture, dessinerFile,
@@ -25,14 +26,60 @@ import { lecture } from "./etat-lecture.js";
  * Rien n'est calculé à chaque battement côté moteur : le sondage de lecture
  * existant (`battement`) donne la position, `balade_etat` n'est relu qu'au
  * changement de morceau et toutes les 2 s.
+ *
+ * Le carrefour (P2) : quand plusieurs voies s'offrent au bout du morceau, un
+ * panneau de deux ou trois cartes, ancré à côté du promeneur, pendant les 30
+ * dernières secondes (dès le début pour un morceau de moins de 40 s). La
+ * pente par défaut est marquée d'un anneau qui se vide jusqu'à ce qu'elle
+ * soit prise, 10 s avant la fin : là, le suivant est figé dans la file du
+ * lecteur, et le panneau se grise en le disant. Gestes : 1, 2, 3, les flèches
+ * (la voie dans cette direction sur l'écran), un clic sur la carte ou sur la
+ * rue, Échap pour masquer le panneau de ce carrefour. Survoler une carte fait
+ * entendre 5 s de son morceau.
  */
+
+/// Le panneau se présente pendant les dernières secondes du morceau…
+const CARREFOUR_AVANT_FIN_MS = 30_000;
+/// … le suivant est figé à 10 s de la fin (`FIGE_AVANT_FIN` côté moteur)…
+const FIGE_AVANT_FIN_MS = 10_000;
+/// … et un morceau plus court se voit proposer le choix dès son début.
+const MORCEAU_COURT_MS = 40_000;
+/// La jauge proche ↔ ailleurs : distance cosinus CLAP ramenée sur [0, 1]. Un
+/// voisin à l'oreille est vers 0,03, deux morceaux pris au hasard vers 0,19
+/// (`continuite_balade`, P0).
+const DISTANCE_AILLEURS = 0.25;
+/// Le tracé de chaque voie sur la carte : ses premiers mètres.
+const VOIE_TRACEE_M = 60;
+/// Un clic à moins de tant de pixels d'une voie tracée la choisit.
+const VOIE_CLIC_PX = 10;
+/// Délai de survol avant l'extrait : un passage de la souris n'est pas une
+/// demande.
+const EXTRAIT_DELAI_MS = 350;
+
+const INTERVENTIONS = ["porter", "proposer", "demander"];
 
 const balade = {
   vue: null, // dernière réponse de `balade_etat`, `null` sans balade
   luA: 0, // `performance.now()` de la dernière lecture
   courantVu: null, // le chemin joué lors de la dernière lecture
   dessineA: 0,
+  battuA: 0, // dernier appel de `majBalade` par le sondage du lecteur
+  // Le degré d'intervention, gardé avec les autres réglages de la carte.
+  intervention: lireIntervention(),
+  masque: null, // numéro du carrefour masqué par Échap
+  cle: "", // ce que montrent les cartes du panneau, pour ne les refaire qu'au changement
+  voiesEcran: [], // [{ i, points: [[x, y]…] }] : le tracé des voies, pour le clic
+  survol: null, // minuterie de l'extrait
 };
+
+function lireIntervention() {
+  try {
+    const v = localStorage.getItem("balade-intervention");
+    return INTERVENTIONS.includes(v) ? v : "proposer";
+  } catch {
+    return "proposer";
+  }
+}
 
 /// Lance la balade depuis le morceau `id`.
 async function flanerDici(id) {
@@ -40,7 +87,10 @@ async function flanerDici(id) {
   fermerMenuBalade();
   try {
     await demarrerLecture(async () => {
-      balade.vue = await invoke("balade_demarrer", { depart: id });
+      balade.vue = await invoke("balade_demarrer", {
+        depart: id,
+        intervention: balade.intervention,
+      });
     });
   } catch (err) {
     remonter(err, "balade_demarrer");
@@ -68,6 +118,7 @@ async function arreterBalade() {
   }
   balade.vue = null;
   majBandeau();
+  majCarrefour();
   redessiner(true);
 }
 
@@ -81,16 +132,27 @@ async function relireBalade() {
     return;
   }
   majBandeau();
+  majCarrefour();
 }
 
 /// Appelé à chaque battement du lecteur.
-function majBalade() {
+function majBalade(parLeSondage = true) {
   const maintenant = performance.now();
+  if (parLeSondage) balade.battuA = maintenant;
   const relire =
     lecture.courant !== balade.courantVu || (balade.vue && maintenant - balade.luA > 2000);
   if (relire) relireBalade().then(() => redessiner(true));
-  else redessiner(false);
+  else {
+    majCarrefour();
+    redessiner(false);
+  }
 }
+
+// Le sondage du lecteur s'arrête quand rien ne joue : en mode « demander »,
+// la balade attend dans le silence, et le panneau doit rester vivant.
+setInterval(() => {
+  if (balade.vue && performance.now() - balade.battuA > 1500) majBalade(false);
+}, 1000);
 
 /// La carte, au plus une fois par seconde : le promeneur avance de quelques
 /// mètres par minute, pas besoin de plus.
@@ -112,6 +174,336 @@ function majBandeau() {
   $("carte-balade-texte").textContent = v.fin
     ? `Balade finie : ${v.fin}`
     : `Balade · ${n} morceau${n > 1 ? "x" : ""}${v.terrain === "voisins" ? " · par les voisins" : ""}`;
+  // Le compteur d'usage (`balade-mesure.json`), pour qui veut le voir.
+  const m = v.mesure;
+  $("carte-balade-texte").title = m
+    ? `Carrefours : ${m.carrefours} · choix : ${m.choix} · ailleurs : ${m.ailleurs} · retours : ${m.retours}`
+    : "";
+  $("carte-balade-revenir").hidden = !v.revenir || !!v.fin;
+}
+
+/* ------------------------------------------------- le carrefour (P2) */
+
+const parIdCarte = () => new Map(carte.points.map((p) => [p.id, p]));
+
+/// Le temps restant du morceau en cours, d'après le dernier relevé.
+function restantMs() {
+  const v = balade.vue;
+  if (!v) return null;
+  const courant = parIdCarte().get(v.pistes[v.pistes.length - 1]);
+  if (!courant?.duration_ms || lecture.courant !== courant.path) return null;
+  return { restant: courant.duration_ms - lecture.positionMs, duree: courant.duration_ms };
+}
+
+function nomFamille(cluster) {
+  return (carte.familles ?? []).find(([c]) => c === cluster)?.[1] ?? "";
+}
+
+/// Sur le plan de ville, la balade suit les rues ; ailleurs (le nuage, ou le
+/// graphe des voisins), elle va d'un point à l'autre.
+const surLesRues = () => !!carteGL() && carte.villeReelle && balade.vue?.terrain === "ville";
+
+/// La teinte d'une famille, celle du fond où l'on est : la même sur la carte
+/// du panneau et sur le tracé de la voie.
+function teinte(cluster) {
+  const t = surLesRues() ? couleursFamillesCarte() : couleursFamilles();
+  return cluster >= 0 && t.length ? t[cluster % t.length] : "var(--mut)";
+}
+
+/// Le panneau se montre-t-il, et dans quel état.
+function etatCarrefour() {
+  const v = balade.vue;
+  const c = v?.carrefour;
+  if (!c || v.fin || navigation.mode !== "explorer") return null;
+  if (balade.intervention === "porter" || c.numero === balade.masque) return null;
+  // Rien ne joue (le mode « demander » attend dans le silence), un carrefour
+  // rejoué, un morceau court : tout de suite. Sinon, à la fin du morceau.
+  const r = restantMs();
+  const proche =
+    c.retour || !r || r.duree < MORCEAU_COURT_MS || r.restant <= CARREFOUR_AVANT_FIN_MS;
+  if (!proche) return null;
+  return { c, r, fige: v.fige, attend: v.attend };
+}
+
+function majCarrefour() {
+  const panneau = $("carte-carrefour");
+  const e = etatCarrefour();
+  panneau.hidden = !e;
+  if (!e) {
+    balade.cle = "";
+    return;
+  }
+  const { c, r, fige, attend } = e;
+  const cle = `${c.numero}|${c.prise}|${c.voies.map((x) => +x.lue).join("")}|${carte.theme}`;
+  if (cle !== balade.cle) {
+    balade.cle = cle;
+    remplirVoies(c);
+  }
+  panneau.classList.toggle("carrefour--fige", fige);
+  // L'anneau de la voie prise : ce qui reste avant qu'elle le soit.
+  const part =
+    fige || attend || !r
+      ? fige ? 0 : 1
+      : Math.max(0, Math.min(1, (r.restant - FIGE_AVANT_FIN_MS) /
+          (Math.min(CARREFOUR_AVANT_FIN_MS, r.duree) - FIGE_AVANT_FIN_MS)));
+  panneau.querySelectorAll(".voie").forEach((b) => {
+    const i = Number(b.dataset.voie);
+    b.disabled = fige || c.voies[i].lue;
+    const anneau = b.querySelector(".voie__anneau circle");
+    if (anneau) anneau.style.strokeDashoffset = String(1 - (i === c.prise ? part : 0));
+  });
+  const prise = c.voies[c.prise];
+  const titre = parIdCarte().get(prise.morceau)?.title ?? "";
+  let texte;
+  if (fige) texte = "Trop tard pour changer : le morceau suivant est déjà en route.";
+  else if (attend) texte = "La balade attend votre choix.";
+  else if (c.choisie) texte = `Vous prenez la voie ${c.prise + 1}.`;
+  else if (r) {
+    const s = Math.max(0, Math.ceil((r.restant - FIGE_AVANT_FIN_MS) / 1000));
+    texte = `Sans geste, la voie ${c.prise + 1} dans ${s} s.`;
+  } else texte = `Sans geste, la voie ${c.prise + 1}.`;
+  $("carrefour-etat").textContent = texte;
+  $("carrefour-etat").title = titre;
+  placerPanneau();
+}
+
+/// Les cartes du panneau : nom de la rue (l'artiste), titre du premier
+/// morceau, famille, jauge proche ↔ ailleurs.
+function remplirVoies(c) {
+  const index = parIdCarte();
+  const liste = $("carrefour-voies");
+  liste.replaceChildren(
+    ...c.voies.map((voie, i) => {
+      const p = index.get(voie.morceau);
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "voie";
+      b.dataset.voie = String(i);
+      b.classList.toggle("voie--prise", i === c.prise);
+      b.classList.toggle("voie--lue", voie.lue);
+      const cluster = p?.cluster ?? -1;
+      const famille = nomFamille(cluster);
+      const jauge = Math.min(1, voie.distance / DISTANCE_AILLEURS);
+      b.innerHTML = `
+        <span class="voie__touche">
+          <svg class="voie__anneau" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10.5" pathLength="1"></circle>
+          </svg>
+          <span>${i + 1}</span>
+        </span>
+        <span class="voie__corps">
+          <span class="voie__rue"></span>
+          <span class="voie__titre"></span>
+          <span class="voie__famille"><i class="voie__pastille"></i><span></span></span>
+          <span class="voie__jauge" title="Distance à l'oreille au morceau en cours">
+            <span>proche</span><span class="voie__barre"><i></i></span><span>ailleurs</span>
+          </span>
+        </span>`;
+      b.querySelector(".voie__rue").textContent = voie.lue
+        ? `${p?.artist ?? "?"} · déjà prise`
+        : p?.artist ?? "?";
+      b.querySelector(".voie__titre").textContent = p?.title ?? "";
+      b.querySelector(".voie__pastille").style.background = teinte(cluster);
+      b.querySelector(".voie__famille span").textContent = famille || "famille inconnue";
+      b.querySelector(".voie__barre i").style.left = `${(jauge * 100).toFixed(0)}%`;
+      if (i !== c.prise) b.querySelector(".voie__anneau").remove();
+      b.addEventListener("click", () => choisir(i));
+      b.addEventListener("mouseenter", () => entendre(voie.morceau));
+      b.addEventListener("mouseleave", () => entendre(null));
+      li.append(b);
+      return li;
+    }),
+  );
+}
+
+/// Le panneau à côté du promeneur, jamais dessus : à droite s'il y a la
+/// place, sinon à gauche ; en hauteur, centré sur lui dans les limites de la
+/// carte.
+function placerPanneau() {
+  const panneau = $("carte-carrefour");
+  const zone = cnv.parentElement.getBoundingClientRect();
+  const r = cnv.getBoundingClientRect();
+  const [x, y] = balade.promeneur ?? [r.width / 2, r.height / 2];
+  const l = panneau.offsetWidth;
+  const h = panneau.offsetHeight;
+  const ecart = 28;
+  const ox = r.left - zone.left;
+  const oy = r.top - zone.top;
+  let gauche = ox + x + ecart;
+  if (gauche + l > zone.width - 8) gauche = ox + x - ecart - l;
+  gauche = Math.max(8, gauche);
+  const haut = Math.max(56, Math.min(zone.height - h - 8, oy + y - h / 2));
+  panneau.style.left = `${gauche}px`;
+  panneau.style.top = `${haut}px`;
+}
+
+async function choisir(i) {
+  const v = balade.vue;
+  const c = v?.carrefour;
+  if (!c || v.fige || !c.voies[i] || c.voies[i].lue) return;
+  entendre(null);
+  try {
+    balade.vue = await invoke("balade_choisir", { numero: c.numero, voie: i });
+  } catch (err) {
+    remonter(err, "balade_choisir");
+    await relireBalade();
+  }
+  majCarrefour();
+  redessiner(true);
+}
+
+async function revenir() {
+  try {
+    balade.vue = await invoke("balade_revenir");
+  } catch (err) {
+    remonter(err, "balade_revenir");
+    await relireBalade();
+  }
+  balade.masque = null;
+  majBandeau();
+  majCarrefour();
+  redessiner(true);
+}
+
+/// L'extrait de 5 s au survol : le moteur baisse le son principal le temps
+/// qu'il dure (le mélange à deux voix viendra avec l'aura, P4).
+function entendre(morceau) {
+  clearTimeout(balade.survol);
+  if (morceau == null) {
+    invoke("balade_extrait", { morceau: null }).catch((err) => remonter(err, "balade_extrait"));
+    return;
+  }
+  balade.survol = setTimeout(() => {
+    invoke("balade_extrait", { morceau }).catch((err) => remonter(err, "balade_extrait"));
+  }, EXTRAIT_DELAI_MS);
+}
+
+/// Le réglage d'intervention, dans le rail d'Explorer.
+function majReglage() {
+  document
+    .querySelectorAll("#balade-intervention [data-intervention]")
+    .forEach((b) =>
+      b.classList.toggle("segment--actif", b.dataset.intervention === balade.intervention));
+}
+majReglage();
+
+document.querySelectorAll("#balade-intervention [data-intervention]").forEach((b) =>
+  b.addEventListener("click", async () => {
+    balade.intervention = b.dataset.intervention;
+    try {
+      localStorage.setItem("balade-intervention", balade.intervention);
+    } catch {
+      // Sans stockage, le réglage vaut pour la session.
+    }
+    majReglage();
+    try {
+      const vue = await invoke("balade_regler", { intervention: balade.intervention });
+      if (vue) balade.vue = vue;
+    } catch (err) {
+      remonter(err, "balade_regler");
+    }
+    majCarrefour();
+    redessiner(true);
+  }),
+);
+
+/// Les gestes du clavier au carrefour : 1, 2, 3, les flèches, Échap. Écoutés
+/// avant ceux du transport (← / → y changent de piste) : tant que le panneau
+/// est là, les flèches désignent une rue.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if ($("carte-carrefour").hidden || e.repeat) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const c = balade.vue?.carrefour;
+    if (!c) return;
+    let i = null;
+    if (["1", "2", "3"].includes(e.key)) i = Number(e.key) - 1;
+    else if (e.key.startsWith("Arrow")) i = voieVers(e.key);
+    else if (e.key === "Escape") {
+      balade.masque = c.numero;
+      entendre(null);
+      majCarrefour();
+    } else return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (i != null && i < c.voies.length) choisir(i);
+  },
+  true,
+);
+
+/// La voie dont la rue part dans la direction de la flèche, sur l'écran.
+function voieVers(touche) {
+  const [dx, dy] = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+  }[touche] ?? [0, 0];
+  let meilleure = null;
+  let score = 0.3; // en deçà, aucune rue ne va vraiment par là
+  for (const { i, points } of balade.voiesEcran) {
+    if (points.length < 2) continue;
+    const [ax, ay] = points[0];
+    const [bx, by] = points[points.length - 1];
+    const n = Math.hypot(bx - ax, by - ay);
+    if (n < 1) continue;
+    const s = ((bx - ax) * dx + (by - ay) * dy) / n;
+    if (s > score) {
+      score = s;
+      meilleure = i;
+    }
+  }
+  return meilleure;
+}
+
+/// Un clic sur la carte près d'une voie tracée la choisit (`maplibre.js`,
+/// avant la sélection d'un morceau), panneau masqué ou non : le choix est
+/// toujours offert tant que le suivant n'est pas figé. `true` : le clic est
+/// pris.
+function cliquerVoie(mx, my) {
+  const c = balade.vue?.carrefour;
+  if (!c || balade.vue.fige) return false;
+  let proche = null;
+  let d = VOIE_CLIC_PX;
+  for (const { i, points } of balade.voiesEcran) {
+    for (let k = 1; k < points.length; k++) {
+      const e = distanceSegment([mx, my], points[k - 1], points[k]);
+      if (e < d && !c.voies[i].lue) {
+        d = e;
+        proche = i;
+      }
+    }
+  }
+  if (proche == null) return false;
+  choisir(proche);
+  return true;
+}
+
+function distanceSegment([px, py], [ax, ay], [bx, by]) {
+  const l2 = (bx - ax) ** 2 + (by - ay) ** 2;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2)) : 0;
+  return Math.hypot(px - ax - t * (bx - ax), py - ay - t * (by - ay));
+}
+
+/// Les premiers `m` mètres d'une ligne `[lon, lat]`.
+function premiersMetres(ligne, m) {
+  const out = [ligne[0]];
+  let reste = m;
+  for (let k = 1; k < ligne.length && reste > 0; k++) {
+    const [ax, ay] = ligne[k - 1];
+    const [bx, by] = ligne[k];
+    const kx = 111_320 * Math.cos((ay * Math.PI) / 180);
+    const l = Math.hypot((bx - ax) * kx, (by - ay) * 110_540);
+    if (l <= reste) {
+      out.push(ligne[k]);
+      reste -= l;
+    } else {
+      const f = reste / l;
+      out.push([ax + (bx - ax) * f, ay + (by - ay) * f]);
+      reste = 0;
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------- dessin */
@@ -153,7 +545,7 @@ function dessinerBalade(r, encre, accent) {
   const v = balade.vue;
   if (!v || !carte.points.length) return;
   const index = parId();
-  const rues = !!carteGL() && carte.villeReelle && v.terrain === "ville";
+  const rues = surLesRues();
   const ecranDe = (p) => versEcran(p, r);
   const lonlat = (ll) => versEcran({ x: ll[0], y: ll[1] }, r);
 
@@ -189,6 +581,39 @@ function dessinerBalade(r, encre, accent) {
     trait(pas);
   }
 
+  // Les voies du carrefour, chacune sur ses premiers mètres dans la couleur
+  // de sa famille ; la voie prise plus épaisse, une voie lue en retrait. Sur
+  // le nuage, un trait court du morceau en cours vers chacune.
+  balade.voiesEcran = [];
+  const c = v.carrefour;
+  if (c && !v.fin) {
+    c.voies.forEach((voie, i) => {
+      let points = [];
+      if (rues && voie.rue.length > 1) points = premiersMetres(voie.rue, VOIE_TRACEE_M).map(lonlat);
+      else {
+        const a = courant && ecranDe(courant);
+        const b = index.get(voie.morceau);
+        if (a && b) {
+          const [bx, by] = ecranDe(b);
+          const n = Math.hypot(bx - a[0], by - a[1]) || 1;
+          const l = Math.min(n, 40);
+          points = [a, [a[0] + ((bx - a[0]) * l) / n, a[1] + ((by - a[1]) * l) / n]];
+        }
+      }
+      if (points.length < 2) return;
+      balade.voiesEcran.push({ i, points });
+      const p = index.get(voie.morceau);
+      ctx.strokeStyle = encre;
+      ctx.globalAlpha = voie.lue ? 0.25 : 0.6;
+      ctx.lineWidth = i === c.prise ? 7 : 5;
+      trait(points);
+      ctx.strokeStyle = teinte(p?.cluster ?? -1);
+      ctx.globalAlpha = voie.lue ? 0.35 : 1;
+      ctx.lineWidth = i === c.prise ? 4 : 2.5;
+      trait(points);
+    });
+  }
+
   // Le promeneur : à la fraction jouée du morceau en cours. Le relevé de la
   // balade peut retarder d'un battement sur la lecture : si le suivant a déjà
   // commencé, il est au bout du pas, jamais revenu au début.
@@ -199,8 +624,10 @@ function dessinerBalade(r, encre, accent) {
   } else if (joue && suivant && joue.id === suivant.id) {
     t = 1;
   }
+  balade.promeneur = courant ? ecranDe(courant) : null;
   if (t != null && pas.length) {
     const [x, y] = lePointA(pas, t);
+    balade.promeneur = [x, y];
     ctx.globalAlpha = 1;
     ctx.fillStyle = accent;
     ctx.beginPath();
@@ -220,6 +647,7 @@ function dessinerBalade(r, encre, accent) {
 // (retour d'usage, 5 nov.). L'entrée reste le clic droit, là où l'on voit les rues.
 
 $("carte-balade-arreter").addEventListener("click", arreterBalade);
+$("carte-balade-revenir").addEventListener("click", revenir);
 
 /// Le clic droit sur un morceau de la carte : un menu d'une ligne.
 let cibleMenu = null;
@@ -258,4 +686,4 @@ document.addEventListener("keydown", (e) => {
 // Une balade reprise au démarrage (`balade_reprendre`) : la relire une fois.
 setTimeout(() => relireBalade().then(() => redessiner(true)), 1500);
 
-export { arreterBalade, balade, dessinerBalade, flanerDici, majBalade };
+export { arreterBalade, balade, cliquerVoie, dessinerBalade, flanerDici, majBalade };

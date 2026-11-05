@@ -16,16 +16,105 @@
 //!
 //! **Repli** sans ville importée (ou départ sans adresse) : la même balade
 //! dans le graphe des voisins, où les branches sont les voisins non joués.
+//!
+//! **Carrefour** (P2). Quand plusieurs voies s'offrent, le pas décidé est la
+//! pente par défaut, et l'interface montre deux ou trois voies
+//! ([`rusty_music_carto::balade::proposer`]). Un geste ([`balade_choisir`])
+//! remplace le suivant tant qu'il n'est pas figé. Ne rien faire, c'est
+//! prendre la pente — sauf en mode *demander*, où la balade attend le choix,
+//! dans le silence s'il le faut. [`balade_revenir`] retourne au carrefour
+//! passé et repropose les voies non prises. Le compteur d'usage
+//! (`balade-mesure.json`, à côté de la base) compte, à la sortie de chaque
+//! carrefour montré, s'il y a eu un choix et s'il allait « ailleurs ».
 
 use super::*;
 
-use rusty_music_carto::balade::{pente_simple, suivants, Branche, EtatBalade};
+use std::sync::atomic::AtomicU64;
+
+use rusty_music_carto::balade::{
+    deja_vu, pente_simple, proposer, suivants, Branche, EtatBalade, PROPOSEES_MAX,
+};
 
 /// Le suivant entre dans la file, et n'en bouge plus, à moins de 10 s de la
 /// fin du morceau en cours.
 const FIGE_AVANT_FIN: Duration = Duration::from_secs(10);
 /// Branches proposées dans le graphe des voisins (repli).
 const BRANCHES_VOISINS: usize = 3;
+/// Carrefours passés qu'on garde pour y revenir.
+const CARREFOURS_GARDES: usize = 32;
+/// L'extrait d'une voie au survol : sa durée, et où il commence dans le
+/// morceau (passé l'introduction).
+const EXTRAIT_DUREE: Duration = Duration::from_secs(5);
+const EXTRAIT_DEBUT: f64 = 0.3;
+
+/// Le degré d'intervention (`docs/plan-balade.md`, le principe), réglé une
+/// fois dans le rail d'Explorer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Intervention {
+    /// Aucun panneau : le tracé des voies seulement, la pente décide.
+    Porter,
+    /// Le panneau, la pente prise sans geste.
+    #[default]
+    Proposer,
+    /// La balade attend le choix au carrefour.
+    Demander,
+}
+
+/// Une suite possible au carrefour : un morceau, et dans la ville la branche
+/// qui y mène.
+#[derive(Clone)]
+struct Voie {
+    morceau: i64,
+    branche: Option<Branche>,
+}
+
+/// Un carrefour : présenté pendant le morceau en cours, ou passé.
+struct Carrefour {
+    /// Change à chaque présentation : l'interface y accroche Échap.
+    numero: u64,
+    /// La position d'où partent les voies (ville).
+    depuis: Option<EtatBalade>,
+    /// Les voies montrées, au plus trois.
+    voies: Vec<Voie>,
+    /// Distance à l'oreille de chaque voie au morceau du carrefour.
+    distances: Vec<f32>,
+    /// La pente par défaut.
+    defaut: usize,
+    /// La plus proche à l'oreille : un choix d'une autre est « ailleurs ».
+    proche: usize,
+    /// Choisie d'un geste ; `None` : la pente.
+    choisie: Option<usize>,
+    /// Voies déjà parcourues depuis ce carrefour.
+    lues: HashSet<usize>,
+    /// Longueur de la trace au carrefour : de quoi y revenir à pied.
+    trace_len: usize,
+    /// Représenté par « ← Carrefour précédent ».
+    represente: bool,
+    /// Le chemin du retour, alors : du morceau en cours au carrefour, par la
+    /// trace (vide dans le graphe des voisins).
+    retour: Vec<[f64; 2]>,
+}
+
+impl Carrefour {
+    fn prise(&self) -> usize {
+        self.choisie.unwrap_or(self.defaut)
+    }
+}
+
+/// Le compteur d'usage du carrefour, gardé sur la machine
+/// (`balade-mesure.json`) : de quoi juger, après une semaine, si l'on choisit.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct MesureCarrefours {
+    /// Carrefours montrés (hors *se laisser porter*) et quittés.
+    carrefours: u64,
+    /// … où une voie a été choisie d'un geste.
+    choix: u64,
+    /// … et cette voie n'était pas la plus proche à l'oreille.
+    ailleurs: u64,
+    /// Retours au carrefour précédent.
+    retours: u64,
+}
 
 /// Où la balade marche : dans les rues, ou dans le graphe des voisins.
 enum Terrain {
@@ -59,6 +148,31 @@ struct Pas {
     precharge: bool,
 }
 
+/// Ce que l'interface reçoit d'une voie du carrefour.
+#[derive(serde::Serialize)]
+pub(crate) struct VoieVue {
+    morceau: i64,
+    /// Distance cosinus au morceau en cours : la jauge proche ↔ ailleurs.
+    distance: f32,
+    defaut: bool,
+    proche: bool,
+    /// Déjà parcourue (retour au carrefour) : montrée, plus proposée.
+    lue: bool,
+    /// Le tracé de la voie depuis le carrefour, `[lon, lat]` (ville).
+    rue: Vec<[f64; 2]>,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct CarrefourVue {
+    numero: u64,
+    voies: Vec<VoieVue>,
+    /// La voie qui sera prise : la choisie, sinon la pente.
+    prise: usize,
+    choisie: bool,
+    /// Représenté par « ← Carrefour précédent ».
+    retour: bool,
+}
+
 pub(crate) struct Balade {
     terrain: Terrain,
     /// Empreintes, pour la pente par défaut (le plus proche à l'oreille).
@@ -74,6 +188,13 @@ pub(crate) struct Balade {
     fin: Option<String>,
     /// Le bout du dernier pas, pour vérifier que le suivant en repart.
     bout: Option<[f64; 2]>,
+    intervention: Intervention,
+    /// Le carrefour du pas décidé, s'il y en a un.
+    carrefour: Option<Carrefour>,
+    /// Les carrefours passés, le plus récent en dernier.
+    passes: Vec<Carrefour>,
+    numero: u64,
+    mesure: MesureCarrefours,
 }
 
 /// Ce que l'interface reçoit.
@@ -92,18 +213,49 @@ pub(crate) struct BaladeVue {
     trace: Vec<[f64; 2]>,
     /// `Some(raison)` : la balade s'est arrêtée d'elle-même.
     fin: Option<String>,
+    intervention: Intervention,
+    /// Le carrefour qui s'offre au bout du morceau en cours.
+    carrefour: Option<CarrefourVue>,
+    /// La balade attend un choix (mode *demander*).
+    attend: bool,
+    /// Un carrefour passé où revenir, avec au moins une voie non prise.
+    revenir: bool,
+    mesure: MesureCarrefours,
 }
 
-/// Ce qui survit à un redémarrage : de quoi reprendre au même pas.
+/// Ce qui survit à un redémarrage : de quoi reprendre au même pas. Les
+/// carrefours passés n'y sont pas : on ne revient pas en arrière d'une
+/// session à l'autre.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Reprise {
     pistes: Vec<i64>,
     ville: Option<EtatBalade>,
     trace: Vec<[f64; 2]>,
+    #[serde(default)]
+    intervention: Intervention,
 }
 
 fn chemin_reprise(etat: &Etat) -> PathBuf {
     etat.db.with_file_name("balade.json")
+}
+
+fn chemin_mesure(etat: &Etat) -> PathBuf {
+    etat.db.with_file_name("balade-mesure.json")
+}
+
+fn lire_mesure(etat: &Etat) -> MesureCarrefours {
+    std::fs::read(chemin_mesure(etat))
+        .ok()
+        .and_then(|o| serde_json::from_slice(&o).ok())
+        .unwrap_or_default()
+}
+
+fn ecrire_mesure(etat: &Etat, mesure: &MesureCarrefours) {
+    if let Ok(octets) = serde_json::to_vec(mesure) {
+        if let Err(e) = std::fs::write(chemin_mesure(etat), octets) {
+            tracing::warn!(erreur = %e, "balade : mesure non écrite");
+        }
+    }
 }
 
 impl Balade {
@@ -123,7 +275,67 @@ impl Balade {
                 .unwrap_or_default(),
             trace: self.trace.clone(),
             fin: self.fin.clone(),
+            intervention: self.intervention,
+            carrefour: self.carrefour.as_ref().map(|c| self.carrefour_vue(c)),
+            attend: self.attend(),
+            revenir: self.suivant.as_ref().is_none_or(|p| !p.fige)
+                && self
+                    .passes
+                    .last()
+                    .is_some_and(|c| self.voies_libres(c).next().is_some()),
+            mesure: self.mesure.clone(),
         }
+    }
+
+    fn carrefour_vue(&self, c: &Carrefour) -> CarrefourVue {
+        let rue = |v: &Voie| -> Vec<[f64; 2]> {
+            let Terrain::Ville {
+                graphe, positions, ..
+            } = &self.terrain
+            else {
+                return Vec::new();
+            };
+            let Some(b) = &v.branche else {
+                return Vec::new();
+            };
+            let mut r: Vec<[f64; 2]> = b.sommets.iter().map(|&s| graphe.point(s)).collect();
+            r.extend(positions.get(&v.morceau).copied());
+            r
+        };
+        CarrefourVue {
+            numero: c.numero,
+            voies: c
+                .voies
+                .iter()
+                .enumerate()
+                .map(|(i, v)| VoieVue {
+                    morceau: v.morceau,
+                    distance: c.distances[i],
+                    defaut: i == c.defaut,
+                    proche: i == c.proche,
+                    lue: self.voie_lue(c, i),
+                    rue: rue(v),
+                })
+                .collect(),
+            prise: c.prise(),
+            choisie: c.choisie.is_some(),
+            retour: c.represente,
+        }
+    }
+
+    /// Une voie déjà parcourue, ou dont le morceau a joué depuis.
+    fn voie_lue(&self, c: &Carrefour, i: usize) -> bool {
+        c.lues.contains(&i) || self.pistes.contains(&c.voies[i].morceau)
+    }
+
+    fn voies_libres<'a>(&'a self, c: &'a Carrefour) -> impl Iterator<Item = usize> + 'a {
+        (0..c.voies.len()).filter(move |&i| !self.voie_lue(c, i))
+    }
+
+    /// Le mode *demander* attend un geste au carrefour.
+    fn attend(&self) -> bool {
+        self.intervention == Intervention::Demander
+            && self.carrefour.as_ref().is_some_and(|c| c.choisie.is_none())
     }
 
     fn courant_id(&self) -> i64 {
@@ -149,24 +361,38 @@ impl Balade {
         1.0 - ab / (aa.sqrt() * bb.sqrt()).max(1e-12)
     }
 
-    /// Décide le pas suivant (pente par défaut). `None` : plus rien devant.
-    fn decider(&self, lib: &Library) -> Option<Pas> {
+    /// Les voies qui s'offrent depuis la position courante, la pente par
+    /// défaut en tête. Plus d'une : c'est un carrefour.
+    fn voies(&self, lib: &Library) -> Vec<Voie> {
         let courant = self.courant_id();
-        let (morceau, branche, troncon) = match &self.terrain {
+        match &self.terrain {
             Terrain::Ville {
                 graphe,
                 accrochage,
-                positions,
                 etat,
+                ..
             } => {
                 let branches = suivants(etat, graphe, accrochage);
-                let i = pente_simple(etat, &branches, graphe, |id| self.distance(id))?;
-                let b = branches[i].clone();
-                let mut troncon: Vec<[f64; 2]> = Vec::with_capacity(b.sommets.len() + 2);
-                troncon.extend(positions.get(&courant).copied());
-                troncon.extend(b.sommets.iter().map(|&s| graphe.point(s)));
-                troncon.extend(positions.get(&b.morceau).copied());
-                (b.morceau, Some(b), troncon)
+                let Some(defaut) = pente_simple(etat, &branches, graphe, |id| self.distance(id))
+                else {
+                    return Vec::new();
+                };
+                let modele = rusty_music_analysis::passe::MODELE;
+                let famille = |id: i64| lib.cluster_de_piste(modele, id).ok().flatten();
+                proposer(
+                    &branches,
+                    defaut,
+                    |id| self.distance(id),
+                    famille,
+                    famille(courant),
+                    |b| deja_vu(etat, graphe, b),
+                )
+                .into_iter()
+                .map(|i| Voie {
+                    morceau: branches[i].morceau,
+                    branche: Some(branches[i].clone()),
+                })
+                .collect()
             }
             Terrain::Voisins { graphe, vus } => {
                 let libres = |k: usize| -> Vec<i64> {
@@ -176,26 +402,148 @@ impl Balade {
                         .filter(|id| !vus.contains(id))
                         .collect()
                 };
-                let mut branches = libres(BRANCHES_VOISINS);
-                if branches.is_empty() {
+                let mut ids = libres(BRANCHES_VOISINS);
+                if ids.is_empty() {
                     // Tous les proches déjà joués : on élargit avant d'abandonner.
-                    branches = libres(rusty_music_analysis::chemin::K_VOISINS * 4);
+                    ids = libres(rusty_music_analysis::chemin::K_VOISINS * 4);
                 }
-                let m = branches
-                    .into_iter()
-                    .min_by(|&a, &b| self.distance(a).total_cmp(&self.distance(b)))?;
-                (m, None, Vec::new())
+                ids.sort_by(|&a, &b| self.distance(a).total_cmp(&self.distance(b)));
+                ids.truncate(PROPOSEES_MAX);
+                ids.into_iter()
+                    .map(|morceau| Voie {
+                        morceau,
+                        branche: None,
+                    })
+                    .collect()
             }
-        };
-        let chemin = PathBuf::from(lib.track(morceau).ok()??.path);
+        }
+    }
+
+    /// Le pas vers `voie`. `retour` : le chemin déjà fait pour revenir au
+    /// carrefour (« ← Carrefour précédent »), d'où part alors le pas.
+    fn pas_vers(&self, lib: &Library, voie: &Voie, retour: &[[f64; 2]]) -> Option<Pas> {
+        let mut troncon: Vec<[f64; 2]> = Vec::new();
+        if let (
+            Terrain::Ville {
+                graphe, positions, ..
+            },
+            Some(b),
+        ) = (&self.terrain, &voie.branche)
+        {
+            if retour.is_empty() {
+                troncon.extend(positions.get(&self.courant_id()).copied());
+            } else {
+                troncon.extend_from_slice(retour);
+            }
+            troncon.extend(b.sommets.iter().map(|&s| graphe.point(s)));
+            troncon.extend(positions.get(&voie.morceau).copied());
+        }
+        let chemin = PathBuf::from(lib.track(voie.morceau).ok()??.path);
         Some(Pas {
-            morceau,
+            morceau: voie.morceau,
             chemin,
-            branche,
+            branche: voie.branche.clone(),
             troncon,
             fige: false,
             precharge: false,
         })
+    }
+
+    /// Décide le pas suivant (pente par défaut) et, s'il y a plusieurs voies,
+    /// présente le carrefour. `false` : plus rien devant.
+    fn decider(&mut self, lib: &Library) -> bool {
+        let voies = self.voies(lib);
+        let Some(pas) = voies.first().and_then(|v| self.pas_vers(lib, v, &[])) else {
+            return false;
+        };
+        self.carrefour = (voies.len() > 1).then(|| {
+            let distances: Vec<f32> = voies.iter().map(|v| self.distance(v.morceau)).collect();
+            let proche = (0..voies.len())
+                .min_by(|&a, &b| distances[a].total_cmp(&distances[b]))
+                .unwrap_or(0);
+            self.numero += 1;
+            Carrefour {
+                numero: self.numero,
+                depuis: match &self.terrain {
+                    Terrain::Ville { etat, .. } => Some(etat.clone()),
+                    Terrain::Voisins { .. } => None,
+                },
+                voies,
+                distances,
+                defaut: 0,
+                proche,
+                choisie: None,
+                lues: HashSet::new(),
+                trace_len: self.trace.len(),
+                represente: false,
+                retour: Vec::new(),
+            }
+        });
+        self.suivant = Some(pas);
+        true
+    }
+
+    /// Un geste au carrefour : la voie `i` remplace le suivant décidé.
+    fn choisir(&mut self, lib: &Library, numero: u64, i: usize) -> Result<(), String> {
+        if self.suivant.as_ref().is_some_and(|p| p.fige) {
+            return Err("le morceau suivant est déjà en route".into());
+        }
+        let c = self
+            .carrefour
+            .as_ref()
+            .filter(|c| c.numero == numero)
+            .ok_or("ce carrefour est passé")?;
+        if i >= c.voies.len() {
+            return Err("voie inconnue".into());
+        }
+        if self.voie_lue(c, i) {
+            return Err("cette voie a déjà été parcourue".into());
+        }
+        let pas = self
+            .pas_vers(lib, &c.voies[i], &c.retour)
+            .ok_or("morceau introuvable")?;
+        self.suivant = Some(pas);
+        self.carrefour.as_mut().expect("vérifié").choisie = Some(i);
+        Ok(())
+    }
+
+    /// « ← Carrefour précédent » : la balade retourne au dernier carrefour
+    /// passé et en repropose les voies non prises ; celle qu'on avait prise
+    /// est montrée comme lue. Le morceau en cours continue : c'est le pas
+    /// suivant qui part du carrefour, par le chemin du retour.
+    fn revenir(&mut self, lib: &Library) -> Result<(), String> {
+        if self.suivant.as_ref().is_some_and(|p| p.fige) {
+            return Err("le morceau suivant est déjà en route".into());
+        }
+        let mut c = self.passes.pop().ok_or("aucun carrefour passé")?;
+        let libres: Vec<usize> = self.voies_libres(&c).collect();
+        let Some(&defaut) = libres
+            .iter()
+            .min_by(|&&a, &&b| c.distances[a].total_cmp(&c.distances[b]))
+        else {
+            self.passes.push(c);
+            return Err("toutes les voies de ce carrefour ont été prises".into());
+        };
+        // Le chemin du retour : la trace, à rebours, jusqu'au carrefour.
+        let mut retour: Vec<[f64; 2]> = self.trace[c.trace_len.min(self.trace.len())..].to_vec();
+        retour.reverse();
+        let pas = self
+            .pas_vers(lib, &c.voies[defaut], &retour)
+            .ok_or("morceau introuvable")?;
+        if let (Terrain::Ville { etat, .. }, Some(avant)) = (&mut self.terrain, &c.depuis) {
+            etat.revenir(avant);
+        }
+        self.numero += 1;
+        c.numero = self.numero;
+        c.defaut = defaut;
+        c.choisie = None;
+        c.represente = true;
+        c.retour = retour;
+        c.trace_len = self.trace.len();
+        self.carrefour = Some(c);
+        self.suivant = Some(pas);
+        self.mesure.retours += 1;
+        Ok(())
     }
 
     /// Le suivant vient de commencer : il devient le morceau en cours.
@@ -223,6 +571,34 @@ impl Balade {
             "balade : pas"
         );
         self.bout = pas.troncon.last().copied();
+        if let Some(mut c) = self.carrefour.take() {
+            let prise = c.prise();
+            if self.intervention != Intervention::Porter {
+                self.mesure.carrefours += 1;
+                if c.choisie.is_some() {
+                    self.mesure.choix += 1;
+                    if prise != c.proche {
+                        self.mesure.ailleurs += 1;
+                    }
+                }
+            }
+            tracing::info!(
+                voies = c.voies.len(),
+                prise,
+                defaut = c.defaut,
+                choisie = c.choisie.is_some(),
+                ailleurs = prise != c.proche,
+                retour = c.represente,
+                "balade : carrefour"
+            );
+            c.lues.insert(prise);
+            c.represente = false;
+            c.retour.clear();
+            self.passes.push(c);
+            if self.passes.len() > CARREFOURS_GARDES {
+                self.passes.remove(0);
+            }
+        }
         match &mut self.terrain {
             Terrain::Ville { etat, .. } => {
                 if let Some(b) = &pas.branche {
@@ -248,6 +624,7 @@ impl Balade {
                 Terrain::Voisins { .. } => None,
             },
             trace: self.trace.clone(),
+            intervention: self.intervention,
         }
     }
 }
@@ -291,6 +668,7 @@ fn monter(
     pistes: Vec<i64>,
     reprise_ville: Option<EtatBalade>,
     trace: Vec<[f64; 2]>,
+    intervention: Intervention,
 ) -> Result<Balade, String> {
     let depart = *pistes.last().ok_or("balade sans morceau")?;
     let courant = {
@@ -348,6 +726,11 @@ fn monter(
         trace,
         fin: None,
         bout: None,
+        intervention,
+        carrefour: None,
+        passes: Vec::new(),
+        numero: 0,
+        mesure: lire_mesure(etat),
     })
 }
 
@@ -357,11 +740,19 @@ pub(crate) fn balade_demarrer(
     app: tauri::AppHandle,
     etat: State<Etat>,
     depart: i64,
+    intervention: Option<Intervention>,
 ) -> Result<BaladeVue, String> {
-    let mut balade = monter(&etat, &app, vec![depart], None, Vec::new())?;
+    let mut balade = monter(
+        &etat,
+        &app,
+        vec![depart],
+        None,
+        Vec::new(),
+        intervention.unwrap_or_default(),
+    )?;
     {
         let lib = verrou(&etat.lib);
-        balade.suivant = balade.decider(&lib);
+        balade.decider(&lib);
     }
     verrou(&etat.player)
         .play(std::slice::from_ref(&balade.courant))
@@ -386,10 +777,86 @@ pub(crate) fn balade_arreter(etat: State<Etat>) {
 }
 
 fn arreter(etat: &Etat) {
-    if verrou(&etat.balade).take().is_some() {
-        tracing::info!("balade arrêtée");
+    if let Some(b) = verrou(&etat.balade).take() {
+        tracing::info!(mesure = ?b.mesure, "balade arrêtée");
     }
     std::fs::remove_file(chemin_reprise(etat)).ok();
+}
+
+/// Un geste au carrefour `numero` : la voie `voie` devient le pas suivant.
+/// Refusé dans les 10 dernières secondes, quand le suivant est figé.
+#[tauri::command(async)]
+pub(crate) fn balade_choisir(
+    etat: State<Etat>,
+    numero: u64,
+    voie: usize,
+) -> Result<BaladeVue, String> {
+    let mut garde = verrou(&etat.balade);
+    let balade = garde.as_mut().ok_or("aucune balade")?;
+    {
+        let lib = verrou(&etat.lib);
+        balade.choisir(&lib, numero, voie)?;
+    }
+    Ok(balade.vue())
+}
+
+/// « ← Carrefour précédent ».
+#[tauri::command(async)]
+pub(crate) fn balade_revenir(etat: State<Etat>) -> Result<BaladeVue, String> {
+    let mut garde = verrou(&etat.balade);
+    let balade = garde.as_mut().ok_or("aucune balade")?;
+    {
+        let lib = verrou(&etat.lib);
+        balade.revenir(&lib)?;
+    }
+    ecrire_mesure(&etat, &balade.mesure);
+    Ok(balade.vue())
+}
+
+/// Le degré d'intervention, pour la balade en cours (l'interface le garde
+/// avec les autres réglages de la carte et le redonne à chaque départ).
+#[tauri::command(async)]
+pub(crate) fn balade_regler(etat: State<Etat>, intervention: Intervention) -> Option<BaladeVue> {
+    let mut garde = verrou(&etat.balade);
+    let balade = garde.as_mut()?;
+    balade.intervention = intervention;
+    sauver(&etat, balade);
+    Some(balade.vue())
+}
+
+/// Génération de l'extrait : un survol quitté avant la fin du décodage ne
+/// doit pas lancer son extrait après coup.
+static EXTRAIT: AtomicU64 = AtomicU64::new(0);
+
+/// L'extrait de 5 s d'une voie survolée ; `None` le coupe. Le son principal
+/// est baissé le temps de l'extrait (`Player::jouer_extrait`) : le mélange à
+/// deux voix viendra avec l'aura (P4).
+#[tauri::command(async)]
+pub(crate) fn balade_extrait(etat: State<Etat>, morceau: Option<i64>) -> Result<(), String> {
+    let generation = EXTRAIT.fetch_add(1, Ordering::SeqCst) + 1;
+    let Some(id) = morceau else {
+        verrou(&etat.player).arreter_extrait();
+        return Ok(());
+    };
+    let piste = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .ok_or("morceau inconnu")?;
+    let chemin = PathBuf::from(&piste.path);
+    let duree = piste.duration_ms.unwrap_or(0).max(0) as f64 / 1000.0;
+    let debut = Duration::from_secs_f64(duree * EXTRAIT_DEBUT);
+    // Décodé hors du verrou du lecteur.
+    let source = rusty_music_player::ouvrir_extrait(
+        &chemin,
+        debut,
+        EXTRAIT_DUREE,
+        gain_pour(&etat, &chemin),
+    )
+    .map_err(echec)?;
+    if EXTRAIT.load(Ordering::SeqCst) == generation {
+        verrou(&etat.player).jouer_extrait(source);
+    }
+    Ok(())
 }
 
 /// Ce que le battement relève du lecteur, verrou tenu le temps d'une copie.
@@ -443,28 +910,31 @@ pub(crate) fn balade_battement(etat: &Etat) {
         return;
     }
 
+    if suivant_commence {
+        ecrire_mesure(etat, &balade.mesure);
+    }
+
     if balade.suivant.is_none() {
         let decide = {
             let lib = verrou(&etat.lib);
             balade.decider(&lib)
         };
-        match decide {
-            Some(p) => balade.suivant = Some(p),
-            None => {
-                balade.fin = Some("plus aucun morceau devant".into());
-                return;
-            }
+        if !decide {
+            balade.fin = Some("plus aucun morceau devant".into());
+            return;
         }
     }
 
     // À moins de 10 s de la fin — ou plus rien ne joue (⏭, morceau illisible) :
-    // le suivant entre dans la file et n'en bouge plus.
+    // le suivant entre dans la file et n'en bouge plus. En mode *demander*,
+    // pas avant le choix : la balade attend, dans le silence s'il le faut.
     let fin_proche = releve.restant.is_none_or(|r| r <= FIGE_AVANT_FIN);
+    let attend = balade.attend();
     let pas = balade.suivant.as_mut().expect("décidé juste au-dessus");
     if pas.fige && releve.prets >= 2 {
         pas.precharge = true;
     }
-    if pas.fige || !fin_proche {
+    if pas.fige || !fin_proche || attend {
         return;
     }
     let mut player = verrou(&etat.player);
@@ -528,7 +998,7 @@ pub(crate) fn balade_reprendre(app: &tauri::AppHandle, etat: &State<Etat>) {
         std::fs::remove_file(&chemin).ok();
         return;
     }
-    match monter(etat, app, r.pistes, r.ville, r.trace) {
+    match monter(etat, app, r.pistes, r.ville, r.trace, r.intervention) {
         Ok(b) => {
             tracing::info!(pas = b.pistes.len(), "balade reprise");
             *verrou(&etat.balade) = Some(b);
@@ -539,9 +1009,11 @@ pub(crate) fn balade_reprendre(app: &tauri::AppHandle, etat: &State<Etat>) {
 
 /// `RUSTY_MUSIC_ESSAI_BALADE=<id>` : lance une balade depuis le morceau `id`
 /// au démarrage, **sans le son** (volume à zéro), pour juger une longue balade
-/// au journal (`balade : pas`). À lancer sur une copie des données
-/// (`RUSTY_MUSIC_DONNEES`) : la session de l'essai remplace celle d'avant.
-/// Sans effet en usage normal.
+/// au journal (`balade : pas`, `balade : carrefour`). À lancer sur une copie
+/// des données (`RUSTY_MUSIC_DONNEES`) : la session de l'essai remplace celle
+/// d'avant, et son compteur d'usage aussi. Avec `RUSTY_MUSIC_ESSAI_CHOIX=1`,
+/// l'essai fait aussi les gestes du carrefour ([`essai_choisir`]). Sans effet
+/// en usage normal.
 pub(crate) fn essai_balade(app: &tauri::AppHandle) {
     let Some(depart) = std::env::var("RUSTY_MUSIC_ESSAI_BALADE")
         .ok()
@@ -555,9 +1027,62 @@ pub(crate) fn essai_balade(app: &tauri::AppHandle) {
         std::thread::sleep(Duration::from_secs(5));
         let etat = app.state::<Etat>();
         verrou(&etat.player).set_volume(0.0);
-        match balade_demarrer(app.clone(), etat, depart) {
+        match balade_demarrer(app.clone(), etat, depart, None) {
             Ok(v) => tracing::info!(depart, terrain = v.terrain, "essai de balade lancé"),
-            Err(e) => tracing::warn!(erreur = %e, "essai de balade impossible"),
+            Err(e) => {
+                tracing::warn!(erreur = %e, "essai de balade impossible");
+                return;
+            }
+        }
+        if std::env::var_os("RUSTY_MUSIC_ESSAI_CHOIX").is_none() {
+            return;
+        }
+        let mut revenu = u64::MAX;
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            essai_choisir(&app.state::<Etat>(), &mut revenu);
         }
     });
+}
+
+/// Les gestes de l'essai, à 25 s de la fin de chaque morceau qui débouche sur
+/// un carrefour : la voie la plus lointaine à l'oreille (« ailleurs ») ; et
+/// au morceau qui suit un carrefour sur deux, un retour à ce carrefour. De quoi
+/// vérifier au journal qu'un choix remplace le suivant avant son
+/// préchargement, sans blanc.
+fn essai_choisir(etat: &Etat, revenu: &mut u64) {
+    if relever(etat)
+        .restant
+        .is_none_or(|r| r > Duration::from_secs(25))
+    {
+        return;
+    }
+    let mut garde = verrou(&etat.balade);
+    let Some(b) = garde.as_mut() else { return };
+    if b.suivant.as_ref().is_none_or(|p| p.fige) {
+        return;
+    }
+    let lib = verrou(&etat.lib);
+    if b.mesure.carrefours % 2 == 1 && *revenu != b.mesure.carrefours && !b.passes.is_empty() {
+        *revenu = b.mesure.carrefours;
+        match b.revenir(&lib) {
+            Ok(()) => tracing::info!("essai : retour au carrefour précédent"),
+            Err(e) => tracing::info!(raison = e, "essai : retour refusé"),
+        }
+        return;
+    }
+    let Some(c) = b.carrefour.as_ref().filter(|c| c.choisie.is_none()) else {
+        return;
+    };
+    let Some(cible) = (0..c.voies.len())
+        .filter(|&i| i != c.defaut && !b.voie_lue(c, i))
+        .max_by(|&x, &y| c.distances[x].total_cmp(&c.distances[y]))
+    else {
+        return;
+    };
+    let numero = c.numero;
+    match b.choisir(&lib, numero, cible) {
+        Ok(()) => tracing::info!(voie = cible, "essai : choix"),
+        Err(e) => tracing::info!(raison = e, "essai : choix refusé"),
+    }
 }

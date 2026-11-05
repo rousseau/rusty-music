@@ -639,6 +639,7 @@ fn main() {
                         // vient de figer est ouvert dans le même battement.
                         balade_reprendre(&etat_arriere_plan, &etat);
                         balade_battement(&etat);
+                        verrou(&etat.player).entretenir_extrait();
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
@@ -894,6 +895,10 @@ fn main() {
             balade_demarrer,
             balade_etat,
             balade_arreter,
+            balade_choisir,
+            balade_revenir,
+            balade_regler,
+            balade_extrait,
             tuile,
             map_progress,
             graphe_progress,

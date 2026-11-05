@@ -91,12 +91,17 @@ const fixtures = {
   },
   file_courante: (_, e) => window.__DONNEES__.PISTES.filter((p) => (e.file ?? []).includes(p.path)),
   // La balade (`explorer/balade.rs`, `BaladeVue`) : le départ joue, le
-  // suivant est décidé mais pas encore dans la file.
+  // suivant est décidé mais pas encore dans la file. Un carrefour à deux
+  // voies (P2) : la pente, proche à l'oreille, et une voie « ailleurs ».
   balade_demarrer: (a, e) => {
     const ps = window.__DONNEES__.PISTES;
     const i = ps.findIndex((p) => p.id === a.depart);
     e.file = [ps[i].path];
     e.stems = null;
+    const voie = (p, distance, defaut) => ({
+      morceau: p.id, distance, defaut, proche: defaut, lue: false, rue: [],
+    });
+    const intervention = a.intervention ?? "proposer";
     e.balade = {
       terrain: "voisins",
       pistes: [a.depart],
@@ -105,6 +110,17 @@ const fixtures = {
       troncon: [],
       trace: [],
       fin: null,
+      intervention,
+      carrefour: {
+        numero: 1,
+        voies: [voie(ps[(i + 1) % ps.length], 0.04, true), voie(ps[(i + 3) % ps.length], 0.21, false)],
+        prise: 0,
+        choisie: false,
+        retour: false,
+      },
+      attend: intervention === "demander",
+      revenir: false,
+      mesure: { carrefours: 0, choix: 0, ailleurs: 0, retours: 0 },
     };
     return e.balade;
   },
@@ -113,6 +129,22 @@ const fixtures = {
     e.balade = null;
     return null;
   },
+  balade_choisir: (a, e) => {
+    const c = e.balade.carrefour;
+    c.prise = a.voie;
+    c.choisie = true;
+    e.balade.suivant = c.voies[a.voie].morceau;
+    e.balade.attend = false;
+    return e.balade;
+  },
+  balade_revenir: (_, e) => e.balade,
+  balade_regler: (a, e) => {
+    if (!e.balade) return null;
+    e.balade.intervention = a.intervention;
+    e.balade.attend = a.intervention === "demander" && !e.balade.carrefour?.choisie;
+    return e.balade;
+  },
+  balade_extrait: () => null,
 };
 
 // --- familles (numéro, nom, effectif) et carte en nuage de points

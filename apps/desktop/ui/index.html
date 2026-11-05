@@ -179,6 +179,19 @@
             </div>
           </div>
         </div>
+        <!-- La balade (`js/balade.js`) : combien elle demande. Gardé en local,
+             comme le fond de plan. Nuage et Carte seulement. -->
+        <div id="bloc-balade">
+          <p class="rail__titre" style="margin-top:14px">Balade</p>
+          <div class="segments segments--colonne" id="balade-intervention">
+            <button class="segment" data-intervention="porter"
+                    title="Aucun panneau aux carrefours : la balade suit sa pente, les voies restent tracées">Se laisser porter</button>
+            <button class="segment segment--actif" data-intervention="proposer"
+                    title="Les voies s'annoncent à la fin du morceau ; sans geste, la balade prend la voie marquée">Proposer</button>
+            <button class="segment" data-intervention="demander"
+                    title="La balade attend votre choix à chaque carrefour, en silence s'il le faut">Demander</button>
+          </div>
+        </div>
         <div class="zoom" id="bloc-zoom">
           <button id="zoom-moins" aria-label="Dézoomer">−</button>
           <span class="zoom__val" id="zoom-val">×1,0</span>
@@ -544,7 +557,16 @@
           <!-- La balade en cours (`js/balade.js`) : où elle en est, de quoi l'arrêter. -->
           <div id="carte-balade" class="carte__balade" hidden>
             <span id="carte-balade-texte"></span>
+            <button id="carte-balade-revenir" class="lien" type="button" hidden
+                    title="Revenir au dernier carrefour et prendre une autre voie, sans couper le morceau en cours">← Carrefour précédent</button>
             <button id="carte-balade-arreter" class="lien" type="button">Arrêter la balade</button>
+          </div>
+          <!-- Le carrefour de la balade (P2) : deux ou trois voies, à côté du
+               promeneur, pendant la fin du morceau. Rempli par `js/balade.js`. -->
+          <div id="carte-carrefour" class="carrefour" role="group" aria-label="Carrefour : la suite de la balade" hidden>
+            <p id="carrefour-etat" class="carrefour__etat" aria-live="polite"></p>
+            <ol id="carrefour-voies" class="carrefour__voies"></ol>
+            <p class="carrefour__aide">1 2 3 ou flèches · Échap</p>
           </div>
           <!-- Clic droit sur un morceau de la carte. -->
           <div id="carte-menu" class="carte__menu" role="menu" hidden>

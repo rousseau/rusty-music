@@ -539,7 +539,7 @@ pub(crate) fn appliquer_minuteur(etat: &Etat, action: minuteur::Action) {
         Action::Rien => {}
         Action::Volume(v) => verrou(&etat.player).set_volume(v),
         Action::Pause { rendre_volume } => {
-            let p = verrou(&etat.player);
+            let mut p = verrou(&etat.player);
             p.pause();
             // Pause d'abord : remettre le volume avant ferait entendre la
             // reprise du son pendant un instant.

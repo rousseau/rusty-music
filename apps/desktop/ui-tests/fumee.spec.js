@@ -476,3 +476,56 @@ test("balade : clic droit sur un morceau, « Flâner d'ici », la carte dit où 
   await expect(page.locator("#carte-balade")).toBeHidden();
   expect(await appels(page, "balade_arreter")).toHaveLength(1);
 });
+
+test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde voie, l'extrait suit le survol", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.waitForTimeout(800);
+  await page.click('#balade-intervention [data-intervention="demander"]');
+  // La fin du morceau : le carrefour se présente dans les 30 dernières secondes.
+  await page.evaluate(() => {
+    const lire = window.__FIXTURES__.playback_state;
+    window.__FIXTURES__.playback_state = (a, e) => ({ ...lire(a, e), position_ms: e.file ? 165_000 : 0 });
+  });
+  const p = fixtures.map_view[0];
+  const r = await page.locator("#carte").boundingBox();
+  const c = Math.min(r.width, r.height) / 2 - 28;
+  await page.mouse.click(r.x + r.width / 2 + p.x * c, r.y + r.height / 2 + p.y * c, { button: "right" });
+  await page.click("#carte-menu-flaner");
+  await expect.poll(async () => (await appels(page, "balade_demarrer")).at(-1)?.intervention).toBe("demander");
+  const panneau = page.locator("#carte-carrefour");
+  await expect(panneau).toBeVisible();
+  await expect(panneau.locator(".voie")).toHaveCount(2);
+  await expect(page.locator("#carrefour-etat")).toHaveText("La balade attend votre choix.");
+  // Le panneau ne couvre pas le promeneur (le morceau de départ).
+  const b = await panneau.boundingBox();
+  const px = r.x + r.width / 2 + p.x * c;
+  const py = r.y + r.height / 2 + p.y * c;
+  expect(px < b.x || px > b.x + b.width || py < b.y || py > b.y + b.height).toBe(true);
+  // Survoler une voie fait entendre son extrait ; la quitter le coupe.
+  await panneau.locator(".voie").nth(1).hover();
+  await expect.poll(async () => (await appels(page, "balade_extrait")).at(-1)?.morceau).toBe(
+    fixtures.map_view[3].id,
+  );
+  await page.mouse.move(r.x + 4, r.y + r.height - 4);
+  await expect.poll(async () => (await appels(page, "balade_extrait")).at(-1)?.morceau).toBe(null);
+  await page.keyboard.press("2");
+  await expect.poll(async () => (await appels(page, "balade_choisir")).at(-1)).toEqual({ numero: 1, voie: 1 });
+  await expect(page.locator("#carrefour-etat")).toHaveText("Vous prenez la voie 2.");
+  // Le suivant figé (10 dernières secondes) : le panneau se grise et le dit.
+  await page.evaluate(() => {
+    window.__ETAT_FAUX__.balade.fige = true;
+  });
+  await expect(page.locator("#carrefour-etat")).toHaveText(
+    "Trop tard pour changer : le morceau suivant est déjà en route.",
+  );
+  await expect(panneau.locator(".voie").first()).toBeDisabled();
+  // ← ne change pas de piste tant que le panneau est là.
+  const avant = (await appels(page, "skip")).length + (await appels(page, "previous")).length;
+  await page.keyboard.press("ArrowLeft");
+  expect((await appels(page, "skip")).length + (await appels(page, "previous")).length).toBe(avant);
+  // Échap masque le panneau de ce carrefour.
+  await page.keyboard.press("Escape");
+  await expect(panneau).toBeHidden();
+  // Le réglage reste d'une session à l'autre.
+  expect(await page.evaluate(() => localStorage.getItem("balade-intervention"))).toBe("demander");
+});

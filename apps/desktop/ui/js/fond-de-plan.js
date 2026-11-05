@@ -75,6 +75,8 @@ function majRailExplorer() {
   const explorer = navigation.mode === "explorer";
   const enLama = explorer && carte.affichage === "lama";
   $("reglages-explorer").hidden = enLama;
+  // La balade marche sur le nuage et sur la carte, pas sur la frise ni l'anneau.
+  $("bloc-balade").hidden = !["points", "carte"].includes(carte.affichage);
   $("bloc-familles").hidden = !explorer || enLama || carte.couleur !== "famille";
   $("bloc-chercher").hidden =
     navigation.mode === "bibliotheque" ||

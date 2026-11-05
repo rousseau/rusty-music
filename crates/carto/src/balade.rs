@@ -5,7 +5,8 @@
 //! Le morceau suivant n'est pas dans une file calculée d'avance : il est
 //! choisi au moment où on en a besoin, depuis la position courante. Ce module
 //! ne tient que la partie pure — l'état de la marche et les branches qui
-//! s'offrent ([`suivants`]), puis la pente par défaut ([`pente_simple`]).
+//! s'offrent ([`suivants`]), la pente par défaut ([`pente_simple`]) et, au
+//! carrefour (P2), les deux ou trois branches montrées ([`proposer`]).
 //! L'application décide quand avancer et ce qu'elle confie au lecteur.
 //!
 //! Une **branche** est une suite possible : la séquence de sommets de voirie
@@ -51,6 +52,15 @@ impl EtatBalade {
             sommets_vus: HashSet::from([sommet]),
             morceaux_vus: HashSet::from([morceau]),
         }
+    }
+
+    /// Revient à la position d'un carrefour passé (`avant`, l'état d'alors),
+    /// en gardant tout ce qui a été vu depuis : ses branches déjà prises ne
+    /// mènent plus au même morceau, ni par les mêmes rues tant qu'il y en a
+    /// d'autres.
+    pub fn revenir(&mut self, avant: &EtatBalade) {
+        self.sommet = avant.sommet;
+        self.precedent = avant.precedent;
     }
 
     /// Prend la branche `b` : on se retrouve au sommet de son morceau.
@@ -249,6 +259,100 @@ pub fn pente_simple(
             .total_cmp(&distance(branches[b].morceau))
             .then(a.cmp(&b))
     })
+}
+
+/// Branches montrées au carrefour, au plus : au-delà de trois, on ne compare
+/// plus, on survole (loi de Hick, `docs/plan-balade.md`).
+pub const PROPOSEES_MAX: usize = 3;
+
+/// Combien une branche longe le déjà parcouru : les sommets déjà vus parmi
+/// ceux qu'elle traverse et leurs voisins immédiats, la position courante (et
+/// ses voisins, dont celui d'où l'on vient) mise à part. Les branches de
+/// [`suivants`] évitent le déjà vu quand elles le peuvent : c'est le
+/// voisinage qui les départage.
+pub fn deja_vu(etat: &EtatBalade, graphe: &Graphe, b: &Branche) -> usize {
+    let origine = etat.sommet;
+    let pres_origine: HashSet<u32> = voisins(graphe, origine)
+        .into_iter()
+        .map(|(w, _)| w)
+        .chain([origine])
+        .collect();
+    let mut vus: HashSet<u32> = HashSet::new();
+    for &s in b.sommets.iter().skip(1) {
+        for v in voisins(graphe, s).into_iter().map(|(w, _)| w).chain([s]) {
+            if !pres_origine.contains(&v) && etat.sommets_vus.contains(&v) {
+                vus.insert(v);
+            }
+        }
+    }
+    vus.len()
+}
+
+/// Les branches à montrer au carrefour, en indices de `branches`, la pente par
+/// défaut (`defaut`) en tête. Jusqu'à [`PROPOSEES_MAX`] branches, toutes. Au
+/// delà : la pente par défaut, la plus différente — d'une autre famille que
+/// le morceau en cours d'abord, la plus lointaine à l'oreille ensuite —, puis
+/// la plus proche à l'oreille si la pente n'est pas déjà elle (il y a
+/// toujours une branche « proche » et une « ailleurs »), sinon la moins
+/// visitée (`deja_vu`, en nombre de sommets).
+///
+/// `distance` : distance à l'oreille au morceau en cours, plus petit = plus
+/// proche ; `famille` : la famille d'un morceau, `None` si inconnue.
+pub fn proposer(
+    branches: &[Branche],
+    defaut: usize,
+    distance: impl Fn(i64) -> f32,
+    famille: impl Fn(i64) -> Option<i64>,
+    famille_courante: Option<i64>,
+    deja_vu: impl Fn(&Branche) -> usize,
+) -> Vec<usize> {
+    if branches.is_empty() {
+        return Vec::new();
+    }
+    let defaut = defaut.min(branches.len() - 1);
+    let mut retenues = vec![defaut];
+    let reste = |retenues: &[usize]| -> Vec<usize> {
+        (0..branches.len())
+            .filter(|i| !retenues.contains(i))
+            .collect()
+    };
+    if branches.len() <= PROPOSEES_MAX {
+        retenues.extend(reste(&retenues));
+        return retenues;
+    }
+    let loin = |&a: &usize, &b: &usize| {
+        distance(branches[a].morceau)
+            .total_cmp(&distance(branches[b].morceau))
+            .then(b.cmp(&a))
+    };
+    // La plus différente : une autre famille si l'on peut, puis la plus loin.
+    let autre_famille = |i: &usize| {
+        famille_courante.is_some_and(|f| famille(branches[*i].morceau).is_some_and(|g| g != f))
+    };
+    let candidats = reste(&retenues);
+    let ailleurs = candidats
+        .iter()
+        .copied()
+        .filter(autre_famille)
+        .max_by(loin)
+        .or_else(|| candidats.iter().copied().max_by(loin));
+    retenues.extend(ailleurs);
+    // Une branche proche : la plus proche de toutes, si ce n'est pas la pente.
+    let plus_proche = (0..branches.len()).min_by(|&a, &b| {
+        distance(branches[a].morceau)
+            .total_cmp(&distance(branches[b].morceau))
+            .then(a.cmp(&b))
+    });
+    match plus_proche {
+        Some(p) if !retenues.contains(&p) => retenues.push(p),
+        _ => {
+            let moins_vue = reste(&retenues)
+                .into_iter()
+                .min_by_key(|&i| (deja_vu(&branches[i]), i));
+            retenues.extend(moins_vue);
+        }
+    }
+    retenues
 }
 
 #[cfg(test)]
@@ -468,6 +572,90 @@ mod tests {
         });
         assert_eq!(etat.sommet, b.s["e2"]);
         assert_eq!(etat.precedent, Some(b.s["e1"]));
+    }
+
+    /// Cinq branches synthétiques (les sommets ne servent qu'à `deja_vu`).
+    fn cinq() -> Vec<Branche> {
+        (0..5)
+            .map(|i| Branche {
+                sommets: vec![0, 10 + i as u32],
+                morceau: 100 + i,
+                cout: i as u64,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn jusqua_trois_branches_toutes_la_pente_en_tete() {
+        let br = &cinq()[..3];
+        let p = proposer(br, 2, |_| 0.5, |_| None, None, |_| 0);
+        assert_eq!(p, vec![2, 0, 1]);
+        assert!(proposer(&[], 0, |_| 0.5, |_| None, None, |_| 0).is_empty());
+    }
+
+    #[test]
+    fn au_dela_de_trois_la_pente_la_plus_differente_et_une_proche() {
+        let br = cinq();
+        // Distances à l'oreille : 101 la plus proche, 104 la plus loin, mais
+        // 102 seule d'une autre famille.
+        let d = |id: i64| [0.3, 0.1, 0.5, 0.4, 0.9][(id - 100) as usize];
+        let f = |id: i64| Some(if id == 102 { 7 } else { 1 });
+        // La pente (tout droit) n'est pas la plus proche : la proche s'ajoute.
+        let p = proposer(&br, 0, d, f, Some(1), |_| 0);
+        assert_eq!(p, vec![0, 2, 1]);
+        // Sans famille connue, la plus différente est la plus loin.
+        let p = proposer(&br, 0, d, |_| None, Some(1), |_| 0);
+        assert_eq!(p, vec![0, 4, 1]);
+        // La pente est déjà la plus proche : la moins visitée complète.
+        let vu = |b: &Branche| if b.morceau == 103 { 0 } else { 2 };
+        let p = proposer(&br, 1, d, f, Some(1), vu);
+        assert_eq!(p, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn deja_vu_compte_le_voisinage_parcouru_sans_le_carrefour() {
+        let b = banc();
+        let mut etat = EtatBalade::depuis(b.s["c"], 1);
+        etat.precedent = Some(b.s["o1"]);
+        etat.sommets_vus.insert(b.s["o1"]);
+        let est = Branche {
+            sommets: vec![b.s["c"], b.s["e1"], b.s["e2"]],
+            morceau: 2,
+            cout: 0,
+        };
+        // L'arrivée (O1) et le carrefour ne comptent pas.
+        assert_eq!(deja_vu(&etat, &b.graphe, &est), 0);
+        // E3 déjà parcouru, voisin de E2 : la branche longe le vu.
+        etat.sommets_vus.insert(b.s["e3"]);
+        assert_eq!(deja_vu(&etat, &b.graphe, &est), 1);
+    }
+
+    #[test]
+    fn revenir_au_carrefour_propose_les_branches_non_prises() {
+        let b = banc();
+        let acc = accrochage(&[
+            (1, b.s["c"]),
+            (20, b.s["e1"]),
+            (30, b.s["n1"]),
+            (40, b.s["s1"]),
+        ]);
+        let mut etat = EtatBalade::depuis(b.s["c"], 1);
+        etat.precedent = Some(b.s["o1"]);
+        let carrefour = etat.clone();
+        let br = suivants(&etat, &b.graphe, &acc);
+        assert_eq!(br.len(), 3);
+        let est = br.iter().find(|x| x.morceau == 20).unwrap().clone();
+        etat.avancer(&est);
+        assert_eq!(etat.sommet, b.s["e1"]);
+        // Retour au carrefour : l'est (déjà lu) n'est plus proposé.
+        etat.revenir(&carrefour);
+        assert_eq!(etat.sommet, b.s["c"]);
+        let mut m: Vec<i64> = suivants(&etat, &b.graphe, &acc)
+            .iter()
+            .map(|x| x.morceau)
+            .collect();
+        m.sort_unstable();
+        assert_eq!(m, vec![30, 40]);
     }
 
     #[test]

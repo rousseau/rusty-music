@@ -2636,6 +2636,110 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
   pendant une balade, le repli dans le graphe des voisins sur une vraie
   bibliothèque.
 
+### P2 : le carrefour, le choix du livre-jeu
+
+- **Moteur pur** (`crates/carto/src/balade.rs`) :
+  - `proposer` choisit les voies à montrer. Jusqu'à trois, toutes, la pente
+    en tête. Au-delà : la pente, la plus différente (une autre famille d'abord,
+    puis la plus lointaine à l'oreille), puis la plus proche à l'oreille si la
+    pente ne l'est pas, sinon la moins visitée. Il y a donc toujours une voie
+    « proche » et une « ailleurs ».
+  - `deja_vu` compte les sommets déjà parcourus autour d'une branche, hors du
+    carrefour lui-même.
+  - `EtatBalade::revenir` retourne à la position d'un carrefour passé en
+    gardant tout le vu.
+  - 4 tests nouveaux, 12 en tout.
+- **Application** (`explorer/balade.rs`) :
+  - Un `Carrefour` accompagne le pas décidé quand plusieurs voies s'offrent.
+  - `balade_choisir(numero, voie)` remplace le suivant tant qu'il n'est pas
+    figé : il n'est pas encore dans la file du lecteur, rien n'est coupé.
+    Le choix est refusé, en le disant, dans les 10 dernières secondes.
+  - `balade_revenir` dépile le dernier carrefour passé, y replace la marche
+    et repropose les voies non prises (la prise est marquée lue). Le morceau
+    en cours continue ; le pas suivant part du carrefour par la trace, à
+    rebours.
+  - `balade_regler(intervention)` règle le degré d'intervention. En mode
+    *demander*, rien n'est figé avant le choix, et le morceau fini laisse le
+    silence jusqu'au geste.
+  - `balade_extrait(morceau)` joue 5 s pris à 30 % du morceau. Le lecteur
+    gagne une seconde voix (`Player::jouer_extrait`, `ouvrir_extrait` : ne
+    décode que ce qu'il faut, fondus de 0,4 s) et baisse le son principal à
+    20 % le temps de l'extrait. Le mélange viendra avec P4.
+  - Compteur d'usage : `balade-mesure.json`, à côté de la base. Il compte les
+    carrefours montrés et quittés, les choix d'un geste, les choix
+    « ailleurs » (voie autre que la plus proche à l'oreille) et les retours.
+- **Interface** (`js/balade.js`) :
+  - **Le panneau.** Il est ancré à côté du promeneur, jamais dessus (à droite,
+    à gauche s'il manque la place). Il apparaît pendant les 30 dernières
+    secondes, dès le début pour un morceau de moins de 40 s. Chaque carte
+    montre l'artiste (le nom de la rue), le titre, la famille avec sa
+    pastille et une jauge proche ↔ ailleurs (distance CLAP, 0,25 en bout).
+    La voie qui sera prise porte un filet d'accent et un anneau qui se vide
+    jusqu'à 10 s de la fin. Ensuite, le panneau se grise : « Trop tard pour
+    changer : le morceau suivant est déjà en route. »
+  - **Sur la carte.** Chaque voie est tracée sur ses 60 premiers mètres dans
+    la couleur de sa famille ; sur le nuage, c'est un trait court vers le
+    morceau.
+  - **Les gestes.** 1/2/3, les flèches (la voie qui part dans cette direction
+    à l'écran), un clic sur une carte ou sur une rue tracée, Échap (masque le
+    panneau de ce carrefour ; la rue reste cliquable). Tant que le panneau est
+    là, ← et → désignent une rue au lieu de changer de piste : c'est un écart
+    assumé au contrat du transport.
+  - **« ← Carrefour précédent »** est dans le bandeau de la balade. Le réglage
+    *Se laisser porter / Proposer / Demander* est dans le rail d'Explorer
+    (bloc « Balade », Nuage et Carte) et gardé en local comme le fond de
+    plan.
+- **Combien de carrefours** (`examples/carrefours_balade.rs`, la marche de
+  l'application sans geste, 500 départs × 20 pas) :
+
+  | mesure | valeur |
+  |---|---|
+  | pas qui débouchent sur un carrefour | 10,6 % |
+  | pas entre deux carrefours, médiane (p90) | 4 (11) |
+  | voies offertes, médiane (max) | 2 (4) ; plus de trois : 0,3 % |
+  | la pente est la plus proche à l'oreille | 85 % |
+  | une voie mène à une autre famille | 61 % |
+  | distance de la voie proche / lointaine, médianes | 0,088 / 0,169 |
+  | écart proche ↔ ailleurs, médiane (p10) | 0,058 (0,010) |
+
+  Un choix tous les quatre morceaux environ, à deux voies le plus souvent :
+  les morceaux d'un même sommet s'enchaînent sans carrefour (« au milieu
+  d'une rue, une seule branche »). La sélection à trois ne sert presque
+  jamais. L'écart vaut d'être offert (de 0,09 à 0,17, soit du « même quartier
+  » au « presque le hasard »), sauf pour un carrefour sur dix, où les voies
+  se valent.
+- **Essai natif** (`RUSTY_MUSIC_ESSAI_BALADE=2087 RUSTY_MUSIC_ESSAI_CHOIX=1`,
+  copie des données, son coupé ; l'essai choisit la voie la plus lointaine à
+  25 s de la fin) :
+  - en 22 min, 7 pas et un carrefour à 3 voies : la voie « ailleurs » a
+    remplacé la pente, puis a été préchargée et enchaînée sans blanc (saut
+    0 m) ;
+  - tous les pas ont été préchargés, sans répétition ;
+  - compteur : `{"carrefours":1,"choix":1,"ailleurs":1,"retours":0}`.
+  - Second essai de 12 min, avec un retour au morceau suivant. 4 min 30 après
+    le carrefour, « ← Carrefour précédent » le représente ; l'essai prend la
+    troisième voie, que personne n'avait prise. Ce pas de 172 m (les 55 m du
+    retour à rebours, puis la nouvelle rue) a été préchargé et enchaîné sans
+    blanc, avec un saut de 0 m. Compteur :
+    `{"carrefours":2,"choix":2,"ailleurs":2,"retours":1}`.
+- **Vérifié** dans l'interface simulée : un nouveau test de fumée. En mode
+  *demander*, le panneau attend. Il ne couvre pas le promeneur. Le survol
+  demande l'extrait, la sortie le coupe. 2 choisit la seconde voie, et ← ne
+  change plus de piste. Le figeage grise le panneau et le dit. Échap le
+  masque. Le réglage est gardé.
+- **`audit-interface.sh` non conclu** : l'écran s'est verrouillé pendant
+  l'audit (WebKit suspend alors la page). Il a mesuré 30 cellules sans
+  violation, jusqu'à Découvrir, puis a dépassé le délai. Contraste et
+  typographie : aucune violation. À relancer, écran déverrouillé.
+- **Non vérifié à l'usage** :
+  - l'extrait à l'oreille (la baisse du son et les fondus) ;
+  - le panneau sur le plan de ville dans la webview native ;
+  - les flèches sur de vraies rues ;
+  - le mode *demander* en silence dans l'app.
+
+  La mesure d'usage (part des carrefours avec un choix, part « ailleurs »)
+  est à relever après une semaine dans `balade-mesure.json`.
+
 ## Pratiquer et Créer, deux modes du rail — 5 nov. 2026
 
 - **Décision** (François) : Éditer portait deux usages qu'un même écran sert

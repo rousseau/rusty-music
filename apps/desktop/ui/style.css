@@ -1064,6 +1064,62 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .carte__balade[hidden] { display: none; }
 .carte__balade .lien { margin-top: 0; }
+.carte__balade .lien[hidden] { display: none; }
+/* Le carrefour de la balade (P2) : deux ou trois voies, à côté du promeneur
+   (placé par `placerPanneau`), jamais dessus. Grisé quand le suivant est figé. */
+.carrefour {
+  position: absolute; z-index: 5; width: 264px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .22); padding: 8px 0 6px;
+}
+.carrefour[hidden] { display: none; }
+.carrefour__etat {
+  margin: 0 12px 6px; font-size: var(--t-legende); color: var(--mut);
+}
+.carrefour__voies { list-style: none; margin: 0; padding: 0; }
+.carrefour__aide {
+  margin: 6px 12px 0; font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mut);
+}
+.voie {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%;
+  padding: 6px 12px; border: none; border-left: 2px solid transparent;
+  background: none; font: inherit; color: var(--txt); text-align: left; cursor: pointer;
+}
+.voie:hover:not(:disabled), .voie:focus-visible { background: var(--panel2); }
+.voie--prise { border-left-color: var(--accent); }
+.voie:disabled { cursor: default; }
+.voie--lue, .carrefour--fige .voie { opacity: .45; }
+.voie__touche {
+  position: relative; flex: none; width: 24px; height: 24px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
+}
+.voie--prise .voie__touche { color: var(--accent); }
+/* L'anneau de temps restant : il se vide jusqu'à ce que la voie soit prise. */
+.voie__anneau { position: absolute; inset: 0; transform: rotate(-90deg); }
+.voie__anneau circle {
+  fill: none; stroke: var(--accent); stroke-width: 2;
+  stroke-dasharray: 1; stroke-dashoffset: 0; transition: stroke-dashoffset .25s linear;
+}
+@media (prefers-reduced-motion: reduce) { .voie__anneau circle { transition: none; } }
+.voie__corps { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.voie__rue { font-weight: 500; font-size: var(--t-corps); }
+.voie__titre, .voie__famille { font-size: var(--t-second); color: var(--mut); }
+.voie__rue, .voie__titre, .voie__famille {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.voie__famille { display: flex; align-items: center; gap: 6px; }
+.voie__pastille { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.voie__jauge {
+  display: flex; align-items: center; gap: 6px; margin-top: 3px;
+  font-size: var(--t-legende); color: var(--mut);
+}
+.voie__barre { position: relative; flex: 1; height: 2px; background: var(--line); }
+.voie__barre i {
+  position: absolute; top: -3px; width: 8px; height: 8px; margin-left: -4px;
+  border-radius: 50%; background: var(--txt);
+}
 /* Le menu du clic droit sur un morceau de la carte. */
 .carte__menu {
   position: absolute; z-index: 6; min-width: 140px;

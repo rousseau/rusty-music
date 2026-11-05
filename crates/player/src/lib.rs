@@ -190,6 +190,44 @@ pub fn ouvrir(track: &Path, gain_lineaire: f32) -> Result<Box<dyn rodio::Source 
     Ok(Box::new(tampon))
 }
 
+/// Le son principal pendant un extrait : baissé, pas coupé.
+const NIVEAU_SOUS_EXTRAIT: f32 = 0.2;
+/// Entrée et sortie en fondu d'un extrait.
+const FONDU_EXTRAIT: Duration = Duration::from_millis(400);
+
+/// Ouvre `duree` de `track` à partir de `debut`, en fondu à l'entrée et à la
+/// sortie, pour [`Player::jouer_extrait`]. Ne décode que ce qu'il faut quand
+/// le format le permet (symphonia), sinon tout le fichier, comme [`ouvrir`].
+pub fn ouvrir_extrait(
+    track: &Path,
+    debut: Duration,
+    duree: Duration,
+    gain_lineaire: f32,
+) -> Result<Box<dyn rodio::Source + Send>> {
+    use rodio::Source;
+    let decode: Box<dyn rodio::Source + Send> = match std::fs::File::open(track)
+        .ok()
+        .and_then(|f| Decoder::try_from(f).ok())
+    {
+        Some(d) => Box::new(d.amplify(gain_lineaire)),
+        None => ouvrir(track, gain_lineaire)?,
+    };
+    let mut ecoule = Duration::ZERO;
+    let pas = Duration::from_millis(20);
+    let fondu = FONDU_EXTRAIT.as_secs_f32();
+    let total = duree.as_secs_f32();
+    let source = decode
+        .skip_duration(debut)
+        .take_duration(duree)
+        .amplify(0.0)
+        .periodic_access(pas, move |a| {
+            let t = ecoule.as_secs_f32();
+            a.set_factor((t / fondu).min((total - t) / fondu).clamp(0.0, 1.0));
+            ecoule += pas;
+        });
+    Ok(Box::new(source))
+}
+
 /// Spectrogramme du fichier **tel qu'il sortirait de [`ouvrir`]** : avec
 /// l'excitateur « E » appliqué s'il est actif. Sert à montrer dans l'interface
 /// ce que « E » ajoute, sans avoir à écrire un fichier.
@@ -396,6 +434,12 @@ pub struct Player {
     // L'ordre de déclaration fixe l'ordre de destruction. Le lecteur doit
     // tomber avant la sortie à laquelle il est raccordé, pas l'inverse.
     inner: Arc<rodio::Player>,
+    /// Une seconde voix, pour l'extrait d'un morceau (le carrefour de la
+    /// balade, `docs/plan-balade.md`, P2) : voir [`Self::jouer_extrait`]. Tombe
+    /// elle aussi avant la sortie.
+    extrait: Option<rodio::Player>,
+    /// Le volume du son principal avant l'extrait, qui l'a baissé.
+    volume_avant_extrait: Option<f32>,
     _output: MixerDeviceSink,
     /// Levé par cpal quand le flux ouvert est mort (périphérique débranché,
     /// changé, machine réveillée) : plus personne ne tire sur la source, et
@@ -502,6 +546,8 @@ impl Player {
         let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         Ok(Self {
             inner,
+            extrait: None,
+            volume_avant_extrait: None,
             _output: output,
             sortie_perdue,
             queue: Vec::new(),
@@ -989,6 +1035,9 @@ impl Player {
                 return;
             }
         };
+        // L'extrait était raccordé à l'ancienne sortie : il s'arrête, et rend
+        // au son principal son volume.
+        self.arreter_extrait();
         let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         inner.set_volume(self.inner.volume());
         // Le lecteur tombe avant la sortie à laquelle il était raccordé.
@@ -1144,11 +1193,65 @@ impl Player {
     /// `Cargo.toml` racine. L'activer ferait échouer la compilation ici, ce
     /// qui vaut mieux qu'une conversion silencieuse.
     pub fn volume(&self) -> f32 {
-        self.inner.volume()
+        self.volume_avant_extrait
+            .unwrap_or_else(|| self.inner.volume())
     }
 
-    pub fn set_volume(&self, volume: f32) {
-        self.inner.set_volume(volume);
+    /// Pendant un extrait, le volume demandé est celui que le son principal
+    /// retrouvera à la fin ; il reste baissé jusque-là.
+    pub fn set_volume(&mut self, volume: f32) {
+        match &mut self.volume_avant_extrait {
+            Some(avant) => {
+                *avant = volume;
+                self.inner.set_volume(volume * NIVEAU_SOUS_EXTRAIT);
+            }
+            None => self.inner.set_volume(volume),
+        }
+    }
+
+    /// Joue `source` par-dessus la lecture, sur une seconde voix, en baissant
+    /// le son principal le temps qu'elle dure : l'extrait d'un morceau qu'on
+    /// survole au carrefour d'une balade. Ce n'est pas encore le mélange à
+    /// deux voix de l'aura (P4) : le son principal s'efface, il ne se fond
+    /// pas. Un nouvel extrait remplace le précédent. La fin est relevée par
+    /// [`Self::entretenir_extrait`].
+    pub fn jouer_extrait(&mut self, source: Box<dyn rodio::Source + Send>) {
+        self.rouvrir_si_perdue();
+        if let Some(v) = self.extrait.take() {
+            v.stop();
+        }
+        let voix = rodio::Player::connect_new(self._output.mixer());
+        let volume = self.volume();
+        voix.set_volume(volume);
+        voix.append(source);
+        if self.volume_avant_extrait.is_none() {
+            self.volume_avant_extrait = Some(volume);
+            self.inner.set_volume(volume * NIVEAU_SOUS_EXTRAIT);
+        }
+        self.extrait = Some(voix);
+    }
+
+    /// Coupe l'extrait en cours et rend au son principal son volume.
+    pub fn arreter_extrait(&mut self) {
+        if let Some(v) = self.extrait.take() {
+            v.stop();
+        }
+        if let Some(v) = self.volume_avant_extrait.take() {
+            self.inner.set_volume(v);
+        }
+    }
+
+    /// L'extrait est fini : rend au son principal son volume. À appeler
+    /// régulièrement (le battement natif de l'application).
+    pub fn entretenir_extrait(&mut self) {
+        if self.extrait.as_ref().is_some_and(rodio::Player::empty) {
+            self.arreter_extrait();
+        }
+    }
+
+    /// Un extrait joue.
+    pub fn extrait_en_cours(&self) -> bool {
+        self.extrait.as_ref().is_some_and(|v| !v.empty())
     }
 }
 

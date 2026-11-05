@@ -94,9 +94,14 @@ Faire de la carte un terrain de promenade, pas seulement un plan
 - P7, sérier les cellules — essayé, sans effet net (−5 %, −9 % au mieux en
   renforçant le style) : une famille est trop large pour faire une
   progression. Reste un banc (`CR_SERIATION`), pas dans l'application.
-- Restes, dans l'ordre : P2 (choix aux carrefours), P3 (pentes, dont une
-  pente « proche à l'oreille », seule voie restante vers la continuité), puis
-  P5, P8 ; P4 et P6 ensuite.
+- P2, le carrefour — fait : 2-3 voies à la fin du morceau, gestes 1/2/3,
+  flèches, clic sur la rue, Échap ; se laisser porter / proposer / demander ;
+  retour au carrefour précédent ; extrait de 5 s, son principal baissé. Un
+  carrefour tous les quatre morceaux environ. À relever après une semaine :
+  `balade-mesure.json` (choix faits, choix « ailleurs »).
+- Restes, dans l'ordre : P3 (pentes, dont une pente « proche à l'oreille »,
+  seule voie restante vers la continuité), puis P5, P8 ; P4 (qui remplacera
+  la baisse du son de l'extrait par un mélange) et P6 ensuite.
 
 ## Ce qui n'est pas prévu, et pourquoi
 
