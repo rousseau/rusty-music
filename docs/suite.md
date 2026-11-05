@@ -14,7 +14,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) ; palette de recherche ⌘K (1ᵉʳ nov.) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties ; modèle intégré Gemma 4 E4B ou Ollama au choix, phase 7) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
-| Module 3 — Éditer | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem |
+| Module 3 — Pratiquer et Créer (ex-Éditer, deux modes du rail depuis le 5 nov.) | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem ; ce que Pratiquer retient d'une séance à l'autre (`ui-spec-editeur.md`, questions ouvertes) |
 | Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
 | Super-résolution « HD » | livrée (`crates/superres`, AERO via ONNX Runtime) | — (`module3-superresolution.md`) |
 | Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) ; passage Mac → iPhone par fichier (2 nov.) ; passage dans les deux sens et valise par différence, par le Wi-Fi, appairage au câble (3 nov.) | étapes 1 (découper le code), 3 (sélection, en partie), 7 (rotation) ; essais sur l'iPhone (passages, valise par le Wi-Fi) ; mesures de batterie ; `plan-ios-compagnon.md` |
@@ -91,8 +91,12 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   le hasard ; P7 jugé prioritaire (`journal.md`, 5 nov.).
 - P1, le promeneur — fait : « Flâner d'ici », file courte, reprise, repli
   dans le graphe des voisins.
-- Restes, dans l'ordre : P7 (sérier les morceaux dans chaque cellule), P2
-  (choix aux carrefours), puis P3, P5, P8 ; P4 et P6 ensuite.
+- P7, sérier les cellules — essayé, sans effet net (−5 %, −9 % au mieux en
+  renforçant le style) : une famille est trop large pour faire une
+  progression. Reste un banc (`CR_SERIATION`), pas dans l'application.
+- Restes, dans l'ordre : P2 (choix aux carrefours), P3 (pentes, dont une
+  pente « proche à l'oreille », seule voie restante vers la continuité), puis
+  P5, P8 ; P4 et P6 ensuite.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

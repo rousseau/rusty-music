@@ -92,7 +92,33 @@ fn main() -> anyhow::Result<()> {
         reglages.seuil_couloir = v;
     }
     println!("réglages : {reglages:?}");
-    let r = ville::rassembler_avec(&extrait, &vue, &noms, Some(ILE_DE_LA_CITE), &reglages);
+    // `CR_SERIATION=1` : chaque cellule sériée dans l'espace CLAP
+    // (`carto::seriation`, P7 de `docs/plan-balade.md`).
+    let empreintes: Option<HashMap<i64, Vec<f32>>> = (lire("CR_SERIATION") == Some(1.0))
+        .then(|| lib.embeddings(MODELE))
+        .transpose()?
+        .map(|v| v.into_iter().collect());
+    println!("sériation : {}", empreintes.is_some());
+    let r = ville::rassembler_avec(
+        &extrait,
+        &vue,
+        &noms,
+        Some(ILE_DE_LA_CITE),
+        &reglages,
+        empreintes.as_ref(),
+    );
+    // Les adresses, au format de `positions.json` de l'application : ce que
+    // lit `continuite_balade` pour mesurer une marche dans cette ville-ci.
+    let positions: HashMap<i64, [f32; 2]> = r
+        .source
+        .morceaux
+        .iter()
+        .map(|m| (m.id, [m.x, m.y]))
+        .collect();
+    std::fs::write(
+        sortie.join("positions.json"),
+        serde_json::to_vec(&positions)?,
+    )?;
     println!(
         "croissance : {:.1} s — {} adresses, {} sans, {} cellules ({} habitées), {} ancrés",
         t.elapsed().as_secs_f64(),

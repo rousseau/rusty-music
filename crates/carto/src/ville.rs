@@ -532,17 +532,22 @@ pub fn rassembler(
         noms_famille,
         centre,
         &croissance::Parametres::default(),
+        None,
     )
 }
 
 /// [`rassembler`] avec des réglages de croissance explicites — pour comparer
-/// des variantes (`examples/croissance_apercu.rs`).
+/// des variantes (`examples/croissance_apercu.rs`). `empreintes` (identifiant
+/// → empreinte CLAP) : si `Some`, chaque cellule est sériée
+/// ([`crate::seriation`]) — mêmes habitants, rangés pour que la rue soit
+/// continue à l'oreille.
 pub fn rassembler_avec(
     extrait: &Extrait,
     vue: &[MapPoint],
     noms_famille: &HashMap<i64, String>,
     centre: Option<[f64; 2]>,
     reglages: &croissance::Parametres,
+    empreintes: Option<&HashMap<i64, Vec<f32>>>,
 ) -> Resultat {
     let Zone {
         repere,
@@ -595,7 +600,14 @@ pub fn rassembler_avec(
 
     // --- La croissance : l'étage unique qui remplace familles → quartiers,
     // artistes → rues, morceaux → adresses (`docs/carto-ville.md`). ----------
-    let croissance = croissance::peupler(&parcelles, &arrivants, reglages);
+    let mut croissance = croissance::peupler(&parcelles, &arrivants, reglages);
+    if let Some(empreintes) = empreintes {
+        let rues: Vec<Option<(usize, f64)>> = facades
+            .iter()
+            .map(|f| f.map(|f| (f.troncon, f.abscisse)))
+            .collect();
+        crate::seriation::serier(&mut croissance, &parcelles, &rues, &arrivants, empreintes);
+    }
 
     // Bâtiment -> morceau qui l'habite — c'est ce qui permet à `tuiles`/
     // `style` de colorer le bâtiment entier plutôt que d'y poser un point

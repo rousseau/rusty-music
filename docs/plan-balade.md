@@ -655,6 +655,6 @@ P0 ──► (P7 si E1 échoue) ──► P1 ──► P2 ──► P3 ──►
 | P4 aura | à faire | | |
 | P5 traces et brouillard | à faire | | |
 | P6 relief d'énergie | à faire | | |
-| P7 sériation | à faire, avant P1 (décidé par P0) | | |
+| P7 sériation | essayé, sans effet net : −5 % (étapes 1-2), −9 % au mieux (étape 3) ; plafond = distance au sein d'une famille ; reste un banc (`CR_SERIATION`) | 5 nov. 2026 | `journal.md`, « P7 » ; `carto/src/seriation.rs` |
 | P8 lieux à soi | à faire | | |
 | P9 quêtes | facultatif | | |

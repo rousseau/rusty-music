@@ -23,6 +23,10 @@ pub struct Facade {
     pub troncon: usize,
     /// Distance du centre du bâtiment au tronçon, mètres.
     pub distance: f64,
+    /// Abscisse du pied du bâtiment le long du tronçon, mètres depuis son
+    /// premier point : l'ordre des façades d'une même rue
+    /// (`crate::seriation`).
+    pub abscisse: f64,
     /// L'importance de la **plus grande voie à moins de [`RAYON_ARTERE`]**
     /// ([`artere`]), pas seulement de la plus proche : un bâtiment qui donne
     /// sur une ruelle mais touche l'avenue d'à côté est sur l'artère. Sans ça,
@@ -50,7 +54,9 @@ pub fn artere(classe: Classe) -> f64 {
     }
 }
 
-fn distance_point_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+/// Distance d'un point au segment `[a, b]`, et la position de son pied sur le
+/// segment (`0..=1`).
+fn distance_point_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> (f64, f64) {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l2 = dx * dx + dy * dy;
     let t = if l2 <= 1e-12 {
@@ -59,7 +65,7 @@ fn distance_point_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
         (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2).clamp(0.0, 1.0)
     };
     let (qx, qy) = (a[0] + t * dx, a[1] + t * dy);
-    ((p[0] - qx).powi(2) + (p[1] - qy).powi(2)).sqrt()
+    (((p[0] - qx).powi(2) + (p[1] - qy).powi(2)).sqrt(), t)
 }
 
 /// Pour chaque point de `centres` (mètres locaux), le tronçon de l'extrait le
@@ -77,6 +83,7 @@ pub fn facades(
     let cle = |p: [f64; 2]| ((p[0] / PAS).floor() as i32, (p[1] / PAS).floor() as i32);
     let mut grille: HashMap<(i32, i32), Vec<(u32, u32)>> = HashMap::new();
     let mut segments: Vec<Vec<[f64; 2]>> = Vec::with_capacity(extrait.troncons.len());
+    let mut cumuls: Vec<Vec<f64>> = Vec::with_capacity(extrait.troncons.len());
     for (t, tr) in extrait.troncons.iter().enumerate() {
         let pts: Vec<[f64; 2]> = tr.points.iter().map(|p| repere.vers_m(*p)).collect();
         for (s, paire) in pts.windows(2).enumerate() {
@@ -90,6 +97,14 @@ pub fn facades(
                 }
             }
         }
+        // Longueur cumulée au début de chaque segment, pour l'abscisse.
+        let mut cumul = Vec::with_capacity(pts.len());
+        let mut l = 0.0;
+        for paire in pts.windows(2) {
+            cumul.push(l);
+            l += ((paire[1][0] - paire[0][0]).powi(2) + (paire[1][1] - paire[0][1]).powi(2)).sqrt();
+        }
+        cumuls.push(cumul);
         segments.push(pts);
     }
 
@@ -98,7 +113,7 @@ pub fn facades(
         .iter()
         .map(|&c| {
             let (cx, cy) = cle(c);
-            let mut meilleur: Option<(usize, f64)> = None;
+            let mut meilleur: Option<(usize, f64, f64)> = None;
             let mut grande = 0.0_f64;
             for dx in -etendue..=etendue {
                 for dy in -etendue..=etendue {
@@ -107,20 +122,24 @@ pub fn facades(
                     };
                     for &(t, s) in v {
                         let pts = &segments[t as usize];
-                        let d = distance_point_segment(c, pts[s as usize], pts[s as usize + 1]);
+                        let (a, b) = (pts[s as usize], pts[s as usize + 1]);
+                        let (d, t_pied) = distance_point_segment(c, a, b);
                         if d <= RAYON_ARTERE {
                             grande = grande.max(artere(extrait.troncons[t as usize].classe));
                         }
-                        if d <= portee && meilleur.is_none_or(|(_, md)| d < md) {
-                            meilleur = Some((t as usize, d));
+                        if d <= portee && meilleur.is_none_or(|(_, md, _)| d < md) {
+                            let long = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+                            let abscisse = cumuls[t as usize][s as usize] + t_pied * long;
+                            meilleur = Some((t as usize, d, abscisse));
                         }
                     }
                 }
             }
-            meilleur.map(|(t, d)| Facade {
+            meilleur.map(|(t, d, abscisse)| Facade {
                 classe: extrait.troncons[t].classe,
                 troncon: t,
                 distance: d,
+                abscisse,
                 artere: grande,
             })
         })
@@ -178,6 +197,21 @@ mod tests {
             f.artere >= 1.0 - 1e-9,
             "l'avenue est à portée d'artère : {}",
             f.artere
+        );
+    }
+
+    #[test]
+    fn l_abscisse_suit_la_rue() {
+        let (e, r) = extrait();
+        let a = r.vers_m([2.302, 48.85005]);
+        let b = r.vers_m([2.308, 48.85005]);
+        let f = facades(&e, &r, &[a, b], 60.0);
+        let (fa, fb) = (f[0].unwrap(), f[1].unwrap());
+        assert_eq!(fa.troncon, fb.troncon);
+        // 0,006° de longitude à 48,85° ≈ 440 m.
+        assert!(
+            (fb.abscisse - fa.abscisse - 440.0).abs() < 15.0,
+            "{fa:?} {fb:?}"
         );
     }
 

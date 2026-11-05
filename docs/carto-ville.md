@@ -211,6 +211,13 @@ CR_W_ARTERE=…` pour comparer des réglages) :
   (les 100 plus anciens : 99 à moins de 600 m).
 - Les dernières arrivées (années 2020, non datés) comblent les trous
   restants, y compris dans le vieux centre, faute d'autre place.
+- **Une rue n'est pas continue à l'oreille** (P0 et P7 de `plan-balade.md`,
+  5 nov. 2026) : en marchant, hors album, deux morceaux voisins sont à 0,14 de
+  distance CLAP (hasard 0,19, voisins sonores 0,02) — le niveau de deux
+  morceaux quelconques d'une même famille. Sérier chaque cellule
+  (`seriation.rs`, `CR_SERIATION=1` dans `croissance_apercu`) ou renforcer le
+  style n'y gagne que 5 à 9 %. Le placement par la date regroupe par famille,
+  pas par voisinage sonore.
 - Rien de ce chantier n'est vérifié **dans l'application** : l'aperçu
   MapLibre (`rassembler_paris`) n'a pas pu être regardé ; seuls les SVG et les
   tuiles générées (10 710 tuiles) l'ont été.

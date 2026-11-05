@@ -23,6 +23,7 @@ pub mod peuplement;
 pub mod projection;
 pub mod relief;
 pub mod reseau_reel;
+pub mod seriation;
 pub mod source;
 pub mod style;
 pub mod tuiles;

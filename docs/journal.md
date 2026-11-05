@@ -2635,3 +2635,85 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
   dans l'interface simulée, Playwright, sur le nuage), les gestes ⏭ et ⏮
   pendant une balade, le repli dans le graphe des voisins sur une vraie
   bibliothèque.
+
+## Pratiquer et Créer, deux modes du rail — 5 nov. 2026
+
+- **Décision** (François) : Éditer portait deux usages qu'un même écran sert
+  mal. Le rail passe à six entrées : Écouter, Pratiquer, Explorer, Créer
+  (ex-Éditer), Découvrir, Valise. `ui-spec-editeur.md`, décision 13, qui
+  remplace la 12 (le segment Pratiquer / Créer du rail).
+- **Constat qui l'appuyait** : `pratiquer.js` faisait 2 675 lignes contre 385
+  pour `editer.js`. La pratique était déjà le gros de l'interface du module.
+- **Interface** : deux boutons de mode, `data-mode="pratiquer"` et
+  `data-mode="creer"`. `basculerMode` pose `edition.usage` d'après le mode et
+  la variante de démixage par défaut. `enStems()` (`socle.js`) remplace les
+  tests `navigation.mode === "editer"`. Le segment d'usage est retiré ; le
+  bloc du rail devient « Votre partie », visible seulement en Pratiquer. La
+  palette ⌘K et l'audit d'interface connaissent les deux modes.
+- **Vérifié** : les 30 tests de fumée passent, dont un nouveau (« Pratiquer
+  puis Créer ») : le bloc de la partie suit le mode, et passer d'un mode à
+  l'autre ne relance pas les stems (`stems_play` n'est pas rappelé).
+- **Non vérifié** : dans l'app native, `scripts/audit-interface.sh`.
+- **Ouvert** : ce que Pratiquer retient d'une séance à l'autre (boucles,
+  vitesse, corrections), à trancher avant le chantier 1.5.
+
+### P7 : sérier les cellules — étapes 1 et 2, sans effet net
+
+`crates/carto/src/seriation.rs`, derrière `CR_SERIATION=1` dans
+`croissance_apercu` (et le paramètre `empreintes` de `ville::rassembler_avec` ;
+`rassembler`, donc l'application, ne série pas). Le contenu de chaque cellule
+ne change pas. Les albums de la cellule (blocs, pistes dans l'ordre) sont
+ordonnés par un chemin court sur la distance cosinus de leurs empreintes
+moyennes (plus proche voisin, puis 2-opt), puis déroulés le long des façades,
+rue par rue. `Facade` porte désormais l'abscisse du bâtiment le long de son
+tronçon. Le sens de chaque cellule est choisi pour ressembler, au bord, aux
+cellules voisines déjà posées (60 m). `croissance_apercu` écrit aussi un
+`positions.json` que `continuite_balade` relit.
+
+Mesuré (même graine, 27 805 morceaux), sans → avec :
+
+| | sans | avec |
+|---|---:|---:|
+| marche, médiane hors album | 0,146 | 0,139 |
+| marche, 9ᵉ décile hors album | 0,367 | 0,350 |
+| carrefours utiles (variante) | 13,1 % | 12,9 % |
+| ρ année ↔ coût de voirie | 0,84 | 0,84 |
+| 8 voisins de même famille | 65 % | 65 % |
+
+Hasard : 0,191 ; sonique : 0,027. Gain de 5 % seulement, pas « net » : on s'est
+arrêté avant de régénérer les tuiles.
+
+**Pourquoi** : une cellule ne tient qu'environ 7 albums (médiane), et la
+distance de la dernière piste d'un album à la première d'un autre y vaut 0,149
+pour une paire quelconque, 0,145 dans l'ordre d'arrivée, 0,123 dans le meilleur
+ordre trouvé. Les albums d'une cellule se ressemblent à peine plus que des
+inconnus : aucun ordre n'en fait une progression. La limite est le contenu des
+cellules, que la croissance décide d'abord par la date et la popularité.
+
+### P7, étape 3 : renforcer le style ne passe pas le plafond
+
+Balayage des réglages de style de la croissance, sériation active
+(`CR_SERIATION=1`), même graine :
+
+| réglage | marche, médiane hors album | 9ᵉ déc. | ρ | même famille | têtes d'affiche sur artère |
+|---|---:|---:|---:|---:|---:|
+| défaut | 0,139 | 0,350 | 0,84 | 65 % | 55 % |
+| `CR_SIGMA=0.2` | 0,144 | 0,350 | 0,83 | 61 % | 47 % |
+| `CR_W_FAMILLE=3` | 0,137 | 0,337 | 0,83 | 70 % | 47 % |
+| les deux | 0,141 | 0,363 | 0,83 | 65 % | 48 % |
+| `CR_W_PROCHE=1 CR_W_ARTERE=1` | 0,133 | 0,337 | 0,83 | 66 % | 45 % |
+| `CR_MARGE=0.5` | 0,140 | 0,341 | 0,80 | 64 % | 61 % |
+| `CR_SIGMA=0.2 CR_W_FAMILLE=3 CR_MARGE=0.5` | 0,141 | 0,354 | 0,78 | 67 % | 50 % |
+
+Au mieux 0,133 (−9 % sur le placement actuel), au prix de la popularité sur
+les artères. **Le plafond s'explique** : deux morceaux d'une même famille, pris
+dans des albums différents, sont à 0,152 en médiane (0,205 entre familles,
+0,023 entre voisins CLAP). La croissance regroupe déjà par famille ; une
+famille est trop large pour faire une progression, et rien qui place d'abord
+par la date ne descendra au niveau des voisins.
+
+**Décision** : la sériation reste un banc (`CR_SERIATION`, désactivée dans
+l'application) ; les tuiles ne sont pas régénérées. La ville reste un plan qui
+se lit (date, popularité, quartiers de style) ; la continuité à l'oreille, s'il
+la faut, doit venir de la balade elle-même : une pente par défaut vers la
+branche la plus proche à l'oreille (P2/P3), plutôt que du placement.
