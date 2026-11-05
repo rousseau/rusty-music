@@ -13,6 +13,15 @@
 //! - **E2, carrefours** : pour chaque sommet de degré ≥ 3 de la zone peuplée,
 //!   les branches habitées, l'entropie des familles de leurs premiers
 //!   morceaux, la distance de ces premiers morceaux au morceau d'arrivée.
+//! - **E3, la pente** (P3) : la balade de l'application (`balade::suivants`)
+//!   simulée 60 min depuis chaque départ, sans geste, une fois par pente — la
+//!   pente simple de P1, puis les trois allures de P3. Distance consécutive,
+//!   part de jamais-écoutés (table `ecoute`), changements de famille.
+//!   `BALADE_E3_SEUL=1` saute E1 et E2 (le hasard d'E1 reste calculé, il
+//!   sert de repère) ; `BALADE_GRILLE=1` essaie en plus une grille de poids ;
+//!   `BALADE_HISTOIRE=0.3` remplace la table `ecoute` par une histoire
+//!   simulée — 30 % des albums écoutés, dont un tiers dans le mois —, pour
+//!   juger la nouveauté là où l'histoire réelle est trop mince.
 //!
 //! Positions réelles : `positions.json` écrit par l'application à côté des
 //! tuiles (celles qu'elle accroche à la voirie). Sorties : `continuite.md`,
@@ -31,6 +40,10 @@ use rusty_music_analysis::chemin::{echantillonner, Graphe as GrapheSonore, K_VOI
 use rusty_music_carto::accrochage::{destination_pour_duree, morceaux_le_long, AccrochageVoirie};
 use rusty_music_carto::affectation::Repere;
 use rusty_music_carto::ancrage;
+use rusty_music_carto::balade::{
+    pente_reglee, pente_simple, suivants, Allure, Branche, Contexte as ContextePente, EtatBalade,
+    Memoire, Poids,
+};
 use rusty_music_carto::cout_itineraire::{friction_itineraire, ProfilVoirie, ProximiteAgrement};
 use rusty_music_carto::facades::facades;
 use rusty_music_carto::reseau_reel::Graphe;
@@ -51,6 +64,10 @@ const RAYON_COULOIR_M: f64 = 25.0;
 const PORTEE_FACADE_M: f64 = 60.0;
 /// Côté de la grille qui délimite la zone peuplée pour E2, mètres.
 const PAS_ZONE_M: f64 = 100.0;
+/// E3 : la durée d'une balade simulée.
+const BALADE_MS: u64 = 60 * 60_000;
+/// E3 : garde-fou contre une suite de morceaux très courts.
+const BALADE_PAS_MAX: usize = 200;
 
 /// Ce qu'il faut pour « entendre » les morceaux le long d'une arête : chaque
 /// morceau est rangé sur le tronçon de sa façade (`facades.rs`). Il s'entend
@@ -317,6 +334,71 @@ fn histogrammes(titre: &str, axe: &str, series: &[(String, Vec<f64>)], max: f64)
     s
 }
 
+/// E3 : une pente, vue du banc — l'état, les branches, le morceau en cours ;
+/// rend la branche prise.
+type Choix<'a> = dyn Fn(&EtatBalade, &[Branche], i64) -> Option<usize> + Sync + 'a;
+
+/// E3 : la balade de l'application depuis `depart`, sans geste, jusqu'à
+/// [`BALADE_MS`] de musique. `choisir` rend la branche prise.
+fn balade_simulee(
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    depart: i64,
+    duree: &dyn Fn(i64) -> u64,
+    choisir: &Choix<'_>,
+) -> (Vec<i64>, Vec<Carrefour>) {
+    let mut etat = EtatBalade::depuis(accrochage.sommet_de[&depart], depart);
+    let mut suite = vec![depart];
+    let mut carrefours = Vec::new();
+    let mut joue = duree(depart);
+    while joue < BALADE_MS && suite.len() < BALADE_PAS_MAX {
+        let courant = *suite.last().expect("non vide");
+        let branches = suivants(&etat, graphe, accrochage);
+        let Some(i) = choisir(&etat, &branches, courant) else {
+            break;
+        };
+        if branches.len() > 1 {
+            etat.carrefours += 1;
+            carrefours.push(Carrefour {
+                courant,
+                premiers: branches.iter().map(|b| b.morceau).collect(),
+                pris: i,
+            });
+        }
+        etat.avancer(&branches[i]);
+        suite.push(branches[i].morceau);
+        joue += duree(branches[i].morceau).max(1);
+    }
+    (suite, carrefours)
+}
+
+/// E3 : un carrefour de la balade simulée, et la branche prise.
+struct Carrefour {
+    courant: i64,
+    premiers: Vec<i64>,
+    pris: usize,
+}
+
+/// E3 : une pente, ses balades et leurs chiffres.
+struct Pente {
+    nom: String,
+    bilan: Bilan,
+    /// Morceaux joués après le départ, et parmi eux les jamais écoutés.
+    joues: usize,
+    neufs: usize,
+    /// Morceaux d'un artiste lié par MusicBrainz au précédent.
+    relies: usize,
+    /// Aux carrefours : leur nombre, la distance de la branche prise, celles
+    /// qui changent de famille, et — parmi les carrefours où une branche
+    /// mène à un morceau déjà écouté et une autre à un neuf — celles qui
+    /// prennent le neuf.
+    carrefours: usize,
+    d_prise: Vec<f64>,
+    autre_famille: usize,
+    neuf_en_jeu: usize,
+    neuf_pris: usize,
+}
+
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let support = PathBuf::from(std::env::var("HOME").unwrap_or_default())
@@ -436,6 +518,241 @@ fn main() -> anyhow::Result<()> {
     let departs: Vec<i64> = (0..DEPARTS)
         .map(|_| candidats[alea.borne(candidats.len())])
         .collect();
+
+    // --- E3 : la pente de la balade, 60 min par départ. ---
+    let mut memoire = Memoire::lire(&lib);
+    let histoire: Option<f64> = std::env::var("BALADE_HISTOIRE")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    if let Some(part) = histoire {
+        let mut alea = Alea::depuis(GRAINE ^ 0x415);
+        let mut albums: Vec<&(String, String)> = ctx.album.values().collect();
+        albums.sort_unstable();
+        albums.dedup();
+        let mut ecoute_le: HashMap<&(String, String), i64> = HashMap::new();
+        for a in albums {
+            if (alea.borne(1_000_000) as f64) < part * 1e6 {
+                let jours = if alea.borne(3) == 0 {
+                    1 + alea.borne(29)
+                } else {
+                    31 + alea.borne(700)
+                };
+                ecoute_le.insert(a, memoire.maintenant - jours as i64 * 86_400);
+            }
+        }
+        memoire.dernieres = ctx
+            .album
+            .iter()
+            .filter_map(|(id, a)| ecoute_le.get(a).map(|&le| (*id, le)))
+            .collect();
+        println!(
+            "histoire simulée : {:.0} % des albums, {} morceaux écoutés",
+            part * 100.0,
+            memoire.dernieres.len()
+        );
+    }
+    let memoire = memoire;
+    let jamais = |id: i64| memoire.jamais_ecoute(id);
+    let mut hasard = Bilan {
+        nom: "hasard (repère)".into(),
+        ..Bilan::default()
+    };
+    let mut alea_h = Alea::depuis(GRAINE ^ 0xE3);
+    let mut neufs_hasard = (0usize, 0usize);
+    for &d in &departs {
+        let mut h = vec![d];
+        while h.len() < LONGUEUR {
+            let x = candidats[alea_h.borne(candidats.len())];
+            if !h.contains(&x) {
+                h.push(x);
+            }
+        }
+        neufs_hasard.0 += h.len() - 1;
+        neufs_hasard.1 += h[1..].iter().filter(|&&id| jamais(id)).count();
+        hasard.ajouter(&h, &ctx);
+    }
+    hasard.trier();
+    let mesurer = |nom: String, choisir: &Choix<'_>| -> Pente {
+        let morceaux = departs.len().div_ceil(fils);
+        let suites: Vec<(Vec<i64>, Vec<Carrefour>)> = std::thread::scope(|sc| {
+            let taches: Vec<_> = departs
+                .chunks(morceaux)
+                .map(|lot| {
+                    let (g, acc, duree) = (&graphe, &accrochage, &duree);
+                    sc.spawn(move || {
+                        lot.iter()
+                            .map(|&d| balade_simulee(g, acc, d, duree, choisir))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            taches
+                .into_iter()
+                .flat_map(|t| t.join().expect("fil de balade"))
+                .collect()
+        });
+        let mut p = Pente {
+            nom,
+            bilan: Bilan::default(),
+            joues: 0,
+            neufs: 0,
+            relies: 0,
+            carrefours: 0,
+            d_prise: Vec::new(),
+            autre_famille: 0,
+            neuf_en_jeu: 0,
+            neuf_pris: 0,
+        };
+        for (suite, carrefours) in &suites {
+            p.bilan.ajouter(suite, &ctx);
+            p.joues += suite.len() - 1;
+            p.neufs += suite[1..].iter().filter(|&&id| jamais(id)).count();
+            p.relies += suite
+                .windows(2)
+                .filter(|w| memoire.relies(w[0], w[1]))
+                .count();
+            for c in carrefours {
+                let pris = c.premiers[c.pris];
+                p.carrefours += 1;
+                if let (Some(a), Some(b)) =
+                    (ctx.empreinte.get(&c.courant), ctx.empreinte.get(&pris))
+                {
+                    p.d_prise.push(cosinus(a, b));
+                }
+                p.autre_famille +=
+                    usize::from(ctx.famille.get(&c.courant) != ctx.famille.get(&pris));
+                if c.premiers.iter().any(|&id| jamais(id))
+                    && c.premiers.iter().any(|&id| !jamais(id))
+                {
+                    p.neuf_en_jeu += 1;
+                    p.neuf_pris += usize::from(jamais(pris));
+                }
+            }
+        }
+        p.bilan.trier();
+        p.d_prise.sort_by(f64::total_cmp);
+        p
+    };
+    let distance_a = |courant: i64, id: i64| -> f32 {
+        match (ctx.empreinte.get(&courant), ctx.empreinte.get(&id)) {
+            (Some(a), Some(b)) => cosinus(a, b) as f32,
+            _ => 2.0,
+        }
+    };
+    let famille_de = |id: i64| ctx.famille.get(&id).copied();
+    let (g_ref, acc_ref, mem_ref, dist_ref) = (&graphe, &accrochage, &memoire, &distance_a);
+    let par_poids = |poids: Poids, ailleurs: Option<u32>| {
+        move |etat: &EtatBalade, br: &[Branche], courant: i64| {
+            let c = ContextePente {
+                courant,
+                memoire: mem_ref,
+                distance: |id| dist_ref(courant, id),
+                famille: famille_de,
+            };
+            pente_reglee(etat, br, g_ref, acc_ref, &poids, ailleurs, &c)
+        }
+    };
+    let mut pentes: Vec<Pente> = Vec::new();
+    pentes.push(mesurer(
+        "P1, pente simple".into(),
+        &|etat: &EtatBalade, br: &[Branche], courant: i64| {
+            pente_simple(etat, br, &graphe, |id| distance_a(courant, id))
+        },
+    ));
+    println!("E3, P1 : {:.1} s", t.elapsed().as_secs_f64());
+    for allure in Allure::TOUTES {
+        pentes.push(mesurer(
+            format!("P3, {}", allure.nom()),
+            &par_poids(allure.poids(), allure.ailleurs_tous_les()),
+        ));
+        println!("E3, {} : {:.1} s", allure.nom(), t.elapsed().as_secs_f64());
+    }
+    if std::env::var_os("BALADE_GRILLE").is_some() {
+        for a in [1.0f32, 0.6, 0.3] {
+            for b in [0.0f32, 0.25, 0.5, 1.0] {
+                for c in [0.0f32, 0.5] {
+                    let poids = Poids {
+                        proximite: a,
+                        nouveaute: b,
+                        deja_visite: c,
+                        usure: 0.3,
+                        relation: 0.2,
+                    };
+                    pentes.push(mesurer(
+                        format!("grille a={a} b={b} c={c}"),
+                        &par_poids(poids, None),
+                    ));
+                }
+            }
+        }
+        println!("E3, grille : {:.1} s", t.elapsed().as_secs_f64());
+    }
+    let pc = |a: usize, b: usize| 100.0 * a as f64 / b.max(1) as f64;
+    let mut md_e3 = String::new();
+    writeln!(md_e3, "## E3 — la pente (P3), balades simulées de 60 min\n")?;
+    writeln!(
+        md_e3,
+        "{} départs (les mêmes qu'E1), la balade de l'application (`balade::suivants`) sans geste \
+         jusqu'à 60 min de musique. Jamais écoutés : d'après {} ({} morceaux écoutés \
+         au moins une fois ; {} paires d'artistes liés par MusicBrainz). Repère : {} morceaux tirés \
+         au hasard par départ.\n",
+        departs.len(),
+        match histoire {
+            Some(p) => format!("une histoire simulée ({:.0} % des albums)", p * 100.0),
+            None => "la table `ecoute`".into(),
+        },
+        memoire.dernieres.len(),
+        memoire.liens.len() / 2,
+        LONGUEUR
+    )?;
+    writeln!(
+        md_e3,
+        "| pente | morceaux par balade | médiane | 9ᵉ décile | médiane hors album | changement de famille | jamais écoutés | relation MB | carrefours par balade | aux carrefours : distance prise (médiane) | : autre famille | : le neuf pris quand il est en jeu (n) |"
+    )?;
+    writeln!(
+        md_e3,
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    )?;
+    for p in &pentes {
+        let b = &p.bilan;
+        writeln!(
+            md_e3,
+            "| {} | {:.1} | {:.3} | {:.3} | {:.3} | {:.0} % | {:.1} % | {} | {:.2} | {:.3} | {:.0} % | {:.0} % ({}) |",
+            p.nom,
+            p.joues as f64 / departs.len() as f64 + 1.0,
+            b.mediane(),
+            quantile(&b.ville, 0.9),
+            quantile(&b.hors_album, 0.5),
+            pc(b.changements, b.ville.len()),
+            pc(p.neufs, p.joues),
+            p.relies,
+            p.carrefours as f64 / departs.len() as f64,
+            quantile(&p.d_prise, 0.5),
+            pc(p.autre_famille, p.carrefours),
+            pc(p.neuf_pris, p.neuf_en_jeu),
+            p.neuf_en_jeu,
+        )?;
+    }
+    writeln!(
+        md_e3,
+        "| {} | — | {:.3} | {:.3} | {:.3} | {:.0} % | {:.1} % | — | — | — | — | — |\n",
+        hasard.nom,
+        hasard.mediane(),
+        quantile(&hasard.ville, 0.9),
+        quantile(&hasard.hors_album, 0.5),
+        pc(hasard.changements, hasard.ville.len()),
+        pc(neufs_hasard.1, neufs_hasard.0),
+    )?;
+    std::fs::write(sortie.join("pente.md"), &md_e3)?;
+    if std::env::var_os("BALADE_E3_SEUL").is_some() {
+        print!("{md_e3}");
+        println!(
+            "\n→ {} ({:.1} s)",
+            sortie.display(),
+            t.elapsed().as_secs_f64()
+        );
+        return Ok(());
+    }
 
     // --- E1. ---
     let marches: Vec<Vec<i64>> = departs
@@ -816,6 +1133,8 @@ fn main() -> anyhow::Result<()> {
         "\nCarrefours avec au moins une arrivée utile : {carrefours_utiles} sur {carrefours} ({:.1} %).",
         pc(carrefours_utiles, carrefours)
     )?;
+    md.push('\n');
+    md.push_str(&md_e3);
     std::fs::write(sortie.join("continuite.md"), &md)?;
 
     let series: Vec<(String, Vec<f64>)> = bilans

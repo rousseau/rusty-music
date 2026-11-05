@@ -12,7 +12,8 @@ import {
 } from "./carte.js";
 import {
   carteReelle, dessinerCarte, dessinerFamilles, initialiserFiltreAnnee, journalCarte,
-  majAffichageGL, majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, modeAnneau, modeTemps,
+  majAffichageGL, majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majPentesGL, modeAnneau,
+  modeTemps,
   patienter, poserVignetteCarte, rafraichirFiltreAnnee, rejouerChemin, tracerChemin,
   tracerRouteSurCarte,
 } from "./maplibre.js";
@@ -55,6 +56,7 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
         carte.gl.off("styledata", rejouer);
         majCouleurGL();
         majFiltreGL();
+        majPentesGL();
         majAffichageGL();
         poserVignetteCarte(carte.gl.getStyle());
       };
@@ -65,6 +67,17 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
     }
   }),
 );
+
+/// L'option « Pentes » : les flèches entre quartiers, gardées comme le fond.
+$("carte-pentes").addEventListener("change", (e) => {
+  carte.pentes = e.target.checked;
+  try {
+    localStorage.setItem("carte-pentes", carte.pentes ? "1" : "0");
+  } catch {
+    // Sans stockage, le réglage vaut pour la session.
+  }
+  majPentesGL();
+});
 
 /// Ce que le rail montre en Explorer selon l'affichage. Le Lama n'a ni carte
 /// à colorer, ni intervalle d'années, ni familles à isoler, ni filtre de la

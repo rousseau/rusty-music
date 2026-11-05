@@ -3,6 +3,10 @@
 
 use super::*;
 
+/// Les artistes MusicBrainz des morceaux d'un artiste lié, et les paires
+/// d'artistes liés ([`Library::liens_entre_artistes`]).
+pub type LiensArtistes = (HashMap<i64, Vec<String>>, HashSet<(String, String)>);
+
 impl Library {
     /* ------------------------------------------------ genres MusicBrainz */
 
@@ -154,6 +158,46 @@ impl Library {
             .query_map(params![mbid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Les artistes de la bibliothèque liés entre eux par une relation
+    /// MusicBrainz (membre, collaboration, fondateur…), pour le bonus de
+    /// relation de la balade (`docs/plan-balade.md`, P3) : les identifiants
+    /// MusicBrainz des artistes de chaque morceau concerné, et les paires
+    /// liées, dans les deux sens. Un hommage ou un nom emprunté (« tribute »,
+    /// « named after ») n'est pas un lien de musique. Seuls les morceaux d'un
+    /// artiste lié figurent dans la table.
+    pub fn liens_entre_artistes(&self) -> Result<LiensArtistes> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT src_mbid, dst_mbid FROM artist_links
+              WHERE relation NOT LIKE 'tribute%' AND relation NOT LIKE 'named after%'
+                AND src_mbid <> dst_mbid",
+        )?;
+        let mut paires: HashSet<(String, String)> = HashSet::new();
+        for paire in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            let (a, b) = paire?;
+            paires.insert((b.clone(), a.clone()));
+            paires.insert((a, b));
+        }
+        let lies: HashSet<&str> = paires.iter().map(|(a, _)| a.as_str()).collect();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, mb_artist_id FROM tracks WHERE mb_artist_id IS NOT NULL")?;
+        let mut artistes: HashMap<i64, Vec<String>> = HashMap::new();
+        for ligne in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))? {
+            let (id, mbids) = ligne?;
+            // Plusieurs artistes : « a/b » (tags de Picard) ou « a; b ».
+            let v: Vec<String> = mbids
+                .split(['/', ';'])
+                .map(str::trim)
+                .filter(|m| lies.contains(m))
+                .map(str::to_string)
+                .collect();
+            if !v.is_empty() {
+                artistes.insert(id, v);
+            }
+        }
+        Ok((artistes, paires))
     }
 
     /// Genres par identifiant, du plus sûr au moins sûr.

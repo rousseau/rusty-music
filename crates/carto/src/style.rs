@@ -116,6 +116,12 @@ pub fn construire(source: &Source, paliers: &Paliers, base: &str, palette: &Pale
             }),
         );
     }
+    // Les pentes entre quartiers (P3 de la balade) : quelques centaines de
+    // flèches, en GeoJSON dans le style plutôt qu'en tuiles — elles ne
+    // dépendent pas du zoom, et chaque palette n'en change que la couleur.
+    if !source.pentes.is_empty() {
+        sources.insert("pentes".into(), source_pentes(source));
+    }
     let mut style = json!({
         "version": 8,
         "name": "Rusty Music",
@@ -1012,6 +1018,7 @@ fn couches_ville(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
     v.extend(bati_morceaux_reel(source, p, pal));
     v.push(voirie_reelle(pal)); // la voirie passe **sur** le bâti
     v.push(habites_reels(source, p, pal)); // les points passent sur la voirie : la couleur doit se voir
+    v.extend(pentes_reelles(source, p, pal)); // les flèches sur la ville, sous les noms
     v.extend(points_musicaux_reel(p, pal));
     v
 }
@@ -1202,6 +1209,137 @@ fn habites_reels(source: &Source, p: &Paliers, pal: &Palette) -> Value {
             "circle-stroke-width": 0
         }
     })
+}
+
+/// Arrondi à 10⁻⁶ degré (≈ 10 cm) : le style reste léger.
+fn arrondi(p: [f64; 2]) -> Value {
+    json!([(p[0] * 1e6).round() / 1e6, (p[1] * 1e6).round() / 1e6])
+}
+
+/// Les pentes en GeoJSON : une courbe (`LineString`) et une pointe
+/// (`Polygon`) par flèche, la proximité CLAP en attribut.
+fn source_pentes(source: &Source) -> Value {
+    let mut entites = Vec::with_capacity(source.pentes.len() * 2);
+    for p in &source.pentes {
+        let proprietes = |partie: &str| {
+            json!({
+                "partie": partie,
+                "proximite": (p.proximite as f64 * 1000.0).round() / 1000.0,
+                "de": p.famille_de,
+                "vers": p.famille_vers,
+            })
+        };
+        entites.push(json!({
+            "type": "Feature",
+            "properties": proprietes("courbe"),
+            "geometry": {
+                "type": "LineString",
+                "coordinates": p.courbe.iter().map(|&c| arrondi(c)).collect::<Vec<_>>(),
+            }
+        }));
+        entites.push(json!({
+            "type": "Feature",
+            "properties": proprietes("tete"),
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [p.tete.iter().map(|&c| arrondi(c)).collect::<Vec<_>>()],
+            }
+        }));
+    }
+    json!({
+        "type": "geojson",
+        "data": { "type": "FeatureCollection", "features": entites },
+    })
+}
+
+/// 4a′. Les pentes — les flèches rouges de *The Naked City* entre quartiers
+///     voisins (`crate::pentes`). Aux zooms intermédiaires seulement : quand
+///     les quartiers se lisent en lavis, avant que le bâti habité ne prenne
+///     le relais. **Masquées par défaut** : l'option d'affichage « Pentes »
+///     du rail les montre (`visibility`). La flèche s'épaissit avec la
+///     proximité ; un liseré du fond la détache de la voirie.
+fn pentes_reelles(source: &Source, p: &Paliers, pal: &Palette) -> Vec<Value> {
+    if source.pentes.is_empty() {
+        return Vec::new();
+    }
+    let (min, max) = source
+        .pentes
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(a, b), x| {
+            (a.min(x.proximite), b.max(x.proximite))
+        });
+    let (min, max) = (min as f64, (max as f64).max(min as f64 + 1e-3));
+    let des = p.artistes_des as f64;
+    let jusqua = p.morceaux_des as f64 + 1.0;
+    let force = json!([
+        "interpolate",
+        ["linear"],
+        ["get", "proximite"],
+        min,
+        0.6,
+        max,
+        1.4
+    ]);
+    let largeur = |a: f64, b: f64| {
+        json!([
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            des,
+            ["*", a, force.clone()],
+            jusqua,
+            ["*", b, force.clone()]
+        ])
+    };
+    let opacite = json!([
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        des,
+        0.0,
+        des + 0.7,
+        0.9,
+        jusqua - 1.0,
+        0.9,
+        jusqua,
+        0.0
+    ]);
+    let courbe = json!(["==", ["get", "partie"], "courbe"]);
+    vec![
+        json!({
+            "id": "pentes-lisere", "type": "line", "source": "pentes",
+            "filter": courbe.clone(),
+            "minzoom": des, "maxzoom": jusqua,
+            "layout": { "visibility": "none", "line-cap": "round", "line-join": "round" },
+            "paint": {
+                "line-color": pal.halo,
+                "line-width": largeur(3.5, 7.0),
+                "line-opacity": opacite.clone()
+            }
+        }),
+        json!({
+            "id": "pentes-courbe", "type": "line", "source": "pentes",
+            "filter": courbe,
+            "minzoom": des, "maxzoom": jusqua,
+            "layout": { "visibility": "none", "line-cap": "round", "line-join": "round" },
+            "paint": {
+                "line-color": pal.pente,
+                "line-width": largeur(1.8, 4.0),
+                "line-opacity": opacite.clone()
+            }
+        }),
+        json!({
+            "id": "pentes-tete", "type": "fill", "source": "pentes",
+            "filter": ["==", ["get", "partie"], "tete"],
+            "minzoom": des, "maxzoom": jusqua,
+            "layout": { "visibility": "none" },
+            "paint": {
+                "fill-color": pal.pente,
+                "fill-opacity": opacite,
+                "fill-antialias": true
+            }
+        }),
+    ]
 }
 
 /// 4b. Points et étiquettes musicaux — artistes, albums, titres. Inchangé
@@ -1542,6 +1680,61 @@ mod tests {
             "la couleur des points doit se voir sur la voirie"
         );
         assert!(rang("habites-point") < rang("artistes-etiquette"));
+    }
+
+    /// Les pentes : une source GeoJSON et trois couches masquées (l'option
+    /// « Pentes » les montre), aux zooms intermédiaires, sur la ville et sous
+    /// les noms ; chaque palette garde ses flèches, dans son rouge. Sans
+    /// pente, ni source ni couche.
+    #[test]
+    fn les_pentes_suivent_la_palette_et_attendent_loption() {
+        let sans = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
+        assert!(sans["sources"].get("pentes").is_none());
+        let mut src = source_ville();
+        src.pentes = vec![crate::source::PenteReelle {
+            courbe: vec![[2.33, 48.85], [2.34, 48.86], [2.35, 48.86]],
+            tete: vec![
+                [2.35, 48.86],
+                [2.349, 48.861],
+                [2.349, 48.859],
+                [2.35, 48.86],
+            ],
+            proximite: 0.84,
+            famille_de: 1,
+            famille_vers: 2,
+        }];
+        let paliers = Paliers::ville();
+        for pal in Palette::toutes() {
+            let s = construire(&src, &paliers, "x", pal);
+            let entites = s["sources"]["pentes"]["data"]["features"]
+                .as_array()
+                .unwrap();
+            assert_eq!(entites.len(), 2);
+            let couches = s["layers"].as_array().unwrap();
+            let ids: Vec<&str> = couches.iter().map(|c| c["id"].as_str().unwrap()).collect();
+            let rang = |id: &str| ids.iter().position(|x| *x == id).unwrap();
+            for id in ["pentes-lisere", "pentes-courbe", "pentes-tete"] {
+                let c = &couches[rang(id)];
+                assert_eq!(c["layout"]["visibility"], "none", "{id}");
+                assert!(c["minzoom"].as_f64().unwrap() >= 10.0, "{id}");
+                assert!(c["maxzoom"].as_f64().unwrap() <= 16.0, "{id}");
+            }
+            assert!(rang("habites-point") < rang("pentes-courbe"));
+            assert!(rang("pentes-tete") < rang("artistes-etiquette"));
+            assert_eq!(
+                couches[rang("pentes-courbe")]["paint"]["line-color"],
+                pal.pente
+            );
+            assert_eq!(
+                couches[rang("pentes-tete")]["paint"]["fill-color"],
+                pal.pente
+            );
+        }
     }
 
     /// Sans `center`/`zoom` explicites, `ui/js/` retombe sur le centre du

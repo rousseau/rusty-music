@@ -651,7 +651,7 @@ P0 ──► (P7 si E1 échoue) ──► P1 ──► P2 ──► P3 ──►
 | P0 mesure | fait : P7 avant P1 (hors album, la marche est proche du hasard) | 5 nov. 2026 | `journal.md`, « Balade musicale » ; `examples/continuite_balade.rs` |
 | P1 promeneur | fait : marche, file courte, reprise, repli voisins ; essai de 31 min sans blanc ni répétition | 5 nov. 2026 | `journal.md`, « P1 : le promeneur » ; `carto/src/balade.rs`, `explorer/balade.rs`, `js/balade.js` |
 | P2 carrefour | fait : panneau de 2-3 voies, gestes, réglage d'intervention, retour, extrait (son principal baissé), compteur d'usage ; un carrefour tous les ~4 morceaux | 5 nov. 2026 | `journal.md`, « P2 : le carrefour » ; `examples/carrefours_balade.rs` |
-| P3 pentes | à faire | | |
+| P3 pentes | fait : pente à cinq termes en trois allures (rester / dériver / s'aventurer) ; dériver garde la médiane à 0,098 (hasard 0,192) ; +4 pts de jamais-écoutés sur une histoire simulée, rien à gagner sur l'histoire réelle (98 % neuve) ; 216 flèches entre quartiers, 0 croisement, option « Pentes » | 5 nov. 2026 | `journal.md`, « P3 » ; `carto/src/balade.rs`, `carto/src/pentes.rs`, `examples/continuite_balade.rs` (E3) |
 | P4 aura | à faire | | |
 | P5 traces et brouillard | à faire | | |
 | P6 relief d'énergie | à faire | | |

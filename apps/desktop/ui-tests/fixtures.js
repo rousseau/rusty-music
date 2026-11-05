@@ -111,6 +111,7 @@ const fixtures = {
       trace: [],
       fin: null,
       intervention,
+      allure: a.allure ?? "deriver",
       carrefour: {
         numero: 1,
         voies: [voie(ps[(i + 1) % ps.length], 0.04, true), voie(ps[(i + 3) % ps.length], 0.21, false)],
@@ -140,8 +141,9 @@ const fixtures = {
   balade_revenir: (_, e) => e.balade,
   balade_regler: (a, e) => {
     if (!e.balade) return null;
-    e.balade.intervention = a.intervention;
-    e.balade.attend = a.intervention === "demander" && !e.balade.carrefour?.choisie;
+    if (a.intervention) e.balade.intervention = a.intervention;
+    if (a.allure) e.balade.allure = a.allure;
+    e.balade.attend = e.balade.intervention === "demander" && !e.balade.carrefour?.choisie;
     return e.balade;
   },
   balade_extrait: () => null,

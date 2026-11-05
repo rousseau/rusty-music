@@ -100,6 +100,22 @@ impl Library {
         Ok(pistes)
     }
 
+    /// La dernière écoute de chaque morceau écouté au moins une fois, en
+    /// secondes Unix (`id → le`) : ce qui est neuf et ce qui a été écouté
+    /// récemment, d'un coup plutôt qu'une requête par morceau (la pente de la
+    /// balade, `docs/plan-balade.md`, P3). Un morceau absent n'a jamais été
+    /// écouté.
+    pub fn dernieres_ecoutes(&self) -> Result<std::collections::HashMap<i64, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, MAX(e.le) FROM ecoute e JOIN tracks t ON t.path = e.chemin
+              GROUP BY t.id",
+        )?;
+        let lignes = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(lignes)
+    }
+
     /// Les pistes de la liste calculée `quoi` (« recents », « plus-ecoutes »,
     /// « favoris »). `None` pour un nom inconnu.
     pub fn liste_intelligente(&self, quoi: &str) -> Result<Option<Vec<TrackRow>>> {
@@ -336,6 +352,25 @@ mod tests {
 
     fn titres(pistes: Vec<TrackRow>) -> Vec<String> {
         pistes.into_iter().filter_map(|t| t.title).collect()
+    }
+
+    #[test]
+    fn la_derniere_ecoute_par_morceau() {
+        let lib = bibliotheque(&["/m/a", "/m/b", "/m/c"]);
+        ecoute_a(&lib, "/m/a", 100);
+        ecoute_a(&lib, "/m/a", 300);
+        ecoute_a(&lib, "/m/b", 200);
+        ecoute_a(&lib, "/m/inconnu", 400);
+        let d = lib.dernieres_ecoutes().unwrap();
+        let id = |c: &str| -> i64 {
+            lib.conn
+                .query_row("SELECT id FROM tracks WHERE path = ?1", [c], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[&id("/m/a")], 300);
+        assert_eq!(d[&id("/m/b")], 200);
+        assert!(!d.contains_key(&id("/m/c")));
     }
 
     #[test]

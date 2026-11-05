@@ -1601,6 +1601,36 @@ fn liens_artiste_se_met_en_cache_meme_vide() {
     assert!(lib.liens_artiste("c").unwrap().is_empty());
 }
 
+#[test]
+fn liens_entre_artistes_dans_les_deux_sens_sans_les_hommages() {
+    let mut lib = Library::open_in_memory().unwrap();
+    for (id, mbid) in [(1, "a"), (2, "b/c"), (3, "d"), (4, "e")] {
+        lib.conn
+            .execute(
+                "INSERT INTO tracks (id, path, mb_artist_id) VALUES (?1, ?2, ?3)",
+                params![id, format!("/m/{id}.flac"), mbid],
+            )
+            .unwrap();
+    }
+    let lien = |dst: &str, relation: &str| crate::musicbrainz::Relation {
+        dst_mbid: dst.to_string(),
+        dst_name: dst.to_string(),
+        relation: relation.to_string(),
+    };
+    lib.enregistrer_liens_artiste("a", &[lien("c", "member of band (guitar)")])
+        .unwrap();
+    lib.enregistrer_liens_artiste("d", &[lien("e", "tribute")])
+        .unwrap();
+    let (artistes, paires) = lib.liens_entre_artistes().unwrap();
+    assert!(paires.contains(&("a".into(), "c".into())));
+    assert!(paires.contains(&("c".into(), "a".into())));
+    assert!(!paires.contains(&("d".into(), "e".into())));
+    assert_eq!(artistes[&1], vec!["a".to_string()]);
+    // « b/c » : deux artistes, seul c est lié.
+    assert_eq!(artistes[&2], vec!["c".to_string()]);
+    assert!(!artistes.contains_key(&3));
+}
+
 fn sortie(rg: &str, date_norm: &str, collab: Option<&str>) -> SortieARanger {
     SortieARanger {
         rg_mbid: rg.into(),

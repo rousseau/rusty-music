@@ -26,13 +26,19 @@
 //! passé et repropose les voies non prises. Le compteur d'usage
 //! (`balade-mesure.json`, à côté de la base) compte, à la sortie de chaque
 //! carrefour montré, s'il y a eu un choix et s'il allait « ailleurs ».
+//!
+//! **Pente** (P3). La voie par défaut est celle de meilleure note pour
+//! l'allure réglée dans le rail — *rester*, *dériver*, *s'aventurer*
+//! ([`rusty_music_carto::balade::pente`]) : proche à l'oreille, neuve
+//! d'après la table `ecoute`, peu parcourue, peu usée, liée par MusicBrainz.
 
 use super::*;
 
 use std::sync::atomic::AtomicU64;
 
 use rusty_music_carto::balade::{
-    deja_vu, pente_simple, proposer, suivants, Branche, EtatBalade, PROPOSEES_MAX,
+    deja_vu, pente, proposer, suivants, Allure, Branche, Contexte, EtatBalade, Facettes, Memoire,
+    PROPOSEES_MAX,
 };
 
 /// Le suivant entre dans la file, et n'en bouge plus, à moins de 10 s de la
@@ -177,6 +183,10 @@ pub(crate) struct Balade {
     terrain: Terrain,
     /// Empreintes, pour la pente par défaut (le plus proche à l'oreille).
     vecteurs: Arc<Vec<Empreinte>>,
+    /// Écoutes et relations entre artistes, lues au départ : le reste de la
+    /// pente.
+    memoire: Memoire,
+    allure: Allure,
     rang: HashMap<i64, usize>,
     /// Les morceaux joués, dans l'ordre ; le dernier est en cours.
     pistes: Vec<i64>,
@@ -214,6 +224,7 @@ pub(crate) struct BaladeVue {
     /// `Some(raison)` : la balade s'est arrêtée d'elle-même.
     fin: Option<String>,
     intervention: Intervention,
+    allure: Allure,
     /// Le carrefour qui s'offre au bout du morceau en cours.
     carrefour: Option<CarrefourVue>,
     /// La balade attend un choix (mode *demander*).
@@ -233,6 +244,8 @@ struct Reprise {
     trace: Vec<[f64; 2]>,
     #[serde(default)]
     intervention: Intervention,
+    #[serde(default)]
+    allure: Allure,
 }
 
 fn chemin_reprise(etat: &Etat) -> PathBuf {
@@ -276,6 +289,7 @@ impl Balade {
             trace: self.trace.clone(),
             fin: self.fin.clone(),
             intervention: self.intervention,
+            allure: self.allure,
             carrefour: self.carrefour.as_ref().map(|c| self.carrefour_vue(c)),
             attend: self.attend(),
             revenir: self.suivant.as_ref().is_none_or(|p| !p.fige)
@@ -373,12 +387,18 @@ impl Balade {
                 ..
             } => {
                 let branches = suivants(etat, graphe, accrochage);
-                let Some(defaut) = pente_simple(etat, &branches, graphe, |id| self.distance(id))
+                let modele = rusty_music_analysis::passe::MODELE;
+                let famille = |id: i64| lib.cluster_de_piste(modele, id).ok().flatten();
+                let ctx = Contexte {
+                    courant,
+                    memoire: &self.memoire,
+                    distance: |id| self.distance(id),
+                    famille,
+                };
+                let Some(defaut) = pente(etat, &branches, graphe, accrochage, self.allure, &ctx)
                 else {
                     return Vec::new();
                 };
-                let modele = rusty_music_analysis::passe::MODELE;
-                let famille = |id: i64| lib.cluster_de_piste(modele, id).ok().flatten();
                 proposer(
                     &branches,
                     defaut,
@@ -407,7 +427,28 @@ impl Balade {
                     // Tous les proches déjà joués : on élargit avant d'abandonner.
                     ids = libres(rusty_music_analysis::chemin::K_VOISINS * 4);
                 }
-                ids.sort_by(|&a, &b| self.distance(a).total_cmp(&self.distance(b)));
+                // La même pente, sans rues : ni déjà-parcouru ni riverains,
+                // le morceau seul.
+                let poids = self.allure.poids();
+                let note = |id: i64| {
+                    Facettes {
+                        proximite: 1.0 - (self.distance(id) / 0.4).clamp(0.0, 1.0),
+                        nouveaute: if self.memoire.jamais_ecoute(id) {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                        deja_visite: 0.0,
+                        usure: if self.memoire.ecoute_recemment(id) {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                        relation: self.memoire.relies(courant, id),
+                    }
+                    .note(&poids)
+                };
+                ids.sort_by(|&a, &b| note(b).total_cmp(&note(a)));
                 ids.truncate(PROPOSEES_MAX);
                 ids.into_iter()
                     .map(|morceau| Voie {
@@ -595,6 +636,9 @@ impl Balade {
             c.represente = false;
             c.retour.clear();
             self.passes.push(c);
+            if let Terrain::Ville { etat, .. } = &mut self.terrain {
+                etat.carrefours += 1;
+            }
             if self.passes.len() > CARREFOURS_GARDES {
                 self.passes.remove(0);
             }
@@ -625,6 +669,28 @@ impl Balade {
             },
             trace: self.trace.clone(),
             intervention: self.intervention,
+            allure: self.allure,
+        }
+    }
+
+    /// Une autre allure : le pas suivant est redécidé s'il n'est ni figé, ni
+    /// choisi d'un geste, ni le retour à un carrefour.
+    fn changer_allure(&mut self, lib: &Library, allure: Allure) {
+        if self.allure == allure {
+            return;
+        }
+        self.allure = allure;
+        let libre = self.suivant.as_ref().is_some_and(|p| !p.fige)
+            && self
+                .carrefour
+                .as_ref()
+                .is_none_or(|c| c.choisie.is_none() && !c.represente);
+        if libre {
+            let (suivant, carrefour) = (self.suivant.take(), self.carrefour.take());
+            if !self.decider(lib) {
+                self.suivant = suivant;
+                self.carrefour = carrefour;
+            }
         }
     }
 }
@@ -669,16 +735,18 @@ fn monter(
     reprise_ville: Option<EtatBalade>,
     trace: Vec<[f64; 2]>,
     intervention: Intervention,
+    allure: Allure,
 ) -> Result<Balade, String> {
     let depart = *pistes.last().ok_or("balade sans morceau")?;
-    let courant = {
+    let (courant, memoire) = {
         let lib = verrou(&etat.lib);
-        PathBuf::from(
+        let chemin = PathBuf::from(
             lib.track(depart)
                 .map_err(echec)?
                 .ok_or("morceau inconnu")?
                 .path,
-        )
+        );
+        (chemin, Memoire::lire(&lib))
     };
     let vecteurs = charger_vecteurs(etat)?;
     let rang: HashMap<i64, usize> = vecteurs
@@ -719,6 +787,8 @@ fn monter(
     Ok(Balade {
         terrain,
         vecteurs,
+        memoire,
+        allure,
         rang,
         pistes,
         courant,
@@ -741,6 +811,7 @@ pub(crate) fn balade_demarrer(
     etat: State<Etat>,
     depart: i64,
     intervention: Option<Intervention>,
+    allure: Option<Allure>,
 ) -> Result<BaladeVue, String> {
     let mut balade = monter(
         &etat,
@@ -749,6 +820,7 @@ pub(crate) fn balade_demarrer(
         None,
         Vec::new(),
         intervention.unwrap_or_default(),
+        allure.unwrap_or_default(),
     )?;
     {
         let lib = verrou(&etat.lib);
@@ -813,13 +885,24 @@ pub(crate) fn balade_revenir(etat: State<Etat>) -> Result<BaladeVue, String> {
     Ok(balade.vue())
 }
 
-/// Le degré d'intervention, pour la balade en cours (l'interface le garde
-/// avec les autres réglages de la carte et le redonne à chaque départ).
+/// Le degré d'intervention et l'allure, pour la balade en cours (l'interface
+/// les garde avec les autres réglages de la carte et les redonne à chaque
+/// départ). Une autre allure redécide le pas suivant s'il est encore libre.
 #[tauri::command(async)]
-pub(crate) fn balade_regler(etat: State<Etat>, intervention: Intervention) -> Option<BaladeVue> {
+pub(crate) fn balade_regler(
+    etat: State<Etat>,
+    intervention: Option<Intervention>,
+    allure: Option<Allure>,
+) -> Option<BaladeVue> {
     let mut garde = verrou(&etat.balade);
     let balade = garde.as_mut()?;
-    balade.intervention = intervention;
+    if let Some(i) = intervention {
+        balade.intervention = i;
+    }
+    if let Some(a) = allure {
+        let lib = verrou(&etat.lib);
+        balade.changer_allure(&lib, a);
+    }
     sauver(&etat, balade);
     Some(balade.vue())
 }
@@ -998,7 +1081,15 @@ pub(crate) fn balade_reprendre(app: &tauri::AppHandle, etat: &State<Etat>) {
         std::fs::remove_file(&chemin).ok();
         return;
     }
-    match monter(etat, app, r.pistes, r.ville, r.trace, r.intervention) {
+    match monter(
+        etat,
+        app,
+        r.pistes,
+        r.ville,
+        r.trace,
+        r.intervention,
+        r.allure,
+    ) {
         Ok(b) => {
             tracing::info!(pas = b.pistes.len(), "balade reprise");
             *verrou(&etat.balade) = Some(b);
@@ -1027,7 +1118,7 @@ pub(crate) fn essai_balade(app: &tauri::AppHandle) {
         std::thread::sleep(Duration::from_secs(5));
         let etat = app.state::<Etat>();
         verrou(&etat.player).set_volume(0.0);
-        match balade_demarrer(app.clone(), etat, depart, None) {
+        match balade_demarrer(app.clone(), etat, depart, None, None) {
             Ok(v) => tracing::info!(depart, terrain = v.terrain, "essai de balade lancé"),
             Err(e) => {
                 tracing::warn!(erreur = %e, "essai de balade impossible");

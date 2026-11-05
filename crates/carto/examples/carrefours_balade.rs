@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Les carrefours de la balade (`docs/plan-balade.md`, P2), mesurés sur la
 //! bibliothèque : la marche de l'application (`balade::suivants`, la pente
-//! `pente_simple`, les voies montrées `proposer`), sans gestes, depuis 500
+//! `pente` à l'allure *dériver*, les voies montrées `proposer`), sans gestes, depuis 500
 //! départs de 20 pas (graine fixe, mêmes départs que `continuite_balade`).
 //!
 //! Ce que ça dit : combien de pas débouchent sur un carrefour (plus d'une
@@ -19,7 +19,9 @@ use std::path::PathBuf;
 
 use rusty_music_analysis::alea::Alea;
 use rusty_music_carto::accrochage::AccrochageVoirie;
-use rusty_music_carto::balade::{deja_vu, pente_simple, proposer, suivants, EtatBalade};
+use rusty_music_carto::balade::{
+    deja_vu, pente, proposer, suivants, Allure, Contexte, EtatBalade, Memoire,
+};
 use rusty_music_carto::reseau_reel::Graphe;
 use rusty_music_core::db::Library;
 
@@ -50,6 +52,7 @@ fn main() -> anyhow::Result<()> {
     let positions_path = chemin("tuiles/positions.json");
 
     let lib = Library::open(&lib_path)?;
+    let memoire = Memoire::lire(&lib);
     let vue = lib.map_view(MODELE)?;
     let empreinte: HashMap<i64, Vec<f32>> = lib
         .embeddings(MODELE)?
@@ -98,8 +101,20 @@ fn main() -> anyhow::Result<()> {
         let mut depuis_dernier = 0usize;
         for _ in 0..LONGUEUR {
             let branches = suivants(&etat, &graphe, &accrochage);
-            let Some(defaut) = pente_simple(&etat, &branches, &graphe, |id| distance(courant, id))
-            else {
+            let ctx = Contexte {
+                courant,
+                memoire: &memoire,
+                distance: |id| distance(courant, id),
+                famille: |id| famille.get(&id).copied(),
+            };
+            let Some(defaut) = pente(
+                &etat,
+                &branches,
+                &graphe,
+                &accrochage,
+                Allure::Deriver,
+                &ctx,
+            ) else {
                 break;
             };
             pas += 1;
@@ -135,6 +150,9 @@ fn main() -> anyhow::Result<()> {
                         .iter()
                         .any(|&i| famille.get(&branches[i].morceau) != famille.get(&courant)),
                 );
+            }
+            if branches.len() > 1 {
+                etat.carrefours += 1;
             }
             let b = &branches[defaut];
             etat.avancer(b);

@@ -520,11 +520,16 @@ pub fn preparer(
 /// `noms_famille` vient de `Library::familles` (id → nom) — ce module ne lit
 /// pas la base, il reçoit ce que l'appelant en a déjà tiré. Une famille absente
 /// de la table retombe sur `famille {id}` plutôt que sur un nom vide.
+///
+/// `empreintes` (identifiant → empreinte CLAP) : si `Some`, les
+/// pentes entre quartiers voisins sont calculées ([`crate::pentes`],
+/// `Source::pentes`).
 pub fn rassembler(
     extrait: &Extrait,
     vue: &[MapPoint],
     noms_famille: &HashMap<i64, String>,
     centre: Option<[f64; 2]>,
+    empreintes: Option<&HashMap<i64, Vec<f32>>>,
 ) -> Resultat {
     rassembler_avec(
         extrait,
@@ -532,15 +537,15 @@ pub fn rassembler(
         noms_famille,
         centre,
         &croissance::Parametres::default(),
-        None,
+        empreintes,
+        false,
     )
 }
 
 /// [`rassembler`] avec des réglages de croissance explicites — pour comparer
-/// des variantes (`examples/croissance_apercu.rs`). `empreintes` (identifiant
-/// → empreinte CLAP) : si `Some`, chaque cellule est sériée
-/// ([`crate::seriation`]) — mêmes habitants, rangés pour que la rue soit
-/// continue à l'oreille.
+/// des variantes (`examples/croissance_apercu.rs`). `seriation` : chaque
+/// cellule est sériée ([`crate::seriation`], d'après `empreintes`) — mêmes
+/// habitants, rangés pour que la rue soit continue à l'oreille.
 pub fn rassembler_avec(
     extrait: &Extrait,
     vue: &[MapPoint],
@@ -548,6 +553,7 @@ pub fn rassembler_avec(
     centre: Option<[f64; 2]>,
     reglages: &croissance::Parametres,
     empreintes: Option<&HashMap<i64, Vec<f32>>>,
+    seriation: bool,
 ) -> Resultat {
     let Zone {
         repere,
@@ -601,7 +607,7 @@ pub fn rassembler_avec(
     // --- La croissance : l'étage unique qui remplace familles → quartiers,
     // artistes → rues, morceaux → adresses (`docs/carto-ville.md`). ----------
     let mut croissance = croissance::peupler(&parcelles, &arrivants, reglages);
-    if let Some(empreintes) = empreintes {
+    if let Some(empreintes) = empreintes.filter(|_| seriation) {
         let rues: Vec<Option<(usize, f64)>> = facades
             .iter()
             .map(|f| f.map(|f| (f.troncon, f.abscisse)))
@@ -969,22 +975,61 @@ pub fn rassembler_avec(
         Some(f) => f.contient(repere.depuis_m(p_m)),
         None => true,
     };
-    let territoires_reels: Vec<crate::source::TerritoireReel> =
-        territoires_des_habitants(&habitants, bornes_m, 360, dans_commune_m)
-            .into_iter()
-            .map(|t| crate::source::TerritoireReel {
-                famille: t.famille,
-                polygones: t
-                    .polygones
-                    .into_iter()
-                    .map(|poly| {
-                        poly.into_iter()
-                            .map(|anneau| anneau.into_iter().map(|p| repere.depuis_m(p)).collect())
-                            .collect()
-                    })
-                    .collect(),
-            })
-            .collect();
+    let grille_territoires = grille_des_territoires(&habitants, bornes_m, 360, dans_commune_m);
+    // Les pentes entre quartiers voisins (P3 de la balade) : sur la même
+    // grille de vote que les aplats, pour que les flèches relient ce qu'on voit.
+    let pentes: Vec<crate::source::PenteReelle> = match empreintes {
+        Some(e) => {
+            let loges: Vec<([f64; 2], i64)> = positions_m.iter().map(|(&id, &m)| (m, id)).collect();
+            let g = crate::pentes::Grille {
+                gagnante: &grille_territoires.gagnante,
+                gn: grille_territoires.gn,
+                bornes: bornes_m,
+            };
+            let distance = |a: i64, b: i64| -> Option<f32> {
+                let (x, y) = (e.get(&a)?, e.get(&b)?);
+                let (mut xy, mut xx, mut yy) = (0.0f32, 0.0f32, 0.0f32);
+                for (p, q) in x.iter().zip(y) {
+                    xy += p * q;
+                    xx += p * p;
+                    yy += q * q;
+                }
+                Some(1.0 - xy / (xx.sqrt() * yy.sqrt()).max(1e-12))
+            };
+            crate::pentes::entre_quartiers(&g, &loges, distance)
+                .into_iter()
+                .map(|p| {
+                    let (courbe, tete) = crate::pentes::fleche(p.de, p.vers);
+                    let lonlat =
+                        |v: Vec<[f64; 2]>| v.into_iter().map(|m| repere.depuis_m(m)).collect();
+                    crate::source::PenteReelle {
+                        courbe: lonlat(courbe),
+                        tete: lonlat(tete),
+                        proximite: p.proximite,
+                        famille_de: p.famille_de,
+                        famille_vers: p.famille_vers,
+                    }
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
+    let territoires_reels: Vec<crate::source::TerritoireReel> = grille_territoires
+        .contourer()
+        .into_iter()
+        .map(|t| crate::source::TerritoireReel {
+            famille: t.famille,
+            polygones: t
+                .polygones
+                .into_iter()
+                .map(|poly| {
+                    poly.into_iter()
+                        .map(|anneau| anneau.into_iter().map(|p| repere.depuis_m(p)).collect())
+                        .collect()
+                })
+                .collect(),
+        })
+        .collect();
 
     let source = Source {
         morceaux,
@@ -1031,6 +1076,7 @@ pub fn rassembler_avec(
             })
             .collect(),
         albums,
+        pentes,
         ..Default::default()
     };
 
@@ -1066,18 +1112,48 @@ fn nom_regroupement(p: &MapPoint) -> &str {
 /// point de la carte prend la famille qui domine dans ce rayon.
 const RAYON_TERRITOIRE_M: f64 = 130.0;
 
-/// Les aplats de quartier d'après les habitants réels : sur une grille, chaque
-/// point prend la **famille majoritaire** parmi les habitants à moins de
-/// [`RAYON_TERRITOIRE_M`] (pondérés par la proximité), et reste vide s'il n'y
-/// en a aucun. `dedans` limite à la commune. Le vote adoucit le confetti d'un
-/// bâtiment à l'autre sans inventer de frontière : l'aplat ne dit que ce que
-/// les habitants disent.
+/// La grille de vote des quartiers : la famille gagnante de chaque case
+/// (`i64::MIN` : vide). Les aplats en sont le contour
+/// ([`GrilleTerritoires::contourer`]), les pentes la lisent telle quelle.
+struct GrilleTerritoires {
+    gagnante: Vec<i64>,
+    ids: Vec<i64>,
+    bornes: [f64; 4],
+    gn: usize,
+}
+
+impl GrilleTerritoires {
+    fn contourer(&self) -> Vec<affectation::Territoire> {
+        if self.ids.is_empty() {
+            return Vec::new();
+        }
+        affectation::contourer(&self.gagnante, &self.ids, self.bornes, self.gn)
+    }
+}
+
+/// Les aplats de quartier d'après les habitants réels.
+#[cfg(test)]
 fn territoires_des_habitants(
     habitants: &[([f64; 2], i64)],
     bornes: [f64; 4],
     resolution: usize,
     dedans: impl Fn([f64; 2]) -> bool,
 ) -> Vec<affectation::Territoire> {
+    grille_des_territoires(habitants, bornes, resolution, dedans).contourer()
+}
+
+/// La grille de vote des aplats de quartier, d'après les habitants réels :
+/// chaque case prend la **famille majoritaire** parmi les habitants à moins
+/// de [`RAYON_TERRITOIRE_M`] (pondérés par la proximité), et reste vide s'il
+/// n'y en a aucun. `dedans` limite à la commune. Le vote adoucit le confetti
+/// d'un bâtiment à l'autre sans inventer de frontière : l'aplat ne dit que ce
+/// que les habitants disent.
+fn grille_des_territoires(
+    habitants: &[([f64; 2], i64)],
+    bornes: [f64; 4],
+    resolution: usize,
+    dedans: impl Fn([f64; 2]) -> bool,
+) -> GrilleTerritoires {
     let gn = resolution.max(2);
     let [xmin, ymin, xmax, ymax] = bornes;
     let pas_x = ((xmax - xmin) / gn as f64).max(1e-6);
@@ -1090,7 +1166,12 @@ fn territoires_des_habitants(
         .collect();
     ids.sort_unstable();
     if ids.is_empty() {
-        return Vec::new();
+        return GrilleTerritoires {
+            gagnante: vec![i64::MIN; gn * gn],
+            ids,
+            bornes,
+            gn,
+        };
     }
     let rang: HashMap<i64, usize> = ids.iter().enumerate().map(|(i, &f)| (f, i)).collect();
 
@@ -1139,7 +1220,12 @@ fn territoires_des_habitants(
             gagnante[gy * gn + gx] = ids[meilleur];
         }
     }
-    affectation::contourer(&gagnante, &ids, bornes, gn)
+    GrilleTerritoires {
+        gagnante,
+        ids,
+        bornes,
+        gn,
+    }
 }
 
 #[cfg(test)]
@@ -1251,7 +1337,7 @@ mod tests {
             })
             .collect();
 
-        let r = rassembler(&extrait, &vue, &HashMap::new(), None);
+        let r = rassembler(&extrait, &vue, &HashMap::new(), None, None);
 
         assert_eq!(
             r.morceaux_sans_adresse, 0,
@@ -1317,7 +1403,7 @@ mod tests {
             .map(|(i, &a)| point_annee(i as i64, (i % 2) as i64, &format!("Artiste {}", i % 2), a))
             .collect();
 
-        let r = rassembler(&extrait, &vue, &HashMap::new(), None);
+        let r = rassembler(&extrait, &vue, &HashMap::new(), None, None);
         assert_eq!(
             r.morceaux_sans_adresse, 0,
             "l'invariant suppose tout le monde logé"
@@ -1367,7 +1453,7 @@ mod tests {
             })
             .collect();
 
-        let r = rassembler(&extrait, &vue, &HashMap::new(), None);
+        let r = rassembler(&extrait, &vue, &HashMap::new(), None, None);
 
         assert_eq!(r.batiments_peuples, 12, "N = nombre de morceaux");
         assert_eq!(r.morceaux_sans_adresse, 0);
@@ -1412,7 +1498,7 @@ mod tests {
             m.popularite = Some(0.97);
         }
 
-        let r = rassembler(&extrait, &vue, &HashMap::new(), None);
+        let r = rassembler(&extrait, &vue, &HashMap::new(), None, None);
         assert_eq!(r.artistes_ancres, 1);
         let vedette = r
             .source
@@ -1473,7 +1559,7 @@ mod tests {
                 )
             })
             .collect();
-        let r = rassembler(&extrait, &vue, &HashMap::new(), None);
+        let r = rassembler(&extrait, &vue, &HashMap::new(), None, None);
         let par_id: HashMap<i64, &MapPoint> = vue.iter().map(|p| (p.id, p)).collect();
         let mut vus = 0;
         for b in r.source.batiments.iter().filter(|b| b.morceau_id.is_some()) {

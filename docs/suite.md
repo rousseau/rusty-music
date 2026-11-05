@@ -99,9 +99,16 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   retour au carrefour précédent ; extrait de 5 s, son principal baissé. Un
   carrefour tous les quatre morceaux environ. À relever après une semaine :
   `balade-mesure.json` (choix faits, choix « ailleurs »).
-- Restes, dans l'ordre : P3 (pentes, dont une pente « proche à l'oreille »,
-  seule voie restante vers la continuité), puis P5, P8 ; P4 (qui remplacera
-  la baisse du son de l'extrait par un mélange) et P6 ensuite.
+- P3, les pentes — fait : la pente du carrefour mêle proximité CLAP,
+  nouveauté (`ecoute`), déjà-visité, usure et relation MusicBrainz, en trois
+  allures (rester / dériver / s'aventurer, dans le rail). Elle ne décide
+  qu'aux carrefours, 1,6 fois par heure : sur une heure, dériver fait +4 points
+  de jamais-écoutés sur une histoire simulée (rien à gagner sur l'histoire
+  réelle, déjà neuve à 98 %). Flèches rouges entre quartiers voisins
+  (216 sur Paris, 0 croisement), option « Pentes » du fond de plan ; les
+  tuiles sont à régénérer pour les voir.
+- Restes, dans l'ordre : P5, P8 ; P4 (qui remplacera la baisse du son de
+  l'extrait par un mélange) et P6 ensuite.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

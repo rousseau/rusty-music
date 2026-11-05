@@ -52,6 +52,8 @@ const carte = {
   // `osm-clair` = le `style.json` sans suffixe. L'overlay de familles (nuage,
   // pastilles, territoires) ne dépend pas de ce choix.
   theme: localStorage.getItem("carte-theme") || "osm-clair",
+  // Les pentes entre quartiers (P3 de la balade), montrées ou non.
+  pentes: localStorage.getItem("carte-pentes") === "1",
   gl: null, // l'instance MapLibre, ou null tant que les tuiles manquent
   glPret: false,
   // `true` quand un plan de ville réel est actif (`positions_carte` a rendu

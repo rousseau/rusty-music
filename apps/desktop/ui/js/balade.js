@@ -57,6 +57,8 @@ const VOIE_CLIC_PX = 10;
 const EXTRAIT_DELAI_MS = 350;
 
 const INTERVENTIONS = ["porter", "proposer", "demander"];
+/// L'allure de la balade : la pente par défaut au carrefour (P3).
+const ALLURES = ["rester", "deriver", "aventurer"];
 
 const balade = {
   vue: null, // dernière réponse de `balade_etat`, `null` sans balade
@@ -64,20 +66,22 @@ const balade = {
   courantVu: null, // le chemin joué lors de la dernière lecture
   dessineA: 0,
   battuA: 0, // dernier appel de `majBalade` par le sondage du lecteur
-  // Le degré d'intervention, gardé avec les autres réglages de la carte.
-  intervention: lireIntervention(),
+  // Le degré d'intervention et l'allure (la pente de P3), gardés avec les
+  // autres réglages de la carte.
+  intervention: lireReglage("balade-intervention", INTERVENTIONS, "proposer"),
+  allure: lireReglage("balade-allure", ALLURES, "deriver"),
   masque: null, // numéro du carrefour masqué par Échap
   cle: "", // ce que montrent les cartes du panneau, pour ne les refaire qu'au changement
   voiesEcran: [], // [{ i, points: [[x, y]…] }] : le tracé des voies, pour le clic
   survol: null, // minuterie de l'extrait
 };
 
-function lireIntervention() {
+function lireReglage(cle, valeurs, defaut) {
   try {
-    const v = localStorage.getItem("balade-intervention");
-    return INTERVENTIONS.includes(v) ? v : "proposer";
+    const v = localStorage.getItem(cle);
+    return valeurs.includes(v) ? v : defaut;
   } catch {
-    return "proposer";
+    return defaut;
   }
 }
 
@@ -90,6 +94,7 @@ async function flanerDici(id) {
       balade.vue = await invoke("balade_demarrer", {
         depart: id,
         intervention: balade.intervention,
+        allure: balade.allure,
       });
     });
   } catch (err) {
@@ -379,34 +384,42 @@ function entendre(morceau) {
   }, EXTRAIT_DELAI_MS);
 }
 
-/// Le réglage d'intervention, dans le rail d'Explorer.
+/// Les réglages de la balade, dans le rail d'Explorer : l'intervention et
+/// l'allure, un groupe de segments chacun (`data-intervention`, `data-allure`).
+const REGLAGES = [
+  { groupe: "#balade-intervention", champ: "intervention", cle: "balade-intervention" },
+  { groupe: "#balade-allure", champ: "allure", cle: "balade-allure" },
+];
+
 function majReglage() {
-  document
-    .querySelectorAll("#balade-intervention [data-intervention]")
-    .forEach((b) =>
-      b.classList.toggle("segment--actif", b.dataset.intervention === balade.intervention));
+  for (const { groupe, champ } of REGLAGES)
+    document
+      .querySelectorAll(`${groupe} [data-${champ}]`)
+      .forEach((b) => b.classList.toggle("segment--actif", b.dataset[champ] === balade[champ]));
 }
 majReglage();
 
-document.querySelectorAll("#balade-intervention [data-intervention]").forEach((b) =>
-  b.addEventListener("click", async () => {
-    balade.intervention = b.dataset.intervention;
-    try {
-      localStorage.setItem("balade-intervention", balade.intervention);
-    } catch {
-      // Sans stockage, le réglage vaut pour la session.
-    }
-    majReglage();
-    try {
-      const vue = await invoke("balade_regler", { intervention: balade.intervention });
-      if (vue) balade.vue = vue;
-    } catch (err) {
-      remonter(err, "balade_regler");
-    }
-    majCarrefour();
-    redessiner(true);
-  }),
-);
+for (const { groupe, champ, cle } of REGLAGES)
+  document.querySelectorAll(`${groupe} [data-${champ}]`).forEach((b) =>
+    b.addEventListener("click", async () => {
+      balade[champ] = b.dataset[champ];
+      try {
+        localStorage.setItem(cle, balade[champ]);
+      } catch {
+        // Sans stockage, le réglage vaut pour la session.
+      }
+      majReglage();
+      try {
+        // Une autre allure redécide le pas suivant s'il est encore libre.
+        const vue = await invoke("balade_regler", { [champ]: balade[champ] });
+        if (vue) balade.vue = vue;
+      } catch (err) {
+        remonter(err, "balade_regler");
+      }
+      majCarrefour();
+      redessiner(true);
+    }),
+  );
 
 /// Les gestes du clavier au carrefour : 1, 2, 3, les flèches, Échap. Écoutés
 /// avant ceux du transport (← / → y changent de piste) : tant que le panneau

@@ -169,6 +169,21 @@ pub struct TerritoireReel {
     pub polygones: Vec<Vec<Vec<[f64; 2]>>>,
 }
 
+/// Une pente entre deux quartiers voisins (`crate::pentes`), prête à
+/// dessiner en `[lon, lat]` : la flèche rouge de *The Naked City*. Vide sur
+/// le chemin fictif.
+#[derive(Debug, Clone)]
+pub struct PenteReelle {
+    /// La courbe, du quartier de départ vers son voisin.
+    pub courbe: Vec<[f64; 2]>,
+    /// La pointe : un triangle fermé.
+    pub tete: Vec<[f64; 2]>,
+    /// Proximité CLAP de part et d'autre de la frontière, 1 = même son.
+    pub proximite: f32,
+    pub famille_de: i64,
+    pub famille_vers: i64,
+}
+
 /// Un bâtiment réel, avec l'occupant qui l'habite le cas échéant.
 ///
 /// Distinct de [`ContourReel`] parce qu'un bâtiment porte une information que
@@ -291,6 +306,9 @@ pub struct Source {
     /// Les quartiers musicaux comme aplats, pour la carte dézoomée. Vide sur
     /// le chemin fictif.
     pub territoires_reels: Vec<TerritoireReel>,
+    /// Les pentes entre quartiers voisins (P3 de la balade). Vides sur le
+    /// chemin fictif, ou sans empreintes.
+    pub pentes: Vec<PenteReelle>,
 }
 
 impl Source {

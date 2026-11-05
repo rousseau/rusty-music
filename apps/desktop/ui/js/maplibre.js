@@ -234,6 +234,7 @@ async function initialiserGL() {
     );
     majCouleurGL();
     majFiltreGL();
+    majPentesGL();
     majAffichageGL();
     poserVignetteCarte(carte.gl.getStyle());
     dessinerCarte();
@@ -303,6 +304,23 @@ function majAffichageGL() {
   const vignette = $("carte-vignette");
   if (vignette) vignette.style.display = enCarte ? "" : "none";
   dessinerCarte();
+}
+
+/// Les pentes entre quartiers (`style.rs`, `pentes_reelles`) : masquées dans le
+/// style, montrées par l'option « Pentes ». L'option n'apparaît que si le
+/// style en porte (plan de ville réel, empreintes calculées). À rejouer après
+/// `setStyle`, comme la couleur.
+const COUCHES_PENTES = ["pentes-lisere", "pentes-courbe", "pentes-tete"];
+function majPentesGL() {
+  const presentes = !!carte.gl?.getLayer("pentes-courbe");
+  const ligne = $("ligne-pentes");
+  if (ligne) ligne.hidden = !presentes;
+  const caseAcocher = $("carte-pentes");
+  if (caseAcocher) caseAcocher.checked = carte.pentes;
+  if (!presentes) return;
+  for (const couche of COUCHES_PENTES)
+    if (carte.gl.getLayer(couche))
+      carte.gl.setLayoutProperty(couche, "visibility", carte.pentes ? "visible" : "none");
 }
 
 /// `#RRGGBB` → `"r, g, b"`, ou `null`. Pour bâtir `rgb()`/`rgba()`.
@@ -2625,7 +2643,7 @@ export {
   bornesGeoPoints, carteGL, carteReelle, chargerFamilles, couleursFamilles,
   couleursFamillesCarte, dessinerCarte,
   dessinerFamilles, initialiserFiltreAnnee, journalCarte, longueurChemin, majAffichageGL,
-  majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majVisibiliteIntervalleAnnees,
+  majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majPentesGL, majVisibiliteIntervalleAnnees,
   modeAnneau, modeTemps, patienter, pointSous, poserChemin, poserVignetteCarte,
   rafraichirFiltreAnnee, rejouerChemin, rendreFamilles, tracerChemin, tracerRouteSurCarte,
   versCarte, versEcran, vueInitialeGL, zoomer,

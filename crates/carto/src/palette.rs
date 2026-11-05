@@ -94,6 +94,11 @@ pub struct Palette {
     /// famille, bâti d'une famille non isolée. Une valeur neutre du même
     /// registre que le fond.
     pub autres: &'static str,
+    /// Les pentes entre quartiers (P3 de la balade) : le rouge des flèches de
+    /// *The Naked City*. Un rouge franc sur chaque fond, distinct de la voirie
+    /// (l'autoroute d'`encre` est un brun-rouge, celle de `sepia` une terre
+    /// cuite).
+    pub pente: &'static str,
 }
 
 impl Palette {
@@ -127,6 +132,7 @@ impl Palette {
             vert: "#D3E0C6",
             familles: FAMILLES_VIVES,
             autres: "#6E6656",
+            pente: "#D7261E",
         }
     }
 
@@ -160,6 +166,7 @@ impl Palette {
                 "#0080AC", "#3472BE", "#6B63BC", "#8F56A7", "#A74D83",
             ],
             autres: "#8A7A60",
+            pente: "#C8102E",
         }
     }
 
@@ -194,6 +201,7 @@ impl Palette {
                 "#4C86A0", "#6981AC", "#7D74A6", "#94709E", "#B06C94",
             ],
             autres: "#8C867A",
+            pente: "#E0201B",
         }
     }
 
@@ -226,6 +234,7 @@ impl Palette {
             vert: "#111111",
             familles: FAMILLES_VIVES,
             autres: "#8C8C90",
+            pente: "#FF4136",
         }
     }
 
@@ -260,6 +269,7 @@ impl Palette {
                 "#86C6E2", "#A2C8F5", "#C0BEF5", "#D6B0E7", "#E6ADD0",
             ],
             autres: "#7C93AE",
+            pente: "#FF5A47",
         }
     }
 
@@ -336,6 +346,25 @@ mod tests {
         assert_eq!(Palette::bleu_plan().residentielle, "#5A96C0"); // road_residential
     }
 
+    /// Le rouge des pentes : rouge (le canal R domine nettement), et pas la
+    /// couleur d'une voie.
+    #[test]
+    fn la_pente_est_rouge_et_pas_une_route() {
+        for p in Palette::toutes() {
+            let c = |i: usize| u8::from_str_radix(&p.pente[i..i + 2], 16).unwrap() as i32;
+            let (r, g, b) = (c(1), c(3), c(5));
+            assert!(
+                r > 180 && r - g > 100 && r - b > 100,
+                "{} : {}",
+                p.id,
+                p.pente
+            );
+            for route in [p.autoroute, p.nationale, p.secondaire, p.autoroute_lisere] {
+                assert_ne!(p.pente.to_uppercase(), route.to_uppercase(), "{}", p.id);
+            }
+        }
+    }
+
     #[test]
     fn chaque_palette_a_douze_familles_en_hex() {
         for p in Palette::toutes() {
@@ -360,6 +389,7 @@ mod tests {
                 &p.bati_bord,
                 &p.riviere,
                 &p.vert,
+                &p.pente,
             ]) {
                 assert!(
                     c.len() == 7

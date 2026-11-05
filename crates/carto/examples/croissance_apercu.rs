@@ -106,6 +106,7 @@ fn main() -> anyhow::Result<()> {
         Some(ILE_DE_LA_CITE),
         &reglages,
         empreintes.as_ref(),
+        empreintes.is_some(),
     );
     // Les adresses, au format de `positions.json` de l'application : ce que
     // lit `continuite_balade` pour mesurer une marche dans cette ville-ci.

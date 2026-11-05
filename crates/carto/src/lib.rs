@@ -19,6 +19,7 @@ pub mod croissance;
 pub mod facades;
 pub mod hydro;
 pub mod palette;
+pub mod pentes;
 pub mod peuplement;
 pub mod projection;
 pub mod relief;

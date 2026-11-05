@@ -67,12 +67,15 @@ fn main() -> anyhow::Result<()> {
         rusty_music_carto::batiments::AIRE_MIN_M2,
     );
 
+    // Les empreintes, pour les pentes entre quartiers (P3 de la balade).
+    let empreintes: HashMap<i64, Vec<f32>> = lib.embeddings(modele)?.into_iter().collect();
     let t = std::time::Instant::now();
     let r = rusty_music_carto::ville::rassembler(
         &extrait,
         &vue,
         &noms_famille,
         Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+        Some(&empreintes),
     );
     // Pas de `curiosites` : `style::couches_ville` ne les rend pas (pastilles
     // brunes sur un plan de ville, cf. plan « rendu par couche »).
@@ -102,6 +105,42 @@ fn main() -> anyhow::Result<()> {
     assert!(
         r.source.est_ville_reelle(),
         "la source doit basculer sur le rendu réel"
+    );
+    // Les pentes : combien, de quelle force, et combien de flèches se croisent
+    // (critère du plan : « pas plus de quelques fois sur tout Paris »).
+    let mut prox: Vec<f32> = r.source.pentes.iter().map(|p| p.proximite).collect();
+    prox.sort_by(f32::total_cmp);
+    let q = |f: f64| {
+        prox.get(((prox.len().max(1) - 1) as f64 * f) as usize)
+            .copied()
+            .unwrap_or(f32::NAN)
+    };
+    let courbes_m: Vec<Vec<[f64; 2]>> = r
+        .source
+        .pentes
+        .iter()
+        .map(|p| p.courbe.iter().map(|&ll| repere.vers_m(ll)).collect())
+        .collect();
+    let longueurs: Vec<f64> = courbes_m
+        .iter()
+        .map(|c| {
+            c.windows(2)
+                .map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]))
+                .sum()
+        })
+        .collect();
+    println!(
+        "pentes : {} flèches, proximité min {:.3} / médiane {:.3} / max {:.3}, longueur médiane {:.0} m, {} croisements",
+        r.source.pentes.len(),
+        q(0.0),
+        q(0.5),
+        q(1.0),
+        {
+            let mut l = longueurs.clone();
+            l.sort_by(f64::total_cmp);
+            l.get(l.len() / 2).copied().unwrap_or(f64::NAN)
+        },
+        rusty_music_carto::pentes::croisements(&courbes_m),
     );
 
     let sortie = std::env::temp_dir().join("rusty-music-paris");

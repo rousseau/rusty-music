@@ -171,6 +171,14 @@
               <button class="segment" data-theme="nuit">Nuit</button>
               <button class="segment" data-theme="bleu-plan">Bleu plan</button>
             </div>
+            <!-- Les pentes entre quartiers (`docs/plan-balade.md`, P3) : les
+                 flèches rouges de *The Naked City*, aux zooms intermédiaires.
+                 Plan de ville réel seulement ; gardé comme le fond de plan. -->
+            <label class="case" id="ligne-pentes" style="margin-top:8px" hidden
+                   title="Flèches rouges d'un quartier vers ses deux voisins les plus proches à l'oreille, de part et d'autre de la frontière">
+              <input id="carte-pentes" type="checkbox">
+              Pentes
+            </label>
           </div>
           <div id="legende-continue" class="legende" hidden>
             <div class="legende__barre"></div>
@@ -190,6 +198,16 @@
                     title="Les voies s'annoncent à la fin du morceau ; sans geste, la balade prend la voie marquée">Proposer</button>
             <button class="segment" data-intervention="demander"
                     title="La balade attend votre choix à chaque carrefour, en silence s'il le faut">Demander</button>
+          </div>
+          <!-- L'allure : la voie que la balade prend d'elle-même au carrefour
+               (`docs/plan-balade.md`, P3). -->
+          <div class="segments" id="balade-allure" style="margin-top:8px">
+            <button class="segment" data-allure="rester"
+                    title="Au carrefour, la voie la plus proche à l'oreille">Rester</button>
+            <button class="segment segment--actif" data-allure="deriver"
+                    title="Proche et jamais écouté à parts égales">Dériver</button>
+            <button class="segment" data-allure="aventurer"
+                    title="Le jamais écouté d'abord, et un carrefour sur trois la voie la plus différente">S'aventurer</button>
           </div>
         </div>
         <div class="zoom" id="bloc-zoom">

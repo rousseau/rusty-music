@@ -5,7 +5,7 @@
 //! Le morceau suivant n'est pas dans une file calculée d'avance : il est
 //! choisi au moment où on en a besoin, depuis la position courante. Ce module
 //! ne tient que la partie pure — l'état de la marche et les branches qui
-//! s'offrent ([`suivants`]), la pente par défaut ([`pente_simple`]) et, au
+//! s'offrent ([`suivants`]), la pente par défaut ([`pente`], P3) et, au
 //! carrefour (P2), les deux ou trois branches montrées ([`proposer`]).
 //! L'application décide quand avancer et ce qu'elle confie au lecteur.
 //!
@@ -41,6 +41,11 @@ pub struct EtatBalade {
     pub sommets_vus: HashSet<u32>,
     /// Morceaux déjà joués : jamais proposés de nouveau.
     pub morceaux_vus: HashSet<i64>,
+    /// Carrefours passés (plus d'une branche) : l'allure *s'aventurer* prend
+    /// « ailleurs » un carrefour sur trois. Compté par l'appelant, qui sait
+    /// quand il quitte un carrefour.
+    #[serde(default)]
+    pub carrefours: u32,
 }
 
 impl EtatBalade {
@@ -51,6 +56,7 @@ impl EtatBalade {
             precedent: None,
             sommets_vus: HashSet::from([sommet]),
             morceaux_vus: HashSet::from([morceau]),
+            carrefours: 0,
         }
     }
 
@@ -219,11 +225,12 @@ pub fn suivants(etat: &EtatBalade, graphe: &Graphe, accrochage: &AccrochageVoiri
     Vec::new()
 }
 
-/// La pente par défaut, version simple (P1 ; la vraie arrive avec P3) :
+/// La pente de P1, gardée comme référence du banc (`examples/continuite_balade.rs`) :
 /// continuer tout droit si la rue continue — la branche qui reste sur le
 /// tronçon par lequel on est arrivé —, sinon la branche dont le premier
 /// morceau est le plus proche à l'oreille du morceau en cours (`distance`,
-/// plus petit = plus proche). `None` si `branches` est vide.
+/// plus petit = plus proche). `None` si `branches` est vide. L'application
+/// suit [`pente`].
 pub fn pente_simple(
     etat: &EtatBalade,
     branches: &[Branche],
@@ -259,6 +266,348 @@ pub fn pente_simple(
             .total_cmp(&distance(branches[b].morceau))
             .then(a.cmp(&b))
     })
+}
+
+/// L'allure de la balade : trois préréglages de la pente plutôt que cinq
+/// curseurs (`docs/plan-balade.md`, P3), réglés une fois dans le rail.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Allure {
+    /// Le plus proche à l'oreille d'abord : la balade reste dans son quartier.
+    Rester,
+    /// Proche et neuf à parts égales (défaut).
+    #[default]
+    Deriver,
+    /// Le neuf d'abord, et un carrefour sur trois la voie la plus différente
+    /// parmi les plus neuves.
+    Aventurer,
+}
+
+/// Les poids de la pente : `p = proximité·a + nouveauté·b − déjà-visité·c −
+/// usure·d + relation·e`, chaque terme entre 0 et 1 ([`Facettes`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Poids {
+    pub proximite: f32,
+    pub nouveaute: f32,
+    pub deja_visite: f32,
+    pub usure: f32,
+    pub relation: f32,
+}
+
+impl Allure {
+    pub const TOUTES: [Allure; 3] = [Allure::Rester, Allure::Deriver, Allure::Aventurer];
+
+    /// Les poids réglés au banc (`examples/continuite_balade.rs`, E3 ;
+    /// chiffres au journal, « P3 »).
+    pub const fn poids(self) -> Poids {
+        match self {
+            Allure::Rester => Poids {
+                proximite: 1.0,
+                nouveaute: 0.1,
+                deja_visite: 0.3,
+                usure: 0.1,
+                relation: 0.2,
+            },
+            Allure::Deriver => Poids {
+                proximite: 1.0,
+                nouveaute: 0.5,
+                deja_visite: 0.5,
+                usure: 0.3,
+                relation: 0.2,
+            },
+            Allure::Aventurer => Poids {
+                proximite: 0.3,
+                nouveaute: 1.0,
+                deja_visite: 0.6,
+                usure: 0.5,
+                relation: 0.1,
+            },
+        }
+    }
+
+    /// Un carrefour sur combien prend d'office la voie la plus différente.
+    pub const fn ailleurs_tous_les(self) -> Option<u32> {
+        match self {
+            Allure::Aventurer => Some(3),
+            _ => None,
+        }
+    }
+
+    pub const fn nom(self) -> &'static str {
+        match self {
+            Allure::Rester => "rester",
+            Allure::Deriver => "dériver",
+            Allure::Aventurer => "s'aventurer",
+        }
+    }
+}
+
+/// Distance cosinus CLAP au-delà de laquelle un morceau ne sonne plus du tout
+/// proche (proximité 0). Au carrefour, la voie la plus lointaine est en
+/// médiane à 0,17 (`examples/carrefours_balade.rs`).
+const DISTANCE_LOIN: f32 = 0.4;
+/// Morceaux regardés au bout d'une branche pour sa nouveauté : son premier et
+/// ceux qui le suivent dans la même rue.
+const RIVERAINS: usize = 5;
+/// Sommets déjà parcourus le long d'une branche ([`deja_vu`]) au-delà desquels
+/// elle est tenue pour entièrement visitée.
+const VU_PLEIN: usize = 6;
+/// Une écoute de moins de trente jours use la rue.
+pub const RECENT_S: i64 = 30 * 86_400;
+
+/// Ce que la bibliothèque sait de l'écoute, au moment de la balade : table
+/// `ecoute` et relations MusicBrainz entre artistes.
+#[derive(Clone, Debug, Default)]
+pub struct Memoire {
+    /// Dernière écoute de chaque morceau écouté, secondes Unix.
+    pub dernieres: HashMap<i64, i64>,
+    /// Les artistes MusicBrainz des morceaux d'un artiste lié.
+    pub artistes: HashMap<i64, Vec<String>>,
+    /// Paires d'artistes liés, dans les deux sens.
+    pub liens: HashSet<(String, String)>,
+    /// L'heure de la balade, secondes Unix.
+    pub maintenant: i64,
+}
+
+impl Memoire {
+    /// Lit la mémoire d'écoute de `lib`. Une erreur de lecture laisse la
+    /// partie concernée vide : la pente se passe alors de ce terme.
+    pub fn lire(lib: &rusty_music_core::db::Library) -> Memoire {
+        let dernieres = lib.dernieres_ecoutes().unwrap_or_default();
+        let (artistes, liens) = lib.liens_entre_artistes().unwrap_or_default();
+        let maintenant = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        Memoire {
+            dernieres,
+            artistes,
+            liens,
+            maintenant,
+        }
+    }
+
+    pub fn jamais_ecoute(&self, id: i64) -> bool {
+        !self.dernieres.contains_key(&id)
+    }
+
+    pub fn ecoute_recemment(&self, id: i64) -> bool {
+        self.dernieres
+            .get(&id)
+            .is_some_and(|&le| self.maintenant - le < RECENT_S)
+    }
+
+    /// Les artistes de `a` et de `b` ont une relation MusicBrainz.
+    pub fn relies(&self, a: i64, b: i64) -> bool {
+        let (Some(x), Some(y)) = (self.artistes.get(&a), self.artistes.get(&b)) else {
+            return false;
+        };
+        x.iter().any(|p| {
+            y.iter()
+                .any(|q| self.liens.contains(&(p.clone(), q.clone())))
+        })
+    }
+}
+
+/// Ce que la pente regarde, au morceau en cours.
+pub struct Contexte<'a, D, F>
+where
+    D: Fn(i64) -> f32,
+    F: Fn(i64) -> Option<i64>,
+{
+    pub courant: i64,
+    pub memoire: &'a Memoire,
+    /// Distance à l'oreille au morceau en cours, plus petit = plus proche.
+    pub distance: D,
+    /// La famille d'un morceau.
+    pub famille: F,
+}
+
+/// Les termes de la pente d'une branche, chacun entre 0 et 1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Facettes {
+    /// 1 − distance du premier morceau au morceau en cours / [`DISTANCE_LOIN`].
+    pub proximite: f32,
+    /// Part de jamais écoutés parmi les [`RIVERAINS`] premiers morceaux.
+    pub nouveaute: f32,
+    /// Le déjà parcouru que la branche longe ([`deja_vu`] / [`VU_PLEIN`]).
+    pub deja_visite: f32,
+    /// Part d'écoutés récemment parmi les morceaux de la rue.
+    pub usure: f32,
+    /// L'artiste du premier morceau a une relation avec celui en cours.
+    pub relation: bool,
+}
+
+impl Facettes {
+    pub fn note(&self, p: &Poids) -> f32 {
+        p.proximite * self.proximite + p.nouveaute * self.nouveaute
+            - p.deja_visite * self.deja_visite
+            - p.usure * self.usure
+            + if self.relation { p.relation } else { 0.0 }
+    }
+}
+
+/// Les morceaux au bout de la branche, dans l'ordre où la marche les
+/// rencontrerait : son premier, puis les autres morceaux libres de son
+/// sommet, puis ceux des sommets voisins qui ne sont pas sur la branche.
+/// Au plus `n`.
+fn riverains(
+    etat: &EtatBalade,
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    b: &Branche,
+    n: usize,
+) -> Vec<i64> {
+    let mut v = vec![b.morceau];
+    let bout = *b.sommets.last().expect("une branche a au moins un sommet");
+    let sur_la_branche: HashSet<u32> = b.sommets.iter().copied().collect();
+    let plus_loin = voisins(graphe, bout)
+        .into_iter()
+        .map(|(w, _)| w)
+        .filter(|w| !sur_la_branche.contains(w));
+    for s in std::iter::once(bout).chain(plus_loin) {
+        for &id in accrochage.morceaux_a.get(&s).into_iter().flatten() {
+            if v.len() >= n {
+                return v;
+            }
+            if !etat.morceaux_vus.contains(&id) && !v.contains(&id) {
+                v.push(id);
+            }
+        }
+    }
+    v
+}
+
+/// Les termes de la pente de la branche `b`.
+pub fn facettes<D, F>(
+    etat: &EtatBalade,
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    b: &Branche,
+    ctx: &Contexte<D, F>,
+) -> Facettes
+where
+    D: Fn(i64) -> f32,
+    F: Fn(i64) -> Option<i64>,
+{
+    let part = |ids: &[i64], f: &dyn Fn(i64) -> bool| -> f32 {
+        if ids.is_empty() {
+            return 0.0;
+        }
+        ids.iter().filter(|&&id| f(id)).count() as f32 / ids.len() as f32
+    };
+    let devant = riverains(etat, graphe, accrochage, b, RIVERAINS);
+    // La rue : les morceaux de chaque sommet traversé, joués ou non, la
+    // position courante exceptée.
+    let mut rue: Vec<i64> = b
+        .sommets
+        .iter()
+        .skip(usize::from(b.sommets.len() > 1))
+        .flat_map(|s| accrochage.morceaux_a.get(s).into_iter().flatten().copied())
+        .collect();
+    rue.extend(devant.iter().copied());
+    rue.sort_unstable();
+    rue.dedup();
+    Facettes {
+        proximite: 1.0 - ((ctx.distance)(b.morceau) / DISTANCE_LOIN).clamp(0.0, 1.0),
+        nouveaute: part(&devant, &|id| ctx.memoire.jamais_ecoute(id)),
+        deja_visite: (deja_vu(etat, graphe, b) as f32 / VU_PLEIN as f32).min(1.0),
+        usure: part(&rue, &|id| ctx.memoire.ecoute_recemment(id)),
+        relation: ctx.memoire.relies(ctx.courant, b.morceau),
+    }
+}
+
+/// La branche la plus différente parmi `candidats` : d'une autre famille que
+/// le morceau en cours si l'on peut, la plus lointaine à l'oreille ensuite.
+fn plus_differente(
+    branches: &[Branche],
+    candidats: &[usize],
+    distance: impl Fn(i64) -> f32,
+    famille: impl Fn(i64) -> Option<i64>,
+    famille_courante: Option<i64>,
+) -> Option<usize> {
+    let loin = |&a: &usize, &b: &usize| {
+        distance(branches[a].morceau)
+            .total_cmp(&distance(branches[b].morceau))
+            .then(b.cmp(&a))
+    };
+    let autre_famille = |i: &usize| {
+        famille_courante.is_some_and(|f| famille(branches[*i].morceau).is_some_and(|g| g != f))
+    };
+    candidats
+        .iter()
+        .copied()
+        .filter(autre_famille)
+        .max_by(loin)
+        .or_else(|| candidats.iter().copied().max_by(loin))
+}
+
+/// La pente par défaut (P3) : la branche de meilleure note
+/// ([`Facettes::note`]) pour l'allure choisie — et, en *s'aventurer*, un
+/// carrefour sur trois ([`EtatBalade::carrefours`]), le premier compris, la
+/// plus différente : il n'y a qu'un carrefour et demi par heure de balade
+/// (`examples/continuite_balade.rs`, E3).
+/// `None` si `branches` est vide.
+pub fn pente<D, F>(
+    etat: &EtatBalade,
+    branches: &[Branche],
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    allure: Allure,
+    ctx: &Contexte<D, F>,
+) -> Option<usize>
+where
+    D: Fn(i64) -> f32,
+    F: Fn(i64) -> Option<i64>,
+{
+    pente_reglee(
+        etat,
+        branches,
+        graphe,
+        accrochage,
+        &allure.poids(),
+        allure.ailleurs_tous_les(),
+        ctx,
+    )
+}
+
+/// [`pente`] avec des poids explicites, pour le banc qui les règle.
+pub fn pente_reglee<D, F>(
+    etat: &EtatBalade,
+    branches: &[Branche],
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    poids: &Poids,
+    ailleurs_tous_les: Option<u32>,
+    ctx: &Contexte<D, F>,
+) -> Option<usize>
+where
+    D: Fn(i64) -> f32,
+    F: Fn(i64) -> Option<i64>,
+{
+    if branches.len() <= 1 {
+        return (!branches.is_empty()).then_some(0);
+    }
+    let f: Vec<Facettes> = branches
+        .iter()
+        .map(|b| facettes(etat, graphe, accrochage, b, ctx))
+        .collect();
+    if ailleurs_tous_les.is_some_and(|n| n > 0 && etat.carrefours % n == 0) {
+        // La plus différente parmi les plus neuves : s'aventurer, c'est
+        // d'abord le neuf.
+        let neuve = f.iter().map(|x| x.nouveaute).fold(0.0f32, f32::max);
+        let neuves: Vec<usize> = (0..branches.len())
+            .filter(|&i| f[i].nouveaute >= neuve)
+            .collect();
+        return plus_differente(
+            branches,
+            &neuves,
+            &ctx.distance,
+            &ctx.famille,
+            (ctx.famille)(ctx.courant),
+        );
+    }
+    let notes: Vec<f32> = f.iter().map(|x| x.note(poids)).collect();
+    (0..branches.len()).max_by(|&a, &b| notes[a].total_cmp(&notes[b]).then(b.cmp(&a)))
 }
 
 /// Branches montrées au carrefour, au plus : au-delà de trois, on ne compare
@@ -320,22 +669,13 @@ pub fn proposer(
         retenues.extend(reste(&retenues));
         return retenues;
     }
-    let loin = |&a: &usize, &b: &usize| {
-        distance(branches[a].morceau)
-            .total_cmp(&distance(branches[b].morceau))
-            .then(b.cmp(&a))
-    };
-    // La plus différente : une autre famille si l'on peut, puis la plus loin.
-    let autre_famille = |i: &usize| {
-        famille_courante.is_some_and(|f| famille(branches[*i].morceau).is_some_and(|g| g != f))
-    };
-    let candidats = reste(&retenues);
-    let ailleurs = candidats
-        .iter()
-        .copied()
-        .filter(autre_famille)
-        .max_by(loin)
-        .or_else(|| candidats.iter().copied().max_by(loin));
+    let ailleurs = plus_differente(
+        branches,
+        &reste(&retenues),
+        &distance,
+        &famille,
+        famille_courante,
+    );
     retenues.extend(ailleurs);
     // Une branche proche : la plus proche de toutes, si ce n'est pas la pente.
     let plus_proche = (0..branches.len()).min_by(|&a, &b| {
@@ -656,6 +996,138 @@ mod tests {
             .collect();
         m.sort_unstable();
         assert_eq!(m, vec![30, 40]);
+    }
+
+    /// Le carrefour C, arrivé de l'ouest : l'est (20), le nord (30), le sud (40).
+    fn carrefour_trois() -> (Banc, AccrochageVoirie, EtatBalade) {
+        let b = banc();
+        let acc = accrochage(&[
+            (1, b.s["c"]),
+            (20, b.s["e1"]),
+            (30, b.s["n1"]),
+            (40, b.s["s1"]),
+        ]);
+        let mut etat = EtatBalade::depuis(b.s["c"], 1);
+        etat.precedent = Some(b.s["o1"]);
+        (b, acc, etat)
+    }
+
+    fn pris(
+        b: &Banc,
+        acc: &AccrochageVoirie,
+        etat: &EtatBalade,
+        allure: Allure,
+        memoire: &Memoire,
+        distance: impl Fn(i64) -> f32,
+        famille: impl Fn(i64) -> Option<i64>,
+    ) -> i64 {
+        let br = suivants(etat, &b.graphe, acc);
+        let ctx = Contexte {
+            courant: 1,
+            memoire,
+            distance,
+            famille,
+        };
+        br[pente(etat, &br, &b.graphe, acc, allure, &ctx).unwrap()].morceau
+    }
+
+    #[test]
+    fn rester_suit_loreille_deriver_le_neuf_assez_proche() {
+        let (b, acc, etat) = carrefour_trois();
+        // L'est est le plus proche mais déjà écouté (il y a un an) ; le nord,
+        // un peu moins proche, jamais écouté ; le sud, loin et neuf.
+        let memoire = Memoire {
+            dernieres: HashMap::from([(20, 0)]),
+            maintenant: 365 * 86_400,
+            ..Default::default()
+        };
+        let d = |id: i64| match id {
+            20 => 0.10,
+            30 => 0.16,
+            _ => 0.5,
+        };
+        let f = |_| Some(1);
+        assert_eq!(pris(&b, &acc, &etat, Allure::Rester, &memoire, d, f), 20);
+        assert_eq!(pris(&b, &acc, &etat, Allure::Deriver, &memoire, d, f), 30);
+        // Tout neuf : l'oreille départage, quelle que soit l'allure.
+        let neuf = Memoire::default();
+        for allure in [Allure::Rester, Allure::Deriver] {
+            assert_eq!(pris(&b, &acc, &etat, allure, &neuf, d, f), 20);
+        }
+    }
+
+    #[test]
+    fn saventurer_prend_ailleurs_un_carrefour_sur_trois() {
+        let (b, acc, mut etat) = carrefour_trois();
+        let memoire = Memoire::default();
+        let d = |id: i64| match id {
+            20 => 0.05,
+            30 => 0.10,
+            _ => 0.30,
+        };
+        // Le nord seul est d'une autre famille.
+        let f = |id: i64| Some(if id == 30 { 2 } else { 1 });
+        etat.carrefours = 1;
+        assert_eq!(pris(&b, &acc, &etat, Allure::Aventurer, &memoire, d, f), 20);
+        for n in [0, 3] {
+            etat.carrefours = n;
+            assert_eq!(pris(&b, &acc, &etat, Allure::Aventurer, &memoire, d, f), 30);
+        }
+        // Les autres allures n'ont pas de tour « ailleurs ».
+        assert_eq!(pris(&b, &acc, &etat, Allure::Deriver, &memoire, d, f), 20);
+    }
+
+    #[test]
+    fn lusure_et_la_relation_departagent() {
+        let (b, acc, etat) = carrefour_trois();
+        let d = |id: i64| if id == 40 { 0.5 } else { 0.1 };
+        let f = |_| Some(1);
+        // L'est écouté hier : la rue est usée, le nord l'emporte.
+        let mut memoire = Memoire {
+            dernieres: HashMap::from([(20, 1000)]),
+            maintenant: 1000 + 86_400,
+            ..Default::default()
+        };
+        assert_eq!(pris(&b, &acc, &etat, Allure::Rester, &memoire, d, f), 30);
+        // Sans écoute, égalité à l'oreille : l'artiste lié au morceau en
+        // cours (1) l'emporte — l'est vient en tête sinon.
+        memoire.dernieres.clear();
+        assert_eq!(pris(&b, &acc, &etat, Allure::Rester, &memoire, d, f), 20);
+        memoire.artistes = HashMap::from([(1, vec!["a".into()]), (30, vec!["b".into()])]);
+        memoire.liens = HashSet::from([("a".into(), "b".into()), ("b".into(), "a".into())]);
+        assert!(memoire.relies(1, 30) && !memoire.relies(1, 20));
+        assert_eq!(pris(&b, &acc, &etat, Allure::Rester, &memoire, d, f), 30);
+    }
+
+    #[test]
+    fn la_nouveaute_regarde_plus_loin_que_le_premier_morceau() {
+        let b = banc();
+        // L'est : 20 neuf, puis 21 et 22 en E2, écoutés.
+        let acc = accrochage(&[
+            (1, b.s["c"]),
+            (20, b.s["e1"]),
+            (21, b.s["e2"]),
+            (22, b.s["e2"]),
+        ]);
+        let mut etat = EtatBalade::depuis(b.s["c"], 1);
+        etat.precedent = Some(b.s["o1"]);
+        let memoire = Memoire {
+            dernieres: HashMap::from([(21, 0), (22, 0)]),
+            maintenant: 365 * 86_400,
+            ..Default::default()
+        };
+        let br = suivants(&etat, &b.graphe, &acc);
+        assert_eq!(br.len(), 1);
+        let ctx = Contexte {
+            courant: 1,
+            memoire: &memoire,
+            distance: |_| 0.0,
+            famille: |_| None,
+        };
+        let f = facettes(&etat, &b.graphe, &acc, &br[0], &ctx);
+        assert!((f.nouveaute - 1.0 / 3.0).abs() < 1e-6, "{f:?}");
+        assert_eq!(f.proximite, 1.0);
+        assert_eq!(f.usure, 0.0);
     }
 
     #[test]

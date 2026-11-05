@@ -477,10 +477,67 @@ test("balade : clic droit sur un morceau, « Flâner d'ici », la carte dit où 
   expect(await appels(page, "balade_arreter")).toHaveLength(1);
 });
 
+test("carte : l'option « Pentes » montre les flèches entre quartiers et se garde", async ({ page }) => {
+  // Un style minimal qui porte des pentes (le vrai sort de `style.rs`), et
+  // l'instance MapLibre retenue au passage pour en lire les couches.
+  await page.addInitScript(() => {
+    let lib;
+    Object.defineProperty(window, "maplibregl", {
+      configurable: true,
+      get: () => lib,
+      set: (v) => {
+        const Carte = v.Map;
+        v.Map = class extends Carte {
+          constructor(o) {
+            super(o);
+            window.__CARTE_GL__ = this;
+          }
+        };
+        lib = v;
+      },
+    });
+    const masquee = { visibility: "none" };
+    const pente = {
+      type: "FeatureCollection",
+      features: [
+        { type: "Feature", properties: { partie: "courbe", proximite: 0.8 },
+          geometry: { type: "LineString", coordinates: [[2.33, 48.85], [2.35, 48.86]] } },
+      ],
+    };
+    window.__FIXTURES__.style_carte = () => ({
+      version: 8,
+      center: [2.34, 48.855],
+      zoom: 13,
+      sources: { pentes: { type: "geojson", data: pente } },
+      layers: [
+        { id: "terre-reelle", type: "background", paint: { "background-color": "#F2EFE9" } },
+        { id: "pentes-lisere", type: "line", source: "pentes", layout: masquee },
+        { id: "pentes-courbe", type: "line", source: "pentes", layout: masquee },
+        { id: "pentes-tete", type: "fill", source: "pentes", layout: masquee },
+      ],
+    });
+  });
+  await page.reload();
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="carte"]');
+  const option = page.locator("#carte-pentes");
+  await expect(page.locator("#ligne-pentes")).toBeVisible();
+  await expect(option).not.toBeChecked();
+  const visibilite = () =>
+    page.evaluate(() => window.__CARTE_GL__.getLayoutProperty("pentes-courbe", "visibility"));
+  expect(await visibilite()).toBe("none");
+  await option.check();
+  await expect.poll(visibilite).toBe("visible");
+  expect(await page.evaluate(() => localStorage.getItem("carte-pentes"))).toBe("1");
+  await option.uncheck();
+  await expect.poll(visibilite).toBe("none");
+});
+
 test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde voie, l'extrait suit le survol", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);
   await page.click('#balade-intervention [data-intervention="demander"]');
+  await page.click('#balade-allure [data-allure="aventurer"]');
   // La fin du morceau : le carrefour se présente dans les 30 dernières secondes.
   await page.evaluate(() => {
     const lire = window.__FIXTURES__.playback_state;
@@ -492,6 +549,7 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   await page.mouse.click(r.x + r.width / 2 + p.x * c, r.y + r.height / 2 + p.y * c, { button: "right" });
   await page.click("#carte-menu-flaner");
   await expect.poll(async () => (await appels(page, "balade_demarrer")).at(-1)?.intervention).toBe("demander");
+  expect((await appels(page, "balade_demarrer")).at(-1).allure).toBe("aventurer");
   const panneau = page.locator("#carte-carrefour");
   await expect(panneau).toBeVisible();
   await expect(panneau.locator(".voie")).toHaveCount(2);
@@ -528,4 +586,9 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   await expect(panneau).toBeHidden();
   // Le réglage reste d'une session à l'autre.
   expect(await page.evaluate(() => localStorage.getItem("balade-intervention"))).toBe("demander");
+  // Une autre allure en cours de balade : elle part au moteur, seule.
+  await page.click('#balade-allure [data-allure="rester"]');
+  await expect.poll(async () => (await appels(page, "balade_regler")).at(-1)).toEqual({ allure: "rester" });
+  await expect(page.locator('#balade-allure [data-allure="rester"]')).toHaveClass(/segment--actif/);
+  expect(await page.evaluate(() => localStorage.getItem("balade-allure"))).toBe("rester");
 });

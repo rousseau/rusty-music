@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
         Some(ILE_DE_LA_CITE),
     );
     let autorises = prep.autorises.clone();
-    let r = ville::rassembler(&extrait, &vue, &noms, Some(ILE_DE_LA_CITE));
+    let r = ville::rassembler(&extrait, &vue, &noms, Some(ILE_DE_LA_CITE), None);
     println!(
         "croissance : {:.1} s — {} adresses, {} sans, {} cellules ({} habitées), {} ancrés, {} bâtiments peuplés",
         t.elapsed().as_secs_f64(),

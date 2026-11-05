@@ -1722,6 +1722,7 @@ fn main() -> Result<()> {
                 &vue,
                 &noms,
                 Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+                None,
             );
             let duree = depart.elapsed();
 

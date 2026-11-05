@@ -2739,6 +2739,143 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
   La mesure d'usage (part des carrefours avec un choix, part « ailleurs »)
   est à relever après une semaine dans `balade-mesure.json`.
 
+### P3 : les pentes, *The Naked City* sur nos quartiers
+
+- **La pente de la balade** (`crates/carto/src/balade.rs`). `pente` remplace
+  la pente simple de P1 (gardée comme repère du banc). Au carrefour, chaque
+  branche reçoit une note
+  `a·proximité + b·nouveauté − c·déjà-visité − d·usure + e·relation`, chaque
+  terme entre 0 et 1 (`Facettes`) :
+  - **proximité** : 1 − distance CLAP du premier morceau au morceau en cours,
+    rapportée à 0,4 ;
+  - **nouveauté** : la part de jamais-écoutés (table `ecoute`) parmi les cinq
+    premiers morceaux de la branche (son premier, puis ceux de son sommet et
+    des sommets voisins) ;
+  - **déjà-visité** : `deja_vu` sur 6 sommets ;
+  - **usure** : la part d'écoutés depuis moins de 30 jours parmi les morceaux
+    de la rue ;
+  - **relation** : l'artiste a une relation MusicBrainz (membre,
+    collaboration, fondateur…, hors hommages et « named after ») avec celui
+    du morceau en cours.
+
+  Ces données sont lues au départ de la balade (`Memoire::lire`) par deux
+  accesseurs nouveaux du cœur : `Library::dernieres_ecoutes` et
+  `Library::liens_entre_artistes`.
+- **Trois allures** au lieu de cinq curseurs. Le réglage est dans le rail
+  (bloc « Balade », sous l'intervention), gardé en local comme le fond de plan.
+  Changer d'allure redécide le pas suivant s'il est encore libre.
+
+  | allure | a | b | c | d | e | en plus |
+  |---|---:|---:|---:|---:|---:|---|
+  | rester | 1 | 0,1 | 0,3 | 0,1 | 0,2 | |
+  | dériver (défaut) | 1 | 0,5 | 0,5 | 0,3 | 0,2 | |
+  | s'aventurer | 0,3 | 1 | 0,6 | 0,5 | 0,1 | un carrefour sur trois (le premier compris), la voie la plus différente parmi les plus neuves |
+
+  `EtatBalade::carrefours` compte les carrefours passés. Le graphe des
+  voisins (le repli sans ville) note ses voisins avec la même formule, sans
+  les termes de rue.
+- **Réglage des poids** (`examples/continuite_balade.rs`, E3). La balade de
+  l'application est simulée 60 min sans geste, depuis les 500 départs d'E1,
+  une fois par pente. `BALADE_E3_SEUL=1` saute E1 et E2 ; `BALADE_GRILLE=1`
+  essaie 24 jeux de poids ; `BALADE_HISTOIRE=0.3` remplace la table `ecoute`
+  par une histoire simulée.
+
+  Avec l'histoire réelle (446 morceaux écoutés sur 27 657, soit 1,6 %) :
+
+  | pente | morceaux / balade | médiane | 9ᵉ déc. | changement de famille | jamais écoutés | carrefours / balade | aux carrefours : distance prise | : autre famille | : le neuf pris quand il est en jeu (n) |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | P1, pente simple | 15,7 | 0,098 | 0,291 | 32 % | 98,9 % | 1,65 | 0,090 | 37 % | 47 % (19) |
+  | P3, rester | 15,7 | 0,096 | 0,287 | 32 % | 99,0 % | 1,61 | 0,088 | 36 % | 72 % (18) |
+  | P3, dériver | 15,7 | 0,097 | 0,287 | 32 % | 99,1 % | 1,60 | 0,088 | 36 % | 89 % (18) |
+  | P3, s'aventurer | 15,8 | 0,103 | 0,298 | 35 % | 99,1 % | 1,66 | 0,129 | 54 % | 95 % (20) |
+  | hasard (repère) | — | 0,192 | 0,412 | 85 % | 98,5 % | — | — | — | — |
+
+  Avec une histoire simulée (30 % des albums écoutés, dont un tiers dans le
+  mois ; 8 004 morceaux) :
+
+  | pente | médiane | 9ᵉ déc. | changement de famille | jamais écoutés | aux carrefours : distance prise | : autre famille | : le neuf pris (n) |
+  |---|---:|---:|---:|---:|---:|---:|---:|
+  | P1, pente simple | 0,098 | 0,291 | 32 % | 71,6 % | 0,090 | 37 % | 45 % (281) |
+  | P3, rester | 0,097 | 0,290 | 32 % | 74,2 % | 0,087 | 36 % | 66 % (272) |
+  | P3, dériver | 0,098 | 0,290 | 32 % | 76,0 % | 0,091 | 38 % | 86 % (269) |
+  | P3, s'aventurer | 0,103 | 0,306 | 34 % | 78,1 % | 0,131 | 50 % | 95 % (267) |
+  | hasard (repère) | 0,192 | 0,412 | 85 % | 71,2 % | — | — | — |
+
+  Ce que ça dit :
+  - **Le critère de continuité tient.** Avec dériver, la médiane des
+    distances consécutives (0,098) reste à la moitié de celle du hasard
+    (0,192).
+  - **Le critère de nouveauté ne se juge pas sur cette bibliothèque.**
+    98,4 % des morceaux n'ont jamais été écoutés : P1 en joue déjà 98,9 %.
+    Avec l'histoire simulée, dériver fait +4,4 points sur une heure, et
+    s'aventurer +6,5. Aux carrefours où le neuf est en jeu, il est pris 86 %
+    des fois avec dériver, contre 45 % avec P1. Le gain sur l'heure reste
+    modeste pour une raison de structure : **la pente ne décide qu'aux
+    carrefours, soit 1,6 fois par heure**. Le reste du temps, la rue mène, et
+    les morceaux d'un même sommet s'enchaînent.
+  - **La grille** : le poids de proximité ne compte que relativement aux
+    autres termes. Sans nouveauté en jeu, toutes les allures prennent la voie
+    la plus proche. C'est s'aventurer, avec son tour « ailleurs », qui
+    distingue vraiment les allures : 54 % de changements de famille aux
+    carrefours, contre 36 %.
+  - **La relation MusicBrainz est rare** : 474 paires d'artistes liés, dont
+    10 transitions par 500 balades.
+- **Les pentes entre quartiers** (`crates/carto/src/pentes.rs`) :
+  - **Les quartiers.** Un quartier est une pièce d'un seul tenant de l'aplat
+    d'une famille : la grille de vote des territoires
+    (`ville::grille_des_territoires`, extraite de `territoires_des_habitants`).
+    Il faut au moins 25 habitants.
+  - **La proximité d'une frontière.** C'est la proximité CLAP moyenne entre
+    les morceaux à moins de 150 m de la frontière, de part et d'autre, sur au
+    plus 40 × 40 paires.
+  - **La sélection.** Chaque quartier garde ses deux voisins les plus
+    proches. Les flèches sont posées de la plus forte à la plus faible ; une
+    flèche qui en croiserait une déjà posée laisse la place au voisin suivant.
+  - **Le dessin.** Une courbe s'incurve à sa droite (deux pentes opposées ne
+    se recouvrent pas), avec une pointe pleine. Elle va du milieu des
+    morceaux d'un côté de la couture au milieu de ceux d'en face, sur 350 à
+    700 m.
+  - **Deux essais écartés.** De cœur à cœur, le grand quartier rose (la
+    moitié sud-ouest) attirait toutes ses voisines sur un seul point, avec des
+    flèches à travers la ville. À 220 m, les flèches ne se lisaient plus à
+    z12.
+  - **Sur la bibliothèque** (`examples/rassembler_paris.rs`) : 216 flèches,
+    proximité de 0,548 à 0,928 (médiane 0,817), **0 croisement**. Avant la
+    sélection sans croisement : 241 flèches et 25 croisements.
+- **Le style** (`style.rs`, `palette.rs`) :
+  - Les pentes partent dans le style en GeoJSON (source `pentes`) plutôt
+    qu'en tuiles : quelques centaines de flèches, qui ne dépendent pas du
+    zoom.
+  - Trois couches : un liseré du fond, la courbe et la pointe. Elles vont de
+    `artistes_des` à `morceaux_des + 1` (z11 à z15), au-dessus des points
+    habités et sous les noms. L'épaisseur suit la proximité.
+  - Les couches sont masquées dans le style. Chaque palette a son rouge
+    (`Palette::pente`, distinct de la voirie : un test le garde), et chaque
+    `style-<id>.json` porte les mêmes flèches.
+  - L'option « Pentes » (case du bloc « Fond de plan », plan de ville réel
+    seulement, gardée en local) les montre. Elle est rejouée après
+    `setStyle`.
+  - **Pour les voir, il faut régénérer les tuiles** : les styles sont écrits
+    par `engendrer_tuiles`.
+- **Vérifié** :
+  - tests nouveaux : 4 pour la pente, 5 pour les pentes, 1 pour le style,
+    1 pour la palette, 2 pour le cœur ;
+  - deux tests de fumée : l'allure part au départ de la balade et au
+    réglage, et elle est gardée ; l'option « Pentes » montre et cache les
+    couches et se garde ;
+  - les flèches sont regardées dans l'aperçu MapLibre (osm-clair à z12,3 et
+    z13,6 ; nuit ; sépia) ;
+  - essai natif de 8 min (`RUSTY_MUSIC_ESSAI_BALADE=2087`,
+    `RUSTY_MUSIC_ESSAI_CHOIX=1`, copie des données, son coupé, allure
+    dériver) : la mémoire d'écoute est lue au départ, puis un carrefour à
+    3 voies ; le choix de l'essai remplace la pente, il est préchargé, saut
+    de 0 m ;
+  - **`audit-interface.sh`** : 234 cellules, 0 violation ; contraste et
+    typographie sans violation.
+- **Non vérifié à l'usage** :
+  - les allures à l'oreille ;
+  - les flèches dans la webview native, après régénération des tuiles.
+
 ## Pratiquer et Créer, deux modes du rail — 5 nov. 2026
 
 - **Décision** (François) : Éditer portait deux usages qu'un même écran sert

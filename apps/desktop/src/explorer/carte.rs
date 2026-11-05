@@ -203,12 +203,18 @@ pub(crate) fn rassembler_ville(
         .map(|(id, nom, _)| (id, nom))
         .collect();
     drop(lib);
+    // Les empreintes, pour les pentes entre quartiers (P3 de la balade).
+    let empreintes: std::collections::HashMap<i64, Vec<f32>> = charger_vecteurs(etat)?
+        .iter()
+        .map(|(id, v)| (*id, v.clone()))
+        .collect();
 
     let r = rusty_music_carto::ville::rassembler(
         extrait,
         &vue,
         &noms_famille,
         Some(rusty_music_carto::ville::ILE_DE_LA_CITE),
+        Some(&empreintes),
     );
     // Pas de `curiosites` sur le plan de ville : `style::couches_ville` ne les
     // rend plus (pastilles brunes plus grosses qu'un bâtiment). Le dispositif
@@ -221,6 +227,7 @@ pub(crate) fn rassembler_ville(
         cellules = r.cellules,
         cellules_habitees = r.cellules_habitees,
         albums = r.source.albums.len(),
+        pentes = r.source.pentes.len(),
         "plan de ville réel assemblé"
     );
     Ok(r.source)
