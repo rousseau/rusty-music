@@ -153,28 +153,13 @@ pub(crate) fn charger_accrochage_voirie(
         return Err("aucune adresse réelle".into());
     }
 
-    let index = graphe_base.index_sommets();
-    let mut sommet_de: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
-    let mut morceaux_a: std::collections::HashMap<u32, Vec<i64>> = std::collections::HashMap::new();
-    for (id, x, y) in points {
-        if let Some(s) = index.plus_proche(graphe_base, [x as f64, y as f64], 200.0) {
-            sommet_de.insert(id, s);
-            morceaux_a.entry(s).or_default().push(id);
-        }
-    }
-    // Ordre déterministe des morceaux d'un même sommet (départage à rang égal).
-    for v in morceaux_a.values_mut() {
-        v.sort_unstable();
-    }
+    let a = AccrochageVoirie::construire(graphe_base, points);
     tracing::info!(
-        accroches = sommet_de.len(),
-        sommets = morceaux_a.len(),
+        accroches = a.sommet_de.len(),
+        sommets = a.morceaux_a.len(),
         "morceaux accrochés à la voirie"
     );
-    let a = Arc::new(AccrochageVoirie {
-        sommet_de,
-        morceaux_a,
-    });
+    let a = Arc::new(a);
     *verrou(&etat.accrochage_voirie) = Some(a.clone());
     Ok(a)
 }
@@ -196,97 +181,6 @@ pub(crate) fn popularites_par_artiste(vue: &[MapPoint]) -> std::collections::Has
             (p.id, n / max)
         })
         .collect()
-}
-
-/// Les morceaux rencontrés le long d'un tracé de voirie, dans l'ordre du
-/// parcours. C'est le cœur du mode « itinéraire » : le trajet suit les rues,
-/// la playlist est faite de ce qui les borde.
-///
-/// - `couloir` : sommet → rang (position le long du tracé), de
-///   [`rusty_music_carto::reseau_reel::Graphe::couloir`] ;
-/// - `famille` : si `Some`, ne garder que ces morceaux (le filtre d'Explorer) —
-///   mais le départ et l'arrivée passent toujours ;
-/// - `arrivee_id` : **si `Some`, elle est le terminus** (forcée en queue) et la
-///   durée est ignorée — « va jusque-là » l'emporte ;
-/// - `duree_cible_ms` : ne s'applique **que sans arrivée** — la playlist
-///   s'arrête quand le cumul des durées atteint la cible (moins 90 s de
-///   tolérance).
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn morceaux_le_long(
-    accrochage: &AccrochageVoirie,
-    couloir: &std::collections::HashMap<u32, usize>,
-    depart_id: i64,
-    arrivee_id: Option<i64>,
-    famille: Option<&HashSet<i64>>,
-    duree_cible_ms: Option<u64>,
-    duree: &dyn Fn(i64) -> u64,
-) -> Vec<i64> {
-    const PLAFOND: usize = 120;
-    const TOLERANCE_MS: u64 = 90_000;
-
-    // **Une arrivée posée prime : le trajet va jusqu'à elle**, et la durée ne
-    // s'applique plus (elle ne sert qu'aux itinéraires sans arrivée — « une
-    // balade de 40 min par là »). L'arrivée est forcée en queue et exclue du
-    // corps ; le départ toujours en tête.
-    let terminus = arrivee_id;
-    let borne = |id: i64| id == depart_id || Some(id) == terminus;
-    let duree_cible_ms = if terminus.is_some() {
-        None
-    } else {
-        duree_cible_ms
-    };
-
-    // (rang, id) pour chaque morceau du couloir.
-    let mut candidats: Vec<(usize, i64)> = Vec::new();
-    for (sommet, rang) in couloir {
-        if let Some(ids) = accrochage.morceaux_a.get(sommet) {
-            for &id in ids {
-                candidats.push((*rang, id));
-            }
-        }
-    }
-    candidats.sort_unstable_by_key(|&(rang, id)| (rang, id));
-
-    let mut vus: HashSet<i64> = HashSet::new();
-    let mut suite: Vec<i64> = Vec::new();
-    for (_, id) in candidats {
-        if borne(id) || !vus.insert(id) {
-            continue;
-        }
-        if let Some(f) = famille {
-            if !f.contains(&id) {
-                continue;
-            }
-        }
-        suite.push(id);
-    }
-
-    // Départ en tête.
-    suite.retain(|&id| !borne(id));
-    suite.insert(0, depart_id);
-
-    // La durée prime : on coupe dès que le cumul l'atteint.
-    if let Some(cible) = duree_cible_ms {
-        let seuil = cible.saturating_sub(TOLERANCE_MS);
-        let mut cumul = 0u64;
-        let mut coupe = suite.len();
-        for (i, &id) in suite.iter().enumerate() {
-            cumul += duree(id);
-            if cumul >= seuil {
-                coupe = i + 1;
-                break;
-            }
-        }
-        suite.truncate(coupe.max(1));
-    } else if let Some(a) = terminus {
-        // Pas de durée : l'arrivée est le terminus.
-        if a != depart_id {
-            suite.push(a);
-        }
-    }
-
-    suite.truncate(PLAFOND.max(1));
-    suite
 }
 
 /// Assemble une [`rusty_music_carto::source::Source`] depuis le plan de
@@ -609,6 +503,7 @@ pub(crate) fn itineraire_voirie(
     familles: Option<Vec<i64>>,
     rayon_m: Option<f64>,
 ) -> Result<ReponseItineraireVoirie, String> {
+    use rusty_music_carto::accrochage::{destination_pour_duree, fin_de_trace, morceaux_le_long};
     use rusty_music_carto::cout_itineraire::ProfilVoirie;
 
     let Some(chemin_ville) = plan_de_ville(&etat.db) else {
@@ -681,32 +576,15 @@ pub(crate) fn itineraire_voirie(
     let cible_pos = match (arrivee_pos, cible_ms) {
         (Some(p), _) => p,
         (None, Some(cible)) => {
-            let couts = graphe.couts_depuis(depart_pos);
-            let mut candidats: Vec<(u64, i64)> = accrochage
-                .sommet_de
-                .iter()
-                .filter(|(id, _)| {
-                    permis
-                        .as_ref()
-                        .is_none_or(|f| f.contains(*id) || **id == depart)
-                })
-                .filter_map(|(&id, &s)| couts.get(s as usize).copied().flatten().map(|c| (c, id)))
-                .collect();
-            candidats.sort_unstable();
-            // Viser ~2× la durée : le tracé ne longe qu'une partie des morceaux
-            // « à portée » (ceux de son couloir), pas tous ceux du disque de
-            // coût. Sans cette marge, la playlist manque souvent la cible et le
-            // tracé, tronqué au dernier morceau, reste tout petit.
-            let vise = cible.saturating_mul(2);
-            let mut cumul = 0u64;
-            let mut cible_id = candidats.last().map(|&(_, id)| id);
-            for &(_, id) in &candidats {
-                cumul += duree(id);
-                if cumul >= vise {
-                    cible_id = Some(id);
-                    break;
-                }
-            }
+            let cible_id = destination_pour_duree(
+                &graphe,
+                &accrochage,
+                depart,
+                depart_pos,
+                permis.as_ref(),
+                cible,
+                &duree,
+            );
             match cible_id.and_then(|id| positions.get(&id)) {
                 Some(&p) => p,
                 None => {
@@ -799,26 +677,6 @@ pub(crate) fn itineraire_voirie(
             classes,
         }],
     })
-}
-
-/// Jusqu'où le tracé doit être dessiné : un cran après le sommet du **dernier
-/// morceau retenu** dans le couloir. Au moins 2 sommets (pour une polyligne),
-/// au plus toute la longueur du tracé. `route` inconnu du couloir → tout le
-/// tracé.
-pub(crate) fn fin_de_trace(
-    route: &[i64],
-    accrochage: &AccrochageVoirie,
-    couloir: &std::collections::HashMap<u32, usize>,
-    longueur_trace: usize,
-) -> usize {
-    let jusqua = route
-        .iter()
-        .filter_map(|id| accrochage.sommet_de.get(id))
-        .filter_map(|s| couloir.get(s))
-        .copied()
-        .max()
-        .map_or(longueur_trace, |r| r + 1);
-    jusqua.min(longueur_trace).max(2.min(longueur_trace))
 }
 
 /// Rassemble ce qu'il faut au réseau et le construit.
@@ -1409,80 +1267,4 @@ pub(crate) fn trace_rues(
         "trait habillé de rues réelles"
     );
     Ok(segments)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::{HashMap, HashSet};
-
-    /// Un accrochage monté à la main : trois sommets alignés, un morceau par
-    /// sommet, plus un intrus d'une autre famille sur le sommet du milieu.
-    fn accrochage_dessai() -> AccrochageVoirie {
-        let mut sommet_de = HashMap::new();
-        let mut morceaux_a: HashMap<u32, Vec<i64>> = HashMap::new();
-        for (id, s) in [(10, 0u32), (20, 1), (30, 1), (40, 2)] {
-            sommet_de.insert(id, s);
-            morceaux_a.entry(s).or_default().push(id);
-        }
-        AccrochageVoirie {
-            sommet_de,
-            morceaux_a,
-        }
-    }
-
-    #[test]
-    fn morceaux_le_long_ordonne_dedoublonne_et_borne_la_famille() {
-        let acc = accrochage_dessai();
-        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
-        let famille: HashSet<i64> = [10, 20, 40].into_iter().collect(); // 30 exclu
-        let duree = |_id: i64| 0u64;
-        let suite = morceaux_le_long(&acc, &couloir, 10, Some(40), Some(&famille), None, &duree);
-        // départ 10 en tête, arrivée 40 en queue, 30 filtré, 20 au milieu.
-        assert_eq!(suite, vec![10, 20, 40]);
-    }
-
-    #[test]
-    fn morceaux_le_long_coupe_a_la_duree_cible() {
-        let acc = accrochage_dessai();
-        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
-        let duree = |_id: i64| 10 * 60_000u64; // 10 min chacun
-                                               // Cible 25 min, tolérance 90 s : 10 (0) + 20 (10) + 30 (20) → 30 min ≥ 23,5.
-        let suite = morceaux_le_long(&acc, &couloir, 10, None, None, Some(25 * 60_000), &duree);
-        assert_eq!(suite, vec![10, 20, 30]);
-    }
-
-    #[test]
-    fn morceaux_le_long_larrivee_prime_sur_la_duree() {
-        let acc = accrochage_dessai();
-        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 1), (2, 2)].into_iter().collect();
-        let duree = |_id: i64| 10 * 60_000u64;
-        // Arrivée 40 posée : « va jusque-là » l'emporte, la durée (15 min) est
-        // ignorée — la playlist va jusqu'à 40.
-        let suite = morceaux_le_long(
-            &acc,
-            &couloir,
-            10,
-            Some(40),
-            None,
-            Some(15 * 60_000),
-            &duree,
-        );
-        assert_eq!(suite, vec![10, 20, 30, 40]);
-    }
-
-    #[test]
-    fn fin_de_trace_sarrete_au_dernier_morceau_pas_a_la_destination() {
-        let acc = accrochage_dessai(); // 10@sommet0, 20&30@sommet1, 40@sommet2
-                                       // Tracé de 10 sommets ; le couloir place le sommet 1 au rang 3.
-        let couloir: HashMap<u32, usize> = [(0u32, 0usize), (1, 3), (2, 8)].into_iter().collect();
-        // Playlist = [10, 20] → dernier morceau au rang 3 → tracé coupé à 4.
-        assert_eq!(fin_de_trace(&[10, 20], &acc, &couloir, 10), 4);
-        // Playlist qui va jusqu'à 40 (rang 8) → coupé à 9.
-        assert_eq!(fin_de_trace(&[10, 20, 40], &acc, &couloir, 10), 9);
-        // Morceaux hors couloir → tout le tracé.
-        assert_eq!(fin_de_trace(&[99], &acc, &couloir, 10), 10);
-        // Tracé dégénéré.
-        assert_eq!(fin_de_trace(&[10], &acc, &couloir, 1), 1);
-    }
 }

@@ -8,6 +8,7 @@
 //! Il ne dépend ni de Burn, ni de l'audio, ni de Tauri : il compile en quelques
 //! secondes et se teste sans accélérateur.
 
+pub mod accrochage;
 pub mod affectation;
 pub mod ancrage;
 pub mod batiments;

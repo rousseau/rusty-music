@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
+use rusty_music_carto::accrochage::AccrochageVoirie;
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
 use rusty_music_core::memoire::{ListeIntelligente, SuiviEcoute};
@@ -366,15 +367,6 @@ fn liberer_vecteurs_si_inactif(etat: &Etat) {
         tracing::info!("mémoire : empreintes déchargées après inactivité");
     }
     c.touche = None;
-}
-
-/// Chaque morceau accroché au sommet de voirie le plus proche, dans les deux
-/// sens. Bâti par [`charger_accrochage_voirie`].
-struct AccrochageVoirie {
-    /// Morceau → sommet de voirie (index dans `graphe_reel`).
-    sommet_de: std::collections::HashMap<i64, u32>,
-    /// Sommet de voirie → les morceaux qui s'y accrochent.
-    morceaux_a: std::collections::HashMap<u32, Vec<i64>>,
 }
 
 /// Avancement du scan en cours, sondé par l'interface.
