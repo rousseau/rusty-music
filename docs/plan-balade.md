@@ -648,7 +648,7 @@ P0 ──► (P7 si E1 échoue) ──► P1 ──► P2 ──► P3 ──►
 | piste | état | date | où lire |
 |---|---|---|---|
 | P0 mesure | fait : P7 avant P1 (hors album, la marche est proche du hasard) | 5 nov. 2026 | `journal.md`, « Balade musicale » ; `examples/continuite_balade.rs` |
-| P1 promeneur | à faire | | |
+| P1 promeneur | fait : marche, file courte, reprise, repli voisins ; essai de 31 min sans blanc ni répétition | 5 nov. 2026 | `journal.md`, « P1 : le promeneur » ; `carto/src/balade.rs`, `explorer/balade.rs`, `js/balade.js` |
 | P2 carrefour | à faire | | |
 | P3 pentes | à faire | | |
 | P4 aura | à faire | | |

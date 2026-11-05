@@ -82,6 +82,18 @@ Relevé en route, corrigé sur décision : le filtre par famille d'Écouter
 retirait des albums au lieu de les estomper (`interface-guidelines.md`,
 Écouter, Règle 2).
 
+## Chantier en cours : la balade musicale (ouvert le 5 nov. 2026)
+
+Faire de la carte un terrain de promenade, pas seulement un plan
+(`recherche-balade-musicale.md`, pistes et prompts dans `plan-balade.md`).
+
+- P0, mesure de continuité — fait : hors album, une rue sonne presque comme
+  le hasard ; P7 jugé prioritaire (`journal.md`, 5 nov.).
+- P1, le promeneur — fait : « Flâner d'ici », file courte, reprise, repli
+  dans le graphe des voisins.
+- Restes, dans l'ordre : P7 (sérier les morceaux dans chaque cellule), P2
+  (choix aux carrefours), puis P3, P5, P8 ; P4 et P6 ensuite.
+
 ## Ce qui n'est pas prévu, et pourquoi
 
 - **Mixage DJ de deux pistes** : sorti du périmètre du module 3 (une piste à

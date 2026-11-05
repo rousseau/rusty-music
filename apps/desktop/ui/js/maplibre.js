@@ -24,6 +24,9 @@ import {
 import {
   tracerItineraire,
 } from "./itineraires.js";
+import {
+  dessinerBalade,
+} from "./balade.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
@@ -1732,6 +1735,9 @@ function surcoucheSur(r, encre, accent) {
     }
   }
 
+  // La balade en cours : sa trace et le promeneur (`balade.js`).
+  dessinerBalade(r, encre, accent);
+
   // Le morceau en écoute : un halo qui le retrouve dans 27 000 points.
   const joue = carte.points.find((p) => p.path === lecture.courant);
   if (joue) {
@@ -1938,6 +1944,9 @@ let departGlisse = null;
 const SEUIL_GLISSE = 4; // px ; en deçà, c'est un clic tremblant, pas un glissé
 
 cnv.addEventListener("mousedown", (e) => {
+  // Le clic droit ouvre le menu d'un morceau (`balade.js`) : ni glisser ni
+  // lasso.
+  if (e.button === 2) return;
   // Un relâchement hors du canevas ne produit pas de `click` : sans cette
   // remise à zéro, le drapeau survivrait et avalerait le clic suivant.
   vientDeDessiner = false;

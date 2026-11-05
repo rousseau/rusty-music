@@ -2577,3 +2577,53 @@ une rue reste plus proche du hasard que d'une progression. E2 va dans le même
 sens : un carrefour n'offre presque jamais à la fois une suite proche et une
 suite différente. P7 se jugera sur la médiane hors album de la marche et sur
 la part de carrefours utiles, mesurées avec la même graine.
+
+### P1 : le promeneur, la lecture est une marche
+
+Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
+écouter une balade, ce qui jugera P7 à l'oreille autant qu'au chiffre.
+
+- **Moteur pur** (`crates/carto/src/balade.rs`) : `EtatBalade` (sommet, sens de
+  marche, sommets et morceaux déjà vus) et `suivants`. Un morceau libre sur le
+  même sommet passe d'abord (on continue le long de la façade). Sinon, une
+  branche par direction, sans revenir par où l'on est arrivé : une seule au
+  milieu d'une rue, celles du carrefour au bout. Chaque branche file par les
+  rues vides jusqu'au premier morceau libre, sans repasser par le déjà
+  parcouru ; elle accepte le déjà vu, puis le demi-tour, seulement s'il n'y a
+  rien d'autre. `pente_simple` continue sur le même tronçon OSM, sinon prend le
+  plus proche en CLAP. 8 tests sur un carrefour synthétique : impasse, rue
+  vide, quatre branches, déjà visité exclu, sens de marche, pente.
+- **File courte** (`apps/desktop/src/explorer/balade.rs`) : le lecteur ne
+  reçoit que le morceau en cours. Le suivant est décidé tout de suite, pour
+  tracer le pas du promeneur, et n'entre dans la file (`set_queue`, sans I/O)
+  qu'à moins de 10 s de la fin, où il est figé. Le battement tourne dans le fil
+  natif de `main`, avant le préchargement. Il relève le lecteur verrou tenu le
+  temps d'une copie et calcule hors de ce verrou (ordre des verrous : `balade`
+  avant `player` et `lib`). Jouer autre chose (▶ ailleurs, ⏮, un clic dans la
+  file) arrête la balade sans toucher à la lecture.
+- **Reprise** : `balade.json` à côté de la base, réécrit à chaque pas ; au
+  démarrage, la balade repart si le lecteur a repris sur son dernier morceau.
+- **Repli** sans ville importée ou départ sans adresse : le graphe des voisins,
+  trois voisins non joués, le plus proche à l'oreille.
+- **Interface** (`js/balade.js`) : ↝ « Flâner d'ici » sur la pochette de
+  l'inspecteur, à gauche de ▶ (caché devant un album) ; clic droit sur un
+  morceau de la carte, un menu d'une ligne ; un bandeau en haut de la carte
+  (« Balade · n morceaux », « Arrêter la balade »). Dans la surcouche, la trace
+  est en retrait, le pas en cours en trait fin, et le promeneur est interpolé
+  sur la longueur du pas selon `position / durée`. Il est dessiné le long des
+  rues sur le plan, en droite d'un point à l'autre sur le nuage. `balade_etat`
+  n'est relu qu'au changement de morceau et toutes les 2 s, la carte redessinée
+  au plus une fois par seconde.
+- **Essai de 31 min** (`RUSTY_MUSIC_ESSAI_BALADE=20013`, sur une copie des
+  données, son coupé), depuis un morceau près du Marais :
+  - 6 morceaux (des pièces de 4 à 7 min, un live de David Krakauer en trois
+    pas sur place), tous distincts ;
+  - les 5 suivants préchargés avant la fin du morceau en cours ;
+  - l'écart entre deux arrivées égale la durée du morceau précédent à
+    ±0,2 s près (la granularité du battement), donc aucun blanc ;
+  - saut du promeneur d'un pas au suivant : 0 m, pour des pas de 39 à 81 m ;
+  - relancée sur la même copie, la balade est reprise au 6ᵉ pas.
+- **Non vérifié à l'usage** : le dessin dans la webview native (regardé
+  dans l'interface simulée, Playwright, sur le nuage), les gestes ⏭ et ⏮
+  pendant une balade, le repli dans le graphe des voisins sur une vraie
+  bibliothèque.

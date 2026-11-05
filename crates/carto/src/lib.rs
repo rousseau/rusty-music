@@ -11,6 +11,7 @@
 pub mod accrochage;
 pub mod affectation;
 pub mod ancrage;
+pub mod balade;
 pub mod batiments;
 pub mod cout_itineraire;
 pub mod cout_voirie;

@@ -457,3 +457,18 @@ test("Compléter : la phrase dit ce qui part, la passe se lance puis s'annule en
   await expect(page.locator("#completer-annuler")).toBeHidden();
   expect((await appels(page, "completer_annuler")).at(-1)).toEqual({ id: 1 });
 });
+
+test("balade : « Flâner d'ici » part du morceau inspecté, la carte dit où elle en est, on l'arrête", async ({ page }) => {
+  await lireUnAlbum(page);
+  // L'inspecteur suit le morceau joué : le bouton part de lui.
+  await expect(page.locator("#insp-balade")).toBeVisible();
+  await page.click("#insp-balade");
+  await expect.poll(async () => (await appels(page, "balade_demarrer")).at(-1)?.depart).toBe(PISTES[0].id);
+  await expect(page.locator("#np-titre")).toHaveText(PISTES[0].title);
+  await page.click('button.mode[data-mode="explorer"]');
+  await expect(page.locator("#carte-balade")).toBeVisible();
+  await expect(page.locator("#carte-balade-texte")).toHaveText("Balade · 1 morceau · par les voisins");
+  await page.click("#carte-balade-arreter");
+  await expect(page.locator("#carte-balade")).toBeHidden();
+  expect(await appels(page, "balade_arreter")).toHaveLength(1);
+});

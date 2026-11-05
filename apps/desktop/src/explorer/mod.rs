@@ -5,11 +5,13 @@
 
 use super::*;
 
+mod balade;
 mod carte;
 mod lama;
 mod modele_local;
 mod voisinage;
 
+pub(crate) use balade::*;
 pub(crate) use carte::*;
 pub(crate) use lama::*;
 pub(crate) use modele_local::{

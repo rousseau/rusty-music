@@ -541,6 +541,15 @@
           <div id="carte-vignette"></div>
           <canvas id="carte"></canvas>
           <div id="carte-info" class="carte__info" hidden></div>
+          <!-- La balade en cours (`js/balade.js`) : où elle en est, de quoi l'arrêter. -->
+          <div id="carte-balade" class="carte__balade" hidden>
+            <span id="carte-balade-texte"></span>
+            <button id="carte-balade-arreter" class="lien" type="button">Arrêter la balade</button>
+          </div>
+          <!-- Clic droit sur un morceau de la carte. -->
+          <div id="carte-menu" class="carte__menu" role="menu" hidden>
+            <button id="carte-menu-flaner" role="menuitem" type="button">Flâner d'ici</button>
+          </div>
           <div class="carte__aide" id="carte-aide">
             molette : zoom · glisser : déplacer · clic : écouter
           </div>
@@ -1166,6 +1175,10 @@
       <div class="pochette" id="pochette">
         <span>pochette</span>
         <button class="insp__lecture" id="insp-lecture" aria-label="Lire" title="Lire">▶</button>
+        <!-- La balade (`js/balade.js`) : la lecture part d'ici et marche dans
+             les rues, le suivant choisi au fil de l'eau. Caché devant un album. -->
+        <button class="insp__balade" id="insp-balade" hidden
+                aria-label="Flâner d'ici" title="Flâner d'ici">↝</button>
         <button class="insp__alchimie" id="insp-alchimie" aria-label="Playlist dans l'esprit de ce morceau" title="Playlist dans l'esprit de ce morceau">✦</button>
         <!-- Favori : bascule le morceau inspecté (il suit la lecture). Caché
              devant un album, qui n'a pas de favori. -->

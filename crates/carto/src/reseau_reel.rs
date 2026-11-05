@@ -23,7 +23,7 @@ const RAYON_TERRE: f64 = 6_371_000.0;
 /// équirectangulaire, la même que `Troncon::longueur_m` et
 /// `affectation::Repere` : à l'échelle d'une ville, l'erreur est très
 /// inférieure à celle du tracé lui-même.
-fn distance_m(a: [f64; 2], b: [f64; 2]) -> f64 {
+pub fn distance_m(a: [f64; 2], b: [f64; 2]) -> f64 {
     let lat_moy = (a[1] + b[1]).to_radians() / 2.0;
     let dx = (b[0] - a[0]).to_radians() * lat_moy.cos() * RAYON_TERRE;
     let dy = (b[1] - a[1]).to_radians() * RAYON_TERRE;

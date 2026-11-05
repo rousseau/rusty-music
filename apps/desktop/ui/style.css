@@ -1054,6 +1054,28 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   display: block; font-size: var(--t-legende); color: var(--mut);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* La balade en cours (`js/balade.js`) : une ligne en haut à gauche de la
+   carte, même cartouche que l'infobulle. */
+.carte__balade {
+  position: absolute; left: var(--gouttiere); top: 16px; z-index: 5;
+  display: flex; align-items: baseline; gap: 14px;
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 7px 12px; font-size: var(--t-second);
+}
+.carte__balade[hidden] { display: none; }
+.carte__balade .lien { margin-top: 0; }
+/* Le menu du clic droit sur un morceau de la carte. */
+.carte__menu {
+  position: absolute; z-index: 6; min-width: 140px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28); padding: 4px 0;
+}
+.carte__menu[hidden] { display: none; }
+.carte__menu button {
+  display: block; width: 100%; padding: 6px 12px; border: none; background: none;
+  font: inherit; font-size: var(--t-second); color: var(--txt); text-align: left; cursor: pointer;
+}
+.carte__menu button:hover, .carte__menu button:focus-visible { background: var(--panel2); color: var(--accent); }
 .carte__aide {
   position: absolute; left: var(--gouttiere); bottom: 16px; pointer-events: none;
   /* Le texte change avec le mode de chemin : il lui faut de quoi passer à la
@@ -1301,6 +1323,17 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   transition: background .15s ease;
 }
 .insp__lecture:hover { background: var(--accent); color: var(--bg); }
+
+/* « Flâner d'ici » (`insp-balade`) : même gabarit, à gauche de ▶. */
+.insp__balade {
+  position: absolute; right: 46px; bottom: 8px;
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre); line-height: 1;
+  transition: background .15s ease;
+}
+.insp__balade[hidden] { display: none; }
+.insp__balade:hover { background: var(--accent); color: var(--bg); }
 
 /* ✦ au travail : le graphe des voisins se construit, puis la playlist se
    compose. Le glyphe tourne — le seul signe, avec la jauge de la file, que

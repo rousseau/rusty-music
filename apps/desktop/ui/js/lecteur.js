@@ -34,6 +34,9 @@ import {
 import {
   deplacerLecture, lancerDecompte, oublierStems, poserTete, rampeRGB, rattacherStems,
 } from "./pratiquer.js";
+import {
+  majBalade,
+} from "./balade.js";
 import { lecture, transport } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- filtre du rail */
@@ -1142,6 +1145,8 @@ async function battement() {
   // `suivreAlbumEnLecture` est idempotente, elle sort aussitôt si l'album focal
   // est déjà le bon.
   suivreAlbumEnLecture().catch((err) => remonter(err, "suivi de lecture (anneau/frise)"));
+  // La balade : le promeneur avance avec la lecture (`balade.js`).
+  majBalade();
 
   // Plus rien ne bouge : inutile de continuer à interroger le moteur. Toute
   // action de transport relance le sondage.

@@ -89,6 +89,30 @@ const fixtures = {
     e.stems = null;
     return null;
   },
+  file_courante: (_, e) => window.__DONNEES__.PISTES.filter((p) => (e.file ?? []).includes(p.path)),
+  // La balade (`explorer/balade.rs`, `BaladeVue`) : le départ joue, le
+  // suivant est décidé mais pas encore dans la file.
+  balade_demarrer: (a, e) => {
+    const ps = window.__DONNEES__.PISTES;
+    const i = ps.findIndex((p) => p.id === a.depart);
+    e.file = [ps[i].path];
+    e.stems = null;
+    e.balade = {
+      terrain: "voisins",
+      pistes: [a.depart],
+      suivant: ps[(i + 1) % ps.length].id,
+      fige: false,
+      troncon: [],
+      trace: [],
+      fin: null,
+    };
+    return e.balade;
+  },
+  balade_etat: (_, e) => e.balade ?? null,
+  balade_arreter: (_, e) => {
+    e.balade = null;
+    return null;
+  },
 };
 
 // --- familles (numéro, nom, effectif) et carte en nuage de points

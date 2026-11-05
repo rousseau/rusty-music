@@ -222,6 +222,8 @@ function majFavoriBouton() {
   const bouton = $("insp-favori");
   const path = $("insp-titre").dataset.path;
   bouton.hidden = !path;
+  // « Flâner d'ici » part d'un morceau, jamais d'un album.
+  $("insp-balade").hidden = !path;
   if (!path) return;
   const favori = favorisChemins.has(path);
   bouton.textContent = favori ? "♥" : "♡";

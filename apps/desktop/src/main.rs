@@ -291,6 +291,12 @@ struct Etat {
     /// distinct de `player` : il est tenu pendant toute l'ouverture du
     /// fichier, que `player` ne doit jamais attendre.
     precharge: Mutex<()>,
+    /// La balade en cours (`explorer::balade`, P1 de `docs/plan-balade.md`),
+    /// avancée par le fil natif. Verrou pris **avant** `player` et `lib`
+    /// quand il faut les trois, jamais l'inverse.
+    balade: Mutex<Option<Balade>>,
+    /// La reprise d'une balade au démarrage est tranchée (reprise ou abandonnée).
+    balade_reprise: AtomicBool,
 }
 
 /// Délai d'inactivité au-delà duquel un poids lourd chargé à la demande
@@ -605,11 +611,15 @@ fn main() {
                 agrement_voirie: Mutex::new(None),
                 texte_modele: Mutex::new(Cache::default()),
                 precharge: Mutex::new(()),
+                balade: Mutex::new(None),
+                balade_reprise: AtomicBool::new(false),
             });
             app.manage(tuiles::Archives::default());
 
             // Le serveur Wi-Fi du compagnon iOS, si un iPhone a été appairé.
             wifi::demarrer(app.handle());
+
+            explorer::essai_balade(app.handle());
 
             // Réalimente la file indépendamment du sondage de l'interface —
             // voir `precharger_suivante`. Fil dédié plutôt que raccroché à un
@@ -625,6 +635,10 @@ fn main() {
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                     if let Some(etat) = etat_arriere_plan.try_state::<Etat>() {
+                        // Avant le préchargement : un suivant que la balade
+                        // vient de figer est ouvert dans le même battement.
+                        balade_reprendre(&etat_arriere_plan, &etat);
+                        balade_battement(&etat);
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
@@ -877,6 +891,9 @@ fn main() {
             autotest_carte,
             itineraire,
             itineraire_voirie,
+            balade_demarrer,
+            balade_etat,
+            balade_arreter,
             tuile,
             map_progress,
             graphe_progress,
