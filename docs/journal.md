@@ -2506,3 +2506,74 @@ page, pas le fonctionnement.
   « SW », MuScriptor), sont proposés, noms libres sur crates.io au 1ᵉʳ nov.
 - Décision : on garde les crates dans le workspace, sans publier. Le
   document reste l'état des lieux si la question revient.
+
+## Balade musicale — 5 nov. 2026
+
+### P0 : la continuité d'une marche dans les rues
+
+`crates/carto/examples/continuite_balade.rs` (plan : `docs/plan-balade.md`,
+§ P0). Il lit `rusty-music.db`, `ville-paris.db` et `tuiles/positions.json`
+(les adresses que l'application accroche à la voirie) et écrit
+`continuite.md`, `distances.svg` et `entropie.svg`. 40 s de calcul, dont 20 s
+pour le graphe des voisins. Au préalable, l'accrochage, `morceaux_le_long`,
+`fin_de_trace` et la destination provisoire d'un itinéraire sans arrivée
+sont passés de `apps/desktop` à `carto::accrochage` (`00a3a4a`), sans
+changement de comportement : l'outil fabrique les mêmes suites que
+l'application.
+
+Réglages : 500 départs tirés parmi les 26 916 morceaux accrochés hors
+monuments, graine `0xba1ade`, 20 morceaux, distance = 1 − cosinus CLAP,
+`bruit` 0,3 pour le sonique et l'errance. Les 27 657 positions sont toutes
+accrochées. 741 morceaux d'artistes ancrés sur un monument : les transitions
+qui les touchent sont comptées à part. Dans la marche, un morceau s'entend en
+longeant le tronçon de sa façade (`facades.rs`) : c'est le cas de 20 022
+morceaux. Les 7 579 autres ont leur façade sur un tronçon qui ne passe pas
+par leur sommet et s'entendent dès qu'on touche ce sommet.
+
+**E1, continuité** (médiane et 9ᵉ décile de la distance entre morceaux
+consécutifs, hors monuments) :
+
+| méthode | long. moy. | médiane | 9ᵉ déc. | autre famille | même album | médiane hors album |
+|---|---:|---:|---:|---:|---:|---:|
+| 1. marche dans les rues | 20,0 | 0,103 | 0,298 | 34 % | 55 % | 0,144 |
+| 2a. itinéraire « par le connu » | 13,8 | 0,101 | 0,286 | 32 % | 59 % | 0,145 |
+| 2b. itinéraire « redécouvrir » | 13,8 | 0,098 | 0,289 | 32 % | 59 % | 0,143 |
+| 2c. itinéraire « panoramique » | 13,6 | 0,099 | 0,287 | 32 % | 59 % | 0,146 |
+| 3. sonique (bouts de la marche) | 6,2 | 0,027 | 0,066 | 54 % | 10 % | 0,027 |
+| 4. errance | 19,9 | 0,023 | 0,046 | 47 % | 12 % | 0,023 |
+| 5. hasard | 20,0 | 0,193 | 0,414 | 85 % | 0 % | 0,193 |
+
+- Le critère, appliqué à la lettre : |1 − 5| = 0,090 > |1 − 3| = 0,076, donc
+  la marche est plus proche du sonique et P1 pourrait commencer.
+- Mais la marche ne doit sa continuité qu'aux albums, logés d'un seul tenant :
+  55 % de ses transitions restent dans le même album. Hors album, la médiane
+  est de 0,144 contre 0,193 pour le hasard et 0,027 pour le sonique
+  (|1 − 5| = 0,050 < |1 − 3| = 0,117). Chaque changement d'album est un saut
+  aux trois quarts du hasard.
+- Les trois profils d'itinéraire ne se distinguent pas de la marche : le
+  profil choisit les rues, pas l'ordre des morceaux qui les bordent.
+- Le sonique entre les deux bouts d'une marche est court (6 morceaux en
+  moyenne) : 20 morceaux de rue ne couvrent que quelques pas dans le graphe des
+  voisins.
+
+**E2, carrefours** : 20 960 sommets de degré ≥ 3 dans la zone peuplée. Une
+branche est la rue suivie jusqu'au carrefour suivant, et son premier morceau
+le premier riverain entendu.
+- 64,5 % des carrefours n'ont aucune branche habitée et 16,1 % une seule. Il en
+  reste 19,4 % à deux branches ou plus.
+- Entropie des familles des premiers morceaux (4 074 carrefours) : 50 % à
+  0 bit (toutes les branches dans la même famille), médiane 0,81, 9ᵉ décile
+  1,0.
+- Distance du morceau d'arrivée aux premiers morceaux des autres branches :
+  médiane 0,121, 1ᵉʳ décile 0,042.
+- Carrefours « utiles », au sens du plan (≥ 2 suites, dont une sous la médiane
+  du sonique et une autre d'une autre famille) : 1,2 % des 13 684 arrivées.
+  Avec la médiane de la marche (0,103) comme seuil « proche », 13,0 %.
+
+**Décision : P7 avant P1.** Le critère à la lettre dit le contraire, mais il
+ne passe que grâce aux albums contigus. C'est exactement ce que P7 laisse en
+place : il garde les albums d'un bloc et sérialise *entre* albums. Hors album,
+une rue reste plus proche du hasard que d'une progression. E2 va dans le même
+sens : un carrefour n'offre presque jamais à la fois une suite proche et une
+suite différente. P7 se jugera sur la médiane hors album de la marche et sur
+la part de carrefours utiles, mesurées avec la même graine.

@@ -48,3 +48,7 @@ pathfinding.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
+# `examples/continuite_balade.rs` compare la marche dans les rues aux chemins
+# du graphe musical (`analysis::chemin`) : dépendance d'outil de mesure
+# seulement, jamais liée au crate.
+rusty-music-analysis = { path = "../analysis" }

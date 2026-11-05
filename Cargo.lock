@@ -8059,6 +8059,7 @@ dependencies = [
  "pathfinding",
  "pmtiles",
  "png 0.18.1",
+ "rusty-music-analysis",
  "rusty-music-core",
  "rusty-music-osm",
  "serde",
