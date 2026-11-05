@@ -2727,10 +2727,9 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
   demande l'extrait, la sortie le coupe. 2 choisit la seconde voie, et ← ne
   change plus de piste. Le figeage grise le panneau et le dit. Échap le
   masque. Le réglage est gardé.
-- **`audit-interface.sh` non conclu** : l'écran s'est verrouillé pendant
-  l'audit (WebKit suspend alors la page). Il a mesuré 30 cellules sans
-  violation, jusqu'à Découvrir, puis a dépassé le délai. Contraste et
-  typographie : aucune violation. À relancer, écran déverrouillé.
+- **`audit-interface.sh`** : 234 cellules, 0 violation ; contraste et
+  typographie sans violation. Un premier passage avait calé : l'écran s'était
+  verrouillé, et WebKit suspend alors la page.
 - **Non vérifié à l'usage** :
   - l'extrait à l'oreille (la baisse du son et les fondus) ;
   - le panneau sur le plan de ville dans la webview native ;
