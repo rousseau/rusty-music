@@ -2625,6 +2625,12 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
     ±0,2 s près (la granularité du battement), donc aucun blanc ;
   - saut du promeneur d'un pas au suivant : 0 m, pour des pas de 39 à 81 m ;
   - relancée sur la même copie, la balade est reprise au 6ᵉ pas.
+- **À l'usage** (François, le même jour) : le clic droit, l'avance du
+  promeneur et le passage au morceau suivant fonctionnent. Mais on ne comprend
+  pas comment se fait la flânerie, d'un album à l'autre. Ça vient du placement
+  des morceaux sur la carte, pas de la balade : c'est le constat de P0 (hors
+  album, une rue sonne presque comme le hasard), entendu cette fois. La reprise
+  reste à essayer dans l'app.
 - **Non vérifié à l'usage** : le dessin dans la webview native (regardé
   dans l'interface simulée, Playwright, sur le nuage), les gestes ⏭ et ⏮
   pendant une balade, le repli dans le graphe des voisins sur une vraie
