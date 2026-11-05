@@ -17,8 +17,8 @@ import { lecture } from "./etat-lecture.js";
  *
  * `docs/plan-balade.md`, P1 : la lecture est une marche. Le moteur choisit le
  * morceau suivant depuis la position courante (`explorer/balade.rs`) ; ce
- * module ne fait que l'entrée (« Flâner d'ici » dans l'inspecteur et au clic
- * droit sur la carte), la sortie (« Arrêter la balade ») et le dessin : le
+ * module ne fait que l'entrée (« Flâner d'ici », au clic droit sur un morceau
+ * d'Explorer), la sortie (« Arrêter la balade ») et le dessin : le
  * promeneur, qui avance le long de la rue au rythme de la lecture, et la trace
  * de ce qui a déjà été parcouru.
  *
@@ -215,11 +215,9 @@ function dessinerBalade(r, encre, accent) {
 
 /* ------------------------------------------------- gestes */
 
-$("insp-balade").addEventListener("click", () => {
-  const id = Number($("insp-titre").dataset.id);
-  if ($("insp-titre").dataset.id === "") return;
-  flanerDici(id);
-});
+// Pas de bouton dans l'inspecteur : à côté de ▶ et ✦, une pastille de plus
+// ne disait pas en quoi la balade diffère d'une playlist « dans l'esprit de »
+// (retour d'usage, 5 nov.). L'entrée reste le clic droit, là où l'on voit les rues.
 
 $("carte-balade-arreter").addEventListener("click", arreterBalade);
 

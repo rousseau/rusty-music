@@ -458,14 +458,18 @@ test("Compléter : la phrase dit ce qui part, la passe se lance puis s'annule en
   expect((await appels(page, "completer_annuler")).at(-1)).toEqual({ id: 1 });
 });
 
-test("balade : « Flâner d'ici » part du morceau inspecté, la carte dit où elle en est, on l'arrête", async ({ page }) => {
-  await lireUnAlbum(page);
-  // L'inspecteur suit le morceau joué : le bouton part de lui.
-  await expect(page.locator("#insp-balade")).toBeVisible();
-  await page.click("#insp-balade");
-  await expect.poll(async () => (await appels(page, "balade_demarrer")).at(-1)?.depart).toBe(PISTES[0].id);
-  await expect(page.locator("#np-titre")).toHaveText(PISTES[0].title);
+test("balade : clic droit sur un morceau, « Flâner d'ici », la carte dit où elle en est, on l'arrête", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
+  await page.waitForTimeout(800);
+  // Le nuage, vue initiale (`carte.vue` = identité) : même calcul que `versEcran`.
+  const p = fixtures.map_view[0];
+  const r = await page.locator("#carte").boundingBox();
+  const c = Math.min(r.width, r.height) / 2 - 28;
+  await page.mouse.click(r.x + r.width / 2 + p.x * c, r.y + r.height / 2 + p.y * c, { button: "right" });
+  await expect(page.locator("#carte-menu")).toBeVisible();
+  await page.click("#carte-menu-flaner");
+  await expect.poll(async () => (await appels(page, "balade_demarrer")).at(-1)?.depart).toBe(p.id);
+  await expect(page.locator("#carte-menu")).toBeHidden();
   await expect(page.locator("#carte-balade")).toBeVisible();
   await expect(page.locator("#carte-balade-texte")).toHaveText("Balade · 1 morceau · par les voisins");
   await page.click("#carte-balade-arreter");

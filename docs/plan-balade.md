@@ -158,9 +158,10 @@ morceaux le long d'un trajet ; `js/itineraires.js` trace une route ;
 - **Pente par défaut, version simple** (la vraie arrive avec P3) : continuer
   tout droit si la rue continue ; sinon la branche dont le premier morceau est
   le plus proche en CLAP du morceau en cours, en excluant le déjà visité.
-- **Entrée.** Un bouton « Flâner d'ici » dans l'inspecteur (à côté de ▶) et
-  dans le menu du clic droit sur la carte. Sortie : ▶ sur autre chose, ou
-  « Arrêter la balade ».
+- **Entrée.** « Flâner d'ici » dans le menu du clic droit sur la carte. (Le
+  bouton prévu dans l'inspecteur, à côté de ▶, a été retiré le 5 nov. : il ne
+  se distinguait pas de la playlist « dans l'esprit de ».) Sortie : ▶ sur
+  autre chose, ou « Arrêter la balade ».
 - **Repli** sans ville importée : la même balade dans le graphe des voisins
   (les branches deviennent 2-3 voisins non visités), dessinée sur le nuage.
 

@@ -2605,9 +2605,11 @@ Lancé après P0 malgré sa conclusion (« P7 avant P1 ») : P1 donne de quoi
   démarrage, la balade repart si le lecteur a repris sur son dernier morceau.
 - **Repli** sans ville importée ou départ sans adresse : le graphe des voisins,
   trois voisins non joués, le plus proche à l'oreille.
-- **Interface** (`js/balade.js`) : ↝ « Flâner d'ici » sur la pochette de
-  l'inspecteur, à gauche de ▶ (caché devant un album) ; clic droit sur un
-  morceau de la carte, un menu d'une ligne ; un bandeau en haut de la carte
+- **Interface** (`js/balade.js`) : « Flâner d'ici » au clic droit sur un
+  morceau d'Explorer (carte ou nuage), un menu d'une ligne. La pastille ↝ posée
+  d'abord sur la pochette de l'inspecteur est retirée le même jour : à côté de
+  ✦, elle ne disait pas en quoi la balade diffère de la playlist « dans
+  l'esprit de » (retour d'usage). Un bandeau en haut de la carte
   (« Balade · n morceaux », « Arrêter la balade »). Dans la surcouche, la trace
   est en retrait, le pas en cours en trait fin, et le promeneur est interpolé
   sur la longueur du pas selon `position / durée`. Il est dessiné le long des
