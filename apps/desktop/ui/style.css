@@ -1068,15 +1068,18 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 /* Le haut-parleur de l'aura (P4) : en haut à droite de la carte, même
    cartouche que la ligne de la balade. Ondes allumé, barré éteint ; en
    attente (un morceau joue hors balade), atténué. */
+/* L'aura (P4) : un bouton qui dit ce qu'il fait, pas une icône seule ; allumé,
+   il prend la couleur d'accent, comme les morceaux qu'il fait entendre. */
 .carte__aura {
   position: absolute; right: var(--gouttiere); top: 16px; z-index: 5;
-  display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
-  background: var(--panel); border: 1px solid var(--line); color: var(--mut);
-  cursor: pointer;
+  display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 8px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--txt);
+  font: inherit; font-size: var(--t-second); cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
 }
 .carte__aura[hidden] { display: none; }
-.carte__aura:hover { color: var(--txt); }
-.carte__aura[aria-pressed="true"] { color: var(--accent); }
+.carte__aura:hover { border-color: var(--accent); }
+.carte__aura[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .carte__aura .carte__aura-ondes { display: none; }
 .carte__aura[aria-pressed="true"] .carte__aura-ondes { display: inline; }
 .carte__aura[aria-pressed="true"] .carte__aura-coupe { display: none; }
@@ -1120,6 +1123,18 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .voie__anneau circle { transition: none; } }
 .voie__corps { display: grid; gap: 1px; min-width: 0; flex: 1; }
+/* Le haut-parleur d'une voie : survoler la carte fait entendre son extrait ;
+   pendant qu'il joue, la barre du bas avance sur ses 5 s. */
+.voie { position: relative; }
+.voie__ecoute { flex: none; align-self: center; color: var(--mut); opacity: .5; }
+.voie:hover:not(:disabled) .voie__ecoute { opacity: 1; }
+.voie--entendue .voie__ecoute { color: var(--accent); opacity: 1; }
+.voie--entendue::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: var(--accent); transform-origin: left; animation: voie-extrait 5s linear forwards;
+}
+@keyframes voie-extrait { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .voie--entendue::after { animation: none; } }
 .voie__rue { font-weight: 500; font-size: var(--t-corps); }
 .voie__titre, .voie__famille { font-size: var(--t-second); color: var(--mut); }
 .voie__rue, .voie__titre, .voie__famille {

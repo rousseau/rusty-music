@@ -3081,3 +3081,24 @@ branche la plus proche à l'oreille (P2/P3), plutôt que du placement.
 - **Audit d'interface** (`scripts/audit-interface.sh`) : 234 cellules,
   0 violation de gabarit ; contraste (22 couples × 2 thèmes) et typographie
   sans violation. `verifier.sh` vert, 33 tests de fumée.
+
+### P4 : premier essai à l'oreille, l'aura se voit (6 nov.)
+
+L'aura plaît, mais l'essai sur la vraie bibliothèque montre trois défauts de
+lisibilité. Les corrections sont dans l'interface seulement.
+- **Le haut-parleur passait inaperçu et ne disait pas ce qu'il fait.** Il
+  devient un bouton nommé. Éteint, il porte « Entendre autour ». Allumé, il
+  porte « Aura allumée », passe en couleur d'accent et prend un cadre. Pendant
+  un morceau qui joue hors balade, il affiche « Aura en attente ».
+- **On ne voyait pas ce que l'on entendait.** Chaque voix de l'aura est
+  maintenant entourée sur la carte d'un anneau pointillé (`dessinerAura`).
+  L'anneau est plus large et plus net quand la voix domine.
+- **L'extrait de 5 s au carrefour n'était pas compris** : survoler une voie
+  ne promettait rien. Désormais :
+  - chaque voie porte un haut-parleur ;
+  - pendant l'extrait, une barre d'accent avance sur 5 s au bas de la voie
+    entendue, et son morceau est entouré d'un anneau plein ;
+  - l'aide dit « Survoler : écouter 5 s ».
+- **Vérifié** : deux tests de fumée complétés (le libellé du bouton, la voie
+  entendue marquée puis démarquée) ; `verifier.sh` vert, 33 tests ; audit
+  d'interface : 234 cellules, 0 violation.

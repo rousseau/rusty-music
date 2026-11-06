@@ -539,6 +539,7 @@ test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les 
   const hp = page.locator("#carte-aura");
   await expect(hp).toBeVisible();
   await expect(hp).toHaveAttribute("aria-pressed", "false");
+  await expect(hp).toContainText("Entendre autour");
   const p = fixtures.map_view[0];
   const r = await page.locator("#carte").boundingBox();
   const c = Math.min(r.width, r.height) / 2 - 28;
@@ -551,6 +552,7 @@ test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les 
   // Allumé : à l'arrêt du curseur, trois voix au plus, la plus proche en tête.
   await hp.click();
   await expect(hp).toHaveAttribute("aria-pressed", "true");
+  await expect(hp).toContainText("Aura allumée");
   await page.mouse.move(x + 2, y + 2);
   await expect.poll(async () => (await appels(page, "aura")).at(-1)?.voix.length ?? 0).toBeGreaterThan(0);
   const voix = (await appels(page, "aura")).at(-1).voix;
@@ -596,8 +598,11 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   await expect.poll(async () => (await appels(page, "balade_extrait")).at(-1)?.morceau).toBe(
     fixtures.map_view[3].id,
   );
+  // La voie entendue le montre.
+  await expect(panneau.locator(".voie").nth(1)).toHaveClass(/voie--entendue/);
   await page.mouse.move(r.x + 4, r.y + r.height - 4);
   await expect.poll(async () => (await appels(page, "balade_extrait")).at(-1)?.morceau).toBe(null);
+  await expect(panneau.locator(".voie--entendue")).toHaveCount(0);
   await page.keyboard.press("2");
   await expect.poll(async () => (await appels(page, "balade_choisir")).at(-1)).toEqual({ numero: 1, voie: 1 });
   await expect(page.locator("#carrefour-etat")).toHaveText("Vous prenez la voie 2.");

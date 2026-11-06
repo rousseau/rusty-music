@@ -13,6 +13,7 @@ import {
   demarrerLecture, dessinerFile,
 } from "./lecteur.js";
 import { lecture } from "./etat-lecture.js";
+import { marquerApercu } from "./aura.js";
 
 /* ------------------------------------------------- la balade (P1)
  *
@@ -304,7 +305,13 @@ function remplirVoies(c) {
           <span class="voie__jauge" title="Distance à l'oreille au morceau en cours">
             <span>proche</span><span class="voie__barre"><i></i></span><span>ailleurs</span>
           </span>
-        </span>`;
+        </span>
+        <svg class="voie__ecoute" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+          <path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/>
+          <path d="M13 7.2a4 4 0 0 1 0 5.6M15.4 5a7 7 0 0 1 0 10" fill="none"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>`;
+      b.title = "Survoler pour entendre 5 s de ce morceau, sous celui qui joue";
       b.querySelector(".voie__rue").textContent = voie.lue
         ? `${p?.artist ?? "?"} · déjà prise`
         : p?.artist ?? "?";
@@ -372,15 +379,32 @@ async function revenir() {
 }
 
 /// L'extrait de 5 s au survol : le moteur le joue par la source de l'aura
-/// (P4), sous le morceau en cours, puis rend la main à l'aura.
+/// (P4), sous le morceau en cours, puis rend la main à l'aura. La voie
+/// entendue le montre (`voie--entendue`), et la carte entoure son morceau.
 function entendre(morceau) {
   clearTimeout(balade.survol);
+  clearTimeout(balade.finExtrait);
+  balade.entendu = morceau;
+  const marquer = (id) => {
+    document.querySelectorAll("#carrefour-voies .voie").forEach((b) => {
+      const voie = balade.vue?.carrefour?.voies[Number(b.dataset.voie)];
+      b.classList.toggle("voie--entendue", id != null && voie?.morceau === id);
+    });
+    marquerApercu(id);
+  };
   if (morceau == null) {
+    marquer(null);
     invoke("balade_extrait", { morceau: null }).catch((err) => remonter(err, "balade_extrait"));
     return;
   }
   balade.survol = setTimeout(() => {
-    invoke("balade_extrait", { morceau }).catch((err) => remonter(err, "balade_extrait"));
+    invoke("balade_extrait", { morceau })
+      .then(() => {
+        if (balade.entendu !== morceau) return;
+        marquer(morceau);
+        balade.finExtrait = setTimeout(() => marquer(null), 5000);
+      })
+      .catch((err) => remonter(err, "balade_extrait"));
   }, EXTRAIT_DELAI_MS);
 }
 

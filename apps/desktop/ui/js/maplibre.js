@@ -27,6 +27,7 @@ import {
 import {
   cliquerVoie, dessinerBalade,
 } from "./balade.js";
+import { dessinerAura } from "./aura.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
@@ -1755,6 +1756,9 @@ function surcoucheSur(r, encre, accent) {
 
   // La balade en cours : sa trace et le promeneur (`balade.js`).
   dessinerBalade(r, encre, accent);
+
+  // Les voix de l'aura : un anneau autour de chaque morceau entendu (`aura.js`).
+  dessinerAura(r, accent);
 
   // Le morceau en écoute : un halo qui le retrouve dans 27 000 points.
   const joue = carte.points.find((p) => p.path === lecture.courant);

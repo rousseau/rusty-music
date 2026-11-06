@@ -1,7 +1,7 @@
 import "./balade.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, navigation, remonter } from "./socle.js";
-import { carte, cnv } from "./carte.js";
-import { journalCarte, modeAnneau, modeTemps, versEcran } from "./maplibre.js";
+import { carte, cnv, ctx } from "./carte.js";
+import { dessinerCarte, journalCarte, modeAnneau, modeTemps, versEcran } from "./maplibre.js";
 import { balade } from "./balade.js";
 import { lecture, transport } from "./etat-lecture.js";
 
@@ -17,7 +17,8 @@ import { lecture, transport } from "./etat-lecture.js";
  * fondre les voix. Le haut-parleur de la carte l'allume ou l'éteint : éteint
  * par défaut hors balade (le clic reste silencieux), allumé en balade, sous le
  * morceau principal. Hors balade, un morceau qui joue a la main : l'aura se
- * tait.
+ * tait. Ce qu'elle fait entendre se voit : un anneau autour de chaque voix,
+ * d'autant plus net qu'elle est forte (`dessinerAura`).
  */
 
 /// Au-delà, un morceau n'est plus un voisin.
@@ -39,6 +40,10 @@ const aura = {
   envoyee: "",
   /// Mesures, relevées au journal toutes les 20 demandes.
   mesures: [],
+  /// Les voix qui jouent, pour les entourer sur la carte.
+  joue: [],
+  /// Le morceau d'une voie de carrefour entendu en ce moment (P2).
+  apercu: null,
 };
 
 function allumee() {
@@ -80,6 +85,9 @@ function envoyer(voix, msVoisins = 0) {
   const t = performance.now();
   invoke("aura", { voix })
     .then((msMoteur) => {
+      if (aura.envoyee !== cle) return;
+      aura.joue = voix;
+      redessinerAura();
       if (!voix.length) return;
       aura.mesures.push([msVoisins, msMoteur, performance.now() - t + msVoisins]);
       if (aura.mesures.length >= 20) {
@@ -92,6 +100,40 @@ function envoyer(voix, msVoisins = 0) {
       }
     })
     .catch((err) => remonter(err, "aura"));
+}
+
+function redessinerAura() {
+  if (navigation.mode === "explorer") dessinerCarte();
+}
+
+/// L'extrait d'une voie de carrefour (`balade.js`) : entouré comme une voix.
+function marquerApercu(id) {
+  if (aura.apercu === id) return;
+  aura.apercu = id;
+  redessinerAura();
+}
+
+/// Appelé par la surcouche de la carte (`surcoucheSur`) : un anneau pointillé
+/// autour de chaque voix de l'aura, plus large et plus net quand elle domine ;
+/// l'extrait d'une voie, seul et plein. Sans voix (aura tue), rien.
+function dessinerAura(r, accent) {
+  const voix = aura.apercu != null ? [{ id: aura.apercu, gain: 1, plein: true }] : aura.joue;
+  if (!voix.length || !surLaCarte()) return;
+  const index = new Map(carte.points.map((p) => [p.id, p]));
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  for (const v of voix) {
+    const p = index.get(v.id);
+    if (!p) continue;
+    const [x, y] = versEcran(p, r);
+    ctx.globalAlpha = 0.35 + 0.65 * v.gain;
+    ctx.setLineDash(v.plein ? [] : [3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y, 9 + 9 * v.gain, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function taire() {
@@ -114,6 +156,11 @@ function majHautParleur() {
   const allume = allumee();
   b.setAttribute("aria-pressed", String(allume));
   b.classList.toggle("carte__aura--couverte", allume && couverte());
+  $("carte-aura-texte").textContent = !allume
+    ? "Entendre autour"
+    : couverte()
+      ? "Aura en attente"
+      : "Aura allumée";
   b.title = !allume
     ? "Aura éteinte : entendre, très bas, les morceaux autour du curseur"
     : couverte()
@@ -162,4 +209,4 @@ setInterval(() => {
   }
 }, 1000);
 
-export { aura };
+export { aura, dessinerAura, marquerApercu };
