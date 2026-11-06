@@ -34,8 +34,6 @@
 
 use super::*;
 
-use std::sync::atomic::AtomicU64;
-
 use rusty_music_carto::balade::{
     deja_vu, pente, proposer, suivants, Allure, Branche, Contexte, EtatBalade, Facettes, Memoire,
     PROPOSEES_MAX,
@@ -48,10 +46,6 @@ const FIGE_AVANT_FIN: Duration = Duration::from_secs(10);
 const BRANCHES_VOISINS: usize = 3;
 /// Carrefours passés qu'on garde pour y revenir.
 const CARREFOURS_GARDES: usize = 32;
-/// L'extrait d'une voie au survol : sa durée, et où il commence dans le
-/// morceau (passé l'introduction).
-const EXTRAIT_DUREE: Duration = Duration::from_secs(5);
-const EXTRAIT_DEBUT: f64 = 0.3;
 
 /// Le degré d'intervention (`docs/plan-balade.md`, le principe), réglé une
 /// fois dans le rail d'Explorer.
@@ -907,39 +901,11 @@ pub(crate) fn balade_regler(
     Some(balade.vue())
 }
 
-/// Génération de l'extrait : un survol quitté avant la fin du décodage ne
-/// doit pas lancer son extrait après coup.
-static EXTRAIT: AtomicU64 = AtomicU64::new(0);
-
-/// L'extrait de 5 s d'une voie survolée ; `None` le coupe. Le son principal
-/// est baissé le temps de l'extrait (`Player::jouer_extrait`) : le mélange à
-/// deux voix viendra avec l'aura (P4).
+/// L'extrait de 5 s d'une voie survolée ; `None` le coupe. Il passe par la
+/// source de l'aura (`explorer::aura`, P4), sous le morceau en cours.
 #[tauri::command(async)]
 pub(crate) fn balade_extrait(etat: State<Etat>, morceau: Option<i64>) -> Result<(), String> {
-    let generation = EXTRAIT.fetch_add(1, Ordering::SeqCst) + 1;
-    let Some(id) = morceau else {
-        verrou(&etat.player).arreter_extrait();
-        return Ok(());
-    };
-    let piste = verrou(&etat.lib)
-        .track(id)
-        .map_err(echec)?
-        .ok_or("morceau inconnu")?;
-    let chemin = PathBuf::from(&piste.path);
-    let duree = piste.duration_ms.unwrap_or(0).max(0) as f64 / 1000.0;
-    let debut = Duration::from_secs_f64(duree * EXTRAIT_DEBUT);
-    // Décodé hors du verrou du lecteur.
-    let source = rusty_music_player::ouvrir_extrait(
-        &chemin,
-        debut,
-        EXTRAIT_DUREE,
-        gain_pour(&etat, &chemin),
-    )
-    .map_err(echec)?;
-    if EXTRAIT.load(Ordering::SeqCst) == generation {
-        verrou(&etat.player).jouer_extrait(source);
-    }
-    Ok(())
+    super::aura::apercu(&etat, morceau)
 }
 
 /// Ce que le battement relève du lecteur, verrou tenu le temps d'une copie.

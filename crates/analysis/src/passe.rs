@@ -78,9 +78,37 @@ pub fn empreintes(
     modele: Option<&Path>,
     limite: i64,
     travailleurs: usize,
-    mut avancement: impl FnMut(usize, usize) + Send,
+    avancement: impl FnMut(usize, usize) + Send,
 ) -> Result<Rapport, Error> {
     let pistes = lib.pending_analysis(MODELE, limite)?;
+    passe_clap(lib, pistes, false, modele, travailleurs, avancement)
+}
+
+/// Retrouve la fenêtre représentative des morceaux analysés avant qu'on la
+/// retienne (`docs/plan-balade.md`, P4). Même chaîne que [`empreintes`] —
+/// les mêmes fenêtres passent dans CLAP —, mais seule la fenêtre est écrite :
+/// l'empreinte en place ne bouge pas. Comptées dans `Rapport::empreintes`.
+pub fn fenetres_representatives(
+    lib: &Library,
+    modele: Option<&Path>,
+    limite: i64,
+    travailleurs: usize,
+    avancement: impl FnMut(usize, usize) + Send,
+) -> Result<Rapport, Error> {
+    let pistes = lib.pending_fenetres(MODELE, limite)?;
+    passe_clap(lib, pistes, true, modele, travailleurs, avancement)
+}
+
+/// Décodage sur les cœurs, CLAP sur l'accélérateur, écriture ici ;
+/// `fenetre_seule` n'écrit que la fenêtre représentative.
+fn passe_clap(
+    lib: &Library,
+    pistes: Vec<rusty_music_core::db::TrackRow>,
+    fenetre_seule: bool,
+    modele: Option<&Path>,
+    travailleurs: usize,
+    mut avancement: impl FnMut(usize, usize) + Send,
+) -> Result<Rapport, Error> {
     let mut rapport = Rapport {
         demandes: pistes.len(),
         ..Default::default()
@@ -107,7 +135,7 @@ pub fn empreintes(
         std::sync::mpsc::sync_channel::<(i64, Option<(Vec<f32>, usize)>)>(travailleurs.max(1) * 2);
     // `Library` tient une connexion SQLite : `Send` mais pas `Sync`. C'est
     // donc le fil appelant, et lui seul, qui écrit.
-    let (tx_emp, rx_emp) = std::sync::mpsc::sync_channel::<(i64, Option<Vec<f32>>)>(8);
+    let (tx_emp, rx_emp) = std::sync::mpsc::sync_channel::<(i64, Option<(Vec<f32>, usize)>)>(8);
 
     std::thread::scope(|pool| {
         // --- décodage, sur les cœurs ---
@@ -158,13 +186,14 @@ pub fn empreintes(
                 }
             };
             for (id, issue) in rx_spec {
-                let empreinte = issue.and_then(|(spec, n)| match agreger(&mut enc, &spec, n) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        warn!(id, error = %e, "empreinte impossible");
-                        None
-                    }
-                });
+                let empreinte =
+                    issue.and_then(|(spec, n)| match agreger_et_choisir(&mut enc, &spec, n) {
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            warn!(id, error = %e, "empreinte impossible");
+                            None
+                        }
+                    });
                 if tx_emp.send((id, empreinte)).is_err() {
                     break;
                 }
@@ -177,7 +206,13 @@ pub fn empreintes(
             match issue {
                 // Écrite dès qu'elle arrive : une interruption ne coûte que
                 // le morceau en cours, pas la passe entière.
-                Some(v) => match lib.save_embedding(id, MODELE, &v) {
+                Some((v, rang)) => match if fenetre_seule {
+                    Ok(())
+                } else {
+                    lib.save_embedding(id, MODELE, &v)
+                }
+                .and_then(|()| lib.save_fenetre_representative(id, MODELE, rang))
+                {
                     Ok(()) => rapport.empreintes += 1,
                     Err(e) => {
                         warn!(error = %e, "écriture impossible");
@@ -323,6 +358,16 @@ pub fn spectrogramme(mel: &Mel, chemin: &Path, n: usize) -> Result<(Vec<f32>, us
 /// Un morceau qui change de caractère en route est mieux représenté par
 /// l'ensemble de ses fenêtres que par ses dix secondes centrales.
 pub fn agreger(enc: &mut Embedder, spec: &[f32], n: usize) -> Result<Vec<f32>, Error> {
+    Ok(agreger_et_choisir(enc, spec, n)?.0)
+}
+
+/// [`agreger`], et le rang de la fenêtre la plus représentative
+/// ([`fenetre_representative`]).
+pub fn agreger_et_choisir(
+    enc: &mut Embedder,
+    spec: &[f32],
+    n: usize,
+) -> Result<(Vec<f32>, usize), Error> {
     let vecteurs = enc.empreintes(spec, n)?;
     if vecteurs.is_empty() {
         return Err(Error::Modele(crate::Error::Sortie(
@@ -335,7 +380,27 @@ pub fn agreger(enc: &mut Embedder, spec: &[f32], n: usize) -> Result<Vec<f32>, E
             *s += x / vecteurs.len() as f32;
         }
     }
-    Ok(crate::projection::normaliser(&somme))
+    let rang = fenetre_representative(&vecteurs).unwrap_or(0);
+    Ok((crate::projection::normaliser(&somme), rang))
+}
+
+/// La fenêtre la plus représentative d'un morceau : celle dont l'empreinte
+/// est la plus proche (cosinus) de leur moyenne. C'est elle que l'aura de la
+/// carte fait entendre (`docs/plan-balade.md`, P4). `None` sans fenêtre.
+pub fn fenetre_representative(vecteurs: &[Vec<f32>]) -> Option<usize> {
+    let premier = vecteurs.first()?;
+    let mut moyenne = vec![0.0f32; premier.len()];
+    for v in vecteurs {
+        for (m, x) in moyenne.iter_mut().zip(v) {
+            *m += x;
+        }
+    }
+    let moyenne = crate::projection::normaliser(&moyenne);
+    let cosinus = |v: &Vec<f32>| {
+        let n = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+        v.iter().zip(&moyenne).map(|(a, b)| a * b).sum::<f32>() / n
+    };
+    (0..vecteurs.len()).max_by(|&a, &b| cosinus(&vecteurs[a]).total_cmp(&cosinus(&vecteurs[b])))
 }
 
 /// Empreinte d'un morceau, de bout en bout.
@@ -490,4 +555,24 @@ pub fn descripteurs(
 
     debug!(?rapport, "passe de descripteurs terminée");
     Ok(rapport)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn la_fenetre_representative_est_la_plus_proche_de_la_moyenne() {
+        // Trois fenêtres semblables et une intro à part : la moyenne penche
+        // vers les trois, et c'est la plus centrale d'entre elles qui gagne.
+        let fenetres = vec![
+            vec![0.0, 0.0, 1.0],
+            vec![1.0, 0.2, 0.0],
+            vec![1.0, 0.0, 0.0],
+            vec![1.0, -0.2, 0.0],
+        ];
+        assert_eq!(fenetre_representative(&fenetres), Some(2));
+        assert_eq!(fenetre_representative(&[]), None);
+        assert_eq!(fenetre_representative(&[vec![0.3, 0.4]]), Some(0));
+    }
 }

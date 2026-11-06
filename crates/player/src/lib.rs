@@ -18,6 +18,7 @@ use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink};
 use tracing::debug;
 
 pub mod amelioration;
+pub mod aura;
 pub mod latence;
 pub mod multipiste;
 pub mod spectre;
@@ -190,42 +191,76 @@ pub fn ouvrir(track: &Path, gain_lineaire: f32) -> Result<Box<dyn rodio::Source 
     Ok(Box::new(tampon))
 }
 
-/// Le son principal pendant un extrait : baissé, pas coupé.
-const NIVEAU_SOUS_EXTRAIT: f32 = 0.2;
-/// Entrée et sortie en fondu d'un extrait.
-const FONDU_EXTRAIT: Duration = Duration::from_millis(400);
+/// Fréquence des extraits mono de l'aura (`docs/plan-balade.md`, P4) : celle
+/// d'Opus et de CLAP ; le mélangeur de la sortie la convertit.
+pub const SR_EXTRAIT: u32 = 48_000;
 
-/// Ouvre `duree` de `track` à partir de `debut`, en fondu à l'entrée et à la
-/// sortie, pour [`Player::jouer_extrait`]. Ne décode que ce qu'il faut quand
-/// le format le permet (symphonia), sinon tout le fichier, comme [`ouvrir`].
-pub fn ouvrir_extrait(
-    track: &Path,
-    debut: Duration,
-    duree: Duration,
-    gain_lineaire: f32,
-) -> Result<Box<dyn rodio::Source + Send>> {
+/// `track` en mono à [`SR_EXTRAIT`], positionné à `debut`.
+///
+/// **Saut dans le fichier, pas décodage jusqu'au point de départ** : c'est ce
+/// que fait `skip_duration` de `rodio`, et il coûte d'autant plus que
+/// l'extrait est loin dans le morceau. Le saut n'est refusé que par un
+/// format qui ne sait pas où il va ; on décode alors jusque-là. Opus, que
+/// symphonia ne lit pas, est décodé entier.
+pub fn flux_extrait(track: &Path, debut: Duration) -> Result<Box<dyn rodio::Source + Send>> {
+    use rodio::source::UniformSourceIterator;
     use rodio::Source;
-    let decode: Box<dyn rodio::Source + Send> = match std::fs::File::open(track)
-        .ok()
-        .and_then(|f| Decoder::try_from(f).ok())
+    let mono = 1.try_into().expect("1 canal");
+    let taux = SR_EXTRAIT.try_into().expect("48 kHz");
+    if let Some(buf) = opus_brut(track)? {
+        return Ok(Box::new(
+            UniformSourceIterator::new(buf, mono, taux).skip_duration(debut),
+        ));
+    }
+    let file = std::fs::File::open(track).map_err(|source| Error::Open {
+        path: track.to_path_buf(),
+        source,
+    })?;
+    let mut decoder = Decoder::try_from(file).map_err(|source| Error::Decode {
+        path: track.to_path_buf(),
+        source,
+    })?;
+    // Pas de saut vers zéro : sur certains MP3, symphonia le dit réussi et ne
+    // rend ensuite plus rien (un intermède des Fugees, relevé par le banc
+    // `extraits_aura`).
+    if debut.is_zero() || decoder.try_seek(debut).is_ok() {
+        return Ok(Box::new(UniformSourceIterator::new(decoder, mono, taux)));
+    }
+    Ok(Box::new(
+        UniformSourceIterator::new(decoder, mono, taux).skip_duration(debut),
+    ))
+}
+
+/// `duree` de `track` à partir de `debut`, mono à [`SR_EXTRAIT`], en mémoire
+/// (voir [`flux_extrait`]).
+///
+/// Un départ au-delà de la fin rend un extrait vide : la durée en base peut
+/// être fausse (« Codex » de Radiohead y dure 569 s, le fichier 287). On
+/// reprend alors au début du morceau.
+pub fn extrait_mono(track: &Path, debut: Duration, duree: Duration) -> Result<Vec<f32>> {
+    let n = (duree.as_secs_f64() * f64::from(SR_EXTRAIT)).round() as usize;
+    let extrait: Vec<f32> = flux_extrait(track, debut)?.take(n).collect();
+    if extrait.is_empty() && !debut.is_zero() {
+        return Ok(flux_extrait(track, Duration::ZERO)?.take(n).collect());
+    }
+    Ok(extrait)
+}
+
+/// Un fichier Opus décodé tel quel, sans la chaîne d'amélioration.
+fn opus_brut(path: &Path) -> Result<Option<rodio::buffer::SamplesBuffer>> {
+    if !path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("opus"))
     {
-        Some(d) => Box::new(d.amplify(gain_lineaire)),
-        None => ouvrir(track, gain_lineaire)?,
-    };
-    let mut ecoule = Duration::ZERO;
-    let pas = Duration::from_millis(20);
-    let fondu = FONDU_EXTRAIT.as_secs_f32();
-    let total = duree.as_secs_f32();
-    let source = decode
-        .skip_duration(debut)
-        .take_duration(duree)
-        .amplify(0.0)
-        .periodic_access(pas, move |a| {
-            let t = ecoule.as_secs_f32();
-            a.set_factor((t / fondu).min((total - t) / fondu).clamp(0.0, 1.0));
-            ecoule += pas;
-        });
-    Ok(Box::new(source))
+        return Ok(None);
+    }
+    let piste = rusty_music_core::opus::decoder(path)?;
+    let canaux = u16::try_from(piste.canaux).unwrap_or(2).max(1);
+    Ok(Some(rodio::buffer::SamplesBuffer::new(
+        canaux.try_into().expect("au moins un canal"),
+        rusty_music_core::opus::SR.try_into().expect("48 kHz"),
+        piste.echantillons,
+    )))
 }
 
 /// Spectrogramme du fichier **tel qu'il sortirait de [`ouvrir`]** : avec
@@ -434,12 +469,11 @@ pub struct Player {
     // L'ordre de déclaration fixe l'ordre de destruction. Le lecteur doit
     // tomber avant la sortie à laquelle il est raccordé, pas l'inverse.
     inner: Arc<rodio::Player>,
-    /// Une seconde voix, pour l'extrait d'un morceau (le carrefour de la
-    /// balade, `docs/plan-balade.md`, P2) : voir [`Self::jouer_extrait`]. Tombe
-    /// elle aussi avant la sortie.
-    extrait: Option<rodio::Player>,
-    /// Le volume du son principal avant l'extrait, qui l'a baissé.
-    volume_avant_extrait: Option<f32>,
+    /// L'aura de la carte (`docs/plan-balade.md`, P4) : sa source est
+    /// raccordée au mélangeur de la sortie, à côté du lecteur.
+    aura: aura::Aura,
+    /// Niveau de l'aura relatif au volume du son principal.
+    facteur_aura: f32,
     _output: MixerDeviceSink,
     /// Levé par cpal quand le flux ouvert est mort (périphérique débranché,
     /// changé, machine réveillée) : plus personne ne tire sur la source, et
@@ -544,10 +578,12 @@ impl Player {
             }
         };
         let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
+        let aura = aura::Aura::new();
+        output.mixer().add(aura.source());
         Ok(Self {
             inner,
-            extrait: None,
-            volume_avant_extrait: None,
+            aura,
+            facteur_aura: 0.0,
             _output: output,
             sortie_perdue,
             queue: Vec::new(),
@@ -1035,11 +1071,11 @@ impl Player {
                 return;
             }
         };
-        // L'extrait était raccordé à l'ancienne sortie : il s'arrête, et rend
-        // au son principal son volume.
-        self.arreter_extrait();
+        // L'aura était raccordée à l'ancienne sortie : une source neuve, sur
+        // la même demande, la remplace.
         let inner = Arc::new(rodio::Player::connect_new(output.mixer()));
         inner.set_volume(self.inner.volume());
+        output.mixer().add(self.aura.source());
         // Le lecteur tombe avant la sortie à laquelle il était raccordé.
         self.inner = inner;
         self._output = output;
@@ -1193,65 +1229,29 @@ impl Player {
     /// `Cargo.toml` racine. L'activer ferait échouer la compilation ici, ce
     /// qui vaut mieux qu'une conversion silencieuse.
     pub fn volume(&self) -> f32 {
-        self.volume_avant_extrait
-            .unwrap_or_else(|| self.inner.volume())
+        self.inner.volume()
     }
 
-    /// Pendant un extrait, le volume demandé est celui que le son principal
-    /// retrouvera à la fin ; il reste baissé jusque-là.
+    /// L'aura suit le volume : son niveau est relatif au son principal.
     pub fn set_volume(&mut self, volume: f32) {
-        match &mut self.volume_avant_extrait {
-            Some(avant) => {
-                *avant = volume;
-                self.inner.set_volume(volume * NIVEAU_SOUS_EXTRAIT);
-            }
-            None => self.inner.set_volume(volume),
-        }
+        self.inner.set_volume(volume);
+        self.aura.regler_niveau(self.facteur_aura * volume);
     }
 
-    /// Joue `source` par-dessus la lecture, sur une seconde voix, en baissant
-    /// le son principal le temps qu'elle dure : l'extrait d'un morceau qu'on
-    /// survole au carrefour d'une balade. Ce n'est pas encore le mélange à
-    /// deux voix de l'aura (P4) : le son principal s'efface, il ne se fond
-    /// pas. Un nouvel extrait remplace le précédent. La fin est relevée par
-    /// [`Self::entretenir_extrait`].
-    pub fn jouer_extrait(&mut self, source: Box<dyn rodio::Source + Send>) {
+    /// Niveau de l'aura relatif au volume (0 : muette). En balade, −18 dB
+    /// sous le morceau principal ; seule, plus haut (`docs/plan-balade.md`,
+    /// P4). Le changement se fait en fondu.
+    pub fn regler_aura(&mut self, facteur: f32) {
+        self.facteur_aura = facteur.max(0.0);
+        self.aura
+            .regler_niveau(self.facteur_aura * self.inner.volume());
+    }
+
+    /// L'aura de la carte, pour y charger des extraits et dire qui joue.
+    /// La sortie perdue est rouverte d'abord : l'aura y est raccordée.
+    pub fn aura(&mut self) -> &mut aura::Aura {
         self.rouvrir_si_perdue();
-        if let Some(v) = self.extrait.take() {
-            v.stop();
-        }
-        let voix = rodio::Player::connect_new(self._output.mixer());
-        let volume = self.volume();
-        voix.set_volume(volume);
-        voix.append(source);
-        if self.volume_avant_extrait.is_none() {
-            self.volume_avant_extrait = Some(volume);
-            self.inner.set_volume(volume * NIVEAU_SOUS_EXTRAIT);
-        }
-        self.extrait = Some(voix);
-    }
-
-    /// Coupe l'extrait en cours et rend au son principal son volume.
-    pub fn arreter_extrait(&mut self) {
-        if let Some(v) = self.extrait.take() {
-            v.stop();
-        }
-        if let Some(v) = self.volume_avant_extrait.take() {
-            self.inner.set_volume(v);
-        }
-    }
-
-    /// L'extrait est fini : rend au son principal son volume. À appeler
-    /// régulièrement (le battement natif de l'application).
-    pub fn entretenir_extrait(&mut self) {
-        if self.extrait.as_ref().is_some_and(rodio::Player::empty) {
-            self.arreter_extrait();
-        }
-    }
-
-    /// Un extrait joue.
-    pub fn extrait_en_cours(&self) -> bool {
-        self.extrait.as_ref().is_some_and(|v| !v.empty())
+        &mut self.aura
     }
 }
 

@@ -297,6 +297,10 @@ struct Etat {
     balade: Mutex<Option<Balade>>,
     /// La reprise d'une balade au démarrage est tranchée (reprise ou abandonnée).
     balade_reprise: AtomicBool,
+    /// L'aura de la carte (`explorer::aura`, P4) : la dernière demande, et
+    /// l'extrait de carrefour qui la remplace un instant. Pris avant
+    /// `player`, jamais pendant.
+    aura: Mutex<EtatAura>,
 }
 
 /// Délai d'inactivité au-delà duquel un poids lourd chargé à la demande
@@ -613,6 +617,7 @@ fn main() {
                 precharge: Mutex::new(()),
                 balade: Mutex::new(None),
                 balade_reprise: AtomicBool::new(false),
+                aura: Mutex::new(EtatAura::default()),
             });
             app.manage(tuiles::Archives::default());
 
@@ -639,7 +644,7 @@ fn main() {
                         // vient de figer est ouvert dans le même battement.
                         balade_reprendre(&etat_arriere_plan, &etat);
                         balade_battement(&etat);
-                        verrou(&etat.player).entretenir_extrait();
+                        entretenir_aura(&etat);
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
@@ -899,6 +904,7 @@ fn main() {
             balade_revenir,
             balade_regler,
             balade_extrait,
+            aura,
             tuile,
             map_progress,
             graphe_progress,

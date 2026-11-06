@@ -2957,3 +2957,127 @@ l'application) ; les tuiles ne sont pas régénérées. La ville reste un plan q
 se lit (date, popularité, quartiers de style) ; la continuité à l'oreille, s'il
 la faut, doit venir de la balade elle-même : une pente par défaut vers la
 branche la plus proche à l'oreille (P2/P3), plutôt que du placement.
+
+## Balade musicale, P4 — 6 nov. 2026
+
+### P4 : l'aura, entendre la carte
+
+**Étape 1 : la mesure, avant d'aller plus loin.**
+
+- **Fenêtre représentative** (`passe::fenetre_representative`). Parmi les cinq
+  fenêtres de 10 s que la passe d'empreintes analyse, c'est celle dont
+  l'empreinte est la plus proche (cosinus) de leur moyenne.
+  `decode::debut_extrait` l'élargit à 15 s, 2,5 s de part et d'autre. La
+  passe d'empreintes retient désormais son rang (colonne `features.fenetre`,
+  migration n° 4).
+- **Banc** `crates/analysis/examples/extraits_aura.rs`, sur 500 morceaux tirés
+  au hasard, graine fixe. La latence « à froid » est prise avant toute autre
+  lecture du fichier par le banc, sur la fenêtre centrale. L'encodeur est
+  `opus-pure` (pur Rust, BSD-3, `cargo deny` vert), en dépendance de
+  développement seulement.
+
+  | mesure (ms, sauf mention) | médiane | p90 | p99 | max |
+  |---|---:|---:|---:|---:|
+  | à la volée avec saut, à froid : 1ᵉʳ échantillon | 3,5 | 4,5 | 8,0 | 25,1 |
+  | à la volée avec saut, à froid : 15 s décodées | 21,0 | 26,5 | 42,2 | 52,4 |
+  | à la volée avec saut, à chaud : 15 s décodées | 18,1 | 28,0 | 50,5 | 65,8 |
+  | sans saut (`skip_duration`, l'extrait de P2) : 1ᵉʳ échantillon | 132,9 | 281,7 | 526,4 | 713,2 |
+  | en cache : lire et décoder 15 s d'Opus (`opus-decoder`, celui du cœur) | 806,6 | 1 296,7 | 1 654,4 | 1 763,2 |
+  | extraction pour le cache : décoder 15 s + encoder | 57,1 | 79,7 | 111,5 | 158,7 |
+  | dont l'encodage Opus | 38,5 | 54,3 | 93,0 | 120,9 |
+  | taille d'un extrait, Opus mono 48 kbit/s (Kio) | 90,4 | 90,6 | 90,9 | 91,7 |
+  | écart entre l'extrait choisi et le centre du morceau (s) | 40,2 | 90,4 | 147,5 | 780,1 |
+
+  - Le cache pèserait 2,39 Go pour 27 845 morceaux ; l'extraction prendrait
+    30 min en séquentiel.
+  - La lenteur du cache ne vient pas du cache : `opus-decoder` décode 15 s en
+    787 ms, `opus-pure` en 10,5 ms, sur les 40 mêmes fichiers. Même avec le
+    bon décodeur, le cache ne ferait gagner qu'une dizaine de millisecondes
+    au décodage à la volée. Le défaut touche la lecture : les dix morceaux
+    Opus de la bibliothèque (Fingathing) mettent 11 à 13 s à s'ouvrir pour
+    2 min de son. À corriger à part (`suite.md`).
+  - La fenêtre représentative n'est la centrale qu'une fois sur quatre (rangs
+    0 à 4 : 84, 118, 130, 105, 63) ; en médiane, son extrait commence à 40 s
+    de celui du centre.
+  - Échecs relevés en route : un intermède MP3 des Fugees, où symphonia dit
+    réussi un saut à zéro et ne rend plus rien (on ne saute plus à zéro) ;
+    « Codex » de Radiohead, dont la durée en base (569 s) double celle du
+    fichier (un extrait vide repart du début).
+- **Choix : le décodage à la volée seul**, sans cache. 21 ms pour les 15 s, à
+  froid, sur le SSD : sept fois sous la cible de 150 ms, sans 2,4 Go à tenir,
+  sans passe d'extraction, sans encodeur lié au binaire. Le saut compte : sans
+  lui (`skip_duration`, ce que faisait l'extrait de P2), on décode jusqu'au
+  départ et la médiane passe à 133 ms. Le rang de la fenêtre est en base ;
+  tant qu'il n'est pas connu, l'aura prend la fenêtre centrale. Pour les
+  morceaux analysés avant : `rusty-music fenetres` (reprenable), 0,10 s par
+  morceau, environ 45 min pour la bibliothèque. Mesuré sur une copie de la
+  base, pas lancé sur la vraie : la migration n° 4 la rendrait illisible par
+  l'application installée.
+
+**Étape 2 : l'aura.**
+
+- **La source** (`crates/player/src/aura.rs`). Même principe que
+  `multipiste.rs` : une seule source qui somme trois voix, raccordée au
+  mélangeur de la sortie du lecteur, donc sans seconde sortie ni dérive.
+  - L'interface dépose la demande dans un dépôt ; le fil audio la relève tous
+    les 64 échantillons par `try_lock`, sans jamais attendre.
+  - Gain et panoramique (à puissance constante) glissent vers leur cible en
+    300 ms, à l'entrée comme à la sortie d'une voix.
+  - Une voix revisitée dans les 30 s reprend où elle en était : sa tête de
+    lecture est un atomique que la poignée garde.
+  - 24 extraits en mémoire au plus (`i16`, 1,4 Mo chacun) ; les bords sont
+    adoucis sur 30 ms, car l'extrait boucle.
+  - Six tests : fondu sans saut, panoramique et gain, sortie en fondu,
+    reprise sous 30 s puis remise à zéro au-delà, trois voix au plus,
+    mémoire bornée.
+- **La commande** `aura(voix: [{id, gain, pan}])` (`explorer/aura.rs`).
+  - Elle décode en parallèle les extraits qui manquent, au rang de fenêtre
+    retenu et avec le gain de normalisation.
+  - Une demande dépassée par une autre ne joue pas.
+  - Le niveau suit le volume : −18 dB sous le morceau en balade, 0,5 seule en
+    exploration libre.
+- **L'interface** (`js/aura.js`).
+  - Les voisins se cherchent sur les positions d'écran déjà chargées : les
+    trois plus proches dans un rayon de 140 px, avec un gain de
+    `1 / (1 + (d / 40 px)²)` et un panoramique selon l'écart horizontal.
+  - Hors balade, la recherche se fait à l'arrêt du curseur (120 ms sans
+    bouger). En balade, elle se fait une fois par seconde autour du
+    promeneur, sans le morceau qu'il écoute ni le suivant.
+  - Le haut-parleur est en haut à droite de la carte. Il est éteint par
+    défaut hors balade et allumé en balade ; le départ ou l'arrêt d'une
+    balade le rend à son défaut. Hors balade, un morceau qui joue fait taire
+    l'aura (haut-parleur atténué, et le titre dit pourquoi).
+- **Les extraits des carrefours** (P2) passent par la même source.
+  L'extrait d'une voie survolée prend la place de l'aura, à −9 dB sous le
+  morceau, qui ne baisse plus. Au bout de 5 s ou à la fin du survol, l'aura
+  reprend. `Player::jouer_extrait`, la baisse du son principal et
+  `ouvrir_extrait` sont retirés.
+- **CPU du fil audio** (`crates/player/examples/cout_aura.rs`) : trois voix,
+  une nouvelle demande par seconde (les voix glissent sans cesse), puis la
+  conversion vers 44,1 kHz du mélangeur. 64 ms de calcul pour 60 s de son,
+  soit 0,11 % d'un cœur. Le décodage d'une demande coûte trois décodages de
+  21 ms, en parallèle.
+- **Latence de bout en bout : pas encore mesurée dans l'application.**
+  L'essai natif (copie des données, balade depuis 2087, journal de l'aura en
+  `debug`) a lancé la balade, mais sans session graphique active : webview
+  suspendue, sortie audio déclarée perdue, aucun appel de l'aura.
+  - Hors de la webview, le décompte se fait sans elle. Une demande décode au
+    plus trois extraits en parallèle, chacun en 21 ms (médiane, à froid ;
+    p90 26,5 ms). Le curseur est réputé arrêté au bout de 120 ms. La part du
+    moteur reste donc sous 50 ms, loin de la cible de 150 ms.
+  - Il reste à mesurer la recherche des voisins dans l'interface (une
+    projection par morceau, 27 805 points). Elle se mesurera en usage : toutes
+    les 20 demandes, l'interface écrit au journal les médianes « voisins »,
+    « moteur » et « arrêt → voix ».
+  - La sortie audio, elle, a été vérifiée avec la source de l'aura raccordée
+    au mélangeur : la position avance, un saut répond en 0,1 ms.
+- **Vérifié** dans l'interface simulée, par deux tests de fumée :
+  - Hors balade, le haut-parleur est éteint et le curseur ne fait rien
+    entendre. Allumé, l'arrêt du curseur donne trois voix au plus, la plus
+    proche en tête, aux gains décroissants. Quitter la carte fait taire
+    l'aura.
+  - En balade, le haut-parleur s'allume de lui-même. Les voix entourent le
+    promeneur, sans le morceau en cours ni le suivant.
+- **Audit d'interface** (`scripts/audit-interface.sh`) : 234 cellules,
+  0 violation de gabarit ; contraste (22 couples × 2 thèmes) et typographie
+  sans violation. `verifier.sh` vert, 33 tests de fumée.

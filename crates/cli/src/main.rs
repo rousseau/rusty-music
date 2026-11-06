@@ -94,6 +94,13 @@ enum Cmd {
         #[arg(long, default_value_t = 12)]
         familles: usize,
     },
+    /// Retrouve la fenêtre représentative des morceaux analysés avant qu'on
+    /// la retienne : l'aura de la carte en tire son extrait (reprenable)
+    Fenetres {
+        /// Nombre de morceaux à traiter
+        #[arg(long, default_value_t = i64::MAX)]
+        limit: i64,
+    },
     /// Place toutes les empreintes sur la carte (rapide, à rejouer à volonté)
     Project {
         #[arg(long, default_value_t = 12)]
@@ -854,6 +861,31 @@ fn main() -> Result<()> {
             } else if r.empreintes > 0 {
                 println!("empreintes écrites — lancer `project` pour la carte");
             }
+        }
+        Cmd::Fenetres { limit } => {
+            let t = Instant::now();
+            let r = rusty_music_analysis::passe::fenetres_representatives(
+                &lib,
+                None,
+                limit,
+                jobs,
+                |fait, total| {
+                    let par = t.elapsed().as_secs_f64() / fait as f64;
+                    eprint!(
+                        "\r  {fait}/{total} — {:.2} s/morceau, reste {}   ",
+                        par,
+                        duree_h(par * (total - fait) as f64)
+                    );
+                },
+            )?;
+            eprintln!();
+            println!(
+                "{} demandés · {} fenêtres · {} en échec — {}",
+                r.demandes,
+                r.empreintes,
+                r.echecs,
+                duree_h(t.elapsed().as_secs_f64())
+            );
         }
         Cmd::Etirer {
             entree,

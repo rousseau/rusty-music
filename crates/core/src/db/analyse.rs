@@ -71,6 +71,53 @@ impl Library {
         Ok(())
     }
 
+    /// Retient le rang de la fenêtre la plus représentative d'une empreinte
+    /// déjà enregistrée (`docs/plan-balade.md`, P4).
+    pub fn save_fenetre_representative(
+        &self,
+        track_id: i64,
+        model: &str,
+        rang: usize,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE features SET fenetre = ?3 WHERE track_id = ?1 AND model = ?2",
+            params![track_id, model, rang as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Le rang de la fenêtre la plus représentative, s'il est connu.
+    pub fn fenetre_representative(&self, track_id: i64, model: &str) -> Result<Option<usize>> {
+        let rang: Option<Option<i64>> = self
+            .conn
+            .query_row(
+                "SELECT fenetre FROM features WHERE track_id = ?1 AND model = ?2",
+                params![track_id, model],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(rang.flatten().and_then(|r| usize::try_from(r).ok()))
+    }
+
+    /// Les morceaux qui ont une empreinte mais pas encore de fenêtre
+    /// représentative : ceux analysés avant qu'on la retienne.
+    pub fn pending_fenetres(&self, model: &str, limit: i64) -> Result<Vec<TrackRow>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE EXISTS (
+                    SELECT 1 FROM features f
+                     WHERE f.track_id = tracks.id AND f.model = ?1 AND f.fenetre IS NULL)
+                AND NOT EXISTS (
+                    SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
+              ORDER BY added_at LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![model, limit], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Toutes les empreintes d'un modèle, pour la projection.
     ///
     /// Chargées d'un bloc : t-SNE place chaque point relativement aux autres,

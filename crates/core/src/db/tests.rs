@@ -2664,3 +2664,41 @@ fn une_edition_retenue_survit_au_rescan_et_s_oublie() {
         .iter()
         .all(|(r, rec, _)| r == "tag-release" && rec.is_none()));
 }
+
+/// P4 de la balade : la fenêtre représentative suit l'empreinte, et les
+/// empreintes d'avant (sans fenêtre) restent à compléter.
+#[test]
+fn la_fenetre_representative_se_retient_et_se_complete() {
+    let lib = Library::open_in_memory().unwrap();
+    let ids: Vec<i64> = ["/m/a.mp3", "/m/b.mp3"]
+        .iter()
+        .map(|p| {
+            lib.upsert(&TrackMeta {
+                path: (*p).into(),
+                ..Default::default()
+            })
+            .unwrap()
+        })
+        .collect();
+    for &id in &ids {
+        lib.save_embedding(id, "modele", &[0.1, 0.2]).unwrap();
+    }
+    assert_eq!(lib.fenetre_representative(ids[0], "modele").unwrap(), None);
+    assert_eq!(lib.pending_fenetres("modele", 10).unwrap().len(), 2);
+
+    lib.save_fenetre_representative(ids[0], "modele", 3)
+        .unwrap();
+    assert_eq!(
+        lib.fenetre_representative(ids[0], "modele").unwrap(),
+        Some(3)
+    );
+    let restent: Vec<i64> = lib
+        .pending_fenetres("modele", 10)
+        .unwrap()
+        .iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(restent, vec![ids[1]]);
+    // Une autre empreinte du même morceau ne la touche pas.
+    assert_eq!(lib.fenetre_representative(ids[0], "autre").unwrap(), None);
+}

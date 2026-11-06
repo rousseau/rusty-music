@@ -25,6 +25,12 @@ burn-onnx.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
+# Banc `extraits_aura` seulement (`docs/plan-balade.md`, P4) : la taille d'un
+# extrait en Opus. Encodeur **pur Rust**, sans dépendance ni `build.rs`,
+# BSD-3-Clause ; jamais lié au binaire tant que le cache d'extraits n'est pas
+# retenu (`docs/journal.md`, P4).
+opus-pure = "0.2"
+rusty-music-player = { path = "../player" }
 
 # `ndarray` toujours actif, en plus de `wgpu`/`ndarray` choisi par `gpu`/`cpu`
 # ci-dessus : la tour texte de CLAP (`encodeur_texte.rs`) tourne toujours en

@@ -1065,6 +1065,22 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 .carte__balade[hidden] { display: none; }
 .carte__balade .lien { margin-top: 0; }
 .carte__balade .lien[hidden] { display: none; }
+/* Le haut-parleur de l'aura (P4) : en haut à droite de la carte, même
+   cartouche que la ligne de la balade. Ondes allumé, barré éteint ; en
+   attente (un morceau joue hors balade), atténué. */
+.carte__aura {
+  position: absolute; right: var(--gouttiere); top: 16px; z-index: 5;
+  display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  background: var(--panel); border: 1px solid var(--line); color: var(--mut);
+  cursor: pointer;
+}
+.carte__aura[hidden] { display: none; }
+.carte__aura:hover { color: var(--txt); }
+.carte__aura[aria-pressed="true"] { color: var(--accent); }
+.carte__aura .carte__aura-ondes { display: none; }
+.carte__aura[aria-pressed="true"] .carte__aura-ondes { display: inline; }
+.carte__aura[aria-pressed="true"] .carte__aura-coupe { display: none; }
+.carte__aura--couverte { opacity: 0.55; }
 /* Le carrefour de la balade (P2) : deux ou trois voies, à côté du promeneur
    (placé par `placerPanneau`), jamais dessus. Grisé quand le suivant est figé. */
 .carrefour {

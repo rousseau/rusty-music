@@ -52,6 +52,7 @@ Colonne « vérifiée » : ✔ = licence lue dans une source lors de cette reche
 | `hound` | lecture/écriture WAV | Apache-2.0 | ? |
 | `claxon` | FLAC seul (plus léger que symphonia) | Apache-2.0 | ? |
 | `lofty` | tags, agnostique au format (déjà utilisé dans le cœur) | MIT/Apache-2.0 | ? |
+| `opus-pure` | codec Opus **pur Rust** (encodeur et décodeur, conteneur Ogg), sans dépendance ni `build.rs` ; MSRV 1.88 (Burn en demande déjà 1.92) | BSD-3-Clause | ✅ `cargo deny` (6 nov. 2026). **Dépendance de développement seulement** : le banc `extraits_aura` (P4 de la balade) y mesure la taille d'un extrait Opus. Relevé au passage : il décode 15 s en 10,5 ms, contre 787 ms pour `opus-decoder` (celui du cœur) sur les mêmes fichiers. Candidat pour remplacer ce dernier, pas encore fait |
 
 `symphonia` (MPL-2.0) : plus aucun problème, la question est close.
 

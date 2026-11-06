@@ -371,8 +371,8 @@ async function revenir() {
   redessiner(true);
 }
 
-/// L'extrait de 5 s au survol : le moteur baisse le son principal le temps
-/// qu'il dure (le mélange à deux voix viendra avec l'aura, P4).
+/// L'extrait de 5 s au survol : le moteur le joue par la source de l'aura
+/// (P4), sous le morceau en cours, puis rend la main à l'aura.
 function entendre(morceau) {
   clearTimeout(balade.survol);
   if (morceau == null) {

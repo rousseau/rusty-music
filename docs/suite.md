@@ -1,6 +1,6 @@
 # Où en est le projet, et ce qui reste
 
-État au **5 nov. 2026**. Ce document dit où en est chaque brique et ce qui
+État au **6 nov. 2026**. Ce document dit où en est chaque brique et ce qui
 reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
 version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
 dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Ce qui a été
@@ -10,7 +10,7 @@ fait et mesuré, au jour le jour : `journal.md`.
 
 | Brique | État | Restes, et où les lire |
 |---|---|---|
-| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | — (migrations versionnées depuis le 31 oct. : `db::schema::migrations`) |
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | décodage Opus lent : `opus-decoder` met 11 à 13 s pour ouvrir un morceau Opus de 2 min de la bibliothèque (Fingathing, 10 morceaux) ; `opus-pure` décode 15 s en 10,5 ms contre 787 ms (relevé par le banc de P4, `journal.md`, 6 nov.) ; à remplacer. Migrations versionnées depuis le 31 oct. : `db::schema::migrations` |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) ; palette de recherche ⌘K (1ᵉʳ nov.) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties ; modèle intégré Gemma 4 E4B ou Ollama au choix, phase 7) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
@@ -107,8 +107,15 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   réelle, déjà neuve à 98 %). Flèches rouges entre quartiers voisins
   (216 sur Paris, 0 croisement), option « Pentes » du fond de plan ; les
   tuiles sont à régénérer pour les voir.
-- Restes, dans l'ordre : P5, P8 ; P4 (qui remplacera la baisse du son de
-  l'extrait par un mélange) et P6 ensuite.
+- P4, l'aura — fait : les trois voisins du curseur (à son arrêt) ou du
+  promeneur jouent très bas, fondus en 300 ms, placés selon leur direction,
+  repris où on les avait laissés dans les 30 s ; haut-parleur sur la carte
+  (éteint hors balade, allumé en balade). Extraits décodés à la volée sur la
+  fenêtre la plus représentative (21 ms pour 15 s, à froid), sans cache.
+  L'extrait d'une voie au carrefour passe par l'aura, le son principal ne
+  baisse plus. À lancer une fois : `rusty-music fenetres` (~45 min), sinon
+  l'aura prend la fenêtre centrale des morceaux analysés avant.
+- Restes, dans l'ordre : P5, P8, puis P6.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

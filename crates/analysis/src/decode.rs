@@ -97,6 +97,24 @@ pub fn fractions(n: usize) -> Vec<f64> {
     }
 }
 
+/// Durée de l'extrait d'un morceau pour l'aura de la carte
+/// (`docs/plan-balade.md`, P4) : la fenêtre représentative, élargie de
+/// 2,5 s de part et d'autre.
+pub const EXTRAIT_S: f64 = 15.0;
+
+/// Où commence l'extrait de `EXTRAIT_S` centré sur la fenêtre `rang` des `n`
+/// que la passe d'empreintes analyse, dans un morceau de `duree_s` secondes.
+///
+/// Même géométrie que [`par_position`] : la fenêtre part de
+/// `(duree − fenêtre) × fraction`. L'extrait reste dans le morceau ; un
+/// morceau plus court que lui commence à zéro.
+pub fn debut_extrait(duree_s: f64, n: usize, rang: usize) -> f64 {
+    let fenetre = FENETRE_N as f64 / SR as f64;
+    let f = fractions(n).get(rang).copied().unwrap_or(0.5);
+    let debut_fenetre = (duree_s - fenetre).max(0.0) * f;
+    (debut_fenetre - (EXTRAIT_S - fenetre) / 2.0).clamp(0.0, (duree_s - EXTRAIT_S).max(0.0))
+}
+
 /// Décodeur alimenté depuis la mémoire, et non au fil des besoins du disque.
 type Lecteur = Decoder<std::io::Cursor<Vec<u8>>>;
 
@@ -267,5 +285,16 @@ mod tests {
             assert!((f[1] - f[0] - (FIN - DEBUT) / 8.0).abs() < 1e-9, "{neuf:?}");
         }
         assert!(neuf.iter().all(|f| (DEBUT..=FIN).contains(f)));
+    }
+
+    #[test]
+    fn l_extrait_entoure_sa_fenetre_et_reste_dans_le_morceau() {
+        // 200 s, cinq fenêtres : la troisième part de 95 s, l'extrait de 92,5 s.
+        assert!((debut_extrait(200.0, 5, 2) - 92.5).abs() < 1e-9);
+        // La première, à 15 % de 190 s : 28,5 − 2,5.
+        assert!((debut_extrait(200.0, 5, 0) - 26.0).abs() < 1e-9);
+        // Un morceau à peine plus long que l'extrait ne déborde pas.
+        assert!(debut_extrait(16.0, 5, 4) <= 1.0);
+        assert_eq!(debut_extrait(8.0, 5, 3), 0.0, "plus court qu'une fenêtre");
     }
 }

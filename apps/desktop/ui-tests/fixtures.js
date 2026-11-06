@@ -147,6 +147,8 @@ const fixtures = {
     return e.balade;
   },
   balade_extrait: () => null,
+  // L'aura (P4) : le moteur rend le temps passé à charger les voix, en ms.
+  aura: () => 1.5,
 };
 
 // --- familles (numéro, nom, effectif) et carte en nuage de points

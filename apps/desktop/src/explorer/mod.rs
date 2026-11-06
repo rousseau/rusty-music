@@ -5,12 +5,14 @@
 
 use super::*;
 
+mod aura;
 mod balade;
 mod carte;
 mod lama;
 mod modele_local;
 mod voisinage;
 
+pub(crate) use aura::{aura, entretenir_aura, EtatAura};
 pub(crate) use balade::*;
 pub(crate) use carte::*;
 pub(crate) use lama::*;

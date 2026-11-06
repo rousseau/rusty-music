@@ -533,6 +533,38 @@ test("carte : l'option « Pentes » montre les flèches entre quartiers et se ga
   await expect.poll(visibilite).toBe("none");
 });
 
+test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les voisins du curseur", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.waitForTimeout(800);
+  const hp = page.locator("#carte-aura");
+  await expect(hp).toBeVisible();
+  await expect(hp).toHaveAttribute("aria-pressed", "false");
+  const p = fixtures.map_view[0];
+  const r = await page.locator("#carte").boundingBox();
+  const c = Math.min(r.width, r.height) / 2 - 28;
+  const x = r.x + r.width / 2 + p.x * c;
+  const y = r.y + r.height / 2 + p.y * c;
+  // Éteint : s'arrêter sur un morceau ne fait rien entendre.
+  await page.mouse.move(x + 3, y + 3);
+  await page.waitForTimeout(400);
+  expect((await appels(page, "aura")).filter((a) => a.voix.length)).toHaveLength(0);
+  // Allumé : à l'arrêt du curseur, trois voix au plus, la plus proche en tête.
+  await hp.click();
+  await expect(hp).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(x + 2, y + 2);
+  await expect.poll(async () => (await appels(page, "aura")).at(-1)?.voix.length ?? 0).toBeGreaterThan(0);
+  const voix = (await appels(page, "aura")).at(-1).voix;
+  expect(voix.length).toBeLessThanOrEqual(3);
+  expect(voix[0].id).toBe(p.id);
+  for (let i = 1; i < voix.length; i++) expect(voix[i].gain).toBeLessThanOrEqual(voix[i - 1].gain);
+  expect(voix.every((v) => v.pan >= -1 && v.pan <= 1)).toBe(true);
+  // Quitter la carte la fait taire ; l'éteindre aussi.
+  await page.mouse.move(r.x + r.width / 2, r.y - 40);
+  await expect.poll(async () => (await appels(page, "aura")).at(-1)?.voix.length).toBe(0);
+  await hp.click();
+  await expect(hp).toHaveAttribute("aria-pressed", "false");
+});
+
 test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde voie, l'extrait suit le survol", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);
@@ -591,4 +623,13 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   await expect.poll(async () => (await appels(page, "balade_regler")).at(-1)).toEqual({ allure: "rester" });
   await expect(page.locator('#balade-allure [data-allure="rester"]')).toHaveClass(/segment--actif/);
   expect(await page.evaluate(() => localStorage.getItem("balade-allure"))).toBe("rester");
+  // En balade, l'aura s'allume d'elle-même autour du promeneur (la carte
+  // dézoomée rapproche les morceaux), sans celui qu'il écoute ni le suivant.
+  await expect(page.locator("#carte-aura")).toHaveAttribute("aria-pressed", "true");
+  await page.click("#zoom-moins");
+  await page.click("#zoom-moins");
+  await expect.poll(async () => (await appels(page, "aura")).filter((a) => a.voix.length).length).toBeGreaterThan(0);
+  const autour = (await appels(page, "aura")).filter((a) => a.voix.length).at(-1).voix.map((v) => v.id);
+  expect(autour).not.toContain(p.id);
+  expect(autour).not.toContain(await page.evaluate(() => window.__ETAT_FAUX__.balade.suivant));
 });

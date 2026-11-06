@@ -48,6 +48,10 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 3 (2 nov. 2026) : le journal des passes « Compléter », pour les
         // annuler en bloc (`Library::ouvrir_passe`, `db/passes.rs`).
         M::up(include_str!("../../sql/migration-003-passes.sql")),
+        // N° 4 (6 nov. 2026) : la fenêtre la plus représentative de chaque
+        // empreinte, d'où l'aura de la carte tire son extrait
+        // (`Library::fenetre_representative`, `docs/plan-balade.md`, P4).
+        M::up(include_str!("../../sql/migration-004-fenetre.sql")),
     ])
 }
 
