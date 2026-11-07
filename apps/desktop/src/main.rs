@@ -34,14 +34,16 @@ const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
 mod a_propos;
 mod bibliotheque;
+mod creer;
 mod decouvrir;
 mod ecouter;
-mod editer;
 mod editions;
+mod etabli;
 mod explorer;
 mod iphone;
 mod minuteur;
 mod passe;
+mod pratiquer;
 mod systeme;
 mod systeme_media;
 mod tuiles;
@@ -51,12 +53,14 @@ mod wifi;
 // Les commandes vivent dans un module par mode ; tout est rendu visible ici,
 // pour `generate_handler!` et `main`.
 use bibliotheque::*;
+use creer::*;
 use decouvrir::*;
 use ecouter::*;
-use editer::*;
 use editions::*;
+use etabli::*;
 use explorer::*;
 use passe::*;
+use pratiquer::*;
 use systeme::*;
 use valise::*;
 
