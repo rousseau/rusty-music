@@ -19,7 +19,8 @@
         <span class="marque__ver">v0.1</span>
       </div>
 
-      <button class="mode bibliotheque-entree" data-mode="bibliotheque">Bibliothèque</button>
+      <button class="mode bibliotheque-entree" data-mode="bibliotheque">Bibliothèque
+        <span id="sommaire" class="bibliotheque-entree__n"></span></button>
 
       <nav class="modes" aria-label="Mode">
         <p class="rail__titre">Mode</p>
@@ -63,18 +64,19 @@
 
       <!-- Mode Découvrir : collaborations entre artistes (MusicBrainz) -->
       <div class="bloc" id="bloc-decouvrir" hidden>
-        <p class="rail__titre">Découvrir</p>
+        <p class="rail__titre rail__titre--action">Découvrir
+          <button class="aide-q" type="button" data-aide-pour="decouvrir-aide" aria-expanded="false"
+                  aria-label="Aide de Découvrir">?</button>
+        </p>
+        <!-- L'adresse de contact MusicBrainz se renseigne dans Bibliothèque
+             (« Options de la chaîne »), une seule fois pour tous les usages. -->
+        <p class="aide" id="decouvrir-aide" hidden>Les collaborations et les sorties viennent
+          de MusicBrainz, qui demande une adresse de contact : elle se renseigne une
+          fois dans Bibliothèque (Source, « Options de la chaîne »). Ensuite, le fil se met à jour tout seul à
+          l'ouverture du mode, et ne garde que les sorties de moins d'un mois.</p>
         <input id="decouvrir-recherche" class="chercher" type="search"
                placeholder="chercher un artiste" autocomplete="off">
         <div id="decouvrir-suggestions" class="liste-verif"></div>
-        <p class="rail__titre" style="margin-top:22px">Contact MusicBrainz</p>
-        <input id="decouvrir-contact" type="email" class="chercher"
-               placeholder="votre adresse de contact" autocomplete="email">
-        <p class="aide">Nécessaire pour interroger MusicBrainz — gardée sur cet
-          ordinateur, jamais envoyée ailleurs qu'à eux. À remplir une fois : la
-          même adresse sert à la passe « Genres MusicBrainz » du mode Bibliothèque.</p>
-        <p class="aide">Une fois l'adresse renseignée, le fil se met à jour tout
-          seul à l'ouverture du mode, et ne garde que les sorties de moins d'un mois.</p>
       </div>
 
       <!-- Mode Découvrir : filtrer le fil par famille sonique de l'artiste-ancre,
@@ -102,9 +104,12 @@
         <button id="iphone-oublier" class="lien" hidden>Oublier l'iPhone</button>
         <button id="iphone-actualiser" class="lien">Actualiser</button>
 
-        <p class="rail__titre" style="margin-top:22px">Sur le téléphone</p>
+        <p class="rail__titre rail__titre--action" style="margin-top:22px">Sur le téléphone
+          <button class="aide-q" type="button" data-aide-pour="valise-aide" aria-expanded="false"
+                  aria-label="Aide de l'envoi">?</button>
+        </p>
         <div id="iphone-valises" class="iphone__valises"></div>
-        <p class="aide">Envoyer reprend d'abord les écoutes notées sur le
+        <p class="aide" id="valise-aide" hidden>Envoyer reprend d'abord les écoutes notées sur le
           téléphone, puis remplace ces valises par la nouvelle. En USB, ou en
           Wi-Fi si l'iPhone est déverrouillé sur le même réseau ; sans câble,
           l'iPhone appairé la prend à sa prochaine ouverture, sans
@@ -114,9 +119,10 @@
       <!-- Carte : visible en mode Explorer seulement -->
       <div class="bloc" id="bloc-colorer" hidden>
         <p class="rail__titre">Affichage</p>
-        <!-- Cinq affichages en colonne : en ligne, ils ne tenaient pas dans la
-             largeur du rail. -->
-        <div class="segments segments--colonne">
+        <!-- Cinq affichages sur deux rangées : en ligne, ils ne tenaient pas
+             dans la largeur du rail ; en colonne, ils prenaient 135 px
+             (Règle 13). -->
+        <div class="segments segments--grille">
           <button class="segment segment--actif" data-affichage="points">Nuage</button>
           <button class="segment" data-affichage="carte">Carte</button>
           <button class="segment" data-affichage="temps">Temps</button>
@@ -163,52 +169,6 @@
             <button class="segment" data-couleur="tempo">Tempo</button>
             <button class="segment" data-couleur="energie">Énergie</button>
           </div>
-          <div id="bloc-fond" hidden>
-            <p class="rail__titre" style="margin-top:14px">Fond de plan</p>
-            <div class="segments segments--colonne" id="carte-theme">
-              <button class="segment segment--actif" data-theme="osm-clair">OSM clair</button>
-              <button class="segment" data-theme="sepia">Sépia chaud</button>
-              <button class="segment" data-theme="encre">Encre</button>
-              <button class="segment" data-theme="nuit">Nuit</button>
-              <button class="segment" data-theme="bleu-plan">Bleu plan</button>
-            </div>
-            <!-- Les pentes entre quartiers (`docs/plan-balade.md`, P3) : les
-                 flèches rouges de *The Naked City*, aux zooms intermédiaires.
-                 Plan de ville réel seulement ; gardé comme le fond de plan. -->
-            <label class="case" id="ligne-pentes" style="margin-top:8px" hidden
-                   title="Flèches rouges d'un quartier vers ses deux voisins les plus proches à l'oreille, de part et d'autre de la frontière">
-              <input id="carte-pentes" type="checkbox">
-              Pentes
-            </label>
-            <!-- Le relief musical (`docs/plan-balade.md`, P6, `js/relief.js`) :
-                 plan de ville réel seulement ; la grandeur se choisit une
-                 fois l'option cochée. -->
-            <label class="case" id="ligne-relief" style="margin-top:4px" hidden
-                   title="Une altitude qui a un sens musical, ombrée et coupée de courbes de niveau numérotées. Cliquer une courbe : la molette la suit, son numéro l'ouvre">
-              <input id="carte-relief" type="checkbox">
-              Relief
-            </label>
-            <div class="segments segments--colonne" id="relief-grandeur" style="margin-top:4px" hidden>
-              <button class="segment segment--actif" data-grandeur="energie" title="L'énergie des morceaux">Énergie</button>
-              <button class="segment" data-grandeur="tempo" title="Le tempo des morceaux">Tempo</button>
-              <button class="segment" data-grandeur="popularite" title="La popularité des morceaux">Popularité</button>
-              <button class="segment" data-grandeur="familiarite" title="Ce que vous avez écouté, et combien de fois">Familiarité</button>
-            </div>
-            <!-- Traces et brouillard (`docs/plan-balade.md`, P5, `js/traces.js`) :
-                 plan de ville réel seulement, gardés comme le fond de plan. -->
-            <div id="ligne-traces" hidden>
-              <label class="case" style="margin-top:4px"
-                     title="Un voile sur les bâtiments dont le morceau n'a jamais été écouté ; il se lève à chaque écoute">
-                <input id="carte-brouillard" type="checkbox">
-                Brouillard
-              </label>
-              <label class="case" style="margin-top:4px"
-                     title="Les rues parcourues en balade, plus marquées à chaque passage">
-                <input id="carte-sentiers" type="checkbox">
-                Sentiers battus
-              </label>
-            </div>
-          </div>
           <div id="legende-continue" class="legende" hidden>
             <div class="legende__barre"></div>
             <div class="legende__bornes">
@@ -216,54 +176,20 @@
             </div>
           </div>
         </div>
-        <!-- La balade (`js/balade.js`) : combien elle demande. Gardé en local,
-             comme le fond de plan. Nuage et Carte seulement. -->
+        <!-- Les balades gardées et les chaînes, repliées (Règle 13). Leurs
+             réglages (intervention, allure) sont dans le bandeau de la balade,
+             sur la carte. Nuage et Carte seulement. -->
         <div id="bloc-balade">
-          <p class="rail__titre" style="margin-top:14px">Balade</p>
-          <div class="segments segments--colonne" id="balade-intervention">
-            <button class="segment" data-intervention="porter"
-                    title="Aucun panneau aux carrefours : la balade suit sa pente, les voies restent tracées">Se laisser porter</button>
-            <button class="segment segment--actif" data-intervention="proposer"
-                    title="Les voies s'annoncent à la fin du morceau ; sans geste, la balade prend la voie marquée">Proposer</button>
-            <button class="segment" data-intervention="demander"
-                    title="La balade attend votre choix à chaque carrefour, en silence s'il le faut">Demander</button>
-          </div>
-          <!-- L'allure : la voie que la balade prend d'elle-même au carrefour
-               (`docs/plan-balade.md`, P3). -->
-          <div class="segments" id="balade-allure" style="margin-top:8px">
-            <button class="segment" data-allure="rester"
-                    title="Au carrefour, la voie la plus proche à l'oreille">Rester</button>
-            <button class="segment segment--actif" data-allure="deriver"
-                    title="Proche et jamais écouté à parts égales">Dériver</button>
-            <button class="segment" data-allure="aventurer"
-                    title="Le jamais écouté d'abord, et un carrefour sur trois la voie la plus différente">S'aventurer</button>
-          </div>
-          <!-- Les allures du relief (P6) : elles suivent la grandeur du
-               relief, l'énergie par défaut. -->
-          <div class="segments" id="balade-allure-relief" style="margin-top:4px">
-            <button class="segment" data-allure="niveau"
-                    title="Rester à l'énergie du départ, le long d'une courbe de niveau : le style dérive">À niveau</button>
-            <button class="segment" data-allure="gravir"
-                    title="L'énergie monte, une bande à la fois">Gravir</button>
-            <button class="segment" data-allure="redescendre"
-                    title="L'énergie baisse, une bande à la fois">Redescendre</button>
-          </div>
           <!-- Les balades gardées (P5) : un clic redessine, ▶ rejoue. -->
-          <div id="bloc-balades-passees" hidden>
-            <p class="rail__titre" style="margin-top:14px">Balades passées</p>
+          <details id="bloc-balades-passees" class="replie replie--rail" hidden>
+            <summary class="rail__titre replie__titre">Balades passées</summary>
             <ul id="balades-passees" class="balades-passees"></ul>
-          </div>
+          </details>
           <!-- Les chaînes gardées (P8) : un clic cadre, ▶ rejoue, ✕ retire le tracé. -->
-          <div id="bloc-chaines" hidden>
-            <p class="rail__titre" style="margin-top:14px">Chaînes</p>
+          <details id="bloc-chaines" class="replie replie--rail" hidden>
+            <summary class="rail__titre replie__titre">Chaînes</summary>
             <ul id="chaines" class="balades-passees"></ul>
-          </div>
-        </div>
-        <div class="zoom" id="bloc-zoom">
-          <button id="zoom-moins" aria-label="Dézoomer">−</button>
-          <span class="zoom__val" id="zoom-val">×1,0</span>
-          <button id="zoom-plus" aria-label="Zoomer">+</button>
-          <button id="zoom-reset" aria-label="Vue d'ensemble">⤢</button>
+          </details>
         </div>
         <!-- Temps (frise des filiations) : seuil de marquage des hubs — un
              album dont le nombre d'arcs sortants dépasse ce seuil reçoit un
@@ -281,8 +207,16 @@
              principale (#q), pas un champ dédié — une seule barre dans toute
              l'appli. Les résultats s'affichent ici pendant la frappe. -->
         <div id="bloc-anneau" hidden>
+          <p class="rail__titre rail__titre--action" style="margin-top:14px">Anneau
+            <button class="aide-q" type="button" data-aide-pour="anneau-aide" aria-expanded="false"
+                    aria-label="Aide de l'anneau">?</button>
+          </p>
+          <p class="aide" id="anneau-aide" hidden>Chercher un album ci-dessus, choisir un résultat.
+            Cliquer un voisin de l'anneau en fait le nouvel album focal. La
+            tension règle le regroupement des liens par famille (bundling
+            hiérarchique) — 0 : droites directes, 1 : suit la hiérarchie.</p>
           <div id="anneau-resultats" class="candidats" hidden></div>
-          <label class="reglette" style="margin-top:14px">
+          <label class="reglette">
             <span>voisins</span>
             <input id="anneau-k" type="range" min="3" max="20" step="1" value="8">
             <output id="anneau-k-val">8</output>
@@ -292,10 +226,6 @@
             <input id="anneau-beta" type="range" min="0" max="1" step="0.05" value="0.8">
             <output id="anneau-beta-val">0,80</output>
           </label>
-          <p class="aide">Chercher un album ci-dessus, choisir un résultat.
-            Cliquer un voisin de l'anneau en fait le nouvel album focal. La
-            tension règle le regroupement des liens par famille (bundling
-            hiérarchique) — 0 : droites directes, 1 : suit la hiérarchie.</p>
         </div>
         </div><!-- /#reglages-explorer -->
       </div>
@@ -345,7 +275,6 @@
              les conditions du site ; rien n'est lu par l'application). -->
         <button id="songsterr" class="lien" hidden style="margin-top:8px"
                 title="Ouvre dans le navigateur la recherche de ce morceau sur Songsterr">Voir les tablatures sur Songsterr</button>
-        <p class="aide" id="usage-aide"></p>
       </div>
 
       <!-- Modes Pratiquer et Créer : les partitions du morceau, une ligne par instrument
@@ -414,6 +343,10 @@
            action sur le morceau en cours — le centre garde l'établi. -->
       <div class="bloc" id="bloc-demix" hidden>
         <p class="rail__titre">Démixage</p>
+        <!-- L'établi ouvert : une ligne, la variante et de quoi en changer. -->
+        <p class="demix-resume" id="demix-resume" hidden><span id="demix-resume-variante"></span>
+          <button id="demix-changer" class="lien" type="button">changer</button></p>
+        <div id="demix-detail">
         <p class="aide" id="demix-source">Aucun morceau choisi.</p>
         <div class="segments segments--colonne" id="variantes">
           <button class="segment segment--actif" data-variante="htdemucs">4 stems</button>
@@ -421,81 +354,14 @@
           <button class="segment" data-variante="htdemucs_ft">4 stems affinés — plus lent</button>
           <button class="segment" data-variante="bsrofo_sw">6 stems RoFormer — le meilleur, le plus lent</button>
         </div>
-        <p class="aide" id="demix-provenance" hidden>Modèle communautaire (BS-RoFormer « SW ») :
-          auteur inconnu, licence non déclarée. Téléchargé depuis Hugging Face pour votre usage,
-          jamais redistribué.</p>
         <div class="ajout__ligne" style="margin-top:10px">
           <button id="lancer-demix" class="bouton">Séparer</button>
         </div>
         <progress id="demix-jauge" class="jauge" hidden max="1" value="0"></progress>
         <p id="demix-etat" class="scan-etat"></p>
+        </div>
       </div>
 
-      <div class="bloc" id="bloc-chemin" hidden>
-        <p class="rail__titre">Chemin</p>
-        <div class="segments segments--colonne">
-          <button class="segment segment--actif" data-chemin="direct">Direct</button>
-          <button class="segment" data-chemin="sonique">Sonique</button>
-          <button class="segment" data-chemin="errance">Errance sonique</button>
-          <button class="segment" data-chemin="dessine">Dessiné</button>
-          <button class="segment" data-chemin="itineraire">Itinéraire</button>
-          <button class="segment" data-chemin="voyage">Voyage</button>
-        </div>
-
-        <!-- Itinéraire : le réseau de circulation et ses profils. Visible
-             seulement dans ce mode de chemin. -->
-        <div id="bloc-itineraire" hidden>
-          <p class="rail__titre" style="margin-top:12px">Profil</p>
-          <div class="segments segments--colonne">
-            <button class="segment segment--actif" data-profil="autoroute">Par le connu — les grands axes</button>
-            <button class="segment" data-profil="sentier">Redécouvrir — les petites rues</button>
-            <button class="segment" data-profil="panoramique">Panoramique — parcs et berges</button>
-          </div>
-          <label class="reglette" style="margin-top:10px">
-            <span>durée</span>
-            <input id="itin-minutes" type="range" min="0" max="120" step="5" value="40">
-            <output id="itin-minutes-val">40 min</output>
-          </label>
-          <button id="itin-tracer" class="bouton" style="margin-top:10px;width:100%">Tracer</button>
-          <p id="itin-etat" class="aide"></p>
-        </div>
-        <div class="bornes">
-          <div class="borne" id="borne-depart">
-            <span class="borne__role">départ</span>
-            <span class="borne__nom">—</span>
-            <button class="borne__x" data-borne="depart" aria-label="Effacer le départ">×</button>
-          </div>
-          <div class="borne" id="borne-arrivee">
-            <span class="borne__role">arrivée</span>
-            <span class="borne__nom">—</span>
-            <button class="borne__x" data-borne="arrivee" aria-label="Effacer l'arrivée">×</button>
-          </div>
-        </div>
-        <p id="chemin-aide" class="aide"></p>
-        <label class="reglette" id="reglette-morceaux">
-          <span>morceaux</span>
-          <input id="chemin-n" type="number" min="2" max="120" step="1" value="12">
-        </label>
-        <div id="bloc-bruit">
-          <label class="reglette">
-            <span>bruit</span>
-            <input id="bruit-chemin" type="range" min="0" max="1" step="0.05" value="0.3">
-            <span id="bruit-valeur" class="reglette__val">0,3</span>
-          </label>
-          <p class="aide">Ajoute une part de hasard à ce mode de chemin — 0 :
-            trajet exact ; plus haut : dérive davantage sans perdre le fil
-            sonore. Un trajet déjà tracé se rejoue à la volée quand vous
-            bougez le curseur.</p>
-        </div>
-        <button id="chemin-rejouer" class="lien" hidden>Autre tirage</button>
-        <button id="chemin-garder" class="lien" type="button" hidden
-                title="Garder cet itinéraire sous un nom : une playlist, et son tracé sur la carte">Garder sur la carte</button>
-      </div>
-
-      <div class="bloc">
-        <p class="rail__titre">Bibliothèque</p>
-        <div id="sommaire" class="sommaire">—</div>
-      </div>
     </aside>
 
     <!-- Centre : parcours -->
@@ -584,6 +450,11 @@
              (`#bloc-demix`) ; le centre montre le morceau visé. -->
         <div id="editer-separer" class="editer-separer" hidden>
           <p class="aide" id="separer-titre"></p>
+          <!-- Les poids de BS-RoFormer « SW » n'ont ni auteur connu ni licence :
+               on le dit au moment de les télécharger (et dans « À propos »). -->
+          <p class="aide" id="demix-provenance" hidden>Modèle communautaire (BS-RoFormer « SW ») :
+            auteur inconnu, licence non déclarée. Téléchargé depuis Hugging Face pour votre usage,
+            jamais redistribué.</p>
         </div>
 
         <!-- Modes Pratiquer et Créer, état 3 : l'établi. La pile de stems occupe le centre,
@@ -626,6 +497,41 @@
             <button id="carte-balade-revenir" class="lien" type="button" hidden
                     title="Revenir au dernier carrefour et prendre une autre voie, sans couper le morceau en cours">← Carrefour précédent</button>
             <button id="carte-balade-arreter" class="lien" type="button">Arrêter la balade</button>
+            <!-- Ses réglages : ce qu'elle demande aux carrefours, son allure.
+                 Ils ne servent qu'une fois la balade lancée ; au départ, elle
+                 reprend les derniers choisis (gardés en local). -->
+            <button id="carte-balade-reglages" class="lien" type="button" aria-expanded="false"
+                    aria-controls="balade-reglages">Réglages</button>
+            <div id="balade-reglages" class="carte__balade-reglages" hidden>
+                <div class="segments segments--colonne" id="balade-intervention">
+                  <button class="segment" data-intervention="porter"
+                          title="Aucun panneau aux carrefours : la balade suit sa pente, les voies restent tracées">Se laisser porter</button>
+                  <button class="segment segment--actif" data-intervention="proposer"
+                          title="Les voies s'annoncent à la fin du morceau ; sans geste, la balade prend la voie marquée">Proposer</button>
+                  <button class="segment" data-intervention="demander"
+                          title="La balade attend votre choix à chaque carrefour, en silence s'il le faut">Demander</button>
+                </div>
+                <!-- L'allure : la voie que la balade prend d'elle-même au carrefour
+                     (`docs/plan-balade.md`, P3). -->
+                <div class="segments" id="balade-allure" style="margin-top:8px">
+                  <button class="segment" data-allure="rester"
+                          title="Au carrefour, la voie la plus proche à l'oreille">Rester</button>
+                  <button class="segment segment--actif" data-allure="deriver"
+                          title="Proche et jamais écouté à parts égales">Dériver</button>
+                  <button class="segment" data-allure="aventurer"
+                          title="Le jamais écouté d'abord, et un carrefour sur trois la voie la plus différente">S'aventurer</button>
+                </div>
+                <!-- Les allures du relief (P6) : elles suivent la grandeur du
+                     relief, l'énergie par défaut. -->
+                <div class="segments" id="balade-allure-relief" style="margin-top:4px">
+                  <button class="segment" data-allure="niveau"
+                          title="Rester à l'énergie du départ, le long d'une courbe de niveau : le style dérive">À niveau</button>
+                  <button class="segment" data-allure="gravir"
+                          title="L'énergie monte, une bande à la fois">Gravir</button>
+                  <button class="segment" data-allure="redescendre"
+                          title="L'énergie baisse, une bande à la fois">Redescendre</button>
+                </div>
+            </div>
           </div>
           <!-- Le carrefour de la balade (P2) : deux ou trois voies, à côté du
                promeneur, pendant la fin du morceau. Rempli par `js/balade.js`. -->
@@ -634,19 +540,154 @@
             <ol id="carrefour-voies" class="carrefour__voies"></ol>
             <p class="carrefour__aide">Survoler : écouter 5 s<br>1 2 3 ou flèches : prendre · Échap</p>
           </div>
-          <!-- L'aura (P4, `js/aura.js`) : entendre, très bas, les morceaux
-               autour du curseur ou du promeneur. -->
-          <button id="carte-aura" class="carte__aura" type="button" aria-pressed="false"
-                  aria-label="Aura">
-            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-              <path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/>
-              <path class="carte__aura-ondes" d="M13 7.2a4 4 0 0 1 0 5.6M15.4 5a7 7 0 0 1 0 10"
-                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <path class="carte__aura-coupe" d="M13 8l4.5 4.5M17.5 8L13 12.5"
-                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-            <span id="carte-aura-texte">Entendre autour</span>
-          </button>
+          <!-- Les outils de la carte, posés sur elle (Règle 12 : le centre porte
+               l'objet et les commandes qui s'y posent) : le chemin et les calques
+               ouvrent chacun leur panneau, sous le zoom. -->
+          <div class="carte__outils" id="carte-outils">
+            <div class="carte__outils-ligne">
+              <button id="outil-chemin" class="carte__outil" type="button" aria-expanded="false"
+                      aria-controls="bloc-chemin"
+                      title="Tracer un chemin entre deux morceaux — Maj+clic sur la carte l'ouvre aussi">Chemin</button>
+              <button id="outil-calques" class="carte__outil" type="button" aria-expanded="false"
+                      aria-controls="panneau-calques" hidden
+                      title="Le fond de plan, les pentes, le relief, le brouillard, les sentiers">Calques</button>
+              <!-- L'aura (P4, `js/aura.js`) : entendre, très bas, les morceaux
+                   autour du curseur ou du promeneur. -->
+              <button id="carte-aura" class="carte__aura" type="button" aria-pressed="false"
+                      aria-label="Aura">
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                  <path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/>
+                  <path class="carte__aura-ondes" d="M13 7.2a4 4 0 0 1 0 5.6M15.4 5a7 7 0 0 1 0 10"
+                        fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path class="carte__aura-coupe" d="M13 8l4.5 4.5M17.5 8L13 12.5"
+                        fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span id="carte-aura-texte">Entendre autour</span>
+              </button>
+            </div>
+            <div class="zoom" id="bloc-zoom">
+              <button id="zoom-moins" aria-label="Dézoomer">−</button>
+              <span class="zoom__val" id="zoom-val">×1,0</span>
+              <button id="zoom-plus" aria-label="Zoomer">+</button>
+              <button id="zoom-reset" aria-label="Vue d'ensemble">⤢</button>
+            </div>
+            <!-- Calques : le fond de plan et ce qui s'y pose (Carte seulement). -->
+            <div id="panneau-calques" class="carte__panneau" hidden>
+              <div id="bloc-fond" hidden>
+                <p class="rail__titre">Fond de plan</p>
+                <div class="segments segments--colonne" id="carte-theme">
+                  <button class="segment segment--actif" data-theme="osm-clair">OSM clair</button>
+                  <button class="segment" data-theme="sepia">Sépia chaud</button>
+                  <button class="segment" data-theme="encre">Encre</button>
+                  <button class="segment" data-theme="nuit">Nuit</button>
+                  <button class="segment" data-theme="bleu-plan">Bleu plan</button>
+                </div>
+                <!-- Les pentes entre quartiers (`docs/plan-balade.md`, P3) : les
+                     flèches rouges de *The Naked City*, aux zooms intermédiaires.
+                     Plan de ville réel seulement ; gardé comme le fond de plan. -->
+                <label class="case" id="ligne-pentes" style="margin-top:8px" hidden
+                       title="Flèches rouges d'un quartier vers ses deux voisins les plus proches à l'oreille, de part et d'autre de la frontière">
+                  <input id="carte-pentes" type="checkbox">
+                  Pentes
+                </label>
+                <!-- Le relief musical (`docs/plan-balade.md`, P6, `js/relief.js`) :
+                     plan de ville réel seulement ; la grandeur se choisit une
+                     fois l'option cochée. -->
+                <label class="case" id="ligne-relief" style="margin-top:4px" hidden
+                       title="Une altitude qui a un sens musical, ombrée et coupée de courbes de niveau numérotées. Cliquer une courbe : la molette la suit, son numéro l'ouvre">
+                  <input id="carte-relief" type="checkbox">
+                  Relief
+                </label>
+                <div class="segments segments--colonne" id="relief-grandeur" style="margin-top:4px" hidden>
+                  <button class="segment segment--actif" data-grandeur="energie" title="L'énergie des morceaux">Énergie</button>
+                  <button class="segment" data-grandeur="tempo" title="Le tempo des morceaux">Tempo</button>
+                  <button class="segment" data-grandeur="popularite" title="La popularité des morceaux">Popularité</button>
+                  <button class="segment" data-grandeur="familiarite" title="Ce que vous avez écouté, et combien de fois">Familiarité</button>
+                </div>
+                <!-- Traces et brouillard (`docs/plan-balade.md`, P5, `js/traces.js`) :
+                     plan de ville réel seulement, gardés comme le fond de plan. -->
+                <div id="ligne-traces" hidden>
+                  <label class="case" style="margin-top:4px"
+                         title="Un voile sur les bâtiments dont le morceau n'a jamais été écouté ; il se lève à chaque écoute">
+                    <input id="carte-brouillard" type="checkbox">
+                    Brouillard
+                  </label>
+                  <label class="case" style="margin-top:4px"
+                         title="Les rues parcourues en balade, plus marquées à chaque passage">
+                    <input id="carte-sentiers" type="checkbox">
+                    Sentiers battus
+                  </label>
+                </div>
+              </div>
+            </div>
+            <!-- Chemin : son mode, ses bornes, ses réglages. L'aide de chaque
+                 mode derrière « ? ». -->
+            <div id="bloc-chemin" class="carte__panneau" hidden>
+              <p class="rail__titre rail__titre--action">Chemin
+                <button class="aide-q" type="button" data-aide-pour="chemin-aides" aria-expanded="false"
+                        aria-label="Aide du chemin">?</button>
+              </p>
+              <div id="chemin-aides" hidden>
+                <p id="chemin-aide" class="aide"></p>
+                <p class="aide" id="bruit-aide">Le bruit ajoute une part de hasard à ce mode de chemin — 0 :
+                  trajet exact ; plus haut : dérive davantage sans perdre le fil
+                  sonore. Un trajet déjà tracé se rejoue à la volée quand vous
+                  bougez le curseur.</p>
+              </div>
+              <div class="segments segments--colonne">
+                <button class="segment segment--actif" data-chemin="direct">Direct</button>
+                <button class="segment" data-chemin="sonique">Sonique</button>
+                <button class="segment" data-chemin="errance">Errance sonique</button>
+                <button class="segment" data-chemin="dessine">Dessiné</button>
+                <button class="segment" data-chemin="itineraire">Itinéraire</button>
+                <button class="segment" data-chemin="voyage">Voyage</button>
+              </div>
+
+              <!-- Itinéraire : le réseau de circulation et ses profils. Visible
+                   seulement dans ce mode de chemin. -->
+              <div id="bloc-itineraire" hidden>
+                <p class="rail__titre" style="margin-top:12px">Profil</p>
+                <div class="segments segments--colonne">
+                  <button class="segment segment--actif" data-profil="autoroute">Par le connu — les grands axes</button>
+                  <button class="segment" data-profil="sentier">Redécouvrir — les petites rues</button>
+                  <button class="segment" data-profil="panoramique">Panoramique — parcs et berges</button>
+                </div>
+                <label class="reglette" style="margin-top:10px">
+                  <span>durée</span>
+                  <input id="itin-minutes" type="range" min="0" max="120" step="5" value="40">
+                  <output id="itin-minutes-val">40 min</output>
+                </label>
+                <button id="itin-tracer" class="bouton" style="margin-top:10px;width:100%">Tracer</button>
+                <p id="itin-etat" class="aide"></p>
+              </div>
+              <div class="bornes">
+                <div class="borne" id="borne-depart">
+                  <span class="borne__role">départ</span>
+                  <span class="borne__nom">—</span>
+                  <button class="borne__x" data-borne="depart" aria-label="Effacer le départ">×</button>
+                </div>
+                <div class="borne" id="borne-arrivee">
+                  <span class="borne__role">arrivée</span>
+                  <span class="borne__nom">—</span>
+                  <button class="borne__x" data-borne="arrivee" aria-label="Effacer l'arrivée">×</button>
+                </div>
+              </div>
+              <label class="reglette" id="reglette-morceaux">
+                <span>morceaux</span>
+                <input id="chemin-n" type="number" min="2" max="120" step="1" value="12">
+              </label>
+              <div id="bloc-bruit">
+                <label class="reglette">
+                  <span>bruit</span>
+                  <input id="bruit-chemin" type="range" min="0" max="1" step="0.05" value="0.3">
+                  <span id="bruit-valeur" class="reglette__val">0,3</span>
+                </label>
+              </div>
+              <button id="chemin-rejouer" class="lien" hidden>Autre tirage</button>
+              <button id="chemin-garder" class="lien" type="button" hidden
+                      title="Garder cet itinéraire sous un nom : une playlist, et son tracé sur la carte">Garder sur la carte</button>
+            </div>
+          </div>
           <!-- Clic droit sur un morceau de la carte. -->
           <div id="carte-menu" class="carte__menu" role="menu" hidden>
             <button id="carte-menu-flaner" role="menuitem" type="button">Flâner d'ici</button>
@@ -901,9 +942,9 @@
               </label>
               <p class="aide">Sans adresse, seule l'étape des genres est sautée — les
                 autres n'en ont pas besoin. MusicBrainz l'exige pour identifier qui
-                interroge son API ; elle ne part nulle part ailleurs. C'est la même
-                adresse que le champ « Contact MusicBrainz » du mode Découvrir — la
-                remplir ici la remplit là, et l'inverse.</p>
+                interroge son API ; elle ne part nulle part ailleurs. La même adresse
+                sert à Découvrir (collaborations, sorties) et aux liens d'un
+                artiste.</p>
             </details>
             <progress id="scan-jauge" class="jauge" hidden max="1" value="0"></progress>
             <p id="scan-etat" class="scan-etat"></p>
@@ -1234,8 +1275,9 @@
               <div id="decouvrir-vide-voisins" class="insp__vide" hidden>Aucun artiste voisin pour l'instant.</div>
             </div>
             <div id="decouvrir-actus-vide" class="insp__vide" hidden>Pas encore
-              d'actualité. Renseignez une adresse de contact MusicBrainz dans le
-              rail, puis « Actualiser » — la première passe peut être longue.</div>
+              d'actualité. Renseignez une adresse de contact MusicBrainz dans
+              Bibliothèque (Source, « Options de la chaîne »), puis « Actualiser » — la première passe
+              peut être longue.</div>
           </div>
 
           <hr class="decouvrir-separateur">

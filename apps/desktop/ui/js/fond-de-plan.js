@@ -101,10 +101,42 @@ function majRailExplorer() {
   demander("lama-vue", enLama);
   demander("bloc-familles", !enLama && carte.couleur === "famille");
   demander("bloc-chercher", !enLama);
-  // L'anneau et le Lama n'ont aucun mode de chemin (voir `MODES_CHEMIN`) :
-  // sans ce repli, le bloc « Chemin » restait affiché — titre, bornes vides
-  // et aide du mode « direct » — alors qu'aucun de ses boutons n'a de sens.
-  demander("bloc-chemin", (MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points).length > 0);
+  // Les outils posés sur la carte. L'anneau et le Lama n'ont aucun mode de
+  // chemin (voir `MODES_CHEMIN`) : pas d'outil « Chemin », sans quoi son
+  // panneau montrait des bornes vides et l'aide du mode « direct » alors
+  // qu'aucun de ses boutons n'a de sens. Les calques sont ceux du plan.
+  const chemin = (MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points).length > 0;
+  const calques = carte.affichage === "carte";
+  $("outil-chemin").hidden = !chemin;
+  $("outil-calques").hidden = !calques;
+  if (!chemin) ouvrirPanneauCarte("outil-chemin", false);
+  if (!calques) ouvrirPanneauCarte("outil-calques", false);
+}
+
+/* ------------------------------------------- les outils posés sur la carte */
+
+/// Un panneau sous le zoom par outil, un seul ouvert à la fois.
+const PANNEAUX_CARTE = { "outil-chemin": "bloc-chemin", "outil-calques": "panneau-calques" };
+const outilsCarte = { cheminOuvert: false };
+
+function ouvrirPanneauCarte(outil, ouvrir) {
+  for (const [b, p] of Object.entries(PANNEAUX_CARTE)) {
+    // Ouvrir l'un referme l'autre ; fermer l'un laisse l'autre tel quel.
+    if (b !== outil && !ouvrir) continue;
+    const oui = ouvrir && b === outil;
+    $(p).hidden = !oui;
+    $(b).setAttribute("aria-expanded", String(oui));
+  }
+  if (ouvrir && outil === "outil-chemin") outilsCarte.cheminOuvert = true;
+}
+for (const b of Object.keys(PANNEAUX_CARTE))
+  $(b).addEventListener("click", () => ouvrirPanneauCarte(b, $(b).getAttribute("aria-expanded") !== "true"));
+
+/// Le premier Maj+clic de la session ouvre le panneau du chemin : la borne
+/// qu'il pose s'y lit, avec les réglages du mode. Refermé ensuite, il reste
+/// fermé : le bouton « Chemin » le rouvre.
+function ouvrirCheminAuPremierMaj() {
+  if (!outilsCarte.cheminOuvert) ouvrirPanneauCarte("outil-chemin", true);
 }
 
 /// Les modes de chemin qui ont un sens dans chaque affichage.
@@ -136,6 +168,7 @@ function majReglagesChemin() {
   if ($("bloc-itineraire")) $("bloc-itineraire").hidden = !estItin;
   if ($("reglette-morceaux")) $("reglette-morceaux").hidden = estItin;
   if ($("bloc-bruit")) $("bloc-bruit").hidden = estItin;
+  if ($("bruit-aide")) $("bruit-aide").hidden = estItin;
   if ($("itin-tracer")) $("itin-tracer").hidden = estItin && carteReelle();
   if (estItin && $("chemin-rejouer")) $("chemin-rejouer").hidden = true;
 }
@@ -631,5 +664,6 @@ async function chargerCarte() {
 
 export {
   aideCourante, bruitChemin, chargerCarte, dessinerBornes, majAffichageAnneau, majAffichageTemps,
-  majLegendeContinue, majRailExplorer, poserBorne, poserModeChemin, preparerGraphe,
+  majLegendeContinue, majRailExplorer, ouvrirCheminAuPremierMaj, poserBorne, poserModeChemin,
+  preparerGraphe,
 };

@@ -315,9 +315,8 @@ ligne). Ensuite : **198 cellules, 0 violation**.
 
 ## Règles de place — à quoi sert chaque zone, et combien elle tient
 
-Proposées par `synthese-novembre-2026.md` (§ 2.4) et écrites le 7 novembre
-2026. Leur mise en œuvre (désencombrer le rail) attend les décisions du § 2.5 ;
-la Règle 13 se mesure dès maintenant.
+Proposées par `synthese-novembre-2026.md` (§ 2.4), écrites et mises en œuvre
+le 7 novembre 2026 (B3, B4 ; `docs/journal.md`).
 
 ### 12. Une zone, un rôle
 
@@ -354,7 +353,21 @@ dans sa hauteur ; un `<details>` fermé ne compte que pour son titre.
 fenêtre de 1 400 × 900, le bas du dernier élément visible du rail, compté
 depuis le haut de son contenu, ne dépasse pas la hauteur visible du rail.
 L'audit tourne sur une copie de la vraie bibliothèque, qui a ses douze
-familles.
+familles. `apps/desktop/ui-tests/rails.spec.js` donne la même mesure bloc par
+bloc, et des captures (`rails.py` les assemble), sur une bibliothèque fictive à
+douze familles et avec l'établi chargé, que l'audit ne voit pas.
+
+**Ce qu'il a fallu** (7 novembre 2026, 8 écrans sur 13 dépassaient, la Carte
+de 1 409 px) : les outils de la carte posés sur elle (zoom, « Calques »,
+« Chemin » et son panneau) ; les réglages de la balade dans son bandeau ; les
+balades passées et les chaînes repliées ; le Démixage sur une ligne l'établi
+ouvert ; les aides de plus d'une ligne derrière un « ? » ou dans l'état vide du
+centre ; l'adresse de contact dans Bibliothèque seulement. Puis, pour tous les
+écrans : l'Affichage sur deux rangées, les six modes sur deux colonnes, la
+légende des familles sur deux colonnes (nom coupé, nom entier et compte au
+survol), le compte de la bibliothèque dans son bouton. Tout tient ; l'Anneau,
+au plus juste (803 px pour 804) : un bloc de plus dans son rail le ferait
+déborder.
 
 ## Principes généraux
 
@@ -411,7 +424,7 @@ cités sont ceux de `synthese-novembre-2026.md`, § 2.3.
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
 | 5 | Sobriété stricte | ✅ | Réglages avancés (perplexité, époques, k-means) déportés dans le mode Bibliothèque plutôt que dans le rail d'Explorer — conforme à la contrainte de `ui-spec.md` (« les réglages avancés restent dans un tiroir rétractable, pas dans le rail »), même si le rangement choisi (un autre mode entier plutôt qu'un tiroir) est plus lourd qu'un tiroir — voir Bibliothèque, Règle 8. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous. Le canevas se redessine au changement de thème ; les tuiles gardent leur propre fond de plan (Règle 3). |
-| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser posés sur la carte (`#bloc-zoom`, sous les outils, Règle 12) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
 
@@ -423,7 +436,7 @@ cités sont ceux de `synthese-novembre-2026.md`, § 2.3.
 | 2 | Estomper, jamais masquer | ✅ | Le mini-nuage dessine toute la bibliothèque, estompée, et colore par-dessus ce que les filtres retiennent ; la partie non survolée s'atténue (`globalAlpha`), jamais ne disparaît. |
 | 3 | Palette unique | ⚠️ | Six teintes de **parties** (`--partie-1..6`), prises dans la même encre que `--familles` mais distinctes d'elles : les parties et les familles ne se lisent pas ensemble (le mini-nuage montre les premières, pas les secondes). Dessinées pour les deux thèmes. |
 | 4 | Stabilité des positions | ✅ | Les points du mini-nuage ne bougent jamais (t-SNE) ; survoler une partie ne réordonne rien. |
-| 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, zoom, Familles et Chercher y sont masqués en bloc (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute du modèle repliée, sections séparées par des filets plutôt qu'encadrées. Le choix du modèle (intégré ou d'Ollama) reste derrière l'icône 🦙 ; sans modèle utilisable, une note de l'accueil dit quoi faire. |
+| 5 | Sobriété stricte | ✅ | Le rail ne garde que le sélecteur d'Affichage : Années, Colorer par, Familles et Chercher y sont masqués en bloc (le zoom et les outils sont sur la carte, qui n'est pas affichée) (`majRailExplorer`) — ils réglaient une carte qu'on ne voit pas. Accueil et exemples effacés dès la première demande (« Exemples » les rouvre), réponse brute du modèle repliée, sections séparées par des filets plutôt qu'encadrées. Le choix du modèle (intégré ou d'Ollama) reste derrière l'icône 🦙 ; sans modèle utilisable, une note de l'accueil dit quoi faire. |
 | 6 | Deux thèmes sérieux | ✅ | Vérifié sombre et clair le 1ᵉʳ octobre (maquette navigateur, voir ci-dessous) ; atteignable depuis le 1ᵉʳ novembre (constat transversal). |
 | 7 | Zoom/pan cohérents | — | Le mini-nuage n'a ni zoom ni pan : c'est un aperçu, le Nuage et la Carte portent les gestes. |
 | 8 | Révélation par échelle | ✅ | Détails à la demande : survol d'une partie (barre, liste, résultat, route), bulle du morceau au survol d'un point de la route, dépliants. |
@@ -499,7 +512,7 @@ rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 | 2 | Estomper, jamais masquer | ✅ | Dans l'état « choisir », la grille ou la liste suit le filtre du rail comme en Écouter (`filtrerEcoute`, `enStems()`) : estompée, rien de retiré. Pas de filtre sur la partition. |
 | 3 | Palette unique | — | Rien n'y est coloré par famille. La partition a ses jetons de feuille (`--feuille-*`), la section et la mesure courantes prennent `--accent`. |
 | 4 | Stabilité des positions | ✅ | La partition défile avec la lecture, mais une molette de l'utilisateur suspend ce suivi 3 s (`partition.moletteA`) : on ne lui reprend pas la page. Changer d'instrument (Basse, Batterie) remplace la partie, sans déplacer le reste. |
-| 5 | Sobriété stricte | ❌ | Quatre écarts relevés le 7 nov., deux corrigés le jour même (B1) : « Filtrer » ne paraît plus que dans l'état « choisir » (I4) ; le décompte dit « Sans · 1 mesure · 2 mesures » et tient sur une ligne (I10). Restent : la mention de licence de BS-RoFormer « SW » (`#demix-provenance`) est permanente dans le rail dès que cette variante est choisie, et c'est la variante par défaut ici (I9) ; le panneau d'un stem dans l'inspecteur porte la greffe (`zoneGreffe`, dans `panneauStem` quel que soit le mode), qui relève de Créer. |
+| 5 | Sobriété stricte | ❌ | Quatre écarts relevés le 7 nov., trois corrigés le jour même : « Filtrer » ne paraît plus que dans l'état « choisir » (I4) ; le décompte dit « Sans · 1 mesure · 2 mesures » et tient sur une ligne (I10) ; la mention de licence de BS-RoFormer « SW » (`#demix-provenance`) a quitté le rail pour le centre de l'état « séparer », quand ses poids sont à télécharger, et « À propos » (I9, B4). L'établi ouvert, le Démixage tient sur une ligne (« changer » le redéplie) et l'aide de la partie est dans l'état vide de la partition. Reste : le panneau d'un stem dans l'inspecteur porte la greffe (`zoneGreffe`, dans `panneauStem` quel que soit le mode), qui relève de Créer. |
 | 6 | Deux thèmes sérieux | ✅ | La partition passe par des jetons dessinés pour chaque thème (aplat clair et encre sombre en clair), vérifiés par `scripts/contraste-interface.py`. |
 | 7 | Zoom/pan cohérents | — | Pas de zoom : la molette fait défiler la partition, elle ne l'agrandit pas. |
 | 8 | Révélation par échelle | ✅ | Le bloc « Votre partie » (`#bloc-usage`) n'apparaît qu'une fois les stems là ; la notation seulement pour la basse, Songsterr seulement si le morceau a un titre, la boucle (`#boucle-reglage`) seulement une fois la pulsation du morceau connue ; rien ne se transcrit sans « Calculer ». |
@@ -574,10 +587,12 @@ de la file (Règle 10). Ensuite : **216 cellules, 0 violation**.
 
 Ce qui se pose sur la carte d'Explorer (Nuage, Carte) sans en être un
 affichage : le **bandeau de balade** (`#carte-balade`, en haut à gauche : où en
-est la balade, « ← Carrefour précédent », « Arrêter la balade ») ; le
+est la balade, « ← Carrefour précédent », « Arrêter la balade », et
+« Réglages », qui déplie l'intervention et l'allure) ; les **outils** (en haut à
+droite : « Chemin » et « Calques », chacun son panneau sous le zoom, un seul
+ouvert à la fois ; le premier Maj+clic ouvre celui du chemin) ; le
 **carrefour** (`#carte-carrefour`, deux ou trois voies à côté du promeneur à la
-fin d'un morceau, `js/balade.js`) ; l'**aura** (`#carte-aura`, le bouton en
-haut à droite, `js/aura.js`) ; le **brouillard** et les sentiers battus
+fin d'un morceau, `js/balade.js`) ; l'**aura** (`#carte-aura`, au bout de la ligne des outils, `js/aura.js`) ; le **brouillard** et les sentiers battus
 (couches du style, options du fond de plan, `js/traces.js`) ; le **menu du clic
 droit** (`#carte-menu` : « Flâner d'ici », « Épingler ici », « Retirer
 l'épingle », et le formulaire d'épingle, `js/lieux.js`).
@@ -588,7 +603,7 @@ l'épingle », et le formulaire d'épingle, `js/lieux.js`).
 | 2 | Estomper, jamais masquer | ✅ | Le brouillard voile, il ne retire pas : papier à 0,72 sur le bâti jamais écouté, la teinte de la famille se devine dessous, et le bâtiment reste cliquable. Au carrefour, une voie déjà écoutée et les voies d'un carrefour figé passent en retrait (opacité 0,45), à leur place. |
 | 3 | Palette unique | ⚠️ | Les pastilles des voies prennent la teinte de la famille sur le fond où l'on est (`couleursFamillesCarte` sur le plan, `couleursFamilles` ailleurs) ; promeneur, tracé et sentiers prennent `--accent` (la teinte posée par le style est remplacée par l'interface) ; le voile prend le papier de la palette. Réserve : le nuancier des épingles (six teintes codées dans `lieux.js`) n'est pas une famille, mais rien ne l'en distingue sur la carte. |
 | 4 | Stabilité des positions | ✅ | La carte ne se recadre jamais d'elle-même pendant une balade ; seuls un clic sur une balade passée ou une chaîne la cadrent (`fitBounds`). Le carrefour se place à côté du promeneur, jamais dessus (`placerPanneau`). Lever le brouillard d'un bâtiment est un `setFeatureState`, rien ne se redessine ailleurs. |
-| 5 | Sobriété stricte | ✅ | Une seule surimpression permanente, l'aura, un bouton nommé ; le bandeau n'existe qu'en balade, le carrefour qu'à la fin d'un morceau, et « ← Carrefour précédent » que s'il y a où revenir. Le menu ne montre que les entrées qui valent à l'endroit cliqué. Brouillard et sentiers sont des options éteintes par défaut (98,5 % de la ville serait voilée). |
+| 5 | Sobriété stricte | ✅ | Une seule surimpression permanente, la ligne des outils (« Chemin », « Calques » sur la Carte, l'aura) et le zoom, des boutons nommés ; leurs panneaux sont fermés par défaut, un seul ouvert à la fois. Le bandeau n'existe qu'en balade, le carrefour qu'à la fin d'un morceau, et « ← Carrefour précédent » que s'il y a où revenir. Le menu ne montre que les entrées qui valent à l'endroit cliqué. Brouillard et sentiers sont des options éteintes par défaut (98,5 % de la ville serait voilée). |
 | 6 | Deux thèmes sérieux | ⚠️ | Les cartouches (bandeau, carrefour, aura, menu) sont en jetons (`--panel`, `--line`, `--txt`, `--mut`, `--accent`) ; le voile suit la palette du fond. Réserve : les ombres portées sont des `rgba` noirs codés, et les teintes du nuancier sont les mêmes dans les deux thèmes. |
 | 7 | Zoom/pan cohérents | ✅ | Aucune n'a de zoom propre : la carte garde ses gestes. Le carrefour se replace près du promeneur à chaque mise à jour de la balade (le sondage du lecteur) : après un glisser, il peut traîner jusqu'à la suivante. |
 | 8 | Révélation par échelle | ✅ | Le compteur de quartier n'apparaît qu'au survol d'un territoire ; le carrefour attend la fin du morceau ; le formulaire d'épingle attend « Épingler ici » ; Échap ferme le carrefour, le menu et « Garder ». |

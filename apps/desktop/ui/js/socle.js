@@ -199,6 +199,15 @@ const fileAttente = {
   compositionActive: false,
 };
 
+// « ? » : une aide de plus d'une ligne attend ce geste (Règle 12). Le bouton
+// nomme ce qu'il montre (`data-aide-pour`) ; un second clic le replie.
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-aide-pour]");
+  if (!b) return;
+  const aide = $(b.dataset.aidePour);
+  aide.hidden = !aide.hidden;
+  b.setAttribute("aria-expanded", String(!aide.hidden));
+});
 
 export {
   $, duree, ecoute, enStems, estListePistes, fileAttente, horloge, invoke, isoler, journal, LIGNE,

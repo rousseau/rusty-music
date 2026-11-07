@@ -34,6 +34,9 @@ const edition = {
   // passe alors de « choisir » à « séparer ». Sans ça, entrer dans le mode
   // reste sur le sélecteur, le morceau en lecture n'étant qu'un candidat.
   sourceChoisie: false,
+  // `true` : « changer » a redéplié le bloc Démixage dans l'établi, qui n'en
+  // montre sinon qu'une ligne (`majResumeDemix`).
+  demixDeplie: false,
   tete: 0, // position de lecture, de 0 à 1 — partagée par tous les affichages
   // Vitesse et tonalité **d'ensemble**. Elles pilotent tous les stems que rien
   // n'en écarte ; un stem peut avoir les siennes (`docs/ui-spec-editeur.md`,

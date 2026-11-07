@@ -3441,3 +3441,73 @@ Pratiquer et Créer sont mesurés sans stems (l'audit n'en charge pas) : leur
 
 - **Vérifié** : `verifier.sh` vert, 46 tests de fumée ; `audit-interface.sh` : 252 cellules,
   48 violations, toutes G8 (8 écrans × 6 cellules à 1 400 × 900).
+
+## Interface, B4 : désencombrer le rail — 7 nov. 2026
+
+La Règle 13 (le rail tient dans la fenêtre) appliquée selon le § 2.4 de la
+synthèse. Décision 2 du § 2.5 tranchée par le prompt : les outils de la carte
+vont sur la carte. Aucun geste perdu : chacun a une place, et un test de fumée
+le vérifie.
+
+- **Explorer.** Une ligne d'outils en haut à droite de la carte : « Chemin »,
+  « Calques » (la Carte seulement), « Entendre autour », le zoom dessous. Le
+  panneau de chaque outil s'ouvre sous le zoom, un seul à la fois. « Calques »
+  porte le fond de plan, Pentes, Relief et sa grandeur, Brouillard, Sentiers
+  battus. « Chemin » porte son mode, ses bornes, ses réglages ; son aide et
+  celle du bruit sont derrière « ? ». Le premier Maj+clic de la session ouvre
+  ce panneau ; refermé, il reste fermé. Les réglages de la balade
+  (intervention, allure, allures du relief) passent dans son bandeau, derrière
+  « Réglages » ; au départ, la balade reprend les derniers choisis. Balades
+  passées et Chaînes sont repliées (`<details>`). L'aide de l'Anneau est
+  derrière « ? ».
+- **Pratiquer, Créer.** L'établi ouvert, le Démixage tient sur une ligne
+  (« 6 stems RoFormer · changer », `majResumeDemix`), « changer » redéplie le
+  bloc. L'aide de « Votre partie » est dans l'état vide de la partition. La
+  mention de licence de SW quitte le rail : au centre de l'état « séparer »
+  quand ses poids sont à télécharger, et dans « À propos » (qui la portait
+  déjà, par `MODELES.md`). C'était I9.
+- **Découvrir, Valise.** L'adresse de contact MusicBrainz n'est plus que dans
+  Bibliothèque (Source, « Options de la chaîne ») ; l'aide de Découvrir et
+  celle de l'envoi de la Valise sont derrière « ? ».
+- **« ? »** : un bouton `data-aide-pour` déplie le paragraphe qu'il nomme
+  (`socle.js`, un seul écouteur).
+- **Ce qui ne suffisait pas.** Avec ces déplacements, Explorer dépassait
+  encore d'environ 300 px et Écouter de 99 : la légende des douze familles
+  pèse ~280 px. Choisis sur mesure (question posée) : l'Affichage sur deux
+  rangées (prévu par la synthèse), les six modes sur deux colonnes, la légende
+  sur deux colonnes (nom coupé, nom entier et compte au survol), le compte de
+  la bibliothèque dans son bouton au lieu d'un bloc en bas du rail. Écarté :
+  les Années sur une ligne. En Temps, le bouton ↕ de chaque famille coupe
+  davantage les noms.
+- **Mesure.** `rails.spec.js` (nouveau, hors des tests de fumée) mesure le
+  rail de chaque écran bloc par bloc, sur une bibliothèque fictive à douze
+  familles, établi compris, et capture chaque rail ; `rails.py` les assemble.
+  Avant / après (Chrome) :
+
+| Écran | Avant (px) | Après (px) | Hauteur |
+|---|---:|---:|---:|
+| Explorer · Carte | 2 206 | 803 | 804 |
+| Explorer · Nuage | 1 964 | 803 | 804 |
+| Explorer · Temps | 1 631 | 755 | 804 |
+| Explorer · Anneau | 1 348 | 803 | 804 |
+| Pratiquer · établi | 1 303 | 623 | 764 |
+| Découvrir | 1 120 | 503 | 804 |
+| Écouter | 903 | 588 | 804 |
+| Valise | 806 | 468 | 804 |
+| Créer · établi | 731 | 297 | 764 |
+| Explorer · Lama | 594 | 343 | 804 |
+| Bibliothèque | 409 | 232 | 804 |
+
+  ![Le rail de chaque écran, avant et après B4](images/rails-b4.png)
+
+  ![La Carte et ses outils, Calques ouverts](images/explorer-outils-carte.jpg)
+
+- **Audit** (WebKit, vraie bibliothèque, 12 familles) : 252 cellules,
+  0 violation ; G8 vert sur les 13 écrans. Explorer 776 px (Nuage, Carte,
+  Carte + relief), Temps 755, **Anneau 803 pour 804** : un bloc de plus dans
+  son rail le ferait déborder.
+- **Vérifié** : `verifier.sh` vert, 48 tests d'interface (deux nouveaux, « B4 : » ; sept adaptés au nouveau
+  chemin de leur geste : Calques ouvert avant Pentes, Brouillard, Relief ;
+  balades passées et chaînes dépliées ; réglages de la balade dans le bandeau,
+  repris au départ depuis le stockage local). Piège : `page.mouse.click`
+  ignore `modifiers`, Maj se tient par `keyboard.down("Shift")`.

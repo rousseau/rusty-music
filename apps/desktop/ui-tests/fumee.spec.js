@@ -156,6 +156,73 @@ test("I10 : le décompte de Pratiquer tient sur une ligne dans le rail", async (
   expect(lignes).toEqual([1, 1, 1]);
 });
 
+test("B4 : zoom, Calques et Chemin sont posés sur la carte, plus dans le rail", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.waitForTimeout(800);
+  for (const id of ["#bloc-zoom", "#outil-chemin", "#carte-aura"])
+    await expect(page.locator(`.carte__outils ${id}`)).toBeVisible();
+  await expect(page.locator(".rail #bloc-zoom, .rail #bloc-chemin, .rail #bloc-fond")).toHaveCount(0);
+  // Calques : le plan seulement.
+  await expect(page.locator("#outil-calques")).toBeHidden();
+  // Le premier Maj+clic ouvre le panneau du chemin, avec la borne posée.
+  const p = fixtures.map_view[0];
+  const r = await page.locator("#carte").boundingBox();
+  const c = Math.min(r.width, r.height) / 2 - 28;
+  const majClic = async () => {
+    await page.keyboard.down("Shift");
+    await page.mouse.click(r.x + r.width / 2 + p.x * c, r.y + r.height / 2 + p.y * c);
+    await page.keyboard.up("Shift");
+  };
+  await majClic();
+  await expect(page.locator("#bloc-chemin")).toBeVisible();
+  await expect(page.locator("#outil-chemin")).toHaveAttribute("aria-expanded", "true");
+  // Son aide est derrière « ? ».
+  await expect(page.locator("#chemin-aide")).toBeHidden();
+  await page.click('[data-aide-pour="chemin-aides"]');
+  await expect(page.locator("#chemin-aide")).toBeVisible();
+  // Refermé, il le reste au Maj+clic suivant ; le bouton le rouvre.
+  await page.click("#outil-chemin");
+  await expect(page.locator("#bloc-chemin")).toBeHidden();
+  await majClic();
+  await expect(page.locator("#bloc-chemin")).toBeHidden();
+  // Calques sur la Carte, un panneau à la fois.
+  await page.click('[data-affichage="carte"]');
+  await page.click("#outil-chemin");
+  await page.click("#outil-calques");
+  await expect(page.locator("#panneau-calques")).toBeVisible();
+  await expect(page.locator("#bloc-chemin")).toBeHidden();
+  await expect(page.locator('#carte-theme [data-theme="encre"]')).toBeVisible();
+  // L'anneau n'a pas de chemin.
+  await page.click('[data-affichage="anneau"]');
+  await expect(page.locator("#outil-chemin")).toBeHidden();
+  await expect(page.locator("#outil-calques")).toBeHidden();
+  await expect(page.locator("#panneau-calques")).toBeHidden();
+});
+
+test("B4 : le rail garde la vue, le reste a sa place (Démixage, aides, contact, compte)", async ({ page }) => {
+  // Le compte de la bibliothèque, dans le bouton qui y mène.
+  await expect(page.locator(".bibliotheque-entree #sommaire")).toHaveText(String(PISTES.length));
+  // Découvrir : plus de champ de contact dans le rail ; il est dans Bibliothèque.
+  await page.click('button.mode[data-mode="decouvrir"]');
+  await expect(page.locator(".rail input[type=email]")).toHaveCount(0);
+  await expect(page.locator("#decouvrir-aide")).toBeHidden();
+  await page.click('[data-aide-pour="decouvrir-aide"]');
+  await expect(page.locator("#decouvrir-aide")).toContainText("Bibliothèque");
+  await expect(page.locator("#analyse-contact")).toHaveCount(1);
+  // Pratiquer, établi ouvert : le Démixage tient sur une ligne, « changer » le
+  // redéplie ; l'aide de la partie est au centre.
+  await page.click('button.mode[data-mode="ecoute"]');
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#editer-etabli")).toBeVisible();
+  await expect(page.locator("#demix-resume")).toBeVisible();
+  await expect(page.locator("#variantes")).toBeHidden();
+  await page.click("#demix-changer");
+  await expect(page.locator("#variantes")).toBeVisible();
+  await expect(page.locator(".rail #usage-aide")).toHaveCount(0);
+  await expect(page.locator("#partition-aide")).toContainText("S et M règlent l'écoute");
+});
+
 test("chaque écran montre ce que dit sa table (ecrans.js), rien d'un autre écran", async ({ page }) => {
   // De quoi peupler les états qui fuyaient : un album ouvert (« Choisir
   // l'édition… »), des stems chargés (l'établi), le Lama.
@@ -634,6 +701,8 @@ test("carte : l'option « Pentes » montre les flèches entre quartiers et se ga
   await page.reload();
   await page.click('button.mode[data-mode="explorer"]');
   await page.click('[data-affichage="carte"]');
+  // Les calques sont posés sur la carte (Règle 12), dans leur panneau.
+  await page.click("#outil-calques");
   const option = page.locator("#carte-pentes");
   await expect(page.locator("#ligne-pentes")).toBeVisible();
   await expect(option).not.toBeChecked();
@@ -649,6 +718,8 @@ test("carte : l'option « Pentes » montre les flèches entre quartiers et se ga
 
 test("carte : les balades passées se listent, se redessinent et se rejouent", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
+  // Repliées dans le rail (Règle 13) : un clic sur le titre les déplie.
+  await page.click("#bloc-balades-passees > summary");
   const ligne = page.locator("#balades-passees .balade-passee");
   await expect(ligne).toHaveCount(1);
   const voir = ligne.locator(".balade-passee__voir");
@@ -701,6 +772,7 @@ test("carte : le brouillard voile le jamais-écouté et se lève à chaque écou
   await page.reload();
   await page.click('button.mode[data-mode="explorer"]');
   await page.click('[data-affichage="carte"]');
+  await page.click("#outil-calques");
   await expect(page.locator("#ligne-traces")).toBeVisible();
   const visibilite = (c) =>
     page.evaluate((couche) => window.__CARTE_GL__.getLayoutProperty(couche, "visibility"), c);
@@ -769,6 +841,7 @@ test("carte : le relief, sa grandeur, et une courbe qu'on suit puis qu'on ouvre"
   await page.reload();
   await page.click('button.mode[data-mode="explorer"]');
   await page.click('[data-affichage="carte"]');
+  await page.click("#outil-calques");
   await expect(page.locator("#ligne-relief")).toBeVisible();
   await expect(page.locator("#relief-grandeur")).toBeHidden();
   const visibilite = (c) =>
@@ -808,12 +881,24 @@ test("carte : le relief, sa grandeur, et une courbe qu'on suit puis qu'on ouvre"
   await expect(page.locator("#fil-compte")).toContainText("3 morceaux au-dessus de 6");
 });
 
-test("balade : les allures du relief se choisissent dans le rail", async ({ page }) => {
+test("balade : ses réglages, dont les allures du relief, sont dans son bandeau", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
-  await page.click('#bloc-balade [data-allure="niveau"]');
-  await expect(page.locator('#bloc-balade [data-allure="niveau"]')).toHaveClass(/segment--actif/);
-  await expect(page.locator('#bloc-balade [data-allure="deriver"]')).not.toHaveClass(/segment--actif/);
+  await page.waitForTimeout(800);
+  // Pas dans le rail (Règle 13) : ils ne servent qu'une balade lancée.
+  await expect(page.locator("#balade-intervention")).toBeHidden();
+  const p = fixtures.map_view[0];
+  const r = await page.locator("#carte").boundingBox();
+  const c = Math.min(r.width, r.height) / 2 - 28;
+  await page.mouse.click(r.x + r.width / 2 + p.x * c, r.y + r.height / 2 + p.y * c, { button: "right" });
+  await page.click("#carte-menu-flaner");
+  await expect(page.locator("#carte-balade")).toBeVisible();
+  await page.click("#carte-balade-reglages");
+  await expect(page.locator("#balade-intervention")).toBeVisible();
+  await page.click('#balade-reglages [data-allure="niveau"]');
+  await expect(page.locator('#balade-reglages [data-allure="niveau"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator('#balade-reglages [data-allure="deriver"]')).not.toHaveClass(/segment--actif/);
   expect(await page.evaluate(() => localStorage.getItem("balade-allure"))).toBe("niveau");
+  await expect.poll(async () => (await appels(page, "balade_regler")).at(-1)).toEqual({ allure: "niveau" });
 });
 
 test("carte : épingler ici, flâner depuis l'épingle, la retirer", async ({ page }) => {
@@ -878,6 +963,7 @@ test("carte : épingler ici, flâner depuis l'épingle, la retirer", async ({ pa
 test("carte : garder une balade passée en chaîne, la rejouer, retirer son tracé", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await expect(page.locator("#bloc-chaines")).toBeHidden();
+  await page.click("#bloc-balades-passees > summary");
   await page.locator("#balades-passees .balade-passee button", { hasText: "☆" }).click();
   await expect(page.locator("#carte-garder")).toBeVisible();
   await expect(page.locator("#garder-nom")).toHaveValue(/^Balade du /);
@@ -887,6 +973,7 @@ test("carte : garder une balade passée en chaîne, la rejouer, retirer son trac
     nom: "Dimanche", origine: "balade", morceaux: [1, 2, 3],
   });
   await expect(page.locator("#carte-garder")).toBeHidden();
+  await page.click("#bloc-chaines > summary");
   const ligne = page.locator("#chaines .balade-passee");
   await expect(ligne).toHaveCount(1);
   await expect(ligne).toContainText("Dimanche · 3 morceaux");
@@ -931,10 +1018,14 @@ test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les 
 });
 
 test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde voie, l'extrait suit le survol", async ({ page }) => {
+  // Au départ, la balade reprend les derniers réglages choisis (gardés en local).
+  await page.evaluate(() => {
+    localStorage.setItem("balade-intervention", "demander");
+    localStorage.setItem("balade-allure", "aventurer");
+  });
+  await page.reload();
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);
-  await page.click('#balade-intervention [data-intervention="demander"]');
-  await page.click('#balade-allure [data-allure="aventurer"]');
   // La fin du morceau : le carrefour se présente dans les 30 dernières secondes.
   await page.evaluate(() => {
     const lire = window.__FIXTURES__.playback_state;
@@ -986,7 +1077,9 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   await expect(panneau).toBeHidden();
   // Le réglage reste d'une session à l'autre.
   expect(await page.evaluate(() => localStorage.getItem("balade-intervention"))).toBe("demander");
-  // Une autre allure en cours de balade : elle part au moteur, seule.
+  // Une autre allure en cours de balade, dans les réglages du bandeau : elle
+  // part au moteur, seule.
+  await page.click("#carte-balade-reglages");
   await page.click('#balade-allure [data-allure="rester"]');
   await expect.poll(async () => (await appels(page, "balade_regler")).at(-1)).toEqual({ allure: "rester" });
   await expect(page.locator('#balade-allure [data-allure="rester"]')).toHaveClass(/segment--actif/);

@@ -39,12 +39,12 @@ async function chargerArtistesDecouvrir() {
 }
 
 /// L'adresse de contact MusicBrainz : une seule valeur, exigée dans le
-/// User-Agent pour toute requête à leur API. Deux fonctions s'en servent —
-/// les collaborations d'artiste (ce mode) et la passe « Genres MusicBrainz »
-/// du mode Bibliothèque — d'où deux champs, tenus synchronisés sur une même
-/// clé de stockage.
+/// User-Agent pour toute requête à leur API. Les collaborations d'artiste (ce
+/// mode) et la passe « Genres MusicBrainz » s'en servent ; elle se renseigne
+/// dans Bibliothèque seulement (Règle 12 : pas de réglage d'application dans
+/// le rail).
 const CONTACT_MB_CLE = "mb-contact";
-const CHAMPS_CONTACT_MB = ["decouvrir-contact", "analyse-contact"];
+const CHAMPS_CONTACT_MB = ["analyse-contact"];
 
 function contactMb() {
   return (localStorage.getItem(CONTACT_MB_CLE) || "").trim();

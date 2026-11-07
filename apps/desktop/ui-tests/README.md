@@ -16,6 +16,7 @@ SONDE=1 npx playwright test   # liste, par test, les commandes sans réponse fig
 | `outils.js` | sert `../ui/` depuis le disque (`page.route`, pas de serveur), coupe le réseau, injecte faux Tauri et réponses |
 | `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Pratiquer et Créer avec quatre stems factices, palette ⌘K, filtres qui estompent, thème |
 | `captures.spec.js` | **pas un test** : captures d'écran des deux thèmes sur `collection-fictive.js` (artistes et albums inventés, pochettes engendrées), vers `docs/images/` ; seulement par `npm run captures` (`CAPTURES=1`) |
+| `rails.spec.js`, `rails.py` | **pas un test** : la hauteur du rail de chaque écran, bloc par bloc (Règle 13, la mesure de G8), sur une bibliothèque fictive à douze familles, établi compris ; captures assemblées côte à côte par `rails.py` (`RAILS=avant npm run rails`, puis `python3 rails.py DOSSIER sortie.png avant apres`) |
 | `ecritures.spec.js` | noms en arabe et en japonais sur une bibliothèque à part : `lang`, isolats bidi (Règle 11) |
 
 Un test échoue sur **toute** erreur JavaScript : exception non rattrapée,

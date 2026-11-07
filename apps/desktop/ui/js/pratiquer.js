@@ -720,13 +720,15 @@ async function montrerPartition() {
   const instrument = instrumentPratique();
   const tr = p && instrument ? transcription(instrument) : null;
   const message = !p
-    ? "Pulsation en cours de calcul… La partition se pose sur les mesures du morceau."
+    ? `Pulsation en cours de calcul… La partition se pose sur les mesures du morceau. ${aidePartie()}`
     : !instrument
       ? "Ce morceau n'a ni basse ni batterie séparées."
       : null;
+  // L'état vide du centre porte l'aide de la partie (Règle 12 : pas d'aide de
+  // plus d'une ligne dans le rail).
   const aCalculer =
     !message && !tr
-      ? "Partition pas encore calculée : « Calculer » dans le bloc Partitions du rail. En attendant, la grille des mesures."
+      ? `Partition pas encore calculée : « Calculer » dans le bloc Partitions du rail. En attendant, la grille des mesures. ${aidePartie()}`
       : null;
   // Pendant la transcription, ou sans elle (batterie), la grille mesurée.
   const note =
@@ -863,6 +865,14 @@ $("songsterr").addEventListener("click", () => {
   ouvrirLien(`https://www.songsterr.com/?pattern=${encodeURIComponent(motif)}`);
 });
 
+/// L'aide de la partie, dans l'état vide de la partition (`montrerPartition`).
+function aidePartie() {
+  return (
+    "Sa partie s'affiche ici, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus." +
+    (decompteMesures ? " ▶ fait d’abord le décompte au tempo du morceau, puis repart du premier temps de la mesure en cours." : "")
+  );
+}
+
 /// Range le centre selon l'usage. Appelée par `majEtatEditer`.
 function majUsage() {
   const etabli = $("editer-etabli");
@@ -886,11 +896,6 @@ function majUsage() {
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
     b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
   }
-  $("usage-aide").textContent =
-    edition.usage === "pratiquer"
-      ? "Sa partie s'affiche au centre, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus." +
-        (decompteMesures ? " ▶ fait d’abord le décompte au tempo du morceau, puis repart du premier temps de la mesure en cours." : "")
-      : "";
   etabli.classList.toggle("etabli--pratiquer", pratiquer);
   $("partition").hidden = !pratiquer;
   if (pratiquer) montrerPartition();
@@ -1521,6 +1526,8 @@ function majEtatEditer() {
 
   demander("editer-separer", etat === 2);
   demander("editer-etabli", etat === 3);
+  if (etat !== 3) edition.demixDeplie = false;
+  majResumeDemix(etat === 3);
   demander("dock", etat === 3);
   demander("bloc-stem", etat === 3 && !!edition.stemSel);
   // « Filtrer » estompe la grille ou la liste : il n'a plus rien à filtrer
@@ -1705,8 +1712,6 @@ function choisirVariante(nom) {
   document
     .querySelectorAll("[data-variante]")
     .forEach((s) => s.classList.toggle("segment--actif", s.dataset.variante === nom));
-  // Les poids de SW n'ont ni auteur connu ni licence : on le dit au moment du choix.
-  $("demix-provenance").hidden = nom !== "bsrofo_sw";
   majTexteBouton();
 }
 
@@ -1755,7 +1760,26 @@ async function majVariantes() {
 function majTexteBouton() {
   const mo = variantesAAcquerir.get(edition.variante);
   $("lancer-demix").textContent = mo ? "Télécharger et séparer" : "Séparer";
+  // Les poids de SW n'ont ni auteur connu ni licence : on le dit au moment de
+  // les télécharger, au centre de l'état « séparer » (et dans « À propos »).
+  $("demix-provenance").hidden = !(mo && edition.variante === "bsrofo_sw");
+  majResumeDemix();
 }
+
+/// L'établi ouvert, le Démixage tient sur une ligne : la variante, et
+/// « changer » qui redéplie le bloc (Règle 13). Refermé à chaque entrée dans
+/// l'établi.
+function majResumeDemix(etabli = !$("editer-etabli").hidden) {
+  const resume = etabli && !edition.demixDeplie;
+  $("demix-resume").hidden = !resume;
+  $("demix-detail").hidden = resume;
+  const actif = document.querySelector("#variantes .segment--actif");
+  $("demix-resume-variante").textContent = actif ? (actif.dataset.base ?? actif.textContent).split(" — ")[0].trim() : "";
+}
+$("demix-changer").addEventListener("click", () => {
+  edition.demixDeplie = true;
+  majResumeDemix();
+});
 
 /// Barre + texte pendant une séparation.
 ///

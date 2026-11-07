@@ -19,7 +19,7 @@ import {
   majSegmentsCouleur,
 } from "./ecouter-familles.js";
 import {
-  aideCourante, bruitChemin, dessinerBornes, poserBorne,
+  aideCourante, bruitChemin, dessinerBornes, ouvrirCheminAuPremierMaj, poserBorne,
 } from "./fond-de-plan.js";
 import {
   tracerItineraire,
@@ -2263,6 +2263,9 @@ cnv.addEventListener("click", async (e) => {
     if (!e.shiftKey && cliquerVoie(e.clientX - r.left, e.clientY - r.top)) return;
   }
 
+  // Maj est le geste du chemin : la première fois, son panneau s'ouvre.
+  if (e.shiftKey && carte.chemin !== "dessine") ouvrirCheminAuPremierMaj();
+
   const p = carte.survole;
   if (!p) return;
 
@@ -2593,8 +2596,10 @@ function rendreFamilles(hote, estActive, auClic, extension) {
     // Une famille dont aucun genre ne ressort garde son numéro : mieux vaut un
     // nom neutre qu'un nom faux.
     el.children[1].textContent = nom || `famille ${c + 1}`;
-    el.children[1].title = nom || "";
     el.children[2].textContent = n.toLocaleString("fr-FR");
+    // Deux colonnes dans le rail (Règle 13) : le compte et le nom coupé se
+    // lisent au survol.
+    el.title = `${nom || `famille ${c + 1}`} · ${n.toLocaleString("fr-FR")} morceau${n > 1 ? "x" : ""}`;
     el.addEventListener("click", () => auClic(c));
     ligne.appendChild(el);
 

@@ -420,11 +420,12 @@ function entendre(morceau) {
   }, EXTRAIT_DELAI_MS);
 }
 
-/// Les réglages de la balade, dans le rail d'Explorer : l'intervention et
-/// l'allure, un groupe de segments chacun (`data-intervention`, `data-allure`).
+/// Les réglages de la balade, dans son bandeau sur la carte (`#balade-reglages`) :
+/// l'intervention et l'allure, un groupe de segments chacun (`data-intervention`,
+/// `data-allure`). Au départ, la balade reprend les derniers choisis.
 const REGLAGES = [
   { groupe: "#balade-intervention", champ: "intervention", cle: "balade-intervention" },
-  { groupe: "#bloc-balade", champ: "allure", cle: "balade-allure" },
+  { groupe: "#balade-reglages", champ: "allure", cle: "balade-allure" },
 ];
 
 function majReglage() {
@@ -696,6 +697,12 @@ function dessinerBalade(r, encre, accent) {
 // (retour d'usage, 5 nov.). L'entrée reste le clic droit, là où l'on voit les rues.
 
 $("carte-balade-arreter").addEventListener("click", arreterBalade);
+// Les réglages de la balade, dans son bandeau : dépliés à la demande.
+$("carte-balade-reglages").addEventListener("click", (e) => {
+  const r = $("balade-reglages");
+  r.hidden = !r.hidden;
+  e.currentTarget.setAttribute("aria-expanded", String(!r.hidden));
+});
 $("carte-balade-revenir").addEventListener("click", revenir);
 
 /// Le clic droit sur la carte : un petit menu. Sur un morceau, « Flâner

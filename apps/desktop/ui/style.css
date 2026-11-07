@@ -409,7 +409,9 @@ html, body {
 }
 .bloc { margin-top: 26px; }
 
-.modes { display: flex; flex-direction: column; }
+/* Six modes sur trois rangées de deux (Règle 13). */
+.modes { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
+.modes > .rail__titre { grid-column: 1 / -1; }
 .mode {
   text-align: left; font: inherit; font-size: var(--t-corps);
   background: none; border: none; color: var(--mut);
@@ -424,12 +426,18 @@ html, body {
 /* Bibliothèque : point de départ, pas un mode — posée au-dessus du sélecteur
    de mode plutôt que dedans (`docs/interface-guidelines.md`). */
 .bibliotheque-entree {
-  display: block; width: 100%; text-align: left;
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
   font-weight: 600; border: 1px solid var(--line); border-radius: 2px;
   background: var(--panel2); padding: 8px 11px; margin-bottom: 26px;
 }
 .bibliotheque-entree:hover:not(:disabled) { border-color: var(--accent); color: var(--txt); }
 .bibliotheque-entree.mode--actif { border-color: var(--accent); color: var(--accent); }
+/* Le compte de la bibliothèque, dans son bouton (il avait son bloc en bas du
+   rail, Règle 13) ; le détail au survol. */
+.bibliotheque-entree__n {
+  margin-left: auto; font-family: var(--mono); font-size: var(--t-legende); font-weight: 400;
+  color: var(--mut); font-variant-numeric: tabular-nums;
+}
 
 .chercher {
   width: 100%; font: inherit; font-size: var(--t-second);
@@ -441,6 +449,13 @@ html, body {
 /* « Filtrer » et, à droite du même titre, le chemin vers la palette. */
 .rail__titre--action { display: flex; align-items: baseline; justify-content: space-between; }
 .rail__raccourci { margin: 0; letter-spacing: 0; text-transform: none; }
+/* « ? » : l'aide de plus d'une ligne, dépliée à la demande (Règle 12). */
+.aide-q {
+  width: 18px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 50%;
+  background: none; color: var(--mut); font-family: var(--sans); font-size: var(--t-legende);
+  letter-spacing: 0; line-height: 1; cursor: pointer;
+}
+.aide-q:hover, .aide-q[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
 .rail__raccourci kbd, .palette kbd {
   font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
@@ -464,6 +479,8 @@ html, body {
 .replie__titre:hover, .replie__titre:focus-visible { color: var(--txt); outline: none; }
 .replie > :not(summary) { margin-top: 12px; }
 .replie--interne { margin-top: 14px; }
+/* Dans le rail (balades passées, chaînes) : l'écart d'un intertitre du rail. */
+.replie--rail { margin-top: 14px; }
 .replie--interne > .replie__titre { font-size: var(--t-second); letter-spacing: 0; text-transform: none; font-family: var(--sans); color: var(--mut); }
 
 /* L'état : une ligne par manque, son compte à droite ; la ligne déplie la
@@ -640,7 +657,6 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .palette__aide kbd { margin-right: 3px; }
 .palette__touche { flex: none; }
 
-.sommaire { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); line-height: 1.7; }
 
 /* ---------- centre ---------- */
 /* `min-height: 0` n'est pas décoratif : la taille minimale automatique d'une
@@ -1058,6 +1074,14 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   padding: 7px 12px; font-size: var(--t-second);
 }
 .carte__balade[hidden] { display: none; }
+.carte__balade { flex-wrap: wrap; max-width: calc(100% - 2 * var(--gouttiere) - 340px); }
+/* Les réglages de la balade, dépliés sous sa ligne. */
+.carte__balade-reglages { flex-basis: 100%; display: grid; gap: 6px; padding-bottom: 2px; }
+.carte__balade-reglages[hidden] { display: none; }
+/* Pratiquer et Créer, l'établi ouvert : le Démixage en une ligne. */
+.demix-resume { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: var(--t-second); color: var(--txt); }
+.demix-resume[hidden] { display: none; }
+.demix-resume .lien { margin-top: 0; }
 /* Les balades passées du rail (`js/traces.js`) : une ligne chacune, la date
    et sa longueur, ▶ pour la rejouer. */
 .balades-passees { list-style: none; margin: 0; padding: 0; }
@@ -1107,15 +1131,34 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    attente (un morceau joue hors balade), atténué. */
 /* L'aura (P4) : un bouton qui dit ce qu'il fait, pas une icône seule ; allumé,
    il prend la couleur d'accent, comme les morceaux qu'il fait entendre. */
-.carte__aura {
+/* Les outils posés sur la carte (Règle 12) : Chemin, Calques, « Entendre
+   autour » sur une ligne, le zoom dessous, puis le panneau ouvert. */
+.carte__outils {
   position: absolute; right: var(--gouttiere); top: 16px; z-index: 5;
-  display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 8px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  max-height: calc(100% - 64px); pointer-events: none;
+}
+.carte__outils > * { pointer-events: auto; }
+.carte__outils-ligne { display: flex; gap: 6px; }
+.carte__outil, .carte__aura {
+  display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
   background: var(--panel); border: 1px solid var(--line); color: var(--txt);
   font: inherit; font-size: var(--t-second); cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
 }
-.carte__aura[hidden] { display: none; }
-.carte__aura:hover { border-color: var(--accent); }
+.carte__aura { padding-left: 8px; }
+.carte__outil[hidden], .carte__aura[hidden] { display: none; }
+.carte__outil:hover, .carte__aura:hover { border-color: var(--accent); }
+.carte__outil[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.carte__outils .zoom { margin-top: 0; width: 168px; background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
+/* Le panneau d'un outil : la largeur du rail, défilant s'il est long. */
+.carte__panneau {
+  width: var(--largeur-rail); box-sizing: border-box; overflow-y: auto; min-height: 0;
+  padding: 12px var(--gouttiere-panneau); background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+.carte__panneau[hidden] { display: none; }
+.carte__panneau .rail__titre { margin-top: 0; }
 .carte__aura[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .carte__aura .carte__aura-ondes { display: none; }
 .carte__aura[aria-pressed="true"] .carte__aura-ondes { display: inline; }
@@ -1238,8 +1281,13 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    empile, et la séparation passe du côté gauche au côté haut. */
 .segments--colonne { flex-direction: column; }
 .segments--colonne .segment { text-align: left; padding: 6px 9px; }
-/* L'Affichage d'Explorer : cinq lignes, un peu serrées. */
-#bloc-colorer > .segments--colonne .segment { padding: 5px 9px; }
+/* L'Affichage d'Explorer : trois et deux sur deux rangées, le Lama sur deux
+   cases. Les filets sont l'espace entre les cases. */
+.segments--grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); }
+.segments--grille .segment { background: var(--panel); padding: 6px 0; }
+.segments--grille .segment--actif { background: var(--panel2); }
+.segments--grille .segment + .segment { border-left: none; }
+.segments--grille .segment:last-child:nth-child(3n + 2) { grid-column: span 2; }
 .segments--colonne .segment + .segment {
   border-left: none; border-top: 1px solid var(--line);
 }
@@ -1346,11 +1394,13 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 /* Familles : la couleur ne distingue qu'une famille à la fois — un nuage
    dense ne supporte pas douze teintes, et la palette validée plafonne à
    trois sur ce type de graphique. Isoler vaut mieux que colorier. */
-.familles { display: flex; flex-direction: column; gap: 1px; }
+/* Deux colonnes : douze familles sur six rangées (Règle 13). Le compte et
+   le nom entier sont dans le titre de chaque famille (`rendreFamilles`). */
+.familles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 1px; }
 /* Une ligne par famille — toujours ce conteneur, même sans le second bouton
    (§ 3 de la frise), pour que son apparition/disparition selon le mode ne
    redistribue jamais la légende. */
-.famille-ligne { display: flex; align-items: baseline; gap: 2px; }
+.famille-ligne { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
 .famille__pastille {
   width: 9px; height: 9px; flex: none; border-radius: 50%;
   align-self: center;
@@ -1366,10 +1416,8 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    couleurs sur un nuage dense ne se distinguent pas, le contrôle de palette
    plafonne d'ailleurs à trois sur ce type de graphique. */
 .famille--isolee { border-left: 2px solid var(--accent); padding-left: 7px; margin-left: -9px; }
-.famille__n {
-  margin-left: auto; font-family: var(--mono); font-size: var(--t-legende);
-  font-variant-numeric: tabular-nums;
-}
+.famille__n { display: none; }
+.famille > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Zoom vertical ciblé de la frise (§ 3) : étendre/réduire une bande depuis sa
    ligne de légende, sans toucher à l'isolement (le bouton `.famille`
    voisin). Une bordure comme `.zoom button` — un glyphe seul en `opacity`

@@ -51,7 +51,7 @@ const ECRANS = {
   pratiquer: { ...ETABLI, "bloc-usage": SELON, "bloc-partitions": SELON },
   creer: ETABLI,
   explorer: {
-    "bloc-chercher": SELON, "bloc-colorer": TOUJOURS, "bloc-familles": SELON, "bloc-chemin": SELON,
+    "bloc-chercher": SELON, "bloc-colorer": TOUJOURS, "bloc-familles": SELON,
     "carte-vue": SELON, "lama-vue": SELON,
   },
   decouvrir: {

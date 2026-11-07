@@ -3,8 +3,9 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: ".",
-  // Les captures (`captures.spec.js`) ne sont pas un test : seulement sur demande.
-  testIgnore: process.env.CAPTURES ? [] : ["captures.spec.js"],
+  // Les captures (`captures.spec.js`, `rails.spec.js`) ne sont pas des tests :
+  // seulement sur demande.
+  testIgnore: [process.env.CAPTURES ? null : "captures.spec.js", process.env.RAILS ? null : "rails.spec.js"].filter(Boolean),
   timeout: 60_000,
   retries: 0,
   reporter: [["list"]],

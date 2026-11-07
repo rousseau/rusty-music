@@ -32,9 +32,11 @@ async function charger(quoi = ecoute.sommet.quoi) {
     poser("artistes", "Artistes", artistes);
   }
 
+  // Le compte de la bibliothèque, dans le bouton qui y mène ; le détail au survol.
   const total = racines.reduce((n, r) => n + r.tracks, 0);
-  $("sommaire").textContent = `${total.toLocaleString("fr-FR")} morceaux\n${artistes.length.toLocaleString("fr-FR")} artistes`;
-  $("sommaire").style.whiteSpace = "pre-line";
+  $("sommaire").textContent = total.toLocaleString("fr-FR");
+  $("sommaire").parentElement.title =
+    `${total.toLocaleString("fr-FR")} morceaux, ${artistes.length.toLocaleString("fr-FR")} artistes`;
 }
 
 charger("albums")
@@ -45,7 +47,7 @@ charger("albums")
   })
   .catch((e) => {
     $("fil-titre").textContent = "Erreur";
-    $("sommaire").textContent = String(e);
+    $("sommaire").parentElement.title = String(e);
   });
 
 

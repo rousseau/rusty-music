@@ -204,7 +204,10 @@ le mesurer, pas le deviner.
    du sélecteur. On aurait alors cinq modes et deux lieux. Règle candidate :
    « un mode est une activité sur la musique ».
 2. **Les outils de la carte sur la carte** (zoom, calques, chemin) : oui ou
-   non ? C'est la plus grosse part du gain de la Règle 13.
+   non ? C'est la plus grosse part du gain de la Règle 13. **Tranché le
+   7 nov. : oui** (prompt B4), avec trois compactages choisis sur mesure :
+   les modes et la légende des familles sur deux colonnes, le compte de la
+   bibliothèque dans son bouton. Les décisions 1, 3 et 4 restent ouvertes.
 3. **« Flâner d'ici »**. Cette action n'est aujourd'hui qu'au clic droit :
    elle a été retirée de l'inspecteur le 5 nov., parce qu'à côté de ✦ elle ne
    disait pas en quoi elle diffère. Selon la Règle 12, une action sur un
@@ -667,7 +670,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | B1 défauts I1-I5, I10 | fait : six corrections, six tests de fumée (45 en tout), audit 252 cellules, 0 violation | 7 nov. 2026 | `journal.md`, « B1 » ; `interface-guidelines.md` |
 | B2 table des écrans | fait : `js/ecrans.js`, une seule fonction écrit `hidden` ; un test de fumée parcourt les écrans ; audit sans violation G1-G7 | 7 nov. 2026 | `journal.md`, « B2-B3 » |
 | B3 Règles 12-13, G8 | fait : règles et checklist écrites ; G8 dans l'audit, 8 écrans sur 13 dépassent à 1 400 × 900 (Carte : +1 409 px) | 7 nov. 2026 | `journal.md`, « B2-B3 » ; `interface-guidelines.md` |
-| B4 désencombrer | après décisions | | |
+| B4 désencombrer | fait : outils de la carte posés sur elle, réglages de la balade dans son bandeau, aides derrière « ? », contact dans Bibliothèque ; puis Affichage, modes et légende compactés ; G8 vert sur les 13 écrans, audit 252 cellules, 0 violation | 7 nov. 2026 | `journal.md`, « B4 » ; `images/rails-b4.png` |
 | C1 JS | à faire | | |
 | C2 Rust, application | à faire | | |
 | C3 `core` | à faire | | |
