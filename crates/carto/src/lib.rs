@@ -10,6 +10,7 @@
 
 pub mod accrochage;
 pub mod affectation;
+pub mod altitude;
 pub mod ancrage;
 pub mod balade;
 pub mod batiments;

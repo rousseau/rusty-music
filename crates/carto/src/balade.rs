@@ -281,6 +281,13 @@ pub enum Allure {
     /// Le neuf d'abord, et un carrefour sur trois la voie la plus différente
     /// parmi les plus neuves.
     Aventurer,
+    /// Sur le relief (P6) : rester à l'énergie du départ, le long d'une
+    /// courbe de niveau ; le style dérive.
+    Niveau,
+    /// Gravir : l'énergie monte, d'une bande à la fois.
+    Gravir,
+    /// Redescendre : l'énergie baisse, d'une bande à la fois (le soir).
+    Redescendre,
 }
 
 /// Les poids de la pente : `p = proximité·a + nouveauté·b − déjà-visité·c −
@@ -292,10 +299,18 @@ pub struct Poids {
     pub deja_visite: f32,
     pub usure: f32,
     pub relation: f32,
+    /// Rester à l'énergie de référence ([`Facettes::niveau`]).
+    pub niveau: f32,
+    /// Monter (positif) ou descendre (négatif) en énergie ([`Facettes::montee`]).
+    pub montee: f32,
+    /// Ce que coûte un saut d'énergie ([`Facettes::saut`]).
+    pub saut: f32,
 }
 
 impl Allure {
     pub const TOUTES: [Allure; 3] = [Allure::Rester, Allure::Deriver, Allure::Aventurer];
+    /// Les allures du relief (P6).
+    pub const RELIEF: [Allure; 3] = [Allure::Niveau, Allure::Gravir, Allure::Redescendre];
 
     /// Les poids réglés au banc (`examples/continuite_balade.rs`, E3 ;
     /// chiffres au journal, « P3 »).
@@ -307,6 +322,9 @@ impl Allure {
                 deja_visite: 0.3,
                 usure: 0.1,
                 relation: 0.2,
+                niveau: 0.0,
+                montee: 0.0,
+                saut: 0.0,
             },
             Allure::Deriver => Poids {
                 proximite: 1.0,
@@ -314,6 +332,9 @@ impl Allure {
                 deja_visite: 0.5,
                 usure: 0.3,
                 relation: 0.2,
+                niveau: 0.0,
+                montee: 0.0,
+                saut: 0.0,
             },
             Allure::Aventurer => Poids {
                 proximite: 0.3,
@@ -321,6 +342,42 @@ impl Allure {
                 deja_visite: 0.6,
                 usure: 0.5,
                 relation: 0.1,
+                niveau: 0.0,
+                montee: 0.0,
+                saut: 0.0,
+            },
+            // Les trois allures du relief : dériver, moins la proximité (le
+            // style doit pouvoir changer), plus l'énergie. Réglées au banc
+            // (`examples/continuite_balade.rs`, E4).
+            Allure::Niveau => Poids {
+                proximite: 0.5,
+                nouveaute: 0.3,
+                deja_visite: 0.5,
+                usure: 0.3,
+                relation: 0.1,
+                niveau: 1.5,
+                montee: 0.0,
+                saut: 0.0,
+            },
+            Allure::Gravir => Poids {
+                proximite: 0.5,
+                nouveaute: 0.3,
+                deja_visite: 0.5,
+                usure: 0.3,
+                relation: 0.1,
+                niveau: 0.0,
+                montee: 1.2,
+                saut: 1.5,
+            },
+            Allure::Redescendre => Poids {
+                proximite: 0.5,
+                nouveaute: 0.3,
+                deja_visite: 0.5,
+                usure: 0.3,
+                relation: 0.1,
+                niveau: 0.0,
+                montee: -1.2,
+                saut: 1.5,
             },
         }
     }
@@ -338,6 +395,9 @@ impl Allure {
             Allure::Rester => "rester",
             Allure::Deriver => "dériver",
             Allure::Aventurer => "s'aventurer",
+            Allure::Niveau => "à niveau",
+            Allure::Gravir => "gravir",
+            Allure::Redescendre => "redescendre",
         }
     }
 }
@@ -352,6 +412,14 @@ const RIVERAINS: usize = 5;
 /// Sommets déjà parcourus le long d'une branche ([`deja_vu`]) au-delà desquels
 /// elle est tenue pour entièrement visitée.
 const VU_PLEIN: usize = 6;
+/// Écart d'énergie (en rang, `[0, 1]`) au-delà duquel un morceau n'est plus
+/// du tout « à niveau » : trois bandes du relief.
+const ECART_LOIN: f32 = 0.3;
+/// Une bande du relief (`altitude::NIVEAUX`) : le pas de montée visé.
+const PAS_ENERGIE: f32 = 0.1;
+/// Au-delà de ce saut d'énergie, gravir ne gagne plus rien, puis perd : on
+/// monte, on ne saute pas.
+const PLAFOND_ENERGIE: f32 = 0.25;
 /// Une écoute de moins de trente jours use la rue.
 pub const RECENT_S: i64 = 30 * 86_400;
 
@@ -420,6 +488,12 @@ where
     pub distance: D,
     /// La famille d'un morceau.
     pub famille: F,
+    /// L'énergie de chaque morceau, rang dans `[0, 1]` (`altitude::normaliser`)
+    /// — ou la grandeur du relief affiché. `None` : les allures du relief se
+    /// rabattent sur les autres termes.
+    pub energie: Option<&'a HashMap<i64, f32>>,
+    /// L'énergie de référence d'*à niveau* : celle du départ.
+    pub reference: Option<f32>,
 }
 
 /// Les termes de la pente d'une branche, chacun entre 0 et 1.
@@ -435,6 +509,15 @@ pub struct Facettes {
     pub usure: f32,
     /// L'artiste du premier morceau a une relation avec celui en cours.
     pub relation: bool,
+    /// 1 − écart d'énergie à la référence / [`ECART_LOIN`] ; 0 sans énergie.
+    pub niveau: f32,
+    /// La montée d'énergie depuis le morceau en cours, dans `[-1, 1]` : une
+    /// bande ([`PAS_ENERGIE`]) vaut 1, une bande de descente −1. 0 sans énergie.
+    pub montee: f32,
+    /// Le saut d'énergie au-delà de [`PLAFOND_ENERGIE`], dans `[0, 1]` (une
+    /// bande de trop vaut 1) : gravir et redescendre le paient, on ne saute
+    /// pas.
+    pub saut: f32,
 }
 
 impl Facettes {
@@ -443,7 +526,31 @@ impl Facettes {
             - p.deja_visite * self.deja_visite
             - p.usure * self.usure
             + if self.relation { p.relation } else { 0.0 }
+            + p.niveau * self.niveau
+            + p.montee * self.montee
+            - p.saut * self.saut
     }
+}
+
+/// Les trois termes d'énergie de [`Facettes`] pour un morceau d'énergie `e`,
+/// depuis un morceau d'énergie `courant`, à la référence `reference`.
+pub fn facettes_energie(
+    e: Option<f32>,
+    courant: Option<f32>,
+    reference: Option<f32>,
+) -> (f32, f32, f32) {
+    let Some(e) = e else {
+        return (0.0, 0.0, 0.0);
+    };
+    let niveau = reference.map_or(0.0, |r| 1.0 - ((e - r).abs() / ECART_LOIN).clamp(0.0, 1.0));
+    let (montee, saut) = courant.map_or((0.0, 0.0), |c| {
+        let d = e - c;
+        (
+            (d / PAS_ENERGIE).clamp(-1.0, 1.0),
+            ((d.abs() - PLAFOND_ENERGIE) / PAS_ENERGIE).clamp(0.0, 1.0),
+        )
+    });
+    (niveau, montee, saut)
 }
 
 /// Les morceaux au bout de la branche, dans l'ordre où la marche les
@@ -507,13 +614,73 @@ where
     rue.extend(devant.iter().copied());
     rue.sort_unstable();
     rue.dedup();
+    let energie = |id: i64| ctx.energie.and_then(|e| e.get(&id).copied());
+    let (niveau, montee, saut) =
+        facettes_energie(energie(b.morceau), energie(ctx.courant), ctx.reference);
     Facettes {
         proximite: 1.0 - ((ctx.distance)(b.morceau) / DISTANCE_LOIN).clamp(0.0, 1.0),
         nouveaute: part(&devant, &|id| ctx.memoire.jamais_ecoute(id)),
         deja_visite: (deja_vu(etat, graphe, b) as f32 / VU_PLEIN as f32).min(1.0),
         usure: part(&rue, &|id| ctx.memoire.ecoute_recemment(id)),
         relation: ctx.memoire.relies(ctx.courant, b.morceau),
+        niveau,
+        montee,
+        saut,
     }
+}
+
+/// Les allures du relief (P6) choisissent aussi **quel riverain** jouer au
+/// bout de chaque direction : sans cela, la pente ne décide qu'aux carrefours
+/// (un par balade de 30 min, `examples/continuite_balade.rs`, E4) et
+/// l'énergie suit la rue au hasard. Chaque branche est remplacée par la
+/// variante de meilleure note parmi ses [`RIVERAINS`] premiers morceaux — le
+/// sien, les autres de son sommet, ceux des sommets voisins (la branche
+/// s'allonge alors d'un sommet). Autant de branches qu'avant : les
+/// carrefours restent les mêmes.
+///
+/// Sans terme d'énergie dans `poids`, rend `branches` tel quel.
+pub fn affiner<D, F>(
+    etat: &EtatBalade,
+    branches: &[Branche],
+    graphe: &Graphe,
+    accrochage: &AccrochageVoirie,
+    poids: &Poids,
+    ctx: &Contexte<D, F>,
+) -> Vec<Branche>
+where
+    D: Fn(i64) -> f32,
+    F: Fn(i64) -> Option<i64>,
+{
+    if poids.niveau == 0.0 && poids.montee == 0.0 || ctx.energie.is_none() {
+        return branches.to_vec();
+    }
+    branches
+        .iter()
+        .map(|b| {
+            let bout = *b.sommets.last().expect("une branche a au moins un sommet");
+            riverains(etat, graphe, accrochage, b, RIVERAINS)
+                .into_iter()
+                .filter_map(|id| {
+                    let s = *accrochage.sommet_de.get(&id)?;
+                    let mut sommets = b.sommets.clone();
+                    if s != bout {
+                        sommets.push(s);
+                    }
+                    Some(Branche {
+                        sommets,
+                        morceau: id,
+                        cout: b.cout,
+                    })
+                })
+                .map(|v| {
+                    let note = facettes(etat, graphe, accrochage, &v, ctx).note(poids);
+                    (v, note)
+                })
+                // À note égale, le premier : le riverain de la branche elle-même.
+                .min_by(|a, b| b.1.total_cmp(&a.1))
+                .map_or_else(|| b.clone(), |(v, _)| v)
+        })
+        .collect()
 }
 
 /// La branche la plus différente parmi `candidats` : d'une autre famille que
@@ -1027,8 +1194,71 @@ mod tests {
             memoire,
             distance,
             famille,
+            energie: None,
+            reference: None,
         };
         br[pente(etat, &br, &b.graphe, acc, allure, &ctx).unwrap()].morceau
+    }
+
+    /// Au carrefour à trois voies : est (20), nord (30), sud (40), d'énergies
+    /// 0,5, 0,6 et 0,95, depuis un morceau à 0,5. À niveau garde 0,5, gravir
+    /// prend la bande au-dessus sans sauter à 0,95, redescendre la plus basse.
+    #[test]
+    fn les_allures_du_relief_suivent_lenergie_sans_sauter() {
+        let (b, acc, etat) = carrefour_trois();
+        let memoire = Memoire::default();
+        let br = suivants(&etat, &b.graphe, &acc);
+        let energie: HashMap<i64, f32> =
+            HashMap::from([(1, 0.5), (20, 0.5), (30, 0.6), (40, 0.95)]);
+        let morceaux: HashSet<i64> = br.iter().map(|x| x.morceau).collect();
+        assert_eq!(morceaux, HashSet::from([20, 30, 40]));
+        let ctx = Contexte {
+            courant: 1,
+            memoire: &memoire,
+            distance: |_| 0.1,
+            famille: |_| None,
+            energie: Some(&energie),
+            reference: Some(0.5),
+        };
+        let pris = |a: Allure| br[pente(&etat, &br, &b.graphe, &acc, a, &ctx).unwrap()].morceau;
+        assert_eq!(pris(Allure::Niveau), 20);
+        assert_eq!(pris(Allure::Gravir), 30);
+        let bas: HashMap<i64, f32> = HashMap::from([(1, 0.5), (20, 0.4), (30, 0.6), (40, 0.05)]);
+        let ctx_bas = Contexte {
+            energie: Some(&bas),
+            ..ctx
+        };
+        assert_eq!(
+            br[pente(&etat, &br, &b.graphe, &acc, Allure::Redescendre, &ctx_bas).unwrap()].morceau,
+            20
+        );
+    }
+
+    #[test]
+    fn la_montee_a_un_sens_et_le_saut_un_cout_des_deux_cotes() {
+        let f = |e: f32| facettes_energie(Some(e), Some(0.5), None);
+        assert_eq!(f(0.6).1, 1.0);
+        assert!(f(0.55).1 > 0.0 && f(0.55).1 < 1.0);
+        assert_eq!(f(0.05).1, -1.0, "une chute reste une descente");
+        assert_eq!(f(0.7).2, 0.0);
+        assert_eq!(f(0.95).2, 1.0);
+        assert_eq!(f(0.05).2, 1.0);
+        for allure in Allure::RELIEF {
+            let p = allure.poids();
+            let note = |e: f32| {
+                let (niveau, montee, saut) = facettes_energie(Some(e), Some(0.5), Some(0.5));
+                p.niveau * niveau + p.montee * montee - p.saut * saut
+            };
+            match allure {
+                Allure::Gravir => assert!(note(0.6) > note(0.95) && note(0.6) > note(0.05)),
+                Allure::Redescendre => assert!(note(0.4) > note(0.05) && note(0.4) > note(0.95)),
+                _ => assert!(note(0.5) > note(0.6)),
+            }
+        }
+        assert_eq!(
+            facettes_energie(None, Some(0.5), Some(0.5)),
+            (0.0, 0.0, 0.0)
+        );
     }
 
     #[test]
@@ -1123,6 +1353,8 @@ mod tests {
             memoire: &memoire,
             distance: |_| 0.0,
             famille: |_| None,
+            energie: None,
+            reference: None,
         };
         let f = facettes(&etat, &b.graphe, &acc, &br[0], &ctx);
         assert!((f.nouveaute - 1.0 / 3.0).abs() < 1e-6, "{f:?}");

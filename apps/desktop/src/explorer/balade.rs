@@ -32,6 +32,12 @@
 //! ([`rusty_music_carto::balade::pente`]) : proche à l'oreille, neuve
 //! d'après la table `ecoute`, peu parcourue, peu usée, liée par MusicBrainz.
 //!
+//! **Relief** (P6). Trois allures de plus — *à niveau*, *gravir*,
+//! *redescendre* — suivent la grandeur du relief affiché (l'énergie par
+//! défaut) : elles choisissent aussi quel riverain jouer au bout de chaque
+//! direction ([`rusty_music_carto::balade::affiner`]), sans quoi elles ne
+//! décideraient qu'aux carrefours.
+//!
 //! **Gardée** (P5). Chaque pas est noté en base quand son morceau commence
 //! (`balade`, `balade_pas`) : les sentiers battus et la liste des balades
 //! passées en viennent ([`balades_passees`], [`balade_rejouer`]).
@@ -40,9 +46,10 @@ use super::*;
 
 use rusty_music_core::db::PasBalade;
 
+use rusty_music_carto::altitude::Grandeur;
 use rusty_music_carto::balade::{
-    deja_vu, pente, proposer, suivants, Allure, Branche, Contexte, EtatBalade, Facettes, Memoire,
-    PROPOSEES_MAX,
+    affiner, deja_vu, facettes_energie, pente, proposer, suivants, Allure, Branche, Contexte,
+    EtatBalade, Facettes, Memoire, PROPOSEES_MAX,
 };
 
 /// Le suivant entre dans la file, et n'en bouge plus, à moins de 10 s de la
@@ -207,6 +214,11 @@ pub(crate) struct Balade {
     mesure: MesureCarrefours,
     /// La balade en base (`balade.id`) : ses pas y sont notés.
     gardee: Option<i64>,
+    /// La grandeur que suivent les allures du relief, et ses valeurs
+    /// (`explorer::relief::valeurs_grandeur`), lues à la première allure du
+    /// relief.
+    grandeur: Grandeur,
+    energie: Option<Arc<HashMap<i64, f32>>>,
 }
 
 /// Ce que l'interface reçoit.
@@ -251,6 +263,8 @@ struct Reprise {
     /// La balade en base, pour y noter la suite.
     #[serde(default)]
     gardee: Option<i64>,
+    #[serde(default)]
+    grandeur: Grandeur,
 }
 
 fn chemin_reprise(etat: &Etat) -> PathBuf {
@@ -357,6 +371,12 @@ impl Balade {
             && self.carrefour.as_ref().is_some_and(|c| c.choisie.is_none())
     }
 
+    /// L'énergie de référence d'*à niveau* : celle du départ.
+    fn reference(&self) -> Option<f32> {
+        let e = self.energie.as_ref()?;
+        e.get(self.pistes.first()?).copied()
+    }
+
     fn courant_id(&self) -> i64 {
         *self
             .pistes
@@ -399,7 +419,17 @@ impl Balade {
                     memoire: &self.memoire,
                     distance: |id| self.distance(id),
                     famille,
+                    energie: self.energie.as_deref(),
+                    reference: self.reference(),
                 };
+                let branches = affiner(
+                    etat,
+                    &branches,
+                    graphe,
+                    accrochage,
+                    &self.allure.poids(),
+                    &ctx,
+                );
                 let Some(defaut) = pente(etat, &branches, graphe, accrochage, self.allure, &ctx)
                 else {
                     return Vec::new();
@@ -435,7 +465,10 @@ impl Balade {
                 // La même pente, sans rues : ni déjà-parcouru ni riverains,
                 // le morceau seul.
                 let poids = self.allure.poids();
+                let energie = |id: i64| self.energie.as_ref().and_then(|e| e.get(&id).copied());
                 let note = |id: i64| {
+                    let (niveau, montee, saut) =
+                        facettes_energie(energie(id), energie(courant), self.reference());
                     Facettes {
                         proximite: 1.0 - (self.distance(id) / 0.4).clamp(0.0, 1.0),
                         nouveaute: if self.memoire.jamais_ecoute(id) {
@@ -450,6 +483,9 @@ impl Balade {
                             0.0
                         },
                         relation: self.memoire.relies(courant, id),
+                        niveau,
+                        montee,
+                        saut,
                     }
                     .note(&poids)
                 };
@@ -679,6 +715,18 @@ impl Balade {
         Some(note)
     }
 
+    /// Lit les valeurs de la grandeur du relief si l'allure en a besoin et
+    /// qu'elles manquent. À appeler sans tenir `lib`.
+    fn charger_energie(&mut self, etat: &Etat) {
+        if self.energie.is_some() || !Allure::RELIEF.contains(&self.allure) {
+            return;
+        }
+        match super::relief::valeurs_grandeur(etat, self.grandeur) {
+            Ok(v) => self.energie = Some(Arc::new(v)),
+            Err(e) => tracing::warn!(erreur = %e, "balade : grandeur du relief illisible"),
+        }
+    }
+
     fn reprise(&self) -> Reprise {
         Reprise {
             pistes: self.pistes.clone(),
@@ -690,16 +738,13 @@ impl Balade {
             intervention: self.intervention,
             allure: self.allure,
             gardee: self.gardee,
+            grandeur: self.grandeur,
         }
     }
 
-    /// Une autre allure : le pas suivant est redécidé s'il n'est ni figé, ni
-    /// choisi d'un geste, ni le retour à un carrefour.
-    fn changer_allure(&mut self, lib: &Library, allure: Allure) {
-        if self.allure == allure {
-            return;
-        }
-        self.allure = allure;
+    /// Une autre allure ou une autre grandeur : le pas suivant est redécidé
+    /// s'il n'est ni figé, ni choisi d'un geste, ni le retour à un carrefour.
+    fn redecider(&mut self, lib: &Library) {
         let libre = self.suivant.as_ref().is_some_and(|p| !p.fige)
             && self
                 .carrefour
@@ -757,6 +802,7 @@ fn monter(etat: &State<Etat>, app: &tauri::AppHandle, r: Reprise) -> Result<Bala
         intervention,
         allure,
         gardee,
+        grandeur,
     } = r;
     let depart = *pistes.last().ok_or("balade sans morceau")?;
     let (courant, memoire) = {
@@ -823,6 +869,8 @@ fn monter(etat: &State<Etat>, app: &tauri::AppHandle, r: Reprise) -> Result<Bala
         numero: 0,
         mesure: lire_mesure(etat),
         gardee,
+        grandeur,
+        energie: None,
     })
 }
 
@@ -834,6 +882,7 @@ pub(crate) fn balade_demarrer(
     depart: i64,
     intervention: Option<Intervention>,
     allure: Option<Allure>,
+    grandeur: Option<Grandeur>,
 ) -> Result<BaladeVue, String> {
     let mut balade = monter(
         &etat,
@@ -845,8 +894,10 @@ pub(crate) fn balade_demarrer(
             intervention: intervention.unwrap_or_default(),
             allure: allure.unwrap_or_default(),
             gardee: None,
+            grandeur: grandeur.unwrap_or_default(),
         },
     )?;
+    balade.charger_energie(&etat);
     {
         let lib = verrou(&etat.lib);
         balade.decider(&lib);
@@ -947,15 +998,26 @@ pub(crate) fn balade_regler(
     etat: State<Etat>,
     intervention: Option<Intervention>,
     allure: Option<Allure>,
+    grandeur: Option<Grandeur>,
 ) -> Option<BaladeVue> {
     let mut garde = verrou(&etat.balade);
     let balade = garde.as_mut()?;
     if let Some(i) = intervention {
         balade.intervention = i;
     }
+    let autre_grandeur = grandeur.is_some_and(|g| g != balade.grandeur);
+    if let Some(g) = grandeur.filter(|_| autre_grandeur) {
+        balade.grandeur = g;
+        balade.energie = None;
+    }
+    let ancienne = balade.allure;
     if let Some(a) = allure {
+        balade.allure = a;
+    }
+    balade.charger_energie(&etat);
+    if balade.allure != ancienne || (autre_grandeur && Allure::RELIEF.contains(&balade.allure)) {
         let lib = verrou(&etat.lib);
-        balade.changer_allure(&lib, a);
+        balade.redecider(&lib);
     }
     sauver(&etat, balade);
     Some(balade.vue())
@@ -1112,7 +1174,8 @@ pub(crate) fn balade_reprendre(app: &tauri::AppHandle, etat: &State<Etat>) {
         return;
     }
     match monter(etat, app, r) {
-        Ok(b) => {
+        Ok(mut b) => {
+            b.charger_energie(etat);
             tracing::info!(pas = b.pistes.len(), "balade reprise");
             *verrou(&etat.balade) = Some(b);
         }
@@ -1140,7 +1203,7 @@ pub(crate) fn essai_balade(app: &tauri::AppHandle) {
         std::thread::sleep(Duration::from_secs(5));
         let etat = app.state::<Etat>();
         verrou(&etat.player).set_volume(0.0);
-        match balade_demarrer(app.clone(), etat, depart, None, None) {
+        match balade_demarrer(app.clone(), etat, depart, None, None, None) {
             Ok(v) => tracing::info!(depart, terrain = v.terrain, "essai de balade lancé"),
             Err(e) => {
                 tracing::warn!(erreur = %e, "essai de balade impossible");

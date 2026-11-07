@@ -106,6 +106,8 @@ fn main() -> anyhow::Result<()> {
                 memoire: &memoire,
                 distance: |id| distance(courant, id),
                 famille: |id| famille.get(&id).copied(),
+                energie: None,
+                reference: None,
             };
             let Some(defaut) = pente(
                 &etat,

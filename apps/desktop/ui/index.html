@@ -180,6 +180,20 @@
               <input id="carte-pentes" type="checkbox">
               Pentes
             </label>
+            <!-- Le relief musical (`docs/plan-balade.md`, P6, `js/relief.js`) :
+                 plan de ville réel seulement ; la grandeur se choisit une
+                 fois l'option cochée. -->
+            <label class="case" id="ligne-relief" style="margin-top:4px" hidden
+                   title="Une altitude qui a un sens musical, ombrée et coupée de courbes de niveau numérotées. Cliquer une courbe : la molette la suit, son numéro l'ouvre">
+              <input id="carte-relief" type="checkbox">
+              Relief
+            </label>
+            <div class="segments segments--colonne" id="relief-grandeur" style="margin-top:4px" hidden>
+              <button class="segment segment--actif" data-grandeur="energie" title="L'énergie des morceaux">Énergie</button>
+              <button class="segment" data-grandeur="tempo" title="Le tempo des morceaux">Tempo</button>
+              <button class="segment" data-grandeur="popularite" title="La popularité des morceaux">Popularité</button>
+              <button class="segment" data-grandeur="familiarite" title="Ce que vous avez écouté, et combien de fois">Familiarité</button>
+            </div>
             <!-- Traces et brouillard (`docs/plan-balade.md`, P5, `js/traces.js`) :
                  plan de ville réel seulement, gardés comme le fond de plan. -->
             <div id="ligne-traces" hidden>
@@ -223,6 +237,16 @@
                     title="Proche et jamais écouté à parts égales">Dériver</button>
             <button class="segment" data-allure="aventurer"
                     title="Le jamais écouté d'abord, et un carrefour sur trois la voie la plus différente">S'aventurer</button>
+          </div>
+          <!-- Les allures du relief (P6) : elles suivent la grandeur du
+               relief, l'énergie par défaut. -->
+          <div class="segments" id="balade-allure-relief" style="margin-top:4px">
+            <button class="segment" data-allure="niveau"
+                    title="Rester à l'énergie du départ, le long d'une courbe de niveau : le style dérive">À niveau</button>
+            <button class="segment" data-allure="gravir"
+                    title="L'énergie monte, une bande à la fois">Gravir</button>
+            <button class="segment" data-allure="redescendre"
+                    title="L'énergie baisse, une bande à la fois">Redescendre</button>
           </div>
           <!-- Les balades gardées (P5) : un clic redessine, ▶ rejoue. -->
           <div id="bloc-balades-passees" hidden>

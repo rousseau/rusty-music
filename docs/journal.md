@@ -3169,3 +3169,109 @@ lisibilité. Les corrections sont dans l'interface seulement.
   - les sentiers sur la vraie base, où aucune balade n'avait encore été
     gardée.
 
+## Balade musicale, P6 — 7 nov. 2026
+
+### P6 : le relief d'énergie et ses courbes de niveau
+
+- **Le champ** (`crates/carto/src/altitude.rs`). Chaque morceau logé apporte
+  sa valeur, ramenée dans `[0, 1]` :
+  - énergie et tempo : leur rang ;
+  - popularité : déjà un centile ;
+  - familiarité : `ln(1 + écoutes)`, parce qu'un rang mettrait les 98 %
+    jamais écoutés à mi-hauteur.
+
+  Sur une grille de 20 m, le champ est une moyenne de Nadaraya-Watson à noyau
+  gaussien de 120 m, étirée entre ses 2ᵉ et 98ᵉ centiles sur la zone peuplée.
+  Il décroît vers 0 avec la densité de morceaux : pas de falaise au bord.
+- **Les tuiles**, écrites à la demande dans le dossier des tuiles :
+  - `dem-<grandeur>.pmtiles` : `raster-dem` Terrarium de z10 à z14, avec
+    60 m pour la bande la plus haute, ombré par le `hillshade` natif de
+    MapLibre (exagération 0,35, ombres et lumières à 25-35 % d'opacité) ;
+  - `courbes-<grandeur>.pmtiles` : couche vectorielle `courbes` de z10 à
+    z15. Les anneaux des régions `altitude ≥ k/10` viennent de `contour`,
+    comme les isobandes et les quartiers. Chaque courbe porte `ligne`,
+    `niveau` (de 1 à 9) et `sommet` (sommet ou cuvette).
+
+  Changer de grandeur réécrit les deux archives de cette grandeur, puis
+  l'interface fait `setTiles` (version dans l'URL) : le plan n'est pas
+  régénéré.
+- **Le style** : `style::poser_relief` pose les sources `dem` et `courbes`,
+  puis les couches `relief-ombre` (sous les quartiers), `courbes` (sous la
+  voirie, plus marquées tous les cinq niveaux), `courbes-choisie` (sur la
+  voirie) et `courbes-numero` (12 px, dès z13). Tout est masqué au départ. La
+  pose se fait à la génération et en servant un style plus ancien.
+- **Les gestes** (`js/relief.js`) :
+  - l'option « Relief » du fond de plan et le choix de la grandeur ;
+  - un clic **sur** un trait (à 4 px près) désigne la courbe et pose son
+    numéro en pastille ;
+  - la molette la suit, d'un riverain à l'autre (à moins de 40 m), et l'aura
+    allumée fait entendre autour du fuseau ;
+  - un clic sur la pastille ouvre la courbe : les morceaux de la bande
+    qu'elle borde, dans ce qu'elle enferme, enchaînés de proche en proche
+    comme la sélection au lasso (`chemin::parcours`, `poserChemin`) ;
+  - Échap ou un clic ailleurs relâchent la courbe.
+- **Les allures** *à niveau*, *gravir* et *redescendre* (`balade.rs`) ont
+  trois termes de pente de plus :
+  - `niveau` : l'écart à l'énergie du départ ;
+  - `montee` : le sens, une bande valant 1 ;
+  - `saut` : le dépassement au-delà de 0,25, payé dans les deux sens.
+
+  Elles suivent la grandeur du relief affiché, l'énergie par défaut.
+- **Premier banc E4** (`continuite_balade.rs`, 500 départs, 30 min, sans
+  geste) : *à niveau* ne bougeait pas, avec un écart-type d'énergie médian
+  de 0,162 contre 0,167 en *dériver*. Une balade de 30 min ne passe qu'**un
+  carrefour**, et la pente ne décide qu'aux carrefours. D'où
+  `balade::affiner` : pour les allures du relief, chaque direction joue celui
+  de ses cinq premiers riverains qui note le mieux. La branche s'allonge d'un
+  sommet s'il habite à côté, et le nombre de carrefours ne change pas.
+- **Bogue trouvé au banc** : au-delà du plafond de saut, l'ancienne formule
+  inversait le signe des grandes chutes, si bien que *gravir* prenait une
+  chute de 0,5 pour une montée. Le sens et le coût du saut sont désormais
+  deux termes séparés, couverts par un test.
+- **Mesuré** (E4, après correction ; repère : 20 morceaux au hasard ont un
+  écart-type de 0,289) :
+
+  | allure | écart-type d'énergie (médiane) | (moyenne) | saut moyen | montée nette | changement de famille |
+  |---|---:|---:|---:|---:|---:|
+  | dériver | 0,167 | 0,174 | 0,191 | +0,025 | 32 % |
+  | **à niveau** | **0,116** | 0,132 | 0,132 | +0,014 | 32 % |
+  | gravir | 0,141 | 0,151 | 0,140 | **+0,073** | 33 % |
+  | redescendre | 0,148 | 0,156 | 0,145 | **−0,028** | 34 % |
+
+  *À niveau* réduit l'écart-type de 31 %, sans changer la part de
+  changements de famille : le style dérive, l'énergie reste. Gravir et
+  redescendre vont dans le bon sens, mais faiblement : en huit morceaux, on
+  part d'un rang tiré au hasard et on bute vite sur un bord. Essais sans
+  gain net : 8 riverains au lieu de 5, poids d'énergie doublé (0,109 au
+  mieux pour *à niveau*). Le plafond tient au choix offert, environ 5
+  riverains par pas, et non aux poids.
+- **Le relief sur la bibliothèque** (`examples/relief_musical.rs`) : 0,13 s
+  par grandeur, calcul et écriture compris.
+
+  | grandeur | courbes | tuiles dem / courbes | archives | morceaux par bande, de 0 à 9 |
+  |---|---:|---:|---:|---|
+  | énergie | 171 | 81 / 188 | 3,8 Mo | 7 · 8 · 12 · 14 · 13 · 13 · 13 · 9 · 7 · 5 % |
+  | tempo | 270 | 81 / 184 | 3,8 Mo | 1 · 0 · 2 · 6 · 9 · 19 · 28 · 25 · 8 · 1 % |
+  | popularité | 231 | 81 / 184 | 3,8 Mo | 5 · 9 · 13 · 20 · 25 · 16 · 6 · 3 · 1 · 1 % |
+  | familiarité | 131 | 81 / 99 | 1,5 Mo | 82 · 7 · 3 · 2 · 2 · 1 · 1 · 0 · 0 · 1 % |
+
+  Sur l'énergie, une courbe est bordée de 24 morceaux (médiane), et en ouvrir
+  une en rend 23 (médiane). La familiarité est une plaine avec quelques
+  buttes : c'est ce qu'on a écouté.
+- **Vérifié** :
+  - 8 tests du champ (rangs, familiarité, colline, courbes numérotées qui
+    entourent le sommet, ouverture, rail, décodage Terrarium, archives) ;
+  - 2 tests d'allures (choix au carrefour, sens et coût du saut) ;
+  - 1 test de style, 1 test d'archives servies, `nombre_ecoutes` ;
+  - 2 tests de fumée : le relief et sa grandeur, une courbe désignée, suivie
+    à la molette puis ouverte ; les allures du rail ;
+  - `verifier.sh` vert, 37 tests de fumée ;
+  - `audit-interface.sh` : 252 cellules (écran « carte + relief » ajouté),
+    0 violation.
+- **Non vérifié** :
+  - l'ombrage et les courbes dans la webview native. L'audit copie la base
+    mais pas les tuiles : l'option Relief y reste masquée et la lisibilité du
+    plan sous le relief n'y est pas mesurée. À regarder à l'œil (z12 à z16,
+    osm-clair et nuit) ;
+  - les allures du relief dans une vraie balade.
+

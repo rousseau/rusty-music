@@ -155,6 +155,20 @@ const fixtures = {
     { id: 7, debut: 1_762_500_000, terrain: "voisins", pas: 3, duree_ms: 543_000, titre: "Un", artiste: "A" },
   ],
   balade_passee: { pistes: [1, 2, 3], trace: [] },
+  // Le relief musical (P6, `explorer/relief.rs`) : une courbe de niveau 6
+  // bordée de deux morceaux ; l'ouvrir rend trois pistes.
+  relief_musical: (a) => ({ grandeur: a.grandeur, version: 1, courbes: 1 }),
+  courbe: (a) => ({
+    ligne: a.ligne,
+    niveau: 6,
+    sommet: true,
+    points: [[2.33, 48.855], [2.35, 48.855]],
+    le_long: [
+      { morceau: 1, a: 10, point: [2.335, 48.855] },
+      { morceau: 2, a: 900, point: [2.345, 48.855] },
+    ],
+  }),
+  ouvrir_courbe: () => window.__DONNEES__.PISTES.slice(0, 3),
   balade_rejouer: (a, e) => {
     const ids = [1, 2, 3];
     e.file = window.__DONNEES__.PISTES.filter((p) => ids.includes(p.id)).map((p) => p.path);

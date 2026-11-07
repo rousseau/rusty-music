@@ -24,6 +24,7 @@ import {
   retracerItineraireSiPret, tracerItineraire,
 } from "./itineraires.js";
 import { majTracesGL } from "./traces.js";
+import { majReliefGL } from "./relief.js";
 
 /* ------------------------------------------------------ fond de plan (thème) */
 
@@ -59,6 +60,7 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
         majFiltreGL();
         majPentesGL();
         majTracesGL();
+        majReliefGL();
         majAffichageGL();
         poserVignetteCarte(carte.gl.getStyle());
       };

@@ -15,6 +15,7 @@ import {
 import { lecture } from "./etat-lecture.js";
 import { marquerApercu } from "./aura.js";
 import { rafraichirTraces } from "./traces.js";
+import { relief } from "./relief.js";
 
 /* ------------------------------------------------- la balade (P1)
  *
@@ -60,7 +61,7 @@ const EXTRAIT_DELAI_MS = 350;
 
 const INTERVENTIONS = ["porter", "proposer", "demander"];
 /// L'allure de la balade : la pente par défaut au carrefour (P3).
-const ALLURES = ["rester", "deriver", "aventurer"];
+const ALLURES = ["rester", "deriver", "aventurer", "niveau", "gravir", "redescendre"];
 
 const balade = {
   vue: null, // dernière réponse de `balade_etat`, `null` sans balade
@@ -97,6 +98,7 @@ async function flanerDici(id) {
         depart: id,
         intervention: balade.intervention,
         allure: balade.allure,
+        grandeur: relief.grandeur,
       });
     });
   } catch (err) {
@@ -418,7 +420,7 @@ function entendre(morceau) {
 /// l'allure, un groupe de segments chacun (`data-intervention`, `data-allure`).
 const REGLAGES = [
   { groupe: "#balade-intervention", champ: "intervention", cle: "balade-intervention" },
-  { groupe: "#balade-allure", champ: "allure", cle: "balade-allure" },
+  { groupe: "#bloc-balade", champ: "allure", cle: "balade-allure" },
 ];
 
 function majReglage() {

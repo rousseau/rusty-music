@@ -14,6 +14,7 @@
 //! `addProtocol` fait tourner le chargement sur le fil principal, où `invoke`
 //! fonctionne : plus de question d'origine ni de CORS.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -25,7 +26,10 @@ use tauri::Manager;
 /// Le protocole sous lequel la webview lit les tuiles.
 pub const SCHEMA: &str = "tuiles";
 
-/// Les deux archives, ouvertes à la demande et gardées en mémoire projetée.
+/// Les archives, ouvertes à la demande et gardées en mémoire projetée : le
+/// plan (`carte`), l'ombrage du monde fictif (`relief`), et sur le plan réel
+/// le relief musical de chaque grandeur (`dem-<grandeur>`,
+/// `courbes-<grandeur>`, `explorer::relief`).
 ///
 /// Le verrou est **synchrone** et n'est jamais tenu au travers d'un `await` :
 /// l'ouverture de l'archive se fait hors verrou, et le résultat n'est posé
@@ -34,8 +38,7 @@ pub const SCHEMA: &str = "tuiles";
 /// `block_on` depuis un fil du runtime, qui panique aussitôt.
 #[derive(Default)]
 pub struct Archives {
-    carte: RwLock<Option<Arc<AsyncPmTilesReader<MmapBackend>>>>,
-    relief: RwLock<Option<Arc<AsyncPmTilesReader<MmapBackend>>>>,
+    ouvertes: RwLock<HashMap<String, Arc<AsyncPmTilesReader<MmapBackend>>>>,
 }
 
 /// Où vivent les archives, à côté de la base.
@@ -53,23 +56,28 @@ pub fn chemin_relief(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
     Ok(dossier(app)?.join("carte-relief.pmtiles"))
 }
 
+/// L'archive d'un nom validé par [`archive_valide`].
+pub fn chemin_archive(app: &tauri::AppHandle, quoi: &str) -> anyhow::Result<PathBuf> {
+    Ok(match quoi {
+        "carte" => chemin_carte(app)?,
+        "relief" => chemin_relief(app)?,
+        autre => dossier(app)?.join(format!("{autre}.pmtiles")),
+    })
+}
+
 impl Archives {
     /// Oublie les archives ouvertes — à appeler après une régénération, sinon
     /// la webview continuerait de lire l'ancien fichier projeté en mémoire.
     pub fn oublier(&self) {
-        if let Ok(mut c) = self.carte.write() {
-            *c = None;
-        }
-        if let Ok(mut r) = self.relief.write() {
-            *r = None;
+        if let Ok(mut o) = self.ouvertes.write() {
+            o.clear();
         }
     }
 
-    fn cellule(&self, quoi: &str) -> &RwLock<Option<Arc<AsyncPmTilesReader<MmapBackend>>>> {
-        if quoi == "relief" {
-            &self.relief
-        } else {
-            &self.carte
+    /// Oublie une seule archive, réécrite (le relief d'une grandeur).
+    pub fn oublier_une(&self, quoi: &str) {
+        if let Ok(mut o) = self.ouvertes.write() {
+            o.remove(quoi);
         }
     }
 
@@ -78,7 +86,7 @@ impl Archives {
         quoi: &str,
         chemin: &Path,
     ) -> Option<Arc<AsyncPmTilesReader<MmapBackend>>> {
-        if let Some(l) = self.cellule(quoi).read().ok()?.as_ref() {
+        if let Some(l) = self.ouvertes.read().ok()?.get(quoi) {
             return Some(l.clone());
         }
         // Ouverture hors verrou. Deux premières requêtes simultanées peuvent
@@ -86,8 +94,8 @@ impl Archives {
         // `mmap` de plus ne coûte rien et la dernière écriture gagne.
         let backend = MmapBackend::try_from(chemin).await.ok()?;
         let lecteur = Arc::new(AsyncPmTilesReader::try_from_source(backend).await.ok()?);
-        if let Ok(mut ecriture) = self.cellule(quoi).write() {
-            *ecriture = Some(lecteur.clone());
+        if let Ok(mut ecriture) = self.ouvertes.write() {
+            ecriture.insert(quoi.to_string(), lecteur.clone());
         }
         Some(lecteur)
     }
@@ -104,19 +112,15 @@ pub async fn lire(
     x: u32,
     y: u32,
 ) -> anyhow::Result<Option<Vec<u8>>> {
-    let fichier = if quoi == "relief" {
-        chemin_relief(app)?
-    } else {
-        chemin_carte(app)?
-    };
+    let fichier = chemin_archive(app, quoi)?;
     let archives = app.state::<Archives>();
     let Some(lecteur) = archives.lecteur(quoi, &fichier).await else {
         anyhow::bail!("archive illisible : {}", fichier.display());
     };
     let coord = TileCoord::new(z, x, y)?;
-    // Le relief est en PNG, déjà compressé et rangé tel quel ; les tuiles
-    // vectorielles sont gzippées dans l'archive.
-    let donnees = if quoi == "relief" {
+    // Le relief et le modèle de terrain sont en PNG, déjà compressés et rangés
+    // tels quels ; les tuiles vectorielles sont gzippées dans l'archive.
+    let donnees = if quoi == "relief" || quoi.starts_with("dem-") {
         lecteur.get_tile(coord).await?
     } else {
         lecteur.get_tile_decompressed(coord).await?
@@ -125,9 +129,16 @@ pub async fn lire(
 }
 
 /// Le nom d'archive demandé, validé. Le JS passe une chaîne : elle ne doit
-/// pouvoir désigner que l'une des deux archives, jamais un chemin.
+/// pouvoir désigner que l'une des archives connues, jamais un chemin.
 pub fn archive_valide(quoi: &str) -> bool {
-    quoi == "carte" || quoi == "relief"
+    if quoi == "carte" || quoi == "relief" {
+        return true;
+    }
+    let Some((genre, grandeur)) = quoi.split_once('-') else {
+        return false;
+    };
+    matches!(genre, "dem" | "courbes")
+        && rusty_music_carto::altitude::Grandeur::par_id(grandeur).is_some()
 }
 
 /// La base d'URL des tuiles dans le style.
@@ -144,9 +155,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn seules_les_deux_archives_sont_acceptees() {
+    fn seules_les_archives_connues_sont_acceptees() {
         assert!(archive_valide("carte"));
         assert!(archive_valide("relief"));
+        assert!(archive_valide("dem-energie"));
+        assert!(archive_valide("courbes-familiarite"));
+        assert!(!archive_valide("dem-autre"));
+        assert!(!archive_valide("dem-../carte"));
         assert!(!archive_valide("autre"));
         assert!(!archive_valide("../../etc/passwd"));
         assert!(!archive_valide(""));

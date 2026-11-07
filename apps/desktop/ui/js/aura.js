@@ -209,4 +209,4 @@ setInterval(() => {
   }
 }, 1000);
 
-export { aura, dessinerAura, marquerApercu };
+export { allumee as allumeeAura, aura, dessinerAura, ecouterAutour, marquerApercu };

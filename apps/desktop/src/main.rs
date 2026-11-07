@@ -297,6 +297,8 @@ struct Etat {
     balade: Mutex<Option<Balade>>,
     /// La reprise d'une balade au démarrage est tranchée (reprise ou abandonnée).
     balade_reprise: AtomicBool,
+    /// Le relief musical affiché (`explorer::relief`, P6) : champ et courbes.
+    relief: Mutex<Option<Arc<ReliefCharge>>>,
     /// L'aura de la carte (`explorer::aura`, P4) : la dernière demande, et
     /// l'extrait de carrefour qui la remplace un instant. Pris avant
     /// `player`, jamais pendant.
@@ -617,6 +619,7 @@ fn main() {
                 precharge: Mutex::new(()),
                 balade: Mutex::new(None),
                 balade_reprise: AtomicBool::new(false),
+                relief: Mutex::new(None),
                 aura: Mutex::new(EtatAura::default()),
             });
             app.manage(tuiles::Archives::default());
@@ -913,6 +916,9 @@ fn main() {
             balades_passees,
             balade_passee,
             balade_rejouer,
+            relief_musical,
+            courbe,
+            ouvrir_courbe,
             aura,
             tuile,
             map_progress,

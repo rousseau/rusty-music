@@ -10,6 +10,7 @@ mod balade;
 mod carte;
 mod lama;
 mod modele_local;
+mod relief;
 mod traces;
 mod voisinage;
 
@@ -20,6 +21,7 @@ pub(crate) use lama::*;
 pub(crate) use modele_local::{
     lama_telechargement_state, lama_telecharger, EtatTelechargementLama,
 };
+pub(crate) use relief::*;
 pub(crate) use traces::*;
 pub(crate) use voisinage::*;
 

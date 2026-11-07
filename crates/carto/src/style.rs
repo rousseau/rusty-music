@@ -208,6 +208,146 @@ pub fn poser_traces(style: &mut Value) {
     couches.insert(bord + 1, brouillard);
 }
 
+/// Teinte des courbes de niveau, la même sur toutes les palettes : le brun
+/// des cartes topographiques, lisible sur papier comme sur fond de nuit.
+pub const TEINTE_COURBES: &str = "#9C7C5E";
+
+/// Pose dans un style de plan de ville réel le **relief musical** (P6 de la
+/// balade, `altitude.rs`), masqué : l'option « Relief » de l'interface le
+/// montre et choisit la grandeur en changeant les tuiles des deux sources
+/// (`setTiles`), sans toucher au plan.
+///
+/// - `dem` (`raster-dem`, Terrarium) et la couche `relief-ombre`
+///   (`hillshade` natif, très léger), sous les quartiers et le bâti ;
+/// - `courbes` (vectorielle) : `courbes`, des traits fins sous la voirie, plus
+///   marqués tous les cinq niveaux ; `courbes-choisie`, la courbe désignée,
+///   au-dessus de la voirie (son filtre est posé par l'interface) ;
+///   `courbes-numero`, les numéros le long des traits.
+///
+/// Les tuiles visent l'énergie au départ (`dem-energie`, `courbes-energie`).
+/// Sans effet hors plan de ville réel et sur un style qui l'a déjà ; appliqué
+/// aussi en servant un style écrit avant.
+pub fn poser_relief(style: &mut Value) {
+    let Some(couches) = style["layers"].as_array() else {
+        return;
+    };
+    let rang = |id: &str| couches.iter().position(|c| c["id"] == id);
+    let (Some(quartiers), Some(routes), Some(habites)) = (
+        rang("territoires-reels"),
+        rang("routes-reelles"),
+        rang("habites-point"),
+    ) else {
+        return;
+    };
+    if rang("relief-ombre").is_some() {
+        return;
+    }
+    let Some(base) = style
+        .pointer("/sources/carte/tiles/0")
+        .and_then(Value::as_str)
+        .and_then(|t| t.split("/carte/").next())
+        .map(str::to_string)
+    else {
+        return;
+    };
+    let papier = couches
+        .iter()
+        .find(|c| c["id"] == "terre-reelle")
+        .and_then(|c| c.pointer("/paint/background-color"))
+        .cloned()
+        .unwrap_or(json!("#F2EFE9"));
+    let g = crate::altitude::Grandeur::default().id();
+    let (zmin, zdem, zcourbes) = (
+        crate::altitude::ZOOM_MIN,
+        crate::altitude::ZOOM_DEM_MAX,
+        crate::altitude::ZOOM_COURBES_MAX,
+    );
+    let masque = json!({ "visibility": "none" });
+    let ombre = json!({
+        "id": "relief-ombre", "type": "hillshade", "source": "dem",
+        "layout": masque.clone(),
+        "paint": {
+            "hillshade-exaggeration": 0.35,
+            "hillshade-shadow-color": "rgba(60, 45, 30, 0.35)",
+            "hillshade-highlight-color": "rgba(255, 255, 255, 0.25)",
+            "hillshade-accent-color": "rgba(60, 45, 30, 0.15)",
+            "hillshade-illumination-direction": 315
+        }
+    });
+    let traits = json!({
+        "id": "courbes", "type": "line",
+        "source": "courbes", "source-layer": "courbes",
+        "layout": { "visibility": "none", "line-join": "round" },
+        "paint": {
+            "line-color": TEINTE_COURBES,
+            "line-opacity": 0.7,
+            "line-width": ["interpolate", ["linear"], ["zoom"],
+                11, ["case", ["==", ["%", ["get", "niveau"], 5], 0], 0.9, 0.5],
+                16, ["case", ["==", ["%", ["get", "niveau"], 5], 0], 2.0, 1.1]]
+        }
+    });
+    let choisie = json!({
+        "id": "courbes-choisie", "type": "line",
+        "source": "courbes", "source-layer": "courbes",
+        "filter": ["==", ["get", "ligne"], -1],
+        "layout": { "visibility": "none", "line-join": "round", "line-cap": "round" },
+        "paint": {
+            "line-color": TEINTE_COURBES,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 11, 2.5, 16, 4.5]
+        }
+    });
+    let numeros = json!({
+        "id": "courbes-numero", "type": "symbol",
+        "source": "courbes", "source-layer": "courbes",
+        "minzoom": 13.0,
+        "layout": {
+            "visibility": "none",
+            "symbol-placement": "line",
+            "symbol-spacing": 400,
+            "text-field": ["to-string", ["get", "niveau"]],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": ETIQUETTE_MIN,
+            "text-keep-upright": true
+        },
+        "paint": {
+            "text-color": TEINTE_COURBES,
+            "text-halo-color": papier,
+            "text-halo-width": 1.5
+        }
+    });
+
+    style["sources"]["dem"] = json!({
+        "type": "raster-dem",
+        "tiles": [format!("{base}/dem-{g}/{{z}}/{{x}}/{{y}}")],
+        "tileSize": 256,
+        "encoding": "terrarium",
+        "minzoom": zmin,
+        "maxzoom": zdem,
+    });
+    style["sources"]["courbes"] = json!({
+        "type": "vector",
+        "tiles": [format!("{base}/courbes-{g}/{{z}}/{{x}}/{{y}}")],
+        "minzoom": zmin,
+        "maxzoom": zcourbes,
+    });
+    let couches = style["layers"].as_array_mut().expect("lu plus haut");
+    // De la fin vers le début, pour que les rangs restent justes : les
+    // numéros sur les points, la courbe choisie sur la voirie, les traits
+    // dessous, l'ombre sous les quartiers.
+    let apres_habites = couches
+        .iter()
+        .position(|c| c["id"] == "brouillard-point")
+        .unwrap_or(habites);
+    couches.insert(apres_habites + 1, numeros);
+    couches.insert(routes + 1, choisie);
+    let sous_routes = couches
+        .iter()
+        .position(|c| c["id"] == "sentiers")
+        .unwrap_or(routes);
+    couches.insert(sous_routes, traits);
+    couches.insert(quartiers, ombre);
+}
+
 /// Construit le style complet.
 ///
 /// `base` est le préfixe des tuiles (`tuiles://tuiles` — intercepté côté JS par
@@ -276,6 +416,7 @@ pub fn construire(source: &Source, paliers: &Paliers, base: &str, palette: &Pale
         style["zoom"] = json!(14.0);
     }
     poser_traces(&mut style);
+    poser_relief(&mut style);
     style
 }
 
@@ -1859,6 +2000,62 @@ mod tests {
         assert!(fictif["sources"].get("sentiers").is_none());
     }
 
+    /// Le relief musical (P6) : deux sources sur l'énergie, quatre couches
+    /// masquées aux bons étages, posées une fois ; rien sur le monde fictif.
+    #[test]
+    fn le_relief_est_pose_une_fois_aux_bons_etages() {
+        let mut s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "tuiles://tuiles",
+            &Palette::osm_clair(),
+        );
+        poser_relief(&mut s);
+        let ids: Vec<&str> = s["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap())
+            .collect();
+        let rang = |id: &str| {
+            assert_eq!(
+                ids.iter().filter(|x| **x == id).count(),
+                1,
+                "{id} : {ids:?}"
+            );
+            ids.iter().position(|x| *x == id).unwrap()
+        };
+        assert!(rang("relief-ombre") < rang("territoires-reels"));
+        assert!(rang("courbes") < rang("sentiers"));
+        assert!(rang("routes-reelles") < rang("courbes-choisie"));
+        assert!(rang("habites-point") < rang("courbes-numero"));
+        for id in [
+            "relief-ombre",
+            "courbes",
+            "courbes-choisie",
+            "courbes-numero",
+        ] {
+            assert_eq!(s["layers"][rang(id)]["layout"]["visibility"], "none");
+        }
+        assert_eq!(
+            s["sources"]["dem"]["tiles"][0],
+            "tuiles://tuiles/dem-energie/{z}/{x}/{y}"
+        );
+        assert_eq!(s["sources"]["dem"]["encoding"], "terrarium");
+        assert_eq!(
+            s["sources"]["courbes"]["tiles"][0],
+            "tuiles://tuiles/courbes-energie/{z}/{x}/{y}"
+        );
+        let mut fictif = construire(
+            &Source::default(),
+            &Paliers::default(),
+            "x",
+            &Palette::osm_clair(),
+        );
+        poser_relief(&mut fictif);
+        assert!(fictif["sources"].get("dem").is_none());
+    }
+
     /// Les pentes : une source GeoJSON et trois couches masquées (l'option
     /// « Pentes » les montre), aux zooms intermédiaires, sur la ville et sous
     /// les noms ; chaque palette garde ses flèches, dans son rouge. Sans
@@ -1967,7 +2164,11 @@ mod tests {
             "habites",
         ];
         let verifier = |s: &Value| {
+            // Les couches de l'archive `carte` ; les courbes du relief ont la leur.
             for couche in s["layers"].as_array().unwrap() {
+                if couche["source"] != "carte" {
+                    continue;
+                }
                 if let Some(sl) = couche.get("source-layer").and_then(|v| v.as_str()) {
                     assert!(
                         connues.contains(&sl),

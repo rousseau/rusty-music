@@ -334,9 +334,18 @@ async function auditerInterface() {
   for (let i = 0; i < 60 && !carte.points.length; i++) await attendre(250);
   if (!carte.points.length) throw new Error("la carte n'a pas chargé ses points");
 
+  const reliefAudit = (oui) => {
+    const c = $("carte-relief");
+    if (!c || c.checked === oui) return;
+    c.checked = oui;
+    c.dispatchEvent(new Event("change"));
+  };
   const ECRANS = [
     ["explorer:points", async () => { await basculerMode("explorer"); clic("points"); }],
-    ["explorer:carte", async () => { await basculerMode("explorer"); clic("carte"); await attendre(1500); }],
+    ["explorer:carte", async () => { await basculerMode("explorer"); clic("carte"); reliefAudit(false); await attendre(1500); }],
+    // Le relief allumé (P6) : la grandeur et les allures du relief dans le
+    // rail, l'ombrage et les courbes sur le plan.
+    ["explorer:carte+relief", async () => { await basculerMode("explorer"); clic("carte"); reliefAudit(true); await attendre(2500); }],
     ["explorer:temps", async () => { await basculerMode("explorer"); clic("temps"); await attendre(600); }],
     ["explorer:anneau", async () => { await basculerMode("explorer"); clic("anneau"); await attendre(600); }],
     ["explorer:lama", async () => { await basculerMode("explorer"); clic("lama"); $("lama-haut").hidden = true; $("lama-accueil").hidden = false; ["lama-compris", "lama-cherche", "lama-resultat"].forEach((i) => ($(i).hidden = true)); }],

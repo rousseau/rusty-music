@@ -22,6 +22,11 @@
 //!   `BALADE_HISTOIRE=0.3` remplace la table `ecoute` par une histoire
 //!   simulée — 30 % des albums écoutés, dont un tiers dans le mois —, pour
 //!   juger la nouveauté là où l'histoire réelle est trop mince.
+//! - **E4, le relief** (P6) : les mêmes départs, 30 min, en *dériver* puis
+//!   dans les trois allures du relief (*à niveau*, *gravir*, *redescendre*).
+//!   Écart-type de l'énergie (rang dans la bibliothèque) le long de chaque
+//!   balade, saut moyen d'un morceau au suivant, montée nette, changements de
+//!   famille. `BALADE_E4_SEUL=1` ne fait qu'E4.
 //!
 //! Positions réelles : `positions.json` écrit par l'application à côté des
 //! tuiles (celles qu'elle accroche à la voirie). Sorties : `continuite.md`,
@@ -39,10 +44,11 @@ use rusty_music_analysis::alea::Alea;
 use rusty_music_analysis::chemin::{echantillonner, Graphe as GrapheSonore, K_VOISINS};
 use rusty_music_carto::accrochage::{destination_pour_duree, morceaux_le_long, AccrochageVoirie};
 use rusty_music_carto::affectation::Repere;
+use rusty_music_carto::altitude::{self, Grandeur};
 use rusty_music_carto::ancrage;
 use rusty_music_carto::balade::{
-    pente_reglee, pente_simple, suivants, Allure, Branche, Contexte as ContextePente, EtatBalade,
-    Memoire, Poids,
+    affiner, pente_reglee, pente_simple, suivants, Allure, Branche, Contexte as ContextePente,
+    EtatBalade, Memoire, Poids,
 };
 use rusty_music_carto::cout_itineraire::{friction_itineraire, ProfilVoirie, ProximiteAgrement};
 use rusty_music_carto::facades::facades;
@@ -66,6 +72,8 @@ const PORTEE_FACADE_M: f64 = 60.0;
 const PAS_ZONE_M: f64 = 100.0;
 /// E3 : la durée d'une balade simulée.
 const BALADE_MS: u64 = 60 * 60_000;
+/// E4 : la durée d'une balade sur le relief (`plan-balade.md`, critère de P6).
+const BALADE_RELIEF_MS: u64 = 30 * 60_000;
 /// E3 : garde-fou contre une suite de morceaux très courts.
 const BALADE_PAS_MAX: usize = 200;
 
@@ -337,6 +345,8 @@ fn histogrammes(titre: &str, axe: &str, series: &[(String, Vec<f64>)], max: f64)
 /// E3 : une pente, vue du banc — l'état, les branches, le morceau en cours ;
 /// rend la branche prise.
 type Choix<'a> = dyn Fn(&EtatBalade, &[Branche], i64) -> Option<usize> + Sync + 'a;
+/// E4 : les branches telles que la pente les voit (`balade::affiner`).
+type Affine<'a> = dyn Fn(&EtatBalade, &[Branche], i64) -> Vec<Branche> + Sync + 'a;
 
 /// E3 : la balade de l'application depuis `depart`, sans geste, jusqu'à
 /// [`BALADE_MS`] de musique. `choisir` rend la branche prise.
@@ -345,15 +355,21 @@ fn balade_simulee(
     accrochage: &AccrochageVoirie,
     depart: i64,
     duree: &dyn Fn(i64) -> u64,
+    duree_max: u64,
     choisir: &Choix<'_>,
+    affiner: Option<&Affine<'_>>,
 ) -> (Vec<i64>, Vec<Carrefour>) {
     let mut etat = EtatBalade::depuis(accrochage.sommet_de[&depart], depart);
     let mut suite = vec![depart];
     let mut carrefours = Vec::new();
     let mut joue = duree(depart);
-    while joue < BALADE_MS && suite.len() < BALADE_PAS_MAX {
+    while joue < duree_max && suite.len() < BALADE_PAS_MAX {
         let courant = *suite.last().expect("non vide");
         let branches = suivants(&etat, graphe, accrochage);
+        let branches = match affiner {
+            Some(f) => f(&etat, &branches, courant),
+            None => branches,
+        };
         let Some(i) = choisir(&etat, &branches, courant) else {
             break;
         };
@@ -581,7 +597,7 @@ fn main() -> anyhow::Result<()> {
                     let (g, acc, duree) = (&graphe, &accrochage, &duree);
                     sc.spawn(move || {
                         lot.iter()
-                            .map(|&d| balade_simulee(g, acc, d, duree, choisir))
+                            .map(|&d| balade_simulee(g, acc, d, duree, BALADE_MS, choisir, None))
                             .collect::<Vec<_>>()
                     })
                 })
@@ -648,10 +664,150 @@ fn main() -> anyhow::Result<()> {
                 memoire: mem_ref,
                 distance: |id| dist_ref(courant, id),
                 famille: famille_de,
+                energie: None,
+                reference: None,
             };
             pente_reglee(etat, br, g_ref, acc_ref, &poids, ailleurs, &c)
         }
     };
+
+    // --- E4 : le relief d'énergie (P6), 30 min par départ. ---
+    let rangs_energie: HashMap<i64, f32> = {
+        let brutes: Vec<Option<f32>> = vue.iter().map(|p| p.energy).collect();
+        vue.iter()
+            .zip(altitude::normaliser(Grandeur::Energie, &brutes))
+            .filter_map(|(p, r)| r.map(|r| (p.id, r)))
+            .collect()
+    };
+    let mut md_e4 = String::new();
+    writeln!(
+        md_e4,
+        "## E4 — le relief d'énergie (P6), balades simulées de 30 min\n"
+    )?;
+    writeln!(
+        md_e4,
+        "{} départs (ceux d'E1), sans geste. Énergie : rang dans la bibliothèque, `[0, 1]` \
+         ({} morceaux mesurés). Écart-type pris le long de chaque balade, puis médiane et moyenne \
+         sur les balades. Repère : {} morceaux tirés au hasard ont un écart-type de {:.3}.\n",
+        departs.len(),
+        rangs_energie.len(),
+        LONGUEUR,
+        (1.0f64 / 12.0).sqrt()
+    )?;
+    writeln!(
+        md_e4,
+        "| allure | morceaux par balade | carrefours par balade | écart-type (médiane) | écart-type (moyenne) | saut moyen | montée nette (moyenne) | changement de famille | distance CLAP consécutive (médiane) |"
+    )?;
+    writeln!(md_e4, "|---|---:|---:|---:|---:|---:|---:|---:|---:|")?;
+    let energie_ref = &rangs_energie;
+    for allure in [
+        Allure::Deriver,
+        Allure::Niveau,
+        Allure::Gravir,
+        Allure::Redescendre,
+    ] {
+        let poids = allure.poids();
+        let morceaux = departs.len().div_ceil(fils);
+        let suites: Vec<(Vec<i64>, Vec<Carrefour>)> = std::thread::scope(|sc| {
+            let taches: Vec<_> = departs
+                .chunks(morceaux)
+                .map(|lot| {
+                    let (g, acc, duree) = (&graphe, &accrochage, &duree);
+                    sc.spawn(move || {
+                        lot.iter()
+                            .map(|&d| {
+                                // À niveau : la référence est l'énergie du départ.
+                                let reference = energie_ref.get(&d).copied();
+                                let contexte = |courant: i64| ContextePente {
+                                    courant,
+                                    memoire: mem_ref,
+                                    distance: move |id| dist_ref(courant, id),
+                                    famille: famille_de,
+                                    energie: Some(energie_ref),
+                                    reference,
+                                };
+                                let avec_ref = |etat: &EtatBalade, br: &[Branche], courant: i64| {
+                                    pente_reglee(
+                                        etat,
+                                        br,
+                                        g_ref,
+                                        acc_ref,
+                                        &poids,
+                                        None,
+                                        &contexte(courant),
+                                    )
+                                };
+                                let affine = |etat: &EtatBalade, br: &[Branche], courant: i64| {
+                                    affiner(etat, br, g_ref, acc_ref, &poids, &contexte(courant))
+                                };
+                                balade_simulee(
+                                    g,
+                                    acc,
+                                    d,
+                                    duree,
+                                    BALADE_RELIEF_MS,
+                                    &avec_ref,
+                                    Some(&affine),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            taches
+                .into_iter()
+                .flat_map(|t| t.join().expect("fil de balade"))
+                .collect()
+        });
+        let (mut ecarts, mut sauts, mut nettes) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut joues, mut carrefours, mut changements, mut transitions) =
+            (0usize, 0usize, 0usize, 0usize);
+        let mut distances: Vec<f64> = Vec::new();
+        for (suite, cs) in &suites {
+            joues += suite.len();
+            carrefours += cs.len();
+            let e: Vec<f64> = suite
+                .iter()
+                .filter_map(|id| energie_ref.get(id).map(|&x| x as f64))
+                .collect();
+            if e.len() >= 2 {
+                let m = e.iter().sum::<f64>() / e.len() as f64;
+                ecarts
+                    .push((e.iter().map(|x| (x - m).powi(2)).sum::<f64>() / e.len() as f64).sqrt());
+                sauts.extend(e.windows(2).map(|w| (w[1] - w[0]).abs()));
+                nettes.push(e[e.len() - 1] - e[0]);
+            }
+            for w in suite.windows(2) {
+                transitions += 1;
+                changements += usize::from(ctx.famille.get(&w[0]) != ctx.famille.get(&w[1]));
+                if let (Some(a), Some(b)) = (ctx.empreinte.get(&w[0]), ctx.empreinte.get(&w[1])) {
+                    distances.push(cosinus(a, b));
+                }
+            }
+        }
+        ecarts.sort_by(f64::total_cmp);
+        distances.sort_by(f64::total_cmp);
+        let moyenne = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
+        writeln!(
+            md_e4,
+            "| {} | {:.1} | {:.2} | {:.3} | {:.3} | {:.3} | {:+.3} | {:.0} % | {:.3} |",
+            allure.nom(),
+            joues as f64 / departs.len() as f64,
+            carrefours as f64 / departs.len() as f64,
+            quantile(&ecarts, 0.5),
+            moyenne(&ecarts),
+            moyenne(&sauts),
+            moyenne(&nettes),
+            100.0 * changements as f64 / transitions.max(1) as f64,
+            quantile(&distances, 0.5),
+        )?;
+        println!("E4, {} : {:.1} s", allure.nom(), t.elapsed().as_secs_f64());
+    }
+    std::fs::write(sortie.join("relief.md"), &md_e4)?;
+    if std::env::var_os("BALADE_E4_SEUL").is_some() {
+        print!("{md_e4}");
+        return Ok(());
+    }
     let mut pentes: Vec<Pente> = Vec::new();
     pentes.push(mesurer(
         "P1, pente simple".into(),
@@ -677,6 +833,9 @@ fn main() -> anyhow::Result<()> {
                         deja_visite: c,
                         usure: 0.3,
                         relation: 0.2,
+                        niveau: 0.0,
+                        montee: 0.0,
+                        saut: 0.0,
                     };
                     pentes.push(mesurer(
                         format!("grille a={a} b={b} c={c}"),

@@ -121,7 +121,15 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   ville est sous le brouillard) ; le voile se lève à chaque écoute par
   `feature-state`, sans régénérer ; compteur de quartier au survol ; balades
   passées dans le rail, redessinées d'un clic, rejouées par ▶.
-- Restes, dans l'ordre : P8, puis P6.
+- P6, le relief d'énergie — fait : option « Relief » du fond de plan
+  (énergie, tempo, popularité, familiarité), `raster-dem` ombré par
+  MapLibre et courbes de niveau numérotées, tuiles écrites à la demande
+  (0,13 s) sans régénérer le plan ; une courbe se désigne d'un clic, se suit
+  à la molette (l'aura suit), s'ouvre par son numéro ; allures *à niveau*,
+  *gravir*, *redescendre*. *À niveau* : écart-type d'énergie −31 % contre
+  *dériver* (0,116 contre 0,167) ; gravir et redescendre, effet faible. Reste
+  à regarder la carte ombrée dans la webview.
+- Restes, dans l'ordre : P8, puis P9 (facultatif, après un usage réel du carrefour).
 
 ## Ce qui n'est pas prévu, et pourquoi
 

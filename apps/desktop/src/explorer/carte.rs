@@ -324,6 +324,7 @@ pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Resu
     *verrou(&etat.accrochage_voirie) = None;
     verrou(&etat.graphes_voirie).clear();
     *verrou(&etat.agrement_voirie) = None;
+    oublier_relief(&app, &etat);
 
     match ombrage_rapport {
         Some(rr) => {
@@ -834,6 +835,7 @@ pub(crate) fn style_carte(
     rusty_music_carto::style::plancher_etiquettes(&mut style);
     // De même, un style d'avant le brouillard (P5 de la balade) le reçoit ici.
     rusty_music_carto::style::poser_traces(&mut style);
+    rusty_music_carto::style::poser_relief(&mut style);
     Ok(style)
 }
 

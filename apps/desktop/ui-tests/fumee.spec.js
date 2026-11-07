@@ -624,6 +624,98 @@ test("carte : le brouillard voile le jamais-écouté et se lève à chaque écou
   await expect.poll(() => visibilite("sentiers")).toBe("visible");
   await expect.poll(async () => (await appels(page, "sentiers_carte")).length).toBeGreaterThan(0);
 });
+
+test("carte : le relief, sa grandeur, et une courbe qu'on suit puis qu'on ouvre", async ({ page }) => {
+  await page.addInitScript(() => {
+    let lib;
+    Object.defineProperty(window, "maplibregl", {
+      configurable: true,
+      get: () => lib,
+      set: (v) => {
+        const Carte = v.Map;
+        v.Map = class extends Carte {
+          constructor(o) {
+            super(o);
+            window.__CARTE_GL__ = this;
+          }
+        };
+        lib = v;
+      },
+    });
+    const masquee = { visibility: "none" };
+    // Une courbe de niveau à travers le centre de la vue.
+    const courbe = {
+      type: "FeatureCollection",
+      features: [
+        { type: "Feature", properties: { ligne: 3, niveau: 6 },
+          geometry: { type: "LineString", coordinates: [[2.30, 48.855], [2.38, 48.855]] } },
+      ],
+    };
+    window.__FIXTURES__.style_carte = () => ({
+      version: 8,
+      center: [2.34, 48.855],
+      zoom: 14,
+      sources: { courbes: { type: "geojson", data: courbe } },
+      layers: [
+        { id: "terre-reelle", type: "background", paint: { "background-color": "#F2EFE9" } },
+        { id: "relief-ombre", type: "background", layout: masquee, paint: { "background-opacity": 0 } },
+        { id: "courbes", type: "line", source: "courbes", layout: masquee,
+          paint: { "line-width": 2, "line-color": "#9C7C5E" } },
+        { id: "courbes-choisie", type: "line", source: "courbes", layout: masquee,
+          filter: ["==", ["get", "ligne"], -1] },
+        { id: "courbes-numero", type: "line", source: "courbes", layout: masquee },
+      ],
+    });
+  });
+  await page.reload();
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="carte"]');
+  await expect(page.locator("#ligne-relief")).toBeVisible();
+  await expect(page.locator("#relief-grandeur")).toBeHidden();
+  const visibilite = (c) =>
+    page.evaluate((couche) => window.__CARTE_GL__.getLayoutProperty(couche, "visibility"), c);
+  await page.locator("#carte-relief").check();
+  await expect.poll(() => visibilite("courbes")).toBe("visible");
+  await expect(page.locator("#relief-grandeur")).toBeVisible();
+  expect((await appels(page, "relief_musical")).at(-1)).toEqual({ grandeur: "energie" });
+  await page.click('#relief-grandeur [data-grandeur="tempo"]');
+  await expect.poll(async () => (await appels(page, "relief_musical")).at(-1)?.grandeur).toBe("tempo");
+  expect(await page.evaluate(() => localStorage.getItem("relief-grandeur"))).toBe("tempo");
+
+  // Un clic sur la courbe la désigne ; la molette la suit ; la pastille l'ouvre.
+  const centre = await page.evaluate(() => {
+    const p = window.__CARTE_GL__.project([2.34, 48.855]);
+    return [p.x, p.y];
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(([x, y]) => window.__CARTE_GL__.queryRenderedFeatures(
+        [[x - 4, y - 4], [x + 4, y + 4]], { layers: ["courbes"] }).length, centre),
+    )
+    .toBeGreaterThan(0);
+  const cnvBox = await page.locator("#carte").boundingBox();
+  await page.mouse.click(cnvBox.x + centre[0], cnvBox.y + centre[1]);
+  await expect.poll(async () => (await appels(page, "courbe")).at(-1)?.ligne).toBe(3);
+  await expect(page.locator("#fil-compte")).toContainText("Courbe 6");
+  await expect.poll(() => visibilite("courbes-choisie")).toBe("visible");
+  await page.mouse.move(cnvBox.x + centre[0] + 60, cnvBox.y + centre[1] + 60);
+  await page.mouse.wheel(0, 120);
+  await expect(page.locator("#carte-info")).toContainText("1 / 2 sur la courbe 6");
+  await page.mouse.wheel(0, 120);
+  await expect(page.locator("#carte-info")).toContainText("2 / 2 sur la courbe 6");
+  // La pastille du numéro est posée là où l'on a cliqué, sur la courbe.
+  await page.mouse.click(cnvBox.x + centre[0], cnvBox.y + centre[1]);
+  await expect.poll(async () => (await appels(page, "ouvrir_courbe")).at(-1)?.ligne).toBe(3);
+  await expect(page.locator("#fil-compte")).toContainText("3 morceaux au-dessus de 6");
+});
+
+test("balade : les allures du relief se choisissent dans le rail", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('#bloc-balade [data-allure="niveau"]');
+  await expect(page.locator('#bloc-balade [data-allure="niveau"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator('#bloc-balade [data-allure="deriver"]')).not.toHaveClass(/segment--actif/);
+  expect(await page.evaluate(() => localStorage.getItem("balade-allure"))).toBe("niveau");
+});
 test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les voisins du curseur", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);

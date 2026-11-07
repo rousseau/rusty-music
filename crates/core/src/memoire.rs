@@ -116,6 +116,20 @@ impl Library {
         Ok(lignes)
     }
 
+    /// Le nombre d'écoutes de chaque morceau écouté au moins une fois
+    /// (`id → n`) : la familiarité du relief de la carte
+    /// (`docs/plan-balade.md`, P6).
+    pub fn nombre_ecoutes(&self) -> Result<std::collections::HashMap<i64, i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, COUNT(*) FROM ecoute e JOIN tracks t ON t.path = e.chemin
+              GROUP BY t.id",
+        )?;
+        let lignes = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(lignes)
+    }
+
     /// Les pistes de la liste calculée `quoi` (« recents », « plus-ecoutes »,
     /// « favoris »). `None` pour un nom inconnu.
     pub fn liste_intelligente(&self, quoi: &str) -> Result<Option<Vec<TrackRow>>> {
@@ -371,6 +385,10 @@ mod tests {
         assert_eq!(d[&id("/m/a")], 300);
         assert_eq!(d[&id("/m/b")], 200);
         assert!(!d.contains_key(&id("/m/c")));
+        let n = lib.nombre_ecoutes().unwrap();
+        assert_eq!(n[&id("/m/a")], 2);
+        assert_eq!(n[&id("/m/b")], 1);
+        assert_eq!(n.len(), 2);
     }
 
     #[test]

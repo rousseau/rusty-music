@@ -31,6 +31,7 @@ import { dessinerAura } from "./aura.js";
 import {
   dessinerBaladePassee, majTracesGL, territoireSous, texteTerritoire,
 } from "./traces.js";
+import { dessinerRelief, majReliefGL } from "./relief.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
@@ -173,7 +174,7 @@ function bornesGeoPoints() {
 /// travail de MapLibre ne peut pas atteindre un schéma d'URI personnalisé.
 if (window.maplibregl) {
   maplibregl.addProtocol("tuiles", async (params) => {
-    const m = /^tuiles:\/\/[^/]*\/(carte|relief)\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
+    const m = /^tuiles:\/\/[^/]*\/(carte|relief|(?:dem|courbes)-[a-z]+)\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
     if (!m) throw new Error("URL de tuile illisible : " + params.url);
     const octets = await invoke("tuile", { quoi: m[1], z: +m[2], x: +m[3], y: +m[4] });
     const donnees = octets instanceof ArrayBuffer ? octets : new Uint8Array(octets).buffer;
@@ -240,6 +241,7 @@ async function initialiserGL() {
     majFiltreGL();
     majPentesGL();
     majTracesGL();
+    majReliefGL();
     majAffichageGL();
     poserVignetteCarte(carte.gl.getStyle());
     dessinerCarte();
@@ -1760,6 +1762,7 @@ function surcoucheSur(r, encre, accent) {
 
   // La balade en cours : sa trace et le promeneur (`balade.js`).
   dessinerBaladePassee(r, encre, accent, ctx);
+  dessinerRelief(r, encre, accent);
   dessinerBalade(r, encre, accent);
 
   // Les voix de l'aura : un anneau autour de chaque morceau entendu (`aura.js`).
