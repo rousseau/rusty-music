@@ -3511,3 +3511,39 @@ le vérifie.
   balades passées et chaînes dépliées ; réglages de la balade dans le bandeau,
   repris au départ depuis le stockage local). Piège : `page.mouse.click`
   ignore `modifiers`, Maj se tient par `keyboard.down("Shift")`.
+
+## Code, C1 : découper maplibre.js, editer.js et pratiquer.js — 7 nov. 2026
+
+Sans changer de comportement (synthèse de novembre, O3 et O4). Deux
+commits, les tests d'interface verts à chacun.
+
+- **`maplibre.js` (2 681 lignes) → six modules.** `explorer/carte-gl.js`
+  (597 : MapLibre, couleurs et filtres des tuiles, années),
+  `explorer/nuage.js` (794 : le canevas commun aux quatre visualisations,
+  son aiguillage `dessinerCarte`, la surcouche, tous les gestes de la
+  souris et le zoom), `explorer/temps.js` (502), `explorer/anneau.js` (411),
+  `explorer/chemins.js` (253), et `familles.js` (212 : couleurs et légende,
+  partagées par Écouter, Explorer et Découvrir).
+- **`editer.js` (405) et `pratiquer.js` (2 691) → trois modules.**
+  `etabli.js` (1 852 : l'état `edition`, le parcours, les variantes, les
+  stems, vitesse et hauteur, sections et boucles, playhead, spectres,
+  niveaux), `pratiquer.js` (1 077 : partition, partie, décompte,
+  transcription), `creer.js` (184 : la greffe et ses candidats).
+- **Méthode.** Un script découpe chaque fichier en éléments de premier niveau
+  (avec un petit lexeur : chaînes, gabarits, commentaires, expressions
+  régulières), les répartit par une table nom → module, recalcule les
+  imports et exports de chaque module, puis réécrit les importeurs (vingt
+  pour `maplibre.js`). Le code de chaque élément passe tel quel ; contrôle :
+  les lignes de l'ancien fichier se retrouvent toutes dans les nouveaux, aux
+  listes d'exports près, et chaque nom importé dans `ui/js/` est exporté par
+  son module (`audit.js` compris, que les tests ne chargent pas).
+- **L'ordre d'exécution.** Les nouveaux modules prennent la place de
+  l'ancien dans la chaîne (import de tête) ; `main.js` écrit maintenant la
+  chaîne en entier. Les instructions de premier niveau gardent leur ordre
+  relatif, sauf les écouteurs du commun de l'établi, qui passent avant ceux
+  de la partition : ils ne visent pas les mêmes éléments.
+- **Pièges.** Le lexeur oubliait de refermer la profondeur à la fin d'un
+  `${…}` ; un module qui n'exporte qu'un nom sortait un `export {}` vide
+  (`creer.js`, attrapé par les tests : erreur de chargement).
+- **Vérifié** : `verifier.sh` vert (48 tests d'interface) après les deux
+  commits.
