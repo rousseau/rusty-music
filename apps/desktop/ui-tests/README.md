@@ -14,7 +14,7 @@ SONDE=1 npx playwright test   # liste, par test, les commandes sans réponse fig
 | `faux-tauri.js` | `invoke`, `event.listen`, `dialog`, `opener` simulés ; note chaque appel dans `window.__APPELS__` |
 | `fixtures.js` | réponses figées, sur une bibliothèque fictive (deux artistes, trois albums) ; formes recopiées des types Rust |
 | `outils.js` | sert `../ui/` depuis le disque (`page.route`, pas de serveur), coupe le réseau, injecte faux Tauri et réponses |
-| `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Éditer avec quatre stems factices, palette ⌘K, filtres qui estompent, thème |
+| `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Pratiquer et Créer avec quatre stems factices, palette ⌘K, filtres qui estompent, thème |
 | `captures.spec.js` | **pas un test** : captures d'écran des deux thèmes sur `collection-fictive.js` (artistes et albums inventés, pochettes engendrées), vers `docs/images/` ; seulement par `npm run captures` (`CAPTURES=1`) |
 | `ecritures.spec.js` | noms en arabe et en japonais sur une bibliothèque à part : `lang`, isolats bidi (Règle 11) |
 

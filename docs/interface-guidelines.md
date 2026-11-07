@@ -10,6 +10,14 @@
 > au-dessus du sélecteur de mode plutôt que dedans — et vérifie ce qui existe
 > déjà contre ce contrat.
 
+> **Sept écrans (5 novembre 2026) : Éditer se divise en Pratiquer et Créer**
+> (`ui-spec-editeur.md`, décision 13). Le sélecteur porte six boutons :
+> Écouter, Pratiquer, Explorer, Créer, Découvrir, Valise. Les deux nouveaux
+> écrans partagent l'établi (`#editer-separer`, `#editer-etabli`) et l'état
+> `edition` ; `enStems()` (`socle.js`) dit si l'on est dans l'un des deux.
+> L'audit (`audit.js`) les capture séparément. Là où ce document dit
+> « Éditer », lire « Pratiquer et Créer ».
+
 > **Sixième écran (19 octobre 2026) : Valise**, cinquième bouton du
 > sélecteur, sous Découvrir — la synchronisation du compagnon iOS. Panneau
 > central `#valise-vue` (colonne de lecture `.bibliotheque`) : la composition

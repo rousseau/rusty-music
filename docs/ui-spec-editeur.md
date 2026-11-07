@@ -1,4 +1,9 @@
-# Brief d'interface — Module 3 (Éditeur)
+# Brief d'interface — Module 3 (Pratiquer et Créer, ex-Éditer)
+
+> **Depuis le 5 nov. 2026, le module 3 occupe deux modes du rail : Pratiquer
+> (juste après Écouter) et Créer (ex-Éditer).** Mêmes stems, même établi, même
+> moteur ; ce qui change est l'usage, porté par le mode (décision 13). Là où ce
+> document dit « Éditer » ou « l'éditeur », lire « Pratiquer et Créer ».
 
 > **Périmètre : ce document ne couvre que le Module 3.** Le module 1 est dans
 > `ui-spec-lecteur.md`, le module 2 dans `ui-spec.md`. Le *pourquoi* technique du
@@ -420,12 +425,44 @@ réglage.
    L'instrument affiché se choisit dans le rail (Basse / Batterie, sous
    Pratiquer), **indépendamment du solo et de la coupure** : on peut lire sa
    partie en l'écoutant, en solo, ou la jouer à la place du stem coupé.
-12. **L'usage se choisit dans le rail.** Décidé le 9 octobre 2026 : un sélecteur
+12. ~~**L'usage se choisit dans le rail.**~~ *Remplacée le 5 novembre 2026
+   par la décision 13.* Décidé le 9 octobre 2026 : un sélecteur
    Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.
    La barre d'outils garde les réglages d'écoute (vitesse, hauteur, boucle) ;
    le centre ne porte que la partition (pratiquer) ou la pile (créer).
+13. **Pratiquer et Créer sont deux modes du rail.** Décidé le 5 novembre
+   2026. Le rail passe à six entrées, dans cet ordre : Écouter, **Pratiquer**,
+   Explorer, **Créer**, Découvrir, Valise (Bibliothèque au-dessus). Éditer
+   devient Créer. Pratiquer suit Écouter parce que c'est une écoute active,
+   l'instrument à la main.
+   *Pourquoi.* Les deux usages ne demandent pas le même écran. Pratiquer lit
+   une partie qui défile, de loin, en boucle sur des mesures, au clavier.
+   Créer compare et remplace des stems, à la souris, en écoute A/B, en
+   cherchant dans la bibliothèque. L'inspecteur ne porte pas la même chose
+   (doigtés et corrections d'un côté, candidats de greffe de l'autre), et la
+   persistance non plus (voir les questions ouvertes). Le sélecteur de la
+   décision 12 jouait déjà le rôle d'un mode sans en avoir le statut.
+   *Ce qui reste commun.* Le moteur entier (démixage, cache de stems, grille
+   des temps, horloge unique, vitesse et hauteur) et l'état `edition` de
+   l'interface : **le morceau ouvert est le même dans les deux modes**.
+   Passer de l'un à l'autre garde les stems chargés, sans rien relancer
+   (`enStems()` dans `socle.js`, test de fumée « Pratiquer puis Créer »).
+   Les états « choisir » et « séparer » sont partagés. La variante de
+   démixage par défaut suit le mode (BS-RoFormer en Pratiquer, HTDemucs en
+   Créer), sauf choix fait à la main.
+   *Dans le rail.* Le segment Pratiquer / Créer disparaît. Le bloc
+   « Votre partie » (instrument, notation, décompte, Songsterr) n'apparaît
+   qu'en Pratiquer. La palette ⌘K propose les deux modes.
 
 ## Questions ouvertes
+
+- **Que retient Pratiquer d'une séance à l'autre ?** Ouverte le 5 novembre
+  (décision 13). **Principe acquis le même jour : oui, les réglages de
+  pratique sont gardés par morceau** ; reste à dire lesquels et où. Créer n'a rien à retenir que ses stems (décision 3). Pratiquer
+  aura vite besoin d'une mémoire par morceau : boucles nommées, vitesse
+  atteinte, transcription corrigée (chantier 1.5 du plan). À trancher avant
+  1.5 : une table SQLite par morceau (migration), plutôt qu'un format de
+  projet.
 
 - ~~**Le remplacement de stem est-il dans ce module ou au-delà ?**~~ **Tranché
   le 18 août : dedans.** Le second fichier n'ouvre pas de session — il ne

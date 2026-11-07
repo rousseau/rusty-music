@@ -1,6 +1,6 @@
 import "./fond-de-plan.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, fileAttente, invoke, navigation, remonter, vue, vueEnGrille,
+  $, ecoute, enStems, fileAttente, invoke, navigation, remonter, vue, vueEnGrille,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur,
@@ -40,7 +40,7 @@ import {
   edition,
 } from "./editer.js";
 import {
-  arreterStems, cacherPartition, majVariantes, poserSourceEdition, prendreLaMain,
+  arreterStems, cacherPartition, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut,
 } from "./pratiquer.js";
 import { lecture } from "./etat-lecture.js";
 import { choisirTheme, themeChoisi } from "./theme.js";
@@ -49,7 +49,10 @@ import { choisirTheme, themeChoisi } from "./theme.js";
 
 async function basculerMode(mode) {
   const explorer = mode === "explorer";
-  const editer = mode === "editer";
+  // Pratiquer et Créer : deux modes du rail sur les mêmes stems du morceau
+  // ouvert. Le mode fixe l'usage (la partition au centre, ou la pile) ;
+  // passer de l'un à l'autre garde les stems chargés.
+  const editer = enStems(mode);
   const bibliotheque = mode === "bibliotheque";
   const decouvrir = mode === "decouvrir";
   const valise = mode === "valise";
@@ -68,8 +71,12 @@ async function basculerMode(mode) {
   // plus contourner.
   document.body.dataset.mode = mode;
   majVisibiliteIntervalleAnnees();
-  if (editer) majVariantes();
-  // Entrer dans l'éditeur avec des stems déjà affichés doit les rendre
+  if (editer) {
+    edition.usage = mode;
+    varianteParDefaut();
+    majVariantes();
+  }
+  // Entrer dans Pratiquer ou Créer avec des stems déjà affichés doit les rendre
   // audibles : c'est ce qu'on vient y faire.
   if (editer) prendreLaMain().catch((e) => remonter(e, "stems"));
   // Explorer a deux centres : la carte (nuage, carte, temps, anneau — un canevas)
@@ -100,7 +107,7 @@ async function basculerMode(mode) {
   $("index-annees").hidden = $("index-annees").hidden || explorer || bibliotheque || decouvrir || valise;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir || valise;
   // « Filtrer » estompe ce qui est affiché — la carte en Explorer, la grille ou
-  // la liste en Écouter et en Éditer. Bibliothèque, Découvrir et Valise n'ont
+  // la liste en Écouter, en Pratiquer et en Créer. Bibliothèque, Découvrir et Valise n'ont
   // rien qu'il filtrerait : masqué (la palette, ⌘K, reste partout).
   // (`majRailExplorer` cache aussi ce champ dans le Lama.)
   $("bloc-chercher").hidden = bibliotheque || decouvrir || valise || enLama;
@@ -123,7 +130,8 @@ async function basculerMode(mode) {
   if (!decouvrir) $("bloc-familles-decouvrir").hidden = true;
   $("bloc-decouvrir").hidden = !decouvrir;
   // La carte de séparation, l'établi et la barre d'outils des stems : `majEtatEditer`
-  // en décide selon l'avancement (`docs/ui-spec-editeur.md`). Hors Éditer, tout est masqué.
+  // en décide selon l'avancement (`docs/ui-spec-editeur.md`). Hors Pratiquer et
+  // Créer, tout est masqué.
   if (!editer) {
     $("editer-separer").hidden = true;
     $("editer-etabli").hidden = true;
@@ -140,7 +148,7 @@ async function basculerMode(mode) {
     edition.sourceChoisie = pisteSelectionnee !== null;
   }
 
-  // Sortir de l'édition rend la sortie au lecteur ordinaire : garder les
+  // Sortir de Pratiquer et de Créer rend la sortie au lecteur ordinaire : garder les
   // stems chargés tiendrait 186 Mo et une sortie audio pour rien.
   if (!editer && lecture.stems.charges) await arreterStems();
 
@@ -200,7 +208,7 @@ async function basculerMode(mode) {
     }
   } else {
     poser(vue.quoi, vue.titre, vue.lignes, vue.retour);
-    // Le mode Éditer travaille sur la sélection courante : on la relit à
+    // Pratiquer et Créer travaillent sur la sélection courante : on la relit à
     // chaque entrée plutôt que de la mémoriser, elle a pu changer depuis.
     // `poserSourceEdition` appelle `majEtatEditer`, qui range le centre.
     if (editer) await poserSourceEdition();

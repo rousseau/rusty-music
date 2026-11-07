@@ -2,13 +2,14 @@
 
 Logiciel de bureau local pour écouter, explorer et éditer une bibliothèque
 musicale. Point d'entrée : un dossier de musique, surveillé. Un cœur
-d'ingestion commun, cinq modes dans le rail (Écouter, Explorer, Éditer,
-Découvrir, Valise) plus Bibliothèque au-dessus. Alternative légère à
+d'ingestion commun, six modes dans le rail (Écouter, Pratiquer, Explorer,
+Créer, Découvrir, Valise) plus Bibliothèque au-dessus. Pratiquer et Créer
+(ex-Éditer) partagent les stems du morceau ouvert. Alternative légère à
 AudioMuse-AI. **État et restes : `docs/suite.md`.**
 
 ## Décisions en vigueur
 
-**Périmètre.** Éditer travaille **une piste à la fois** : ni session
+**Périmètre.** Pratiquer et Créer travaillent **une piste à la fois** : ni session
 multipiste, ni projet sauvegardé, ni mixage DJ. Deux usages : *pratiquer*
 (transcription, partition, boucles) et *créer* (greffe, génération).
 
@@ -78,8 +79,8 @@ crates/player/        Écouter : sortie audio, transport, file, amélioration «
 crates/analysis/      Explorer : empreintes CLAP, projection 2D, descripteurs
 crates/carto/         Explorer : tuiles vectorielles (MVT / PMTiles)
 crates/osm/           import d'un plan OpenStreetMap (jamais lié à l'app)
-crates/editor/        Éditer : démixage, pulsation, étirement, greffe
-crates/transcription/ Éditer : basse, batterie, sections
+crates/editor/        Pratiquer, Créer : démixage, pulsation, étirement, greffe
+crates/transcription/ Pratiquer : basse, batterie, sections
 crates/superres/      super-résolution AERO (bouton « HD »)
 crates/cli/           binaire `rusty-music`
 apps/desktop/         application Tauri (ui/ : HTML/CSS/JS)
@@ -114,9 +115,10 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   (réseau, routage), `docs/carto-anneau.md`, `docs/frise-filiations.md`,
   `docs/nommage-familles.md`, `docs/recherche-llm-playlist.md` (Lama),
   `docs/recherche-lama-sans-ollama.md` (Lama sans Ollama).
-- **Éditer** : `docs/ui-spec-editeur.md` (l'établi), `docs/plan-editer-pratique-creation.md`
+- **Pratiquer, Créer** : `docs/ui-spec-editeur.md` (l'établi, décision 13), `docs/plan-editer-pratique-creation.md`
   et `docs/recherche-editer-pratique-creation.md`, `docs/module3-demixage.md`,
-  `docs/module3-roformer.md`.
+  `docs/module3-roformer.md` ; coach de pratique (jeu comparé à la
+  référence) : `docs/recherche-coach-pratique.md`.
 - **enrichissement** : `docs/data-sources.md`, `docs/enrichissement-lecteur.md`,
   `docs/popularite.md`.
 - **compagnon iOS, Valise** : `docs/plan-ios-compagnon.md`.

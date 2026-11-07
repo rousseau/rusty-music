@@ -1,6 +1,6 @@
 import "./maplibre.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, invoke, navigation, plier, remonter, repondAuFiltre, vue, vueEnGrille,
+  $, ecoute, enStems, invoke, navigation, plier, remonter, repondAuFiltre, vue, vueEnGrille,
 } from "./socle.js";
 import {
   cleCarteGrille, dessiner, dessinerGrille,
@@ -206,12 +206,12 @@ function rafraichirGrille() {
   dessinerGrille();
 }
 
-/// Le filtre du rail (`#q`) côté Écouter et Éditer : pose le texte plié et, si
+/// Le filtre du rail (`#q`) côté Écouter, Pratiquer et Créer : pose le texte plié et, si
 /// la grille ou la liste est à l'écran, la redessine — ce qui n'y répond pas
 /// s'estompe (`repondAuFiltre`), le compte devient « n sur N ».
 function filtrerEcoute(q) {
   ecoute.filtre = plier(q.trim());
-  if (navigation.mode !== "ecoute" && navigation.mode !== "editer") return;
+  if (navigation.mode !== "ecoute" && !enStems()) return;
   if (vueEnGrille()) {
     rafraichirGrille();
     return;

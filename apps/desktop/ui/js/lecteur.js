@@ -1,6 +1,6 @@
 import "./ecouter.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, fileAttente, horloge, invoke, navigation, pochette, remonter, txt,
+  $, duree, enStems, fileAttente, horloge, invoke, navigation, pochette, remonter, txt,
 } from "./socle.js";
 import {
   chargerPopularites, dessiner, jaugePop, popParPiste,
@@ -42,7 +42,7 @@ import { lecture, transport } from "./etat-lecture.js";
 /* ---------------------------------------------------------- filtre du rail */
 
 // `#q` filtre ce qui est affiché, dans tous les écrans où il apparaît : la
-// carte en Explorer, la grille ou la liste en Écouter et en Éditer. Ce qui n'y
+// carte en Explorer, la grille ou la liste en Écouter, en Pratiquer et en Créer. Ce qui n'y
 // répond pas s'estompe (Règle 2). Chercher dans toute la bibliothèque, c'est la
 // palette (⌘K, `palette.js`) : Entrée l'ouvre, hors Explorer, avec le texte
 // déjà tapé.
@@ -508,7 +508,7 @@ async function basculerLecture() {
   poserLecture(!pause);
   sonder(!pause);
 }
-// ⏮ / ⏭ (boutons et touches média) : en Éditer, le moteur coupe les stems et
+// ⏮ / ⏭ (boutons et touches média) : en Pratiquer ou Créer, le moteur coupe les stems et
 // rend la main au lecteur. Avant, `previous` relançait le morceau d'origine
 // par-dessus des stems qui continuaient de jouer.
 async function pistePrecedente() {
@@ -1137,7 +1137,7 @@ async function battement() {
   peindreTransport(frac);
   // Les spectrogrammes suivent aussi la lecture ordinaire : tant que les
   // stems ne jouent pas, ils montrent où en est le morceau d'origine.
-  if (navigation.mode === "editer") poserTete(frac);
+  if (enStems()) poserTete(frac);
 
   // Frise et anneau : l'album focal partagé suit le morceau joué. Appelé à
   // chaque battement, hors du bloc de changement de morceau ci-dessus (qui met

@@ -126,9 +126,16 @@ const vue = {
   retour: null, // état à restaurer en remontant
 };
 
-// Le mode ouvert dans le rail : ecoute | explorer | editer | bibliotheque |
-// decouvrir | valise.
+// Le mode ouvert dans le rail : ecoute | pratiquer | explorer | creer |
+// bibliotheque | decouvrir | valise.
 const navigation = { mode: "ecoute" };
+
+// Pratiquer et Créer travaillent les stems du même morceau ouvert (`edition`) :
+// deux modes du rail, un seul socle (démixage, grille, horloge). Séparés le
+// 5 nov. 2026 — `docs/ui-spec-editeur.md`, décision 13.
+function enStems(mode = navigation.mode) {
+  return mode === "pratiquer" || mode === "creer";
+}
 
 // Ce qu'Écouter garde en dehors de la vue courante (`vue`).
 const ecoute = {
@@ -194,7 +201,7 @@ const fileAttente = {
 
 
 export {
-  $, duree, ecoute, estListePistes, fileAttente, horloge, invoke, isoler, journal, LIGNE,
+  $, duree, ecoute, enStems, estListePistes, fileAttente, horloge, invoke, isoler, journal, LIGNE,
   navigation, ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, txt, viderPochettes, vue,
   vueEnGrille,
 };

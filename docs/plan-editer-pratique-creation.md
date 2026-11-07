@@ -816,7 +816,9 @@ A·Pratiquer (bascule dans la barre d'outils, autoroute au centre, stems réduit
 à leurs niveaux), A·Créer (pile complète, candidats et raisons dans
 l'inspecteur, écoute A/B), B (« pratiquer » sur la ligne d'un stem, autoroute
 dépliée sous la ligne), C (usage choisi dans le rail, partition + tablature au
-centre). **Tranché le 9 oct. : variante C, la partition au centre**
+centre). **Prolongé le 5 nov. : Pratiquer et Créer deviennent deux modes du rail**
+(`ui-spec-editeur.md`, décision 13 ; Éditer est renommé Créer).
+**Tranché le 9 oct. : variante C, la partition au centre**
 (`ui-spec-editeur.md`, décision 11). **L'usage se choisit dans le rail**
 (décision 12, 9 oct.) — le centre reste le plus clair possible.
 

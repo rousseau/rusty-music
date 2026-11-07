@@ -62,9 +62,9 @@ for (const [mode, vue] of [
   });
 }
 
-test("Éditer : les stems du morceau en lecture prennent la main", async ({ page }) => {
+test("Créer : les stems du morceau en lecture prennent la main", async ({ page }) => {
   await lireUnAlbum(page);
-  await page.click('button.mode[data-mode="editer"]');
+  await page.click('button.mode[data-mode="creer"]');
   await expect(page.locator("#editer-etabli")).toBeVisible();
   await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
   await expect.poll(() => appels(page, "stems_play").then((a) => a.length)).toBeGreaterThan(0);
@@ -72,9 +72,24 @@ test("Éditer : les stems du morceau en lecture prennent la main", async ({ page
   expect(charges.length).toBe(4);
 });
 
+test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiquer", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#editer-etabli")).toBeVisible();
+  await expect(page.locator("#bloc-usage")).toBeVisible();
+  await expect(page.locator("#editer-etabli")).toHaveClass(/etabli--pratiquer/);
+  const avant = (await appels(page, "stems_play")).length;
+  await page.click('button.mode[data-mode="creer"]');
+  await expect(page.locator("#bloc-usage")).toBeHidden();
+  await expect(page.locator("#editer-etabli")).not.toHaveClass(/etabli--pratiquer/);
+  await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
+  // Les stems restent chargés d'un mode à l'autre : rien n'est relancé.
+  expect((await appels(page, "stems_play")).length).toBe(avant);
+});
+
 test("le transport suit les stems que le moteur garde", async ({ page }) => {
   await lireUnAlbum(page);
-  await page.click('button.mode[data-mode="editer"]');
+  await page.click('button.mode[data-mode="creer"]');
   await expect(page.locator("#np-titre")).toHaveText("4 stems");
   // ⏭ : l'interface oublie les stems, mais ce moteur-ci ne les coupe pas
   // (une commande qui échoue en route). Le sondage doit les lui rendre.
@@ -132,7 +147,7 @@ test("Lama sans modèle : l'accueil propose de télécharger le modèle intégr�
 });
 
 test("retour en Écouter après chaque mode", async ({ page }) => {
-  for (const m of ["bibliotheque", "explorer", "editer", "decouvrir", "valise", "ecoute"]) {
+  for (const m of ["bibliotheque", "pratiquer", "explorer", "creer", "decouvrir", "valise", "ecoute"]) {
     await page.click(`button.mode[data-mode="${m}"]`);
     await page.waitForTimeout(500);
   }

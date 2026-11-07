@@ -24,8 +24,9 @@
       <nav class="modes" aria-label="Mode">
         <p class="rail__titre">Mode</p>
         <button class="mode mode--actif" data-mode="ecoute">Écouter</button>
+        <button class="mode" data-mode="pratiquer">Pratiquer</button>
         <button class="mode" data-mode="explorer">Explorer</button>
-        <button class="mode" data-mode="editer">Éditer</button>
+        <button class="mode" data-mode="creer">Créer</button>
         <button class="mode" data-mode="decouvrir">Découvrir</button>
         <button class="mode" data-mode="valise">Valise</button>
       </nav>
@@ -262,20 +263,14 @@
         <button id="familles-tout" class="lien" hidden>Toutes les familles</button>
       </div>
 
-      <!-- Mode Éditer : l'usage se choisit dans le rail, comme une vue — le
-           centre reste le plus clair possible (`docs/ui-spec-editeur.md`,
-           décision 12). N'apparaît qu'une fois les stems là. -->
+      <!-- Mode Pratiquer : la partie lue au centre et ses réglages
+           (`docs/ui-spec-editeur.md`, décision 13 — Pratiquer et Créer sont
+           deux modes du rail). N'apparaît qu'une fois les stems là. -->
       <div class="bloc" id="bloc-usage" hidden>
-        <p class="rail__titre">Usage</p>
-        <div class="segments" id="usages">
-          <button class="segment" data-usage="pratiquer"
-                  title="Couper son instrument et lire sa partie au centre, calée sur la lecture">Pratiquer</button>
-          <button class="segment segment--actif" data-usage="creer"
-                  title="La pile de stems : régler, remplacer, exporter">Créer</button>
-        </div>
-        <!-- Pratiquer : la partie de quel instrument. Indépendant du solo
-             et de la coupure — on peut lire sa partie en l'écoutant. -->
-        <div class="segments" id="instruments" hidden style="margin-top:8px">
+        <p class="rail__titre">Votre partie</p>
+        <!-- La partie de quel instrument. Indépendant du solo et de la
+             coupure — on peut lire sa partie en l'écoutant. -->
+        <div class="segments" id="instruments" hidden>
           <button class="segment segment--actif" data-instrument="bass">Basse</button>
           <button class="segment" data-instrument="drums">Batterie</button>
         </div>
@@ -302,7 +297,7 @@
         <p class="aide" id="usage-aide"></p>
       </div>
 
-      <!-- Mode Éditer : les partitions du morceau, une ligne par instrument
+      <!-- Modes Pratiquer et Créer : les partitions du morceau, une ligne par instrument
            séparé — état (à calculer, en cours, prête) et le geste qui va
            avec. Rien ne se calcule sans « Calculer » (demande du 24 oct. :
            la partition apparaissait sans qu'on sache d'où). -->
@@ -364,7 +359,7 @@
                   aria-label="Calcul de la partition de batterie"></progress>
       </div>
 
-      <!-- Mode Éditer : le démixage vit dans le rail, là où on cherche une
+      <!-- Modes Pratiquer et Créer : le démixage vit dans le rail, là où on cherche une
            action sur le morceau en cours — le centre garde l'établi. -->
       <div class="bloc" id="bloc-demix" hidden>
         <p class="rail__titre">Démixage</p>
@@ -455,7 +450,7 @@
       <header class="fil">
         <button id="retour" class="fil__retour" hidden>← Artistes</button>
         <h1 id="fil-titre">Albums</h1>
-        <!-- Mode Éditer, état « choisir » : raccourci vers la séparation du
+        <!-- Modes Pratiquer et Créer, état « choisir » : raccourci vers la séparation du
              morceau en lecture, sans avoir à le retrouver dans la liste. -->
         <button id="editer-candidat" class="fil__candidat" hidden></button>
         <span id="fil-compte" class="fil__compte"></span>
@@ -532,13 +527,13 @@
           </div>
         </div>
 
-        <!-- Mode Éditer, état 2 : la séparation se lance depuis le rail
+        <!-- Modes Pratiquer et Créer, état 2 : la séparation se lance depuis le rail
              (`#bloc-demix`) ; le centre montre le morceau visé. -->
         <div id="editer-separer" class="editer-separer" hidden>
           <p class="aide" id="separer-titre"></p>
         </div>
 
-        <!-- Mode Éditer, état 3 : l'établi. La pile de stems occupe le centre,
+        <!-- Modes Pratiquer et Créer, état 3 : l'établi. La pile de stems occupe le centre,
              un seul playhead vertical en travers. Le détail d'un stem est
              porté par l'inspecteur (#bloc-stem), pas déplié sous la ligne. -->
         <div id="editer-etabli" class="etabli" hidden>
@@ -1304,7 +1299,7 @@
         </div>
       </div>
 
-      <!-- Mode Éditer : le détail du stem sélectionné dans la pile. Un seul
+      <!-- Modes Pratiquer et Créer : le détail du stem sélectionné dans la pile. Un seul
            inspecteur (`interface-guidelines.md` Règle 1) — sa vitesse, sa
            hauteur, d'où le remplacer. Peuplé par `majInspecteurStem`. -->
       <div id="bloc-stem" hidden>

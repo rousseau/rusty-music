@@ -1,6 +1,6 @@
 import "./editer.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, fileAttente, invoke, journal, navigation, ouvrirLien, remonter, signalerErreur, txt,
+  $, ecoute, enStems, fileAttente, invoke, journal, navigation, ouvrirLien, remonter, signalerErreur, txt,
   vue, vueEnGrille,
 } from "./socle.js";
 import {
@@ -683,7 +683,7 @@ function placerCurseur() {
   const rendu = $("partition-rendu");
   const surface = rendu.querySelector(".at-surface");
   let c = partition.curseur;
-  if (!P?.length || !table || !surface || edition.usage !== "pratiquer" || navigation.mode !== "editer") {
+  if (!P?.length || !table || !surface || edition.usage !== "pratiquer" || !enStems()) {
     if (c) c.hidden = true;
     return;
   }
@@ -777,7 +777,7 @@ async function montrerPartition() {
   clearInterval(partition.minuteur);
   partition.minuteur = setInterval(() => {
     const out = partition.api?.player?.output;
-    if (!out || edition.usage !== "pratiquer" || navigation.mode !== "editer") return;
+    if (!out || edition.usage !== "pratiquer" || !enStems()) return;
     // alphaTab anime le curseur d'une note à la suivante sur la durée de la
     // note à *sa* vitesse : restée à 1 quand on ralentit les stems, le curseur
     // arrivait trop tôt puis attendait — en avance et par à-coups (24 oct.).
@@ -851,7 +851,6 @@ function cacherPartition() {
   partition.image = null;
 }
 
-/// Range le centre selon l'usage. Appelée par `majEtatEditer`.
 /// La recherche Songsterr du morceau ouvert, dans le navigateur. Câblée une
 /// fois : posée dans `majUsage`, elle s'ajoutait à chaque appel et un clic
 /// ouvrait autant d'onglets.
@@ -862,13 +861,13 @@ $("songsterr").addEventListener("click", () => {
   ouvrirLien(`https://www.songsterr.com/?pattern=${encodeURIComponent(motif)}`);
 });
 
+/// Range le centre selon l'usage. Appelée par `majEtatEditer`.
 function majUsage() {
   const etabli = $("editer-etabli");
   const pratiquer = edition.usage === "pratiquer" && !etabli.hidden;
-  $("bloc-usage").hidden = etabli.hidden;
-  for (const b of document.querySelectorAll("#usages [data-usage]")) {
-    b.classList.toggle("segment--actif", b.dataset.usage === edition.usage);
-  }
+  // L'usage est le mode du rail (Pratiquer ou Créer) : le bloc ne porte plus
+  // que les réglages de la partie, qui n'ont de sens qu'en Pratiquer.
+  $("bloc-usage").hidden = etabli.hidden || edition.usage !== "pratiquer";
   const instrument = instrumentPratique();
   $("instruments").hidden = edition.usage !== "pratiquer";
   for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
@@ -1080,14 +1079,6 @@ $("muscriptor-telecharger").addEventListener("click", telechargerMuscriptor);
 $("muscriptor-annuler").addEventListener("click", () => {
   $("muscriptor-conditions").hidden = true;
 });
-
-for (const b of document.querySelectorAll("#usages [data-usage]")) {
-  b.addEventListener("click", () => {
-    edition.usage = b.dataset.usage;
-    varianteParDefaut();
-    majUsage();
-  });
-}
 
 /// Bornes et pas des deux réglages.
 ///
@@ -1308,7 +1299,7 @@ async function appliquerReglages() {
       // Le calcul dure des dizaines de secondes : on a pu changer de morceau
       // ou de mode entre-temps. Charger alors ces stems-là remplacerait ceux
       // de l'écran par ceux d'un autre morceau.
-      if (edition.stems !== cibles || navigation.mode !== "editer") {
+      if (edition.stems !== cibles || !enStems()) {
         $("dock-aide").textContent = "";
         return;
       }
@@ -1505,14 +1496,14 @@ async function poserSourceEdition() {
   majEtatEditer();
 }
 
-/// Le centre d'Éditer a trois états (`docs/ui-spec-editeur.md`, « Le parcours ») :
+/// Le centre de Pratiquer et de Créer a trois états (`docs/ui-spec-editeur.md`, « Le parcours ») :
 ///  1. **choisir** — la grille/liste, comme en Écoute ;
 ///  2. **séparer** — la carte de séparation au centre (`#editer-separer`) ;
 ///  3. **retoucher** — la pile de stems (`#editer-etabli`) + la barre d'outils
 ///     (`#dock`), le détail d'un stem dans l'inspecteur (`#bloc-stem`).
 /// `montrerChoix` force le retour à l'état 1 depuis l'établi sans décharger.
 function majEtatEditer() {
-  if (navigation.mode !== "editer") return;
+  if (!enStems()) return;
   const aStems = edition.stems.length > 0;
   // Par défaut on choisit ; on ne passe à « séparer » que sur un choix
   // explicite (clic sur une piste), et à « retoucher » dès qu'il y a des stems.
@@ -1582,7 +1573,7 @@ function positionnerPlayhead() {
   const pistes = $("dock-pistes");
   const premier = edition.stems.find((s) => s.canvas && s.canvas.isConnected);
   if (
-    navigation.mode !== "editer" ||
+    !enStems() ||
     etabli.hidden ||
     !premier ||
     !pistes.children.length ||
@@ -1607,7 +1598,7 @@ function positionnerPlayhead() {
 function majInspecteurStem() {
   const hote = $("insp-stem");
   const s = edition.stems.find((x) => x.nom === edition.stemSel);
-  const montrer = !!s && navigation.mode === "editer" && edition.stems.length > 0;
+  const montrer = !!s && enStems() && edition.stems.length > 0;
   $("bloc-stem").hidden = !montrer;
   if (!montrer) {
     hote.replaceChildren();
@@ -1631,7 +1622,7 @@ function majResumeLigne(s) {
 /// **Sans cela, le dock montrait des stems inertes** : ils étaient affichés
 /// mais pas chargés, si bien que solo et coupure n'agissaient sur rien et que
 /// le bouton du bas commandait encore le morceau mêlé. Il fallait relancer la
-/// lecture depuis le mode Éditer pour que quoi que ce soit réponde.
+/// lecture depuis Pratiquer ou Créer pour que quoi que ce soit réponde.
 ///
 /// La règle est désormais simple : **si le dock montre des stems, ce sont eux
 /// la source.** Le morceau mêlé se tait, les stems reprennent à sa position et
@@ -1700,7 +1691,7 @@ async function chargerStemsExistants(t) {
     majTempoSource();
     majPulsation();
     majSections();
-    if (navigation.mode === "editer") await prendreLaMain();
+    if (enStems()) await prendreLaMain();
   } else {
     edition.stems = [];
     dessinerStems();
@@ -2551,13 +2542,13 @@ async function deplacerLecture(frac) {
   poserTete(frac);
 }
 
-/// En Éditer, des stems affichés que plus rien ne pilote (coupés par le
+/// En Pratiquer ou Créer, des stems affichés que plus rien ne pilote (coupés par le
 /// moteur : ⏮, ⏭, touches média) : on les recharge, en pause. Sans ça, ▶ et
 /// les clics sur un spectrogramme partaient au lecteur ordinaire — le morceau
 /// d'origine jouait, solo et coupure ne touchaient plus rien et la partition
 /// restait figée. Rend vrai si les stems sont de nouveau chargés.
 async function rattacherStems() {
-  if (navigation.mode !== "editer" || !edition.stems.length || lecture.stems.charges) return false;
+  if (!enStems() || !edition.stems.length || lecture.stems.charges) return false;
   await prendreLaMain();
   return lecture.stems.charges;
 }
@@ -2587,8 +2578,8 @@ async function lireStems() {
     );
     // Pendant le décodage on a pu quitter le mode ou changer de morceau :
     // charger alors ces stems ferait jouer un autre morceau que celui affiché,
-    // ou des stems en dehors de l'éditeur.
-    if (edition.stems !== cibles || navigation.mode !== "editer") {
+    // ou des stems en dehors de Pratiquer et de Créer.
+    if (edition.stems !== cibles || !enStems()) {
       $("dock-aide").textContent = "";
       return false;
     }
@@ -2612,7 +2603,7 @@ async function lireStems() {
   await appliquerNiveaux();
   $("dock-aide").textContent = "clic sur un spectrogramme : se déplacer";
   // La barre du bas garde le spectrogramme du morceau édité. Il lui venait
-  // jusqu'ici de la lecture ordinaire, écoutée avant d'entrer en Éditer ; sans
+  // jusqu'ici de la lecture ordinaire, écoutée avant d'entrer en Pratiquer ou Créer ; sans
   // lecture préalable (morceau seulement sélectionné), rien ne le chargeait.
   chargerSpectreTransport(edition.source);
   sonder(true);
@@ -2671,5 +2662,5 @@ export {
   dessinerStems, lancerDecompte, majDerive, majEtatEditer, majUsage, majVariantes,
   montrerPartition, niveaux, oublierStems, poserSourceEdition, poserTete, positionMoteur,
   positionnerPlayhead, prendreLaMain, rampeRGB, rattacherStems, reconcilierStems, REGLAGES,
-  resumeStem, stemEcarte, tonaliteDe, vitesseDe,
+  resumeStem, stemEcarte, tonaliteDe, varianteParDefaut, vitesseDe,
 };

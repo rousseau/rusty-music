@@ -56,8 +56,9 @@ async function versMode(mode) {
 const MODES = [
   ["bibliotheque", "Bibliothèque", "réglages statistiques vérifications dossiers"],
   ["ecoute", "Écouter", "albums artistes playlists"],
+  ["pratiquer", "Pratiquer", "partition tablature basse batterie boucle stems"],
   ["explorer", "Explorer", "carte nuage temps anneau lama"],
-  ["editer", "Éditer", "stems séparer partition pratiquer"],
+  ["creer", "Créer", "stems séparer greffe remplacer exporter éditer"],
   ["decouvrir", "Découvrir", "sorties collaborations nouveautés"],
   ["valise", "Valise", "iphone compagnon"],
 ];

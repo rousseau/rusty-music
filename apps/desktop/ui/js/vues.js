@@ -89,7 +89,7 @@ function ligne(item, index) {
 /// Une ligne de la liste des pistes d'un album. **Un clic sélectionne, il ne
 /// lit pas** (`docs/interface-guidelines.md`, Règle 1 : « Sélectionner n'est pas
 /// écouter ») : le morceau peuple l'inspecteur, s'affiche dans le transport s'il
-/// n'y a rien en lecture, et devient la source d'Éditer. La lecture depuis cette
+/// n'y a rien en lecture, et devient la source de Pratiquer et de Créer. La lecture depuis cette
 /// piste est un geste à part : le numéro (→ ▶ au survol) ou le double-clic. Le
 /// nom d'artiste ouvre ses albums.
 function lignePiste(el, item) {

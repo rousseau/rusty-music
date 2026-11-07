@@ -1,6 +1,6 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, duree, ecoute, estListePistes, fileAttente, invoke, isoler, LIGNE, navigation, ouvrirLien,
+  $, duree, ecoute, enStems, estListePistes, fileAttente, invoke, isoler, LIGNE, navigation, ouvrirLien,
   pochette, remonter, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
@@ -499,10 +499,10 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
 
   majBlocFamillesEcoute();
 
-  // En Éditer, `poser` a masqué grille et liste (gate `horsEcoute`) : c'est
+  // En Pratiquer ou Créer, `poser` a masqué grille et liste (gate `horsEcoute`) : c'est
   // `majEtatEditer` qui décide de les ré-afficher, selon l'état du parcours,
   // et qui les redessine une fois visibles.
-  if (navigation.mode === "editer") majEtatEditer();
+  if (enStems()) majEtatEditer();
 }
 
 /* -------------------------------------------------------- index alphabétique */
@@ -705,7 +705,7 @@ async function activer(item) {
 
 /// Lit `item` : la suite de la liste affichée forme la file (un morceau absent
 /// de la liste — voisin, carte — joue seul). Lancer la lecture d'un morceau, c'est
-/// aussi le choisir : il devient la sélection (et, en Éditer, la source).
+/// aussi le choisir : il devient la sélection (et, en Pratiquer ou Créer, la source).
 async function lancerLecture(item) {
   const depart = vue.lignes.indexOf(item);
   // Non attendue : le son ne doit pas patienter derrière la pochette de
@@ -719,7 +719,7 @@ async function lancerLecture(item) {
 
 /// Le morceau **choisi**, distinct de celui qu'on écoute : un clic dans une
 /// liste, un point de la carte. Ni lecture ni file — `morceauAEditer` le prend
-/// pour source d'Éditer, `majApercuTransport` l'affiche dans le transport quand
+/// pour source de Pratiquer et de Créer, `majApercuTransport` l'affiche dans le transport quand
 /// rien n'est chargé. `inspecter` ne le pose pas : il suit aussi la lecture
 /// (`battement`), qui n'a pas à écraser un choix explicite.
 let pisteSelectionnee = null;
@@ -742,9 +742,9 @@ async function selectionner(t) {
     $("insp-titre").dataset.path === t.path && !inspectionAlbum ? null : inspecter(t);
   majSurlignageSelection();
   majApercuTransport();
-  // En Éditer, choisir une piste, c'est choisir le morceau à travailler : on
+  // En Pratiquer ou Créer, choisir une piste, c'est choisir le morceau à travailler : on
   // passe de l'état « choisir » à « séparer / retoucher » — sans lecture.
-  if (navigation.mode === "editer") {
+  if (enStems()) {
     edition.montrerChoix = false;
     edition.sourceChoisie = true;
     await poserSourceEdition();
@@ -753,12 +753,12 @@ async function selectionner(t) {
 }
 
 $("retour").addEventListener("click", () => {
-  // En Éditer, depuis la carte de séparation ou l'établi, « ← Choisir un
+  // En Pratiquer ou Créer, depuis la carte de séparation ou l'établi, « ← Choisir un
   // morceau » ramène au sélecteur sans décharger les stems déjà séparés
   // (`docs/ui-spec-editeur.md`, état 1). En état 1, le bouton retrouve son
   // rôle de fil de navigation ordinaire.
   if (
-    navigation.mode === "editer" &&
+    enStems() &&
     !edition.montrerChoix &&
     (edition.stems.length || (edition.sourceChoisie && edition.source))
   ) {
@@ -771,7 +771,7 @@ $("retour").addEventListener("click", () => {
   if (r) poser(r.quoi, r.titre, r.lignes, r.retour ?? null, r.scroll ?? 0);
 });
 
-// Raccourci « Séparer « … » » de l'en-tête, en Éditer : le morceau en lecture
+// Raccourci « Séparer « … » » de l'en-tête, en Pratiquer ou Créer : le morceau en lecture
 // devient le morceau choisi, sans avoir à le retrouver dans la liste.
 $("editer-candidat").addEventListener("click", async () => {
   const cand = fileAttente.pistes.find((t) => t.path === lecture.courant);
@@ -918,7 +918,7 @@ function montrerVoisinsAlbum() {
 async function ouvrirAlbumsArtiste(artiste, mbid, retour = ecoute.sommet) {
   if (!artiste) return;
   const albums = await invoke("albums", { artist: artiste, mbid: mbid || null });
-  // « Au centre » suppose le mode Écoute : depuis Explorer ou Éditer, le
+  // « Au centre » suppose le mode Écoute : depuis Explorer, Pratiquer ou Créer, le
   // centre montre la carte ou le dock, pas la grille.
   if (navigation.mode !== "ecoute") await basculerMode("ecoute");
   poser("albums", artiste, albums, retour);

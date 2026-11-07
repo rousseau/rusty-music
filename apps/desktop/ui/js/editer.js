@@ -9,7 +9,7 @@ import { lecture } from "./etat-lecture.js";
 
 /* ---------------------------------------------------------- éditer */
 
-// Le morceau que le mode Éditer travaille. Ce n'est pas forcément celui en
+// Le morceau que Pratiquer ou Créer travaille. Ce n'est pas forcément celui en
 // lecture : on peut séparer un morceau tout en en écoutant un autre.
 const edition = {
   source: null, // TrackRow
@@ -73,8 +73,9 @@ const edition = {
   accelBoucle: false,
   passagesVus: 0,
   dureeMs: 0,
-  // « creer » (la pile de stems) ou « pratiquer » (la partition au centre) —
-  // choisi dans le rail (`docs/ui-spec-editeur.md`, décisions 11 et 12).
+  // « creer » (la pile de stems) ou « pratiquer » (la partition au centre) :
+  // le mode du rail, posé par `basculerMode` (`docs/ui-spec-editeur.md`,
+  // décision 13).
   usage: "creer",
   // La partie affichée en Pratiquer : « bass » (tablature) ou « drums »
   // (portée de percussion). Choisie dans le rail, sans lien avec le solo ni

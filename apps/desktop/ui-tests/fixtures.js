@@ -228,7 +228,7 @@ Object.assign(fixtures, {
   dossier_donnees: "/Données",
   suspect_genres: [],
   scan_state: { en_cours: false, racine: "", morceaux: PISTES.length, resultat: null },
-  // --- Éditer : quatre stems déjà calculés pour chaque morceau
+  // --- Pratiquer et Créer : quatre stems déjà calculés pour chaque morceau
   demix_variantes: [
     { nom: "htdemucs", presente: true, megaoctets: 84 },
     { nom: "htdemucs_6s", presente: false, megaoctets: 55 },
