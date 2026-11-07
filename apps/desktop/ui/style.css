@@ -1076,6 +1076,35 @@ body[data-mode="explorer"] .index-alpha { display: none; }
 }
 .balade-passee__voir[aria-pressed="true"], .balade-passee__voir:hover,
 .balade-passee__jouer:hover { color: var(--accent); }
+/* Des lieux à soi (`js/lieux.js`, P8) : la teinte d'une chaîne dans sa
+   ligne, le nuancier, le formulaire d'épingle dans le menu et celui qui garde
+   une chaîne, en cartouche comme la balade. */
+.chaine__teinte {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 6px; vertical-align: baseline;
+}
+.nuancier { display: flex; gap: 6px; margin: 6px 0; }
+.nuancier__teinte {
+  width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: 2px solid transparent;
+}
+.nuancier__teinte[aria-pressed="true"] { border-color: var(--txt); }
+.carte__menu-form { padding: 6px 12px; }
+.carte__menu-form[hidden] { display: none; }
+.carte__menu-form input, .carte__garder input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: var(--t-second);
+  background: var(--panel2); color: var(--txt); border: 1px solid var(--line); padding: 4px 6px;
+}
+.carte__menu-ligne { display: flex; gap: 8px; align-items: center; }
+.carte__menu-ligne input { width: 72px; }
+.carte__menu .carte__menu-ligne button { width: auto; padding: 4px 8px; }
+.carte__garder {
+  position: absolute; left: var(--gouttiere); top: 64px; z-index: 6; width: 240px;
+  background: var(--panel); border: 1px solid var(--line); padding: 8px 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+.carte__garder[hidden] { display: none; }
+.carte__garder .lien { margin-top: 0; }
 .carte__balade .lien { margin-top: 0; }
 .carte__balade .lien[hidden] { display: none; }
 /* Le haut-parleur de l'aura (P4) : en haut à droite de la carte, même

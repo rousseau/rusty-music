@@ -56,6 +56,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // battus, balades passées à rejouer (`db/balades.rs`,
         // `docs/plan-balade.md`, P5).
         M::up(include_str!("../../sql/migration-005-balades.sql")),
+        // N° 6 (7 nov. 2026) : épingles et chaînes, des lieux à soi
+        // (`crate::lieux`, `docs/plan-balade.md`, P8).
+        M::up(include_str!("../../sql/migration-006-lieux.sql")),
     ])
 }
 

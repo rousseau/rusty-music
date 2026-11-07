@@ -1654,7 +1654,8 @@ $("insp-lien-critique").addEventListener("click", (e) => {
 
 export {
   activer, alerteTransportActive, construireIndexAlpha, construireIndexAnnees,
-  dernierArtisteOuvert, favorisChemins, inspecter, inspecterAlbum, lancerLecture, lignePlaylist,
+  dernierArtisteOuvert, favorisChemins, inspecter, inspecterAlbum, jouerPlaylist, lancerLecture,
+  lignePlaylist,
   majAutourArtiste, majIndexActif, majMinuteur, masquerAutourArtiste, mesuresDuTransport,
   ouvrirAlbumsArtiste, pisteSelectionnee, poser, qualiteDuTransport, rafraichirMinuteur,
   scrollActuel, selectionner, signalerPistesIgnorees, texteCompte,

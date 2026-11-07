@@ -9,6 +9,7 @@ mod aura;
 mod balade;
 mod carte;
 mod lama;
+mod lieux;
 mod modele_local;
 mod relief;
 mod traces;
@@ -18,6 +19,7 @@ pub(crate) use aura::{aura, entretenir_aura, EtatAura};
 pub(crate) use balade::*;
 pub(crate) use carte::*;
 pub(crate) use lama::*;
+pub(crate) use lieux::*;
 pub(crate) use modele_local::{
     lama_telechargement_state, lama_telecharger, EtatTelechargementLama,
 };

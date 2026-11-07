@@ -716,6 +716,87 @@ test("balade : les allures du relief se choisissent dans le rail", async ({ page
   await expect(page.locator('#bloc-balade [data-allure="deriver"]')).not.toHaveClass(/segment--actif/);
   expect(await page.evaluate(() => localStorage.getItem("balade-allure"))).toBe("niveau");
 });
+
+test("carte : épingler ici, flâner depuis l'épingle, la retirer", async ({ page }) => {
+  // Un plan de ville : un style vide et une adresse réelle pour chaque morceau.
+  await page.addInitScript(() => {
+    let lib;
+    Object.defineProperty(window, "maplibregl", {
+      configurable: true,
+      get: () => lib,
+      set: (v) => {
+        const Carte = v.Map;
+        v.Map = class extends Carte {
+          constructor(o) {
+            super(o);
+            window.__CARTE_GL__ = this;
+          }
+        };
+        lib = v;
+      },
+    });
+    window.__FIXTURES__.style_carte = () => ({
+      version: 8,
+      center: [2.34, 48.855],
+      zoom: 15,
+      sources: {},
+      layers: [{ id: "terre-reelle", type: "background", paint: { "background-color": "#F2EFE9" } }],
+    });
+    window.__FIXTURES__.positions_carte = () =>
+      Object.fromEntries(window.__DONNEES__.PISTES.map((p, i) => [p.id, [2.30 + i * 0.002, 48.80]]));
+  });
+  await page.reload();
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="carte"]');
+  await expect.poll(() => page.evaluate(() => !!window.__CARTE_GL__?.loaded())).toBe(true);
+  const box = await page.locator("#carte").boundingBox();
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.click(x, y, { button: "right" });
+  await expect(page.locator("#carte-menu-epingler")).toBeVisible();
+  await expect(page.locator("#carte-menu-flaner")).toBeHidden();
+  await page.click("#carte-menu-epingler");
+  await page.fill("#epingle-nom", "Chez moi");
+  await page.fill("#epingle-emoji", "🏠");
+  await page.click('#epingle-nuancier [data-couleur="#2F6FB0"]');
+  await page.click("#epingle-poser");
+  const pose = (await appels(page, "creer_epingle")).at(-1);
+  expect(pose).toMatchObject({ nom: "Chez moi", emoji: "🏠", couleur: "#2F6FB0" });
+  expect(pose.lon).toBeCloseTo(2.34, 3);
+  expect(pose.lat).toBeCloseTo(48.855, 3);
+  await expect(page.locator("#carte-menu")).toBeHidden();
+  // Sur l'épingle : flâner d'ici (depuis le morceau le plus proche), ou la retirer.
+  await page.mouse.click(x, y, { button: "right" });
+  await expect(page.locator("#carte-menu-retirer")).toBeVisible();
+  await expect(page.locator("#carte-menu-epingler")).toBeHidden();
+  await page.click("#carte-menu-flaner");
+  await expect.poll(async () => (await appels(page, "balade_demarrer")).length).toBe(1);
+  await page.click("#carte-balade-arreter");
+  await page.mouse.click(x, y, { button: "right" });
+  await page.click("#carte-menu-retirer");
+  await expect.poll(async () => (await appels(page, "supprimer_epingle")).at(-1)?.id).toBe(1);
+});
+
+test("carte : garder une balade passée en chaîne, la rejouer, retirer son tracé", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  await expect(page.locator("#bloc-chaines")).toBeHidden();
+  await page.locator("#balades-passees .balade-passee button", { hasText: "☆" }).click();
+  await expect(page.locator("#carte-garder")).toBeVisible();
+  await expect(page.locator("#garder-nom")).toHaveValue(/^Balade du /);
+  await page.fill("#garder-nom", "Dimanche");
+  await page.click("#garder-ok");
+  expect((await appels(page, "garder_chaine")).at(-1)).toMatchObject({
+    nom: "Dimanche", origine: "balade", morceaux: [1, 2, 3],
+  });
+  await expect(page.locator("#carte-garder")).toBeHidden();
+  const ligne = page.locator("#chaines .balade-passee");
+  await expect(ligne).toHaveCount(1);
+  await expect(ligne).toContainText("Dimanche · 3 morceaux");
+  await ligne.locator("button", { hasText: "▶" }).click();
+  await expect.poll(async () => (await appels(page, "playlist_pistes")).at(-1)?.id).toBe(100);
+  await ligne.locator("button", { hasText: "✕" }).click();
+  await expect(page.locator("#bloc-chaines")).toBeHidden();
+});
+
 test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les voisins du curseur", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);

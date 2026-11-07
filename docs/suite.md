@@ -129,7 +129,13 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   *gravir*, *redescendre*. *À niveau* : écart-type d'énergie −31 % contre
   *dériver* (0,116 contre 0,167) ; gravir et redescendre, effet faible. Reste
   à regarder la carte ombrée dans la webview.
-- Restes, dans l'ordre : P8, puis P9 (facultatif, après un usage réel du carrefour).
+- P8, des lieux à soi — fait : épingles (clic droit « Épingler ici », nom,
+  teinte, emoji, « Flâner d'ici » depuis l'épingle) et chaînes (une balade
+  passée ou un itinéraire gardé : une playlist plus son tracé, rejouable).
+  Elles sont en lon/lat et par chemin, et survivent aux tuiles, aux
+  réanalyses et aux rescans. Elles suivront les playlists dans la Valise
+  quand la règle « Playlist » y viendra.
+- Restes : P9 (facultatif, après un usage réel du carrefour).
 
 ## Ce qui n'est pas prévu, et pourquoi
 

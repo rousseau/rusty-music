@@ -25,6 +25,7 @@ pub mod gapless;
 pub mod http;
 pub mod lastfm;
 pub mod lastfm_pass;
+pub mod lieux;
 pub mod listenbrainz;
 #[cfg(feature = "lama-local")]
 pub mod llm_local;

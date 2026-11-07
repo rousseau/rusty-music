@@ -253,6 +253,11 @@
             <p class="rail__titre" style="margin-top:14px">Balades passées</p>
             <ul id="balades-passees" class="balades-passees"></ul>
           </div>
+          <!-- Les chaînes gardées (P8) : un clic cadre, ▶ rejoue, ✕ retire le tracé. -->
+          <div id="bloc-chaines" hidden>
+            <p class="rail__titre" style="margin-top:14px">Chaînes</p>
+            <ul id="chaines" class="balades-passees"></ul>
+          </div>
         </div>
         <div class="zoom" id="bloc-zoom">
           <button id="zoom-moins" aria-label="Dézoomer">−</button>
@@ -480,6 +485,8 @@
             bougez le curseur.</p>
         </div>
         <button id="chemin-rejouer" class="lien" hidden>Autre tirage</button>
+        <button id="chemin-garder" class="lien" type="button" hidden
+                title="Garder cet itinéraire sous un nom : une playlist, et son tracé sur la carte">Garder sur la carte</button>
       </div>
 
       <div class="bloc">
@@ -640,6 +647,26 @@
           <!-- Clic droit sur un morceau de la carte. -->
           <div id="carte-menu" class="carte__menu" role="menu" hidden>
             <button id="carte-menu-flaner" role="menuitem" type="button">Flâner d'ici</button>
+            <!-- Des lieux à soi (`docs/plan-balade.md`, P8, `js/lieux.js`). -->
+            <button id="carte-menu-epingler" role="menuitem" type="button" hidden>Épingler ici</button>
+            <button id="carte-menu-retirer" role="menuitem" type="button" hidden>Retirer l'épingle</button>
+            <div id="carte-menu-form" class="carte__menu-form" hidden>
+              <input id="epingle-nom" type="text" maxlength="120" placeholder="Nom de l'épingle" aria-label="Nom de l'épingle">
+              <div class="nuancier" id="epingle-nuancier" aria-label="Couleur"></div>
+              <div class="carte__menu-ligne">
+                <input id="epingle-emoji" type="text" maxlength="8" placeholder="Emoji" aria-label="Emoji (facultatif)">
+                <button id="epingle-poser" type="button">Épingler</button>
+              </div>
+            </div>
+          </div>
+          <!-- Garder une balade ou un itinéraire comme chaîne (P8). -->
+          <div id="carte-garder" class="carte__garder" hidden>
+            <input id="garder-nom" type="text" maxlength="120" aria-label="Nom de la chaîne">
+            <div class="nuancier" id="garder-nuancier" aria-label="Couleur"></div>
+            <div class="carte__menu-ligne">
+              <button id="garder-ok" class="lien" type="button">Garder</button>
+              <button id="garder-annuler" class="lien" type="button">Annuler</button>
+            </div>
           </div>
           <div class="carte__aide" id="carte-aide">
             molette : zoom · glisser : déplacer · clic : écouter

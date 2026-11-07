@@ -32,7 +32,7 @@ pub struct PlaylistRow {
 }
 
 /// Nom nettoyé : espaces de bord retirés, borné, jamais vide.
-fn nom_propre(nom: &str) -> String {
+pub(crate) fn nom_propre(nom: &str) -> String {
     let nom: String = nom.trim().chars().take(NOM_MAX).collect();
     let nom = nom.trim().to_string();
     if nom.is_empty() {

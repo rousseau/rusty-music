@@ -1,4 +1,4 @@
-import "./relief.js"; // l'ordre d'exécution : voir main.js
+import "./lieux.js"; // l'ordre d'exécution : voir main.js
 import {
   $, invoke, navigation,
 } from "./socle.js";

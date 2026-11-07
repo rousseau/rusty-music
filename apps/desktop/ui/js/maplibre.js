@@ -32,6 +32,7 @@ import {
   dessinerBaladePassee, majTracesGL, territoireSous, texteTerritoire,
 } from "./traces.js";
 import { dessinerRelief, majReliefGL } from "./relief.js";
+import { dessinerLieux } from "./lieux.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
@@ -1761,6 +1762,7 @@ function surcoucheSur(r, encre, accent) {
   }
 
   // La balade en cours : sa trace et le promeneur (`balade.js`).
+  dessinerLieux(r, encre);
   dessinerBaladePassee(r, encre, accent, ctx);
   dessinerRelief(r, encre, accent);
   dessinerBalade(r, encre, accent);

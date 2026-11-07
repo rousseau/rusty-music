@@ -16,6 +16,10 @@ import { lecture } from "./etat-lecture.js";
 import { marquerApercu } from "./aura.js";
 import { rafraichirTraces } from "./traces.js";
 import { relief } from "./relief.js";
+import {
+  epingleSous, fermerFormEpingle, lonlatSous, morceauPres, ouvrirFormEpingle, peutEpingler,
+  retirerEpingle,
+} from "./lieux.js";
 
 /* ------------------------------------------------- la balade (P1)
  *
@@ -694,23 +698,33 @@ function dessinerBalade(r, encre, accent) {
 $("carte-balade-arreter").addEventListener("click", arreterBalade);
 $("carte-balade-revenir").addEventListener("click", revenir);
 
-/// Le clic droit sur un morceau de la carte : un menu d'une ligne.
+/// Le clic droit sur la carte : un petit menu. Sur un morceau, « Flâner
+/// d'ici » ; sur le plan de ville, « Épingler ici » ; sur une épingle (P8),
+/// « Flâner d'ici » depuis le morceau le plus proche, et « Retirer
+/// l'épingle » (`lieux.js`).
 let cibleMenu = null;
 cnv.addEventListener("contextmenu", (e) => {
   const r = cnv.getBoundingClientRect();
-  const p = pointSous(e.clientX - r.left, e.clientY - r.top);
-  if (!p) {
+  const [mx, my] = [e.clientX - r.left, e.clientY - r.top];
+  const epingle = epingleSous(mx, my);
+  const p = epingle ? morceauPres(epingle) : pointSous(mx, my);
+  const ici = peutEpingler() && !epingle ? lonlatSous(mx, my) : null;
+  if (!p && !epingle && !ici) {
     fermerMenuBalade();
     return;
   }
   e.preventDefault();
-  cibleMenu = p;
+  cibleMenu = { p, epingle, ici };
+  $("carte-menu-flaner").hidden = !p;
+  $("carte-menu-epingler").hidden = !ici;
+  $("carte-menu-retirer").hidden = !epingle;
+  fermerFormEpingle();
   const menu = $("carte-menu");
   const zone = cnv.parentElement.getBoundingClientRect();
   menu.style.left = `${e.clientX - zone.left}px`;
   menu.style.top = `${e.clientY - zone.top}px`;
   menu.hidden = false;
-  $("carte-menu-flaner").focus();
+  menu.querySelector("button:not([hidden])")?.focus();
 });
 
 function fermerMenuBalade() {
@@ -719,7 +733,14 @@ function fermerMenuBalade() {
 }
 
 $("carte-menu-flaner").addEventListener("click", () => {
-  if (cibleMenu) flanerDici(cibleMenu.id);
+  if (cibleMenu?.p) flanerDici(cibleMenu.p.id);
+});
+$("carte-menu-epingler").addEventListener("click", () => {
+  if (cibleMenu?.ici) ouvrirFormEpingle(cibleMenu.ici);
+});
+$("carte-menu-retirer").addEventListener("click", () => {
+  if (cibleMenu?.epingle) retirerEpingle(cibleMenu.epingle);
+  fermerMenuBalade();
 });
 document.addEventListener("pointerdown", (e) => {
   if (!$("carte-menu").hidden && !$("carte-menu").contains(e.target)) fermerMenuBalade();
@@ -731,4 +752,4 @@ document.addEventListener("keydown", (e) => {
 // Une balade reprise au démarrage (`balade_reprendre`) : la relire une fois.
 setTimeout(() => relireBalade().then(() => redessiner(true)), 1500);
 
-export { arreterBalade, balade, cliquerVoie, dessinerBalade, flanerDici, majBalade };
+export { arreterBalade, balade, cliquerVoie, dessinerBalade, fermerMenuBalade, flanerDici, majBalade };

@@ -3275,3 +3275,55 @@ lisibilité. Les corrections sont dans l'interface seulement.
     osm-clair et nuit) ;
   - les allures du relief dans une vraie balade.
 
+## Balade musicale, P8 — 7 nov. 2026
+
+### P8 : des lieux à soi, épingles et chaînes
+
+- **Migration n° 6** (`sql/migration-006-lieux.sql`, `core/src/lieux.rs`) :
+  - `epingle(nom, couleur, emoji, lon, lat)` ;
+  - `chaine(playlist_id → playlist ON DELETE CASCADE, couleur, trace,
+    origine)`.
+
+  Une chaîne **est** une playlist : ses morceaux par chemin, dans la vue
+  Playlists, avec l'origine « Chaîne gardée d'une balade » ou « … d'un
+  itinéraire ». Le tracé est **copié** en `[lon, lat]` au moment de la
+  garder, et non gardé en sommets de voirie : ceux de `balade_pas` changent si
+  le plan est réimporté. Supprimer la playlist emporte la chaîne ;
+  « ✕ » sur une chaîne ne retire que le tracé.
+- **Épingles** (`js/lieux.js`) :
+  - clic droit sur le plan, « Épingler ici » : un formulaire dans le menu
+    (nom, six teintes, emoji facultatif, Entrée pose) ;
+  - le repère est dessiné sur la surcouche à tous les zooms : un disque de la
+    couleur choisie, l'emoji ou l'initiale, le nom sur un halo ;
+  - clic droit sur une épingle : « Flâner d'ici », qui part du morceau logé
+    le plus proche, ou « Retirer l'épingle ».
+
+  Plan de ville réel seulement : les épingles vivent en lon/lat.
+- **Chaînes** :
+  - « ☆ » sur une balade passée, ou « Garder sur la carte » sous un
+    itinéraire affiché, ouvre un cartouche (nom, teinte) ;
+  - la chaîne paraît dans le bloc « Chaînes » du rail : un clic la cadre, ▶ la
+    rejoue (`jouerPlaylist`), ✕ retire son tracé ;
+  - le tracé reste sur la carte.
+- **Survie** : rien n'est lié aux tuiles. Les épingles et les tracés sont en
+  lon/lat dans la base et dessinés sur la surcouche, pas dans le style. Les
+  morceaux d'une chaîne sont des chemins, comme ceux des playlists. Le test
+  `epingles_et_chaines_survivent_a_un_rescan_et_a_une_reanalyse` vide
+  `features` et `descriptors`, puis rend à un fichier un autre identifiant :
+  épingles et chaînes sont identiques, et la playlist retrouve ses deux
+  morceaux. `engendrer_tuiles` ne touche à aucune des deux tables.
+- **La Valise** : elle ne prend pas encore les playlists. La règle
+  « Playlist » est dans les restes de `plan-ios-compagnon.md`. Le jour où elle
+  viendra, les chaînes suivront **sans rien faire** : ce sont des playlists.
+  Leur tracé n'a pas à partir, le compagnon iOS n'a pas de carte.
+- **Vérifié** :
+  - 3 tests du cœur ;
+  - 2 tests de fumée : épingler (position, teinte, emoji), flâner depuis
+    l'épingle, la retirer ; garder une balade passée, la rejouer, retirer le
+    tracé ;
+  - `verifier.sh` vert, 39 tests de fumée ;
+  - `audit-interface.sh` : 252 cellules, 0 violation.
+- **Non vérifié** :
+  - l'audit ne mesure ni le formulaire d'épingle ni le cartouche « Garder »
+    (fermés dans ses états) ;
+  - l'aspect des repères et des tracés dans la webview native.

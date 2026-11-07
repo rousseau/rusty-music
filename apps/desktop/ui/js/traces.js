@@ -9,6 +9,7 @@ import {
 import {
   demarrerLecture, dessinerFile,
 } from "./lecteur.js";
+import { proposerGarder } from "./lieux.js";
 
 /* ------------------------------------------------- traces et brouillard (P5)
  *
@@ -228,7 +229,14 @@ function dessinerListeBalades() {
       jouer.setAttribute("aria-label", "Rejouer cette balade");
       jouer.title = "Rejouer cette balade, dans le même ordre";
       jouer.addEventListener("click", () => rejouer(b.id));
-      li.append(voir, jouer);
+      const garderB = document.createElement("button");
+      garderB.type = "button";
+      garderB.className = "balade-passee__jouer";
+      garderB.textContent = "☆";
+      garderB.setAttribute("aria-label", "Garder cette balade sur la carte");
+      garderB.title = "Garder cette balade sous un nom : une playlist, et son tracé sur la carte";
+      garderB.addEventListener("click", () => garderBalade(b));
+      li.append(voir, jouer, garderB);
       return li;
     }),
   );
@@ -264,6 +272,21 @@ function cadrer(d) {
     [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
     { padding: 80, maxZoom: 16, duration: 600 },
   );
+}
+
+/// « Garder » une balade passée (P8) : elle devient une chaîne.
+async function garderBalade(b) {
+  let d;
+  try {
+    d = await invoke("balade_passee", { id: b.id });
+  } catch (err) {
+    remonter(err, "balade passée");
+    return;
+  }
+  const jour = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long" }).format(
+    new Date(b.debut * 1000),
+  );
+  proposerGarder({ origine: "balade", morceaux: d.pistes, trace: d.trace, nom: `Balade du ${jour}` });
 }
 
 async function rejouer(id) {

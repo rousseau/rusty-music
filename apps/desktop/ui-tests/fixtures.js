@@ -169,6 +169,31 @@ const fixtures = {
     ],
   }),
   ouvrir_courbe: () => window.__DONNEES__.PISTES.slice(0, 3),
+  // Des lieux à soi (P8, `explorer/lieux.rs`) : épingles et chaînes en mémoire.
+  epingles: (_, e) => e.epingles ?? [],
+  creer_epingle: (a, e) => {
+    e.epingles = e.epingles ?? [];
+    const ep = { id: e.epingles.length + 1, nom: a.nom || "Sans titre", couleur: a.couleur, emoji: a.emoji, lon: a.lon, lat: a.lat };
+    e.epingles.push(ep);
+    return ep;
+  },
+  supprimer_epingle: (a, e) => {
+    e.epingles = (e.epingles ?? []).filter((x) => x.id !== a.id);
+    return true;
+  },
+  // Une chaîne est une playlist : ses pistes, comme celles d'une playlist.
+  playlist_pistes: () => window.__DONNEES__.PISTES.slice(0, 3),
+  chaines: (_, e) => e.chaines ?? [],
+  garder_chaine: (a, e) => {
+    e.chaines = e.chaines ?? [];
+    const id = 100 + e.chaines.length;
+    e.chaines.push({ playlist_id: id, nom: a.nom, couleur: a.couleur, origine: a.origine, trace: a.trace, nb_pistes: a.morceaux.length });
+    return id;
+  },
+  oublier_trace: (a, e) => {
+    e.chaines = (e.chaines ?? []).filter((c) => c.playlist_id !== a.id);
+    return true;
+  },
   balade_rejouer: (a, e) => {
     const ids = [1, 2, 3];
     e.file = window.__DONNEES__.PISTES.filter((p) => ids.includes(p.id)).map((p) => p.path);
