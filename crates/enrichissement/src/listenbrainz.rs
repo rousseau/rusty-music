@@ -21,8 +21,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Result;
-use crate::http::ClientCadence;
+use rusty_music_core::error::Result;
+use rusty_music_core::http::ClientCadence;
 
 /// Un artiste proche, tel que ListenBrainz le classe.
 #[derive(Debug, Clone, PartialEq)]

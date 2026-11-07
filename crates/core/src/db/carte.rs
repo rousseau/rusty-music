@@ -165,7 +165,7 @@ impl Library {
                 *cumul_lastfm.entry((*cluster, tag.clone())).or_default() += 1;
             }
             if let (Some(artiste), Some(album)) = (artiste, album) {
-                let cle = (artiste.clone(), crate::musicbrainz::normaliser_titre(album));
+                let cle = (artiste.clone(), crate::texte::normaliser_titre(album));
                 if let Some(rg) = albums.get(&cle) {
                     rg_par_cluster
                         .entry(*cluster)
@@ -1904,7 +1904,7 @@ mod tests_ordre {
             &[(
                 "rg-1".into(),
                 "Temple of the Dog".into(),
-                crate::musicbrainz::normaliser_titre("Temple of the Dog"),
+                crate::texte::normaliser_titre("Temple of the Dog"),
                 Vec::new(),
                 Some("1991-04-16".into()),
                 None,

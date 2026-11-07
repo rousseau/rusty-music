@@ -1,0 +1,18 @@
+[package]
+name = "rusty-music-enrichissement"
+description = "Enrichissement en ligne : MusicBrainz, Discogs, Deezer, Last.fm, ListenBrainz, TheAudioDB, CritiqueBrainz."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+thiserror.workspace  = true
+tracing.workspace    = true
+serde.workspace      = true
+serde_json.workspace = true
+ureq.workspace       = true
+flate2.workspace     = true
+quick-xml.workspace  = true

@@ -20,7 +20,7 @@
 - Projet de référence pour l'architecture de graphe : *discogsography* (open source, Neo4j) — fonctionnalités « Path Finder » (plus court chemin entre deux entités) et « Collaboration Network » (graphe + centralité), à partir de données Discogs + MusicBrainz.
 
 - **Éditions d'un album** (« Choisir l'édition… », 1ᵉʳ nov. 2026,
-  `crates/core/src/editions.rs`) : à la demande, pour un album ouvert,
+  `crates/enrichissement/src/editions.rs`) : à la demande, pour un album ouvert,
   recherche `ws/2/release?query=release:"titre" AND artist:"artiste"` (titre
   et artiste seuls, avec l'adresse de contact), puis
   `ws/2/release/{id}?inc=recordings+artist-credits+release-groups` pour

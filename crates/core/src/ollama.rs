@@ -3,7 +3,7 @@
 //!
 //! Sert l'interprétation du champ d'intention d'Explorer (texte libre →
 //! playlist) — un appel unique, déclenché par un clic, pas un traitement de
-//! masse. Contrairement à [`crate::lastfm`] ou [`crate::listenbrainz`], pas
+//! masse. Contrairement à `lastfm` ou `listenbrainz` (enrichissement), pas
 //! de cadence ni de réessais à ménager : Ollama tourne en local, et une
 //! panne n'a qu'une cause plausible (le serveur n'est pas lancé), pas
 //! plusieurs à distinguer artiste par artiste.

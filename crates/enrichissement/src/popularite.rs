@@ -3,7 +3,7 @@
 //! la base.
 //!
 //! Séparée de [`crate::listenbrainz`] / [`crate::deezer`] (qui ne font que
-//! parler au réseau) et de [`crate::db`] (qui ne fait que ranger). Comme
+//! parler au réseau) et de [`rusty_music_core::db`] (qui ne fait que ranger). Comme
 //! [`crate::enrichir`], elle est la seule à connaître l'ordre des opérations.
 //!
 //! **Additive.** Une bibliothèque qui n'a jamais vu le réseau reste
@@ -14,10 +14,10 @@
 //! refait rien et ne perd rien. Un échec réseau n'interrompt pas la passe :
 //! l'entité fautive n'est pas marquée et revient au prochain passage.
 
-use crate::db::{Library, PopulariteBrute};
 use crate::deezer;
-use crate::error::Result;
 use crate::listenbrainz;
+use rusty_music_core::db::{Library, PopulariteBrute};
+use rusty_music_core::error::Result;
 
 /// MBID par requête POST ListenBrainz — même taille que la sonde de phase 0.
 const LOT_LB: usize = 60;
@@ -70,7 +70,7 @@ pub fn actualiser(
         .map(|p| p.recording_mbid.clone())
         .filter(|m| !lb_faits.contains(m))
         .collect();
-    let dz_a_faire: Vec<&crate::db::PisteAPopulariser> = recs
+    let dz_a_faire: Vec<&rusty_music_core::db::PisteAPopulariser> = recs
         .iter()
         .filter(|p| !dz_faits.contains(&p.recording_mbid))
         .collect();

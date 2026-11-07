@@ -2,7 +2,7 @@
 //! La passe d'enrichissement : interroge MusicBrainz, remplit la base.
 //!
 //! Séparée de [`crate::musicbrainz`], qui ne fait que parler au réseau, et de
-//! [`crate::db`], qui ne fait que ranger. Ici vit la seule chose qui relie les
+//! [`rusty_music_core::db`], qui ne fait que ranger. Ici vit la seule chose qui relie les
 //! deux : l'ordre des opérations, et ce qu'on fait des trous.
 //!
 //! **Additive par construction.** Une bibliothèque qui n'a jamais vu le réseau
@@ -13,9 +13,9 @@
 //! dans la même transaction que ses données. Une passe coupée au milieu ne
 //! refait rien et ne perd rien.
 
-use crate::db::{AlbumRange, Library};
-use crate::error::Result;
 use crate::musicbrainz::{normaliser_titre, Client};
+use rusty_music_core::db::{AlbumRange, Library};
+use rusty_music_core::error::Result;
 
 /// Ce qu'une passe a produit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

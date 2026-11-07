@@ -149,8 +149,8 @@ pub(crate) fn cle_pochette_deezer(artiste: &str, album: &str) -> String {
         empreinte(
             format!(
                 "{}\0{}",
-                rusty_music_core::musicbrainz::cle_artiste(artiste),
-                rusty_music_core::musicbrainz::normaliser_titre(album)
+                rusty_music_enrichissement::musicbrainz::cle_artiste(artiste),
+                rusty_music_enrichissement::musicbrainz::normaliser_titre(album)
             )
             .as_bytes(),
         )
@@ -160,20 +160,20 @@ pub(crate) fn cle_pochette_deezer(artiste: &str, album: &str) -> String {
 /// Le client Deezer du processus : sa cadence (150 ms entre requêtes) n'a de
 /// sens que partagée, la grille d'albums demande des dizaines de pochettes d'un
 /// coup.
-pub(crate) fn deezer() -> &'static rusty_music_core::deezer::Client {
-    static CLIENT: std::sync::OnceLock<rusty_music_core::deezer::Client> =
+pub(crate) fn deezer() -> &'static rusty_music_enrichissement::deezer::Client {
+    static CLIENT: std::sync::OnceLock<rusty_music_enrichissement::deezer::Client> =
         std::sync::OnceLock::new();
-    CLIENT.get_or_init(rusty_music_core::deezer::Client::new)
+    CLIENT.get_or_init(rusty_music_enrichissement::deezer::Client::new)
 }
 
 /// Le client TheAudioDB (clé partagée) des photos d'artiste : sa cadence
 /// (2,1 s entre requêtes, 30/min pour la clé partagée) n'a de sens que partagée
 /// par tous les appels. Distinct du client de la passe « biographies », qui
 /// porte la clé personnelle de l'utilisateur.
-pub(crate) fn theaudiodb() -> &'static rusty_music_core::theaudiodb::Client {
-    static CLIENT: std::sync::OnceLock<rusty_music_core::theaudiodb::Client> =
+pub(crate) fn theaudiodb() -> &'static rusty_music_enrichissement::theaudiodb::Client {
+    static CLIENT: std::sync::OnceLock<rusty_music_enrichissement::theaudiodb::Client> =
         std::sync::OnceLock::new();
-    CLIENT.get_or_init(|| rusty_music_core::theaudiodb::Client::new(None))
+    CLIENT.get_or_init(|| rusty_music_enrichissement::theaudiodb::Client::new(None))
 }
 
 /// Repli quand ni les tags ni le dossier n'ont de pochette (`docs/suite.md`,
@@ -213,7 +213,7 @@ pub(crate) fn cover_depuis_reseau(dossier_cache: &Path, db_path: &Path, chemin: 
 
     if let Some(id) = &release {
         let r = source_de_pochette(dossier_cache, &format!("caar-{id}"), || {
-            rusty_music_core::pochette::release(id)
+            rusty_music_enrichissement::pochette::release(id)
         });
         if let Some(v) = essayer(r) {
             return Repli::Trouvee(v);
@@ -221,7 +221,7 @@ pub(crate) fn cover_depuis_reseau(dossier_cache: &Path, db_path: &Path, chemin: 
     }
     if let Some(rg) = &rg_mbid {
         let r = source_de_pochette(dossier_cache, &format!("caa-{rg}"), || {
-            rusty_music_core::pochette::release_group(rg)
+            rusty_music_enrichissement::pochette::release_group(rg)
         });
         if let Some(v) = essayer(r) {
             return Repli::Trouvee(v);

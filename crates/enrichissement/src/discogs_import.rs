@@ -15,10 +15,10 @@
 
 use std::path::Path;
 
-use crate::db::{CreditDiscogs, LabelDiscogs, Library};
 use crate::discogs;
-use crate::error::Result;
 use crate::musicbrainz;
+use rusty_music_core::db::{CreditDiscogs, LabelDiscogs, Library};
+use rusty_music_core::error::Result;
 
 /// Ce qu'une passe de liaison a produit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

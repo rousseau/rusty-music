@@ -17,8 +17,10 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Error;
-use crate::http::{ClientCadence, Reponse};
+use rusty_music_core::error::Error;
+use rusty_music_core::http::{ClientCadence, Reponse};
+
+pub use rusty_music_core::db::Tag;
 
 /// Délai minimal entre deux requêtes — API publique sans limite annoncée,
 /// même politesse qu'envers les autres sources.
@@ -39,13 +41,6 @@ pub enum EchecTags {
     /// continue.
     #[error("{0}")]
     Ponctuel(#[source] Error),
-}
-
-/// Un tag communautaire et son poids relatif (0-100, tel que Last.fm le rend).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tag {
-    pub nom: String,
-    pub poids: u32,
 }
 
 /// Client Last.fm, cadencé.
@@ -72,7 +67,7 @@ impl Client {
     /// avec attente croissante (15 s) pour échouer pareil au bout du compte
     /// ne feraient que ralentir le diagnostic, artiste après artiste — d'où
     /// `Bloquant`, qui arrête la passe et revient aussitôt, sans épuiser les
-    /// tentatives comme le ferait un [`crate::error::Error::Reseau`] ordinaire.
+    /// tentatives comme le ferait un [`rusty_music_core::error::Error::Reseau`] ordinaire.
     ///
     /// `ctx` (jamais l'url, qui porte la clé) est ce qu'un message d'erreur
     /// éventuel garde du site interrogé.

@@ -17,7 +17,7 @@
 //! dans un message d'erreur — seulement `ctx`, un libellé sans secret fourni
 //! par l'appelant (ex. `"artist.gettoptags"`).
 //!
-//! `crate::discogs::agent`/`telecharger_avec_avancement` restent séparés :
+//! `crate::telechargement` (`agent`, `telecharger_avec_avancement`) reste séparé :
 //! c'est un téléchargement de fichier volumineux en flux (le dump mensuel,
 //! plusieurs Go, réutilisé aussi par `crate::modeles` pour les poids de
 //! modèles), sans cadence entre requêtes ni réponse JSON à parser —

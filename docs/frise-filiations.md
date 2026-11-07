@@ -183,7 +183,7 @@ base, cf. la règle « estomper, jamais masquer » de `docs/carto-anneau.md`).
 
 Distinguer filiation, influence secondaire et rupture stylistique demanderait
 une donnée **documentée** (relation MusicBrainz typée — voir
-`crates/core/src/musicbrainz.rs` pour le type de relation déjà modélisé côté
+`crates/enrichissement/src/musicbrainz.rs` pour le type de relation déjà modélisé côté
 artistes — ou une annotation manuelle), pas une déduction depuis les
 empreintes audio seules. Non traité ici ; à reprendre dans une session future
 une fois qu'une telle source de vérité existe.

@@ -1919,7 +1919,7 @@ fn main() -> Result<()> {
                          Le donner avec --contact, ou par RUSTY_MUSIC_CONTACT."
                     )
                 })?;
-            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
             let (faits, total, _) = lib.mb_avancement()?;
             let limite = if limite == 0 { usize::MAX } else { limite };
             println!(
@@ -1930,21 +1930,22 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::enrichir::enrichir(&mut lib, &client, limite, |b| {
-                // Une ligne toutes les vingt-cinq : assez pour voir que ça
-                // avance, assez peu pour ne pas noyer un terminal pendant une
-                // heure.
-                if b.artistes >= dernier + 25 {
-                    dernier = b.artistes;
-                    println!(
-                        "  {} artistes · {} avec genre · {} albums · {:.0} min",
-                        b.artistes,
-                        b.avec_genre,
-                        b.albums,
-                        t.elapsed().as_secs_f64() / 60.0
-                    );
-                }
-            })?;
+            let bilan =
+                rusty_music_enrichissement::enrichir::enrichir(&mut lib, &client, limite, |b| {
+                    // Une ligne toutes les vingt-cinq : assez pour voir que ça
+                    // avance, assez peu pour ne pas noyer un terminal pendant une
+                    // heure.
+                    if b.artistes >= dernier + 25 {
+                        dernier = b.artistes;
+                        println!(
+                            "  {} artistes · {} avec genre · {} albums · {:.0} min",
+                            b.artistes,
+                            b.avec_genre,
+                            b.albums,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
             println!(
                 "\n{} artistes interrogés, {} avec au moins un genre, {} albums — {:.0} min",
                 bilan.artistes,
@@ -1974,13 +1975,17 @@ fn main() -> Result<()> {
                          Le donner avec --contact, ou par RUSTY_MUSIC_CONTACT."
                     )
                 })?;
-            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+            let lb = rusty_music_enrichissement::listenbrainz::Client::new(&contact);
 
             println!("Actualisation du fil Découvrir…");
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan =
-                rusty_music_core::decouvrir::actualiser(&mut lib, &lb, jours, limite, |b| {
+            let bilan = rusty_music_enrichissement::decouvrir::actualiser(
+                &mut lib,
+                &lb,
+                jours,
+                limite,
+                |b| {
                     if b.artistes >= dernier + 5 {
                         dernier = b.artistes;
                         println!(
@@ -1992,7 +1997,8 @@ fn main() -> Result<()> {
                             t.elapsed().as_secs_f64() / 60.0
                         );
                     }
-                })?;
+                },
+            )?;
             println!(
                 "\n{} sorties neuves, {} voisins écrits — {:.0} min",
                 bilan.sorties_neuves,
@@ -2015,8 +2021,8 @@ fn main() -> Result<()> {
             let contact = contact
                 .or_else(|| std::env::var("RUSTY_MUSIC_CONTACT").ok())
                 .unwrap_or_default();
-            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
-            let dz = rusty_music_core::deezer::Client::new();
+            let lb = rusty_music_enrichissement::listenbrainz::Client::new(&contact);
+            let dz = rusty_music_enrichissement::deezer::Client::new();
             let limite = if limite == 0 { usize::MAX } else { limite };
             let depuis = if rafraichir_des <= 0 {
                 0
@@ -2030,7 +2036,7 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::popularite::actualiser(
+            let bilan = rusty_music_enrichissement::popularite::actualiser(
                 &mut lib,
                 &lb,
                 &dz,
@@ -2062,13 +2068,17 @@ fn main() -> Result<()> {
         }
         Cmd::Biographies { cle, limite } => {
             let mut lib = lib;
-            let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
+            let client = rusty_music_enrichissement::theaudiodb::Client::new(cle.as_deref());
             let limite = if limite == 0 { usize::MAX } else { limite };
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan =
-                rusty_music_core::biographies::actualiser(&mut lib, &client, 0, limite, |b| {
+            let bilan = rusty_music_enrichissement::biographies::actualiser(
+                &mut lib,
+                &client,
+                0,
+                limite,
+                |b| {
                     if b.faits >= dernier + 25 {
                         dernier = b.faits;
                         println!(
@@ -2078,7 +2088,8 @@ fn main() -> Result<()> {
                             t.elapsed().as_secs_f64() / 60.0
                         );
                     }
-                })?;
+                },
+            )?;
             println!(
                 "\n{} artistes interrogés, {} avec une biographie — {:.0} min",
                 bilan.interroges,
@@ -2091,7 +2102,7 @@ fn main() -> Result<()> {
             rafraichir_des,
         } => {
             let mut lib = lib;
-            let client = rusty_music_core::critiquebrainz::Client::new();
+            let client = rusty_music_enrichissement::critiquebrainz::Client::new();
             let limite = if limite == 0 { usize::MAX } else { limite };
             let depuis = if rafraichir_des <= 0 {
                 0
@@ -2105,8 +2116,12 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan =
-                rusty_music_core::critiques::actualiser(&mut lib, &client, depuis, limite, |b| {
+            let bilan = rusty_music_enrichissement::critiques::actualiser(
+                &mut lib,
+                &client,
+                depuis,
+                limite,
+                |b| {
                     if b.faits >= dernier + 25 {
                         dernier = b.faits;
                         println!(
@@ -2116,7 +2131,8 @@ fn main() -> Result<()> {
                             t.elapsed().as_secs_f64() / 60.0
                         );
                     }
-                })?;
+                },
+            )?;
             println!(
                 "\n{} albums interrogés, {} avec au moins une critique — {:.0} min",
                 bilan.albums_interroges,
@@ -2130,7 +2146,7 @@ fn main() -> Result<()> {
             rafraichir_des,
         } => {
             let mut lib = lib;
-            let client = rusty_music_core::lastfm::Client::new(cle);
+            let client = rusty_music_enrichissement::lastfm::Client::new(cle);
             let limite = if limite == 0 { usize::MAX } else { limite };
             let depuis = if rafraichir_des <= 0 {
                 0
@@ -2144,7 +2160,7 @@ fn main() -> Result<()> {
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::lastfm_pass::actualiser(
+            let bilan = rusty_music_enrichissement::lastfm_pass::actualiser(
                 &mut lib,
                 &client,
                 depuis,
@@ -2188,22 +2204,23 @@ fn main() -> Result<()> {
                          Le donner avec --contact, ou par RUSTY_MUSIC_CONTACT."
                     )
                 })?;
-            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
             let limite = if limite == 0 { usize::MAX } else { limite };
 
             let t = Instant::now();
             let mut dernier = 0usize;
-            let bilan = rusty_music_core::discogs_import::lier(&mut lib, &client, limite, |b| {
-                if b.faits >= dernier + 25 {
-                    dernier = b.faits;
-                    println!(
-                        "  {} / {} éditions · {:.0} min",
-                        b.faits,
-                        b.total,
-                        t.elapsed().as_secs_f64() / 60.0
-                    );
-                }
-            })?;
+            let bilan =
+                rusty_music_enrichissement::discogs_import::lier(&mut lib, &client, limite, |b| {
+                    if b.faits >= dernier + 25 {
+                        dernier = b.faits;
+                        println!(
+                            "  {} / {} éditions · {:.0} min",
+                            b.faits,
+                            b.total,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
             println!(
                 "\n{} éditions vérifiées, {} reliées à Discogs — {:.0} min",
                 bilan.interrogees,
@@ -2221,7 +2238,7 @@ fn main() -> Result<()> {
                     let dest = std::env::temp_dir().join("rusty-music-discogs-releases.xml.gz");
                     println!("Téléchargement du dernier dump Discogs (≈ 11 Go)…");
                     let mut dernier = 0u64;
-                    rusty_music_core::discogs_import::telecharger_dernier_dump(
+                    rusty_music_enrichissement::discogs_import::telecharger_dernier_dump(
                         &dest,
                         |vus, total| {
                             if vus >= dernier + 500_000_000 {
@@ -2243,17 +2260,18 @@ fn main() -> Result<()> {
 
             println!("Import des crédits depuis {}…", chemin.display());
             let mut dernier = 0u64;
-            let bilan = rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
-                if b.editions_vues >= dernier + 500_000 {
-                    dernier = b.editions_vues;
-                    println!(
-                        "  {} éditions parcourues · {} retenues · {:.0} min",
-                        b.editions_vues,
-                        b.editions_retenues,
-                        t.elapsed().as_secs_f64() / 60.0
-                    );
-                }
-            })?;
+            let bilan =
+                rusty_music_enrichissement::discogs_import::importer(&mut lib, &chemin, |b| {
+                    if b.editions_vues >= dernier + 500_000 {
+                        dernier = b.editions_vues;
+                        println!(
+                            "  {} éditions parcourues · {} retenues · {:.0} min",
+                            b.editions_vues,
+                            b.editions_retenues,
+                            t.elapsed().as_secs_f64() / 60.0
+                        );
+                    }
+                })?;
             println!(
                 "\n{} éditions parcourues, {} retenues, {} fragments illisibles ignorés — {:.0} min",
                 bilan.editions_vues, bilan.editions_retenues, bilan.fragments_malformes,

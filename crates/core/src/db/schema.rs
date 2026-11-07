@@ -5,7 +5,7 @@ use super::*;
 
 /// Enregistre `titre_normalise(t)` côté SQLite, pour que les jointures vers
 /// `mb_release_groups.title_norm` appliquent exactement la même normalisation
-/// que celle qui a rempli cette colonne ([`crate::musicbrainz::normaliser_titre`]).
+/// que celle qui a rempli cette colonne ([`crate::texte::normaliser_titre`]).
 /// Sans ça, `title_norm` retire les espaces (« temple of the dog » →
 /// « templeofthedog ») mais une jointure en `lower(trim(...))` les garde : la
 /// jointure ne matche jamais pour un titre à plusieurs mots, et l'année
@@ -17,7 +17,7 @@ fn enregistrer_fonctions(conn: &Connection) -> rusqlite::Result<()> {
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         |ctx| {
             let titre: String = ctx.get::<Option<String>>(0)?.unwrap_or_default();
-            Ok(crate::musicbrainz::normaliser_titre(&titre))
+            Ok(crate::texte::normaliser_titre(&titre))
         },
     )
 }

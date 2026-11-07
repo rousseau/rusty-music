@@ -109,7 +109,7 @@ le scan réapplique ; « Retenir » remplit l'édition, l'enregistrement de
 chaque piste et les identifiants d'artiste (la ligne « Identités » baisse) ;
 une seule entrée, l'album ouvert au centre ; classement par titre et artiste
 puis nombre de pistes.
-- Cœur : `crates/core/src/editions.rs` (lecture des réponses, classement,
+- Cœur : `crates/enrichissement/src/editions.rs` (lecture des réponses, classement,
   appariement rang à rang, testés sans réseau) ; deux méthodes du client
   (`chercher_editions`, `edition`). **La recherche de MusicBrainz ne rend pas
   les durées** : elles viennent avec l'édition sélectionnée (une requête),

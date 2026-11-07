@@ -2,7 +2,7 @@
 //! La passe de critiques : interroge CritiqueBrainz, remplit la base.
 //!
 //! Séparée de [`crate::critiquebrainz`] (qui ne fait que parler au réseau) et
-//! de [`crate::db`] (qui ne fait que ranger) — même discipline que
+//! de [`rusty_music_core::db`] (qui ne fait que ranger) — même discipline que
 //! [`crate::popularite`].
 //!
 //! **Additive et best-effort.** La plupart des albums n'ont aucune critique —
@@ -10,8 +10,8 @@
 //! comme pour les autres sources, pour ne pas repasser dessus à chaque fois.
 
 use crate::critiquebrainz;
-use crate::db::{CritiqueBrute, Library};
-use crate::error::Result;
+use rusty_music_core::db::{CritiqueBrute, Library};
+use rusty_music_core::error::Result;
 
 /// Ce qu'une passe a produit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

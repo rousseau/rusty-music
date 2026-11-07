@@ -68,7 +68,7 @@ pub(crate) async fn decouvrir_pochette(
     tauri::async_runtime::spawn_blocking(move || {
         let mut panne = false;
         let r = source_de_pochette(&dossier_cache, &format!("caa-{rg_mbid}"), || {
-            rusty_music_core::pochette::release_group(&rg_mbid)
+            rusty_music_enrichissement::pochette::release_group(&rg_mbid)
         });
         match r {
             Reponse::Image(v) => return Ok(Some(v)),
@@ -115,7 +115,7 @@ pub(crate) async fn decouvrir_photo_artiste(
         let mut panne = false;
         let cle_deezer = format!(
             "dza-{:016x}",
-            empreinte(rusty_music_core::musicbrainz::cle_artiste(&nom).as_bytes())
+            empreinte(rusty_music_enrichissement::musicbrainz::cle_artiste(&nom).as_bytes())
         );
         match source_de_pochette(&dossier_cache, &cle_deezer, || deezer().photo_artiste(&nom)) {
             Reponse::Image(v) => return Ok(Some(v)),
@@ -181,10 +181,10 @@ pub(crate) fn start_decouvrir(
         "une actualisation est déjà en cours",
         Default::default(),
         move |etat| {
-            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
+            let lb = rusty_music_enrichissement::listenbrainz::Client::new(&contact);
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
+                rusty_music_enrichissement::decouvrir::actualiser(&mut lib, &lb, 30, 0, |b| {
                     let mut d = verrou(&etat.decouvrir);
                     d.avancement.artistes = b.artistes;
                     d.avancement.total = b.total;

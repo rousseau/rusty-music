@@ -193,7 +193,7 @@ impl Library {
         let mut avec_critique = 0i64;
         for ligne in lignes {
             let (artiste, album, n) = ligne?;
-            let norme = crate::musicbrainz::normaliser_titre(&album);
+            let norme = crate::texte::normaliser_titre(&album);
             if albums
                 .get(&(artiste, norme))
                 .is_some_and(|rg| critiquees.contains(rg))

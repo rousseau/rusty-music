@@ -56,7 +56,7 @@ pub enum Error {
     /// exemple. Distinct de [`Error::Reseau`] : ce n'est pas une source
     /// distante injoignable, c'est un contenu déjà en main mais malformé.
     /// Toujours récupérable à l'échelle d'une seule entrée : voir
-    /// `crate::discogs`.
+    /// `rusty_music_enrichissement::discogs`.
     #[error("donnée illisible : {0}")]
     Parsing(String),
 

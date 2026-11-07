@@ -21,8 +21,12 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Result;
-use crate::http::ClientCadence;
+use rusty_music_core::error::Result;
+use rusty_music_core::http::ClientCadence;
+use rusty_music_core::texte::sans_accent;
+
+pub use rusty_music_core::db::Relation;
+pub use rusty_music_core::texte::normaliser_titre;
 
 /// Un genre et le nombre de votes qui l'appuient.
 ///
@@ -50,23 +54,6 @@ pub struct Album {
     pub type_primaire: Option<String>,
     /// `secondary-types` : Compilation, Live, Remix, Soundtrack…
     pub types_secondaires: Vec<String>,
-}
-
-/// Une relation entre deux artistes, telle que MusicBrainz la nomme —
-/// « member of band », « instrumental supporting musician »…, parfois
-/// précisée d'un attribut (« guitar », « vocal »).
-///
-/// Le sens de lecture n'est pas toujours le même : MusicBrainz porte un
-/// `direction` (« backward »/« forward ») que ce module ne redresse pas —
-/// le type est gardé tel quel, dans le sens où l'API le rend pour
-/// l'artiste demandé. Assez pour afficher « X — member of band — Y », pas
-/// encore assez pour un graphe orienté qu'on parcourrait dans les deux
-/// sens sans ambiguïté.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Relation {
-    pub dst_mbid: String,
-    pub dst_name: String,
-    pub relation: String,
 }
 
 /// Délai minimal entre deux requêtes. Une seconde est la limite annoncée ;
@@ -114,7 +101,7 @@ impl Client {
     /// `404` est une réponse, pas une panne : l'identifiant est inconnu, on
     /// rend `None` et on n'y revient pas. `503` est le signal de débit de
     /// MusicBrainz — on patiente en doublant l'attente, comme toute autre
-    /// panne temporaire (voir [`crate::http::ClientCadence`]).
+    /// panne temporaire (voir [`rusty_music_core::http::ClientCadence`]).
     fn json(&self, url: &str) -> Result<Option<Value>> {
         self.http.get_json(url, "ws/2")
     }
@@ -342,37 +329,6 @@ fn genres_de(v: &Value) -> Vec<Genre> {
     g
 }
 
-/// Réduit un titre d'album à ce qui permet de le reconnaître.
-///
-/// Nos fichiers ne portent pas d'identifiant d'album : le rapprochement se
-/// fait par le titre, et les titres divergent. « In Utero (super deluxe) » chez
-/// nous, « In Utero » chez MusicBrainz ; « Songs of Freedom » contre « Songs Of
-/// Freedom ». On retire donc les parenthèses et crochets de fin — qui portent
-/// presque toujours une mention d'édition — les accents, la ponctuation et la
-/// casse.
-pub fn normaliser_titre(titre: &str) -> String {
-    let mut s = titre.trim();
-    // Répété : « Album (deluxe) [remaster] » porte deux mentions.
-    loop {
-        let coupe = match s.chars().last() {
-            Some(')') => s.rfind('('),
-            Some(']') => s.rfind('['),
-            _ => None,
-        };
-        match coupe {
-            Some(i) if i > 0 => s = s[..i].trim(),
-            _ => break,
-        }
-    }
-    s.chars()
-        .filter_map(|c| {
-            let c = sans_accent(c);
-            c.is_alphanumeric()
-                .then(|| c.to_lowercase().next().unwrap_or(c))
-        })
-        .collect()
-}
-
 /// Réduit un nom d'artiste à ce qui permet de le reconnaître d'une source à
 /// l'autre : minuscules, sans accent ni ponctuation, et sans le crédit
 /// secondaire d'un « X feat. Y ». Sert au rapprochement Deezer, qui se fait
@@ -420,25 +376,6 @@ pub fn completer_date(brute: &str) -> Option<String> {
     let mois = parts.next().filter(|m| m.len() == 2).unwrap_or("01");
     let jour = parts.next().filter(|j| j.len() == 2).unwrap_or("01");
     Some(format!("{annee}-{mois}-{jour}"))
-}
-
-/// Rabat les lettres accentuées les plus courantes sur leur base.
-///
-/// Écrit à la main plutôt qu'avec une bibliothèque de normalisation Unicode :
-/// c'est vingt lignes contre une dépendance, et le besoin se limite aux
-/// alphabets latins que portent des titres d'albums.
-fn sans_accent(c: char) -> char {
-    match c {
-        'à'..='å' | 'À'..='Å' => 'a',
-        'è'..='ë' | 'È'..='Ë' => 'e',
-        'ì'..='ï' | 'Ì'..='Ï' => 'i',
-        'ò'..='ö' | 'Ò'..='Ö' => 'o',
-        'ù'..='ü' | 'Ù'..='Ü' => 'u',
-        'ç' | 'Ç' => 'c',
-        'ñ' | 'Ñ' => 'n',
-        'ý' | 'ÿ' | 'Ý' => 'y',
-        autre => autre,
-    }
 }
 
 #[cfg(test)]

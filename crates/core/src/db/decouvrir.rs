@@ -292,7 +292,7 @@ pub struct SortieARanger {
     pub titre: String,
     /// Date brute telle que MusicBrainz la donne, pour l'affichage.
     pub date_sortie: Option<String>,
-    /// Date complétée en `YYYY-MM-DD` ([`crate::musicbrainz::completer_date`]),
+    /// Date complétée en `YYYY-MM-DD` ((`completer_date`, dans l'enrichissement MusicBrainz)),
     /// pour le filtre de fenêtre et le tri.
     pub date_sortie_norm: Option<String>,
     pub type_primaire: Option<String>,

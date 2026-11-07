@@ -6,7 +6,7 @@
 //! apparier les pistes de l'une et de l'autre. Rien ici ne parle au réseau
 //! (le client est [`crate::musicbrainz::Client::chercher_editions`] et
 //! [`crate::musicbrainz::Client::edition`]) ni n'écrit en base
-//! ([`crate::db::Library::retenir_edition`]).
+//! ([`rusty_music_core::db::Library::retenir_edition`]).
 //!
 //! **Une concordance n'est pas une décision** — l'esprit du « nom incertain »
 //! de `docs/nommage-familles.md` : on classe, on marque ce qui concorde et ce
@@ -19,6 +19,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::musicbrainz::normaliser_titre;
+
+pub use rusty_music_core::db::{EditionDetaillee, PisteEdition};
 
 /// Écart de durée à partir duquel deux pistes appariées sont marquées.
 pub const ECART_MARQUE_MS: i64 = 3_000;
@@ -40,30 +42,6 @@ pub struct EditionProposee {
     pub pistes: u32,
     /// Même nombre de pistes que l'album local : une concordance, rien de plus.
     pub concorde: bool,
-}
-
-/// Une piste d'une édition détaillée.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct PisteEdition {
-    pub disque: u32,
-    pub position: u32,
-    pub titre: String,
-    pub duree_ms: Option<i64>,
-    pub recording_id: String,
-    /// Premier artiste crédité sur la piste (une compilation en a plusieurs).
-    pub artiste_mbid: Option<String>,
-}
-
-/// Une édition et toutes ses pistes, dans l'ordre des supports.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct EditionDetaillee {
-    pub id: String,
-    pub titre: String,
-    pub artiste: String,
-    /// Premier artiste crédité sur l'édition — l'artiste de l'album.
-    pub artiste_mbid: Option<String>,
-    pub release_group: Option<String>,
-    pub pistes: Vec<PisteEdition>,
 }
 
 /// Une piste de l'album local, telle que l'appariement la voit.

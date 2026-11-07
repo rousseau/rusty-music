@@ -12,6 +12,7 @@ tauri-build.workspace = true
 
 [dependencies]
 rusty-music-core = { path = "../../crates/core" }
+rusty-music-enrichissement = { path = "../../crates/enrichissement" }
 rusty-music-valise = { path = "../../crates/valise" }
 rusty-music-player = { path = "../../crates/player" }
 rusty-music-analysis = { path = "../../crates/analysis" }

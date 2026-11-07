@@ -124,11 +124,7 @@ impl Library {
     /// transaction — même raison que [`Self::mb_poser_genres`] : une passe
     /// interrompue entre les deux écritures ne doit ni perdre le résultat,
     /// ni le tenir pour acquis sans l'avoir noté.
-    pub fn enregistrer_liens_artiste(
-        &mut self,
-        mbid: &str,
-        liens: &[crate::musicbrainz::Relation],
-    ) -> Result<()> {
+    pub fn enregistrer_liens_artiste(&mut self, mbid: &str, liens: &[Relation]) -> Result<()> {
         let tx = self.conn.transaction()?;
         for lien in liens {
             tx.execute(
@@ -284,7 +280,7 @@ impl Library {
         Ok(paires
             .into_iter()
             .filter_map(|(artiste, album)| {
-                let norme = crate::musicbrainz::normaliser_titre(&album);
+                let norme = crate::texte::normaliser_titre(&album);
                 albums.get(&(artiste, norme)).cloned()
             })
             .collect())
@@ -350,7 +346,7 @@ impl Library {
         let mut vus = HashSet::new();
         let mut out = Vec::new();
         for (artiste, album) in lignes {
-            let cle = (artiste, crate::musicbrainz::normaliser_titre(&album));
+            let cle = (artiste, crate::texte::normaliser_titre(&album));
             if let Some(rg) = albums.get(&cle) {
                 if !deja.contains(rg) && vus.insert(rg.clone()) {
                     out.push(rg.clone());
@@ -482,7 +478,7 @@ impl Library {
         for (id, rec, artiste, album) in &pistes {
             let rg = match (artiste, album) {
                 (Some(a), Some(al)) => albums
-                    .get(&(a.clone(), crate::musicbrainz::normaliser_titre(al)))
+                    .get(&(a.clone(), crate::texte::normaliser_titre(al)))
                     .cloned(),
                 _ => None,
             };
@@ -1025,7 +1021,7 @@ impl Library {
         };
         let albums = self.mb_albums()?;
         Ok(albums
-            .get(&(artiste, crate::musicbrainz::normaliser_titre(&album)))
+            .get(&(artiste, crate::texte::normaliser_titre(&album)))
             .cloned())
     }
 
@@ -1078,7 +1074,7 @@ impl Library {
     /// Range les tags Last.fm d'un artiste et le marque comme interrogé —
     /// « aucun tag » est une réponse valable, marquée comme pour les autres
     /// sources.
-    pub fn lastfm_tags_poser(&mut self, mbid: &str, tags: &[crate::lastfm::Tag]) -> Result<()> {
+    pub fn lastfm_tags_poser(&mut self, mbid: &str, tags: &[Tag]) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "DELETE FROM lastfm_tags WHERE mb_artist_id = ?1",
@@ -1297,4 +1293,28 @@ pub(super) fn rangs_percentiles(paires: impl Iterator<Item = (i64, f64)>) -> Has
             (id, rang)
         })
         .collect()
+}
+
+/// Une relation entre deux artistes, telle que MusicBrainz la nomme —
+/// « member of band », « instrumental supporting musician »…, parfois
+/// précisée d'un attribut (« guitar », « vocal »).
+///
+/// Le sens de lecture n'est pas toujours le même : MusicBrainz porte un
+/// `direction` (« backward »/« forward ») que ce module ne redresse pas —
+/// le type est gardé tel quel, dans le sens où l'API le rend pour
+/// l'artiste demandé. Assez pour afficher « X — member of band — Y », pas
+/// encore assez pour un graphe orienté qu'on parcourrait dans les deux
+/// sens sans ambiguïté.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relation {
+    pub dst_mbid: String,
+    pub dst_name: String,
+    pub relation: String,
+}
+
+/// Un tag communautaire et son poids relatif (0-100, tel que Last.fm le rend).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    pub nom: String,
+    pub poids: u32,
 }

@@ -42,15 +42,20 @@ pub(crate) fn start_discogs_liaison(
         "une passe de liaison Discogs est déjà en cours",
         Default::default(),
         move |etat| {
-            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::discogs_import::lier(&mut lib, &client, usize::MAX, |b| {
-                    let mut e = verrou(&etat.discogs_liaison);
-                    e.avancement.faits = b.faits;
-                    e.avancement.total = b.total;
-                    e.avancement.liees = b.liees;
-                })
+                rusty_music_enrichissement::discogs_import::lier(
+                    &mut lib,
+                    &client,
+                    usize::MAX,
+                    |b| {
+                        let mut e = verrou(&etat.discogs_liaison);
+                        e.avancement.faits = b.faits;
+                        e.avancement.total = b.total;
+                        e.avancement.liees = b.liees;
+                    },
+                )
                 .map_err(|e| e.to_string())
             })();
 
@@ -128,7 +133,7 @@ pub(crate) fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Re
         "un téléchargement du dump Discogs est déjà en cours",
         Default::default(),
         move |etat| {
-            let issue = rusty_music_core::discogs_import::telecharger_dernier_dump(
+            let issue = rusty_music_enrichissement::discogs_import::telecharger_dernier_dump(
                 &chemin,
                 |vus, total| {
                     let mut d = verrou(&etat.discogs_dump);
@@ -199,7 +204,7 @@ pub(crate) fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> 
             let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
                 .and_then(|mut lib| {
-                    rusty_music_core::discogs_import::importer(&mut lib, &chemin, |b| {
+                    rusty_music_enrichissement::discogs_import::importer(&mut lib, &chemin, |b| {
                         let mut i = verrou(&etat.discogs_import);
                         i.avancement.editions_vues = b.editions_vues;
                         i.avancement.editions_retenues = b.editions_retenues;

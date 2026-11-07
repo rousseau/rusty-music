@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, OptionalExtension};
 
 use super::Library;
-use crate::editions::EditionDetaillee;
 use crate::error::Result;
 
 /// L'édition retenue pour un album, telle que l'interface l'affiche.
@@ -127,4 +126,28 @@ impl Library {
         tx.commit()?;
         Ok(chemins)
     }
+}
+
+/// Une piste d'une édition détaillée.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct PisteEdition {
+    pub disque: u32,
+    pub position: u32,
+    pub titre: String,
+    pub duree_ms: Option<i64>,
+    pub recording_id: String,
+    /// Premier artiste crédité sur la piste (une compilation en a plusieurs).
+    pub artiste_mbid: Option<String>,
+}
+
+/// Une édition et toutes ses pistes, dans l'ordre des supports.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct EditionDetaillee {
+    pub id: String,
+    pub titre: String,
+    pub artiste: String,
+    /// Premier artiste crédité sur l'édition — l'artiste de l'album.
+    pub artiste_mbid: Option<String>,
+    pub release_group: Option<String>,
+    pub pistes: Vec<PisteEdition>,
 }

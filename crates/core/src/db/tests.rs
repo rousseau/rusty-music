@@ -1576,7 +1576,7 @@ fn liens_artiste_se_met_en_cache_meme_vide() {
 
     lib.enregistrer_liens_artiste(
         "a",
-        &[crate::musicbrainz::Relation {
+        &[Relation {
             dst_mbid: "b".to_string(),
             dst_name: "Artiste B".to_string(),
             relation: "member of band".to_string(),
@@ -1612,7 +1612,7 @@ fn liens_entre_artistes_dans_les_deux_sens_sans_les_hommages() {
             )
             .unwrap();
     }
-    let lien = |dst: &str, relation: &str| crate::musicbrainz::Relation {
+    let lien = |dst: &str, relation: &str| Relation {
         dst_mbid: dst.to_string(),
         dst_name: dst.to_string(),
         relation: relation.to_string(),
@@ -2445,7 +2445,7 @@ fn familles_votees_distingue_laccord_du_desaccord() {
         .unwrap();
     lib.lastfm_tags_poser(
         "mbid-x",
-        &[crate::lastfm::Tag {
+        &[Tag {
             nom: "alternative metal".into(),
             poids: 50,
         }],
@@ -2472,7 +2472,7 @@ fn familles_votees_distingue_laccord_du_desaccord() {
         .unwrap();
     lib.lastfm_tags_poser(
         "mbid-y",
-        &[crate::lastfm::Tag {
+        &[Tag {
             nom: "worldbeat".into(),
             poids: 50,
         }],
@@ -2585,7 +2585,7 @@ fn familles_votees_ignore_le_faux_accord_de_deux_replis() {
 /// les identifiants de leurs tags.
 #[test]
 fn une_edition_retenue_survit_au_rescan_et_s_oublie() {
-    use crate::editions::{EditionDetaillee, PisteEdition};
+    use crate::db::{EditionDetaillee, PisteEdition};
     let mut lib = Library::open_in_memory().unwrap();
     let meta = |i: usize| TrackMeta {
         path: std::path::PathBuf::from(format!("/m/{i}.flac")),

@@ -190,10 +190,7 @@ fn genres_du_morceau(
     par_artiste: &HashMap<String, Vec<String>>,
 ) -> Vec<String> {
     if let (Some(artiste), Some(album)) = (artiste, album) {
-        let cle = (
-            artiste.to_string(),
-            crate::musicbrainz::normaliser_titre(album),
-        );
+        let cle = (artiste.to_string(), crate::texte::normaliser_titre(album));
         if let Some(g) = albums.get(&cle).and_then(|rg| par_album.get(rg)) {
             if !g.is_empty() {
                 return g.iter().take(GENRES_PAR_ENTITE).cloned().collect();

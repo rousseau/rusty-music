@@ -43,8 +43,8 @@ bon marché contre une réponse mal alignée. Champs retenus : `strBiography`
 (anglais) et `strBiographyFR` (français, distinct — confirmé en direct, ex.
 Radiohead), stockés avec leur MBID et la date de récupération.
 
-- Client réseau : `crates/core/src/theaudiodb.rs` (`Client::artiste_par_mbid`).
-- Passe : `crates/core/src/biographies.rs::actualiser`.
+- Client réseau : `crates/enrichissement/src/theaudiodb.rs` (`Client::artiste_par_mbid`).
+- Passe : `crates/enrichissement/src/biographies.rs::actualiser`.
 - Schéma : `theaudiodb_artistes` (biographies) + `theaudiodb_fetched` (déjà
   demandé, y compris sans résultat).
 - Tauri : `start_biographies { cle }` / `biographies_state` / `bio_piste { id }`.
@@ -72,16 +72,16 @@ label, filiation et sous-labels compris ; hors de propos ici).
 
 **Deux passes séparées dans le temps :**
 
-**a) Liaison** (`crates/core/src/discogs_import.rs::lier`) — légère : pour
+**a) Liaison** (`crates/enrichissement/src/discogs_import.rs::lier`) — légère : pour
 chaque édition MusicBrainz connue (`tracks.mb_release_id`, lu à l'ingestion
 via `ItemKey::MusicBrainzReleaseId` — Picard : `MUSICBRAINZ_ALBUMID`,
 distinct du release-group), retrouve son édition Discogs par la relation
 d'URL que MusicBrainz porte (`inc=url-rels`, `type="discogs"`,
-`crates/core/src/musicbrainz.rs::discogs_release_id`) — **jamais une
+`crates/enrichissement/src/musicbrainz.rs::discogs_release_id`) — **jamais une
 recherche par nom**. Écrit le lien (ou son absence) dans `editions_discogs`.
 Peut tourner à chaque enrichissement, comme la popularité.
 
-**b) Import** (`crates/core/src/discogs.rs` + `discogs_import.rs::importer`) —
+**b) Import** (`crates/enrichissement/src/discogs.rs` + `discogs_import.rs::importer`) —
 lourd, **mensuel, séparé du scan normal** : télécharge (ou réutilise,
 `--fichier`) le dump, puis n'en extrait que les éditions déjà reliées par (a) —
 la table de crédits ne grossit donc que de ce que la bibliothèque possède
@@ -98,7 +98,7 @@ Discogs) ne coûte que ses propres crédits, jamais tout l'import ni les
 fragments suivants, puisque le repérage des bornes ne dépend en rien du
 contenu XML lui-même.
 
-**Le label ride la même passe.** `parser_fragment` (`crates/core/src/discogs.rs`)
+**Le label ride la même passe.** `parser_fragment` (`crates/enrichissement/src/discogs.rs`)
 lit `<extraartists>` et `<labels>` du même fragment `<release>` en une seule
 traversée : aucun appel réseau ni passe séparée pour le label. **Affichage
 seul, volontairement** : pas de filtre ni de navigation par label dans
@@ -173,9 +173,9 @@ erreur, marqué dans `critiques_fetched` comme pour les autres sources
 neuve reste rare). Dans ce cas, un lien de sortie vers la page CritiqueBrainz
 de l'album invite à en écrire une plutôt qu'un vide silencieux.
 
-- Client réseau : `crates/core/src/critiquebrainz.rs`
+- Client réseau : `crates/enrichissement/src/critiquebrainz.rs`
   (`Client::avis_pour_release_group`).
-- Passe : `crates/core/src/critiques.rs::actualiser`.
+- Passe : `crates/enrichissement/src/critiques.rs::actualiser`.
 - Schéma : `critiques` (une ligne par critique) + `critiques_fetched`.
 - Tauri : `start_critiques { rafraichir }` / `critiques_state` /
   `critiques_piste { id }` / `lien_ecrire_critique { id }`.
@@ -200,8 +200,8 @@ autre artiste échouerait à l'identique, et un bilan « 0 tag » serait
 indiscernable d'une bibliothèque sans tags. Un échec ponctuel (5xx, réseau)
 laisse l'artiste pour un prochain passage (`Bilan.echecs`) sans interrompre.
 
-- Client réseau : `crates/core/src/lastfm.rs` (`Client::tags_artiste`).
-- Passe : `crates/core/src/lastfm_pass.rs::actualiser`.
+- Client réseau : `crates/enrichissement/src/lastfm.rs` (`Client::tags_artiste`).
+- Passe : `crates/enrichissement/src/lastfm_pass.rs::actualiser`.
 - Schéma : `lastfm_tags` (une ligne par tag) + `lastfm_fetched`.
 - Tauri : `start_lastfm { cle, rafraichir }` / `lastfm_state`.
 - CLI : `rusty-music lastfm --cle <clé> [--limite] [--rafraichir-des]`.

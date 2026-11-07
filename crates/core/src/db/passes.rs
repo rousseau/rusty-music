@@ -254,8 +254,8 @@ mod tests {
         out
     }
 
-    fn tag(nom: &str, poids: u32) -> crate::lastfm::Tag {
-        crate::lastfm::Tag {
+    fn tag(nom: &str, poids: u32) -> Tag {
+        Tag {
             nom: nom.into(),
             poids,
         }

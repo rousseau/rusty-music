@@ -89,8 +89,8 @@ par source, sans y toucher :
 - **Last.fm** — `artist.getTopTags` par MBID d'artiste, jamais par nom.
   Nouvelle source d'enrichissement, même patron « données + déjà-demandé »
   que les trois autres (`docs/enrichissement-lecteur.md`) :
-  `lastfm_tags`/`lastfm_fetched`, client `crates/core/src/lastfm.rs`, passe
-  `crates/core/src/lastfm_pass.rs`. **Sert le nommage des familles, pas la
+  `lastfm_tags`/`lastfm_fetched`, client `crates/enrichissement/src/lastfm.rs`, passe
+  `crates/enrichissement/src/lastfm_pass.rs`. **Sert le nommage des familles, pas la
   popularité** — `docs/popularite.md` avait écarté Last.fm pour cet autre
   usage, faute de clé gratuite ; ici la clé est demandée à l'utilisateur
   (gratuite, `last.fm/api`), sans clé de test partagée.
@@ -155,7 +155,7 @@ ce qui dépend déjà du découpage à 12 restent strictement intacts.
   et persiste `features.texte_label`.
 - `crates/analysis/src/cluster.rs::subdiviser` — k-means restreint, pour
   l'affinage local.
-- `crates/core/src/lastfm.rs`, `src/lastfm_pass.rs` — client et passe
+- `crates/enrichissement/src/lastfm.rs`, `src/lastfm_pass.rs` — client et passe
   Last.fm.
 - `crates/core/src/db/carte.rs` — `VoteFamille`, `familles_votees`,
   `sous_groupes_votes`, `nommer_par_groupe`, `arbitrer_vote` ;

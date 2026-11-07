@@ -15,7 +15,7 @@ s'affiche comme une **jauge graduée** à côté de chaque morceau — dans la f
 d'attente (panneau droit), dans la liste des pistes d'un album et dans les
 résultats de recherche (panneau central).
 
-**Additive, comme l'enrichissement des genres** (`crates/core/src/enrichir.rs`) :
+**Additive, comme l'enrichissement des genres** (`crates/enrichissement/src/enrichir.rs`) :
 une bibliothèque qui n'a jamais vu le réseau reste entièrement utilisable, la
 jauge affiche simplement « — ». La popularité précise, elle ne conditionne rien.
 
@@ -169,7 +169,7 @@ l'application comme `musicbrainz.rs` / `listenbrainz.rs` le font déjà :
   vérification, ~1 rapprochement sur 40 est un autre morceau du même artiste
   (mesuré phase 0). Pas d'auth, cadence ~7 req/s.
 
-**Orchestration** — `crates/core/src/popularite.rs` (neuf) :
+**Orchestration** — `crates/enrichissement/src/popularite.rs` (neuf) :
 
 ```
 pub fn actualiser(
@@ -294,13 +294,13 @@ titre. Spotify / YouTube non nécessaires. Détail : `experiments/popularite/REA
 
 - Schéma : `popularite`, `popularite_fetched`, `track_popularite` (trois
   `CREATE TABLE IF NOT EXISTS`, aucune migration de colonne).
-- `crates/core/src/listenbrainz.rs` : `post_json` + `popularite_enregistrements`
+- `crates/enrichissement/src/listenbrainz.rs` : `post_json` + `popularite_enregistrements`
   / `popularite_albums` (POST par lots de 60, `total_listen_count` /
   `total_user_count`).
-- `crates/core/src/deezer.rs` (neuf) : `Client::rang_piste(artiste, titre)` —
+- `crates/enrichissement/src/deezer.rs` (neuf) : `Client::rang_piste(artiste, titre)` —
   `/search/track`, ne retient un résultat que si `cle_artiste` **et**
   `normaliser_titre` concordent (`musicbrainz::cle_artiste` ajouté pour ça).
-- `crates/core/src/popularite.rs` (neuf) : `actualiser(...)` sur le patron de
+- `crates/enrichissement/src/popularite.rs` (neuf) : `actualiser(...)` sur le patron de
   `enrichir` — reprenable (`popularite_fetched` marqué dans la même
   transaction), tolérante aux coupures, puis `recalculer_track_popularite` en
   fin de passe.

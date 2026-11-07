@@ -20,8 +20,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Result;
-use crate::http::ClientCadence;
+use rusty_music_core::error::Result;
+use rusty_music_core::http::ClientCadence;
 
 /// Critiques par page. 50 est confortable ; peu d'albums en portent plus.
 const PAR_PAGE: usize = 50;

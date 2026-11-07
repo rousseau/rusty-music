@@ -174,12 +174,17 @@ fn telecharger_dans_avec_jeton(
     let partiel = dossier.join(format!("{nom}.partiel"));
 
     let (mut recus, mut attendus) = (0u64, None);
-    let agent = crate::discogs::agent();
-    let issue =
-        crate::discogs::telecharger_avec_jeton(&agent, url, jeton, &partiel, |vus, total| {
+    let agent = crate::telechargement::agent();
+    let issue = crate::telechargement::telecharger_avec_jeton(
+        &agent,
+        url,
+        jeton,
+        &partiel,
+        |vus, total| {
             (recus, attendus) = (vus, total);
             avancer(vus, total);
-        });
+        },
+    );
     let verifie = issue.and_then(|()| match attendus {
         Some(total) if recus != total => Err(Error::Reseau(format!(
             "téléchargement de {nom} interrompu : {recus} octets sur {total}"

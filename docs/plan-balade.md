@@ -295,7 +295,7 @@ quartiers, comme les flèches rouges de Debord.
   MusicAtlas, voir la recherche) : un bonus de pente si l'artiste de la
   branche a une relation MusicBrainz (collaboration, membre) avec celui du
   morceau en cours. Ces relations sont déjà collectées par l'enrichissement
-  (`crates/core/src/musicbrainz.rs`, `db/enrichissement.rs`).
+  (`crates/enrichissement/src/musicbrainz.rs`, `crates/core/src/db/enrichissement.rs`).
 
 **Critères.** E1 recalculé avec la pente *dériver* : la médiane des distances
 consécutives reste sous celle de la marche aléatoire, et la part de

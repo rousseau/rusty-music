@@ -47,7 +47,7 @@ pub(crate) fn start_enrichment(
         "un enrichissement est déjà en cours",
         Default::default(),
         move |etat| {
-            let client = rusty_music_core::musicbrainz::Client::new(&contact);
+            let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
             // Ouverture et passe dans un même bloc plutôt qu'en chaîne : la
             // fermeture de progression emprunte `etat`, et l'imbriquer dans un
             // `and_then` ferait vivre cet emprunt au-delà du fil.
@@ -58,7 +58,7 @@ pub(crate) fn start_enrichment(
                     let mut e = verrou(&etat.enrichissement);
                     e.avancement.total = total;
                 }
-                rusty_music_core::enrichir::enrichir(&mut lib, &client, usize::MAX, |b| {
+                rusty_music_enrichissement::enrichir::enrichir(&mut lib, &client, usize::MAX, |b| {
                     let mut e = verrou(&etat.enrichissement);
                     e.avancement.artistes = b.artistes;
                     e.avancement.avec_genre = b.avec_genre;
@@ -112,8 +112,8 @@ pub(crate) fn start_popularite(
         "une passe de popularité est déjà en cours",
         Default::default(),
         move |etat| {
-            let lb = rusty_music_core::listenbrainz::Client::new(&contact);
-            let dz = rusty_music_core::deezer::Client::new();
+            let lb = rusty_music_enrichissement::listenbrainz::Client::new(&contact);
+            let dz = rusty_music_enrichissement::deezer::Client::new();
             // `depuis` : instant avant lequel une entité déjà interrogée redevient
             // « à faire ». `0` (par défaut) ne rafraîchit rien.
             let depuis = if rafraichir {
@@ -126,7 +126,7 @@ pub(crate) fn start_popularite(
             };
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::popularite::actualiser(
+                rusty_music_enrichissement::popularite::actualiser(
                     &mut lib,
                     &lb,
                     &dz,
@@ -200,14 +200,20 @@ pub(crate) fn start_biographies(
         "une passe de biographies est déjà en cours",
         Default::default(),
         move |etat| {
-            let client = rusty_music_core::theaudiodb::Client::new(cle.as_deref());
+            let client = rusty_music_enrichissement::theaudiodb::Client::new(cle.as_deref());
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::biographies::actualiser(&mut lib, &client, 0, usize::MAX, |b| {
-                    let mut e = verrou(&etat.biographies);
-                    e.avancement.faits = b.faits;
-                    e.avancement.total = b.total;
-                })
+                rusty_music_enrichissement::biographies::actualiser(
+                    &mut lib,
+                    &client,
+                    0,
+                    usize::MAX,
+                    |b| {
+                        let mut e = verrou(&etat.biographies);
+                        e.avancement.faits = b.faits;
+                        e.avancement.total = b.total;
+                    },
+                )
                 .map_err(|e| e.to_string())
             })();
 
@@ -268,7 +274,7 @@ pub(crate) fn start_critiques(
         "une passe de critiques est déjà en cours",
         Default::default(),
         move |etat| {
-            let client = rusty_music_core::critiquebrainz::Client::new();
+            let client = rusty_music_enrichissement::critiquebrainz::Client::new();
             let depuis = if rafraichir {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -279,7 +285,7 @@ pub(crate) fn start_critiques(
             };
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::critiques::actualiser(
+                rusty_music_enrichissement::critiques::actualiser(
                     &mut lib,
                     &client,
                     depuis,
@@ -328,7 +334,7 @@ pub(crate) fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<
     let rg = verrou(&etat.lib)
         .release_group_pour_piste(id)
         .map_err(echec)?;
-    Ok(rg.map(|mbid| rusty_music_core::critiques::url_ecrire_critique(&mbid)))
+    Ok(rg.map(|mbid| rusty_music_enrichissement::critiques::url_ecrire_critique(&mbid)))
 }
 
 /// Avancement de la passe de tags Last.fm, sondé par l'interface.
@@ -355,7 +361,7 @@ pub(crate) fn start_lastfm(
         "une passe Last.fm est déjà en cours",
         Default::default(),
         move |etat| {
-            let client = rusty_music_core::lastfm::Client::new(cle);
+            let client = rusty_music_enrichissement::lastfm::Client::new(cle);
             let depuis = if rafraichir {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -366,7 +372,7 @@ pub(crate) fn start_lastfm(
             };
             let issue = (|| {
                 let mut lib = Library::open(&db).map_err(|e| e.to_string())?;
-                rusty_music_core::lastfm_pass::actualiser(
+                rusty_music_enrichissement::lastfm_pass::actualiser(
                     &mut lib,
                     &client,
                     depuis,
@@ -432,7 +438,7 @@ pub(crate) fn artist_links(
 
     // Hors verrou, comme le scan et l'enrichissement : ne pas geler la base
     // pendant un aller-retour réseau.
-    let client = rusty_music_core::musicbrainz::Client::new(&contact);
+    let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
     let liens = client.relations_artiste(&mbid).map_err(|e| e.to_string())?;
 
     let mut lib = verrou(&etat.lib);
@@ -543,7 +549,7 @@ pub(crate) fn completer_lancer(
             let issue = (|| -> Result<String, String> {
                 let mut bouts = Vec::new();
                 if contact.contains('@') {
-                    let client = rusty_music_core::musicbrainz::Client::new(&contact);
+                    let client = rusty_music_enrichissement::musicbrainz::Client::new(&contact);
                     let total = lib
                         .mb_artistes_en_attente("artist", usize::MAX)
                         .map_err(echec)?
@@ -551,7 +557,7 @@ pub(crate) fn completer_lancer(
                     let (mut faits, mut avec_genre, mut albums) = (0, 0, 0);
                     etape("Genres MusicBrainz", 0, total);
                     while !arret() {
-                        let b = rusty_music_core::enrichir::enrichir(
+                        let b = rusty_music_enrichissement::enrichir::enrichir(
                             &mut lib,
                             &client,
                             TRANCHE_COMPLETER,
@@ -572,12 +578,13 @@ pub(crate) fn completer_lancer(
                     ));
                 }
                 if !cle_lastfm.is_empty() && !arret() {
-                    let client = rusty_music_core::lastfm::Client::new(cle_lastfm.clone());
+                    let client =
+                        rusty_music_enrichissement::lastfm::Client::new(cle_lastfm.clone());
                     let total = lib.lastfm_candidats(0, usize::MAX).map_err(echec)?.len();
                     let (mut faits, mut avec_tags) = (0, 0);
                     etape("Tags Last.fm", 0, total);
                     while !arret() {
-                        let b = rusty_music_core::lastfm_pass::actualiser(
+                        let b = rusty_music_enrichissement::lastfm_pass::actualiser(
                             &mut lib,
                             &client,
                             0,

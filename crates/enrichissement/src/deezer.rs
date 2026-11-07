@@ -19,9 +19,9 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Result;
-use crate::http::ClientCadence;
 use crate::musicbrainz::{cle_artiste, normaliser_titre};
+use rusty_music_core::error::Result;
+use rusty_music_core::http::ClientCadence;
 
 /// Délai minimal entre deux requêtes. Deezer limite à ~50 requêtes par tranche
 /// de 5 secondes ; 150 ms tient largement sous la barre.

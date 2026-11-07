@@ -4,7 +4,7 @@
 //!
 //! Même esprit qu'[`crate::enrichir`] : elle relie deux modules qui ne se
 //! parlent pas — le client réseau ([`crate::listenbrainz`]) et le rangement
-//! ([`crate::db`]) — et c'est tout ce qu'elle contient : l'ordre des opérations
+//! ([`rusty_music_core::db`]) — et c'est tout ce qu'elle contient : l'ordre des opérations
 //! et le tri de ce qui revient.
 //!
 //! **Deux étapes, deux coûts.**
@@ -24,10 +24,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::db::{Library, SortieARanger};
-use crate::error::Result;
 use crate::listenbrainz::{self, SortieFraiche};
 use crate::musicbrainz::completer_date;
+use rusty_music_core::db::{Library, SortieARanger};
+use rusty_music_core::error::Result;
 
 /// Types primaires MusicBrainz qu'on garde : les vraies sorties. Un
 /// « Broadcast » ou un « Other » n'est pas une nouveauté d'artiste.

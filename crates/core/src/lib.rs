@@ -6,43 +6,29 @@
 //! modules (lecteur, exploration, éditeur). Aucun module ne relit le disque
 //! directement.
 
-pub mod biographies;
-pub mod critiquebrainz;
-pub mod critiques;
 pub mod db;
 pub mod decode;
-pub mod decouvrir;
-pub mod deezer;
 pub mod density;
-pub mod discogs;
-pub mod discogs_import;
-pub mod editions;
-pub mod enrichir;
 pub mod error;
 pub mod filtres_playlist;
 pub mod gapless;
 pub mod http;
-pub mod lastfm;
-pub mod lastfm_pass;
 pub mod lieux;
-pub mod listenbrainz;
 #[cfg(feature = "lama-local")]
 pub mod llm_local;
 pub mod loudness;
 pub mod memoire;
 pub mod modeles;
-pub mod musicbrainz;
 pub mod ollama;
 pub mod opus;
 pub mod panique;
 pub mod playlists;
-pub mod pochette;
 pub mod pochettes_verif;
-pub mod popularite;
 pub mod scan;
 pub mod session;
 pub mod tags;
-pub mod theaudiodb;
+pub mod telechargement;
+pub mod texte;
 pub mod volume;
 pub mod watch;
 

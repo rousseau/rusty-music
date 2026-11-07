@@ -2,16 +2,16 @@
 //! La passe Last.fm : interroge `artist.getTopTags`, remplit la base.
 //!
 //! Séparée de [`crate::lastfm`] (qui ne fait que parler au réseau) et de
-//! [`crate::db`] (qui ne fait que ranger) — même discipline que
+//! [`rusty_music_core::db`] (qui ne fait que ranger) — même discipline que
 //! [`crate::critiques`]/[`crate::popularite`].
 //!
 //! **Additive et best-effort.** Un artiste sans tag Last.fm est un état
 //! normal, marqué dans `lastfm_fetched` comme pour les autres sources, pour
 //! ne pas repasser dessus à chaque fois.
 
-use crate::db::Library;
-use crate::error::Result;
 use crate::lastfm;
+use rusty_music_core::db::Library;
+use rusty_music_core::error::Result;
 
 /// Ce qu'une passe a produit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

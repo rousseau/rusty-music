@@ -2,20 +2,20 @@
 //! La passe de biographies : interroge TheAudioDB, remplit la base.
 //!
 //! Séparée de [`crate::theaudiodb`] (qui ne fait que parler au réseau) et de
-//! [`crate::db`] (qui ne fait que ranger) — même discipline que
+//! [`rusty_music_core::db`] (qui ne fait que ranger) — même discipline que
 //! [`crate::popularite`].
 //!
 //! **Additive et best-effort.** Une bibliothèque qui n'a jamais vu le réseau
 //! reste utilisable — l'inspecteur affiche « — », rien de plus.
 //!
 //! **Reprenable.** Chaque MBID interrogé est marqué dans la même transaction
-//! que sa donnée ([`crate::db::Library::theaudiodb_poser`]). Un échec réseau
+//! que sa donnée ([`rusty_music_core::db::Library::theaudiodb_poser`]). Un échec réseau
 //! n'interrompt pas la passe : l'artiste fautif n'est pas marqué et revient au
 //! prochain passage.
 
-use crate::db::{BioBrute, Library};
-use crate::error::Result;
 use crate::theaudiodb;
+use rusty_music_core::db::{BioBrute, Library};
+use rusty_music_core::error::Result;
 
 /// Ce qu'une passe a produit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

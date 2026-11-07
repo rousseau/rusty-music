@@ -20,8 +20,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::error::Result;
-use crate::http::ClientCadence;
+use rusty_music_core::error::Result;
+use rusty_music_core::http::ClientCadence;
 
 /// Clé de test partagée, publique — documentée par TheAudioDB pour un usage
 /// à faible volume.
@@ -67,7 +67,7 @@ impl Client {
 
     /// `ctx` ne porte jamais `self.cle` : contrairement à `url`, qui la
     /// contient (`.../json/{cle}/artist-mb.php`), un message d'erreur ne doit
-    /// jamais la répéter — voir `crate::http::ClientCadence`.
+    /// jamais la répéter — voir `rusty_music_core::http::ClientCadence`.
     fn json(&self, url: &str) -> Result<Option<Value>> {
         self.http.get_json(url, "artist-mb.php")
     }

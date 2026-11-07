@@ -7,14 +7,18 @@
 //! les fichiers.
 
 use super::*;
-use rusty_music_core::editions::{apparier, EditionDetaillee, EditionProposee, Paire, PisteLocale};
+use rusty_music_enrichissement::editions::{
+    apparier, EditionDetaillee, EditionProposee, Paire, PisteLocale,
+};
 
-fn client(contact: &str) -> Result<rusty_music_core::musicbrainz::Client, String> {
+fn client(contact: &str) -> Result<rusty_music_enrichissement::musicbrainz::Client, String> {
     let contact = contact.trim();
     if !contact.contains('@') {
         return Err("MusicBrainz demande une adresse de contact valable.".into());
     }
-    Ok(rusty_music_core::musicbrainz::Client::new(contact))
+    Ok(rusty_music_enrichissement::musicbrainz::Client::new(
+        contact,
+    ))
 }
 
 /// Les pistes de l'album local, dans l'ordre de l'album. Le verrou de la base

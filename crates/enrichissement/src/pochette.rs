@@ -13,7 +13,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::error::{Error, Result};
+use rusty_music_core::error::{Error, Result};
 
 /// Un agent partagé : inutile de rétablir TLS à chaque vignette.
 fn agent() -> &'static ureq::Agent {
