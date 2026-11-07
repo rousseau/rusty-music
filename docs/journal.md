@@ -3578,3 +3578,58 @@ chacun.
   « Compléter », repris dans l'en-tête d'`enrichissement.rs`).
 - **Vérifié** : `verifier.sh` vert après les deux commits (fmt, deny,
   clippy, tests, 48 tests d'interface).
+
+## Code, C3 : séparer crates/core — 7 nov. 2026
+
+Synthèse de novembre, O5. Quatre commits, `verifier.sh` vert à chacun
+(`cargo deny` compris : advisories, bans, licenses, sources ok).
+
+- **`valise`** (2 031 lignes) : `valise`, `passage`, `appairage`. Leurs
+  méthodes sur `Library` (sélection, réglages, journal) passent par deux
+  traits, `ValiseBibliotheque` et `JournalValise` : une crate ne peut pas
+  ajouter de méthode propre à un type d'une autre. `db::hacher` devient
+  public. Le bureau, la CLI et le compagnon iOS en dépendent directement ;
+  la compilation pour `aarch64-apple-ios` n'a pas été refaite.
+- **`enrichissement`** (4 068 lignes) : seize modules, MusicBrainz, Discogs
+  (dump et liaison), Deezer, Last.fm, ListenBrainz, TheAudioDB,
+  CritiqueBrainz, pochettes, popularité, éditions, biographies, critiques,
+  Découvrir, `enrichir`. Les requêtes SQL restent dans `core::db` : c'est
+  la base qu'elles servent. Ce que `db` et `modeles` empruntaient à ces
+  modules descend dans `core` : `texte` (`normaliser_titre`,
+  `sans_accent`), `telechargement` (le flux des gros fichiers, partagé avec
+  les poids des modèles), et quatre types (`Relation`, `Tag`,
+  `EditionDetaillee`, `PisteEdition`), réexportés aux anciens chemins.
+  `core` perd `flate2` et `quick-xml`.
+- **`lama`** (3 795 lignes) : `ollama`, `llm_local`, `filtres_playlist`,
+  avec la feature `lama-local` et ses dépendances (llama-cpp-2, llguidance,
+  minijinja) ; `CaracteristiquesPiste`, que `db::carte` remplit, descend
+  dans `core::db`. Les exemples `robustesse` et `filtres` suivent. Vérifié
+  aussi avec la feature : `cargo check`, `clippy`, 49 tests.
+- **Briques audio.** `gapless` (son seul utilisateur est le lecteur) part
+  dans `player` : quatrième commit. `decode`, `opus` et `loudness` restent
+  dans `core` : la passe de loudness écrit la base, `db` lit `ModeGain`, et
+  l'analyse, l'éditeur et le lecteur dépendent déjà de `core` ; une crate
+  `audio` demanderait sa propre erreur et de couper `loudness` en deux, pour
+  des fichiers qui bougent rarement. `volume` n'est pas de l'audio (il dit
+  si un chemin est sur un support amovible, pour le scan) : il reste.
+- **Reste dans `core`** (≈ 14 900 lignes) : db, scan, tags, watch, session,
+  error, http, `texte`, `telechargement`, `decode`, `opus`, `loudness`,
+  `volume`, `density`, `lieux`, `memoire`, `playlists`, `modeles`,
+  `panique`, `pochettes_verif`.
+
+**Temps de `cargo build -p rusty-music-desktop`** après l'ajout d'une ligne
+à un fichier, trois essais chacun, compilation incrémentale coupée comme
+d'habitude ; « avant » est le commit 8e0c613, reconstruit dans le même
+`target/` :
+
+| Fichier modifié | Crates recompilées | Temps (3 essais) |
+|---|---:|---|
+| avant : `core/src/ollama.rs` | 7 | 97,3 · 96,0 · 93,7 s |
+| après : `lama/src/ollama.rs` | 2 | 19,7 · 19,1 · 19,0 s |
+| après : `enrichissement/src/musicbrainz.rs` | 2 | 19,1 · 19,1 · 19,1 s |
+| après : `core/src/db.rs` | 10 | 92,8 · 91,4 · 90,7 s |
+
+Toucher Lama ou l'enrichissement coûte cinq fois moins (≈ 19 s : la crate
+et le bureau). Toucher `core` coûte autant qu'avant (≈ 92 s) : il recompile
+toujours le lecteur, l'analyse, l'éditeur, la carte et la transcription,
+dont la compilation domine.
