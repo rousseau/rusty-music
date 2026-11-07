@@ -2,66 +2,43 @@
 
 > Document de cohérence, pas de design. Les règles ci-dessous ont presque
 > toutes été décidées ailleurs — `ui-spec.md` (Explorer), `ui-spec-lecteur.md`
-> (Écouter), `ui-spec-editeur.md` (Éditer), `carto-anneau.md` (Anneau),
+> (Écouter), `ui-spec-editeur.md` (Pratiquer, Créer), `carto-anneau.md` (Anneau),
 > `frise-filiations.md` (Temps) — puis oubliées dès qu'on quittait le module
 > où elles avaient été écrites. Ce document les rassemble en un seul contrat,
-> **applicable aux cinq écrans du rail** — les **quatre modes** (Écouter,
-> Explorer, Éditer, Découvrir) plus **Bibliothèque**, point d'entrée posé
-> au-dessus du sélecteur de mode plutôt que dedans — et vérifie ce qui existe
-> déjà contre ce contrat.
-
-> **Sept écrans (5 novembre 2026) : Éditer se divise en Pratiquer et Créer**
-> (`ui-spec-editeur.md`, décision 13). Le sélecteur porte six boutons :
-> Écouter, Pratiquer, Explorer, Créer, Découvrir, Valise. Les deux nouveaux
-> écrans partagent l'établi (`#editer-separer`, `#editer-etabli`) et l'état
-> `edition` ; `enStems()` (`socle.js`) dit si l'on est dans l'un des deux.
-> L'audit (`audit.js`) les capture séparément. Là où ce document dit
-> « Éditer », lire « Pratiquer et Créer ».
-
-> **Sixième écran (19 octobre 2026) : Valise**, cinquième bouton du
-> sélecteur, sous Découvrir — la synchronisation du compagnon iOS. Panneau
-> central `#valise-vue` (colonne de lecture `.bibliotheque`) : la composition
-> de la valise (lignes règle + nombre d'albums, limites), puis la liste des
-> albums qui partiront, où l'on garde ou écarte un album. Rail `#bloc-valise` :
-> l'iPhone (appareil, échéance de l'app, valises qu'il porte, « Renouveler
-> l'app »). Là où ce document dit « cinq écrans », lire « les écrans du rail » :
-> Valise y est soumis aux mêmes règles (audit ci-dessous).
-
-> **Correction de périmètre au moment d'écrire ce document (7 septembre
-> 2026)** : la commande qui a produit ce document supposait Éditer et
-> Découvrir sans interface construite. C'est faux pour les deux —
-> `apps/desktop/ui/js/` porte ~15 fonctions dédiées à Découvrir (fil
-> d'actualité, explorateur de collaborations) et une dizaine à Éditer (dock de
-> stems, greffe, spectrogrammes), toutes branchées à un écran du rail. L'audit
-> couvre donc les **sept lignes** (cinq écrans, dont les trois sous-modes
-> d'Explorer), aucune n'étant écartée comme prématurée.
+> **applicable à tous les écrans du rail** — les **six modes** (Écouter,
+> Pratiquer, Explorer, Créer, Découvrir, Valise) plus **Bibliothèque**, point
+> d'entrée posé au-dessus du sélecteur de mode plutôt que dedans — et vérifie
+> ce qui existe déjà contre ce contrat. Ce qu'il a été avant : « Historique »,
+> en fin de document.
 
 ## Le socle commun — ce qu'aucun écran ne redéfinit
 
 Le modèle retenu (`ui-spec.md`, « Atelier ») n'appartient pas à Explorer. Il
-tient en quatre zones, présentes et identiques dans les cinq écrans :
+tient en quatre zones, présentes et identiques dans tous les écrans du rail :
 
 - **Rail gauche fixe** — identité, puis **Bibliothèque** en entrée de rail
-  isolée (point de départ, pas un mode), puis le sélecteur de mode à quatre
-  boutons (`Écouter / Explorer / Éditer / Découvrir`), puis des blocs propres
+  isolée (point de départ, pas un mode), puis le sélecteur de mode à six
+  boutons (`Écouter / Pratiquer / Explorer / Créer / Découvrir / Valise`),
+  puis des blocs propres
   à l'écran courant, montrés ou masqués par `basculerMode()`
   (`apps/desktop/ui/js/modes.js`).
 - **Zone centrale propre à chaque mode** — pas le même composant partout : le
   nuage/la carte/l'anneau/la frise pour Explorer, la grille d'albums ou la
-  liste d'artistes pour Écouter et pour Éditer (on y choisit quoi ouvrir), le
-  tableau de bord de la bibliothèque pour Bibliothèque, le fil d'actualité
-  pour Découvrir. C'est la formulation exacte à retenir — pas « la carte
+  liste d'artistes pour Écouter, et pour Pratiquer et Créer tant qu'on y
+  choisit quoi ouvrir — puis l'établi : la partition en Pratiquer, la pile de
+  stems en Créer —, le tableau de bord de la bibliothèque pour Bibliothèque,
+  le fil d'actualité pour Découvrir, la composition de la valise pour Valise.
+  C'est la formulation exacte à retenir — pas « la carte
   toujours visible » de la première version d'`ui-spec.md`, qui datait d'avant
   l'ajout de Bibliothèque et Découvrir au rail et que le code n'a jamais
-  suivie à la lettre (voir audit Éditer, § écart documentaire).
-- **Inspecteur droite, unique** — `aside.inspecteur` (`index.html:604`),
+  suivie à la lettre (voir l'audit de Créer, ligne « Écart »).
+- **Inspecteur droite, unique** — `aside.inspecteur`,
   jamais recréé ni dupliqué par un mode. Détail en Règle 1.
-- **Transport pleine largeur en bas** — `footer.transport`
-  (`index.html:698`), en dehors de tout conteneur conditionné par le mode ;
+- **Transport pleine largeur en bas** — `footer.transport`, en dehors de tout conteneur conditionné par le mode ;
   aucun code ne le masque (vérifié : aucune occurrence de `.transport` suivie
-  de `.hidden` dans `ui/js/`). Persiste tel quel dans les cinq écrans, y
+  de `.hidden` dans `ui/js/`). Persiste tel quel dans tous les écrans, y
   compris Bibliothèque et Découvrir où on ne s'y attend pas forcément.
-- **Dock optionnel** — `#dock` (`index.html:661`), réservé à Éditer, pousse le
+- **Dock optionnel** — `#dock`, réservé à Pratiquer et Créer, pousse le
   centre vers le haut sans reproduire la mécanique du rail ou de l'inspecteur.
 - **Champ d'intention — dans l'affichage « Lama » d'Explorer** (déplacé le
   1ᵉʳ octobre 2026). Posé le 14 septembre comme une ligne partagée entre les
@@ -115,7 +92,7 @@ tient en quatre zones, présentes et identiques dans les cinq écrans :
   lignes qui diffèrent marquées (piste seule, écart ≥ 3 s, titre). Rien n'est
   appliqué sans « Retenir » ; « Oublier ce choix » rend aux pistes leurs tags.
 
-## Règles universelles — dans les cinq écrans, sans exception
+## Règles universelles — dans tous les écrans du rail, sans exception
 
 ### 1. Un seul inspecteur, partagé
 Toute sélection peuple `#insp` (`aside.inspecteur`). Aucun mode ne recrée son
@@ -136,10 +113,10 @@ bio reste un contenu unique à la fois, jamais dupliqué entre centre et
 inspecteur — elle vit dans un seul arbre DOM selon le contexte (« quel
 artiste j'explore » vs « quel morceau j'écoute »), exactement comme la
 Règle « Sélectionner n'est pas écouter » sépare déjà le clic silencieux du
-geste ▶. Chantier de code ouvert : `bio_piste` résout aujourd'hui la bio
-par MBID de piste (`ui/js/`), pas par MBID d'artiste indépendant
-d'une piste sélectionnée — il faut une route côté moteur qui prenne
-directement l'artiste ouvert au centre.
+geste ▶. **Faite** : la bio vit dans le bandeau `#autour-artiste` (bloc
+`#autour-bio-bloc`) au-dessus des albums de l'artiste ouvert, résolue par
+MBID d'artiste (commande `bio_artiste`, `majAutourArtiste` dans
+`js/ecouter.js`) et non plus par piste ; l'inspecteur n'a plus de bloc bio.
 
 **Sélectionner n'est pas écouter — le même geste doit produire le même effet
 dans les quatre visualisations d'Explorer.** Décidé le 14 septembre 2026 après
@@ -156,7 +133,8 @@ seulement au survol comme leur équivalent `.album__lecture`/`.album__alchimie`
 de la grille — pour que le geste qui lance l'écoute se devine, pas seulement
 depuis l'Anneau/la Frise où il est le seul recours.
 
-**Étendu à Écouter et à Éditer le 21 septembre 2026.** Dans une liste de
+**Étendu à Écouter et à Éditer (aujourd'hui Pratiquer et Créer) le 21
+septembre 2026.** Dans une liste de
 morceaux (résultats de recherche, pistes d'un album), le clic sur la ligne
 **sélectionne** (`selectionner`, `pisteSelectionnee` dans `js/ecouter.js`) : filet
 d'accent à gauche (`ligne--select`), inspecteur peuplé, rien ne sonne. La
@@ -173,9 +151,9 @@ file, bouton ▶ de l'inspecteur) la pose. Deux conséquences :
   affiché — morceau joué, aperçu (calculé après 400 ms, donc déjà en cache au
   départ de la lecture) ou, quand les stems ont la main, morceau édité
   (`estAffiche` dans `js/lecteur.js`).
-- **Éditer** prend la sélection pour source (`morceauAEditer`), sans passer par la
-  file de lecture : sélectionner puis entrer en Éditer ouvre directement
-  l'état « séparer », sans lecture préalable.
+- **Pratiquer et Créer** prennent la sélection pour source (`morceauAEditer`),
+  sans passer par la file de lecture : sélectionner puis entrer dans l'un des
+  deux ouvre directement l'état « séparer », sans lecture préalable.
 
 ### 2. Estomper, jamais masquer
 Un filtre ou une recherche laisse le contexte visible, atténué — il ne
@@ -216,7 +194,7 @@ selon le focal.
 ### 5. Sobriété stricte
 AudioMuse-AI comme référence négative explicite. Densité maîtrisée,
 hiérarchie typographique forte, pas d'empilement de contrôles visibles en
-permanence — dans les cinq écrans, pas seulement Explorer où la règle a été
+permanence — dans tous les écrans, pas seulement Explorer où la règle a été
 écrite.
 
 ### 6. Les deux thèmes traités sérieusement
@@ -228,7 +206,7 @@ grand texte), dans chaque thème ; `scripts/contraste-interface.py` le vérifie.
 
 ### 7. Zoom et pan cohérents
 Mêmes gestes, mêmes contrôles, partout où zoom et pan existent — y compris un
-futur zoom temporel d'une forme d'onde dans Éditer, pas seulement le zoom
+futur zoom temporel d'une forme d'onde dans Créer, pas seulement le zoom
 géographique de la Carte.
 
 ### 8. Révélation par échelle et par contexte
@@ -241,7 +219,7 @@ pour les options avancées d'un mode quel qu'il soit.
 Épaisseur et opacité du trait, jamais des styles de trait différents
 (plein/tiret/pointillé) pour coder une variable continue. S'applique
 aujourd'hui à Explorer → Anneau et Explorer → Temps. Ne s'écarte pas par
-défaut pour Éditer : si la génération s'appuyant sur toute la bibliothèque en
+défaut pour Créer : si la génération s'appuyant sur toute la bibliothèque en
 vient à afficher ses propres sources un jour, la même règle s'applique.
 
 ## Règle de gabarit — mesurée, pas regardée
@@ -341,7 +319,7 @@ reste :
 
 - **Cohérence et standards (Nielsen).** L'utilisateur ne doit jamais se
   demander si des mots, des situations ou des actions différentes signifient
-  la même chose. Un bouton « régler » qui ouvre un tiroir dans Éditer et un
+  la même chose. Un bouton « régler » qui ouvre un tiroir dans Créer et un
   bouton « régler » qui bascule un état ailleurs sont la même faute, même si
   aucune des onze règles ne la nomme explicitement. Face à un cas nouveau : la
   question n'est pas « qu'est-ce qui est joli ici » mais « qu'est-ce que ce
@@ -358,22 +336,25 @@ deux principes, pas des lois indépendantes d'eux.
 
 ## Audit de conformité
 
-Sept lignes : Écouter, les trois sous-modes d'Explorer, Bibliothèque, Éditer,
-Découvrir. Verdicts : ✅ conforme · ❌ non conforme (raison précise) · —
-non applicable · 🔧 tranché en doc, chantier de code ouvert.
+Une section par écran : Écouter, les affichages d'Explorer (Carte, Lama,
+Anneau, Temps), Bibliothèque, Pratiquer, Créer, Découvrir, Valise ; puis la vue
+« En cours » et les surimpressions de la carte. Verdicts : ✅ conforme · ❌ non
+conforme (raison précise) · ⚠️ conforme sous réserve (laquelle) · — non
+applicable · 🔧 tranché en doc, chantier de code ouvert. Les défauts I1 à I10
+cités sont ceux de `synthese-novembre-2026.md`, § 2.3.
 
 ### Écouter
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | 🔧 | `inspecter()` (`js/ecouter.js`) peuple `#insp` pour pochette/métadonnées/crédits/critiques — toujours conforme. Bio d'artiste : exception actée (voir Règle 1) pour la déplacer au centre quand un artiste est ouvert, mais pas encore codée — `bloc-bio` vit encore dans `#insp` (`index.html:797-807`), peuplé par `bio_piste` (résolution par piste, pas par artiste ouvert au centre). |
+| 1 | Inspecteur unique | ✅ | `inspecter()` (`js/ecouter.js`) peuple `#insp` pour pochette/métadonnées/crédits/critiques. Bio d'artiste : au centre, comme l'exception de la Règle 1 le veut — `#autour-artiste` au-dessus des albums de l'artiste ouvert, `bio_artiste` par MBID d'artiste ; plus de bloc bio dans `#insp`. |
 | 2 | Estomper, jamais masquer | ✅ | **Le champ du rail : corrigé le 1ᵉʳ novembre 2026.** `#q` remplaçait la grille par une liste de résultats (`invoke("search")`, vue `recherche`). Deux voies étaient possibles : qu'il ouvre la palette, ou qu'il estompe la grille. **Retenu : il estompe** (`filtrerEcoute`, `repondAuFiltre`) — albums, artistes, pistes d'un album ou playlists qui ne répondent pas passent à 25 % d'opacité (`.album--estompe`, `.ligne--estompe`, pleine au survol), à leur place ; le fil dit « 2 sur 3 albums ». Raison : c'est déjà ce que le même champ fait en Explorer (il estompe la carte) — un champ qui filtrerait ici et ouvrirait une boîte là serait la faute de cohérence que le principe de Nielsen interdit ; et « chercher partout » a désormais son geste à soi, la palette, qui ne remplace rien non plus. Les deux se rejoignent : Entrée dans `#q` ouvre la palette avec le texte tapé, et le titre « Filtrer » porte son raccourci ⌘K. La vue `recherche` et `ligneRecherche` sont retirées. **Le filtre par famille d'Écouter, corrigé le même jour** : il retirait de la grille les albums des familles non cochées (`albumsAffiches`) ; ils s'estompent désormais, comme dans Découvrir (`passeFamille`, `estRetenu`, `js/ecouter-familles.js`), et le compte dit « n sur N ». Pistes d'un album (`lignePiste`) : clic = sélection, ▶ / double-clic = lecture (Règle 1) ; le nom d'artiste ne colore que lui et mène à ses albums. Signalement par la couleur seule, jamais de soulignement. |
 | 3 | Palette unique | ✅ | Aucune couleur de famille codée en dur dans `ui/js/` ; tout passe par `--familles`. |
 | 4 | Stabilité des positions | ✅ | `inspecter()` ne touche ni `grille.scrollTop` ni `liste.scrollTop` ; le scroll n'est réinitialisé que par une vraie navigation (`poser(..., scroll=0)`, `js/ecouter.js`), jamais par une sélection. |
 | 5 | Sobriété stricte | ✅ | Les blocs du rail propres à d'autres modes restent masqués (`bloc-familles-ecoute`, etc., gérés par `basculerMode`) ; pas d'empilement visible. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous (résolu le 1ᵉʳ novembre 2026). Grille, liste, filtre et palette vérifiés dans les deux thèmes. |
 | 7 | Zoom/pan cohérents | — | Pas de zoom en Écouter (listes/grille classiques). |
-| 8 | Révélation par échelle | ✅ | Bio/crédits/critiques restent des blocs `hidden` tant qu'ils n'ont pas de contenu (`bloc-bio`, `bloc-credits`, `bloc-critiques`, `index.html:627-649`), pas affichés vides en permanence. |
+| 8 | Révélation par échelle | ✅ | Bio/crédits/critiques restent des blocs `hidden` tant qu'ils n'ont pas de contenu (`bloc-credits`, `bloc-critiques` ; au centre, les sections de `#autour-artiste`), pas affichés vides en permanence. |
 | 9 | Langage de force unique | — | Aucune relation entre morceaux affichée en Écouter. |
 
 ### Explorer → Carte
@@ -386,7 +367,7 @@ non applicable · 🔧 tranché en doc, chantier de code ouvert.
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
 | 5 | Sobriété stricte | ✅ | Réglages avancés (perplexité, époques, k-means) déportés dans le mode Bibliothèque plutôt que dans le rail d'Explorer — conforme à la contrainte de `ui-spec.md` (« les réglages avancés restent dans un tiroir rétractable, pas dans le rail »), même si le rangement choisi (un autre mode entier plutôt qu'un tiroir) est plus lourd qu'un tiroir — voir Bibliothèque, Règle 8. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous. Le canevas se redessine au changement de thème ; les tuiles gardent leur propre fond de plan (Règle 3). |
-| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`, `index.html:135-139`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser du rail (`#bloc-zoom`) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
 
@@ -443,7 +424,7 @@ dans son journal que la composition va au bout.
 
 > Rappel de vocabulaire : « Bibliothèque » désigne ici l'écran atteint par
 > l'entrée de rail du même nom (réglages, statistiques, vérifications) — pas
-> un mode au sens du sélecteur à quatre boutons, et pas le fait de parcourir
+> un mode au sens du sélecteur de modes, et pas le fait de parcourir
 > ses artistes/albums, qui se passe en mode **Écouter**. La Règle 2 sur « une
 > recherche dans Bibliothèque » de la commande d'origine vise en réalité la
 > recherche du rail, auditée sous Écouter.
@@ -460,20 +441,41 @@ dans son journal que la composition va au bout.
 | 8 | Révélation par échelle | ✅ | Chaque ligne de l'état déplie sa liste sur place (les listes des anciennes « Vérifications », mêmes identifiants) ; un compte nul se lit atténué, un compte à examiner en `--txt`. Les réglages avancés attendent l'ouverture de leur section. |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées. |
 
-### Éditer
+### Pratiquer
+
+Les deux modes partagent l'établi (`#editer-separer`, `#editer-etabli`),
+l'état `edition` et les états « choisir » et « séparer » ; `enStems()`
+(`socle.js`) dit si l'on est dans l'un des deux. En Pratiquer, l'établi prend
+la classe `etabli--pratiquer` : la partition au centre, les stems réduits à une
+rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 
 | # | Règle | Verdict | Raison |
 |---|---|---|---|
-| 1 | Inspecteur unique | ✅ | Le morceau source passe par le même inspecteur ; **le détail d'un stem sélectionné y va aussi** (`#bloc-stem`, `majInspecteurStem`), plus de panneau déplié sous la ligne dans la pile. |
+| 1 | Inspecteur unique | ✅ | Le morceau source passe par le même `#insp` ; le détail d'un stem sélectionné aussi (`#bloc-stem`, `majInspecteurStem`). La partition au centre n'est pas un second inspecteur : c'est la vue propre au mode. |
+| 2 | Estomper, jamais masquer | ✅ | Dans l'état « choisir », la grille ou la liste suit le filtre du rail comme en Écouter (`filtrerEcoute`, `enStems()`) : estompée, rien de retiré. Pas de filtre sur la partition. |
+| 3 | Palette unique | — | Rien n'y est coloré par famille. La partition a ses jetons de feuille (`--feuille-*`), la section et la mesure courantes prennent `--accent`. |
+| 4 | Stabilité des positions | ✅ | La partition défile avec la lecture, mais une molette de l'utilisateur suspend ce suivi 3 s (`partition.moletteA`) : on ne lui reprend pas la page. Changer d'instrument (Basse, Batterie) remplace la partie, sans déplacer le reste. |
+| 5 | Sobriété stricte | ❌ | Quatre écarts relevés le 7 nov. : « Filtrer » reste dans le rail l'établi ouvert, sans rien à filtrer (I4) ; la mention de licence de BS-RoFormer « SW » (`#demix-provenance`) est permanente dans le rail dès que cette variante est choisie, et c'est la variante par défaut ici (I9) ; le segment du décompte passe sur deux lignes dans 232 px (I10) ; le panneau d'un stem dans l'inspecteur porte la greffe (`zoneGreffe`, dans `panneauStem` quel que soit le mode), qui relève de Créer. |
+| 6 | Deux thèmes sérieux | ✅ | La partition passe par des jetons dessinés pour chaque thème (aplat clair et encre sombre en clair), vérifiés par `scripts/contraste-interface.py`. |
+| 7 | Zoom/pan cohérents | — | Pas de zoom : la molette fait défiler la partition, elle ne l'agrandit pas. |
+| 8 | Révélation par échelle | ✅ | Le bloc « Votre partie » (`#bloc-usage`) n'apparaît qu'une fois les stems là ; la notation seulement pour la basse, Songsterr seulement si le morceau a un titre, la boucle (`#boucle-reglage`) seulement une fois la pulsation du morceau connue ; rien ne se transcrit sans « Calculer ». |
+| 9 | Langage de force unique | — | Pas de relations entre morceaux affichées. |
+| — | Écart, hors des neuf règles | ❌ | Les stems s'appellent Drums, Bass, Other, Vocals… (`.stem__nom` = nom du moteur) quand le rail dit Basse et Batterie : un même objet sous deux noms (principe de cohérence ; I5). Vaut aussi pour Créer. |
+
+### Créer
+
+| # | Règle | Verdict | Raison |
+|---|---|---|---|
+| 1 | Inspecteur unique | ✅ | Le morceau source passe par le même inspecteur ; **le détail d'un stem sélectionné y va aussi** (`#bloc-stem`, `majInspecteurStem`), avec sa vitesse, sa hauteur et d'où le remplacer — plus de panneau déplié sous la ligne dans la pile. |
 | 2 | Estomper, jamais masquer | ✅ | Le sélecteur (grille ou liste, avant « séparer ») suit le filtre du rail comme en Écouter : estompé, rien de retiré. Pas de filtre dans la pile ni la barre d'outils ; les candidats de greffe (`zoneGreffe`) sont une liste de résultats, pas un filtre sur un ensemble déjà visible. |
 | 3 | Palette unique | — | La pile de stems ne colore rien par famille (le mini-nuage de greffe, quand il existera, devra lire `--familles`). |
-| 4 | Stabilité des positions | ✅ | Sélectionner un stem (`edition.stemSel`) souligne sa ligne et peuple l'inspecteur, sans déplacer les lignes de la pile ni les réordonner. |
-| 5 | Sobriété stricte | ✅ | Barre d'outils : deux pas-à-pas d'ensemble (vitesse, hauteur), la dérive quand elle existe, Exporter. La pile : nom, solo, muet, badge, niveau, spectrogramme — le reste attend la sélection, dans l'inspecteur. |
+| 4 | Stabilité des positions | ✅ | Sélectionner un stem (`edition.stemSel`) souligne sa ligne et peuple l'inspecteur, sans déplacer les lignes de la pile ni les réordonner. Passer de Pratiquer à Créer garde les stems chargés, sans rien relancer (test de fumée « Pratiquer puis Créer »). |
+| 5 | Sobriété stricte | ❌ | La barre d'outils et la pile restent sobres (deux pas-à-pas d'ensemble, la dérive quand elle existe, Exporter ; par stem : nom, solo, muet, badge, niveau, spectrogramme). Mais « Filtrer » reste dans le rail l'établi ouvert, sans rien à filtrer (I4). |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
 | 7 | Zoom/pan cohérents | — | Pas encore de zoom temporel de la pile. Le contrat de la Règle 7 s'appliquera dès qu'il existera : mêmes gestes que `zoomer()`/`zoomerTemps()`, et le playhead unique (`positionnerPlayhead`) devra suivre le même facteur. |
-| 8 | Révélation par échelle | ✅ | Le détail vitesse/hauteur/greffe d'un stem n'apparaît qu'à la sélection de sa ligne (`majInspecteurStem`), dans l'inspecteur commun — divulgation progressive que Bibliothèque n'applique pas à ses propres réglages avancés. |
+| 8 | Révélation par échelle | ✅ | Le détail vitesse/hauteur/greffe d'un stem n'apparaît qu'à la sélection de sa ligne (`majInspecteurStem`), dans l'inspecteur commun. |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées ; la liste de voisins pour la greffe (`zoneGreffe`) est une liste classée. À surveiller si le mini-nuage de greffe (prévu, `ui-spec-editeur.md`) affiche un jour des liens. |
-| — | Écart, hors des neuf règles | ✅ | **Résolu le 10 septembre 2026 — doc puis code.** `ui-spec-editeur.md` a retranché « le dock pousse la carte vers le haut » ; le centre d'Éditer est **l'établi à trois états** (`majEtatEditer` : `#grille`/`#liste` → `#editer-separer` → `#editer-etabli`), `#bloc-demix` est descendu du rail au centre, le détail d'un stem peuple `#bloc-stem` dans l'inspecteur, et `#dock` est une barre d'outils pleine largeur (plus de `max-height: 34vh`). Reste une passe de vérification visuelle dans l'app en fonctionnement (alignement du playhead au pixel, largeur de la barre sur fenêtre étroite). |
+| — | Écart, hors des neuf règles | ✅ | **Résolu le 10 septembre 2026 — doc puis code.** `ui-spec-editeur.md` a retranché « le dock pousse la carte vers le haut » ; le centre d'Éditer (aujourd'hui de Pratiquer et de Créer) est **l'établi à trois états** (`majEtatEditer` : `#grille`/`#liste` → `#editer-separer` → `#editer-etabli`), `#bloc-demix` est descendu du rail au centre, le détail d'un stem peuple `#bloc-stem` dans l'inspecteur, et `#dock` est une barre d'outils pleine largeur (plus de `max-height: 34vh`). Reste une passe de vérification visuelle dans l'app en fonctionnement (alignement du playhead au pixel, largeur de la barre sur fenêtre étroite). |
 
 ### Découvrir
 
@@ -523,6 +525,31 @@ par construction ce qu'elle recouvre (exception G4 ; G5 ne compte plus un
 repère recouvert). Le premier passage a relevé un vrai défaut : la file,
 ouverte par-dessus, cachait le × de la vue ; la vue s'arrête désormais au bord
 de la file (Règle 10). Ensuite : **216 cellules, 0 violation**.
+
+### Surimpressions de la carte (balade, 7 novembre 2026)
+
+Ce qui se pose sur la carte d'Explorer (Nuage, Carte) sans en être un
+affichage : le **bandeau de balade** (`#carte-balade`, en haut à gauche : où en
+est la balade, « ← Carrefour précédent », « Arrêter la balade ») ; le
+**carrefour** (`#carte-carrefour`, deux ou trois voies à côté du promeneur à la
+fin d'un morceau, `js/balade.js`) ; l'**aura** (`#carte-aura`, le bouton en
+haut à droite, `js/aura.js`) ; le **brouillard** et les sentiers battus
+(couches du style, options du fond de plan, `js/traces.js`) ; le **menu du clic
+droit** (`#carte-menu` : « Flâner d'ici », « Épingler ici », « Retirer
+l'épingle », et le formulaire d'épingle, `js/lieux.js`).
+
+| # | Règle | Verdict | Raison |
+|---|---|---|---|
+| 1 | Inspecteur unique | ✅ | Aucune ne recrée l'inspecteur. Une voie du carrefour montre titre, artiste et famille comme une ligne de liste, pour choisir ; la prendre décide de la suite de la balade, elle ne sélectionne pas. Le menu ne porte que des gestes. Survoler une voie en fait entendre 5 s par l'aura, très bas : le son principal ne baisse pas, ce n'est pas une lecture. |
+| 2 | Estomper, jamais masquer | ✅ | Le brouillard voile, il ne retire pas : papier à 0,72 sur le bâti jamais écouté, la teinte de la famille se devine dessous, et le bâtiment reste cliquable. Au carrefour, une voie déjà écoutée et les voies d'un carrefour figé passent en retrait (opacité 0,45), à leur place. |
+| 3 | Palette unique | ⚠️ | Les pastilles des voies prennent la teinte de la famille sur le fond où l'on est (`couleursFamillesCarte` sur le plan, `couleursFamilles` ailleurs) ; promeneur, tracé et sentiers prennent `--accent` (la teinte posée par le style est remplacée par l'interface) ; le voile prend le papier de la palette. Réserve : le nuancier des épingles (six teintes codées dans `lieux.js`) n'est pas une famille, mais rien ne l'en distingue sur la carte. |
+| 4 | Stabilité des positions | ✅ | La carte ne se recadre jamais d'elle-même pendant une balade ; seuls un clic sur une balade passée ou une chaîne la cadrent (`fitBounds`). Le carrefour se place à côté du promeneur, jamais dessus (`placerPanneau`). Lever le brouillard d'un bâtiment est un `setFeatureState`, rien ne se redessine ailleurs. |
+| 5 | Sobriété stricte | ✅ | Une seule surimpression permanente, l'aura, un bouton nommé ; le bandeau n'existe qu'en balade, le carrefour qu'à la fin d'un morceau, et « ← Carrefour précédent » que s'il y a où revenir. Le menu ne montre que les entrées qui valent à l'endroit cliqué. Brouillard et sentiers sont des options éteintes par défaut (98,5 % de la ville serait voilée). |
+| 6 | Deux thèmes sérieux | ⚠️ | Les cartouches (bandeau, carrefour, aura, menu) sont en jetons (`--panel`, `--line`, `--txt`, `--mut`, `--accent`) ; le voile suit la palette du fond. Réserve : les ombres portées sont des `rgba` noirs codés, et les teintes du nuancier sont les mêmes dans les deux thèmes. |
+| 7 | Zoom/pan cohérents | ✅ | Aucune n'a de zoom propre : la carte garde ses gestes. Le carrefour se replace près du promeneur à chaque mise à jour de la balade (le sondage du lecteur) : après un glisser, il peut traîner jusqu'à la suivante. |
+| 8 | Révélation par échelle | ✅ | Le compteur de quartier n'apparaît qu'au survol d'un territoire ; le carrefour attend la fin du morceau ; le formulaire d'épingle attend « Épingler ici » ; Échap ferme le carrefour, le menu et « Garder ». |
+| 9 | Langage de force unique | ✅ | Les sentiers battus codent le nombre de passages par l'épaisseur et l'opacité seulement, jamais par un style de trait ; les pointillés d'une balade passée redessinée ne codent pas une valeur. |
+| 10 | Gabarit | ⚠️ | Bandeau et carrefour posés sur `--gouttiere`, mais l'audit (`audit.js`) ne parcourt aucun état de balade : bandeau, carrefour, menu et cartouche « Garder » ne sont pas mesurés. Le relief, lui, a son écran (`explorer:carte+relief`). |
 
 ### Constat transversal — Règle 10, le gabarit (1ᵉʳ octobre 2026)
 
@@ -603,7 +630,7 @@ seul le nombre de familles qu'on peut isoler à la fois a changé.
 ## Checklist de fin de tâche
 
 À revérifier explicitement, règle par règle, avant de considérer un écran
-terminé — dans n'importe lequel des cinq écrans :
+terminé — dans n'importe lequel des écrans du rail :
 
 1. **Inspecteur** — la sélection peuple-t-elle `#insp` existant, ou ce nouvel
    écran recrée-t-il pochette/métadonnées/bio ailleurs ?
@@ -637,3 +664,35 @@ terminé — dans n'importe lequel des cinq écrans :
 Et le principe de dernier recours : si aucune des onze règles ne tranche,
 qu'est-ce que ce mot, ce geste ou cette couleur signifient déjà ailleurs dans
 l'application — et l'écran en cours le respecte-t-il ?
+
+## Historique
+
+Les bandeaux qui ouvraient ce document, dans l'ordre où ils avaient été posés
+(le plus récent d'abord). Les nombres d'écrans qu'ils citent sont ceux de leur
+date.
+
+> **Sept écrans (5 novembre 2026) : Éditer se divise en Pratiquer et Créer**
+> (`ui-spec-editeur.md`, décision 13). Le sélecteur porte six boutons :
+> Écouter, Pratiquer, Explorer, Créer, Découvrir, Valise. Les deux nouveaux
+> écrans partagent l'établi (`#editer-separer`, `#editer-etabli`) et l'état
+> `edition` ; `enStems()` (`socle.js`) dit si l'on est dans l'un des deux.
+> L'audit (`audit.js`) les capture séparément. Là où ce document dit
+> « Éditer », lire « Pratiquer et Créer ».
+
+> **Sixième écran (19 octobre 2026) : Valise**, cinquième bouton du
+> sélecteur, sous Découvrir — la synchronisation du compagnon iOS. Panneau
+> central `#valise-vue` (colonne de lecture `.bibliotheque`) : la composition
+> de la valise (lignes règle + nombre d'albums, limites), puis la liste des
+> albums qui partiront, où l'on garde ou écarte un album. Rail `#bloc-valise` :
+> l'iPhone (appareil, échéance de l'app, valises qu'il porte, « Renouveler
+> l'app »). Là où ce document dit « cinq écrans », lire « les écrans du rail » :
+> Valise y est soumis aux mêmes règles (audit ci-dessous).
+
+> **Correction de périmètre au moment d'écrire ce document (7 septembre
+> 2026)** : la commande qui a produit ce document supposait Éditer et
+> Découvrir sans interface construite. C'est faux pour les deux —
+> `apps/desktop/ui/js/` porte ~15 fonctions dédiées à Découvrir (fil
+> d'actualité, explorateur de collaborations) et une dizaine à Éditer (dock de
+> stems, greffe, spectrogrammes), toutes branchées à un écran du rail. L'audit
+> couvre donc les **sept lignes** (cinq écrans, dont les trois sous-modes
+> d'Explorer), aucune n'étant écartée comme prématurée.
