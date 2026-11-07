@@ -3546,4 +3546,6 @@ commits, les tests d'interface verts à chacun.
   `${…}` ; un module qui n'exporte qu'un nom sortait un `export {}` vide
   (`creer.js`, attrapé par les tests : erreur de chargement).
 - **Vérifié** : `verifier.sh` vert (48 tests d'interface) après les deux
-  commits.
+  commits. `audit-interface.sh` sur l'application réelle (WebKit, copie de la
+  base) : 252 cellules, 0 violation, gabarit cohérent, G8 tient sur tous les
+  écrans, mêmes hauteurs de rail qu'après B4 (Anneau 803 / 804 px).
