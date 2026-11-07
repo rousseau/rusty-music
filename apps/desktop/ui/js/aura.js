@@ -1,7 +1,10 @@
 import "./balade.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, navigation, remonter } from "./socle.js";
 import { carte, cnv, ctx } from "./carte.js";
-import { dessinerCarte, journalCarte, modeAnneau, modeTemps, versEcran } from "./maplibre.js";
+import { journalCarte } from "./explorer/carte-gl.js";
+import {
+  dessinerCarte, modeAnneau, modeTemps, versEcran,
+} from "./explorer/nuage.js";
 import { balade } from "./balade.js";
 import { lecture, transport } from "./etat-lecture.js";
 

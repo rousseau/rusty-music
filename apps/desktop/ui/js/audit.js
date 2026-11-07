@@ -13,9 +13,7 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  journalCarte,
-} from "./maplibre.js";
+import { journalCarte } from "./explorer/carte-gl.js";
 import {
   basculerMode,
 } from "./modes.js";

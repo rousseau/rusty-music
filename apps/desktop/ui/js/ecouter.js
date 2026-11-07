@@ -14,9 +14,8 @@ import {
 import {
   anneau, carte, chargerAnneau,
 } from "./carte.js";
-import {
-  chargerFamilles, tracerRouteSurCarte,
-} from "./maplibre.js";
+import { tracerRouteSurCarte } from "./explorer/chemins.js";
+import { chargerFamilles } from "./familles.js";
 import {
   estRetenu, grilleDeTri, indexAlphaUtile, indexAnneesUtile, lignesCourantes, majBarreTri,
   majBlocFamillesEcoute, rafraichirGrille, rebrasserAlea, SENS_ORIGINE, sensDe, sensTri,

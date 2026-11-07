@@ -19,9 +19,7 @@ import {
 import {
   anneau, carte, chargerAnneau, chercherAlbums, retenu, suivreAlbumEnLecture,
 } from "./carte.js";
-import {
-  dessinerCarte, modeAnneau,
-} from "./maplibre.js";
+import { dessinerCarte, modeAnneau } from "./explorer/nuage.js";
 import {
   dessinerBornes, poserBorne,
 } from "./fond-de-plan.js";

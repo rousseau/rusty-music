@@ -3,7 +3,8 @@ import {
   $, invoke, navigation, remonter,
 } from "./socle.js";
 import { carte, cnv, ctx } from "./carte.js";
-import { carteGL, dessinerCarte } from "./maplibre.js";
+import { carteGL } from "./explorer/carte-gl.js";
+import { dessinerCarte } from "./explorer/nuage.js";
 import { jouerPlaylist } from "./ecouter.js";
 import { fermerMenuBalade } from "./balade.js";
 

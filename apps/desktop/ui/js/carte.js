@@ -7,8 +7,9 @@ import {
 } from "./ecouter.js";
 
 import {
-  chargerFamilles, dessinerCarte, modeAnneau, modeTemps, patienter,
-} from "./maplibre.js";
+  dessinerCarte, modeAnneau, modeTemps, patienter,
+} from "./explorer/nuage.js";
+import { chargerFamilles } from "./familles.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------------------- carte */

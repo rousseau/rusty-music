@@ -11,9 +11,8 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  dessinerFamilles, majAffichageGL,
-} from "./maplibre.js";
+import { majAffichageGL } from "./explorer/carte-gl.js";
+import { dessinerFamilles } from "./familles.js";
 import {
   chargerFamillesParAlbum, dessinerFamillesEcoute, familleARecalculee, rafraichirGrille,
 } from "./ecouter-familles.js";

@@ -5,10 +5,12 @@ import {
 import {
   carte, cnv, ctx,
 } from "./carte.js";
+import { carteGL } from "./explorer/carte-gl.js";
 import {
-  carteGL, couleursFamilles, couleursFamillesCarte, dessinerCarte, pointSous,
-  tracerRouteSurCarte, versEcran,
-} from "./maplibre.js";
+  dessinerCarte, pointSous, versEcran,
+} from "./explorer/nuage.js";
+import { tracerRouteSurCarte } from "./explorer/chemins.js";
+import { couleursFamilles, couleursFamillesCarte } from "./familles.js";
 import {
   demarrerLecture, dessinerFile,
 } from "./lecteur.js";
@@ -506,7 +508,7 @@ function voieVers(touche) {
   return meilleure;
 }
 
-/// Un clic sur la carte près d'une voie tracée la choisit (`maplibre.js`,
+/// Un clic sur la carte près d'une voie tracée la choisit (`explorer/nuage.js`,
 /// avant la sélection d'un morceau), panneau masqué ou non : le choix est
 /// toujours offert tant que le suivant n'est pas figé. `true` : le clic est
 /// pris.

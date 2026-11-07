@@ -14,9 +14,7 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  longueurChemin,
-} from "./maplibre.js";
+import { longueurChemin } from "./explorer/chemins.js";
 import {
   bruitChemin,
 } from "./fond-de-plan.js";

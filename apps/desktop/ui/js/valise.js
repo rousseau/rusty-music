@@ -6,9 +6,7 @@ import { lecture } from "./etat-lecture.js";
 import {
   carte,
 } from "./carte.js";
-import {
-  chargerFamilles, couleursFamilles,
-} from "./maplibre.js";
+import { chargerFamilles, couleursFamilles } from "./familles.js";
 
 /* ------------------------------------------------------ mode Valise */
 

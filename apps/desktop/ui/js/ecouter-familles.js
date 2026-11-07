@@ -1,4 +1,4 @@
-import "./maplibre.js"; // l'ordre d'exécution : voir main.js
+import "./familles.js"; // l'ordre d'exécution : voir main.js
 import {
   $, ecoute, enStems, invoke, navigation, plier, remonter, repondAuFiltre, vue, vueEnGrille,
 } from "./socle.js";
@@ -13,9 +13,9 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  chargerFamilles, dessinerCarte, majCouleurGL, rendreFamilles,
-} from "./maplibre.js";
+import { majCouleurGL } from "./explorer/carte-gl.js";
+import { dessinerCarte } from "./explorer/nuage.js";
+import { chargerFamilles, rendreFamilles } from "./familles.js";
 import {
   majLegendeContinue,
 } from "./fond-de-plan.js";

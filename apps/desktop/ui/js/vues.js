@@ -14,9 +14,7 @@ import {
 import {
   basculerFile, demarrerLecture, dessinerFile,
 } from "./lecteur.js";
-import {
-  tracerRouteSurCarte,
-} from "./maplibre.js";
+import { tracerRouteSurCarte } from "./explorer/chemins.js";
 import {
   cleAlbum, estRetenu, lignesCourantes,
 } from "./ecouter-familles.js";

@@ -8,9 +8,7 @@ import {
 import {
   poser,
 } from "./ecouter.js";
-import {
-  journalCarte,
-} from "./maplibre.js";
+import { journalCarte } from "./explorer/carte-gl.js";
 import {
   chargerFamillesParAlbum, dessinerFamillesEcoute, rafraichirGrille,
 } from "./ecouter-familles.js";

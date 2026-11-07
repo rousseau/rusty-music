@@ -11,12 +11,17 @@ import {
   filtreAnnee, suivreAlbumEnLecture, temps,
 } from "./carte.js";
 import {
-  carteReelle, dessinerCarte, dessinerFamilles, initialiserFiltreAnnee, journalCarte,
-  majAffichageGL, majCouleurGL, majEtiquetteIntervalleAnnees, majFiltreGL, majPentesGL, modeAnneau,
-  modeTemps,
-  patienter, poserVignetteCarte, rafraichirFiltreAnnee, rejouerChemin, tracerChemin,
-  tracerRouteSurCarte,
-} from "./maplibre.js";
+  carteReelle, initialiserFiltreAnnee, journalCarte, majAffichageGL, majCouleurGL,
+  majEtiquetteIntervalleAnnees, majFiltreGL, majPentesGL, poserVignetteCarte,
+  rafraichirFiltreAnnee,
+} from "./explorer/carte-gl.js";
+import {
+  dessinerCarte, modeAnneau, modeTemps, patienter,
+} from "./explorer/nuage.js";
+import {
+  rejouerChemin, tracerChemin, tracerRouteSurCarte,
+} from "./explorer/chemins.js";
+import { dessinerFamilles } from "./familles.js";
 import {
   majSegmentsCouleur,
 } from "./ecouter-familles.js";

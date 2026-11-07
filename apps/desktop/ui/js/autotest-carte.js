@@ -7,9 +7,11 @@ import {
   carte, cnv,
 } from "./carte.js";
 import {
-  bornesGeoPoints, carteGL, carteReelle, journalCarte, majAffichageGL, pointSous, versCarte,
-  versEcran, vueInitialeGL, zoomer,
-} from "./maplibre.js";
+  bornesGeoPoints, carteGL, carteReelle, journalCarte, majAffichageGL, vueInitialeGL,
+} from "./explorer/carte-gl.js";
+import {
+  pointSous, versCarte, versEcran, zoomer,
+} from "./explorer/nuage.js";
 import {
   basculerMode,
 } from "./modes.js";

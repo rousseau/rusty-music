@@ -5,9 +5,8 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  carteReelle, poserChemin,
-} from "./maplibre.js";
+import { carteReelle } from "./explorer/carte-gl.js";
+import { poserChemin } from "./explorer/chemins.js";
 
 /* ------------------------------------------------------------- itinéraires
  *

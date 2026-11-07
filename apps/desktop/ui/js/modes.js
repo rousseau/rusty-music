@@ -15,9 +15,9 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  dessinerCarte, majVisibiliteIntervalleAnnees, tracerRouteSurCarte,
-} from "./maplibre.js";
+import { majVisibiliteIntervalleAnnees } from "./explorer/carte-gl.js";
+import { dessinerCarte } from "./explorer/nuage.js";
+import { tracerRouteSurCarte } from "./explorer/chemins.js";
 import {
   chargerFamillesParAlbum, dessinerFamillesEcoute, rafraichirGrille,
 } from "./ecouter-familles.js";

@@ -424,7 +424,7 @@ cités sont ceux de `synthese-novembre-2026.md`, § 2.3.
 | 4 | Stabilité des positions | ✅ | La position d'un point ne dépend que de la projection t-SNE / des tuiles, jamais de la sélection courante. |
 | 5 | Sobriété stricte | ✅ | Réglages avancés (perplexité, époques, k-means) déportés dans le mode Bibliothèque plutôt que dans le rail d'Explorer — conforme à la contrainte de `ui-spec.md` (« les réglages avancés restent dans un tiroir rétractable, pas dans le rail »), même si le rangement choisi (un autre mode entier plutôt qu'un tiroir) est plus lourd qu'un tiroir — voir Bibliothèque, Règle 8. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ci-dessous. Le canevas se redessine au changement de thème ; les tuiles gardent leur propre fond de plan (Règle 3). |
-| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/maplibre.js`) est la fonction unique appelée par la molette (`js/maplibre.js`) et par les boutons `+`/`−`/réinitialiser posés sur la carte (`#bloc-zoom`, sous les outils, Règle 12) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomer()` (`js/explorer/nuage.js`) est la fonction unique appelée par la molette (même fichier) et par les boutons `+`/`−`/réinitialiser posés sur la carte (`#bloc-zoom`, sous les outils, Règle 12) ; même geste, même lecture `zoom-val`, quel que soit le sous-mode. |
 | 8 | Révélation par échelle | ✅ | Étiquettes de tuiles dépendantes du zoom (MapLibre), légende cliquable plutôt qu'affichage permanent de tous les noms de famille. |
 | 9 | Langage de force unique | — | Le nuage/la carte n'affiche pas de relations entre morceaux (le chemin tracé est un itinéraire, pas une variable continue à encoder). |
 
@@ -473,7 +473,7 @@ dans son journal que la composition va au bout.
 | 4 | Stabilité des positions | ✅ | Par construction : `frise-filiations.md` § 1 retient les bandes par famille comme mode par défaut précisément parce qu'« une bande est une structure stable [qui] accueille les nouveaux albums sans redistribuer l'existant » — writen avant l'implémentation, respecté dedans. |
 | 5 | Sobriété stricte | ✅ | Un seuil de connexions (réglette), rien de plus dans le rail. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |
-| 7 | Zoom/pan cohérents | ✅ | `zoomerTemps()` (`js/maplibre.js`) est décrit dans son propre commentaire comme suivant « exactement » le même principe que le zoom du nuage — un seul facteur `k`, même geste molette, même lecture `zoom-val`. |
+| 7 | Zoom/pan cohérents | ✅ | `zoomerTemps()` (`js/explorer/temps.js`) est décrit dans son propre commentaire comme suivant « exactement » le même principe que le zoom du nuage — un seul facteur `k`, même geste molette, même lecture `zoom-val`. |
 | 8 | Révélation par échelle | ✅ | Année affichée au survol seulement (`frise-filiations.md` § 5), pas d'empilement de labels sur l'axe. |
 | 9 | Langage de force unique | ✅ | Même mécanique que l'Anneau : fond permanent en trace ténue, force encodée par largeur/opacité à la sélection — aucun `setLineDash` sur les arcs eux-mêmes. |
 
@@ -540,7 +540,7 @@ rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | `#decouvrir-centre` (nom d'artiste, fil de collaborations) n'est pas un inspecteur de morceau redondant : c'est le contenu central propre à ce mode, au même titre que la grille d'albums l'est pour Écouter. Aucune métadonnée de morceau (pochette, tempo, durée…) n'y est dupliquée. |
 | 2 | Estomper, jamais masquer | ✅ | **Résolu le 20 septembre 2026** avec le passage du fil en grille de pochettes : `rendreFilDecouvrir()` construit toutes les cartes, et celles hors du filtre par famille (`sortiePasseFamille` / `voisinPasseFamille`) reçoivent `.album--estompe` (opacité .25, pleine au survol) au lieu d'être retirées. La grille ne se recompose donc pas ; seuls les compteurs d'onglets suivent le filtre. |
-| 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `js/maplibre.js`). |
+| 3 | Palette unique | ✅ | Légende de familles de Découvrir tirée de la même passe que celle de la carte (`chargerFamilles`, `js/familles.js`). |
 | 4 | Stabilité des positions | ✅ | Naviguer entre artistes pousse sur un fil d'Ariane (`decouvrirFil`) sans réordonner la liste de collaborations déjà affichée ; le filtre par famille estompe sans recomposer la grille. |
 | 5 | Sobriété stricte | ✅ | Trois onglets (Sorties/Collaborations/À écouter ailleurs), un fil, une légende de familles repliable — pas d'empilement. |
 | 6 | Deux thèmes sérieux | ✅ | Constat transversal ; vérifié en clair le 1ᵉʳ novembre (maquette). |

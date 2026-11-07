@@ -3,9 +3,9 @@ import {
   $, invoke, navigation, remonter,
 } from "./socle.js";
 import { carte, cnv, ctx } from "./carte.js";
-import {
-  carteGL, dessinerCarte, poserChemin,
-} from "./maplibre.js";
+import { carteGL } from "./explorer/carte-gl.js";
+import { dessinerCarte } from "./explorer/nuage.js";
+import { poserChemin } from "./explorer/chemins.js";
 import { allumeeAura, ecouterAutour } from "./aura.js";
 import { balade } from "./balade.js";
 
@@ -270,7 +270,7 @@ function avancer(sens) {
 
 /* ------------------------------------------------- gestes */
 
-// En capture sur le conteneur : avant les gestes de la carte (`maplibre.js`).
+// En capture sur le conteneur : avant les gestes de la carte (`explorer/nuage.js`).
 const zone = cnv.parentElement;
 
 zone.addEventListener(

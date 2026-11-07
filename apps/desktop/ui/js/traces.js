@@ -3,9 +3,8 @@ import {
   $, fileAttente, invoke, navigation, remonter,
 } from "./socle.js";
 import { carte } from "./carte.js";
-import {
-  carteGL, dessinerCarte, versEcran,
-} from "./maplibre.js";
+import { carteGL } from "./explorer/carte-gl.js";
+import { dessinerCarte, versEcran } from "./explorer/nuage.js";
 import {
   demarrerLecture, dessinerFile,
 } from "./lecteur.js";
@@ -25,7 +24,7 @@ import { proposerGarder } from "./lieux.js";
  * - **Sentiers battus** : les rues parcourues en balade, sous la voirie, plus
  *   épaisses et plus franches avec les passages (`sentiers_carte`).
  * - **Compteur de quartier** : au survol d'un territoire, combien de morceaux
- *   et quelle part jamais écoutée (`territoireSous`, lu par `maplibre.js`).
+ *   et quelle part jamais écoutée (`territoireSous`, lu par `explorer/nuage.js`).
  * - **Balades passées** : la liste du rail ; un clic redessine la balade, ▶ la
  *   rejoue comme une file ordinaire.
  */

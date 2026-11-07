@@ -12,9 +12,7 @@ import {
 import {
   carte,
 } from "./carte.js";
-import {
-  chargerFamilles, rendreFamilles,
-} from "./maplibre.js";
+import { chargerFamilles, rendreFamilles } from "./familles.js";
 import {
   basculerMode,
 } from "./modes.js";
