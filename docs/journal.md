@@ -3549,3 +3549,32 @@ commits, les tests d'interface verts à chacun.
   commits. `audit-interface.sh` sur l'application réelle (WebKit, copie de la
   base) : 252 cellules, 0 violation, gabarit cohérent, G8 tient sur tous les
   écrans, mêmes hauteurs de rail qu'après B4 (Anneau 803 / 804 px).
+
+## Code, C2 : découper editer.rs et bibliotheque.rs — 7 nov. 2026
+
+Sans changer de comportement ni de nom de commande Tauri (synthèse de
+novembre, O3 et O6). Deux commits, `cargo clippy` et `cargo test` verts à
+chacun.
+
+- **`editer.rs` (2 042 lignes, 31 commandes) → trois modules**, comme en
+  JS : `etabli.rs` (1 215, 21 commandes : démixage et stems, vitesse et
+  hauteur, export, lecture et boucles, pulsation, sections, spectres),
+  `pratiquer.rs` (445, 7 : décompte, transcription, MuScriptor, doigtés),
+  `creer.rs` (389, 3 : candidats, tempo cible, greffe). Seul changement de
+  code : le champ `VueSections::sections` devient `pub(crate)`, lu par la
+  greffe depuis un autre module.
+- **`bibliotheque.rs` (2 092 lignes, 60 commandes) → `bibliotheque/`**, sur
+  le modèle d'`explorer/` : `mod.rs` (148, 9 : la consultation, et les
+  réexports), `scan.rs` (127, 3), `analyse.rs` (264, 7 : empreintes,
+  descripteurs, loudness, normalisation), `verifications.rs` (144, 9),
+  `enrichissement.rs` (648, 20 : MusicBrainz, popularité, biographies,
+  critiques, Last.fm, liens d'artiste, « Compléter »), `discogs.rs` (260,
+  10), `pochettes.rs` (547, 2, avec les six tests du cache).
+- **Méthode.** Un script coupe aux éléments de premier niveau, avec leurs
+  commentaires et attributs, et les répartit par une table nom → module ;
+  le code passe tel quel. Contrôle : chaque ligne non vide de l'ancien
+  fichier se retrouve dans les nouveaux, à part les en-têtes de module et
+  deux titres de section orphelins (« Transport », vestige, et celui de
+  « Compléter », repris dans l'en-tête d'`enrichissement.rs`).
+- **Vérifié** : `verifier.sh` vert après les deux commits (fmt, deny,
+  clippy, tests, 48 tests d'interface).

@@ -672,7 +672,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | B3 Règles 12-13, G8 | fait : règles et checklist écrites ; G8 dans l'audit, 8 écrans sur 13 dépassent à 1 400 × 900 (Carte : +1 409 px) | 7 nov. 2026 | `journal.md`, « B2-B3 » ; `interface-guidelines.md` |
 | B4 désencombrer | fait : outils de la carte posés sur elle, réglages de la balade dans son bandeau, aides derrière « ? », contact dans Bibliothèque ; puis Affichage, modes et légende compactés ; G8 vert sur les 13 écrans, audit 252 cellules, 0 violation | 7 nov. 2026 | `journal.md`, « B4 » ; `images/rails-b4.png` |
 | C1 JS | fait : `maplibre.js` → `explorer/{carte-gl,nuage,temps,anneau,chemins}.js` et `familles.js` ; `editer.js`, `pratiquer.js` → `etabli.js`, `pratiquer.js`, `creer.js` ; deux commits, tests verts à chacun | 7 nov. 2026 | `journal.md`, « C1 » |
-| C2 Rust, application | à faire | | |
+| C2 Rust, application | fait : `editer.rs` → `etabli.rs`, `pratiquer.rs`, `creer.rs` ; `bibliotheque.rs` → `bibliotheque/{mod,scan,analyse,verifications,enrichissement,discogs,pochettes}.rs` ; deux commits, noms de commandes inchangés, `verifier.sh` vert | 7 nov. 2026 | `journal.md`, « C2 » |
 | C3 `core` | à faire | | |
 | C4 types générés | option | | |
 | D1 mesure d'usage | vers le 12 nov. | | |
