@@ -293,6 +293,50 @@ Le modèle n'est pas jeté — il trouve son support.
 > montrés occupés égale le nombre de morceaux logés dont l'année est ≤ à
 > celle-là (les non datés comptés des deux côtés).
 
+> **Le brouillard : `feature-state`, cette fois (7 nov. 2026, P5 de la
+> balade).** Un voile couleur papier (`brouillard`, `brouillard-point`)
+> couvre le bâti habité par un morceau jamais écouté. Il se lève morceau par
+> morceau, à chaque écoute notée (évènement `ecoute-notee`), sans régénérer
+> les tuiles. Le choix entre les deux mécaniques :
+>
+> - **Pas un filtre par liste d'identifiants.** Le brouillard n'est pas une
+>   comparaison à un seuil global comme le curseur d'années : c'est un état
+>   **par entité**, qui change une entité à la fois. Un filtre devrait porter
+>   la liste entière des écoutés (418 aujourd'hui, et elle ne fait que
+>   croître) et chaque `setFilter` fait refaire au *worker* la mise en forme
+>   de la couche dans toutes les tuiles chargées, pour un seul bâtiment
+>   découvert.
+> - **`feature-state` est possible sans rien changer aux tuiles.** Ce qui
+>   avait fait écarter `feature-state` pour le curseur d'années était
+>   l'absence d'identifiant stable : les polygones de `batiments` sont
+>   numérotés à l'écriture (`compte`). Mais chaque bâtiment habité porte déjà
+>   l'attribut `morceau`, le même d'une tuile à l'autre et d'une génération à
+>   l'autre. `promoteId: {"batiments": "morceau"}` sur la source `carte` en
+>   fait l'identifiant. Les points `habites` portaient déjà le morceau comme
+>   identifiant. Une écoute de plus coûte deux `setFeatureState`, une simple
+>   repeinture.
+> - Le vacant porte `morceau = -1` : tous les vacants partagent cet
+>   identifiant, ce qui ne gêne pas, car le voile ne s'applique qu'au bâti
+>   habité (`palier >= 0`) et aucun état n'est jamais posé sur -1.
+>
+> `style::poser_traces` pose les couches et la `promoteId`. Il est appliqué
+> à la génération et, comme `plancher_etiquettes`, en servant un style écrit
+> avant, donc sans régénérer. Le voile est sous la voirie : les rues restent
+> lisibles. Les sentiers battus sont aussi sous la voirie : une source GeoJSON
+> d'arêtes du graphe de voirie avec leur nombre de passages (`balade_pas`),
+> qui fait déborder la rue d'un liseré d'autant plus épais et franc qu'elle a
+> été parcourue. Le **compteur de quartier** (« 4 201 morceaux · 96 % jamais
+> écoutés ») est calculé par famille dans l'interface. Il s'affiche au survol
+> d'un territoire, et sous le titre d'un bâtiment survolé.
+>
+> **Mesuré sur la bibliothèque (7 nov.)** : 27 657 bâtiments habités,
+> 418 écoutés. **98,5 % sont sous le brouillard.** Par famille, de 96,0 % à
+> 99,9 %, et aucune n'est entièrement voilée. Le voile éteindrait donc la
+> couleur de presque toute la ville : c'est une **option** du fond de plan,
+> éteinte par défaut, et non l'aspect ordinaire de la carte. Allumé, il
+> montre ce qu'on a vraiment parcouru : 418 bâtiments en couleur dans une
+> ville pâle.
+
 ## Le réseau et les itinéraires
 
 Le réseau routier devient la voirie réelle. La distance routière ne vaut donc la

@@ -548,6 +548,82 @@ test("carte : l'option « Pentes » montre les flèches entre quartiers et se ga
   await expect.poll(visibilite).toBe("none");
 });
 
+test("carte : les balades passées se listent, se redessinent et se rejouent", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  const ligne = page.locator("#balades-passees .balade-passee");
+  await expect(ligne).toHaveCount(1);
+  const voir = ligne.locator(".balade-passee__voir");
+  await expect(voir).toContainText("3 morceaux · 9 min");
+  await voir.click();
+  await expect.poll(async () => (await appels(page, "balade_passee")).at(-1)?.id).toBe(7);
+  await expect(voir).toHaveAttribute("aria-pressed", "true");
+  await ligne.locator(".balade-passee__jouer", { hasText: "▶" }).click();
+  await expect.poll(async () => (await appels(page, "balade_rejouer")).length).toBe(1);
+  await expect(page.locator("#np-titre")).toHaveText(PISTES[0].title);
+});
+
+test("carte : le brouillard voile le jamais-écouté et se lève à chaque écoute", async ({ page }) => {
+  // Le style réel porte les couches de `style::poser_traces` ; l'instance
+  // MapLibre est retenue au passage pour en lire l'état.
+  await page.addInitScript(() => {
+    let lib;
+    Object.defineProperty(window, "maplibregl", {
+      configurable: true,
+      get: () => lib,
+      set: (v) => {
+        const Carte = v.Map;
+        v.Map = class extends Carte {
+          constructor(o) {
+            super(o);
+            window.__CARTE_GL__ = this;
+          }
+        };
+        lib = v;
+      },
+    });
+    const vide = { type: "FeatureCollection", features: [] };
+    const masquee = { visibility: "none" };
+    window.__FIXTURES__.style_carte = () => ({
+      version: 8,
+      center: [2.34, 48.855],
+      zoom: 15,
+      sources: {
+        carte: { type: "geojson", data: vide },
+        sentiers: { type: "geojson", data: vide },
+      },
+      layers: [
+        { id: "terre-reelle", type: "background", paint: { "background-color": "#F2EFE9" } },
+        { id: "brouillard", type: "fill", source: "carte", layout: masquee },
+        { id: "sentiers", type: "line", source: "sentiers", layout: masquee },
+        { id: "brouillard-point", type: "circle", source: "carte", layout: masquee },
+      ],
+    });
+  });
+  await page.reload();
+  await page.click('button.mode[data-mode="explorer"]');
+  await page.click('[data-affichage="carte"]');
+  await expect(page.locator("#ligne-traces")).toBeVisible();
+  const visibilite = (c) =>
+    page.evaluate((couche) => window.__CARTE_GL__.getLayoutProperty(couche, "visibility"), c);
+  expect(await visibilite("brouillard")).toBe("none");
+  await page.locator("#carte-brouillard").check();
+  await expect.poll(() => visibilite("brouillard")).toBe("visible");
+  await expect.poll(() => visibilite("brouillard-point")).toBe("visible");
+  expect(await page.evaluate(() => localStorage.getItem("carte-brouillard"))).toBe("1");
+  expect(await appels(page, "morceaux_ecoutes")).toHaveLength(1);
+  const decouvert = (id) =>
+    page.evaluate(
+      (i) => !!window.__CARTE_GL__.getFeatureState({ source: "carte", id: i }).ecoute,
+      id,
+    );
+  await expect.poll(() => decouvert(1)).toBe(true);
+  expect(await decouvert(2)).toBe(false);
+  await page.evaluate(() => window.__EMETTRE__("ecoute-notee", 2));
+  await expect.poll(() => decouvert(2)).toBe(true);
+  await page.locator("#carte-sentiers").check();
+  await expect.poll(() => visibilite("sentiers")).toBe("visible");
+  await expect.poll(async () => (await appels(page, "sentiers_carte")).length).toBeGreaterThan(0);
+});
 test("carte : le haut-parleur de l'aura, éteint hors balade, fait entendre les voisins du curseur", async ({ page }) => {
   await page.click('button.mode[data-mode="explorer"]');
   await page.waitForTimeout(800);

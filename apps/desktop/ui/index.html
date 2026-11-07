@@ -180,6 +180,20 @@
               <input id="carte-pentes" type="checkbox">
               Pentes
             </label>
+            <!-- Traces et brouillard (`docs/plan-balade.md`, P5, `js/traces.js`) :
+                 plan de ville réel seulement, gardés comme le fond de plan. -->
+            <div id="ligne-traces" hidden>
+              <label class="case" style="margin-top:4px"
+                     title="Un voile sur les bâtiments dont le morceau n'a jamais été écouté ; il se lève à chaque écoute">
+                <input id="carte-brouillard" type="checkbox">
+                Brouillard
+              </label>
+              <label class="case" style="margin-top:4px"
+                     title="Les rues parcourues en balade, plus marquées à chaque passage">
+                <input id="carte-sentiers" type="checkbox">
+                Sentiers battus
+              </label>
+            </div>
           </div>
           <div id="legende-continue" class="legende" hidden>
             <div class="legende__barre"></div>
@@ -209,6 +223,11 @@
                     title="Proche et jamais écouté à parts égales">Dériver</button>
             <button class="segment" data-allure="aventurer"
                     title="Le jamais écouté d'abord, et un carrefour sur trois la voie la plus différente">S'aventurer</button>
+          </div>
+          <!-- Les balades gardées (P5) : un clic redessine, ▶ rejoue. -->
+          <div id="bloc-balades-passees" hidden>
+            <p class="rail__titre" style="margin-top:14px">Balades passées</p>
+            <ul id="balades-passees" class="balades-passees"></ul>
           </div>
         </div>
         <div class="zoom" id="bloc-zoom">

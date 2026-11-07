@@ -1063,6 +1063,19 @@ body[data-mode="explorer"] .index-alpha { display: none; }
   padding: 7px 12px; font-size: var(--t-second);
 }
 .carte__balade[hidden] { display: none; }
+/* Les balades passées du rail (`js/traces.js`) : une ligne chacune, la date
+   et sa longueur, ▶ pour la rejouer. */
+.balades-passees { list-style: none; margin: 0; padding: 0; }
+.balade-passee { display: flex; align-items: baseline; gap: 6px; }
+.balade-passee__voir, .balade-passee__jouer {
+  background: none; border: none; padding: 3px 0; font: inherit;
+  font-size: var(--t-legende); color: var(--mut); cursor: pointer; text-align: left;
+}
+.balade-passee__voir {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.balade-passee__voir[aria-pressed="true"], .balade-passee__voir:hover,
+.balade-passee__jouer:hover { color: var(--accent); }
 .carte__balade .lien { margin-top: 0; }
 .carte__balade .lien[hidden] { display: none; }
 /* Le haut-parleur de l'aura (P4) : en haut à droite de la carte, même

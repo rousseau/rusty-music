@@ -832,6 +832,8 @@ pub(crate) fn style_carte(
     // Un style écrit avant la Règle 11 garde des étiquettes sous 12 px : on les
     // remonte en le servant, sans régénérer les tuiles.
     rusty_music_carto::style::plancher_etiquettes(&mut style);
+    // De même, un style d'avant le brouillard (P5 de la balade) le reçoit ici.
+    rusty_music_carto::style::poser_traces(&mut style);
     Ok(style)
 }
 

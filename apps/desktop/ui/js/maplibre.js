@@ -28,6 +28,9 @@ import {
   cliquerVoie, dessinerBalade,
 } from "./balade.js";
 import { dessinerAura } from "./aura.js";
+import {
+  dessinerBaladePassee, majTracesGL, territoireSous, texteTerritoire,
+} from "./traces.js";
 import { lecture } from "./etat-lecture.js";
 
 /* ------------------------------------------------- carte MapLibre (module 2)
@@ -236,6 +239,7 @@ async function initialiserGL() {
     majCouleurGL();
     majFiltreGL();
     majPentesGL();
+    majTracesGL();
     majAffichageGL();
     poserVignetteCarte(carte.gl.getStyle());
     dessinerCarte();
@@ -1755,6 +1759,7 @@ function surcoucheSur(r, encre, accent) {
   }
 
   // La balade en cours : sa trace et le promeneur (`balade.js`).
+  dessinerBaladePassee(r, encre, accent, ctx);
   dessinerBalade(r, encre, accent);
 
   // Les voix de l'aura : un anneau autour de chaque morceau entendu (`aura.js`).
@@ -1938,19 +1943,31 @@ cnv.addEventListener("mousemove", (e) => {
   }
 
   const p = pointSous(mx, my);
+  // Le compteur de quartier (P5 de la balade) : sous un morceau, une ligne de
+  // plus ; sur un territoire sans morceau sous le curseur, à lui seul.
+  const terr = territoireSous(mx, my);
+  const info = $("carte-info");
+  if (p !== carte.survole || terr?.famille !== carte.territoireSurvole) {
+    carte.territoireSurvole = terr?.famille;
+    const lignes = p
+      ? [txt(p.title, "(sans titre)"), txt(p.artist, "(sans artiste)")]
+      : terr ? [terr.nom || "Quartier"] : [];
+    if (terr) lignes.push(p ? `${terr.nom} · ${texteTerritoire(terr)}` : texteTerritoire(terr));
+    info.hidden = !lignes.length;
+    info.replaceChildren(
+      ...lignes.map((t, i) => {
+        const el = document.createElement(i === 0 ? "b" : "span");
+        el.textContent = t;
+        return el;
+      }),
+    );
+  }
+  if (!info.hidden) {
+    info.style.left = `${Math.min(mx + 14, r.width - 290)}px`;
+    info.style.top = `${my + 14}px`;
+  }
   if (p !== carte.survole) {
     carte.survole = p;
-    const info = $("carte-info");
-    if (p) {
-      info.hidden = false;
-      info.innerHTML = "<b></b><span></span>";
-      info.children[0].textContent = txt(p.title, "(sans titre)");
-      info.children[1].textContent = txt(p.artist, "(sans artiste)");
-      info.style.left = `${Math.min(mx + 14, r.width - 290)}px`;
-      info.style.top = `${my + 14}px`;
-    } else {
-      info.hidden = true;
-    }
     dessinerCarte();
   }
 });

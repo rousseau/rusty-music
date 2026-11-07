@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::tags::TrackMeta;
 
 mod analyse;
+mod balades;
 mod bibliotheque;
 mod carte;
 mod decouvrir;
@@ -25,6 +26,7 @@ mod tests;
 
 // Les types de chaque domaine restent nommés `db::…` hors du module.
 pub use self::analyse::*;
+pub use self::balades::*;
 pub use self::bibliotheque::*;
 pub use self::carte::*;
 pub use self::decouvrir::*;

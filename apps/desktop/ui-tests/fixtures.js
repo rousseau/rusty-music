@@ -147,6 +147,20 @@ const fixtures = {
     return e.balade;
   },
   balade_extrait: () => null,
+  // Traces et brouillard (P5, `explorer/traces.rs`) : une écoute, pas de
+  // sentier (pas de ville), une balade passée de trois morceaux.
+  morceaux_ecoutes: [1],
+  sentiers_carte: { type: "FeatureCollection", features: [] },
+  balades_passees: [
+    { id: 7, debut: 1_762_500_000, terrain: "voisins", pas: 3, duree_ms: 543_000, titre: "Un", artiste: "A" },
+  ],
+  balade_passee: { pistes: [1, 2, 3], trace: [] },
+  balade_rejouer: (a, e) => {
+    const ids = [1, 2, 3];
+    e.file = window.__DONNEES__.PISTES.filter((p) => ids.includes(p.id)).map((p) => p.path);
+    e.stems = null;
+    return null;
+  },
   // L'aura (P4) : le moteur rend le temps passé à charger les voix, en ms.
   aura: () => 1.5,
 };

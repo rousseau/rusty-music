@@ -31,8 +31,14 @@
 //! l'allure réglée dans le rail — *rester*, *dériver*, *s'aventurer*
 //! ([`rusty_music_carto::balade::pente`]) : proche à l'oreille, neuve
 //! d'après la table `ecoute`, peu parcourue, peu usée, liée par MusicBrainz.
+//!
+//! **Gardée** (P5). Chaque pas est noté en base quand son morceau commence
+//! (`balade`, `balade_pas`) : les sentiers battus et la liste des balades
+//! passées en viennent ([`balades_passees`], [`balade_rejouer`]).
 
 use super::*;
+
+use rusty_music_core::db::PasBalade;
 
 use rusty_music_carto::balade::{
     deja_vu, pente, proposer, suivants, Allure, Branche, Contexte, EtatBalade, Facettes, Memoire,
@@ -199,6 +205,8 @@ pub(crate) struct Balade {
     passes: Vec<Carrefour>,
     numero: u64,
     mesure: MesureCarrefours,
+    /// La balade en base (`balade.id`) : ses pas y sont notés.
+    gardee: Option<i64>,
 }
 
 /// Ce que l'interface reçoit.
@@ -240,6 +248,9 @@ struct Reprise {
     intervention: Intervention,
     #[serde(default)]
     allure: Allure,
+    /// La balade en base, pour y noter la suite.
+    #[serde(default)]
+    gardee: Option<i64>,
 }
 
 fn chemin_reprise(etat: &Etat) -> PathBuf {
@@ -581,10 +592,23 @@ impl Balade {
         Ok(())
     }
 
-    /// Le suivant vient de commencer : il devient le morceau en cours.
-    fn arriver(&mut self) {
-        let Some(pas) = self.suivant.take() else {
-            return;
+    /// Le suivant vient de commencer : il devient le morceau en cours. Rend
+    /// le pas à noter en base.
+    fn arriver(&mut self) -> Option<PasBalade> {
+        let pas = self.suivant.take()?;
+        let chemin: Vec<u32> = pas
+            .branche
+            .as_ref()
+            .map(|b| b.sommets.clone())
+            .unwrap_or_default();
+        let note = PasBalade {
+            rang: self.pistes.len() as i64,
+            morceau: pas.morceau,
+            sommet_depart: chemin.first().copied(),
+            sommet_arrivee: chemin.last().copied(),
+            chemin,
+            choisi: self.carrefour.as_ref().is_some_and(|c| c.choisie.is_some()),
+            voies: self.carrefour.as_ref().map_or(1, |c| c.voies.len() as u32),
         };
         // Le promeneur ne saute pas : le pas qui commence part d'où le
         // précédent s'est arrêté (l'adresse du morceau en cours).
@@ -652,6 +676,7 @@ impl Balade {
         }
         self.pistes.push(pas.morceau);
         self.courant = pas.chemin;
+        Some(note)
     }
 
     fn reprise(&self) -> Reprise {
@@ -664,6 +689,7 @@ impl Balade {
             trace: self.trace.clone(),
             intervention: self.intervention,
             allure: self.allure,
+            gardee: self.gardee,
         }
     }
 
@@ -721,16 +747,17 @@ fn preparer_ville(etat: &State<Etat>, app: &tauri::AppHandle) -> Result<Ville, S
     Ok((graphe, accrochage, Arc::new(positions)))
 }
 
-/// Monte une balade dont `pistes` est le passé (le dernier en cours).
-fn monter(
-    etat: &State<Etat>,
-    app: &tauri::AppHandle,
-    pistes: Vec<i64>,
-    reprise_ville: Option<EtatBalade>,
-    trace: Vec<[f64; 2]>,
-    intervention: Intervention,
-    allure: Allure,
-) -> Result<Balade, String> {
+/// Monte une balade dont `r.pistes` est le passé (le dernier en cours) : une
+/// reprise de session, ou un départ (une seule piste, rien d'autre).
+fn monter(etat: &State<Etat>, app: &tauri::AppHandle, r: Reprise) -> Result<Balade, String> {
+    let Reprise {
+        pistes,
+        ville: reprise_ville,
+        trace,
+        intervention,
+        allure,
+        gardee,
+    } = r;
     let depart = *pistes.last().ok_or("balade sans morceau")?;
     let (courant, memoire) = {
         let lib = verrou(&etat.lib);
@@ -795,6 +822,7 @@ fn monter(
         passes: Vec::new(),
         numero: 0,
         mesure: lire_mesure(etat),
+        gardee,
     })
 }
 
@@ -810,15 +838,19 @@ pub(crate) fn balade_demarrer(
     let mut balade = monter(
         &etat,
         &app,
-        vec![depart],
-        None,
-        Vec::new(),
-        intervention.unwrap_or_default(),
-        allure.unwrap_or_default(),
+        Reprise {
+            pistes: vec![depart],
+            ville: None,
+            trace: Vec::new(),
+            intervention: intervention.unwrap_or_default(),
+            allure: allure.unwrap_or_default(),
+            gardee: None,
+        },
     )?;
     {
         let lib = verrou(&etat.lib);
         balade.decider(&lib);
+        balade.gardee = garder_depart(&lib, &balade);
     }
     verrou(&etat.player)
         .play(std::slice::from_ref(&balade.courant))
@@ -828,6 +860,34 @@ pub(crate) fn balade_demarrer(
     tracing::info!(depart, terrain = vue.terrain, "balade démarrée");
     *verrou(&etat.balade) = Some(balade);
     Ok(vue)
+}
+
+/// Ouvre la balade en base et y note son départ. `None` si l'écriture
+/// échoue : la balade marche quand même, sans laisser de trace.
+fn garder_depart(lib: &Library, balade: &Balade) -> Option<i64> {
+    let terrain = match balade.terrain {
+        Terrain::Ville { .. } => "ville",
+        Terrain::Voisins { .. } => "voisins",
+    };
+    let ecrit = lib.ouvrir_balade(terrain).and_then(|id| {
+        lib.noter_pas(
+            id,
+            &PasBalade {
+                rang: 0,
+                morceau: balade.courant_id(),
+                voies: 1,
+                ..PasBalade::default()
+            },
+        )?;
+        Ok(id)
+    });
+    match ecrit {
+        Ok(id) => Some(id),
+        Err(e) => {
+            tracing::warn!(erreur = %e, "balade non gardée");
+            None
+        }
+    }
 }
 
 /// La balade en cours, `None` s'il n'y en a pas.
@@ -945,7 +1005,11 @@ pub(crate) fn balade_battement(etat: &Etat) {
         .as_ref()
         .is_some_and(|p| releve.courant.as_deref() == Some(p.chemin.as_path()));
     if suivant_commence {
-        balade.arriver();
+        if let (Some(pas), Some(id)) = (balade.arriver(), balade.gardee) {
+            if let Err(e) = verrou(&etat.lib).noter_pas(id, &pas) {
+                tracing::warn!(erreur = %e, "balade : pas non gardé");
+            }
+        }
         sauver(etat, balade);
     } else if releve
         .courant
@@ -1047,15 +1111,7 @@ pub(crate) fn balade_reprendre(app: &tauri::AppHandle, etat: &State<Etat>) {
         std::fs::remove_file(&chemin).ok();
         return;
     }
-    match monter(
-        etat,
-        app,
-        r.pistes,
-        r.ville,
-        r.trace,
-        r.intervention,
-        r.allure,
-    ) {
+    match monter(etat, app, r) {
         Ok(b) => {
             tracing::info!(pas = b.pistes.len(), "balade reprise");
             *verrou(&etat.balade) = Some(b);

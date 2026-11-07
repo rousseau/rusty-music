@@ -648,7 +648,11 @@ fn main() {
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
-                        suivre_ecoute(&etat, &mut suivi);
+                        // Le brouillard de la carte se lève morceau par
+                        // morceau (`explorer::traces`).
+                        if let Some(id) = suivre_ecoute(&etat, &mut suivi) {
+                            let _ = etat_arriere_plan.emit("ecoute-notee", id);
+                        }
                         systeme_media::annoncer(&etat_arriere_plan, &etat, &mut annonce);
                     }
                 }
@@ -904,6 +908,11 @@ fn main() {
             balade_revenir,
             balade_regler,
             balade_extrait,
+            morceaux_ecoutes,
+            sentiers_carte,
+            balades_passees,
+            balade_passee,
+            balade_rejouer,
             aura,
             tuile,
             map_progress,

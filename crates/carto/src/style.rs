@@ -83,6 +83,131 @@ pub fn plancher_etiquettes(style: &mut Value) {
     }
 }
 
+/// Opacité du voile sur un bâtiment jamais écouté (`docs/plan-balade.md`,
+/// P5) : le papier par-dessus la teinte de la famille, qui se devine encore.
+pub const VOILE_BROUILLARD: f64 = 0.72;
+
+/// Teinte des sentiers battus, la même sur toutes les palettes : celle du
+/// promeneur n'est connue que de l'interface, qui la repose
+/// (`js/traces.js`).
+pub const TEINTE_SENTIERS: &str = "#C4552D";
+
+/// Pose dans un style de plan de ville réel le **brouillard** et les
+/// **sentiers battus** (P5 de la balade), masqués : l'interface les montre, et
+/// lève le voile bâtiment par bâtiment par `feature-state`.
+///
+/// - `promoteId` : sur la couche `batiments`, l'identifiant d'un bâtiment est
+///   le morceau qui l'habite (attribut `morceau`, déjà dans les tuiles) — le
+///   même d'une tuile à l'autre et d'une génération à l'autre. Les points
+///   `habites` portent déjà le morceau comme identifiant (`tuiles.rs`).
+/// - `brouillard` / `brouillard-point` : le papier (`terre-reelle`) par-dessus
+///   le bâti habité et son point de dézoom, transparent quand l'état
+///   `ecoute` est posé.
+/// - `sentiers` : une source GeoJSON vide, remplie par l'interface, sous la
+///   voirie — la rue reste lisible, son liseré s'épaissit avec les passages.
+///
+/// Sans effet hors plan de ville réel, et sur un style qui les a déjà : on
+/// l'applique aussi en servant un style écrit avant, sans régénérer les tuiles.
+pub fn poser_traces(style: &mut Value) {
+    let Some(couches) = style["layers"].as_array() else {
+        return;
+    };
+    let rang = |id: &str| couches.iter().position(|c| c["id"] == id);
+    // `habites-point` n'existe que sur le plan de ville réel : le monde
+    // fictif garde, lui, des couches `*-reelles` vides.
+    let (Some(bati), Some(routes), Some(habites)) = (
+        rang("batiments-morceaux"),
+        rang("routes-reelles"),
+        rang("habites-point"),
+    ) else {
+        return;
+    };
+    if rang("brouillard").is_some() {
+        return;
+    }
+    let papier = couches
+        .iter()
+        .find(|c| c["id"] == "terre-reelle")
+        .and_then(|c| c.pointer("/paint/background-color"))
+        .cloned()
+        .unwrap_or(json!("#F2EFE9"));
+    let minzoom = couches[bati]["minzoom"].clone();
+    let decouvert = json!(["boolean", ["feature-state", "ecoute"], false]);
+    let voile = |o: f64| json!(["case", decouvert.clone(), 0.0, o]);
+    let masque = json!({ "visibility": "none" });
+
+    let brouillard = json!({
+        "id": "brouillard", "type": "fill",
+        "source": "carte", "source-layer": "batiments",
+        "filter": [">=", ["get", "palier"], 0],
+        "minzoom": minzoom,
+        "layout": masque.clone(),
+        "paint": {
+            "fill-color": papier.clone(),
+            "fill-opacity": voile(VOILE_BROUILLARD),
+            "fill-antialias": false
+        }
+    });
+    let sentiers = json!({
+        "id": "sentiers", "type": "line", "source": "sentiers",
+        "minzoom": 11.0,
+        "layout": { "visibility": "none", "line-cap": "round", "line-join": "round" },
+        "paint": {
+            "line-color": TEINTE_SENTIERS,
+            "line-width": ["interpolate", ["linear"], ["zoom"],
+                12, ["min", ["+", 1.5, ["*", 0.5, ["get", "passages"]]], 4.0],
+                17, ["min", ["+", 6.0, ["*", 1.5, ["get", "passages"]]], 14.0]],
+            "line-opacity": ["min", ["+", 0.3, ["*", 0.1, ["get", "passages"]]], 0.75]
+        }
+    });
+    // Le point de dézoom : la même révélation que `habites-point`, voilée.
+    let point = {
+        let h = &couches[habites];
+        let mut opacite = h
+            .pointer("/paint/circle-opacity")
+            .cloned()
+            .unwrap_or(json!(0.8));
+        match &mut opacite {
+            Value::Array(a) if a.first().and_then(Value::as_str) == Some("interpolate") => {
+                for o in a.iter_mut().skip(4).step_by(2) {
+                    *o = voile(o.as_f64().unwrap_or(0.8) * VOILE_BROUILLARD);
+                }
+            }
+            o => *o = voile(o.as_f64().unwrap_or(0.8) * VOILE_BROUILLARD),
+        }
+        json!({
+                "id": "brouillard-point", "type": "circle",
+                "source": "carte", "source-layer": "habites",
+                "minzoom": h["minzoom"].clone(),
+                "maxzoom": h["maxzoom"].clone(),
+                "layout": masque.clone(),
+                "paint": {
+                    "circle-color": papier.clone(),
+                    "circle-radius": h.pointer("/paint/circle-radius").cloned().unwrap_or(json!(2.0)),
+                    "circle-opacity": opacite,
+                    "circle-stroke-width": 0
+                }
+        })
+    };
+
+    if let Some(carte) = style["sources"]["carte"].as_object_mut() {
+        carte.insert("promoteId".into(), json!({ "batiments": "morceau" }));
+    }
+    style["sources"]["sentiers"] = json!({
+        "type": "geojson",
+        "data": { "type": "FeatureCollection", "features": [] }
+    });
+    let couches = style["layers"].as_array_mut().expect("lu plus haut");
+    // De la fin vers le début, pour que les rangs restent justes.
+    couches.insert(habites + 1, point);
+    couches.insert(routes, sentiers);
+    let bord = couches
+        .iter()
+        .position(|c| c["id"] == "batiments-morceaux-bord")
+        .unwrap_or(bati);
+    couches.insert(bord + 1, brouillard);
+}
+
 /// Construit le style complet.
 ///
 /// `base` est le préfixe des tuiles (`tuiles://tuiles` — intercepté côté JS par
@@ -150,6 +275,7 @@ pub fn construire(source: &Source, paliers: &Paliers, base: &str, palette: &Pale
         // à l'ouverture. Non mesuré à l'œil, à ajuster si ça cadre mal.
         style["zoom"] = json!(14.0);
     }
+    poser_traces(&mut style);
     style
 }
 
@@ -1680,6 +1806,57 @@ mod tests {
             "la couleur des points doit se voir sur la voirie"
         );
         assert!(rang("habites-point") < rang("artistes-etiquette"));
+    }
+
+    /// Le brouillard et les sentiers (P5 de la balade) : masqués, aux bons
+    /// étages — le voile sur le bâti habité, les sentiers sous la voirie, le
+    /// point voilé sur son point de dézoom —, le bâtiment identifié par son
+    /// morceau. Poser deux fois ne double rien ; le monde fictif n'en a pas.
+    #[test]
+    fn le_brouillard_et_les_sentiers_sont_poses_une_fois_aux_bons_etages() {
+        let mut s = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            &Palette::osm_clair(),
+        );
+        poser_traces(&mut s);
+        let ids: Vec<&str> = s["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap())
+            .collect();
+        let rang = |id: &str| {
+            assert_eq!(
+                ids.iter().filter(|x| **x == id).count(),
+                1,
+                "{id} : {ids:?}"
+            );
+            ids.iter().position(|x| *x == id).unwrap()
+        };
+        assert!(rang("batiments-morceaux-bord") < rang("brouillard"));
+        assert!(rang("brouillard") < rang("sentiers"));
+        assert!(rang("sentiers") < rang("routes-reelles"));
+        assert_eq!(rang("habites-point") + 1, rang("brouillard-point"));
+        for id in ["brouillard", "brouillard-point", "sentiers"] {
+            assert_eq!(s["layers"][rang(id)]["layout"]["visibility"], "none");
+        }
+        assert_eq!(s["sources"]["carte"]["promoteId"]["batiments"], "morceau");
+        assert_eq!(s["sources"]["sentiers"]["type"], "geojson");
+        assert_eq!(
+            s["layers"][rang("brouillard")]["paint"]["fill-color"],
+            Palette::osm_clair().terre
+        );
+
+        let mut fictif = construire(
+            &Source::default(),
+            &Paliers::default(),
+            "x",
+            &Palette::osm_clair(),
+        );
+        poser_traces(&mut fictif);
+        assert!(fictif["sources"].get("sentiers").is_none());
     }
 
     /// Les pentes : une source GeoJSON et trois couches masquées (l'option

@@ -776,8 +776,9 @@ pub(crate) fn supprimer_playlist(etat: State<Etat>, id: i64) -> Result<(), Strin
 }
 
 /// Branche [`SuiviEcoute::avancer`] sur le lecteur et la base. Appelé par le fil
-/// de fond : côté natif, donc exact même fenêtre masquée.
-pub(crate) fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
+/// de fond : côté natif, donc exact même fenêtre masquée. Rend l'identifiant
+/// du morceau dont l'écoute vient d'être notée.
+pub(crate) fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) -> Option<i64> {
     let ecoule = s.battement();
     let (courant, en_pause, position) = {
         let p = verrou(&etat.player);
@@ -793,11 +794,15 @@ pub(crate) fn suivre_ecoute(etat: &Etat, s: &mut SuiviEcoute) {
             .ok()
             .and_then(|v| v.first().and_then(|t| t.duration_ms))
     });
-    if let Some(chemin) = ecoute {
-        if let Err(e) = verrou(&etat.lib).noter_ecoute(&chemin.display().to_string()) {
-            tracing::warn!(erreur = %e, "écoute non enregistrée");
-        }
+    let chemin = ecoute?.display().to_string();
+    let lib = verrou(&etat.lib);
+    if let Err(e) = lib.noter_ecoute(&chemin) {
+        tracing::warn!(erreur = %e, "écoute non enregistrée");
+        return None;
     }
+    lib.pistes_par_chemins(&[chemin])
+        .ok()
+        .and_then(|v| v.first().map(|t| t.id))
 }
 
 /// Ce que [`sauvegarder_session`] a déjà écrit de la file : tant qu'elle ne

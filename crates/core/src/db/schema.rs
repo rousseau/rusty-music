@@ -52,6 +52,10 @@ pub(super) fn migrations() -> Migrations<'static> {
         // empreinte, d'où l'aura de la carte tire son extrait
         // (`Library::fenetre_representative`, `docs/plan-balade.md`, P4).
         M::up(include_str!("../../sql/migration-004-fenetre.sql")),
+        // N° 5 (7 nov. 2026) : les balades gardées, pas à pas — sentiers
+        // battus, balades passées à rejouer (`db/balades.rs`,
+        // `docs/plan-balade.md`, P5).
+        M::up(include_str!("../../sql/migration-005-balades.sql")),
     ])
 }
 

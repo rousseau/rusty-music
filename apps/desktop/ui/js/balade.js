@@ -14,6 +14,7 @@ import {
 } from "./lecteur.js";
 import { lecture } from "./etat-lecture.js";
 import { marquerApercu } from "./aura.js";
+import { rafraichirTraces } from "./traces.js";
 
 /* ------------------------------------------------- la balade (P1)
  *
@@ -123,6 +124,7 @@ async function arreterBalade() {
     remonter(err, "balade_arreter");
   }
   balade.vue = null;
+  rafraichirTraces();
   majBandeau();
   majCarrefour();
   redessiner(true);
@@ -131,12 +133,16 @@ async function arreterBalade() {
 async function relireBalade() {
   balade.luA = performance.now();
   balade.courantVu = lecture.courant;
+  const avant = balade.vue?.pistes.length ?? 0;
   try {
     balade.vue = await invoke("balade_etat");
   } catch (err) {
     remonter(err, "balade_etat");
     return;
   }
+  // Un pas de plus, ou la balade finie : les balades passées et les sentiers
+  // battus le montrent (P5).
+  if ((balade.vue?.pistes.length ?? 0) !== avant) rafraichirTraces();
   majBandeau();
   majCarrefour();
 }
