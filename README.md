@@ -123,6 +123,7 @@ CLAUDE.md              contexte permanent (lu par Claude Code à chaque session)
 docs/                  spécifications détaillées
 crates/core/           cœur d'ingestion : scan, tags, surveillance, base SQLite
 crates/enrichissement/ enrichissement en ligne : MusicBrainz, Discogs, Deezer, Last.fm, ListenBrainz…
+crates/lama/           Lama : demande en texte libre interprétée en filtres de playlist (Ollama ou llama.cpp)
 crates/valise/         la valise du compagnon iOS : sélection, export, passage, appairage Wi-Fi
 crates/player/         module 1 — sortie audio, transport, file, amélioration
 crates/analysis/       module 2 — empreintes CLAP (Burn), projection 2D, descripteurs

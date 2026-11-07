@@ -25,8 +25,8 @@ use llama_cpp_2::token::LlamaToken;
 use llguidance::api::TopLevelGrammar;
 use llguidance::{Matcher, ParserFactory};
 
-use crate::error::Error;
 use crate::ollama::{self, InterpretationLlm};
+use rusty_music_core::error::Error;
 
 /// Mêmes bornes que la requête à Ollama (`ollama::interpreter`) : la consigne,
 /// le schéma et la réponse tiennent dans ce contexte, et une spec complète
@@ -46,7 +46,7 @@ fn lire(
     jetons: &[LlamaToken],
     debut: usize,
     logits: bool,
-) -> crate::Result<()> {
+) -> rusty_music_core::Result<()> {
     lot.clear();
     let dernier = jetons.len() - 1;
     for (i, &j) in jetons.iter().enumerate() {
@@ -78,7 +78,7 @@ pub struct ModeleLocal {
 impl ModeleLocal {
     /// Charge un GGUF, toutes ses couches sur le processeur graphique quand il
     /// y en a un (Metal sous macOS).
-    pub fn charger(chemin: &Path) -> crate::Result<Self> {
+    pub fn charger(chemin: &Path) -> rusty_music_core::Result<Self> {
         let mut backend =
             LlamaBackend::init().map_err(|e| erreur("initialisation")(e.to_string()))?;
         backend.void_logs();
@@ -97,7 +97,7 @@ impl ModeleLocal {
 
     /// Le JSON que le modèle écrit pour `prompt`, contraint par le schéma, à
     /// température 0 (choix glouton) : le même texte rend la même réponse.
-    pub fn generer(&self, systeme: &str, prompt: &str) -> crate::Result<String> {
+    pub fn generer(&self, systeme: &str, prompt: &str) -> rusty_music_core::Result<String> {
         let texte = self.conversation(systeme, prompt)?;
         let vocab = self.modele.vocab();
         // Le gabarit écrit déjà les jetons spéciaux (`bos_token` compris) :
@@ -190,7 +190,7 @@ impl ModeleLocal {
     /// gabarits connus de llama.cpp, et rend une erreur sur celui de Gemma 4
     /// (un programme Jinja de 18 Ko). Écrire le format à la main, ce serait le
     /// réécrire, et le tenir à jour à chaque modèle.
-    fn conversation(&self, systeme: &str, prompt: &str) -> crate::Result<String> {
+    fn conversation(&self, systeme: &str, prompt: &str) -> rusty_music_core::Result<String> {
         let gabarit = self
             .modele
             .chat_template(None)
@@ -238,7 +238,7 @@ impl ModeleLocal {
         &self,
         prompt: &str,
         vocabulaire: &[String],
-    ) -> crate::Result<InterpretationLlm> {
+    ) -> rusty_music_core::Result<InterpretationLlm> {
         tracing::info!(%prompt, "champ d'intention : interrogation du modèle local");
         let brut = self.generer(&ollama::systeme(vocabulaire), prompt)?;
         tracing::info!(brut_json = %brut, "champ d'intention : réponse brute du modèle local");

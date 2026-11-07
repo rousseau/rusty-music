@@ -13,6 +13,7 @@ tauri-build.workspace = true
 [dependencies]
 rusty-music-core = { path = "../../crates/core" }
 rusty-music-enrichissement = { path = "../../crates/enrichissement" }
+rusty-music-lama = { path = "../../crates/lama" }
 rusty-music-valise = { path = "../../crates/valise" }
 rusty-music-player = { path = "../../crates/player" }
 rusty-music-analysis = { path = "../../crates/analysis" }
@@ -54,4 +55,4 @@ souvlaki = { version = "0.8", default-features = false }
 [features]
 # Lama sans Ollama : le modèle de langue intégré (`explorer/modele_local.rs`).
 # Compile llama.cpp (cmake requis) ; activée par `scripts/release.sh`.
-lama-local = ["rusty-music-core/lama-local"]
+lama-local = ["rusty-music-lama/lama-local"]

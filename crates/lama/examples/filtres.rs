@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Diagnostic des filtres de playlist sur une vraie base : vocabulaire, temps
 //! de chargement, tailles de sélection pour quelques demandes types.
-//! `cargo run -p rusty-music-core --example filtres -- <base.db>` — ouvrir une
+//! `cargo run -p rusty-music-lama --example filtres -- <base.db>` — ouvrir une
 //! **copie** de la base, pas celle de l'application (ouverture = migrations).
-use rusty_music_core::filtres_playlist::*;
+use rusty_music_lama::filtres_playlist::*;
 
 fn main() -> anyhow::Result<()> {
     let base = std::env::args()

@@ -20,8 +20,8 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::error::Error;
 use crate::filtres_playlist::{FiltresPlaylist, NiveauEcoute, NiveauEnergie, NiveauPopularite};
+use rusty_music_core::error::Error;
 
 /// Modèle par défaut de `preparer_vocabulaire.py`, choisi là pour tourner
 /// correctement sur un poste sans accélérateur — **jamais utilisé comme
@@ -1367,7 +1367,7 @@ pub fn interpreter(
     modele: &str,
     prompt: &str,
     vocabulaire: &[String],
-) -> crate::Result<InterpretationLlm> {
+) -> rusty_music_core::Result<InterpretationLlm> {
     let corps = serde_json::to_string(&json!({
         "model": modele,
         "system": systeme(vocabulaire),
@@ -1452,7 +1452,7 @@ pub fn depuis_reponse(
     brut_json: &str,
     prompt: &str,
     vocabulaire: &[String],
-) -> crate::Result<InterpretationLlm> {
+) -> rusty_music_core::Result<InterpretationLlm> {
     let mut resultat = interpretation_de(brut_json);
     if let Ok(p) = &mut resultat {
         p.brut = brut_json
@@ -1525,7 +1525,7 @@ pub fn depuis_reponse(
 /// Les modèles déjà installés localement (`ollama list`), du **plus petit au
 /// plus gros** — sert le sélecteur du champ d'intention (icône 🦙) et
 /// [`modele_par_defaut`].
-pub fn modeles(hote: &str) -> crate::Result<Vec<String>> {
+pub fn modeles(hote: &str) -> rusty_music_core::Result<Vec<String>> {
     let url = format!("{hote}/api/tags");
     let (statut, brut) = requete(&url, TIMEOUT_LISTE, |agent| agent.get(&url).call())?;
     if !(200..300).contains(&statut) {
@@ -1558,7 +1558,7 @@ fn trier_par_taille(modeles: impl IntoIterator<Item = (String, Option<u64>)>) ->
 /// mémoire de n'importe quelle machine (un 27 B échoue par manque de mémoire
 /// sur 25 Go). Voir la documentation de [`MODELE_DEFAUT`] sur pourquoi ce
 /// n'est pas un nom fixe.
-pub fn modele_par_defaut(hote: &str) -> crate::Result<String> {
+pub fn modele_par_defaut(hote: &str) -> rusty_music_core::Result<String> {
     modeles(hote)?.into_iter().next().ok_or_else(|| {
         Error::Reseau("aucun modèle Ollama installé — `ollama pull <modèle>`".to_string())
     })
@@ -1583,7 +1583,7 @@ fn requete(
     url: &str,
     timeout: Duration,
     faire: impl FnOnce(&ureq::Agent) -> Result<ureq::http::Response<ureq::Body>, ureq::Error>,
-) -> crate::Result<(u16, String)> {
+) -> rusty_music_core::Result<(u16, String)> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
         .http_status_as_error(false)
@@ -1659,7 +1659,7 @@ fn reparer_json_tronque(brut: &str) -> Option<String> {
 
 /// Décode et valide le JSON rendu par le modèle — extrait pour se tester sans
 /// réseau, même patron que `lastfm::tags_de`.
-fn interpretation_de(brut: &str) -> crate::Result<InterpretationLlm> {
+fn interpretation_de(brut: &str) -> rusty_music_core::Result<InterpretationLlm> {
     let mut interpretation: InterpretationLlm = match serde_json::from_str(brut) {
         Ok(p) => p,
         Err(e) => {

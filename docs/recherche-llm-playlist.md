@@ -82,7 +82,7 @@ directe), 81 % (recherche vectorielle).
 
 Livré : spec typée (`InterpretationLlm`), schéma JSON dans `format` +
 température 0, vocabulaire de genres réel dans la consigne, filtres
-(`crates/core/src/filtres_playlist.rs`), `composer_route` (`apps/desktop/src/main.rs`) :
+(`crates/lama/src/filtres_playlist.rs`), `composer_route` (`apps/desktop/src/main.rs`) :
 filtres → marche guidée → plafond par artiste → durée, relâchements affichés,
 bloc « Contraintes » et champ « Durée » dans l'inspecteur. Détail et décisions :
 `docs/ui-spec.md` (« Le LLM traduit, le code exécute »).
@@ -117,7 +117,7 @@ prompt de 70 mots). Deux bancs :
 
 ```bash
 # 1. interprétation (vrai Ollama) — écrit res.json ; ROB_IDS=a,b pour en rejouer quelques-uns
-cargo run --release -p rusty-music-core --example robustesse -- copie.db gemma4:e4b-mlx res.json
+cargo run --release -p rusty-music-lama --example robustesse -- copie.db gemma4:e4b-mlx res.json
 # 2. composition sur les interprétations de res.json (vrai CLAP-texte, vraies empreintes)
 RUSTY_DB=copie.db RUSTY_RESULTATS=res.json cargo test -p rusty-music-desktop \
   robustesse_de_la_composition -- --ignored --nocapture

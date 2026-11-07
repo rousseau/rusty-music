@@ -705,14 +705,12 @@ impl Library {
     }
 
     /// Ce que la bibliothèque sait de chaque morceau pour filtrer une playlist
-    /// demandée en texte libre (`crate::filtres_playlist`) : année, durée,
+    /// demandée en texte libre (`rusty_music_lama::filtres_playlist`) : année, durée,
     /// tempo, énergie, popularité (rang percentile) et genres résolus — même
     /// arbitrage que [`Self::stats_genres`], donc mêmes noms que ceux qu'on
     /// donne au LLM ([`Self::vocabulaire_genres`]). Une ligne par morceau, y
     /// compris ceux sans descripteurs (valeurs `None`).
-    pub fn caracteristiques_pistes(
-        &self,
-    ) -> Result<Vec<crate::filtres_playlist::CaracteristiquesPiste>> {
+    pub fn caracteristiques_pistes(&self) -> Result<Vec<CaracteristiquesPiste>> {
         let par_artiste = self.mb_genres("artist", VOTES_MINIMUM)?;
         let par_album = self.mb_genres("release-group", VOTES_MINIMUM)?;
         let albums = self.mb_albums()?;
@@ -734,7 +732,7 @@ impl Library {
                 let tag: Option<String> = r.get(4)?;
                 let annee: Option<i64> = r.get(5)?;
                 Ok((
-                    crate::filtres_playlist::CaracteristiquesPiste {
+                    CaracteristiquesPiste {
                         id: r.get(0)?,
                         artiste: r.get(1)?,
                         annee: annee.and_then(|a| i32::try_from(a).ok()),
@@ -2041,4 +2039,23 @@ mod tests_ordre {
         assert!(!lib.pochette_dossier_choisie(&d).unwrap());
         let _ = std::fs::remove_dir_all(&racine);
     }
+}
+
+/// Ce que la bibliothèque sait d'un morceau, pour le filtrer (filtres de
+/// playlist de Lama, `rusty_music_lama::filtres_playlist`).
+#[derive(Debug, Clone, Default)]
+pub struct CaracteristiquesPiste {
+    pub id: i64,
+    pub artiste: Option<String>,
+    pub annee: Option<i32>,
+    pub duree_ms: Option<i64>,
+    pub bpm: Option<f32>,
+    pub energie: Option<f32>,
+    /// Rang percentile 0..1 dans la bibliothèque (1 = le plus écouté).
+    pub popularite: Option<f64>,
+    /// Jours écoulés depuis la dernière écoute **de cet utilisateur** ; `None`
+    /// = jamais écouté (aucune ligne dans `ecoute`).
+    pub jours_depuis_ecoute: Option<u32>,
+    /// Genres résolus, en minuscules.
+    pub genres: Vec<String>,
 }

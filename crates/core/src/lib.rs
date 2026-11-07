@@ -10,16 +10,12 @@ pub mod db;
 pub mod decode;
 pub mod density;
 pub mod error;
-pub mod filtres_playlist;
 pub mod gapless;
 pub mod http;
 pub mod lieux;
-#[cfg(feature = "lama-local")]
-pub mod llm_local;
 pub mod loudness;
 pub mod memoire;
 pub mod modeles;
-pub mod ollama;
 pub mod opus;
 pub mod panique;
 pub mod playlists;

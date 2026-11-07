@@ -2,7 +2,7 @@
 //! Robustesse de l'interprétation (`ollama::interpreter`) sur un jeu de
 //! prompts annotés — `experiments/prompts-playlist/prompts.json`.
 //!
-//! `cargo run --release -p rusty-music-core --example robustesse -- \
+//! `cargo run --release -p rusty-music-lama --example robustesse -- \
 //!    <base.db> <modele> [sortie.json]`
 //! (`ROB_CAS=autre.json` pour un autre jeu de prompts, `ROB_IDS=a,b` pour n'en rejouer que quelques-uns.)
 //!
@@ -20,7 +20,7 @@
 //! (`apps/desktop`) relit ce fichier pour tester la composition.
 use std::collections::BTreeMap;
 
-use rusty_music_core::ollama::{self, InterpretationLlm};
+use rusty_music_lama::ollama::{self, InterpretationLlm};
 use serde_json::{json, Value};
 
 const FILTRES: &[&str] = &[
@@ -206,7 +206,7 @@ fn main() -> anyhow::Result<()> {
     let local = match std::env::var("ROB_LOCAL") {
         Ok(gguf) => {
             let t = std::time::Instant::now();
-            let m = rusty_music_core::llm_local::ModeleLocal::charger(std::path::Path::new(&gguf))?;
+            let m = rusty_music_lama::llm_local::ModeleLocal::charger(std::path::Path::new(&gguf))?;
             println!(
                 "modèle local chargé en {:.1} s : {gguf}",
                 t.elapsed().as_secs_f64()

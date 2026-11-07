@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_carto::accrochage::AccrochageVoirie;
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
-use rusty_music_core::filtres_playlist::{self, FiltresPlaylist};
 use rusty_music_core::memoire::{ListeIntelligente, SuiviEcoute};
 use rusty_music_core::playlists::PlaylistRow;
 use rusty_music_core::session::{retenir, Session};
 use rusty_music_core::Library;
+use rusty_music_lama::filtres_playlist::{self, FiltresPlaylist};
 use rusty_music_player::Player;
 use rusty_music_transcription::tablature;
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -176,7 +176,7 @@ struct Etat {
     /// Le modèle de langue intégré de Lama (Gemma 4 E4B, 4,6 Go), chargé à
     /// la première demande, déchargé après inactivité.
     #[cfg(feature = "lama-local")]
-    lama_local: Mutex<Cache<Arc<rusty_music_core::llm_local::ModeleLocal>>>,
+    lama_local: Mutex<Cache<Arc<rusty_music_lama::llm_local::ModeleLocal>>>,
     /// Avancement du téléchargement de ce modèle.
     lama_telechargement: Mutex<EtatTelechargementLama>,
     /// Basic Pitch (transcription), chargé au premier usage puis gardé —

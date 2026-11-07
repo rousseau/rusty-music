@@ -79,7 +79,7 @@ pub(crate) struct PlanTexte {
     /// Vide : une seule partie implicite — `etapes` et `filtres`. Éditables
     /// dans l'interface avant « Recomposer ».
     #[serde(default)]
-    parties: Vec<rusty_music_core::ollama::PartieLlm>,
+    parties: Vec<rusty_music_lama::ollama::PartieLlm>,
     /// La réponse du modèle, telle qu'il l'a écrite — pour le dépliant « réponse
     /// brute d'Ollama ».
     #[serde(default)]
@@ -167,12 +167,12 @@ pub(crate) fn path_texte_interpreter(
     let interpretation = if integre {
         modele_local::interpreter(&etat, &prompt, &vocabulaire)?
     } else {
-        let hote = rusty_music_core::ollama::HOTE_DEFAUT;
+        let hote = rusty_music_lama::ollama::HOTE_DEFAUT;
         let modele = match modele {
             Some(m) => m,
-            None => rusty_music_core::ollama::modele_par_defaut(hote).map_err(echec)?,
+            None => rusty_music_lama::ollama::modele_par_defaut(hote).map_err(echec)?,
         };
-        rusty_music_core::ollama::interpreter(hote, &modele, &prompt, &vocabulaire)
+        rusty_music_lama::ollama::interpreter(hote, &modele, &prompt, &vocabulaire)
             .map_err(echec)?
     };
 
@@ -257,7 +257,7 @@ pub(crate) struct DisponibiliteLama {
 /// avant qu'on écrive une demande, au lieu d'échouer après).
 #[tauri::command(async)]
 pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
-    match rusty_music_core::ollama::modeles(rusty_music_core::ollama::HOTE_DEFAUT) {
+    match rusty_music_lama::ollama::modeles(rusty_music_lama::ollama::HOTE_DEFAUT) {
         Ok(modeles) if modeles.is_empty() => DisponibiliteLama {
             local: modele_local::disponibilite(),
             etat: "sans_modele",
@@ -283,7 +283,7 @@ pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
 /// (icône 🦙).
 #[tauri::command(async)]
 pub(crate) fn ollama_modeles() -> Result<Vec<String>, String> {
-    rusty_music_core::ollama::modeles(rusty_music_core::ollama::HOTE_DEFAUT).map_err(echec)
+    rusty_music_lama::ollama::modeles(rusty_music_lama::ollama::HOTE_DEFAUT).map_err(echec)
 }
 
 /// Retrouve dans la bibliothèque le morceau ou l'artiste que l'interprétation
@@ -448,7 +448,7 @@ pub(crate) fn parties_du_plan(
     plan: &PlanTexte,
     embed: impl Fn(&str) -> Result<Vec<f32>, String>,
 ) -> Result<Vec<PartiePlan>, String> {
-    use rusty_music_core::filtres_playlist::NiveauEnergie;
+    use rusty_music_lama::filtres_playlist::NiveauEnergie;
     if plan.parties.is_empty() {
         let cibles = plan
             .etapes
@@ -880,7 +880,7 @@ mod tests {
 
     use rusty_music_analysis::chemin::{Empreinte, Graphe};
     use rusty_music_core::db::TrackRow;
-    use rusty_music_core::filtres_playlist::{
+    use rusty_music_lama::filtres_playlist::{
         CaracteristiquesPiste, FiltresPlaylist, NiveauEnergie,
     };
 
@@ -935,8 +935,8 @@ mod tests {
     }
 
     /// Une partie de test : genre, durée en minutes.
-    fn partie(genre: &str, minutes: u32) -> rusty_music_core::ollama::PartieLlm {
-        rusty_music_core::ollama::PartieLlm {
+    fn partie(genre: &str, minutes: u32) -> rusty_music_lama::ollama::PartieLlm {
+        rusty_music_lama::ollama::PartieLlm {
             description: format!("{genre} music"),
             genres: vec![genre.into()],
             energie: None,
@@ -1288,7 +1288,7 @@ mod tests {
     #[test]
     #[ignore]
     fn composition_sur_la_vraie_bibliotheque() {
-        use rusty_music_core::ollama;
+        use rusty_music_lama::ollama;
         let base = std::env::var("RUSTY_DB").expect("RUSTY_DB=chemin/vers/copie.db");
         let m: usize = std::env::var("RUSTY_SOUS_ECH")
             .ok()
@@ -1402,7 +1402,7 @@ mod tests {
     #[test]
     #[ignore]
     fn exporter_pour_maquette() {
-        use rusty_music_core::ollama;
+        use rusty_music_lama::ollama;
         let base = std::env::var("RUSTY_DB").expect("RUSTY_DB");
         let dossier =
             std::path::PathBuf::from(std::env::var("RUSTY_EXPORT").expect("RUSTY_EXPORT"));
@@ -1549,7 +1549,7 @@ mod tests {
         for r in fichier["resultats"].as_array().expect("resultats") {
             let id = r["id"].as_str().unwrap_or("?");
             let Some(spec) = r.get("spec") else { continue }; // interprétation échouée : rien à composer
-            let i: rusty_music_core::ollama::InterpretationLlm =
+            let i: rusty_music_lama::ollama::InterpretationLlm =
                 serde_json::from_value(spec.clone()).expect("spec");
             let plan = PlanTexte {
                 depart: None,

@@ -17,7 +17,7 @@ multipiste, ni projet sauvegardé, ni mixage DJ. Deux usages : *pratiquer*
 Python sert seulement à préparer (convertir des poids) et à vérifier (parité,
 bancs). Lama interprète par un modèle intégré (Gemma 4 E4B, llama.cpp lié
 par `llama-cpp-2`, feature `lama-local` activée par `scripts/release.sh`,
-cmake requis) ; Ollama reste un choix (`crates/core/src/ollama.rs`).
+cmake requis) ; Ollama reste un choix (`crates/lama/src/ollama.rs`).
 
 **Stack.**
 - Calcul : [Burn](https://github.com/tracel-ai/burn), backend `wgpu` ou
@@ -76,6 +76,7 @@ acceptable, copyleft comprise ; **ne jamais réécrire ce qui existe**.
 ```
 crates/core/          cœur : scan, tags, surveillance, SQLite (requêtes comprises)
 crates/enrichissement/ sources en ligne (MusicBrainz, Deezer, Last.fm…) et leurs passes
+crates/lama/          Lama : demande en texte libre → filtres (Ollama, modèle intégré)
 crates/valise/        valise du compagnon iOS : sélection, export, passage, Wi-Fi
 crates/player/        Écouter : sortie audio, transport, file, amélioration « E »
 crates/analysis/      Explorer : empreintes CLAP, projection 2D, descripteurs

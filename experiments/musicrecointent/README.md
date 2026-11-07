@@ -13,7 +13,7 @@ copié ici, `data/` est ignoré par git, `preparer.py` télécharge le CSV.
 python3 experiments/musicrecointent/preparer.py 300            # data/cas.json (46 négations + 254 au hasard)
 cp <base>.db /tmp/lib.db                                       # jamais la vraie base
 ROB_CAS=experiments/musicrecointent/data/cas.json \
-  cargo run --release -p rusty-music-core --example robustesse -- \
+  cargo run --release -p rusty-music-lama --example robustesse -- \
   /tmp/lib.db <modele> experiments/musicrecointent/data/sortie-<modele>.json
 python3 experiments/musicrecointent/noter.py experiments/musicrecointent/data/sortie-*.json
 ```

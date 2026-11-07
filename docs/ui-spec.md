@@ -152,7 +152,7 @@ texte libre la playlist voulue, pas seulement nommer une famille.
   Il porte désormais des **arguments typés** — `duree_minutes`, `genres`,
   `exclure_genres`, `exclure_artistes`, `annee_min/max`, `bpm_min/max`,
   `energie` (`calme|moyenne|intense`), `popularite` (`peu_connu|connu`),
-  `plafond_par_artiste` — que `crates/core/src/filtres_playlist.rs` applique à
+  `plafond_par_artiste` — que `crates/lama/src/filtres_playlist.rs` applique à
   la bibliothèque **avant** la marche CLAP : `Graphe::restreint` si la sélection
   est large, graphe des voisins des seuls admissibles si elle est étroite.
   Le LLM ne nomme jamais de morceaux (il en invente). Voir

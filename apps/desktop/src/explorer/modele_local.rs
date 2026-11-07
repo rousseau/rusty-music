@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Le modèle de langue intégré de Lama : Gemma 4 E4B (GGUF, Apache-2.0),
-//! exécuté dans le processus (`rusty_music_core::llm_local`, feature
+//! exécuté dans le processus (`rusty_music_lama::llm_local`, feature
 //! `lama-local`). Lama n'a plus besoin d'Ollama ; Ollama reste un choix.
 //!
 //! Téléchargé à la source au premier usage, chargé à la première demande,
@@ -88,8 +88,8 @@ pub(crate) fn interpreter(
     etat: &Etat,
     prompt: &str,
     vocabulaire: &[String],
-) -> Result<rusty_music_core::ollama::InterpretationLlm, String> {
-    use rusty_music_core::llm_local::ModeleLocal;
+) -> Result<rusty_music_lama::ollama::InterpretationLlm, String> {
+    use rusty_music_lama::llm_local::ModeleLocal;
     let chemin = rusty_music_core::modeles::trouver(FICHIER)
         .ok_or("modèle intégré absent : téléchargez-le depuis l'accueil de Lama")?;
     let modele = {
@@ -112,6 +112,6 @@ pub(crate) fn interpreter(
     _: &Etat,
     _: &str,
     _: &[String],
-) -> Result<rusty_music_core::ollama::InterpretationLlm, String> {
+) -> Result<rusty_music_lama::ollama::InterpretationLlm, String> {
     Err("cette version de Rusty Music n'intègre pas de modèle de langue".into())
 }

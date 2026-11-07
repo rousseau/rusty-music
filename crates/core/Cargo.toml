@@ -29,23 +29,3 @@ rodio.workspace     = true
 ebur128.workspace   = true
 sha2.workspace      = true
 image.workspace     = true
-# Le gabarit de conversation des modèles récents (Gemma 4) est un programme
-# Jinja que llama.cpp ne sait pas appliquer par `llama_chat_apply_template` :
-# minijinja le rend (`llm_local`), pycompat pour ses méthodes Python.
-# Le décodage contraint par le schéma de Lama (`llm_local`) ; la version que
-# tire déjà `llama-cpp-2` (feature `llguidance`).
-llguidance = { version = "1.9.1", optional = true }
-minijinja = { version = "3.0.5", optional = true, features = ["loop_controls", "json"] }
-minijinja-contrib = { version = "3.0.5", optional = true, default-features = false, features = ["pycompat"] }
-
-[features]
-# Lama sans Ollama : un modèle de langue exécuté dans le processus
-# (`llm_local`, llama.cpp par `llama-cpp-2`). Compile llama.cpp en C++ : il
-# faut cmake. Désactivée par défaut, donc absente de la CI.
-lama-local = ["dep:llama-cpp-2", "dep:llguidance", "dep:minijinja", "dep:minijinja-contrib"]
-
-[target.'cfg(target_os = "macos")'.dependencies]
-llama-cpp-2 = { version = "0.1.160", optional = true, features = ["metal", "llguidance"] }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-llama-cpp-2 = { version = "0.1.160", optional = true, features = ["llguidance"] }

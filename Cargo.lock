@@ -8108,11 +8108,7 @@ dependencies = [
  "ebur128",
  "geo-types",
  "image",
- "llama-cpp-2",
- "llguidance",
  "lofty",
- "minijinja",
- "minijinja-contrib",
  "notify",
  "ogg",
  "opus-decoder",
@@ -8140,6 +8136,7 @@ dependencies = [
  "rusty-music-core",
  "rusty-music-editor",
  "rusty-music-enrichissement",
+ "rusty-music-lama",
  "rusty-music-osm",
  "rusty-music-player",
  "rusty-music-superres",
@@ -8187,6 +8184,22 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tracing",
+ "ureq 3.4.0",
+]
+
+[[package]]
+name = "rusty-music-lama"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "llama-cpp-2",
+ "llguidance",
+ "minijinja",
+ "minijinja-contrib",
+ "rusty-music-core",
+ "serde",
+ "serde_json",
  "tracing",
  "ureq 3.4.0",
 ]

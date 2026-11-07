@@ -9,11 +9,13 @@
 //! `docs/recherche-llm-playlist.md`.
 //!
 //! Tout ici est pur (pas de base, pas de réseau) pour se tester sans rien :
-//! [`crate::Library::caracteristiques_pistes`] fournit les données.
+//! [`rusty_music_core::Library::caracteristiques_pistes`] fournit les données.
 
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
+
+pub use rusty_music_core::db::CaracteristiquesPiste;
 
 /// Durée supposée d'un morceau sans durée connue (3 min 30).
 pub const DUREE_DEFAUT_MS: i64 = 210_000;
@@ -146,24 +148,6 @@ impl FiltresPlaylist {
             && self.popularite.is_none()
             && self.ecoute.is_none()
     }
-}
-
-/// Ce que la bibliothèque sait d'un morceau, pour le filtrer.
-#[derive(Debug, Clone, Default)]
-pub struct CaracteristiquesPiste {
-    pub id: i64,
-    pub artiste: Option<String>,
-    pub annee: Option<i32>,
-    pub duree_ms: Option<i64>,
-    pub bpm: Option<f32>,
-    pub energie: Option<f32>,
-    /// Rang percentile 0..1 dans la bibliothèque (1 = le plus écouté).
-    pub popularite: Option<f64>,
-    /// Jours écoulés depuis la dernière écoute **de cet utilisateur** ; `None`
-    /// = jamais écouté (aucune ligne dans `ecoute`).
-    pub jours_depuis_ecoute: Option<u32>,
-    /// Genres résolus, en minuscules.
-    pub genres: Vec<String>,
 }
 
 /// Les morceaux admissibles, et ce qu'il a fallu lâcher pour en avoir assez.

@@ -7,7 +7,7 @@ E4B, llama.cpp lié), Ollama reste un choix. Les chiffres sont plus bas
 
 ## Ce que Lama demande au modèle
 
-Un appel unique par demande (`crates/core/src/ollama.rs::interpreter`) :
+Un appel unique par demande (`crates/lama/src/ollama.rs::interpreter`) :
 - **décodage contraint par un schéma JSON** (`format` : 20 clés requises,
   enums, types nullables `["string", "null"]`, tableau d'objets `parties`).
   C'est indispensable, parce qu'un petit modèle à qui le schéma laisse le choix omet
@@ -89,7 +89,7 @@ faut les mesurer.
 Même schéma, même consigne, même lecture de la réponse que par Ollama
 (`ollama::depuis_reponse`), Gemma 4 E4B en GGUF Q4_0, M4 Pro 24 Go. Les deux
 moteurs ont tourné l'un après l'autre sur le même code
-(`crates/core/examples/robustesse.rs`, `ROB_LOCAL=`), notés par
+(`crates/lama/examples/robustesse.rs`, `ROB_LOCAL=`), notés par
 `experiments/musicrecointent/noter.py`.
 
 | [spec] | Ollama (`gemma4:e4b-mlx`) | Intégré (Q4_0) |
@@ -126,7 +126,7 @@ moteurs ont tourné l'un après l'autre sur le même code
 
 ## Intégration
 
-- `crates/core/src/llm_local.rs` (feature `lama-local`) : chargement,
+- `crates/lama/src/llm_local.rs` (feature `lama-local`) : chargement,
   génération contrainte, cache de la consigne.
 - `apps/desktop/src/explorer/modele_local.rs` : téléchargement en passe de
   fond (révision `a69f018` épinglée, SHA-256 vérifié), chargement à la
