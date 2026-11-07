@@ -331,11 +331,14 @@
         </div>
         <!-- Décompte du métronome avant que la musique parte, au tempo du
              morceau, comme un groupe qui compte avant de démarrer. -->
-        <div class="segments" id="decomptes" hidden style="margin-top:8px">
-          <button class="segment" data-decompte="0" title="La musique part dès ▶">Sans décompte</button>
+        <!-- Trois libellés courts pour tenir sur une ligne dans le rail ; le
+             groupe se nomme, chaque bouton dit le reste au survol. -->
+        <div class="segments" id="decomptes" hidden style="margin-top:8px"
+             role="group" aria-label="Décompte avant la musique">
+          <button class="segment" data-decompte="0" title="Sans décompte : la musique part dès ▶">Sans</button>
           <button class="segment segment--actif" data-decompte="1"
-                  title="Une mesure de clics au tempo du morceau avant que la musique parte">Décompte 1 mesure</button>
-          <button class="segment" data-decompte="2" title="Deux mesures de clics avant que la musique parte">2 mesures</button>
+                  title="Décompte d'une mesure de clics au tempo du morceau avant que la musique parte">1 mesure</button>
+          <button class="segment" data-decompte="2" title="Décompte de deux mesures de clics avant que la musique parte">2 mesures</button>
         </div>
         <!-- Les tablatures publiées du morceau, à comparer à l'œil : la
              recherche s'ouvre dans le navigateur (consulter est permis par
@@ -669,7 +672,7 @@
             </div>
           </div>
           <div class="carte__aide" id="carte-aide">
-            molette : zoom · glisser : déplacer · clic : écouter
+            molette : zoom · glisser : déplacer · clic : choisir
           </div>
         </div>
 

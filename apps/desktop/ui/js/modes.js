@@ -105,11 +105,16 @@ async function basculerMode(mode) {
   // celle de gauche. `poser` le rétablit en revenant à l'Écoute.
   $("index-alpha").hidden = $("index-alpha").hidden || explorer || bibliotheque || decouvrir || valise;
   $("index-annees").hidden = $("index-annees").hidden || explorer || bibliotheque || decouvrir || valise;
+  // « Choisir l'édition… » appartient aux pistes d'un album ouvert en Écouter :
+  // posé par `poser`, il restait dans l'en-tête des autres écrans. `poser` le
+  // rétablit en revenant à l'Écoute.
+  if (mode !== "ecoute") $("choisir-edition").hidden = true;
   $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir || valise;
   // « Filtrer » estompe ce qui est affiché — la carte en Explorer, la grille ou
   // la liste en Écouter, en Pratiquer et en Créer. Bibliothèque, Découvrir et Valise n'ont
   // rien qu'il filtrerait : masqué (la palette, ⌘K, reste partout).
-  // (`majRailExplorer` cache aussi ce champ dans le Lama.)
+  // (`majRailExplorer` cache aussi ce champ dans le Lama, `majEtatEditer` en
+  // Pratiquer et Créer hors de l'état « choisir ».)
   $("bloc-chercher").hidden = bibliotheque || decouvrir || valise || enLama;
   $("bloc-colorer").hidden = !explorer;
   $("bloc-demix").hidden = !editer;

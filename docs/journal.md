@@ -3327,3 +3327,46 @@ lisibilité. Les corrections sont dans l'interface seulement.
   - l'audit ne mesure ni le formulaire d'épingle ni le cartouche « Garder »
     (fermés dans ses états) ;
   - l'aspect des repères et des tracés dans la webview native.
+
+## Interface, B1 : six défauts de la synthèse de novembre — 7 nov. 2026
+
+Les défauts I1 à I5 et I10 de `synthese-novembre-2026.md`, § 2.3, chacun
+avec son test de fumée (`fumee.spec.js`, préfixe « I1 » à « I10 »).
+
+- **I1, « Choisir l'édition… » hors d'Écouter.** `poser` le pose, mais
+  `basculerMode` ne le masquait jamais : il restait dans l'en-tête
+  d'Explorer, de Découvrir, de Valise et de Bibliothèque. Il est masqué
+  hors d'Écouter, et `poser` le rétablit au retour. Le test ouvre un album,
+  passe par les six autres écrans, puis revient.
+- **I2, le titre du fil.** Il disait « Carte » en Nuage, Temps et Anneau.
+  Il prend maintenant le nom de l'affichage, lu sur son bouton du rail
+  (`titreAffichage`, `fond-de-plan.js`).
+- **I3, l'aide de la carte.** « clic : écouter » devient « clic : choisir »
+  (`index.html` et `aideCourante`) : le clic sélectionne en silence depuis
+  le 14 sept. (Règle 1).
+- **I4, « Filtrer » en Pratiquer et Créer.** Masqué hors de l'état
+  « choisir » (`majEtatEditer`), là où il n'a rien à estomper. Il revient
+  avec « ← Choisir un morceau ».
+- **I5, les noms des stems.** Une table côté interface (`LIBELLES_STEMS`,
+  `libelleStem`, `editer.js`) : Batterie, Basse, Voix, Autres, Guitare,
+  Piano. Le nom du moteur reste la clé (`data-stem`, `edition.stems`,
+  fichiers, commandes). Affiché dans la pile et dans l'inspecteur.
+- **I10, le décompte.** « Sans décompte · Décompte 1 mesure · 2 mesures »
+  passait sur deux lignes dans les 232 px du rail. Les libellés deviennent
+  « Sans · 1 mesure · 2 mesures » ; le groupe se nomme (« Décompte avant la
+  musique ») et chaque bouton dit le reste au survol. Le test compte les
+  lignes de texte de chaque bouton (boîtes d'un `Range`) : il échoue sur les
+  anciens libellés (vérifié), passe sur les nouveaux.
+- **Vérifié** : `verifier.sh` vert, 45 tests de fumée (39 avant, six de
+  plus) ; `audit-interface.sh` : 252 cellules, 0 violation. Trois
+  premiers essais figés entre 29 et 32 cellules : la session était
+  verrouillée et WebKit suspend alors les minuteries de la page ; l'audit
+  demande l'écran déverrouillé.
+- **Piège relevé en route** : après les vérifications du 7 nov. dans un
+  worktree qui partageait `target/` (P5, P6), `cargo test` a repris un
+  artefact de `rusty-music-core` compilé depuis le worktree sans
+  `pub mod lieux` : le hash d'une crate de chemin ne dépend pas de
+  l'emplacement du workspace, et les sources du worktree étaient plus
+  récentes. Un `touch` des sources a suffi. À retenir : un worktree de
+  vérification prend son propre `CARGO_TARGET_DIR`, ou l'on touche les
+  sources au retour.

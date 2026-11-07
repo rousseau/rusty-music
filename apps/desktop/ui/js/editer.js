@@ -379,8 +379,23 @@ $("boucle-accel").addEventListener("click", () => {
   majBoucleUI();
 });
 
+// Le nom d'un stem à l'écran. Le moteur nomme ses stems en anglais (`drums`,
+// `bass`…), et ce nom reste la clé partout (`edition.stems`, `data-stem`,
+// fichiers, commandes) ; le rail dit « Basse » et « Batterie » : la pile aussi.
+const LIBELLES_STEMS = {
+  drums: "Batterie",
+  bass: "Basse",
+  vocals: "Voix",
+  other: "Autres",
+  guitar: "Guitare",
+  piano: "Piano",
+};
+function libelleStem(nom) {
+  return LIBELLES_STEMS[nom] ?? nom;
+}
+
 export {
-  accelererAuPassage, bpmSource, edition, majPulsation, majSections, majTempoSource,
+  accelererAuPassage, bpmSource, edition, libelleStem, majPulsation, majSections, majTempoSource,
   marquerSectionCourante, NOMS_SECTIONS, octaveVitesse, pasReglage, positionnerBande,
   reposerBoucle, vitesseEnBpm,
 };

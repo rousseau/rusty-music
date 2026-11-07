@@ -87,6 +87,75 @@ test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiq
   expect((await appels(page, "stems_play")).length).toBe(avant);
 });
 
+test("I1 : « Choisir l'édition… » reste en Écouter, il ne suit pas dans les autres écrans", async ({ page }) => {
+  await page.evaluate(() => localStorage.setItem("mb-contact", "essai@example.org"));
+  await page.locator("#grille .album").first().click();
+  await expect(page.locator("#choisir-edition")).toBeVisible();
+  for (const m of ["explorer", "decouvrir", "valise", "bibliotheque", "pratiquer", "creer"]) {
+    await page.click(`button.mode[data-mode="${m}"]`);
+    await expect(page.locator("#choisir-edition"), m).toBeHidden();
+  }
+  await page.click('button.mode[data-mode="ecoute"]');
+  await expect(page.locator("#choisir-edition")).toBeVisible();
+});
+
+test("I2 : en Explorer, le titre du fil est le nom de l'affichage", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  for (const [affichage, titre] of [["points", "Nuage"], ["carte", "Carte"], ["temps", "Temps"], ["anneau", "Anneau"], ["lama", "Lama"], ["points", "Nuage"]]) {
+    await page.click(`[data-affichage="${affichage}"]`);
+    await expect(page.locator("#fil-titre")).toHaveText(titre);
+  }
+});
+
+test("I3 : l'aide de la carte dit « clic : choisir », le clic ne lit pas", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  for (const affichage of ["points", "carte"]) {
+    await page.click(`[data-affichage="${affichage}"]`);
+    await expect(page.locator("#carte-aide")).toContainText("clic : choisir");
+    await expect(page.locator("#carte-aide")).not.toContainText("écouter");
+  }
+});
+
+test("I4 : « Filtrer » seulement dans l'état « choisir » de Pratiquer et de Créer", async ({ page }) => {
+  await lireUnAlbum(page);
+  for (const m of ["pratiquer", "creer"]) {
+    await page.click(`button.mode[data-mode="${m}"]`);
+    await expect(page.locator("#editer-etabli")).toBeVisible();
+    await expect(page.locator("#bloc-chercher"), m).toBeHidden();
+    await page.click("#retour");
+    await expect(page.locator("#grille")).toBeVisible();
+    await expect(page.locator("#bloc-chercher"), m).toBeVisible();
+  }
+  await page.click('button.mode[data-mode="ecoute"]');
+  await expect(page.locator("#bloc-chercher")).toBeVisible();
+});
+
+test("I5 : les stems portent des noms français, le nom du moteur reste la clé", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="creer"]');
+  await expect(page.locator("#editer-etabli .stem__nom")).toHaveText(["Batterie", "Basse", "Autres", "Voix"]);
+  expect(await page.locator("#editer-etabli .piste").evaluateAll((l) => l.map((e) => e.dataset.stem)))
+    .toEqual(["drums", "bass", "other", "vocals"]);
+  await page.locator("#editer-etabli .stem__nom", { hasText: "Basse" }).click();
+  await expect(page.locator("#insp-stem-nom")).toHaveText("Basse");
+});
+
+test("I10 : le décompte de Pratiquer tient sur une ligne dans le rail", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#decomptes")).toBeVisible();
+  // Une seule ligne de texte par bouton (les boîtes de ligne d'un `Range`), et
+  // les trois boutons à la même hauteur.
+  const lignes = await page.locator("#decomptes .segment").evaluateAll((bs) =>
+    bs.map((b) => {
+      const r = document.createRange();
+      r.selectNodeContents(b);
+      return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size;
+    }),
+  );
+  expect(lignes).toEqual([1, 1, 1]);
+});
+
 test("le transport suit les stems que le moteur garde", async ({ page }) => {
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="creer"]');

@@ -664,7 +664,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 |---|---|---|---|
 | A1-A2 consolider | fait : séparation, P5 (code, puis journal), P6, P8, chacun son commit, `verifier.sh` vert à chaque fois | 7 nov. 2026 | `git log` ; `journal.md`, « P5 » |
 | A3 contrat à jour | fait : six modes, bio au centre ✅, sections Pratiquer et Créer, surimpressions de la carte, historique en fin ; aucune règle ajoutée | 7 nov. 2026 | `interface-guidelines.md` |
-| B1 défauts I1-I5, I10 | à faire | | |
+| B1 défauts I1-I5, I10 | fait : six corrections, six tests de fumée (45 en tout), audit 252 cellules, 0 violation | 7 nov. 2026 | `journal.md`, « B1 » ; `interface-guidelines.md` |
 | B2 table des écrans | à faire | | |
 | B3 Règles 12-13, G8 | à faire | | |
 | B4 désencombrer | après décisions | | |

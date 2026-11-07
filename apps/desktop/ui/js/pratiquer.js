@@ -21,8 +21,9 @@ import {
   indexAlphaUtile, indexAnneesUtile,
 } from "./ecouter-familles.js";
 import {
-  bpmSource, edition, majPulsation, majSections, majTempoSource, marquerSectionCourante,
-  NOMS_SECTIONS, octaveVitesse, pasReglage, positionnerBande, reposerBoucle, vitesseEnBpm,
+  bpmSource, edition, libelleStem, majPulsation, majSections, majTempoSource,
+  marquerSectionCourante, NOMS_SECTIONS, octaveVitesse, pasReglage, positionnerBande,
+  reposerBoucle, vitesseEnBpm,
 } from "./editer.js";
 import { lecture, poserStemsCharges, transport } from "./etat-lecture.js";
 
@@ -1520,6 +1521,9 @@ function majEtatEditer() {
   $("editer-etabli").hidden = etat !== 3;
   $("dock").hidden = etat !== 3;
   $("bloc-stem").hidden = etat !== 3 || !edition.stemSel;
+  // « Filtrer » estompe la grille ou la liste : il n'a plus rien à filtrer
+  // une fois le morceau choisi (séparer, établi).
+  $("bloc-chercher").hidden = !choisir;
 
   if (choisir) {
     // État 1 = le navigateur d'Écoute, tel quel. `poser` masque grille et
@@ -1604,7 +1608,7 @@ function majInspecteurStem() {
     hote.replaceChildren();
     return;
   }
-  $("insp-stem-nom").textContent = s.nom;
+  $("insp-stem-nom").textContent = libelleStem(s.nom);
   hote.replaceChildren(panneauStem(s));
 }
 
@@ -1900,7 +1904,7 @@ function dessinerStems() {
                       <span class="stem__jauge" title="Niveau — tirer pour régler"><i></i></span>
                     </div>
                     <canvas class="stem__spectre"></canvas>`;
-    el.querySelector(".stem__nom").textContent = s.nom;
+    el.querySelector(".stem__nom").textContent = libelleStem(s.nom);
     el.querySelector(".stem__etat").textContent = resumeStem(s);
     el.querySelector('[data-a="solo"]').classList.toggle("stem__b--actif", solo);
     el.querySelector('[data-a="muet"]').classList.toggle("stem__b--actif", muet);

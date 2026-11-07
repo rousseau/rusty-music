@@ -231,7 +231,7 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
       $("intention-texte").focus();
       return;
     }
-    $("fil-titre").textContent = "Carte";
+    $("fil-titre").textContent = titreAffichage();
     // Un chemin *calculé* (le tracé d'un mode direct/sonique/dessiné) vit
     // dans un repère précis (t-SNE, lon-lat, temps) et n'a plus de sens dans
     // un autre : on l'efface plutôt que de rejouer des coordonnées
@@ -284,7 +284,14 @@ function aideCourante() {
   const [, court] = AIDE_CHEMIN[carte.chemin];
   return modeTemps()
     ? `molette : zoom · glisser : déplacer · ${court}`
-    : `molette : zoom · glisser : déplacer · clic : écouter · ${court} · alt+glisser : lasso`;
+    : `molette : zoom · glisser : déplacer · clic : choisir · ${court} · alt+glisser : lasso`;
+}
+
+/// Le titre du fil en Explorer : le nom de l'affichage, celui de son bouton
+/// dans le rail (« Nuage », « Carte », « Temps », « Anneau », « Lama »).
+function titreAffichage() {
+  const b = document.querySelector(`[data-affichage="${carte.affichage}"]`);
+  return carte.affichage === "lama" ? "Lama" : (b?.textContent.trim() ?? "Carte");
 }
 
 /// Montre ou cache la légende en dégradé, et y inscrit les bornes de la
@@ -603,7 +610,7 @@ async function chargerCarte() {
   }
   majLegendeContinue();
   initialiserFiltreAnnee();
-  $("fil-titre").textContent = "Carte";
+  $("fil-titre").textContent = titreAffichage();
   $("fil-compte").textContent =
     faits < total
       ? `${carte.points.length.toLocaleString("fr-FR")} placés · ${(total - faits).toLocaleString("fr-FR")} en attente`
