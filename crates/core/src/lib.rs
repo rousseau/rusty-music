@@ -6,7 +6,6 @@
 //! modules (lecteur, exploration, éditeur). Aucun module ne relit le disque
 //! directement.
 
-pub mod appairage;
 pub mod biographies;
 pub mod critiquebrainz;
 pub mod critiques;
@@ -36,7 +35,6 @@ pub mod musicbrainz;
 pub mod ollama;
 pub mod opus;
 pub mod panique;
-pub mod passage;
 pub mod playlists;
 pub mod pochette;
 pub mod pochettes_verif;
@@ -45,7 +43,6 @@ pub mod scan;
 pub mod session;
 pub mod tags;
 pub mod theaudiodb;
-pub mod valise;
 pub mod volume;
 pub mod watch;
 

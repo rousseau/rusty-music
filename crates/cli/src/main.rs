@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 
 use rusty_music_core::db::TrackRow;
 use rusty_music_core::{scan, watch, Library};
+use rusty_music_valise::valise::{JournalValise, ValiseBibliotheque};
 
 #[derive(Parser)]
 #[command(
@@ -2528,7 +2529,7 @@ fn main() -> Result<()> {
         Cmd::Valise {
             action: ValiseCmd::Importer { journal },
         } => {
-            let journal = rusty_music_core::valise::lire_journal(&journal)?;
+            let journal = rusty_music_valise::valise::lire_journal(&journal)?;
             let import = lib.importer_journal(&journal)?;
             println!(
                 "{} écoutes ajoutées, {} déjà connues",
@@ -2553,7 +2554,7 @@ fn main() -> Result<()> {
                     essai,
                 },
         } => {
-            use rusty_music_core::valise::{self, Part, Reglages, Regle};
+            use rusty_music_valise::valise::{self, Part, Reglages, Regle};
 
             let budget_octets = valise::lire_taille(&budget)
                 .ok_or_else(|| anyhow::anyhow!("budget illisible : « {budget} »"))?;

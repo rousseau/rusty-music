@@ -75,6 +75,7 @@ acceptable, copyleft comprise ; **ne jamais réécrire ce qui existe**.
 
 ```
 crates/core/          cœur : scan, tags, surveillance, SQLite, enrichissement
+crates/valise/        valise du compagnon iOS : sélection, export, passage, Wi-Fi
 crates/player/        Écouter : sortie audio, transport, file, amélioration « E »
 crates/analysis/      Explorer : empreintes CLAP, projection 2D, descripteurs
 crates/carto/         Explorer : tuiles vectorielles (MVT / PMTiles)

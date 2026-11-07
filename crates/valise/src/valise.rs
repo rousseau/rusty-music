@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::db::{hacher, Library};
-use crate::error::{Error, Result};
+use rusty_music_core::db::{hacher, Library};
+use rusty_music_core::error::{Error, Result};
 
 /// Version du format de valise, écrite dans le manifeste et dans la base.
 pub const VERSION_FORMAT: u32 = 1;
@@ -266,7 +266,33 @@ pub fn lire_taille(s: &str) -> Option<u64> {
     (n >= 0.0).then_some((n * facteur) as u64)
 }
 
-impl Library {
+/// Les requêtes de la valise sur la bibliothèque du bureau : sélection et
+/// réglages. Un trait plutôt que des méthodes de `Library`, qui vit dans
+/// `rusty-music-core`.
+pub trait ValiseBibliotheque {
+    /// Choisit les albums d'une valise selon `reglages`.
+    fn selectionner_valise(&self, reglages: &Reglages) -> Result<Selection>;
+    /// Les réglages de la dernière valise préparée, ou ceux par défaut.
+    fn reglages_valise(&self) -> Result<Reglages>;
+    /// Garde `reglages` pour la prochaine valise.
+    fn definir_reglages_valise(&self, reglages: &Reglages) -> Result<()>;
+}
+
+/// Le journal d'écoutes d'une valise : le lire dans sa base, le verser dans
+/// celle du bureau.
+pub trait JournalValise {
+    /// Le journal d'écoutes de cette base, dans l'ordre.
+    fn journal_valise(&self) -> Result<Journal>;
+    /// Verse les écoutes d'un journal dans `ecoute`, sans doublon.
+    fn importer_journal(&self, journal: &Journal) -> Result<Import>;
+}
+
+trait Candidats {
+    fn candidats_valise(&self, pistes_min: usize) -> Result<Vec<Candidat>>;
+    fn pistes_album_valise(&self, album: &str, artiste: &str) -> Result<Vec<i64>>;
+}
+
+impl Candidats for Library {
     /// Les albums candidats d'une valise : au moins `pistes_min` pistes,
     /// avec leurs écoutes et leur taille.
     fn candidats_valise(&self, pistes_min: usize) -> Result<Vec<Candidat>> {
@@ -319,10 +345,12 @@ impl Library {
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(ids)
     }
+}
 
+impl ValiseBibliotheque for Library {
     /// Choisit les albums d'une valise selon `reglages` : les épinglés
     /// d'abord, puis chaque part dans l'ordre, sans dépasser le budget.
-    pub fn selectionner_valise(&self, reglages: &Reglages) -> Result<Selection> {
+    fn selectionner_valise(&self, reglages: &Reglages) -> Result<Selection> {
         let mut candidats = self.candidats_valise(reglages.pistes_min.max(1))?;
         if !reglages.modele.is_empty() {
             let familles: HashMap<(String, String), i64> = self
@@ -452,7 +480,7 @@ impl Library {
 
     /// Les réglages de la dernière valise préparée au bureau, ou les réglages
     /// par défaut.
-    pub fn reglages_valise(&self) -> Result<Reglages> {
+    fn reglages_valise(&self) -> Result<Reglages> {
         let json: Option<String> = self
             .conn
             .query_row(
@@ -467,7 +495,7 @@ impl Library {
     }
 
     /// Garde `reglages` pour la prochaine valise.
-    pub fn definir_reglages_valise(&self, reglages: &Reglages) -> Result<()> {
+    fn definir_reglages_valise(&self, reglages: &Reglages) -> Result<()> {
         let json = serde_json::to_string(reglages)
             .map_err(|e| Error::Parsing(format!("réglages de valise : {e}")))?;
         self.conn.execute(
@@ -755,7 +783,7 @@ fn nom_piste(rang: usize, titre: Option<&str>, source: &Path) -> String {
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     let titre = titre
-        .map(crate::playlists::nom_de_fichier)
+        .map(rusty_music_core::playlists::nom_de_fichier)
         .unwrap_or_else(|| "piste".to_string());
     if ext.is_empty() {
         format!("{:02} - {titre}", rang + 1)
@@ -940,9 +968,9 @@ pub struct Import {
     pub inconnues: usize,
 }
 
-impl Library {
+impl JournalValise for Library {
     /// Le journal d'écoutes de cette base (celle d'une valise), dans l'ordre.
-    pub fn journal_valise(&self) -> Result<Journal> {
+    fn journal_valise(&self) -> Result<Journal> {
         let mut stmt = self
             .conn
             .prepare("SELECT chemin, le FROM ecoute ORDER BY le, rowid")?;
@@ -964,7 +992,7 @@ impl Library {
     /// (même chemin, même instant) n'est pas recomptée : réimporter un
     /// journal, ou le journal d'une valise qui a continué de servir, ne
     /// double rien.
-    pub fn importer_journal(&self, journal: &Journal) -> Result<Import> {
+    fn importer_journal(&self, journal: &Journal) -> Result<Import> {
         let tx = self.conn.unchecked_transaction()?;
         let mut import = Import::default();
         {
@@ -1016,7 +1044,7 @@ pub fn lire_journal(chemin: &Path) -> Result<Journal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tags::TrackMeta;
+    use rusty_music_core::tags::TrackMeta;
 
     #[test]
     fn tailles() {

@@ -39,8 +39,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
 use crate::passage::Passage;
+use rusty_music_core::error::{Error, Result};
 
 /// Nom du fichier d'appairage, à la racine des Documents de l'app et dans les
 /// données de l'app de bureau.

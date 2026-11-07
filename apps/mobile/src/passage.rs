@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Réception du passage de la lecture Mac → iPhone (`rusty_music_core::passage`).
+//! Réception du passage de la lecture Mac → iPhone (`rusty_music_valise::passage`).
 //! Par le câble (option A), le Mac dépose `session-passage.json` dans les
 //! Documents de l'app puis se met en pause ; par le Wi-Fi (option B,
 //! `wifi.rs`), il le tient en attente et ne se tait qu'à l'accusé de l'app.
@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
-use rusty_music_core::passage::{Passage, FICHIER};
 use rusty_music_player::{Instantane, Repetition};
+use rusty_music_valise::passage::{Passage, FICHIER};
 use serde::Serialize;
 
 use crate::{echec, lecteur, ouvrir, session, verrou, wifi, AlbumVue, Etat};
@@ -158,7 +158,7 @@ fn appliquer(etat: &Etat, passage: &Passage) -> Result<Recu, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusty_music_core::passage::VERSION;
+    use rusty_music_valise::passage::VERSION;
 
     /// Une valise réduite à ce que `valise_pour` lit : ses pistes et leurs
     /// fichiers.

@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 rusty-music-core = { path = "../core" }
+rusty-music-valise = { path = "../valise" }
 rusty-music-osm = { path = "../osm" }
 rusty-music-player = { path = "../player" }
 rusty-music-analysis = { path = "../analysis" }

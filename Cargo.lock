@@ -8092,6 +8092,7 @@ dependencies = [
  "rusty-music-editor",
  "rusty-music-osm",
  "rusty-music-player",
+ "rusty-music-valise",
  "serde_json",
  "tracing",
  "tracing-subscriber",
@@ -8143,6 +8144,7 @@ dependencies = [
  "rusty-music-player",
  "rusty-music-superres",
  "rusty-music-transcription",
+ "rusty-music-valise",
  "serde",
  "serde_json",
  "souvlaki",
@@ -8188,6 +8190,7 @@ dependencies = [
  "rusqlite",
  "rusty-music-core",
  "rusty-music-player",
+ "rusty-music-valise",
  "serde",
  "serde_json",
  "tauri",
@@ -8255,6 +8258,18 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "rusty-music-valise"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "rusqlite",
+ "rusty-music-core",
+ "serde",
+ "serde_json",
+ "ureq 3.4.0",
 ]
 
 [[package]]

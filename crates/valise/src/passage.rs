@@ -19,8 +19,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
-use crate::session::retenir;
+use rusty_music_core::error::{Error, Result};
+use rusty_music_core::session::retenir;
 
 /// Nom du fichier déposé à la racine des Documents de l'app.
 pub const FICHIER: &str = "session-passage.json";

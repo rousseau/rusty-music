@@ -122,6 +122,7 @@ Aucun n'est dans le dépôt Git. Remerciements, articles et licences :
 CLAUDE.md              contexte permanent (lu par Claude Code à chaque session)
 docs/                  spécifications détaillées
 crates/core/           cœur d'ingestion : scan, tags, surveillance, base SQLite
+crates/valise/         la valise du compagnon iOS : sélection, export, passage, appairage Wi-Fi
 crates/player/         module 1 — sortie audio, transport, file, amélioration
 crates/analysis/       module 2 — empreintes CLAP (Burn), projection 2D, descripteurs
 crates/carto/          module 2 — tuiles vectorielles de la carte (MVT / PMTiles)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! La valise par le Wi-Fi, par différence (étape 4B de
 //! `docs/plan-ios-compagnon.md`). Le Mac tient une valise prête
-//! (`rusty_music_core::appairage::EnvoiValise`) ; l'app la prend au lancement
+//! (`rusty_music_valise::appairage::EnvoiValise`) ; l'app la prend au lancement
 //! et à chaque retour au premier plan, sur son propre fil :
 //!
 //! 1. renvoie au Mac le journal d'écoutes de chaque valise du téléphone —
@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
-use rusty_music_core::appairage::{self, EnvoiValise};
-use rusty_music_core::valise;
+use rusty_music_valise::appairage::{self, EnvoiValise};
+use rusty_music_valise::valise;
 use serde::Serialize;
 use tauri::Manager;
 

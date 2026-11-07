@@ -1,0 +1,16 @@
+[package]
+name = "rusty-music-valise"
+description = "Valise : sélection d'albums exportée pour le compagnon iOS, passage et appairage Wi-Fi."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false        # composant de l'application, jamais publié seul sur crates.io
+
+[dependencies]
+rusty-music-core = { path = "../core" }
+rusqlite.workspace   = true
+serde.workspace      = true
+serde_json.workspace = true
+ureq.workspace       = true
+image.workspace      = true

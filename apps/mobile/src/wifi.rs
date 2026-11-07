@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Le Mac sur le Wi-Fi local (étape 4B, passage option B). Le Mac a déposé
 //! `appairage.json` au câble : son jeton et les adresses où le chercher
-//! (`rusty_music_core::appairage`). L'app le joint au lancement et à chaque
+//! (`rusty_music_valise::appairage`). L'app le joint au lancement et à chaque
 //! retour au premier plan, pour prendre un passage qu'il tient en attente
 //! (`passage.rs`), et quand on lui rend la lecture ([`rendre`]).
 
 use std::time::Duration;
 
-use rusty_music_core::appairage::{self, Appairage, Bonjour, Client};
-use rusty_music_core::passage::{Passage, VERSION};
 use rusty_music_core::Error;
+use rusty_music_valise::appairage::{self, Appairage, Bonjour, Client};
+use rusty_music_valise::passage::{Passage, VERSION};
 use serde::Serialize;
 
 use crate::{echec, en_cours, lecture_courante, verrou, Etat};

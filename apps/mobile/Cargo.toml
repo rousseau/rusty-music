@@ -17,9 +17,11 @@ crate-type = ["staticlib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
-# Le cœur et le lecteur seulement : ni Burn, ni `ort`, ni la carte. Les deux
-# compilent pour `aarch64-apple-ios` sans modification (vérifié le 18 oct. 2026).
+# Le cœur, la valise et le lecteur seulement : ni Burn, ni `ort`, ni la carte. Ils
+# compilent pour `aarch64-apple-ios` sans modification (vérifié le 18 oct. 2026,
+# quand la valise faisait encore partie du cœur).
 rusty-music-core = { path = "../../crates/core" }
+rusty-music-valise = { path = "../../crates/valise" }
 rusty-music-player = { path = "../../crates/player" }
 rusqlite.workspace = true
 tauri.workspace   = true

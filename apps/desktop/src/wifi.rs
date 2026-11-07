@@ -2,7 +2,7 @@
 //! Le serveur Wi-Fi du compagnon iOS (étape 4B de `docs/plan-ios-compagnon.md`) :
 //! le passage de la lecture dans les deux sens, sans câble (option B), et la
 //! valise par différence. Le protocole et le client de l'iPhone vivent dans
-//! `rusty_music_core::appairage`.
+//! `rusty_music_valise::appairage`.
 //!
 //! Il écoute tant que l'app est ouverte, dès qu'un iPhone a été appairé — au
 //! câble, par [`appairer`], appelé après un envoi de valise ou un passage par
@@ -14,12 +14,12 @@
 
 use std::io::Read;
 
-use rusty_music_core::appairage::{
+use rusty_music_valise::appairage::{
     self, route, Accuse, Appairage, Bonjour, DemandeFichier, EnvoiValise, JournalVerse, Recu,
     ValiseRecue,
 };
-use rusty_music_core::passage::Passage;
-use rusty_music_core::valise::{self, Journal, Rapport, Selection};
+use rusty_music_valise::passage::Passage;
+use rusty_music_valise::valise::{self, Journal, JournalValise, Rapport, Selection};
 
 use super::*;
 
@@ -673,7 +673,7 @@ mod tests {
 
     fn passage(emis_le: i64) -> Passage {
         Passage {
-            version: rusty_music_core::passage::VERSION,
+            version: rusty_music_valise::passage::VERSION,
             emis_le,
             file: vec!["/m/a.mp3".into()],
             avant_melange: Vec::new(),
@@ -825,7 +825,7 @@ mod tests {
         );
     }
 
-    /// Le client de l'iPhone (`rusty_music_core::appairage::Client`) contre un
+    /// Le client de l'iPhone (`rusty_music_valise::appairage::Client`) contre un
     /// vrai `tiny_http` sur la boucle locale : passage, puis valise.
     #[test]
     fn le_client_de_l_iphone_parle_au_serveur() {

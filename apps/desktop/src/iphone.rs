@@ -193,7 +193,7 @@ pub fn valises(udid: &str) -> Result<Vec<ValiseTelephone>, String> {
                     .and_then(|d| d["metadata"]["lastModDate"].as_str())
                     .map(str::to_owned),
                 journal: fichiers.iter().any(|d| {
-                    d["relativePath"] == format!("{nom}/{}", rusty_music_core::valise::JOURNAL)
+                    d["relativePath"] == format!("{nom}/{}", rusty_music_valise::valise::JOURNAL)
                 }),
             })
         })

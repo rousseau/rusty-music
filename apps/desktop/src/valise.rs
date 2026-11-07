@@ -2,6 +2,7 @@
 //! Commandes de Valise : la valise du compagnon iOS, préparée et envoyée d'ici.
 
 use super::*;
+use rusty_music_valise::valise::{JournalValise, ValiseBibliotheque};
 
 /// Avancement de l'envoi d'une valise, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
@@ -25,13 +26,13 @@ pub(crate) type EtatRenouvellement = Passe<AvancementRenouvellement>;
 #[tauri::command(async)]
 pub(crate) fn valise_reglages(
     etat: State<Etat>,
-) -> Result<rusty_music_core::valise::Reglages, String> {
+) -> Result<rusty_music_valise::valise::Reglages, String> {
     verrou(&etat.lib).reglages_valise().map_err(echec)
 }
 
 #[derive(serde::Serialize)]
 pub(crate) struct ApercuValise {
-    albums: Vec<rusty_music_core::valise::AlbumValise>,
+    albums: Vec<rusty_music_valise::valise::AlbumValise>,
     octets: u64,
     budget_octets: u64,
 }
@@ -41,7 +42,7 @@ pub(crate) struct ApercuValise {
 #[tauri::command(async)]
 pub(crate) fn valise_apercu(
     etat: State<Etat>,
-    mut reglages: rusty_music_core::valise::Reglages,
+    mut reglages: rusty_music_valise::valise::Reglages,
 ) -> Result<ApercuValise, String> {
     reglages.modele = rusty_music_analysis::passe::MODELE.to_string();
     let lib = verrou(&etat.lib);
@@ -163,7 +164,7 @@ pub(crate) fn valise_envoyer(
                 e.avancement.total = total;
             };
             let issue = (|| -> Result<String, String> {
-                use rusty_music_core::valise;
+                use rusty_music_valise::valise;
                 let lib = Library::open(&db).map_err(echec)?;
                 let travail = db
                     .parent()
@@ -397,7 +398,7 @@ pub(crate) struct LectureEmportee {
     cable_echec: Option<String>,
 }
 
-/// Emporte la lecture sur l'iPhone (`rusty_music_core::passage`).
+/// Emporte la lecture sur l'iPhone (`rusty_music_valise::passage`).
 ///
 /// Par le câble d'abord (option A), si `udid` est donné : la file et la
 /// position sont déposées dans les Documents de l'app par `devicectl`, puis
@@ -413,7 +414,7 @@ pub(crate) fn emporter_lecture(
     etat: State<Etat>,
     udid: Option<String>,
 ) -> Result<LectureEmportee, String> {
-    use rusty_music_core::passage::{Passage, FICHIER, VERSION};
+    use rusty_music_valise::passage::{Passage, FICHIER, VERSION};
     let Some(mut i) = verrou(&etat.player).instantane() else {
         return Err("rien en lecture".into());
     };

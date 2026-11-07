@@ -235,7 +235,7 @@ l'enrichissement réseau.
 
 ## Étape 2 — Le format de valise · **M** — **livrée (18 oct. 2026), sans réencodage**
 
-**Fait** : `crates/core/src/valise.rs` + `rusty-music valise exporter`.
+**Fait** : `crates/valise/src/valise.rs` (alors dans `core`) + `rusty-music valise exporter`.
 Essai sur la bibliothèque réelle : sélection de 26 albums pour 3 Go en
 1,5 s ; un export de 600 Mo donne 8 albums, 79 pistes, une base de 456 Ko et
 des pochettes de 17 à 130 Ko. La copie est quasi instantanée sur APFS
@@ -565,7 +565,7 @@ sautée en silence ; les écoutes suivent le journal existant (étape 6).
 compte de signature le permet.
 
 **A, fait le 2 nov. 2026** (pas encore essayé sur l'iPhone) :
-- format : `rusty_music_core::passage` (`session-passage.json`, version 1) —
+- format : `rusty_music_valise::passage` (`session-passage.json`, version 1) —
   la file en **chemins d'origine**, que la base d'une valise garde dans
   `tracks.path` : rien à traduire côté téléphone ;
 - Mac : « Emporter la lecture » dans le bloc iPhone du mode Valise, et la
@@ -588,7 +588,7 @@ compte de signature le permet.
 différence, sur le même serveur, est décrite à l'étape 4). Tranché le même jour : appairage par un
 jeton déposé au câble, le passage avant la synchronisation, serveur à
 l'écoute tant que l'app est ouverte dès qu'un iPhone est appairé.
-- appairage : `rusty_music_core::appairage`. Le premier envoi de valise ou
+- appairage : `rusty_music_valise::appairage`. Le premier envoi de valise ou
   passage par le câble tire un jeton (24 octets de `/dev/urandom`) et dépose
   `appairage.json` dans les Documents de l'app : nom du Mac, jeton, port
   (47391), adresses. Toute requête sans le jeton reçoit un 401 ; « Oublier

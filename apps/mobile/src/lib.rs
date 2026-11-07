@@ -3,7 +3,7 @@
 //! `docs/plan-ios-compagnon.md`).
 //!
 //! Lit une **valise** déposée dans le dossier Documents de l'app (voir
-//! `rusty_music_core::valise`) et la joue avec le même lecteur que le bureau.
+//! `rusty_music_valise::valise`) et la joue avec le même lecteur que le bureau.
 //! La file porte les chemins **d'origine** des morceaux (leur identité dans
 //! la base) ; `Player::set_resolveur` les traduit en fichiers de la valise.
 
@@ -22,9 +22,9 @@ use std::time::Duration;
 use rusqlite::params;
 use rusty_music_core::loudness::{ModeGain, CIBLE_LUFS};
 use rusty_music_core::memoire::SuiviEcoute;
-use rusty_music_core::valise;
 use rusty_music_core::Library;
 use rusty_music_player::Player;
+use rusty_music_valise::valise;
 use serde::Serialize;
 use tauri::{Manager, State};
 

@@ -37,7 +37,7 @@ pub(crate) fn decouvrir_tout_vu(etat: State<Etat>) -> Result<(), String> {
 }
 
 // ── Mode Valise : la valise du compagnon iOS, préparée et envoyée d'ici ──
-// Sélection : `rusty_music_core::valise`. iPhone : `iphone.rs` (devicectl).
+// Sélection : `rusty_music_valise::valise`. iPhone : `iphone.rs` (devicectl).
 // Voir `docs/plan-ios-compagnon.md`.
 
 /// La pochette d'une sortie du fil Découvrir, en `data:` URI — comme `cover`,
