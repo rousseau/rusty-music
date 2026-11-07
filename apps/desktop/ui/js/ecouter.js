@@ -34,11 +34,8 @@ import {
   dureeLongue,
 } from "./bibliotheque.js";
 import {
-  edition,
-} from "./editer.js";
-import {
-  majEtatEditer, poserSourceEdition,
-} from "./pratiquer.js";
+  edition, majEtatEditer, poserSourceEdition,
+} from "./etabli.js";
 import {
   charger,
 } from "./demarrage.js";

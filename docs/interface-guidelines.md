@@ -517,7 +517,7 @@ rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 | 7 | Zoom/pan cohérents | — | Pas de zoom : la molette fait défiler la partition, elle ne l'agrandit pas. |
 | 8 | Révélation par échelle | ✅ | Le bloc « Votre partie » (`#bloc-usage`) n'apparaît qu'une fois les stems là ; la notation seulement pour la basse, Songsterr seulement si le morceau a un titre, la boucle (`#boucle-reglage`) seulement une fois la pulsation du morceau connue ; rien ne se transcrit sans « Calculer ». |
 | 9 | Langage de force unique | — | Pas de relations entre morceaux affichées. |
-| — | Écart, hors des neuf règles | ✅ | **Corrigé le 7 nov. (I5).** Les stems s'appelaient Drums, Bass, Other, Vocals… (le nom du moteur) quand le rail dit Basse et Batterie. Une table côté interface (`libelleStem`, `js/editer.js`) les dit Batterie, Basse, Voix, Autres, Guitare, Piano dans la pile et l'inspecteur ; le nom du moteur reste la clé (`data-stem`, commandes). Vaut aussi pour Créer. |
+| — | Écart, hors des neuf règles | ✅ | **Corrigé le 7 nov. (I5).** Les stems s'appelaient Drums, Bass, Other, Vocals… (le nom du moteur) quand le rail dit Basse et Batterie. Une table côté interface (`libelleStem`, `js/etabli.js`) les dit Batterie, Basse, Voix, Autres, Guitare, Piano dans la pile et l'inspecteur ; le nom du moteur reste la clé (`data-stem`, commandes). Vaut aussi pour Créer. |
 
 ### Créer
 

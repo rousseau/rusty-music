@@ -37,11 +37,9 @@ import {
   majStockageLogiciel, reprendreActualisationEnCours,
 } from "./bibliotheque.js";
 import {
-  edition,
-} from "./editer.js";
-import {
-  arreterStems, cacherPartition, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut,
-} from "./pratiquer.js";
+  arreterStems, edition, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut,
+} from "./etabli.js";
+import { cacherPartition } from "./pratiquer.js";
 import { lecture } from "./etat-lecture.js";
 import { choisirTheme, themeChoisi } from "./theme.js";
 import { appliquerEcran } from "./ecrans.js";

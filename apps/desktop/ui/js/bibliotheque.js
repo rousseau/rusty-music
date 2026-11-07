@@ -23,12 +23,10 @@ import {
   contactMb, depuisTexte,
 } from "./decouvrir.js";
 import {
-  accelererAuPassage, edition,
-} from "./editer.js";
-import {
-  arreterStems, dessinerStems, majDerive, niveaux, poserTete, positionMoteur, reconcilierStems,
-  resumeStem, stemEcarte, tonaliteDe, vitesseDe,
-} from "./pratiquer.js";
+  accelererAuPassage, arreterStems, dessinerStems, edition, majDerive, niveaux, poserTete,
+  reconcilierStems, resumeStem, stemEcarte, tonaliteDe, vitesseDe,
+} from "./etabli.js";
+import { positionMoteur } from "./pratiquer.js";
 import {
   charger,
 } from "./demarrage.js";

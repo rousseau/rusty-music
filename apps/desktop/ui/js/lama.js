@@ -21,9 +21,7 @@ import {
 import {
   attendreFin,
 } from "./bibliotheque.js";
-import {
-  positionnerPlayhead,
-} from "./pratiquer.js";
+import { positionnerPlayhead } from "./etabli.js";
 
 /* ------------------------------------------------ Lama : l'interprète (Explorer) */
 

@@ -1,4 +1,4 @@
-import "./pratiquer.js"; // l'ordre d'exécution : voir main.js
+import "./creer.js"; // l'ordre d'exécution : voir main.js
 import {
   $, ecoute, invoke,
 } from "./socle.js";

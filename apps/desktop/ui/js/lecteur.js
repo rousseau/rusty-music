@@ -27,11 +27,9 @@ import {
   battementStems,
 } from "./bibliotheque.js";
 import {
-  edition,
-} from "./editer.js";
-import {
-  deplacerLecture, lancerDecompte, oublierStems, poserTete, rampeRGB, rattacherStems,
-} from "./pratiquer.js";
+  deplacerLecture, edition, oublierStems, poserTete, rampeRGB, rattacherStems,
+} from "./etabli.js";
+import { lancerDecompte } from "./pratiquer.js";
 import {
   majBalade,
 } from "./balade.js";
