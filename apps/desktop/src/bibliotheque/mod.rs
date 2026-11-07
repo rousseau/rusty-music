@@ -23,6 +23,7 @@ pub(crate) use scan::*;
 pub(crate) use verifications::*;
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn artists(etat: State<Etat>) -> Result<Vec<ArtistRow>, String> {
     let r = verrou(&etat.lib).artists().map_err(echec);
     tracing::info!(n = r.as_ref().map(Vec::len).unwrap_or(0), "artists");
@@ -30,6 +31,7 @@ pub(crate) fn artists(etat: State<Etat>) -> Result<Vec<ArtistRow>, String> {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn albums(
     etat: State<Etat>,
     artist: Option<String>,
@@ -69,6 +71,7 @@ pub(crate) fn search(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn roots(etat: State<Etat>) -> Result<Vec<RootRow>, String> {
     verrou(&etat.lib).roots().map_err(echec)
 }
@@ -77,6 +80,7 @@ pub(crate) fn roots(etat: State<Etat>) -> Result<Vec<RootRow>, String> {
 /// trois requêtes d'agrégation sur la base déjà là, rien à mesurer ni à
 /// décoder. Rejouée à chaque entrée dans le mode plutôt que mise en cache :
 /// à 27 000 morceaux, l'agrégation reste sous la seconde.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(Clone, serde::Serialize)]
 pub(crate) struct StatsBibliotheque {
     total: i64,
@@ -93,6 +97,7 @@ pub(crate) struct StatsBibliotheque {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn library_stats(etat: State<Etat>) -> Result<StatsBibliotheque, String> {
     let lib = verrou(&etat.lib);
     Ok(StatsBibliotheque {

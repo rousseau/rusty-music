@@ -452,6 +452,7 @@ impl Library {
 }
 
 /// Un artiste et son volume dans la bibliothèque.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ArtistRow {
     pub name: String,
@@ -464,6 +465,7 @@ pub struct ArtistRow {
 
 /// Un album et son volume. `artist` est l'artiste d'album quand il est
 /// renseigné, sinon celui de la piste — c'est ce qui tient les compilations.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AlbumRow {
     pub name: String,
@@ -527,6 +529,7 @@ fn album_row_from_row(r: &rusqlite::Row) -> rusqlite::Result<AlbumRow> {
 }
 
 /// Une racine surveillée, telle qu'affichée dans les réglages.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RootRow {
     pub path: String,

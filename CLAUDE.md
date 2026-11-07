@@ -100,7 +100,8 @@ Build : Rust 1.82+, un compilateur C, les deux tours de CLAP dans `models/`
 Vérification avant push : `./scripts/verifier.sh` (fmt, deny, clippy, test,
 tests de fumée de l'interface `apps/desktop/ui-tests/`), la même que la CI
 GitHub. Une commande Tauri qui change de forme : mettre à jour
-`apps/desktop/ui-tests/fixtures.js`. Un changement de schéma : une nouvelle
+`apps/desktop/ui-tests/fixtures.js` (contrôlé contre les types Rust pour les
+commandes de `types_commandes.rs` ; commiter `ui-tests/types/commandes.ts`). Un changement de schéma : une nouvelle
 migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
 
 ## Index des documents

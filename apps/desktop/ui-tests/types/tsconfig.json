@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "types": [],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": { "@tauri-apps/api/core": ["./tauri-api.d.ts"] }
+  },
+  "files": ["controle.ts"]
+}

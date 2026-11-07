@@ -519,6 +519,7 @@ pub struct VerifPochette {
 /// qui déborde par le haut tombe dans `hors_gamme`, ce qui manque dans
 /// `sans_valeur` — deux absences de nature différente qu'il ne faut pas
 /// confondre dans une même barre.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Histogramme {
     pub min: f64,

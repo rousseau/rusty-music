@@ -29,3 +29,10 @@ rodio.workspace     = true
 ebur128.workspace   = true
 sha2.workspace      = true
 image.workspace     = true
+# Essai C4 (synthèse de novembre, O7) : les types que renvoient les commandes
+# Tauri, exportés en TypeScript pour contrôler les réponses figées des tests
+# d'interface. Activée par les seuls tests du bureau.
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
+
+[features]
+specta = ["dep:specta"]

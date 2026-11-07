@@ -622,6 +622,7 @@ pub(crate) fn oublier_derives_des_stems(dossier: &Path, gardes: &[PathBuf]) {
 }
 
 /// Ce que l'interface doit savoir d'une variante avant d'en proposer le bouton.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct VarianteDispo {
     nom: &'static str,
@@ -633,6 +634,7 @@ pub(crate) struct VarianteDispo {
 /// Les variantes de séparation et leur disponibilité locale — pour annoncer le
 /// téléchargement **avant** le clic, comme l'analyse annonce son coût.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn demix_variantes() -> Vec<VarianteDispo> {
     use rusty_music_editor::Variante;
     [

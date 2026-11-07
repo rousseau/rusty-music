@@ -47,6 +47,8 @@ mod pratiquer;
 mod systeme;
 mod systeme_media;
 mod tuiles;
+#[cfg(test)]
+mod types_commandes;
 mod valise;
 mod wifi;
 

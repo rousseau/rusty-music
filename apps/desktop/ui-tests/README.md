@@ -13,6 +13,7 @@ SONDE=1 npx playwright test   # liste, par test, les commandes sans réponse fig
 |---|---|
 | `faux-tauri.js` | `invoke`, `event.listen`, `dialog`, `opener` simulés ; note chaque appel dans `window.__APPELS__` |
 | `fixtures.js` | réponses figées, sur une bibliothèque fictive (deux artistes, trois albums) ; formes recopiées des types Rust |
+| `types/` | les types des commandes contrôlées, exportés de Rust (`commandes.ts`), et leur confrontation à `fixtures.js` (`controle.ts`, `npm run types`) |
 | `outils.js` | sert `../ui/` depuis le disque (`page.route`, pas de serveur), coupe le réseau, injecte faux Tauri et réponses |
 | `fumee.spec.js` | démarrage, lecture d'un album, chaque mode, Pratiquer et Créer avec quatre stems factices, palette ⌘K, filtres qui estompent, thème |
 | `captures.spec.js` | **pas un test** : captures d'écran des deux thèmes sur `collection-fictive.js` (artistes et albums inventés, pochettes engendrées), vers `docs/images/` ; seulement par `npm run captures` (`CAPTURES=1`) |
@@ -25,6 +26,15 @@ Un test échoue sur **toute** erreur JavaScript : exception non rattrapée,
 le supporter, et `SONDE=1` dit lesquelles manquent.
 
 **Quand une commande Tauri change de forme**, mettre à jour `fixtures.js` :
-ces tests ne voient que ce que les réponses figées leur montrent. Ils ne
+ces tests ne voient que ce que les réponses figées leur montrent. Pour les
+commandes **contrôlées**, c'est vérifié : le test Rust `types_commandes`
+(`apps/desktop/src/types_commandes.rs`, par `tauri-specta`) écrit leurs
+types dans `types/commandes.ts`, à commiter avec le changement ; `npm run
+types` confronte `fixtures.js` à ces types (champ renommé ou de mauvais type,
+réponse absente ; un champ en trop dans `fixtures.js` passe encore). Pour
+contrôler une commande de plus : `#[cfg_attr(test, specta::specta)]` sous son
+`#[tauri::command]`, `#[cfg_attr(test, derive(specta::Type))]` sur les types
+qu'elle renvoie (`feature = "specta"` dans `core`), et son nom dans
+`collect_commands!`. Ils ne
 vérifient ni le moteur ni la mise en page (pour celle-ci :
 `scripts/audit-interface.sh`).

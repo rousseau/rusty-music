@@ -25,9 +25,12 @@ for e in "${etapes[@]}"; do
     clippy) cargo clippy --workspace --all-targets ${options[@]+"${options[@]}"} -- -D warnings ;;
     test)   cargo test --workspace ${options[@]+"${options[@]}"} ;;
     fumee)
-      # Chrome du système ; `npm ci` seulement la première fois.
+      # Chrome du système ; `npm ci` seulement la première fois. D'abord les
+      # réponses figées contre les types des commandes (`types/`, régénérés
+      # par l'étape `test`), puis les tests eux-mêmes.
       ( cd apps/desktop/ui-tests
-        [ -d node_modules ] || npm ci --no-audit --no-fund
+        [ -x node_modules/.bin/tsc ] || npm ci --no-audit --no-fund
+        npm run --silent types
         npx playwright test ) ;;
     *)      echo "étape inconnue : $e" >&2; exit 2 ;;
   esac

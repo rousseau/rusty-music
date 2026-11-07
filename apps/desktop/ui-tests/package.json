@@ -6,9 +6,11 @@
   "scripts": {
     "test": "playwright test",
     "captures": "CAPTURES=1 playwright test captures",
-    "rails": "playwright test rails"
+    "rails": "playwright test rails",
+    "types": "tsc -p types"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1"
+    "@playwright/test": "1.64.1",
+    "typescript": "5.9.3"
   }
 }

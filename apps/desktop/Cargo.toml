@@ -56,3 +56,13 @@ souvlaki = { version = "0.8", default-features = false }
 # Lama sans Ollama : le modèle de langue intégré (`explorer/modele_local.rs`).
 # Compile llama.cpp (cmake requis) ; activée par `scripts/release.sh`.
 lama-local = ["rusty-music-lama/lama-local"]
+
+# Essai C4 (synthèse de novembre, O7) : `types_commandes.rs` exporte en
+# TypeScript ce que renvoient quelques commandes, pour contrôler les réponses
+# figées des tests d'interface (`ui-tests/fixtures.js`). Tests seulement : le
+# binaire de l'application n'en dépend pas.
+[dev-dependencies]
+rusty-music-core = { path = "../../crates/core", features = ["specta"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "function"] }
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }

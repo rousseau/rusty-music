@@ -202,10 +202,8 @@ const fixtures = {
   },
   // L'aura (P4) : le moteur rend le temps passé à charger les voix, en ms.
   aura: () => 1.5,
-};
 
-// --- familles (numéro, nom, effectif) et carte en nuage de points
-Object.assign(fixtures, {
+  // --- familles (numéro, nom, effectif) et carte en nuage de points
   families: [
     [0, "Essais", 3],
     [1, "Orchestre", 2],
@@ -373,7 +371,7 @@ Object.assign(fixtures, {
     envoi: { en_cours: false, etape: "", faits: 0, total: 0, resultat: null },
     renouvellement: { en_cours: false, ligne: "", resultat: null },
   },
-});
+};
 
 // Les passes de fond, toutes au repos.
 for (const cmd of [

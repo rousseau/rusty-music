@@ -42,6 +42,11 @@ jobs:
         run: cargo clippy --workspace --all-targets --features rusty-music-analysis/sans-modeles -- -D warnings
       - name: Tests
         run: cargo test --workspace --features rusty-music-analysis/sans-modeles
+      # Le test `types_commandes` réécrit les types des commandes contrôlées ;
+      # ils doivent être commités tels quels pour que le job `interface` y
+      # confronte les réponses figées.
+      - name: Types des commandes à jour
+        run: git diff --exit-code apps/desktop/ui-tests/types/commandes.ts
 
   # Licences, avis de sécurité, sources (`deny.toml`). À part : un avis publié
   # du jour ne doit pas masquer le résultat des tests.
@@ -71,4 +76,5 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/ui-tests/package-lock.json
       - run: npm ci
+      - run: npm run types
       - run: npx playwright test
