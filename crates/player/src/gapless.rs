@@ -15,7 +15,7 @@
 //!    encodeurs écrivent : début et durée du segment joué.
 //!
 //! Les MP3 n'ont pas besoin de ce module (`symphonia` lit l'en-tête LAME) ;
-//! l'Opus a le sien dans [`crate::opus`].
+//! l'Opus a le sien dans `rusty_music_core::opus`.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;

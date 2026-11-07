@@ -10,7 +10,6 @@ pub mod db;
 pub mod decode;
 pub mod density;
 pub mod error;
-pub mod gapless;
 pub mod http;
 pub mod lieux;
 pub mod loudness;

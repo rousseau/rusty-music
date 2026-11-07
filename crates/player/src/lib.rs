@@ -19,6 +19,7 @@ use tracing::debug;
 
 pub mod amelioration;
 pub mod aura;
+pub mod gapless;
 pub mod latence;
 pub mod multipiste;
 pub mod spectre;
@@ -134,7 +135,7 @@ fn tampon_traite(
 fn decoder_en_memoire(
     source: Box<dyn rodio::Source + Send>,
     gain_lineaire: f32,
-    rognage: Option<&rusty_music_core::gapless::Rognage>,
+    rognage: Option<&crate::gapless::Rognage>,
 ) -> rodio::buffer::SamplesBuffer {
     let canaux = source.channels().get();
     let taux = source.sample_rate().get();
@@ -147,11 +148,7 @@ fn decoder_en_memoire(
 
 /// Retire les trames d'amorçage et de bourrage d'une piste décodée, **avant**
 /// tout rééchantillonnage : le rognage est exprimé à la fréquence du fichier.
-fn rogner(
-    echantillons: &mut Vec<rodio::Sample>,
-    canaux: usize,
-    r: &rusty_music_core::gapless::Rognage,
-) {
+fn rogner(echantillons: &mut Vec<rodio::Sample>, canaux: usize, r: &crate::gapless::Rognage) {
     let debut = (r.debut * canaux).min(echantillons.len());
     echantillons.drain(..debut);
     if let Some(l) = r.longueur {
@@ -185,7 +182,7 @@ pub fn ouvrir(track: &Path, gain_lineaire: f32) -> Result<Box<dyn rodio::Source 
     })?;
     // Les M4A portent leur retard d'amorçage dans le conteneur, que symphonia
     // n'applique pas ; sans ça, +40 ms de blanc à chaque raccord.
-    let rognage = rusty_music_core::gapless::mp4(track, rodio::Source::sample_rate(&decoder).get());
+    let rognage = crate::gapless::mp4(track, rodio::Source::sample_rate(&decoder).get());
     let tampon = decoder_en_memoire(Box::new(decoder), gain_lineaire, rognage.as_ref());
     debug!(path = %track.display(), "piste décodée en mémoire");
     Ok(Box::new(tampon))

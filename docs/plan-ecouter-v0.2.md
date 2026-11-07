@@ -33,7 +33,7 @@ mesure le blanc ou le saut au raccord. Seuil retenu : 5 ms.
 **Après** : tous les formats à 0,00 ms, aux deux fréquences.
 
 **Corrigé** : `crates/core/src/opus.rs` (troncature à la granule de fin) et
-`crates/core/src/gapless.rs` (lecture d'`iTunSMPB` puis de la liste d'édition
+`crates/player/src/gapless.rs` (lecture d'`iTunSMPB` puis de la liste d'édition
 `elst`, appliquée par `ouvrir` avant le rééchantillonnage). Sur la
 bibliothèque réelle, 280 M4A sur 300 échantillonnés portent l'information
 (retard iTunes, 2 112 trames).
