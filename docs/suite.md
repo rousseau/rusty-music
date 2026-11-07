@@ -115,7 +115,13 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   L'extrait d'une voie au carrefour passe par l'aura, le son principal ne
   baisse plus. À lancer une fois : `rusty-music fenetres` (~45 min), sinon
   l'aura prend la fenêtre centrale des morceaux analysés avant.
-- Restes, dans l'ordre : P5, P8, puis P6.
+- P5, traces et brouillard — fait : chaque pas de balade est gardé en base
+  (migration n° 5, `balade`, `balade_pas`) ; options « Brouillard » et
+  « Sentiers battus » du fond de plan (éteintes par défaut : 98,5 % de la
+  ville est sous le brouillard) ; le voile se lève à chaque écoute par
+  `feature-state`, sans régénérer ; compteur de quartier au survol ; balades
+  passées dans le rail, redessinées d'un clic, rejouées par ▶.
+- Restes, dans l'ordre : P8, puis P6.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

@@ -3102,3 +3102,70 @@ lisibilité. Les corrections sont dans l'interface seulement.
 - **Vérifié** : deux tests de fumée complétés (le libellé du bouton, la voie
   entendue marquée puis démarquée) ; `verifier.sh` vert, 33 tests ; audit
   d'interface : 234 cellules, 0 violation.
+
+## Balade musicale, P5 — 7 nov. 2026
+
+### P5 : traces et brouillard
+
+- **Balades gardées** (migration n° 5, `db/balades.rs`). Deux tables,
+  `balade(id, debut, terrain)` et `balade_pas(balade, rang, morceau,
+  sommet_depart, sommet_arrivee, chemin, choisi, voies)`. Un pas est noté
+  quand son morceau commence (`Balade::arriver`, appelé par le battement) ;
+  le départ est le rang 0. `chemin` liste les sommets de la branche prise.
+  `voies` donne le nombre de voies offertes, pour savoir ce que vaut
+  `choisi` = 0 : la pente prise à un carrefour, ou aucun choix possible.
+  L'identifiant de la balade suit la reprise de session (`Reprise::gardee`).
+  Limite : le chemin du retour à un carrefour (« ← Carrefour précédent »)
+  n'est pas noté, seule la branche qui en repart l'est.
+- **Brouillard par `feature-state`**, avec `promoteId: {"batiments":
+  "morceau"}` : l'attribut `morceau` était déjà dans les tuiles, aucune
+  régénération n'est nécessaire. La raison du choix est dans `carto-ville.md`,
+  « Le brouillard ». `style::poser_traces` pose les couches `brouillard`,
+  `brouillard-point` et `sentiers`, masquées, à la génération et au service
+  d'un style plus ancien. Le moteur émet `ecoute-notee` avec l'identifiant à
+  chaque écoute comptée (`ecouter::suivre_ecoute`), et l'interface lève alors
+  le voile de ce bâtiment.
+- **Sentiers battus** (`sentiers_carte`) : une ligne GeoJSON par arête du
+  graphe de voirie, avec le nombre de pas qui l'ont empruntée. Ils passent sous
+  la voirie, avec une épaisseur de 1,5 + 0,5·n px à z12 et de 6 + 1,5·n px à
+  z17 (plafonnée), et une opacité de 0,3 + 0,1·n (plafond 0,75), dans la
+  teinte du promeneur. Une arête qui n'existe plus dans le graphe (ville
+  réimportée) est ignorée.
+- **Compteur de quartier** : « 4 201 morceaux · 96 % jamais écoutés ». Il
+  apparaît au survol d'un territoire, et en troisième ligne sous un bâtiment
+  survolé. Il est calculé par famille dans l'interface, sur les morceaux
+  logés.
+- **Balades passées** : les six dernières d'au moins deux morceaux, dans le
+  bloc Balade du rail. Un clic redessine la balade en pointillé et la cadre ;
+  ▶ la rejoue comme une file ordinaire (`balade_rejouer`). La liste et les
+  sentiers se rafraîchissent à chaque pas et à l'arrêt.
+- **Mesuré** sur la bibliothèque : 27 657 bâtiments habités, 418 écoutés
+  (715 écoutes). **98,5 % des bâtiments sont sous le brouillard.** Par
+  famille, la part va de 96,0 % à 99,9 %, et aucune famille n'est entièrement
+  voilée. Le voile (papier à 0,72) éteindrait donc la couleur de presque toute
+  la ville. Le brouillard est une option du fond de plan, éteinte par défaut ;
+  les sentiers aussi.
+- **Essai natif** (`RUSTY_MUSIC_ESSAI_BALADE=2087`, `RUSTY_MUSIC_ESSAI_CHOIX=1`,
+  copie des données, son coupé, 4 min) : quatre pas notés, aucun échec
+  d'écriture.
+  - Le rang 0 est le départ, sans chemin.
+  - Le pas 1 est la pente à un carrefour de 3 voies : `choisi` = 0,
+    `voies` = 3.
+  - Le pas 2 n'a pas de carrefour : un seul sommet (même rue), `voies` = 1.
+  - Le pas 3 vient après le retour au carrefour : la voie choisie,
+    `choisi` = 1, repart du sommet du carrefour (11200).
+- **Vérifié** :
+  - quatre tests du cœur (relecture, balade d'un morceau non listée, arêtes
+    comptées une fois par pas et dans les deux sens, écoutés) ;
+  - un test de style (étages, masquage, `promoteId`, pose unique, rien sur
+    le monde fictif) ;
+  - deux tests de fumée : balades passées listées, redessinées et rejouées ;
+    brouillard et sentiers montrés, voile levé par `ecoute-notee` ;
+  - `verifier.sh` vert, 35 tests ; `audit-interface.sh` : 234 cellules,
+    0 violation.
+- **Non vérifié** :
+  - le voile et les sentiers à l'œil dans la webview native : l'audit mesure
+    le gabarit, pas la carte voilée ;
+  - les sentiers sur la vraie base, où aucune balade n'avait encore été
+    gardée.
+
