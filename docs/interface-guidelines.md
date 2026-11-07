@@ -252,7 +252,8 @@ l'application, lancée en mode d'essai sur une copie de la base, parcourt écran
 fenêtre (960×620, 1 400×900, 1 920×1080) et contrôle G1 jetons, G2 symétrie des
 marges, G3 absence de débordement, G4 aucun contrôle recouvert, G5 repère A–Z
 réservé à l'Écoute (et, depuis le 1ᵉʳ novembre 2026, G6 typographie et G7
-écritures, Règle 11 ; le contraste des deux thèmes en tête, Règle 6). À lancer
+écritures, Règle 11 ; le contraste des deux thèmes en tête, Règle 6 ; depuis
+le 7 novembre, G8 hauteur du rail, Règle 13). À lancer
 après toute modification de la mise en page.
 
 ## Règle de typographie — mesurée, pas regardée
@@ -312,16 +313,59 @@ audit complet a relevé deux défauts que les maquettes ne montraient pas : un
 l'en-tête d'Écouter qui débordait de 5 px à 960 px sous WebKit (il passe à la
 ligne). Ensuite : **198 cellules, 0 violation**.
 
+## Règles de place — à quoi sert chaque zone, et combien elle tient
+
+Proposées par `synthese-novembre-2026.md` (§ 2.4) et écrites le 7 novembre
+2026. Leur mise en œuvre (désencombrer le rail) attend les décisions du § 2.5 ;
+la Règle 13 se mesure dès maintenant.
+
+### 12. Une zone, un rôle
+
+- **Le rail dit où je suis et ce que je regarde.** On y trouve la navigation,
+  puis les réglages de la *vue* : filtrer, affichage, années, couleurs,
+  familles. On n'y met pas d'outil qui agit sur un objet, pas de réglage
+  d'application, pas d'aide de plus d'une ligne, pas de mention légale.
+- **Le centre porte l'objet, et les commandes qui s'y posent** : zoom,
+  calques, aura, chemin, bandeau de balade, carrefour. C'est la convention de
+  toute carte en ligne, et c'est déjà celle de l'aura et de la balade.
+- **L'inspecteur porte ce qui est choisi ou ce qui joue**, et ce qu'on peut
+  en faire.
+- **Le bas porte le temps** : le transport, et la barre de l'établi quand des
+  stems ont la main.
+- **Une aide de plus d'une ligne** vit dans l'état vide du centre, ou derrière
+  un « ? ». **Une mention de licence** vit dans « À propos » et au moment du
+  téléchargement.
+
+Ce que chaque écran montre de ces zones (blocs du rail, contrôles de l'en-tête,
+vues du centre, bloc du stem dans l'inspecteur, barre de l'établi) est déclaré
+en un seul endroit : la table de `apps/desktop/ui/js/ecrans.js`, que
+`basculerMode` applique. Un élément y est soit toujours là dans un écran, soit
+là selon l'état de l'écran (la fonction qui gère cet état le *demande*), et
+masqué partout ailleurs. Ajouter un bloc, c'est d'abord lui donner sa ligne
+dans la table ; le test de fumée « chaque écran montre ce que dit sa table »
+la vérifie écran par écran.
+
+### 13. Le rail tient dans la fenêtre
+
+À 1 400 × 900, avec les douze familles, ce que le rail montre sans geste tient
+dans sa hauteur ; un `<details>` fermé ne compte que pour son titre.
+
+**Vérifiée** par G8 dans `scripts/audit-interface.sh` (`audit.js`) : à la
+fenêtre de 1 400 × 900, le bas du dernier élément visible du rail, compté
+depuis le haut de son contenu, ne dépasse pas la hauteur visible du rail.
+L'audit tourne sur une copie de la vraie bibliothèque, qui a ses douze
+familles.
+
 ## Principes généraux
 
-Les onze règles ne couvrent pas tous les cas. Deux principes tranchent le
+Les treize règles ne couvrent pas tous les cas. Deux principes tranchent le
 reste :
 
 - **Cohérence et standards (Nielsen).** L'utilisateur ne doit jamais se
   demander si des mots, des situations ou des actions différentes signifient
   la même chose. Un bouton « régler » qui ouvre un tiroir dans Créer et un
   bouton « régler » qui bascule un état ailleurs sont la même faute, même si
-  aucune des onze règles ne la nomme explicitement. Face à un cas nouveau : la
+  aucune des treize règles ne la nomme explicitement. Face à un cas nouveau : la
   question n'est pas « qu'est-ce qui est joli ici » mais « qu'est-ce que ce
   mot, ce geste, cette couleur signifient déjà ailleurs dans l'application ».
 - **Divulgation progressive.** Montrer seulement ce qui est nécessaire à
@@ -660,8 +704,13 @@ terminé — dans n'importe lequel des écrans du rail :
 11. **Typographie** — une taille nouvelle est-elle l'un des jetons `--t-*`
     (rien sous 12 px), une graisse 400/500/600 ? Un nom joint dans une chaîne
     passe-t-il par `isoler()` ?
+12. **Place** — chaque nouvel élément est-il dans la zone de son rôle (le rail
+    pour la vue, le centre pour l'objet et ses outils, l'inspecteur pour ce
+    qui est choisi, le bas pour le temps), avec sa ligne dans la table de
+    `js/ecrans.js` ? Le rail tient-il encore à 1 400 × 900 (G8 de
+    `scripts/audit-interface.sh`) ?
 
-Et le principe de dernier recours : si aucune des onze règles ne tranche,
+Et le principe de dernier recours : si aucune des treize règles ne tranche,
 qu'est-ce que ce mot, ce geste ou cette couleur signifient déjà ailleurs dans
 l'application — et l'écran en cours le respecte-t-il ?
 

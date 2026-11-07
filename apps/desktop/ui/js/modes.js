@@ -1,6 +1,6 @@
 import "./fond-de-plan.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, enStems, fileAttente, invoke, navigation, remonter, vue, vueEnGrille,
+  $, ecoute, enStems, fileAttente, invoke, navigation, remonter, vue,
 } from "./socle.js";
 import {
   chargerPopulariteFraicheur,
@@ -19,7 +19,7 @@ import {
   dessinerCarte, majVisibiliteIntervalleAnnees, tracerRouteSurCarte,
 } from "./maplibre.js";
 import {
-  chargerFamillesParAlbum, dessinerFamillesEcoute, majBarreTri, rafraichirGrille,
+  chargerFamillesParAlbum, dessinerFamillesEcoute, rafraichirGrille,
 } from "./ecouter-familles.js";
 import {
   chargerCarte, majAffichageAnneau, majAffichageTemps, majRailExplorer, poserModeChemin,
@@ -44,6 +44,7 @@ import {
 } from "./pratiquer.js";
 import { lecture } from "./etat-lecture.js";
 import { choisirTheme, themeChoisi } from "./theme.js";
+import { appliquerEcran } from "./ecrans.js";
 
 /* ---------------------------------------------------------- modes */
 
@@ -65,11 +66,6 @@ async function basculerMode(mode) {
     b.classList.toggle("mode--actif", b.dataset.mode === mode),
   );
   navigation.mode = mode;
-  // Le mode courant, lisible par la feuille de style : le repère A–Z (propre aux
-  // listes de l'Écoute) s'y masque par une règle CSS, que le code asynchrone qui
-  // réaffiche `#index-alpha` (rendu de la grille, familles chargées…) ne peut
-  // plus contourner.
-  document.body.dataset.mode = mode;
   majVisibiliteIntervalleAnnees();
   if (editer) {
     edition.usage = mode;
@@ -79,70 +75,20 @@ async function basculerMode(mode) {
   // Entrer dans Pratiquer ou Créer avec des stems déjà affichés doit les rendre
   // audibles : c'est ce qu'on vient y faire.
   if (editer) prendreLaMain().catch((e) => remonter(e, "stems"));
-  // Explorer a deux centres : la carte (nuage, carte, temps, anneau — un canevas)
-  // et le Lama (le panneau dédié à l'interprète).
+  // Ce que l'écran montre (blocs du rail, contrôles de l'en-tête, vues du
+  // centre) : la table de `ecrans.js`, appliquée ici ; les fonctions d'état
+  // de chaque écran y demandent ensuite ce qui dépend de leur état.
   const enLama = explorer && carte.affichage === "lama";
-  $("carte-vue").hidden = !explorer || enLama;
-  $("lama-vue").hidden = !enLama;
-  $("bibliotheque-vue").hidden = !bibliotheque;
-  $("decouvrir-vue").hidden = !decouvrir;
-  $("valise-vue").hidden = !valise;
-  $("bloc-valise").hidden = !valise;
+  appliquerEcran();
   if (!valise) arreterSuiviValise();
-  $("liste").hidden = explorer || bibliotheque || decouvrir || valise || vueEnGrille();
-  $("grille").hidden = explorer || bibliotheque || decouvrir || valise || !vueEnGrille();
-  // Propre à l'Écoute : les branches Explorer/Bibliothèque/Découvrir
-  // ci-dessous ne rappellent pas `poser` (qui le masquerait sinon) — sans
-  // cette ligne, le bandeau restait affiché en quittant l'artiste consulté.
+  // Le bandeau « autour de cet artiste » suit l'artiste consulté dans
+  // Écouter : Pratiquer et Créer reprennent le navigateur, pas ce bandeau.
+  // Revenir à l'Écoute le restaure (`dernierArtisteOuvert`, plus bas).
   if (mode !== "ecoute") masquerAutourArtiste();
-  // L'ordre de la grille d'albums n'existe qu'en Écoute : `poser` le rétablit
-  // en y revenant, mais ne court pas pour les autres modes.
-  majBarreTri(mode !== "ecoute");
-  $("retour").hidden = explorer || bibliotheque || decouvrir || valise || vue.retour === null;
-  // Le repère A–Z est celui des listes d'artistes et d'albums de l'Écoute :
-  // resté affiché en passant à Explorer, il se dessinait par-dessus la carte
-  // et le Lama, dans la marge de droite — qui paraissait alors plus étroite que
-  // celle de gauche. `poser` le rétablit en revenant à l'Écoute.
-  $("index-alpha").hidden = $("index-alpha").hidden || explorer || bibliotheque || decouvrir || valise;
-  $("index-annees").hidden = $("index-annees").hidden || explorer || bibliotheque || decouvrir || valise;
-  // « Choisir l'édition… » appartient aux pistes d'un album ouvert en Écouter :
-  // posé par `poser`, il restait dans l'en-tête des autres écrans. `poser` le
-  // rétablit en revenant à l'Écoute.
-  if (mode !== "ecoute") $("choisir-edition").hidden = true;
-  $("bloc-vue-lib").hidden = explorer || editer || bibliotheque || decouvrir || valise;
-  // « Filtrer » estompe ce qui est affiché — la carte en Explorer, la grille ou
-  // la liste en Écouter, en Pratiquer et en Créer. Bibliothèque, Découvrir et Valise n'ont
-  // rien qu'il filtrerait : masqué (la palette, ⌘K, reste partout).
-  // (`majRailExplorer` cache aussi ce champ dans le Lama, `majEtatEditer` en
-  // Pratiquer et Créer hors de l'état « choisir ».)
-  $("bloc-chercher").hidden = bibliotheque || decouvrir || valise || enLama;
-  $("bloc-colorer").hidden = !explorer;
-  $("bloc-demix").hidden = !editer;
-  if (!editer) {
-    $("bloc-usage").hidden = true;
-    $("bloc-partitions").hidden = true;
-    cacherPartition();
-  }
-  $("bloc-chemin").hidden = !explorer;
-  // Le champ d'intention vit dans le panneau Lama (`#lama-vue`) : il n'est
-  // visible qu'avec lui, plus sur les quatre autres affichages où il n'avait
-  // aucun lien avec ce qu'on y voyait.
+  // Le rail d'Explorer selon l'affichage : Lama ou carte, familles, chemin.
   majRailExplorer();
-  // Le filtre par famille de l'Écoute : `majBlocFamillesEcoute` le rallume si
-  // la grille d'albums est à l'écran et la carte calculée.
-  $("bloc-familles-ecoute").hidden = true;
-  // Idem pour le filtre par famille de Découvrir (`majBlocFamillesDecouvrir`).
-  if (!decouvrir) $("bloc-familles-decouvrir").hidden = true;
-  $("bloc-decouvrir").hidden = !decouvrir;
-  // La carte de séparation, l'établi et la barre d'outils des stems : `majEtatEditer`
-  // en décide selon l'avancement (`docs/ui-spec-editeur.md`). Hors Pratiquer et
-  // Créer, tout est masqué.
   if (!editer) {
-    $("editer-separer").hidden = true;
-    $("editer-etabli").hidden = true;
-    $("dock").hidden = true;
-    $("bloc-stem").hidden = true;
-    $("editer-candidat").hidden = true;
+    cacherPartition();
   } else {
     // Entrer dans le mode : on repart du sélecteur (ou de l'établi si des
     // stems sont déjà chargés — `majEtatEditer` le voit).

@@ -313,6 +313,18 @@ Object.assign(fixtures, {
     albums: ALBUMS.map((a, i) => ({ id: i + 1, name: a.name, artist: a.artist, famille: i < 2 ? 0 : 1, famille_secondaire: null, annee: a.year })),
     arcs: [],
   },
+  // L'anneau du premier album (`AnneauVue`), quel que soit l'album demandé :
+  // les deux autres pour voisins, postérieurs.
+  album_ring: (() => {
+    const noeud = (a, i) => ({
+      id: String(i + 1), name: a.name, artist: a.artist, famille: i < 2 ? 0 : 1, famille_secondaire: null,
+      path: null, duree_ms: 600000, annee: a.year,
+    });
+    return {
+      focal: noeud(ALBUMS[0], 0),
+      voisins: ALBUMS.slice(1).map((a, i) => ({ ...noeud(a, i + 1), avant: false, distance: 0.1 * (i + 1) })),
+    };
+  })(),
   // Réglages neutres : le moteur rend les chemins d'origine sans calcul.
   start_etirer: (a) => ({ en_cours: false, faits: 0, total: 0, stems: a.stems, erreur: null }),
   stems_transport: (a, e) => {

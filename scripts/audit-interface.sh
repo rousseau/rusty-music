@@ -117,5 +117,18 @@ for ecran, constats in par_ecran.items():
     print()
 if not total:
     print("Gabarit cohérent : aucune violation.")
+
+# G8 (Règle 13) : la hauteur du rail de chaque écran, qu'il tienne ou non —
+# la mesure dont part le désencombrement.
+rails = {}
+for c in cellules:
+    r = c["mesures"].get("rail")
+    if r and c["etat"] == "base" and c["theme"] == "sombre":
+        rails[c["ecran"]] = (r, c["mesures"].get("familles"))
+if rails:
+    fam = {f for _, f in rails.values()}
+    print(f"\nRail à 1 400 × 900 (G8), {'/'.join(map(str, sorted(fam)))} familles : contenu / hauteur, dépassement")
+    for ecran, ((bas, haut), _) in rails.items():
+        print(f"   {ecran:<24} {bas:>5} / {haut} px   {'+' + str(bas - haut) if bas > haut else 'tient'}")
 sys.exit(1 if total else 0)
 PY

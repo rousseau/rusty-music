@@ -3370,3 +3370,74 @@ avec son test de fumée (`fumee.spec.js`, préfixe « I1 » à « I10 »).
   récentes. Un `touch` des sources a suffi. À retenir : un worktree de
   vérification prend son propre `CARGO_TARGET_DIR`, ou l'on touche les
   sources au retour.
+
+## Interface, B2-B3 : la table des écrans, Règles 12 et 13, G8 — 7 nov. 2026
+
+**B2, la table des écrans** (`synthese-novembre-2026.md`, O2). `basculerMode`
+tenait 26 affectations `hidden` au cas par cas, et chaque fonction d'état les
+siennes ; quatre fuites en sont venues (bandeau d'artiste, repère A–Z, tri,
+I1). Désormais :
+
+- `js/ecrans.js` déclare, écran par écran, les blocs du rail, les contrôles
+  de l'en-tête, les vues du centre, le bloc du stem dans l'inspecteur et la
+  barre de l'établi : `TOUJOURS` (là dès que l'écran l'est) ou `SELON` (là
+  selon l'état de l'écran). Une seule fonction écrit leur `hidden`.
+  `basculerMode` applique la table (`appliquerEcran`) ; tout élément absent
+  de l'écran est masqué.
+- Les fonctions d'état (`poser`, `majIndexLateraux`, le bandeau d'artiste,
+  `majBarreTri`, `majEtatEditer`, `majUsage`, `majBlocPartitions`,
+  `majInspecteurStem`, `majRailExplorer`, les deux blocs de familles) ne
+  touchent plus à ces éléments : elles les *demandent* pour l'écran courant
+  (`demander`), et la table décide. Les gardes « hors Écoute » qu'elles
+  portaient disparaissent, comme la règle CSS `body[data-mode="explorer"]
+  .index-alpha`, qui rattrapait une fuite que la table rend impossible.
+- Le bloc « Chemin » se décide avec le reste du rail d'Explorer
+  (`majRailExplorer`), plus au chargement de la carte.
+- Test de fumée « chaque écran montre ce que dit sa table » : un album
+  ouvert, des stems chargés, puis Nuage, Lama, Anneau, Pratiquer, Créer,
+  Découvrir, Valise, Bibliothèque, Écouter ; à chaque écran, aucun élément
+  d'un autre écran n'est visible et chaque `TOUJOURS` l'est. Contre-épreuve :
+  la table ignorée, le test relève `retour`, `liste` et `choisir-edition`
+  hors de leur écran.
+- Passer par l'Anneau pendant une lecture a montré que `fixtures.js` n'avait
+  pas `album_ring` (l'Anneau du suivi de lecture tombait sur `null`) : ajouté,
+  à la forme d'`AnneauVue`.
+- Aucun changement visible : l'audit ne relève aucune violation G1 à G7.
+
+**B3, Règles 12 et 13.** Écrites dans `interface-guidelines.md` telles que
+proposées au § 2.4 (« Une zone, un rôle » ; « Le rail tient dans la
+fenêtre »), avec la ligne 12 de la checklist. La Règle 12 renvoie à la table
+de `ecrans.js`.
+
+**G8** (`audit.js`) : à 1 400 × 900, le bas du dernier élément visible du
+rail, compté depuis le haut de son contenu, face à la hauteur visible du
+rail (804 px ; la fenêtre de 900 px en donne 868 à la page). L'audit tourne
+sur une copie de la vraie bibliothèque, qui a ses 12 familles. Le rapport
+de `audit-interface.sh` imprime maintenant la hauteur de chaque rail, qu'il
+tienne ou non. Premier relevé, sans rien corriger (B4 attend les décisions
+du § 2.5) :
+
+| Écran | Contenu / hauteur (px) | Dépassement |
+|---|---:|---:|
+| Explorer · Carte + relief | 2 330 / 804 | +1 526 |
+| Explorer · Carte | 2 213 / 804 | +1 409 |
+| Explorer · Nuage | 1 999 / 804 | +1 195 |
+| Explorer · Temps | 1 722 / 804 | +918 |
+| Explorer · Anneau | 1 396 / 804 | +592 |
+| Découvrir | 1 173 / 804 | +369 |
+| Écouter | 956 / 804 | +152 |
+| Valise | 918 à 944 / 804 | +114 à +140 |
+| Pratiquer | 804 / 804 | tient, au ras |
+| Créer | 689 / 804 | tient |
+| Explorer · Lama | 592 / 804 | tient |
+| Bibliothèque | 411 / 804 | tient |
+
+Huit écrans dépassent, dont tous les affichages d'Explorer hors Lama.
+Pratiquer et Créer sont mesurés sans stems (l'audit n'en charge pas) : leur
+établi, avec « Votre partie » et « Partitions », n'est pas dans ce relevé
+(le § 2.2 l'estimait à 1 462 px). Les chiffres d'Explorer dépassent ceux du
+§ 2.2 (Carte : 2 213 px contre ~2 100 estimés) : la balade et le relief
+(P5-P8) ont ajouté au rail depuis.
+
+- **Vérifié** : `verifier.sh` vert, 46 tests de fumée ; `audit-interface.sh` : 252 cellules,
+  48 violations, toutes G8 (8 écrans × 6 cellules à 1 400 × 900).

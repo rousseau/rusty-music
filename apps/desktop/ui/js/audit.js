@@ -46,6 +46,10 @@ import {
  *                 sous 12 px) et l'une de ses trois graisses
  *  G7 écritures   un texte en kana ou en hangul porte `lang` (ja, ko) ; un nom en
  *                 écriture de droite à gauche joint à d'autres textes est isolé
+ *  G8 rail        à 1 400 × 900, ce que le rail montre sans geste tient dans sa
+ *                 hauteur : le bas du dernier élément visible ≤ la hauteur du
+ *                 rail (Règle 13 ; un `<details>` fermé ne compte que pour son
+ *                 titre)
  *
  * Les variables lues dans la feuille de style (`--largeur-rail`…) ont une valeur
  * de repli : l'audit tourne aussi sur un état d'avant les jetons, ce qui
@@ -124,7 +128,7 @@ const DEFILEMENTS_AUDIT = [
   "#en-cours",
 ];
 
-function auditerGabarit(ecran) {
+function auditerGabarit(ecran, { hauteurRail = false } = {}) {
   const viol = [];
   const mes = {};
   const q = (s) => document.querySelector(s);
@@ -267,6 +271,23 @@ function auditerGabarit(ecran) {
   for (const [cle, ou] of typo)
     viol.push({ regle: "G6", detail: `${ou} : ${cle} hors de l'échelle (Règle 11)` });
 
+  // --- G8 hauteur du rail (Règle 13) ------------------------------------------
+  // Le bas du dernier élément visible, compté depuis le haut du contenu (le
+  // défilement du rail ajouté), face à la hauteur visible du rail.
+  const railEl = q(".rail");
+  if (hauteurRail && railEl && ecran !== "en-cours") {
+    const haut = railEl.getBoundingClientRect().top - railEl.scrollTop;
+    let bas = 0;
+    for (const e of railEl.querySelectorAll("*")) {
+      if (!visibleAudit(e) || getComputedStyle(e).position === "fixed") continue;
+      bas = Math.max(bas, e.getBoundingClientRect().bottom - haut);
+    }
+    mes.rail = [Math.round(bas), railEl.clientHeight];
+    mes.familles = carte.familles?.length ?? 0;
+    if (bas > railEl.clientHeight + tol)
+      viol.push({ regle: "G8", detail: `rail : ${Math.round(bas)} px de contenu pour ${railEl.clientHeight} px de hauteur, ${Math.round(bas - railEl.clientHeight)} de trop` });
+  }
+
   return { violations: viol, mesures: mes };
 }
 
@@ -385,7 +406,7 @@ async function auditerInterface() {
             if (etat === "morceau sélectionné") await selectionner(piste);
           }
           await attendre(250);
-          const { violations, mesures } = auditerGabarit(ecran);
+          const { violations, mesures } = auditerGabarit(ecran, { hauteurRail: w === 1400 });
           cellules++;
           total += violations.length;
           journalCarte("AUDIT " + JSON.stringify({ ecran, etat, theme, fenetre: [innerWidth, innerHeight], violations, mesures }), violations.length ? "warn" : "log");

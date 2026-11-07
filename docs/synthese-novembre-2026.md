@@ -665,8 +665,8 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | A1-A2 consolider | fait : séparation, P5 (code, puis journal), P6, P8, chacun son commit, `verifier.sh` vert à chaque fois | 7 nov. 2026 | `git log` ; `journal.md`, « P5 » |
 | A3 contrat à jour | fait : six modes, bio au centre ✅, sections Pratiquer et Créer, surimpressions de la carte, historique en fin ; aucune règle ajoutée | 7 nov. 2026 | `interface-guidelines.md` |
 | B1 défauts I1-I5, I10 | fait : six corrections, six tests de fumée (45 en tout), audit 252 cellules, 0 violation | 7 nov. 2026 | `journal.md`, « B1 » ; `interface-guidelines.md` |
-| B2 table des écrans | à faire | | |
-| B3 Règles 12-13, G8 | à faire | | |
+| B2 table des écrans | fait : `js/ecrans.js`, une seule fonction écrit `hidden` ; un test de fumée parcourt les écrans ; audit sans violation G1-G7 | 7 nov. 2026 | `journal.md`, « B2-B3 » |
+| B3 Règles 12-13, G8 | fait : règles et checklist écrites ; G8 dans l'audit, 8 écrans sur 13 dépassent à 1 400 × 900 (Carte : +1 409 px) | 7 nov. 2026 | `journal.md`, « B2-B3 » ; `interface-guidelines.md` |
 | B4 désencombrer | après décisions | | |
 | C1 JS | à faire | | |
 | C2 Rust, application | à faire | | |

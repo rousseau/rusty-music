@@ -26,6 +26,7 @@ import {
   reposerBoucle, vitesseEnBpm,
 } from "./editer.js";
 import { lecture, poserStemsCharges, transport } from "./etat-lecture.js";
+import { demander } from "./ecrans.js";
 
 /* ------------------------------------------------ éditer : pratiquer */
 
@@ -409,7 +410,7 @@ function oublierPartitions(id) {
 /// geste qui va avec — Calculer, la jauge pendant le calcul, puis Afficher.
 function majBlocPartitions() {
   const id = edition.source?.id;
-  $("bloc-partitions").hidden = $("bloc-usage").hidden || id === undefined;
+  demander("bloc-partitions", !$("bloc-usage").hidden && id !== undefined);
   if ($("bloc-partitions").hidden) return;
   chargerPartitionsEnCache(id);
   for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]")) {
@@ -867,8 +868,9 @@ function majUsage() {
   const etabli = $("editer-etabli");
   const pratiquer = edition.usage === "pratiquer" && !etabli.hidden;
   // L'usage est le mode du rail (Pratiquer ou Créer) : le bloc ne porte plus
-  // que les réglages de la partie, qui n'ont de sens qu'en Pratiquer.
-  $("bloc-usage").hidden = etabli.hidden || edition.usage !== "pratiquer";
+  // que les réglages de la partie, qui n'ont de sens qu'en Pratiquer (la
+  // table des écrans ne le met pas dans Créer).
+  demander("bloc-usage", !etabli.hidden);
   const instrument = instrumentPratique();
   $("instruments").hidden = edition.usage !== "pratiquer";
   for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
@@ -1517,50 +1519,45 @@ function majEtatEditer() {
         : 1;
   const choisir = etat === 1;
 
-  $("editer-separer").hidden = etat !== 2;
-  $("editer-etabli").hidden = etat !== 3;
-  $("dock").hidden = etat !== 3;
-  $("bloc-stem").hidden = etat !== 3 || !edition.stemSel;
+  demander("editer-separer", etat === 2);
+  demander("editer-etabli", etat === 3);
+  demander("dock", etat === 3);
+  demander("bloc-stem", etat === 3 && !!edition.stemSel);
   // « Filtrer » estompe la grille ou la liste : il n'a plus rien à filtrer
   // une fois le morceau choisi (séparer, établi).
-  $("bloc-chercher").hidden = !choisir;
+  demander("bloc-chercher", choisir);
 
   if (choisir) {
-    // État 1 = le navigateur d'Écoute, tel quel. `poser` masque grille et
-    // liste hors mode Écoute (et les met en page à hauteur nulle) : on les
-    // ré-affiche et on les redessine ici, une fois visibles.
+    // État 1 = le navigateur d'Écoute, tel quel : on montre grille ou liste
+    // et on les redessine ici, une fois visibles.
     const enGrille = vueEnGrille();
-    $("liste").hidden = enGrille;
-    $("grille").hidden = !enGrille;
+    demander("liste", !enGrille);
+    demander("grille", enGrille);
     if (enGrille) {
       ecoute.grilleDernierRang = -1;
       dessinerGrille();
     } else {
       dessiner();
     }
-    $("index-alpha").hidden = !indexAlphaUtile();
-    $("index-annees").hidden = !indexAnneesUtile();
+    demander("index-alpha", indexAlphaUtile());
+    demander("index-annees", indexAnneesUtile());
     $("fil-titre").textContent = vue.titre;
     $("fil-compte").textContent = texteCompte(vue.quoi, vue.lignes);
-    $("retour").hidden = vue.retour === null;
+    demander("retour", vue.retour !== null);
     $("retour").textContent = `← ${vue.retour ? vue.retour.titre : ""}`;
     // Raccourci vers la séparation du morceau en lecture — seulement s'il
     // diffère de la sélection (qui, elle, ouvre directement « séparer »).
     const jouee = fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
     const cand = jouee && jouee.path !== pisteSelectionnee?.path ? jouee : null;
-    $("editer-candidat").hidden = !cand;
+    demander("editer-candidat", !!cand);
     if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
   } else {
-    $("liste").hidden = true;
-    $("grille").hidden = true;
-    $("index-alpha").hidden = true;
-    $("index-annees").hidden = true;
-    $("editer-candidat").hidden = true;
+    for (const id of ["liste", "grille", "index-alpha", "index-annees", "editer-candidat"]) demander(id, false);
     const t = edition.source;
     $("fil-titre").textContent =
       `${etat === 2 ? "Séparer" : "Établi"} — ${txt(t?.title, "?")}`;
     $("fil-compte").textContent = "";
-    $("retour").hidden = false;
+    demander("retour", true);
     $("retour").textContent = "← Choisir un morceau";
   }
 
@@ -1603,7 +1600,7 @@ function majInspecteurStem() {
   const hote = $("insp-stem");
   const s = edition.stems.find((x) => x.nom === edition.stemSel);
   const montrer = !!s && enStems() && edition.stems.length > 0;
-  $("bloc-stem").hidden = !montrer;
+  demander("bloc-stem", montrer);
   if (!montrer) {
     hote.replaceChildren();
     return;

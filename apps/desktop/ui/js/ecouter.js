@@ -44,6 +44,7 @@ import {
   charger,
 } from "./demarrage.js";
 import { lecture } from "./etat-lecture.js";
+import { demander } from "./ecrans.js";
 
 /* --------------------------------------------------- minuteur d'arrêt
  *
@@ -441,11 +442,11 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
     $("fil-titre").textContent = titre;
     $("fil-compte").textContent = texteCompte(quoi, lignes);
   }
-  $("retour").hidden = retour === null;
+  demander("retour", retour !== null);
   $("retour").textContent = `← ${retour ? retour.titre : ""}`;
   // « Choisir l'édition… » : seulement sur les pistes de l'album ouvert.
   if (quoi !== "pistes" || ecoute.albumOuvert?.name !== titre) ecoute.albumOuvert = null;
-  $("choisir-edition").hidden = horsEcoute || !ecoute.albumOuvert;
+  demander("choisir-edition", !!ecoute.albumOuvert);
 
   // Artistes et albums partagent le même geste de premier niveau ; le
   // commutateur du rail suit celui qui a produit la vue affichée, y compris
@@ -458,12 +459,12 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
 
   const enGrille = vueEnGrille(quoi);
   // `charger("albums")` court en fond au démarrage et se termine parfois après
-  // `basculerMode` (mode imposé par `RUSTY_MUSIC_MODE`, ou clic rapide) : on
-  // prépare alors les données sans remontrer grille ni liste.
-  $("liste").hidden = horsEcoute || enGrille;
-  $("grille").hidden = horsEcoute || !enGrille;
+  // `basculerMode` (mode imposé par `RUSTY_MUSIC_MODE`, ou clic rapide) : la
+  // table des écrans (`ecrans.js`) garde alors grille et liste masquées.
+  demander("liste", !enGrille);
+  demander("grille", enGrille);
   // Le choix d'ordre ne concerne que les grilles (albums, artistes) de l'Écoute.
-  majBarreTri(horsEcoute);
+  majBarreTri();
   if (enGrille) {
     // Pas de `preparerGraphe()` ici : la grille est la vue par défaut de
     // l'Écoute, donc ce qu'on construirait à *chaque* lancement de l'appli,
@@ -499,9 +500,8 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
 
   majBlocFamillesEcoute();
 
-  // En Pratiquer ou Créer, `poser` a masqué grille et liste (gate `horsEcoute`) : c'est
-  // `majEtatEditer` qui décide de les ré-afficher, selon l'état du parcours,
-  // et qui les redessine une fois visibles.
+  // En Pratiquer ou Créer, c'est `majEtatEditer` qui décide de grille et
+  // liste, selon l'état du parcours, et qui les redessine une fois visibles.
   if (enStems()) majEtatEditer();
 }
 
@@ -585,8 +585,8 @@ function sauterAuRang(rang) {
 function majIndexLateraux(quoi = vue.quoi) {
   const alpha = indexAlphaUtile(quoi);
   const annees = indexAnneesUtile(quoi);
-  $("index-alpha").hidden = !alpha;
-  $("index-annees").hidden = !annees;
+  demander("index-alpha", alpha);
+  demander("index-annees", annees);
   if (alpha) {
     // Z–A : le repère se lit lui aussi de bas en haut, comme la liste.
     indexAlphaHote.classList.toggle("index-alpha--inverse", sensDe("alpha", quoi) === -1);
@@ -928,7 +928,7 @@ async function ouvrirAlbumsArtiste(artiste, mbid, retour = ecoute.sommet) {
 /// Masque le bandeau « autour de cet artiste » — l'état par défaut de
 /// `poser`, repris à chaque changement de vue.
 function masquerAutourArtiste() {
-  $("autour-artiste").hidden = true;
+  demander("autour-artiste", false);
   $("autour-bio-bloc").hidden = true;
   $("autour-sonore-bloc").hidden = true;
   $("autour-collab-bloc").hidden = true;
@@ -956,7 +956,7 @@ let dernierArtisteOuvert = { nom: null, mbid: null };
 function majAutourArtiste(artiste, mbid) {
   dernierArtisteOuvert = { nom: artiste, mbid: mbid ?? null };
   const jeton = ++autourArtisteJeton;
-  $("autour-artiste").hidden = false;
+  demander("autour-artiste", true);
   centreCorps.classList.add("centre__corps--artiste");
   // `.grille` passe de « bornée par la fenêtre, défilée pour son compte » à
   // « prend toute sa hauteur de contenu » (voir la classe dans le CSS) : son

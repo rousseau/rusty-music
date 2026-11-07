@@ -156,6 +156,36 @@ test("I10 : le décompte de Pratiquer tient sur une ligne dans le rail", async (
   expect(lignes).toEqual([1, 1, 1]);
 });
 
+test("chaque écran montre ce que dit sa table (ecrans.js), rien d'un autre écran", async ({ page }) => {
+  // De quoi peupler les états qui fuyaient : un album ouvert (« Choisir
+  // l'édition… »), des stems chargés (l'établi), le Lama.
+  await page.evaluate(() => localStorage.setItem("mb-contact", "essai@example.org"));
+  await lireUnAlbum(page);
+  await page.locator("#grille .album").first().click();
+  await expect(page.locator("#choisir-edition")).toBeVisible();
+  const parcours = [
+    ["explorer", "points"], ["explorer", "lama"], ["explorer", "anneau"], ["pratiquer"], ["creer"],
+    ["decouvrir"], ["valise"], ["bibliotheque"], ["ecoute"],
+  ];
+  for (const [mode, affichage] of parcours) {
+    await page.click(`button.mode[data-mode="${mode}"]`);
+    if (affichage) await page.click(`[data-affichage="${affichage}"]`);
+    const ecarts = () =>
+      page.evaluate(async (ecran) => {
+        const { ECRANS, TOUJOURS } = await import("./js/ecrans.js");
+        const ecarts = [];
+        for (const id of new Set(Object.values(ECRANS).flatMap(Object.keys))) {
+          const place = ECRANS[ecran][id];
+          const vu = document.getElementById(id).checkVisibility();
+          if (!place && vu) ecarts.push(`${id} affiché hors de son écran`);
+          if (place === TOUJOURS && !vu) ecarts.push(`${id} masqué`);
+        }
+        return ecarts;
+      }, mode);
+    await expect.poll(ecarts, `${mode}${affichage ? ` · ${affichage}` : ""}`).toEqual([]);
+  }
+});
+
 test("le transport suit les stems que le moteur garde", async ({ page }) => {
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="creer"]');

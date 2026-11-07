@@ -756,11 +756,6 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   display: flex; flex-direction: column;
   z-index: 2;
 }
-/* Le repère A–Z n'a de sens que dans les listes de l'Écoute. En Explorer il se
-   dessinait par-dessus la carte et le Lama, dans la marge de droite, qui
-   paraissait alors plus étroite que celle de gauche : masqué par le mode, pas
-   seulement par `hidden` (que le rendu de la grille rétablit après coup). */
-body[data-mode="explorer"] .index-alpha { display: none; }
 /* Repère des années : quatre chiffres, donc plus large que celui des lettres —
    26 px, exactement la gouttière de la grille à sa droite. */
 .index-annees { right: 0; width: 26px; }

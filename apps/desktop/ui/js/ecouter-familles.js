@@ -23,6 +23,7 @@ import {
   chargerFamillesParArtiste, decouverte, dessinerFamillesDecouvrir, filtreFamillesDecouvrir,
   rendreFilDecouvrir,
 } from "./decouvrir.js";
+import { demander } from "./ecrans.js";
 
 /* ------------------------------------------- filtre par famille — mode Écoute
  *
@@ -110,8 +111,8 @@ function rebrasserAlea(lignes) {
 
 /// La barre d'ordre sert aux grilles d'albums et d'artistes du mode Écoute ;
 /// « Année » n'a de sens que pour les albums.
-function majBarreTri(horsEcoute = navigation.mode !== "ecoute") {
-  $("tri-albums").hidden = horsEcoute || !vueEnGrille();
+function majBarreTri() {
+  demander("tri-albums", vueEnGrille());
   // « Année » et « Ajoutés » n'ont de sens que pour les albums.
   document.querySelector('[data-tri="annee"]').hidden = vue.quoi === "artistes";
   document.querySelector('[data-tri="ajoutes"]').hidden = vue.quoi === "artistes";
@@ -182,16 +183,15 @@ async function dessinerFamillesEcoute() {
   $("familles-ecoute-tout").hidden = filtreFamilles.size === 0;
 }
 
-/// Affiche le bloc « Familles » de l'Écoute quand il a un sens : mode Écoute,
-/// grille d'albums à l'écran, et carte déjà calculée (sinon aucune famille à
+/// Affiche le bloc « Familles » de l'Écoute quand il a un sens : grille
+/// d'albums à l'écran, et carte déjà calculée (sinon aucune famille à
 /// proposer).
 function majBlocFamillesEcoute() {
   const utile =
-    navigation.mode === "ecoute" &&
     vue.quoi === "albums" &&
     ecoute.famillesParAlbum &&
     ecoute.famillesParAlbum.size > 0;
-  $("bloc-familles-ecoute").hidden = !utile;
+  demander("bloc-familles-ecoute", utile);
 }
 
 /// Recalcule la grille après un changement de filtre : nouveau compte, repère
@@ -270,7 +270,7 @@ document.querySelectorAll("[data-couleur]").forEach((b) =>
       .forEach((s) => s.classList.toggle("segment--actif", s === b));
     majLegendeContinue();
     // Les familles n'ont de sens qu'en coloration par famille.
-    $("bloc-familles").hidden = carte.couleur !== "famille";
+    demander("bloc-familles", carte.couleur === "famille");
     // Le pavage par territoires (Rust) ne dépend pas de « Colorer par » — il
     // n'y a qu'une seule nappe continue à refaire ici.
     dessinerCarte();

@@ -25,6 +25,7 @@ import {
 } from "./itineraires.js";
 import { majTracesGL } from "./traces.js";
 import { majReliefGL } from "./relief.js";
+import { demander } from "./ecrans.js";
 
 /* ------------------------------------------------------ fond de plan (thème) */
 
@@ -89,17 +90,21 @@ $("carte-pentes").addEventListener("change", (e) => {
 /// affichages retrouvent leurs réglages, chacun avec sa propre logique
 /// (`majAffichageTemps`, `majAffichageAnneau`, `majVisibiliteIntervalleAnnees`).
 function majRailExplorer() {
-  const explorer = navigation.mode === "explorer";
-  const enLama = explorer && carte.affichage === "lama";
+  if (navigation.mode !== "explorer") return;
+  const enLama = carte.affichage === "lama";
   $("reglages-explorer").hidden = enLama;
   // La balade marche sur le nuage et sur la carte, pas sur la frise ni l'anneau.
   $("bloc-balade").hidden = !["points", "carte"].includes(carte.affichage);
-  $("bloc-familles").hidden = !explorer || enLama || carte.couleur !== "famille";
-  $("bloc-chercher").hidden =
-    navigation.mode === "bibliotheque" ||
-    navigation.mode === "decouvrir" ||
-    navigation.mode === "valise" ||
-    enLama;
+  // Explorer a deux centres : la carte (nuage, carte, temps, anneau — un
+  // canevas) et le Lama (le panneau dédié à l'interprète).
+  demander("carte-vue", !enLama);
+  demander("lama-vue", enLama);
+  demander("bloc-familles", !enLama && carte.couleur === "famille");
+  demander("bloc-chercher", !enLama);
+  // L'anneau et le Lama n'ont aucun mode de chemin (voir `MODES_CHEMIN`) :
+  // sans ce repli, le bloc « Chemin » restait affiché — titre, bornes vides
+  // et aide du mode « direct » — alors qu'aucun de ses boutons n'a de sens.
+  demander("bloc-chemin", (MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points).length > 0);
 }
 
 /// Les modes de chemin qui ont un sens dans chaque affichage.
@@ -140,10 +145,7 @@ function majReglagesChemin() {
 /// partie.
 function majModesChemin() {
   const disponibles = MODES_CHEMIN[carte.affichage] || MODES_CHEMIN.points;
-  // L'anneau n'a aucun mode de chemin (voir `MODES_CHEMIN.anneau`) : sans ce
-  // repli, le bloc « Chemin » restait affiché — titre, bornes vides et aide
-  // du mode « direct » — alors qu'aucun de ses boutons n'a de sens ici.
-  $("bloc-chemin").hidden = disponibles.length === 0;
+  // (Le bloc lui-même, masqué sans mode : `majRailExplorer`.)
   document.querySelectorAll("[data-chemin]").forEach((b) => {
     b.hidden = !disponibles.includes(b.dataset.chemin);
   });
@@ -217,8 +219,6 @@ document.querySelectorAll("[data-affichage]").forEach((b) =>
     // redessins de la carte, et la route de la playlist en cours reste intacte
     // pour le jour où l'on revient sur le Nuage ou la Carte.
     const enLama = carte.affichage === "lama";
-    $("carte-vue").hidden = enLama || navigation.mode !== "explorer";
-    $("lama-vue").hidden = !enLama || navigation.mode !== "explorer";
     document
       .querySelectorAll("[data-affichage]")
       .forEach((s) => s.classList.toggle("segment--actif", s === b));

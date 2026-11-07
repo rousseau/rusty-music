@@ -21,6 +21,7 @@ import {
 import {
   attendreFin, dessinerListeVerif, dureeLongue, SECONDES_PAR_ARTISTE,
 } from "./bibliotheque.js";
+import { demander } from "./ecrans.js";
 
 /* ------------------------------------------------------ mode Découvrir */
 
@@ -446,15 +447,14 @@ async function dessinerFamillesDecouvrir() {
   $("familles-decouvrir-tout").hidden = filtreFamillesDecouvrir.size === 0;
 }
 
-/// Affiche le bloc « Familles » de Découvrir quand il a un sens : mode
-/// Découvrir, familles des artistes chargées, et carte déjà calculée.
+/// Affiche le bloc « Familles » de Découvrir quand il a un sens : familles
+/// des artistes chargées, et carte déjà calculée.
 function majBlocFamillesDecouvrir() {
   const utile =
-    navigation.mode === "decouvrir" &&
     decouverte.famillesParArtiste &&
     decouverte.famillesParArtiste.size > 0 &&
     (carte.familles?.length ?? 0) > 0;
-  $("bloc-familles-decouvrir").hidden = !utile;
+  demander("bloc-familles-decouvrir", utile);
 }
 
 $("familles-decouvrir-tout").addEventListener("click", () => {
