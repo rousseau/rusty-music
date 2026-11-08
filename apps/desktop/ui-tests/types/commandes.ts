@@ -92,9 +92,9 @@ export const commands = {
 	 *  secondes sur toute la bibliothèque, pas besoin du fil séparé et du
 	 *  sondage qu'`Analyser` demande.
 	 * 
-	 *  Le nuage n'est redessiné que si la perplexité ou les époques ont changé
-	 *  (`passe::projeter_tout`) : après un changement de vocabulaire, seules
-	 *  les familles bougent.
+	 *  Le nuage n'est redessiné que si la perplexité, les époques ou le pas de
+	 *  t-SNE ont changé (`passe::projeter_tout`) : après un changement de
+	 *  vocabulaire, seules les familles bougent.
 	 */
 	recompute_map: () => __TAURI_INVOKE<RapportCarte>("recompute_map"),
 };
@@ -403,7 +403,7 @@ export type RapportCarte = {
 	empreintes: number,
 	familles: number,
 	/**
-	 *  « refaite » (nouveau dessin : perplexité ou époques changées),
+	 *  « refaite » (nouveau dessin : perplexité, époques ou pas changés),
 	 *  « reprise » (nouveaux morceaux logés) ou « gardee » (nuage inchangé).
 	 */
 	projection: string,

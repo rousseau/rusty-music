@@ -4304,3 +4304,53 @@ que `fixtures.js` garde.
 `specta` de `carto` et `player` (une modification de l'un d'eux les
 recompile une fois pour `cargo build`, une fois pour `cargo test`, comme
 `core` depuis C4) ; la CI GitHub (rien poussé).
+
+## Explorer, V10 (suite) : le pas ×32 adopté dans `projeter` — 8 nov. 2026
+
+Décision de François (8 nov.) : oui, maintenant. Le pas d'apprentissage de
+t-SNE vaut désormais 32 fois le pas automatique de `bhtsne`
+(`projection::pas_apprentissage` : `max(32 n / 48, 50)`, 18 574 pour
+27 861 morceaux), pour la projection depuis zéro comme pour la reprise D5.
+
+- **Passe « refaite » forcée une fois.** La note de projection
+  (`parametres_carte`) prend une troisième clé, `projection_pas`
+  (`projection::PAS_RETENU` = 32) ; une note sans elle vaut version 1.
+  Trouvé en route : **la base de l'app n'avait aucune note** (aucune
+  projection refaite depuis D5 ; `parametres_carte` ne contient que
+  `familles`), et la règle « sans note, paramètres supposés inchangés »
+  l'aurait laissée au pas d'origine pour toujours. Une base sans note est
+  maintenant refaite elle aussi. Deux tests (`passe.rs`) : une note d'un
+  autre pas refait puis garde ; des points sans note refont et notent 32.
+- **`ECART_REPRISE` réajusté : 10 → 40** (échelle brute au pas ×32 : 31,
+  contre 7,5). **D5 remesuré** (`examples/stabilite_projection.rs` sur une
+  copie de la base de l'app, 27 861 empreintes dont 1 393 ajoutées, ligne
+  « la passe » = `projection::reprendre`) :
+
+  | reprise | médiane des anciens | 9ᵉ décile | conservation | temps |
+  |---|---|---|---|---|
+  | `ECART_REPRISE` 10, pas ×32 | 2,45 % | 4,24 % | 25,9 % | 22,6 s |
+  | **40, pas ×32 (retenu)** | **0,47 %** | **0,86 %** | **30,6 %** | 20,7 s |
+  | 80, pas ×32 | 0,50 % | 0,93 % | 30,6 % | 37,7 s |
+  | 40, pas d'origine | 0,12 % | 0,25 % | 29,3 % | 26,6 s |
+
+  Critère D5 (médiane < 2 %) tenu : 0,47 %. Depuis zéro, les anciens
+  bougent de 33 % (inchangé : t-SNE part du hasard). La reprise au pas
+  d'origine bouge encore moins mais loge moins bien les nouveaux
+  (conservation 29,3 contre 30,6 %) : même pas pour les deux, plus simple.
+  Dérive (trois passes sans ajout) : 0,05 à 0,11 % de la largeur.
+- **Quand l'app installée refera sa carte** (après I3) : le nuage
+  (affichage Points) est redessiné à la première projection, c'est-à-dire
+  au premier « Recalculer la carte » (Bibliothèque, réglages de la carte :
+  « nuage redessiné »), ou au premier « Scanner » (étape 4/7, empreintes)
+  ou « Analyser » d'une racine — pas au démarrage. Le plan de Paris, lui,
+  ne bouge qu'au bouton « Régénérer les tuiles » (`engendrer_tuiles`, qui
+  réécrit aussi `positions.json`) : d'ici là, il garde les adresses de
+  l'ancien nuage. Les deux, l'un après l'autre, font le redessin complet.
+- **Vérifié** : `verifier.sh` vert (50 tests de fumée) ;
+  `audit-interface.sh` rapide sur une copie : 84 cellules, 0 violation
+  (aucune mise en page modifiée).
+
+**Non vérifié** : le redessin dans l'app installée (les données réelles ne
+sont pas touchées ; il se fera chez François après I3) ; une petite
+bibliothèque (< 2 400 morceaux : pas plancher 50, comme avant) ; le relief
+et les captures de la carte (session verrouillée).

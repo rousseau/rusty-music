@@ -31,8 +31,14 @@
 //! départ et l'exagération n'y font rien. La vraie borne de la pureté est
 //! celle de l'empreinte en 512 d : 29,2 % (genre), 49,7 % (famille).
 //! Plusieurs familles y restent plus dispersées que le hasard (Jazz 1,08×,
-//! Classical 1,31×) : aucune projection n'en fera un quartier compact. Le pas
-//! de [`projeter`] n'a pas encore été changé (il redessinerait la carte).
+//! Classical 1,31×) : aucune projection n'en fera un quartier compact.
+//!
+//! **Pas ×32, adopté** (V10, décision du 8 nov. 2026) : balayé jusqu'à ×64,
+//! ×32 donne 29,3 % de conservation, 26,2 % de pureté de genre et 47,7 % de
+//! famille pour le même temps que le pas d'origine ; ×64 n'apporte plus rien
+//! et perd sur la famille. Les familles (calculées sur les empreintes) n'en
+//! changent pas ; le plan de Paris est redessiné une fois, comme par tout
+//! « Recalculer la carte » ([`PAS_RETENU`] force cette passe).
 
 /// Coordonnée d'un morceau sur la carte.
 #[derive(Debug, Clone, Copy)]
@@ -48,6 +54,23 @@ pub fn normaliser(v: &[f32]) -> Vec<f32> {
         return v.to_vec();
     }
     v.iter().map(|x| x / n).collect()
+}
+
+/// Facteur appliqué au pas d'apprentissage automatique de `bhtsne`
+/// (`max(n / 48, 50)`, le choix de scikit-learn).
+const FACTEUR_PAS: f32 = 32.0;
+
+/// Version du pas, notée avec chaque projection faite depuis zéro
+/// (`Library::retenir_projection`) : une base dont la carte a été dessinée
+/// avec un autre pas (ou avant qu'on le note, version 1 : le pas
+/// automatique) la refait une fois (`passe::projeter_tout`).
+pub const PAS_RETENU: u32 = 32;
+
+/// Le pas d'apprentissage de t-SNE pour `n` points : le pas automatique de
+/// `bhtsne` multiplié par [`FACTEUR_PAS`], jamais sous son plancher de 50
+/// (une petite bibliothèque garde un pas modéré).
+pub fn pas_apprentissage(n: usize) -> f32 {
+    (n as f32 * FACTEUR_PAS / 48.0).max(50.0)
 }
 
 /// Projette des empreintes en 2D.
@@ -77,6 +100,7 @@ pub fn projeter(empreintes: &[Vec<f32>], perplexite: f32, epoques: usize) -> Vec
     // Le `2` est la dimension de sortie : la carte.
     let mut tsne: bhtsne::tSNE<f32, Vec<f32>, 2> = bhtsne::tSNE::new(&unites);
     tsne.perplexity(perplexite)
+        .learning_rate(pas_apprentissage(unites.len()))
         .epochs(epoques)
         .barnes_hut(0.5, |a, b| {
             a.iter()
@@ -101,12 +125,15 @@ pub fn projeter(empreintes: &[Vec<f32>], perplexite: f32, epoques: usize) -> Vec
 pub const EPOQUES_REPRISE: usize = 250;
 
 /// Écart-type auquel une reprise ramène les coordonnées cadrées, l'échelle
-/// brute de t-SNE étant perdue au cadrage. Celle de la bibliothèque mesurée
-/// vaut 7,5 ; reprendre au quart déplace 2,4 à 3,2 % et fait tomber la
-/// conservation à 9-10 %, au quadruple le critère tient encore. 10 laisse
-/// de la marge aux bibliothèques plus petites, dont l'échelle brute est
-/// moindre.
-const ECART_REPRISE: f32 = 10.0;
+/// brute de t-SNE étant perdue au cadrage. Au pas ×32, celle de la
+/// bibliothèque mesurée vaut 31 (7,5 au pas automatique, quand cette
+/// constante valait 10). Mesuré (V10, `examples/stabilite_projection.rs`,
+/// 27 861 morceaux dont 5 % ajoutés, reprise au même pas) : à 10, les
+/// anciens bougent de 2,45 % en médiane et la conservation tombe à 25,9 % ;
+/// à 40, 0,47 % et 30,6 % ; à 80, 0,50 % et 30,6 %, en presque deux fois
+/// plus de temps. Une bibliothèque plus petite a une échelle brute moindre :
+/// au-dessus de la sienne, une reprise tient mieux qu'en dessous.
+const ECART_REPRISE: f32 = 40.0;
 
 /// Reprend une projection depuis `depart` (une coordonnée par empreinte, à
 /// n'importe quelle échelle, celle de [`cadrer`] par exemple) au lieu de
@@ -144,6 +171,7 @@ pub fn reprendre(empreintes: &[Vec<f32>], perplexite: f32, depart: &[Point]) -> 
 
     let mut tsne: bhtsne::tSNE<f32, Vec<f32>, 2> = bhtsne::tSNE::new(&unites);
     tsne.perplexity(perplexite)
+        .learning_rate(pas_apprentissage(unites.len()))
         .epochs(EPOQUES_REPRISE)
         .initial_embedding(initial)
         .stop_lying_epoch(0)

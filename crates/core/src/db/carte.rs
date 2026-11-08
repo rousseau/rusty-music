@@ -823,12 +823,13 @@ impl Library {
         Ok(())
     }
 
-    /// Perplexité et époques de la dernière projection depuis zéro, s'il y en
-    /// a une de notée : une projection les reprend tant qu'elles n'ont pas
-    /// changé, et refait le nuage sinon (`analysis::passe::projeter_tout`).
-    /// Gardées dans `parametres_carte`, sous des clés que
-    /// [`Library::parametres_carte`] ne lit pas.
-    pub fn projection_retenue(&self) -> Result<Option<(f32, usize)>> {
+    /// Perplexité, époques et version du pas de la dernière projection depuis
+    /// zéro, s'il y en a une de notée : une projection les reprend tant
+    /// qu'ils n'ont pas changé, et refait le nuage sinon
+    /// (`analysis::passe::projeter_tout`). Gardés dans `parametres_carte`,
+    /// sous des clés que [`Library::parametres_carte`] ne lit pas. Une note
+    /// d'avant V10 n'a pas de pas : version 1, le pas automatique de t-SNE.
+    pub fn projection_retenue(&self) -> Result<Option<(f32, usize, u32)>> {
         let lire = |cle: &str| -> Result<Option<f64>> {
             Ok(self
                 .conn
@@ -841,16 +842,21 @@ impl Library {
         };
         Ok(
             match (lire("projection_perplexite")?, lire("projection_epoques")?) {
-                (Some(p), Some(e)) => Some((p as f32, e as usize)),
+                (Some(p), Some(e)) => Some((
+                    p as f32,
+                    e as usize,
+                    lire("projection_pas")?.map_or(1, |v| v as u32),
+                )),
                 _ => None,
             },
         )
     }
 
     /// Note les paramètres d'une projection faite depuis zéro.
-    pub fn retenir_projection(&self, perplexite: f32, epoques: usize) -> Result<()> {
+    pub fn retenir_projection(&self, perplexite: f32, epoques: usize, pas: u32) -> Result<()> {
         self.set_parametre_carte("projection_perplexite", perplexite as f64)?;
-        self.set_parametre_carte("projection_epoques", epoques as f64)
+        self.set_parametre_carte("projection_epoques", epoques as f64)?;
+        self.set_parametre_carte("projection_pas", pas as f64)
     }
 
     /// Le vocabulaire des familles par genre, dans l'ordre où il a été

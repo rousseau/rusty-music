@@ -338,7 +338,7 @@ pub(crate) fn definir_vocabulaire_familles(
 pub(crate) struct RapportCarte {
     empreintes: usize,
     familles: usize,
-    /// « refaite » (nouveau dessin : perplexité ou époques changées),
+    /// « refaite » (nouveau dessin : perplexité, époques ou pas changés),
     /// « reprise » (nouveaux morceaux logés) ou « gardee » (nuage inchangé).
     projection: &'static str,
 }
@@ -349,9 +349,9 @@ pub(crate) struct RapportCarte {
 /// secondes sur toute la bibliothèque, pas besoin du fil séparé et du
 /// sondage qu'`Analyser` demande.
 ///
-/// Le nuage n'est redessiné que si la perplexité ou les époques ont changé
-/// (`passe::projeter_tout`) : après un changement de vocabulaire, seules
-/// les familles bougent.
+/// Le nuage n'est redessiné que si la perplexité, les époques ou le pas de
+/// t-SNE ont changé (`passe::projeter_tout`) : après un changement de
+/// vocabulaire, seules les familles bougent.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn recompute_map(etat: State<Etat>) -> Result<RapportCarte, String> {

@@ -16,7 +16,7 @@ use tracing::{debug, warn};
 use crate::cluster::kmeans;
 use crate::decode::{fenetres, FENETRES};
 use crate::mel::Mel;
-use crate::projection::{cadrer, placer_nouveaux, projeter, reprendre, Point};
+use crate::projection::{cadrer, placer_nouveaux, projeter, reprendre, Point, PAS_RETENU};
 use crate::Embedder;
 
 /// Nom du modèle, tel qu'inscrit en base. Change avec le modèle : deux jeux
@@ -287,7 +287,8 @@ fn passe_clap(
 /// sans rien de nouveau elle les garde ; avec des nouveaux, elle les pose près
 /// de leurs voisins et reprend t-SNE ([`crate::projection::reprendre`]). Elle
 /// refait tout quand moins de la moitié des morceaux avaient une place, ou
-/// quand la perplexité ou les époques ont changé depuis la dernière
+/// quand la perplexité, les époques ou le pas
+/// ([`crate::projection::PAS_RETENU`]) ont changé depuis la dernière
 /// projection refaite. [`Projection::Refaite`] force un nouveau dessin.
 pub fn projeter_tout(
     lib: &Library,
@@ -318,11 +319,13 @@ pub fn projeter_tout(
         .map(|(id, _)| precedents.get(id).copied())
         .collect();
     let connus = places.iter().filter(|p| p.is_some()).count();
-    // Sans note (base d'avant D5), les paramètres sont supposés inchangés :
-    // la première passe ne redessine pas tout.
-    let memes_parametres = lib
-        .projection_retenue()?
-        .is_none_or(|(p, e)| p == params.perplexite && e == params.epoques);
+    // Une note d'un autre pas redessine une fois. Sans note, ou sans pas
+    // dans la note, la carte a été dessinée avant V10, au pas automatique :
+    // elle est refaite elle aussi (la base de l'app n'avait pas de note,
+    // aucune projection n'ayant été refaite depuis D5).
+    let memes_parametres = lib.projection_retenue()?.is_some_and(|(p, e, pas)| {
+        p == params.perplexite && e == params.epoques && pas == PAS_RETENU
+    });
     rapport.projection =
         if demande == Projection::Refaite || !memes_parametres || connus * 2 < places.len() {
             Projection::Refaite
@@ -336,7 +339,7 @@ pub fn projeter_tout(
         Projection::Refaite => {
             let mut p = projeter(&vecteurs, params.perplexite, params.epoques);
             cadrer(&mut p);
-            lib.retenir_projection(params.perplexite, params.epoques)?;
+            lib.retenir_projection(params.perplexite, params.epoques, PAS_RETENU)?;
             p
         }
         Projection::Reprise => {
@@ -680,6 +683,37 @@ mod tests {
 
         let r = projeter_tout(&lib, Some(3), Projection::Refaite).unwrap();
         assert_eq!(r.projection, Projection::Refaite, "demandé");
+
+        // Une carte dessinée avec un autre pas (d'avant V10 : version 1) est
+        // refaite une fois, puis gardée.
+        lib.set_parametre_carte("projection_pas", 1.0).unwrap();
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "autre pas");
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Gardee);
+    }
+
+    /// Des points en base sans note de projection : la carte date d'avant
+    /// V10, elle est refaite au pas retenu.
+    #[test]
+    fn une_carte_sans_note_est_refaite() {
+        let lib = Library::open_in_memory().unwrap();
+        ajouter(&lib, 0, 60);
+        let maj: Vec<(i64, f32, f32, i64)> = lib
+            .embeddings(MODELE)
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _))| (*id, i as f32 / 60.0, 0.0, 0))
+            .collect();
+        lib.update_map(MODELE, &maj).unwrap();
+        assert!(lib.projection_retenue().unwrap().is_none());
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite);
+        assert_eq!(
+            lib.projection_retenue().unwrap().map(|n| n.2),
+            Some(crate::projection::PAS_RETENU)
+        );
     }
 
     #[test]
