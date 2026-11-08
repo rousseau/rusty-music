@@ -377,7 +377,18 @@ async function auditerInterface() {
     ["bibliotheque", async () => { await basculerMode("bibliotheque"); await attendre(900); }],
     ["en-cours", async () => { await basculerMode("ecoute"); ouvrirEnCours(); await attendre(600); }],
   ];
-  const FENETRES = [[960, 620], [1400, 900], [1920, 1080]];
+  // `RUSTY_AUDIT_RAPIDE`, `RUSTY_AUDIT_ECRANS` : un audit partiel pendant le
+  // travail ; le complet reste la règle avant de pousser.
+  const reglages = await invoke("essai_audit");
+  const retenus = reglages.ecrans.length
+    ? ECRANS.filter(([ecran]) => reglages.ecrans.includes(ecran))
+    : ECRANS;
+  if (reglages.ecrans.length && retenus.length < reglages.ecrans.length) {
+    const connus = ECRANS.map(([e]) => e);
+    const inconnus = reglages.ecrans.filter((e) => !connus.includes(e));
+    throw new Error(`écrans inconnus : ${inconnus.join(", ")} (connus : ${connus.join(", ")})`);
+  }
+  const FENETRES = reglages.rapide ? [[1400, 900]] : [[960, 620], [1400, 900], [1920, 1080]];
   const THEMES = ["sombre", "clair"];
   const piste = carte.points[0];
 
@@ -388,7 +399,7 @@ async function auditerInterface() {
     for (const theme of THEMES) {
       if (theme === "clair") document.documentElement.dataset.theme = "clair";
       else delete document.documentElement.dataset.theme;
-      for (const [ecran, aller] of ECRANS) {
+      for (const [ecran, aller] of retenus) {
         await basculerFile(false);
         fermerEnCours();
         await aller();
@@ -405,6 +416,9 @@ async function auditerInterface() {
           }
           await attendre(250);
           const { violations, mesures } = auditerGabarit(ecran, { hauteurRail: w === 1400 });
+          // Le relief est-il vraiment sur le plan ? Sans tuiles, l'option reste
+          // masquée et la cellule ne mesure que le rail.
+          if (ecran === "explorer:carte+relief") mesures.relief = reliefVu();
           cellules++;
           total += violations.length;
           journalCarte("AUDIT " + JSON.stringify({ ecran, etat, theme, fenetre: [innerWidth, innerHeight], violations, mesures }), violations.length ? "warn" : "log");
@@ -414,7 +428,71 @@ async function auditerInterface() {
   }
   basculerFile(false);
   fermerEnCours();
+  if (reglages.captures) await poserLeRelief(attendre, clic, reliefAudit);
   journalCarte(`AUDIT FIN cellules=${cellules} violations=${total}`, total ? "warn" : "log");
+}
+
+/// L'ombrage et les courbes du relief sont-ils posés et visibles ?
+function reliefVu() {
+  const g = carte.gl;
+  const visible = (c) => !!g?.getLayer(c) && g.getLayoutProperty(c, "visibility") !== "none";
+  return {
+    ombre: visible("relief-ombre"),
+    courbes: visible("courbes"),
+    // Posées dans le style (masquées ou non), et l'option cochée.
+    posees: !!g?.getLayer("relief-ombre"),
+    option: !!$("carte-relief")?.checked,
+  };
+}
+
+/// La lisibilité du plan sous le relief (P6) ne se mesure pas au gabarit : elle
+/// se regarde. La carte est posée, relief allumé, à z12, z14 et z16 sur deux
+/// fonds (le plus clair et le plus sombre). Chaque pose s'annonce au journal
+/// (`AUDIT POSE <nom>`, avec ce qui est visible du relief), et le canevas de
+/// MapLibre, lu une fois les tuiles chargées, est écrit par `essai_capture`.
+/// Seulement sous `RUSTY_AUDIT_CAPTURES` ; rien sans plan de ville réel.
+async function poserLeRelief(attendre, clic, reliefAudit) {
+  await invoke("essai_fenetre", { largeur: 1400, hauteur: 900 });
+  delete document.documentElement.dataset.theme;
+  await basculerMode("explorer");
+  clic("carte");
+  reliefAudit(true);
+  await attendre(2500);
+  if (!reliefVu().ombre) {
+    journalCarte("AUDIT POSE aucune : relief absent du plan");
+    return;
+  }
+  const g = carte.gl;
+  // Les tuiles chargées et dessinées, ou au plus 8 s.
+  const auRepos = () => Promise.race([new Promise((ok) => g.once("idle", ok)), attendre(8000)]);
+  // Lu pendant le rendu, avant que WebGL n'efface le tampon.
+  const lire = () => new Promise((ok) => {
+    g.once("render", () => g.getCanvas().toBlob((b) => ok(b), "image/png"));
+    g.triggerRepaint();
+  });
+  const fond = document.querySelector("#carte-theme .segment--actif")?.dataset.theme;
+  const centre = g.getCenter();
+  for (const theme of ["osm-clair", "nuit"]) {
+    document.querySelector(`#carte-theme [data-theme="${theme}"]`)?.click();
+    await attendre(3000);
+    reliefAudit(true);
+    for (const zoom of [12, 14, 16]) {
+      g.jumpTo({ center: centre, zoom });
+      await attendre(500);
+      await auRepos();
+      const nom = `relief-${theme}-z${zoom}`;
+      const vu = reliefVu();
+      journalCarte(`AUDIT POSE ${nom} ombre=${vu.ombre} courbes=${vu.courbes} posees=${vu.posees} option=${vu.option}`);
+      const image = await lire();
+      if (image) {
+        const png = Array.from(new Uint8Array(await image.arrayBuffer()));
+        await invoke("essai_capture", { nom, png })
+          .catch((e) => journalCarte(`AUDIT POSE ${nom} : capture refusée (${e})`, "warn"));
+      }
+    }
+  }
+  if (fond) document.querySelector(`#carte-theme [data-theme="${fond}"]`)?.click();
+  reliefAudit(false);
 }
 
 export { auditerInterface };

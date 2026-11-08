@@ -13,11 +13,18 @@
 # cellule dans son journal ; ce script les lit, imprime le rapport et sort avec
 # le code 1 s'il y a des violations.
 #
-#   scripts/audit-interface.sh            # ~3 minutes
+#   scripts/audit-interface.sh            # ~4 minutes, 252 cellules : avant de pousser
+#   RUSTY_AUDIT_RAPIDE=1 scripts/audit-interface.sh            # 1 400 × 900 seule, ~1 min
+#   RUSTY_AUDIT_ECRANS=explorer:carte,explorer:carte+relief scripts/audit-interface.sh
 #   RUSTY_DONNEES_SOURCE=/chemin scripts/audit-interface.sh
 #
 # Variables : RUSTY_DONNEES_SOURCE (dossier de données à copier, par défaut celui
-# de l'application sous macOS), RUSTY_AUDIT_DELAI (secondes, 900 par défaut).
+# de l'application sous macOS), RUSTY_AUDIT_DELAI (secondes, 900 par défaut),
+# RUSTY_AUDIT_RAPIDE (une seule fenêtre, 1 400 × 900, celle de G8),
+# RUSTY_AUDIT_ECRANS (écrans retenus, séparés par des virgules, noms de
+# `ECRANS` dans `ui/js/audit.js`), RUSTY_AUDIT_CAPTURES (dossier : poses de la
+# carte sous le relief, à z12, z14, z16 en OSM clair et en Nuit ; l'application
+# y écrit une image lue dans son canevas MapLibre). Les trois se combinent.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -48,6 +55,13 @@ trap nettoyer EXIT
 
 cp "$SOURCE/rusty-music.db" "$TMP/"
 [ -f "$SOURCE/ville-paris.db" ] && cp "$SOURCE/ville-paris.db" "$TMP/" || true
+# Les tuiles aussi : sans elles, ni plan de ville ni relief (P6), et les états
+# « carte » ne mesurent que le rail. Clone APFS (`cp -c`) : instantané, sans
+# place, et l'application peut y écrire (relief à la demande) sans toucher
+# l'original.
+if [ -d "$SOURCE/tuiles" ]; then
+  cp -cR "$SOURCE/tuiles" "$TMP/" 2>/dev/null || cp -R "$SOURCE/tuiles" "$TMP/"
+fi
 
 # Session verrouillée : WebKit tient la fenêtre pour invisible et suspend la
 # page au bout de ~30 s ; l'audit attendrait alors jusqu'au délai, sans un mot.
@@ -84,12 +98,15 @@ until grep -aq "AUDIT FIN\|AUDIT ERREUR" "$LOG"; do
 done
 
 python3 - "$LOG" <<'PY'
-import json, re, sys
+import json, os, re, sys
 from collections import defaultdict
 
 lignes = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in open(sys.argv[1], encoding="utf-8", errors="replace")]
-cellules, erreurs = [], []
+cellules, erreurs, poses = [], [], []
 for l in lignes:
+    p = re.search(r"AUDIT POSE (.*?)\s*$", l)
+    if p:
+        poses.append(p.group(1))
     m = re.search(r"AUDIT (\{.*\})\s*$", l)
     if m:
         cellules.append(json.loads(m.group(1)))
@@ -117,6 +134,16 @@ for ecran, constats in par_ecran.items():
     print()
 if not total:
     print("Gabarit cohérent : aucune violation.")
+
+# Le relief (P6) : vraiment sur le plan dans l'état « carte+relief » ?
+reliefs = [c["mesures"]["relief"] for c in cellules if "relief" in c.get("mesures", {})]
+if reliefs:
+    vus = sum(1 for r in reliefs if r["ombre"] and r["courbes"])
+    print(f"\nRelief (P6) : ombrage et courbes visibles dans {vus} cellules « carte+relief » sur {len(reliefs)}")
+if poses:
+    print(f"Poses de la carte sous le relief : {', '.join(poses)}")
+    if os.environ.get("RUSTY_AUDIT_CAPTURES"):
+        print(f"   images : {os.environ['RUSTY_AUDIT_CAPTURES']}")
 
 # G8 (Règle 13) : la hauteur du rail de chaque écran, qu'il tienne ou non —
 # la mesure dont part le désencombrement.

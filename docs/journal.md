@@ -3743,3 +3743,51 @@ mémoire spatiale).
   `verifier.sh` vert, 48 tests de fumée.
 - **Non vérifié** : la passe réelle sur la base de l'app (la première
   reprise viendra avec la prochaine analyse).
+
+## Balade, D4 : le relief regardé, un rejeu de style réparé — 8 nov. 2026
+
+P6 était fait et commité (e01e98e). Restait son critère « la carte reste
+lisible avec le relief activé (audit) », que l'audit ne voyait pas.
+
+- **L'audit voit le relief.** `audit-interface.sh` clone aussi `tuiles/`
+  (`cp -c`, clone APFS : instantané, sans place) : avant, l'état
+  « carte+relief » ne mesurait que le rail, l'option Relief restant masquée.
+  Chaque cellule « carte+relief » note si l'ombrage et les courbes sont
+  visibles (18 sur 18 dans l'audit complet).
+- **Des poses à regarder** (`RUSTY_AUDIT_CAPTURES=<dossier>`) : la carte,
+  relief allumé, à z12, z14, z16 en OSM clair et en Nuit. L'image est lue
+  dans le canevas de MapLibre une fois les tuiles chargées et écrite par
+  `essai_capture` (commande refusée hors audit). Essayé avant :
+  `screencapture` de l'écran (il prend ce que fait l'utilisateur, pas
+  l'application) puis de la fenêtre seule (image blanche : la webview ne se
+  capture pas de l'extérieur).
+- **Défaut trouvé et réparé.** En passant au fond Nuit, le relief restait
+  masqué, option cochée. Après `setStyle`, `rejouer` attendait
+  `isStyleLoaded()` : les deux `styledata` arrivaient avant la fin du
+  chargement des sources, aucun ne suivait, et **rien n'était rejoué** :
+  relief, mais aussi couleur par famille, filtre, pentes, traces et
+  affichage. `idle` rattrape maintenant le rejeu (`fond-de-plan.js`). Après
+  correction, ombrage et courbes visibles aux six poses.
+- **Ce que montrent les images :**
+  - OSM clair, z14 et z16 : plan lisible, courbes fines et numérotées qui ne
+    gênent ni les rues ni les noms ;
+  - z12, deux fonds : au bord de la zone peuplée, le champ retombe à zéro
+    et les dix niveaux s'y empilent en un anneau serré, qui charge le
+    dessin ;
+  - Nuit : le plan reste lisible, mais le relief y est presque invisible à
+    z14 et z16. Teinte des courbes unique (`TEINTE_COURBES`, brun #9C7C5E)
+    sur fond noir, ombrage brun sans effet sur le noir.
+
+  Ni l'anneau ni la teinte ne sont corrigés : à décider.
+- **Audit plus court** (demandé) : `RUSTY_AUDIT_RAPIDE=1` (1 400 × 900
+  seule, 84 cellules), `RUSTY_AUDIT_ECRANS=a,b` (écrans retenus ; un nom
+  inconnu arrête l'audit en listant les connus) ; les poses ne tournent que
+  sous `RUSTY_AUDIT_CAPTURES`. Un écran en rapide, poses comprises :
+  1 min 40 s, compilation comprise, contre plus de 4 min. L'audit complet
+  reste la règle avant de pousser.
+- **Vérifié** : audit complet, 252 cellules, 0 violation (avant le
+  correctif ; le correctif ne touche pas la mise en page) ; audit rapide
+  après le correctif, 0 violation, relief visible aux six poses ;
+  `verifier.sh` vert.
+- **Non vérifié** : les allures du relief dans une vraie balade (attend
+  l'usage, comme D1).

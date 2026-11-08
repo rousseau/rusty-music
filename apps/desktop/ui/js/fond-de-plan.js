@@ -56,11 +56,17 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
       // caméra ne bouge pas.
       carte.gl.setStyle(style);
       // Les mutations de style au runtime (couleur par famille, isolement,
-      // visibilité des territoires) portaient sur l'ancien style : les rejouer
-      // une fois le nouveau prêt. `setStyle` peut émettre plusieurs `styledata`
-      // avant que le style soit complet — on attend `isStyleLoaded`.
-      const rejouer = () => {
-        if (!carte.gl || !carte.gl.isStyleLoaded()) return;
+      // visibilité des territoires, pentes, traces, relief) portaient sur
+      // l'ancien style : les rejouer une fois le nouveau prêt. `setStyle` peut
+      // émettre plusieurs `styledata` avant que le style soit complet — on
+      // attend `isStyleLoaded`. Mais le dernier `styledata` peut précéder la
+      // fin du chargement des sources, et aucun ne suit : `idle` (style et
+      // tuiles chargés) rattrape alors le rejeu. Mesuré par l'audit (poses du
+      // relief, 8 nov. 2026) : en passant à « Nuit », le relief restait masqué.
+      let rejoue = false;
+      const rejouer = (force) => {
+        if (rejoue || !carte.gl || (force !== true && !carte.gl.isStyleLoaded())) return;
+        rejoue = true;
         carte.gl.off("styledata", rejouer);
         majCouleurGL();
         majFiltreGL();
@@ -71,6 +77,7 @@ document.querySelectorAll("#carte-theme [data-theme]").forEach((b) =>
         poserVignetteCarte(carte.gl.getStyle());
       };
       carte.gl.on("styledata", rejouer);
+      carte.gl.once("idle", () => rejouer(true));
       rejouer();
     } catch (e) {
       remonter(e, "thème de la carte");

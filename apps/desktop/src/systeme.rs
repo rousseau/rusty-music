@@ -42,6 +42,56 @@ pub(crate) fn essai_fenetre(
         .map_err(|e| e.to_string())
 }
 
+/// Ce que l'audit parcourt, lu dans l'environnement (`audit-interface.sh`) :
+/// `RUSTY_AUDIT_RAPIDE` (une seule fenêtre, 1 400 × 900), `RUSTY_AUDIT_ECRANS`
+/// (écrans retenus, séparés par des virgules), `RUSTY_AUDIT_CAPTURES` (poses
+/// de la carte sous le relief, seulement s'il est posé).
+#[derive(serde::Serialize)]
+pub(crate) struct ReglagesAudit {
+    rapide: bool,
+    ecrans: Vec<String>,
+    captures: bool,
+}
+
+#[tauri::command(async)]
+pub(crate) fn essai_audit() -> Result<ReglagesAudit, String> {
+    if !audit_actif() {
+        return Err("essai_audit n'existe que sous RUSTY_MUSIC_AUDIT".into());
+    }
+    let lire = |cle: &str| std::env::var(cle).ok().filter(|v| !v.is_empty());
+    Ok(ReglagesAudit {
+        rapide: lire("RUSTY_AUDIT_RAPIDE").is_some_and(|v| v != "0"),
+        ecrans: lire("RUSTY_AUDIT_ECRANS")
+            .map(|v| {
+                v.split(',')
+                    .map(|e| e.trim().to_string())
+                    .filter(|e| !e.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        captures: lire("RUSTY_AUDIT_CAPTURES").is_some(),
+    })
+}
+
+/// Écrit une capture de la carte faite par l'audit (`audit.js`, poses du relief)
+/// dans `RUSTY_AUDIT_CAPTURES` : la webview ne se capture pas de l'extérieur, la
+/// carte se lit de l'intérieur (canevas MapLibre). Refusé hors audit.
+#[tauri::command(async)]
+pub(crate) fn essai_capture(nom: String, png: Vec<u8>) -> Result<(), String> {
+    if !audit_actif() {
+        return Err("essai_capture n'existe que sous RUSTY_MUSIC_AUDIT".into());
+    }
+    let dossier = std::env::var_os("RUSTY_AUDIT_CAPTURES")
+        .filter(|d| !d.is_empty())
+        .ok_or("RUSTY_AUDIT_CAPTURES n'est pas posé")?;
+    if nom.is_empty() || !nom.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!("nom de capture refusé : {nom}"));
+    }
+    let dossier = PathBuf::from(dossier);
+    std::fs::create_dir_all(&dossier).map_err(|e| e.to_string())?;
+    std::fs::write(dossier.join(format!("{nom}.png")), png).map_err(|e| e.to_string())
+}
+
 /// Le même renvoi pour le reste de l'interface (partition, lecteur) : une
 /// version release n'a pas d'inspecteur du tout.
 #[tauri::command(async)]

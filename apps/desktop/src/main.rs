@@ -1057,6 +1057,8 @@ fn main() {
             lama_telechargement_state,
             essai_lama,
             essai_fenetre,
+            essai_capture,
+            essai_audit,
             voyage,
             selection,
             families,

@@ -109,7 +109,8 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
 À lire avant de toucher à…
 - **toute interface** : `docs/interface-guidelines.md` (contrat de cohérence
   des écrans) ; après une modification de mise en page :
-  `scripts/audit-interface.sh`.
+  `scripts/audit-interface.sh` (pendant le travail : `RUSTY_AUDIT_RAPIDE=1`,
+  `RUSTY_AUDIT_ECRANS=…` ; en tête du script).
 - **Écouter** : `docs/ui-spec-lecteur.md`, `docs/plan-ecouter-v0.2.md`,
   `docs/plan-ecouter-v0.3.md` (idées reprises de Disc Player),
   `docs/amelioration-audio.md` (« E »), `docs/module3-superresolution.md` (« HD »).
