@@ -64,8 +64,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     8 nov. G1 tôt :
     s'il retient une autre empreinte, la carte est à régénérer, D3 et D5 à
     remesurer. G1 commencé le 8 nov. : banc commun
-    (`experiments/banc-empreinte/`) et CLAP mesurés ; reste MuQ-MuLan et
-    CLaMP 3 (poids et audio à poser sur le disque `RUSTY_DEV`), puis
+    (`experiments/banc-empreinte/`), CLAP et MuQ-MuLan mesurés (9 nov.) ;
+    MuQ-MuLan gagne 17 % de pureté de famille mais perd 2,5 % sur le
+    rapport intra / inter : il ne passe pas le critère. Reste CLaMP 3
+    (environnement et WAV prêts sur `RUSTY_DEV`, à lancer à la main), puis
     l'annotation des 30 demandes types par François.
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)

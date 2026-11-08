@@ -50,9 +50,12 @@ cargo run --release -p rusty-music-analysis --example banc_empreinte -- exporter
 cargo run --release -p rusty-music-analysis --example banc_empreinte -- fenetres experiments/banc-empreinte/data $B/fenetres
 # 3. environnement
 uv venv $B/venv --python 3.10 && . $B/venv/bin/activate
-uv pip install torch torchaudio muq
-git clone https://github.com/sanderwood/clamp3 $B/clamp3-code && uv pip install -r $B/clamp3-code/requirements.txt
-export HF_HOME=$B/hf
+export UV_CACHE_DIR=<dossier sur le SSD> UV_LINK_MODE=copy   # voir les pièges
+uv pip install torch torchaudio muq "transformers==4.40.0" "accelerate==0.34.0" \
+  nnAudio==0.3.3 unidecode samplings abctoolkit mido soundfile tqdm
+git clone https://github.com/sanderwood/clamp3 $B/clamp3-code
+find $B/venv -name '._*' -delete
+export HF_HOME=$RUSTY_DEV/hf WANDB_MODE=disabled
 # 4. MuQ-MuLan
 python experiments/banc-empreinte/muq_mulan.py experiments/banc-empreinte/data $B/fenetres
 # 5. CLaMP 3 (voir l'en-tête de clamp3.py)
@@ -60,6 +63,21 @@ python experiments/banc-empreinte/clamp3.py preparer experiments/banc-empreinte/
 # 6. mesures et fichier à annoter
 cargo run --release -p rusty-music-analysis --example banc_empreinte -- mesurer experiments/banc-empreinte/data clap muq-mulan clamp3
 ```
+
+Pièges vus le 8 nov. (disque `RUSTY_DEV` en exFAT) :
+
+- macOS y pose un fichier `._<nom>` à côté de chaque fichier écrit. Dans le
+  venv, `transformers` les lit comme du Python (`UnicodeDecodeError`) ; dans
+  `clamp3/wav`, ils passeraient pour de l'audio. Après chaque installation
+  ou préparation : `find $B/venv $B/clamp3 -name '._*' -delete`.
+- Le cache de `uv` ne s'y extrait pas (« does not appear to be a Python
+  project ») : `UV_CACHE_DIR` sur le SSD (petit, effacé après) et
+  `UV_LINK_MODE=copy`. L'installation dure ≈ 1 h (grappes de 256 Ko).
+- `muq` 0.1.0 casse avec `transformers` 5 (`EasyDict … _attn_implementation`) :
+  `transformers==4.40.0`, la version que CLaMP 3 demande aussi, avec
+  `accelerate==0.34.0` ; un seul venv sert aux deux.
+- Les fenêtres prennent ≈ 0,85 s par morceau vers ce disque (28 min), pas
+  0,2 s.
 
 ## Critère (fixé d'avance)
 
@@ -87,5 +105,29 @@ Plus bas que sur toute la base (49,7 % de famille dans l'empreinte en V3) :
 12 voisins parmi 2 000 sont plus lointains que parmi 27 800. Le hasard
 (somme des carrés des parts de famille) donne 18,6 %.
 
-MuQ-MuLan et CLaMP 3 : pas encore calculés (disque `RUSTY_DEV` absent le
-8 nov.).
+### MuQ-MuLan (8-9 nov. 2026)
+
+| | genre | famille |
+|---|---|---|
+| empreinte (512 d) | 32,3 % | 51,6 % |
+| t-SNE, réglage de l'application | 31,0 % | 50,2 % |
+| t-SNE, pas ×32 | 31,5 % | 50,8 % |
+
+Conservation des 12 voisins : 45,2 % (application), 45,1 % (×32).
+Intra-famille 0,444, inter-familles 0,598, rapport **0,743**. Coût :
+0,51 s par morceau (5 × 10 s, MPS, hors décodage).
+
+Le même `mesurer`, relancé, donne pour CLAP après t-SNE 42,8 % (application)
+et 42,6 % (×32) au lieu de 41,2 % et 42,3 % : le réglage de l'application est
+désormais le pas ×32 (V10), et t-SNE varie d'un lancement à l'autre de
+≈ 1 point. L'empreinte (44,0 %) et le rapport (0,725) n'ont pas bougé.
+
+**Critère** : pureté de famille +17 % (51,6 / 44,0 dans l'empreinte ;
++17 % aussi après t-SNE), mais rapport intra / inter **moins bon** de 2,5 %
+(0,743 contre 0,725). Les deux gains devaient dépasser 10 % : MuQ-MuLan ne
+passe pas.
+
+CLaMP 3 : pas calculé. L'environnement est prêt, les WAV préparés
+(`$B/clamp3/wav`, 2 000 fichiers) ; le lancement automatique n'a pas eu
+le droit d'exécuter le code cloné de CLaMP 3 (garde-fou « code externe »).
+À lancer à la main (étape 5 de la procédure).

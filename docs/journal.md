@@ -4354,3 +4354,46 @@ t-SNE vaut désormais 32 fois le pas automatique de `bhtsne`
 sont pas touchées ; il se fera chez François après I3) ; une petite
 bibliothèque (< 2 400 morceaux : pas plancher 50, comme avant) ; le relief
 et les captures de la carte (session verrouillée).
+
+## Explorer, G1 (suite) : MuQ-MuLan mesuré, il ne passe pas le critère — 9 nov. 2026
+
+Deuxième tranche du banc d'empreinte, disque `RUSTY_DEV` branché. Rien
+n'est changé dans l'application.
+
+- **Fenêtres** : les cinq fenêtres de 10 s que CLAP a analysées, pour les
+  2 000 morceaux, exportées sur le disque externe (9,8 Go, 0 échec, 28 min :
+  ≈ 0,85 s par morceau vers ce disque, pas 0,2 s).
+- **Environnement** Python sur le même disque (exFAT). Trois pièges, notés
+  dans `experiments/banc-empreinte/README.md` : les fichiers `._*` que macOS
+  y pose cassent l'import de `transformers` ; le cache de `uv` ne s'y
+  extrait pas ; `muq` 0.1.0 ne marche pas avec `transformers` 5 (4.40.0,
+  celle de CLaMP 3, convient aux deux).
+- **MuQ-MuLan** (`OpenMuQ/MuQ-MuLan-large`, poids CC BY-NC 4.0 téléchargés
+  à la source, 0,51 s par morceau sur MPS, 5 × 10 s, hors décodage) :
+
+  | modèle | genre (512 d) | famille (512 d) | genre (t-SNE app) | famille (t-SNE app) | genre (×32) | famille (×32) | intra | inter | rapport |
+  |---|---|---|---|---|---|---|---|---|---|
+  | CLAP | 27,0 % | 44,0 % | 26,1 % | 42,8 % | 25,8 % | 42,6 % | 0,139 | 0,192 | **0,725** |
+  | MuQ-MuLan | 32,3 % | **51,6 %** | 31,0 % | 50,2 % | 31,5 % | 50,8 % | 0,444 | 0,598 | 0,743 |
+  | CLaMP 3 | — | — | — | — | — | — | — | — | — |
+
+  Conservation des 12 voisins après t-SNE : CLAP 38 %, MuQ-MuLan 45 %.
+  CLAP après t-SNE bouge d'un point par rapport au 8 nov. (41,2 → 42,8 %) :
+  le réglage de l'application est désormais le pas ×32 (V10) et t-SNE n'est
+  pas déterministe d'un lancement à l'autre ; l'empreinte et le rapport
+  sont identiques.
+- **Critère** : pureté de famille +17 % (51,6 / 44,0, et 50,2 / 42,8 après
+  t-SNE) ; mais le rapport intra-famille / inter-familles est **plus
+  mauvais** de 2,5 % (0,743 contre 0,725). Les deux gains devaient
+  dépasser 10 % : **MuQ-MuLan ne passe pas.** Ses voisins sont plus purs,
+  mais les familles ne se séparent pas mieux en distance : la carte, qui
+  regroupe par distance, n'y gagnerait pas autant que le voisinage le
+  laisse croire.
+- **Texte → audio** : les 10 premiers de CLAP et de MuQ-MuLan sur les 30
+  demandes types sont fondus dans `data/annoter.tsv` (565 lignes, modèle
+  caché, clé dans `data/cle.tsv`), prêts pour l'annotation de François.
+
+**Non vérifié** : CLaMP 3 (environnement prêt, 2 000 WAV de 50 s préparés ;
+le lancement automatique n'a pas eu le droit d'exécuter le code cloné de
+CLaMP 3, à lancer à la main) ; le coût de CLAP par morceau sur ce Mac (pas
+mesuré par le banc) ; la pertinence texte → audio (annotation à faire).
