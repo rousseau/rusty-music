@@ -46,6 +46,14 @@ geo-types.workspace = true
 # le graphe musical, ici sur un graphe de rues.
 pathfinding.workspace = true
 
+# V5 (suite de C4) : les types qu'échangent les commandes Tauri, exportés en
+# TypeScript pour contrôler les réponses figées des tests d'interface.
+# Activée par les seuls tests du bureau.
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
+
+[features]
+specta = ["dep:specta"]
+
 [dev-dependencies]
 anyhow.workspace = true
 # `examples/continuite_balade.rs` compare la marche dans les rues aux chemins

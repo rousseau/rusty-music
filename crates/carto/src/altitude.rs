@@ -57,6 +57,7 @@ const COTE_DEM: u32 = 256;
 const MARGE_MVT: f64 = 128.0;
 
 /// La grandeur qui fait l'altitude.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Grandeur {

@@ -13,5 +13,5 @@
     "baseUrl": ".",
     "paths": { "@tauri-apps/api/core": ["./tauri-api.d.ts"] }
   },
-  "files": ["controle.ts"]
+  "files": ["controle.ts", "donnees.d.ts"]
 }

@@ -9,12 +9,14 @@ use super::*;
 use rusty_music_core::lieux::{Chaine, Epingle};
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn epingles(etat: State<Etat>) -> Result<Vec<Epingle>, String> {
     verrou(&etat.lib).epingles().map_err(echec)
 }
 
 /// « Épingler ici » : rend l'épingle posée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn creer_epingle(
     etat: State<Etat>,
     nom: String,
@@ -32,11 +34,13 @@ pub(crate) fn creer_epingle(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn supprimer_epingle(etat: State<Etat>, id: i64) -> Result<bool, String> {
     verrou(&etat.lib).supprimer_epingle(id).map_err(echec)
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn chaines(etat: State<Etat>) -> Result<Vec<Chaine>, String> {
     verrou(&etat.lib).chaines().map_err(echec)
 }
@@ -45,6 +49,7 @@ pub(crate) fn chaines(etat: State<Etat>) -> Result<Vec<Chaine>, String> {
 /// playlist (par chemin), son tracé `[lon, lat]` est copié tel quel. Rend
 /// l'identifiant de la playlist.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn garder_chaine(
     etat: State<Etat>,
     nom: String,
@@ -71,6 +76,7 @@ pub(crate) fn garder_chaine(
 
 /// Retire le tracé d'une chaîne de la carte ; sa playlist reste.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn oublier_trace(etat: State<Etat>, id: i64) -> Result<bool, String> {
     verrou(&etat.lib).oublier_trace(id).map_err(echec)
 }

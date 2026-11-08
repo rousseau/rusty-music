@@ -270,6 +270,7 @@ pub fn pente_simple(
 
 /// L'allure de la balade : trois préréglages de la pente plutôt que cinq
 /// curseurs (`docs/plan-balade.md`, P3), réglés une fois dans le rail.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Allure {

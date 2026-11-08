@@ -4255,3 +4255,52 @@ changé dans l'application.
 la préparation des entrées de CLaMP 3 essayée sur 5 morceaux : WAV de 50 s,
 48 kHz) ; le coût par morceau ; la pertinence texte → audio (liste à
 valider par François).
+
+## Code, V5 : 28 commandes contrôlées, et les champs en trop vus — 8 nov. 2026
+
+Suite de C4 : étendre les types générés aux commandes d'Explorer qui ont le
+plus changé depuis octobre, et voir enfin le champ que Rust a retiré mais
+que `fixtures.js` garde.
+
+- **23 commandes de plus**, 28 en tout sur les 222 du `generate_handler!`
+  (le plan en comptait 211) : `balade_demarrer`, `_etat`, `_arreter`,
+  `_choisir`, `_revenir`, `_regler`, `_extrait` ; `morceaux_ecoutes`,
+  `sentiers_carte`, `balades_passees`, `balade_passee`, `balade_rejouer` ;
+  `epingles`, `creer_epingle`, `supprimer_epingle`, `chaines`,
+  `garder_chaine`, `oublier_trace` ; `aura` ; `relief_musical`, `courbe`,
+  `ouvrir_courbe` ; `recompute_map`.
+- **Montage.** Les types reçus comptent aussi (`Allure`, `Grandeur`,
+  `VoixAura`) : feature `specta` ajoutée à `carto` et `player`, comme à
+  `core`, activée par les seuls tests du bureau ; `serde_json` dans les
+  features de `specta` (`sentiers_carte` rend un `Value`). `aura` est
+  réexportée par son nom et non par `*` : sa description
+  (`__specta__fn__aura`) doit l'être aussi (`explorer/mod.rs`, en test).
+- **Trouvé aussitôt** : `recompute_map` n'avait pas de réponse figée
+  (« Recalculer la carte » rendait `null` dans les tests) ; ajoutée.
+- **Champs en trop.** `controle.ts` parcourt chaque réponse figée et exige
+  que chacun de ses champs, à toute profondeur, existe dans le type de
+  Rust ; l'erreur nomme le chemin (`"courbe.le_long[].rang"`). Deux pièges
+  de TypeScript : indexer le type « par commande » par l'union de ses clés
+  le réécrit en une seule évaluation qui mêle les commandes et ne trouve
+  rien (une condition distributive les évalue une à une) ; et
+  `window.__DONNEES__`, non déclaré, prenait un type d'erreur qui contamine
+  toute condition — déclaré (`types/donnees.d.ts`, d'après le module), ce
+  qui rend `ouvrir_courbe` contrôlable.
+- **Mutations** (faites puis annulées), toutes vues : champ en trop dans une
+  valeur (`balade_passee.duree`), dans une fonction (`creer_epingle.rayon`),
+  dans un tableau (`balades_passees[].album`), imbriqué
+  (`courbe.le_long[].rang`), dans une commande de C4 (`roots[].ajoutee`),
+  dans `recompute_map`, dans une voie du carrefour
+  (`balade_demarrer.carrefour.voies[].ecart`) ; et **côté Rust** :
+  `#[serde(skip)]` sur `BaladeDessin::trace`, types régénérés, `npm run
+  types` échoue sur `"balade_passee.trace"`.
+- **Ce qui échappe** : une réponse calculée qui rend l'état partagé
+  (`e.balade`, `any`) — `balade_etat`, `_choisir`, `_revenir`, `_regler`.
+  `balade_demarrer` rend désormais son littéral, contrôlé ; la forme de
+  `e.balade` l'est par lui.
+- **Vérifié** : `verifier.sh` vert (fmt, deny, clippy, test, ios, fumée).
+
+**Non vérifié** : le temps de compilation ajouté par les variantes
+`specta` de `carto` et `player` (une modification de l'un d'eux les
+recompile une fois pour `cargo build`, une fois pour `cargo test`, comme
+`core` depuis C4) ; la CI GitHub (rien poussé).

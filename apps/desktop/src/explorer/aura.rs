@@ -132,6 +132,7 @@ fn charger(etat: &Etat, ids: &[i64]) -> Result<(), String> {
 /// Rend le temps passé, en millisecondes, entre la demande et les voix
 /// confiées à la source (décodage compris).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn aura(etat: State<Etat>, voix: Vec<VoixAura>) -> Result<f64, String> {
     let t = Instant::now();
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;

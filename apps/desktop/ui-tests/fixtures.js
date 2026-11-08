@@ -102,7 +102,9 @@ const fixtures = {
       morceau: p.id, distance, defaut, proche: defaut, lue: false, rue: [],
     });
     const intervention = a.intervention ?? "proposer";
-    e.balade = {
+    // Rendue telle quelle (pas `e.balade`, qui est `any`) : sa forme est
+    // contrôlée par `npm run types`.
+    const balade = {
       terrain: "voisins",
       pistes: [a.depart],
       suivant: ps[(i + 1) % ps.length].id,
@@ -123,7 +125,8 @@ const fixtures = {
       revenir: false,
       mesure: { carrefours: 0, choix: 0, ailleurs: 0, retours: 0 },
     };
-    return e.balade;
+    e.balade = balade;
+    return balade;
   },
   balade_etat: (_, e) => e.balade ?? null,
   balade_arreter: (_, e) => {
@@ -202,6 +205,9 @@ const fixtures = {
   },
   // L'aura (P4) : le moteur rend le temps passé à charger les voix, en ms.
   aura: () => 1.5,
+  // « Recalculer la carte » (`explorer/voisinage.rs`, `RapportCarte`) : les
+  // cinq morceaux, deux familles, le nuage gardé.
+  recompute_map: { empreintes: 5, familles: 2, projection: "gardee" },
 
   // --- familles (numéro, nom, effectif) et carte en nuage de points
   families: [

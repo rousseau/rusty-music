@@ -63,6 +63,8 @@ lama-local = ["rusty-music-lama/lama-local"]
 # binaire de l'application n'en dépend pas.
 [dev-dependencies]
 rusty-music-core = { path = "../../crates/core", features = ["specta"] }
-specta = { version = "=2.0.0-rc.26", features = ["derive", "function"] }
+rusty-music-carto = { path = "../../crates/carto", features = ["specta"] }
+rusty-music-player = { path = "../../crates/player", features = ["specta"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }

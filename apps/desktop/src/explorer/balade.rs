@@ -62,6 +62,7 @@ const CARREFOURS_GARDES: usize = 32;
 
 /// Le degré d'intervention (`docs/plan-balade.md`, le principe), réglé une
 /// fois dans le rail d'Explorer.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Intervention {
@@ -117,6 +118,7 @@ impl Carrefour {
 
 /// Le compteur d'usage du carrefour, gardé sur la machine
 /// (`balade-mesure.json`) : de quoi juger, après une semaine, si l'on choisit.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MesureCarrefours {
     /// Carrefours montrés (hors *se laisser porter*) et quittés.
@@ -162,6 +164,7 @@ struct Pas {
 }
 
 /// Ce que l'interface reçoit d'une voie du carrefour.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct VoieVue {
     morceau: i64,
@@ -175,6 +178,7 @@ pub(crate) struct VoieVue {
     rue: Vec<[f64; 2]>,
 }
 
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct CarrefourVue {
     numero: u64,
@@ -222,6 +226,7 @@ pub(crate) struct Balade {
 }
 
 /// Ce que l'interface reçoit.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct BaladeVue {
     /// `"ville"` ou `"voisins"`.
@@ -876,6 +881,7 @@ fn monter(etat: &State<Etat>, app: &tauri::AppHandle, r: Reprise) -> Result<Bala
 
 /// « Flâner d'ici » : lance la lecture de `depart` et la balade qui en part.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_demarrer(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -943,12 +949,14 @@ fn garder_depart(lib: &Library, balade: &Balade) -> Option<i64> {
 
 /// La balade en cours, `None` s'il n'y en a pas.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_etat(etat: State<Etat>) -> Option<BaladeVue> {
     verrou(&etat.balade).as_ref().map(Balade::vue)
 }
 
 /// « Arrêter la balade » : la lecture continue, plus rien n'est ajouté.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_arreter(etat: State<Etat>) {
     arreter(&etat);
 }
@@ -963,6 +971,7 @@ fn arreter(etat: &Etat) {
 /// Un geste au carrefour `numero` : la voie `voie` devient le pas suivant.
 /// Refusé dans les 10 dernières secondes, quand le suivant est figé.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_choisir(
     etat: State<Etat>,
     numero: u64,
@@ -979,6 +988,7 @@ pub(crate) fn balade_choisir(
 
 /// « ← Carrefour précédent ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_revenir(etat: State<Etat>) -> Result<BaladeVue, String> {
     let mut garde = verrou(&etat.balade);
     let balade = garde.as_mut().ok_or("aucune balade")?;
@@ -994,6 +1004,7 @@ pub(crate) fn balade_revenir(etat: State<Etat>) -> Result<BaladeVue, String> {
 /// les garde avec les autres réglages de la carte et les redonne à chaque
 /// départ). Une autre allure redécide le pas suivant s'il est encore libre.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_regler(
     etat: State<Etat>,
     intervention: Option<Intervention>,
@@ -1026,6 +1037,7 @@ pub(crate) fn balade_regler(
 /// L'extrait de 5 s d'une voie survolée ; `None` le coupe. Il passe par la
 /// source de l'aura (`explorer::aura`, P4), sous le morceau en cours.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_extrait(etat: State<Etat>, morceau: Option<i64>) -> Result<(), String> {
     super::aura::apercu(&etat, morceau)
 }

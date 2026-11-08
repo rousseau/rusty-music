@@ -46,6 +46,7 @@ const BLOC: usize = 64;
 
 /// Une voix demandée : quel morceau, à quel gain (0 à 1), où (−1 gauche,
 /// +1 droite).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VoixAura {
     pub id: i64,

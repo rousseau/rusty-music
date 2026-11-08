@@ -16,6 +16,10 @@ mod traces;
 mod voisinage;
 
 pub(crate) use aura::{aura, entretenir_aura, EtatAura};
+// La description de `aura` pour `types_commandes` : les autres modules
+// passent par `*`, qui l'emporte avec la commande.
+#[cfg(test)]
+pub(crate) use aura::__specta__fn__aura;
 pub(crate) use balade::*;
 pub(crate) use carte::*;
 pub(crate) use lama::*;

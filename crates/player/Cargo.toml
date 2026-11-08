@@ -19,8 +19,15 @@ cpal.workspace    = true
 thiserror.workspace = true
 serde.workspace   = true
 tracing.workspace = true
+# V5 (suite de C4) : les types qu'échangent les commandes Tauri, exportés en
+# TypeScript pour contrôler les réponses figées des tests d'interface.
+# Activée par les seuls tests du bureau.
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
 
 # Latence de la sortie (`latence.rs`) : celle que cpal ne compte pas. Déjà
 # dans le graphe par cpal, mêmes version et fonctions — un nouvel usage.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "AudioHardware"] }
+
+[features]
+specta = ["dep:specta"]

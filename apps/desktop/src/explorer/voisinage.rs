@@ -333,6 +333,7 @@ pub(crate) fn definir_vocabulaire_familles(
 /// `passe::Rapport` ne dérive pas `Serialize` — `rusty-music-analysis` ne
 /// dépend pas de `serde`, et ce n'est pas ce seul retour de commande qui
 /// justifie de le lui ajouter.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct RapportCarte {
     empreintes: usize,
@@ -352,6 +353,7 @@ pub(crate) struct RapportCarte {
 /// (`passe::projeter_tout`) : après un changement de vocabulaire, seules
 /// les familles bougent.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn recompute_map(etat: State<Etat>) -> Result<RapportCarte, String> {
     use rusty_music_analysis::passe::Projection;
     let lib = verrou(&etat.lib);

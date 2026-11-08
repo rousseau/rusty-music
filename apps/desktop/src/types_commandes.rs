@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Essai C4 (synthèse de novembre, O7) : les types que renvoient quelques
-//! commandes, exportés en TypeScript dans `ui-tests/types/commandes.ts`. Les
-//! tests d'interface y confrontent leurs réponses figées (`fixtures.js`,
-//! `ui-tests/types/controle.ts`), pour qu'une forme qui change côté Rust
-//! fasse échouer la vérification au lieu de dériver sans bruit.
+//! Essai C4 (synthèse de novembre, O7), étendu par V5 : les types que
+//! reçoivent et renvoient les commandes contrôlées, exportés en TypeScript
+//! dans `ui-tests/types/commandes.ts`. Les tests d'interface y confrontent
+//! leurs réponses figées (`fixtures.js`, `ui-tests/types/controle.ts`), pour
+//! qu'une forme qui change côté Rust fasse échouer la vérification au lieu de
+//! dériver sans bruit.
 
 use super::*;
 
@@ -17,7 +18,31 @@ fn exporter_les_types_des_commandes() {
             artists,
             albums,
             library_stats,
-            demix_variantes
+            demix_variantes,
+            // V5 : Explorer, ce qui a le plus changé depuis octobre.
+            balade_demarrer,
+            balade_etat,
+            balade_arreter,
+            balade_choisir,
+            balade_revenir,
+            balade_regler,
+            balade_extrait,
+            morceaux_ecoutes,
+            sentiers_carte,
+            balades_passees,
+            balade_passee,
+            balade_rejouer,
+            epingles,
+            creer_epingle,
+            supprimer_epingle,
+            chaines,
+            garder_chaine,
+            oublier_trace,
+            aura,
+            relief_musical,
+            courbe,
+            ouvrir_courbe,
+            recompute_map
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

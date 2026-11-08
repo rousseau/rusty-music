@@ -58,6 +58,7 @@ pub(crate) fn valeurs_grandeur(etat: &Etat, g: Grandeur) -> Result<HashMap<i64, 
 }
 
 /// Ce que l'interface reçoit après [`relief_musical`].
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct ReliefVue {
     grandeur: Grandeur,
@@ -77,6 +78,7 @@ fn vue(r: &ReliefCharge) -> ReliefVue {
 /// archives. Déjà prêt pour cette grandeur, il est rendu tel quel — sauf la
 /// familiarité, refaite à chaque demande : chaque écoute la change.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn relief_musical(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -155,6 +157,7 @@ fn courbe_de(r: &ReliefCharge, ligne: u32) -> Result<&Courbe, String> {
 }
 
 /// Un morceau qui borde la courbe, à sa place le long d'elle.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct Riverain {
     morceau: i64,
@@ -164,6 +167,7 @@ pub(crate) struct Riverain {
     point: [f64; 2],
 }
 
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct CourbeVue {
     ligne: u32,
@@ -177,6 +181,7 @@ pub(crate) struct CourbeVue {
 
 /// La courbe `ligne` du relief affiché : son tracé et ses riverains.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn courbe(etat: State<Etat>, ligne: u32) -> Result<CourbeVue, String> {
     let r = relief_charge(&etat)?;
     let c = courbe_de(&r, ligne)?;
@@ -197,6 +202,7 @@ pub(crate) fn courbe(etat: State<Etat>, ligne: u32) -> Result<CourbeVue, String>
 /// ce qu'elle enferme, enchaînée de proche en proche comme une sélection au
 /// lasso (`selection`).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn ouvrir_courbe(etat: State<Etat>, ligne: u32) -> Result<Vec<TrackRow>, String> {
     let r = relief_charge(&etat)?;
     let c = courbe_de(&r, ligne)?;

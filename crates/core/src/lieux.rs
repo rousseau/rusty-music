@@ -42,6 +42,7 @@ fn emoji_propre(e: Option<&str>) -> Option<String> {
     (!premier.is_empty()).then_some(premier)
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Epingle {
     pub id: i64,
@@ -52,6 +53,7 @@ pub struct Epingle {
     pub lat: f64,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Chaine {
     /// La playlist qu'elle est.

@@ -21,6 +21,7 @@ const BALADES_LISTEES: usize = 12;
 
 /// Les morceaux écoutés au moins une fois : tout le reste est sous le brouillard.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn morceaux_ecoutes(etat: State<Etat>) -> Result<Vec<i64>, String> {
     verrou(&etat.lib).morceaux_ecoutes().map_err(echec)
 }
@@ -46,6 +47,7 @@ fn arete_valide(graphe: &rusty_music_carto::reseau_reel::Graphe, a: u32, b: u32)
 /// Les sentiers battus en GeoJSON : une ligne par arête parcourue en balade,
 /// `passages` en attribut. Vide sans ville importée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn sentiers_carte(etat: State<Etat>) -> Result<serde_json::Value, String> {
     let passages = verrou(&etat.lib).passages_sentiers().map_err(echec)?;
     let mut entites = Vec::new();
@@ -69,6 +71,7 @@ pub(crate) fn sentiers_carte(etat: State<Etat>) -> Result<serde_json::Value, Str
 
 /// Les balades passées, la plus récente d'abord.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balades_passees(etat: State<Etat>) -> Result<Vec<BaladePassee>, String> {
     verrou(&etat.lib)
         .balades_passees(BALADES_LISTEES)
@@ -77,6 +80,7 @@ pub(crate) fn balades_passees(etat: State<Etat>) -> Result<Vec<BaladePassee>, St
 
 /// Une balade passée à redessiner : ses morceaux dans l'ordre et, dans la
 /// ville, le tracé de ses pas le long des rues, `[lon, lat]`.
+#[cfg_attr(test, derive(specta::Type))]
 #[derive(serde::Serialize)]
 pub(crate) struct BaladeDessin {
     pistes: Vec<i64>,
@@ -84,6 +88,7 @@ pub(crate) struct BaladeDessin {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_passee(etat: State<Etat>, id: i64) -> Result<BaladeDessin, String> {
     let pas = verrou(&etat.lib).pas_de_balade(id).map_err(echec)?;
     if pas.is_empty() {
@@ -112,6 +117,7 @@ pub(crate) fn balade_passee(etat: State<Etat>, id: i64) -> Result<BaladeDessin, 
 /// Rejoue une balade passée : ses morceaux, dans l'ordre, comme une file
 /// ordinaire. Ce n'est plus une balade — rien n'y est choisi.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn balade_rejouer(etat: State<Etat>, id: i64) -> Result<(), String> {
     let chemins: Vec<PathBuf> = {
         let lib = verrou(&etat.lib);

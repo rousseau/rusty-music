@@ -27,6 +27,7 @@ pub struct PasBalade {
 }
 
 /// Une balade passée, telle que le panneau de la carte la liste.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct BaladePassee {
     pub id: i64,

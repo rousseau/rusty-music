@@ -13,6 +13,90 @@ export const commands = {
 	 *  téléchargement **avant** le clic, comme l'analyse annonce son coût.
 	 */
 	demix_variantes: () => __TAURI_INVOKE<VarianteDispo[]>("demix_variantes"),
+	/**  « Flâner d'ici » : lance la lecture de `depart` et la balade qui en part. */
+	balade_demarrer: (depart: number, intervention: Intervention | null, allure: Allure | null, grandeur: Grandeur | null) => __TAURI_INVOKE<BaladeVue_Serialize>("balade_demarrer", { depart, intervention, allure, grandeur }),
+	/**  La balade en cours, `None` s'il n'y en a pas. */
+	balade_etat: () => __TAURI_INVOKE<BaladeVue_Serialize | null>("balade_etat"),
+	/**  « Arrêter la balade » : la lecture continue, plus rien n'est ajouté. */
+	balade_arreter: () => __TAURI_INVOKE<void>("balade_arreter"),
+	/**
+	 *  Un geste au carrefour `numero` : la voie `voie` devient le pas suivant.
+	 *  Refusé dans les 10 dernières secondes, quand le suivant est figé.
+	 */
+	balade_choisir: (numero: number, voie: number) => __TAURI_INVOKE<BaladeVue_Serialize>("balade_choisir", { numero, voie }),
+	/**  « ← Carrefour précédent ». */
+	balade_revenir: () => __TAURI_INVOKE<BaladeVue_Serialize>("balade_revenir"),
+	/**
+	 *  Le degré d'intervention et l'allure, pour la balade en cours (l'interface
+	 *  les garde avec les autres réglages de la carte et les redonne à chaque
+	 *  départ). Une autre allure redécide le pas suivant s'il est encore libre.
+	 */
+	balade_regler: (intervention: Intervention | null, allure: Allure | null, grandeur: Grandeur | null) => __TAURI_INVOKE<BaladeVue_Serialize | null>("balade_regler", { intervention, allure, grandeur }),
+	/**
+	 *  L'extrait de 5 s d'une voie survolée ; `None` le coupe. Il passe par la
+	 *  source de l'aura (`explorer::aura`, P4), sous le morceau en cours.
+	 */
+	balade_extrait: (morceau: number | null) => __TAURI_INVOKE<null>("balade_extrait", { morceau }),
+	/**  Les morceaux écoutés au moins une fois : tout le reste est sous le brouillard. */
+	morceaux_ecoutes: () => __TAURI_INVOKE<number[]>("morceaux_ecoutes"),
+	/**
+	 *  Les sentiers battus en GeoJSON : une ligne par arête parcourue en balade,
+	 *  `passages` en attribut. Vide sans ville importée.
+	 */
+	sentiers_carte: () => __TAURI_INVOKE<Value>("sentiers_carte"),
+	/**  Les balades passées, la plus récente d'abord. */
+	balades_passees: () => __TAURI_INVOKE<BaladePassee_Serialize[]>("balades_passees"),
+	balade_passee: (id: number) => __TAURI_INVOKE<BaladeDessin>("balade_passee", { id }),
+	/**
+	 *  Rejoue une balade passée : ses morceaux, dans l'ordre, comme une file
+	 *  ordinaire. Ce n'est plus une balade — rien n'y est choisi.
+	 */
+	balade_rejouer: (id: number) => __TAURI_INVOKE<null>("balade_rejouer", { id }),
+	epingles: () => __TAURI_INVOKE<Epingle_Serialize[]>("epingles"),
+	/**  « Épingler ici » : rend l'épingle posée. */
+	creer_epingle: (nom: string, couleur: string, emoji: string | null, lon: number | null, lat: number | null) => __TAURI_INVOKE<Epingle_Serialize>("creer_epingle", { nom, couleur, emoji, lon, lat }),
+	supprimer_epingle: (id: number) => __TAURI_INVOKE<boolean>("supprimer_epingle", { id }),
+	chaines: () => __TAURI_INVOKE<Chaine[]>("chaines"),
+	/**
+	 *  Garde une balade passée ou un itinéraire : ses morceaux deviennent une
+	 *  playlist (par chemin), son tracé `[lon, lat]` est copié tel quel. Rend
+	 *  l'identifiant de la playlist.
+	 */
+	garder_chaine: (nom: string, couleur: string, origine: string, morceaux: number[], trace: ([(number | null), (number | null)])[]) => __TAURI_INVOKE<number>("garder_chaine", { nom, couleur, origine, morceaux, trace }),
+	/**  Retire le tracé d'une chaîne de la carte ; sa playlist reste. */
+	oublier_trace: (id: number) => __TAURI_INVOKE<boolean>("oublier_trace", { id }),
+	/**
+	 *  Les voix de l'aura, à la place des précédentes ; une liste vide la tait.
+	 *  Rend le temps passé, en millisecondes, entre la demande et les voix
+	 *  confiées à la source (décodage compris).
+	 */
+	aura: (voix: VoixAura[]) => __TAURI_INVOKE<number | null>("aura", { voix }),
+	/**
+	 *  Prépare le relief de `grandeur` : le champ, ses courbes et leurs deux
+	 *  archives. Déjà prêt pour cette grandeur, il est rendu tel quel — sauf la
+	 *  familiarité, refaite à chaque demande : chaque écoute la change.
+	 */
+	relief_musical: (grandeur: Grandeur) => __TAURI_INVOKE<ReliefVue>("relief_musical", { grandeur }),
+	/**  La courbe `ligne` du relief affiché : son tracé et ses riverains. */
+	courbe: (ligne: number) => __TAURI_INVOKE<CourbeVue>("courbe", { ligne }),
+	/**
+	 *  « Ouvrir » la courbe `ligne` : la playlist de la bande qu'elle borde, dans
+	 *  ce qu'elle enferme, enchaînée de proche en proche comme une sélection au
+	 *  lasso (`selection`).
+	 */
+	ouvrir_courbe: (ligne: number) => __TAURI_INVOKE<TrackRow_Serialize[]>("ouvrir_courbe", { ligne }),
+	/**
+	 *  Rejoue la projection t-SNE et le clustering sur les empreintes déjà là,
+	 *  avec les paramètres actuels — pas l'encodage CLAP, qui ne dépend
+	 *  d'aucun d'eux. Bon marché : quelques secondes à quelques dizaines de
+	 *  secondes sur toute la bibliothèque, pas besoin du fil séparé et du
+	 *  sondage qu'`Analyser` demande.
+	 * 
+	 *  Le nuage n'est redessiné que si la perplexité ou les époques ont changé
+	 *  (`passe::projeter_tout`) : après un changement de vocabulaire, seules
+	 *  les familles bougent.
+	 */
+	recompute_map: () => __TAURI_INVOKE<RapportCarte>("recompute_map"),
 };
 
 /* Types */
@@ -64,6 +148,30 @@ export type AlbumRow_Serialize = {
 	ajoute_le: number | null,
 };
 
+/**
+ *  L'allure de la balade : trois préréglages de la pente plutôt que cinq
+ *  curseurs (`docs/plan-balade.md`, P3), réglés une fois dans le rail.
+ */
+export type Allure = 
+/**  Le plus proche à l'oreille d'abord : la balade reste dans son quartier. */
+"rester" | 
+/**  Proche et neuf à parts égales (défaut). */
+"deriver" | 
+/**
+ *  Le neuf d'abord, et un carrefour sur trois la voie la plus différente
+ *  parmi les plus neuves.
+ */
+"aventurer" | 
+/**
+ *  Sur le relief (P6) : rester à l'énergie du départ, le long d'une
+ *  courbe de niveau ; le style dérive.
+ */
+"niveau" | 
+/**  Gravir : l'énergie monte, d'une bande à la fois. */
+"gravir" | 
+/**  Redescendre : l'énergie baisse, d'une bande à la fois (le soir). */
+"redescendre";
+
 /**  Un artiste et son volume dans la bibliothèque. */
 export type ArtistRow = ArtistRow_Serialize | ArtistRow_Deserialize;
 
@@ -92,6 +200,159 @@ export type ArtistRow_Serialize = {
 };
 
 /**
+ *  Une balade passée à redessiner : ses morceaux dans l'ordre et, dans la
+ *  ville, le tracé de ses pas le long des rues, `[lon, lat]`.
+ */
+export type BaladeDessin = {
+	pistes: number[],
+	trace: ([(number | null), (number | null)])[],
+};
+
+/**  Une balade passée, telle que le panneau de la carte la liste. */
+export type BaladePassee = BaladePassee_Serialize | BaladePassee_Deserialize;
+
+/**  Une balade passée, telle que le panneau de la carte la liste. */
+export type BaladePassee_Deserialize = {
+	id: number,
+	debut: number,
+	/**  `"ville"` ou `"voisins"`. */
+	terrain: string,
+	pas: number,
+	/**  Durée des morceaux joués, bout à bout. */
+	duree_ms: number,
+	/**  Titre et artiste du départ, pour la reconnaître. */
+	titre?: string | null,
+	artiste?: string | null,
+};
+
+/**  Une balade passée, telle que le panneau de la carte la liste. */
+export type BaladePassee_Serialize = {
+	id: number,
+	debut: number,
+	/**  `"ville"` ou `"voisins"`. */
+	terrain: string,
+	pas: number,
+	/**  Durée des morceaux joués, bout à bout. */
+	duree_ms: number,
+	/**  Titre et artiste du départ, pour la reconnaître. */
+	titre: string | null,
+	artiste: string | null,
+};
+
+/**  Ce que l'interface reçoit. */
+export type BaladeVue = BaladeVue_Serialize | BaladeVue_Deserialize;
+
+/**  Ce que l'interface reçoit. */
+export type BaladeVue_Deserialize = {
+	/**  `"ville"` ou `"voisins"`. */
+	terrain: string,
+	/**  Les morceaux joués, dans l'ordre ; le dernier est en cours. */
+	pistes: number[],
+	suivant?: number | null,
+	/**  Le suivant est dans la file du lecteur et n'en bougera plus. */
+	fige: boolean,
+	/**  Le pas du promeneur pendant le morceau en cours, `[lon, lat]`. */
+	troncon: ([(number | null), (number | null)])[],
+	/**  Ce qui a déjà été parcouru, `[lon, lat]`. */
+	trace: ([(number | null), (number | null)])[],
+	/**  `Some(raison)` : la balade s'est arrêtée d'elle-même. */
+	fin?: string | null,
+	intervention: Intervention,
+	allure: Allure,
+	/**  Le carrefour qui s'offre au bout du morceau en cours. */
+	carrefour?: CarrefourVue | null,
+	/**  La balade attend un choix (mode *demander*). */
+	attend: boolean,
+	/**  Un carrefour passé où revenir, avec au moins une voie non prise. */
+	revenir: boolean,
+	mesure: MesureCarrefours,
+};
+
+/**  Ce que l'interface reçoit. */
+export type BaladeVue_Serialize = {
+	/**  `"ville"` ou `"voisins"`. */
+	terrain: string,
+	/**  Les morceaux joués, dans l'ordre ; le dernier est en cours. */
+	pistes: number[],
+	suivant: number | null,
+	/**  Le suivant est dans la file du lecteur et n'en bougera plus. */
+	fige: boolean,
+	/**  Le pas du promeneur pendant le morceau en cours, `[lon, lat]`. */
+	troncon: ([(number | null), (number | null)])[],
+	/**  Ce qui a déjà été parcouru, `[lon, lat]`. */
+	trace: ([(number | null), (number | null)])[],
+	/**  `Some(raison)` : la balade s'est arrêtée d'elle-même. */
+	fin: string | null,
+	intervention: Intervention,
+	allure: Allure,
+	/**  Le carrefour qui s'offre au bout du morceau en cours. */
+	carrefour: CarrefourVue | null,
+	/**  La balade attend un choix (mode *demander*). */
+	attend: boolean,
+	/**  Un carrefour passé où revenir, avec au moins une voie non prise. */
+	revenir: boolean,
+	mesure: MesureCarrefours,
+};
+
+export type CarrefourVue = {
+	numero: number,
+	voies: VoieVue[],
+	/**  La voie qui sera prise : la choisie, sinon la pente. */
+	prise: number,
+	choisie: boolean,
+	/**  Représenté par « ← Carrefour précédent ». */
+	retour: boolean,
+};
+
+export type Chaine = {
+	/**  La playlist qu'elle est. */
+	playlist_id: number,
+	nom: string,
+	couleur: string,
+	/**  `"balade"` ou `"itineraire"`. */
+	origine: string,
+	trace: ([(number | null), (number | null)])[],
+	nb_pistes: number,
+};
+
+export type CourbeVue = {
+	ligne: number,
+	niveau: number,
+	sommet: boolean,
+	points: ([(number | null), (number | null)])[],
+	/**
+	 *  Les morceaux qui la bordent, dans l'ordre de la courbe : le rail de la
+	 *  molette.
+	 */
+	le_long: Riverain[],
+};
+
+export type Epingle = Epingle_Serialize | Epingle_Deserialize;
+
+export type Epingle_Deserialize = {
+	id: number,
+	nom: string,
+	couleur: string,
+	emoji?: string | null,
+	lon: number | null,
+	lat: number | null,
+};
+
+export type Epingle_Serialize = {
+	id: number,
+	nom: string,
+	couleur: string,
+	emoji: string | null,
+	lon: number | null,
+	lat: number | null,
+};
+
+/**  La grandeur qui fait l'altitude. */
+export type Grandeur = "energie" | "tempo" | "popularite" | 
+/**  Les écoutes de la table `ecoute` : ce que l'on connaît. */
+"familiarite";
+
+/**
  *  Répartition d'une valeur continue en tranches régulières (mode
  *  Bibliothèque). `comptes[i]` couvre `[min + i*pas, min + (i+1)*pas)` ; ce
  *  qui déborde par le haut tombe dans `hors_gamme`, ce qui manque dans
@@ -104,6 +365,64 @@ export type Histogramme = {
 	comptes: number[],
 	hors_gamme: number,
 	sans_valeur: number,
+};
+
+/**
+ *  Le degré d'intervention (`docs/plan-balade.md`, le principe), réglé une
+ *  fois dans le rail d'Explorer.
+ */
+export type Intervention = 
+/**  Aucun panneau : le tracé des voies seulement, la pente décide. */
+"porter" | 
+/**  Le panneau, la pente prise sans geste. */
+"proposer" | 
+/**  La balade attend le choix au carrefour. */
+"demander";
+
+/**
+ *  Le compteur d'usage du carrefour, gardé sur la machine
+ *  (`balade-mesure.json`) : de quoi juger, après une semaine, si l'on choisit.
+ */
+export type MesureCarrefours = {
+	/**  Carrefours montrés (hors *se laisser porter*) et quittés. */
+	carrefours: number,
+	/**  … où une voie a été choisie d'un geste. */
+	choix: number,
+	/**  … et cette voie n'était pas la plus proche à l'oreille. */
+	ailleurs: number,
+	/**  Retours au carrefour précédent. */
+	retours: number,
+};
+
+/**
+ *  `passe::Rapport` ne dérive pas `Serialize` — `rusty-music-analysis` ne
+ *  dépend pas de `serde`, et ce n'est pas ce seul retour de commande qui
+ *  justifie de le lui ajouter.
+ */
+export type RapportCarte = {
+	empreintes: number,
+	familles: number,
+	/**
+	 *  « refaite » (nouveau dessin : perplexité ou époques changées),
+	 *  « reprise » (nouveaux morceaux logés) ou « gardee » (nuage inchangé).
+	 */
+	projection: string,
+};
+
+/**  Ce que l'interface reçoit après [`relief_musical`]. */
+export type ReliefVue = {
+	grandeur: Grandeur,
+	version: number,
+	courbes: number,
+};
+
+/**  Un morceau qui borde la courbe, à sa place le long d'elle. */
+export type Riverain = {
+	morceau: number,
+	/**  Position le long de la courbe, mètres. */
+	a: number | null,
+	/**  Le point de la courbe le plus proche du morceau, `[lon, lat]`. */
+	point: [(number | null), (number | null)],
 };
 
 /**  Une racine surveillée, telle qu'affichée dans les réglages. */
@@ -145,11 +464,106 @@ export type StatsBibliotheque = {
 	sans_discogs: number,
 };
 
+/**
+ *  Résumé d'un morceau tel que servi à l'interface.
+ * 
+ *  `Deserialize` en plus de `Serialize` : le plan interprété du champ
+ *  d'intention d'Explorer (`PlanTexte`, `apps/desktop/src/main.rs`) en
+ *  embarque un pour l'afficher, et le reçoit de retour une fois l'utilisateur
+ *  passé par l'inspecteur — le seul aller-retour JS de ce genre à ce jour.
+ */
+export type TrackRow = TrackRow_Serialize | TrackRow_Deserialize;
+
+/**
+ *  Résumé d'un morceau tel que servi à l'interface.
+ * 
+ *  `Deserialize` en plus de `Serialize` : le plan interprété du champ
+ *  d'intention d'Explorer (`PlanTexte`, `apps/desktop/src/main.rs`) en
+ *  embarque un pour l'afficher, et le reçoit de retour une fois l'utilisateur
+ *  passé par l'inspecteur — le seul aller-retour JS de ce genre à ce jour.
+ */
+export type TrackRow_Deserialize = {
+	id: number,
+	path: string,
+	title?: string | null,
+	artist?: string | null,
+	album?: string | null,
+	track_no?: number | null,
+	year?: number | null,
+	duration_ms?: number | null,
+	/**
+	 *  Identifiant MusicBrainz de **l'artiste du morceau** (`mb_artist_id`),
+	 *  pas de l'artiste d'album — sert à retrouver ses albums
+	 *  (`Library::albums_of_artist`) depuis un morceau, sans passer par la
+	 *  liste des artistes. Doit rester l'identifiant du nom porté par
+	 *  `artist` : sur une compilation « Various Artists », l'artiste d'album
+	 *  (`mb_album_artist_id`) est le fourre-tout, pas le morceau — l'utiliser
+	 *  ici ferait cliquer « Helmet » et ouvrir les albums d'autres artistes
+	 *  que la seule compilation a en commun.
+	 */
+	artist_mbid?: string | null,
+};
+
+/**
+ *  Résumé d'un morceau tel que servi à l'interface.
+ * 
+ *  `Deserialize` en plus de `Serialize` : le plan interprété du champ
+ *  d'intention d'Explorer (`PlanTexte`, `apps/desktop/src/main.rs`) en
+ *  embarque un pour l'afficher, et le reçoit de retour une fois l'utilisateur
+ *  passé par l'inspecteur — le seul aller-retour JS de ce genre à ce jour.
+ */
+export type TrackRow_Serialize = {
+	id: number,
+	path: string,
+	title: string | null,
+	artist: string | null,
+	album: string | null,
+	track_no: number | null,
+	year: number | null,
+	duration_ms: number | null,
+	/**
+	 *  Identifiant MusicBrainz de **l'artiste du morceau** (`mb_artist_id`),
+	 *  pas de l'artiste d'album — sert à retrouver ses albums
+	 *  (`Library::albums_of_artist`) depuis un morceau, sans passer par la
+	 *  liste des artistes. Doit rester l'identifiant du nom porté par
+	 *  `artist` : sur une compilation « Various Artists », l'artiste d'album
+	 *  (`mb_album_artist_id`) est le fourre-tout, pas le morceau — l'utiliser
+	 *  ici ferait cliquer « Helmet » et ouvrir les albums d'autres artistes
+	 *  que la seule compilation a en commun.
+	 */
+	artist_mbid: string | null,
+};
+
+export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
+
 /**  Ce que l'interface doit savoir d'une variante avant d'en proposer le bouton. */
 export type VarianteDispo = {
 	nom: string,
 	/**  Poids déjà sur la machine : sinon le premier démixage les télécharge. */
 	presente: boolean,
 	megaoctets: number,
+};
+
+/**  Ce que l'interface reçoit d'une voie du carrefour. */
+export type VoieVue = {
+	morceau: number,
+	/**  Distance cosinus au morceau en cours : la jauge proche ↔ ailleurs. */
+	distance: number | null,
+	defaut: boolean,
+	proche: boolean,
+	/**  Déjà parcourue (retour au carrefour) : montrée, plus proposée. */
+	lue: boolean,
+	/**  Le tracé de la voie depuis le carrefour, `[lon, lat]` (ville). */
+	rue: ([(number | null), (number | null)])[],
+};
+
+/**
+ *  Une voix demandée : quel morceau, à quel gain (0 à 1), où (−1 gauche,
+ *  +1 droite).
+ */
+export type VoixAura = {
+	id: number,
+	gain: number | null,
+	pan: number | null,
 };
 

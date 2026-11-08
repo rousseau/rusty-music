@@ -46,6 +46,7 @@ pub struct Library {
 /// d'intention d'Explorer (`PlanTexte`, `apps/desktop/src/main.rs`) en
 /// embarque un pour l'afficher, et le reçoit de retour une fois l'utilisateur
 /// passé par l'inspecteur — le seul aller-retour JS de ce genre à ce jour.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrackRow {
     pub id: i64,
