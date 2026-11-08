@@ -4060,3 +4060,50 @@ François, sur les chiffres et les images.
   réelles), donc aucune pose ; les images sont des points sans fond de plan.
   La reprise D5 au pas ×32 (`ECART_REPRISE` à réajuster à l'échelle brute
   ~31) : à faire après la décision.
+
+## Outillage, V11 : `target/` qui ne gonfle plus — 8 nov. 2026
+
+Constat (O9 de la synthèse) : `cargo test --workspace` liait les 67 exemples
+à chaque `verifier.sh`, et cargo garde chaque version liée (`nom-<hash>`)
+sans en effacer aucune : 45 Gio dans `target/debug/examples` le 8 nov. au
+matin. Deux changements :
+
+- `verifier.sh` et la CI : `cargo test --workspace --lib --bins --tests`,
+  puis `cargo test --workspace --doc`. Plus d'exemples liés par les tests ;
+  `clippy --all-targets` les compile déjà (vérifie qu'ils restent justes).
+  Aucun test ne dépend d'un exemple construit (ni `CARGO_BIN_EXE`, ni chemin
+  `target/debug/examples` dans les sources). 752 tests passés, avant comme
+  après.
+- `[profile.dev] debug = "line-tables-only"` (dépendances comprises, qui
+  l'héritent). Une panique dans un test donne toujours fichier, ligne et
+  colonne, dans le message comme dans chaque cadre de la trace
+  (`RUST_BACKTRACE=1`, test jetable sur un dépassement d'indice).
+
+Mesures sur ce Mac, modèles CLAP présents :
+
+| | durée `verifier.sh` | `target/debug` | dont `examples` | `target/` entier |
+|---|---|---|---|---|
+| avant (après un nettoyage des anciens exemples) | 231 s | 22 → 28 Gio | 1,9 → 8,3 Gio | 33,2 → 39,6 Gio |
+| après, 1ᵉʳ passage (tout recompilé, `cargo clean --profile dev`) | 584 s | 12 Gio | 0,3 Mo | 24,0 Gio |
+| après, 2ᵉ passage (régime établi) | 66 s | 12 Gio | 0,3 Mo | 24,0 Gio (+34 Mo) |
+| après l'audit d'interface (binaire de bureau en debug) | — | 15 Gio | — | 26,5 Gio |
+
+Le « avant » de 231 s comprend la liaison de tous les exemples, qu'un
+commit précédent avait rendus périmés ; la part due aux seuls exemples, à
+arbre égal, n'est pas isolée. `target/` entier compte aussi
+`target/release` (9,6 Gio, la construction de l'app installée) et les deux
+cibles iOS (2,0 Gio), que ni `verifier.sh` ni l'audit ne touchent : la
+partie que ces deux-là produisent est de 15 Gio.
+
+Routine de nettoyage écrite dans le README (section Développement) :
+`cargo sweep --time 3`, effacement des anciens binaires d'exemples (copies
+à un seul lien : la courante est liée en dur au nom sans hash ; recette
+essayée sur un dossier factice), `cargo clean --profile dev` en dernier
+recours.
+
+**Non vérifié** : l'audit d'interface s'est arrêté au délai de 900 s après
+30 cellules sur 252 (aucune violation dans les 30, dernière : Créer,
+« morceau sélectionné », sombre, 960 × 588) ; rien dans cette étape ne
+touche l'interface, l'arrêt reste à comprendre (fenêtre d'essai hors de
+vue ?). `target/` sous 25 Gio n'est tenu que sans `target/release`. La CI
+GitHub n'a pas tourné (pas de push).

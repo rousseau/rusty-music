@@ -286,7 +286,7 @@ copie de l'état de lecture. Les tests de fumée tournent en moins d'une minute,
 | O6 | **`apps/desktop/src/bibliotheque.rs` : 60 commandes** | un module par domaine : passes d'enrichissement, vérifications, réglages, stockage |
 | O7 | **211 commandes recopiées à la main dans `fixtures.js`** : la forme dérive sans bruit, et c'est la règle « mettre à jour `fixtures.js` » qui la retient | option (inférence) : générer les types depuis Rust (`tauri-specta`) et vérifier les réponses figées contre eux. Compatibilité avec Tauri 2.11 à confirmer |
 | O8 | **La projection est recalculée depuis zéro** à chaque passe (`passe.rs:282`) : le nuage peut tout redistribuer après un ajout d'albums (Règle 4, mémoire spatiale) | partir des coordonnées précédentes, et ne placer que les nouveaux (voir § 4, Kiite World) |
-| O9 | `target/` pèse **84 Go** (mesuré), malgré la compilation incrémentale coupée | `cargo sweep` ou nettoyage par crate, en routine ; à écrire dans le README |
+| O9 | `target/` pèse **84 Go** (mesuré), malgré la compilation incrémentale coupée | **fait (V11, 8 nov.)** : exemples plus liés par les tests, `debug = "line-tables-only"` ; `target/debug` 28 → 12 Gio après `verifier.sh` (15 Gio après l'audit), `verifier.sh` 231 → 66 s en régime établi ; routine (`cargo sweep --time 3`, anciens exemples) dans le README |
 | O10 | Le monde fictif (`peuplement.rs`, `relief.rs`, `projection.rs`, une partie de `tuiles.rs` et de `source.rs` : au moins 1 350 lignes) ne sert que sans ville importée | à garder, mais figé : aucune nouvelle fonction n'y va. Question : un premier lancement sans ville est-il encore un cas réel ? |
 
 ---

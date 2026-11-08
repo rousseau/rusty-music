@@ -41,7 +41,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --features rusty-music-analysis/sans-modeles -- -D warnings
       - name: Tests
-        run: cargo test --workspace --features rusty-music-analysis/sans-modeles
+        # Sans les exemples, comme `scripts/verifier.sh` : Clippy les compile déjà.
+        run: |
+          cargo test --workspace --lib --bins --tests --features rusty-music-analysis/sans-modeles
+          cargo test --workspace --doc --features rusty-music-analysis/sans-modeles
       # Le test `types_commandes` réécrit les types des commandes contrôlées ;
       # ils doivent être commités tels quels pour que le job `interface` y
       # confronte les réponses figées.

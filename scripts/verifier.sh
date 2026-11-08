@@ -24,7 +24,13 @@ for e in "${etapes[@]}"; do
     fmt)    cargo fmt --all -- --check ;;
     deny)   cargo deny check ;;
     clippy) cargo clippy --workspace --all-targets ${options[@]+"${options[@]}"} -- -D warnings ;;
-    test)   cargo test --workspace ${options[@]+"${options[@]}"} ;;
+    test)
+      # Sans `--examples` : `cargo test` lierait sinon les 67 exemples à chaque
+      # passage, et cargo garde chaque version liée sans en effacer aucune
+      # (+6,4 Gio par passage le 8 nov. 2026). `clippy --all-targets` vérifie
+      # déjà qu'ils compilent.
+      cargo test --workspace --lib --bins --tests ${options[@]+"${options[@]}"}
+      cargo test --workspace --doc ${options[@]+"${options[@]}"} ;;
     ios)
       # Le compagnon (`apps/mobile`) ne compile pour iOS que dans Xcode : un
       # changement des crates qu'il lie (core, valise, player) n'y casserait

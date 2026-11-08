@@ -162,6 +162,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo deny check                        # licences, avis de sécurité
 ```
 
+`./scripts/verifier.sh` fait tout cela, comme la CI ; il ne lie pas les
+exemples pendant les tests (`clippy --all-targets` les compile déjà), et le
+profil `dev` ne garde que les tables de lignes (`debug = "line-tables-only"`).
+
+**Garder `target/` sous contrôle.** Cargo n'efface jamais un artefact
+périmé : chaque exemple relié laisse une copie `nom-<hash>` de plus dans
+`target/debug/examples` (jusqu'à 170 par exemple, 45 Gio, avant novembre
+2026), et chaque changement de dépendance ou de profil laisse l'ancienne
+version dans `target/*/deps`. Routine conseillée, quand `du -sh target`
+dépasse ~30 Gio :
+
+```bash
+cargo install cargo-sweep               # une fois
+cargo sweep --time 3                    # retire ce qui n'a pas servi depuis 3 jours
+# anciens binaires d'exemples : ne garder que celui que le nom sans hash désigne
+find target -path '*/examples/*' -name '*-????????????????' -type f \
+  -links 1 -delete
+cargo clean --profile dev               # en dernier recours (tout recompile)
+```
+
 ## Licence
 
 **GPL-3.0-or-later** — le texte intégral est dans `LICENSE`.
