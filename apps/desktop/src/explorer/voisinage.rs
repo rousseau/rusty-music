@@ -337,6 +337,9 @@ pub(crate) fn definir_vocabulaire_familles(
 pub(crate) struct RapportCarte {
     empreintes: usize,
     familles: usize,
+    /// « refaite » (nouveau dessin : perplexité ou époques changées),
+    /// « reprise » (nouveaux morceaux logés) ou « gardee » (nuage inchangé).
+    projection: &'static str,
 }
 
 /// Rejoue la projection t-SNE et le clustering sur les empreintes déjà là,
@@ -344,13 +347,24 @@ pub(crate) struct RapportCarte {
 /// d'aucun d'eux. Bon marché : quelques secondes à quelques dizaines de
 /// secondes sur toute la bibliothèque, pas besoin du fil séparé et du
 /// sondage qu'`Analyser` demande.
+///
+/// Le nuage n'est redessiné que si la perplexité ou les époques ont changé
+/// (`passe::projeter_tout`) : après un changement de vocabulaire, seules
+/// les familles bougent.
 #[tauri::command(async)]
 pub(crate) fn recompute_map(etat: State<Etat>) -> Result<RapportCarte, String> {
+    use rusty_music_analysis::passe::Projection;
     let lib = verrou(&etat.lib);
-    let r = rusty_music_analysis::passe::projeter_tout(&lib, None).map_err(|e| e.to_string())?;
+    let r = rusty_music_analysis::passe::projeter_tout(&lib, None, Projection::Reprise)
+        .map_err(|e| e.to_string())?;
     Ok(RapportCarte {
         empreintes: r.empreintes,
         familles: r.familles,
+        projection: match r.projection {
+            Projection::Refaite => "refaite",
+            Projection::Reprise => "reprise",
+            Projection::Gardee => "gardee",
+        },
     })
 }
 

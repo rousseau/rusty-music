@@ -43,13 +43,17 @@ pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result
                     )
                     .map_err(|e| e.to_string())
                     // La projection doit suivre : sans elle les empreintes existent
-                    // mais aucun point neuf n'apparaît sur la carte. t-SNE ne
-                    // s'incrémente pas — il replace l'ensemble, en une trentaine de
-                    // secondes.
+                    // mais aucun point neuf n'apparaît sur la carte. Elle reprend
+                    // les coordonnées en base, les nouveaux posés près de leurs
+                    // voisins : le nuage reste en place.
                     .and_then(|r| {
-                        rusty_music_analysis::passe::projeter_tout(&lib, None)
-                            .map_err(|e| e.to_string())
-                            .map(|p| (r, p))
+                        rusty_music_analysis::passe::projeter_tout(
+                            &lib,
+                            None,
+                            rusty_music_analysis::passe::Projection::Reprise,
+                        )
+                        .map_err(|e| e.to_string())
+                        .map(|p| (r, p))
                     })
                 });
 

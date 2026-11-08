@@ -103,9 +103,15 @@ enum Cmd {
         limit: i64,
     },
     /// Place toutes les empreintes sur la carte (rapide, à rejouer à volonté)
+    ///
+    /// Repart des coordonnées en base : les points restent en place, les
+    /// nouveaux se logent près de leurs voisins.
     Project {
         #[arg(long, default_value_t = 12)]
         familles: usize,
+        /// Refait le nuage depuis zéro (un nouveau dessin)
+        #[arg(long)]
+        refaire: bool,
     },
     /// Étire ou transpose un fichier, et écrit le résultat
     ///
@@ -852,7 +858,11 @@ fn main() -> Result<()> {
             );
             if project {
                 let t = Instant::now();
-                let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles))?;
+                let p = rusty_music_analysis::passe::projeter_tout(
+                    &lib,
+                    Some(familles),
+                    rusty_music_analysis::passe::Projection::Reprise,
+                )?;
                 println!(
                     "carte : {} points, {} familles — {:.1} s",
                     p.empreintes,
@@ -2278,13 +2288,20 @@ fn main() -> Result<()> {
                 t.elapsed().as_secs_f64() / 60.0
             );
         }
-        Cmd::Project { familles } => {
+        Cmd::Project { familles, refaire } => {
+            use rusty_music_analysis::passe::Projection;
             let t = Instant::now();
-            let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles))?;
+            let demande = if refaire {
+                Projection::Refaite
+            } else {
+                Projection::Reprise
+            };
+            let p = rusty_music_analysis::passe::projeter_tout(&lib, Some(familles), demande)?;
             println!(
-                "{} points, {} familles — {:.1} s",
+                "{} points, {} familles, projection {:?} — {:.1} s",
                 p.empreintes,
                 p.familles,
+                p.projection,
                 t.elapsed().as_secs_f64()
             );
         }

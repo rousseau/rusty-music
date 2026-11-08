@@ -16,7 +16,7 @@ use tracing::{debug, warn};
 use crate::cluster::kmeans;
 use crate::decode::{fenetres, FENETRES};
 use crate::mel::Mel;
-use crate::projection::{cadrer, projeter};
+use crate::projection::{cadrer, placer_nouveaux, projeter, reprendre, Point};
 use crate::Embedder;
 
 /// Nom du modèle, tel qu'inscrit en base. Change avec le modèle : deux jeux
@@ -60,6 +60,22 @@ pub struct Rapport {
     pub empreintes: usize,
     pub echecs: usize,
     pub familles: usize,
+    /// Ce que [`projeter_tout`] a fait des coordonnées.
+    pub projection: Projection,
+}
+
+/// Comment [`projeter_tout`] place les points : la demande, puis ce qui a
+/// été fait.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Projection {
+    /// Depuis zéro : un nouveau dessin.
+    #[default]
+    Refaite,
+    /// Depuis les coordonnées précédentes, les nouveaux près de leurs
+    /// voisins ([`crate::projection::reprendre`]).
+    Reprise,
+    /// Rien d'ajouté depuis la dernière : coordonnées laissées telles quelles.
+    Gardee,
 }
 
 /// Calcule les empreintes des morceaux en attente.
@@ -265,7 +281,19 @@ fn passe_clap(
 /// `genre` exploitable. Le vocabulaire n'aurait alors aucune ancre, et sans
 /// repli la carte perdrait toute famille d'un coup. `kmeans` reprend la main
 /// pour ce cas précis, comme avant cette bascule.
-pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, Error> {
+///
+/// **Le nuage reste en place** (D5 de `synthese-novembre-2026.md`). Demandée
+/// en [`Projection::Reprise`], la projection repart des coordonnées en base :
+/// sans rien de nouveau elle les garde ; avec des nouveaux, elle les pose près
+/// de leurs voisins et reprend t-SNE ([`crate::projection::reprendre`]). Elle
+/// refait tout quand moins de la moitié des morceaux avaient une place, ou
+/// quand la perplexité ou les époques ont changé depuis la dernière
+/// projection refaite. [`Projection::Refaite`] force un nouveau dessin.
+pub fn projeter_tout(
+    lib: &Library,
+    familles: Option<usize>,
+    demande: Projection,
+) -> Result<Rapport, Error> {
     let empreintes = lib.embeddings(MODELE)?;
     let mut rapport = Rapport {
         demandes: empreintes.len(),
@@ -279,8 +307,51 @@ pub fn projeter_tout(lib: &Library, familles: Option<usize>) -> Result<Rapport, 
     let params = lib.parametres_carte()?;
 
     let vecteurs: Vec<Vec<f32>> = empreintes.iter().map(|(_, v)| v.clone()).collect();
-    let mut points = projeter(&vecteurs, params.perplexite, params.epoques);
-    cadrer(&mut points);
+
+    let precedents: std::collections::HashMap<i64, Point> = lib
+        .map_points(MODELE)?
+        .into_iter()
+        .map(|(id, x, y, _)| (id, Point { x, y }))
+        .collect();
+    let places: Vec<Option<Point>> = empreintes
+        .iter()
+        .map(|(id, _)| precedents.get(id).copied())
+        .collect();
+    let connus = places.iter().filter(|p| p.is_some()).count();
+    // Sans note (base d'avant D5), les paramètres sont supposés inchangés :
+    // la première passe ne redessine pas tout.
+    let memes_parametres = lib
+        .projection_retenue()?
+        .is_none_or(|(p, e)| p == params.perplexite && e == params.epoques);
+    rapport.projection =
+        if demande == Projection::Refaite || !memes_parametres || connus * 2 < places.len() {
+            Projection::Refaite
+        } else if connus == places.len() {
+            Projection::Gardee
+        } else {
+            Projection::Reprise
+        };
+
+    let points: Vec<Point> = match rapport.projection {
+        Projection::Refaite => {
+            let mut p = projeter(&vecteurs, params.perplexite, params.epoques);
+            cadrer(&mut p);
+            lib.retenir_projection(params.perplexite, params.epoques)?;
+            p
+        }
+        Projection::Reprise => {
+            let depart = placer_nouveaux(&vecteurs, &places, crate::chemin::K_VOISINS);
+            let mut p = reprendre(&vecteurs, params.perplexite, &depart);
+            cadrer(&mut p);
+            p
+        }
+        Projection::Gardee => places.into_iter().flatten().collect(),
+    };
+    debug!(
+        projection = ?rapport.projection,
+        nouveaux = empreintes.len() - connus,
+        "projection"
+    );
 
     // Le regroupement porte sur les empreintes, pas sur la carte : t-SNE
     // déforme les distances, s'en servir décrirait le dessin, pas la musique.
@@ -560,6 +631,56 @@ pub fn descripteurs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Trois amas d'empreintes, `n` morceaux de plus à chaque appel.
+    fn ajouter(lib: &Library, debut: usize, n: usize) {
+        for i in debut..debut + n {
+            let id = lib
+                .upsert(&rusty_music_core::TrackMeta {
+                    path: PathBuf::from(format!("/m/{i}.flac")),
+                    ..Default::default()
+                })
+                .unwrap();
+            let mut v = vec![0.0f32; 32];
+            v[(i % 3) * 10] = 1.0;
+            v[(i % 3) * 10 + 1] = 0.5 + (i as f32) * 0.003;
+            lib.save_embedding(id, MODELE, &v).unwrap();
+        }
+    }
+
+    /// Rien de neuf : le nuage est gardé tel quel. Des nouveaux : il est
+    /// repris. La perplexité change : il est refait.
+    #[test]
+    fn la_projection_garde_reprend_ou_refait_le_nuage() {
+        let lib = Library::open_in_memory().unwrap();
+        ajouter(&lib, 0, 60);
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "aucun point placé");
+        let avant = lib.map_points(MODELE).unwrap();
+
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Gardee);
+        let xy = |p: &[(i64, f32, f32, i64)]| {
+            p.iter()
+                .map(|(i, x, y, _)| (*i, *x, *y))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(xy(&lib.map_points(MODELE).unwrap()), xy(&avant));
+
+        ajouter(&lib, 60, 6);
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Reprise);
+        assert_eq!(lib.map_points(MODELE).unwrap().len(), 66);
+
+        lib.set_parametre_carte("perplexite", 12.0).unwrap();
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "perplexité changée");
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Gardee);
+
+        let r = projeter_tout(&lib, Some(3), Projection::Refaite).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "demandé");
+    }
 
     #[test]
     fn la_fenetre_representative_est_la_plus_proche_de_la_moyenne() {

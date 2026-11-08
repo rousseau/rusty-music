@@ -81,6 +81,131 @@ pub fn projeter(empreintes: &[Vec<f32>], perplexite: f32, epoques: usize) -> Vec
         .collect()
 }
 
+/// Époques d'une reprise : assez pour loger les nouveaux et resserrer leurs
+/// voisins, trop peu pour que les anciens dérivent. Mesuré
+/// (`examples/stabilite_projection.rs`, 27 805 morceaux dont 5 % ajoutés,
+/// trois exécutions) : déplacement médian des anciens 0,6 à 0,9 % de la
+/// largeur, contre 15 à 33 % depuis zéro ; conservation des 12 voisins 14 à
+/// 16,5 %, contre 13 %. En 1 000 époques, la médiane monte à 1,5-2,4 %.
+pub const EPOQUES_REPRISE: usize = 250;
+
+/// Écart-type auquel une reprise ramène les coordonnées cadrées, l'échelle
+/// brute de t-SNE étant perdue au cadrage. Celle de la bibliothèque mesurée
+/// vaut 7,5 ; reprendre au quart déplace 2,4 à 3,2 % et fait tomber la
+/// conservation à 9-10 %, au quadruple le critère tient encore. 10 laisse
+/// de la marge aux bibliothèques plus petites, dont l'échelle brute est
+/// moindre.
+const ECART_REPRISE: f32 = 10.0;
+
+/// Reprend une projection depuis `depart` (une coordonnée par empreinte, à
+/// n'importe quelle échelle, celle de [`cadrer`] par exemple) au lieu de
+/// repartir du hasard : le nuage garde sa forme, et la mémoire spatiale de
+/// qui l'a déjà parcouru (Règle 4 de `interface-guidelines.md`).
+///
+/// Sans exagération précoce ni phase d'élan : t-SNE continue un dessin déjà
+/// convergé. `bhtsne` n'optimise pas un sous-ensemble seul ; tout le nuage
+/// repart, initialisé, pendant [`EPOQUES_REPRISE`] époques.
+pub fn reprendre(empreintes: &[Vec<f32>], perplexite: f32, depart: &[Point]) -> Vec<Point> {
+    assert_eq!(empreintes.len(), depart.len());
+    if empreintes.len() < 10 {
+        return projeter(empreintes, perplexite, EPOQUES_REPRISE);
+    }
+    let unites: Vec<Vec<f32>> = empreintes.iter().map(|v| normaliser(v)).collect();
+    let perplexite = perplexite.min((unites.len() as f32 - 1.0) / 3.0).max(2.0);
+
+    let m = depart.len() as f32;
+    let (cx, cy) = (
+        depart.iter().map(|p| p.x).sum::<f32>() / m,
+        depart.iter().map(|p| p.y).sum::<f32>() / m,
+    );
+    let ecart = (depart
+        .iter()
+        .map(|p| (p.x - cx).powi(2) + (p.y - cy).powi(2))
+        .sum::<f32>()
+        / m)
+        .sqrt()
+        .max(f32::EPSILON);
+    let k = ECART_REPRISE / ecart;
+    let initial: Vec<f32> = depart
+        .iter()
+        .flat_map(|p| [(p.x - cx) * k, (p.y - cy) * k])
+        .collect();
+
+    let mut tsne: bhtsne::tSNE<f32, Vec<f32>, 2> = bhtsne::tSNE::new(&unites);
+    tsne.perplexity(perplexite)
+        .epochs(EPOQUES_REPRISE)
+        .initial_embedding(initial)
+        .stop_lying_epoch(0)
+        .momentum_switch_epoch(0)
+        .barnes_hut(0.5, |a, b| {
+            a.iter()
+                .zip(b.iter())
+                .map(|(x, y)| (x - y) * (x - y))
+                .sum::<f32>()
+                .sqrt()
+        });
+
+    tsne.embedding()
+        .chunks(2)
+        .map(|c| Point { x: c[0], y: c[1] })
+        .collect()
+}
+
+/// Les points sans coordonnée (`None`) posés au barycentre de leurs
+/// `k` plus proches voisins à l'oreille (cosinus des empreintes) parmi ceux
+/// qui en ont une : le départ d'une [`reprendre`]. Il faut au moins un point
+/// placé.
+pub fn placer_nouveaux(empreintes: &[Vec<f32>], places: &[Option<Point>], k: usize) -> Vec<Point> {
+    let unites: Vec<Vec<f32>> = empreintes.iter().map(|v| normaliser(v)).collect();
+    let connus: Vec<usize> = (0..places.len()).filter(|&i| places[i].is_some()).collect();
+    assert!(!connus.is_empty(), "aucun point placé");
+    let k = k.clamp(1, connus.len());
+    let nouveaux: Vec<usize> = (0..places.len()).filter(|&i| places[i].is_none()).collect();
+
+    let barycentre = |i: usize| -> Point {
+        let mut proches: Vec<(f32, usize)> = connus
+            .iter()
+            .map(|&j| {
+                let d: f32 = unites[i].iter().zip(&unites[j]).map(|(a, b)| a * b).sum();
+                (-d, j)
+            })
+            .collect();
+        if k < proches.len() {
+            proches.select_nth_unstable_by(k, |a, b| a.0.partial_cmp(&b.0).unwrap());
+        }
+        let (mut x, mut y) = (0.0, 0.0);
+        for &(_, j) in &proches[..k] {
+            let p = places[j].unwrap();
+            x += p.x;
+            y += p.y;
+        }
+        Point {
+            x: x / k as f32,
+            y: y / k as f32,
+        }
+    };
+
+    // Balayage complet, nouveaux × placés : réparti sur les cœurs.
+    let fils = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let part = nouveaux.len().div_ceil(fils).max(1);
+    let poses: Vec<(usize, Point)> = std::thread::scope(|s| {
+        let taches: Vec<_> = nouveaux
+            .chunks(part)
+            .map(|lot| s.spawn(|| lot.iter().map(|&i| (i, barycentre(i))).collect::<Vec<_>>()))
+            .collect();
+        taches.into_iter().flat_map(|t| t.join().unwrap()).collect()
+    });
+
+    let mut sortie: Vec<Point> = places
+        .iter()
+        .map(|p| p.unwrap_or(Point { x: 0.0, y: 0.0 }))
+        .collect();
+    for (i, p) in poses {
+        sortie[i] = p;
+    }
+    sortie
+}
+
 /// Ramène les coordonnées dans `[-1, 1]`, en préservant les proportions.
 ///
 /// t-SNE rend des échelles arbitraires d'une exécution à l'autre : sans cela
@@ -150,6 +275,59 @@ mod tests {
             inter > intra * 1.5,
             "les amas se sont mélangés : intra {intra:.2}, inter {inter:.2}"
         );
+    }
+
+    /// Un nouveau venu se pose parmi ses semblables, et une reprise laisse
+    /// les anciens à peu près où ils étaient.
+    #[test]
+    fn une_reprise_garde_le_nuage_en_place() {
+        // Trois amas de 100, chacun bruité sur quelques dimensions : assez de
+        // structure locale pour que le dessin ait quelque chose à garder.
+        let mut graine = 7u64;
+        let mut bruit = || {
+            graine = graine
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((graine >> 33) as f32 / (1u64 << 31) as f32) - 0.5
+        };
+        let mut empreintes = Vec::new();
+        for amas in 0..3 {
+            for _ in 0..100 {
+                let mut v = vec![0.0f32; 32];
+                v[amas * 10] = 1.0;
+                for d in 1..6 {
+                    v[amas * 10 + d] = 0.3 * bruit();
+                }
+                empreintes.push(v);
+            }
+        }
+        let n = empreintes.len();
+        let mut avant = projeter(&empreintes, 15.0, 500);
+        cadrer(&mut avant);
+
+        // Le dernier de l'amas 2 arrive sans coordonnée.
+        let mut places: Vec<Option<Point>> = avant.iter().copied().map(Some).collect();
+        places[n - 1] = None;
+        let depart = placer_nouveaux(&empreintes, &places, 5);
+        let d = |a: &Point, b: &Point| ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt();
+        let centre = |r: std::ops::Range<usize>| {
+            let k = r.len() as f32;
+            let (x, y) = r.fold((0.0, 0.0), |(x, y), i| (x + avant[i].x, y + avant[i].y));
+            Point { x: x / k, y: y / k }
+        };
+        assert!(
+            d(&depart[n - 1], &centre(200..n - 1)) < d(&depart[n - 1], &centre(0..100)),
+            "le nouveau venu n'est pas allé vers son amas"
+        );
+
+        let mut apres = reprendre(&empreintes, 15.0, &depart);
+        cadrer(&mut apres);
+        let mut deplacements: Vec<f32> = (0..n - 1).map(|i| d(&apres[i], &avant[i])).collect();
+        deplacements.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mediane = deplacements[deplacements.len() / 2];
+        // Largeur 2 : 7,5 % de la largeur. Mesuré sur 25 exécutions (Barnes-Hut
+        // en parallèle n'est pas déterministe) : de 0,031 à 0,075.
+        assert!(mediane < 0.15, "médiane des déplacements {mediane:.3}");
     }
 
     #[test]

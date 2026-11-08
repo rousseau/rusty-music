@@ -324,8 +324,13 @@ $("recalculer-carte").addEventListener("click", async () => {
   $("carte-parametres-etat").textContent = "Recalcul en cours…";
   try {
     const r = await invoke("recompute_map");
+    const nuage = {
+      refaite: "nuage redessiné",
+      reprise: "nuage gardé, nouveaux morceaux logés",
+      gardee: "nuage inchangé",
+    }[r.projection] ?? "";
     $("carte-parametres-etat").textContent =
-      `${r.empreintes.toLocaleString("fr-FR")} morceaux replacés, ${r.familles.toLocaleString("fr-FR")} familles.`;
+      `${r.empreintes.toLocaleString("fr-FR")} morceaux, ${r.familles.toLocaleString("fr-FR")} familles ; ${nuage}.`;
     // La carte affichée, si elle l'est, montre des positions périmées ; les
     // familles nommées et le filtre par famille de l'Écoute le sont tout autant.
     await familleARecalculee();

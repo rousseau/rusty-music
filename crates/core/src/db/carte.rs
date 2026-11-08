@@ -823,6 +823,36 @@ impl Library {
         Ok(())
     }
 
+    /// Perplexité et époques de la dernière projection depuis zéro, s'il y en
+    /// a une de notée : une projection les reprend tant qu'elles n'ont pas
+    /// changé, et refait le nuage sinon (`analysis::passe::projeter_tout`).
+    /// Gardées dans `parametres_carte`, sous des clés que
+    /// [`Library::parametres_carte`] ne lit pas.
+    pub fn projection_retenue(&self) -> Result<Option<(f32, usize)>> {
+        let lire = |cle: &str| -> Result<Option<f64>> {
+            Ok(self
+                .conn
+                .query_row(
+                    "SELECT valeur FROM parametres_carte WHERE cle = ?1",
+                    [cle],
+                    |r| r.get(0),
+                )
+                .optional()?)
+        };
+        Ok(
+            match (lire("projection_perplexite")?, lire("projection_epoques")?) {
+                (Some(p), Some(e)) => Some((p as f32, e as usize)),
+                _ => None,
+            },
+        )
+    }
+
+    /// Note les paramètres d'une projection faite depuis zéro.
+    pub fn retenir_projection(&self, perplexite: f32, epoques: usize) -> Result<()> {
+        self.set_parametre_carte("projection_perplexite", perplexite as f64)?;
+        self.set_parametre_carte("projection_epoques", epoques as f64)
+    }
+
     /// Le vocabulaire des familles par genre, dans l'ordre où il a été
     /// écrit. Table vide = [`VOCABULAIRE_DEFAUT`] — même convention que
     /// [`Library::parametres_carte`].
