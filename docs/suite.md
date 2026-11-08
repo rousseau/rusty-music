@@ -1,23 +1,58 @@
 # Où en est le projet, et ce qui reste
 
-État au **6 nov. 2026**. Ce document dit où en est chaque brique et ce qui
+État au **8 nov. 2026**. Ce document dit où en est chaque brique et ce qui
 reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
 version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
-dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Ce qui a été
-fait et mesuré, au jour le jour : `journal.md`.
+dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Le plan en
+cours, étape par étape : [`synthese-novembre-2026.md`](synthese-novembre-2026.md).
+Ce qui a été fait et mesuré, au jour le jour : `journal.md`.
 
 ## Les briques
 
 | Brique | État | Restes, et où les lire |
 |---|---|---|
-| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust | décodage Opus lent : `opus-decoder` met 11 à 13 s pour ouvrir un morceau Opus de 2 min de la bibliothèque (Fingathing, 10 morceaux) ; `opus-pure` décode 15 s en 10,5 ms contre 787 ms (relevé par le banc de P4, `journal.md`, 6 nov.) ; à remplacer. Migrations versionnées depuis le 31 oct. : `db::schema::migrations` |
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust ; `core` séparé en quatre crates le 7 nov. (`core`, `enrichissement`, `lama`, `valise` ; `gapless` passé dans `player`) : toucher Lama ou l'enrichissement recompile en 19 s au lieu de 96 | décodage Opus lent : `opus-decoder` met 11 à 13 s pour ouvrir un morceau Opus de 2 min de la bibliothèque (Fingathing, 10 morceaux) ; `opus-pure` décode 15 s en 10,5 ms contre 787 ms (relevé par le banc de P4, `journal.md`, 6 nov.) ; à remplacer (G4 de la synthèse). Migrations versionnées depuis le 31 oct. : `db::schema::migrations` |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) ; palette de recherche ⌘K (1ᵉʳ nov.) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
-| Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties ; modèle intégré Gemma 4 E4B ou Ollama au choix, phase 7) | Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
+| Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties ; modèle intégré Gemma 4 E4B ou Ollama au choix, phase 7) ; nuage stable (D5, 8 nov.) : la projection reprend les coordonnées en base et loge les nouveaux morceaux près de leurs voisins (déplacement médian des anciens 0,9 % contre 15 à 33 % en repartant de zéro) | nuage : la première reprise sur la base de l'app viendra avec la prochaine analyse ; une échelle de départ quatre fois plus grande porte la conservation des voisins à 24,7 %, à creuser avant G1 (`journal.md`, « D5 ») ; Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
 | Module 3 — Pratiquer et Créer (ex-Éditer, deux modes du rail depuis le 5 nov.) | périmètre d'`ui-spec-editeur.md` couvert (démixage, vitesse, hauteur, réglage par stem, greffe calée sur les temps, export) ; *pratiquer* : pulsation Beat This!, boucle à la mesure, partition alphaTab, basse (Basic Pitch ou MuScriptor, tablature doigtée), batterie (ADTOF), sections (all-in-one) ; *créer* : greffe mesure par mesure, section sur section ; BS-RoFormer « SW » variante par défaut pour pratiquer | `plan-editer-pratique-creation.md` : 1.1 autoroute de notes, 1.5 corriger la transcription, 2.2 chercher le greffon, 2.3 COCOLA, 2.5-2.7 (LarsNet, GrooVAE, génération) ; publication des poids convertis sur Hugging Face (0.1, en partie faite) ; tonalité cible par stem ; ce que Pratiquer retient d'une séance à l'autre (`ui-spec-editeur.md`, questions ouvertes) |
+| Interface (contrat et contrôles) | treize règles (`interface-guidelines.md`), dont les Règles 12 (une zone, un rôle) et 13 (le rail tient dans la fenêtre), écrites le 7 nov. ; table des écrans (`js/ecrans.js`) ; G8 (hauteur du rail) dans l'audit ; audit 252 cellules, 0 violation, G8 vert sur les 13 écrans ; types générés de Rust (`tauri-specta`, en test seulement) pour 5 commandes, confrontés à `fixtures.js` par `verifier.sh` et la CI | l'Anneau tient au ras (803 px pour 804) : un bloc de plus dans son rail le ferait déborder ; les 206 autres commandes à passer aux types générés, par étapes (`ui-tests/README.md`) ; un champ que Rust a retiré mais que `fixtures.js` garde n'est pas vu (`journal.md`, « C4 ») |
 | Backend `burn/metal` | parité faite (31 oct.) : CLAP, all-in-one, BS-RoFormer, MuScriptor f32 exacts en MSL ; htdemucs et htdemucs_ft aussi | htdemucs_6s faux en MSL, à localiser dans `demucs-core` avant de basculer toute l'application ; reprise : `experiments/burn-metal/README.md` |
 | Super-résolution « HD » | livrée (`crates/superres`, AERO via ONNX Runtime) | — (`module3-superresolution.md`) |
 | Compagnon iOS « Rusty Valise » | tourne sur l'iPhone (18 oct.) ; mode Valise du bureau (19 oct.) ; file et reprise (22 oct.) ; passage Mac → iPhone par fichier (2 nov.) ; passage dans les deux sens et valise par différence, par le Wi-Fi, appairage au câble (3 nov.) | étapes 1 (découper le code), 3 (sélection, en partie), 7 (rotation) ; essais sur l'iPhone (passages, valise par le Wi-Fi) ; mesures de batterie ; `plan-ios-compagnon.md` |
+
+## Chantier en cours : synthèse de novembre (ouvert le 7 nov. 2026)
+
+Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
+([`synthese-novembre-2026.md`](synthese-novembre-2026.md), § 5 ; tableau
+« Avancement » étape par étape, prompts au § 6).
+
+- A, consolider — fait (7 nov.) : séparation Pratiquer/Créer, P5, P6, P8,
+  chacun son commit ; `interface-guidelines.md` remis au code (six modes).
+- B, l'interface — fait (7 nov.) : six défauts corrigés (I1-I5, I10), chacun
+  son test de fumée ; table des écrans (`js/ecrans.js`, une seule fonction
+  écrit `hidden`) ; Règles 12 et 13 et leur contrôle G8 (`audit.js`) ; rail
+  désencombré (outils posés sur la carte, réglages de la balade dans son
+  bandeau, aides derrière « ? ») : G8 vert sur les 13 écrans.
+- C, ranger le code sans changement visible — fait (7 nov.) : `maplibre.js`,
+  `editer.js` et `pratiquer.js` découpés (`explorer/`, `etabli.js`,
+  `pratiquer.js`, `creer.js`), `editer.rs` et `bibliotheque.rs` aussi ;
+  `core` en quatre crates ; types générés pour 5 commandes, adoptés par
+  étapes.
+- D, finir la balade — fait (7-8 nov.) : D2 (P8), D4 (P6, relief regardé
+  dans l'application le 8 nov.), D5 (nuage stable). **En attente d'usage** :
+  D1 (relever `balade-mesure.json` ; le 8 nov., 3 balades et 0 carrefour
+  quitté, rien à relever) et D3 (apprendre la pente des choix aux
+  carrefours, s'il y en a au moins 50).
+- Restent :
+  - E, Pratiquer : mémoire par morceau, corriger la transcription, banc
+    d'étirement (WSOLA contre Signalsmith Stretch et Rubber Band), coach ;
+  - F, Créer : chercher le greffon, bancs de compatibilité (COCOLA contre
+    Stem-JEPA) et de fûts, génération ;
+  - G, bancs de modèles avant tout remplacement : empreinte (MuQ-MuLan,
+    CLaMP 3), super-résolution (Apollo), `opus-pure`, Chromaprint. G1 tôt :
+    s'il retient une autre empreinte, la carte est à régénérer, D3 et D5 à
+    remesurer.
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 
@@ -127,15 +162,24 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   (0,13 s) sans régénérer le plan ; une courbe se désigne d'un clic, se suit
   à la molette (l'aura suit), s'ouvre par son numéro ; allures *à niveau*,
   *gravir*, *redescendre*. *À niveau* : écart-type d'énergie −31 % contre
-  *dériver* (0,116 contre 0,167) ; gravir et redescendre, effet faible. Reste
-  à regarder la carte ombrée dans la webview.
+  *dériver* (0,116 contre 0,167) ; gravir et redescendre, effet faible.
+  Regardé dans l'application le 8 nov. (D4) : l'audit voit le relief et
+  pose la carte à z12, z14, z16 en OSM clair et en Nuit
+  (`RUSTY_AUDIT_CAPTURES`). En OSM clair, le plan reste lisible sous les
+  courbes. Pas corrigé, à décider : en Nuit, le relief est presque
+  invisible (courbes et ombrage bruns sur le noir) ; à z12, les courbes
+  s'empilent en anneau au bord de la zone peuplée. Réparé en route :
+  changer de fond ne rejouait plus le relief, les couleurs, le filtre, les
+  pentes ni les traces (`journal.md`, « D4 »).
 - P8, des lieux à soi — fait : épingles (clic droit « Épingler ici », nom,
   teinte, emoji, « Flâner d'ici » depuis l'épingle) et chaînes (une balade
   passée ou un itinéraire gardé : une playlist plus son tracé, rejouable).
   Elles sont en lon/lat et par chemin, et survivent aux tuiles, aux
   réanalyses et aux rescans. Elles suivront les playlists dans la Valise
   quand la règle « Playlist » y viendra.
-- Restes : P9 (facultatif, après un usage réel du carrefour).
+- Restes : P9 (facultatif, après un usage réel du carrefour) ; avant lui,
+  D1 et D3 de la synthèse, qui attendent que la balade ait servi ; les
+  allures du relief dans une vraie balade.
 
 ## Ce qui n'est pas prévu, et pourquoi
 

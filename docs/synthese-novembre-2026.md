@@ -510,7 +510,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | D1 mesure d'usage | rien à relever le 8 nov. : 3 balades, 0 carrefour quitté ; à refaire après usage | 8 nov. 2026 | `journal.md`, « D1 » |
 | D2 P8 | fait avec A2 (P8 commité seul, 23793f1) : épingles et chaînes, survie aux tuiles, réanalyses et rescans testée ; reste non vu : formulaire et cartouche ouverts dans l’audit, aspect dans la webview native | 7 nov. 2026 | `journal.md`, « P8 » ; `plan-balade.md` |
 | D3 pente apprise | conditionnel (D1) | | |
-| D4 P6 | à faire | | |
+| D4 P6 | fait : relief d'énergie, courbes de niveau, allures (e01e98e) ; regardé le 8 nov. : l'audit voit le relief, rejeu du style réparé, teinte en Nuit et anneau à z12 à décider | 7 nov. 2026 | `journal.md`, « P6 » et « D4 » |
 | D5 nuage stable | fait : reprise depuis les coordonnées en base (250 époques), gardée sans nouveaux, refaite si les paramètres changent ; médiane 0,9 % (zéro : 15-33 %), conservation 16,5 % | 8 nov. 2026 | `journal.md`, « D5 » ; `examples/stabilite_projection.rs` |
 | E1 mémoire de Pratiquer | à faire | | |
 | E2 corriger la transcription | à faire | | |

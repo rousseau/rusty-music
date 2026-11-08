@@ -128,6 +128,8 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   `docs/popularite.md`.
 - **compagnon iOS, Valise** : `docs/plan-ios-compagnon.md`.
 - **dépendances, licences** : `docs/rust-audio-stack.md`, `MODELES.md`.
+- **plan en cours** : `docs/synthese-novembre-2026.md` (point du 7 nov.,
+  phases A à G, avancement, prompts).
 - **contexte** : `docs/architecture.md` et `docs/modules.md` (registres
   historiques, plusieurs points depuis tranchés) ; `docs/journal.md` (ce qui a
   été fait et mesuré) ; `docs/archives/` (sections abandonnées).
