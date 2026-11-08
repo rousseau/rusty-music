@@ -23,6 +23,10 @@
 > Convention : **(mesuré)** = relevé pour ce document ; **(lu)** = dans une
 > source citée ; **(inférence)** = proposition, non vérifiée.
 
+> **Aller à** : [En bref](#en-bref) · [1. Chantiers](#chantiers) · [2. Interface](#interface) · [3. Code](#code) · [4. Littérature](#litterature) · [5. Plan](#plan) · [Avancement](#avancement) · **[6. Prompts pour Claude Code](#prompts)** · [Sources](#sources)
+
+<a id="en-bref"></a>
+
 ## En bref
 
 - **Le projet est mûr et bien tenu.** 82 000 lignes de Rust, 19 000 de JS,
@@ -75,6 +79,8 @@
 
 ---
 
+<a id="chantiers"></a>
+
 ## 1. Où en est chaque chantier
 
 | Chantier | État au 7 nov. | Ce qui reste | Où dans le plan |
@@ -90,6 +96,8 @@
 | Contrat d'interface | 234 cellules, 0 violation (6 nov.) | le document a pris du retard sur le code (§ 2.6) ; le rôle du rail n'est pas écrit | A3, B |
 
 ---
+
+<a id="interface"></a>
 
 ## 2. L'interface : le rôle de chaque zone, mode par mode
 
@@ -241,6 +249,8 @@ la checklist), et un document d'audit à part, daté. Les bandeaux « Sept
 
 ---
 
+<a id="code"></a>
+
 ## 3. L'organisation du code
 
 ### 3.1 Les tailles (mesuré, `src/` seulement)
@@ -280,6 +290,8 @@ copie de l'état de lecture. Les tests de fumée tournent en moins d'une minute,
 | O10 | Le monde fictif (`peuplement.rs`, `relief.rs`, `projection.rs`, une partie de `tuiles.rs` et de `source.rs` : au moins 1 350 lignes) ne sert que sans ville importée | à garder, mais figé : aucune nouvelle fonction n'y va. Question : un premier lancement sans ville est-il encore un cas réel ? |
 
 ---
+
+<a id="litterature"></a>
 
 ## 4. La chaîne, étape par étape, face à la littérature
 
@@ -340,6 +352,8 @@ CLAP. D'où un banc avant toute décision (G1), avec un seuil fixé d'avance.
 
 ---
 
+<a id="plan"></a>
+
 ## 5. Plan d'implémentation
 
 Effort : **S** < 1 j · **M** 1 à 3 j · **L** > 3 j. Chaque étape suit les
@@ -354,8 +368,10 @@ contraintes communes de `plan-balade.md` :
 - `verifier.sh` vert, une entrée datée au journal, `suite.md` à jour ;
 - ne pas toucher à `livre/`.
 
-Pour les prompts ci-dessous, **une seule session à la fois** sur l'arbre de
-travail.
+Les prompts prêts à coller sont réunis au [§ 6](#prompts) ; chaque phase
+y renvoie. **Une seule session à la fois** sur l'arbre de travail.
+
+<a id="phase-a"></a>
 
 ### Phase A — Consolider (½ j)
 
@@ -365,33 +381,9 @@ travail.
 | A2 | Ajouter au journal l'entrée de P5 (chiffres : 98,5 % sous le brouillard, migration n° 5…), mettre à jour le tableau d'avancement de `plan-balade.md` | P5 « fait » partout, avec date et où lire | S |
 | A3 | Remettre `interface-guidelines.md` à jour (§ 2.6), sans nouvelle règle | plus aucune mention « quatre boutons », « cinq écrans », « Éditer » seul ; une ligne d'audit pour Pratiquer et une pour Créer ; numéros de ligne retirés | S |
 
-```text
-Prompt A1-A2
-Lis CLAUDE.md, docs/suite.md et docs/synthese-novembre-2026.md (§ 1, § 3.2 O1).
-L'arbre de travail porte deux chantiers non commités : la séparation d'Éditer en
-Pratiquer et Créer (décision 13 de ui-spec-editeur.md) et P5 de la balade
-(traces, brouillard : migration-005-balades.sql, db/balades.rs,
-explorer/traces.rs, js/traces.js). Range les fichiers modifiés en deux groupes
-(git diff fichier par fichier ; un fichier touché par les deux : git add -p).
-Lance scripts/verifier.sh, puis commite la séparation, relance verifier.sh et
-commite P5. Écris ensuite l'entrée de journal de P5 (ce qui a été fait ET
-mesuré, comme pour P4) et mets P5 à « fait » dans le tableau d'avancement de
-docs/plan-balade.md, dans un troisième commit. Ne change aucun comportement.
-```
+**Prompts de cette phase** : [A1-A2](#prompt-a1-a2) · [A3](#prompt-a3) (§ 6)
 
-```text
-Prompt A3
-Lis docs/interface-guidelines.md et docs/synthese-novembre-2026.md (§ 2.6).
-Mets le contrat à jour sans ajouter de règle : six modes et Bibliothèque dans le
-socle commun ; la bio d'artiste au centre est faite (#autour-artiste,
-bio_artiste), passe la ligne Règle 1 d'Écouter à ✅ ; retire les numéros de
-ligne d'index.html ; remplace la section « Éditer » par deux sections
-« Pratiquer » et « Créer » (vérifie chaque règle dans le code) ; ajoute une
-section « Surimpressions de la carte » (bandeau de balade, carrefour, aura,
-brouillard, menu du clic droit) avec les mêmes verdicts. Range les bandeaux
-d'historique (« Sept écrans », « Sixième écran ») dans une section
-« Historique » en fin de document.
-```
+<a id="phase-b"></a>
 
 ### Phase B — L'interface (2 j)
 
@@ -402,53 +394,9 @@ d'historique (« Sept écrans », « Sixième écran ») dans une section
 | B3 | Écrire les Règles 12 et 13 ; ajouter G8 (hauteur du rail) à `audit.js`, avec une variante de fixtures à 12 familles | l'audit dit combien de px dépassent par écran | S |
 | B4 | Désencombrer selon le tableau du § 2.4, après les décisions du § 2.5 | G8 vert à 1 400 × 900 ; aucun contrôle perdu (chaque geste a une place) | M |
 
-```text
-Prompt B1
-Lis docs/interface-guidelines.md et docs/synthese-novembre-2026.md (§ 2.3).
-Corrige, chacun avec son test de fumée dans apps/desktop/ui-tests/fumee.spec.js :
-I1 #choisir-edition visible hors d'Écouter après un album ouvert (masque-le dans
-basculerMode) ; I2 #fil-titre dit « Carte » en Nuage, Temps, Anneau (le titre
-prend le nom de l'affichage) ; I3 l'aide « clic : écouter » (index.html et
-fond-de-plan.js) devient « clic : choisir » ; I4 « Filtrer » masqué en
-Pratiquer et Créer hors de l'état « choisir » ; I5 libellés français des stems
-(Batterie, Basse, Voix, Autres, Guitare, Piano) par une table côté interface,
-le nom du moteur restant la clé ; I10 segment du décompte qui tient sur une
-ligne dans 232 px. Puis verifier.sh, audit-interface.sh, journal.
-```
+**Prompts de cette phase** : [B1](#prompt-b1) · [B2-B3](#prompt-b2-b3) · [B4](#prompt-b4) (§ 6)
 
-```text
-Prompt B2-B3
-Lis docs/interface-guidelines.md, apps/desktop/ui/js/modes.js et
-docs/synthese-novembre-2026.md (§ 2.4, § 3.2 O2).
-1. Remplace les affectations `hidden` de basculerMode par une table
-   déclarative (écran → blocs du rail, contrôles de l'en-tête, vue centrale),
-   appliquée par une seule fonction ; les états internes (sélecteur / séparer /
-   établi, Lama) restent aux fonctions qui les gèrent, mais ne touchent plus
-   aux éléments de la table. Ajoute un test de fumée qui parcourt les écrans et
-   vérifie la table. Aucun changement visible.
-2. Écris dans interface-guidelines.md la Règle 12 (une zone, un rôle) et la
-   Règle 13 (le rail tient dans la fenêtre), telles que proposées au § 2.4, et
-   la ligne correspondante de la checklist. Ajoute G8 à audit.js : bas du
-   dernier élément visible du rail ≤ sa hauteur, à 1 400 × 900, avec une
-   bibliothèque d'essai à 12 familles. Lance l'audit et reporte les dépassements
-   par écran dans le journal (sans encore les corriger).
-```
-
-```text
-Prompt B4 (après les décisions du § 2.5)
-Lis docs/interface-guidelines.md (Règles 12 et 13), docs/synthese-novembre-2026.md
-(§ 2.4, § 2.5 et les décisions prises) et le résultat de G8 au journal.
-Explorer : zoom et « Calques » (palettes, Pentes, Brouillard, Sentiers) en
-commandes posées sur la carte, à côté de « Entendre autour » ; les réglages de
-la balade dans son bandeau ; l'outil Chemin sur la carte (son panneau s'ouvre
-au premier Maj+clic ou au bouton) ; « Balades passées » repliées. Pratiquer et
-Créer : Démixage réduit à une ligne quand l'établi est ouvert ; l'aide de
-« Votre partie » dans l'état vide du centre ; la mention de licence dans
-« À propos » et la boîte de téléchargement. Découvrir : l'adresse de contact
-seulement dans Bibliothèque. Les aides de plus d'une ligne derrière un « ? ».
-Aucun geste ne doit disparaître. Tests de fumée, G8 vert, audit, captures
-avant/après au journal.
-```
+<a id="phase-c"></a>
 
 ### Phase C — Ranger le code, sans changement visible (3 j)
 
@@ -459,34 +407,9 @@ avant/après au journal.
 | C3 | Séparer `core` en `core`, `enrichissement`, `lama`, `valise` (O5) | `verifier.sh` vert ; temps de recompilation après une modification de `ollama.rs`, mesuré avant/après | M/L |
 | C4 | Option : types générés (`tauri-specta`) et contrôle de `fixtures.js` (O7) | d'abord un essai sur 5 commandes, puis décision | S + ? |
 
-```text
-Prompt C1
-Lis CLAUDE.md, docs/synthese-novembre-2026.md (§ 3.2 O3, O4) et
-apps/desktop/ui/js/{maplibre,pratiquer,editer,carte}.js. Sans changer aucun
-comportement : découpe maplibre.js en js/explorer/{nuage,temps,anneau,carte-gl,
-chemins}.js et js/familles.js (la légende, partagée par Écouter, Explorer,
-Découvrir) ; découpe pratiquer.js et editer.js en js/etabli.js (stems,
-variantes, vitesse, hauteur, playhead, spectres, état `edition`),
-js/pratiquer.js (partition, décompte, partie, transcription) et js/creer.js
-(greffe, candidats). Un commit par découpage, les 35 tests de fumée verts à
-chaque fois ; mets à jour l'ordre d'import (main.js) et les mentions de
-fichiers dans docs/interface-guidelines.md.
-```
+**Prompts de cette phase** : [C1](#prompt-c1) · [C3](#prompt-c3) (§ 6)
 
-```text
-Prompt C3
-Lis CLAUDE.md, docs/rust-audio-stack.md et docs/synthese-novembre-2026.md
-(§ 3.2 O5). Mesure d'abord le temps de `cargo build -p rusty-music-desktop`
-après avoir touché crates/core/src/ollama.rs. Puis sépare crates/core en :
-core (db, scan, tags, watch, session, error, http), enrichissement
-(musicbrainz, discogs, deezer, lastfm, listenbrainz, theaudiodb,
-critiquebrainz, pochettes, popularité, éditions, biographies, enrichir),
-lama (ollama, llm_local, filtres_playlist ; la feature lama-local y
-déménage), valise (valise, passage, appairage). Les briques audio (decode,
-opus, gapless, loudness, volume) : propose où les mettre avant de les
-déplacer. Un commit par crate extraite, verifier.sh vert à chaque fois,
-cargo deny vert. Remesure le temps de compilation et reporte-le au journal.
-```
+<a id="phase-d"></a>
 
 ### Phase D — Finir la balade
 
@@ -498,33 +421,9 @@ cargo deny vert. Remesure le temps de compilation et reporte-le au journal.
 | D4 | P6, relief d'énergie — tel que `plan-balade.md` | celui de P6 | L |
 | D5 | **Nouveau** : stabilité du nuage. Projection initialisée depuis les coordonnées précédentes ; les nouveaux morceaux placés près de leurs voisins puis optimisés seuls | déplacement médian des anciens points < 2 % de la largeur après l'ajout de 5 % de morceaux ; conservation de voisinage inchangée (~13 %) | M |
 
-```text
-Prompt D3
-Lis docs/plan-balade.md (P2, P3), docs/synthese-novembre-2026.md (§ 4, ligne
-« Balade, pente ») et l'entrée de journal qui relève balade-mesure.json.
-Enregistre, pour chaque carrefour présenté, les facettes de chaque voie
-(proximité, nouveauté, déjà-visité, usure, relation) et la voie prise (geste
-ou défaut), dans balade_pas ou une table voisine (migration). Ajoute à
-crates/carto un ajustement de logit conditionnel (descente de gradient, sans
-dépendance nouvelle) qui estime les cinq poids. Mesure, par validation
-croisée sur les carrefours enregistrés, la log-vraisemblance et la part de
-voies bien prédites, contre les poids fixes de « dériver ». Pas d'interface
-tant que le gain n'est pas mesuré ; s'il l'est, une quatrième allure « à mon
-goût » qui affiche ses poids. Journal, suite.md, plan-balade.md.
-```
+**Prompts de cette phase** : [D3](#prompt-d3) · [D5](#prompt-d5) (§ 6)
 
-```text
-Prompt D5
-Lis crates/analysis/src/projection.rs, crates/analysis/src/passe.rs et
-docs/synthese-novembre-2026.md (§ 3.2 O8, § 4). Écris un banc qui projette la
-bibliothèque, retire 5 % des morceaux au hasard (graine fixe), reprojette en
-les rajoutant (a) depuis zéro, comme aujourd'hui, et (b) depuis les
-coordonnées précédentes, les nouveaux placés au barycentre de leurs voisins
-CLAP puis optimisés seuls quelques centaines d'itérations si bhtsne le
-permet (sinon toute la projection, initialisée). Mesure le déplacement
-médian et au 9ᵉ décile des anciens points, et la conservation des 12 voisins.
-Si (b) tient le critère, branche-le dans la passe. Journal.
-```
+<a id="phase-e"></a>
 
 ### Phase E — Pratiquer : mémoire, étirement, coach
 
@@ -536,32 +435,9 @@ Si (b) tient le critère, branche-le dans la passe. Journal.
 | E4 | Coach, étapes 1 à 3 de `recherche-coach-pratique.md` : calibration de latence, batterie MIDI, table par mesure, escalier de tempo ; cymbales et notes fantômes de la référence marquées incertaines (Weyers et al. 2025) | ceux de la recherche | L |
 | E5 | Coach, étapes 4 à 6 : dynamique et groove MIDI, basse DI, éditeur de référence (avec E2) | ceux de la recherche | L |
 
-```text
-Prompt E1
-Lis docs/ui-spec-editeur.md (décision 13, questions ouvertes),
-docs/plan-editer-pratique-creation.md (1.5) et docs/recherche-coach-pratique.md
-(« table par mesure »). Propose puis écris (migration) le schéma de la mémoire
-de Pratiquer par morceau : boucles nommées (bornes en temps d'origine),
-vitesse atteinte, instrument, notation, décompte, variante de démixage, et
-une place pour les corrections de transcription (E2) et la table par mesure du
-coach (E4), vides pour l'instant. Branche-la : ce qui est réglé est gardé, et
-rouvrir le morceau rend la séance. Créer n'a rien à y mettre. Tests, fixtures,
-fumée, journal, ui-spec-editeur.md (question tranchée).
-```
+**Prompts de cette phase** : [E1](#prompt-e1) · [E3](#prompt-e3) (§ 6)
 
-```text
-Prompt E3
-Lis docs/journal.md (« wsola, et pas un vocodeur écrit à la main », 19 août),
-docs/rust-audio-stack.md et docs/synthese-novembre-2026.md (§ 4, ligne
-« Étirement, hauteur »). Dans experiments/ (hors workspace), écris un banc qui
-rend 6 extraits de 20 s de la bibliothèque (batterie seule, basse seule, pop
-dense, piano, voix, jazz) à 0,5, 0,7 et 0,8× et à ±2 demi-tons par : wsola
-(+ rééchantillonnage pour la hauteur, comme aujourd'hui), signalsmith-stretch
-(crate Rust, MIT) et Rubber Band (R3, GPL ; par sa bibliothèque C). Mesure le
-coût par bloc de 128 trames (pire salve, comme cout_bloc) et le temps de
-transposition d'un stem de 184 s. Écris les fichiers rendus pour une écoute à
-l'aveugle et laisse-moi juger ; ne change rien dans l'application avant.
-```
+<a id="phase-f"></a>
 
 ### Phase F — Créer : trouver le greffon
 
@@ -572,19 +448,9 @@ l'aveugle et laisse-moi juger ; ne change rien dans l'application avant.
 | F3 | Banc de séparation en fûts : LarsNet contre DrumSep | SDR sur un petit jeu annoté + écoute ; un seul porté en Burn | M |
 | F4 | 2.7 générer un stem — ordre du plan d'oct. inchangé | — | L |
 
-```text
-Prompt F2
-Lis docs/plan-editer-pratique-creation.md (2.2, 2.3), MODELES.md et
-docs/synthese-novembre-2026.md (§ 4, ligne « Compatibilité de stems »).
-Dans experiments/, mets côte à côte COCOLA et Stem-JEPA zéro-shot
-(github.com/SonyCSLParis/Stem-JEPA) : lis d'abord les licences du code et
-des poids, et écris-les. Sur 20 morceaux sources de la bibliothèque, prends
-pour chacun 10 batteries candidates (voisins CLAP au tempo replié), fais
-classer les candidats par les deux modèles et par la proximité CLAP seule ;
-prépare les 20 × 3 greffes du premier choix de chaque méthode (greffer_par_
-mesures) pour que je les juge à l'aveugle. Ne porte rien en Burn avant mon
-jugement. Journal.
-```
+**Prompts de cette phase** : [F2](#prompt-f2) (§ 6)
+
+<a id="phase-g"></a>
 
 ### Phase G — Bancs de modèles, avant tout remplacement
 
@@ -596,45 +462,9 @@ jugement. Journal.
 | G4 | Opus : `opus-pure` à la place d'`opus-decoder` dans le cœur | les 10 morceaux de Fingathing s'ouvrent en moins de 200 ms ; parité des échantillons décodés | S |
 | G5 | Option : empreinte Chromaprint pour les doublons et l'identification | doublons trouvés en plus de ceux des tags ; licence et maturité de `rusty-chromaprint` | S/M |
 
-```text
-Prompt G1
-Lis CLAUDE.md, docs/rust-audio-stack.md (politique des poids), MODELES.md,
-crates/analysis/src/projection.rs (commentaire de tête) et
-docs/synthese-novembre-2026.md (§ 4, « Pourquoi l'empreinte vient en tête »).
-Dans experiments/ (Python permis pour un banc), calcule pour 2 000 morceaux
-tirés au hasard (graine fixe) les empreintes CLAP (celles en base),
-MuQ-MuLan (poids CC BY-NC 4.0, téléchargés à la source, jamais republiés) et
-CLaMP 3 (lis sa licence d'abord). Pour chacune : pureté de genre des 12
-voisins (genres MusicBrainz), même chose après t-SNE, distance médiane entre
-albums d'une même famille et entre familles, recherche texte → audio sur les
-exemples de prompts du Lama (rang du premier morceau jugé pertinent, une
-liste que je validerai), coût par morceau sur ce Mac. Reporte un tableau au
-journal et applique le critère de la synthèse (G1) ; ne touche pas à
-l'application.
-```
+**Prompts de cette phase** : [G1](#prompt-g1) · [G2](#prompt-g2) · [G4](#prompt-g4) (§ 6)
 
-```text
-Prompt G2
-Lis docs/module3-superresolution.md, MODELES.md et
-docs/synthese-novembre-2026.md (§ 4, ligne « Super-résolution »). Dans
-experiments/, compare AERO (actuel) et Apollo (github.com/JusperLee/Apollo,
-code CC BY-SA 4.0 ; lis la licence des poids) sur 20 MP3 de la bibliothèque
-entre 128 et 192 kbit/s, et, quand le même album existe en FLAC, contre la
-source. ViSQOL si disponible, sinon spectre et écoute à l'aveugle (prépare
-les fichiers). Coût par minute de son sur le CPU et sur Metal. Décide si un
-port Burn d'Apollo vaut la peine ; journal.
-```
-
-```text
-Prompt G4
-Lis docs/journal.md (P4, mesure opus-decoder contre opus-pure) et
-crates/core/src/opus.rs. Remplace opus-decoder par opus-pure dans le cœur
-(cargo deny vert), vérifie la parité des échantillons décodés sur les 10
-morceaux Opus de la bibliothèque (écart maximal), mesure le temps
-d'ouverture avant/après, et le gapless. Retire opus-pure des
-dev-dependencies d'analysis s'il devient une dépendance normale. Journal,
-suite.md (Cœur d'ingestion).
-```
+<a id="ordre"></a>
 
 ### Ordre et dépendances
 
@@ -661,6 +491,8 @@ pas l'application. B et C touchent les mêmes fichiers, donc l'un après
 l'autre. G1 décide de beaucoup : s'il retient une autre empreinte, la carte
 est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 
+<a id="avancement"></a>
+
 ### Avancement
 
 | étape | état | date | où lire |
@@ -675,11 +507,11 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | C2 Rust, application | fait : `editer.rs` → `etabli.rs`, `pratiquer.rs`, `creer.rs` ; `bibliotheque.rs` → `bibliotheque/{mod,scan,analyse,verifications,enrichissement,discogs,pochettes}.rs` ; deux commits, noms de commandes inchangés, `verifier.sh` vert | 7 nov. 2026 | `journal.md`, « C2 » |
 | C3 `core` | fait : `valise`, `enrichissement`, `lama` extraites, trois commits, `verifier.sh` et `cargo deny` verts ; après une modification de `ollama.rs`, 96 s → 19 s ; `gapless` dans `player`, `decode`, `opus`, `loudness` restent | 7 nov. 2026 | `journal.md`, « C3 » |
 | C4 types générés | adopté par étapes : `tauri-specta` (rc.26) en dépendance de test, 5 commandes contrôlées (`types_commandes.rs`, `npm run types`), branché dans `verifier.sh` et la CI ; champ en trop dans `fixtures.js` pas encore vu | 7 nov. 2026 | `journal.md`, « C4 » ; `ui-tests/README.md` |
-| D1 mesure d'usage | vers le 12 nov. | | |
-| D2 P8 | à faire | | |
+| D1 mesure d'usage | rien à relever le 8 nov. : 3 balades, 0 carrefour quitté ; à refaire après usage | 8 nov. 2026 | `journal.md`, « D1 » |
+| D2 P8 | fait avec A2 (P8 commité seul, 23793f1) : épingles et chaînes, survie aux tuiles, réanalyses et rescans testée ; reste non vu : formulaire et cartouche ouverts dans l’audit, aspect dans la webview native | 7 nov. 2026 | `journal.md`, « P8 » ; `plan-balade.md` |
 | D3 pente apprise | conditionnel (D1) | | |
 | D4 P6 | à faire | | |
-| D5 nuage stable | à faire | | |
+| D5 nuage stable | fait : reprise depuis les coordonnées en base (250 époques), gardée sans nouveaux, refaite si les paramètres changent ; médiane 0,9 % (zéro : 15-33 %), conservation 16,5 % | 8 nov. 2026 | `journal.md`, « D5 » ; `examples/stabilite_projection.rs` |
 | E1 mémoire de Pratiquer | à faire | | |
 | E2 corriger la transcription | à faire | | |
 | E3 banc d'étirement | à faire | | |
@@ -695,6 +527,327 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | G5 Chromaprint | option | | |
 
 ---
+
+<a id="prompts"></a>
+
+## 6. Prompts pour Claude Code
+
+Un prompt par étape qui en demande un, à coller tel quel dans une nouvelle
+session. Les contraintes communes sont au début du [§ 5](#plan), et
+`CLAUDE.md` les porte déjà : inutile de les répéter. Les prompts des étapes
+faites restent ici pour mémoire ; leur état est dans le tableau
+[Avancement](#avancement).
+
+| Prompt | Objet | Étapes | Phase | Après |
+|---|---|---|---|---|
+| [A1-A2](#prompt-a1-a2) | Consolider le dépôt : deux commits, journal de P5 | A1, A2 | [A](#phase-a) | — |
+| [A3](#prompt-a3) | Remettre le contrat d'interface à jour | A3 | [A](#phase-a) | A1 |
+| [B1](#prompt-b1) | Corriger les défauts I1 à I5 et I10 | B1 | [B](#phase-b) | phase A |
+| [B2-B3](#prompt-b2-b3) | Table des écrans, Règles 12 et 13, contrôle G8 | B2, B3 | [B](#phase-b) | B1 |
+| [B4](#prompt-b4) | Désencombrer le rail | B4 | [B](#phase-b) | B3 et décisions du § 2.5 |
+| [C1](#prompt-c1) | Découper les modules de l'interface | C1 | [C](#phase-c) | B2 (même fichier) |
+| [C3](#prompt-c3) | Séparer `core` en quatre crates | C3 | [C](#phase-c) | C2 |
+| [D3](#prompt-d3) | Apprendre la pente des choix aux carrefours | D3 | [D](#phase-d) | D1 (≥ 50 choix) |
+| [D5](#prompt-d5) | Garder le nuage stable quand la bibliothèque grandit | D5 | [D](#phase-d) | — |
+| [E1](#prompt-e1) | Mémoire de Pratiquer par morceau | E1 | [E](#phase-e) | — |
+| [E3](#prompt-e3) | Banc d'écoute de l'étirement | E3 | [E](#phase-e) | — |
+| [F2](#prompt-f2) | Banc de compatibilité de stems | F2 | [F](#phase-f) | F1 conseillé |
+| [G1](#prompt-g1) | Banc d'empreinte audio | G1 | [G](#phase-g) | — |
+| [G2](#prompt-g2) | Banc de super-résolution | G2 | [G](#phase-g) | — |
+| [G4](#prompt-g4) | Remplacer le décodeur Opus | G4 | [G](#phase-g) | — |
+
+<a id="prompt-a1-a2"></a>
+
+### Prompt A1-A2
+
+**Consolider le dépôt : deux commits, journal de P5.** Étapes A1, A2 · phase [A](#phase-a) · [↑ index des prompts](#prompts)
+
+```text
+Lis CLAUDE.md, docs/suite.md et docs/synthese-novembre-2026.md (§ 1, § 3.2 O1).
+L'arbre de travail porte deux chantiers non commités : la séparation d'Éditer en
+Pratiquer et Créer (décision 13 de ui-spec-editeur.md) et P5 de la balade
+(traces, brouillard : migration-005-balades.sql, db/balades.rs,
+explorer/traces.rs, js/traces.js). Range les fichiers modifiés en deux groupes
+(git diff fichier par fichier ; un fichier touché par les deux : git add -p).
+Lance scripts/verifier.sh, puis commite la séparation, relance verifier.sh et
+commite P5. Écris ensuite l'entrée de journal de P5 (ce qui a été fait ET
+mesuré, comme pour P4) et mets P5 à « fait » dans le tableau d'avancement de
+docs/plan-balade.md, dans un troisième commit. Ne change aucun comportement.
+```
+
+<a id="prompt-a3"></a>
+
+### Prompt A3
+
+**Remettre le contrat d'interface à jour.** Étape A3 · phase [A](#phase-a) · après : A1 · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/interface-guidelines.md et docs/synthese-novembre-2026.md (§ 2.6).
+Mets le contrat à jour sans ajouter de règle : six modes et Bibliothèque dans le
+socle commun ; la bio d'artiste au centre est faite (#autour-artiste,
+bio_artiste), passe la ligne Règle 1 d'Écouter à ✅ ; retire les numéros de
+ligne d'index.html ; remplace la section « Éditer » par deux sections
+« Pratiquer » et « Créer » (vérifie chaque règle dans le code) ; ajoute une
+section « Surimpressions de la carte » (bandeau de balade, carrefour, aura,
+brouillard, menu du clic droit) avec les mêmes verdicts. Range les bandeaux
+d'historique (« Sept écrans », « Sixième écran ») dans une section
+« Historique » en fin de document.
+```
+
+<a id="prompt-b1"></a>
+
+### Prompt B1
+
+**Corriger les défauts I1 à I5 et I10.** Étape B1 · phase [B](#phase-b) · après : phase A · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/interface-guidelines.md et docs/synthese-novembre-2026.md (§ 2.3).
+Corrige, chacun avec son test de fumée dans apps/desktop/ui-tests/fumee.spec.js :
+I1 #choisir-edition visible hors d'Écouter après un album ouvert (masque-le dans
+basculerMode) ; I2 #fil-titre dit « Carte » en Nuage, Temps, Anneau (le titre
+prend le nom de l'affichage) ; I3 l'aide « clic : écouter » (index.html et
+fond-de-plan.js) devient « clic : choisir » ; I4 « Filtrer » masqué en
+Pratiquer et Créer hors de l'état « choisir » ; I5 libellés français des stems
+(Batterie, Basse, Voix, Autres, Guitare, Piano) par une table côté interface,
+le nom du moteur restant la clé ; I10 segment du décompte qui tient sur une
+ligne dans 232 px. Puis verifier.sh, audit-interface.sh, journal.
+```
+
+<a id="prompt-b2-b3"></a>
+
+### Prompt B2-B3
+
+**Table des écrans, Règles 12 et 13, contrôle G8.** Étapes B2, B3 · phase [B](#phase-b) · après : B1 · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/interface-guidelines.md, apps/desktop/ui/js/modes.js et
+docs/synthese-novembre-2026.md (§ 2.4, § 3.2 O2).
+1. Remplace les affectations `hidden` de basculerMode par une table
+   déclarative (écran → blocs du rail, contrôles de l'en-tête, vue centrale),
+   appliquée par une seule fonction ; les états internes (sélecteur / séparer /
+   établi, Lama) restent aux fonctions qui les gèrent, mais ne touchent plus
+   aux éléments de la table. Ajoute un test de fumée qui parcourt les écrans et
+   vérifie la table. Aucun changement visible.
+2. Écris dans interface-guidelines.md la Règle 12 (une zone, un rôle) et la
+   Règle 13 (le rail tient dans la fenêtre), telles que proposées au § 2.4, et
+   la ligne correspondante de la checklist. Ajoute G8 à audit.js : bas du
+   dernier élément visible du rail ≤ sa hauteur, à 1 400 × 900, avec une
+   bibliothèque d'essai à 12 familles. Lance l'audit et reporte les dépassements
+   par écran dans le journal (sans encore les corriger).
+```
+
+<a id="prompt-b4"></a>
+
+### Prompt B4
+
+**Désencombrer le rail.** Étape B4 · phase [B](#phase-b) · après : B3 et décisions du § 2.5 · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/interface-guidelines.md (Règles 12 et 13), docs/synthese-novembre-2026.md
+(§ 2.4, § 2.5 et les décisions prises) et le résultat de G8 au journal.
+Explorer : zoom et « Calques » (palettes, Pentes, Brouillard, Sentiers) en
+commandes posées sur la carte, à côté de « Entendre autour » ; les réglages de
+la balade dans son bandeau ; l'outil Chemin sur la carte (son panneau s'ouvre
+au premier Maj+clic ou au bouton) ; « Balades passées » repliées. Pratiquer et
+Créer : Démixage réduit à une ligne quand l'établi est ouvert ; l'aide de
+« Votre partie » dans l'état vide du centre ; la mention de licence dans
+« À propos » et la boîte de téléchargement. Découvrir : l'adresse de contact
+seulement dans Bibliothèque. Les aides de plus d'une ligne derrière un « ? ».
+Aucun geste ne doit disparaître. Tests de fumée, G8 vert, audit, captures
+avant/après au journal.
+```
+
+<a id="prompt-c1"></a>
+
+### Prompt C1
+
+**Découper les modules de l'interface.** Étape C1 · phase [C](#phase-c) · après : B2 (même fichier) · [↑ index des prompts](#prompts)
+
+```text
+Lis CLAUDE.md, docs/synthese-novembre-2026.md (§ 3.2 O3, O4) et
+apps/desktop/ui/js/{maplibre,pratiquer,editer,carte}.js. Sans changer aucun
+comportement : découpe maplibre.js en js/explorer/{nuage,temps,anneau,carte-gl,
+chemins}.js et js/familles.js (la légende, partagée par Écouter, Explorer,
+Découvrir) ; découpe pratiquer.js et editer.js en js/etabli.js (stems,
+variantes, vitesse, hauteur, playhead, spectres, état `edition`),
+js/pratiquer.js (partition, décompte, partie, transcription) et js/creer.js
+(greffe, candidats). Un commit par découpage, les 35 tests de fumée verts à
+chaque fois ; mets à jour l'ordre d'import (main.js) et les mentions de
+fichiers dans docs/interface-guidelines.md.
+```
+
+<a id="prompt-c3"></a>
+
+### Prompt C3
+
+**Séparer `core` en quatre crates.** Étape C3 · phase [C](#phase-c) · après : C2 · [↑ index des prompts](#prompts)
+
+```text
+Lis CLAUDE.md, docs/rust-audio-stack.md et docs/synthese-novembre-2026.md
+(§ 3.2 O5). Mesure d'abord le temps de `cargo build -p rusty-music-desktop`
+après avoir touché crates/core/src/ollama.rs. Puis sépare crates/core en :
+core (db, scan, tags, watch, session, error, http), enrichissement
+(musicbrainz, discogs, deezer, lastfm, listenbrainz, theaudiodb,
+critiquebrainz, pochettes, popularité, éditions, biographies, enrichir),
+lama (ollama, llm_local, filtres_playlist ; la feature lama-local y
+déménage), valise (valise, passage, appairage). Les briques audio (decode,
+opus, gapless, loudness, volume) : propose où les mettre avant de les
+déplacer. Un commit par crate extraite, verifier.sh vert à chaque fois,
+cargo deny vert. Remesure le temps de compilation et reporte-le au journal.
+```
+
+<a id="prompt-d3"></a>
+
+### Prompt D3
+
+**Apprendre la pente des choix aux carrefours.** Étape D3 · phase [D](#phase-d) · après : D1 (≥ 50 choix) · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/plan-balade.md (P2, P3), docs/synthese-novembre-2026.md (§ 4, ligne
+« Balade, pente ») et l'entrée de journal qui relève balade-mesure.json.
+Enregistre, pour chaque carrefour présenté, les facettes de chaque voie
+(proximité, nouveauté, déjà-visité, usure, relation) et la voie prise (geste
+ou défaut), dans balade_pas ou une table voisine (migration). Ajoute à
+crates/carto un ajustement de logit conditionnel (descente de gradient, sans
+dépendance nouvelle) qui estime les cinq poids. Mesure, par validation
+croisée sur les carrefours enregistrés, la log-vraisemblance et la part de
+voies bien prédites, contre les poids fixes de « dériver ». Pas d'interface
+tant que le gain n'est pas mesuré ; s'il l'est, une quatrième allure « à mon
+goût » qui affiche ses poids. Journal, suite.md, plan-balade.md.
+```
+
+<a id="prompt-d5"></a>
+
+### Prompt D5
+
+**Garder le nuage stable quand la bibliothèque grandit.** Étape D5 · phase [D](#phase-d) · [↑ index des prompts](#prompts)
+
+```text
+Lis crates/analysis/src/projection.rs, crates/analysis/src/passe.rs et
+docs/synthese-novembre-2026.md (§ 3.2 O8, § 4). Écris un banc qui projette la
+bibliothèque, retire 5 % des morceaux au hasard (graine fixe), reprojette en
+les rajoutant (a) depuis zéro, comme aujourd'hui, et (b) depuis les
+coordonnées précédentes, les nouveaux placés au barycentre de leurs voisins
+CLAP puis optimisés seuls quelques centaines d'itérations si bhtsne le
+permet (sinon toute la projection, initialisée). Mesure le déplacement
+médian et au 9ᵉ décile des anciens points, et la conservation des 12 voisins.
+Si (b) tient le critère, branche-le dans la passe. Journal.
+```
+
+<a id="prompt-e1"></a>
+
+### Prompt E1
+
+**Mémoire de Pratiquer par morceau.** Étape E1 · phase [E](#phase-e) · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/ui-spec-editeur.md (décision 13, questions ouvertes),
+docs/plan-editer-pratique-creation.md (1.5) et docs/recherche-coach-pratique.md
+(« table par mesure »). Propose puis écris (migration) le schéma de la mémoire
+de Pratiquer par morceau : boucles nommées (bornes en temps d'origine),
+vitesse atteinte, instrument, notation, décompte, variante de démixage, et
+une place pour les corrections de transcription (E2) et la table par mesure du
+coach (E4), vides pour l'instant. Branche-la : ce qui est réglé est gardé, et
+rouvrir le morceau rend la séance. Créer n'a rien à y mettre. Tests, fixtures,
+fumée, journal, ui-spec-editeur.md (question tranchée).
+```
+
+<a id="prompt-e3"></a>
+
+### Prompt E3
+
+**Banc d'écoute de l'étirement.** Étape E3 · phase [E](#phase-e) · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/journal.md (« wsola, et pas un vocodeur écrit à la main », 19 août),
+docs/rust-audio-stack.md et docs/synthese-novembre-2026.md (§ 4, ligne
+« Étirement, hauteur »). Dans experiments/ (hors workspace), écris un banc qui
+rend 6 extraits de 20 s de la bibliothèque (batterie seule, basse seule, pop
+dense, piano, voix, jazz) à 0,5, 0,7 et 0,8× et à ±2 demi-tons par : wsola
+(+ rééchantillonnage pour la hauteur, comme aujourd'hui), signalsmith-stretch
+(crate Rust, MIT) et Rubber Band (R3, GPL ; par sa bibliothèque C). Mesure le
+coût par bloc de 128 trames (pire salve, comme cout_bloc) et le temps de
+transposition d'un stem de 184 s. Écris les fichiers rendus pour une écoute à
+l'aveugle et laisse-moi juger ; ne change rien dans l'application avant.
+```
+
+<a id="prompt-f2"></a>
+
+### Prompt F2
+
+**Banc de compatibilité de stems.** Étape F2 · phase [F](#phase-f) · après : F1 conseillé · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/plan-editer-pratique-creation.md (2.2, 2.3), MODELES.md et
+docs/synthese-novembre-2026.md (§ 4, ligne « Compatibilité de stems »).
+Dans experiments/, mets côte à côte COCOLA et Stem-JEPA zéro-shot
+(github.com/SonyCSLParis/Stem-JEPA) : lis d'abord les licences du code et
+des poids, et écris-les. Sur 20 morceaux sources de la bibliothèque, prends
+pour chacun 10 batteries candidates (voisins CLAP au tempo replié), fais
+classer les candidats par les deux modèles et par la proximité CLAP seule ;
+prépare les 20 × 3 greffes du premier choix de chaque méthode (greffer_par_
+mesures) pour que je les juge à l'aveugle. Ne porte rien en Burn avant mon
+jugement. Journal.
+```
+
+<a id="prompt-g1"></a>
+
+### Prompt G1
+
+**Banc d'empreinte audio.** Étape G1 · phase [G](#phase-g) · [↑ index des prompts](#prompts)
+
+```text
+Lis CLAUDE.md, docs/rust-audio-stack.md (politique des poids), MODELES.md,
+crates/analysis/src/projection.rs (commentaire de tête) et
+docs/synthese-novembre-2026.md (§ 4, « Pourquoi l'empreinte vient en tête »).
+Dans experiments/ (Python permis pour un banc), calcule pour 2 000 morceaux
+tirés au hasard (graine fixe) les empreintes CLAP (celles en base),
+MuQ-MuLan (poids CC BY-NC 4.0, téléchargés à la source, jamais republiés) et
+CLaMP 3 (lis sa licence d'abord). Pour chacune : pureté de genre des 12
+voisins (genres MusicBrainz), même chose après t-SNE, distance médiane entre
+albums d'une même famille et entre familles, recherche texte → audio sur les
+exemples de prompts du Lama (rang du premier morceau jugé pertinent, une
+liste que je validerai), coût par morceau sur ce Mac. Reporte un tableau au
+journal et applique le critère de la synthèse (G1) ; ne touche pas à
+l'application.
+```
+
+<a id="prompt-g2"></a>
+
+### Prompt G2
+
+**Banc de super-résolution.** Étape G2 · phase [G](#phase-g) · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/module3-superresolution.md, MODELES.md et
+docs/synthese-novembre-2026.md (§ 4, ligne « Super-résolution »). Dans
+experiments/, compare AERO (actuel) et Apollo (github.com/JusperLee/Apollo,
+code CC BY-SA 4.0 ; lis la licence des poids) sur 20 MP3 de la bibliothèque
+entre 128 et 192 kbit/s, et, quand le même album existe en FLAC, contre la
+source. ViSQOL si disponible, sinon spectre et écoute à l'aveugle (prépare
+les fichiers). Coût par minute de son sur le CPU et sur Metal. Décide si un
+port Burn d'Apollo vaut la peine ; journal.
+```
+
+<a id="prompt-g4"></a>
+
+### Prompt G4
+
+**Remplacer le décodeur Opus.** Étape G4 · phase [G](#phase-g) · [↑ index des prompts](#prompts)
+
+```text
+Lis docs/journal.md (P4, mesure opus-decoder contre opus-pure) et
+crates/core/src/opus.rs. Remplace opus-decoder par opus-pure dans le cœur
+(cargo deny vert), vérifie la parité des échantillons décodés sur les 10
+morceaux Opus de la bibliothèque (écart maximal), mesure le temps
+d'ouverture avant/après, et le gapless. Retire opus-pure des
+dev-dependencies d'analysis s'il devient une dépendance normale. Journal,
+suite.md (Cœur d'ingestion).
+```
+
+---
+
+<a id="sources"></a>
 
 ## Sources
 
