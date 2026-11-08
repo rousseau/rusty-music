@@ -4158,3 +4158,51 @@ François.
 (`purge` demande root) ; le temps réel côté application (Tauri, verrou
 `Player` disputé par le sondage) n'est pas mesuré, seulement `ouvrir` ;
 morceaux sur disque externe ou carte SD non mesurés.
+
+## Outillage, V13 : l'audit d'interface quand personne ne regarde l'écran — 8 nov. 2026
+
+Constat : l'audit complet de V11 s'arrêtait au délai de 900 s après
+30 cellules, et la fenêtre d'essai de V10 ne dessinait pas la carte. Les
+deux tournaient dans un lancement planifié ; la session était verrouillée
+depuis 15:49 Z (`CGSSessionScreenLockedTime`), V10 a commencé à 15:53 Z.
+
+- **Reproduit**, session verrouillée, audit rapide (84 cellules) sur une
+  copie : 30 cellules en 37 s, puis plus rien jusqu'au délai (300 s). WebKit
+  tient la page pour cachée et la suspend au bout de ~30 s (minuteries
+  comprises).
+- **La garde du script ne voyait rien** : `verrouillee()` faisait
+  `ioreg … | grep -q`, et sous `set -o pipefail` `ioreg`, tué par SIGPIPE
+  quand `grep -q` a trouvé, rendait le tube faux (code 141) : session
+  verrouillée lue « non » à chaque fois. Remplacé par un `case` sur la
+  sortie d'`ioreg`.
+- **Corrigé à la source pour les minuteries** : la fenêtre d'audit
+  (`RUSTY_MUSIC_AUDIT`, seulement elle) prend
+  `background_throttling(Disabled)` (Tauri 2.11.5, wry 0.55 :
+  `WKPreferences.inactiveSchedulingPolicy = none`, macOS 14+). Même audit
+  rapide, session verrouillée : 84 cellules en 131 s, 0 violation.
+  **Audit complet par `audit-interface.sh`, session verrouillée : 252
+  cellules, 0 violation, 441 s** (contraste et typographie compris).
+- **La carte, hors d'atteinte** : sonde dans la page, session verrouillée :
+  `requestAnimationFrame` ne tourne plus du tout (0 image en 1 s,
+  `visibilityState = hidden`), même affichage réveillé par
+  `caffeinate -u` (la fenêtre reste derrière l'écran de verrouillage).
+  MapLibre n'émet donc jamais `load` (aucune ligne « tuiles chargées ») :
+  pas de couche `relief-ombre`, d'où « relief absent du plan » et aucune
+  pose en V10. macOS ne dessine pas une fenêtre de session verrouillée ;
+  rien à régler côté application.
+- **Détection** : `audit.js` compte les images d'une seconde au départ ;
+  à zéro, il écrit `AUDIT AFFICHAGE suspendu …` et, captures demandées,
+  ne pose pas la carte (`AUDIT POSE aucune : affichage suspendu`) au lieu
+  d'attendre. Le rapport le dit en une ligne (« affichage suspendu (écran
+  verrouillé ou en veille) : gabarit mesuré, carte non dessinée — relief
+  et captures non vérifiés ») et le relief P6 devient « non mesuré ».
+  `RUSTY_AUDIT_CAPTURES` posé et session verrouillée : sortie d'emblée en
+  12 s, code 3 (« reporté »), une ligne. Codes : 0, 1 violations,
+  2 erreur, 3 reporté.
+- **Vérifié** : `verifier.sh` vert (50 tests de fumée).
+
+**Non vérifié** : les captures `RUSTY_AUDIT_CAPTURES` non vides — il faut
+un lancement session déverrouillée, fenêtre visible (l'écran est resté
+verrouillé pendant toute l'étape) ; l'écran seulement en veille, session
+non verrouillée, n'a pas été essayé (la sonde d'images le couvre, à
+confirmer) ; macOS antérieur à 14 (politique sans effet).

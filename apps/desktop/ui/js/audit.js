@@ -347,6 +347,12 @@ async function sansPasseDecouvrir(entrer) {
 async function auditerInterface() {
   const attendre = AUDIT_ATTENTE;
   const clic = (aff) => document.querySelector(`[data-affichage="${aff}"]`)?.click();
+  // Session verrouillée ou écran en veille : la page reçoit ses minuteries
+  // (fenêtre d'audit sans ralentissement de fond, `main.rs`) mais plus aucune
+  // image — MapLibre ne charge ni ne dessine rien. Le gabarit se mesure quand
+  // même ; la carte, non : le dire une fois, au journal.
+  const suspendu = await affichageSuspendu(attendre);
+  if (suspendu) journalCarte(`AUDIT AFFICHAGE suspendu : aucune image en 1 s (page ${document.visibilityState})`, "warn");
   // Explorer d'abord : il charge les points de la carte, dont la sélection et
   // l'état « Lama après playlist » ont besoin.
   await basculerMode("explorer");
@@ -428,7 +434,10 @@ async function auditerInterface() {
   }
   basculerFile(false);
   fermerEnCours();
-  if (reglages.captures) await poserLeRelief(attendre, clic, reliefAudit);
+  if (reglages.captures) {
+    if (suspendu || await affichageSuspendu(attendre)) journalCarte("AUDIT POSE aucune : affichage suspendu, carte non dessinée");
+    else await poserLeRelief(attendre, clic, reliefAudit);
+  }
   journalCarte(`AUDIT FIN cellules=${cellules} violations=${total}`, total ? "warn" : "log");
 }
 
@@ -443,6 +452,22 @@ function reliefVu() {
     posees: !!g?.getLayer("relief-ombre"),
     option: !!$("carte-relief")?.checked,
   };
+}
+
+/// Aucune image en une seconde ? `requestAnimationFrame` ne tourne plus
+/// quand macOS ne dessine pas la fenêtre (session verrouillée, écran en
+/// veille), même sans ralentissement de fond.
+async function affichageSuspendu(attendre) {
+  let images = 0;
+  let suivre = true;
+  const compter = () => {
+    images++;
+    if (suivre) requestAnimationFrame(compter);
+  };
+  requestAnimationFrame(compter);
+  await attendre(1000);
+  suivre = false;
+  return images === 0;
 }
 
 /// La lisibilité du plan sous le relief (P6) ne se mesure pas au gabarit : elle

@@ -47,8 +47,13 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
 - Outillage — V11 fait (8 nov.) : `verifier.sh` ne lie plus les exemples et
   le profil `dev` ne garde que les tables de lignes : `target/debug` 12 Gio
   après un passage (28 avant), 66 s en régime établi (231 avant) ; routine
-  de nettoyage dans le README. Reste : comprendre pourquoi l'audit
-  d'interface s'arrête au délai après 30 cellules (`journal.md`, « V11 »).
+  de nettoyage dans le README. L'arrêt de l'audit d'interface après
+  30 cellules est compris et levé (V13, 8 nov.) : session verrouillée,
+  WebKit suspendait la page ; fenêtre d'audit sans ralentissement de fond,
+  252 cellules en 441 s écran verrouillé. La carte, elle, ne se dessine pas
+  écran verrouillé (aucune image) : l'audit le dit, et avec captures il
+  sort en code 3 (« reporté ») ; relief et captures demandent un lancement
+  écran déverrouillé (`journal.md`, « V13 »).
 - Restent :
   - E, Pratiquer : mémoire par morceau, corriger la transcription, banc
     d'étirement (WSOLA contre Signalsmith Stretch et Rubber Band), coach ;

@@ -25,6 +25,13 @@
 # `ECRANS` dans `ui/js/audit.js`), RUSTY_AUDIT_CAPTURES (dossier : poses de la
 # carte sous le relief, à z12, z14, z16 en OSM clair et en Nuit ; l'application
 # y écrit une image lue dans son canevas MapLibre). Les trois se combinent.
+#
+# Session verrouillée ou écran en veille (un lancement planifié, personne
+# devant l'écran) : la fenêtre d'audit garde ses minuteries (`main.rs`, sans
+# ralentissement de fond) et le gabarit se mesure en entier, mais macOS ne lui
+# donne plus aucune image : la carte n'est pas dessinée. Le rapport le dit en
+# une ligne ; avec RUSTY_AUDIT_CAPTURES, l'audit est reporté d'emblée (code 3).
+# Codes de sortie : 0 rien à redire, 1 violations, 2 erreur, 3 reporté.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -63,12 +70,17 @@ if [ -d "$SOURCE/tuiles" ]; then
   cp -cR "$SOURCE/tuiles" "$TMP/" 2>/dev/null || cp -R "$SOURCE/tuiles" "$TMP/"
 fi
 
-# Session verrouillée : WebKit tient la fenêtre pour invisible et suspend la
-# page au bout de ~30 s ; l'audit attendrait alors jusqu'au délai, sans un mot.
-verrouillee() { [ "$(uname)" = Darwin ] && ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; }
-if verrouillee; then
-  echo "session verrouillée : l'audit a besoin de l'écran déverrouillé et de sa fenêtre visible" >&2
-  exit 2
+# Session verrouillée : plus aucune image pour la fenêtre, donc ni carte ni
+# captures. Pas de tube vers `grep -q` : sous `pipefail`, `ioreg` tué par
+# SIGPIPE rendait le test toujours faux (V13).
+verrouillee() {
+  [ "$(uname)" = Darwin ] || return 1
+  case "$(ioreg -n Root -d1)" in *'"CGSSessionScreenIsLocked"=Yes'*) return 0 ;; esac
+  return 1
+}
+if verrouillee && [ -n "${RUSTY_AUDIT_CAPTURES:-}" ]; then
+  echo "écran verrouillé : captures de la carte reportées (macOS ne dessine pas la fenêtre)" >&2
+  exit 3
 fi
 
 echo "compilation…"
@@ -83,9 +95,6 @@ echo "audit lancé (pid $PID, copie de la base dans $TMP)…"
 debut=$SECONDS
 until grep -aq "AUDIT FIN\|AUDIT ERREUR" "$LOG"; do
   if ! kill -0 "$PID" 2>/dev/null; then echo "l'application s'est arrêtée avant la fin de l'audit" >&2; tail -5 "$LOG" >&2; exit 2; fi
-  # Verrouillée en cours de route, la page est suspendue : le dire plutôt
-  # qu'attendre le délai sans un mot.
-  if verrouillee; then echo "session verrouillée pendant l'audit : relancer écran déverrouillé" >&2; exit 2; fi
   if [ $((SECONDS - debut)) -gt "$DELAI" ]; then
     # Le journal part avec le dossier temporaire : dire au moins où l'audit
     # s'est arrêté (la dernière cellule mesurée, les dernières lignes).
@@ -103,6 +112,7 @@ from collections import defaultdict
 
 lignes = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in open(sys.argv[1], encoding="utf-8", errors="replace")]
 cellules, erreurs, poses = [], [], []
+suspendu = any("AUDIT AFFICHAGE suspendu" in l for l in lignes)
 for l in lignes:
     p = re.search(r"AUDIT POSE (.*?)\s*$", l)
     if p:
@@ -116,6 +126,8 @@ for l in lignes:
 if erreurs:
     print("\n".join(erreurs))
     sys.exit(2)
+if suspendu:
+    print("affichage suspendu (écran verrouillé ou en veille) : gabarit mesuré, carte non dessinée — relief et captures non vérifiés")
 
 par_ecran = defaultdict(lambda: defaultdict(list))
 for c in cellules:
@@ -137,7 +149,9 @@ if not total:
 
 # Le relief (P6) : vraiment sur le plan dans l'état « carte+relief » ?
 reliefs = [c["mesures"]["relief"] for c in cellules if "relief" in c.get("mesures", {})]
-if reliefs:
+if reliefs and suspendu:
+    print(f"\nRelief (P6) : non mesuré ({len(reliefs)} cellules « carte+relief », carte non dessinée)")
+elif reliefs:
     vus = sum(1 for r in reliefs if r["ombre"] and r["courbes"])
     print(f"\nRelief (P6) : ombrage et courbes visibles dans {vus} cellules « carte+relief » sur {len(reliefs)}")
 if poses:
@@ -157,5 +171,6 @@ if rails:
     print(f"\nRail à 1 400 × 900 (G8), {'/'.join(map(str, sorted(fam)))} familles : contenu / hauteur, dépassement")
     for ecran, ((bas, haut), _) in rails.items():
         print(f"   {ecran:<24} {bas:>5} / {haut} px   {'+' + str(bas - haut) if bas > haut else 'tient'}")
-sys.exit(1 if total else 0)
+# Captures demandées mais carte non dessinée : reporté, pas réussi.
+sys.exit(1 if total else (3 if suspendu and os.environ.get("RUSTY_AUDIT_CAPTURES") else 0))
 PY

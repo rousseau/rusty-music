@@ -839,7 +839,20 @@ fn main() {
                             );
                         }
                     })
-                    .build()?;
+                    ;
+            // Audit d'interface (`RUSTY_MUSIC_AUDIT`) : WebKit suspend une page
+            // qu'il tient pour invisible (session verrouillée, écran en veille)
+            // au bout de ~30 s — l'audit s'arrêtait à 30 cellules et attendait
+            // le délai. Politique « aucune » (macOS 14+) pour la seule fenêtre
+            // d'audit ; l'app ordinaire garde celle du système.
+            let fenetre = if systeme::audit_actif() {
+                fenetre.background_throttling(
+                    tauri::utils::config::BackgroundThrottlingPolicy::Disabled,
+                )
+            } else {
+                fenetre
+            }
+            .build()?;
 
             // Purge unique du cache de la webview. Les anciens builds n'ont
             // laissé aucun en-tête de fraîcheur : WKWebView sert alors sans fin
