@@ -3633,3 +3633,41 @@ Toucher Lama ou l'enrichissement coûte cinq fois moins (≈ 19 s : la crate
 et le bureau). Toucher `core` coûte autant qu'avant (≈ 92 s) : il recompile
 toujours le lecteur, l'analyse, l'éditeur, la carte et la transcription,
 dont la compilation domine.
+
+## Code, C4 : types des commandes générés, réponses figées contrôlées — 7 nov. 2026
+
+Synthèse de novembre, O7 : 211 commandes recopiées à la main dans
+`fixtures.js`, dont la forme dérive sans bruit. Essai sur cinq commandes,
+puis décision : **adopté, par étapes**.
+
+- **Montage.** `tauri-specta` 2.0.0-rc.26 (MIT, version candidate : il
+  épingle `specta =2.0.0-rc.26`), en dépendance de test du bureau ; le
+  binaire n'en dépend pas. Les commandes contrôlées portent
+  `#[cfg_attr(test, specta::specta)]`, leurs types
+  `#[cfg_attr(test, derive(specta::Type))]` (feature `specta` dans `core`).
+  Le test `types_commandes` écrit `ui-tests/types/commandes.ts` ;
+  `npm run types` (TypeScript 5.9.3) y confronte `fixtures.js`.
+- **Les cinq commandes** : `roots`, `artists`, `albums` (types de `core`),
+  `library_stats` (structure imbriquée, histogrammes, tuples),
+  `demix_variantes` (type du bureau, sans `Result`).
+- **Obstacles.** Les entiers 64 bits sont refusés par défaut (perte de
+  précision au-delà de 2⁵³) : `dangerously_cast_bigints_to_number()`, ce
+  que fait déjà le JSON de Tauri. Le second bloc de `fixtures.js` était
+  ajouté par `Object.assign`, que TypeScript ne suit pas : fusionné dans le
+  littéral (aucune clé en double, comportement inchangé). Un tableau JS ne
+  s'infère jamais en tuple : les tuples attendus s'élargissent, leur
+  longueur n'est pas contrôlée.
+- **Mutations** (faites puis annulées) : champ renommé côté Rust, vu ; champ
+  de mauvais type dans `fixtures.js`, vu ; réponse figée absente, vue ;
+  champ que Rust a retiré mais que `fixtures.js` garde, **pas vu** (pas de
+  contrôle d'excédent hors littéral).
+- **Coût.** Recompiler les tests du bureau : ≈ 4,5 s. `core` existe
+  désormais en deux variantes (avec et sans `specta`) : une modification de
+  `core` le recompile, lui et ses dépendants, une fois pour `cargo build` et
+  une fois pour `cargo test` (≈ 92 s chacune).
+- **Branchement.** `verifier.sh`, étape `fumee` : `npm run types` avant
+  Playwright (l'étape `test` a régénéré les types). CI : le job Rust échoue
+  si `commandes.ts` régénéré diffère du fichier commité ; le job interface
+  lance `npm run types`. Mode d'emploi pour contrôler une commande de plus :
+  `ui-tests/README.md`.
+- **Vérifié** : `verifier.sh` vert, `cargo deny` compris.

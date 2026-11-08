@@ -674,7 +674,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | C1 JS | fait : `maplibre.js` → `explorer/{carte-gl,nuage,temps,anneau,chemins}.js` et `familles.js` ; `editer.js`, `pratiquer.js` → `etabli.js`, `pratiquer.js`, `creer.js` ; deux commits, tests verts à chacun | 7 nov. 2026 | `journal.md`, « C1 » |
 | C2 Rust, application | fait : `editer.rs` → `etabli.rs`, `pratiquer.rs`, `creer.rs` ; `bibliotheque.rs` → `bibliotheque/{mod,scan,analyse,verifications,enrichissement,discogs,pochettes}.rs` ; deux commits, noms de commandes inchangés, `verifier.sh` vert | 7 nov. 2026 | `journal.md`, « C2 » |
 | C3 `core` | fait : `valise`, `enrichissement`, `lama` extraites, trois commits, `verifier.sh` et `cargo deny` verts ; après une modification de `ollama.rs`, 96 s → 19 s ; `gapless` dans `player`, `decode`, `opus`, `loudness` restent | 7 nov. 2026 | `journal.md`, « C3 » |
-| C4 types générés | option | | |
+| C4 types générés | adopté par étapes : `tauri-specta` (rc.26) en dépendance de test, 5 commandes contrôlées (`types_commandes.rs`, `npm run types`), branché dans `verifier.sh` et la CI ; champ en trop dans `fixtures.js` pas encore vu | 7 nov. 2026 | `journal.md`, « C4 » ; `ui-tests/README.md` |
 | D1 mesure d'usage | vers le 12 nov. | | |
 | D2 P8 | à faire | | |
 | D3 pente apprise | conditionnel (D1) | | |
