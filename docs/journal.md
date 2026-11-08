@@ -3671,3 +3671,75 @@ puis décision : **adopté, par étapes**.
   lance `npm run types`. Mode d'emploi pour contrôler une commande de plus :
   `ui-tests/README.md`.
 - **Vérifié** : `verifier.sh` vert, `cargo deny` compris.
+
+## Balade, D1 : rien à relever encore ; D2 : déjà fait — 8 nov. 2026
+
+- **D1.** `balade-mesure.json` n'existe pas : le compteur ne s'écrit qu'au
+  début d'un morceau suivant ou à un retour, et aucune balade n'y est
+  arrivée depuis P2. Les journaux de l'app montrent trois balades (5 et
+  6 nov.), arrêtées avec 0 carrefour, 0 choix, 0 retour ; `balade` et
+  `balade_pas` sont vides. Pas de décision sur P9 : à relever le 12 nov. ou
+  plus tard, quand la balade aura servi.
+- **D2** (P8) était fait et commité avec A2 (23793f1) ; ses trois tests
+  passent encore après C3.
+
+## Explorer, D5 : le nuage reste en place — 8 nov. 2026
+
+Synthèse de novembre, O8 : la projection t-SNE repartait de zéro à chaque
+passe, et le nuage se redistribuait après tout ajout d'albums (Règle 4,
+mémoire spatiale).
+
+- **Banc** (`crates/analysis/examples/stabilite_projection.rs`, copie de la
+  base, 27 805 empreintes). Projection des 95 % restants après en avoir
+  retiré 5 % (1 390, graine fixe), puis reprojection de tout. Déplacement
+  des anciens après `cadrer`, en % de la largeur ; conservation des 12
+  voisins 512 d → 2 d. Trois exécutions (Barnes-Hut en parallèle n'est pas
+  déterministe : « zéro » varie de 15 à 33 %) ; la dernière :
+
+  | variante | médiane | 9ᵉ décile | conservation | temps |
+  |---|---|---|---|---|
+  | zéro (avant D5) | 33,1 % | 62,8 % | 12,6 % | 23,7 s |
+  | suite, 1 000 époques | 1,6 % | 3,6 % | 17,2 % | 23,1 s |
+  | suite, 250 époques | 0,9 % | 1,9 % | 14,3 % | 20,8 s |
+  | **la passe** (depuis les coordonnées cadrées) | **0,9 %** | **1,8 %** | **16,5 %** | 21,9 s |
+  | 250 époques, départ au quart de l'échelle | 3,2 % | 5,9 % | 9,9 % | 19,9 s |
+  | 250 époques, départ au quadruple | 0,9 % | 1,7 % | 24,7 % | 20,1 s |
+  | amorce d'openTSNE (écart-type 1e-4, exagération) | 14,6 % | 33,6 % | 12,6 % | 21,9 s |
+
+  « Suite » : départ aux coordonnées précédentes, les nouveaux au
+  barycentre de leurs 12 voisins CLAP, sans exagération précoce ni phase
+  d'élan. `bhtsne` 0.7 accepte un départ (`initial_embedding`) mais
+  n'optimise pas un sous-ensemble seul : tout le nuage repart, initialisé.
+  Le temps est dominé par le calcul des affinités, pas par les époques.
+- **Critère de D5 tenu** : médiane < 2 % (0,6 à 0,9 % sur trois
+  exécutions), conservation ≥ 13 % (14 à 16,5 %).
+- **Dérive** : répéter la reprise sans rien ajouter déplace de 0,4, 0,7
+  puis 1,0 % après trois passes. D'où le cas « gardée » ci-dessous.
+- **Branché** (`passe::projeter_tout`, nouveau paramètre `Projection`) :
+  - rien de neuf depuis la dernière : coordonnées **gardées**, sans t-SNE ;
+  - des nouveaux : **reprise** (`projection::placer_nouveaux`, puis
+    `projection::reprendre`, 250 époques, départ ramené à un écart-type de
+    10 : l'échelle brute, perdue au cadrage, vaut 7,5 ici) ;
+  - **refaite** depuis zéro si moins de la moitié des morceaux avaient une
+    place, si la perplexité ou les époques ont changé depuis la dernière
+    projection refaite (`Library::projection_retenue`, deux clés de plus
+    dans `parametres_carte` ; absentes, elles valent « inchangées »), ou sur
+    demande (`rusty-music project --refaire`).
+
+  L'analyse et « Recalculer la carte » demandent une reprise : après un
+  changement de vocabulaire, seules les familles bougent. Le message de
+  « Recalculer la carte » dit « nuage redessiné », « nuage gardé,
+  nouveaux morceaux logés » ou « nuage inchangé » (champ `projection` de
+  `recompute_map`).
+- **Piste vue en passant** : partir d'une échelle quatre fois plus grande
+  porte la conservation des voisins à 24,7 %, presque le double du
+  « plafond » de 13 % noté dans `projection.rs`. Le plafond tient peut-être
+  en partie à la descente de gradient (échelle, époques, pas), et non
+  seulement à l'empreinte. Non creusé ; à reprendre avant G1, dont la
+  pureté de genre se mesure après projection.
+- **Vérifié** : 2 tests (`une_reprise_garde_le_nuage_en_place` : médiane
+  de 0,031 à 0,075 sur 25 exécutions, seuil 0,15 ;
+  `la_projection_garde_reprend_ou_refait_le_nuage` : les quatre cas) ;
+  `verifier.sh` vert, 48 tests de fumée.
+- **Non vérifié** : la passe réelle sur la base de l'app (la première
+  reprise viendra avec la prochaine analyse).
