@@ -3982,3 +3982,81 @@ dans Écouter avant une relance. Deux causes : la chaîne « Analyser »
   évènement → grille en fumée, mais pas l'émission Tauri entre les deux) ;
   la hauteur de défilement quand des albums s'insèrent au-dessus de la
   partie visible (le `scrollTop` est gardé, le contenu glisse d'autant).
+
+## Explorer, V10 : un pas de t-SNE plus grand, la carte avant et après — 8 nov. 2026
+
+Suite de V3. Rien n'est changé dans `projeter` : la décision revient à
+François, sur les chiffres et les images.
+
+- **Fin du balayage du pas** (`examples/echelle_projection.rs`, nouvelles
+  variantes, `RUSTY_VARIANTES=pas` pour ne lancer que cet axe ; 27 861
+  empreintes, trois graines, demi-étendue ≤ 0,1 point). Le pas « `n / 3` »
+  est exactement le pas ×16 (`n / 48` × 16) :
+
+  | variante | conservation | pureté genre | pureté famille | descente | écart-type brut |
+  |---|---|---|---|---|---|
+  | app (pas `n / 48` = 580) | 12,8 % | 21,2 % | 43,3 % | 7,7 s* | 7,5 |
+  | pas ×8 | 23,8 % | 24,7 % | 46,5 % | 3,8 s | 18,0 |
+  | pas ×16, 500 ép. | 21,7 % | 24,1 % | 45,9 % | 2,1 s | 15,3 |
+  | pas ×16 | 27,0 % | 25,5 % | 47,2 % | 3,8 s | 23,8 |
+  | pas ×16, 2 000 ép. | 29,6 % | 26,2 % | 47,7 % | 7,5 s | 32,7 |
+  | **pas ×32** | **29,3 %** | **26,2 %** | **47,7 %** | 4,0 s | 31,0 |
+  | pas ×64 | 29,5 % | 26,0 % | 47,0 % | 4,0 s | 38,8 |
+
+  \* première variante, pendant une compilation ; 4,0 s en V3. **Retenu :
+  ×32** — autant que ×16 en 2 000 époques pour moitié moins de temps ; ×64
+  n'apporte plus rien et perd sur la famille.
+- **Toute la carte refaite deux fois sur une copie** (`sqlite3 .backup`,
+  nouvel exemple `crates/carto/examples/carte_avant_apres.rs` : la passe
+  `projeter_tout` « refaite » de l'application, la projection refaite au pas
+  ×32 pour « après », puis le plan de Paris comme `engendrer_tuiles` et le
+  relief de l'énergie comme `relief_musical`), deux exécutions de chaque :
+
+  | | conservation | pureté genre | pureté famille | projection (affinités comprises) |
+  |---|---|---|---|---|
+  | avant (pas actuel) | 12,5 / 12,7 / 12,8 % | 20,9 / 21,2 / 21,2 % | 42,5 / 42,8 / 43,3 % | 22 s |
+  | après (pas ×32) | 29,3 / 29,3 % | 26,1 / 26,2 / 26,4 % | 47,4 / 47,6 / 47,7 % | 21 s |
+
+  - **Familles : aucun morceau n'en change** (0 sur 27 861) : elles sont
+    calculées sur les empreintes, pas sur le nuage.
+  - **Plan de Paris** (`croissance_apercu`, deux exécutions de chaque) :
+    âge ↔ coût de voirie ρ = 0,83-0,84 des deux côtés ; 10 % les plus
+    populaires sur une artère : 49 à 55 % avant, 49 à 53 % après ;
+    8 voisins de même famille : 64-65 % avant, 64-66 % après ; voisins
+    musicaux (12, CLAP) retrouvés parmi les 12 voisins sur le plan : 4,2 %
+    pour la carte actuelle de l'app, 4,2 % avant, 4,2 % après. **Le pas ne
+    change pas la qualité du plan** : la croissance place d'abord par date
+    et popularité, la position t-SNE ne sert qu'à l'affinité de style.
+  - **Le redessin, lui, est complet — mais il l'est déjà au pas actuel.**
+    D'une carte refaite au pas actuel à l'autre, comme de la carte actuelle
+    de l'app à une carte refaite au même pas, les morceaux bougent de
+    2,2 à 2,8 km en médiane sur le plan (9ᵉ décile 5 km, 2,5 à 5 % restent
+    à moins de 50 m) : t-SNE part du hasard. Adopter le pas ×32 coûte un
+    « Recalculer la carte », rien de plus.
+- **Épingles, chaînes, traces** : la base réelle n'a aucune épingle, chaîne
+  ni balade (0 ligne) ; épingles (`lon`, `lat`) et tracés de chaîne (JSON de
+  `[lon, lat]`) sont en coordonnées géographiques, les écoutes (brouillard)
+  par chemin : rien de tout cela n'est réécrit par le redessin. Les
+  725 écoutes (458 morceaux) ont une adresse avant comme après (458/458).
+  Ce qui change, c'est la musique sous une épingle : 200 épingles simulées,
+  posées chacune sur un morceau avant, n'ont plus ce morceau pour plus
+  proche voisin que dans 4 % des cas (il s'est éloigné de 2,7 km en
+  médiane) — vrai de tout « Recalculer la carte », pas propre au pas.
+- **Défaut trouvé et réparé** : `tuiles::dossier` (application) lisait
+  toujours le dossier de données réel, même sous `RUSTY_MUSIC_DONNEES` ;
+  l'audit d'interface, lancé sur une copie de la base, montrait donc les
+  tuiles réelles (204 morceaux de la copie « sans adresse réelle ») et
+  pouvait y écrire le relief. Le dossier des données est maintenant résolu
+  à un seul endroit (`systeme::dossier_des_donnees`), pour la base comme
+  pour les tuiles. Les tuiles réelles n'ont pas été touchées pendant ces
+  essais (dernière écriture 15:54 Z, par l'app installée).
+- **Images** : `~/Exp/rusty_music-v10/` (`LISEZMOI.md`) — nuage avant/après
+  (`avant-nuage.png`, `apres-nuage.png`), adresses sur le plan aux cadrages
+  de z12, z14, z16 (`avant-z14.png`…), cœur de ville par famille (SVG).
+- **Vérifié** : `verifier.sh` vert.
+- **Non vérifié** : les captures MapLibre de l'application
+  (`RUSTY_AUDIT_CAPTURES`) : la fenêtre d'essai, hors de vue, ne pose pas le
+  relief (« relief absent du plan », y compris sur une copie des tuiles
+  réelles), donc aucune pose ; les images sont des points sans fond de plan.
+  La reprise D5 au pas ×32 (`ECART_REPRISE` à réajuster à l'échelle brute
+  ~31) : à faire après la décision.

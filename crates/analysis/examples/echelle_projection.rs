@@ -19,7 +19,8 @@
 //!     ×1, ×4 ou ×8 (le cas vu en D5, mais sur une projection faite depuis
 //!     zéro) ;
 //!   - le **pas d'apprentissage**, multiplié par 4 (`n / 12`, le choix
-//!     d'openTSNE) ou par 16.
+//!     d'openTSNE), 8, 16 (`n / 3`, avec 500, 1 000 ou 2 000 époques), 32
+//!     ou 64 (V10).
 //!
 //! Chaque variante tourne avec trois graines (le tirage du départ ; le
 //! Barnes-Hut parallèle ajoute son propre hasard). Mesures : conservation des
@@ -33,6 +34,7 @@
 //! Rien n'est écrit : tout est lu dans la base, `analyze` et `project` passés.
 //!
 //!   cargo run --release -p rusty-music-analysis --example echelle_projection -- <base.db>
+//!   RUSTY_VARIANTES=pas cargo run … : l'application et l'axe du pas seulement
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -282,7 +284,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pas: 16.0,
             ..APP
         },
+        // Suites de V3 (V10) : autour du pas ×16, qui vaut `n / 3` (le pas
+        // `n / 48` de `bhtsne` × 16).
+        Reglage {
+            nom: "pas ×8",
+            pas: 8.0,
+            ..APP
+        },
+        Reglage {
+            nom: "pas ×16, 500 ép.",
+            pas: 16.0,
+            epoques: 500,
+            ..APP
+        },
+        Reglage {
+            nom: "pas ×16, 2000 ép.",
+            pas: 16.0,
+            epoques: 2000,
+            ..APP
+        },
+        Reglage {
+            nom: "pas ×32",
+            pas: 32.0,
+            ..APP
+        },
+        Reglage {
+            nom: "pas ×64",
+            pas: 64.0,
+            ..APP
+        },
     ];
+    // `RUSTY_VARIANTES=app,pas` : seulement les variantes dont le nom commence
+    // par l'un de ces préfixes (le réglage de l'application tourne toujours,
+    // les suites en dépendent).
+    let filtre: Option<Vec<String>> = std::env::var("RUSTY_VARIANTES")
+        .ok()
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
+    let retenue = |r: &Reglage| {
+        r.nom == APP.nom
+            || filtre
+                .as_ref()
+                .is_none_or(|f| f.iter().any(|p| r.nom.starts_with(p.as_str())))
+    };
 
     // Les résultats du réglage de l'application, par graine, pour les suites.
     let mut app_par_graine: Vec<Vec<f32>> = Vec::new();
@@ -291,7 +334,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "variante", "conservation", "pureté genre", "pureté fam.", "temps", "écart"
     );
     println!("{}", "─".repeat(85));
-    for reglage in reglages {
+    for reglage in reglages.into_iter().filter(retenue) {
         let mut mesures = Vec::new();
         for (k, &graine) in GRAINES.iter().enumerate() {
             let t = Instant::now();

@@ -8085,6 +8085,7 @@ name = "rusty-music-carto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bhtsne",
  "contour",
  "geo-types",
  "mvt",

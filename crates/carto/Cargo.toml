@@ -52,3 +52,5 @@ anyhow.workspace = true
 # du graphe musical (`analysis::chemin`) : dépendance d'outil de mesure
 # seulement, jamais liée au crate.
 rusty-music-analysis = { path = "../analysis" }
+# `examples/carte_avant_apres.rs` refait la projection avec un autre pas (V10).
+bhtsne.workspace = true
