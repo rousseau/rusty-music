@@ -461,14 +461,8 @@ fn main() {
             // (l'audit d'interface travaille sur une **copie** de la base : il
             // parcourt tous les écrans, dont certains écrivent — « tout vu » de
             // Découvrir, par exemple). Sans effet en usage normal.
-            let dossier = match std::env::var_os("RUSTY_MUSIC_DONNEES") {
-                Some(d) if !d.is_empty() => {
-                    let d = PathBuf::from(d);
-                    std::fs::create_dir_all(&d)?;
-                    d
-                }
-                _ => app.path().app_data_dir()?,
-            };
+            let dossier = systeme::dossier_des_donnees(app)?;
+            std::fs::create_dir_all(&dossier)?;
             let db = dossier.join("rusty-music.db");
             let hd = dossier.join("hd");
             // Les poids téléchargés par l'application (variantes de démixage

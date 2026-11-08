@@ -41,9 +41,12 @@ pub struct Archives {
     ouvertes: RwLock<HashMap<String, Arc<AsyncPmTilesReader<MmapBackend>>>>,
 }
 
-/// Où vivent les archives, à côté de la base.
+/// Où vivent les archives, à côté de la base — dans le dossier de
+/// `RUSTY_MUSIC_DONNEES` pour une instance d'essai, qui sinon lisait les
+/// tuiles réelles (et pouvait y écrire le relief) en travaillant sur une copie
+/// de la base (V10).
 pub fn dossier(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
-    let d = app.path().app_data_dir()?.join("tuiles");
+    let d = crate::systeme::dossier_des_donnees(app)?.join("tuiles");
     std::fs::create_dir_all(&d)?;
     Ok(d)
 }

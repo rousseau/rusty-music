@@ -114,6 +114,19 @@ pub(crate) fn js_error(message: String, source: Option<String>) {
     tracing::error!(source = source.unwrap_or_default(), "interface : {message}");
 }
 
+/// Le dossier des données : celui de l'application, ou `RUSTY_MUSIC_DONNEES`
+/// pour les essais (l'audit d'interface, une carte refaite sur une copie). Tout
+/// ce qui s'écrit à côté de la base passe par ici, tuiles comprises : une
+/// instance d'essai ne lit ni n'écrit rien dans les données réelles.
+pub(crate) fn dossier_des_donnees<R: tauri::Runtime>(
+    app: &impl tauri::Manager<R>,
+) -> tauri::Result<std::path::PathBuf> {
+    match std::env::var_os("RUSTY_MUSIC_DONNEES") {
+        Some(d) if !d.is_empty() => Ok(std::path::PathBuf::from(d)),
+        _ => app.path().app_data_dir(),
+    }
+}
+
 /// Le dossier où l'application écrit tout : la base et les empreintes, les
 /// journaux, les stems démixés, les rendus HD, les tuiles de la carte. Montré en
 /// tête du mode Bibliothèque — l'utilisateur doit pouvoir retrouver, sauvegarder
