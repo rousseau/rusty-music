@@ -3883,3 +3883,62 @@ banc n'ont pas été remesurés (code inchangé). Nouveau test
 - **Non vérifié** : la lecture dans l'application elle-même (le chemin
   mesuré est celui du lecteur, `ouvrir`) ; le banc gapless avec des
   fichiers d'`opusenc`/`ffmpeg`.
+
+## Explorer, V3 : D5 sur la vraie base ; le plafond de t-SNE tenait à la descente — 8 nov. 2026
+
+Suite de D5 : la passe réelle n'avait pas tourné sur la base de l'app, et
+un départ à quatre fois l'échelle portait la conservation des voisins à
+24,7 % au lieu des 13 % donnés pour un plafond.
+
+- **D5 sur une copie de la base de l'app** (`sqlite3 .backup`, 27 805
+  empreintes, toutes placées ; `rusty-music project --familles 8`) :
+  - telle quelle : projection `Gardee` (« nuage inchangé »), 1,1 s,
+    déplacement nul. Rien n'avait été ajouté depuis la dernière projection :
+    la reprise ne se déclenche pas d'elle-même sur cette base ;
+  - pour la provoquer, coordonnées effacées pour 5 % des morceaux
+    (`track_id % 20 = 7`, 1 390) : 1ʳᵉ passe `Reprise` (« nuage gardé,
+    nouveaux morceaux logés »), 22,8 s ; anciens déplacés de 0,66 % de la
+    largeur en médiane, 1,52 % au 9ᵉ décile, 7,4 % au plus ; les 1 390
+    « nouveaux » retombent à 0,70 % de leur ancienne place en médiane
+    (1,9 % au 9ᵉ décile ; un seul cas au-delà de 50 %). 2ᵉ passe `Gardee`
+    (« nuage inchangé »), 0,3 s, déplacement nul.
+- **Balayage depuis zéro** (`crates/analysis/examples/echelle_projection.rs`,
+  affinités calculées une fois en 17 s, départ gaussien tiré avec trois
+  graines, pas `n / 48` = 579 sauf sur son axe). Moyennes sur trois
+  graines, demi-étendue ≤ 0,5 point partout :
+
+  | variante | conservation | pureté genre | pureté famille | descente | écart-type brut |
+  |---|---|---|---|---|---|
+  | app (départ 1e-4, 1 000 ép., ×12) | 12,8 % | 21,3 % | 43,1 % | 4,0 s | 7,5 |
+  | départ 1e-2 / 1 / 10 | 12,8 / 12,6 / 12,3 % | 21,1 / 21,1 / 20,0 % | 42,8 / 43,1 / 40,3 % | 3,8 s | 7,5 à 8,2 |
+  | départ 30 | 1,9 % | 7,9 % | 16,4 % | 3,6 s | 39,4 |
+  | 500 / 2 000 / 4 000 époques | 8,7 / 17,1 / 21,4 % | 19,3 / 22,8 / 24,0 % | 40,2 / 44,7 / 45,8 % | 2,0 / 7,4 / 14,5 s | 4,5 / 10,8 / 14,8 |
+  | sans exagération / ×4 / ×24 | 14,1 / 12,9 / 12,8 % | 21,9 / 21,3 / 21,3 % | 43,5 / 43,2 / 43,2 % | 3,7 s | 7,4 à 7,9 |
+  | app + 250 ép. depuis ×1 / ×4 / ×8 | 14,1 / 24,9 / 22,6 % | 21,8 / 24,8 / 24,1 % | 43,8 / 46,2 / 45,4 % | 0,9 s | 8,4 / 29,9 / 59,7 |
+  | app + 1 000 ép. depuis ×1 / ×4 / ×8 | 17,1 / 28,0 / 27,0 % | 22,8 / 25,7 / 25,3 % | 44,7 / 47,1 / 46,5 % | 3,7 s | 10,8 / 30,2 / 59,7 |
+  | départ 10, 4 000 ép. | 19,5 % | 22,9 % | 43,9 % | 14,9 s | 14,4 |
+  | **pas ×4** (`n / 12`, openTSNE) | 20,1 % | 23,8 % | 45,5 % | 3,8 s | 13,6 |
+  | pas ×4, 2 000 ép. | 24,7 % | 25,0 % | 46,7 % | 7,3 s | 19,2 |
+  | **pas ×16** | **27,0 %** | **25,7 %** | **47,2 %** | 3,8 s | 23,7 |
+  | *empreinte (512 d)* | — | *29,2 %* | *49,7 %* | | |
+
+- **Verdict** : le « plafond » de 13 % tenait à la **descente**, pas à
+  l'empreinte. Avec le pas de `bhtsne`, 1 000 époques laissent le nuage
+  inachevé, trop resserré (écart-type 7,5 quand les variantes convergées
+  vont de 20 à 30) ; le départ ×4 de D5 rattrapait ce retard. Ni l'échelle
+  du départ (sauf 30, qui casse tout) ni l'exagération n'y changent rien.
+  À temps égal, un pas seize fois plus grand double la conservation et
+  rapproche la pureté de genre de sa borne en 512 d (25,7 contre 29,2 %).
+  La borne de l'empreinte, elle, reste : G1 garde son objet. Commentaire de
+  tête de `projection.rs` mis à jour ; le pas de `projeter` n'est **pas**
+  changé (la carte serait redessinée, et l'échelle brute que
+  `ECART_REPRISE` suppose passerait de 7,5 à ~24).
+- **Repère pour G1** : la pureté de genre « 43 % après projection » citée
+  par la synthèse est la pureté de **famille** (43,1 %) ; le genre exact
+  est à 21,3 %.
+- **Vérifié** : `verifier.sh` vert.
+- **Non vérifié** : le bouton « Recalculer la carte » dans l'application
+  (la CLI appelle le même `passe::projeter_tout`, l'app avec `familles`
+  pris en base) ; l'effet d'un pas plus grand sur la reprise (D5), sur les
+  familles et sur la carte de Paris ; un pas encore plus grand (×32) ou
+  au-delà de 1 000 époques avec le pas ×16.

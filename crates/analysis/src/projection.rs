@@ -18,10 +18,21 @@
 //! projection) ni la pureté de genre du voisinage projeté (~43 %). L'amorçage
 //! spectral resserre les petites familles éparses mais **étale les grandes**
 //! (Rock, Électronique, Hip-Hop, celles dont on se plaignait), pour un coût de
-//! projection multiplié par 3,5. Le plafond est ailleurs : dans l'empreinte,
-//! plusieurs familles de genre sont plus dispersées que le hasard (Jazz 1,08×
-//! le hasard, Classical 1,31×) — aucune projection 2 d n'en fera un quartier
-//! compact, seule une entrée qui porte le genre le pourrait.
+//! projection multiplié par 3,5.
+//!
+//! **Le « plafond » de 13 % tenait à la descente, pas à l'empreinte** (V3,
+//! `examples/echelle_projection.rs`, 27 805 morceaux, trois graines). Avec le
+//! pas que `bhtsne` choisit (`n / 48`), 1 000 époques laissent le nuage
+//! inachevé, trop resserré (écart-type brut 7,5) : la conservation monte
+//! avec les époques (8,7 % à 500, 17,1 % à 2 000, 21,4 % à 4 000). Le même
+//! temps de calcul avec un pas seize fois plus grand donne 27,0 % de
+//! conservation, et la pureté des voisins projetés passe de 21,3 à 25,7 %
+//! pour le genre exact, de 43,1 à 47,2 % pour la famille ; l'échelle du
+//! départ et l'exagération n'y font rien. La vraie borne de la pureté est
+//! celle de l'empreinte en 512 d : 29,2 % (genre), 49,7 % (famille).
+//! Plusieurs familles y restent plus dispersées que le hasard (Jazz 1,08×,
+//! Classical 1,31×) : aucune projection n'en fera un quartier compact. Le pas
+//! de [`projeter`] n'a pas encore été changé (il redessinerait la carte).
 
 /// Coordonnée d'un morceau sur la carte.
 #[derive(Debug, Clone, Copy)]
