@@ -3791,3 +3791,31 @@ lisible avec le relief activé (audit) », que l'audit ne voyait pas.
   `verifier.sh` vert.
 - **Non vérifié** : les allures du relief dans une vraie balade (attend
   l'usage, comme D1).
+
+## Compagnon iOS, après C3 : recompilé, rien n'a cassé — 8 nov. 2026
+
+C3 avait sorti la valise de `core` (`crates/valise`) sans refaire la
+compilation pour `aarch64-apple-ios`. Refaite, sans aucune modification de
+code.
+
+- **`cargo check -p rusty-music-mobile`** pour `aarch64-apple-ios` et
+  `aarch64-apple-ios-sim` : sans erreur ni avertissement ; `clippy
+  --all-targets -D warnings` pour l'iPhone, propre.
+- **Tests** : `rusty-music-mobile` 3 passent (1 ignoré : valise réelle),
+  `rusty-music-valise` 16 passent. Le test ignoré
+  (`la_file_revient_en_pause_a_sa_position`), lancé sur une valise d'essai
+  (`valise exporter` sur une copie de la base, 300 Mo, 6 albums, graine 7) :
+  passe.
+- **Construction Xcode**, comme le projet : simulateur (`cargo tauri ios
+  build --debug --target aarch64-sim`, après ménage de
+  `gen/apple/build/arm64-sim`, piège 4) et iPhone
+  (`scripts/reinstaller-valise.sh` : `.ipa` construit, installé sur
+  l'iPhone 11 Pro, expire le 15 nov.).
+- **Simulateur** (iPhone 18 Pro, iOS 27.0) : la valise d'essai déposée
+  dans Documents s'ouvre au lancement, albums rangés par règle (Récents,
+  Peu écoutés) avec leurs pochettes.
+- **iPhone** : l'app se lance (`devicectl device process launch`, une fois
+  l'iPhone déverrouillé ; verrouillé, iOS refuse) et ouvre sa valise du
+  29 oct. (la base de la valise est écrite à l'heure du lancement).
+- **Non vérifié** : l'écran de l'iPhone et un passage Mac ↔ iPhone, qui
+  demandent un geste des deux côtés.
