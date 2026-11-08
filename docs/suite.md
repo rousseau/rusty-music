@@ -11,7 +11,7 @@ Ce qui a été fait et mesuré, au jour le jour : `journal.md`.
 
 | Brique | État | Restes, et où les lire |
 |---|---|---|
-| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust ; `core` séparé en quatre crates le 7 nov. (`core`, `enrichissement`, `lama`, `valise` ; `gapless` passé dans `player`) : toucher Lama ou l'enrichissement recompile en 19 s au lieu de 96 | décodage Opus lent : `opus-decoder` met 11 à 13 s pour ouvrir un morceau Opus de 2 min de la bibliothèque (Fingathing, 10 morceaux) ; `opus-pure` décode 15 s en 10,5 ms contre 787 ms (relevé par le banc de P4, `journal.md`, 6 nov.) ; à remplacer (G4 de la synthèse). Migrations versionnées depuis le 31 oct. : `db::schema::migrations` |
+| Cœur d'ingestion | livré : scan, surveillance (`notify`), tags (`lofty`), base SQLite, décodage symphonia + Opus pur Rust ; `core` séparé en quatre crates le 7 nov. (`core`, `enrichissement`, `lama`, `valise` ; `gapless` passé dans `player`) : toucher Lama ou l'enrichissement recompile en 19 s au lieu de 96 | Opus décodé par `opus-pure` depuis le 8 nov. (G4) : ouverture d'un morceau de 2 à 6 min en 0,14 à 0,58 s au lieu de 8 à 38 s, échantillons identiques à libopus (l'ancien `opus-decoder` s'en écartait par pointes isolées, jusqu'à 0,17) ; sous 200 ms pour 4 morceaux sur 10 seulement, le lecteur décodant toute la piste avant de jouer : reste un décodage en flux. Migrations versionnées depuis le 31 oct. : `db::schema::migrations` |
 | Enrichissement en ligne | livré : genres MusicBrainz (si adresse de contact), popularité ListenBrainz + Deezer, pochettes de repli (Cover Art Archive, Deezer), bios TheAudioDB, crédits Discogs (dumps), critiques CritiqueBrainz, tags Last.fm (clé de l'utilisateur) ; vérification des pochettes locales | la popularité et les pochettes de repli n'ont pas de case pour les désactiver (`enrichissement-lecteur.md`, `popularite.md`) |
 | Module 1 — Écouter | livré, v0.1.0 ; plan 0.2 soldé (reprise de session, playlists, historique et favoris, « En cours de lecture » macOS, minuteur, enchaînement sans blanc) ; palette de recherche ⌘K (1ᵉʳ nov.) | paroles et égaliseur écartés ; `plan-ecouter-v0.2.md` |
 | Module 2 — Explorer | livré : carte de Paris (OpenStreetMap), croissance chronologique, ancrage des artistes populaires aux monuments, palettes de fond, itinéraires sur la voirie, familles nommées par vote, coloration tempo/énergie, Lama (texte → playlist, par parties ; modèle intégré Gemma 4 E4B ou Ollama au choix, phase 7) ; nuage stable (D5, 8 nov.) : la projection reprend les coordonnées en base et loge les nouveaux morceaux près de leurs voisins (déplacement médian des anciens 0,9 % contre 15 à 33 % en repartant de zéro) | nuage : la première reprise sur la base de l'app viendra avec la prochaine analyse ; une échelle de départ quatre fois plus grande porte la conservation des voisins à 24,7 %, à creuser avant G1 (`journal.md`, « D5 ») ; Lama : raffinement multi-tours, fusion de graines, ordre lissé (`recherche-llm-playlist.md`) ; peuplement persisté et autocomplétion multi-type écartés pour l'instant |
@@ -50,7 +50,8 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   - F, Créer : chercher le greffon, bancs de compatibilité (COCOLA contre
     Stem-JEPA) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : empreinte (MuQ-MuLan,
-    CLaMP 3), super-résolution (Apollo), `opus-pure`, Chromaprint. G1 tôt :
+    CLaMP 3), super-résolution (Apollo), Chromaprint ; G4 (`opus-pure`) fait le
+    8 nov. G1 tôt :
     s'il retient une autre empreinte, la carte est à régénérer, D3 et D5 à
     remesurer.
 

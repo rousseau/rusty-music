@@ -26,13 +26,15 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use opus_pure::{Application, OggOpusWriter, OpusEncoder, OpusHead, MAX_PACKET_BYTES};
 use rodio::Source;
 use rusty_music_analysis::alea::Alea;
 use rusty_music_analysis::decode::{debut_extrait, fenetres, EXTRAIT_S, FENETRES};
 use rusty_music_analysis::mel::Mel;
 use rusty_music_analysis::passe::fenetre_representative;
 use rusty_music_analysis::Embedder;
+use rusty_music_core::opus::codec::{
+    Application, OggOpusWriter, OpusEncoder, OpusHead, MAX_PACKET_BYTES,
+};
 use rusty_music_core::Library;
 use rusty_music_player::{flux_extrait, SR_EXTRAIT};
 

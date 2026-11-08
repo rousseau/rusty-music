@@ -523,7 +523,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | G1 banc d'empreinte | à faire | | |
 | G2 banc HD | à faire | | |
 | G3 sections | conditionnel (G1) | | |
-| G4 `opus-pure` | à faire | | |
+| G4 `opus-pure` | fait : ouverture 0,14 à 0,58 s (avant 8 à 38 s), identique à libopus, gapless 0 ms ; sous 200 ms pour 4 morceaux sur 10, reste un décodage en flux dans le lecteur | 8 nov. 2026 | `journal.md`, « G4 » |
 | G5 Chromaprint | option | | |
 
 ---

@@ -137,19 +137,19 @@ rubato = "5"
 beat-this = { version = "1.1", default-features = false }
 
 # Décodage Opus, que symphonia ne sait pas faire — un album entier de la
-# bibliothèque de test restait hors de la carte. `opus-decoder` est un portage
-# **pur Rust** de libopus : ni `unsafe`, ni FFI, ni bibliothèque système, ni
-# `cmake`. Le crate `opus` officiel, lui, compile libopus depuis les sources et
-# aurait imposé cmake à quiconque construit le projet. `ogg` démultiplexe le
-# conteneur. Licences MIT/Apache-2.0 et BSD-3.
-ogg = "0.9"
-opus-decoder = "0.1"
+# bibliothèque de test restait hors de la carte. `opus-pure` est un codec
+# **pur Rust** (RFC 6716), conteneur Ogg compris (RFC 7845) : ni FFI, ni
+# bibliothèque système, ni `build.rs`, aucune dépendance. Licence BSD-3.
+# Il remplace `ogg` + `opus-decoder` (nov. 2026), une soixantaine de fois
+# plus lent : un morceau Opus mettait 8 à 38 s à s'ouvrir (`docs/journal.md`).
+# Le crate `opus` officiel, lui, compile libopus et imposerait cmake.
+opus-pure = "0.2"
 
 # Loudness EBU R128 / BS.1770 (normalisation de volume, mode Bibliothèque) —
 # `docs/amelioration-audio.md` § « Hors périmètre — normalisation de
 # loudness ». Portage **pur Rust** de libebur128 par le mainteneur de
 # GStreamer (mêmes résultats, performance comparable) : ni FFI, ni `cmake`,
-# ni bibliothèque système — mêmes garanties que `wsola`/`opus-decoder`.
+# ni bibliothèque système — mêmes garanties que `wsola`/`opus-pure`.
 # Licence MIT ; dépendances transitives (bitflags, smallvec, dasp_sample,
 # dasp_frame) toutes MIT OR Apache-2.0.
 ebur128 = "0.1"

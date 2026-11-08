@@ -3823,3 +3823,63 @@ code.
   rusty-music-mobile --target aarch64-apple-ios`, 19 s après les autres
   étapes ; sautée si la cible Rust manque). Pas dans la CI : non essayée
   sur ses machines.
+
+## Cœur, G4 : Opus décodé par `opus-pure` — 8 nov. 2026
+
+`crates/core/src/opus.rs` décode désormais avec `opus-pure` (0.2, BSD-3, pur
+Rust, conteneur Ogg compris) au lieu de `ogg` + `opus-decoder`, retirés du
+dépôt. Le module rétrécit : le gain de l'en-tête, le `pre-skip` et la
+granule de fin, faits à la main jusqu'ici, sont ceux d'`opus-pure`
+(`OpusHead::decoder`, `Trim`). `opus-pure` quitte les dépendances de
+développement d'`analysis` : le cœur le réexporte (`opus::codec`) pour
+l'encodeur du banc `extraits_aura`. `cargo deny` vert ; l'exigence de
+Rust 1.88 ne change rien, `burn` en demande déjà 1.92.
+
+**Mesure**, sur les 10 morceaux Opus de la bibliothèque (Fingathing, *G*,
+stéréo, 112 à 383 s), binaire `--release`, fichiers déjà en cache disque.
+L'ouverture est celle du lecteur (`rusty_music_player::ouvrir`), qui décode
+le morceau entier en mémoire (`opus_en_memoire`).
+
+| | ouverture, min | médiane | max |
+|---|---:|---:|---:|
+| `opus-decoder` | 8,0 s | 15,3 s | 37,8 s |
+| `opus-pure` | 0,14 s | 0,31 s | 0,58 s |
+
+Une cinquantaine de fois plus rapide (45 à 81 selon le morceau). Le critère
+de G4, moins de 200 ms, n'est tenu que pour 4 morceaux sur 10 : l'ouverture
+décode toute la piste, et le temps suit la durée (~1,5 ms par seconde de
+son). Le tenir partout demande un décodage en flux dans le lecteur, pas un
+autre décodeur.
+
+**Parité.** Les deux décodeurs rendent le même nombre d'échantillons, à
+l'unité près, sur les 10 morceaux. L'écart maximal entre eux atteint
+**0,17** (pleine échelle 1) : trop pour une simple différence d'arrondi.
+Arbitre : libopus, par libsndfile 1.2.2 (module Python `soundfile`, hors
+du projet).
+
+| contre libopus | écart maximal | RSB | échantillons à plus de 10⁻³ |
+|---|---:|---:|---:|
+| `opus-decoder` | 4,3·10⁻⁵ à 0,17 | 60,8 à 86,0 dB | jusqu'à 0,003 % |
+| `opus-pure` | 3,0·10⁻⁷ à 4,2·10⁻⁷ | 137,6 à 139,8 dB | 0 |
+
+`opus-pure` coïncide avec libopus à l'arrondi du flottant près, longueurs
+comprises. C'était l'ancien décodeur qui se trompait : des pointes isolées (quelques
+centaines d'échantillons à plus de 10⁻³ par morceau, jusqu'à 0,17 sur six
+morceaux sur dix), de quoi faire un clic — pas écouté. Les empreintes et
+descripteurs de ces 10 morceaux ont été calculés sur ce signal ; l'écart
+est probablement trop rare pour les déplacer, non vérifié, rien n'est
+recalculé.
+
+**Gapless.** Faute de `ffmpeg` sur cette machine,
+`scripts/gapless-fixtures.sh` n'a pas tourné : les deux moitiés Opus du
+balayage ont été encodées par `opus-pure` (48 kHz, granule finale selon
+RFC 7845 § 4.4, comme `examples/encode.rs` du crate), puis mesurées par
+`verif_gapless`. Raccord **0,00 ms** avant comme après ; libopus relit
+aussi exactement 144 000 échantillons par moitié. Les autres formats du
+banc n'ont pas été remesurés (code inchangé). Nouveau test
+`opus::tests::aller_retour_a_l_echantillon_pres` : un flux de 48 123
+échantillons encodé puis décodé revient à 48 123.
+
+- **Non vérifié** : la lecture dans l'application elle-même (le chemin
+  mesuré est celui du lecteur, `ouvrir`) ; le banc gapless avec des
+  fichiers d'`opusenc`/`ffmpeg`.

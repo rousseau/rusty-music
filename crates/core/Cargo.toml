@@ -19,8 +19,7 @@ tracing.workspace   = true
 serde.workspace     = true
 serde_json.workspace = true
 ureq.workspace      = true
-ogg.workspace       = true
-opus-decoder.workspace = true
+opus-pure.workspace = true
 contour.workspace   = true
 geo-types.workspace = true
 # Décodage pleine piste natif pour la passe de loudness (crate::decode) —

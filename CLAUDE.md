@@ -24,7 +24,7 @@ cmake requis) ; Ollama reste un choix (`crates/lama/src/ollama.rs`).
   `ndarray` choisi à la compilation (bascule vers `burn/metal` étudiée :
   `experiments/burn-metal/README.md`).
 - Ingestion : `notify`, `lofty`, SQLite (`rusqlite`). Décodage : symphonia +
-  `opus-decoder`. Sortie : `rodio`/`cpal`. Étirement : `wsola` + `rubato`.
+  `opus-pure`. Sortie : `rodio`/`cpal`. Étirement : `wsola` + `rubato`.
 - Empreintes : CLAP (`laion/clap-htsat-unfused`) traduit d'ONNX par
   `burn-onnx` au build. Réduction 2D : `bhtsne`.
 - Démixage : HTDemucs via `demucs-core` (Burn, pas d'export ONNX :

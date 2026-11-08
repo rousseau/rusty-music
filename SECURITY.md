@@ -15,7 +15,7 @@ enrichir la bibliothèque et télécharger des modèles. La surface d'attaque es
 limitée à ce qu'il lit et aux requêtes sortantes qu'il émet :
 
 - **analyse de fichiers non fiables** : tags audio (`lofty`), flux audio
-  (`symphonia`, `opus-decoder`), extraits OpenStreetMap `.osm.pbf` (`osmpbf`),
+  (`symphonia`, `opus-pure`), extraits OpenStreetMap `.osm.pbf` (`osmpbf`),
   dump Discogs (XML compressé) — un fichier malveillant dans le dossier
   surveillé ou une source piégée ;
 - **réponses d'API** en HTTPS (`ureq` + `rustls`) : MusicBrainz, Cover Art

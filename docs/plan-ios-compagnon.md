@@ -288,7 +288,7 @@ du bureau, files de travail (`*_fetched`, `scan_failures`).
 | Option | Taille d'un album (≈ 45 min) | Pour | Contre |
 |---|---|---|---|
 | Fichiers d'origine | FLAC ≈ 300 Mo | aucun traitement, fidèle | 30 albums ≈ 9 Go |
-| **Opus 160 kb/s** | ≈ 55 Mo | transparent à l'écoute pour l'immense majorité, déjà lu par `opus-decoder`, gapless déjà vérifié (granule de fin) | réencodage sur le Mac (≈ quelques s par album) |
+| **Opus 160 kb/s** | ≈ 55 Mo | transparent à l'écoute pour l'immense majorité, déjà lu par le cœur (`opus-pure` depuis le 8 nov.), gapless déjà vérifié (granule de fin) | réencodage sur le Mac (≈ quelques s par album) |
 | AAC 256 kb/s | ≈ 85 Mo | lu nativement par `AVPlayer` | encodeur AAC : Apple (AudioToolbox, macOS seulement) ou FDK (licence non libre) |
 
 **Recommandation initiale : Opus 160 kb/s par défaut, avec une case
