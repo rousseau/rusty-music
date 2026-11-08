@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Vérification locale avant push — les mêmes contrôles que la CI
 # (`.github/workflows/ci.yml`) : forme, politique de dépendances, lint, tests,
-# tests de fumée de l'interface.
-# Usage : ./scripts/verifier.sh [fmt|deny|clippy|test|fumee]…   (sans argument : tous)
+# tests de fumée de l'interface ; en plus, ici seulement, le compagnon iOS
+# compilé pour l'iPhone (`ios`).
+# Usage : ./scripts/verifier.sh [fmt|deny|clippy|test|ios|fumee]…   (sans argument : tous)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 etapes=("$@")
-[ ${#etapes[@]} -eq 0 ] && etapes=(fmt deny clippy test fumee)
+[ ${#etapes[@]} -eq 0 ] && etapes=(fmt deny clippy test ios fumee)
 
 # Sans les deux tours de CLAP, `crates/analysis` se compile avec des bouchons
 # (`sans-modeles`) : tout se vérifie, rien ne calcule d'empreinte.
@@ -24,6 +25,15 @@ for e in "${etapes[@]}"; do
     deny)   cargo deny check ;;
     clippy) cargo clippy --workspace --all-targets ${options[@]+"${options[@]}"} -- -D warnings ;;
     test)   cargo test --workspace ${options[@]+"${options[@]}"} ;;
+    ios)
+      # Le compagnon (`apps/mobile`) ne compile pour iOS que dans Xcode : un
+      # changement des crates qu'il lie (core, valise, player) n'y casserait
+      # rien de visible ailleurs. Sans la cible Rust, l'étape est sautée.
+      if rustup target list --installed 2>/dev/null | grep -qx aarch64-apple-ios; then
+        cargo check -p rusty-music-mobile --target aarch64-apple-ios
+      else
+        echo "(cible aarch64-apple-ios absente : rustup target add aarch64-apple-ios)"
+      fi ;;
     fumee)
       # Chrome du système ; `npm ci` seulement la première fois. D'abord les
       # réponses figées contre les types des commandes (`types/`, régénérés

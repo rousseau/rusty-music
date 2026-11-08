@@ -3819,3 +3819,7 @@ code.
   29 oct. (la base de la valise est écrite à l'heure du lancement).
 - **Non vérifié** : l'écran de l'iPhone et un passage Mac ↔ iPhone, qui
   demandent un geste des deux côtés.
+- **Suite** : `verifier.sh` a une étape `ios` (`cargo check -p
+  rusty-music-mobile --target aarch64-apple-ios`, 19 s après les autres
+  étapes ; sautée si la cible Rust manque). Pas dans la CI : non essayée
+  sur ses machines.

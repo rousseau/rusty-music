@@ -230,8 +230,9 @@ l'enrichissement réseau.
 - Nouvelle application `apps/mobile/` (Tauri, iOS seulement au départ) qui
   dépend de `base` et `player`, plus le plugin Swift de l'étape 0.
 - `cargo deny check` sur le sous-ensemble mobile (voir « Distribution »).
-- `scripts/verifier.sh` : ajouter `cargo check --target aarch64-apple-ios -p
-  rusty-music-mobile`.
+- `scripts/verifier.sh` : `cargo check --target aarch64-apple-ios -p
+  rusty-music-mobile` — fait le 8 nov. 2026 (étape `ios`, sautée sans la
+  cible Rust ; pas dans la CI).
 
 ## Étape 2 — Le format de valise · **M** — **livrée (18 oct. 2026), sans réencodage**
 
