@@ -178,6 +178,9 @@ async function basculerMode(mode) {
       }
     }
   }
+  // Ce qui attendait l'écran pour se redessiner (la bibliothèque modifiée
+  // pendant qu'on était ailleurs : `demarrage.js`) l'apprend ici.
+  document.dispatchEvent(new CustomEvent("mode-change", { detail: mode }));
 }
 
 document.querySelectorAll(".mode").forEach((b) => {

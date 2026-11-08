@@ -200,13 +200,13 @@ fn lire_et_ingerer(lib: &Library, a_lire: Vec<PathBuf>, jobs: usize, rep: &mut S
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Un WAV PCM16 mono minimal, écrit à la main — même patron que
     /// `loudness::tests::wav_sinus`, sans le sinus : un scan ne lit que les
     /// tags, pas le contenu.
-    fn wav_minimal(chemin: &Path) {
+    pub(crate) fn wav_minimal(chemin: &Path) {
         let donnees = vec![0u8; 4410 * 2];
         let octets_data = donnees.len() as u32;
         let mut wav = Vec::new();

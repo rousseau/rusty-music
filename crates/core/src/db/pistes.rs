@@ -73,6 +73,20 @@ impl Library {
         Ok(id)
     }
 
+    /// Vrai si un morceau de ce chemin est en base — la surveillance distingue
+    /// ainsi un ajout d'une mise à jour, pour le dire à l'interface.
+    pub fn contient_chemin(&self, path: &Path) -> Result<bool> {
+        let hit: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM tracks WHERE path = ?1",
+                params![path.to_string_lossy()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(hit.is_some())
+    }
+
     /// Vrai si le fichier est déjà en base avec la même taille et la même date
     /// de modification — permet de sauter la relecture des tags au rescan.
     pub fn is_unchanged(&self, path: &Path, size: i64, mtime: i64) -> Result<bool> {

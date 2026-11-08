@@ -28,7 +28,7 @@ import {
 } from "./etabli.js";
 import { positionMoteur } from "./pratiquer.js";
 import {
-  charger,
+  charger, rechargerEcoute,
 } from "./demarrage.js";
 import { lecture, transport } from "./etat-lecture.js";
 
@@ -925,6 +925,9 @@ async function analyserRacine(chemin) {
         ? `${chemin} — scan : ${s.morceaux.toLocaleString("fr-FR")} morceaux en base`
         : (etat.textContent = s.resultat ?? "");
     });
+    // Les albums nouveaux dans la grille dès la fin du scan, sans attendre
+    // les passes qui suivent (pochettes, empreintes… des heures parfois).
+    await rechargerEcoute();
 
     etat.textContent = `${chemin} — pochettes…`;
     await invoke("start_verif_pochettes", { force });
@@ -1093,7 +1096,8 @@ async function passeScan(force, phase) {
       }
     });
   }
-  await charger();
+  // Dès la fin des scans, avant les passes longues ; sans quitter la vue.
+  await rechargerEcoute();
 }
 
 async function passeEmpreintes(phase) {

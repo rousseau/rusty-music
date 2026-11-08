@@ -3942,3 +3942,43 @@ un départ à quatre fois l'échelle portait la conservation des voisins à
   pris en base) ; l'effet d'un pas plus grand sur la reprise (D5), sur les
   familles et sur la carte de Paris ; un pas encore plus grand (×32) ou
   au-delà de 1 000 époques avec le pas ×16.
+
+## Écouter, V12 : les morceaux ajoutés apparaissent sans relancer l'app — 8 nov. 2026
+
+Constat : des morceaux copiés dans la racine, puis « Analyser », et rien
+dans Écouter avant une relance. Deux causes : la chaîne « Analyser »
+(`analyserRacine`) ne relisait jamais la grille, et la surveillance
+(`watch::boucle`) écrivait en base sans rien dire à l'interface.
+
+- **Cœur** : `watch::flush` rend des `Changements` (ajoutés, mis à jour,
+  retirés ; ajout et mise à jour distingués par `Library::contient_chemin`
+  avant l'`upsert`) ; `boucle` prend un rappel, appelé après chaque
+  regroupement qui a changé la base, jamais pour un regroupement sans effet.
+  Le CLI (`watch_root`) passe un rappel vide.
+- **App** : `demarrer_surveillance` prend l'`AppHandle` et émet
+  `bibliotheque-modifiee` (`{ ajoutes, mis_a_jour, retires }`).
+- **Interface** : `rechargerEcoute` (`demarrage.js`) relit artistes, albums
+  et racines **sans changer de vue**, contrairement à `charger` : la liste
+  de premier niveau est remplacée dans `ecoute.sommet`, que les vues
+  descendues gardent comme `retour` ; la grille n'est redessinée que si
+  c'est elle qui est affichée, à la même hauteur de défilement ; piste
+  choisie, file et lecture intactes. L'évènement est regroupé (1,5 s de
+  calme) ; hors d'Écouter, Pratiquer et Créer, la relecture attend le
+  retour (`mode-change`, émis à la fin de `basculerMode`). `analyserRacine`
+  l'appelle dès la fin du scan, avant pochettes, loudness, empreintes… ;
+  « Tout rafraîchir » dès la fin des scans de toutes les racines (au lieu
+  de `charger`, qui ramenait à la vue de premier niveau).
+- **Tests** : `watch::tests::boucle_signale_un_fichier_copie` (un WAV écrit
+  dans un dossier temporaire surveillé déclenche le rappel avec un ajout,
+  1,1 s) ; `flush_retire_les_chemins_disparus` vérifie aussi le compte
+  rendu (un retrait). Deux tests de fumée : une rafale de cinq évènements
+  fait apparaître l'album neuf (4 albums au lieu de 3) avec **une** seule
+  relecture des albums, le compteur passe à 6, Écouter reste actif et la
+  lecture continue ; depuis Bibliothèque, aucune relecture avant le retour,
+  puis la grille à 4 albums au retour dans Écouter.
+- **Vérifié** : `verifier.sh` vert (50 tests de fumée) ; `audit-interface.sh` rapide, 0 violation, G8 vert sur les 13 écrans.
+- **Non vérifié** : dans l'application lancée, une vraie copie de fichiers
+  dans une racine (la chaîne FSEvents → rappel est testée en Rust, et
+  évènement → grille en fumée, mais pas l'émission Tauri entre les deux) ;
+  la hauteur de défilement quand des albums s'insèrent au-dessus de la
+  partie visible (le `scrollTop` est gardé, le contenu glisse d'autant).

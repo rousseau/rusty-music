@@ -773,7 +773,7 @@ fn main() {
                     // seule suffira pour cette racine-ci — un prochain scan,
                     // manuel ou au prochain lancement, rattrapera le reste.
                     if deja_en_cours {
-                        demarrer_surveillance(&etat, &racine);
+                        demarrer_surveillance(&app_rattrapage, &racine);
                         continue;
                     }
                     // Comme pour tout scan : une panique (tags d'un fichier
@@ -803,7 +803,7 @@ fn main() {
                         s.en_cours = false;
                     }
                     if succes {
-                        demarrer_surveillance(&etat, &racine);
+                        demarrer_surveillance(&app_rattrapage, &racine);
                     }
                 }
             });

@@ -11,7 +11,12 @@ use super::*;
 /// pas tenir `Etat::lib` pendant une opération qui dure toute la session.
 /// Idempotent : sans effet si `root` est déjà surveillée, donc appelable sans
 /// vérifier soi-même (au démarrage, après un scan réussi…).
-pub(crate) fn demarrer_surveillance(etat: &Etat, root: &Path) {
+///
+/// Chaque regroupement qui change la base émet `bibliotheque-modifiee`
+/// (`{ ajoutes, mis_a_jour, retires }`) : l'interface recharge Écouter sans
+/// attendre une relance.
+pub(crate) fn demarrer_surveillance(app: &tauri::AppHandle, root: &Path) {
+    let etat = app.state::<Etat>();
     {
         let deja = verrou(&etat.surveillances);
         if deja.contains_key(root) {
@@ -30,9 +35,20 @@ pub(crate) fn demarrer_surveillance(etat: &Etat, root: &Path) {
 
     let db = etat.db.clone();
     let root = root.to_path_buf();
+    let app = app.clone();
     std::thread::spawn(move || {
         match Library::open(&db) {
-            Ok(lib) => rusty_music_core::watch::boucle(&lib, rx),
+            Ok(lib) => rusty_music_core::watch::boucle(&lib, rx, |c| {
+                tracing::info!(?c, "surveillance : bibliothèque modifiée");
+                let _ = app.emit(
+                    "bibliotheque-modifiee",
+                    serde_json::json!({
+                        "ajoutes": c.ajoutes,
+                        "mis_a_jour": c.mis_a_jour,
+                        "retires": c.retires,
+                    }),
+                );
+            }),
             Err(e) => tracing::warn!(%e, "surveillance : base inaccessible"),
         }
         tracing::info!(root = %root.display(), "surveillance arrêtée");
@@ -72,6 +88,7 @@ pub(crate) fn start_scan(
         return Err(format!("{path} n'est pas un dossier"));
     }
     let db = etat.db.clone();
+    let app_surveillance = app.clone();
     let depart = AvancementScan {
         racine: path.clone(),
         morceaux: 0,
@@ -84,7 +101,7 @@ pub(crate) fn start_scan(
         |e| &e.scan,
         "un scan est déjà en cours",
         depart,
-        move |etat| {
+        move |_etat| {
             let issue = Library::open(&db)
                 .map_err(|e| e.to_string())
                 .and_then(|lib| {
@@ -107,7 +124,7 @@ pub(crate) fn start_scan(
             // connue — doit être surveillée en continu ; `demarrer_surveillance`
             // ne fait rien si elle l'est déjà.
             if succes {
-                demarrer_surveillance(etat, &racine);
+                demarrer_surveillance(&app_surveillance, &racine);
             }
             bilan
         },

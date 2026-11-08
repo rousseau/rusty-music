@@ -48,6 +48,46 @@ test("lire un morceau", async ({ page }) => {
   expect(lus.at(-1).paths).toEqual(PISTES.filter((p) => p.album === "Premier banc").map((p) => p.path));
 });
 
+/// Ce que la surveillance a ajouté en base, simulé : un album de plus dans
+/// les réponses, puis l'évènement que Rust émet (`demarrer_surveillance`).
+async function surveillanceAjouteUnAlbum(page) {
+  await page.evaluate(() => {
+    const neuf = {
+      name: "Nouveau banc", artist: "Les Essais", year: 2026, tracks: 1,
+      path: "/Musique/Les Essais/Nouveau banc/01.flac", ajoute_le: 1_800_000_000,
+    };
+    window.__FIXTURES__.albums = [...window.__FIXTURES__.albums, neuf];
+    window.__FIXTURES__.roots = window.__FIXTURES__.roots.map((r) => ({ ...r, tracks: r.tracks + 1 }));
+    // Une rafale : un seul rechargement attendu.
+    for (let i = 0; i < 5; i++) window.__EMETTRE__("bibliotheque-modifiee", { ajoutes: 1, mis_a_jour: 0, retires: 0 });
+  });
+}
+
+test("surveillance : un album copié apparaît dans Écouter, la lecture continue", async ({ page }) => {
+  await lireUnAlbum(page);
+  const avant = (await appels(page, "albums")).length;
+  await surveillanceAjouteUnAlbum(page);
+  await expect(page.locator("#grille .album")).toHaveCount(4);
+  await expect(page.locator("#grille .album__nom", { hasText: "Nouveau banc" })).toHaveCount(1);
+  // La rafale regroupée : une seule relecture des albums.
+  expect((await appels(page, "albums")).length - avant).toBe(1);
+  await expect(page.locator("#sommaire")).toHaveText("6");
+  // Ni la vue ni la lecture n'ont bougé.
+  await expect(page.locator('button.mode[data-mode="ecoute"]')).toHaveClass(/mode--actif/);
+  await expect(page.locator("#np-titre")).toHaveText(PISTES[0].title);
+});
+
+test("surveillance : hors d'Écouter, la grille se met à jour au retour", async ({ page }) => {
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await expect(page.locator("#bibliotheque-vue")).toBeVisible();
+  const avant = (await appels(page, "albums")).length;
+  await surveillanceAjouteUnAlbum(page);
+  await page.waitForTimeout(2000);
+  expect((await appels(page, "albums")).length).toBe(avant);
+  await page.click('button.mode[data-mode="ecoute"]');
+  await expect(page.locator("#grille .album")).toHaveCount(4);
+});
+
 for (const [mode, vue] of [
   ["bibliotheque", "#bibliotheque-vue"],
   ["explorer", "#carte-vue"],
