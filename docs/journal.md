@@ -4107,3 +4107,54 @@ recours.
 touche l'interface, l'arrêt reste à comprendre (fenêtre d'essai hors de
 vue ?). `target/` sous 25 Gio n'est tenu que sans `target/release`. La CI
 GitHub n'a pas tourné (pas de push).
+
+## Écouter, V8 : le temps jusqu'au premier son — 8 nov. 2026
+
+Un clic sur un morceau non préchargé passe par `Player::play` → `charger` →
+`completer` → `ouvrir`, verrou tenu : rien ne sort avant que le morceau
+**entier** soit décodé, puis traité (gain, rééchantillonnage sinc vers la
+sortie, « E » s'il est actif). Nouvel exemple
+`crates/player/examples/premier_son.rs` : `ouvrir` puis le premier
+échantillon tiré de la source, rien n'est joué. Échantillon de 23 morceaux
+de la bibliothèque (quantiles de durée 5, 30, 50, 70, 95 % et l'avant-dernier
+de chaque format), binaire `--release`, sortie à 48 kHz (celle de
+l'appareil), latence de l'appareil 27 ms à ajouter partout.
+
+| format | n | durée | 1ᵉʳ contact | décodage seul | avec « E » | 5 premières s |
+|---|---:|---|---|---|---|---|
+| MP3 | 6 | 94 à 422 s | 133 à 578 ms | 70 à 290 ms | 381 à 1 616 ms | 6 à 7 ms |
+| M4A (AAC) | 6 | 75 à 686 s | 101 à 962 ms | 50 à 490 ms | 101 à 2 880 ms | 7 à 9 ms |
+| FLAC | 5 | 70 à 352 s | 100 à 431 ms | 49 à 214 ms | 93 à 1 396 ms | 6 à 7 ms |
+| Opus | 6 | 111 à 382 s | 150 à 543 ms | 142 à 542 ms | 463 à 1 484 ms | — |
+
+- Le temps suit la durée, ~1,4 ms par seconde de son, quel que soit le
+  format : **200 ms est dépassé dès ~2 min 20**, donc pour la plupart des
+  morceaux (médiane de la bibliothèque autour de 4 min : ~330 ms + 27 ms).
+- Hors Opus (déjà à 48 kHz), la moitié du temps est le rééchantillonnage
+  44,1 → 48 kHz, pas le décodage.
+- « E » triple le temps (jusqu'à 2,9 s pour 11 min) ; il est sans effet
+  quand la coupure estimée sort de sa plage (morceaux pleine bande : M4A à
+  101 ms, 261 ms, 373 ms).
+- 1ᵉʳ contact et fichier en cache se valent à 5 % près : le disque (SSD
+  interne) ne compte pas, c'est le calcul.
+- Ouvrir, décoder et traiter les **5 premières secondes** seulement prend
+  6 à 9 ms : une lecture progressive mettrait tous les formats sous 40 ms au
+  premier son, latence comprise (Opus demande un décodage en flux par
+  `opus-pure`, pas mesuré).
+- **Enchaînement préchargé** : la source suivante attend déjà décodée dans
+  la file de `rodio` ; son premier échantillon suit le dernier de la
+  précédente, raccord 0,00 ms (`verif_gapless`, mesuré par G4 le même jour).
+  Pas remesuré ici : ffmpeg manque sur ce Mac pour fabriquer les fichiers
+  du banc.
+
+Pas de changement du lecteur dans cette étape : la lecture progressive
+touche au tampon anti-coupure, au seek par index, au rognage gapless, à la
+durée annoncée et surtout à « E », dont la coupure est estimée sur
+24 fenêtres réparties sur tout le morceau — impossible à reproduire à
+l'identique sur un début de piste. Proposition et choix en attente de
+François.
+
+**Non vérifié** : le premier contact n'est pas un vrai démarrage à froid
+(`purge` demande root) ; le temps réel côté application (Tauri, verrou
+`Player` disputé par le sondage) n'est pas mesuré, seulement `ouvrir` ;
+morceaux sur disque externe ou carte SD non mesurés.
