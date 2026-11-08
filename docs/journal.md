@@ -4206,3 +4206,52 @@ un lancement session déverrouillée, fenêtre visible (l'écran est resté
 verrouillé pendant toute l'étape) ; l'écran seulement en veille, session
 non verrouillée, n'a pas été essayé (la sonde d'images le couvre, à
 confirmer) ; macOS antérieur à 14 (politique sans effet).
+
+## Explorer, G1 : le banc d'empreinte prêt, CLAP mesuré — 8 nov. 2026
+
+Première tranche du banc CLAP contre MuQ-MuLan et CLaMP 3. Rien n'est
+changé dans l'application.
+
+- **Banc commun** (`experiments/banc-empreinte/`, `README.md`) et
+  `crates/analysis/examples/banc_empreinte.rs` (`exporter`, `fenetres`,
+  `mesurer`) sur une copie de la base de l'app (27 861 empreintes) :
+  - 2 000 morceaux tirés (graine fixe) parmi les 22 636 dont le genre
+    résolu est dans le vocabulaire des familles : la famille y est le genre
+    déclaré, jamais le repli k-means sur CLAP, qui l'avantagerait.
+    12 familles (Rock 700 … Chanson 15), 55 genres, 142 h ; hasard de la
+    pureté de famille 18,6 % ;
+  - les autres modèles entendent **le même audio** que CLAP : les cinq
+    fenêtres de 10 s de `decode::fenetres`, exportées en i16 (≈ 0,2 s par
+    morceau, essayé sur 5) ; MuQ-MuLan en fait la moyenne comme l'app,
+    CLaMP 3 reçoit les 50 s bout à bout par son outil officiel
+    (`clamp3_embd.py`, rien de réécrit) ;
+  - 30 demandes types du Lama proposées (`requetes.tsv` : la demande et
+    l'`etape` en anglais que le Lama passe à la tour texte) ; les 10
+    premiers de chaque modèle sont fondus dans `data/annoter.tsv`, sans
+    dire qui a rendu quoi (`data/cle.tsv` à part).
+- **Licences lues** : MuQ-MuLan, code MIT, poids CC BY-NC 4.0 ; CLaMP 3,
+  code et poids MIT, mais son audio passe d'abord par MERT-v1-95M,
+  CC BY-NC 4.0 : l'adopter ferait venir les termes NC.
+- **CLAP sur l'échantillon** :
+
+  | modèle | genre (512 d) | famille (512 d) | genre (t-SNE app) | famille (t-SNE app) | genre (t-SNE ×32) | famille (t-SNE ×32) | intra-famille | inter-familles | rapport |
+  |---|---|---|---|---|---|---|---|---|---|
+  | CLAP | 27,0 % | 44,0 % | 24,7 % | 41,2 % | 25,7 % | 42,3 % | 0,139 | 0,192 | 0,725 |
+  | MuQ-MuLan | — | — | — | — | — | — | — | — | — |
+  | CLaMP 3 | — | — | — | — | — | — | — | — | — |
+
+  Conservation des 12 voisins après t-SNE : 32,7 % (app), 38,4 % (×32).
+  Plus bas que sur toute la base (V3 : 49,7 % de famille dans l'empreinte) :
+  12 voisins parmi 2 000 sont plus lointains. Le rapport 0,725 retrouve
+  celui de P7 (0,152 / 0,205 = 0,741). Le critère se juge donc contre ces
+  chiffres-là, au même échantillon.
+- **Synthèse corrigée** (§ 5, G1) : les 43 % sont la pureté de famille,
+  pas de genre (V3).
+- **Arrêt** : le disque `RUSTY_DEV` n'était pas branché ; les poids
+  (≈ 6 Go), les fenêtres (9,6 Go) et l'environnement Python n'ont pas été
+  posés sur le SSD.
+
+**Non vérifié** : MuQ-MuLan et CLaMP 3 (scripts écrits, jamais exécutés ;
+la préparation des entrées de CLaMP 3 essayée sur 5 morceaux : WAV de 50 s,
+48 kHz) ; le coût par morceau ; la pertinence texte → audio (liste à
+valider par François).

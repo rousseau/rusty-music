@@ -63,7 +63,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     CLaMP 3), super-résolution (Apollo), Chromaprint ; G4 (`opus-pure`) fait le
     8 nov. G1 tôt :
     s'il retient une autre empreinte, la carte est à régénérer, D3 et D5 à
-    remesurer.
+    remesurer. G1 commencé le 8 nov. : banc commun
+    (`experiments/banc-empreinte/`) et CLAP mesurés ; reste MuQ-MuLan et
+    CLaMP 3 (poids et audio à poser sur le disque `RUSTY_DEV`), puis
+    l'annotation des 30 demandes types par François.
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 

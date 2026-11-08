@@ -456,7 +456,7 @@ y renvoie. **Une seule session à la fois** sur l'arbre de travail.
 
 | Étape | Contenu | Critère de décision (fixé d'avance) | Effort |
 |---|---|---|---|
-| G1 | **Empreinte** : CLAP (actuel) contre MuQ-MuLan et CLaMP 3, sur 2 000 morceaux tirés au hasard (graine fixe) | adopter seulement si les deux gains dépassent 10 % : pureté de genre du voisinage (aujourd'hui 43 % après projection) et distance entre albums d'une même famille rapportée à la distance entre familles (0,152 / 0,205 aujourd'hui). Puis : recherche texte → audio sur une trentaine de demandes types du Lama, et coût par morceau sur le Mac | M |
+| G1 | **Empreinte** : CLAP (actuel) contre MuQ-MuLan et CLaMP 3, sur 2 000 morceaux tirés au hasard (graine fixe) | adopter seulement si les deux gains dépassent 10 % : pureté de **famille** du voisinage (aujourd'hui 43,1 % après projection, 49,7 % dans l'empreinte en 512 d ; le genre exact, 21,3 % et 29,2 %, rapporté à côté — V3) et distance entre albums d'une même famille rapportée à la distance entre familles (0,152 / 0,205 aujourd'hui). Puis : recherche texte → audio sur une trentaine de demandes types du Lama, et coût par morceau sur le Mac | M |
 | G2 | **Super-résolution** : Apollo contre AERO, sur 20 MP3 de 128 à 192 kbit/s de la bibliothèque, comparés à leur source FLAC quand elle existe | ViSQOL ou écoute à l'aveugle ; coût par minute de son | M |
 | G3 | Sections : SongFormer, **seulement si G1 retient MuQ** | HR.5F sur 30 morceaux annotés à la main | M |
 | G4 | Opus : `opus-pure` à la place d'`opus-decoder` dans le cœur | les 10 morceaux de Fingathing s'ouvrent en moins de 200 ms ; parité des échantillons décodés | S |
@@ -520,7 +520,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | F2 banc de compatibilité | à faire | | |
 | F3 fûts | à faire | | |
 | F4 génération | à faire | | |
-| G1 banc d'empreinte | à faire | | |
+| G1 banc d'empreinte | commencé : banc commun prêt (`experiments/banc-empreinte/`, 2 000 morceaux ancrés, mêmes fenêtres audio pour tous), CLAP mesuré (famille 44,0 % dans l'empreinte, 41,2 % après t-SNE, rapport intra/inter 0,725), 30 demandes types proposées ; MuQ-MuLan et CLaMP 3 en attente du disque `RUSTY_DEV` | 8 nov. 2026 | `journal.md`, « G1 » |
 | G2 banc HD | à faire | | |
 | G3 sections | conditionnel (G1) | | |
 | G4 `opus-pure` | fait : ouverture 0,14 à 0,58 s (avant 8 à 38 s), identique à libopus, gapless 0 ms ; sous 200 ms pour 4 morceaux sur 10, reste un décodage en flux dans le lecteur | 8 nov. 2026 | `journal.md`, « G4 » |
