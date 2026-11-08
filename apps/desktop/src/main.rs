@@ -123,6 +123,8 @@ struct Etat {
     surveillances: Mutex<std::collections::HashMap<PathBuf, rusty_music_core::watch::Surveillance>>,
     analyse: Mutex<EtatAnalyse>,
     descripteurs: Mutex<EtatDescripteurs>,
+    /// Le plan régénéré en tâche de fond après une projection refaite (V16).
+    tuiles: Mutex<EtatTuiles>,
     /// Avancement de la passe de loudness EBU R128 (piste + album).
     loudness: Mutex<EtatLoudness>,
     verif_pochettes: Mutex<EtatVerifPochettes>,
@@ -572,6 +574,7 @@ fn main() {
                 surveillances: Mutex::new(std::collections::HashMap::new()),
                 analyse: Mutex::new(EtatAnalyse::default()),
                 descripteurs: Mutex::new(EtatDescripteurs::default()),
+                tuiles: Mutex::new(EtatTuiles::default()),
                 enrichissement: Mutex::new(EtatEnrichissement::default()),
                 popularite: Mutex::new(EtatPopularite::default()),
                 biographies: Mutex::new(EtatBio::default()),
@@ -908,6 +911,7 @@ fn main() {
             descripteurs,
             map_view,
             engendrer_tuiles,
+            tuiles_state,
             style_carte,
             positions_carte,
             trace_rues,

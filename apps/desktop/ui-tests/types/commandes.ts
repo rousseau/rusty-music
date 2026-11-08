@@ -94,7 +94,8 @@ export const commands = {
 	 * 
 	 *  Le nuage n'est redessiné que si la perplexité, les époques ou le pas de
 	 *  t-SNE ont changé (`passe::projeter_tout`) : après un changement de
-	 *  vocabulaire, seules les familles bougent.
+	 *  vocabulaire, seules les familles bougent. Redessiné, le plan suit en
+	 *  tâche de fond (`suivre_projection`, V16 ; l'interface sonde `tuiles_state`).
 	 */
 	recompute_map: () => __TAURI_INVOKE<RapportCarte>("recompute_map"),
 };

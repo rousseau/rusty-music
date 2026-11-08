@@ -20,6 +20,7 @@ pub(crate) type EtatAnalyse = Passe<Compte>;
 #[tauri::command(async)]
 pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
     let db = etat.db.clone();
+    let pour_le_plan = app.clone();
     passe::lancer(
         app,
         |e| &e.analyse,
@@ -56,6 +57,11 @@ pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result
                         .map(|p| (r, p))
                     })
                 });
+            // Refaite (paramètres changés, ou moins de la moitié des morceaux
+            // placés), la projection emporte le plan avec elle (V16).
+            if let Ok((_, p)) = &issue {
+                suivre_projection(&pour_le_plan, p.projection);
+            }
 
             let bilan = match issue {
                 Ok((r, p)) => format!(

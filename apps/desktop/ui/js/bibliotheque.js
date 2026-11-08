@@ -338,6 +338,8 @@ $("recalculer-carte").addEventListener("click", async () => {
       await chargerCarte();
       await dessinerFamilles();
     }
+    // Nuage redessiné : le moteur régénère le plan dans la foulée (V16).
+    if (r.projection === "refaite") suivrePlan(avancementActu.bind(null, ""));
   } catch (e) {
     remonter(e, "recalcul de la carte");
     $("carte-parametres-etat").textContent = String(e);
@@ -361,17 +363,7 @@ $("regenerer-tuiles").addEventListener("click", async () => {
   try {
     const r = await invoke("engendrer_tuiles");
     $("tuiles-etat").textContent = r;
-    // Les tuiles ont changé sous l'instance MapLibre en place : la relancer
-    // à neuf plutôt que d'espérer qu'elle redemande ce qu'elle a déjà en
-    // cache.
-    if (carte.gl) {
-      carte.gl.remove();
-      carte.gl = null;
-      carte.glPret = false;
-    }
-    if (navigation.mode === "explorer" && carte.affichage === "carte") {
-      majAffichageGL();
-    }
+    rouvrirPlan();
   } catch (e) {
     remonter(e, "génération des tuiles");
     $("tuiles-etat").textContent = String(e);
@@ -379,6 +371,48 @@ $("regenerer-tuiles").addEventListener("click", async () => {
     bouton.disabled = false;
   }
 });
+
+/// Les tuiles ont changé sous l'instance MapLibre en place : la relancer à
+/// neuf plutôt que d'espérer qu'elle redemande ce qu'elle a déjà en cache.
+function rouvrirPlan() {
+  if (carte.gl) {
+    carte.gl.remove();
+    carte.gl = null;
+    carte.glPret = false;
+  }
+  if (navigation.mode === "explorer" && carte.affichage === "carte") {
+    majAffichageGL();
+  }
+}
+
+/// V16 : après une projection refaite (« Recalculer la carte », ou les
+/// empreintes d'un scan), le moteur régénère le plan en tâche de fond
+/// (`tuiles_state`, ≈ 6 s sur 27 000 morceaux). On suit sans bloquer
+/// l'écoute ni la carte, on rouvre MapLibre à la fin. `afficher(texte,
+/// faits, total)`, facultatif, reprend l'avancement dans l'indicateur des
+/// passes quand aucune autre ne l'occupe. Rien en cours : rien à faire.
+async function suivrePlan(afficher) {
+  const bouton = $("regenerer-tuiles");
+  try {
+    const s = await invoke("tuiles_state");
+    if (!s?.en_cours) return;
+    bouton.disabled = true;
+    const fin = await attendreFin("tuiles_state", 500, (t) => {
+      if (!t.en_cours) return;
+      const texte = `plan de Paris : régénération, étape ${t.faits + 1} sur ${t.total}…`;
+      $("tuiles-etat").textContent = texte;
+      afficher?.(texte, t.faits, t.total);
+    });
+    $("tuiles-etat").textContent = fin.resultat ?? "";
+    afficher?.(fin.resultat ?? "", 0, 0);
+    rouvrirPlan();
+  } catch (e) {
+    remonter(e, "régénération du plan");
+    $("tuiles-etat").textContent = String(e);
+  } finally {
+    bouton.disabled = false;
+  }
+}
 
 /* ------------------------------------------------- paramètres de densité */
 
@@ -964,6 +998,8 @@ async function analyserRacine(chemin) {
     // périmée, y compris ses familles et le filtre par famille de l'Écoute.
     if (navigation.mode === "explorer") await chargerCarte();
     await familleARecalculee();
+    // Refaite, elle emporte le plan, régénéré pendant les passes suivantes.
+    suivrePlan();
 
     etat.textContent = `${chemin} — tempo, tonalité, énergie…`;
     await invoke("start_descripteurs", { force });
@@ -1120,6 +1156,7 @@ async function passeEmpreintes(phase) {
   // La projection a replacé tous les points — mêmes suites qu'`analyserRacine`.
   if (navigation.mode === "explorer") await chargerCarte();
   await familleARecalculee();
+  suivrePlan();
 }
 
 async function passeDescripteurs(force, phase) {
@@ -1412,6 +1449,7 @@ async function reprendreActualisationEnCours() {
     ["loudness_state", "loudness"],
     ["analysis_state", "empreintes"],
     ["descripteurs_state", "tempo, tonalité, énergie"],
+    ["tuiles_state", "plan de Paris"],
     ["enrichment_state", "genres"],
     ["popularite_state", "popularité"],
     ["biographies_state", "biographies"],
@@ -1451,6 +1489,7 @@ async function reprendreActualisationEnCours() {
       .finally(async () => {
         $("scan-jauge").hidden = true;
         verrouillerActualisation(false);
+        if (cmd === "tuiles_state") rouvrirPlan();
         if (cmd === "popularite_state") {
           popARecalculee();
           chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));

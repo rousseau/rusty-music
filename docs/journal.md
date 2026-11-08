@@ -4397,3 +4397,41 @@ n'est changé dans l'application.
 le lancement automatique n'a pas eu le droit d'exécuter le code cloné de
 CLaMP 3, à lancer à la main) ; le coût de CLAP par morceau sur ce Mac (pas
 mesuré par le banc) ; la pertinence texte → audio (annotation à faire).
+
+## Explorer, V16 : le plan de Paris suit le nuage quand la projection est refaite — 9 nov. 2026
+
+Après V10, « Recalculer la carte » redessinait le nuage (affichage Points)
+mais le plan de Paris gardait les adresses de l'ancien jusqu'au bouton
+« Régénérer les tuiles » : deux vues incohérentes.
+
+- **Durée mesurée** sur une copie des données de l'app (`sqlite3 .backup`,
+  27 861 morceaux, `ville-paris.db`) par `carto/examples/carte_avant_apres.rs`
+  (nouvelle ligne « plan de Paris sans relief », le travail de
+  `engendrer_tuiles`) : **5,9 s** (lecture de la ville comprise ; projection
+  refaite : 22,2 s). Assez court pour rester automatique sans arrêt ni
+  reprise.
+- **Enchaînement** : quand `projeter_tout` rend « refaite », le moteur
+  lance la régénération en tâche de fond (`explorer::suivre_projection`,
+  passe `tuiles` sondée par `tuiles_state`, trois étapes : assemblage,
+  tuiles, styles et adresses). Deux chemins y mènent : « Recalculer la
+  carte » (`recompute_map`) et les empreintes d'un scan ou d'un « Analyser »
+  (`start_analysis`, quand une projection doit être refaite). « Reprise »
+  et « gardée » ne régénèrent rien (`plan_a_refaire`).
+- **Interface** : la ligne sous « Régénérer les tuiles » dit l'étape en
+  cours, puis le bilan ; après « Recalculer la carte », l'indicateur des
+  passes (Bibliothèque) le reprend avec sa jauge. Le bouton manuel reste,
+  grisé pendant la régénération (le moteur refuse aussi deux écritures du
+  plan à la fois) ; MapLibre est rouvert à la fin. Un retour dans
+  Bibliothèque pendant la régénération raccroche l'affichage, comme pour les
+  autres passes.
+- **Tests** : `seule_une_projection_refaite_regenere_le_plan` (première
+  projection et perplexité changée → plan demandé ; gardée, reprise →
+  rien), deux tests de fumée (refaite : avancement puis bilan, bouton
+  grisé puis rendu, aucun `engendrer_tuiles` appelé par l'interface ;
+  gardée : aucune sonde de plus). `verifier.sh` vert (52 tests de fumée) ;
+  `audit-interface.sh` rapide : 84 cellules, 0 violation.
+
+**Non vérifié** : la régénération dans l'application elle-même (durée dans
+l'app, carte rouverte à la fin) : l'audit tourne écran verrouillé, la carte
+n'y est pas dessinée ; le chemin du monde fictif (sans ville), qui
+régénère aussi, son ombrage compris.

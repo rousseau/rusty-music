@@ -520,6 +520,46 @@ test("Bibliothèque : l'état en tête, une ligne déplie sa liste, les réglage
   await expect(page.locator("#recalculer-carte")).toBeVisible();
 });
 
+test("Recalculer la carte : nuage refait, le plan suit en tâche de fond (V16)", async ({ page }) => {
+  await page.evaluate(() => {
+    const f = window.__FIXTURES__;
+    // Le moteur lance la régénération en rendant « refaite » ; elle dure
+    // quatre sondes, puis rend son bilan.
+    f.recompute_map = (_, etat) => {
+      etat.plan = 0;
+      return { empreintes: 5, familles: 2, projection: "refaite" };
+    };
+    f.tuiles_state = (_, etat) => {
+      if (etat.plan === undefined) return { en_cours: false, faits: 0, total: 3, resultat: null };
+      etat.plan += 1;
+      return etat.plan < 5
+        ? { en_cours: true, faits: Math.min(etat.plan - 1, 2), total: 3, resultat: null }
+        : { en_cours: false, faits: 3, total: 3, resultat: "12 tuiles (1,0 Mo) en 0,1 s" };
+    };
+  });
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Paramètres de la carte')");
+  await page.click("#recalculer-carte");
+  await expect(page.locator("#carte-parametres-etat")).toContainText("nuage redessiné");
+  await expect(page.locator("#tuiles-etat")).toContainText("plan de Paris : régénération");
+  await expect(page.locator("#regenerer-tuiles")).toBeDisabled();
+  await expect(page.locator("#tuiles-etat")).toHaveText("12 tuiles (1,0 Mo) en 0,1 s");
+  await expect(page.locator("#regenerer-tuiles")).toBeEnabled();
+  // Le moteur régénère seul : l'interface n'appelle pas `engendrer_tuiles`.
+  expect(await appels(page, "engendrer_tuiles")).toEqual([]);
+});
+
+test("Recalculer la carte : nuage gardé, le plan ne bouge pas (V16)", async ({ page }) => {
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Paramètres de la carte')");
+  // Le retour dans Bibliothèque sonde les passes en cours, celle-ci comprise.
+  const avant = (await appels(page, "tuiles_state")).length;
+  await page.click("#recalculer-carte");
+  await expect(page.locator("#carte-parametres-etat")).toContainText("nuage inchangé");
+  expect((await appels(page, "tuiles_state")).length).toBe(avant);
+  await expect(page.locator("#tuiles-etat")).toHaveText("");
+});
+
 test("éditions face à face : ce qui part sur le réseau, les pistes alignées, retenir puis oublier", async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem("mb-contact", "essai@example.org");

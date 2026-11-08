@@ -351,14 +351,21 @@ pub(crate) struct RapportCarte {
 ///
 /// Le nuage n'est redessiné que si la perplexité, les époques ou le pas de
 /// t-SNE ont changé (`passe::projeter_tout`) : après un changement de
-/// vocabulaire, seules les familles bougent.
+/// vocabulaire, seules les familles bougent. Redessiné, le plan suit en
+/// tâche de fond (`suivre_projection`, V16 ; l'interface sonde `tuiles_state`).
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
-pub(crate) fn recompute_map(etat: State<Etat>) -> Result<RapportCarte, String> {
+pub(crate) fn recompute_map(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+) -> Result<RapportCarte, String> {
     use rusty_music_analysis::passe::Projection;
     let lib = verrou(&etat.lib);
     let r = rusty_music_analysis::passe::projeter_tout(&lib, None, Projection::Reprise)
         .map_err(|e| e.to_string())?;
+    // Le fil du plan relit la base sous ce même verrou.
+    drop(lib);
+    suivre_projection(&app, r.projection);
     Ok(RapportCarte {
         empreintes: r.empreintes,
         familles: r.familles,

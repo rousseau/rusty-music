@@ -184,6 +184,11 @@ fn main() -> anyhow::Result<()> {
         dossier_tuiles.join("positions.json"),
         serde_json::to_vec(&positions)?,
     )?;
+    // Ce que fait `engendrer_tuiles` s'arrête ici (V16 : sa durée).
+    println!(
+        "plan de Paris sans relief (comme engendrer_tuiles) : {:.1} s",
+        t.elapsed().as_secs_f64()
+    );
     for entree in std::fs::read_dir(&dossier_tuiles)? {
         let p = entree?.path();
         let nom = p.file_name().unwrap_or_default().to_string_lossy();

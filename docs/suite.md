@@ -44,6 +44,11 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   D1 (relever `balade-mesure.json` ; le 8 nov., 3 balades et 0 carrefour
   quitté, rien à relever) et D3 (apprendre la pente des choix aux
   carrefours, s'il y en a au moins 50).
+- Le plan suit le nuage — V16 fait (9 nov.) : une projection refaite
+  (« Recalculer la carte » après un changement de réglage, ou les
+  empreintes d'un scan) régénère le plan de Paris en tâche de fond (6 s sur
+  27 861 morceaux), l'avancement sous « Régénérer les tuiles » ; une
+  reprise ou un nuage gardé, rien. Le bouton manuel reste.
 - Outillage — V11 fait (8 nov.) : `verifier.sh` ne lie plus les exemples et
   le profil `dev` ne garde que les tables de lignes : `target/debug` 12 Gio
   après un passage (28 avant), 66 s en régime établi (231 avant) ; routine

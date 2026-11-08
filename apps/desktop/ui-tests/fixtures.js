@@ -208,6 +208,7 @@ const fixtures = {
   // « Recalculer la carte » (`explorer/voisinage.rs`, `RapportCarte`) : les
   // cinq morceaux, deux familles, le nuage gardé.
   recompute_map: { empreintes: 5, familles: 2, projection: "gardee" },
+  tuiles_state: { en_cours: false, faits: 0, total: 3, resultat: null },
 
   // --- familles (numéro, nom, effectif) et carte en nuage de points
   families: [

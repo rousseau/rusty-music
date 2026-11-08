@@ -243,29 +243,103 @@ pub(crate) fn rassembler_ville(
 /// ([`rassembler`]), inchangé.
 #[tauri::command(async)]
 pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, String> {
+    // Deux écritures du même `carte.pmtiles` à la fois se marcheraient dessus.
+    if verrou(&etat.tuiles).en_cours {
+        return Err("le plan est déjà en cours de régénération".into());
+    }
+    engendrer(&app, &etat, |_| {})
+}
+
+/// Avancement d'une régénération du plan lancée par le moteur (V16) :
+/// [`ETAPES_PLAN`] étapes, l'assemblage (le plus long), les tuiles, le style
+/// et les adresses.
+pub(crate) type EtatTuiles = Passe<Compte>;
+
+const ETAPES_PLAN: usize = 3;
+
+/// Une projection **refaite** a redessiné le nuage : le plan, dont les
+/// adresses en dépendent (`ville::rassembler`, affinité de style), doit le
+/// suivre. Une reprise ne loge que les nouveaux morceaux et un nuage gardé ne
+/// bouge pas : rien de plus qu'avant V16 pour eux.
+pub(crate) fn plan_a_refaire(projection: rusty_music_analysis::passe::Projection) -> bool {
+    projection == rusty_music_analysis::passe::Projection::Refaite
+}
+
+/// Après une projection, régénère le plan en tâche de fond si elle a été
+/// refaite ([`plan_a_refaire`]). Rend vrai si la régénération est partie.
+/// Mesurée sur la bibliothèque réelle (27 861 morceaux, Paris) : 6 s, d'où
+/// ni arrêt ni reprise — l'écoute et la carte restent servies pendant ce
+/// temps, et l'interface rouvre MapLibre à la fin (`tuiles_state`).
+pub(crate) fn suivre_projection(
+    app: &tauri::AppHandle,
+    projection: rusty_music_analysis::passe::Projection,
+) -> bool {
+    if !plan_a_refaire(projection) {
+        return false;
+    }
+    let pour_le_fil = app.clone();
+    let lance = passe::lancer(
+        app.clone(),
+        |e| &e.tuiles,
+        "le plan est déjà en cours de régénération",
+        Compte {
+            faits: 0,
+            total: ETAPES_PLAN,
+        },
+        move |_| {
+            let etat = pour_le_fil.state::<Etat>();
+            let bilan = engendrer(&pour_le_fil, &etat, |faits| {
+                verrou(&etat.tuiles).avancement.faits = faits;
+            })
+            .unwrap_or_else(|e| format!("échec : {e}"));
+            tracing::info!(%bilan, "plan régénéré après une projection refaite");
+            bilan
+        },
+    );
+    if let Err(e) = &lance {
+        tracing::warn!(%e, "plan non régénéré après la projection refaite");
+    }
+    lance.is_ok()
+}
+
+/// Avancement de la régénération du plan, sondé par l'interface.
+#[tauri::command(async)]
+pub(crate) fn tuiles_state(etat: State<Etat>) -> Result<EtatTuiles, String> {
+    Ok(verrou(&etat.tuiles).clone())
+}
+
+/// Le travail de [`engendrer_tuiles`], aussi lancé en tâche de fond par
+/// [`suivre_projection`] ; `avancement` reçoit l'étape franchie.
+fn engendrer(
+    app: &tauri::AppHandle,
+    etat: &State<Etat>,
+    mut avancement: impl FnMut(usize),
+) -> Result<String, String> {
     let (src, paliers, ombrage_rapport) = if let Some(chemin_ville) = plan_de_ville(&etat.db) {
-        let extrait = charger_ville(&etat, &chemin_ville)?;
-        let src = rassembler_ville(&etat, &extrait)?;
+        let extrait = charger_ville(etat, &chemin_ville)?;
+        let src = rassembler_ville(etat, &extrait)?;
         (src, rusty_music_carto::tuiles::Paliers::ville(), None)
     } else {
         tracing::info!(
             "aucune ville importée — carte procédurale de repli ; lancer \
              `carto ville <extrait.osm.pbf> --commune <nom>` pour Paris"
         );
-        let (src, champ, resolution) = rassembler(&etat)?;
+        let (src, champ, resolution) = rassembler(etat)?;
         let ombrage = rusty_music_carto::relief::Ombrage::default();
         let rr = rusty_music_carto::relief::ecrire(
             &champ,
             resolution,
             &ombrage,
-            &tuiles::chemin_relief(&app).map_err(echec)?,
+            &tuiles::chemin_relief(app).map_err(echec)?,
         )
         .map_err(echec)?;
         (src, rusty_music_carto::tuiles::Paliers::default(), Some(rr))
     };
 
-    let chemin = tuiles::chemin_carte(&app).map_err(echec)?;
+    avancement(1);
+    let chemin = tuiles::chemin_carte(app).map_err(echec)?;
     let r = rusty_music_carto::tuiles::ecrire(&src, &paliers, &chemin).map_err(echec)?;
+    avancement(2);
 
     // Le style part avec les tuiles : même source, mêmes paliers, aucune
     // dérive possible entre ce qui est dans les tuiles et ce qui s'affiche.
@@ -277,7 +351,7 @@ pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Resu
     // presque gratuit face à la `Source` (déjà bâtie ci-dessus). L'interface
     // bascule ensuite entre ces fichiers sans régénérer quoi que ce soit.
     // `osm-clair` prend le nom sans suffixe (le style lu par défaut).
-    let dossier_style = tuiles::dossier(&app).map_err(echec)?;
+    let dossier_style = tuiles::dossier(app).map_err(echec)?;
     for palette in rusty_music_carto::Palette::toutes() {
         let style = rusty_music_carto::style::construire(&src, &paliers, &tuiles::base(), palette);
         let nom = if palette.id == "osm-clair" {
@@ -299,7 +373,7 @@ pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Resu
     // de rue une fois le plan de ville réel actif. Absent (donc en échec à
     // la lecture) sur le chemin fictif : c'est le signal que l'interface (`ui/js/`) utilise
     // pour savoir dans quel repère il travaille.
-    let chemin_positions = tuiles::dossier(&app).map_err(echec)?.join("positions.json");
+    let chemin_positions = tuiles::dossier(app).map_err(echec)?.join("positions.json");
     if src.est_ville_reelle() {
         let positions: std::collections::HashMap<i64, [f32; 2]> =
             src.morceaux.iter().map(|m| (m.id, [m.x, m.y])).collect();
@@ -324,7 +398,8 @@ pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Resu
     *verrou(&etat.accrochage_voirie) = None;
     verrou(&etat.graphes_voirie).clear();
     *verrou(&etat.agrement_voirie) = None;
-    oublier_relief(&app, &etat);
+    oublier_relief(app, etat);
+    avancement(ETAPES_PLAN);
 
     match ombrage_rapport {
         Some(rr) => {
@@ -1278,4 +1353,52 @@ pub(crate) fn trace_rues(
         "trait habillé de rues réelles"
     );
     Ok(segments)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusty_music_analysis::passe::{projeter_tout, Projection, MODELE};
+
+    /// Trois amas d'empreintes, `n` morceaux de plus à chaque appel (comme
+    /// les tests de `passe.rs`).
+    fn ajouter(lib: &Library, debut: usize, n: usize) {
+        for i in debut..debut + n {
+            let id = lib
+                .upsert(&rusty_music_core::TrackMeta {
+                    path: PathBuf::from(format!("/m/{i}.flac")),
+                    ..Default::default()
+                })
+                .unwrap();
+            let mut v = vec![0.0f32; 32];
+            v[(i % 3) * 10] = 1.0;
+            v[(i % 3) * 10 + 1] = 0.5 + (i as f32) * 0.003;
+            lib.save_embedding(id, MODELE, &v).unwrap();
+        }
+    }
+
+    /// V16 : le plan est régénéré après une projection refaite, et
+    /// seulement alors — ni après une reprise, ni sur un nuage gardé.
+    #[test]
+    fn seule_une_projection_refaite_regenere_le_plan() {
+        let lib = Library::open_in_memory().unwrap();
+        ajouter(&lib, 0, 60);
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "première projection");
+        assert!(plan_a_refaire(r.projection));
+
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Gardee);
+        assert!(!plan_a_refaire(r.projection), "nuage gardé");
+
+        ajouter(&lib, 60, 6);
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Reprise);
+        assert!(!plan_a_refaire(r.projection), "nouveaux logés");
+
+        lib.set_parametre_carte("perplexite", 12.0).unwrap();
+        let r = projeter_tout(&lib, Some(3), Projection::Reprise).unwrap();
+        assert_eq!(r.projection, Projection::Refaite, "perplexité changée");
+        assert!(plan_a_refaire(r.projection));
+    }
 }
