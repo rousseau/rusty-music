@@ -5000,6 +5000,33 @@ cachés dans le Finder), sans effet sur l'écoute.
 Non vérifié : l'écoute elle-même, réduite par décision de François à
 `1-batterie` et `2-basse` ; la décision suivra.
 
+## Pratiquer, E3 (fin) : la décision après l'écoute — 9 nov. 2026
+
+Écoute à l'aveugle de François, `1-batterie` et `2-basse` seulement. Batterie :
+**B préféré à chaque réglage**, écart « léger ». Basse : aucune différence
+entendue. Décodé contre `$RUSTY_DEV/banc-etirement/cle/cle.tsv` (vérifié
+fichier par fichier, conforme au décodage du relecteur) :
+
+| réglage | B (batterie) |
+|---|---|
+| vitesse 0,5× | Signalsmith |
+| vitesse 0,7× | wsola |
+| vitesse 0,8× | Rubber Band R3 |
+| hauteur +2 | Signalsmith |
+| hauteur −2 | Signalsmith |
+
+Pour la vitesse, aucune méthode ne se détache (une préférence chacune) ; pour
+la hauteur, Signalsmith deux fois sur deux, et il transpose un stem de 184 s
+en 1,0 s contre 17 s, en flux possible.
+
+**Décision : mixte.** wsola garde la vitesse ; Signalsmith Stretch (MIT)
+prend la transposition (étape E6 : en flux, sans cache par réglage).
+Rubber Band n'est pas retenu. Les fichiers d'écoute restent sur le LaCie.
+
+Non vérifié : Rubber Band et Signalsmith en flux dans l'app (rendus hors
+ligne ici) ; le léger écart de justesse de Signalsmith (+1 à +3 cents sur
+sinusoïde) n'a pas été jugé à l'oreille isolément.
+
 ## Paquet, V22 : les modèles de l'app installée — 9 nov. 2026
 
 Dans l'app installée, la batterie de Pratiquer échouait : `adtof_frame_rnn.onnx`
