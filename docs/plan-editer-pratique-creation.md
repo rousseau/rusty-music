@@ -632,6 +632,17 @@ JSON de cache, jamais perdues à la transcription suivante (le modèle ne
 réécrit pas une note corrigée). Export MIDI et alphaTex/Guitar Pro pour
 emporter sa partie.
 
+**Fait (9 nov., E2), autrement que prévu** : pas dans le JSON de cache (qu'un
+nouveau démixage efface) mais dans la mémoire de Pratiquer d'E1
+(`pratique_correction`, migration n° 8 pour l'octave). La note visée se
+retrouve par son instant et sa hauteur transcrits, à 30 ms près
+(`rusty_music_transcription::corrections`) ; les corrections sont
+réappliquées **après** le doigté, à chaque transcription
+(`transcrire` → `corriger_vue`). Basse seulement. Export MIDI et Guitar Pro 7
+par alphaTab (`MidiFileGenerator`, `Gp7Exporter`), de la partie quantifiée
+telle qu'elle se lit ; pas d'alphaTex (l'exporteur existe, mais un fichier
+texte n'emporte rien de plus que le Guitar Pro). `journal.md`, « E2 ».
+
 ---
 
 ## Phase 2 — créer

@@ -349,6 +349,22 @@ html, body {
   background: var(--accent); pointer-events: none; will-change: transform;
 }
 .partition .at-highlight * { fill: var(--accent); stroke: var(--accent); }
+/* E2 : la barre de correction, au-dessus de la partition (sur le fond de
+   l'application, pas sur le papier), et le temps choisi dans la partition. */
+.correction {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: none;
+  font-size: var(--t-second);
+}
+.correction[hidden], .correction [hidden] { display: none; }
+.correction .bouton--mince { margin-left: 0; }
+.correction__note { color: var(--txt); margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.correction__export { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.correction__etiquette { font-size: var(--t-legende); color: var(--mut); }
+.partition__choix {
+  position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 1px solid var(--accent);
+}
 .insp__stem-nom {
   font-family: var(--serif); font-size: var(--t-titre); font-weight: 500;
   letter-spacing: -.01em; margin: 4px 0 12px; text-transform: capitalize;

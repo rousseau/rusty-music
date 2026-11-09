@@ -2802,3 +2802,113 @@ fn la_memoire_de_pratiquer_se_garde_et_se_rend() {
         assert!(faux.verifier().is_err(), "{faux:?}");
     }
 }
+
+/// E2 : une correction de transcription se garde par note (instant et hauteur
+/// transcrits), une par genre ; changer l'octave oublie la corde, supprimer
+/// une note ajoutée l'oublie, « rétablir » rend la note transcrite. La
+/// mémoire d'E1 ne les touche pas.
+#[test]
+fn les_corrections_de_transcription_se_gardent_par_note() {
+    let lib = Library::open_in_memory().unwrap();
+    let chemin = "/Musique/a.flac";
+    let c = |genre: &str, debut_s: f64, hauteur: u8| CorrectionPratique {
+        genre: genre.into(),
+        debut_s,
+        hauteur,
+        duree_s: None,
+        corde: None,
+        frette: None,
+        octaves: None,
+    };
+    let corde = CorrectionPratique {
+        corde: Some(2),
+        ..c("corde", 1.25, 40)
+    };
+    let octave = CorrectionPratique {
+        octaves: Some(1),
+        ..c("octave", 1.25, 40)
+    };
+    let ajout = CorrectionPratique {
+        duree_s: Some(0.25),
+        corde: Some(1),
+        frette: Some(3),
+        ..c("ajouter", 3.0, 36)
+    };
+    for x in [&corde, &octave, &ajout, &c("supprimer", 2.0, 33)] {
+        x.verifier().unwrap();
+        lib.corriger_pratique(chemin, "bass", x).unwrap();
+    }
+    // Une corde imposée après l'octave, sur la même note (l'instant à
+    // l'arrondi près du JSON).
+    let corde2 = CorrectionPratique {
+        debut_s: 1.250_000_1,
+        corde: Some(3),
+        ..corde.clone()
+    };
+    lib.corriger_pratique(chemin, "bass", &corde2).unwrap();
+    let genres = |lib: &Library| -> Vec<String> {
+        lib.corrections_pratique(chemin, "bass")
+            .unwrap()
+            .into_iter()
+            .map(|c| c.genre)
+            .collect()
+    };
+    // Dans l'ordre où elles s'appliquent.
+    assert_eq!(genres(&lib), ["ajouter", "supprimer", "octave", "corde"]);
+    assert_eq!(
+        lib.corrections_pratique(chemin, "bass").unwrap()[3].corde,
+        Some(3)
+    );
+    assert!(lib
+        .corrections_pratique(chemin, "drums")
+        .unwrap()
+        .is_empty());
+
+    // La mémoire d'E1 se garde par-dessus sans les effacer.
+    lib.garder_pratique(chemin, &MemoirePratique::default())
+        .unwrap();
+    assert_eq!(genres(&lib).len(), 4);
+
+    // L'octave changée oublie la corde ; remise à 0, elle s'oublie.
+    lib.corriger_pratique(
+        chemin,
+        "bass",
+        &CorrectionPratique {
+            octaves: Some(-1),
+            ..octave.clone()
+        },
+    )
+    .unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer", "octave"]);
+    lib.corriger_pratique(
+        chemin,
+        "bass",
+        &CorrectionPratique {
+            octaves: Some(0),
+            ..octave
+        },
+    )
+    .unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer"]);
+    // Supprimer la note ajoutée l'oublie ; rétablir la supprimée la rend.
+    lib.corriger_pratique(chemin, "bass", &c("supprimer", 3.0, 36))
+        .unwrap();
+    assert_eq!(genres(&lib), ["supprimer"]);
+    lib.corriger_pratique(chemin, "bass", &c("retablir", 2.0, 33))
+        .unwrap();
+    assert!(genres(&lib).is_empty());
+
+    // Ce qu'aucun geste ne produit.
+    for faux in [
+        c("corde", 1.0, 40),
+        CorrectionPratique {
+            octaves: Some(3),
+            ..c("octave", 1.0, 40)
+        },
+        c("ajouter", 1.0, 40),
+        c("transposer", 1.0, 40),
+        c("supprimer", f64::NAN, 40),
+    ] {
+        assert!(faux.verifier().is_err(), "{faux:?}");
+    }
+}

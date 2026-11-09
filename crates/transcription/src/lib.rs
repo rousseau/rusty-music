@@ -24,6 +24,7 @@
 
 pub mod basic_pitch;
 pub mod batterie;
+pub mod corrections;
 pub mod madmom;
 pub mod monophonie;
 pub mod muscriptor;

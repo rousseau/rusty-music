@@ -461,6 +461,36 @@
              un seul playhead vertical en travers. Le détail d'un stem est
              porté par l'inspecteur (#bloc-stem), pas déplié sous la ligne. -->
         <div id="editer-etabli" class="etabli" hidden>
+          <!-- Pratiquer, basse transcrite : corriger la note choisie dans la
+               partition, exporter la partie (E2 ; js/corriger.js). Au centre,
+               avec l'objet qu'elle corrige (Règle 12). -->
+          <div id="partition-correction" class="correction" role="toolbar" aria-label="Corriger la transcription" hidden>
+            <span id="correction-note" class="correction__note" aria-live="polite"></span>
+            <button class="bouton bouton--mince" data-corriger="grave" hidden
+                    title="Jouer la même note sur la corde plus grave">corde grave</button>
+            <button class="bouton bouton--mince" data-corriger="aigue" hidden
+                    title="Jouer la même note sur la corde plus aiguë">corde aiguë</button>
+            <button class="bouton bouton--mince" data-corriger="octave-bas" hidden
+                    title="Une octave plus bas">octave −</button>
+            <button class="bouton bouton--mince" data-corriger="octave-haut" hidden
+                    title="Une octave plus haut">octave +</button>
+            <button class="bouton bouton--mince" data-corriger="demi-bas" hidden
+                    title="Un demi-ton plus bas">½ ton −</button>
+            <button class="bouton bouton--mince" data-corriger="demi-haut" hidden
+                    title="Un demi-ton plus haut">½ ton +</button>
+            <button class="bouton bouton--mince" data-corriger="ajouter" hidden
+                    title="Une note sur ce silence, à la hauteur de la note d'avant">ajouter une note</button>
+            <button class="bouton bouton--mince" data-corriger="supprimer" hidden>supprimer</button>
+            <button class="bouton bouton--mince" data-corriger="retablir" hidden
+                    title="Revenir à la note transcrite">rétablir</button>
+            <span class="correction__export">
+              <span class="correction__etiquette">exporter</span>
+              <button class="bouton bouton--mince" data-exporter="midi"
+                      title="La partie corrigée, en fichier MIDI">MIDI</button>
+              <button class="bouton bouton--mince" data-exporter="gp"
+                      title="La partie corrigée, en Guitar Pro 7 (.gp)">Guitar Pro</button>
+            </span>
+          </div>
           <!-- Pratiquer : la partition au centre (décision 11), rendue par
                alphaTab, qui suit le lecteur de stems. -->
           <div id="partition" class="partition" hidden>

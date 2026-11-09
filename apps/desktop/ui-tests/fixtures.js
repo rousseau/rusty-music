@@ -356,6 +356,9 @@ const fixtures = {
     (e.pratique ??= {})[a.path] = structuredClone(a.memoire);
     return null;
   },
+  // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
+  // correction sont simulées par le test qui s'en sert.
+  exporter_partie: null,
   sections_disponibles: false,
   // --- l'inspecteur du morceau en lecture : rien d'enrichi
   descripteurs: null,

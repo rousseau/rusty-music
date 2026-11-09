@@ -7,6 +7,7 @@ import { demander } from "./ecrans.js";
 import {
   edition, majBoucleUI, NOMS_SECTIONS, positionnerPlayhead, varianteParDefaut,
 } from "./etabli.js";
+import { brancherCorrection, majCorrection, marquerCorrigees } from "./corriger.js";
 
 /* ------------------------------------------------------- pratiquer */
 
@@ -46,6 +47,12 @@ const partition = {
   // Notre curseur de temps (`placerCurseur`) et sa boucle d'images.
   curseur: null,
   image: null,
+  // La basse transcrite affichée : par mesure, par temps alphaTex, la note
+  // jouée (son rang dans la transcription, ou `null` pour un silence), où le
+  // temps commence et combien il dure, en doubles croches (`texTablature`).
+  // La correction (E2, `corriger.js`) s'en sert pour retrouver une note
+  // cliquée ; `null` quand ce n'est pas une basse transcrite.
+  temps: null,
 };
 
 /// Charge un script une seule fois, même appelé plusieurs fois. Le
@@ -149,6 +156,7 @@ function marquesSections(debuts) {
 
 /// Durées alphaTex d'une longueur en doubles croches, la plus longue d'abord.
 const DUREES_TEX = [[16, "1"], [12, "2{d}"], [8, "2"], [6, "4{d}"], [4, "4"], [3, "8{d}"], [2, "8"], [1, "16"]];
+const SEIZIEMES_TEX = new Map(DUREES_TEX.map(([n, d]) => [d, n]));
 function decouperDuree(seiziemes) {
   const morceaux = [];
   let reste = seiziemes;
@@ -180,23 +188,34 @@ function texTablature(mesures, titre, p, accordage, modele) {
     (edition.notation === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
   const sections = marquesSections(mesures.map((m) => m.debut_s));
+  partition.temps = [];
   const corps = mesures.map((m, i) => {
     let t = sections[i] + (m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "");
     precedente = m.temps;
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
     t += syncTemps(i, m.debut_s, fin, p.temps);
     const temps = [];
+    // Chaque temps alphaTex, dans l'ordre : sa note, son début et sa durée.
+    const carte = [];
+    let curseur = 0;
+    const poser = (tex, d, note) => {
+      temps.push(tex);
+      carte.push({ note: note ?? null, debut: curseur, seiziemes: SEIZIEMES_TEX.get(d) });
+      curseur += SEIZIEMES_TEX.get(d);
+    };
     for (const e of legato(m.evenements)) {
       const durees = decouperDuree(e.seiziemes);
       const jeu = e.jeu;
       if (!jeu || jeu.corde === null || jeu.frette === null) {
-        for (const d of durees) temps.push(`r.${d}`);
+        for (const d of durees) poser(`r.${d}`, d, null);
         continue;
       }
       const corde = cordes.length - jeu.corde;
-      durees.forEach((d, k) => temps.push(e.lie || k > 0 ? `-.${corde}.${d}` : `${jeu.frette}.${corde}.${d}`));
+      durees.forEach((d, k) => poser(e.lie || k > 0 ? `-.${corde}.${d}` : `${jeu.frette}.${corde}.${d}`, d, e.note));
     }
-    return t + (temps.length ? temps.join(" ") : `r.${m.temps === 4 ? "1" : "4"}`);
+    if (!temps.length) poser(`r.${m.temps === 4 ? "1" : "4"}`, m.temps === 4 ? "1" : "4", null);
+    partition.temps.push(carte);
+    return t + temps.join(" ");
   });
   return tete + corps.join(" |\n") + " |";
 }
@@ -630,6 +649,7 @@ async function creerPartition() {
     partition.moletteA = performance.now();
   }, { passive: true });
   partition.api = api;
+  brancherCorrection(api);
   return api;
 }
 
@@ -743,10 +763,12 @@ async function montrerPartition() {
     // une transcription prête d'emblée, sans passer par la grille — sans
     // elles, la clé ne changeait pas et la tablature restait l'ancienne.
     const basses = instrument === "bass" ? bassesJouees : "";
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${edition.notation}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}`;
+    // La révision change à chaque correction (E2) : la partie se redessine.
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? `transcrit${tr.revision ?? 0}` : "grille"}:${edition.notation}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
+      partition.temps = null;
       const tex = !tr?.pret
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
@@ -755,7 +777,10 @@ async function montrerPartition() {
       await partition.chargement;
       // Un appel plus récent a pris la main pendant l'attente : c'est lui
       // qui charge.
-      if (partition.source === cle) partition.chargement = chargerPartition(api, tex, cle);
+      if (partition.source === cle) {
+        const corrigee = instrument === "bass" && tr?.pret ? tr.pret : null;
+        partition.chargement = chargerPartition(api, tex, cle, corrigee);
+      }
     }
   } catch (e) {
     $("partition-aide").hidden = false;
@@ -763,6 +788,7 @@ async function montrerPartition() {
     $("partition-jauge").hidden = true;
     journal("partition", e?.stack ?? e, "warn");
   }
+  majCorrection();
   cancelAnimationFrame(partition.image);
   partition.image = requestAnimationFrame(placerCurseur);
   // 50 ms : la cadence que recommande alphaTab pour un lecteur externe.
@@ -782,7 +808,7 @@ async function montrerPartition() {
 
 /// Charge un alphaTex et attend la fin de son rendu (5 s au plus : un rendu
 /// qui ne finit pas ne doit pas bloquer les suivants).
-function chargerPartition(api, tex, cle) {
+function chargerPartition(api, tex, cle, transcription = null) {
   return new Promise((fini) => {
     const t0 = performance.now();
     let off = null;
@@ -802,6 +828,7 @@ function chargerPartition(api, tex, cle) {
       const score = imp.readScore();
       silencesInvisibles(score);
       mesuresEgales(score);
+      if (transcription) marquerCorrigees(score, transcription, partition.temps);
       api.renderScore(score);
     } catch (e) {
       journal("partition", e?.stack ?? e, "error");
@@ -837,6 +864,7 @@ function silencesInvisibles(score) {
 }
 
 function cacherPartition() {
+  majCorrection();
   clearInterval(partition.minuteur);
   partition.minuteur = null;
   cancelAnimationFrame(partition.image);
@@ -1080,7 +1108,23 @@ $("muscriptor-annuler").addEventListener("click", () => {
   $("muscriptor-conditions").hidden = true;
 });
 
+/// La transcription affichée au centre, si c'est une basse prête (E2) :
+/// l'entrée de `transcriptions` (`pret`, `qualite`, `revision`).
+function basseAffichee() {
+  if (edition.usage !== "pratiquer" || instrumentPratique() !== "bass" || $("partition").hidden) return null;
+  const tr = transcription("bass");
+  return tr?.pret ? tr : null;
+}
+
+/// Remplace la basse transcrite par sa version corrigée (rendue par
+/// `corriger_transcription`) et redessine la partie.
+function remplacerBasse(entree, vue) {
+  entree.pret = vue;
+  entree.revision = (entree.revision ?? 0) + 1;
+  if (edition.usage === "pratiquer") montrerPartition();
+}
+
 export {
-  cacherPartition, lancerDecompte, majUsage, montrerPartition, oublierPartitions,
-  positionMoteur,
+  basseAffichee, bassesJouees, cacherPartition, lancerDecompte, majUsage, montrerPartition,
+  oublierPartitions, partition, positionMoteur, remplacerBasse,
 };

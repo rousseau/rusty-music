@@ -1045,6 +1045,8 @@ fn main() {
             pratique_garder,
             pulsation,
             transcrire,
+            corriger_transcription,
+            exporter_partie,
             etat_transcription,
             muscriptor_disponible,
             sections_disponibles,

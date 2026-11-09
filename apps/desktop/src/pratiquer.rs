@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Commandes de Pratiquer : décompte, transcription (basse, batterie,
-//! MuScriptor), doigtés.
+//! MuScriptor), doigtés, corrections de la transcription et export.
 
 use super::*;
+use rusty_music_transcription::corrections;
 
 /// Lance les stems après un décompte de métronome (Pratiquer) : la musique
 /// part de `debut`, en secondes du morceau, et `clics` donne chaque clic
@@ -53,6 +54,14 @@ pub(crate) struct VueTranscription {
     /// Version de la grille des mesures ([`VERSION_MESURES`]).
     #[serde(default)]
     grille: u32,
+    /// Basse : une identité par note, au même rang — ce qu'une correction
+    /// vise et ce qui y est corrigé (E2). Jamais dans le cache : les
+    /// corrections vivent dans la mémoire de Pratiquer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    identites: Vec<corrections::Identite>,
+    /// Les corrections gardées qui n'ont trouvé aucune note.
+    #[serde(default)]
+    sans_effet: usize,
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
@@ -82,8 +91,9 @@ pub(crate) fn doigter(
 /// Version de la grille des mesures (`Pulsation::regularisee`) : quand seule
 /// elle change, les notes et coups en cache sont requantifiés sans
 /// retranscrire. 1 : premiers temps parasites retirés (26 oct.) ; 2 :
-/// anticipations coupées au premier temps recousues (29 oct.).
-pub(crate) const VERSION_MESURES: u32 = 2;
+/// anticipations coupées au premier temps recousues (29 oct.) ; 3 : chaque
+/// évènement dit le rang de sa note, pour la corriger (E2, 9 nov.).
+pub(crate) const VERSION_MESURES: u32 = 3;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
@@ -177,10 +187,24 @@ pub(crate) fn telecharger_muscriptor(
 ///   la fois, corde et frette ;
 /// - « drums » : ADTOF, cinq pièces.
 /// Puis quantification sur la pulsation. En cache à côté des stems ;
-/// quelques secondes la première fois.
+/// quelques secondes la première fois. Les corrections de l'utilisateur
+/// (E2) sont réappliquées par-dessus, à chaque fois.
 #[tauri::command(async)]
 pub(crate) fn transcrire(
     etat: State<Etat>,
+    id: i64,
+    instrument: String,
+    qualite: Option<bool>,
+    basses: Option<tablature::Basses>,
+) -> Result<VueTranscription, String> {
+    let vue = transcrire_brut(&etat, id, instrument, qualite, basses)?;
+    corriger_vue(&etat, id, vue)
+}
+
+/// La transcription telle que le modèle l'a donnée (le cache), sans les
+/// corrections.
+fn transcrire_brut(
+    etat: &State<Etat>,
     id: i64,
     instrument: String,
     qualite: Option<bool>,
@@ -202,7 +226,7 @@ pub(crate) fn transcrire(
         .map(|t| t.path)
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
     let source = PathBuf::from(&chemin);
-    let dossier = dossier_stems(&etat, &source);
+    let dossier = dossier_stems(etat, &source);
     let cache = dossier.join(if qualite {
         format!("transcription-{instrument}-muscriptor.json")
     } else {
@@ -221,7 +245,7 @@ pub(crate) fn transcrire(
         // Seuls le doigté ou la grille des mesures ont changé : les notes en
         // cache sont reposées et requantifiées, sans retranscrire.
         let pulsation = pulsation_de(
-            &etat,
+            etat,
             &source,
             &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
             rusty_music_editor::pulsation::Modele::Complet,
@@ -279,7 +303,7 @@ pub(crate) fn transcrire(
         .find(|(n, _)| *n == instrument)
         .ok_or_else(|| format!("pas de stem « {instrument} » séparé pour ce morceau"))?;
     let pulsation = pulsation_de(
-        &etat,
+        etat,
         &source,
         &dossier.join(rusty_music_editor::pulsation::FICHIER_CACHE),
         rusty_music_editor::pulsation::Modele::Complet,
@@ -326,6 +350,8 @@ pub(crate) fn transcrire(
             basses: tablature::Basses::default(),
             hauteurs: Vec::new(),
             grille: VERSION_MESURES,
+            identites: Vec::new(),
+            sans_effet: 0,
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
             if let Err(e) = std::fs::write(&cache, o) {
@@ -432,6 +458,8 @@ pub(crate) fn transcrire(
         basses,
         hauteurs,
         grille: VERSION_MESURES,
+        identites: Vec::new(),
+        sans_effet: 0,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {
@@ -442,6 +470,132 @@ pub(crate) fn transcrire(
         }
     }
     Ok(vue)
+}
+
+/// Les corrections de la basse du morceau `id`, réappliquées sur sa
+/// transcription brute (E2) : notes corrigées, identités, mesures
+/// requantifiées. Sans correction, seulement les identités.
+fn corriger_vue(
+    etat: &State<Etat>,
+    id: i64,
+    vue: VueTranscription,
+) -> Result<VueTranscription, String> {
+    if vue.instrument != "bass" {
+        return Ok(vue);
+    }
+    let chemin = chemin_du_morceau(etat, id)?;
+    let liste = verrou(&etat.lib)
+        .corrections_pratique(&chemin, "bass")
+        .map_err(echec)?;
+    let source = PathBuf::from(&chemin);
+    let cache = dossier_stems(etat, &source).join(rusty_music_editor::pulsation::FICHIER_CACHE);
+    appliquer_corrections(vue, &liste, || {
+        let p = pulsation_de(
+            etat,
+            &source,
+            &cache,
+            rusty_music_editor::pulsation::Modele::Complet,
+        )?;
+        let metrique = p.metrique().unwrap_or(4);
+        Ok((p.temps, p.premiers_temps, metrique))
+    })
+}
+
+/// Le cœur de [`corriger_vue`], sans l'application autour : `grille` donne
+/// les temps, les premiers temps et la métrique, demandés seulement s'il y a
+/// des corrections à poser.
+fn appliquer_corrections(
+    mut vue: VueTranscription,
+    liste: &[rusty_music_core::db::CorrectionPratique],
+    grille: impl FnOnce() -> Result<(Vec<f32>, Vec<f32>, u32), String>,
+) -> Result<VueTranscription, String> {
+    let accordage = tablature::Accordage {
+        cordes: vue.accordage.clone(),
+        frettes: tablature::Accordage::basse4().frettes,
+    };
+    let c = corrections::appliquer(&vue.notes, &vue.hauteurs, liste, &accordage);
+    vue.identites = c.identites;
+    vue.sans_effet = c.sans_effet;
+    if liste.is_empty() {
+        return Ok(vue);
+    }
+    vue.notes = c.notes;
+    // Les hauteurs transcrites suivent le rang des notes ; une note ajoutée
+    // n'en a pas d'autre que la sienne.
+    vue.hauteurs = vue.identites.iter().map(|i| i.hauteur).collect();
+    let (temps, premiers, metrique) = grille()?;
+    let mesures = rusty_music_transcription::quantification::quantifier(
+        &vue.notes, &temps, &premiers, metrique,
+    );
+    vue.mesures = serde_json::to_value(&mesures).map_err(echec)?;
+    Ok(vue)
+}
+
+fn chemin_du_morceau(etat: &State<Etat>, id: i64) -> Result<String, String> {
+    verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))
+}
+
+/// Corrige une note de la basse transcrite du morceau `id` (E2) : corde
+/// imposée, octave, note supprimée, ajoutée, ou rétablie telle que transcrite.
+/// Gardée dans la mémoire de Pratiquer ; rend la transcription corrigée.
+///
+/// Une note ajoutée est posée sur la grille par l'interface : elle est
+/// décalée du décalage de jeu du morceau
+/// (`quantification::decalage_de_jeu`), comme si elle avait été jouée avec
+/// les autres, pour retomber sur sa double croche.
+#[tauri::command(async)]
+pub(crate) fn corriger_transcription(
+    etat: State<Etat>,
+    id: i64,
+    qualite: Option<bool>,
+    basses: Option<tablature::Basses>,
+    mut correction: rusty_music_core::db::CorrectionPratique,
+) -> Result<VueTranscription, String> {
+    correction.verifier()?;
+    let brute = transcrire_brut(&etat, id, "bass".into(), qualite, basses)?;
+    let chemin = chemin_du_morceau(&etat, id)?;
+    if correction.genre == "ajouter" {
+        let source = PathBuf::from(&chemin);
+        let p = pulsation_de(
+            &etat,
+            &source,
+            &dossier_stems(&etat, &source).join(rusty_music_editor::pulsation::FICHIER_CACHE),
+            rusty_music_editor::pulsation::Modele::Complet,
+        )?;
+        let decalage =
+            rusty_music_transcription::quantification::decalage_de_jeu(&brute.notes, &p.temps);
+        correction.debut_s += decalage as f64;
+    }
+    verrou(&etat.lib)
+        .corriger_pratique(&chemin, "bass", &correction)
+        .map_err(echec)?;
+    tracing::info!(id, genre = %correction.genre, "transcription corrigée");
+    corriger_vue(&etat, id, brute)
+}
+
+/// Écrit une partie exportée par la partition (alphaTab : MIDI ou Guitar Pro
+/// 7) là où l'utilisateur l'a choisi (dialogue « Enregistrer »).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn exporter_partie(chemin: String, octets: Vec<u8>) -> Result<(), String> {
+    let p = Path::new(&chemin);
+    let extension = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    if !matches!(extension.as_deref(), Some("mid" | "midi" | "gp")) {
+        return Err(format!("format d'export inconnu : {chemin}"));
+    }
+    if octets.is_empty() {
+        return Err("partie vide".into());
+    }
+    std::fs::write(p, &octets).map_err(echec)?;
+    tracing::info!(chemin, octets = octets.len(), "partie exportée");
+    Ok(())
 }
 
 /// Ce que Pratiquer a retenu du morceau `path` (E1), ou `None`.
@@ -467,4 +621,125 @@ pub(crate) fn pratique_garder(
     verrou(&etat.lib)
         .garder_pratique(&path, &memoire)
         .map_err(echec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusty_music_core::db::CorrectionPratique;
+    use rusty_music_transcription::{quantification, Note};
+
+    /// Une basse transcrite comme le fait `transcrire_brut` : notes doigtées,
+    /// hauteurs transcrites, mesures quantifiées. `retard` décale les attaques,
+    /// comme une transcription refaite par un autre calcul.
+    fn transcription_brute(retard: f32, grille: &(Vec<f32>, Vec<f32>, u32)) -> VueTranscription {
+        let mut notes: Vec<Note> = [28u8, 31, 33, 35, 36, 35, 33, 31]
+            .iter()
+            .enumerate()
+            .map(|(i, &h)| Note {
+                debut_s: 0.5 + 0.5 * i as f32 + retard,
+                fin_s: 0.9 + 0.5 * i as f32 + retard,
+                hauteur: h,
+                amplitude: 0.4,
+                corde: None,
+                frette: None,
+            })
+            .collect();
+        let hauteurs = notes.iter().map(|n| n.hauteur).collect();
+        let accordage = doigter(&mut notes, tablature::Basses::Quatre, &grille.1);
+        let mesures = quantification::quantifier(&notes, &grille.0, &grille.1, grille.2);
+        VueTranscription {
+            version: VERSION_TRANSCRIPTION,
+            instrument: "bass".into(),
+            modele: "basic-pitch".into(),
+            notes,
+            coups: Vec::new(),
+            mesures: serde_json::to_value(&mesures).unwrap(),
+            accordage: accordage.cordes,
+            doigtes: VERSION_DOIGTES,
+            basses: tablature::Basses::Quatre,
+            hauteurs,
+            grille: VERSION_MESURES,
+            identites: Vec::new(),
+            sans_effet: 0,
+        }
+    }
+
+    /// Le critère d'E2 : les corrections gardées dans la mémoire de Pratiquer
+    /// survivent à une transcription refaite (le cache effacé, les attaques
+    /// datées autrement) ; la partition requantifiée est la même.
+    #[test]
+    fn une_correction_survit_a_une_nouvelle_transcription() {
+        let lib = rusty_music_core::Library::open_in_memory().unwrap();
+        let chemin = "/Musique/a.flac";
+        let grille = (
+            (0..24).map(|i| 0.5 + 0.5 * i as f32).collect::<Vec<f32>>(),
+            vec![0.5, 2.5, 4.5, 6.5, 8.5, 10.5],
+            4,
+        );
+        let brute = transcription_brute(0.0, &grille);
+        let n = |i: usize| (brute.notes[i].debut_s as f64, brute.hauteurs[i]);
+        let correction = |genre: &str, (debut_s, hauteur): (f64, u8)| CorrectionPratique {
+            genre: genre.into(),
+            debut_s,
+            hauteur,
+            duree_s: None,
+            corde: None,
+            frette: None,
+            octaves: None,
+        };
+        for c in [
+            CorrectionPratique {
+                corde: Some(0),
+                ..correction("corde", n(2))
+            },
+            CorrectionPratique {
+                octaves: Some(1),
+                ..correction("octave", n(0))
+            },
+            correction("supprimer", n(5)),
+            CorrectionPratique {
+                // Deux doubles croches, comme les pose l'interface (une
+                // durée de silence de la partition).
+                duree_s: Some(0.25),
+                ..correction("ajouter", (4.75, 38))
+            },
+        ] {
+            c.verifier().unwrap();
+            lib.corriger_pratique(chemin, "bass", &c).unwrap();
+        }
+        let liste = lib.corrections_pratique(chemin, "bass").unwrap();
+        let g = || Ok(grille.clone());
+        let corrigee = appliquer_corrections(brute, &liste, g).unwrap();
+        assert_eq!(corrigee.sans_effet, 0);
+        assert_eq!(corrigee.notes.len(), 8);
+        // mi1 monté d'une octave, la1 sur la corde de mi (5ᵉ frette).
+        assert_eq!(corrigee.notes[0].hauteur, 40);
+        assert_eq!(
+            (corrigee.notes[2].corde, corrigee.notes[2].frette),
+            (Some(0), Some(5))
+        );
+        assert!(corrigee.identites[7].ajoutee);
+
+        // Le cache effacé, la basse retranscrite 15 ms plus tard.
+        let refaite =
+            appliquer_corrections(transcription_brute(0.015, &grille), &liste, g).unwrap();
+        assert_eq!(refaite.sans_effet, 0);
+        let jeu = |v: &VueTranscription| -> Vec<(u8, Option<u8>, Option<u8>)> {
+            v.notes
+                .iter()
+                .map(|n| (n.hauteur, n.corde, n.frette))
+                .collect()
+        };
+        assert_eq!(jeu(&corrigee), jeu(&refaite));
+        assert_eq!(corrigee.mesures, refaite.mesures);
+        // Sans correction, les mesures du cache restent et chaque note a son
+        // identité.
+        let sans = appliquer_corrections(transcription_brute(0.0, &grille), &[], || {
+            Err("pas de grille sans correction".into())
+        })
+        .unwrap();
+        assert_eq!(sans.identites.len(), sans.notes.len());
+        assert!(sans.identites.iter().all(|i| !i.corrigee()));
+    }
 }

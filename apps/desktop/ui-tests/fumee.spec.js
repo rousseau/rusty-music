@@ -1391,3 +1391,158 @@ test("balade : en mode « demander », le carrefour attend ; 2 prend la seconde 
   expect(autour).not.toContain(p.id);
   expect(autour).not.toContain(await page.evaluate(() => window.__ETAT_FAUX__.balade.suivant));
 });
+
+/// E2 : une basse transcrite simulée, quatre noires par mesure sur la grille
+/// du test (un temps toutes les 0,5 s), et un moteur de correction réduit à
+/// l'essentiel : il garde la correction et rend la transcription corrigée.
+async function basseTranscrite(page) {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 32 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 8 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+    window.__FIXTURES__.transcriptions_en_cache = ["bass", "bass-muscriptor"];
+    const accordage = [28, 33, 38, 43];
+    // La frette la plus basse, comme une main qui reste en bas du manche.
+    const placer = (h) => {
+      for (let c = 3; c >= 0; c--) if (h - accordage[c] >= 0 && h - accordage[c] <= 20) return [c, h - accordage[c]];
+      return [null, null];
+    };
+    // Deux mesures jouées (la deuxième avec un silence au troisième temps).
+    const debuts = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0];
+    const hauteurs = [33, 36, 38, 40, 33, 31, 28];
+    const vue = (corrections) => {
+      let lignes = debuts.map((d, i) => ({ d, h: hauteurs[i], o: 0, ajoutee: false }));
+      for (const c of corrections) {
+        const i = lignes.findIndex((l) => l.h === c.hauteur && Math.abs(l.d - c.debut_s) < 0.03);
+        if (c.genre === "ajouter") lignes.push({ d: c.debut_s, h: c.hauteur, o: 0, ajoutee: true, duree: c.duree_s });
+        else if (i >= 0 && c.genre === "supprimer") lignes.splice(i, 1);
+        else if (i >= 0 && c.genre === "octave") lignes[i].o = c.octaves;
+      }
+      lignes.sort((a, b) => a.d - b.d);
+      const notes = lignes.map((l) => {
+        const h = l.h + 12 * l.o;
+        const [corde, frette] = placer(h);
+        return { debut_s: l.d, fin_s: l.d + 0.45, hauteur: h, amplitude: 0.6, corde, frette };
+      });
+      const mesures = Array.from({ length: 8 }, (_, m) => ({
+        debut_s: 0.5 + 2 * m,
+        temps: 4,
+        evenements: Array.from({ length: 4 }, (_, k) => {
+          const t = 0.5 + 2 * m + k / 2;
+          const i = notes.findIndex((n) => Math.abs(n.debut_s - t) < 0.1);
+          const n = notes[i];
+          return n
+            ? { seiziemes: 4, jeu: { hauteur: n.hauteur, corde: n.corde, frette: n.frette }, lie: false, confiance: 0.6, note: i }
+            : { seiziemes: 4, jeu: null, lie: false, confiance: 1, note: null };
+        }),
+      }));
+      return {
+        version: 5, instrument: "bass", modele: "muscriptor-medium", notes, coups: [], mesures, accordage,
+        doigtes: 5, basses: "quatre", hauteurs: lignes.map((l) => l.h), grille: 3,
+        identites: lignes.map((l) => ({ debut_s: l.d, hauteur: l.h, ajoutee: l.ajoutee, octaves: l.o, corde_imposee: false })),
+        sans_effet: 0,
+      };
+    };
+    window.__FIXTURES__.transcrire = (a, e) => vue(e.corrections ?? []);
+    window.__FIXTURES__.corriger_transcription = (a, e) => {
+      const c = a.correction;
+      e.corrections = (e.corrections ?? []).filter((x) => !(x.hauteur === c.hauteur && Math.abs(x.debut_s - c.debut_s) < 1e-3));
+      if (c.genre !== "retablir") e.corrections.push(c);
+      return vue(e.corrections);
+    };
+  });
+}
+
+/// Clique le temps `indice` de la mesure `mesure` dans la partition rendue.
+async function cliquerTemps(page, mesure, indice) {
+  const point = await page.evaluate(
+    async ([m, i]) => {
+      const { partition } = await import("./js/pratiquer.js");
+      const api = partition.api;
+      const beat = api.score.tracks[0].staves[0].bars[m].voices[0].beats[i];
+      const b = api.boundsLookup.findBeat(beat);
+      const s = document.querySelector("#partition-rendu .at-surface").getBoundingClientRect();
+      const v = b.visualBounds;
+      return { x: s.left + v.x + v.w / 2, y: s.top + v.y + v.h / 2 };
+    },
+    [mesure, indice],
+  );
+  await page.mouse.click(point.x, point.y);
+}
+
+test("E2 : corriger une note de la partition, en ajouter une, exporter la partie", async ({ page }) => {
+  await basseTranscrite(page);
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  const barre = page.locator("#partition-correction");
+  await expect(barre).toBeVisible();
+  await expect(page.locator("#correction-note")).toContainText("Cliquer une note");
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  // Rien dans le rail : la barre est au centre, sous la rangée des stems.
+  expect(await barre.evaluate((el) => !!el.closest("#editer-etabli") && !el.closest(".rail"))).toBe(true);
+
+  // La deuxième note : do2, posée par le faux moteur sur la frette la plus
+  // basse.
+  await cliquerTemps(page, 0, 1);
+  await expect(page.locator("#correction-note")).toHaveText("do2 · corde de la, frette 3");
+  await expect(barre.locator('[data-corriger="octave-haut"]')).toBeVisible();
+  await expect(barre.locator('[data-corriger="ajouter"]')).toBeHidden();
+  await expect(barre.locator('[data-corriger="retablir"]')).toBeHidden();
+  await barre.locator('[data-corriger="octave-haut"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("do3 · corde de sol, frette 5 · corrigée");
+  const octave = (await appels(page, "corriger_transcription")).at(-1);
+  expect(octave.correction).toEqual({ genre: "octave", debut_s: 1, hauteur: 36, octaves: 1 });
+  expect(octave.qualite).toBe(true);
+  // La note corrigée est à l'encre d'accent dans la partition redessinée.
+  const marquee = () =>
+    page.evaluate(async () => {
+      const { partition } = await import("./js/pratiquer.js");
+      return partition.api.score.tracks[0].staves[0].bars[0].voices[0].beats[1].notes[0].style?.colors.size ?? 0;
+    });
+  await expect.poll(marquee).toBe(2);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e2-correction.png" });
+  // Rétablir rend la note transcrite.
+  await barre.locator('[data-corriger="retablir"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("do2 · corde de la, frette 3");
+  expect((await appels(page, "corriger_transcription")).at(-1).correction.genre).toBe("retablir");
+
+  // Supprimer la quatrième note : un silence à sa place.
+  await cliquerTemps(page, 0, 3);
+  await expect(page.locator("#correction-note")).toContainText("mi2");
+  await barre.locator('[data-corriger="supprimer"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("Silence");
+
+  // Sur le silence du troisième temps de la deuxième mesure, une note : la
+  // hauteur de celle d'avant (sol1), au temps de la grille, sur sa durée.
+  await cliquerTemps(page, 1, 2);
+  await expect(page.locator("#correction-note")).toHaveText("Silence");
+  await barre.locator('[data-corriger="ajouter"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("sol1 · corde de mi, frette 3 · ajoutée");
+  const ajout = (await appels(page, "corriger_transcription")).at(-1).correction;
+  expect(ajout).toMatchObject({ genre: "ajouter", hauteur: 31 });
+  expect(ajout.debut_s).toBeCloseTo(3.5, 6);
+  expect(ajout.duree_s).toBeCloseTo(0.5, 6);
+  // Une note ajoutée change de hauteur au demi-ton : reposée, pas déplacée.
+  await barre.locator('[data-corriger="demi-haut"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("sol♯1 · corde de mi, frette 4 · ajoutée");
+
+  // Exporter la partie corrigée : un vrai MIDI, un vrai Guitar Pro (zip).
+  await page.evaluate(() => (window.__CHEMIN_EXPORT__ = "/tmp/partie.mid"));
+  await barre.locator('[data-exporter="midi"]').click();
+  await expect.poll(() => appels(page, "exporter_partie").then((a) => a.length)).toBe(1);
+  const midi = (await appels(page, "exporter_partie"))[0];
+  expect(midi.chemin).toBe("/tmp/partie.mid");
+  expect(String.fromCharCode(...midi.octets.slice(0, 4))).toBe("MThd");
+  await expect(page.locator("#correction-note")).toContainText("Partie exportée (MIDI)");
+  await page.evaluate(() => (window.__CHEMIN_EXPORT__ = "/tmp/partie.gp"));
+  await barre.locator('[data-exporter="gp"]').click();
+  await expect.poll(() => appels(page, "exporter_partie").then((a) => a.length)).toBe(2);
+  expect(String.fromCharCode(...(await appels(page, "exporter_partie"))[1].octets.slice(0, 2))).toBe("PK");
+
+  // Créer n'a ni partition ni correction.
+  await page.click('button.mode[data-mode="creer"]');
+  await expect(barre).toBeHidden();
+});

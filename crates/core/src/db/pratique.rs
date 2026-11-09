@@ -4,9 +4,10 @@
 //! (`docs/ui-spec-editeur.md`, question tranchée le 9 nov. 2026).
 //!
 //! Une ligne de `pratique` par chemin de fichier, ses boucles dans
-//! `pratique_boucle`. Les tables des corrections de transcription (E2) et de
-//! la table par mesure du coach (E4) existent déjà, vides : elles ne passent
-//! pas par ici.
+//! `pratique_boucle`. Les corrections de transcription (E2) ont leur table,
+//! `pratique_correction`, et leurs méthodes ([`Library::corriger_pratique`]) :
+//! la mémoire ne les touche pas. La table par mesure du coach (E4) existe,
+//! vide.
 
 use super::*;
 
@@ -178,6 +179,179 @@ impl Library {
                 "INSERT INTO pratique_boucle (path, rang, nom, debut_s, fin_s, mesures, vitesse_atteinte)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![path, rang as i64, b.nom, b.debut_s, b.fin_s, b.mesures, b.vitesse_atteinte],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+}
+
+/// Une correction de transcription (E2) : la note visée se retrouve par son
+/// instant et sa hauteur **transcrits** (`debut_s`, `hauteur`), qu'une
+/// nouvelle transcription redonne ; une note ajoutée par les siens. Appliquée
+/// par `rusty_music_transcription::corrections`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CorrectionPratique {
+    /// `"corde"`, `"octave"`, `"supprimer"`, `"ajouter"` ; `"retablir"` en
+    /// demande seulement (oublie tout ce qui vise la note, rien n'est gardé).
+    pub genre: String,
+    pub debut_s: f64,
+    pub hauteur: u8,
+    /// Note ajoutée : sa durée.
+    #[serde(default)]
+    pub duree_s: Option<f64>,
+    /// Corde imposée (0 = la plus grave), ou celle d'une note ajoutée.
+    #[serde(default)]
+    pub corde: Option<u8>,
+    #[serde(default)]
+    pub frette: Option<u8>,
+    /// Octave corrigée : de combien d'octaves la note bouge, −2 à +2.
+    #[serde(default)]
+    pub octaves: Option<i8>,
+}
+
+/// L'ordre où les corrections s'appliquent : une note ajoutée peut ensuite
+/// changer d'octave ou de corde ; la corde imposée vient en dernier, sur la
+/// hauteur corrigée.
+const ORDRE_GENRES: &str =
+    "CASE genre WHEN 'ajouter' THEN 0 WHEN 'supprimer' THEN 1 WHEN 'octave' THEN 2 ELSE 3 END";
+
+/// Deux instants transcrits sont la même note à moins d'une milliseconde
+/// (ils font l'aller-retour par le JSON de l'interface).
+const MEME_INSTANT_S: f64 = 1e-3;
+
+impl CorrectionPratique {
+    /// Refuse ce qu'aucun geste de l'interface ne produit.
+    pub fn verifier(&self) -> std::result::Result<(), String> {
+        if !(self.debut_s.is_finite() && self.debut_s >= 0.0) {
+            return Err(format!("instant invalide : {}", self.debut_s));
+        }
+        if self.hauteur > 127 {
+            return Err(format!("hauteur invalide : {}", self.hauteur));
+        }
+        match self.genre.as_str() {
+            "supprimer" | "retablir" => Ok(()),
+            "corde" if self.corde.is_some_and(|c| c < 6) => Ok(()),
+            "corde" => Err("corde imposée absente ou hors du manche".into()),
+            "octave" if self.octaves.is_some_and(|o| (-2..=2).contains(&o)) => Ok(()),
+            "octave" => Err("octave hors de −2 à +2".into()),
+            "ajouter" => match self.duree_s {
+                Some(d) if d.is_finite() && d > 0.0 && d <= 30.0 => {
+                    if self.corde.is_some_and(|c| c >= 6) {
+                        Err("corde hors du manche".into())
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Err("note ajoutée sans durée valide".into()),
+            },
+            g => Err(format!("correction inconnue : {g}")),
+        }
+    }
+}
+
+impl Library {
+    /// Les corrections de transcription du morceau `path` pour `instrument`,
+    /// dans l'ordre où elles s'appliquent.
+    pub fn corrections_pratique(
+        &self,
+        path: &str,
+        instrument: &str,
+    ) -> Result<Vec<CorrectionPratique>> {
+        let mut req = self.conn.prepare(&format!(
+            "SELECT genre, debut_s, hauteur, duree_s, corde, frette, octaves
+             FROM pratique_correction WHERE path = ?1 AND instrument = ?2
+             ORDER BY {ORDRE_GENRES}, id"
+        ))?;
+        let lignes = req
+            .query_map([path, instrument], |r| {
+                Ok(CorrectionPratique {
+                    genre: r.get(0)?,
+                    debut_s: r.get(1)?,
+                    hauteur: r.get::<_, Option<u8>>(2)?.unwrap_or(0),
+                    duree_s: r.get(3)?,
+                    corde: r.get(4)?,
+                    frette: r.get(5)?,
+                    octaves: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(lignes)
+    }
+
+    /// Garde une correction de transcription. Une note n'a qu'une correction
+    /// de chaque genre : la nouvelle remplace l'ancienne. Changer l'octave
+    /// oublie la corde imposée (elle ne porte plus la même note) ; supprimer
+    /// une note ajoutée l'oublie tout à fait ; « rétablir » oublie tout ce qui
+    /// vise la note, qui redevient celle de la transcription. À vérifier
+    /// d'abord ([`CorrectionPratique::verifier`]).
+    pub fn corriger_pratique(
+        &self,
+        path: &str,
+        instrument: &str,
+        c: &CorrectionPratique,
+    ) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        // La correction pend à la ligne du morceau (clé étrangère).
+        tx.execute(
+            "INSERT INTO pratique (path) VALUES (?1) ON CONFLICT (path) DO NOTHING",
+            [path],
+        )?;
+        let meme_note = "path = ?1 AND instrument = ?2 AND abs(debut_s - ?3) < ?4 AND hauteur = ?5";
+        let oublier = |genres: &str| -> rusqlite::Result<usize> {
+            tx.execute(
+                &format!(
+                    "DELETE FROM pratique_correction WHERE {meme_note} AND genre IN ({genres})"
+                ),
+                params![path, instrument, c.debut_s, MEME_INSTANT_S, c.hauteur],
+            )
+        };
+        let ajoutee: bool = tx.query_row(
+            &format!(
+                "SELECT EXISTS (SELECT 1 FROM pratique_correction WHERE {meme_note} AND genre = 'ajouter')"
+            ),
+            params![path, instrument, c.debut_s, MEME_INSTANT_S, c.hauteur],
+            |r| r.get(0),
+        )?;
+        let tout = "'ajouter', 'supprimer', 'octave', 'corde'";
+        let garder = match c.genre.as_str() {
+            "retablir" => {
+                oublier(tout)?;
+                false
+            }
+            "supprimer" if ajoutee => {
+                oublier(tout)?;
+                false
+            }
+            "supprimer" => {
+                oublier(tout)?;
+                true
+            }
+            "octave" => {
+                oublier("'octave', 'corde'")?;
+                c.octaves != Some(0)
+            }
+            "corde" => {
+                oublier("'corde'")?;
+                true
+            }
+            "ajouter" => {
+                oublier(tout)?;
+                true
+            }
+            // Refusé plus haut par `verifier` : rien n'est gardé.
+            _ => false,
+        };
+        if garder {
+            tx.execute(
+                "INSERT INTO pratique_correction
+                    (path, instrument, genre, debut_s, hauteur, duree_s, corde, frette, octaves)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    path, instrument, c.genre, c.debut_s, c.hauteur, c.duree_s, c.corde, c.frette,
+                    c.octaves
+                ],
             )?;
         }
         tx.commit()?;

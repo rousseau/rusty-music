@@ -45,7 +45,9 @@ fn exporter_les_types_des_commandes() {
             recompute_map,
             // E1 : la mémoire de Pratiquer par morceau.
             pratique_memoire,
-            pratique_garder
+            pratique_garder,
+            // E2 : la partie corrigée, exportée.
+            exporter_partie
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

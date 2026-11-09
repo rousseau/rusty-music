@@ -38,6 +38,10 @@ pub struct Evenement {
     pub lie: bool,
     /// Activation du réseau, pour estomper ce qui est peu sûr.
     pub confiance: f32,
+    /// La note jouée : son rang dans les notes données à [`quantifier`]
+    /// (aussi sur sa suite liée) ; `None` pour un silence. L'interface s'en
+    /// sert pour corriger une note cliquée dans la partition (E2).
+    pub note: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -125,11 +129,11 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
     let fin_morceau = bornes.last().copied().unwrap_or(0) + (metrique.max(1) * DIVISIONS) as i64;
 
     // Attaques et fins sur la grille ; deux attaques sur la même case : la plus sûre.
-    let mut grille: Vec<(i64, i64, Jeu, f32)> = Vec::new();
-    let mut triees: Vec<&Note> = notes.iter().collect();
-    triees.sort_by(|a, b| a.debut_s.total_cmp(&b.debut_s));
+    let mut grille: Vec<(i64, i64, Jeu, f32, u32)> = Vec::new();
+    let mut triees: Vec<(u32, &Note)> = (0..).zip(notes).collect();
+    triees.sort_by(|a, b| a.1.debut_s.total_cmp(&b.1.debut_s));
     let decalage = decalage_de_jeu(notes, temps);
-    for n in triees {
+    for (rang, n) in triees {
         let d = (indice(temps, n.debut_s - decalage) * DIVISIONS as f32).round() as i64;
         let f = ((indice(temps, n.fin_s - decalage) * DIVISIONS as f32).round() as i64).max(d + 1);
         if d < bornes[0] || d >= fin_morceau {
@@ -143,10 +147,10 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
         match grille.last_mut() {
             Some(der) if der.0 == d => {
                 if n.amplitude > der.3 {
-                    *der = (d, f, jeu, n.amplitude);
+                    *der = (d, f, jeu, n.amplitude, rang);
                 }
             }
-            _ => grille.push((d, f, jeu, n.amplitude)),
+            _ => grille.push((d, f, jeu, n.amplitude, rang)),
         }
     }
     // Une anticipation tenue par-dessus la barre est une seule note : le
@@ -154,7 +158,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
     // commence là où la première finit), ce qui la ferait rejouer.
     let mut i = 0;
     while i + 1 < grille.len() {
-        let (d, f, jeu, _) = grille[i];
+        let (d, f, jeu, _, _) = grille[i];
         let suivante = grille[i + 1];
         let anticipation = d % DIVISIONS as i64 != 0 && suivante.0 - d < DIVISIONS as i64;
         if anticipation
@@ -184,7 +188,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
         let mut curseur = debut;
         // Une note commencée dans une mesure précédente qui déborde ici.
         if k > 0 {
-            let (_, f, jeu, a) = grille[k - 1];
+            let (_, f, jeu, a, rang) = grille[k - 1];
             if f > debut {
                 let fin_note = f.min(fin);
                 evenements.push(Evenement {
@@ -192,18 +196,20 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
                     jeu: Some(jeu),
                     lie: true,
                     confiance: a,
+                    note: Some(rang),
                 });
                 curseur = fin_note;
             }
         }
         while k < grille.len() && grille[k].0 < fin {
-            let (d, f, jeu, a) = grille[k];
+            let (d, f, jeu, a, rang) = grille[k];
             if d > curseur {
                 evenements.push(Evenement {
                     seiziemes: (d - curseur) as u32,
                     jeu: None,
                     lie: false,
                     confiance: 1.0,
+                    note: None,
                 });
             }
             let d = d.max(curseur);
@@ -214,6 +220,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
                     jeu: Some(jeu),
                     lie: false,
                     confiance: a,
+                    note: Some(rang),
                 });
                 curseur = fin_note;
             }
@@ -225,6 +232,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
                 jeu: None,
                 lie: false,
                 confiance: 1.0,
+                note: None,
             });
         }
         let temps_mesure = ((fin - debut) as f32 / DIVISIONS as f32).round().max(1.0) as u32;

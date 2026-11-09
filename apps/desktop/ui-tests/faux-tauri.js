@@ -35,7 +35,8 @@
         return () => {};
       },
     },
-    dialog: { open: async () => null },
+    // `save` rend le chemin qu'un test a posé (`__CHEMIN_EXPORT__`).
+    dialog: { open: async () => null, save: async () => window.__CHEMIN_EXPORT__ ?? null },
     opener: { openUrl: async () => {} },
   };
   // Pour qu'un test émette un événement comme le ferait Rust.

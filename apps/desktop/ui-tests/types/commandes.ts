@@ -105,6 +105,11 @@ export const commands = {
 	 *  écrit rien.
 	 */
 	pratique_garder: (path: string, memoire: MemoirePratique_Deserialize) => __TAURI_INVOKE<null>("pratique_garder", { path, memoire }),
+	/**
+	 *  Écrit une partie exportée par la partition (alphaTab : MIDI ou Guitar Pro
+	 *  7) là où l'utilisateur l'a choisi (dialogue « Enregistrer »).
+	 */
+	exporter_partie: (chemin: string, octets: number[]) => __TAURI_INVOKE<null>("exporter_partie", { chemin, octets }),
 };
 
 /* Types */

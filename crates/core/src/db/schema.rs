@@ -63,6 +63,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // boucles, et la place vide des corrections de transcription (E2) et
         // de la table par mesure du coach (E4) (`db/pratique.rs`).
         M::up(include_str!("../../sql/migration-007-pratique.sql")),
+        // N° 8 (9 nov. 2026) : une octave corrigée dans la transcription
+        // (E2 : `pratique_correction.octaves`, `db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-008-corrections.sql")),
     ])
 }
 

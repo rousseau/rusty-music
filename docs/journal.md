@@ -4557,3 +4557,56 @@ session verrouillée (gabarit mesuré, carte non dessinée), et il ne voit pas
 la barre de l'établi chargée avec une boucle posée : la largeur de la barre
 avec le champ du nom et la liste ouverte n'a pas été regardée ; un passage de
 boucle réel (le compteur `passages` du moteur) n'a pas été rejoué.
+
+## Pratiquer, E2 : corriger la basse transcrite, exporter sa partie — 9 nov. 2026
+
+La basse transcrite se corrige depuis la partition, et la correction ne se
+perd plus quand la transcription se refait.
+
+- **Où vit une correction** : dans la mémoire de Pratiquer d'E1, pas dans le
+  JSON de cache (qu'un nouveau démixage efface) : `pratique_correction`, plus
+  une colonne `octaves` (migration n° 8). Une note se retrouve par son instant
+  et sa hauteur **transcrits** ; une note n'a qu'une correction par genre
+  (`Library::corriger_pratique`) ; changer l'octave oublie la corde imposée,
+  supprimer une note ajoutée l'oublie, « rétablir » rend la note transcrite.
+- **Réappliquée à chaque transcription** : `transcrire` rend le cache brut
+  corrigé (`corriger_vue`) ; `rusty_music_transcription::corrections` retrouve
+  chaque note à 30 ms près, pose ajouts, suppressions, octaves (au plus près de
+  la main), cordes, **après** le doigté : le modèle ne réécrit jamais une note
+  corrigée. Une correction qui ne trouve plus sa note reste en base, sans
+  effet (compte `sans_effet`, dit au survol). Chaque évènement quantifié
+  porte désormais le rang de sa note (`Evenement::note`, `VERSION_MESURES`
+  3 : les caches sont requantifiés sans retranscrire).
+- **Interface** (`ui/js/corriger.js`, au centre au-dessus de la partition,
+  rien dans le rail) : un clic sur une note (alphaTab `beatMouseDown`) la
+  choisit, un cadre d'accent la montre ; la barre dit « do2 · corde de la,
+  frette 3 » et offre corde grave, corde aiguë, octave −/+, supprimer,
+  rétablir ; sur un silence, « ajouter une note » (hauteur de la note d'avant,
+  au temps de la grille, sur la durée du silence ; décalée du décalage de jeu
+  pour retomber sur sa double croche), qui change ensuite au demi-ton. Une
+  note corrigée s'écrit à l'encre d'accent. Commande
+  `corriger_transcription`. Basse seulement.
+- **Export** de la partie corrigée, depuis la même barre : MIDI
+  (`MidiFileGenerator` d'alphaTab) et Guitar Pro 7 (`Gp7Exporter`), sans code
+  nouveau ; le fichier s'écrit par `exporter_partie` (extension contrôlée)
+  après le dialogue « Enregistrer » (`dialog:allow-save`). alphaTex écarté :
+  il n'emporte rien que le Guitar Pro n'emporte.
+- **Mesuré** : tests `une_correction_survit_a_une_nouvelle_transcription`
+  (bureau : quatre corrections gardées en base, transcription refaite 15 ms
+  plus tard, mêmes notes et mêmes mesures), `une_nouvelle_transcription_garde_
+  les_corrections`, `les_quatre_corrections_s_appliquent`,
+  `une_correction_sans_note_reste_sans_effet` (transcription),
+  `les_corrections_de_transcription_se_gardent_par_note` (base) ; test de
+  fumée « E2 » (octave + puis rétablir, supprimer, ajouter sur un silence puis
+  demi-ton, note marquée dans la partition, export MIDI commençant par
+  `MThd` et Guitar Pro par `PK`, rien en Créer). 58 tests de fumée verts,
+  `verifier.sh` vert ; `audit-interface.sh` complet : 252 cellules,
+  0 violation (avertissement inchangé : l'Anneau plein) ; rail de Pratiquer
+  511 / 804 px, inchangé.
+
+Non vérifié : dans l'app réelle (seulement le faux Tauri, avec alphaTab
+réel) : ni un clic sur une vraie transcription MuScriptor, ni le dialogue
+« Enregistrer » de macOS, ni l'ouverture des fichiers exportés dans un autre
+logiciel (seulement leurs en-têtes) ; l'audit a tourné écran verrouillé et ne
+voit pas l'établi chargé d'une partition, la barre de correction n'y est donc
+pas mesurée (elle passe sur deux lignes à 1 400 px de large, capture du test).

@@ -425,6 +425,15 @@ réglage.
    L'instrument affiché se choisit dans le rail (Basse / Batterie, sous
    Pratiquer), **indépendamment du solo et de la coupure** : on peut lire sa
    partie en l'écoutant, en solo, ou la jouer à la place du stem coupé.
+   **Corriger la basse transcrite (E2, 9 nov. 2026)** : au centre, une barre
+   au-dessus de la partition (`#partition-correction`, `ui/js/corriger.js`),
+   jamais dans le rail. Un clic sur une note la choisit (cadre d'accent sur
+   le temps) ; la barre dit la note et sa position (« do2 · corde de la,
+   frette 3 ») et offre corde grave, corde aiguë, octave −/+, supprimer,
+   rétablir ; sur un silence, « ajouter une note » (hauteur de la note
+   d'avant, sur toute la durée du silence), qui change ensuite au demi-ton.
+   Une note corrigée s'écrit à l'encre d'accent. La même barre exporte la
+   partie corrigée en MIDI ou Guitar Pro 7 (par alphaTab).
 12. ~~**L'usage se choisit dans le rail.**~~ *Remplacée le 5 novembre 2026
    par la décision 13.* Décidé le 9 octobre 2026 : un sélecteur
    Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.
@@ -474,9 +483,10 @@ réglage.
   qu'une fois une boucle nommée. La vitesse atteinte se lit au bout du
   réglage de vitesse, dans son unité (« atteinte : 90 % ») : celle de la
   boucle posée, ou du morceau sans boucle. Les trois sont propres à
-  Pratiquer : Créer ne les montre pas. Rien dans le rail (Règle 13). Deux tables vides attendent leur chantier : les
-  corrections de transcription (`pratique_correction`, E2) et la table par
-  mesure du coach (`pratique_mesure`, E4). **Créer n'y écrit rien** : ses
+  Pratiquer : Créer ne les montre pas. Rien dans le rail (Règle 13). Les
+  corrections de transcription ont leur table (`pratique_correction`, E2 ;
+  migration n° 8 pour l'octave), réappliquées à chaque transcription ; la
+  table par mesure du coach (`pratique_mesure`, E4) attend son chantier. **Créer n'y écrit rien** : ses
   stems sur le disque restent sa seule persistance (décision 3). Rouvrir le
   morceau en Pratiquer rend la séance (`ui/js/memoire-pratique.js`) ; sans
   mémoire, les réglages en place deviennent ceux du morceau dès qu'on en
