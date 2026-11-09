@@ -5252,3 +5252,24 @@ retrait du cache attendent ce choix.
 **Non vérifié** : la justesse perçue sur des stems réels (la mesure sur
 sinusoïde et dents de scie est plus sévère que l'oreille d'E3) ; le coût
 sur de la musique plutôt que du bruit.
+
+## Créer, F2 : COCOLA contre Stem-JEPA — les licences d'abord — 9 nov. 2026
+
+Avant de monter le banc, j'ai lu les deux dépôts et cherché leurs poids
+(`experiments/compat-stems/README.md`).
+
+- **COCOLA** : code MIT. Le point de contrôle `COCOLA_HP_v1` est sur un Google
+  Drive, sans licence déclarée : téléchargé à la source, jamais redistribué.
+  Il prend des extraits de 5 s, mono, à 16 kHz, et donne des scores
+  harmonique et percussif séparés.
+- **Stem-JEPA** : code LGPL-3.0, **aucun poids publié**, ni dans le README,
+  ni en *release*, ni sur Hugging Face. La variante zéro-shot (arXiv
+  2411.19806, l'instrument donné en texte) n'a ni code ni poids trouvés.
+
+La comparaison prévue est donc impossible en l'état. Pour évaluer
+Stem-JEPA, il faudrait l'entraîner nous-mêmes. La question est posée :
+réduire le banc à COCOLA, à CLAP seul et au groove de F1, ou entraîner
+Stem-JEPA sur la PGX.
+
+**Non vérifié** : la liste des dépôts SonyCSLParis n'a été parcourue qu'en
+partie (1 page sur 5) ; un dépôt zéro-shot a pu échapper.

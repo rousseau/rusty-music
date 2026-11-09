@@ -101,7 +101,8 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie
     base le 9 nov., V23 : classement fidèle à la syncope, mais préfiltre qui ne
     propose que des voisins rock d'une référence rock), bancs de
-    compatibilité (COCOLA contre Stem-JEPA) et de fûts, génération ;
+    compatibilité (COCOLA contre Stem-JEPA ; F2 du 9 nov. : Stem-JEPA n'a
+    publié aucun poids, banc à redéfinir) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : super-résolution
     (Apollo), Chromaprint ; G4 (`opus-pure`) fait le 8 nov. Empreinte (G1)
     close le 9 nov. : **CLAP gardé**. MuQ-MuLan gagne 17 % de pureté de
