@@ -127,7 +127,25 @@ désormais le pas ×32 (V10), et t-SNE varie d'un lancement à l'autre de
 (0,743 contre 0,725). Les deux gains devaient dépasser 10 % : MuQ-MuLan ne
 passe pas.
 
-CLaMP 3 : pas calculé. L'environnement est prêt, les WAV préparés
-(`$B/clamp3/wav`, 2 000 fichiers) ; le lancement automatique n'a pas eu
-le droit d'exécuter le code cloné de CLaMP 3 (garde-fou « code externe »).
-À lancer à la main (étape 5 de la procédure).
+### CLaMP 3 : non mesuré, abandonné (9 nov. 2026)
+
+Environnement et WAV préparés (`$B/clamp3/wav`, 2 000 fichiers), mais le
+lancement automatique n'a pas eu le droit d'exécuter le code cloné de
+CLaMP 3 (garde-fou « code externe »). François a choisi de l'abandonner
+plutôt que de le lancer à la main : son audio passe de toute façon par
+MERT (poids CC BY-NC).
+
+### Décision (9 nov. 2026)
+
+**CLAP reste l'empreinte de la carte.** MuQ-MuLan est rejeté par le critère
+fixé d'avance (rapport intra / inter 0,743 contre 0,725, gain exigé de
+10 %), malgré +17 % de pureté de famille ; CLaMP 3 n'est pas mesuré. La
+recherche texte → audio n'est pas jugée : `data/annoter.tsv` reste sans
+annotation. SongFormer (G3), qui n'avait d'intérêt que si MuQ entrait dans
+l'application, est abandonné avec.
+
+Les fichiers lourds restent sur `RUSTY_DEV` (`$B` =
+`/Volumes/LaCieDock/rusty_music-dev/banc-empreinte`, et le cache
+`/Volumes/LaCieDock/rusty_music-dev/hf`) : fenêtres audio (9,8 Go),
+WAV de CLaMP 3, environnement Python, poids MuQ-MuLan ; à effacer quand
+François le décidera.

@@ -4696,3 +4696,32 @@ Non vérifié :
   lecture), R3 temps réel peut sonner un peu autrement ;
 - la pire salve est mesurée sur du bruit blanc, comme `cout_bloc` ; sur de la
   musique, la détection de transitoires de Rubber Band pourrait coûter plus.
+
+## Explorer, G1 (fin) : CLAP gardé — 9 nov. 2026
+
+Le banc d'empreinte est clos sur décision de François, critère tenu tel
+qu'il avait été fixé d'avance. Rien n'est changé dans l'application.
+
+| modèle | famille (512 d) | famille (t-SNE app) | rapport intra / inter | verdict |
+|---|---|---|---|---|
+| CLAP (en place) | 44,0 % | 42,8 % | **0,725** | gardé |
+| MuQ-MuLan | 51,6 % (+17 %) | 50,2 % (+17 %) | 0,743 (−2,5 %) | rejeté : les deux gains devaient dépasser 10 % |
+| CLaMP 3 | — | — | — | abandonné sans mesure |
+
+- **CLaMP 3** : non mesuré. Le code cloné n'a pas été exécuté (garde-fou
+  « code externe ») et François a préféré l'abandonner plutôt que de le
+  lancer à la main ; son audio passe de toute façon par MERT, poids
+  CC BY-NC.
+- **Texte → audio** : non jugé. `experiments/banc-empreinte/data/annoter.tsv`
+  (CLAP et MuQ-MuLan mêlés, 30 demandes types) reste sans annotation.
+- **Conséquences** : la carte n'est pas à régénérer, D3 et D5 n'ont pas à
+  être remesurés ; SongFormer (G3), qui n'avait d'objet que si MuQ entrait
+  dans l'application, est abandonné.
+- **Fichiers du banc** laissés sur `RUSTY_DEV`
+  (`/Volumes/LaCieDock/rusty_music-dev/banc-empreinte` et le cache
+  `…/rusty_music-dev/hf`) : fenêtres audio 9,8 Go, WAV de CLaMP 3,
+  environnement Python, poids MuQ-MuLan. À effacer sur décision.
+
+**Non vérifié** : la taille totale de ces fichiers (disque débranché au
+moment de clore ; seules les fenêtres, 9,8 Go, ont été mesurées) ; le coût
+de CLAP par morceau sur ce Mac.

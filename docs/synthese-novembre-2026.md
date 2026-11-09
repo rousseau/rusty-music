@@ -520,9 +520,9 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | F2 banc de compatibilité | à faire | | |
 | F3 fûts | à faire | | |
 | F4 génération | à faire | | |
-| G1 banc d'empreinte | commencé : banc commun prêt (`experiments/banc-empreinte/`, 2 000 morceaux ancrés, mêmes fenêtres audio pour tous), CLAP mesuré (famille 44,0 % dans l'empreinte, 42,8 % après t-SNE, rapport intra/inter 0,725), 30 demandes types gardées ; MuQ-MuLan mesuré le 9 nov. (famille 51,6 % / 50,2 %, +17 %, mais rapport 0,743, plus mauvais) : ne passe pas ; CLaMP 3 prêt, à lancer à la main ; annotation texte → audio à faire | 9 nov. 2026 | `journal.md`, « G1 » |
+| G1 banc d'empreinte | fait : **CLAP gardé**. Banc commun (`experiments/banc-empreinte/`, 2 000 morceaux ancrés, mêmes fenêtres audio pour tous) ; CLAP : famille 44,0 % dans l'empreinte, 42,8 % après t-SNE, rapport intra/inter 0,725 ; MuQ-MuLan : famille 51,6 % / 50,2 % (+17 %), mais rapport 0,743, plus mauvais : rejeté par le critère ; CLaMP 3 abandonné sans mesure (code cloné non exécuté, audio par MERT CC BY-NC) ; texte → audio non annoté (décision de François, 9 nov.) | 9 nov. 2026 | `journal.md`, « G1 » |
 | G2 banc HD | à faire | | |
-| G3 sections | conditionnel (G1) | | |
+| G3 sections | abandonné : G1 ne retient pas MuQ | 9 nov. 2026 | `journal.md`, « G1 » |
 | G4 `opus-pure` | fait : ouverture 0,14 à 0,58 s (avant 8 à 38 s), identique à libopus, gapless 0 ms ; sous 200 ms pour 4 morceaux sur 10, reste un décodage en flux dans le lecteur | 8 nov. 2026 | `journal.md`, « G4 » |
 | G5 Chromaprint | option | | |
 

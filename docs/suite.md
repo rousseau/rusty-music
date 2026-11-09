@@ -71,16 +71,14 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     `experiments/etirement/rendre-ecoute.sh`), coach ;
   - F, Créer : chercher le greffon, bancs de compatibilité (COCOLA contre
     Stem-JEPA) et de fûts, génération ;
-  - G, bancs de modèles avant tout remplacement : empreinte (MuQ-MuLan,
-    CLaMP 3), super-résolution (Apollo), Chromaprint ; G4 (`opus-pure`) fait le
-    8 nov. G1 tôt :
-    s'il retient une autre empreinte, la carte est à régénérer, D3 et D5 à
-    remesurer. G1 commencé le 8 nov. : banc commun
-    (`experiments/banc-empreinte/`), CLAP et MuQ-MuLan mesurés (9 nov.) ;
-    MuQ-MuLan gagne 17 % de pureté de famille mais perd 2,5 % sur le
-    rapport intra / inter : il ne passe pas le critère. Reste CLaMP 3
-    (environnement et WAV prêts sur `RUSTY_DEV`, à lancer à la main), puis
-    l'annotation des 30 demandes types par François.
+  - G, bancs de modèles avant tout remplacement : super-résolution
+    (Apollo), Chromaprint ; G4 (`opus-pure`) fait le 8 nov. Empreinte (G1)
+    close le 9 nov. : **CLAP gardé**. MuQ-MuLan gagne 17 % de pureté de
+    famille mais perd 2,5 % sur le rapport intra / inter, donc ne passe pas
+    le critère ; CLaMP 3 abandonné sans mesure ; texte → audio non annoté.
+    La carte n'est pas à régénérer ; SongFormer (G3) abandonné. Les
+    fichiers du banc (≈ 10 Go et plus) restent sur `RUSTY_DEV`, à effacer
+    sur décision (`experiments/banc-empreinte/README.md`, « Décision »).
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 
