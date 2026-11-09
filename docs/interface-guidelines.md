@@ -365,9 +365,16 @@ ouvert ; les aides de plus d'une ligne derrière un « ? » ou dans l'état vide
 centre ; l'adresse de contact dans Bibliothèque seulement. Puis, pour tous les
 écrans : l'Affichage sur deux rangées, les six modes sur deux colonnes, la
 légende des familles sur deux colonnes (nom coupé, nom entier et compte au
-survol), le compte de la bibliothèque dans son bouton. Tout tient ; l'Anneau,
-au plus juste (803 px pour 804) : un bloc de plus dans son rail le ferait
-déborder.
+survol et au focus du clavier ; la palette ⌘K trouve une famille), le compte
+de la bibliothèque dans son bouton. Tout tient ; l'Anneau, au plus juste
+(803 px pour 804) : un bloc de plus dans son rail le ferait déborder.
+
+**Le rail d'Explorer est plein** (8 novembre 2026, V6) : Nuage, Carte et
+Anneau tiennent à moins de 24 px de la hauteur du rail. Un nouveau bloc dans
+ce rail doit **en remplacer un** (ou le replier, ou passer sur la carte, Règle
+12) ; on n'en ajoute pas. G8 le signale : une marge sous 24 px est un
+*avertissement* de l'audit (« rail plein »), pas une violation, et
+`rails.spec.js` marque ces écrans « plein ».
 
 ## Principes généraux
 

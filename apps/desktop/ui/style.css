@@ -333,7 +333,10 @@ html, body {
 /* Bloc « Partitions » du rail : instrument, état, geste. */
 .partition-ligne { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--t-second); }
 .partition-ligne[hidden] { display: none; }
-.partition-ligne__etat { color: var(--mut); flex: 1; min-width: 0; }
+/* Une ligne : nom, état court, bouton (V6) ; un état trop long se coupe, son
+   texte entier est dans `title` ou dans l'aide de la partition. */
+.partition-ligne__nom, .partition-ligne__action { flex: none; white-space: nowrap; }
+.partition-ligne__etat { color: var(--mut); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .partition-ligne__jauge { margin-top: 6px; }
 /* Le curseur et la mesure jouée, aux couleurs de l'application. */
 .partition .at-cursor-bar { background: color-mix(in srgb, var(--accent) 16%, transparent); }
@@ -1418,6 +1421,19 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .famille--isolee { border-left: 2px solid var(--accent); padding-left: 7px; margin-left: -9px; }
 .famille__n { display: none; }
 .famille > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Au clavier, le `title` ne s'affiche pas : le nom entier et le compte
+   s'ouvrent sous la famille qui a le focus, calés sur le bord de sa colonne
+   pour rester dans le rail (V6). Rien ne bouge autour. */
+.famille { position: relative; }
+.famille:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; color: var(--txt); }
+.famille:focus-visible::after {
+  content: attr(data-nom); position: absolute; top: calc(100% + 2px); left: 0; z-index: 5;
+  width: max-content; max-width: 180px; white-space: normal;
+  padding: 3px 6px; background: var(--panel2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 2px;
+  font-size: var(--t-second); font-weight: 400; pointer-events: none;
+}
+.famille-ligne:nth-child(even) .famille:focus-visible::after { left: auto; right: 0; }
 /* Zoom vertical ciblé de la frise (§ 3) : étendre/réduire une bande depuis sa
    ligne de légende, sans toucher à l'isolement (le bouton `.famille`
    voisin). Une bordure comme `.zoom button` — un glyphe seul en `opacity`

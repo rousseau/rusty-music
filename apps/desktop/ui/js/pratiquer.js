@@ -432,7 +432,10 @@ function majBlocPartitions() {
       if (tr.fraction !== undefined) jauge.value = tr.fraction;
       else jauge.removeAttribute("value");
     } else {
-      etat.textContent = instrument === "bass" ? "à calculer (≈ 1 min)" : "à calculer";
+      // Le bouton « Calculer » dit déjà l'état : la ligne garde la durée
+      // (basse) et tient sur une ligne dans le rail (V6).
+      etat.textContent = instrument === "bass" ? "≈ 1 min" : "";
+      etat.title = instrument === "bass" ? "À calculer : environ une minute" : "";
       action.textContent = "Calculer";
     }
   }

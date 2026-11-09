@@ -21,6 +21,8 @@ import {
   emporterLecture,
 } from "./valise.js";
 import { lecture } from "./etat-lecture.js";
+import { carte } from "./carte.js";
+import { chargerFamilles, couleursFamilles } from "./familles.js";
 
 /* ---------------------------------------------------- palette de recherche
  *
@@ -67,6 +69,36 @@ const AFFICHAGES = [
   ["lama", "Lama", "playlist en mots intention"],
 ];
 const PARCOURIR = [["artistes", "Artistes"], ["albums", "Albums"], ["playlists", "Playlists"]];
+
+/// Les légendes des familles, par écran : celle de l'écran courant reçoit le
+/// geste ; ailleurs, la Carte d'Explorer.
+const LEGENDES = ["familles-ecoute", "familles-decouvrir", "familles"];
+const visible = (el) => !!el && el.getClientRects().length > 0;
+
+/// Trouver une famille (V6) : le même clic que sur sa ligne de légende — elle
+/// est isolée (Explorer) ou cochée dans le filtre (Écouter, Découvrir). Déjà
+/// isolée, on la laisse : la palette mène quelque part, elle ne défait pas.
+async function allerAFamille(c) {
+  let hote = LEGENDES.map((id) => $(id)).find(visible);
+  if (!hote) {
+    await versMode("explorer");
+    hote = $("familles");
+    if (!visible(hote)) document.querySelector('[data-affichage="carte"]').click();
+  }
+  const el = hote.querySelector(`.famille[data-famille="${c}"]`);
+  if (el && !el.classList.contains("famille--isolee")) el.click();
+  hote.querySelector(`.famille[data-famille="${c}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+/// Les familles : seulement quand on tape (pas dans la liste vide), dans leur
+/// propre section.
+function commandesFamilles() {
+  return (carte.familles ?? []).map(([c, nom, n]) => ({
+    groupe: "Familles", libelle: nom || `famille ${c + 1}`, mots: "famille genre style isoler filtrer",
+    cluster: c, effectif: n,
+    pret: () => true, lancer: () => allerAFamille(c),
+  }));
+}
 
 /// Les commandes : `groupe` (« Aller à » ou « Commandes »), un libellé, des
 /// mots de plus auxquels elles répondent, `pret()` (masquée sinon) et
@@ -240,11 +272,13 @@ function sections(texte, pistes) {
   };
   const meilleur = Object.values(groupes).flat()
     .sort((a, b) => b.force - a.force || RANG_GENRE[a.genre] - RANG_GENRE[b.genre])[0];
-  const trouvees = cmds
+  const repondent = (liste) => liste
     .map((c) => ({ genre: "commande", item: c, force: forceCommande(q, c) }))
     .filter((r) => r.force > 0)
     .sort((a, b) => b.force - a.force)
     .slice(0, 3);
+  const trouvees = repondent(cmds);
+  const familles = repondent(commandesFamilles());
   const bibliotheque = [
     ...(meilleur ? [{ titre: "Meilleur résultat", options: [meilleur] }] : []),
     ...[["artistes", "Artistes"], ["albums", "Albums"], ["pistes", "Pistes"]].map(([g, titre]) => ({
@@ -253,8 +287,13 @@ function sections(texte, pistes) {
     })),
   ];
   const sectionCmds = trouvees.length ? [{ titre: "Commandes", options: trouvees }] : [];
+  // Les familles suivent la bibliothèque : « orchestre » cherche d'abord
+  // l'artiste, la famille du même nom vient après.
+  const sectionFam = familles.length ? [{ titre: "Familles", options: familles }] : [];
   const avant = trouvees.length && trouvees[0].force > (meilleur?.force ?? 0);
-  return (avant ? [...sectionCmds, ...bibliotheque] : [...bibliotheque, ...sectionCmds])
+  return (avant
+    ? [...sectionCmds, ...bibliotheque, ...sectionFam]
+    : [...bibliotheque, ...sectionFam, ...sectionCmds])
     .filter((s) => s.options.length);
 }
 
@@ -278,7 +317,14 @@ function vignette(option) {
   v.className = "palette__vignette";
   v.setAttribute("aria-hidden", "true");
   const { genre, item } = option;
-  if (genre === "commande") {
+  if (genre === "commande" && item.groupe === "Familles") {
+    v.classList.add("palette__vignette--commande");
+    const p = document.createElement("span");
+    p.className = "famille__pastille";
+    const teintes = couleursFamilles();
+    p.style.background = teintes[item.cluster % teintes.length] ?? "currentColor";
+    v.appendChild(p);
+  } else if (genre === "commande") {
     v.classList.add("palette__vignette--commande");
     v.textContent = item.groupe === "Aller à" ? "→" : "⌘";
   } else if (genre === "artistes") {
@@ -295,6 +341,8 @@ function vignette(option) {
 
 function textes(option) {
   const { genre, item } = option;
+  if (genre === "commande" && item.groupe === "Familles")
+    return [item.libelle, `famille · ${item.effectif.toLocaleString("fr-FR")} morceau${item.effectif > 1 ? "x" : ""}`];
   if (genre === "commande") return [item.libelle, ""];
   if (genre === "artistes") {
     const alb = item.albums === 1 ? "1 album" : `${item.albums} albums`;
@@ -452,7 +500,7 @@ async function ouvrirPalette(texte = "") {
   champ.select();
   rendre();
   try {
-    await chargerIndex();
+    await Promise.all([chargerIndex(), chargerFamilles()]);
   } catch (e) {
     remonter(e, "palette");
   }

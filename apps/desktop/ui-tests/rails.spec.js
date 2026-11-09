@@ -130,7 +130,9 @@ test("le rail de chaque écran, mesuré et capturé", async ({ page }) => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(DOSSIER, `${ETIQUETTE}-carte.png`) });
   for (const r of releve) {
-    console.log(`${r.nom.padEnd(22)} ${String(r.bas).padStart(5)} / ${r.hauteur}  ${r.bas > r.hauteur ? "+" + (r.bas - r.hauteur) : "tient"}`);
+    // « plein » : moins de 24 px de marge, l'avertissement de G8 (Règle 13).
+    const etat = r.bas > r.hauteur ? "+" + (r.bas - r.hauteur) : r.hauteur - r.bas < 24 ? "plein" : "tient";
+    console.log(`${r.nom.padEnd(22)} ${String(r.bas).padStart(5)} / ${r.hauteur}  ${etat}`);
     console.log("    " + r.blocs.map(([n, h]) => `${n} ${h}`).join(" · "));
   }
 });

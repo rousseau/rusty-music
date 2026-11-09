@@ -4435,3 +4435,40 @@ mais le plan de Paris gardait les adresses de l'ancien jusqu'au bouton
 l'app, carte rouverte à la fin) : l'audit tourne écran verrouillé, la carte
 n'y est pas dessinée ; le chemin du monde fictif (sans ville), qui
 régénère aussi, son ombrage compris.
+
+## Interface, V6 : rail plein, Partitions, légende des familles — 9 nov. 2026
+
+Trois suites de B4, relevées le 8 nov. sur l'interface simulée.
+
+- **Rail plein (Règle 13).** La règle dit maintenant que le rail d'Explorer
+  est plein : un nouveau bloc doit en remplacer un (ou se replier, ou passer
+  sur la carte). G8 (`audit.js`) rend un *avertissement* quand la marge
+  sous le contenu du rail est de moins de 24 px (`MARGE_RAIL`), sans compter
+  de violation ; `audit-interface.sh` les imprime à part et marque
+  « plein » dans le tableau du rail, comme `rails.spec.js`.
+- **Partitions sur une ligne.** « Basse · à calculer (≈ 1 min) · Calculer »
+  passait sur trois lignes, « Batterie · à calculer » sur deux. Le bouton
+  « Calculer » dit déjà l'état : la ligne garde « ≈ 1 min » pour la basse
+  (le reste dans `title`), rien pour la batterie ; le nom et le bouton ne se
+  coupent plus, un état trop long se coupe par des points de suspension.
+  Bloc Partitions : 130 → 112 px (`rails.spec.js`, Pratiquer 623 → 605).
+- **Légende des familles.** Le nom entier et le compte étaient au survol
+  (`title`) seulement. Au clavier, ils s'ouvrent sous la famille qui a le
+  focus (`data-nom`, `::after`, calé à gauche ou à droite selon la colonne
+  pour rester dans le rail ; rien ne bouge autour). La palette ⌘K trouve
+  les familles (section « Familles », après la bibliothèque, seulement quand
+  on tape) : Entrée fait le geste de la légende de l'écran (cocher en
+  Écouter et Découvrir, isoler en Explorer), ou ouvre Explorer et isole la
+  famille ailleurs ; une famille déjà isolée le reste.
+- **Mesuré.** Audit complet (WebKit, copie de la vraie base, 12 familles) :
+  252 cellules, 0 violation, **un avertissement** : Anneau 803 / 804 px
+  (6 cellules). Nuage et Carte à 776 px (28 de marge), Temps 755.
+  `rails.spec.js` (bibliothèque fictive, noms plus longs) : Nuage, Carte et
+  Anneau 803 / 804, « plein ». `verifier.sh` vert, 55 tests de fumée (trois
+  nouveaux, « V6 : » : Partitions d'une ligne à 1 400 × 900, nom entier au
+  survol et au focus, la palette trouve une famille et refait le geste).
+
+**Non vérifié** : l'audit a tourné écran verrouillé (carte non dessinée,
+sans effet sur ces mesures du rail) ; l'infobulle du focus vue dans Chrome
+seulement (capture des tests), pas dans WebKit ; les lignes de Partitions
+pendant un calcul (« 42 % ») et après un échec, non regardées.

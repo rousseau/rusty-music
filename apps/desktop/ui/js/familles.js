@@ -135,8 +135,12 @@ function rendreFamilles(hote, estActive, auClic, extension) {
     el.children[1].textContent = nom || `famille ${c + 1}`;
     el.children[2].textContent = n.toLocaleString("fr-FR");
     // Deux colonnes dans le rail (Règle 13) : le compte et le nom coupé se
-    // lisent au survol.
+    // lisent au survol (`title`) et au clavier (`data-nom`, affiché au focus
+    // par la feuille de style) ; la palette ⌘K retrouve la famille par
+    // `data-famille`.
     el.title = `${nom || `famille ${c + 1}`} · ${n.toLocaleString("fr-FR")} morceau${n > 1 ? "x" : ""}`;
+    el.dataset.nom = el.title;
+    el.dataset.famille = String(c);
     el.addEventListener("click", () => auClic(c));
     ligne.appendChild(el);
 

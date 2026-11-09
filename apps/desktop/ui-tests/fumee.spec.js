@@ -375,6 +375,66 @@ test("palette : ⌘K, sans accents, Entrée ouvre l'album ; l'écran reste derri
   await expect(page.locator("#liste .ligne")).toHaveCount(2);
 });
 
+test("V6 : en Pratiquer, chaque ligne des Partitions tient sur une ligne à 1 400 × 900", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 868 });
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#bloc-partitions")).toBeVisible();
+  const lignes = page.locator("#bloc-partitions .partition-ligne:visible");
+  await expect(lignes).toHaveCount(2);
+  await expect(lignes.first().locator(".partition-ligne__action")).toHaveText("Calculer");
+  // Une ligne : nom, état et bouton sur la même rangée, aucun ne passe à la ligne.
+  const hauteurs = await lignes.evaluateAll((els) => els.map((l) => {
+    const r = l.getBoundingClientRect().height;
+    const enfants = [...l.children].filter((e) => !e.hidden).map((e) => e.getBoundingClientRect());
+    const texte = [...l.querySelectorAll(".partition-ligne__nom, .partition-ligne__etat")]
+      .map((e) => e.getClientRects().length);
+    return { r, ecart: Math.max(...enfants.map((e) => e.top)) - Math.min(...enfants.map((e) => e.top)), texte };
+  }));
+  for (const h of hauteurs) {
+    expect(h.r).toBeLessThan(32);
+    expect(h.texte.every((n) => n <= 1)).toBe(true);
+  }
+});
+
+test("V6 : légende des familles, le nom entier au survol et au clavier", async ({ page }) => {
+  await page.click('button.mode[data-mode="explorer"]');
+  const famille = page.locator('#familles .famille[data-famille="1"]');
+  await expect(famille).toBeVisible();
+  await expect(famille).toHaveAttribute("title", "Orchestre · 2 morceaux");
+  // Au clavier, le `title` ne s'affiche pas : le nom entier s'ouvre au focus.
+  await page.keyboard.press("Shift");
+  await famille.focus();
+  const contenu = await famille.evaluate((el) => getComputedStyle(el, "::after").content);
+  expect(contenu).toBe('"Orchestre · 2 morceaux"');
+  await famille.blur();
+  expect(await famille.evaluate((el) => getComputedStyle(el, "::after").content)).toBe("none");
+});
+
+test("V6 : la palette trouve une famille, et le geste est celui de la légende", async ({ page }) => {
+  // En Écouter : la famille est cochée dans le filtre de l'écran.
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("orchest");
+  const groupe = page.locator("#palette-liste [role=group]", { has: page.locator(".palette__groupe", { hasText: "Familles" }) });
+  await expect(groupe.locator(".palette__nom")).toHaveText(["Orchestre"]);
+  await expect(groupe.locator(".palette__sec")).toHaveText(["famille · 2 morceaux"]);
+  await groupe.locator(".palette__option").click();
+  await expect(page.locator("#palette")).toBeHidden();
+  await expect(page.locator('#familles-ecoute .famille[data-famille="1"]')).toHaveClass(/famille--isolee/);
+  // Sans légende à l'écran (Bibliothèque) : Explorer, la famille isolée.
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("famille essais");
+  await expect(page.locator(".palette__option", { hasText: "famille · 3 morceaux" })).toBeVisible();
+  await page.locator(".palette__option", { hasText: "famille · 3 morceaux" }).click();
+  await expect(page.locator('button.mode[data-mode="explorer"]')).toHaveClass(/mode--actif/);
+  await expect(page.locator('#familles .famille[data-famille="0"]')).toHaveClass(/famille--isolee/);
+  // Sans demande, la palette ne liste pas les familles.
+  await page.keyboard.press("Meta+k");
+  await expect(page.locator(".palette__groupe")).toHaveText(["Aller à", "Commandes"]);
+  await page.keyboard.press("Escape");
+});
+
 test("palette : « / » ouvre, Échap ferme sans toucher la file", async ({ page }) => {
   await page.click("#bascule-file");
   await expect(page.locator("#file")).toBeVisible();

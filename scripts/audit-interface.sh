@@ -147,6 +147,17 @@ for ecran, constats in par_ecran.items():
 if not total:
     print("Gabarit cohérent : aucune violation.")
 
+# Les avertissements (G8 : rail plein, marge sous 24 px) ne font pas échouer
+# l'audit : ils disent qu'un nouveau bloc doit en remplacer un (Règle 13).
+avertis = defaultdict(list)
+for c in cellules:
+    for v in c.get("avertissements", []):
+        avertis[(c["ecran"], v["regle"], v["detail"])].append(c)
+if avertis:
+    print(f"\nAvertissements (pas des violations) : {len(avertis)}")
+    for (ecran, regle, detail), cs in avertis.items():
+        print(f"   {regle}  {ecran} : {detail}   [{len(cs)} cellule{'s' if len(cs) > 1 else ''}]")
+
 # Le relief (P6) : vraiment sur le plan dans l'état « carte+relief » ?
 reliefs = [c["mesures"]["relief"] for c in cellules if "relief" in c.get("mesures", {})]
 if reliefs and suspendu:
@@ -170,7 +181,8 @@ if rails:
     fam = {f for _, f in rails.values()}
     print(f"\nRail à 1 400 × 900 (G8), {'/'.join(map(str, sorted(fam)))} familles : contenu / hauteur, dépassement")
     for ecran, ((bas, haut), _) in rails.items():
-        print(f"   {ecran:<24} {bas:>5} / {haut} px   {'+' + str(bas - haut) if bas > haut else 'tient'}")
+        etat = '+' + str(bas - haut) if bas > haut else ('plein' if haut - bas < 24 else 'tient')
+        print(f"   {ecran:<24} {bas:>5} / {haut} px   {etat}")
 # Captures demandées mais carte non dessinée : reporté, pas réussi.
 sys.exit(1 if total else (3 if suspendu and os.environ.get("RUSTY_AUDIT_CAPTURES") else 0))
 PY

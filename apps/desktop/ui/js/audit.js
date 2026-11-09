@@ -47,12 +47,18 @@ import {
  *  G8 rail        à 1 400 × 900, ce que le rail montre sans geste tient dans sa
  *                 hauteur : le bas du dernier élément visible ≤ la hauteur du
  *                 rail (Règle 13 ; un `<details>` fermé ne compte que pour son
- *                 titre)
+ *                 titre). Une marge sous 24 px (`MARGE_RAIL`) est un
+ *                 *avertissement*, pas une violation : le rail est plein, un
+ *                 nouveau bloc doit en remplacer un
  *
  * Les variables lues dans la feuille de style (`--largeur-rail`…) ont une valeur
  * de repli : l'audit tourne aussi sur un état d'avant les jetons, ce qui
  * permet de vérifier qu'il attrape bien les défauts qu'il vise.
  */
+
+/// G8 : sous cette marge (px) entre le contenu du rail et sa hauteur, le rail
+/// est plein (Règle 13) — avertissement, pas violation.
+const MARGE_RAIL = 24;
 
 const AUDIT_ATTENTE = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -128,6 +134,7 @@ const DEFILEMENTS_AUDIT = [
 
 function auditerGabarit(ecran, { hauteurRail = false } = {}) {
   const viol = [];
+  const avert = [];
   const mes = {};
   const q = (s) => document.querySelector(s);
   const rect = (s) => q(s)?.getBoundingClientRect();
@@ -284,9 +291,11 @@ function auditerGabarit(ecran, { hauteurRail = false } = {}) {
     mes.familles = carte.familles?.length ?? 0;
     if (bas > railEl.clientHeight + tol)
       viol.push({ regle: "G8", detail: `rail : ${Math.round(bas)} px de contenu pour ${railEl.clientHeight} px de hauteur, ${Math.round(bas - railEl.clientHeight)} de trop` });
+    else if (railEl.clientHeight - bas < MARGE_RAIL)
+      avert.push({ regle: "G8", detail: `rail plein : ${Math.max(0, Math.round(railEl.clientHeight - bas))} px de marge (moins de ${MARGE_RAIL}) ; un nouveau bloc doit en remplacer un` });
   }
 
-  return { violations: viol, mesures: mes };
+  return { violations: viol, avertissements: avert, mesures: mes };
 }
 
 /// L'état « Lama après une playlist », fabriqué à partir de vrais points de la
@@ -421,13 +430,13 @@ async function auditerInterface() {
             if (etat === "morceau sélectionné") await selectionner(piste);
           }
           await attendre(250);
-          const { violations, mesures } = auditerGabarit(ecran, { hauteurRail: w === 1400 });
+          const { violations, avertissements, mesures } = auditerGabarit(ecran, { hauteurRail: w === 1400 });
           // Le relief est-il vraiment sur le plan ? Sans tuiles, l'option reste
           // masquée et la cellule ne mesure que le rail.
           if (ecran === "explorer:carte+relief") mesures.relief = reliefVu();
           cellules++;
           total += violations.length;
-          journalCarte("AUDIT " + JSON.stringify({ ecran, etat, theme, fenetre: [innerWidth, innerHeight], violations, mesures }), violations.length ? "warn" : "log");
+          journalCarte("AUDIT " + JSON.stringify({ ecran, etat, theme, fenetre: [innerWidth, innerHeight], violations, avertissements, mesures }), violations.length ? "warn" : "log");
         }
       }
     }
