@@ -72,8 +72,11 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   Pratiquer) embarqué dans le paquet, seul modèle que rien ne téléchargeait ;
   inventaire et test dans `apps/desktop/src/paquet.rs`, `release.sh` refuse
   un paquet dont une ressource manque, et depuis un `.app` le message d'un
-  poids absent dit de réinstaller au lieu de citer un script du dépôt. À
-  installer (I9).
+  poids absent dit de réinstaller au lieu de citer un script du dépôt.
+  Installé (I9, 9 nov., 5bfd59f). V25 (9 nov.) : Basic Pitch, Beat This! (mel
+  et petit) et les 8 plis d'all-in-one embarqués aussi (21 Mo), pour que
+  Pratiquer transcrive hors ligne dès le premier usage ; le téléchargement
+  reste le repli. Paquet construit, pas encore installé (I10).
 - Restent :
   - E, Pratiquer : mémoire par morceau faite (E1, 9 nov. : migration
     n° 7, la séance revient à la réouverture ; boucles nommées et vitesse

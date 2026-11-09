@@ -54,6 +54,9 @@ if [ -n "$MANQUANTS" ]; then
   case "$MANQUANTS" in
     *adtof_frame_rnn.onnx*) echo "  ADTOF : ./scripts/preparer-adtof.sh" >&2 ;;
   esac
+  case "$MANQUANTS" in
+    *basic_pitch*|*beat_this*|*allinone*) echo "  Pratiquer : ./scripts/telecharger-modeles.sh pratiquer" >&2 ;;
+  esac
   exit 1
 fi
 

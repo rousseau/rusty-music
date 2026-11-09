@@ -5104,3 +5104,33 @@ Non vérifié : l'app réelle (pas installée ; aucun écran regardé, les tests
 sont en Chrome sans tête) ; l'album inspecté depuis l'Anneau (seul le morceau
 inspecté est testé) ; l'ajout depuis la palette ⌘K et depuis la case d'un album
 de la grille, non faits.
+
+## Paquet, V25 : les petits modèles de Pratiquer embarqués — 9 nov. 2026
+
+Suite de V22 : Basic Pitch (basse), Beat This! mel et petit (temps) et les 8
+plis d'all-in-one (sections) se téléchargeaient au premier usage ; Pratiquer
+ne marchait donc pas hors ligne la première fois. Ils sont embarqués
+(`tauri.conf.json`, `bundle > resources`) : **21,1 Mo** en tout (0,23 + 0,27 +
+10,56 + 8 × 1,26), pas les ≈ 11 Mo annoncés (le petit Beat This! pèse à lui
+seul 10,6 Mo). Le grand Beat This! (83 Mo) reste téléchargé. Licences MIT et
+Apache-2.0 : redistribution permise, notée dans `MODELES.md` (donc dans « À
+propos », qui le lit).
+
+- Repli : rien à écrire, `modeles::trouver` cherche déjà
+  `Contents/Resources/models` avant le dossier de téléchargement ; un fichier
+  absent du paquet se télécharge comme avant.
+- `scripts/telecharger-modeles.sh pratiquer` (compris dans `tout`, que
+  `release.sh` lance) apporte ces 11 fichiers depuis leur source d'origine, à
+  la révision et à l'empreinte fixées dans le code ; les 11 fichiers locaux
+  passent la vérification d'empreinte, deux adresses essayées (Basic Pitch :
+  même empreinte ; un pli d'all-in-one : HTTP 200). `release.sh`, si l'un
+  manque, renvoie à cette commande.
+- Tests (`apps/desktop/src/paquet.rs`) : les 11 sont dans les ressources
+  (vérifié en retirant un pli : le test échoue en le nommant) ; le script les
+  prend à la même adresse et la même empreinte que les constantes Rust.
+- `release.sh` : 2 min 23 s ; `Contents/Resources/models/` contient les 11
+  fichiers, identiques octet pour octet à `models/`. `verifier.sh` vert. Pas
+  installé (I10).
+
+Non vérifié : une transcription hors ligne dans l'app installée (réseau
+coupé, premier usage) ; seule la disposition du paquet l'est.

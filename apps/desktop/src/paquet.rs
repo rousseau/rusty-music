@@ -14,15 +14,22 @@
 //! | ADTOF (batterie) | `adtof_frame_rnn.onnx` | embarqué — converti à la main, aucune source à télécharger |
 //! | HTDemucs 6 stems, affinée | `htdemucs_6s`, `htdemucs_ft` | téléchargés |
 //! | BS-RoFormer SW | `BS-Rofo-SW-Fixed.ckpt` | téléchargé à la source |
-//! | Basic Pitch (basse) | `basic_pitch_nmp.onnx` | téléchargé |
-//! | Beat This! | `beat_this*.onnx` | téléchargés |
-//! | all-in-one (sections) | `allinone-harmonix-fold*.safetensors` | téléchargés |
+//! | Basic Pitch (basse) | `basic_pitch_nmp.onnx` | embarqué (et téléchargeable) — V25 |
+//! | Beat This! mel et petit | `beat_this_mel.onnx`, `beat_this_small.onnx` | embarqués (et téléchargeables) — V25 |
+//! | Beat This! complet | `beat_this.onnx` | téléchargé (83 Mo) |
+//! | all-in-one (sections) | `allinone-harmonix-fold*.safetensors` | embarqués (et téléchargeables) — V25 |
 //! | AERO (« HD ») | `aero-11025-44100.onnx` | téléchargé |
 //! | MuScriptor | `muscriptor-medium.safetensors` | téléchargé (jeton Hugging Face) |
 //! | Gemma 4 E4B (Lama) | `gemma-4-E4B-it-Q4_0.gguf` | téléchargé |
 //!
-//! Le test ci-dessous fait échouer la CI quand un modèle **sans
-//! téléchargement** sort des ressources ; `scripts/release.sh` refuse, lui,
+//! Les petits modèles de Pratiquer (≈ 21 Mo) sont embarqués depuis V25 pour
+//! que la basse, les temps et les sections marchent hors ligne dès le premier
+//! usage ; leur téléchargement reste le repli (`modeles::trouver` cherche
+//! d'abord dans `Resources/models`).
+//!
+//! Les tests ci-dessous font échouer la CI quand un modèle **requis** sort des
+//! ressources, ou quand `scripts/telecharger-modeles.sh` (qui les apporte à
+//! `release.sh`) ne les prend plus à la même source et à la même empreinte ; `scripts/release.sh` refuse, lui,
 //! de construire un paquet dont un fichier de ressources manque sur la
 //! machine.
 
@@ -36,13 +43,77 @@ pub(crate) fn requis_sans_telechargement() -> [&'static str; 3] {
     ]
 }
 
-#[test]
-fn les_modeles_sans_telechargement_sont_dans_le_paquet() {
+/// Les poids embarqués pour Pratiquer, qui gardent leur téléchargement comme
+/// repli (V25) : Basic Pitch, Beat This! (mel et petit), all-in-one.
+pub(crate) fn embarques_avec_repli() -> Vec<(&'static str, &'static str, &'static str)> {
+    use rusty_music_editor::pulsation::{Modele, MEL};
+    let mut v = vec![
+        {
+            let p = rusty_music_transcription::basic_pitch::POIDS;
+            (p.nom, p.url, p.sha256)
+        },
+        (MEL.nom, MEL.url, MEL.sha256),
+        {
+            let p = Modele::Petit.poids();
+            (p.nom, p.url, p.sha256)
+        },
+    ];
+    v.extend(
+        rusty_music_transcription::sections::POIDS
+            .iter()
+            .map(|p| (p.nom, p.url, p.sha256)),
+    );
+    v
+}
+
+#[cfg(test)]
+fn ressources() -> serde_json::Map<String, serde_json::Value> {
     let conf: serde_json::Value =
         serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json lisible");
-    let ressources = conf["bundle"]["resources"]
+    conf["bundle"]["resources"]
         .as_object()
-        .expect("bundle > resources : une table source → destination");
+        .expect("bundle > resources : une table source → destination")
+        .clone()
+}
+
+#[test]
+fn les_petits_modeles_de_pratiquer_sont_dans_le_paquet() {
+    let ressources = ressources();
+    let modeles = embarques_avec_repli();
+    assert_eq!(
+        modeles.len(),
+        11,
+        "Basic Pitch, Beat This! mel et petit, 8 plis"
+    );
+    for (nom, _, _) in modeles {
+        assert_eq!(
+            ressources
+                .get(&format!("../../models/{nom}"))
+                .and_then(|v| v.as_str()),
+            Some(format!("models/{nom}").as_str()),
+            "{nom} : embarqué pour Pratiquer hors ligne (V25)"
+        );
+    }
+}
+
+#[test]
+fn le_script_apporte_les_petits_modeles_a_la_meme_source() {
+    let script = include_str!("../../../scripts/telecharger-modeles.sh");
+    for (nom, url, sha) in embarques_avec_repli() {
+        assert!(
+            script.contains(&format!("{nom}) echo {url} ;;")),
+            "telecharger-modeles.sh : {nom} doit venir de {url}"
+        );
+        assert!(
+            script.contains(&format!("{nom}) echo {sha} ;;")),
+            "telecharger-modeles.sh : empreinte de {nom} attendue {sha}"
+        );
+    }
+}
+
+#[test]
+fn les_modeles_sans_telechargement_sont_dans_le_paquet() {
+    let ressources = ressources();
     for nom in requis_sans_telechargement() {
         let destination = format!("models/{nom}");
         let source = format!("../../models/{nom}");

@@ -40,6 +40,17 @@
       "../../models/clap-text-encoder.bpk": "models/clap-text-encoder.bpk",
       "../../models/htdemucs.safetensors": "models/htdemucs.safetensors",
       "../../models/adtof_frame_rnn.onnx": "models/adtof_frame_rnn.onnx",
+      "../../models/basic_pitch_nmp.onnx": "models/basic_pitch_nmp.onnx",
+      "../../models/beat_this_mel.onnx": "models/beat_this_mel.onnx",
+      "../../models/beat_this_small.onnx": "models/beat_this_small.onnx",
+      "../../models/allinone-harmonix-fold0.safetensors": "models/allinone-harmonix-fold0.safetensors",
+      "../../models/allinone-harmonix-fold1.safetensors": "models/allinone-harmonix-fold1.safetensors",
+      "../../models/allinone-harmonix-fold2.safetensors": "models/allinone-harmonix-fold2.safetensors",
+      "../../models/allinone-harmonix-fold3.safetensors": "models/allinone-harmonix-fold3.safetensors",
+      "../../models/allinone-harmonix-fold4.safetensors": "models/allinone-harmonix-fold4.safetensors",
+      "../../models/allinone-harmonix-fold5.safetensors": "models/allinone-harmonix-fold5.safetensors",
+      "../../models/allinone-harmonix-fold6.safetensors": "models/allinone-harmonix-fold6.safetensors",
+      "../../models/allinone-harmonix-fold7.safetensors": "models/allinone-harmonix-fold7.safetensors",
       "../../ville-paris.db": "ville-paris.db"
     }
   }
