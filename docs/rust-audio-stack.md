@@ -78,7 +78,7 @@ Colonne « vérifiée » : ✔ = licence lue dans une source lors de cette reche
 | Crate | Rôle | Licence | Vérifiée |
 |---|---|---|---|
 | **`wsola`** | étirement temporel à hauteur préservée (recouvrement-addition), temps réel, pur Rust, zéro dépendance transitive | MIT | ✔ **retenu** (module 1 : vitesse de lecture ; module 3 : `editor/src/etirement.rs`, greffe). Hauteur inchangée à 441 Hz de 0,5× à 2×. |
-| **`signalsmith-stretch`** (=0.1.3, enveloppe de Colin Marc ; C++ de Signalsmith Audio, compilé par `cc`, liaisons `bindgen`) | vocodeur de phase, temps et hauteur, temps réel | MIT (enveloppe et C++) | ✔ **retenu pour la hauteur** (E3, écoute à l'aveugle du 9 nov. : préféré 2 sur 2 en transposition) ; `crates/player/src/hauteur.rs`, feature `hauteur` (bureau seulement). Justesse : biais dans le grave selon le pas d'analyse (journal, E6) |
+| **`signalsmith-stretch`** (=0.1.3, enveloppe de Colin Marc ; C++ de Signalsmith Audio, compilé par `cc`, liaisons `bindgen`) | vocodeur de phase, temps et hauteur, temps réel | MIT (enveloppe et C++) | ✔ **retenu pour la hauteur** (E3, écoute à l'aveugle du 9 nov. : préféré 2 sur 2 en transposition) ; hors ligne, `editor/src/etirement.rs` (`transposer`, `exact`, bloc 8192, pas 224 : ≤ 2 cents de 82 Hz à 4 kHz). En flux, le préréglage est faux dans le grave et le réglage juste dépasse le budget du rappel (journal, E6) ; la feature `hauteur` du lecteur est retirée |
 | **Rubber Band** (`rubberband-sys`) | référence du domaine | GPL | non retenu — `wsola` couvre le besoin |
 
 La transposition, que `wsola` ne fait pas, s'obtient en étirant puis en

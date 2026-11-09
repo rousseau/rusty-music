@@ -1632,8 +1632,8 @@ function panneauStem(s) {
 /// Lance la transposition et attend qu'elle finisse, en disant où elle en est.
 ///
 /// **Le calcul ne bloque plus l'interface, et c'est le but de tout ceci.** Une
-/// transposition demande une vingtaine de secondes par stem depuis le passage à
-/// `wsola` ; la faire dans une commande qui ne rend pas la main mettait toutes
+/// transposition demande quelques secondes par stem (8 s pour quatre minutes,
+/// Signalsmith en réglage juste depuis E6) ; la faire dans une commande qui ne rend pas la main mettait toutes
 /// les autres en file d'attente derrière elle — le transport, l'état de
 /// lecture, le moindre clic. Le moteur la fait maintenant dans son fil, et
 /// l'interface sonde.
@@ -1647,8 +1647,8 @@ async function transposerStems(stems, demiTons) {
     return depart.stems;
   }
 
-  // Barre graduée stem par stem, comme celle de la séparation : à une vingtaine
-  // de secondes par stem, une barre qui bouge dit « ça avance » là où un texte
+  // Barre graduée stem par stem, comme celle de la séparation : à huit
+  // secondes par stem, une barre qui bouge dit « ça avance » là où un texte
   // figé laisse craindre un blocage.
   const jauge = $("transpose-jauge");
   const finJauge = () => {

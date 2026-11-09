@@ -119,7 +119,11 @@ pub(crate) fn cible_transposee(chemin: &str, demi_ton: f32) -> Option<PathBuf> {
             .parent()
             .unwrap_or(Path::new("."))
             .join("traites")
-            .join(format!("t{:+03}", demi_ton as i32))
+            // `s` comme Signalsmith (E6, 9 nov.) : les anciens dossiers `t±NN`
+            // tenaient la transposition par `wsola`, moins juste dans le
+            // grave. Ils ne sont plus relus ; l'app ne les efface pas, ils
+            // partent avec le dossier quand les stems sont refaits.
+            .join(format!("s{:+03}", demi_ton as i32))
             .join(source.file_name().unwrap_or_default()),
     )
 }
@@ -193,7 +197,8 @@ impl EtatPasse for EtatTranspose {
 /// commande qui calcule. Le démixage l'avait déjà réglé ainsi, la transposition
 /// ne l'avait pas suivi parce qu'elle était courte du temps du vocodeur de
 /// phase — 0,84 s par stem. `wsola` l'a portée à 17,9 s sans que ce chemin-là
-/// soit revu.
+/// soit revu. Signalsmith en réglage juste (E6) la ramène à 8 s environ pour
+/// un stem de quatre minutes : toujours trop pour le fil de l'interface.
 ///
 /// **Rien à calculer = rien à attendre.** Si tous les stems sont neutres ou
 /// déjà en cache, l'état est rempli sur place et aucun fil n'est lancé : le

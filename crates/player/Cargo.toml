@@ -23,12 +23,6 @@ tracing.workspace = true
 # TypeScript pour contrôler les réponses figées des tests d'interface.
 # Activée par les seuls tests du bureau.
 specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
-# E6 : la transposition en flux (`hauteur.rs`), décidée après l'écoute à
-# l'aveugle du banc E3. Signalsmith Stretch, MIT (enveloppe Rust de Colin Marc,
-# C++ de Signalsmith Audio compilé par `cc`, liaisons par `bindgen`, d'où
-# libclang à la construction). Même version que le banc. Facultative : le
-# compagnon iOS n'en a pas besoin, le bureau l'active.
-signalsmith-stretch = { version = "=0.1.3", optional = true }
 
 # Latence de la sortie (`latence.rs`) : celle que cpal ne compte pas. Déjà
 # dans le graphe par cpal, mêmes version et fonctions — un nouvel usage.
@@ -37,8 +31,3 @@ objc2-core-audio = { version = "0.3", default-features = false, features = ["std
 
 [features]
 specta = ["dep:specta"]
-hauteur = ["dep:signalsmith-stretch"]
-
-[[example]]
-name = "salve_hauteur"
-required-features = ["hauteur"]

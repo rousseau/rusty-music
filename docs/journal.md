@@ -5297,3 +5297,51 @@ LaCie (2,3 To) ne bougera qu'une fois ce dossier vidé à la main.
 **Non vérifié** : un lancement réel de MuScriptor, d'all-in-one ou de
 HTDemucs depuis ce cache après le déplacement (seule la résolution des
 liens est contrôlée).
+
+## Pratiquer, E6, tranche 2 : la transposition hors ligne, juste — 9 nov. 2026
+
+François a tranché la question de la tranche 1 : la transposition reste
+calculée avant lecture et mise en cache, mais par Signalsmith en réglage
+juste plutôt que par `wsola`. `etirement::transposer` (crate `editor`) passe
+par `Stretch::exact`, qui traite le signal d'un coup, compense la latence et
+rend autant de trames qu'il en reçoit. L'établi (`start_etirer`), l'export et
+la CLI appellent tous cette fonction : un seul chemin. Un signal trop court
+pour `exact` (moins de deux latences, ≈ 0,2 s) garde l'ancienne voie.
+
+**Le réglage.** Justesse sur sinusoïde (3 s, passages par zéro interpolés,
+±1, ±2, ±5 demi-tons) et temps pour un vrai stem (basse de 224 s, copie,
++2 demi-tons, `--release`, `cout_transposition`) :
+
+| bloc/pas | pire écart < 220 Hz | pire écart ≥ 220 Hz | temps par stem |
+|---|---|---|---|
+| 8192/256 | 2,01 cents (82 Hz) | ≤ 1 | 7,8 s |
+| **8192/224** (retenu) | **1,92** (82 Hz, +2) | **0,93** | **8,4 s** |
+| 8192/192 | 2,05 (82 Hz, −5) | — | 9,9 s |
+| 16384/256 | 1,05 | ≤ 1 | 15,0 s |
+| 16384/128 | 0,47 | ≤ 0,5 | 29,1 s |
+| `wsola` (avant) | — | — | ≈ 20 s (étirement seul 19,6 à 20,9 s) |
+
+Le « 1 s par stem » du banc E3 valait pour le préréglage (bloc 5 292,
+pas 1 323) ; le pas fin coûte proportionnellement plus, même hors ligne.
+8192/224 tient le critère avec peu de marge dans le grave (1,92 pour 2) :
+entre 192 et 256, l'écart à 82 Hz varie de ±0,1 cent sans ordre. C'est du
+bruit de mesure, pas une tendance. 16384/256 serait plus sûr dans le grave,
+mais au double du temps. Le test `la_transposition_est_juste_au_cent`
+garde le tableau ; deux autres tests vérifient que la note ne se décale pas
+(attaque à moins de 10 ms) et que le stéréo garde ses canaux.
+
+**Le cache** garde sa forme, sous une autre clé : `traites/s±NN` au lieu de
+`t±NN`, pour que les fichiers déjà calculés par `wsola` ne soient pas
+repris. Les anciens dossiers restent sur le disque (545 Mo chez François,
+trois morceaux) jusqu'au prochain démixage du morceau, qui vide `traites/`.
+L'attente dans l'interface est la même jauge, stem par stem, quatre stems
+en parallèle : environ 8 s pour un morceau de quatre minutes au lieu de 20.
+
+**Retiré** : la feature `hauteur` du lecteur, `player::hauteur` et l'exemple
+`salve_hauteur`. Sans transposition en flux, ce code n'a plus d'usage. Les
+mesures de la tranche 1 restent au journal. Signalsmith passe du lecteur à
+l'éditeur ; le compagnon iOS n'en dépend toujours pas.
+
+**Non vérifié** : la transposition entendue dans l'app (aucun son joué) ;
+le temps mesuré sur un seul stem, pas sur un jeu de quatre en parallèle
+dans l'app ; la justesse sur de la musique plutôt que sur des sinusoïdes.
