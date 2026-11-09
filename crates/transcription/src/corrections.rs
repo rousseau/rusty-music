@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Les corrections de l'utilisateur sur une transcription de basse (E2,
 //! `docs/plan-editer-pratique-creation.md` 1.5) : corde imposée, octave
-//! corrigée, note supprimée ou ajoutée.
+//! ou demi-ton corrigés (V18), note supprimée ou ajoutée.
 //!
 //! Elles vivent dans la mémoire de Pratiquer (`pratique_correction`), pas dans
 //! le cache de la transcription : une nouvelle transcription (autre version du
@@ -34,6 +34,9 @@ pub struct Identite {
     /// Octaves de la correction (0 sans correction).
     #[serde(default)]
     pub octaves: i8,
+    /// Demi-tons de la correction (0 sans correction), en plus des octaves.
+    #[serde(default)]
+    pub demitons: i8,
     /// La corde est imposée par une correction.
     #[serde(default)]
     pub corde_imposee: bool,
@@ -41,7 +44,7 @@ pub struct Identite {
 
 impl Identite {
     pub fn corrigee(&self) -> bool {
-        self.ajoutee || self.octaves != 0 || self.corde_imposee
+        self.ajoutee || self.octaves != 0 || self.demitons != 0 || self.corde_imposee
     }
 }
 
@@ -59,7 +62,7 @@ pub struct Corrigee {
 }
 
 /// Applique `corrections` (dans l'ordre de `Library::corrections_pratique` :
-/// ajouts, suppressions, octaves, cordes) aux notes d'une transcription déjà
+/// ajouts, suppressions, octaves, demi-tons, cordes) aux notes d'une transcription déjà
 /// doigtée. `transcrites` : les hauteurs transcrites, avant que le doigté ne
 /// ramène à l'octave ce qui sort du manche (le champ `hauteurs` du cache) ;
 /// les hauteurs des notes si elles manquent.
@@ -85,6 +88,7 @@ pub fn appliquer(
                     hauteur,
                     ajoutee: false,
                     octaves: 0,
+                    demitons: 0,
                     corde_imposee: false,
                 },
             )
@@ -123,6 +127,7 @@ pub fn appliquer(
                     hauteur: c.hauteur,
                     ajoutee: true,
                     octaves: 0,
+                    demitons: 0,
                     corde_imposee: c.corde.is_some(),
                 },
             ));
@@ -150,22 +155,38 @@ pub fn appliquer(
             continue;
         }
         let (note, id) = &mut lignes[i];
+        // La note transposée de `ecart` demi-tons, reposée au plus près de la
+        // main ; rien si elle sort du manche.
+        let transposer = |note: &mut Note, ecart: i16| -> bool {
+            let h = note.hauteur as i16 + ecart;
+            match u8::try_from(h)
+                .ok()
+                .and_then(|h| placer(h, note.frette, accordage).map(|p| (h, p)))
+            {
+                Some((h, (corde, frette))) => {
+                    note.hauteur = h;
+                    (note.corde, note.frette) = (Some(corde), Some(frette));
+                    true
+                }
+                None => false,
+            }
+        };
         let applique = match c.genre.as_str() {
             "octave" => {
                 let o = c.octaves.unwrap_or(0);
-                let h = note.hauteur as i16 + 12 * o as i16;
-                match u8::try_from(h)
-                    .ok()
-                    .and_then(|h| placer(h, note.frette, accordage).map(|p| (h, p)))
-                {
-                    Some((h, (corde, frette))) => {
-                        note.hauteur = h;
-                        (note.corde, note.frette) = (Some(corde), Some(frette));
-                        id.octaves = o;
-                        true
-                    }
-                    None => false,
+                let fait = transposer(note, 12 * o as i16);
+                if fait {
+                    id.octaves = o;
                 }
+                fait
+            }
+            "demiton" => {
+                let d = c.demitons.unwrap_or(0);
+                let fait = transposer(note, d as i16);
+                if fait {
+                    id.demitons = d;
+                }
+                fait
             }
             "corde" => match c
                 .corde
@@ -238,6 +259,7 @@ mod tests {
             corde: None,
             frette: None,
             octaves: None,
+            demitons: None,
         }
     }
 
@@ -266,6 +288,11 @@ mod tests {
                 octaves: Some(-1),
                 ..c("octave", 1.0, 45)
             },
+            // V18 : sol2 transcrit, corrigé en fa♯2.
+            CorrectionPratique {
+                demitons: Some(-1),
+                ..c("demiton", 2.0, 43)
+            },
             CorrectionPratique {
                 corde: Some(1),
                 ..c("corde", 0.5, 40)
@@ -292,8 +319,8 @@ mod tests {
                 // la2 descendu d'une octave : la1, au plus près de la main
                 // (5ᵉ frette de mi plutôt que la corde à vide).
                 (1.0, 33, Some(0), Some(5)),
-                // la1 supprimé ; sol2 tel que le doigté l'a posé.
-                (2.0, 43, Some(1), Some(10)),
+                // la1 supprimé ; sol2 corrigé en fa♯2, une frette plus bas.
+                (2.0, 42, Some(1), Some(9)),
                 // ré2 ajouté, posé près de la note d'avant.
                 (2.75, 38, Some(0), Some(10)),
             ]
@@ -302,10 +329,11 @@ mod tests {
         assert_eq!(r.identites[1].octaves, -1);
         // L'identité reste la hauteur transcrite.
         assert_eq!(r.identites[1].hauteur, 45);
-        assert!(!r.identites[2].corrigee());
+        assert_eq!(r.identites[2].demitons, -1);
+        assert_eq!(r.identites[2].hauteur, 43);
         assert!(r.identites[3].ajoutee);
         assert_eq!(r.notes[0].amplitude, 1.0);
-        assert_eq!(r.notes[2].amplitude, 0.5);
+        assert_eq!(r.notes[2].amplitude, 1.0);
     }
 
     /// Le critère d'E2 : une nouvelle transcription (les attaques datées
@@ -356,6 +384,11 @@ mod tests {
                     octaves: Some(-2),
                     ..c("octave", 0.5, 40)
                 },
+                // Onze demi-tons sous la1 : sous la corde à vide de mi.
+                CorrectionPratique {
+                    demitons: Some(-11),
+                    ..c("demiton", 1.5, 33)
+                },
                 // Hors du manche sur la corde de sol.
                 CorrectionPratique {
                     corde: Some(3),
@@ -364,7 +397,7 @@ mod tests {
             ],
             &a,
         );
-        assert_eq!(r.sans_effet, 3);
+        assert_eq!(r.sans_effet, 4);
         assert_eq!(r.notes, notes);
     }
 }

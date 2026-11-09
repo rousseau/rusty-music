@@ -466,29 +466,41 @@
                avec l'objet qu'elle corrige (Règle 12). -->
           <div id="partition-correction" class="correction" role="toolbar" aria-label="Corriger la transcription" hidden>
             <span id="correction-note" class="correction__note" aria-live="polite"></span>
-            <button class="bouton bouton--mince" data-corriger="grave" hidden
-                    title="Jouer la même note sur la corde plus grave">corde grave</button>
-            <button class="bouton bouton--mince" data-corriger="aigue" hidden
-                    title="Jouer la même note sur la corde plus aiguë">corde aiguë</button>
-            <button class="bouton bouton--mince" data-corriger="octave-bas" hidden
-                    title="Une octave plus bas">octave −</button>
-            <button class="bouton bouton--mince" data-corriger="octave-haut" hidden
-                    title="Une octave plus haut">octave +</button>
-            <button class="bouton bouton--mince" data-corriger="demi-bas" hidden
-                    title="Un demi-ton plus bas">½ ton −</button>
-            <button class="bouton bouton--mince" data-corriger="demi-haut" hidden
-                    title="Un demi-ton plus haut">½ ton +</button>
+            <!-- V18 : les gestes par paire, sous une étiquette, pour que la
+                 barre tienne sur une ligne à 1 400 px. -->
+            <span class="correction__groupe" data-groupe="corde">
+              <span class="correction__etiquette">corde</span>
+              <button class="bouton bouton--mince" data-corriger="grave" hidden
+                      aria-label="Corde plus grave" title="Jouer la même note sur la corde plus grave">−</button>
+              <button class="bouton bouton--mince" data-corriger="aigue" hidden
+                      aria-label="Corde plus aiguë" title="Jouer la même note sur la corde plus aiguë">+</button>
+            </span>
+            <span class="correction__groupe" data-groupe="octave">
+              <span class="correction__etiquette">octave</span>
+              <button class="bouton bouton--mince" data-corriger="octave-bas" hidden
+                      aria-label="Octave plus bas" title="Une octave plus bas">−</button>
+              <button class="bouton bouton--mince" data-corriger="octave-haut" hidden
+                      aria-label="Octave plus haut" title="Une octave plus haut">+</button>
+            </span>
+            <span class="correction__groupe" data-groupe="demi">
+              <span class="correction__etiquette">½ ton</span>
+              <button class="bouton bouton--mince" data-corriger="demi-bas" hidden
+                      aria-label="Demi-ton plus bas" title="Un demi-ton plus bas">−</button>
+              <button class="bouton bouton--mince" data-corriger="demi-haut" hidden
+                      aria-label="Demi-ton plus haut" title="Un demi-ton plus haut">+</button>
+            </span>
             <button class="bouton bouton--mince" data-corriger="ajouter" hidden
                     title="Une note sur ce silence, à la hauteur de la note d'avant">ajouter une note</button>
-            <button class="bouton bouton--mince" data-corriger="supprimer" hidden>supprimer</button>
-            <button class="bouton bouton--mince" data-corriger="retablir" hidden
-                    title="Revenir à la note transcrite">rétablir</button>
+            <button class="bouton bouton--mince correction__icone" data-corriger="supprimer" hidden
+                    aria-label="Supprimer" title="Supprimer la note">✕</button>
+            <button class="bouton bouton--mince correction__icone" data-corriger="retablir" hidden
+                    aria-label="Rétablir" title="Rétablir : revenir à la note transcrite">↺</button>
             <span class="correction__export">
               <span class="correction__etiquette">exporter</span>
               <button class="bouton bouton--mince" data-exporter="midi"
                       title="La partie corrigée, en fichier MIDI">MIDI</button>
-              <button class="bouton bouton--mince" data-exporter="gp"
-                      title="La partie corrigée, en Guitar Pro 7 (.gp)">Guitar Pro</button>
+              <button class="bouton bouton--mince" data-exporter="gp" aria-label="Guitar Pro"
+                      title="La partie corrigée, en Guitar Pro 7 (.gp)">GP</button>
             </span>
           </div>
           <!-- Pratiquer : la partition au centre (décision 11), rendue par

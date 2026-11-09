@@ -73,7 +73,8 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     n° 7, la séance revient à la réouverture ; boucles nommées et vitesse
     atteinte à l'écran, V17 ; reste à le voir dans l'app installée), corriger la
     transcription faite (E2, 9 nov. : corde, octave, note supprimée ou
-    ajoutée, gardées et réappliquées ; export MIDI et Guitar Pro ; pas
+    ajoutée, gardées et réappliquées ; export MIDI et Guitar Pro ; V18 :
+    demi-ton sur une note transcrite, barre sur une ligne à 1 400 px ; pas
     encore vue dans l'app réelle), banc d'étirement (E3, 9 nov. : coûts mesurés — Signalsmith
     transpose un stem de 184 s en 1,0 s contre 17 s pour wsola, et les deux
     vocodeurs transposent en flux ; écoute à l'aveugle en attente du LaCie,

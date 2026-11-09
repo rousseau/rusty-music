@@ -1414,16 +1414,17 @@ async function basseTranscrite(page) {
     const debuts = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0];
     const hauteurs = [33, 36, 38, 40, 33, 31, 28];
     const vue = (corrections) => {
-      let lignes = debuts.map((d, i) => ({ d, h: hauteurs[i], o: 0, ajoutee: false }));
+      let lignes = debuts.map((d, i) => ({ d, h: hauteurs[i], o: 0, s: 0, ajoutee: false }));
       for (const c of corrections) {
         const i = lignes.findIndex((l) => l.h === c.hauteur && Math.abs(l.d - c.debut_s) < 0.03);
-        if (c.genre === "ajouter") lignes.push({ d: c.debut_s, h: c.hauteur, o: 0, ajoutee: true, duree: c.duree_s });
+        if (c.genre === "ajouter") lignes.push({ d: c.debut_s, h: c.hauteur, o: 0, s: 0, ajoutee: true, duree: c.duree_s });
         else if (i >= 0 && c.genre === "supprimer") lignes.splice(i, 1);
         else if (i >= 0 && c.genre === "octave") lignes[i].o = c.octaves;
+        else if (i >= 0 && c.genre === "demiton") lignes[i].s = c.demitons;
       }
       lignes.sort((a, b) => a.d - b.d);
       const notes = lignes.map((l) => {
-        const h = l.h + 12 * l.o;
+        const h = l.h + 12 * l.o + l.s;
         const [corde, frette] = placer(h);
         return { debut_s: l.d, fin_s: l.d + 0.45, hauteur: h, amplitude: 0.6, corde, frette };
       });
@@ -1442,14 +1443,18 @@ async function basseTranscrite(page) {
       return {
         version: 5, instrument: "bass", modele: "muscriptor-medium", notes, coups: [], mesures, accordage,
         doigtes: 5, basses: "quatre", hauteurs: lignes.map((l) => l.h), grille: 3,
-        identites: lignes.map((l) => ({ debut_s: l.d, hauteur: l.h, ajoutee: l.ajoutee, octaves: l.o, corde_imposee: false })),
+        identites: lignes.map((l) => ({
+          debut_s: l.d, hauteur: l.h, ajoutee: l.ajoutee, octaves: l.o, demitons: l.s, corde_imposee: false,
+        })),
         sans_effet: 0,
       };
     };
     window.__FIXTURES__.transcrire = (a, e) => vue(e.corrections ?? []);
     window.__FIXTURES__.corriger_transcription = (a, e) => {
       const c = a.correction;
-      e.corrections = (e.corrections ?? []).filter((x) => !(x.hauteur === c.hauteur && Math.abs(x.debut_s - c.debut_s) < 1e-3));
+      // Une correction par genre et par note, comme `Library::corriger_pratique`.
+      const memeNote = (x) => x.hauteur === c.hauteur && Math.abs(x.debut_s - c.debut_s) < 1e-3;
+      e.corrections = (e.corrections ?? []).filter((x) => !(memeNote(x) && (c.genre === "retablir" || x.genre === c.genre)));
       if (c.genre !== "retablir") e.corrections.push(c);
       return vue(e.corrections);
     };
@@ -1545,4 +1550,61 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   // Créer n'a ni partition ni correction.
   await page.click('button.mode[data-mode="creer"]');
   await expect(barre).toBeHidden();
+});
+
+/// Les lignes qu'occupent les enfants visibles de la barre de correction.
+const lignesBarre = (barre) =>
+  barre.evaluate((el) => {
+    const hauts = new Set();
+    // La largeur que demande le contenu sur une ligne : enfants, marges et
+    // écarts (l'export, poussé à droite, compte sans sa marge automatique).
+    const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+    let contenu = 0;
+    let n = 0;
+    for (const x of el.querySelectorAll(":scope > *")) {
+      const r = x.getBoundingClientRect();
+      if (r.width === 0) continue;
+      hauts.add(Math.round(r.top + r.height / 2));
+      const st = getComputedStyle(x);
+      contenu += r.width + (x.matches(".correction__export") ? 0 : parseFloat(st.marginLeft) + parseFloat(st.marginRight));
+      n++;
+    }
+    contenu += gap * Math.max(0, n - 1);
+    const r = el.getBoundingClientRect();
+    return { lignes: hauts.size, largeur: Math.round(r.width), hauteur: Math.round(r.height), contenu: Math.round(contenu) };
+  });
+
+test("V18 : la barre de correction tient sur une ligne à 1 400 px ; une note transcrite change au demi-ton", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await basseTranscrite(page);
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  const barre = page.locator("#partition-correction");
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  // Une note transcrite corrigée : tous les gestes à la fois (corde, octave,
+  // demi-ton, supprimer, rétablir) et l'export.
+  await cliquerTemps(page, 0, 1);
+  await barre.locator('[data-corriger="octave-haut"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("do3 · corde de sol, frette 5 · corrigée");
+  for (const g of ["grave", "aigue", "octave-bas", "octave-haut", "demi-bas", "demi-haut", "supprimer", "retablir"]) {
+    await expect(barre.locator(`[data-corriger="${g}"]`)).toBeVisible();
+  }
+  const mesure = await lignesBarre(barre);
+  console.log(`V18 barre de correction à 1400×900 : ${JSON.stringify(mesure)}`);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/v18-correction.png" });
+  expect(mesure.lignes).toBe(1);
+
+  // Le demi-ton sur la note transcrite : gardé à part de l'octave.
+  await barre.locator('[data-corriger="demi-haut"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("do♯3 · corde de sol, frette 6 · corrigée");
+  expect((await appels(page, "corriger_transcription")).at(-1).correction).toEqual({
+    genre: "demiton", debut_s: 1, hauteur: 36, demitons: 1,
+  });
+  await barre.locator('[data-corriger="demi-bas"]').click();
+  await barre.locator('[data-corriger="demi-bas"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("si2 · corde de sol, frette 4 · corrigée");
+  expect((await appels(page, "corriger_transcription")).at(-1).correction.demitons).toBe(-1);
+  // Rétablir oublie octave et demi-ton.
+  await barre.locator('[data-corriger="retablir"]').click();
+  await expect(page.locator("#correction-note")).toHaveText("do2 · corde de la, frette 3");
 });

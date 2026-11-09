@@ -193,7 +193,7 @@ impl Library {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CorrectionPratique {
-    /// `"corde"`, `"octave"`, `"supprimer"`, `"ajouter"` ; `"retablir"` en
+    /// `"corde"`, `"octave"`, `"demiton"`, `"supprimer"`, `"ajouter"` ; `"retablir"` en
     /// demande seulement (oublie tout ce qui vise la note, rien n'est gardé).
     pub genre: String,
     pub debut_s: f64,
@@ -209,13 +209,17 @@ pub struct CorrectionPratique {
     /// Octave corrigée : de combien d'octaves la note bouge, −2 à +2.
     #[serde(default)]
     pub octaves: Option<i8>,
+    /// Hauteur corrigée au demi-ton (V18) : de combien de demi-tons la note
+    /// bouge, −11 à +11, en plus de l'octave corrigée.
+    #[serde(default)]
+    pub demitons: Option<i8>,
 }
 
 /// L'ordre où les corrections s'appliquent : une note ajoutée peut ensuite
-/// changer d'octave ou de corde ; la corde imposée vient en dernier, sur la
-/// hauteur corrigée.
-const ORDRE_GENRES: &str =
-    "CASE genre WHEN 'ajouter' THEN 0 WHEN 'supprimer' THEN 1 WHEN 'octave' THEN 2 ELSE 3 END";
+/// changer d'octave ou de corde ; l'octave puis le demi-ton ; la corde imposée
+/// vient en dernier, sur la hauteur corrigée.
+const ORDRE_GENRES: &str = "CASE genre WHEN 'ajouter' THEN 0 WHEN 'supprimer' THEN 1 \
+     WHEN 'octave' THEN 2 WHEN 'demiton' THEN 3 ELSE 4 END";
 
 /// Deux instants transcrits sont la même note à moins d'une milliseconde
 /// (ils font l'aller-retour par le JSON de l'interface).
@@ -236,6 +240,8 @@ impl CorrectionPratique {
             "corde" => Err("corde imposée absente ou hors du manche".into()),
             "octave" if self.octaves.is_some_and(|o| (-2..=2).contains(&o)) => Ok(()),
             "octave" => Err("octave hors de −2 à +2".into()),
+            "demiton" if self.demitons.is_some_and(|d| (-11..=11).contains(&d)) => Ok(()),
+            "demiton" => Err("demi-tons hors de −11 à +11".into()),
             "ajouter" => match self.duree_s {
                 Some(d) if d.is_finite() && d > 0.0 && d <= 30.0 => {
                     if self.corde.is_some_and(|c| c >= 6) {
@@ -260,7 +266,7 @@ impl Library {
         instrument: &str,
     ) -> Result<Vec<CorrectionPratique>> {
         let mut req = self.conn.prepare(&format!(
-            "SELECT genre, debut_s, hauteur, duree_s, corde, frette, octaves
+            "SELECT genre, debut_s, hauteur, duree_s, corde, frette, octaves, demitons
              FROM pratique_correction WHERE path = ?1 AND instrument = ?2
              ORDER BY {ORDRE_GENRES}, id"
         ))?;
@@ -274,6 +280,7 @@ impl Library {
                     corde: r.get(4)?,
                     frette: r.get(5)?,
                     octaves: r.get(6)?,
+                    demitons: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -281,8 +288,8 @@ impl Library {
     }
 
     /// Garde une correction de transcription. Une note n'a qu'une correction
-    /// de chaque genre : la nouvelle remplace l'ancienne. Changer l'octave
-    /// oublie la corde imposée (elle ne porte plus la même note) ; supprimer
+    /// de chaque genre : la nouvelle remplace l'ancienne. Changer l'octave ou
+    /// le demi-ton oublie la corde imposée (elle ne porte plus la même note) ; supprimer
     /// une note ajoutée l'oublie tout à fait ; « rétablir » oublie tout ce qui
     /// vise la note, qui redevient celle de la transcription. À vérifier
     /// d'abord ([`CorrectionPratique::verifier`]).
@@ -314,7 +321,7 @@ impl Library {
             params![path, instrument, c.debut_s, MEME_INSTANT_S, c.hauteur],
             |r| r.get(0),
         )?;
-        let tout = "'ajouter', 'supprimer', 'octave', 'corde'";
+        let tout = "'ajouter', 'supprimer', 'octave', 'demiton', 'corde'";
         let garder = match c.genre.as_str() {
             "retablir" => {
                 oublier(tout)?;
@@ -332,6 +339,10 @@ impl Library {
                 oublier("'octave', 'corde'")?;
                 c.octaves != Some(0)
             }
+            "demiton" => {
+                oublier("'demiton', 'corde'")?;
+                c.demitons != Some(0)
+            }
             "corde" => {
                 oublier("'corde'")?;
                 true
@@ -346,11 +357,12 @@ impl Library {
         if garder {
             tx.execute(
                 "INSERT INTO pratique_correction
-                    (path, instrument, genre, debut_s, hauteur, duree_s, corde, frette, octaves)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    (path, instrument, genre, debut_s, hauteur, duree_s, corde, frette, octaves,
+                     demitons)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     path, instrument, c.genre, c.debut_s, c.hauteur, c.duree_s, c.corde, c.frette,
-                    c.octaves
+                    c.octaves, c.demitons
                 ],
             )?;
         }

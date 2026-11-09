@@ -359,6 +359,11 @@ html, body {
 .correction .bouton--mince { margin-left: 0; }
 .correction__note { color: var(--txt); margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .correction__export { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+/* V18 : une paire de gestes sous son étiquette (corde, octave, demi-ton) ;
+   masquée quand aucun de ses deux gestes n'est offert. */
+.correction__groupe { display: flex; align-items: center; gap: 4px; }
+.correction__groupe:not(:has(.bouton:not([hidden]))) { display: none; }
+.correction__groupe .bouton--mince, .correction__icone { min-width: 26px; padding-inline: 6px; }
 .correction__etiquette { font-size: var(--t-legende); color: var(--mut); }
 .partition__choix {
   position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none;

@@ -687,6 +687,7 @@ mod tests {
             corde: None,
             frette: None,
             octaves: None,
+            demitons: None,
         };
         for c in [
             CorrectionPratique {
@@ -698,6 +699,11 @@ mod tests {
                 ..correction("octave", n(0))
             },
             correction("supprimer", n(5)),
+            // V18 : une note transcrite corrigée au demi-ton (si1 → la♯1).
+            CorrectionPratique {
+                demitons: Some(-1),
+                ..correction("demiton", n(3))
+            },
             CorrectionPratique {
                 // Deux doubles croches, comme les pose l'interface (une
                 // durée de silence de la partition).
@@ -719,6 +725,8 @@ mod tests {
             (corrigee.notes[2].corde, corrigee.notes[2].frette),
             (Some(0), Some(5))
         );
+        assert_eq!(corrigee.notes[3].hauteur, 34);
+        assert_eq!(corrigee.identites[3].demitons, -1);
         assert!(corrigee.identites[7].ajoutee);
 
         // Le cache effacé, la basse retranscrite 15 ms plus tard.

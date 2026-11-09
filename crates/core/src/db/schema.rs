@@ -66,6 +66,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 8 (9 nov. 2026) : une octave corrigée dans la transcription
         // (E2 : `pratique_correction.octaves`, `db/pratique.rs`).
         M::up(include_str!("../../sql/migration-008-corrections.sql")),
+        // N° 9 (9 nov. 2026) : une note transcrite corrigée au demi-ton
+        // (V18 : `pratique_correction.demitons`, `db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-009-demitons.sql")),
     ])
 }
 

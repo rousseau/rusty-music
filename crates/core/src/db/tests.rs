@@ -2819,6 +2819,7 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
         corde: None,
         frette: None,
         octaves: None,
+        demitons: None,
     };
     let corde = CorrectionPratique {
         corde: Some(2),
@@ -2827,6 +2828,10 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
     let octave = CorrectionPratique {
         octaves: Some(1),
         ..c("octave", 1.25, 40)
+    };
+    let octave_bis = {
+        let o = octave.clone();
+        move || o.clone()
     };
     let ajout = CorrectionPratique {
         duree_s: Some(0.25),
@@ -2890,6 +2895,30 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
     )
     .unwrap();
     assert_eq!(genres(&lib), ["ajouter", "supprimer"]);
+    // V18 : le demi-ton se garde à part de l'octave, après elle, et oublie la
+    // corde imposée ; remis à 0, il s'oublie ; « rétablir » l'oublie aussi.
+    let demiton = |d: i8| CorrectionPratique {
+        demitons: Some(d),
+        ..c("demiton", 1.25, 40)
+    };
+    lib.corriger_pratique(chemin, "bass", &corde).unwrap();
+    lib.corriger_pratique(chemin, "bass", &octave_bis())
+        .unwrap();
+    lib.corriger_pratique(chemin, "bass", &demiton(1)).unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer", "octave", "demiton"]);
+    lib.corriger_pratique(chemin, "bass", &corde).unwrap();
+    lib.corriger_pratique(chemin, "bass", &demiton(-2)).unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer", "octave", "demiton"]);
+    assert_eq!(
+        lib.corrections_pratique(chemin, "bass").unwrap()[3].demitons,
+        Some(-2)
+    );
+    lib.corriger_pratique(chemin, "bass", &demiton(0)).unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer", "octave"]);
+    lib.corriger_pratique(chemin, "bass", &demiton(3)).unwrap();
+    lib.corriger_pratique(chemin, "bass", &c("retablir", 1.25, 40))
+        .unwrap();
+    assert_eq!(genres(&lib), ["ajouter", "supprimer"]);
     // Supprimer la note ajoutée l'oublie ; rétablir la supprimée la rend.
     lib.corriger_pratique(chemin, "bass", &c("supprimer", 3.0, 36))
         .unwrap();
@@ -2904,6 +2933,11 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
         CorrectionPratique {
             octaves: Some(3),
             ..c("octave", 1.0, 40)
+        },
+        c("demiton", 1.0, 40),
+        CorrectionPratique {
+            demitons: Some(12),
+            ..c("demiton", 1.0, 40)
         },
         c("ajouter", 1.0, 40),
         c("transposer", 1.0, 40),

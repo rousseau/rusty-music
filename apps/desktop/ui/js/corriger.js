@@ -9,7 +9,8 @@ import { basseAffichee, bassesJouees, partition, remplacerBasse } from "./pratiq
 // corrige depuis la partition. Un clic sur une note la choisit (alphaTab
 // `beatMouseDown`) ; la barre au-dessus de la partition (`#partition-correction`,
 // au centre : Règle 12, rien dans le rail) dit ce qu'elle est et offre les
-// gestes — corde plus grave ou plus aiguë, octave, supprimer, rétablir ; sur un
+// gestes — corde plus grave ou plus aiguë, octave, demi-ton (V18), supprimer,
+// rétablir ; sur un
 // silence, ajouter une note. Le moteur garde la correction dans la mémoire de
 // Pratiquer (`pratique_correction`) et rend la transcription corrigée
 // (`corriger_transcription`) : une nouvelle transcription la réapplique, sans
@@ -56,7 +57,7 @@ function cordeVoisine(hauteur, corde, pas, accordage) {
   return null;
 }
 const jouable = (hauteur, accordage) => accordage.some((v) => hauteur - v >= 0 && hauteur - v <= FRETTES);
-const corrigee = (id) => !!id && (id.ajoutee || id.octaves !== 0 || id.corde_imposee);
+const corrigee = (id) => !!id && (id.ajoutee || id.octaves !== 0 || !!id.demitons || id.corde_imposee);
 
 /// Ce que la barre propose pour le temps choisi : `[geste, correction | null]`.
 function gestes(tr, t) {
@@ -83,12 +84,17 @@ function gestes(tr, t) {
     ["octave-bas", octave(-1)],
     ["octave-haut", octave(1)],
   ];
-  // Une note ajoutée change de hauteur au demi-ton : elle est reposée.
-  if (id.ajoutee) {
-    for (const [geste, pas] of [["demi-bas", -1], ["demi-haut", 1]]) {
-      const h = n.hauteur + pas;
-      liste.push([geste, jouable(h, acc) ? { remplacer: true, hauteur: h } : null]);
+  // Au demi-ton : une note ajoutée est reposée à la nouvelle hauteur ; une
+  // note transcrite garde sa correction à part de l'octave (V18).
+  for (const [geste, pas] of [["demi-bas", -1], ["demi-haut", 1]]) {
+    const h = n.hauteur + pas;
+    const d = (id.demitons ?? 0) + pas;
+    let c = null;
+    if (jouable(h, acc)) {
+      if (id.ajoutee) c = { remplacer: true, hauteur: h };
+      else if (Math.abs(d) <= 11) c = { genre: "demiton", ...vise, demitons: d };
     }
+    liste.push([geste, c]);
   }
   liste.push(["supprimer", { genre: "supprimer", ...vise }]);
   if (corrigee(id) && !id.ajoutee) liste.push(["retablir", { genre: "retablir", ...vise }]);

@@ -4822,3 +4822,48 @@ correctif existait : on monte plutôt que d'ignorer.
 - **Non vérifié** : l'app installée sur la base réelle (la migration y est
   sans objet, version 8 déjà ; à voir au prochain I<n>) ; le compagnon iOS
   au-delà de `cargo check` pour sa cible.
+
+## Pratiquer, V18 : la barre de correction sur une ligne, le demi-ton sur une note transcrite — 9 nov. 2026
+
+Les deux restes de la relecture d'E2.
+
+- **Barre sur une ligne** (`index.html`, `style.css`) : les gestes vont
+  par paire sous une étiquette (« corde − + », « octave − + », « ½ ton
+  − + », `.correction__groupe`, masqué quand aucun de ses gestes n'est
+  offert) ; supprimer et rétablir deviennent des icônes (✕, ↺) avec
+  infobulle et nom accessible ; « Guitar Pro » s'écrit « GP » (infobulle
+  et nom accessible complets). Aucun geste perdu. Pas de raccourci clavier :
+  la barre n'a le focus qu'après un clic, et les touches libres de l'établi
+  servent déjà au lecteur.
+- **Mesuré** à 1 400 × 900, établi chargé, le cas le plus large (une note
+  transcrite corrigée : les huit gestes et l'export) : avant, **deux
+  lignes** (52 px de haut, contenu 834 px pour 816 px de barre) ; après,
+  **une ligne** (23 px, contenu 755 / 816 px). Test de fumée « V18 », qui
+  échoue si la barre repasse sur deux lignes.
+- **Demi-ton sur une note transcrite** : nouveau genre de correction
+  `demiton` (−11 à +11 demi-tons, colonne `pratique_correction.demitons`,
+  migration n° 9), gardé à part de l'octave et appliqué après elle, avant
+  la corde imposée (qu'il oublie, comme l'octave) ; remis à 0 il s'oublie,
+  « rétablir » l'oublie avec le reste. La note est reposée au plus près de
+  la main (`corrections::appliquer`, même chemin que l'octave). Une note
+  ajoutée reste reposée à la nouvelle hauteur, comme en E2.
+- **Tests** : `les_quatre_corrections_s_appliquent` et
+  `une_nouvelle_transcription_garde_les_corrections` (transcription : un
+  demi-ton en plus, gardé quand les attaques arrivent 12 ms plus tard),
+  `une_correction_survit_a_une_nouvelle_transcription` (bureau : si1 → la♯1
+  gardé, transcription refaite 15 ms plus tard), `une_correction_sans_note_
+  reste_sans_effet` (demi-ton hors du manche), `les_corrections_de_
+  transcription_se_gardent_par_note` (base : ordre, remplacement, oubli) ;
+  fumée « V18 » (demi-ton +, −, −, puis rétablir). `verifier.sh` vert,
+  59 tests de fumée.
+- **Audit** (`audit-interface.sh` complet) : 252 cellules, 0 violation
+  (avertissement inchangé : l'Anneau plein) ; rail de Pratiquer 511 / 804 px,
+  inchangé. Il a tourné écran en veille : la carte n'y est pas dessinée, et
+  l'audit ne charge pas de partition (la barre n'est mesurée que par le test
+  de fumée).
+- **Migration n° 9 rejouée** sur une copie (`sqlite3 .backup`) de la base
+  réelle : version 8 → 9, `integrity_check` ok, 27 901 morceaux lus.
+
+Non vérifié : dans l'app réelle (faux Tauri seulement) ; la barre à une
+largeur de fenêtre plus étroite que 1 400 px repasse sur deux lignes (voulu :
+`flex-wrap`).

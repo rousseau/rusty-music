@@ -429,11 +429,14 @@ réglage.
    au-dessus de la partition (`#partition-correction`, `ui/js/corriger.js`),
    jamais dans le rail. Un clic sur une note la choisit (cadre d'accent sur
    le temps) ; la barre dit la note et sa position (« do2 · corde de la,
-   frette 3 ») et offre corde grave, corde aiguë, octave −/+, supprimer,
-   rétablir ; sur un silence, « ajouter une note » (hauteur de la note
-   d'avant, sur toute la durée du silence), qui change ensuite au demi-ton.
-   Une note corrigée s'écrit à l'encre d'accent. La même barre exporte la
-   partie corrigée en MIDI ou Guitar Pro 7 (par alphaTab).
+   frette 3 ») et offre corde −/+, octave −/+, ½ ton −/+, supprimer (✕),
+   rétablir (↺) ; sur un silence, « ajouter une note » (hauteur de la note
+   d'avant, sur toute la durée du silence). Une note corrigée s'écrit à
+   l'encre d'accent. La même barre exporte la partie corrigée en MIDI ou
+   Guitar Pro 7 (« GP », par alphaTab). V18 (9 nov.) : les gestes par paire
+   sous une étiquette, supprimer et rétablir en icônes (infobulle, nom
+   accessible), pour que la barre tienne sur une ligne à 1 400 px ; le
+   demi-ton vaut aussi pour une note transcrite (gardé à part de l'octave).
 12. ~~**L'usage se choisit dans le rail.**~~ *Remplacée le 5 novembre 2026
    par la décision 13.* Décidé le 9 octobre 2026 : un sélecteur
    Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.
