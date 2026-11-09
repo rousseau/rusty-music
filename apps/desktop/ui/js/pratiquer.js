@@ -5,7 +5,7 @@ import {
 import { lecture } from "./etat-lecture.js";
 import { demander } from "./ecrans.js";
 import {
-  edition, NOMS_SECTIONS, positionnerBande, positionnerPlayhead, varianteParDefaut,
+  edition, majBoucleUI, NOMS_SECTIONS, positionnerPlayhead, varianteParDefaut,
 } from "./etabli.js";
 
 /* ------------------------------------------------------- pratiquer */
@@ -890,7 +890,9 @@ function majUsage() {
   else cacherPartition();
   majBlocPartitions();
   positionnerPlayhead();
-  positionnerBande();
+  // La bande, et ce que seul Pratiquer montre de la boucle et de la vitesse
+  // (nom, liste, vitesse atteinte).
+  majBoucleUI();
 }
 
 for (const b of document.querySelectorAll("#instruments [data-instrument]")) {

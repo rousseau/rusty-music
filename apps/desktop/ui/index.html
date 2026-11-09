@@ -1447,6 +1447,10 @@
                demande plus d'une demi-octave d'étirement. -->
           <button id="vitesse-octave" class="reglage__unite" hidden
                   title="Le morceau se lit peut-être à demi- ou double-tempo : ramener le rapport près de 1 au lieu d'étirer d'une octave."></button>
+          <!-- Pratiquer seulement : la plus haute vitesse jouée jusqu'au bout,
+               de la boucle posée, ou du morceau sans boucle (E1, V17). -->
+          <span id="vitesse-atteinte" class="reglage__suffixe reglage__atteinte" hidden
+                title="La plus haute vitesse à laquelle la boucle posée (sans boucle : une boucle du morceau) a été jouée jusqu'au bout. Gardée par morceau."></span>
         </div>
         <div class="reglage" role="group" aria-label="Transposition en tons"
              title="Transposition de tous les stems, en tons, par pas d'un demi-ton, à durée inchangée (−½ ton : un morceau en mi♭ sans désaccorder la basse). Quelques secondes de calcul par réglage. Chaque stem peut s'en écarter — voir « régler » sur sa ligne.">
@@ -1463,13 +1467,23 @@
         <div class="reglage" role="group" aria-label="Boucle" id="boucle-reglage" hidden
              title="Boucle les mesures autour de la tête de lecture. Le retour au début est calé sur le premier temps, sans blanc.">
           <button id="boucle" class="reglage__unite" aria-pressed="false">boucler</button>
+          <!-- Pratiquer seulement, dès qu'une boucle du morceau porte un nom :
+               la liste courte des boucles nommées (V17). -->
+          <button id="boucles-liste" class="reglage__unite" hidden aria-haspopup="menu" aria-expanded="false"
+                  aria-controls="boucles-menu"
+                  title="Rappeler une boucle nommée de ce morceau. Flèches pour choisir, Entrée pour la poser, Suppr pour l'oublier.">rappeler</button>
           <span id="boucle-detail" hidden>
+            <!-- Pratiquer seulement : un nom facultatif, gardé avec le morceau. -->
+            <input id="boucle-nom" class="reglage__val boucle__nom" hidden maxlength="40" autocomplete="off"
+                   spellcheck="false" placeholder="nommer…" aria-label="Nom de la boucle"
+                   title="Nommer la boucle (Entrée) : elle se rappelle ensuite par son nom, à chaque réouverture du morceau.">
             <button data-boucle="-1" aria-label="Une mesure de moins">−</button>
             <b id="boucle-mesures">4 mes.</b>
             <button data-boucle="1" aria-label="Une mesure de plus">+</button>
             <button id="boucle-accel" class="reglage__unite" aria-pressed="false"
                     title="À chaque passage, la vitesse monte de 2 %, jusqu'à 100 % : on ralentit pour apprendre, la boucle ramène au tempo.">+2 %/passage</button>
           </span>
+          <div id="boucles-menu" class="boucles__menu" role="menu" aria-label="Boucles nommées" hidden></div>
         </div>
         <!-- N'apparaît qu'au-delà de ±20 % d'étirement d'ensemble : `wsola`
              commence à s'entendre. La mesure, pas l'interdiction. -->

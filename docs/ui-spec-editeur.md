@@ -465,8 +465,16 @@ réglage.
   variante de démixage des stems, vitesse laissée et **vitesse atteinte**
   (la plus haute à laquelle une boucle a été jouée jusqu'au bout), longueur
   et accélération des boucles, la boucle posée, les **boucles nommées**
-  (bornes en secondes du morceau d'origine ; l'interface ne les nomme pas
-  encore) et la position. Deux tables vides attendent leur chantier : les
+  (bornes en secondes du morceau d'origine) et la position. *Dans
+  l'interface* (V17, 9 nov.) : la boucle posée se nomme dans son propre
+  détail, dans la barre de l'établi (champ « nommer… », Entrée) ; un même
+  nom désigne une même boucle. « rappeler », à côté de « boucle », ouvre la
+  liste courte des boucles nommées du morceau (flèches, Entrée pour la
+  poser et y mener la tête, Suppr ou × pour l'oublier) ; il n'apparaît
+  qu'une fois une boucle nommée. La vitesse atteinte se lit au bout du
+  réglage de vitesse, dans son unité (« atteinte : 90 % ») : celle de la
+  boucle posée, ou du morceau sans boucle. Les trois sont propres à
+  Pratiquer : Créer ne les montre pas. Rien dans le rail (Règle 13). Deux tables vides attendent leur chantier : les
   corrections de transcription (`pratique_correction`, E2) et la table par
   mesure du coach (`pratique_mesure`, E4). **Créer n'y écrit rien** : ses
   stems sur le disque restent sa seule persistance (décision 3). Rouvrir le

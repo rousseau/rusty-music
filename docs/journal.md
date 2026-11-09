@@ -4518,3 +4518,42 @@ le faux Tauri ; la position rendue à la réouverture n'est pas couverte par
 le test ; aucune interface ne nomme encore les boucles ni ne montre la
 vitesse atteinte (elles font l'aller-retour, sans geste pour les poser) ;
 l'écriture à la fermeture de la fenêtre (`pagehide`) est au mieux.
+
+## Pratiquer, V17 : nommer une boucle, lire la vitesse atteinte — 9 nov. 2026
+
+Ce qu'E1 gardait sans geste pour le poser a maintenant son interface, dans la
+barre de l'établi (le groupe « boucle » et le réglage de vitesse), pas dans
+le rail.
+
+- **Nommer** : la boucle posée a un champ « nommer… » dans son détail
+  (Entrée garde, Échap rend le nom d'avant). Un même nom désigne une même
+  boucle (l'ancienne de ce nom est remplacée) ; la boucle posée porte le nom
+  de la boucle nommée qui a ses bornes. Rien de nouveau dans le schéma : les
+  boucles nommées vivent dans `edition.bouclesNommees` et passent par la
+  mémoire d'E1 (`pratique_boucle`, `nom` non nul).
+- **Rappeler, oublier** : « rappeler », à côté de « boucle », paraît dès
+  qu'une boucle du morceau est nommée et ouvre la liste courte (nom, mesures,
+  vitesse atteinte) au-dessus de la barre. Flèches, Début, Fin ; Entrée pose
+  la boucle au moteur et y mène la tête ; Suppr ou × l'oublie (posée, elle
+  reste posée, sans nom) ; Échap referme et rend le focus.
+- **Vitesse atteinte** : au bout du réglage de vitesse, dans son unité
+  (« atteinte : 90 % », ou en BPM) : celle de la boucle posée, ou du morceau
+  sans boucle ; remise à jour au passage qui la dépasse, la boucle nommée
+  correspondante comprise.
+- Les trois ne paraissent qu'en Pratiquer : Créer n'a pas de mémoire.
+- **Mesuré** : test de fumée « V17 » (deux boucles nommées, « couplet » à
+  90 % jouée jusqu'au bout et « pont » ; rappel au clavier, bornes reposées
+  au moteur identiques ; mémoire gardée `[null, couplet, pont]` ; autre
+  morceau sans liste, retour : liste, nom et « atteinte : 90 % »
+  reviennent ; Suppr oublie « pont », la mémoire suit ; rien en Créer).
+  Le faux Tauri retient désormais un déplacement de la tête et un nombre de
+  passages posé par le test. 57 tests de fumée verts, `verifier.sh` vert ;
+  `audit-interface.sh` complet : 252 cellules, 0 violation (seul
+  avertissement, inchangé : l'Anneau plein) ; rail de Pratiquer 511 / 804 px
+  à l'audit, 605 / 764 l'établi chargé (`rails.spec.js`).
+
+Non vérifié : dans l'app réelle (seulement le faux Tauri) ; l'audit a tourné
+session verrouillée (gabarit mesuré, carte non dessinée), et il ne voit pas
+la barre de l'établi chargée avec une boucle posée : la largeur de la barre
+avec le champ du nom et la liste ouverte n'a pas été regardée ; un passage de
+boucle réel (le compteur `passages` du moteur) n'a pas été rejoué.

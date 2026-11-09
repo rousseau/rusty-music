@@ -23,9 +23,6 @@ import { majUsage } from "./pratiquer.js";
 const memoire = {
   // Le morceau dont la mémoire a été rendue, et que `garder` peut écrire.
   path: null,
-  // Les boucles nommées : l'interface ne les montre pas encore, elles font
-  // l'aller-retour telles quelles.
-  nommees: [],
   // Le dernier état écrit, sans la position, et la position écrite.
   cle: null,
   position: null,
@@ -55,7 +52,9 @@ function instantane() {
     mesures_boucle: edition.mesuresBoucle,
     accel_boucle: edition.accelBoucle,
     position_s: lecture.stems.charges ? arrondi(lecture.stems.positionMs / 1000) : memoire.position,
-    boucles: [...boucles, ...memoire.nommees],
+    // Les boucles nommées sont dans `edition` : l'établi les nomme, les
+    // rappelle et les oublie (V17).
+    boucles: [...boucles, ...edition.bouclesNommees.map((n) => ({ ...n }))],
   };
 }
 
@@ -87,7 +86,7 @@ async function garderMemoirePratique({ quitter = false } = {}) {
 async function quitterMemoirePratique() {
   await garderMemoirePratique({ quitter: true });
   memoire.path = null;
-  memoire.nommees = [];
+  edition.bouclesNommees = [];
   memoire.cle = null;
   memoire.position = null;
   edition.vitesseAtteinte = null;
@@ -109,8 +108,11 @@ async function rendreMemoirePratique() {
   // Un autre morceau a été ouvert pendant la lecture de la base.
   if (edition.source?.path !== t.path || memoire.path === t.path) return;
   memoire.path = t.path;
-  memoire.nommees = (m?.boucles ?? []).filter((b) => b.nom !== null);
+  edition.bouclesNommees = (m?.boucles ?? [])
+    .filter((b) => b.nom !== null)
+    .sort((x, y) => x.debut_s - y.debut_s);
   if (m) await appliquer(m);
+  else majBoucleUI();
   memoire.cle = cleDe(instantane());
   memoire.position = m?.position_s ?? null;
 }

@@ -188,6 +188,102 @@ test("E1 : rouvrir un morceau en Pratiquer rend la séance comme on l'a laissée
   });
 });
 
+test("V17 : une boucle se nomme, se rappelle par son nom et revient avec sa vitesse atteinte", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 96 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 24 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+  });
+  const premier = PISTES[0].path;
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  await page.click("#vitesse-unite"); // en pour cent
+  // Ni liste ni vitesse atteinte tant qu'aucune boucle n'est nommée ni jouée.
+  await expect(page.locator("#boucles-liste")).toBeHidden();
+  await expect(page.locator("#vitesse-atteinte")).toBeHidden();
+
+  // Une boucle à 90 %, jouée une fois jusqu'au bout, nommée « couplet ».
+  for (let i = 0; i < 2; i++) await page.click('.dock__tete [data-r="vitesse"][data-d="-1"]');
+  await page.click("#boucle");
+  await expect(page.locator("#boucle-nom")).toBeVisible();
+  await page.evaluate(() => (window.__ETAT_FAUX__.passages = 1));
+  await expect(page.locator("#vitesse-atteinte")).toHaveText("atteinte : 90 %");
+  await page.fill("#boucle-nom", "couplet");
+  await page.press("#boucle-nom", "Enter");
+  await expect(page.locator("#boucles-liste")).toBeVisible();
+  const couplet = (await appels(page, "stems_boucle")).at(-1);
+
+  // Une seconde boucle, plus loin, nommée « pont » ; puis on ôte la boucle.
+  await page.click("#boucle");
+  await page.click('.dock__tete [data-r="vitesse"][data-d="1"]');
+  await page.evaluate(() => (window.__ETAT_FAUX__.passages = 0));
+  await page.evaluate(async () => {
+    const { deplacerLecture } = await import("./js/etabli.js");
+    await deplacerLecture(0.15);
+  });
+  await page.click("#boucle");
+  await page.fill("#boucle-nom", "pont");
+  await page.press("#boucle-nom", "Enter");
+  const pont = (await appels(page, "stems_boucle")).at(-1);
+  expect(pont.debut).not.toBe(couplet.debut);
+  await page.click("#boucle");
+  await expect(page.locator("#boucle")).toHaveAttribute("aria-pressed", "false");
+  // Sans boucle : la vitesse atteinte du morceau.
+  await expect(page.locator("#vitesse-atteinte")).toHaveText("atteinte : 90 %");
+
+  // Rappeler « couplet » au clavier : la liste, flèche, Entrée.
+  await page.click("#boucles-liste");
+  await expect(page.locator("#boucles-menu")).toBeVisible();
+  await expect(page.locator("#boucles-menu .boucles__rappel")).toHaveCount(2);
+  await page.keyboard.press("Home");
+  await expect(page.locator("#boucles-menu .boucles__rappel").first()).toBeFocused();
+  await expect(page.locator("#boucles-menu .boucles__rappel").first()).toContainText("couplet");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#boucles-menu")).toBeHidden();
+  await expect(page.locator("#boucle")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#boucle-nom")).toHaveValue("couplet");
+  expect((await appels(page, "stems_boucle")).at(-1)).toEqual(couplet);
+  await expect(page.locator("#vitesse-atteinte")).toHaveText("atteinte : 90 %");
+
+  // Gardées par la mémoire : la boucle posée, et les deux nommées.
+  const gardee = async () =>
+    (await appels(page, "pratique_garder")).filter((a) => a.path === premier).at(-1)?.memoire ?? null;
+  await expect
+    .poll(() => gardee().then((m) => (m?.boucles ?? []).map((b) => b.nom)), { timeout: 6000 })
+    .toEqual([null, "couplet", "pont"]);
+
+  // Un autre morceau : pas de boucles nommées ; retour : elles reviennent.
+  await pratiquerAlbum(page, 1);
+  await expect(page.locator("#demix-source")).not.toContainText(PISTES[0].title);
+  await expect(page.locator("#boucles-liste")).toBeHidden();
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  await expect(page.locator("#boucles-liste")).toBeVisible();
+  await expect(page.locator("#boucle-nom")).toHaveValue("couplet");
+  await expect(page.locator("#vitesse-atteinte")).toHaveText("atteinte : 90 %");
+
+  // Oublier « pont » au clavier (Suppr) : il quitte la liste et la mémoire.
+  await page.click("#boucles-liste");
+  await page.keyboard.press("End");
+  await expect(page.locator("#boucles-menu .boucles__rappel").last()).toContainText("pont");
+  await page.keyboard.press("Delete");
+  await expect(page.locator("#boucles-menu .boucles__rappel")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#boucles-menu")).toBeHidden();
+  await expect
+    .poll(() => gardee().then((m) => (m?.boucles ?? []).map((b) => b.nom)), { timeout: 6000 })
+    .toEqual([null, "couplet"]);
+
+  // Créer ne nomme ni ne rappelle : c'est la mémoire de Pratiquer.
+  await page.click('button.mode[data-mode="creer"]');
+  await expect(page.locator("#boucles-liste")).toBeHidden();
+  await expect(page.locator("#boucle-nom")).toBeHidden();
+  await expect(page.locator("#vitesse-atteinte")).toBeHidden();
+});
+
 test("I1 : « Choisir l'édition… » reste en Écouter, il ne suit pas dans les autres écrans", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("mb-contact", "essai@example.org"));
   await page.locator("#grille .album").first().click();

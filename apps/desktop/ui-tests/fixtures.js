@@ -298,14 +298,17 @@ const fixtures = {
   stems_state: (_, e) => ({
     actif: !!e.stems,
     en_pause: !e.stemsJoue,
-    position_ms: e.stemsJoue ? 5_000 : 0,
+    // Un déplacement (`stems_transport` « deplacer ») est retenu ; sinon la
+    // position est figée.
+    position_ms: e.positionMs ?? (e.stemsJoue ? 5_000 : 0),
     duree_ms: 181_000,
     noms: e.stems || [],
     niveaux: (e.stems || []).map(() => 1),
     vitesses: (e.stems || []).map(() => e.vitesse ?? 1),
     derive_ms: 0,
     boucle: null,
-    passages: 0,
+    // Un test fait « finir » un passage de boucle en posant `e.passages` (V17).
+    passages: e.passages ?? 0,
     latence_ms: 20,
   }),
   // La vitesse d'ensemble, relue par `appliquerVitesses` dans `stems_state`.
@@ -339,6 +342,7 @@ const fixtures = {
   start_etirer: (a) => ({ en_cours: false, faits: 0, total: 0, stems: a.stems, erreur: null }),
   stems_transport: (a, e) => {
     if (a.action === "arreter") e.stems = null;
+    if (a.action === "deplacer") e.positionMs = Math.round(a.position * 1000);
     return null;
   },
   stem_spectre: (a) => ({ largeur: a.width, hauteur: a.height, pixels: new Array(a.width * a.height).fill(40) }),

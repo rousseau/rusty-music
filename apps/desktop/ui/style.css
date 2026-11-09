@@ -2185,6 +2185,43 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   border-radius: 4px;
   padding: 2px 0;
 }
+/* Le nom d'une boucle (V17) : un champ comme les valeurs, plus large, aligné
+   à gauche ; vide, il dit « nommer… ». */
+.reglage__val.boucle__nom {
+  min-width: 96px;
+  width: 96px;
+  text-align: left;
+  padding: 2px 4px;
+  margin: 0 4px;
+}
+.reglage__val.boucle__nom[hidden] { display: none; }
+.reglage__val.boucle__nom::placeholder { color: var(--mut); opacity: .7; }
+/* La vitesse atteinte : une lecture, pas un réglage. */
+.reglage__atteinte { margin-left: 6px; white-space: nowrap; }
+.reglage__atteinte[hidden] { display: none; }
+/* La liste des boucles nommées : un menu au-dessus de la barre, même
+   cartouche que le menu de la carte. Placé par `ouvrirMenuBoucles`. */
+.boucles__menu {
+  position: fixed; z-index: 30; min-width: 200px; max-height: 50vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28); padding: 4px 0;
+}
+.boucles__menu[hidden] { display: none; }
+.boucles__ligne { display: flex; align-items: center; }
+.reglage .boucles__menu button {
+  width: auto; height: auto; border: none; border-radius: 0; background: none;
+  font: inherit; font-size: var(--t-second); color: var(--txt); cursor: pointer;
+}
+.reglage .boucles__menu .boucles__rappel {
+  flex: 1; display: flex; justify-content: space-between; gap: 12px;
+  padding: 6px 12px; text-align: left;
+}
+.boucles__rappel small { font-size: var(--t-legende); color: var(--mut); font-variant-numeric: tabular-nums; }
+.reglage .boucles__menu .boucles__oublier { padding: 6px 10px; color: var(--mut); }
+.reglage .boucles__menu button:hover, .reglage .boucles__menu button:focus-visible {
+  background: var(--panel2); color: var(--accent); outline: none;
+}
+
 /* « −2½ tons » : la hauteur s'écrit en tons, plus long qu'un pourcentage. */
 .reglage__val--tons {
   min-width: 58px;

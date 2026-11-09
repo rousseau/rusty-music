@@ -115,6 +115,11 @@ const edition = {
   // choses que la mémoire de Pratiquer garde par morceau (E1).
   vitesseAtteinte: null,
   varianteStems: null,
+  // Les boucles nommées du morceau, sous la forme que garde le moteur
+  // (`{ nom, debut_s, fin_s, mesures, vitesse_atteinte }`), triées par début.
+  // Rendues et gardées par la mémoire de Pratiquer ; la boucle posée porte le
+  // nom de celle qui a ses bornes (V17).
+  bouclesNommees: [],
   // Dernière position lue au moteur, l'instant où on l'a lue et l'état de
   // pause : de quoi extrapoler la position entre deux sondages pour la
   // partition, qui veut une mise à jour toutes les 50 ms.
@@ -351,11 +356,16 @@ async function allongerBoucle(d) {
 /// Un passage de plus : un cran de vitesse, jusqu'au tempo d'origine.
 async function accelererAuPassage(passages) {
   // Un passage de boucle mené à son terme : la vitesse à laquelle il a été
-  // joué est atteinte, pour le morceau et pour la boucle.
+  // joué est atteinte, pour le morceau, pour la boucle et pour la boucle
+  // nommée qui a ses bornes.
   if (edition.boucle && passages > edition.passagesVus) {
     const v = Math.round(edition.vitesse * 1000) / 1000;
+    const avant = edition.boucle.atteinte ?? 0;
     edition.vitesseAtteinte = Math.max(edition.vitesseAtteinte ?? 0, v);
-    edition.boucle.atteinte = Math.max(edition.boucle.atteinte ?? 0, v);
+    edition.boucle.atteinte = Math.max(avant, v);
+    const n = boucleNommeeCourante();
+    if (n) n.vitesse_atteinte = Math.max(n.vitesse_atteinte ?? 0, v);
+    if (edition.boucle.atteinte !== avant) dessinerReglages();
   }
   if (!edition.accelBoucle || passages <= edition.passagesVus) {
     edition.passagesVus = passages;
@@ -380,7 +390,142 @@ function majBoucleUI() {
   $("boucle-mesures").textContent = `${edition.mesuresBoucle} mes.`;
   $("boucle-accel").setAttribute("aria-pressed", String(edition.accelBoucle));
   $("boucle-accel").classList.toggle("reglage__unite--actif", edition.accelBoucle);
+  // Nommer et rappeler : Pratiquer seulement, la seule à garder ses boucles.
+  const pratiquer = edition.usage === "pratiquer";
+  const nom = $("boucle-nom");
+  nom.hidden = !pratiquer;
+  if (document.activeElement !== nom) nom.value = boucleNommeeCourante()?.nom ?? "";
+  const liste = $("boucles-liste");
+  const n = edition.bouclesNommees.length;
+  liste.hidden = !pratiquer || n === 0;
+  liste.setAttribute("aria-label", `Rappeler une boucle nommée (${n})`);
+  if (liste.hidden) fermerMenuBoucles({ rendreFocus: false });
   positionnerBande();
+  dessinerReglages();
+}
+
+/* --------------------------------------------- les boucles nommées (V17) */
+
+const memesBornes = (n, b) => Math.abs(n.debut_s - b.debut) < 1e-3 && Math.abs(n.fin_s - b.fin) < 1e-3;
+
+/// La boucle nommée qui a les bornes de la boucle posée, ou `null`.
+function boucleNommeeCourante() {
+  const b = edition.boucle;
+  return b ? (edition.bouclesNommees.find((n) => memesBornes(n, b)) ?? null) : null;
+}
+
+/// Donne un nom à la boucle posée, ou la renomme. Un nom déjà pris désigne
+/// la même boucle : l'ancienne de ce nom est remplacée. Un nom vide ne retire
+/// rien (oublier une boucle passe par la liste).
+function nommerBoucle(texte) {
+  const b = edition.boucle;
+  const nom = texte.trim().slice(0, 40);
+  if (b && nom) {
+    const courante = boucleNommeeCourante();
+    edition.bouclesNommees = edition.bouclesNommees.filter((n) => n !== courante && n.nom !== nom);
+    edition.bouclesNommees.push({
+      nom,
+      debut_s: b.debut,
+      fin_s: b.fin,
+      mesures: b.mesures ?? null,
+      vitesse_atteinte: b.atteinte ?? courante?.vitesse_atteinte ?? null,
+    });
+    edition.bouclesNommees.sort((x, y) => x.debut_s - y.debut_s);
+  }
+  majBoucleUI();
+}
+
+/// Pose une boucle nommée et y mène la tête de lecture.
+async function rappelerBoucle(n) {
+  edition.boucle = { debut: n.debut_s, fin: n.fin_s, mesures: n.mesures ?? null, atteinte: n.vitesse_atteinte ?? null };
+  if (n.mesures) edition.mesuresBoucle = n.mesures;
+  await reposerBoucle();
+  if (lecture.stems.dureeMs) await deplacerLecture((n.debut_s * 1000) / lecture.stems.dureeMs);
+  majBoucleUI();
+}
+
+/// Oublie une boucle nommée. Posée, elle reste posée, sans nom.
+function oublierBoucle(n) {
+  edition.bouclesNommees = edition.bouclesNommees.filter((x) => x !== n);
+  majBoucleUI();
+}
+
+function remplirMenuBoucles() {
+  const menu = $("boucles-menu");
+  menu.replaceChildren();
+  for (const n of edition.bouclesNommees) {
+    const ligne = document.createElement("div");
+    ligne.className = "boucles__ligne";
+    ligne.setAttribute("role", "none");
+    const rappel = document.createElement("button");
+    rappel.type = "button";
+    rappel.className = "boucles__rappel";
+    rappel.setAttribute("role", "menuitem");
+    const etiquette = document.createElement("span");
+    etiquette.textContent = n.nom;
+    const detail = document.createElement("small");
+    const bouts = [n.mesures ? `${n.mesures} mes.` : `${horloge(n.debut_s * 1000)}–${horloge(n.fin_s * 1000)}`];
+    if (n.vitesse_atteinte) bouts.push(`${Math.round(n.vitesse_atteinte * 100)} %`);
+    detail.textContent = bouts.join(" · ");
+    rappel.append(etiquette, detail);
+    rappel.addEventListener("click", () => {
+      fermerMenuBoucles();
+      rappelerBoucle(n).catch((e) => remonter(e, "boucle"));
+    });
+    rappel.addEventListener("keydown", (e) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      e.preventDefault();
+      oublierEtGarderLeFocus(n);
+    });
+    const oublier = document.createElement("button");
+    oublier.type = "button";
+    oublier.className = "boucles__oublier";
+    oublier.tabIndex = -1;
+    oublier.textContent = "×";
+    oublier.setAttribute("aria-label", `Oublier la boucle « ${n.nom} »`);
+    oublier.title = "Oublier cette boucle (Suppr au clavier)";
+    oublier.addEventListener("click", () => oublierEtGarderLeFocus(n));
+    ligne.append(rappel, oublier);
+    menu.append(ligne);
+  }
+}
+
+function itemsMenuBoucles() {
+  return [...$("boucles-menu").querySelectorAll(".boucles__rappel")];
+}
+
+function oublierEtGarderLeFocus(n) {
+  const i = edition.bouclesNommees.indexOf(n);
+  oublierBoucle(n);
+  if (!edition.bouclesNommees.length) return; // le menu s'est fermé avec la liste
+  remplirMenuBoucles();
+  const items = itemsMenuBoucles();
+  items[Math.min(i, items.length - 1)]?.focus();
+}
+
+function ouvrirMenuBoucles() {
+  const menu = $("boucles-menu");
+  const bouton = $("boucles-liste");
+  remplirMenuBoucles();
+  menu.hidden = false;
+  bouton.setAttribute("aria-expanded", "true");
+  // Au-dessus du bouton : la barre est en bas de la fenêtre.
+  const r = bouton.getBoundingClientRect();
+  menu.style.left = `${Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.bottom = `${Math.round(window.innerHeight - r.top + 4)}px`;
+  // La boucle posée d'abord, sinon la première.
+  const items = itemsMenuBoucles();
+  const i = edition.bouclesNommees.indexOf(boucleNommeeCourante());
+  items[Math.max(0, i)]?.focus();
+}
+
+function fermerMenuBoucles({ rendreFocus = true } = {}) {
+  const menu = $("boucles-menu");
+  if (menu.hidden) return;
+  const dedans = menu.contains(document.activeElement);
+  menu.hidden = true;
+  $("boucles-liste").setAttribute("aria-expanded", "false");
+  if (rendreFocus && dedans && !$("boucles-liste").hidden) $("boucles-liste").focus();
 }
 
 /// La bande de la boucle, en travers de la pile — calée comme le playhead.
@@ -418,6 +563,38 @@ for (const b of document.querySelectorAll("[data-boucle]")) {
 $("boucle-accel").addEventListener("click", () => {
   edition.accelBoucle = !edition.accelBoucle;
   majBoucleUI();
+});
+$("boucle-nom").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    e.currentTarget.blur();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.currentTarget.value = boucleNommeeCourante()?.nom ?? "";
+    e.currentTarget.blur();
+  }
+});
+$("boucle-nom").addEventListener("change", (e) => nommerBoucle(e.currentTarget.value));
+$("boucle-nom").addEventListener("blur", () => majBoucleUI());
+$("boucles-liste").addEventListener("click", () => {
+  if ($("boucles-menu").hidden) ouvrirMenuBoucles();
+  else fermerMenuBoucles();
+});
+$("boucles-menu").addEventListener("keydown", (e) => {
+  const items = itemsMenuBoucles();
+  const i = items.indexOf(document.activeElement);
+  const aller = (j) => items[(j + items.length) % items.length]?.focus();
+  if (e.key === "ArrowDown") aller(i + 1);
+  else if (e.key === "ArrowUp") aller(i - 1);
+  else if (e.key === "Home") aller(0);
+  else if (e.key === "End") aller(items.length - 1);
+  else if (e.key === "Escape" || e.key === "Tab") fermerMenuBoucles();
+  else return;
+  if (e.key !== "Tab") e.preventDefault();
+  e.stopPropagation();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest?.("#boucles-menu, #boucles-liste")) fermerMenuBoucles({ rendreFocus: false });
 });
 
 // Le nom d'un stem à l'écran. Le moteur nomme ses stems en anglais (`drums`,
@@ -723,6 +900,13 @@ function dessinerReglages() {
   // Au-delà de ±20 % d'étirement d'ensemble, `wsola` s'entend : on le dit, dans
   // les deux unités — c'est le rapport qui compte, pas la façon de l'écrire.
   $("vitesse-alerte").hidden = Math.abs(edition.vitesse - 1) <= 0.2;
+
+  // La vitesse atteinte (Pratiquer) : celle de la boucle posée, ou du
+  // morceau sans boucle ; dans l'unité du réglage.
+  const at = $("vitesse-atteinte");
+  const v = edition.boucle ? edition.boucle.atteinte : edition.vitesseAtteinte;
+  at.hidden = edition.usage !== "pratiquer" || !v;
+  if (v) at.textContent = `atteinte : ${REGLAGES.vitesse.ecrire(v)} ${REGLAGES.vitesse.unite()}`;
 }
 
 for (const nom of Object.keys(REGLAGES)) {
