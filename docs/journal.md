@@ -4610,3 +4610,40 @@ réel) : ni un clic sur une vraie transcription MuScriptor, ni le dialogue
 logiciel (seulement leurs en-têtes) ; l'audit a tourné écran verrouillé et ne
 voit pas l'établi chargé d'une partition, la barre de correction n'y est donc
 pas mesurée (elle passe sur deux lignes à 1 400 px de large, capture du test).
+
+## Carte, V9 : le relief accordé au fond, plus d'anneau à z12 — 9 nov. 2026
+
+Les deux points laissés ouverts par D4, tranchés par François : teinte
+claire en Nuit, courbes masquées sous z13.
+
+- **`style::accorder_relief`** (`crates/carto/src/style.rs`) : lit le fond
+  du style (`terre-reelle`) ; fond sombre (luminance relative < 0,2 : Nuit
+  #000000, Bleu plan #1A3A5C) → courbes, courbe désignée et numéros en
+  beige clair `TEINTE_COURBES_SOMBRE` (#D4C8B4), ombrage qui éclaircit
+  (reflet `rgba(255, 244, 228, 0.35)`, exagération 0,5) ; fond clair (OSM
+  clair, Sépia, Encre) → le brun #9C7C5E et l'ombrage d'avant, inchangés.
+  Courbes, courbe désignée et numéros portent `minzoom` 13
+  (`ZOOM_COURBES_MIN`) ; l'ombrage reste à tous les zooms. Comme chaque
+  palette a son `style-<id>.json`, la teinte suit le fond au `setStyle`
+  sans rien ajouter au rejeu.
+- **Styles déjà écrits** : `poser_relief`, rejoué à chaque style servi
+  (`style_carte`), réaccorde un style qui a déjà le relief au lieu de
+  l'ignorer : les tuiles et styles existants sont corrigés sans
+  régénération. Test `le_relief_suit_le_fond` (cinq palettes, un style Nuit
+  d'avant V9 réaccordé, rien ne double au second passage).
+- **Pastille du numéro** (`relief.js`) : prend la teinte de la couche
+  `courbes` du style courant au lieu du brun en dur.
+- **Contraste mesuré** (WCAG, trait à l'opacité 0,7 sur le fond) : Nuit
+  3,1 avec le brun → 6,3 avec le beige ; Bleu plan 2,2 → 4,3 ; OSM clair
+  2,2, inchangé.
+- **Poses** : avant, OSM clair z12, z14, z16 dans
+  `~/Exp/rusty_music-captures/v9-avant/` (l'anneau serré se voit à z12).
+- **Vérifié** : `verifier.sh` vert (58 tests de fumée) ; audit rapide de
+  `explorer:carte+relief`, 6 cellules, 0 violation.
+- **Non vérifié** : les poses Nuit avant et toutes les poses après.
+  L'écran s'est mis en veille pendant le lancement planifié (session non
+  verrouillée) ; `caffeinate -u -d` l'a rallumé une fois, le temps des
+  trois poses OSM clair, puis l'audit a de nouveau trouvé l'affichage
+  suspendu. Défaut vu en route : la lecture d'une pose (`lire()` dans
+  `audit.js`) attend un évènement `render` sans délai et cale pour de bon
+  si l'affichage s'éteint entre deux poses (délai de 900 s épuisé).

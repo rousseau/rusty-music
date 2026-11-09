@@ -191,9 +191,10 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   Regardé dans l'application le 8 nov. (D4) : l'audit voit le relief et
   pose la carte à z12, z14, z16 en OSM clair et en Nuit
   (`RUSTY_AUDIT_CAPTURES`). En OSM clair, le plan reste lisible sous les
-  courbes. Pas corrigé, à décider : en Nuit, le relief est presque
-  invisible (courbes et ombrage bruns sur le noir) ; à z12, les courbes
-  s'empilent en anneau au bord de la zone peuplée. Réparé en route :
+  courbes. Corrigé le 9 nov. (V9) : sur fond sombre, courbes beige clair
+  et ombrage qui éclaircit (contraste du trait en Nuit 3,1 → 6,3) ; courbes
+  masquées sous z13, l'ombrage gardé ; reste à les regarder aux six poses,
+  écran allumé (`journal.md`, « V9 »). Réparé en route :
   changer de fond ne rejouait plus le relief, les couleurs, le filtre, les
   pentes ni les traces (`journal.md`, « D4 »).
 - P8, des lieux à soi — fait : épingles (clic droit « Épingler ici », nom,

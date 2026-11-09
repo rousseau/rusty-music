@@ -208,9 +208,95 @@ pub fn poser_traces(style: &mut Value) {
     couches.insert(bord + 1, brouillard);
 }
 
-/// Teinte des courbes de niveau, la même sur toutes les palettes : le brun
-/// des cartes topographiques, lisible sur papier comme sur fond de nuit.
+/// Teinte des courbes de niveau sur fond clair : le brun des cartes
+/// topographiques.
 pub const TEINTE_COURBES: &str = "#9C7C5E";
+
+/// Teinte des courbes de niveau sur fond sombre (Nuit, Bleu plan) : un beige
+/// clair, discret. Le brun y disparaissait à z14 et z16 (D4, 8 nov. 2026).
+pub const TEINTE_COURBES_SOMBRE: &str = "#D4C8B4";
+
+/// Sous ce zoom, pas de courbes (l'ombrage reste) : à z12, les dix niveaux
+/// s'empilaient en un anneau serré au bord de la zone peuplée (D4).
+pub const ZOOM_COURBES_MIN: f64 = 13.0;
+
+/// Luminance relative (WCAG) d'une couleur `#RRGGBB`, `None` si illisible.
+fn luminance(hex: &str) -> Option<f64> {
+    let h = hex.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let canal = |i: usize| -> Option<f64> {
+        let c = f64::from(u8::from_str_radix(h.get(i..i + 2)?, 16).ok()?) / 255.0;
+        Some(if c <= 0.039_28 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        })
+    };
+    Some(0.2126 * canal(0)? + 0.7152 * canal(2)? + 0.0722 * canal(4)?)
+}
+
+/// Un fond de plan sombre : les courbes y prennent la teinte claire et
+/// l'ombrage y éclaircit au lieu d'assombrir.
+fn fond_sombre(papier: &Value) -> bool {
+    papier.as_str().and_then(luminance).is_some_and(|l| l < 0.2)
+}
+
+/// Accorde le relief au fond du style : teinte des courbes et de leurs
+/// numéros, ombrage, et courbes masquées sous [`ZOOM_COURBES_MIN`]. Rejoué
+/// à chaque style servi, il corrige aussi un style écrit avant (D4) sans
+/// régénérer les tuiles. Sans effet sur un style sans relief.
+pub fn accorder_relief(style: &mut Value) {
+    let Some(couches) = style["layers"].as_array_mut() else {
+        return;
+    };
+    let papier = couches
+        .iter()
+        .find(|c| c["id"] == "terre-reelle")
+        .and_then(|c| c.pointer("/paint/background-color"))
+        .cloned()
+        .unwrap_or(json!("#F2EFE9"));
+    let sombre = fond_sombre(&papier);
+    let teinte = if sombre {
+        TEINTE_COURBES_SOMBRE
+    } else {
+        TEINTE_COURBES
+    };
+    for c in couches.iter_mut() {
+        match c["id"].as_str() {
+            Some("relief-ombre") => {
+                c["paint"] = if sombre {
+                    json!({
+                        "hillshade-exaggeration": 0.5,
+                        "hillshade-shadow-color": "rgba(0, 0, 0, 0.4)",
+                        "hillshade-highlight-color": "rgba(255, 244, 228, 0.35)",
+                        "hillshade-accent-color": "rgba(255, 244, 228, 0.1)",
+                        "hillshade-illumination-direction": 315
+                    })
+                } else {
+                    json!({
+                        "hillshade-exaggeration": 0.35,
+                        "hillshade-shadow-color": "rgba(60, 45, 30, 0.35)",
+                        "hillshade-highlight-color": "rgba(255, 255, 255, 0.25)",
+                        "hillshade-accent-color": "rgba(60, 45, 30, 0.15)",
+                        "hillshade-illumination-direction": 315
+                    })
+                };
+            }
+            Some("courbes" | "courbes-choisie") => {
+                c["paint"]["line-color"] = json!(teinte);
+                c["minzoom"] = json!(ZOOM_COURBES_MIN);
+            }
+            Some("courbes-numero") => {
+                c["paint"]["text-color"] = json!(teinte);
+                c["paint"]["text-halo-color"] = papier.clone();
+                c["minzoom"] = json!(ZOOM_COURBES_MIN);
+            }
+            _ => {}
+        }
+    }
+}
 
 /// Pose dans un style de plan de ville réel le **relief musical** (P6 de la
 /// balade, `altitude.rs`), masqué : l'option « Relief » de l'interface le
@@ -225,8 +311,9 @@ pub const TEINTE_COURBES: &str = "#9C7C5E";
 ///   `courbes-numero`, les numéros le long des traits.
 ///
 /// Les tuiles visent l'énergie au départ (`dem-energie`, `courbes-energie`).
-/// Sans effet hors plan de ville réel et sur un style qui l'a déjà ; appliqué
-/// aussi en servant un style écrit avant.
+/// Teinte, ombrage et étages suivent le fond ([`accorder_relief`]). Sans
+/// effet hors plan de ville réel ; sur un style qui l'a déjà, seulement
+/// réaccordé ; appliqué aussi en servant un style écrit avant.
 pub fn poser_relief(style: &mut Value) {
     let Some(couches) = style["layers"].as_array() else {
         return;
@@ -240,6 +327,7 @@ pub fn poser_relief(style: &mut Value) {
         return;
     };
     if rang("relief-ombre").is_some() {
+        accorder_relief(style);
         return;
     }
     let Some(base) = style
@@ -346,6 +434,7 @@ pub fn poser_relief(style: &mut Value) {
         .unwrap_or(routes);
     couches.insert(sous_routes, traits);
     couches.insert(quartiers, ombre);
+    accorder_relief(style);
 }
 
 /// Construit le style complet.
@@ -2054,6 +2143,76 @@ mod tests {
         );
         poser_relief(&mut fictif);
         assert!(fictif["sources"].get("dem").is_none());
+    }
+
+    /// Le relief suit le fond (V9) : brun sur OSM clair, beige clair et
+    /// ombrage qui éclaircit sur Nuit et Bleu plan ; courbes et numéros
+    /// masqués sous z13, l'ombrage gardé ; un style d'avant, servi de
+    /// nouveau, est réaccordé.
+    #[test]
+    fn le_relief_suit_le_fond() {
+        let couche = |s: &Value, id: &str| {
+            s["layers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["id"] == id)
+                .unwrap()
+                .clone()
+        };
+        for (id, teinte) in [
+            ("osm-clair", TEINTE_COURBES),
+            ("sepia", TEINTE_COURBES),
+            ("encre", TEINTE_COURBES),
+            ("nuit", TEINTE_COURBES_SOMBRE),
+            ("bleu-plan", TEINTE_COURBES_SOMBRE),
+        ] {
+            let pal = Palette::par_id(id).unwrap();
+            let mut s = construire(&source_ville(), &Paliers::ville(), "x", pal);
+            // Servi une seconde fois : rien ne double, rien ne change.
+            let avant = s.clone();
+            poser_relief(&mut s);
+            assert_eq!(s, avant, "{id}");
+            assert_eq!(couche(&s, "courbes")["paint"]["line-color"], teinte, "{id}");
+            assert_eq!(couche(&s, "courbes-choisie")["paint"]["line-color"], teinte);
+            assert_eq!(couche(&s, "courbes-numero")["paint"]["text-color"], teinte);
+            for c in ["courbes", "courbes-choisie", "courbes-numero"] {
+                assert_eq!(couche(&s, c)["minzoom"], ZOOM_COURBES_MIN, "{id} {c}");
+            }
+            let ombre = couche(&s, "relief-ombre");
+            assert!(
+                ombre.get("minzoom").is_none(),
+                "l'ombrage reste à tous les zooms"
+            );
+            let clair = ombre["paint"]["hillshade-highlight-color"]
+                .as_str()
+                .unwrap();
+            assert_eq!(
+                clair.starts_with("rgba(255, 244"),
+                teinte == TEINTE_COURBES_SOMBRE
+            );
+        }
+        // Un style Nuit écrit avant V9 : brun, sans étage.
+        let mut vieux = construire(
+            &source_ville(),
+            &Paliers::ville(),
+            "x",
+            Palette::par_id("nuit").unwrap(),
+        );
+        for c in vieux["layers"].as_array_mut().unwrap() {
+            if c["id"] == "courbes" {
+                c["paint"]["line-color"] = json!(TEINTE_COURBES);
+                c.as_object_mut().unwrap().remove("minzoom");
+            }
+        }
+        poser_relief(&mut vieux);
+        assert_eq!(
+            couche(&vieux, "courbes")["paint"]["line-color"],
+            TEINTE_COURBES_SOMBRE
+        );
+        assert_eq!(couche(&vieux, "courbes")["minzoom"], ZOOM_COURBES_MIN);
+        assert_eq!(luminance("#FFFFFF").map(|l| (l * 1e3).round()), Some(1e3));
+        assert_eq!(luminance("nuit"), None);
     }
 
     /// Les pentes : une source GeoJSON et trois couches masquées (l'option

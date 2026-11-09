@@ -334,7 +334,8 @@ function dessinerRelief(r, encre, accent) {
   const [x, y] = lonlatEcran(relief.pastille, r);
   const fond = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#fff";
   ctx.fillStyle = fond;
-  ctx.strokeStyle = "#9C7C5E";
+  // La teinte des courbes du fond courant (brun en clair, beige en Nuit).
+  ctx.strokeStyle = carteGL()?.getPaintProperty?.("courbes", "line-color") || "#9C7C5E";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(x, y, PASTILLE_PX, 0, Math.PI * 2);
