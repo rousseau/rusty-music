@@ -4777,3 +4777,48 @@ Suite de V9 : l'affichage s'était éteint session ouverte, les poses
   veille, `dort=1` lu mais masqué par le verrou dans la sortie) ; une pose
   réellement non lue en 8 s (chemin borné écrit, pas provoqué) ; `deny`
   (avis SQLite ci-dessus).
+
+## Sécurité, V20 : SQLite 3.54 (RUSTSEC-2026-0459) — 9 nov. 2026
+
+L'avis vise SQLite avant 3.54 : une base ouverte avec un fichier `-wal`
+d'une autre taille de page peut rendre des octets non initialisés du cache.
+Attaque locale, qui demande d'ouvrir une paire de fichiers forgée ; Rusty
+Music n'ouvre que ses propres bases (bibliothèque, ville), mais le
+correctif existait : on monte plutôt que d'ignorer.
+
+- **`rusqlite` 0.32 → 0.41.1**, `libsqlite3-sys` 0.30.1 → 0.39.1 (SQLite
+  3.54.1 embarqué), une seule copie dans l'arbre (`cargo tree -i
+  libsqlite3-sys`). Fonction `fallible_uint` ajoutée : depuis 0.36, `u64`
+  et `usize` ne sont plus `ToSql`/`FromSql` sans elle ; elle rend la
+  conversion faillible de 0.32, que le code suppose (un exemple ne
+  compilait plus).
+- **`rusqlite_migration` 1.3 → 2.6.0**, mais la 2.6.0 publiée exige
+  `rusqlite` 0.40 (SQLite 3.53, encore touché) ; la montée en 0.41 attend
+  en amont (PR #370 : l'exigence de version et un doctest, rien d'autre).
+  Plutôt qu'un commit git non fusionné, `vendor/rusqlite_migration` est le
+  paquet 2.6.0 de crates.io (sha256 vérifié contre l'index) avec cette
+  seule exigence relevée, branché par `[patch.crates-io]` et exclu du
+  workspace ; licence Apache-2.0 copiée, `VENDOR.md` dit quoi retirer et
+  quand. L'API utilisée (`Migrations`, `M`, `Error`) n'a pas bougé : aucun
+  changement dans `crates/core/src/db*`.
+- **Rust 1.95 minimum** (`rusqlite_migration` 2.6 ; `rusqlite` 0.41 en
+  demande 1.89), `rust-version` du workspace relevé. Effet de bord :
+  clippy active les lints liés à la version, `chunks_exact_to_as_chunks`
+  (1.88) et `manual_is_multiple_of` (1.87) ; 21 fichiers retouchés
+  mécaniquement (`as_chunks::<N>()`, `is_multiple_of`), sans changement de
+  comportement (le reste est ignoré comme avec `chunks_exact`).
+- **Migrations rejouées** sur trois copies (`sqlite3 .backup`) des bases
+  réelles, par `rusty-music --db <copie> stats` : base courante (version 8)
+  inchangée, schéma identique ; base du 6 nov. (version 4) → 8, huit
+  tables créées vides, aucune ligne changée ailleurs ; base du 20 août
+  (version 0) → 8, 41 tables créées vides, une seule différence voulue
+  (`mb_fetched` 3 162 → 1 : la purge `purge_dates_2026_09`, qui laisse sa
+  marque). Schémas des deux anciennes identiques à la courante (à un
+  retour à la ligne près dans un `CREATE TABLE`), `integrity_check` ok
+  partout. 27 901, 27 845 et 27 044 morceaux lus.
+- **`verifier.sh` entièrement vert** : fmt, deny (advisories, bans,
+  licenses, sources ok, sans ignore nouveau), clippy, 761 tests, compagnon
+  iOS, fumée (58).
+- **Non vérifié** : l'app installée sur la base réelle (la migration y est
+  sans objet, version 8 déjà ; à voir au prochain I<n>) ; le compagnon iOS
+  au-delà de `cargo check` pour sa cible.

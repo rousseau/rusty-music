@@ -94,7 +94,7 @@ docs/                 spécifications ; docs/archives/ : historique
 livre/                notes de l'auteur — ne jamais modifier sans demande
 ```
 
-Build : Rust 1.82+, un compilateur C, les deux tours de CLAP dans `models/`
+Build : Rust 1.95+, un compilateur C, les deux tours de CLAP dans `models/`
 (`./scripts/telecharger-modeles.sh clap`) ; sans elles, seulement avec
 `--features rusty-music-analysis/sans-modeles` (bouchons, pour la CI).
 Vérification avant push : `./scripts/verifier.sh` (fmt, deny, clippy, test, compagnon iOS,

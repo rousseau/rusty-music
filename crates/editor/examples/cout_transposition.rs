@@ -45,7 +45,7 @@ fn main() {
     let transposition = t.elapsed();
 
     let t = Instant::now();
-    let (g, d): (Vec<f32>, Vec<f32>) = out.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+    let (g, d): (Vec<f32>, Vec<f32>) = out.as_chunks::<2>().0.iter().map(|c| (c[0], c[1])).unzip();
     let cible = std::env::temp_dir().join("cout_transposition.wav");
     wav::ecrire(&cible, &g, &d, 44_100).expect("écriture");
     let ecriture = t.elapsed();

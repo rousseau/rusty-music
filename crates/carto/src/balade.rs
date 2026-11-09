@@ -759,7 +759,7 @@ where
         .iter()
         .map(|b| facettes(etat, graphe, accrochage, b, ctx))
         .collect();
-    if ailleurs_tous_les.is_some_and(|n| n > 0 && etat.carrefours % n == 0) {
+    if ailleurs_tous_les.is_some_and(|n| n > 0 && etat.carrefours.is_multiple_of(n)) {
         // La plus différente parmi les plus neuves : s'aventurer, c'est
         // d'abord le neuf.
         let neuve = f.iter().map(|x| x.nouveaute).fold(0.0f32, f32::max);

@@ -248,7 +248,7 @@ fn passe_clap(
                 }
             }
             vus += 1;
-            if vus % 25 == 0 || vus == total {
+            if vus.is_multiple_of(25) || vus == total {
                 debug!("{vus}/{total}");
                 avancement(vus, total);
             }

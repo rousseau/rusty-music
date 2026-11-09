@@ -80,7 +80,7 @@ pub fn stereo(path: &Path) -> Result<Stereo, Error> {
     let n = entrelace.len() / 2;
     let mut gauche = Vec::with_capacity(n);
     let mut droite = Vec::with_capacity(n);
-    for paire in entrelace.chunks_exact(2) {
+    for paire in entrelace.as_chunks::<2>().0 {
         gauche.push(paire[0]);
         droite.push(paire[1]);
     }

@@ -570,7 +570,7 @@ fn alternance_dents(env: &[f32], periode: f32) -> f32 {
         while (x as usize) + 1 < env.len() {
             let (j, t) = (x.floor() as usize, x.fract());
             let v = env[j] * (1.0 - t) + env[j + 1] * t;
-            if rang % 2 == 0 {
+            if rang.is_multiple_of(2) {
                 pair += v;
                 n_pair += 1;
             } else {

@@ -184,7 +184,13 @@ impl Embedder {
                     plat.len()
                 )));
             }
-            sorties.extend(plat.chunks_exact(DIMS).take(reste).map(<[f32]>::to_vec));
+            sorties.extend(
+                plat.as_chunks::<DIMS>()
+                    .0
+                    .iter()
+                    .take(reste)
+                    .map(|c| c.to_vec()),
+            );
         }
         Ok(sorties)
     }

@@ -822,7 +822,7 @@ pub fn run() {
                     affiche.battement(lecture_courante(&etat).as_ref());
                     // Session toutes les cinq secondes, comme le bureau : iOS
                     // peut fermer l'app suspendue sans prévenir.
-                    if tour % 20 == 0 {
+                    if tour.is_multiple_of(20) {
                         if let Err(e) = session::sauvegarder(&etat, &mut memo) {
                             tracing::warn!(erreur = %e, "sauvegarde de la session impossible");
                         }

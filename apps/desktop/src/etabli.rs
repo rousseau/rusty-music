@@ -147,7 +147,7 @@ pub(crate) fn transposer_un(chemin: &str, demi_ton: f32) -> Result<String, Strin
         .flat_map(|(g, d)| [*g, *d])
         .collect();
     let out = etirement::transposer(&entrelace, 2, demi_ton);
-    let (g, d): (Vec<f32>, Vec<f32>) = out.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+    let (g, d): (Vec<f32>, Vec<f32>) = out.as_chunks::<2>().0.iter().map(|c| (c[0], c[1])).unzip();
     wav::ecrire(&cible, &g, &d, 44_100).map_err(echec)?;
     tracing::info!(chemin, demi_ton, "stem transposé");
     Ok(cible.display().to_string())
@@ -419,7 +419,9 @@ pub(crate) fn stems_exporter(
     // La somme des stems reconstitue un mélange qui frôlait déjà la pleine
     // échelle : sans écrêtage, un solo à plein niveau saturerait.
     let (g, d): (Vec<f32>, Vec<f32>) = melange
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| (c[0].clamp(-1.0, 1.0), c[1].clamp(-1.0, 1.0)))
         .unzip();
     wav::ecrire(&cible, &g, &d, 44_100).map_err(echec)?;

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/core", "crates/enrichissement", "crates/lama", "crates/valise", "crates/cli", "crates/osm", "crates/player", "crates/analysis", "crates/carto", "crates/editor", "crates/superres", "crates/transcription", "apps/desktop", "apps/mobile"]
 # `experiments/` reste hors du workspace : ce qu'on y essaie doit pouvoir ne
 # pas compiler sans empêcher `cargo build` de passer sur le reste.
-exclude = ["experiments"]
+exclude = ["experiments", "vendor"]
 
 # Les dépendances sont optimisées même en debug. Le décodage audio est
 # entièrement processeur : non optimisé, `symphonia` met 18 s à calculer
@@ -60,10 +60,10 @@ debug = 1
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# 1.82 : `Option::is_none_or` (carto), et le plancher réel de nos dépendances
-# (`ort` réclame 1.81). Burn et CubeCL ne déclarent pas de version minimale
+# 1.95 : le plancher réel de nos dépendances, `rusqlite_migration` 2.6 (et
+# `rusqlite` 0.41 : 1.89) ; avant eux, `Option::is_none_or` (carto, 1.82). Burn et CubeCL ne déclarent pas de version minimale
 # mais suivent de près la stable ; à relever si `cargo build` s'en plaint.
-rust-version = "1.82"
+rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 # Versions épinglées au niveau du workspace : les crates les reprennent
@@ -72,10 +72,15 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 anyhow    = "1"
 thiserror = "2"
-rusqlite  = { version = "0.32", features = ["bundled", "functions"] }
+# `fallible_uint` : depuis 0.36, `u64`/`usize` ne sont plus `ToSql`/`FromSql`
+# sans elle ; elle rend la conversion faillible de 0.32 (erreur au-delà de
+# i64::MAX), que le code suppose partout.
+rusqlite  = { version = "0.41", features = ["bundled", "functions", "fallible_uint"] }
 # Migrations versionnées sur `PRAGMA user_version` (cljoly, Apache-2.0).
-# 1.3 est la dernière qui suit `rusqlite` 0.32 ; la 2.x demande 0.34+.
-rusqlite_migration = "1.3"
+# 2.6 (crates.io) demande `rusqlite` 0.40 ; on la prend avec 0.41, la
+# première à embarquer un SQLite corrigé de RUSTSEC-2026-0459 (SQLite 3.54),
+# par une copie dans `vendor/` (voir `[patch.crates-io]` en bas).
+rusqlite_migration = "2.6"
 lofty     = "0.22"
 notify    = "8"
 walkdir   = "2"
@@ -246,3 +251,10 @@ quick-xml = "0.42"
 # retirer dès qu'une version > 1.0.9 sort. Voir docs/plan-ios-compagnon.md.
 [patch.crates-io]
 swift-rs = { git = "https://github.com/Brendonovich/swift-rs", rev = "207e4bfe5d36fdd0cc08f28d1849ff94ac7e24b8" }
+# rusqlite_migration 2.6.0 (dernière publiée) exige rusqlite 0.40, dont le
+# SQLite 3.53 est touché par RUSTSEC-2026-0459. La montée en 0.41 attend en
+# amont (PR #370 : la seule exigence de version change, plus un doctest).
+# `vendor/rusqlite_migration` est le paquet 2.6.0 de crates.io, somme vérifiée,
+# avec cette seule exigence changée (`vendor/rusqlite_migration/VENDOR.md`).
+# À retirer dès qu'une version > 2.6.0 sort.
+rusqlite_migration = { path = "vendor/rusqlite_migration" }

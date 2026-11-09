@@ -15,7 +15,9 @@ sauf `osm` et `superres`, dépendent de `rusty-music-core` par chemin, sans
 version.
 `editor` dépend de `demucs-core` par `git` (fork `rousseau/demucs-rs`),
 ce que crates.io refuse. Licence de tout le workspace : GPL-3.0-or-later.
-Rust 1.82 au minimum, Burn 0.21. Le dépôt GitHub `rousseau/rusty-music` est
+Rust 1.95 au minimum (depuis V20, 9 nov.), Burn 0.21. `core` ne se publie
+pas tel quel tant que `rusqlite_migration` vient de `vendor/` (rusqlite 0.41,
+voir `vendor/rusqlite_migration/VENDOR.md`) : attendre sa version > 2.6.0. Le dépôt GitHub `rousseau/rusty-music` est
 public.
 
 ## Ce qui vaut d'être publié

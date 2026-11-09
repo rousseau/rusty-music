@@ -104,7 +104,9 @@ fn encoder(points: &[[f64; 2]]) -> Vec<u8> {
 /// Décode ce qu'[`encoder`] a produit.
 pub fn decoder(octets: &[u8]) -> Vec<[f64; 2]> {
     octets
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|c| {
             [
                 f64::from_le_bytes(c[0..8].try_into().expect("8 octets")),

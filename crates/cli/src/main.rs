@@ -920,7 +920,8 @@ fn main() -> Result<()> {
             if demi_tons.abs() > 1e-6 {
                 out = etirement::transposer(&out, 2, demi_tons);
             }
-            let (g, d): (Vec<f32>, Vec<f32>) = out.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+            let (g, d): (Vec<f32>, Vec<f32>) =
+                out.as_chunks::<2>().0.iter().map(|c| (c[0], c[1])).unzip();
             wav::ecrire(&sortie, &g, &d, 44_100)?;
             println!(
                 "{:.0} s → {:.0} s (×{facteur}, {demi_tons:+} demi-tons) — {:.1} s de calcul\n{}",

@@ -339,7 +339,9 @@ pub fn greffer(
     let pose = assembler(matiere, CANAUX, cible, retard, fondu);
 
     let (g, d): (Vec<f32>, Vec<f32>) = pose
-        .chunks_exact(CANAUX)
+        .as_chunks::<CANAUX>()
+        .0
+        .iter()
         .map(|c| (c[0].clamp(-1.0, 1.0), c[1].clamp(-1.0, 1.0)))
         .unzip();
     if let Some(dossier) = sortie.parent() {
@@ -617,7 +619,9 @@ pub fn greffer_par_mesures(
     let (pose, facteur) = poser_mesures(&matiere, CANAUX, &us, &ug, &corr, cible);
 
     let (g, d): (Vec<f32>, Vec<f32>) = pose
-        .chunks_exact(CANAUX)
+        .as_chunks::<CANAUX>()
+        .0
+        .iter()
         .map(|c| (c[0].clamp(-1.0, 1.0), c[1].clamp(-1.0, 1.0)))
         .unzip();
     if let Some(dossier) = sortie.parent() {

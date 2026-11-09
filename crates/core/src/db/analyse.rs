@@ -132,8 +132,10 @@ impl Library {
                 let id: i64 = r.get(0)?;
                 let blob: Vec<u8> = r.get(1)?;
                 let v = blob
-                    .chunks_exact(4)
-                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| f32::from_le_bytes(*c))
                     .collect();
                 Ok((id, v))
             })?

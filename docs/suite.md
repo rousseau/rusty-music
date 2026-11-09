@@ -63,9 +63,11 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   décide du report, et une pose non lue en 8 s le dit au lieu d'attendre
   le délai ; reste un cas imprévisible : la fenêtre d'audit ouverte
   derrière ne reçoit aucune image (`journal.md`, « V19 »).
-- Sécurité : `cargo deny` rouge depuis le 9 nov. sur RUSTSEC-2026-0459
-  (SQLite livré par `libsqlite3-sys` 0.30) ; la sortie : `rusqlite` 0.41
-  et `rusqlite_migration` 2.x (`journal.md`, « V19 »).
+- Sécurité : RUSTSEC-2026-0459 (SQLite < 3.54) levé par V20 (9 nov.) :
+  `rusqlite` 0.41 (SQLite 3.54.1), `rusqlite_migration` 2.6 pris dans
+  `vendor/` avec sa seule exigence `rusqlite` relevée, en attendant sa
+  version > 2.6.0 (à retirer alors, `[patch.crates-io]`) ; Rust 1.95
+  minimum (`journal.md`, « V20 »). À installer (prochain I<n>).
 - Restent :
   - E, Pratiquer : mémoire par morceau faite (E1, 9 nov. : migration
     n° 7, la séance revient à la réouverture ; boucles nommées et vitesse

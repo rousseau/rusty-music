@@ -70,11 +70,13 @@ fn ecrire_f32(chemin: &Path, vecteurs: &[Vec<f32>]) -> std::io::Result<()> {
 fn lire_f32(chemin: &Path, n: usize) -> std::io::Result<Vec<Vec<f32>>> {
     let octets = fs::read(chemin)?;
     let tout: Vec<f32> = octets
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
     assert!(
-        n > 0 && tout.len() % n == 0,
+        n > 0 && tout.len().is_multiple_of(n),
         "{} : {} valeurs pour {n} lignes",
         chemin.display(),
         tout.len()
@@ -301,7 +303,12 @@ fn tsne(unites: &[Vec<f32>], perplexite: f32, epoques: usize, facteur: f32) -> V
             .sum::<f32>()
             .sqrt()
     });
-    t.embedding().chunks_exact(2).map(<[f32]>::to_vec).collect()
+    t.embedding()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| c.to_vec())
+        .collect()
 }
 
 fn mesurer(dossier: &Path, modeles: &[String]) -> Result<(), Box<dyn std::error::Error>> {
