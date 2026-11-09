@@ -4647,3 +4647,52 @@ claire en Nuit, courbes masquées sous z13.
   suspendu. Défaut vu en route : la lecture d'une pose (`lire()` dans
   `audit.js`) attend un évènement `render` sans délai et cale pour de bon
   si l'affichage s'éteint entre deux poses (délai de 900 s épuisé).
+
+## Pratiquer, E3 : banc d'étirement — coûts mesurés, écoute en attente du disque — 9 nov. 2026
+
+```bash
+cd experiments/etirement
+cargo run --release -- mesurer "<stem>.wav"   # n'écrit rien
+./rendre-ecoute.sh                           # 90 fichiers sur RUSTY_DEV
+```
+
+wsola (le code de l'application, `etirement.rs` inclus tel quel) contre
+Signalsmith Stretch (`signalsmith-stretch` 0.1.3, MIT) et Rubber Band R3
+(`rubberband` 0.1.5, GPL, sources de Rubber Band 4.0 compilées par `cc` : rien
+à installer). Rien n'a changé dans l'application.
+
+**Pire salve par bloc de 128 trames, quatre stems** (échéance 11,6 ms) :
+wsola 5,7-5,9 ms à tous les ralentis (les 6,1 ms du 19 août retrouvées),
+Rubber Band 1,4-1,7 ms, Signalsmith 0,9-1,0 ms. **Les deux vocodeurs
+transposent en flux au même coût** (1,0 et 1,5 ms à ±2 demi-tons) : la
+transposition sans fil ni cache leur est ouverte, pas à wsola.
+
+**Transposition d'un stem de 184 s, un fil** : wsola 13,1-17,5 s (17,9 s au
+journal), Rubber Band hors ligne 7,2-8,7 s, **Signalsmith 1,0 s**.
+
+**Le pire cas se mesure mal sur une machine occupée.** Une passe unique de
+`cout_bloc` a donné 327 ms pour wsola et 69 ms pour Rubber Band — l'ordonnanceur,
+pas les étireurs. Le banc fait cinq passes et garde le plus petit des cinq
+maxima : une préemption tombe dans une passe, un pic propre à l'étireur revient
+dans toutes. Deux lancements complets concordent à 0,3 ms près.
+
+**Hauteur** (sinusoïde de 441 Hz) : juste au dixième de hertz pour wsola et
+Rubber Band ; **Signalsmith transpose un peu haut** : +3 cents à +2 demi-tons,
++1 cent à −2.
+
+**Le piège de l'écoute à l'aveugle : le niveau.** Chaque rendu réglé sur
+l'original sous un plafond de crête, les vocodeurs sortaient jusqu'à 2 dB plus
+bas que wsola, parce qu'ils montent le facteur de crête — et plus fort paraît
+meilleur. Un seul niveau par extrait désormais, le plus haut que tous tiennent :
+16 fichiers entre −20,07 et −19,94 dBFS sur l'extrait de batterie. Même
+longueur à l'octet près pour A, B, C, sans quoi la taille du fichier trahirait
+la méthode (wsola rendait ±20 ms).
+
+Non vérifié :
+- **l'écoute elle-même** : les 90 fichiers (≈ 450 Mo) vont sur RUSTY_DEV, absent
+  ce matin ; le rendu a été essayé sur deux extraits dans un dossier temporaire,
+  aussitôt effacé. Brancher le LaCie et lancer `rendre-ecoute.sh` (≈ 2 min) ;
+- Rubber Band est rendu **hors ligne** pour l'écoute ; en flux (ce que ferait la
+  lecture), R3 temps réel peut sonner un peu autrement ;
+- la pire salve est mesurée sur du bruit blanc, comme `cout_bloc` ; sur de la
+  musique, la détection de transitoires de Rubber Band pourrait coûter plus.

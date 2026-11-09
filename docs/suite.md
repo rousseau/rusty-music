@@ -65,7 +65,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     atteinte à l'écran, V17 ; reste à le voir dans l'app installée), corriger la
     transcription faite (E2, 9 nov. : corde, octave, note supprimée ou
     ajoutée, gardées et réappliquées ; export MIDI et Guitar Pro ; pas
-    encore vue dans l'app réelle), banc d'étirement (WSOLA contre Signalsmith Stretch et Rubber Band), coach ;
+    encore vue dans l'app réelle), banc d'étirement (E3, 9 nov. : coûts mesurés — Signalsmith
+    transpose un stem de 184 s en 1,0 s contre 17 s pour wsola, et les deux
+    vocodeurs transposent en flux ; écoute à l'aveugle en attente du LaCie,
+    `experiments/etirement/rendre-ecoute.sh`), coach ;
   - F, Créer : chercher le greffon, bancs de compatibilité (COCOLA contre
     Stem-JEPA) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : empreinte (MuQ-MuLan,

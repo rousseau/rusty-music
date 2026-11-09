@@ -1,0 +1,26 @@
+# Banc d'écoute de l'étirement (E3) : wsola contre Signalsmith Stretch contre
+# Rubber Band R3, au ralenti (0,5 · 0,7 · 0,8×) et en transposition (±2 demi-tons).
+#
+# Hors du workspace (`exclude = ["experiments"]`) : un essai doit pouvoir
+# échouer sans rien casser d'autre, et rien d'ici n'entre dans l'application
+# avant l'écoute de François.
+#
+# Licences : wsola MIT ; signalsmith-stretch MIT (C++ compilé par `cc`) ;
+#            rubberband / rubberband-sys GPL-2.0-or-later (sources C++ de
+#            Rubber Band 4.0 embarquées, compilées par `cc`, Accelerate sur
+#            macOS) ; symphonia MPL-2.0 ; hound Apache-2.0.
+[package]
+name = "banc-etirement"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+wsola = "0.1"
+signalsmith-stretch = "0.1.3"
+rubberband = "0.1.5"
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "pcm", "flac"] }
+hound = "3"
+
+[profile.release]
+debug = false
