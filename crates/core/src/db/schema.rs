@@ -69,6 +69,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 9 (9 nov. 2026) : une note transcrite corrigée au demi-ton
         // (V18 : `pratique_correction.demitons`, `db/pratique.rs`).
         M::up(include_str!("../../sql/migration-009-demitons.sql")),
+        // N° 10 (9 nov. 2026) : la latence calibrée du coach, par
+        // périphérique et par chemin (E4 : `db/latence.rs`).
+        M::up(include_str!("../../sql/migration-010-latence.sql")),
     ])
 }
 

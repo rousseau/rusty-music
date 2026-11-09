@@ -8,6 +8,7 @@
 //! s'y trompait. On s'appuie sur `demucs-core`, où la STFT reste en Rust et
 //! où Burn ne reçoit que le réseau.
 
+pub mod coach;
 pub mod decode;
 pub mod etirement;
 pub mod greffe;

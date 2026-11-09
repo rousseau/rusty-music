@@ -4931,3 +4931,47 @@ Non vérifié : dans l'app réelle (faux Tauri seulement). Ni la recherche
 guidée sur la vraie base (tour texte, 400 voisins), ni la durée de la
 préparation de 8 candidats (≈ 30 s de démixage chacun annoncés, 1 Go de
 cache), ni le son d'une lecture de stems pendant un démixage de fond.
+
+## Pratiquer, E4, tranche 1 : l'horloge de pratique et la calibration — 9 nov. 2026
+
+Première des trois tranches du coach (`recherche-coach-pratique.md`, étapes
+1 à 3) : de quoi savoir quand une note de référence est attendue, en temps
+de l'horloge du système, et ce que vaut la latence. Rien de visible encore.
+
+- **Horloge du moteur** (`crates/player/src/horloge.rs`). Une horloge
+  monotone commune au processus (`maintenant_s`) ; le fil audio du
+  multipiste publie, sans verrou (compteur de séquence), une ancre : tel
+  instant du morceau rendu à tel instant, à telle vitesse
+  (`Multipiste::ancre`, `None` en pause). Le fil calcule les trames par
+  paquets, en avance sur la sortie : l'ancre garde l'**enveloppe haute** de
+  `instant − trames/SR` sur une fenêtre glissante de 1 à 2 s, qui se cale
+  sur la cadence de sortie sans la gigue des paquets et suit la dérive entre
+  carte son et système. Le décalage constant qui reste est ce que la
+  calibration mesure. Pendant un décompte, la trame rendue est placée avant
+  le départ (`(pos − attente·v)/SR`) : clics et notes sont sur la même
+  échelle.
+- **Projection** (`crates/editor/src/coach.rs`, `Horloge`) :
+  t̂ = t_ancre + (τ − τ_ancre + k·(b − a))/r + L, passages de boucle
+  compris (ancre avant la boucle : rien avant le passage 0 ; au-delà de sa
+  fin, la boucle n'agit plus, comme le moteur), l'inverse
+  (`morceau_a` : quel instant du morceau on aurait dû jouer), et les notes
+  attendues dans une fenêtre de temps (`projeter`).
+- **Calibration** (`coach::calibrer`) : chaque frappe rapportée au clic qui
+  la précède d'un quart à trois quarts de période, médiane, réappariement
+  autour d'elle, écart des frappes à plus de max(25 ms, 3 σ robustes) et des
+  doublons ; refus sous 8 frappes retenues ou au-delà de 40 ms de
+  dispersion. Gardée **hors du morceau**, par périphérique et par chemin
+  (`audio`, `midi`) : migration n° 10, table `latence`, `db/latence.rs`.
+- **Mesuré** (tests, sans matériel) : ancre à moins de 1,5 ms de la cadence
+  de sortie simulée (paquets de 512 trames, gigue de 0 à 3 ms), continue du
+  décompte à la musique à une trame près ; projection exacte sur quatre
+  passages d'une boucle ralentie à 0,8 ; calibration à 38 ms ± 8 ms de
+  geste retrouvée à moins de 3 ms malgré deux frappes à côté et un doublon
+  (14 retenues, 3 écartées), latences de 230 ms (Bluetooth) et −20 ms
+  retrouvées, frappes au hasard refusées ; latence gardée par périphérique
+  et chemin, recalibrer remplace. `verifier.sh` vert.
+
+Non vérifié : aucune commande ni aucun geste dans Pratiquer (tranche 2, avec
+l'entrée MIDI qui donne les frappes) ; l'enveloppe haute n'a pas été
+confrontée à une vraie sortie (CoreAudio, Bluetooth) ; l'ancre ne tient
+compte que de la vitesse globale, pas d'une vitesse par stem.

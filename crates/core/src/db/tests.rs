@@ -2946,3 +2946,69 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
         assert!(faux.verifier().is_err(), "{faux:?}");
     }
 }
+
+#[test]
+fn la_latence_se_garde_par_peripherique_et_par_chemin() {
+    let lib = Library::open_in_memory().unwrap();
+    assert_eq!(lib.latence("TD-17", "midi").unwrap(), None);
+    let midi = LatenceCalibree {
+        peripherique: "TD-17".into(),
+        chemin: "midi".into(),
+        latence_ms: 38.5,
+        dispersion_ms: Some(6.2),
+        frappes: 14,
+    };
+    midi.verifier().unwrap();
+    lib.garder_latence(&midi).unwrap();
+    // Le même périphérique, l'autre chemin : une seconde ligne, pas un
+    // remplacement.
+    let audio = LatenceCalibree {
+        chemin: "audio".into(),
+        latence_ms: 21.0,
+        ..midi.clone()
+    };
+    lib.garder_latence(&audio).unwrap();
+    assert_eq!(lib.latence("TD-17", "midi").unwrap(), Some(midi.clone()));
+    assert_eq!(lib.latences().unwrap(), vec![audio, midi.clone()]);
+    // Recalibrer remplace.
+    let refait = LatenceCalibree {
+        latence_ms: 41.0,
+        frappes: 16,
+        ..midi
+    };
+    lib.garder_latence(&refait).unwrap();
+    assert_eq!(lib.latence("TD-17", "midi").unwrap(), Some(refait.clone()));
+    assert_eq!(lib.latences().unwrap().len(), 2);
+    // Ce qu'aucune calibration ne produit.
+    for faux in [
+        LatenceCalibree {
+            chemin: "usb".into(),
+            ..refait.clone()
+        },
+        LatenceCalibree {
+            peripherique: " ".into(),
+            ..refait.clone()
+        },
+        LatenceCalibree {
+            latence_ms: f64::NAN,
+            ..refait.clone()
+        },
+        LatenceCalibree {
+            latence_ms: 1500.0,
+            ..refait.clone()
+        },
+        LatenceCalibree {
+            frappes: 0,
+            ..refait.clone()
+        },
+    ] {
+        assert!(faux.verifier().is_err(), "{faux:?}");
+    }
+    // La base refuse aussi un chemin inconnu.
+    assert!(lib
+        .garder_latence(&LatenceCalibree {
+            chemin: "usb".into(),
+            ..refait
+        })
+        .is_err());
+}

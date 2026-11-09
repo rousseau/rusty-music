@@ -42,6 +42,7 @@ use std::time::Duration;
 use rodio::source::UniformSourceIterator;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Source};
 
+use crate::horloge::{maintenant_s, Ancre, AncrePartagee, Chronometre};
 use crate::{Error, Result};
 
 /// Fréquence de travail de l'éditeur — celle des stems produits.
@@ -362,6 +363,9 @@ struct Melange {
     /// Clic de la trame courante, et stems à l'arrêt pendant le décompte.
     clic: f32,
     attente: bool,
+    /// L'horloge de pratique : quel instant du morceau sort, et quand
+    /// ([`crate::horloge`]).
+    chrono: Chronometre,
 }
 
 impl Melange {
@@ -397,6 +401,20 @@ impl Melange {
             pos = debut;
         }
         self.precedente = pos;
+
+        // Pendant le décompte, la tête attend en `pos` : la trame rendue est
+        // avant le départ d'autant de trames qu'il en reste à attendre, à la
+        // vitesse du décompte.
+        let v = self.vitesse_maitre.lire() as f64;
+        let attente = if self.attente {
+            self.decompte
+                .pre
+                .saturating_sub(self.decompte.horloge.saturating_sub(1))
+        } else {
+            0
+        };
+        let morceau_s = (pos as f64 - attente as f64 * v) / SR as f64;
+        self.chrono.trame(morceau_s, v, maintenant_s);
 
         let mut g = 1.0f32;
         if active && pos < fin && pos >= debut && fin - pos < FONDU_BOUCLE {
@@ -490,6 +508,7 @@ pub struct Multipiste {
     trames: usize,
     boucle: Boucle,
     depot: Arc<Depot>,
+    ancre: Arc<AncrePartagee>,
 }
 
 impl Multipiste {
@@ -567,6 +586,8 @@ impl Multipiste {
         lecteur.pause();
         let boucle = Boucle::default();
         let depot = Arc::new(Depot::default());
+        let chrono = Chronometre::nouveau(SR);
+        let ancre = Arc::clone(&chrono.ancre);
         lecteur.append(Melange {
             voix,
             maitre: Arc::clone(&maitre),
@@ -581,6 +602,7 @@ impl Multipiste {
             depot: Arc::clone(&depot),
             clic: 0.0,
             attente: false,
+            chrono,
         });
 
         Ok(Self {
@@ -596,6 +618,7 @@ impl Multipiste {
             trames,
             boucle,
             depot,
+            ancre,
         })
     }
 
@@ -806,6 +829,16 @@ impl Multipiste {
         (fin > debut).then(|| (s(debut), s(fin)))
     }
 
+    /// L'ancre de l'horloge de pratique ([`crate::horloge`]) : tel instant du
+    /// morceau rendu à tel instant de [`maintenant_s`]. `None` en pause, ou
+    /// avant la première trame : il n'y a rien à projeter.
+    pub fn ancre(&self) -> Option<Ancre> {
+        if self.en_pause() {
+            return None;
+        }
+        self.ancre.lire()
+    }
+
     /// Retours au début de boucle depuis qu'elle a été posée.
     pub fn passages(&self) -> u32 {
         self.boucle.passages.load(Ordering::Relaxed)
@@ -994,6 +1027,7 @@ mod tests {
                 depot: Arc::new(Depot::default()),
                 clic: 0.0,
                 attente: false,
+                chrono: Chronometre::nouveau(SR),
             },
             curseurs,
             vitesses,
@@ -1295,6 +1329,39 @@ mod tests {
                 (w[1] - w[0]).abs()
             );
         }
+    }
+
+    /// L'horloge de pratique met décompte et musique sur la même échelle :
+    /// la trame n est l'instant (n − pre)/SR du morceau, avant comme après le
+    /// départ — un clic se projette comme une note.
+    #[test]
+    fn l_ancre_continue_du_decompte_a_la_musique() {
+        let mut b = banc(vec![vec![0i16; 2 * 30_000]], vec![Niveau::nouveau(1.0)]);
+        *b.melange.depot.decompte.lock().unwrap() = Decompte {
+            pre: 1000,
+            clics: vec![(0, true), (500, false)],
+            horloge: 0,
+            actif: true,
+        };
+        b.melange.depot.nouveau.store(true, Ordering::Release);
+        let ancre = Arc::clone(&b.melange.chrono.ancre);
+        let mut vus = 0;
+        for n in 0..3000u64 {
+            b.melange.next().unwrap();
+            b.melange.next().unwrap();
+            if n % 64 == 0 {
+                let a = ancre.lire().unwrap();
+                let attendu = (n as f64 - 1000.0) / SR as f64;
+                assert!(
+                    (a.morceau_s - attendu).abs() <= 1.0 / SR as f64,
+                    "trame {n} : {} au lieu de {attendu}",
+                    a.morceau_s
+                );
+                assert_eq!(a.vitesse, 1.0);
+                vus += 1;
+            }
+        }
+        assert!(vus > 40);
     }
 
     /// Le décompte tient les têtes à l'arrêt, clique aux instants demandés,

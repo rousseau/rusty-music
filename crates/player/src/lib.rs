@@ -20,6 +20,7 @@ use tracing::debug;
 pub mod amelioration;
 pub mod aura;
 pub mod gapless;
+pub mod horloge;
 pub mod latence;
 pub mod multipiste;
 pub mod spectre;
