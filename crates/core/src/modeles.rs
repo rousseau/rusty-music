@@ -236,6 +236,43 @@ fn sha256_fichier(chemin: &Path) -> Result<String> {
         .collect())
 }
 
+/// Vrai quand l'exécutable tourne depuis un paquet macOS
+/// (`….app/Contents/MacOS/`) : les scripts du dépôt n'y existent pas.
+pub fn dans_un_paquet() -> bool {
+    std::env::current_exe().is_ok_and(|exe| chemin_dans_un_paquet(&exe))
+}
+
+fn chemin_dans_un_paquet(exe: &Path) -> bool {
+    let Some(macos) = exe.parent() else {
+        return false;
+    };
+    let contents = macos.parent();
+    let app = contents.and_then(Path::parent);
+    macos.file_name().is_some_and(|n| n == "MacOS")
+        && contents
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "Contents")
+        && app
+            .and_then(Path::extension)
+            .is_some_and(|e| e.eq_ignore_ascii_case("app"))
+}
+
+/// Que faire quand un poids manque. En développement : le script du dépôt
+/// qui le prépare. Depuis un paquet, où ce script n'existe pas : le poids
+/// aurait dû être livré avec l'application ou téléchargé au premier usage,
+/// il faut la réinstaller.
+pub fn remede(script: &str) -> String {
+    remede_selon(dans_un_paquet(), script)
+}
+
+fn remede_selon(paquet: bool, script: &str) -> String {
+    if paquet {
+        "Ce modèle manque à l'application installée : réinstaller Rusty Music.".into()
+    } else {
+        script.into()
+    }
+}
+
 /// Message d'erreur qui dit où l'on a regardé.
 ///
 /// Un « fichier introuvable » sans la liste des endroits visités oblige à lire
@@ -398,6 +435,24 @@ mod tests {
         );
         assert!(!dossier.join("hash-mauvais.safetensors").exists());
         assert!(!dossier.join("hash-mauvais.safetensors.partiel").exists());
+    }
+
+    #[test]
+    fn un_paquet_ne_renvoie_pas_aux_scripts_du_depot() {
+        assert!(chemin_dans_un_paquet(Path::new(
+            "/Applications/Rusty Music.app/Contents/MacOS/rusty-music-desktop"
+        )));
+        assert!(!chemin_dans_un_paquet(Path::new(
+            "/Users/x/rusty_music/target/release/rusty-music-desktop"
+        )));
+        assert!(!chemin_dans_un_paquet(Path::new("/opt/Contents/MacOS/x")));
+        let paquet = remede_selon(true, "./scripts/preparer-adtof.sh");
+        assert!(!paquet.contains("scripts/"), "{paquet}");
+        assert!(paquet.contains("réinstaller"), "{paquet}");
+        assert_eq!(
+            remede_selon(false, "./scripts/preparer-adtof.sh"),
+            "./scripts/preparer-adtof.sh"
+        );
     }
 
     #[test]

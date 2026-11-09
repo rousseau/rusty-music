@@ -399,7 +399,7 @@ impl Demixeur {
             return Err(Error::PoidsAbsents(format!(
                 "{}\n  {}",
                 rusty_music_core::modeles::introuvable(variante.fichier()),
-                variante.script()
+                rusty_music_core::modeles::remede(&variante.script())
             )));
         }
         let modele = if variante.htdemucs() {

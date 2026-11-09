@@ -43,6 +43,8 @@ mod explorer;
 mod greffon;
 mod iphone;
 mod minuteur;
+#[cfg(test)]
+mod paquet;
 mod passe;
 mod pratiquer;
 mod systeme;

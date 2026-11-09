@@ -330,8 +330,9 @@ pub struct Pisteur {
 fn chemin_poids(p: Poids) -> Result<PathBuf> {
     rusty_music_core::modeles::trouver(p.nom).ok_or_else(|| {
         Error::PoidsAbsents(format!(
-            "{}\n  ./scripts/preparer-beat-this.sh",
-            rusty_music_core::modeles::introuvable(p.nom)
+            "{}\n  {}",
+            rusty_music_core::modeles::introuvable(p.nom),
+            rusty_music_core::modeles::remede("./scripts/preparer-beat-this.sh")
         ))
     })
 }

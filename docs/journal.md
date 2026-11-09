@@ -4999,3 +4999,34 @@ cachés dans le Finder), sans effet sur l'écoute.
 
 Non vérifié : l'écoute elle-même, réduite par décision de François à
 `1-batterie` et `2-basse` ; la décision suivra.
+
+## Paquet, V22 : les modèles de l'app installée — 9 nov. 2026
+
+Dans l'app installée, la batterie de Pratiquer échouait : `adtof_frame_rnn.onnx`
+n'était pas dans le paquet, et rien ne le télécharge (il est converti à la main
+par `scripts/preparer-adtof.sh`). Inventaire de tout ce que l'app peut
+chercher (`apps/desktop/src/paquet.rs`) : embarqués, les deux CLAP et
+HTDemucs standard ; téléchargés au premier usage avec adresse, taille et
+empreinte, HTDemucs 6 stems et affinée, BS-RoFormer SW, Basic Pitch, Beat
+This! (mel, petit, complet), les 8 plis d'all-in-one, AERO, Gemma 4 E4B,
+MuScriptor (jeton). **ADTOF était le seul ni embarqué ni téléchargé** : il
+l'est désormais (1,8 Mo, CC BY-NC-SA 4.0, paquet à usage personnel :
+`MODELES.md`).
+
+- Test `paquet::les_modeles_sans_telechargement_sont_dans_le_paquet` : lit
+  `tauri.conf.json` et exige les poids sans téléchargement (CLAP audio et
+  texte, ADTOF) dans `bundle > resources` ; vérifié en retirant la ligne
+  d'ADTOF : il échoue, avec le nom du fichier.
+- `release.sh` contrôle, avant de compiler, que chaque ressource du paquet
+  existe sur la machine et s'arrête en les nommant (ADTOF : renvoi à
+  `preparer-adtof.sh`). Le test ne regarde que la configuration : la CI,
+  sans poids, n'en est pas gênée.
+- `modeles::remede` : depuis un `….app/Contents/MacOS/`, le message d'un
+  poids absent (batterie, Beat This!, démixage) dit de réinstaller Rusty
+  Music au lieu de citer un script du dépôt.
+- `release.sh` : 2 min 18 s de compilation ; le `.app` contient
+  `Contents/Resources/models/adtof_frame_rnn.onnx`, identique octet pour
+  octet à `models/`. `verifier.sh` vert.
+
+Non vérifié : la batterie dans l'app installée (installation : I9) ; le
+message « réinstaller » n'a été vu que par son test, pas dans un `.app`.

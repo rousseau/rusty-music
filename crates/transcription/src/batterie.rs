@@ -83,8 +83,9 @@ impl Batteur {
     pub fn charger_installe() -> Result<Self> {
         let chemin = rusty_music_core::modeles::trouver(FICHIER).ok_or_else(|| {
             Error::PoidsAbsents(format!(
-                "{}\n  ./scripts/preparer-adtof.sh",
-                rusty_music_core::modeles::introuvable(FICHIER)
+                "{}\n  {}",
+                rusty_music_core::modeles::introuvable(FICHIER),
+                rusty_music_core::modeles::remede("./scripts/preparer-adtof.sh")
             ))
         })?;
         Self::charger(&chemin)

@@ -68,6 +68,12 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   `vendor/` avec sa seule exigence `rusqlite` relevée, en attendant sa
   version > 2.6.0 (à retirer alors, `[patch.crates-io]`) ; Rust 1.95
   minimum (`journal.md`, « V20 »). À installer (prochain I<n>).
+- Modèles de l'app installée — V22 fait (9 nov.) : ADTOF (batterie de
+  Pratiquer) embarqué dans le paquet, seul modèle que rien ne téléchargeait ;
+  inventaire et test dans `apps/desktop/src/paquet.rs`, `release.sh` refuse
+  un paquet dont une ressource manque, et depuis un `.app` le message d'un
+  poids absent dit de réinstaller au lieu de citer un script du dépôt. À
+  installer (I9).
 - Restent :
   - E, Pratiquer : mémoire par morceau faite (E1, 9 nov. : migration
     n° 7, la séance revient à la réouverture ; boucles nommées et vitesse

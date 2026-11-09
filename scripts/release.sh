@@ -41,6 +41,22 @@ echo "→ modèles et plan de ville"
 ./scripts/telecharger-modeles.sh
 ./scripts/telecharger-ville.sh
 
+# Chaque ressource du paquet (`bundle > resources` de tauri.conf.json) doit
+# exister : sinon la fonction qui en dépend échoue dans l'app installée, et
+# l'on ne s'en aperçoit qu'à l'usage. ADTOF, converti à la main, n'est pas
+# téléchargé : `./scripts/preparer-adtof.sh`.
+MANQUANTS=""
+for source in $(sed -n 's/^ *"\(\.\.\/\.\.\/[^"]*\)": *"[^"]*",\{0,1\}$/\1/p' apps/desktop/tauri.conf.json); do
+  [ -f "apps/desktop/$source" ] || MANQUANTS="$MANQUANTS ${source#../../}"
+done
+if [ -n "$MANQUANTS" ]; then
+  echo "Ressources du paquet absentes :$MANQUANTS" >&2
+  case "$MANQUANTS" in
+    *adtof_frame_rnn.onnx*) echo "  ADTOF : ./scripts/preparer-adtof.sh" >&2 ;;
+  esac
+  exit 1
+fi
+
 # Un tableau vide sous `set -u` fait planter bash 3.2 (celui de macOS) à son
 # expansion — d'où une chaîne plutôt qu'un tableau pour l'argument optionnel.
 CIBLE=""
