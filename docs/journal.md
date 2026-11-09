@@ -4472,3 +4472,49 @@ Trois suites de B4, relevées le 8 nov. sur l'interface simulée.
 sans effet sur ces mesures du rail) ; l'infobulle du focus vue dans Chrome
 seulement (capture des tests), pas dans WebKit ; les lignes de Partitions
 pendant un calcul (« 42 % ») et après un échec, non regardées.
+
+## Pratiquer, E1 : la mémoire par morceau — 9 nov. 2026
+
+La question ouverte de la décision 13 (« que retient Pratiquer d'une séance
+à l'autre ? ») est tranchée par écrit dans `ui-spec-editeur.md` : une table
+SQLite par migration, pas un format de projet.
+
+- **Schéma** (migration n° 7, `crates/core/sql/migration-007-pratique.sql`,
+  `db/pratique.rs`). `pratique` : une ligne par chemin de fichier
+  (instrument, notation, décompte, variante de démixage, vitesse laissée,
+  vitesse atteinte, longueur et accélération des boucles, position) ;
+  `pratique_boucle` : la boucle posée (sans nom, au plus une) et les boucles
+  nommées, bornes en secondes du morceau d'origine. Deux tables vides :
+  `pratique_correction` (E2 : corde, octave, note supprimée ou ajoutée) et
+  `pratique_mesure` (E4 : la table par mesure du coach, score lissé). La clé
+  est le chemin, comme le cache de stems et `edition_piste` : elle survit à
+  un rescan. `MemoirePratique::verifier` refuse ce qu'aucun geste ne produit
+  (vitesse non finie, instrument inconnu, décompte > 2, boucle vide, deux
+  boucles courantes).
+- **Commandes** `pratique_memoire` et `pratique_garder`, contrôlées par
+  `tauri-specta` (30 commandes sur 225).
+- **Interface** (`ui/js/memoire-pratique.js`, dans la chaîne après
+  `pratiquer.js`). Rendue une fois par morceau, quand ses stems sont chargés
+  en Pratiquer (stems retrouvés, démixage fini, entrée dans le mode) :
+  réglages, vitesse appliquée au moteur, boucle reposée (`stems_boucle`),
+  position si rien ne joue. Gardée par relevé toutes les deux secondes quand
+  un réglage a changé, la position seulement en pause, et au changement de
+  morceau. Créer n'écrit rien. La notation et le décompte passent dans
+  `edition` (`edition.notation`, `edition.decompte`) ; le navigateur garde le
+  dernier choix comme défaut d'un morceau neuf. La vitesse atteinte se note
+  à chaque passage de boucle mené à son terme (`accelererAuPassage`).
+- **Mesuré** : test `la_memoire_de_pratiquer_se_garde_et_se_rend` (aller-
+  retour complet, boucles remplacées en bloc, tables E2 et E4 présentes et
+  vides, quatre valeurs refusées) ; test de fumée « E1 : rouvrir un morceau
+  en Pratiquer rend la séance » (batterie, décompte 2, 90 %, boucle de
+  4 mesures sur le premier morceau ; basse et sans décompte sur le second ;
+  au retour, les quatre reviennent et la boucle est reposée au moteur avec
+  les mêmes bornes) ; 56 tests de fumée verts, `verifier.sh` vert. Le faux
+  Tauri relit désormais la vitesse posée (`stems_vitesse`), sans quoi
+  `appliquerVitesses` signalait un écart.
+
+Non vérifié : dans l'app réelle (stems, Beat This!, alphaTab), seulement par
+le faux Tauri ; la position rendue à la réouverture n'est pas couverte par
+le test ; aucune interface ne nomme encore les boucles ni ne montre la
+vitesse atteinte (elles font l'aller-retour, sans geste pour les poser) ;
+l'écriture à la fermeture de la fenêtre (`pagehide`) est au mieux.

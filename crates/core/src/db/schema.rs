@@ -59,6 +59,10 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 6 (7 nov. 2026) : épingles et chaînes, des lieux à soi
         // (`crate::lieux`, `docs/plan-balade.md`, P8).
         M::up(include_str!("../../sql/migration-006-lieux.sql")),
+        // N° 7 (9 nov. 2026) : la mémoire de Pratiquer par morceau — réglages,
+        // boucles, et la place vide des corrections de transcription (E2) et
+        // de la table par mesure du coach (E4) (`db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-007-pratique.sql")),
     ])
 }
 

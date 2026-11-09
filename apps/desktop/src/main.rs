@@ -1041,6 +1041,8 @@ fn main() {
             stems_transport,
             stems_boucle,
             stems_decompter,
+            pratique_memoire,
+            pratique_garder,
             pulsation,
             transcrire,
             etat_transcription,

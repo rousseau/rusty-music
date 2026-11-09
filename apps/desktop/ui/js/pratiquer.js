@@ -172,12 +172,12 @@ function texTablature(mesures, titre, p, accordage, modele) {
   // L'accordage vient du moteur (standard, drop D, cinq cordes), de la corde
   // aiguë à la grave.
   const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
-  const portee = notationBasse === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
+  const portee = edition.notation === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
     ` \\tempo ${tempoDe(p)}\n` +
     `\\track "Basse" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")})\n` +
-    (notationBasse === "tabs" ? "" : "\\clef F4\n");
+    (edition.notation === "tabs" ? "" : "\\clef F4\n");
   let precedente = 0;
   const sections = marquesSections(mesures.map((m) => m.debut_s));
   const corps = mesures.map((m, i) => {
@@ -204,8 +204,10 @@ function texTablature(mesures, titre, p, accordage, modele) {
 /// Notation de la basse : « score+tabs » (défaut, décidé le 10 oct. —
 /// comme les livres « Bass Recorded Versions », la notation en clé de fa
 /// au-dessus de la tablature) ou « tabs » (tablature seule). Bascule dans le
-/// rail, retenue par le navigateur (commodité, pas un état à partager).
-let notationBasse = (() => {
+/// rail. Le navigateur retient le dernier choix, défaut d'un morceau neuf ;
+/// chaque morceau garde le sien dans sa mémoire de Pratiquer (E1,
+/// `memoire-pratique.js`).
+edition.notation = (() => {
   try {
     return localStorage.getItem("notation-basse") === "tabs" ? "tabs" : "score+tabs";
   } catch {
@@ -741,7 +743,7 @@ async function montrerPartition() {
     // une transcription prête d'emblée, sans passer par la grille — sans
     // elles, la clé ne changeait pas et la tablature restait l'ancienne.
     const basses = instrument === "bass" ? bassesJouees : "";
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${notationBasse}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}`;
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? "transcrit" : "grille"}:${edition.notation}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
@@ -855,7 +857,7 @@ $("songsterr").addEventListener("click", () => {
 function aidePartie() {
   return (
     "Sa partie s'affiche ici, calée sur la lecture. S et M règlent l'écoute : l'écouter, la jouer seul par-dessus." +
-    (decompteMesures ? " ▶ fait d’abord le décompte au tempo du morceau, puis repart du premier temps de la mesure en cours." : "")
+    (edition.decompte ? " ▶ fait d’abord le décompte au tempo du morceau, puis repart du premier temps de la mesure en cours." : "")
   );
 }
 
@@ -877,10 +879,10 @@ function majUsage() {
   $("decomptes").hidden = edition.usage !== "pratiquer";
   $("songsterr").hidden = edition.usage !== "pratiquer" || !edition.source?.title;
   for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
-    b.classList.toggle("segment--actif", Number(b.dataset.decompte) === decompteMesures);
+    b.classList.toggle("segment--actif", Number(b.dataset.decompte) === edition.decompte);
   }
   for (const b of document.querySelectorAll("#notations [data-notation]")) {
-    b.classList.toggle("segment--actif", b.dataset.notation === notationBasse);
+    b.classList.toggle("segment--actif", b.dataset.notation === edition.notation);
   }
   etabli.classList.toggle("etabli--pratiquer", pratiquer);
   $("partition").hidden = !pratiquer;
@@ -900,9 +902,9 @@ for (const b of document.querySelectorAll("#instruments [data-instrument]")) {
 
 for (const b of document.querySelectorAll("#notations [data-notation]")) {
   b.addEventListener("click", () => {
-    notationBasse = b.dataset.notation;
+    edition.notation = b.dataset.notation;
     try {
-      localStorage.setItem("notation-basse", notationBasse);
+      localStorage.setItem("notation-basse", edition.notation);
     } catch {}
     majUsage();
   });
@@ -910,8 +912,10 @@ for (const b of document.querySelectorAll("#notations [data-notation]")) {
 
 /* ------------------------------------------------ pratiquer : décompte */
 
-// Mesures de clics avant que la musique parte (0, 1 ou 2), en Pratiquer.
-let decompteMesures = (() => {
+// Mesures de clics avant que la musique parte (0, 1 ou 2), en Pratiquer :
+// même règle que la notation, le navigateur pour un morceau neuf, la mémoire
+// de Pratiquer pour un morceau déjà travaillé.
+edition.decompte = (() => {
   try {
     const n = Number(localStorage.getItem("decompte-mesures") ?? 1);
     return [0, 1, 2].includes(n) ? n : 1;
@@ -928,7 +932,7 @@ let decompteMesures = (() => {
 /// levée sonnent par-dessus la musique. `null` sans pulsation.
 function planDecompte(posS) {
   const p = edition.pulsation;
-  if (!p || !decompteMesures) return null;
+  if (!p || !edition.decompte) return null;
   const P = p.premiers_temps;
   const T = p.temps ?? [];
   let debut = posS;
@@ -940,7 +944,7 @@ function planDecompte(posS) {
   const ecarts = j < 0 ? [] : T.slice(j, j + 5).slice(1).map((t, k) => t - T[j + k]).sort((a, b) => a - b);
   const periode = ecarts.length ? ecarts[ecarts.length >> 1] : 60 / tempoDe(p);
   const m = p.metrique || 4;
-  const n = decompteMesures * m;
+  const n = edition.decompte * m;
   const clics = [];
   for (let k = n; k >= 1; k--) clics.push([cible - k * periode, (n - k) % m === 0]);
   return { debut, clics };
@@ -967,9 +971,9 @@ async function lancerDecompte() {
 
 for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
   b.addEventListener("click", () => {
-    decompteMesures = Number(b.dataset.decompte);
+    edition.decompte = Number(b.dataset.decompte);
     try {
-      localStorage.setItem("decompte-mesures", String(decompteMesures));
+      localStorage.setItem("decompte-mesures", String(edition.decompte));
     } catch {}
     majUsage();
   });

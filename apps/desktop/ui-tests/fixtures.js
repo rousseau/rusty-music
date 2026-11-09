@@ -302,12 +302,17 @@ const fixtures = {
     duree_ms: 181_000,
     noms: e.stems || [],
     niveaux: (e.stems || []).map(() => 1),
-    vitesses: (e.stems || []).map(() => 1),
+    vitesses: (e.stems || []).map(() => e.vitesse ?? 1),
     derive_ms: 0,
     boucle: null,
     passages: 0,
     latence_ms: 20,
   }),
+  // La vitesse d'ensemble, relue par `appliquerVitesses` dans `stems_state`.
+  stems_vitesse: (a, e) => {
+    e.vitesse = a.vitesse;
+    return null;
+  },
   stems_play: (a, e) => {
     e.stems = ["drums", "bass", "other", "vocals"];
     e.stemsJoue = true;
@@ -341,6 +346,12 @@ const fixtures = {
   pulsation: { temps: [0.5, 1.0, 1.5, 2.0], premiers_temps: [0.5], bpm: 120, metrique: 4 },
   tempo_cible: { bpm: 120, nettete: 3 },
   transcriptions_en_cache: [],
+  // La mémoire de Pratiquer (E1) : une base par chemin, dans l'état partagé.
+  pratique_memoire: (a, e) => (e.pratique ?? {})[a.path] ?? null,
+  pratique_garder: (a, e) => {
+    (e.pratique ??= {})[a.path] = structuredClone(a.memoire);
+    return null;
+  },
   sections_disponibles: false,
   // --- l'inspecteur du morceau en lecture : rien d'enrichi
   descripteurs: null,
@@ -398,7 +409,6 @@ for (const cmd of [
 }
 Object.assign(fixtures, {
   scan_failures: [],
-  stems_vitesse: null,
   stems_gain: null,
 });
 

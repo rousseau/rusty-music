@@ -20,6 +20,7 @@ mod editions;
 mod enrichissement;
 mod passes;
 mod pistes;
+mod pratique;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -34,6 +35,7 @@ pub use self::editions::*;
 pub use self::enrichissement::*;
 pub use self::passes::*;
 pub use self::pistes::*;
+pub use self::pratique::*;
 use self::schema::preparer;
 
 pub struct Library {

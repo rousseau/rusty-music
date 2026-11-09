@@ -42,7 +42,10 @@ fn exporter_les_types_des_commandes() {
             relief_musical,
             courbe,
             ouvrir_courbe,
-            recompute_map
+            recompute_map,
+            // E1 : la mémoire de Pratiquer par morceau.
+            pratique_memoire,
+            pratique_garder
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

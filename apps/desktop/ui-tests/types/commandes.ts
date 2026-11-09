@@ -98,6 +98,13 @@ export const commands = {
 	 *  tâche de fond (`suivre_projection`, V16 ; l'interface sonde `tuiles_state`).
 	 */
 	recompute_map: () => __TAURI_INVOKE<RapportCarte>("recompute_map"),
+	/**  Ce que Pratiquer a retenu du morceau `path` (E1), ou `None`. */
+	pratique_memoire: (path: string) => __TAURI_INVOKE<MemoirePratique_Serialize | null>("pratique_memoire", { path }),
+	/**
+	 *  Garde ce que Pratiquer a réglé sur le morceau `path` (E1). Créer n'y
+	 *  écrit rien.
+	 */
+	pratique_garder: (path: string, memoire: MemoirePratique_Deserialize) => __TAURI_INVOKE<null>("pratique_garder", { path, memoire }),
 };
 
 /* Types */
@@ -295,6 +302,31 @@ export type BaladeVue_Serialize = {
 	mesure: MesureCarrefours,
 };
 
+/**  Une boucle, bornes en secondes du morceau d'origine. */
+export type BouclePratique = BouclePratique_Serialize | BouclePratique_Deserialize;
+
+/**  Une boucle, bornes en secondes du morceau d'origine. */
+export type BouclePratique_Deserialize = {
+	/**  `None` : la boucle posée quand on a quitté le morceau (au plus une). */
+	nom?: string | null,
+	debut_s: number | null,
+	fin_s: number | null,
+	/**  Nombre de mesures ; `None` pour une boucle posée sur une section. */
+	mesures?: number | null,
+	vitesse_atteinte?: number | null,
+};
+
+/**  Une boucle, bornes en secondes du morceau d'origine. */
+export type BouclePratique_Serialize = {
+	/**  `None` : la boucle posée quand on a quitté le morceau (au plus une). */
+	nom: string | null,
+	debut_s: number | null,
+	fin_s: number | null,
+	/**  Nombre de mesures ; `None` pour une boucle posée sur une section. */
+	mesures: number | null,
+	vitesse_atteinte: number | null,
+};
+
 export type CarrefourVue = {
 	numero: number,
 	voies: VoieVue[],
@@ -379,6 +411,56 @@ export type Intervention =
 "proposer" | 
 /**  La balade attend le choix au carrefour. */
 "demander";
+
+/**
+ *  Ce que Pratiquer retient d'un morceau. `None` : rien de retenu, le défaut
+ *  de l'interface s'applique.
+ */
+export type MemoirePratique = MemoirePratique_Serialize | MemoirePratique_Deserialize;
+
+/**
+ *  Ce que Pratiquer retient d'un morceau. `None` : rien de retenu, le défaut
+ *  de l'interface s'applique.
+ */
+export type MemoirePratique_Deserialize = {
+	/**  `"bass"` ou `"drums"`. */
+	instrument?: string | null,
+	/**  `"score+tabs"` ou `"tabs"`. */
+	notation?: string | null,
+	/**  Mesures de décompte : 0, 1 ou 2. */
+	decompte?: number | null,
+	/**  Variante de démixage des stems du morceau. */
+	variante?: string | null,
+	vitesse?: number | null,
+	vitesse_atteinte?: number | null,
+	mesures_boucle?: number | null,
+	accel_boucle: boolean,
+	position_s?: number | null,
+	/**  La boucle courante (sans nom) d'abord, puis les boucles nommées. */
+	boucles: BouclePratique_Deserialize[],
+};
+
+/**
+ *  Ce que Pratiquer retient d'un morceau. `None` : rien de retenu, le défaut
+ *  de l'interface s'applique.
+ */
+export type MemoirePratique_Serialize = {
+	/**  `"bass"` ou `"drums"`. */
+	instrument: string | null,
+	/**  `"score+tabs"` ou `"tabs"`. */
+	notation: string | null,
+	/**  Mesures de décompte : 0, 1 ou 2. */
+	decompte: number | null,
+	/**  Variante de démixage des stems du morceau. */
+	variante: string | null,
+	vitesse: number | null,
+	vitesse_atteinte: number | null,
+	mesures_boucle: number | null,
+	accel_boucle: boolean,
+	position_s: number | null,
+	/**  La boucle courante (sans nom) d'abord, puis les boucles nommées. */
+	boucles: BouclePratique_Serialize[],
+};
 
 /**
  *  Le compteur d'usage du carrefour, gardé sur la machine

@@ -127,6 +127,67 @@ test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiq
   expect((await appels(page, "stems_play")).length).toBe(avant);
 });
 
+/// Ouvre en Pratiquer le morceau lu depuis l'album `rang` de la grille.
+async function pratiquerAlbum(page, rang) {
+  await page.click('button.mode[data-mode="ecoute"]');
+  await page.locator("#grille .album__lecture").nth(rang).click({ force: true });
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#editer-etabli")).toBeVisible();
+  await expect(page.locator("#boucle-reglage")).toBeVisible();
+}
+
+test("E1 : rouvrir un morceau en Pratiquer rend la séance comme on l'a laissée", async ({ page }) => {
+  // Une grille de mesures assez longue pour poser une boucle de 4 mesures.
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 48 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 12 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+  });
+  const premier = PISTES[0].path;
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  // La séance : batterie, deux mesures de décompte, 90 %, une boucle.
+  await page.click('#instruments [data-instrument="drums"]');
+  await page.click('#decomptes [data-decompte="2"]');
+  await page.click("#vitesse-unite"); // en pour cent : la valeur se lit sans BPM
+  for (let i = 0; i < 2; i++) await page.click('.dock__tete [data-r="vitesse"][data-d="-1"]');
+  const vitesse = await page.locator("#val-vitesse").inputValue();
+  expect(vitesse).not.toBe("100");
+  await page.click("#boucle");
+  await expect(page.locator("#boucle")).toHaveAttribute("aria-pressed", "true");
+  const gardee = async (path) =>
+    (await appels(page, "pratique_garder")).filter((a) => a.path === path).at(-1)?.memoire ?? null;
+  await expect.poll(() => gardee(premier).then((m) => m?.boucles?.length ?? 0), { timeout: 6000 }).toBe(1);
+  const m = await gardee(premier);
+  expect(m).toMatchObject({ instrument: "drums", decompte: 2 });
+  expect(m.vitesse).toBeLessThan(1);
+  const boucle = m.boucles[0];
+
+  // Un autre morceau, réglé autrement.
+  await pratiquerAlbum(page, 1);
+  await expect(page.locator("#demix-source")).not.toContainText(PISTES[0].title);
+  await page.click('#instruments [data-instrument="bass"]');
+  await page.click('#decomptes [data-decompte="0"]');
+  // Pas de boucle : celle du premier ne le suit pas.
+  await expect(page.locator("#boucle")).toHaveAttribute("aria-pressed", "false");
+
+  // Retour au premier : la séance revient, boucle posée au moteur comprise.
+  const avant = (await appels(page, "stems_boucle")).length;
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  await expect(page.locator('#instruments [data-instrument="drums"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator('#decomptes [data-decompte="2"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator("#val-vitesse")).toHaveValue(vitesse);
+  await expect(page.locator("#boucle")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => appels(page, "stems_boucle").then((a) => a.slice(avant).at(-1))).toEqual({
+    debut: boucle.debut_s,
+    fin: boucle.fin_s,
+  });
+});
+
 test("I1 : « Choisir l'édition… » reste en Écouter, il ne suit pas dans les autres écrans", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("mb-contact", "essai@example.org"));
   await page.locator("#grille .album").first().click();

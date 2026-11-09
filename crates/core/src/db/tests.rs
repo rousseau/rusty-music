@@ -2702,3 +2702,103 @@ fn la_fenetre_representative_se_retient_et_se_complete() {
     // Une autre empreinte du même morceau ne la touche pas.
     assert_eq!(lib.fenetre_representative(ids[0], "autre").unwrap(), None);
 }
+
+/// E1 : la mémoire de Pratiquer se garde par chemin, ses boucles sont
+/// remplacées en bloc, et les tables vides d'E2 et d'E4 sont là.
+#[test]
+fn la_memoire_de_pratiquer_se_garde_et_se_rend() {
+    let lib = Library::open_in_memory().unwrap();
+    let chemin = "/Musique/a.flac";
+    assert_eq!(lib.memoire_pratique(chemin).unwrap(), None);
+
+    let courante = BouclePratique {
+        nom: None,
+        debut_s: 12.5,
+        fin_s: 20.0,
+        mesures: Some(4),
+        vitesse_atteinte: Some(0.84),
+    };
+    let nommee = BouclePratique {
+        nom: Some("pont".into()),
+        debut_s: 90.0,
+        fin_s: 101.0,
+        mesures: None,
+        vitesse_atteinte: None,
+    };
+    let m = MemoirePratique {
+        instrument: Some("drums".into()),
+        notation: Some("tabs".into()),
+        decompte: Some(2),
+        variante: Some("bsrofo_sw".into()),
+        vitesse: Some(0.8),
+        vitesse_atteinte: Some(0.84),
+        mesures_boucle: Some(4),
+        accel_boucle: true,
+        position_s: Some(12.5),
+        // La nommée d'abord : la courante revient quand même en tête.
+        boucles: vec![nommee.clone(), courante.clone()],
+    };
+    m.verifier().unwrap();
+    lib.garder_pratique(chemin, &m).unwrap();
+    let rendue = lib.memoire_pratique(chemin).unwrap().unwrap();
+    assert_eq!(rendue.boucles, vec![courante, nommee.clone()]);
+    assert_eq!(
+        MemoirePratique {
+            boucles: vec![],
+            ..rendue.clone()
+        },
+        MemoirePratique {
+            boucles: vec![],
+            ..m
+        }
+    );
+
+    // Sans boucle courante : seule la nommée reste.
+    let sans = MemoirePratique {
+        boucles: vec![nommee.clone()],
+        ..rendue
+    };
+    lib.garder_pratique(chemin, &sans).unwrap();
+    assert_eq!(
+        lib.memoire_pratique(chemin).unwrap().unwrap().boucles,
+        vec![nommee]
+    );
+    assert_eq!(lib.memoire_pratique("/Musique/b.flac").unwrap(), None);
+
+    // Les places d'E2 et d'E4, vides.
+    for table in ["pratique_correction", "pratique_mesure"] {
+        let n: i64 = lib
+            .conn
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "{table}");
+    }
+
+    // Ce qu'aucun geste ne produit est refusé.
+    for faux in [
+        MemoirePratique {
+            vitesse: Some(f64::NAN),
+            ..Default::default()
+        },
+        MemoirePratique {
+            instrument: Some("kazoo".into()),
+            ..Default::default()
+        },
+        MemoirePratique {
+            decompte: Some(3),
+            ..Default::default()
+        },
+        MemoirePratique {
+            boucles: vec![BouclePratique {
+                nom: None,
+                debut_s: 5.0,
+                fin_s: 5.0,
+                mesures: None,
+                vitesse_atteinte: None,
+            }],
+            ..Default::default()
+        },
+    ] {
+        assert!(faux.verifier().is_err(), "{faux:?}");
+    }
+}

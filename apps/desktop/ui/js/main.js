@@ -14,7 +14,7 @@
 //   socle, vues, lama, ecouter, lecteur, carte, explorer/carte-gl,
 //   explorer/nuage, explorer/temps, explorer/anneau, explorer/chemins,
 //   familles, ecouter-familles, fond-de-plan, modes, valise, decouvrir,
-//   bibliotheque, etabli, pratiquer, creer, demarrage, itineraires, balade,
+//   bibliotheque, etabli, pratiquer, memoire-pratique, creer, demarrage, itineraires, balade,
 //   aura, traces, relief, lieux, autotest-carte, palette, en-cours, editions.
 //
 // Ajouter un module : l'insérer dans la chaîne (son `import` de tête, celui

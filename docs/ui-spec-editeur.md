@@ -456,13 +456,24 @@ réglage.
 
 ## Questions ouvertes
 
-- **Que retient Pratiquer d'une séance à l'autre ?** Ouverte le 5 novembre
-  (décision 13). **Principe acquis le même jour : oui, les réglages de
-  pratique sont gardés par morceau** ; reste à dire lesquels et où. Créer n'a rien à retenir que ses stems (décision 3). Pratiquer
-  aura vite besoin d'une mémoire par morceau : boucles nommées, vitesse
-  atteinte, transcription corrigée (chantier 1.5 du plan). À trancher avant
-  1.5 : une table SQLite par morceau (migration), plutôt qu'un format de
-  projet.
+- ~~**Que retient Pratiquer d'une séance à l'autre ?**~~ **Tranché le
+  9 novembre 2026 (E1) : une mémoire par morceau en SQLite, pas un format
+  de projet.** Ouverte le 5 novembre (décision 13), principe acquis le même
+  jour. Migration n° 7 (`crates/core/sql/migration-007-pratique.sql`,
+  `db/pratique.rs`), clé : le chemin du fichier, comme le cache de stems.
+  Gardés par morceau : instrument lu, notation de la basse, décompte,
+  variante de démixage des stems, vitesse laissée et **vitesse atteinte**
+  (la plus haute à laquelle une boucle a été jouée jusqu'au bout), longueur
+  et accélération des boucles, la boucle posée, les **boucles nommées**
+  (bornes en secondes du morceau d'origine ; l'interface ne les nomme pas
+  encore) et la position. Deux tables vides attendent leur chantier : les
+  corrections de transcription (`pratique_correction`, E2) et la table par
+  mesure du coach (`pratique_mesure`, E4). **Créer n'y écrit rien** : ses
+  stems sur le disque restent sa seule persistance (décision 3). Rouvrir le
+  morceau en Pratiquer rend la séance (`ui/js/memoire-pratique.js`) ; sans
+  mémoire, les réglages en place deviennent ceux du morceau dès qu'on en
+  change un. Le navigateur garde le dernier choix de notation et de
+  décompte comme défaut d'un morceau neuf.
 
 - ~~**Le remplacement de stem est-il dans ce module ou au-delà ?**~~ **Tranché
   le 18 août : dedans.** Le second fichier n'ouvre pas de session — il ne

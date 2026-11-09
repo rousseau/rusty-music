@@ -19,6 +19,7 @@ import { rampe } from "./carte.js";
 import { indexAlphaUtile, indexAnneesUtile } from "./ecouter-familles.js";
 import { demander } from "./ecrans.js";
 import { zoneGreffe } from "./creer.js";
+import { quitterMemoirePratique, rendreMemoirePratique } from "./memoire-pratique.js";
 
 /* ---------------------------------------------------------- l'établi */
 
@@ -104,6 +105,16 @@ const edition = {
   // (portée de percussion). Choisie dans le rail, sans lien avec le solo ni
   // la coupure : on peut lire sa partie en l'écoutant, ou la jouer à la place.
   instrument: "bass",
+  // Notation de la basse (« score+tabs » ou « tabs ») et mesures de décompte
+  // (0, 1, 2) : posées par `pratiquer.js` depuis le navigateur, puis par la
+  // mémoire du morceau (`memoire-pratique.js`).
+  notation: "score+tabs",
+  decompte: 1,
+  // La plus haute vitesse à laquelle une boucle a été jouée jusqu'au bout, et
+  // la variante de démixage des stems affichés quand on la connaît : deux
+  // choses que la mémoire de Pratiquer garde par morceau (E1).
+  vitesseAtteinte: null,
+  varianteStems: null,
   // Dernière position lue au moteur, l'instant où on l'a lue et l'état de
   // pause : de quoi extrapoler la position entre deux sondages pour la
   // partition, qui veut une mise à jour toutes les 50 ms.
@@ -339,6 +350,13 @@ async function allongerBoucle(d) {
 
 /// Un passage de plus : un cran de vitesse, jusqu'au tempo d'origine.
 async function accelererAuPassage(passages) {
+  // Un passage de boucle mené à son terme : la vitesse à laquelle il a été
+  // joué est atteinte, pour le morceau et pour la boucle.
+  if (edition.boucle && passages > edition.passagesVus) {
+    const v = Math.round(edition.vitesse * 1000) / 1000;
+    edition.vitesseAtteinte = Math.max(edition.vitesseAtteinte ?? 0, v);
+    edition.boucle.atteinte = Math.max(edition.boucle.atteinte ?? 0, v);
+  }
   if (!edition.accelBoucle || passages <= edition.passagesVus) {
     edition.passagesVus = passages;
     return;
@@ -808,6 +826,8 @@ async function poserSourceEdition() {
   // Changer de morceau abandonne les stems du précédent — et coupe leur
   // lecture : sans ça, les anciens stems continuaient de sonner par-dessus le
   // nouveau morceau.
+  // La séance du morceau qu'on quitte est gardée (E1, `memoire-pratique.js`).
+  if (change) await quitterMemoirePratique();
   if (change && lecture.stems.charges) await arreterStems();
   edition.source = t;
   $("demix-source").textContent = t
@@ -1029,6 +1049,8 @@ async function chargerStemsExistants(t) {
     majPulsation();
     majSections();
     if (enStems()) await prendreLaMain();
+    // En Pratiquer, la séance laissée sur ce morceau revient.
+    await rendreMemoirePratique();
   } else {
     edition.stems = [];
     dessinerStems();
@@ -1150,8 +1172,9 @@ $("lancer-demix").addEventListener("click", async () => {
   // Le morceau **séparé** : la sélection est libre (aucune lecture à lancer
   // pour la changer), elle peut donc bouger pendant les ~30 s de calcul.
   const cible = t.path;
+  const variante = edition.variante;
   try {
-    await invoke("start_demix", { path: t.path, variant: edition.variante });
+    await invoke("start_demix", { path: t.path, variant: variante });
   } catch (e) {
     $("demix-etat").textContent = String(e);
     return;
@@ -1201,7 +1224,10 @@ $("lancer-demix").addEventListener("click", async () => {
     // Même règle qu'au chargement d'un démixage existant : afficher des stems,
     // c'est en faire la source. Sans cela, solo, coupure, vitesse et hauteur
     // n'agissaient sur rien tant qu'on n'avait pas relancé la lecture.
+    // La variante des stems est retenue avec la séance (E1).
+    edition.varianteStems = variante;
     await prendreLaMain();
+    await rendreMemoirePratique();
   }, 800); // assez serré pour que la barre avance visiblement segment par segment
 });
 
@@ -1843,8 +1869,8 @@ $("dock-fermer").addEventListener("click", async () => {
 
 export {
   accelererAuPassage, appliquerReglages, appliquerVitesses, arreterStems, attendreDemix,
-  bpmSource, deplacerLecture, dessinerReglages, dessinerStems, edition, libelleStem, majDerive,
-  majEtatEditer, majPulsation, majSections, majTempoSource, majVariantes,
+  bpmSource, choisirVariante, deplacerLecture, dessinerReglages, dessinerStems, edition, libelleStem, majDerive,
+  majBoucleUI, majEtatEditer, majPulsation, majSections, majTempoSource, majVariantes,
   marquerSectionCourante, niveaux, NOMS_SECTIONS, octaveVitesse, oublierStems, pasReglage,
   poserSourceEdition, poserTete, positionnerBande, positionnerPlayhead, prendreLaMain,
   rampeRGB, rattacherStems, reconcilierStems, REGLAGES, reposerBoucle, resumeStem, stemEcarte,

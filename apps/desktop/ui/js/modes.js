@@ -40,6 +40,7 @@ import {
   arreterStems, edition, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut,
 } from "./etabli.js";
 import { cacherPartition } from "./pratiquer.js";
+import { rendreMemoirePratique } from "./memoire-pratique.js";
 import { lecture } from "./etat-lecture.js";
 import { choisirTheme, themeChoisi } from "./theme.js";
 import { appliquerEcran } from "./ecrans.js";
@@ -72,7 +73,8 @@ async function basculerMode(mode) {
   }
   // Entrer dans Pratiquer ou Créer avec des stems déjà affichés doit les rendre
   // audibles : c'est ce qu'on vient y faire.
-  if (editer) prendreLaMain().catch((e) => remonter(e, "stems"));
+  // En Pratiquer, la séance laissée sur le morceau revient (E1).
+  if (editer) prendreLaMain().then(rendreMemoirePratique).catch((e) => remonter(e, "stems"));
   // Ce que l'écran montre (blocs du rail, contrôles de l'en-tête, vues du
   // centre) : la table de `ecrans.js`, appliquée ici ; les fonctions d'état
   // de chaque écran y demandent ensuite ce qui dépend de leur état.

@@ -443,3 +443,28 @@ pub(crate) fn transcrire(
     }
     Ok(vue)
 }
+
+/// Ce que Pratiquer a retenu du morceau `path` (E1), ou `None`.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn pratique_memoire(
+    etat: State<Etat>,
+    path: String,
+) -> Result<Option<rusty_music_core::db::MemoirePratique>, String> {
+    verrou(&etat.lib).memoire_pratique(&path).map_err(echec)
+}
+
+/// Garde ce que Pratiquer a réglé sur le morceau `path` (E1). Créer n'y
+/// écrit rien.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn pratique_garder(
+    etat: State<Etat>,
+    path: String,
+    memoire: rusty_music_core::db::MemoirePratique,
+) -> Result<(), String> {
+    memoire.verifier()?;
+    verrou(&etat.lib)
+        .garder_pratique(&path, &memoire)
+        .map_err(echec)
+}
