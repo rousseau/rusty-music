@@ -5345,3 +5345,52 @@ l'éditeur ; le compagnon iOS n'en dépend toujours pas.
 **Non vérifié** : la transposition entendue dans l'app (aucun son joué) ;
 le temps mesuré sur un seul stem, pas sur un jeu de quatre en parallèle
 dans l'app ; la justesse sur de la musique plutôt que sur des sinusoïdes.
+
+## Créer, V26 : plus de poids au texte dans le préfiltre du greffon — 9 nov. 2026
+
+V23 avait montré que, depuis *Know Your Enemy* (rock), « une batterie plus
+funk » ne proposait que du rock. Le préfiltre faisait moitié-moitié entre
+deux cosinus CLAP qui ne vivent pas à la même échelle : morceau contre
+morceau, ils s'étalent largement ; morceau contre phrase, ils restent dans
+une bande étroite. La moitié « texte » ne départageait donc presque rien.
+Désormais, les deux similarités sont centrées et réduites sur la
+bibliothèque, puis mélangées selon une part du texte réglable
+(`POIDS_TEXTE`, remplaçable à l'essai par `RUSTY_MUSIC_POIDS_TEXTE`).
+`RUSTY_MUSIC_ESSAI_PREPARES=0` rejoue l'essai sans démixer.
+
+**Mesuré** sur la même copie qu'en V23 (`essais/V23/donnees` sur le LaCie,
+`RUSTY_MUSIC_INCOGNITO=1`, volume à zéro, `RUSTY_MUSIC_ESSAI_GREFFON=9786`).
+Funk, soul ou disco : genre du fichier ou genres MusicBrainz de l'artiste
+(Last.fm est vide dans la base).
+
+| réglage | écartés tempo / tonalité / métrique | funk, soul, disco parmi les 12 candidats | arrivés par le texte |
+|---|---|---|---|
+| V23, brut 0,5 | 110 / 0 / 0 | 2 (Ugly Kid Joe, étiqueté « funk metal » ; Daft Punk, en double) | — |
+| réduit 0,5 | 119 / 0 / 0 | 1 (Ugly Kid Joe) | Madness (ska) |
+| réduit 0,7 | 79 / 0 / 0 | 2 | Parliament, Morcheeba, Arrested Development, Gainsbourg, Röyksopp |
+| **réduit 0,85** | 67 / 0 / 0 | **4** | Parliament, Herbie Hancock, Tower of Power, Morcheeba, Garnier, Four Tet |
+
+La première liste garde devant les 12 candidats que V23 avait déjà mesurés
+(un candidat mesuré passe avant un candidat en attente). Le vrai juge est
+donc l'essai complet à 0,85, avec la préparation des 8 premiers nouveaux
+(480 s, sans échec, +1,6 Gio de cache). Classement final, dans l'ordre :
+Gainsbourg *Sea Sex and Sun* (syncope 0,54), Laurent Garnier *Last Tribute
+From the 20th Century* (0,49), Kemar *45/33/78*, Gainsbourg *Lola
+Rastaquouère*, **Herbie Hancock** *Vein Melter* (0,29), Arrested
+Development *Natural*, Urban Dance Squad *Piece of Rock*, **Morcheeba**
+*Small Town*, **Tower of Power** *Cruise Control* (0,24), **Parliament**
+*Theme From the Black Hole*. Il y a donc **4 funk ou soul dans les 10
+premiers**, contre 2 faux positifs pour V23. Les filtres tiennent : 79
+écartés au tempo, 1 à la métrique. *Give Life Back to Music* n'apparaît plus
+qu'une fois : les éditions d'un même titre (même artiste, titre sans ce
+qui suit une parenthèse, un crochet ou un tiret) sont dédoublonnées, et la
+mieux classée reste.
+
+Le classement final suit toujours la syncope mesurée, et pas l'étiquette :
+les deux premiers (reggae chez Gainsbourg, techno) syncopent plus que
+Parliament (0,19).
+
+**Non vérifié** : le classement face à l'oreille ; l'effet de 0,85 sur un
+guide qui ne s'éloigne pas du style (« plus sobre » depuis un morceau
+sobre) ; Morcheeba est compté « soul » par ses genres MusicBrainz, il serait
+plutôt trip hop à l'écoute.

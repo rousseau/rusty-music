@@ -24,6 +24,24 @@ use rusty_music_analysis::chemin::Empreinte;
 /// trente secondes de démixage et 124 Mo de cache chacun.
 pub(crate) const PREPARES: usize = 8;
 
+/// Part de la direction textuelle dans le préfiltre, de 0 (le son du morceau
+/// seul) à 1 (le texte seul). Les deux similarités sont centrées et réduites
+/// sur la bibliothèque avant le mélange (voir [`prefiltre`]). Choisie sur
+/// l'essai de V26 (journal) : à 0,5, un seul morceau funk ou soul parmi les
+/// candidats de « une batterie plus funk » depuis un morceau rock ; à 0,85,
+/// quatre ; `RUSTY_MUSIC_POIDS_TEXTE` la remplace, pour
+/// rejouer l'essai à d'autres valeurs.
+pub(crate) const POIDS_TEXTE: f32 = 0.85;
+
+/// La part du texte en vigueur : [`POIDS_TEXTE`], sauf réglage d'essai.
+pub(crate) fn poids_texte() -> f32 {
+    std::env::var("RUSTY_MUSIC_POIDS_TEXTE")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|w| (0.0..=1.0).contains(w))
+        .unwrap_or(POIDS_TEXTE)
+}
+
 /// Écart de tonalité toléré pour un stem à hauteur, en quintes : la même, la
 /// relative, ou une voisine. Au-delà, il faudrait transposer, et la greffe ne
 /// le fait pas encore (`demi_tons_rendu`, plan 2.1).
@@ -192,25 +210,40 @@ fn cosinus(a: &[f32], b: &[f32]) -> f32 {
 }
 
 /// Les `k` morceaux les plus proches du morceau `id` — et, si `texte` est
-/// donné, de la phrase aussi, à parts égales : le morceau garde le style,
-/// le texte donne la direction.
+/// donné, de la phrase aussi : le morceau garde le style, le texte donne la
+/// direction, pour la part `poids_texte`.
+///
+/// **Les deux similarités sont centrées et réduites avant d'être mélangées.**
+/// Brutes, elles ne vivent pas à la même échelle : entre deux morceaux, le
+/// cosinus de CLAP s'étale largement, alors qu'entre un morceau et une
+/// phrase il reste dans une bande étroite. Moitié-moitié sur les valeurs
+/// brutes, c'était le morceau seul, ou presque : sur « une batterie plus
+/// funk » depuis un morceau rock, les 400 voisins étaient tous rock (V23).
+/// Réduites, les deux comptent selon leur poids.
 pub(crate) fn prefiltre(
     vecteurs: &[Empreinte],
     id: i64,
     texte: Option<&[f32]>,
+    poids_texte: f32,
     k: usize,
 ) -> Vec<i64> {
     let Some(source) = vecteurs.iter().find(|(i, _)| *i == id).map(|(_, v)| v) else {
         return Vec::new();
     };
-    let mut notes: Vec<(i64, f32)> = vecteurs
+    let autres: Vec<&Empreinte> = vecteurs.iter().filter(|(i, _)| *i != id).collect();
+    let mut notes: Vec<(i64, f32)> = autres
         .iter()
-        .filter(|(i, _)| *i != id)
-        .map(|(i, v)| {
-            let s = cosinus(v, source);
-            (*i, texte.map_or(s, |t| 0.5 * s + 0.5 * cosinus(v, t)))
-        })
+        .map(|(i, v)| (*i, cosinus(v, source)))
         .collect();
+    if let Some(t) = texte {
+        let w = poids_texte.clamp(0.0, 1.0);
+        let vers_texte: Vec<f32> = autres.iter().map(|(_, v)| cosinus(v, t)).collect();
+        let son: Vec<f32> = notes.iter().map(|n| n.1).collect();
+        let (zs, zt) = (reduire(&son), reduire(&vers_texte));
+        for ((n, a), b) in notes.iter_mut().zip(zs).zip(zt) {
+            n.1 = (1.0 - w) * a + w * b;
+        }
+    }
     let k = k.min(notes.len());
     if k == 0 {
         return Vec::new();
@@ -219,6 +252,45 @@ pub(crate) fn prefiltre(
     notes.truncate(k);
     notes.sort_by(|a, b| b.1.total_cmp(&a.1));
     notes.into_iter().map(|(i, _)| i).collect()
+}
+
+/// Centre et réduit : moyenne 0, écart type 1 (ou tout à 0 si rien ne varie).
+fn reduire(x: &[f32]) -> Vec<f32> {
+    let n = x.len().max(1) as f32;
+    let m = x.iter().sum::<f32>() / n;
+    let e = (x.iter().map(|v| (v - m) * (v - m)).sum::<f32>() / n).sqrt();
+    if e <= f32::EPSILON {
+        return vec![0.0; x.len()];
+    }
+    x.iter().map(|v| (v - m) / e).collect()
+}
+
+/// Titre comparable d'une édition à l'autre : minuscules, sans ce qui suit
+/// une parenthèse, un crochet ou un tiret d'édition (« (Remastered 2009) »,
+/// « - Live »), espaces resserrés.
+fn titre_normalise(titre: &str) -> String {
+    let mut t = titre.to_lowercase();
+    for coupe in [" (", " [", " - ", " – ", " — "] {
+        if let Some(i) = t.find(coupe) {
+            if i > 0 {
+                t.truncate(i);
+            }
+        }
+    }
+    t.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Une seule édition d'un même titre (même artiste, titre normalisé) : la
+/// première rencontrée, donc la mieux classée si la liste est triée.
+fn sans_doublons<T>(liste: Vec<T>, cle: impl Fn(&T) -> (String, String)) -> Vec<T> {
+    let mut vus = std::collections::HashSet::new();
+    liste
+        .into_iter()
+        .filter(|x| {
+            let (artiste, titre) = cle(x);
+            vus.insert((artiste.trim().to_lowercase(), titre_normalise(&titre)))
+        })
+        .collect()
 }
 
 /// Un nombre à la française.
@@ -421,7 +493,13 @@ pub(crate) fn chercher_greffon(
     };
 
     let vecteurs = charger_vecteurs(&etat)?;
-    let proches = prefiltre(&vecteurs, id, cible.as_deref(), VOISINS_EXAMINES);
+    let proches = prefiltre(
+        &vecteurs,
+        id,
+        cible.as_deref(),
+        poids_texte(),
+        VOISINS_EXAMINES,
+    );
     let pistes = pistes_de(&etat, &proches)?;
     let (source, bpm, tonalite, tempos, tonalites) = {
         let lib = verrou(&etat.lib);
@@ -540,6 +618,16 @@ pub(crate) fn chercher_greffon(
             .is_some()
             .cmp(&a.groove.is_some())
             .then(b.score.total_cmp(&a.score))
+    });
+    // Deux éditions d'un même titre (album et compilation, remaster) ne
+    // font pas deux greffons : la mieux classée reste.
+    sortie.candidats = sans_doublons(std::mem::take(&mut sortie.candidats), |c| {
+        // Sans titre, rien à comparer : la clé reste propre au morceau.
+        let titre = c.title.clone().filter(|t| !t.trim().is_empty());
+        (
+            c.artist.clone().unwrap_or_default(),
+            titre.unwrap_or_else(|| format!("#{}", c.id)),
+        )
     });
     sortie.candidats.truncate(count);
     tracing::info!(
@@ -707,7 +795,9 @@ pub(crate) fn greffons_etat(etat: State<Etat>) -> VueGreffons {
 /// l'interface, puis relit le classement et quitte. Le détail, durées
 /// comprises, va dans `essai-greffon.json` à côté de la base. À lancer sur une
 /// copie des données (`RUSTY_MUSIC_DONNEES`) : les démixages vont dans son
-/// cache de stems. Sans effet en usage normal.
+/// cache de stems. Sans effet en usage normal. Pour comparer des réglages :
+/// `RUSTY_MUSIC_POIDS_TEXTE` (part du texte, [`poids_texte`]) et
+/// `RUSTY_MUSIC_ESSAI_PREPARES` (combien préparer ; 0 : rien à démixer).
 pub(crate) fn essai_greffon(app: &tauri::AppHandle) {
     let Some(id) = std::env::var("RUSTY_MUSIC_ESSAI_GREFFON")
         .ok()
@@ -756,7 +846,8 @@ pub(crate) fn essai_greffon(app: &tauri::AppHandle) {
                 noter("empreintes", serde_json::json!(v.len()));
                 noter("empreintes_ms", ms(t));
                 let t = Instant::now();
-                let p = prefiltre(&v, id, cible.as_deref(), VOISINS_EXAMINES);
+                let p = prefiltre(&v, id, cible.as_deref(), poids_texte(), VOISINS_EXAMINES);
+                noter("poids_texte", serde_json::json!(poids_texte()));
                 noter("prefiltre_ms", ms(t));
                 noter("prefiltre_n", serde_json::json!(p.len()));
             }
@@ -793,7 +884,14 @@ pub(crate) fn essai_greffon(app: &tauri::AppHandle) {
             .iter()
             .filter(|c| c.groove.is_none())
             .map(|c| c.id)
-            .take(PREPARES)
+            .take(
+                // `RUSTY_MUSIC_ESSAI_PREPARES=0` : le préfiltre et les filtres
+                // seuls, sans démixage (comparer des réglages, V26).
+                std::env::var("RUSTY_MUSIC_ESSAI_PREPARES")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(PREPARES),
+            )
             .collect();
         sortie.insert("prepares".into(), serde_json::json!(ids));
         let t = Instant::now();
@@ -911,9 +1009,49 @@ mod tests {
             (3, v(0.7, 0.7)),
             (4, v(0.0, 1.0)),
         ];
-        assert_eq!(prefiltre(&vecteurs, 1, None, 2), vec![2, 3]);
+        assert_eq!(prefiltre(&vecteurs, 1, None, 0.5, 2), vec![2, 3]);
         // Guidé vers (0, 1) : le 3, à mi-chemin, passe devant le 2.
-        assert_eq!(prefiltre(&vecteurs, 1, Some(&[0.0, 1.0]), 2), vec![3, 2]);
-        assert!(prefiltre(&vecteurs, 99, None, 2).is_empty());
+        assert_eq!(prefiltre(&vecteurs, 1, Some(&[0.0, 1.0]), 0.5, 2)[0], 3);
+        // Le poids règle le mélange : à 0, le son seul ; à 1, le texte seul.
+        assert_eq!(
+            prefiltre(&vecteurs, 1, Some(&[0.0, 1.0]), 0.0, 2),
+            vec![2, 3]
+        );
+        assert_eq!(
+            prefiltre(&vecteurs, 1, Some(&[0.0, 1.0]), 1.0, 2),
+            vec![4, 3]
+        );
+        assert!(prefiltre(&vecteurs, 99, None, 0.5, 2).is_empty());
+    }
+
+    /// Réduire met les deux similarités à la même échelle : moyenne 0,
+    /// écart type 1, quelle que soit la largeur de la bande d'origine.
+    #[test]
+    fn reduire_met_a_la_meme_echelle() {
+        let etroite = reduire(&[0.10, 0.12, 0.14]);
+        let large = reduire(&[0.2, 0.55, 0.9]);
+        for (a, b) in etroite.iter().zip(&large) {
+            assert!((a - b).abs() < 1e-4, "{etroite:?} / {large:?}");
+        }
+        assert_eq!(reduire(&[0.3, 0.3]), vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn une_seule_edition_par_titre() {
+        let liste = vec![
+            ("Daft Punk", "Give Life Back to Music", 1),
+            ("Pixies", "Gouge Away", 2),
+            ("daft punk", "Give Life Back to Music (Remastered)", 3),
+            ("Daft Punk", "Give Life Back to Music - Live", 4),
+            ("Pixies", "Gouge Away", 5),
+            ("Autre", "Give Life Back to Music", 6),
+        ];
+        let gardes: Vec<i32> = sans_doublons(liste, |x| (x.0.to_string(), x.1.to_string()))
+            .into_iter()
+            .map(|x| x.2)
+            .collect();
+        assert_eq!(gardes, vec![1, 2, 6]);
+        assert_eq!(titre_normalise("  Brick  Is Red "), "brick is red");
+        assert_eq!(titre_normalise("(Intro)"), "(intro)");
     }
 }
