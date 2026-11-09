@@ -109,8 +109,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     famille mais perd 2,5 % sur le rapport intra / inter, donc ne passe pas
     le critère ; CLaMP 3 abandonné sans mesure ; texte → audio non annoté.
     La carte n'est pas à régénérer ; SongFormer (G3) abandonné. Les
-    fichiers du banc (≈ 10 Go et plus) restent sur `RUSTY_DEV`, à effacer
-    sur décision (`experiments/banc-empreinte/README.md`, « Décision »).
+    fichiers du banc (31 Go avec les poids MuQ) sont mis de côté sur
+    `RUSTY_DEV` dans `_a-effacer-V27` (V27, 9 nov.) ; reste à vider ce
+    dossier.
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 

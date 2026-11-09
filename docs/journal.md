@@ -5273,3 +5273,27 @@ Stem-JEPA sur la PGX.
 
 **Non vérifié** : la liste des dépôts SonyCSLParis n'a été parcourue qu'en
 partie (1 page sur 5) ; un dépôt zéro-shot a pu échapper.
+
+## Bancs, V27 : les restes de G1 mis de côté sur le LaCie — 9 nov. 2026
+
+G1 clos (CLAP gardé), François a décidé d'effacer ses fichiers. Rien hors
+d'`experiments/banc-empreinte` ne lit `banc-empreinte`, MuQ ni
+xlm-roberta (le seul autre lecteur, l'exemple `banc_empreinte`, est le
+banc lui-même). Le cache `hf/hub` du LaCie range les poids dans un
+`blobs/` commun (dédoublonné, un `.refs` par blob) : effacer les dossiers
+`models--…` seuls aurait laissé 4,7 Go orphelins. Les trois blobs que seuls
+ces modèles référencent partent avec eux ; ceux d'all-in-one et de
+HTDemucs restent, leurs liens se résolvent toujours.
+
+- Avant : `banc-empreinte` 26 Go, `hf` 10 Go (dont `hf/hub` 4,9 Go).
+- Après : `hf` 5,2 Go (`hf/hub` 132 Mo, `muscriptor-large` 5,1 Go intact) ;
+  `_a-effacer-V27` 31 Go.
+
+L'effacement définitif n'a pas été fait : l'exécutant automatique n'a pas
+eu le droit de `rm -rf`. Tout est déplacé, sur le même disque, dans
+`/Volumes/LaCieDock/rusty_music-dev/_a-effacer-V27` ; l'espace libre du
+LaCie (2,3 To) ne bougera qu'une fois ce dossier vidé à la main.
+
+**Non vérifié** : un lancement réel de MuScriptor, d'all-in-one ou de
+HTDemucs depuis ce cache après le déplacement (seule la résolution des
+liens est contrôlée).

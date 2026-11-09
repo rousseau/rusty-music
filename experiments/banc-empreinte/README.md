@@ -149,3 +149,9 @@ Les fichiers lourds restent sur `RUSTY_DEV` (`$B` =
 `/Volumes/LaCieDock/rusty_music-dev/hf`) : fenêtres audio (9,8 Go),
 WAV de CLaMP 3, environnement Python, poids MuQ-MuLan ; à effacer quand
 François le décidera.
+
+Sur décision de François (9 nov.), `banc-empreinte` et, dans `hf/hub`,
+MuQ-MuLan-large, MuQ-large-msd-iter et xlm-roberta-base (dossiers et blobs
+dédoublonnés) ont été déplacés le 9 nov. dans
+`/Volumes/LaCieDock/rusty_music-dev/_a-effacer-V27` (31 Go), en attente
+d'effacement définitif.
