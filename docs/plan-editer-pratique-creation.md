@@ -697,6 +697,21 @@ faudrait démixer 27 000 morceaux).
 L'interface montre pourquoi un candidat est classé là (syncope, tempo,
 tonalité), comme la greffe dit déjà ce qu'il a fallu lui faire.
 
+**Fait (9 nov., F1)**, sans modèle nouveau : `chercher_greffon`
+(`apps/desktop/src/greffon.rs`) remplace `voisins_de_stem`. Préfiltre sur
+400 voisins par cosinus CLAP, moitié morceau, moitié texte si une direction
+est donnée (« plus funk » → « funk drums, syncopated groove », syncope
+visée en hausse ; « plus droit », « plus chargé », « plus sobre » ; le
+reste va tel quel à la tour texte) ; tempo replié à ±10 %, tonalité à une
+quinte au plus pour les stems à hauteur (`distance_tonale`), métrique une
+fois le candidat préparé ; les 8 premiers sans groove démixés en tâche de
+fond (`greffons_preparer`, file qu'un clic réordonne, dans le cache de
+stems) ; groove mesuré sur leur stem `drums` (`analysis::groove` :
+densité, syncope, swing, sur les temps de Beat This!, en cache
+`groove.json`). Chaque candidat porte ses raisons en clair. Le classement
+de la syncope n'est pas encore confronté à une vérité terrain
+(`journal.md`, « F1 »).
+
 ### 2.3 COCOLA — **M**
 
 Score de compatibilité appris, asymétrique : stem candidat → reste du mix de

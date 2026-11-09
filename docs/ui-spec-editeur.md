@@ -362,7 +362,7 @@ oublié ne doit pas être une fuite silencieuse.
 | ~~`stems_exporter(…)`~~ | **fait** — écrit ce qu'on entend, hors de la bibliothèque |
 | ~~`stems_etirer(stems, facteur, demi_tons)`~~ | **fait** — transposition, mise en cache par réglage |
 | ~~`stems_cache()` / `stems_cache_vider()`~~ | **fait** — bloc « Stems démixés » dans les Réglages |
-| ~~`voisins_de_stem(stem, k)`~~ | **fait** — les voisins dont le tempo se cale, ceux qui ont été écartés |
+| ~~`voisins_de_stem(stem, k)`~~ | **remplacé** (F1, 9 nov.) par `chercher_greffon(id, stem, guide, count)` — préfiltre CLAP guidé par le texte, tempo, tonalité, métrique, classement par le groove de la batterie, raisons en clair ; `greffons_preparer(ids, variant)` et `greffons_etat()` démixent les premiers en tâche de fond |
 | ~~`stems_greffer(…)`~~ | **fait** — écrit la greffe sous `greffes/`, rend ce qu'il a fallu lui faire |
 | ~~`stems_vitesse_stem(stem, vitesse)`~~ | **fait** — la vitesse d'un stem seul, immédiate |
 | ~~`tempo_cible(id)`~~ | **fait** — le BPM du morceau (base) et la netteté de sa pulsation (grille du stem `drums`), pour décider si la barre propose un BPM cible |

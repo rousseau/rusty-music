@@ -57,7 +57,7 @@ const PHASES: usize = 64;
 /// 150 BPM, où le tempo tombe juste, l'écart vaut −31 ms pour 32 ms dérivés.
 /// Aux tempos où le tempo tombe moins juste, l'écart est plus grand — et ce
 /// n'est pas la latence, c'est ce que [`affiner`] existe pour corriger.
-const LATENCE_S: f32 = (N_FFT_ATTAQUE - HOP_ATTAQUE) as f32 / crate::mel::SR as f32;
+pub(crate) const LATENCE_S: f32 = (N_FFT_ATTAQUE - HOP_ATTAQUE) as f32 / crate::mel::SR as f32;
 
 /// Doivent rester d'accord avec `descripteurs.rs` — c'est son flux qu'on lit.
 const N_FFT_ATTAQUE: usize = 2048;
@@ -115,7 +115,7 @@ impl Grille {
 /// `signal` est mono à la fréquence du module d'analyse (48 kHz). Passer une
 /// autre fréquence décalerait tempo **et** phase sans rien signaler, d'où
 /// [`grille_reechantillonnee`] pour les appelants qui n'y sont pas.
-fn enveloppe(signal: &[f32], a: &Analyseur) -> Vec<f32> {
+pub(crate) fn enveloppe(signal: &[f32], a: &Analyseur) -> Vec<f32> {
     let mut env = descripteurs::flux(&a.spectres(signal));
     descripteurs::centrer(&mut env);
     env
@@ -318,25 +318,34 @@ pub fn grille(signal: &[f32], a: &Analyseur) -> Option<Grille> {
 /// exactement le genre d'écart qu'on ne verrait jamais. L'interpolation
 /// linéaire suffit : on cherche des attaques, pas des harmoniques.
 pub fn grille_reechantillonnee(signal: &[f32], sr: u32, a: &Analyseur) -> Option<Grille> {
-    const CIBLE: u32 = crate::mel::SR;
     if signal.is_empty() {
         return None;
     }
-    if sr == CIBLE {
-        return grille(signal, a);
+    grille(&vers_48k(signal, sr), a)
+}
+
+/// Un signal mono ramené à 48 kHz, la fréquence du module d'analyse.
+///
+/// L'interpolation linéaire suffit : on cherche des attaques, pas des
+/// harmoniques. Partagé par la grille et le groove (`groove.rs`).
+pub(crate) fn vers_48k(signal: &[f32], sr: u32) -> std::borrow::Cow<'_, [f32]> {
+    const CIBLE: u32 = crate::mel::SR;
+    if sr == CIBLE || signal.is_empty() {
+        return std::borrow::Cow::Borrowed(signal);
     }
     let rapport = sr as f64 / CIBLE as f64;
     let n = (signal.len() as f64 / rapport) as usize;
-    let mono: Vec<f32> = (0..n)
-        .map(|i| {
-            let x = i as f64 * rapport;
-            let (j, t) = (x.floor() as usize, (x.fract()) as f32);
-            let a = signal[j.min(signal.len() - 1)];
-            let b = signal[(j + 1).min(signal.len() - 1)];
-            a * (1.0 - t) + b * t
-        })
-        .collect();
-    grille(&mono, a)
+    std::borrow::Cow::Owned(
+        (0..n)
+            .map(|i| {
+                let x = i as f64 * rapport;
+                let (j, t) = (x.floor() as usize, (x.fract()) as f32);
+                let a = signal[j.min(signal.len() - 1)];
+                let b = signal[(j + 1).min(signal.len() - 1)];
+                a * (1.0 - t) + b * t
+            })
+            .collect(),
+    )
 }
 
 /// Ce que l'hypothèse de tempo constant coûte sur ce morceau-ci.

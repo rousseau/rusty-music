@@ -25,6 +25,7 @@ burn-onnx.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
+serde_json.workspace = true
 rusty-music-player = { path = "../player" }
 
 # `ndarray` toujours actif, en plus de `wgpu`/`ndarray` choisi par `gpu`/`cpu`

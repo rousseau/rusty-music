@@ -1629,11 +1629,6 @@ function panneauStem(s) {
   return pan;
 }
 
-/// Attend la fin d'un démixage lancé pour une greffe.
-///
-/// Le sondage est le même que celui du bouton « Séparer » — le moteur ne rend
-/// pas de rapport intermédiaire — mais il ne touche pas au morceau ouvert :
-/// c'est le voisin qu'on sépare, pas lui.
 /// Lance la transposition et attend qu'elle finisse, en disant où elle en est.
 ///
 /// **Le calcul ne bloque plus l'interface, et c'est le but de tout ceci.** Une
@@ -1689,31 +1684,6 @@ async function transposerStems(stems, demiTons) {
       if (e.erreur) reject(e.erreur);
       else resolve(e.stems);
     }, 400);
-  });
-}
-
-function attendreDemix() {
-  return new Promise((resolve, reject) => {
-    const t = setInterval(async () => {
-      let d;
-      try {
-        d = await invoke("demix_state");
-      } catch (e) {
-        clearInterval(t);
-        reject(e);
-        return;
-      }
-      if (d.en_cours) {
-        if (d.segments_total) {
-          const pct = Math.round((100 * d.segments_faits) / d.segments_total);
-          $("dock-aide").textContent = `séparation du morceau voisin… ${pct} %`;
-        }
-        return;
-      }
-      clearInterval(t);
-      if (d.stems.length) resolve(d);
-      else reject(d.resultat ?? "la séparation du morceau voisin a échoué");
-    }, 1000);
   });
 }
 
@@ -2052,7 +2022,7 @@ $("dock-fermer").addEventListener("click", async () => {
 });
 
 export {
-  accelererAuPassage, appliquerReglages, appliquerVitesses, arreterStems, attendreDemix,
+  accelererAuPassage, appliquerReglages, appliquerVitesses, arreterStems,
   bpmSource, choisirVariante, deplacerLecture, dessinerReglages, dessinerStems, edition, libelleStem, majDerive,
   majBoucleUI, majEtatEditer, majPulsation, majSections, majTempoSource, majVariantes,
   marquerSectionCourante, niveaux, NOMS_SECTIONS, octaveVitesse, oublierStems, pasReglage,

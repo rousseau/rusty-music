@@ -835,6 +835,31 @@ fn tonalite(chroma: &[f32; 12]) -> Option<String> {
         .map(|(nom, _)| nom)
 }
 
+/// Distance de deux tonalités (« A min », « C maj ») sur le cycle des
+/// quintes, en quintes : 0 pour la même ou sa relative (la mineur et do
+/// majeur partagent leurs notes), 1 pour une voisine (une altération de
+/// différence), 6 au plus. `None` si l'une ne se lit pas.
+///
+/// C'est la roue de Camelot des DJ, sans son numérotage : deux stems à
+/// hauteur à une quinte l'un de l'autre se superposent sans frotter ; à
+/// deux, il faut transposer.
+pub fn distance_tonale(a: &str, b: &str) -> Option<u8> {
+    // Une mineure se ramène à sa relative majeure, trois demi-tons plus haut.
+    let majeure = |t: &str| -> Option<usize> {
+        let (note, mode) = t.split_once(' ')?;
+        let f = NOTES.iter().position(|n| *n == note)?;
+        match mode {
+            "maj" => Some(f),
+            "min" => Some((f + 3) % 12),
+            _ => None,
+        }
+    };
+    let (x, y) = (majeure(a)?, majeure(b)?);
+    // Une quinte, sept demi-tons : la position sur le cycle est f × 7 mod 12.
+    let d = ((x * 7) % 12 + 12 - (y * 7) % 12) % 12;
+    Some(d.min(12 - d) as u8)
+}
+
 /// Analyse un fichier. Réutilise le fenêtrage du module 2 — cinq extraits de
 /// dix secondes — dont le coût de décodage est déjà éprouvé.
 pub fn analyser(path: &Path, a: &Analyseur) -> Result<Descripteurs, decode::Error> {
@@ -1093,6 +1118,17 @@ mod tests {
         );
         // Sur la frappe, la raie tenue garde au moins l'avantage de sa continuité.
         assert!(au(4, 50) > au(4, 30) * 10.0);
+    }
+
+    #[test]
+    fn la_distance_tonale_suit_le_cycle_des_quintes() {
+        assert_eq!(distance_tonale("C maj", "C maj"), Some(0));
+        assert_eq!(distance_tonale("A min", "C maj"), Some(0));
+        assert_eq!(distance_tonale("G maj", "C maj"), Some(1));
+        assert_eq!(distance_tonale("E min", "C maj"), Some(1));
+        assert_eq!(distance_tonale("D maj", "C maj"), Some(2));
+        assert_eq!(distance_tonale("F# maj", "C maj"), Some(6));
+        assert_eq!(distance_tonale("C maj", "?"), None);
     }
 
     #[test]

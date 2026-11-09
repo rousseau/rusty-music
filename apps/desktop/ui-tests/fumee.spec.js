@@ -337,6 +337,26 @@ test("I5 : les stems portent des noms français, le nom du moteur reste la clé"
   await expect(page.locator("#insp-stem-nom")).toHaveText("Basse");
 });
 
+test("F1 : chercher le greffon dit pourquoi chaque candidat est classé là", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click('button.mode[data-mode="creer"]');
+  await page.locator("#editer-etabli .stem__nom", { hasText: "Batterie" }).click();
+  await page.locator(".greffe__champ").fill("une batterie plus funk");
+  await page.locator(".stem__b", { hasText: "remplacer par…" }).click();
+  await expect(page.locator(".candidat")).toHaveCount(2);
+  const cherche = (await appels(page, "chercher_greffon")).at(-1);
+  expect(cherche).toMatchObject({ stem: "drums", guide: "une batterie plus funk" });
+  // Syncope, tempo, et la tonalité ignorée pour une batterie : dits.
+  await expect(page.locator(".candidat__pourquoi").first()).toContainText("plus syncopé");
+  await expect(page.locator(".candidat__pourquoi").first()).toContainText("122 BPM");
+  await expect(page.locator(".stem__note").filter({ hasText: "Tonalité ignorée" })).toHaveCount(1);
+  // Le candidat sans groove part en préparation de fond, le prêt non.
+  await expect.poll(() => appels(page, "greffons_preparer").then((a) => a.length)).toBeGreaterThan(0);
+  const prepare = (await appels(page, "greffons_preparer")).at(-1);
+  expect(prepare.ids).toEqual([5]);
+  await expect(page.locator(".candidat").nth(0)).toContainText("prêt");
+});
+
 test("I10 : le décompte de Pratiquer tient sur une ligne dans le rail", async ({ page }) => {
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="pratiquer"]');

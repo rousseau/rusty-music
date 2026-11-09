@@ -36,7 +36,7 @@ pub(crate) type EtatDemix = Passe<AvancementDemix>;
 /// Pas à côté du morceau d'origine : la bibliothèque est en lecture seule par
 /// principe — c'est une source, pas un espace de travail — et elle vit ici sur
 /// une carte SD lente.
-pub(crate) fn dossier_stems(etat: &State<Etat>, source: &Path) -> PathBuf {
+pub(crate) fn dossier_stems(etat: &Etat, source: &Path) -> PathBuf {
     let base = source
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -45,7 +45,7 @@ pub(crate) fn dossier_stems(etat: &State<Etat>, source: &Path) -> PathBuf {
 }
 
 /// Racine du cache de stems, à côté de la base.
-pub(crate) fn racine_stems(etat: &State<Etat>) -> PathBuf {
+pub(crate) fn racine_stems(etat: &Etat) -> PathBuf {
     etat.db.parent().unwrap_or(Path::new(".")).join("stems")
 }
 
@@ -597,7 +597,8 @@ pub(crate) fn start_demix(
 /// - les stems que la nouvelle variante ne produit pas (`guitar` et `piano`
 ///   d'un 6 stems quand on revient à 4) ;
 /// - les partitions en cache (`transcription-*.json`), calculées sur l'ancien
-///   stem — sinon « Calculer » rendait la partition d'avant ;
+///   stem — sinon « Calculer » rendait la partition d'avant — et le groove
+///   (`groove.json`), mesuré sur l'ancienne batterie ;
 /// - `traites/`, les versions transposées des anciens stems.
 ///
 /// La pulsation et les sections viennent du mélange : elles restent. Les
@@ -615,7 +616,8 @@ pub(crate) fn oublier_derives_des_stems(dossier: &Path, gardes: &[PathBuf]) {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            if nom.starts_with("transcription-") && nom.ends_with(".json") {
+            if (nom.starts_with("transcription-") && nom.ends_with(".json")) || nom == "groove.json"
+            {
                 let _ = std::fs::remove_file(&p);
             }
         }
@@ -833,7 +835,7 @@ pub(crate) fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, Stri
 
 /// La pulsation de `source`, depuis le cache ou calculée (et mise en cache).
 pub(crate) fn pulsation_de(
-    etat: &State<Etat>,
+    etat: &Etat,
     source: &Path,
     cache: &Path,
     modele: rusty_music_editor::pulsation::Modele,

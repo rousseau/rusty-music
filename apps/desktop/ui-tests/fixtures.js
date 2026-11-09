@@ -360,6 +360,45 @@ const fixtures = {
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,
   sections_disponibles: false,
+  // F1 : chercher le greffon. Un candidat mesuré, un qui attend son démixage.
+  chercher_greffon: {
+    bpm: 120,
+    tonalite: "A min",
+    a_hauteur: false,
+    texte: "funk drums, syncopated groove",
+    groove: { version: 1, densite: 2, syncope: 0.2, swing: null, metrique: 4 },
+    candidats: [
+      {
+        id: 4, path: "/Musique/Orchestre Témoin/Fumée/04 Largo.flac", title: "Largo", artist: "Orchestre Témoin",
+        bpm: 122, facteur: 0.984, octaves: 0, tonalite: "C maj", separe: true,
+        groove: { version: 1, densite: 2.1, syncope: 0.41, swing: 1.1, metrique: 4 },
+        rang_sonore: 2, score: 1.8,
+        raisons: [
+          "syncope 0,41 : plus syncopé que l'original (0,20)",
+          "2,1 attaques par temps : densité voisine (2,0)",
+          "droit",
+          "122 BPM, étiré de -1,6 %",
+          "n° 2 pour « funk drums, syncopated groove » et le son du morceau",
+        ],
+      },
+      {
+        id: 5, path: "/Musique/Orchestre Témoin/Fumée/05 Presto.flac", title: "Presto", artist: "Orchestre Témoin",
+        bpm: 60, facteur: 1, octaves: -1, tonalite: null, separe: false, groove: null,
+        rang_sonore: 1, score: 1,
+        raisons: [
+          "groove à mesurer : démixage en attente",
+          "60 BPM, joué à son tempo divisé par 2, au même tempo",
+          "n° 1 pour « funk drums, syncopated groove » et le son du morceau",
+        ],
+      },
+    ],
+    ecartes_tempo: 31,
+    ecartes_tonalite: 0,
+    ecartes_metrique: 1,
+    sans_tempo: 4,
+  },
+  greffons_preparer: null,
+  greffons_etat: { en_cours: false, courant: null, prets: [], echecs: [], restants: 0 },
   // --- l'inspecteur du morceau en lecture : rien d'enrichi
   descripteurs: null,
   qualite_piste: null,

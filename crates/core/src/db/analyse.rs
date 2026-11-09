@@ -456,6 +456,26 @@ impl Library {
         Ok(rows.collect::<std::result::Result<HashMap<i64, f32>, _>>()?)
     }
 
+    /// Tonalité mesurée de morceaux donnés, ceux qui en ont (« A min »).
+    ///
+    /// Le pendant de [`Self::tempos`] pour la recherche du greffon : les
+    /// stems à hauteur s'y filtrent par distance de tonalité.
+    pub fn tonalites(&self, ids: &[i64]) -> Result<HashMap<i64, String>> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let trous = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT track_id, musical_key FROM descriptors
+              WHERE musical_key IS NOT NULL AND track_id IN ({trous})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids), |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<HashMap<i64, String>, _>>()?)
+    }
+
     /// Tempo, tonalité et énergie d'un morceau, tels que la passe les a
     /// mesurés.
     ///

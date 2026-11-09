@@ -47,7 +47,11 @@ fn exporter_les_types_des_commandes() {
             pratique_memoire,
             pratique_garder,
             // E2 : la partie corrigée, exportée.
-            exporter_partie
+            exporter_partie,
+            // F1 : chercher le greffon.
+            chercher_greffon,
+            greffons_preparer,
+            greffons_etat
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

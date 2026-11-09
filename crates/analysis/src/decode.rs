@@ -177,7 +177,7 @@ fn est_opus(path: &Path) -> bool {
 /// carte ; `rusty_music_core::opus` comble ce seul trou. Il rend déjà du 48 kHz
 /// — la fréquence du modèle — donc rien à rééchantillonner, seulement à
 /// ramener les canaux à un.
-fn mono_complet(path: &Path) -> Result<Vec<f32>, Error> {
+pub fn mono_complet(path: &Path) -> Result<Vec<f32>, Error> {
     if !est_opus(path) {
         // `+1` pour distinguer un flux qui s'arrête pile au plafond de celui
         // qui continuait — seul ce dernier mérite l'avertissement.

@@ -4867,3 +4867,67 @@ Les deux restes de la relecture d'E2.
 Non vérifié : dans l'app réelle (faux Tauri seulement) ; la barre à une
 largeur de fenêtre plus étroite que 1 400 px repasse sur deux lignes (voulu :
 `flex-wrap`).
+
+## Créer, F1 : chercher le greffon — 9 nov. 2026
+
+Le plan Éditer 2.2, sans modèle nouveau. `chercher_greffon`
+(`apps/desktop/src/greffon.rs`) remplace `voisins_de_stem`.
+
+- **Préfiltre** : 400 voisins par cosinus CLAP. Si l'utilisateur donne une
+  direction (un champ dans l'inspecteur du stem, avec suggestions), la
+  note est moitié morceau, moitié texte projeté par la tour texte de CLAP.
+  « plus funk » devient « funk drums, syncopated groove » et vise une
+  syncope en hausse à densité voisine. « plus droit », « plus chargé » et
+  « plus sobre » visent aussi un groove. Tout autre texte part tel quel à
+  CLAP, sans objectif de groove. La phrase dépend du stem (« funk bass »
+  pour la basse).
+- **Filtres** : tempo replié à ±10 % (inchangé) ; pour un stem à hauteur,
+  tonalité à une quinte au plus (`descripteurs::distance_tonale`, cycle des
+  quintes, la relative à 0 ; `Library::tonalites`) ; métrique de Beat This!
+  différente de celle de l'original, dès que le candidat est préparé. Les
+  écartés sont comptés et affichés, chaque filtre à part.
+- **Préparation en tâche de fond** (`greffons_preparer`, `greffons_etat`) :
+  les 8 premiers candidats sans groove sont démixés dans le cache de stems
+  existant, sans chevaucher un démixage lancé à la main. Ensuite viennent
+  leur pulsation et leur groove. Un candidat cliqué passe en tête de file :
+  la greffe ne lance plus `start_demix` elle-même. L'interface relit le
+  classement à chaque candidat prêt.
+- **Groove** (`crates/analysis/src/groove.rs`) : attaques = maxima locaux du
+  flux spectral sur amplitudes compressées (`ln(1 + x)`), placées dans leur
+  temps de Beat This! et arrondies à la double croche. On en tire la
+  densité (attaques par temps), la syncope (part de l'énergie hors des
+  temps : « e » et « a » comptent 1, « et » 0,5) et le swing (position
+  médiane de la croche du milieu, en rapport de durées). Le groove est mis
+  en cache dans `groove.json`, oublié avec les stems qu'il mesure.
+- **Classement** : rang sonore + note de groove contre la batterie
+  d'origine. Avec une intention, l'écart dans le sens demandé est
+  récompensé ; sans intention, c'est l'écart le plus petit. Chaque candidat
+  porte ses raisons en clair. Exemple : « syncope 0,41 : plus syncopé que
+  l'original (0,20) · 2,1 attaques par temps : densité voisine (2,0) ·
+  droit · 122 BPM, étiré de −1,6 % · n° 2 pour « funk drums, syncopated
+  groove » et le son du morceau ». L'en-tête nomme la référence et les
+  écartés, et dit qu'une batterie n'a pas de tonalité.
+- **Mesuré sur les 5 batteries démixées du cache réel**
+  (`examples/groove_stems.rs`, lecture seule, 0,3 à 0,7 s par morceau).
+  Sur les amplitudes brutes, la première version ne voyait presque pas les
+  charlestons : 1,1 à 1,8 attaque par temps, et le punk de *Know Your
+  Enemy* passait devant le funk. Avec la compression : *Love Foolosophy*
+  0,26 (2,4 attaques par temps, swing 1,35, des doubles croches
+  swinguées), *Know Your Enemy* 0,19 (1,7, droit), *About Damn Time* 0,14
+  (2,1), *Donne Moi Ça* 0,14 (2,0), *She's A Bad Mama Jama* 0,13 (1,9).
+  Les densités tombent sur des croches, comme attendu. **L'ordre de la
+  syncope n'est confronté à aucune vérité terrain** : cinq morceaux ne
+  permettent pas de régler, donc rien n'a été réglé dessus.
+- **Tests** : groove sur batteries synthétiques (noires, croches, doubles
+  faibles, ternaire), distance tonale, interprétation de « plus funk »,
+  note de groove et raisons, préfiltre orienté par le texte ; fumée « F1 »
+  (le champ, les raisons, la tonalité ignorée, seul le candidat sans groove
+  part en préparation). Trois commandes de plus contrôlées par `tauri-specta` (34 en tout).
+  `verifier.sh` vert, 60 tests de fumée. Audit complet : 252 cellules,
+  0 violation, rail de Créer 511 / 804 px, inchangé (Règle 13). L'audit a
+  tourné écran en veille, carte non dessinée.
+
+Non vérifié : dans l'app réelle (faux Tauri seulement). Ni la recherche
+guidée sur la vraie base (tour texte, 400 voisins), ni la durée de la
+préparation de 8 candidats (≈ 30 s de démixage chacun annoncés, 1 Go de
+cache), ni le son d'une lecture de stems pendant un démixage de fond.

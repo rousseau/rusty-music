@@ -19,6 +19,7 @@ pub mod decode;
 pub mod descripteurs;
 pub mod encodeur;
 pub mod encodeur_texte;
+pub mod groove;
 pub mod mel;
 pub mod passe;
 pub mod projection;

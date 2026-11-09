@@ -389,12 +389,24 @@ html, body {
 
 /* Les morceaux d'où l'on peut tirer un stem. Même grammaire que les voisins
    soniques de l'inspecteur : c'est la même relation, montrée ailleurs. */
-.candidats { display: flex; flex-direction: column; max-height: 168px; overflow: auto; }
+.candidats { display: flex; flex-direction: column; max-height: 260px; overflow: auto; }
 .candidat {
   background: none; border: none; border-top: 1px solid var(--line);
   padding: 6px 0; cursor: pointer; text-align: left; font: inherit;
-  color: var(--txt); display: flex; align-items: baseline; gap: 10px;
+  color: var(--txt); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
 }
+/* Pourquoi il est classé là (F1) : groove, tempo, tonalité, voisinage. */
+.candidat .candidat__pourquoi {
+  flex: 1 0 100%; font-size: var(--t-legende); color: var(--mut); line-height: 1.4;
+}
+/* La direction de la recherche : « plus funk », ou une phrase pour CLAP. */
+.greffe__champ {
+  flex: 1; min-width: 0; font: inherit; font-size: var(--t-legende); color: var(--txt);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+  padding: 5px 8px;
+}
+.greffe__champ:focus { outline: none; border-color: var(--accent); }
+.greffe__guide { flex-wrap: nowrap; }
 .candidat:hover { color: var(--accent); }
 .candidat:disabled { opacity: .45; cursor: default; }
 .candidat b { font-size: var(--t-legende); font-weight: 500; flex: 1 1 auto;

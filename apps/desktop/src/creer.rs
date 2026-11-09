@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Commandes de Créer : greffer le stem d'un autre morceau (candidats,
-//! tempo cible, greffe).
+//! Commandes de Créer : greffer le stem d'un autre morceau (tempo cible,
+//! greffe). La recherche des candidats : `greffon.rs`.
 
 use super::*;
 
@@ -18,121 +18,6 @@ pub(crate) const TOLERANCE_TEMPO: f32 = 0.10;
 /// Le filtre en écarte beaucoup : sur une bibliothèque réelle, quelques
 /// dizaines de voisins ne suffisent pas à en garder une poignée.
 pub(crate) const VOISINS_EXAMINES: usize = 400;
-
-/// Un morceau dont on pourrait prendre un stem.
-#[derive(serde::Serialize)]
-pub(crate) struct Candidat {
-    id: i64,
-    /// Le fichier, pour pouvoir le séparer s'il ne l'est pas encore.
-    path: String,
-    title: Option<String>,
-    artist: Option<String>,
-    bpm: f32,
-    /// Facteur de durée qui l'amènerait au tempo du morceau ouvert.
-    facteur: f32,
-    /// Repliements d'octave : +1 = joué à double tempo, −1 = à demi-tempo.
-    octaves: i32,
-    /// Ce que l'étirement lui fera subir, en pourcentage.
-    ecart: f32,
-    /// Ses stems sont-ils déjà séparés ? Sinon il faut compter trente secondes.
-    separe: bool,
-}
-
-/// Ce que la recherche a trouvé, **et ce qu'elle a écarté**.
-///
-/// Les deux comptes ne sont pas décoratifs : sans eux, une liste courte passe
-/// pour une bibliothèque pauvre en voisins alors que c'est le tempo, ou son
-/// absence, qui a trié.
-#[derive(serde::Serialize)]
-pub(crate) struct VoisinsStem {
-    /// Tempo du morceau ouvert. Sans lui, rien n'est calable.
-    bpm: Option<f32>,
-    candidats: Vec<Candidat>,
-    /// Voisins écartés parce que leur tempo est trop loin.
-    ecartes: usize,
-    /// Voisins écartés faute de tempo mesuré.
-    sans_tempo: usize,
-}
-
-/// Les morceaux d'où l'on pourrait tirer un stem à greffer.
-///
-/// **Le voisinage se calcule sur le morceau entier, pas sur le stem.** C'est
-/// une limite assumée : la bibliothèque ne contient que des empreintes de
-/// mélanges complets, et comparer une batterie seule à des mélanges
-/// compare deux choses différentes. Embarquer une empreinte par stem
-/// supposerait de démixer les 27 000 morceaux — trente secondes chacun.
-///
-/// Le tempo, lui, est une contrainte dure et non un classement : une batterie
-/// qui ne tombe pas juste ne sert à rien, si proche soit-elle.
-#[tauri::command(async)]
-pub(crate) fn voisins_de_stem(
-    etat: State<Etat>,
-    id: i64,
-    count: usize,
-) -> Result<VoisinsStem, String> {
-    let vecteurs = charger_vecteurs(&etat)?;
-    let proches = rusty_music_analysis::chemin::voisins(&vecteurs, id, VOISINS_EXAMINES);
-    let pistes = pistes_de(&etat, &proches)?;
-
-    let (bpm, tempos) = {
-        let lib = verrou(&etat.lib);
-        let bpm = lib.tempos(&[id]).map_err(echec)?.get(&id).copied();
-        (bpm, lib.tempos(&proches).map_err(echec)?)
-    };
-
-    let Some(bpm_source) = bpm else {
-        // Rien à caler sans tempo : on le dit plutôt que de proposer une liste
-        // dont aucune entrée ne tiendrait.
-        return Ok(VoisinsStem {
-            bpm: None,
-            candidats: Vec::new(),
-            ecartes: 0,
-            sans_tempo: pistes.len(),
-        });
-    };
-
-    let mut candidats = Vec::new();
-    let (mut ecartes, mut sans_tempo) = (0usize, 0usize);
-    for piste in pistes {
-        let Some(bpm) = tempos.get(&piste.id).copied() else {
-            sans_tempo += 1;
-            continue;
-        };
-        let (facteur, octaves) = rusty_music_editor::greffe::tempo_replie(bpm_source, bpm);
-        let ecart = (facteur - 1.0).abs();
-        if ecart > TOLERANCE_TEMPO {
-            ecartes += 1;
-            continue;
-        }
-        if candidats.len() < count {
-            let dossier = dossier_stems(&etat, Path::new(&piste.path));
-            candidats.push(Candidat {
-                id: piste.id,
-                path: piste.path,
-                title: piste.title,
-                artist: piste.artist,
-                bpm,
-                facteur,
-                octaves,
-                ecart: (facteur - 1.0) * 100.0,
-                separe: !stems_du_dossier(&dossier).is_empty(),
-            });
-        }
-    }
-
-    tracing::info!(
-        retenus = candidats.len(),
-        ecartes,
-        sans_tempo,
-        "voisins pour une greffe"
-    );
-    Ok(VoisinsStem {
-        bpm: Some(bpm_source),
-        candidats,
-        ecartes,
-        sans_tempo,
-    })
-}
 
 /// Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
 /// qu'un pourcentage de vitesse.

@@ -110,6 +110,25 @@ export const commands = {
 	 *  7) là où l'utilisateur l'a choisi (dialogue « Enregistrer »).
 	 */
 	exporter_partie: (chemin: string, octets: number[]) => __TAURI_INVOKE<null>("exporter_partie", { chemin, octets }),
+	/**
+	 *  Cherche d'où tirer un stem pour remplacer `stem` dans le morceau `id`.
+	 * 
+	 *  `guide` : « plus funk », « plus sobre »… ou une phrase anglaise pour CLAP.
+	 *  Rapide (une demi-seconde, l'encodeur texte compris) : seul le groove du
+	 *  morceau ouvert peut se mesurer ici, une seconde environ la première fois ;
+	 *  celui des candidats vient du cache, que [`greffons_preparer`] remplit.
+	 */
+	chercher_greffon: (id: number, stem: string, guide: string | null, count: number) => __TAURI_INVOKE<RechercheGreffon_Serialize>("chercher_greffon", { id, stem, guide, count }),
+	/**
+	 *  Démixe et mesure, en tâche de fond, les candidats `ids`, dans cet ordre.
+	 * 
+	 *  **Si la préparation tourne déjà, la file est remplacée** : c'est ainsi
+	 *  qu'un candidat cliqué passe devant les autres. Les stems vont dans le cache
+	 *  existant, comme un démixage lancé à la main.
+	 */
+	greffons_preparer: (ids: number[], variant: string) => __TAURI_INVOKE<null>("greffons_preparer", { ids, variant }),
+	/**  Avancement de la préparation. L'interface sonde. */
+	greffons_etat: () => __TAURI_INVOKE<VueGreffons_Serialize>("greffons_etat"),
 };
 
 /* Types */
@@ -332,6 +351,63 @@ export type BouclePratique_Serialize = {
 	vitesse_atteinte: number | null,
 };
 
+/**  Un morceau d'où tirer le stem, et pourquoi il est classé là. */
+export type CandidatGreffon = CandidatGreffon_Serialize | CandidatGreffon_Deserialize;
+
+/**  Un morceau d'où tirer le stem, et pourquoi il est classé là. */
+export type CandidatGreffon_Deserialize = {
+	id: number,
+	/**  Le fichier, pour pouvoir le séparer s'il ne l'est pas encore. */
+	path: string,
+	title?: string | null,
+	artist?: string | null,
+	bpm: number | null,
+	/**  Facteur de durée qui l'amènerait au tempo du morceau ouvert. */
+	facteur: number | null,
+	/**  Repliements d'octave : +1 = joué à double tempo, −1 = à demi-tempo. */
+	octaves: number,
+	tonalite?: string | null,
+	/**  Ses stems sont-ils déjà séparés ? */
+	separe: boolean,
+	/**  Le groove de sa batterie, une fois préparé. `None` : à préparer. */
+	groove?: GrooveVu_Deserialize | null,
+	/**
+	 *  Rang parmi les voisins sonores (guidés par le texte s'il y en a), 1 =
+	 *  le plus proche.
+	 */
+	rang_sonore: number,
+	score: number | null,
+	/**  Pourquoi il est là, en clair : groove, tempo, tonalité, voisinage. */
+	raisons: string[],
+};
+
+/**  Un morceau d'où tirer le stem, et pourquoi il est classé là. */
+export type CandidatGreffon_Serialize = {
+	id: number,
+	/**  Le fichier, pour pouvoir le séparer s'il ne l'est pas encore. */
+	path: string,
+	title: string | null,
+	artist: string | null,
+	bpm: number | null,
+	/**  Facteur de durée qui l'amènerait au tempo du morceau ouvert. */
+	facteur: number | null,
+	/**  Repliements d'octave : +1 = joué à double tempo, −1 = à demi-tempo. */
+	octaves: number,
+	tonalite: string | null,
+	/**  Ses stems sont-ils déjà séparés ? */
+	separe: boolean,
+	/**  Le groove de sa batterie, une fois préparé. `None` : à préparer. */
+	groove: GrooveVu_Serialize | null,
+	/**
+	 *  Rang parmi les voisins sonores (guidés par le texte s'il y en a), 1 =
+	 *  le plus proche.
+	 */
+	rang_sonore: number,
+	score: number | null,
+	/**  Pourquoi il est là, en clair : groove, tempo, tonalité, voisinage. */
+	raisons: string[],
+};
+
 export type CarrefourVue = {
 	numero: number,
 	voies: VoieVue[],
@@ -389,6 +465,35 @@ export type Epingle_Serialize = {
 export type Grandeur = "energie" | "tempo" | "popularite" | 
 /**  Les écoutes de la table `ecoute` : ce que l'on connaît. */
 "familiarite";
+
+/**  Ce que l'interface reçoit du groove d'une batterie. */
+export type GrooveVu = GrooveVu_Serialize | GrooveVu_Deserialize;
+
+/**  Ce que l'interface reçoit du groove d'une batterie. */
+export type GrooveVu_Deserialize = {
+	version: number,
+	/**  Attaques par temps. */
+	densite: number | null,
+	/**  0 : tout sur les temps ; 1 : tout sur les doubles croches faibles. */
+	syncope: number | null,
+	/**  Rapport des deux croches d'un temps (1 droit, 2 ternaire), s'il se lit. */
+	swing?: number | null,
+	/**  Temps par mesure (Beat This!), s'il se lit. */
+	metrique?: number | null,
+};
+
+/**  Ce que l'interface reçoit du groove d'une batterie. */
+export type GrooveVu_Serialize = {
+	version: number,
+	/**  Attaques par temps. */
+	densite: number | null,
+	/**  0 : tout sur les temps ; 1 : tout sur les doubles croches faibles. */
+	syncope: number | null,
+	/**  Rapport des deux croches d'un temps (1 droit, 2 ternaire), s'il se lit. */
+	swing: number | null,
+	/**  Temps par mesure (Beat This!), s'il se lit. */
+	metrique: number | null,
+};
 
 /**
  *  Répartition d'une valeur continue en tranches régulières (mode
@@ -495,6 +600,54 @@ export type RapportCarte = {
 	 *  « reprise » (nouveaux morceaux logés) ou « gardee » (nuage inchangé).
 	 */
 	projection: string,
+};
+
+/**
+ *  Ce que la recherche a trouvé, **et ce qu'elle a écarté** — sans les
+ *  comptes, une liste courte passe pour une bibliothèque pauvre.
+ */
+export type RechercheGreffon = RechercheGreffon_Serialize | RechercheGreffon_Deserialize;
+
+/**
+ *  Ce que la recherche a trouvé, **et ce qu'elle a écarté** — sans les
+ *  comptes, une liste courte passe pour une bibliothèque pauvre.
+ */
+export type RechercheGreffon_Deserialize = {
+	/**  Tempo du morceau ouvert. Sans lui, rien n'est calable. */
+	bpm?: number | null,
+	tonalite?: string | null,
+	/**  Le stem remplacé a-t-il une hauteur ? Sinon la tonalité est ignorée. */
+	a_hauteur: boolean,
+	/**  La phrase envoyée à CLAP, si la recherche est guidée. */
+	texte?: string | null,
+	/**  Le groove du morceau ouvert, la référence du classement. */
+	groove?: GrooveVu_Deserialize | null,
+	candidats: CandidatGreffon_Deserialize[],
+	ecartes_tempo: number,
+	ecartes_tonalite: number,
+	ecartes_metrique: number,
+	sans_tempo: number,
+};
+
+/**
+ *  Ce que la recherche a trouvé, **et ce qu'elle a écarté** — sans les
+ *  comptes, une liste courte passe pour une bibliothèque pauvre.
+ */
+export type RechercheGreffon_Serialize = {
+	/**  Tempo du morceau ouvert. Sans lui, rien n'est calable. */
+	bpm: number | null,
+	tonalite: string | null,
+	/**  Le stem remplacé a-t-il une hauteur ? Sinon la tonalité est ignorée. */
+	a_hauteur: boolean,
+	/**  La phrase envoyée à CLAP, si la recherche est guidée. */
+	texte: string | null,
+	/**  Le groove du morceau ouvert, la référence du classement. */
+	groove: GrooveVu_Serialize | null,
+	candidats: CandidatGreffon_Serialize[],
+	ecartes_tempo: number,
+	ecartes_tonalite: number,
+	ecartes_metrique: number,
+	sans_tempo: number,
 };
 
 /**  Ce que l'interface reçoit après [`relief_musical`]. */
@@ -653,5 +806,32 @@ export type VoixAura = {
 	id: number,
 	gain: number | null,
 	pan: number | null,
+};
+
+/**  Ce que l'interface sonde de la préparation. */
+export type VueGreffons = VueGreffons_Serialize | VueGreffons_Deserialize;
+
+/**  Ce que l'interface sonde de la préparation. */
+export type VueGreffons_Deserialize = {
+	en_cours: boolean,
+	/**  Le morceau en cours de démixage ou de mesure. */
+	courant?: number | null,
+	/**  Préparés depuis le lancement : stems séparés et groove mesuré. */
+	prets: number[],
+	/**  Ceux qui n'ont pas pu l'être (fichier illisible, pas de batterie…). */
+	echecs: number[],
+	restants: number,
+};
+
+/**  Ce que l'interface sonde de la préparation. */
+export type VueGreffons_Serialize = {
+	en_cours: boolean,
+	/**  Le morceau en cours de démixage ou de mesure. */
+	courant: number | null,
+	/**  Préparés depuis le lancement : stems séparés et groove mesuré. */
+	prets: number[],
+	/**  Ceux qui n'ont pas pu l'être (fichier illisible, pas de batterie…). */
+	echecs: number[],
+	restants: number,
 };
 

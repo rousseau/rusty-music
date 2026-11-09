@@ -516,7 +516,7 @@ est à régénérer, et D3 et D5 sont à remesurer. Mieux vaut le lancer tôt.
 | E2 corriger la transcription | fait : corde, octave, note supprimée ou ajoutée depuis la partition (barre au centre, `corriger.js`), gardées dans `pratique_correction` (migration n° 8) et réappliquées après le doigté à chaque transcription (test : une transcription refaite les garde) ; export MIDI et Guitar Pro 7 par alphaTab ; basse seulement ; test de fumée, audit 0 violation ; V18 : demi-ton sur une note transcrite (migration n° 9), barre de correction sur une ligne à 1 400 px (755 / 816 px) | 9 nov. 2026 | `journal.md`, « E2 », « V18 » |
 | E3 banc d'étirement | commencé : banc `experiments/etirement` ; pire salve à 128 trames, quatre stems : wsola 5,8 ms, Rubber Band R3 1,5 ms, Signalsmith 1,0 ms (les deux derniers transposent aussi en flux) ; stem de 184 s transposé en 17 s, 8,6 s et 1,0 s ; rendus de l'écoute à l'aveugle en attente du disque RUSTY_DEV, puis décision de François | 9 nov. 2026 | `journal.md`, « E3 » ; `experiments/etirement/README.md` |
 | E4-E5 coach | à faire | | |
-| F1 chercher le greffon | à faire | | |
+| F1 chercher le greffon | fait : `chercher_greffon` (préfiltre CLAP guidé par la tour texte, tempo, tonalité pour les stems à hauteur, métrique), 8 premiers démixés en tâche de fond, groove de la batterie (densité, syncope, swing, `analysis::groove`), raisons par candidat ; fumée « F1 » ; syncope mesurée sur 5 batteries réelles (0,13 à 0,26), sans vérité terrain ; pas vu dans l'app réelle | 9 nov. 2026 | `journal.md`, « F1 » |
 | F2 banc de compatibilité | à faire | | |
 | F3 fûts | à faire | | |
 | F4 génération | à faire | | |

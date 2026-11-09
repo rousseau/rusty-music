@@ -40,6 +40,7 @@ mod ecouter;
 mod editions;
 mod etabli;
 mod explorer;
+mod greffon;
 mod iphone;
 mod minuteur;
 mod passe;
@@ -61,6 +62,7 @@ use ecouter::*;
 use editions::*;
 use etabli::*;
 use explorer::*;
+use greffon::*;
 use passe::*;
 use pratiquer::*;
 use systeme::*;
@@ -167,6 +169,8 @@ struct Etat {
     /// (`wifi.rs`). Ordre des verrous : `wifi` avant `player`.
     wifi: Mutex<wifi::EtatWifi>,
     demix: Mutex<EtatDemix>,
+    /// La préparation des greffons en tâche de fond (Créer, `greffon.rs`).
+    greffons: Mutex<EtatGreffons>,
     /// Où en est la transposition des stems. Elle tourne dans son fil : c'est
     /// une vingtaine de secondes par stem, et l'interface doit rester servie.
     transpose: Mutex<EtatTranspose>,
@@ -590,6 +594,7 @@ fn main() {
                 valise_renouvellement: Mutex::new(EtatRenouvellement::default()),
                 wifi: Mutex::new(wifi::EtatWifi::default()),
                 demix: Mutex::new(EtatDemix::default()),
+                greffons: Mutex::new(EtatGreffons::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 pisteur: Mutex::new(None),
@@ -1056,7 +1061,9 @@ fn main() {
             transcriptions_en_cache,
             stems_state,
             stem_spectre,
-            voisins_de_stem,
+            chercher_greffon,
+            greffons_preparer,
+            greffons_etat,
             tempo_cible,
             stems_greffer,
             path,
