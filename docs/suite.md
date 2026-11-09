@@ -58,7 +58,14 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   252 cellules en 441 s écran verrouillé. La carte, elle, ne se dessine pas
   écran verrouillé (aucune image) : l'audit le dit, et avec captures il
   sort en code 3 (« reporté ») ; relief et captures demandent un lancement
-  écran déverrouillé (`journal.md`, « V13 »).
+  écran déverrouillé (`journal.md`, « V13 »). Depuis V19 (9 nov.),
+  `scripts/ecran-visible.sh` (session déverrouillée et affichage allumé)
+  décide du report, et une pose non lue en 8 s le dit au lieu d'attendre
+  le délai ; reste un cas imprévisible : la fenêtre d'audit ouverte
+  derrière ne reçoit aucune image (`journal.md`, « V19 »).
+- Sécurité : `cargo deny` rouge depuis le 9 nov. sur RUSTSEC-2026-0459
+  (SQLite livré par `libsqlite3-sys` 0.30) ; la sortie : `rusqlite` 0.41
+  et `rusqlite_migration` 2.x (`journal.md`, « V19 »).
 - Restent :
   - E, Pratiquer : mémoire par morceau faite (E1, 9 nov. : migration
     n° 7, la séance revient à la réouverture ; boucles nommées et vitesse
@@ -194,8 +201,9 @@ Faire de la carte un terrain de promenade, pas seulement un plan
   (`RUSTY_AUDIT_CAPTURES`). En OSM clair, le plan reste lisible sous les
   courbes. Corrigé le 9 nov. (V9) : sur fond sombre, courbes beige clair
   et ombrage qui éclaircit (contraste du trait en Nuit 3,1 → 6,3) ; courbes
-  masquées sous z13, l'ombrage gardé ; reste à les regarder aux six poses,
-  écran allumé (`journal.md`, « V9 »). Réparé en route :
+  masquées sous z13, l'ombrage gardé ; les six poses après sont prises
+  (V19, `~/Exp/rusty_music-captures/v9-apres/`), à regarder
+  (`journal.md`, « V9 », « V19 »). Réparé en route :
   changer de fond ne rejouait plus le relief, les couleurs, le filtre, les
   pentes ni les traces (`journal.md`, « D4 »).
 - P8, des lieux à soi — fait : épingles (clic droit « Épingler ici », nom,

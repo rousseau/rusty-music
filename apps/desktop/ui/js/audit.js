@@ -499,11 +499,15 @@ async function poserLeRelief(attendre, clic, reliefAudit) {
   const g = carte.gl;
   // Les tuiles chargées et dessinées, ou au plus 8 s.
   const auRepos = () => Promise.race([new Promise((ok) => g.once("idle", ok)), attendre(8000)]);
-  // Lu pendant le rendu, avant que WebGL n'efface le tampon.
-  const lire = () => new Promise((ok) => {
-    g.once("render", () => g.getCanvas().toBlob((b) => ok(b), "image/png"));
-    g.triggerRepaint();
-  });
+  // Lu pendant le rendu, avant que WebGL n'efface le tampon ; au plus 8 s :
+  // affichage éteint entre deux poses, l'évènement `render` ne vient plus (V9).
+  const lire = () => Promise.race([
+    new Promise((ok) => {
+      g.once("render", () => g.getCanvas().toBlob((b) => ok(b), "image/png"));
+      g.triggerRepaint();
+    }),
+    attendre(8000).then(() => undefined),
+  ]);
   const fond = document.querySelector("#carte-theme .segment--actif")?.dataset.theme;
   const centre = g.getCenter();
   for (const theme of ["osm-clair", "nuit"]) {
@@ -518,7 +522,9 @@ async function poserLeRelief(attendre, clic, reliefAudit) {
       const vu = reliefVu();
       journalCarte(`AUDIT POSE ${nom} ombre=${vu.ombre} courbes=${vu.courbes} posees=${vu.posees} option=${vu.option}`);
       const image = await lire();
-      if (image) {
+      if (!image) {
+        journalCarte(`AUDIT POSE ${nom} : non lue (aucune image en 8 s)`, "warn");
+      } else {
         const png = Array.from(new Uint8Array(await image.arrayBuffer()));
         await invoke("essai_capture", { nom, png })
           .catch((e) => journalCarte(`AUDIT POSE ${nom} : capture refusée (${e})`, "warn"));

@@ -30,7 +30,8 @@
 # devant l'écran) : la fenêtre d'audit garde ses minuteries (`main.rs`, sans
 # ralentissement de fond) et le gabarit se mesure en entier, mais macOS ne lui
 # donne plus aucune image : la carte n'est pas dessinée. Le rapport le dit en
-# une ligne ; avec RUSTY_AUDIT_CAPTURES, l'audit est reporté d'emblée (code 3).
+# une ligne ; avec RUSTY_AUDIT_CAPTURES, l'audit est reporté d'emblée (code 3,
+# `scripts/ecran-visible.sh`), et une pose qui n'est pas lue en 8 s le dit.
 # Codes de sortie : 0 rien à redire, 1 violations, 2 erreur, 3 reporté.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -70,16 +71,10 @@ if [ -d "$SOURCE/tuiles" ]; then
   cp -cR "$SOURCE/tuiles" "$TMP/" 2>/dev/null || cp -R "$SOURCE/tuiles" "$TMP/"
 fi
 
-# Session verrouillée : plus aucune image pour la fenêtre, donc ni carte ni
-# captures. Pas de tube vers `grep -q` : sous `pipefail`, `ioreg` tué par
-# SIGPIPE rendait le test toujours faux (V13).
-verrouillee() {
-  [ "$(uname)" = Darwin ] || return 1
-  case "$(ioreg -n Root -d1)" in *'"CGSSessionScreenIsLocked"=Yes'*) return 0 ;; esac
-  return 1
-}
-if verrouillee && [ -n "${RUSTY_AUDIT_CAPTURES:-}" ]; then
-  echo "écran verrouillé : captures de la carte reportées (macOS ne dessine pas la fenêtre)" >&2
+# Session verrouillée ou affichage éteint : plus aucune image pour la fenêtre,
+# donc ni carte ni captures (V13, V9). `ecran-visible.sh` lit les deux.
+if [ -n "${RUSTY_AUDIT_CAPTURES:-}" ] && ! scripts/ecran-visible.sh; then
+  echo "affichage éteint ou session verrouillée : captures reportées" >&2
   exit 3
 fi
 
@@ -112,7 +107,9 @@ from collections import defaultdict
 
 lignes = [re.sub(r"\x1b\[[0-9;]*m", "", l) for l in open(sys.argv[1], encoding="utf-8", errors="replace")]
 cellules, erreurs, poses = [], [], []
-suspendu = any("AUDIT AFFICHAGE suspendu" in l for l in lignes)
+affichage = [l for l in lignes if "AUDIT AFFICHAGE suspendu" in l]
+suspendu = bool(affichage)
+page = re.search(r"\(page (\w+)\)", affichage[0]) if affichage else None
 for l in lignes:
     p = re.search(r"AUDIT POSE (.*?)\s*$", l)
     if p:
@@ -127,7 +124,10 @@ if erreurs:
     print("\n".join(erreurs))
     sys.exit(2)
 if suspendu:
-    print("affichage suspendu (écran verrouillé ou en veille) : gabarit mesuré, carte non dessinée — relief et captures non vérifiés")
+    # Écran visible (`ecran-visible.sh`) mais aucune image : la fenêtre d'audit
+    # était cachée (autre bureau, application en plein écran) — V19.
+    print("affichage suspendu (écran verrouillé ou en veille, ou fenêtre d'audit cachée : autre bureau, plein écran)"
+          f"{' — page ' + page.group(1) if page else ''} : gabarit mesuré, carte non dessinée — relief et captures non vérifiés")
 
 par_ecran = defaultdict(lambda: defaultdict(list))
 for c in cellules:
@@ -165,6 +165,10 @@ if reliefs and suspendu:
 elif reliefs:
     vus = sum(1 for r in reliefs if r["ombre"] and r["courbes"])
     print(f"\nRelief (P6) : ombrage et courbes visibles dans {vus} cellules « carte+relief » sur {len(reliefs)}")
+non_lues = [p.split(" :")[0] for p in poses if p.endswith("non lue (aucune image en 8 s)")]
+if non_lues:
+    print(f"Poses non lues (aucune image en 8 s, affichage éteint en route ?) : {', '.join(non_lues)}")
+    poses = [p for p in poses if not p.endswith("non lue (aucune image en 8 s)")]
 if poses:
     print(f"Poses de la carte sous le relief : {', '.join(poses)}")
     if os.environ.get("RUSTY_AUDIT_CAPTURES"):
@@ -184,5 +188,5 @@ if rails:
         etat = '+' + str(bas - haut) if bas > haut else ('plein' if haut - bas < 24 else 'tient')
         print(f"   {ecran:<24} {bas:>5} / {haut} px   {etat}")
 # Captures demandées mais carte non dessinée : reporté, pas réussi.
-sys.exit(1 if total else (3 if suspendu and os.environ.get("RUSTY_AUDIT_CAPTURES") else 0))
+sys.exit(1 if total else (3 if (suspendu or non_lues) and os.environ.get("RUSTY_AUDIT_CAPTURES") else 0))
 PY

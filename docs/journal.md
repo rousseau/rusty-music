@@ -4725,3 +4725,55 @@ qu'il avait été fixé d'avance. Rien n'est changé dans l'application.
 **Non vérifié** : la taille totale de ces fichiers (disque débranché au
 moment de clore ; seules les fenêtres, 9,8 Go, ont été mesurées) ; le coût
 de CLAP par morceau sur ce Mac.
+
+## Outillage, V19 : l'audit sait quand l'écran dort — 9 nov. 2026
+
+Suite de V9 : l'affichage s'était éteint session ouverte, les poses
+« après » n'avaient pas été prises et une pose avait calé jusqu'au délai.
+
+- **`scripts/ecran-visible.sh`** : sortie 0 seulement si la session est
+  déverrouillée, au premier plan (console) et l'affichage principal
+  allumé ; 1 sinon, `-v` dit pourquoi. Un seul appel JXA (`osascript`,
+  ~0,1 s, rien à compiler, aucune dépendance) :
+  `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`,
+  `kCGSSessionOnConsoleKey`) et `CGDisplayIsAsleep` de l'écran principal ;
+  repli sur `ioreg` pour le verrou si `osascript` échoue (alors 1 : état
+  de l'affichage inconnu). Sur ce Mac (macOS 27.2, arm64), `pmset -g
+  powerstate IODisplayWrangler` ne répond plus (« Internal failure ») :
+  CoreGraphics est la seule voie fiable trouvée.
+- **`audit-interface.sh`** l'appelle au départ à la place de
+  `verrouillee()` : captures demandées et écran non visible → « affichage
+  éteint ou session verrouillée : captures reportées », code 3.
+- **`audit.js`** : `lire()` (le canevas lu à l'évènement `render`) est
+  bornée à 8 s comme `auRepos` ; une pose qui ne vient pas écrit
+  `AUDIT POSE <nom> : non lue (aucune image en 8 s)`, le rapport la range
+  sous « Poses non lues » et, captures demandées, sort en code 3 au lieu
+  d'attendre 900 s.
+- **Une troisième cause** vue en route : premier audit rapide de
+  `explorer:carte+relief` avec captures, écran allumé et déverrouillé
+  (`ecran-visible.sh` à 0 pendant tout l'audit), et pourtant « affichage
+  suspendu » : la fenêtre d'audit, ouverte derrière (autre bureau ou
+  application au premier plan), ne reçoit aucune image. Le second passage,
+  identique, a tout dessiné. Le rapport nomme désormais cette cause et
+  l'état de la page (`visible`/`hidden`) ; `ecran-visible.sh` ne peut pas
+  la prévoir.
+- **Mesuré** : second passage, 6 cellules, 0 violation, **les six poses
+  lues** (OSM clair et Nuit, z12, z14, z16 ; PNG de 1,5 à 3,5 Mo) ; ce
+  sont les poses « après » qui manquaient à V9, rangées dans
+  `~/Exp/rusty_music-captures/v9-apres/` (z12 Nuit regardée : courbes
+  absentes, ombrage clair, plan lisible). `verifier.sh` : fmt, clippy,
+  test, ios, fumée (58) verts ; **`deny` rouge** sur un avis nouveau sans
+  rapport avec V19 : RUSTSEC-2026-0459, SQLite livré par `libsqlite3-sys`
+  0.30 (avant 3.54, fichier `-wal` forgé localement) ; corrigé dans
+  `rusqlite` 0.41, qui demande `rusqlite_migration` 2.x.
+- **Les deux états**, sans `pmset displaysleepnow` (François travaillait :
+  l'écran a été laissé s'éteindre seul, sonde toutes les 20 s) : allumé et
+  ouvert, 59 lectures à 0 (10:56–11:16 Z) ; éteint par la veille à
+  11:16:40 Z (`pmset -g log`), session verrouillée avec lui → 1
+  (« session verrouillée »), champs lus `verrou=true`, `dort=1`. Audit
+  avec captures dans cet état : « affichage éteint ou session
+  verrouillée : captures reportées », code 3, en 14 s.
+- **Non vérifié** : affichage éteint *sans* verrou (le verrou suit ici la
+  veille, `dort=1` lu mais masqué par le verrou dans la sortie) ; une pose
+  réellement non lue en 8 s (chemin borné écrit, pas provoqué) ; `deny`
+  (avis SQLite ci-dessus).
