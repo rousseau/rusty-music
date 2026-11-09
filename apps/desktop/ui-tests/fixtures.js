@@ -184,8 +184,70 @@ const fixtures = {
     e.epingles = (e.epingles ?? []).filter((x) => x.id !== a.id);
     return true;
   },
-  // Une chaîne est une playlist : ses pistes, comme celles d'une playlist.
-  playlist_pistes: () => window.__DONNEES__.PISTES.slice(0, 3),
+  // Playlists enregistrées (P1) : en mémoire, une déjà là. Une chaîne est une
+  // playlist (ids à partir de 100) : ses pistes sont les trois premières.
+  __etat_playlists: (e) =>
+    (e.playlists ??= [{
+      id: 1, nom: "À travailler", origine: null, modifiee_le: 1_700_000_000,
+      chemins: [window.__DONNEES__.PISTES[3].path],
+    }]),
+  listes_intelligentes: [],
+  playlists: (_, e) => {
+    const ps = window.__DONNEES__.PISTES;
+    return [...window.__FIXTURES__.__etat_playlists(e)]
+      .sort((a, b) => b.modifiee_le - a.modifiee_le || b.id - a.id)
+      .map((p) => {
+        const presentes = p.chemins.map((c) => ps.find((t) => t.path === c)).filter(Boolean);
+        return {
+          id: p.id, nom: p.nom, origine: p.origine, modifiee_le: p.modifiee_le,
+          nb_pistes: p.chemins.length, nb_manquantes: p.chemins.length - presentes.length,
+          duree_ms: presentes.reduce((s, t) => s + t.duration_ms, 0),
+        };
+      });
+  },
+  playlist_pistes: (a, e) => {
+    const ps = window.__DONNEES__.PISTES;
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === a.id);
+    if (!p) return ps.slice(0, 3);
+    return p.chemins.map((c) => ps.find((t) => t.path === c)).filter(Boolean);
+  },
+  nouvelle_playlist: (a, e) => {
+    const l = window.__FIXTURES__.__etat_playlists(e);
+    const id = Math.max(0, ...l.map((p) => p.id)) + 1;
+    e.horloge = (e.horloge ?? 1_800_000_000) + 1;
+    l.push({ id, nom: a.nom.trim() || "Sans titre", origine: null, modifiee_le: e.horloge, chemins: [...new Set(a.paths)] });
+    return id;
+  },
+  ajouter_a_playlist: (a, e) => {
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === a.id);
+    if (!p) throw "cette playlist n'existe plus";
+    let ajoutes = 0, deja_presents = 0;
+    for (const c of a.paths) {
+      if (p.chemins.includes(c)) deja_presents++;
+      else { p.chemins.push(c); ajoutes++; }
+    }
+    if (ajoutes) p.modifiee_le = e.horloge = (e.horloge ?? 1_800_000_000) + 1;
+    return { ajoutes, deja_presents };
+  },
+  // Ici toutes les pistes sont présentes : le rang affiché est le rang.
+  retirer_de_playlist: (a, e) => {
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === a.id);
+    if (p.chemins[a.rang] !== a.path) throw "la playlist a changé entre-temps : elle est rouverte telle qu'elle est";
+    p.chemins.splice(a.rang, 1);
+    return null;
+  },
+  remettre_dans_playlist: (a, e) => {
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === a.id);
+    p.chemins.splice(a.rang, 0, a.path);
+    return null;
+  },
+  deplacer_dans_playlist: (a, e) => {
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === a.id);
+    if (p.chemins[a.de] !== a.path) throw "la playlist a changé entre-temps : elle est rouverte telle qu'elle est";
+    p.chemins.splice(a.de, 1);
+    p.chemins.splice(a.a, 0, a.path);
+    return null;
+  },
   chaines: (_, e) => e.chaines ?? [],
   garder_chaine: (a, e) => {
     e.chaines = e.chaines ?? [];

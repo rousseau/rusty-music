@@ -186,8 +186,23 @@ nom de fichier est nettoyé, et **un fichier existant n'est jamais écrasé**
 pas fait : les chemins d'un fichier venu d'une autre machine ne correspondent
 pas à ceux de la bibliothèque. 4 tests.
 
-**Reste** : tout ce que la décision a écarté — éditer une playlist
-enregistrée, la regénérer, l'import M3U8.
+**Édition piste par piste (P1, 9 nov. 2026).** Demandée par François pour se
+faire une liste de morceaux à travailler. Moteur : créer une playlist vide,
+ajouter à la fin sans doublon (le compte rendu dit combien y étaient déjà),
+retirer, remettre (annulation), déplacer ; une retouche désigne une piste par
+son rang dans la liste affichée **et** son chemin, refusée si la playlist a
+changé entre-temps ; une piste introuvable garde sa place. 4 tests de plus.
+Interface (`ui/js/playlists.js`, qui reprend aussi tout ce qui précède,
+sorti d'`ecouter.js`) : « Ajouter à une playlist », un seul petit menu (les
+récentes d'abord, puis « Nouvelle playlist… » nommée sur place), depuis le ＋
+d'une ligne de piste et d'une ligne de la file (au survol), de l'inspecteur
+(morceau ou album) et de l'en-tête d'un album ouvert ; dans une playlist
+ouverte, ✕ (annulable 5 s), glisser ou ⌥↑/⌥↓, compte et durée dans le fil ;
+« ＋ nouvelle playlist » dans l'en-tête de la vue Playlists.
+
+**Reste** : la regénérer, l'import M3U8 ; l'ajout depuis la palette ⌘K et
+depuis la case d'un album de la grille (sans l'ouvrir) ; enchaîner une
+playlist dans Pratiquer (P2).
 
 **Méthode de test de l'interface.** La fenêtre Tauri ne se capture pas, et
 `node --check` ne voit pas les collisions de noms (JS accepte une fonction

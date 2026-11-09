@@ -108,6 +108,7 @@ const CONTENUS_AUDIT = {
   ecoute: [
     { sel: ".fil" }, { sel: "#grille" }, { sel: "#liste .ligne" }, { sel: ".autour-artiste" },
   ],
+  "ecoute:playlists": [{ sel: ".fil" }, { sel: "#liste .ligne" }],
   "explorer:points": [{ sel: ".fil" }, { sel: "#carte-aide", mode: "gauche" }],
   "explorer:carte": [{ sel: ".fil" }, { sel: "#carte-aide", mode: "gauche" }],
   "explorer:temps": [{ sel: ".fil" }, { sel: "#carte-aide", mode: "gauche" }],
@@ -384,7 +385,9 @@ async function auditerInterface() {
     ["explorer:anneau", async () => { await basculerMode("explorer"); clic("anneau"); await attendre(600); }],
     ["explorer:lama", async () => { await basculerMode("explorer"); clic("lama"); $("lama-haut").hidden = true; $("lama-accueil").hidden = false; ["lama-compris", "lama-cherche", "lama-resultat"].forEach((i) => ($(i).hidden = true)); }],
     ["explorer:lama+playlist", async () => { await basculerMode("explorer"); clic("lama"); fabriquerLamaAudit(); await attendre(300); dessinerMiniNuage(); }],
-    ["ecoute", async () => { await basculerMode("ecoute"); await attendre(700); }],
+    ["ecoute", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="albums"]')?.click(); await attendre(700); }],
+    // P1 : la vue Playlists, son « ＋ nouvelle playlist » dans l'en-tête.
+    ["ecoute:playlists", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="playlists"]')?.click(); await attendre(700); }],
     ["pratiquer", async () => { await basculerMode("pratiquer"); await attendre(500); }],
     ["creer", async () => { await basculerMode("creer"); await attendre(500); }],
     ["decouvrir", async () => { await sansPasseDecouvrir(() => basculerMode("decouvrir")); await attendre(900); }],

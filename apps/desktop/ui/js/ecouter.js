@@ -30,9 +30,7 @@ import {
 import {
   artistesDecouvrables, boutonLien, chargerArtistesDecouvrir, contactMb,
 } from "./decouvrir.js";
-import {
-  dureeLongue,
-} from "./bibliotheque.js";
+import { chargerPlaylists } from "./playlists.js";
 import {
   edition, majEtatEditer, poserSourceEdition,
 } from "./etabli.js";
@@ -108,95 +106,6 @@ $("file-minuteur-annuler").addEventListener("click", async () => {
   $("file-minuteur").setAttribute("aria-expanded", "false");
 });
 
-/* ------------------------------------------------- playlists enregistrées
- *
- * Une file qu'on garde, nommée (`docs/plan-ecouter-v0.2.md`, point 4). Trois
- * gestes : « enregistrer » dans le panneau de file, la vue « Playlists »
- * d'Écouter (jouer, ouvrir, renommer, supprimer), et l'ouverture d'une playlist
- * comme une liste de pistes ordinaire.
- */
-
-/// La demande ou le point de départ de la file en cours — seulement si la file
-/// n'a pas changé depuis qu'on l'a composée.
-function origineDeLaFile() {
-  const o = fileAttente.origine;
-  const pistes = fileAttente.pistes;
-  if (!o || pistes.length !== o.n || !pistes.some((t) => t.path === o.premier)) return null;
-  return o.texte;
-}
-
-function nomParDefaut() {
-  const o = origineDeLaFile();
-  if (o) return o.length > 80 ? `${o.slice(0, 79)}…` : o;
-  return `Playlist du ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
-}
-
-let etatEnregistrementMinuteur = null;
-function etatEnregistrement(texte) {
-  $("file-enregistrer-etat").textContent = texte;
-  clearTimeout(etatEnregistrementMinuteur);
-  if (texte) etatEnregistrementMinuteur = setTimeout(() => etatEnregistrement(""), 6000);
-}
-
-function fermerEnregistrement() {
-  $("file-enregistrer-form").hidden = true;
-}
-
-$("file-enregistrer").addEventListener("click", () => {
-  const form = $("file-enregistrer-form");
-  if (!form.hidden) return fermerEnregistrement();
-  if (!fileAttente.pistes.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
-  etatEnregistrement("");
-  form.hidden = false;
-  const champ = $("file-enregistrer-nom");
-  champ.value = nomParDefaut();
-  champ.focus();
-  champ.select();
-});
-$("file-enregistrer-annuler").addEventListener("click", fermerEnregistrement);
-$("file-enregistrer-nom").addEventListener("keydown", (e) => {
-  // Les raccourcis globaux (espace, flèches) ne doivent pas traverser le champ.
-  e.stopPropagation();
-  if (e.key === "Escape") fermerEnregistrement();
-});
-
-$("file-enregistrer-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const paths = fileAttente.pistes.map((t) => t.path);
-  if (!paths.length) return etatEnregistrement("La file est vide : rien à enregistrer.");
-  const nom = $("file-enregistrer-nom").value.trim() || nomParDefaut();
-  try {
-    await invoke("creer_playlist", { nom, origine: origineDeLaFile(), paths });
-  } catch (err) {
-    signalerErreur("file-enregistrer-etat", "Enregistrement impossible.", err, "creer_playlist");
-    return;
-  }
-  fermerEnregistrement();
-  etatEnregistrement(`Enregistrée : ${nom} (${paths.length} pistes)`);
-  if (vue.quoi === "playlists") await chargerPlaylists();
-});
-
-/// La vue Playlists : les listes calculées à partir des écoutes d'abord
-/// (récents, plus écoutés, favoris — seulement celles qui ont du contenu), puis
-/// les playlists enregistrées.
-async function chargerPlaylists() {
-  const [intelligentes, playlists] = await Promise.all([
-    invoke("listes_intelligentes"),
-    invoke("playlists"),
-  ]);
-  poser("playlists", "Playlists", [
-    ...intelligentes.map((l) => ({ ...l, intelligente: true, id: l.quoi })),
-    ...playlists,
-  ]);
-}
-
-/// Les pistes d'une entrée de la vue Playlists, calculée ou enregistrée.
-function pistesDe(item) {
-  return item.intelligente
-    ? invoke("liste_intelligente", { quoi: item.quoi })
-    : invoke("playlist_pistes", { id: item.id });
-}
-
 /* ----------------------------------------------------------- favoris
  *
  * Un favori est un chemin (voir `memoire.rs`). L'interface en tient l'ensemble :
@@ -218,6 +127,7 @@ invoke("favoris")
 function majFavoriBouton() {
   const bouton = $("insp-favori");
   const path = $("insp-titre").dataset.path;
+  $("insp-playlist").hidden = !inspectionPiste && !inspectionAlbum;
   bouton.hidden = !path;
   if (!path) return;
   const favori = favorisChemins.has(path);
@@ -244,161 +154,6 @@ $("insp-favori").addEventListener("click", async () => {
   // Les « Favoris » de la vue Playlists changent avec ce geste.
   if (vue.quoi === "playlists") await chargerPlaylists();
 });
-
-function boutonAction(texte, titre, onClick) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "ligne__action";
-  b.textContent = texte;
-  b.title = titre;
-  b.setAttribute("aria-label", titre);
-  b.addEventListener("click", (e) => {
-    e.stopPropagation();
-    onClick(b);
-  });
-  return b;
-}
-
-/// Une ligne de la vue Playlists. Un clic sur la ligne l'ouvre (ses pistes, au
-/// centre) ; ▶ la lit d'un bout à l'autre ; ✎ la renomme sur place ; ✕ la
-/// supprime, en deux temps — pas de boîte de dialogue.
-function lignePlaylist(el, item) {
-  el.classList.add("ligne--playlist");
-  el.appendChild(boutonAction("▶", `Lire ${item.nom}`, () => jouerPlaylist(item).catch((e) => remonter(e, "playlist"))));
-
-  const nom = document.createElement("span");
-  nom.className = "ligne__nom";
-  nom.textContent = item.nom;
-  nom.title = item.origine ? `${item.nom} — ${item.origine}` : item.nom;
-  el.appendChild(nom);
-
-  const resume = document.createElement("span");
-  resume.className = "ligne__sec";
-  const manquantes = item.nb_manquantes > 0 ? ` · ${item.nb_manquantes} introuvable${item.nb_manquantes > 1 ? "s" : ""}` : "";
-  resume.textContent = `${item.nb_pistes} piste${item.nb_pistes > 1 ? "s" : ""} · ${dureeLongue((item.duree_ms || 0) / 1000)}${manquantes}`;
-  el.appendChild(resume);
-
-  // Une liste calculée à partir des écoutes se lit et s'ouvre, mais ne se
-  // renomme ni ne se supprime : elle se recalcule d'elle-même.
-  if (item.intelligente) {
-    nom.title = `${item.nom} — calculée à partir de vos écoutes`;
-  } else {
-    el.appendChild(boutonAction("⇩", "Exporter en .m3u8", () => exporterPlaylist(item).catch((e) => remonter(e, "exporter_playlist"))));
-    el.appendChild(boutonAction("✎", "Renommer", () => renommerPlaylistEnLigne(el, item)));
-    el.appendChild(boutonAction("✕", "Supprimer", (b) => supprimerPlaylistEnDeuxTemps(b, item)));
-  }
-  el.addEventListener("click", () => ouvrirPlaylist(item).catch((e) => remonter(e, "playlist")));
-  return el;
-}
-
-/// Écrit la playlist en `.m3u8` dans un dossier à choisir — le même sélecteur
-/// de dossier que l'export des stems (pas de permission d'écriture de plus). Le
-/// résultat se lit dans l'en-tête de la liste, quelques secondes.
-async function exporterPlaylist(item) {
-  const dossier = await window.__TAURI__.dialog.open({
-    directory: true,
-    multiple: false,
-    title: `Où écrire « ${item.nom} » (.m3u8)`,
-  });
-  if (!dossier) return;
-  // Court dans l'en-tête (sans ellipse ni largeur minimale : un chemin entier
-  // pousserait le titre) ; le détail va dans l'infobulle.
-  let message, detail;
-  try {
-    const fichier = await invoke("exporter_playlist", { id: item.id, dossier });
-    message = `exportée : ${fichier.split(/[\\/]/).pop()}`;
-    detail = fichier;
-  } catch (e) {
-    remonter(e, "exporter_playlist");
-    message = "export impossible";
-    detail = String(e);
-  }
-  const compte = $("fil-compte");
-  compte.textContent = message;
-  compte.title = detail;
-  setTimeout(() => {
-    compte.title = "";
-    if (vue.quoi === "playlists") compte.textContent = `${vue.lignes.length} listes`;
-  }, 8000);
-}
-
-function renommerPlaylistEnLigne(el, item) {
-  const nom = el.querySelector(".ligne__nom");
-  const champ = document.createElement("input");
-  champ.className = "ligne__champ";
-  champ.maxLength = 120;
-  champ.value = item.nom;
-  champ.setAttribute("aria-label", "Nouveau nom");
-  nom.replaceWith(champ);
-  champ.focus();
-  champ.select();
-  let fini = false;
-  const valider = async () => {
-    if (fini) return;
-    fini = true;
-    const v = champ.value.trim();
-    if (v && v !== item.nom) {
-      try {
-        await invoke("renommer_playlist", { id: item.id, nom: v });
-      } catch (e) {
-        remonter(e, "renommer_playlist");
-      }
-      await chargerPlaylists();
-    } else {
-      dessiner();
-    }
-  };
-  champ.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter") valider();
-    else if (e.key === "Escape") {
-      fini = true;
-      dessiner();
-    }
-  });
-  champ.addEventListener("blur", valider);
-  champ.addEventListener("click", (e) => e.stopPropagation());
-}
-
-function supprimerPlaylistEnDeuxTemps(bouton, item) {
-  if (bouton.dataset.confirme === "1") {
-    invoke("supprimer_playlist", { id: item.id })
-      .catch((e) => remonter(e, "supprimer_playlist"))
-      .then(() => chargerPlaylists());
-    return;
-  }
-  bouton.dataset.confirme = "1";
-  bouton.textContent = "supprimer ?";
-  bouton.classList.add("ligne__action--danger");
-  setTimeout(() => {
-    if (!bouton.isConnected) return;
-    delete bouton.dataset.confirme;
-    bouton.textContent = "✕";
-    bouton.classList.remove("ligne__action--danger");
-  }, 3500);
-}
-
-/// Lit la playlist du début à la fin, comme un album.
-async function jouerPlaylist(item) {
-  const pistes = await pistesDe(item);
-  if (pistes.length === 0) {
-    $("fil-compte").textContent = "aucune piste disponible dans cette playlist";
-    return;
-  }
-  selectionner(pistes[0]);
-  fileAttente.pistes = pistes;
-  tracerRouteSurCarte(pistes);
-  await demarrerLecture(() => invoke("play", { paths: pistes.map((t) => t.path) }));
-}
-
-/// Montre les pistes de la playlist au centre, comme celles d'un album :
-/// « ← Playlists » revient à la liste.
-async function ouvrirPlaylist(item) {
-  const pistes = await pistesDe(item);
-  poser("pistes", item.nom, pistes, {
-    quoi: "playlists", titre: vue.titre, lignes: vue.lignes, scroll: scrollActuel(),
-  });
-}
 
 /* ---------------------------------------------------------- navigation */
 
@@ -443,6 +198,8 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // « Choisir l'édition… » : seulement sur les pistes de l'album ouvert.
   if (quoi !== "pistes" || ecoute.albumOuvert?.name !== titre) ecoute.albumOuvert = null;
   demander("choisir-edition", !!ecoute.albumOuvert);
+  demander("album-playlist", !!ecoute.albumOuvert);
+  demander("playlist-nouvelle", quoi === "playlists");
 
   // Artistes et albums partagent le même geste de premier niveau ; le
   // commutateur du rail suit celui qui a produit la vue affichée, y compris
@@ -787,6 +544,14 @@ let inspectionAlbum = null;
 /// album de l'anneau/la frise (`inspecterAlbum`) — jumelle d'`inspectionAlbum`,
 /// pour le même bouton ▶.
 let inspectionPiste = null;
+
+/// Ce que montre l'inspecteur, pour le geste « Ajouter à une playlist »
+/// (`playlists.js`) : `{ piste }`, `{ album }` ou rien.
+function inspectionCourante() {
+  if (inspectionAlbum) return { album: inspectionAlbum };
+  if (inspectionPiste) return { piste: inspectionPiste };
+  return {};
+}
 
 async function inspecter(t) {
   inspectionAlbum = null;
@@ -1650,8 +1415,7 @@ $("insp-lien-critique").addEventListener("click", (e) => {
 
 export {
   activer, alerteTransportActive, construireIndexAlpha, construireIndexAnnees,
-  dernierArtisteOuvert, favorisChemins, inspecter, inspecterAlbum, jouerPlaylist, lancerLecture,
-  lignePlaylist,
+  dernierArtisteOuvert, favorisChemins, inspecter, inspecterAlbum, inspectionCourante, lancerLecture,
   majAutourArtiste, majIndexActif, majMinuteur, masquerAutourArtiste, mesuresDuTransport,
   ouvrirAlbumsArtiste, pisteSelectionnee, poser, qualiteDuTransport, rafraichirMinuteur,
   scrollActuel, selectionner, signalerPistesIgnorees, texteCompte,

@@ -8,7 +8,7 @@ import {
   sonderGrapheProgres,
 } from "./lama.js";
 import {
-  activer, favorisChemins, lancerLecture, lignePlaylist, majIndexActif, ouvrirAlbumsArtiste,
+  activer, favorisChemins, lancerLecture, majIndexActif, ouvrirAlbumsArtiste,
   pisteSelectionnee, poser, scrollActuel, selectionner,
 } from "./ecouter.js";
 import {
@@ -31,6 +31,7 @@ import {
   passePopularite, verrouillerActualisation,
 } from "./bibliotheque.js";
 import { lecture } from "./etat-lecture.js";
+import { actionsPiste, estPlaylistOuverte, lignePlaylist } from "./playlists.js";
 
 /* ------------------------------------------------- liste virtualisée */
 
@@ -44,8 +45,9 @@ liste.appendChild(socle);
 
 function dessiner() {
   const n = vue.lignes.length;
-  // Une liste de playlists vide garde de quoi montrer son message d'accueil.
-  const vide = n === 0 && vue.quoi === "playlists";
+  // Une liste de playlists vide, ou une playlist vide, garde de quoi montrer
+  // son message d'accueil.
+  const vide = n === 0 && (vue.quoi === "playlists" || estPlaylistOuverte());
   socle.style.height = `${(vide ? 2 : n) * LIGNE}px`;
 
   // On ne pose dans le DOM que ce qui est visible, plus une marge : 3 543
@@ -62,8 +64,9 @@ function dessiner() {
   if (vide) {
     const p = document.createElement("p");
     p.className = "aide liste__vide";
-    p.textContent =
-      "Aucune playlist pour l'instant. Ouvrez la file d'attente (bouton « file » du transport) et choisissez « enregistrer ».";
+    p.textContent = vue.quoi === "playlists"
+      ? "Aucune playlist pour l'instant. « Nouvelle playlist » en crée une vide ; « enregistrer », dans la file d'attente, garde la file."
+      : "Playlist vide. Le bouton ＋ d'un morceau, de l'inspecteur ou d'un album l'y ajoute.";
     fenetre.appendChild(p);
   }
   majIndexActif();
@@ -81,7 +84,7 @@ function ligne(item, index) {
   if (vue.quoi === "playlists") return lignePlaylist(el, item);
   if (item.path === lecture.courant) el.classList.add("ligne--joue");
   if (item.path === pisteSelectionnee?.path) el.classList.add("ligne--select");
-  return lignePiste(el, item);
+  return lignePiste(el, item, index);
 }
 
 /// Une ligne de la liste des pistes d'un album. **Un clic sélectionne, il ne
@@ -90,7 +93,7 @@ function ligne(item, index) {
 /// n'y a rien en lecture, et devient la source de Pratiquer et de Créer. La lecture depuis cette
 /// piste est un geste à part : le numéro (→ ▶ au survol) ou le double-clic. Le
 /// nom d'artiste ouvre ses albums.
-function lignePiste(el, item) {
+function lignePiste(el, item, index) {
   el.classList.add("ligne--pistes");
 
   el.appendChild(boutonJouer(item));
@@ -117,6 +120,7 @@ function lignePiste(el, item) {
   }
 
   ajouterPopEtDuree(el, item);
+  actionsPiste(el, item, index);
   cablerSelection(el, item);
   return el;
 }

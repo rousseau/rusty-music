@@ -2468,6 +2468,65 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   padding: 3px 7px;
 }
 .ligne__champ:focus { outline: none; }
+
+/* P1 : gérer une playlist (`js/playlists.js`). Les gestes d'une ligne de
+   morceau (＋, et ✕ dans une playlist ouverte) restent à leur place mais ne se
+   montrent qu'au survol, au clavier et sur la ligne sélectionnée : une liste
+   de pistes ne porte pas une colonne de boutons en permanence (Règle 5), et
+   rien ne bouge quand ils paraissent (Règle 4). */
+.ligne--pistes .ligne__action, .file__ajout { visibility: hidden; }
+.ligne--pistes:hover .ligne__action, .ligne--pistes:focus-within .ligne__action,
+.ligne--pistes.ligne--select .ligne__action, .ligne--retiree .ligne__action,
+.file__ligne:hover .file__ajout, .file__ajout:focus-visible { visibility: visible; }
+/* Retirée, encore annulable : estompée comme un filtre, « annuler » en clair. */
+.ligne--retiree > :not(.ligne__action) { opacity: .35; }
+.ligne--retiree .ligne__action { color: var(--accent); border-color: var(--accent); }
+/* Glisser dans une playlist ouverte : le même filet que la file. */
+.ligne--glissee { opacity: .45; }
+.ligne--depose-dessus { box-shadow: inset 0 2px 0 var(--accent); }
+.ligne--depose-dessous { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ＋ de l'inspecteur : même gabarit que ✦ et ♡, à leur droite. */
+.insp__playlist {
+  position: absolute; left: 84px; bottom: 8px;
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre); line-height: 1;
+  transition: background .15s ease;
+}
+.insp__playlist[hidden] { display: none; }
+.insp__playlist:hover, .insp__playlist[aria-expanded="true"] { background: var(--accent); color: var(--bg); }
+
+/* Le petit menu « Ajouter à une playlist », posé sous le bouton qui l'ouvre. */
+.menu-playlist {
+  position: fixed; z-index: 40; width: 260px;
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / .3);
+  padding: 6px 0;
+}
+.menu-playlist[hidden] { display: none; }
+.menu-playlist__tete {
+  margin: 0; padding: 4px 12px 6px; font-size: var(--t-legende); color: var(--mut);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.menu-playlist__choix { max-height: 216px; overflow-y: auto; display: flex; flex-direction: column; }
+.menu-playlist__item {
+  font: inherit; font-size: var(--t-second); text-align: left; color: var(--txt);
+  background: none; border: 0; padding: 6px 12px; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.menu-playlist__item:hover, .menu-playlist__item:focus-visible { background: var(--panel2); color: var(--accent); outline: none; }
+.menu-playlist__item:disabled { cursor: default; color: var(--mut); background: none; }
+.menu-playlist__item--nouvelle { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; color: var(--mut); }
+.menu-playlist__nouvelle { display: flex; gap: 6px; padding: 6px 12px 2px; }
+.menu-playlist__nouvelle input {
+  flex: 1; min-width: 0; font: inherit; font-size: var(--t-second); color: var(--txt);
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px; padding: 3px 7px;
+}
+.menu-playlist__nouvelle input:focus { outline: none; }
+.menu-playlist__etat { margin: 0; padding: 4px 12px 0; color: var(--accent); }
+.menu-playlist__etat:empty { display: none; }
 .liste__vide { padding: 24px var(--gouttiere); margin: 0; max-width: 520px; }
 
 /* Enregistrer la file : un champ sous les boutons du panneau. `[hidden]` doit

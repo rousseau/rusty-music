@@ -34,8 +34,8 @@ types` confronte `fixtures.js` à ces types : champ renommé ou de mauvais type,
 réponse absente, et champ en trop (que Rust a retiré mais que `fixtures.js`
 garde : l'erreur nomme son chemin, `"courbe.le_long[].rang"`). Une réponse
 calculée qui rend l'état partagé (`e.balade`) est `any` et échappe au
-contrôle : rendre plutôt le littéral (voir `balade_demarrer`). 30 commandes
-contrôlées sur 225 (E1). Pour contrôler une commande de plus :
+contrôle : rendre plutôt le littéral (voir `balade_demarrer`). 41 commandes
+contrôlées sur 234 (P1). Pour contrôler une commande de plus :
 `#[cfg_attr(test, specta::specta)]` sous son `#[tauri::command]`,
 `#[cfg_attr(test, derive(specta::Type))]` sur les types qu'elle reçoit et
 renvoie (`#[cfg_attr(feature = "specta", …)]` dans `core`, `carto` et

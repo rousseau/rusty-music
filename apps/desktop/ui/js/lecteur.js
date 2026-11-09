@@ -34,6 +34,7 @@ import {
   majBalade,
 } from "./balade.js";
 import { lecture, transport } from "./etat-lecture.js";
+import { ouvrirMenuPlaylist } from "./playlists.js";
 
 /* ---------------------------------------------------------- filtre du rail */
 
@@ -239,12 +240,19 @@ function dessinerFile() {
     el.innerHTML = `<span class="file__rang"></span>
                     <span class="file__txt"><b></b><span></span></span>
                     <span class="file__pop"></span>
-                    <span class="file__duree"></span>`;
+                    <span class="file__duree"></span>
+                    <button type="button" class="ligne__action file__ajout" aria-haspopup="dialog"
+                            aria-label="Ajouter à une playlist" title="Ajouter à une playlist">＋</button>`;
     el.children[0].textContent = i === rangCourant ? "▶" : i + 1;
     el.children[1].children[0].textContent = txt(t.title, "(sans titre)");
     el.children[1].children[1].textContent = txt(t.artist, "(sans artiste)");
     el.children[2].appendChild(jaugePop(popParPiste.get(t.id)));
     el.children[3].textContent = duree(t.duration_ms);
+    // P1 : le même geste qu'une ligne de piste ; ne saute pas à ce morceau.
+    el.children[4].addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ouvrirMenuPlaylist(ev.currentTarget, [t.path], txt(t.title, "ce morceau"));
+    });
 
     // Réordonnance manuelle par glisser-déposer : seule la suite pas encore
     // confiée à la sortie s'y prête (`etatVerrou`) — le moteur l'ignorerait

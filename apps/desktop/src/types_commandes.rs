@@ -51,7 +51,15 @@ fn exporter_les_types_des_commandes() {
             // F1 : chercher le greffon.
             chercher_greffon,
             greffons_preparer,
-            greffons_etat
+            greffons_etat,
+            // P1 : gérer les playlists.
+            playlists,
+            playlist_pistes,
+            nouvelle_playlist,
+            ajouter_a_playlist,
+            retirer_de_playlist,
+            remettre_dans_playlist,
+            deplacer_dans_playlist
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

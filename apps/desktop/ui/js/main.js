@@ -15,10 +15,11 @@
 //   explorer/nuage, explorer/temps, explorer/anneau, explorer/chemins,
 //   familles, ecouter-familles, fond-de-plan, modes, valise, decouvrir,
 //   bibliotheque, etabli, pratiquer, memoire-pratique, corriger, creer, demarrage,
-//   itineraires, balade, aura, traces, relief, lieux, autotest-carte, palette, en-cours, editions.
+//   itineraires, balade, aura, traces, relief, lieux, autotest-carte, palette, en-cours, editions,
+//   playlists.
 //
 // Ajouter un module : l'insérer dans la chaîne (son `import` de tête, celui
 // du suivant) ; le dernier reste celui qu'importe ce fichier. Un module qui
 // ne fait que déclarer (`etat-lecture.js`) n'a pas d'ordre à tenir : il reste
 // hors de la chaîne.
-import "./editions.js";
+import "./playlists.js";

@@ -5,7 +5,7 @@ import {
 import { carte, cnv, ctx } from "./carte.js";
 import { carteGL } from "./explorer/carte-gl.js";
 import { dessinerCarte } from "./explorer/nuage.js";
-import { jouerPlaylist } from "./ecouter.js";
+import { jouerPlaylist } from "./playlists.js";
 import { fermerMenuBalade } from "./balade.js";
 
 /* ------------------------------------------------- des lieux à soi (P8)

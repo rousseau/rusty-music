@@ -129,9 +129,37 @@ export const commands = {
 	greffons_preparer: (ids: number[], variant: string) => __TAURI_INVOKE<null>("greffons_preparer", { ids, variant }),
 	/**  Avancement de la préparation. L'interface sonde. */
 	greffons_etat: () => __TAURI_INVOKE<VueGreffons_Serialize>("greffons_etat"),
+	/**  Les playlists enregistrées, la plus récemment modifiée d'abord. */
+	playlists: () => __TAURI_INVOKE<PlaylistRow_Serialize[]>("playlists"),
+	/**
+	 *  Les pistes de la playlist `id` que la bibliothèque connaît encore, dans
+	 *  l'ordre enregistré.
+	 */
+	playlist_pistes: (id: number) => __TAURI_INVOKE<TrackRow_Serialize[]>("playlist_pistes", { id }),
+	/**
+	 *  Crée une playlist vide nommée `nom`, ou remplie de `paths` s'il y en a
+	 *  (« Nouvelle playlist… » d'un menu d'ajout). Rend son identifiant.
+	 */
+	nouvelle_playlist: (nom: string, paths: string[]) => __TAURI_INVOKE<number>("nouvelle_playlist", { nom, paths }),
+	/**  Ajoute `paths` à la fin de la playlist `id`, sans doublon. */
+	ajouter_a_playlist: (id: number, paths: string[]) => __TAURI_INVOKE<AjoutPlaylist>("ajouter_a_playlist", { id, paths }),
+	/**  Retire la piste affichée au rang `rang` (qui doit être `path`). */
+	retirer_de_playlist: (id: number, rang: number, path: string) => __TAURI_INVOKE<null>("retirer_de_playlist", { id, rang, path }),
+	/**  Remet `path` au rang affiché `rang` : l'annulation d'un retrait. */
+	remettre_dans_playlist: (id: number, rang: number, path: string) => __TAURI_INVOKE<null>("remettre_dans_playlist", { id, rang, path }),
+	/**  Déplace la piste affichée du rang `de` au rang `a` (qui doit être `path`). */
+	deplacer_dans_playlist: (id: number, de: number, a: number, path: string) => __TAURI_INVOKE<null>("deplacer_dans_playlist", { id, de, a, path }),
 };
 
 /* Types */
+/**  Ce qu'un ajout à une playlist a fait. */
+export type AjoutPlaylist = {
+	/**  Pistes ajoutées à la fin. */
+	ajoutes: number,
+	/**  Pistes laissées de côté parce qu'elles y étaient déjà. */
+	deja_presents: number,
+};
+
 /**
  *  Un album et son volume. `artist` est l'artiste d'album quand il est
  *  renseigné, sinon celui de la piste — c'est ce qui tient les compilations.
@@ -585,6 +613,39 @@ export type MesureCarrefours = {
 	ailleurs: number,
 	/**  Retours au carrefour précédent. */
 	retours: number,
+};
+
+/**  Une playlist telle que la liste l'affiche. */
+export type PlaylistRow = PlaylistRow_Serialize | PlaylistRow_Deserialize;
+
+/**  Une playlist telle que la liste l'affiche. */
+export type PlaylistRow_Deserialize = {
+	id: number,
+	nom: string,
+	/**  D'où elle vient (demande faite à Lama, point de départ…), si connue. */
+	origine?: string | null,
+	/**  Pistes de la liste, manquantes comprises. */
+	nb_pistes: number,
+	/**  Pistes dont le fichier n'est plus dans la bibliothèque. */
+	nb_manquantes: number,
+	/**  Durée des pistes présentes. */
+	duree_ms: number,
+	modifiee_le: number,
+};
+
+/**  Une playlist telle que la liste l'affiche. */
+export type PlaylistRow_Serialize = {
+	id: number,
+	nom: string,
+	/**  D'où elle vient (demande faite à Lama, point de départ…), si connue. */
+	origine: string | null,
+	/**  Pistes de la liste, manquantes comprises. */
+	nb_pistes: number,
+	/**  Pistes dont le fichier n'est plus dans la bibliothèque. */
+	nb_manquantes: number,
+	/**  Durée des pistes présentes. */
+	duree_ms: number,
+	modifiee_le: number,
 };
 
 /**

@@ -1628,3 +1628,120 @@ test("V18 : la barre de correction tient sur une ligne à 1 400 px ; une note tr
   await barre.locator('[data-corriger="retablir"]').click();
   await expect(page.locator("#correction-note")).toHaveText("do2 · corde de la, frette 3");
 });
+
+/* ------------------------------------------------ P1 : gérer les playlists */
+
+/// Le menu « Ajouter à une playlist » ouvert sous `bouton`, puis le choix.
+async function ajouterVia(page, bouton, nom) {
+  await bouton.click();
+  const menu = page.locator("#menu-playlist");
+  await expect(menu).toBeVisible();
+  await menu.locator(".menu-playlist__item", { hasText: nom }).click();
+  await expect(menu.locator(".menu-playlist__etat")).toContainText(nom);
+  await expect(menu).toBeHidden();
+}
+
+test("P1 : « Ajouter à une playlist » depuis une ligne, l'inspecteur, un album et la file", async ({ page }) => {
+  const premierBanc = PISTES.filter((p) => p.album === "Premier banc");
+  await page.locator("#grille .album").first().click();
+  const lignes = page.locator("#liste .ligne--pistes");
+  await expect(lignes).toHaveCount(2);
+
+  // Une ligne : le ＋ n'apparaît qu'au survol, et ne sélectionne pas la ligne.
+  const plus = lignes.nth(0).locator(".ligne__action", { hasText: "＋" });
+  await expect(plus).toBeHidden();
+  await lignes.nth(0).hover();
+  await ajouterVia(page, plus, "À travailler");
+  expect((await appels(page, "ajouter_a_playlist")).at(-1)).toEqual({ id: 1, paths: [PISTES[0].path] });
+  await expect(lignes.nth(0)).not.toHaveClass(/ligne--select/);
+
+  // « Nouvelle playlist… », nommée sur place, sans fenêtre modale.
+  await lignes.nth(1).hover();
+  await lignes.nth(1).locator(".ligne__action", { hasText: "＋" }).click();
+  await page.locator("#menu-playlist .menu-playlist__item--nouvelle").click();
+  await page.locator("#menu-playlist input").fill("Soirée");
+  await page.locator("#menu-playlist input").press("Enter");
+  await expect(page.locator("#menu-playlist .menu-playlist__etat")).toContainText("Soirée");
+  expect((await appels(page, "nouvelle_playlist")).at(-1)).toEqual({ nom: "Soirée", paths: [PISTES[1].path] });
+
+  // L'inspecteur : le morceau sélectionné ; les récentes d'abord.
+  await lignes.nth(1).click();
+  await expect(page.locator("#insp-playlist")).toBeVisible();
+  await page.locator("#insp-playlist").click();
+  await expect(page.locator("#menu-playlist .menu-playlist__item").first()).toHaveText("Soirée");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#menu-playlist")).toBeHidden();
+  await ajouterVia(page, page.locator("#insp-playlist"), "À travailler");
+  expect((await appels(page, "ajouter_a_playlist")).at(-1)).toEqual({ id: 1, paths: [PISTES[1].path] });
+
+  // L'album ouvert : toutes ses pistes ; celle déjà là est dite.
+  await ajouterVia(page, page.locator("#album-playlist"), "À travailler");
+  expect((await appels(page, "ajouter_a_playlist")).at(-1)).toEqual({ id: 1, paths: premierBanc.map((p) => p.path) });
+
+  // La file : le ＋ d'une ligne ne saute pas au morceau.
+  await page.click("#retour");
+  await lireUnAlbum(page);
+  await page.click("#bascule-file");
+  const ligneFile = page.locator("#file-liste .file__ligne").nth(1);
+  await ligneFile.hover();
+  const sauts = (await appels(page, "jump_to")).length;
+  await ajouterVia(page, ligneFile.locator(".file__ajout"), "Soirée");
+  expect((await appels(page, "ajouter_a_playlist")).at(-1)).toEqual({ id: 2, paths: [premierBanc[1].path] });
+  expect((await appels(page, "jump_to")).length).toBe(sauts);
+});
+
+test("P1 : une playlist vide se crée ; dans une playlist ouverte, retirer, annuler, déplacer", async ({ page }) => {
+  await page.evaluate((ps) => {
+    window.__ETAT_FAUX__.playlists = [{
+      id: 1, nom: "À travailler", origine: null, modifiee_le: 1_700_000_000, chemins: ps.slice(0, 3).map((p) => p.path),
+    }];
+  }, PISTES);
+  await page.click('[data-vuelib="playlists"]');
+  await expect(page.locator("#liste .ligne--playlist")).toHaveCount(1);
+
+  // Une playlist vide, depuis l'en-tête de la vue.
+  await page.click("#playlist-nouvelle");
+  await page.locator("#menu-playlist input").fill("Vide");
+  await page.locator("#menu-playlist input").press("Enter");
+  expect((await appels(page, "nouvelle_playlist")).at(-1)).toEqual({ nom: "Vide", paths: [] });
+  await expect(page.locator("#liste .ligne--playlist")).toHaveCount(2);
+  await expect(page.locator("#liste .ligne--playlist").first()).toContainText("0 piste");
+
+  // Ouvrir « À travailler » : compte et durée dans le fil.
+  await page.locator("#liste .ligne--playlist", { hasText: "À travailler" }).locator(".ligne__nom").click();
+  await expect(page.locator("#playlist-nouvelle")).toBeHidden();
+  await expect(page.locator("#fil-compte")).toHaveText(/^3 morceaux · /);
+  const noms = () => page.locator("#liste .ligne--pistes .ligne__nom").allTextContents();
+  expect(await noms()).toEqual(PISTES.slice(0, 3).map((p) => p.title));
+
+  // ✕ : la ligne reste, estompée, « annuler » la remet.
+  const lignes = page.locator("#liste .ligne--pistes");
+  await lignes.nth(0).hover();
+  await lignes.nth(0).locator(".ligne__action", { hasText: "✕" }).click();
+  expect((await appels(page, "retirer_de_playlist")).at(-1)).toEqual({ id: 1, rang: 0, path: PISTES[0].path });
+  await expect(lignes.nth(0)).toHaveClass(/ligne--retiree/);
+  await expect(page.locator("#fil-compte")).toHaveText(/^2 morceaux · /);
+  await lignes.nth(0).locator(".ligne__action", { hasText: "annuler" }).click();
+  expect((await appels(page, "remettre_dans_playlist")).at(-1)).toEqual({ id: 1, rang: 0, path: PISTES[0].path });
+  await expect(lignes.nth(0)).not.toHaveClass(/ligne--retiree/);
+  await expect(page.locator("#fil-compte")).toHaveText(/^3 morceaux · /);
+
+  // ⌥↓ : la piste sélectionnée descend d'un rang.
+  await lignes.nth(0).click();
+  await page.keyboard.press("Alt+ArrowDown");
+  expect((await appels(page, "deplacer_dans_playlist")).at(-1)).toEqual({ id: 1, de: 0, a: 1, path: PISTES[0].path });
+  await expect.poll(noms).toEqual([PISTES[1], PISTES[0], PISTES[2]].map((p) => p.title));
+
+  // Glisser la dernière au-dessus de la première.
+  await lignes.nth(2).dragTo(lignes.nth(0), { targetPosition: { x: 40, y: 6 } });
+  expect((await appels(page, "deplacer_dans_playlist")).at(-1)).toEqual({ id: 1, de: 2, a: 0, path: PISTES[2].path });
+  await expect.poll(noms).toEqual([PISTES[2], PISTES[1], PISTES[0]].map((p) => p.title));
+
+  // ✕ sans annuler : la ligne s'en va après le message.
+  await lignes.nth(1).hover();
+  await lignes.nth(1).locator(".ligne__action", { hasText: "✕" }).click();
+  await expect(lignes).toHaveCount(2, { timeout: 8000 });
+  expect(await noms()).toEqual([PISTES[2], PISTES[0]].map((p) => p.title));
+  expect(await page.evaluate(() => window.__ETAT_FAUX__.playlists.find((p) => p.id === 1).chemins))
+    .toEqual([PISTES[2].path, PISTES[0].path]);
+});

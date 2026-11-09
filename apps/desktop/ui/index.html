@@ -376,6 +376,12 @@
         <!-- Pistes d'un album : choisir son édition chez MusicBrainz (`js/editions.js`). -->
         <button id="choisir-edition" class="fil__candidat" hidden
                 title="Comparer l'album aux éditions de MusicBrainz et en retenir une">Choisir l'édition…</button>
+        <!-- P1 : l'album ouvert dans une playlist ; une playlist vide depuis la
+             vue Playlists (`js/playlists.js`). -->
+        <button id="album-playlist" class="fil__candidat" hidden aria-haspopup="dialog" aria-expanded="false"
+                title="Ajouter les pistes de l'album à une playlist">＋ playlist</button>
+        <button id="playlist-nouvelle" class="fil__candidat" hidden aria-haspopup="dialog" aria-expanded="false"
+                title="Créer une playlist vide">＋ nouvelle playlist</button>
         <!-- Ordre des grilles d'albums et d'artistes (mode Écoute). L'ordre alphabétique
              vient déjà trié du moteur ; « année », « aléatoire » et « ajoutés »
              retrient côté interface. -->
@@ -1385,6 +1391,9 @@
              devant un album, qui n'a pas de favori. -->
         <button class="insp__favori" id="insp-favori" aria-pressed="false" hidden
                 aria-label="Ajouter aux favoris" title="Ajouter aux favoris">♡</button>
+        <!-- P1 : le morceau ou l'album inspecté dans une playlist (`js/playlists.js`). -->
+        <button class="insp__playlist" id="insp-playlist" hidden aria-haspopup="dialog" aria-expanded="false"
+                aria-label="Ajouter à une playlist" title="Ajouter à une playlist">＋</button>
       </div>
       <div id="insp-vide" class="insp__vide">Aucun morceau sélectionné.</div>
       <div id="insp" hidden>

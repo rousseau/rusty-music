@@ -18,7 +18,7 @@ use rusty_music_analysis::chemin::{echantillonner, Empreinte, Graphe};
 use rusty_music_carto::accrochage::AccrochageVoirie;
 use rusty_music_core::db::{AlbumNoeud, AlbumRow, ArtistRow, MapPoint, RootRow, TrackRow};
 use rusty_music_core::memoire::{ListeIntelligente, SuiviEcoute};
-use rusty_music_core::playlists::PlaylistRow;
+use rusty_music_core::playlists::{AjoutPlaylist, EditionPlaylist, PlaylistRow};
 use rusty_music_core::session::{retenir, Session};
 use rusty_music_core::Library;
 use rusty_music_lama::filtres_playlist::{self, FiltresPlaylist};
@@ -1134,6 +1134,11 @@ fn main() {
             liste_intelligente,
             renommer_playlist,
             supprimer_playlist,
+            nouvelle_playlist,
+            ajouter_a_playlist,
+            retirer_de_playlist,
+            remettre_dans_playlist,
+            deplacer_dans_playlist,
         ])
         .build(tauri::generate_context!())
         .expect("démarrage de l'application impossible")

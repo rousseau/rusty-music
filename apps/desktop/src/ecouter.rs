@@ -669,6 +669,7 @@ pub(crate) fn file_courante(etat: State<Etat>) -> Result<Vec<TrackRow>, String> 
 
 /// Les playlists enregistrées, la plus récemment modifiée d'abord.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn playlists(etat: State<Etat>) -> Result<Vec<PlaylistRow>, String> {
     verrou(&etat.lib).playlists().map_err(echec)
 }
@@ -694,6 +695,7 @@ pub(crate) fn creer_playlist(
 /// Les pistes de la playlist `id` que la bibliothèque connaît encore, dans
 /// l'ordre enregistré.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn playlist_pistes(etat: State<Etat>, id: i64) -> Result<Vec<TrackRow>, String> {
     verrou(&etat.lib).pistes_de_playlist(id).map_err(echec)
 }
@@ -773,6 +775,97 @@ pub(crate) fn supprimer_playlist(etat: State<Etat>, id: i64) -> Result<(), Strin
         true => Ok(()),
         false => Err("cette playlist n'existe plus".into()),
     }
+}
+
+/// P1 : une retouche de playlist rendue en message clair pour l'interface.
+fn issue_edition(issue: EditionPlaylist) -> Result<(), String> {
+    match issue {
+        EditionPlaylist::Faite => Ok(()),
+        EditionPlaylist::Inconnue => Err("cette playlist n'existe plus".into()),
+        EditionPlaylist::Perimee => {
+            Err("la playlist a changé entre-temps : elle est rouverte telle qu'elle est".into())
+        }
+    }
+}
+
+/// Crée une playlist vide nommée `nom`, ou remplie de `paths` s'il y en a
+/// (« Nouvelle playlist… » d'un menu d'ajout). Rend son identifiant.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn nouvelle_playlist(
+    etat: State<Etat>,
+    nom: String,
+    paths: Vec<String>,
+) -> Result<i64, String> {
+    let lib = verrou(&etat.lib);
+    let id = lib.creer_playlist(&nom, None, &[]).map_err(echec)?;
+    if !paths.is_empty() {
+        lib.ajouter_a_playlist(id, &paths).map_err(echec)?;
+    }
+    Ok(id)
+}
+
+/// Ajoute `paths` à la fin de la playlist `id`, sans doublon.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn ajouter_a_playlist(
+    etat: State<Etat>,
+    id: i64,
+    paths: Vec<String>,
+) -> Result<AjoutPlaylist, String> {
+    verrou(&etat.lib)
+        .ajouter_a_playlist(id, &paths)
+        .map_err(echec)?
+        .ok_or_else(|| "cette playlist n'existe plus".into())
+}
+
+/// Retire la piste affichée au rang `rang` (qui doit être `path`).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn retirer_de_playlist(
+    etat: State<Etat>,
+    id: i64,
+    rang: u32,
+    path: String,
+) -> Result<(), String> {
+    issue_edition(
+        verrou(&etat.lib)
+            .retirer_de_playlist(id, rang as usize, &path)
+            .map_err(echec)?,
+    )
+}
+
+/// Remet `path` au rang affiché `rang` : l'annulation d'un retrait.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn remettre_dans_playlist(
+    etat: State<Etat>,
+    id: i64,
+    rang: u32,
+    path: String,
+) -> Result<(), String> {
+    issue_edition(
+        verrou(&etat.lib)
+            .inserer_dans_playlist(id, rang as usize, &path)
+            .map_err(echec)?,
+    )
+}
+
+/// Déplace la piste affichée du rang `de` au rang `a` (qui doit être `path`).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn deplacer_dans_playlist(
+    etat: State<Etat>,
+    id: i64,
+    de: u32,
+    a: u32,
+    path: String,
+) -> Result<(), String> {
+    issue_edition(
+        verrou(&etat.lib)
+            .deplacer_dans_playlist(id, de as usize, a as usize, &path)
+            .map_err(echec)?,
+    )
 }
 
 /// Branche [`SuiviEcoute::avancer`] sur le lecteur et la base. Appelé par le fil

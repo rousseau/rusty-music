@@ -17,6 +17,7 @@ const NOM_MAX: usize = 120;
 
 /// Une playlist telle que la liste l'affiche.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PlaylistRow {
     pub id: i64,
     pub nom: String,
@@ -29,6 +30,38 @@ pub struct PlaylistRow {
     /// Durée des pistes présentes.
     pub duree_ms: i64,
     pub modifiee_le: i64,
+}
+
+/// Ce qu'un ajout à une playlist a fait.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct AjoutPlaylist {
+    /// Pistes ajoutées à la fin.
+    pub ajoutes: u32,
+    /// Pistes laissées de côté parce qu'elles y étaient déjà.
+    pub deja_presents: u32,
+}
+
+/// Issue d'une retouche (retirer, remettre, déplacer) d'une playlist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditionPlaylist {
+    Faite,
+    /// La playlist n'existe pas.
+    Inconnue,
+    /// Le rang ne désigne plus le morceau attendu : la playlist a changé
+    /// depuis qu'elle est affichée. Rien n'a été touché.
+    Perimee,
+}
+
+/// Le rang dans le contenu enregistré de la `rang`-ième piste **présente**
+/// (celles que `pistes_de_playlist` rend), ou `None` au-delà de la dernière.
+fn rang_reel(contenu: &[(String, bool)], rang: usize) -> Option<usize> {
+    contenu
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, present))| *present)
+        .nth(rang)
+        .map(|(i, _)| i)
 }
 
 /// Nom nettoyé : espaces de bord retirés, borné, jamais vide.
@@ -177,6 +210,150 @@ impl Library {
             rusqlite::params![id, nom_propre(nom)],
         )?;
         Ok(n > 0)
+    }
+
+    /// Le contenu enregistré de `id`, dans l'ordre, chaque chemin marqué
+    /// présent (connu de la bibliothèque) ou non. `None` si la playlist
+    /// n'existe pas.
+    fn contenu(&self, id: i64) -> Result<Option<Vec<(String, bool)>>> {
+        let existe: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM playlist WHERE id = ?1)",
+            [id],
+            |r| r.get(0),
+        )?;
+        if !existe {
+            return Ok(None);
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT pp.chemin, t.id IS NOT NULL
+               FROM playlist_piste pp LEFT JOIN tracks t ON t.path = pp.chemin
+              WHERE pp.playlist_id = ?1
+              ORDER BY pp.rang",
+        )?;
+        let lignes = stmt
+            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(Some(lignes))
+    }
+
+    /// Réécrit tout le contenu de `id` (rangs renumérotés à partir de 0) et
+    /// date la modification.
+    fn reecrire(&self, id: i64, chemins: &[String]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM playlist_piste WHERE playlist_id = ?1", [id])?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO playlist_piste(playlist_id, rang, chemin) VALUES (?1, ?2, ?3)",
+            )?;
+            for (rang, chemin) in chemins.iter().enumerate() {
+                stmt.execute(rusqlite::params![id, rang as i64, chemin])?;
+            }
+        }
+        tx.execute(
+            "UPDATE playlist SET modifiee_le = strftime('%s','now') WHERE id = ?1",
+            [id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Ajoute `chemins` à la fin de `id`, dans l'ordre. Un chemin déjà dans la
+    /// playlist (ou répété dans `chemins`) n'est pas ajouté une seconde fois :
+    /// le compte rendu le dit. `None` si la playlist n'existe pas.
+    pub fn ajouter_a_playlist(&self, id: i64, chemins: &[String]) -> Result<Option<AjoutPlaylist>> {
+        let Some(contenu) = self.contenu(id)? else {
+            return Ok(None);
+        };
+        let mut tous: Vec<String> = contenu.into_iter().map(|(c, _)| c).collect();
+        let mut vus: std::collections::HashSet<String> = tous.iter().cloned().collect();
+        let mut ajout = AjoutPlaylist::default();
+        for c in chemins {
+            if vus.insert(c.clone()) {
+                tous.push(c.clone());
+                ajout.ajoutes += 1;
+            } else {
+                ajout.deja_presents += 1;
+            }
+        }
+        if ajout.ajoutes > 0 {
+            self.reecrire(id, &tous)?;
+        }
+        Ok(Some(ajout))
+    }
+
+    /// Retire de `id` la piste au rang `rang` **de la liste affichée**
+    /// ([`Self::pistes_de_playlist`], qui omet les manquantes), à condition que
+    /// ce soit bien `chemin` — sinon la playlist a changé ailleurs, et rien
+    /// n'est retiré. Les manquantes gardent leur place.
+    pub fn retirer_de_playlist(
+        &self,
+        id: i64,
+        rang: usize,
+        chemin: &str,
+    ) -> Result<EditionPlaylist> {
+        let Some(contenu) = self.contenu(id)? else {
+            return Ok(EditionPlaylist::Inconnue);
+        };
+        let Some(i) = rang_reel(&contenu, rang).filter(|&i| contenu[i].0 == chemin) else {
+            return Ok(EditionPlaylist::Perimee);
+        };
+        let tous: Vec<String> = contenu
+            .into_iter()
+            .enumerate()
+            .filter(|&(j, _)| j != i)
+            .map(|(_, (c, _))| c)
+            .collect();
+        self.reecrire(id, &tous)?;
+        Ok(EditionPlaylist::Faite)
+    }
+
+    /// Remet `chemin` au rang `rang` de la liste affichée (l'annulation d'un
+    /// retrait) ; au-delà de la fin, à la fin. Rien si le chemin y est déjà.
+    pub fn inserer_dans_playlist(
+        &self,
+        id: i64,
+        rang: usize,
+        chemin: &str,
+    ) -> Result<EditionPlaylist> {
+        let Some(contenu) = self.contenu(id)? else {
+            return Ok(EditionPlaylist::Inconnue);
+        };
+        if contenu.iter().any(|(c, _)| c == chemin) {
+            return Ok(EditionPlaylist::Perimee);
+        }
+        let i = rang_reel(&contenu, rang).unwrap_or(contenu.len());
+        let mut tous: Vec<String> = contenu.into_iter().map(|(c, _)| c).collect();
+        tous.insert(i, chemin.to_string());
+        self.reecrire(id, &tous)?;
+        Ok(EditionPlaylist::Faite)
+    }
+
+    /// Déplace la piste du rang `de` au rang `a` de la liste affichée (rangs
+    /// de la liste **après** le déplacement, comme `deplacer_file`), à
+    /// condition que le rang `de` soit bien `chemin`. Une manquante reste
+    /// accrochée à la piste qui la suivait.
+    pub fn deplacer_dans_playlist(
+        &self,
+        id: i64,
+        de: usize,
+        a: usize,
+        chemin: &str,
+    ) -> Result<EditionPlaylist> {
+        let Some(contenu) = self.contenu(id)? else {
+            return Ok(EditionPlaylist::Inconnue);
+        };
+        let Some(i) = rang_reel(&contenu, de).filter(|&i| contenu[i].0 == chemin) else {
+            return Ok(EditionPlaylist::Perimee);
+        };
+        let mut reste = contenu;
+        let piste = reste.remove(i);
+        // Le rang `a` dans la liste affichée sans la piste déplacée : elle se
+        // glisse juste avant la présente qui l'occupe, ou à la fin.
+        let cible = rang_reel(&reste, a).unwrap_or(reste.len());
+        reste.insert(cible, piste);
+        let tous: Vec<String> = reste.into_iter().map(|(c, _)| c).collect();
+        self.reecrire(id, &tous)?;
+        Ok(EditionPlaylist::Faite)
     }
 
     /// Supprime la playlist `id` et son contenu. `false` si elle n'existe pas.
@@ -408,5 +585,150 @@ mod tests {
         lib.renommer_playlist(a, "A2").unwrap();
         let ids: Vec<_> = lib.playlists().unwrap().into_iter().map(|p| p.id).collect();
         assert_eq!(ids, vec![a, b]);
+    }
+
+    fn chemins_de(lib: &Library, id: i64) -> Vec<String> {
+        let mut stmt = lib
+            .conn
+            .prepare("SELECT chemin FROM playlist_piste WHERE playlist_id = ?1 ORDER BY rang")
+            .unwrap();
+        stmt.query_map([id], |r| r.get(0))
+            .unwrap()
+            .collect::<std::result::Result<Vec<String>, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn une_playlist_vide_se_cree_puis_se_remplit_sans_doublon() {
+        let lib = bibliotheque(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"]);
+        let id = lib.creer_playlist("À travailler", None, &[]).unwrap();
+        assert_eq!(lib.playlists().unwrap()[0].nb_pistes, 0);
+
+        let r = lib
+            .ajouter_a_playlist(id, &v(&["/m/a.mp3", "/m/b.mp3"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!((r.ajoutes, r.deja_presents), (2, 0));
+        // b est déjà là, c est répété dans la demande : un seul c, pas de b.
+        let r = lib
+            .ajouter_a_playlist(id, &v(&["/m/b.mp3", "/m/c.mp3", "/m/c.mp3"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!((r.ajoutes, r.deja_presents), (1, 2));
+        assert_eq!(
+            chemins_de(&lib, id),
+            v(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"])
+        );
+        assert!(lib
+            .ajouter_a_playlist(9_999, &v(&["/m/a.mp3"]))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn ajouter_date_la_modification() {
+        let lib = bibliotheque(&["/m/a.mp3"]);
+        let a = lib.creer_playlist("A", None, &[]).unwrap();
+        let b = lib.creer_playlist("B", None, &[]).unwrap();
+        lib.conn
+            .execute("UPDATE playlist SET modifiee_le = modifiee_le - 100", [])
+            .unwrap();
+        lib.ajouter_a_playlist(a, &v(&["/m/a.mp3"])).unwrap();
+        let ids: Vec<_> = lib.playlists().unwrap().into_iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec![a, b], "la playlist retouchée remonte en tête");
+    }
+
+    #[test]
+    fn retirer_puis_remettre_un_rang_affiche() {
+        // b manque à la bibliothèque : la liste affichée est a, c, d.
+        let lib = bibliotheque(&["/m/a.mp3", "/m/c.mp3", "/m/d.mp3"]);
+        let id = lib
+            .creer_playlist(
+                "P",
+                None,
+                &v(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3", "/m/d.mp3"]),
+            )
+            .unwrap();
+        // Rang 1 affiché = c (b, manquante, ne compte pas).
+        assert_eq!(
+            lib.retirer_de_playlist(id, 1, "/m/a.mp3").unwrap(),
+            EditionPlaylist::Perimee,
+            "le rang ne désigne pas ce chemin : rien n'est retiré"
+        );
+        assert_eq!(
+            lib.retirer_de_playlist(id, 1, "/m/c.mp3").unwrap(),
+            EditionPlaylist::Faite
+        );
+        assert_eq!(
+            chemins_de(&lib, id),
+            v(&["/m/a.mp3", "/m/b.mp3", "/m/d.mp3"])
+        );
+        // L'annulation le remet au même rang affiché, avant d.
+        assert_eq!(
+            lib.inserer_dans_playlist(id, 1, "/m/c.mp3").unwrap(),
+            EditionPlaylist::Faite
+        );
+        assert_eq!(
+            chemins_de(&lib, id),
+            v(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3", "/m/d.mp3"])
+        );
+        assert_eq!(
+            lib.inserer_dans_playlist(id, 0, "/m/c.mp3").unwrap(),
+            EditionPlaylist::Perimee,
+            "déjà présent : pas de doublon"
+        );
+        assert_eq!(
+            lib.inserer_dans_playlist(id, 99, "/m/e.mp3").unwrap(),
+            EditionPlaylist::Faite
+        );
+        assert_eq!(chemins_de(&lib, id).last().unwrap(), "/m/e.mp3");
+        assert_eq!(
+            lib.retirer_de_playlist(9_999, 0, "/m/a.mp3").unwrap(),
+            EditionPlaylist::Inconnue
+        );
+    }
+
+    #[test]
+    fn deplacer_un_rang_affiche() {
+        let lib = bibliotheque(&["/m/a.mp3", "/m/c.mp3", "/m/d.mp3"]);
+        let id = lib
+            .creer_playlist(
+                "P",
+                None,
+                &v(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3", "/m/d.mp3"]),
+            )
+            .unwrap();
+        let affiches = |lib: &Library| -> Vec<String> {
+            lib.pistes_de_playlist(id)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.path)
+                .collect()
+        };
+        // a vers la fin (rang 2 de la liste après déplacement).
+        assert_eq!(
+            lib.deplacer_dans_playlist(id, 0, 2, "/m/a.mp3").unwrap(),
+            EditionPlaylist::Faite
+        );
+        assert_eq!(affiches(&lib), v(&["/m/c.mp3", "/m/d.mp3", "/m/a.mp3"]));
+        // La manquante b reste accrochée devant c.
+        assert_eq!(
+            chemins_de(&lib, id),
+            v(&["/m/b.mp3", "/m/c.mp3", "/m/d.mp3", "/m/a.mp3"])
+        );
+        // d en tête (⌥↑ deux fois revient à ceci).
+        assert_eq!(
+            lib.deplacer_dans_playlist(id, 1, 0, "/m/d.mp3").unwrap(),
+            EditionPlaylist::Faite
+        );
+        assert_eq!(affiches(&lib), v(&["/m/d.mp3", "/m/c.mp3", "/m/a.mp3"]));
+        assert_eq!(
+            lib.deplacer_dans_playlist(id, 1, 0, "/m/a.mp3").unwrap(),
+            EditionPlaylist::Perimee
+        );
+        assert_eq!(
+            lib.deplacer_dans_playlist(id, 7, 0, "/m/a.mp3").unwrap(),
+            EditionPlaylist::Perimee
+        );
     }
 }

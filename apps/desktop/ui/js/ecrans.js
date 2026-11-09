@@ -46,7 +46,7 @@ const ECRANS = {
   ecoute: {
     ...NAVIGATEUR,
     "bloc-chercher": TOUJOURS, "bloc-vue-lib": TOUJOURS, "bloc-familles-ecoute": SELON,
-    "choisir-edition": SELON, "tri-albums": SELON,
+    "choisir-edition": SELON, "album-playlist": SELON, "playlist-nouvelle": SELON, "tri-albums": SELON,
   },
   pratiquer: { ...ETABLI, "bloc-usage": SELON, "bloc-partitions": SELON },
   creer: ETABLI,

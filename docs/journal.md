@@ -5057,3 +5057,50 @@ l'est désormais (1,8 Mo, CC BY-NC-SA 4.0, paquet à usage personnel :
 
 Non vérifié : la batterie dans l'app installée (installation : I9) ; le
 message « réinstaller » n'a été vu que par son test, pas dans un `.app`.
+
+## Écouter, P1 : gérer les playlists — 9 nov. 2026
+
+François n'avait pas de quoi « créer une playlist, gérer une playlist » pour
+se faire une liste de morceaux à travailler : on ne pouvait qu'enregistrer la
+file. La gestion piste par piste, écartée en octobre, est faite.
+
+- **Moteur** (`core::playlists`) : créer une playlist vide, ajouter à la fin
+  sans doublon (`AjoutPlaylist` dit combien y étaient déjà), retirer,
+  remettre (l'annulation), déplacer ; `modifiee_le` suit chaque retouche, la
+  playlist retouchée remonte en tête. Piège : `playlist_pistes` omet les pistes
+  introuvables, une retouche désigne donc une piste par son rang **dans la liste
+  affichée** et par son chemin ; si le chemin ne correspond plus (playlist
+  changée ailleurs), rien n'est touché et l'interface la rouvre. Une
+  introuvable garde sa place (elle reste accrochée à la piste qui la suivait).
+  4 tests de plus (13 en tout).
+- **Commandes** `nouvelle_playlist`, `ajouter_a_playlist`,
+  `retirer_de_playlist`, `remettre_dans_playlist`, `deplacer_dans_playlist`,
+  contrôlées par leurs types avec `playlists` et `playlist_pistes` (41
+  commandes contrôlées sur 234) ; réponses figées en mémoire dans `fixtures.js`.
+- **Interface** : `ui/js/playlists.js`, nouveau, reprend aussi les playlists
+  enregistrées d'`ecouter.js` (1 658 → 1 422 lignes). « Ajouter à une
+  playlist » est un seul petit menu (les plus récemment retouchées d'abord,
+  puis « Nouvelle playlist… » nommée sur place, sans fenêtre modale ; une ligne
+  dit où le morceau est allé, puis il se ferme), ouvert depuis le ＋ d'une ligne
+  de piste et d'une ligne de la file (au survol, sur la ligne sélectionnée ou au
+  clavier, sans rien déplacer), le ＋ de l'inspecteur (morceau ou album) et
+  « ＋ playlist » dans l'en-tête d'un album ouvert. Playlist ouverte : ✕ retire
+  (la ligne reste estompée 5 s avec « annuler »), glisser ou ⌥↑/⌥↓ déplace, le
+  fil dit « n morceaux · durée ». Vue Playlists : « ＋ nouvelle playlist » dans
+  l'en-tête, une playlist vide a son message.
+- **Panneaux** (`interface-guidelines.md`, Règles 1 et 12) : le centre porte
+  l'objet et ses gestes (＋ et ✕ des lignes, boutons de l'en-tête, déclarés
+  `SELON` dans `ecrans.js`) ; l'inspecteur, ce qui est choisi (＋ sur la
+  pochette, à côté de ✦ et ♡, même gabarit) ; le bas, le temps (la file
+  garde son clic = sauter, le ＋ ne saute pas) ; le rail ne change pas. Clic sur
+  une ligne = sélection, ▶ ou double-clic = lecture : inchangé, le ＋ ne
+  sélectionne pas. Le menu se pose sous le bouton (pas de fond voilé).
+- **Vérifié** : deux tests de fumée « P1 » (ajouter depuis une ligne, une
+  nouvelle playlist, l'inspecteur, l'album ouvert, la file ; créer vide,
+  retirer, annuler, ⌥↓, glisser, retrait définitif), `verifier.sh` vert ;
+  audit d'interface complet : 270 cellules, 0 violation (écran en veille : gabarit mesuré, carte non dessinée), dont le nouvel état `ecoute:playlists`.
+
+Non vérifié : l'app réelle (pas installée ; aucun écran regardé, les tests
+sont en Chrome sans tête) ; l'album inspecté depuis l'Anneau (seul le morceau
+inspecté est testé) ; l'ajout depuis la palette ⌘K et depuis la case d'un album
+de la grille, non faits.
