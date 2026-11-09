@@ -20,6 +20,8 @@ use tracing::debug;
 pub mod amelioration;
 pub mod aura;
 pub mod gapless;
+#[cfg(feature = "hauteur")]
+pub mod hauteur;
 pub mod horloge;
 pub mod latence;
 pub mod multipiste;

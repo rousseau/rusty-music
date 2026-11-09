@@ -5191,3 +5191,64 @@ morceau funk à moins de 8 % de tempo.
 **Non vérifié** : le classement face à l'oreille (*Even Deeper* est-il plus
 funk que *Piece of Rock* ?) ; la durée du chargement des empreintes en
 build optimisé ; la lecture de stems pendant un démixage de fond.
+
+## Pratiquer, E6, tranche 1 : le transpositeur Signalsmith, sa justesse et son coût — 9 nov. 2026
+
+La décision d'E3 est mixte : `wsola` garde la vitesse, Signalsmith prend la
+hauteur. Cette tranche pose le transpositeur, sans le brancher encore. Le
+module est `crates/player/src/hauteur.rs` : il porte `signalsmith-stretch`
+=0.1.3 (MIT), la version du banc, derrière la feature `hauteur`, que seul le
+bureau active ; le compagnon iOS ne l'embarque pas. Tampons configurés à la
+construction, aucune allocation dans `traiter`. La latence est exposée
+(`latence()`) et vérifiée : la corrélation du bruit à zéro demi-ton donne
+exactement 5 292 trames (120 ms) avec le préréglage. L'exemple
+`salve_hauteur` mesure le coût dans le rappel.
+
+**La justesse ne tient pas le critère, et ce n'est pas un réglage à
+compenser.** Erreur mesurée sur sinusoïde, en flux, au pic spectral (DFT
+fenêtrée, contrôle en entrée : 0,00 cent) :
+
+| réglage (bloc/pas) | latence | pire écart, 82 Hz à 1 kHz, ±1, ±2, ±5 demi-tons | 1 kHz |
+|---|---|---|---|
+| préréglage 5292/1323 | 120 ms | +22 cents (82 Hz), +8 (110 Hz), +5 (441 Hz) | ≤ 1,6 |
+| 8192/512 | 186 ms | 4,0 | ≤ 0,5 |
+| 8192/256 | 186 ms | 2,0 (≤ 1 à partir de 220 Hz) | ≤ 0,2 |
+| 16384/512 | 372 ms | 1,75 | ≤ 0,2 |
+
+Le biais est positif et grandit vers le grave. Il vient de l'estimation des
+pics de Signalsmith (centroïde de l'énergie des bandes au-dessus de leur
+moyenne lissée), et c'est le pas d'analyse, plus que le bloc, qui le réduit.
+Il dépend de la fréquence : un facteur unique ne le compense pas. Sur une
+« basse » à 8 harmoniques (41 à 110 Hz), c'est pire : dans le grave, la
+recherche de pic sature à ±40 cents et la mesure elle-même ne tient plus.
+L'écoute d'E3 n'avait pourtant rien entendu sur la basse.
+
+**Le coût**, en pire salve par bloc de 128 trames (échéance 2,90 ms), sur
+4 stems, minimum de 3 passes, bruit à −6 dB, `--release` :
+
+| | pire salve | 99e centile | charge moyenne |
+|---|---|---|---|
+| Signalsmith seul, préréglage | 0,90 ms | 0,71 ms | 2,5 % d'un cœur |
+| Signalsmith seul, 8192/512 | 2,97 ms | 0,91 ms | 7,7 % |
+| Signalsmith seul, 8192/256 | 4,46 ms | 0,91 ms | 14,9 % |
+| Signalsmith seul, 16384/512 | 5,74 ms | 1,85 ms | 15,4 % |
+| wsola seul (vitesse 0,5) | 5,15 ms | 4,98 ms | 30,8 % |
+| wsola 0,5 + préréglage ±2 | 5,75 ms | 5,27 ms | 33,3 % |
+
+Seul le préréglage tient l'échéance de 128 trames, et il n'est pas juste.
+Les réglages justes la dépassent dès qu'ils calculent dans le rappel. Autre
+constat : `wsola` à vitesse 0,5 dépasse déjà cette échéance (5,2 ms, comme au
+banc E3). Il tient dans le tampon CoreAudio réel de 512 trames (11,6 ms) ;
+un tampon de 128 trames le ferait craquer avant même toute transposition.
+
+Il faut donc choisir, et la question va à François. Trois voies : le
+préréglage dans le rappel (budget tenu, mais faux dans le grave) ; un
+réglage juste calculé dans un fil à part, avec un tampon d'avance (le
+rappel ne fait plus que copier) ; ou garder un calcul hors ligne avec
+Signalsmith `exact` (1 s par stem au banc), donc avec un cache. Le
+branchement dans `Voix`, la compensation de latence dans l'horloge et le
+retrait du cache attendent ce choix.
+
+**Non vérifié** : la justesse perçue sur des stems réels (la mesure sur
+sinusoïde et dents de scie est plus sévère que l'oreille d'E3) ; le coût
+sur de la musique plutôt que du bruit.

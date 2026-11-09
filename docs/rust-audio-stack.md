@@ -78,12 +78,16 @@ Colonne « vérifiée » : ✔ = licence lue dans une source lors de cette reche
 | Crate | Rôle | Licence | Vérifiée |
 |---|---|---|---|
 | **`wsola`** | étirement temporel à hauteur préservée (recouvrement-addition), temps réel, pur Rust, zéro dépendance transitive | MIT | ✔ **retenu** (module 1 : vitesse de lecture ; module 3 : `editor/src/etirement.rs`, greffe). Hauteur inchangée à 441 Hz de 0,5× à 2×. |
-| `signalsmith-stretch` / `ssstretch` | qualité production, C++ lié | MIT | écarté : `wsola` suffit et reste pur Rust |
+| **`signalsmith-stretch`** (=0.1.3, enveloppe de Colin Marc ; C++ de Signalsmith Audio, compilé par `cc`, liaisons `bindgen`) | vocodeur de phase, temps et hauteur, temps réel | MIT (enveloppe et C++) | ✔ **retenu pour la hauteur** (E3, écoute à l'aveugle du 9 nov. : préféré 2 sur 2 en transposition) ; `crates/player/src/hauteur.rs`, feature `hauteur` (bureau seulement). Justesse : biais dans le grave selon le pas d'analyse (journal, E6) |
 | **Rubber Band** (`rubberband-sys`) | référence du domaine | GPL | non retenu — `wsola` couvre le besoin |
 
 La transposition, que `wsola` ne fait pas, s'obtient en étirant puis en
 rééchantillonnant du même rapport (`rubato`). Un vocodeur de phase maison
 (~500 lignes) avait été écrit avant de vérifier `wsola` ; il a été retiré.
+
+Depuis E6 (9 nov. 2026), la transposition passe à Signalsmith Stretch, en
+flux ; `wsola` garde la vitesse. Le branchement dans la lecture des stems est
+en cours (`docs/suite.md`).
 
 ### Inférence ML
 | Crate | Rôle | Licence | Vérifiée |
