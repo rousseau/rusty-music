@@ -4975,3 +4975,27 @@ Non vérifié : aucune commande ni aucun geste dans Pratiquer (tranche 2, avec
 l'entrée MIDI qui donne les frappes) ; l'enveloppe haute n'a pas été
 confrontée à une vraie sortie (CoreAudio, Bluetooth) ; l'ancre ne tient
 compte que de la vitesse globale, pas d'une vitesse par stem.
+
+## Pratiquer, E3 (suite) : les fichiers d'écoute rendus — 9 nov. 2026
+
+`experiments/etirement/rendre-ecoute.sh`, LaCie branché : 1 min 50 s,
+**96 WAV** (6 extraits × 5 réglages × A, B, C, plus un original par extrait),
+462 Mo dans `$RUSTY_DEV/banc-etirement/ecoute/`, clé à part dans
+`$RUSTY_DEV/banc-etirement/cle/cle.tsv`. Rien n'a changé dans l'application.
+
+Contrôlé fichier par fichier (44,1 kHz, stéréo, 16 bits) :
+- **niveau** : un seul RMS par extrait, au dixième de dB, original compris
+  (batterie −20,5, basse −19,2, pop dense −16,0, piano −21,2, voix −21,7,
+  jazz −16,7 dBFS) ;
+- **longueur** : 20,00 s à ±2 demi-tons, 40,00 / 28,57 / 25,00 s à 0,5 /
+  0,7 / 0,8×, identique pour A, B, C ;
+- **silences** (fenêtres de 0,5 s sous −60 dBFS) : aucun sur batterie, pop
+  dense, piano, jazz ; sur la basse (1 à 5 aux ralentis) et la voix (4 à 12)
+  ce sont les pauses de la source, déjà dans l'original de la voix et
+  allongées par le ralenti, au même compte (à une fenêtre près) pour A, B, C.
+
+Le disque est en exFAT : macOS y ajoute des fichiers `._*` (métadonnées,
+cachés dans le Finder), sans effet sur l'écoute.
+
+Non vérifié : l'écoute elle-même, réduite par décision de François à
+`1-batterie` et `2-basse` ; la décision suivra.

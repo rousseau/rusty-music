@@ -77,8 +77,8 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     demi-ton sur une note transcrite, barre sur une ligne à 1 400 px ; pas
     encore vue dans l'app réelle), banc d'étirement (E3, 9 nov. : coûts mesurés — Signalsmith
     transpose un stem de 184 s en 1,0 s contre 17 s pour wsola, et les deux
-    vocodeurs transposent en flux ; écoute à l'aveugle en attente du LaCie,
-    `experiments/etirement/rendre-ecoute.sh`), coach (E4 commencé le 9 nov. :
+    vocodeurs transposent en flux ; fichiers d'écoute à l'aveugle rendus sur le
+    LaCie, écoute de François attendue sur batterie et basse), coach (E4 commencé le 9 nov. :
     horloge de pratique et calibration de latence stockée par périphérique
     et chemin, migration n° 10, sans interface ; restent le geste de
     calibration, la batterie MIDI et l'appariement, puis la table par mesure
