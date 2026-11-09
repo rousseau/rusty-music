@@ -1140,6 +1140,10 @@ pub(crate) struct SpectreTransport {
 /// donne `drums`. **Le premier niveau seulement** — `traites/` porte les
 /// versions transposées et `greffes/` les stems venus d'ailleurs, qui sont des
 /// dérivés du morceau, pas des stems de plus.
+///
+/// Les fichiers cachés sont ignorés : macOS sème des `._… — drums.wav`
+/// (AppleDouble, 4 Ko d'attributs) dans un cache copié sur un disque non APFS,
+/// et l'un d'eux, classé avant le vrai, passait pour la batterie (V23).
 pub(crate) fn stems_du_dossier(dossier: &Path) -> Vec<(String, PathBuf)> {
     let Ok(entrees) = std::fs::read_dir(dossier) else {
         return Vec::new();
@@ -1148,6 +1152,10 @@ pub(crate) fn stems_du_dossier(dossier: &Path) -> Vec<(String, PathBuf)> {
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "wav"))
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| !n.to_string_lossy().starts_with('.'))
+        })
         .map(|p| {
             let nom = p
                 .file_stem()
@@ -1188,6 +1196,21 @@ mod tests {
     use super::*;
 
     use std::path::Path;
+
+    /// Un `._… — drums.wav` d'AppleDouble n'est pas la batterie (V23).
+    #[test]
+    fn les_fichiers_caches_ne_sont_pas_des_stems() {
+        let d = std::env::temp_dir().join(format!("stems-caches-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("._A — drums.wav"), b"attributs").unwrap();
+        std::fs::write(d.join("A — drums.wav"), b"RIFF").unwrap();
+        let s = stems_du_dossier(&d);
+        std::fs::remove_dir_all(&d).ok();
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].0, "drums");
+        assert!(s[0].1.ends_with("A — drums.wav"));
+        assert!(!s[0].1.to_string_lossy().contains("._"));
+    }
 
     /// Un rendu ne doit jamais atterrir sous une racine surveillée : il y
     /// serait ingéré, analysé et placé sur la carte alors que ce n'est pas un

@@ -5134,3 +5134,60 @@ propos », qui le lit).
 
 Non vérifié : une transcription hors ligne dans l'app installée (réseau
 coupé, premier usage) ; seule la disposition du paquet l'est.
+
+## Créer, V23 : « une batterie plus funk » sur la vraie base — 9 nov. 2026
+
+F1 n'avait été prouvé qu'avec le faux Tauri et les tests unitaires. Cette
+fois, la recherche a tourné de bout en bout sur une **copie** de la base réelle
+(27 861 empreintes), placée sur le disque de dev (`sqlite3 .backup`, cache de
+stems copié, `RUSTY_MUSIC_DONNEES`, `RUSTY_MUSIC_INCOGNITO=1`). Aucun son,
+rien d'écrit dans les données réelles. L'essai est reproductible :
+`RUSTY_MUSIC_ESSAI_GREFFON=<id>` (guide : `RUSTY_MUSIC_ESSAI_GUIDE`, « plus
+funk » par défaut) fait, au démarrage, ce que fait l'interface. Il appelle
+`chercher_greffon` sur la batterie, puis `greffons_preparer` sur les 8
+premiers sans groove ; il attend la fin, relit le classement et écrit
+`essai-greffon.json` à côté de la base, durées comprises, avant de quitter.
+C'est le même mécanisme que l'essai de balade.
+
+**Un défaut trouvé au passage.** Au premier essai, le groove du morceau de
+référence manquait, et rien ne le signalait au journal. La copie vers un disque
+non APFS avait semé des fichiers AppleDouble (`._06 … — drums.wav`, 4 Ko).
+`stems_du_dossier` les classait avant le vrai stem et les prenait pour la
+batterie. Sans groove de référence, la note restait absolue : *Gouge Away*
+tombait à −0,16. Correctif : les fichiers cachés sont ignorés (test
+`les_fichiers_caches_ne_sont_pas_des_stems`). Le défaut aurait touché tout
+cache de stems sur disque externe.
+
+**Mesuré** (build de dev, après correctif). Référence : *Know Your Enemy*
+(rock, 118,4 BPM, mi majeur), groove 0,20 de syncope, 1,7 attaque par temps,
+droit, 4 temps.
+
+- Tour texte : 0,76 s à froid, 0,13 s au second lancement, 0,11 s
+  d'encodage (« funk drums, syncopated groove »). Préfiltre : 0,13 s pour
+  400 voisins. Le chargement des 27 861 empreintes prend 13 à 17 s : `core`
+  est en `opt-level = 0` dans ce build, la version installée n'a pas été
+  mesurée. `chercher_greffon` à chaud : 1,7 à 3,3 s ; 12 à 14 s quand il
+  mesure le groove des 4 à 8 candidats tout juste préparés.
+- Filtres : sur 400 voisins, 110 écartés par le tempo, 0 par la tonalité
+  (batterie : sans hauteur), 0 par la métrique, 0 sans tempo. Les 24
+  premiers restants sont notés, 12 sont gardés.
+- Démixage des 8 premiers (`htdemucs`, celui de Créer) : 18 à 53 s chacun,
+  289 s en tout. Avec chargement du modèle, pulsation et groove, la
+  préparation dure 430 s, sans échec. Les 4 suivants : 237 s.
+- Cache : +1,29 Gio pour les 8 premiers (≈ 165 Mo chacun), +0,88 Gio pour
+  les 4 suivants ; 2,17 Gio pour 12 candidats.
+
+Le classement final, avec les 12 mesurés, dans l'ordre : Kemar *45/33/78*
+(syncope 0,28, 1,9) ; Nine Inch Nails *Even Deeper* (0,28, 2,0) ;
+Gainsbourg *Lola Rastaquouère* (0,29, 2,2) ; Urban Dance Squad *Piece of
+Rock* (0,19, 1,8) ; Ugly Kid Joe *Dialogue* (0,23, 1,9) ; Pixies *Brick Is
+Red* (0,18, 1,6). Suivent Daft Punk *Give Life Back to Music*, deux fois
+(deux éditions, 0,12), Stupeflip, Pixies *Gouge Away*, puis deux AC/DC
+(0,08 et 0,11). Tous sont droits. Le classement suit bien la syncope
+mesurée. En revanche, le préfiltre ne propose que du rock : la moitié
+« morceau » de CLAP domine, et la direction textuelle ne fait monter aucun
+morceau funk à moins de 8 % de tempo.
+
+**Non vérifié** : le classement face à l'oreille (*Even Deeper* est-il plus
+funk que *Piece of Rock* ?) ; la durée du chargement des empreintes en
+build optimisé ; la lecture de stems pendant un démixage de fond.

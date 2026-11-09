@@ -638,6 +638,7 @@ fn main() {
             wifi::demarrer(app.handle());
 
             explorer::essai_balade(app.handle());
+            greffon::essai_greffon(app.handle());
 
             // Réalimente la file indépendamment du sondage de l'interface —
             // voir `precharger_suivante`. Fil dédié plutôt que raccroché à un

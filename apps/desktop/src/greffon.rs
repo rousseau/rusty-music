@@ -701,6 +701,136 @@ pub(crate) fn greffons_etat(etat: State<Etat>) -> VueGreffons {
     }
 }
 
+/// `RUSTY_MUSIC_ESSAI_GREFFON=<id>` : cherche au démarrage un greffon pour la
+/// batterie du morceau `id` (guide : `RUSTY_MUSIC_ESSAI_GUIDE`, « plus funk »
+/// par défaut), **sans le son**, fait préparer les 8 premiers comme
+/// l'interface, puis relit le classement et quitte. Le détail, durées
+/// comprises, va dans `essai-greffon.json` à côté de la base. À lancer sur une
+/// copie des données (`RUSTY_MUSIC_DONNEES`) : les démixages vont dans son
+/// cache de stems. Sans effet en usage normal.
+pub(crate) fn essai_greffon(app: &tauri::AppHandle) {
+    let Some(id) = std::env::var("RUSTY_MUSIC_ESSAI_GREFFON")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+    else {
+        return;
+    };
+    let guide = std::env::var("RUSTY_MUSIC_ESSAI_GUIDE").unwrap_or_else(|_| "plus funk".into());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        // Laisse la reprise de session passer avant.
+        std::thread::sleep(Duration::from_secs(5));
+        let etat = app.state::<Etat>();
+        verrou(&etat.player).set_volume(0.0);
+        let mut sortie = serde_json::Map::new();
+        let mut noter = |cle: &str, v: serde_json::Value| {
+            sortie.insert(cle.into(), v);
+        };
+        let ms = |t: Instant| serde_json::json!(t.elapsed().as_millis() as u64);
+
+        // Les temps de `chercher_greffon`, séparés : la tour texte (chargée
+        // ici, gardée pour l'appel qui suit), puis les empreintes et le
+        // préfiltre.
+        let intention = interpreter(&guide, "drums");
+        let t = Instant::now();
+        let cible = match rusty_music_analysis::EmbedderTexte::charger(None) {
+            Ok(e) => {
+                let chargee = t.elapsed().as_millis() as u64;
+                let t2 = Instant::now();
+                let v = e.embed(&intention.texte).ok();
+                noter("texte_chargement_ms", serde_json::json!(chargee));
+                noter("texte_encodage_ms", ms(t2));
+                let mut g = verrou(&etat.texte_modele);
+                g.valeur = Some(e);
+                g.touche = Some(Instant::now());
+                v
+            }
+            Err(e) => {
+                tracing::warn!(erreur = %e, "essai de greffon : tour texte absente");
+                None
+            }
+        };
+        let t = Instant::now();
+        match charger_vecteurs(&etat) {
+            Ok(v) => {
+                noter("empreintes", serde_json::json!(v.len()));
+                noter("empreintes_ms", ms(t));
+                let t = Instant::now();
+                let p = prefiltre(&v, id, cible.as_deref(), VOISINS_EXAMINES);
+                noter("prefiltre_ms", ms(t));
+                noter("prefiltre_n", serde_json::json!(p.len()));
+            }
+            Err(e) => tracing::warn!(erreur = %e, "essai de greffon : empreintes"),
+        }
+
+        let chercher = |cle: &str, sortie: &mut serde_json::Map<String, serde_json::Value>| {
+            let t = Instant::now();
+            match chercher_greffon(
+                app.state::<Etat>(),
+                id,
+                "drums".into(),
+                Some(guide.clone()),
+                12,
+            ) {
+                Ok(r) => {
+                    sortie.insert(format!("{cle}_ms"), ms(t));
+                    let v = serde_json::to_value(&r).unwrap_or_default();
+                    sortie.insert(cle.into(), v);
+                    Some(r)
+                }
+                Err(e) => {
+                    tracing::warn!(erreur = %e, "essai de greffon : recherche");
+                    None
+                }
+            }
+        };
+        let Some(premiere) = chercher("premiere", &mut sortie) else {
+            app.exit(1);
+            return;
+        };
+        let ids: Vec<i64> = premiere
+            .candidats
+            .iter()
+            .filter(|c| c.groove.is_none())
+            .map(|c| c.id)
+            .take(PREPARES)
+            .collect();
+        sortie.insert("prepares".into(), serde_json::json!(ids));
+        let t = Instant::now();
+        if !ids.is_empty() {
+            if let Err(e) = greffons_preparer(app.clone(), etat, ids, "htdemucs".into()) {
+                tracing::warn!(erreur = %e, "essai de greffon : préparation");
+            }
+            std::thread::sleep(Duration::from_secs(1));
+            while verrou(&app.state::<Etat>().greffons).en_cours {
+                std::thread::sleep(Duration::from_secs(2));
+            }
+        }
+        sortie.insert("preparation_ms".into(), ms(t));
+        let vue = greffons_etat(app.state::<Etat>());
+        sortie.insert(
+            "preparation".into(),
+            serde_json::to_value(&vue).unwrap_or_default(),
+        );
+        chercher("finale", &mut sortie);
+
+        let fichier = app
+            .state::<Etat>()
+            .db
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("essai-greffon.json");
+        match serde_json::to_string_pretty(&sortie) {
+            Ok(j) => {
+                let _ = std::fs::write(&fichier, j);
+                tracing::info!(fichier = %fichier.display(), "essai de greffon écrit");
+            }
+            Err(e) => tracing::warn!(erreur = %e, "essai de greffon : écriture"),
+        }
+        app.exit(0);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
