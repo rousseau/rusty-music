@@ -92,7 +92,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     juste dépassait le budget du rappel ; sur décision de François, la
     transposition reste hors ligne et en cache, mais par Signalsmith `exact`
     (bloc 8192, pas 224 : ≤ 2 cents, 8,4 s par stem de 224 s contre ≈ 20 s
-    par wsola) ; reste à l'installer et à l'entendre dans l'app), coach (E4 commencé le 9 nov. :
+    par wsola ; V28 : stems transposés en parallèle sur les cœurs de
+    performance moins un, 4 stems en 9,5 s, 6 en 7,9 s) ; reste à l'entendre
+    dans l'app), coach (E4 commencé le 9 nov. :
     horloge de pratique et calibration de latence stockée par périphérique
     et chemin, migration n° 10, sans interface ; restent le geste de
     calibration, la batterie MIDI et l'appariement, puis la table par mesure

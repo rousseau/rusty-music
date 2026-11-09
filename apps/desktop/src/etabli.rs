@@ -255,23 +255,27 @@ pub(crate) fn start_etirer(
         let etat = app.state::<Etat>();
         let _garde = GardePasse::nouvelle(&etat.transpose);
 
-        // **Un fil par stem.** Mesuré sur un morceau de 272 s : 92,0 s en file
-        // contre 23,5 s en parallèle, soit 3,9× — l'étirement est le seul poste
-        // qui compte (22,8 s des 23,0 s d'un stem) et il ne partage rien.
-        //
-        // Ce qui rendait cette parallélisation dangereuse avant, et ne l'est
-        // plus : chaque transposition tenait cinq tampons pleins du signal, et
-        // quatre à la fois faisaient pagineur la machine — ce qui fige
-        // l'interface aussi sûrement qu'un calcul mal placé.
-        // `reechantillonner_entrelace` les a ramenés à deux.
-        let resultats: Vec<Result<String, String>> = std::thread::scope(|portee| {
-            let taches: Vec<_> = stems
-                .iter()
-                .enumerate()
-                .map(|(i, (_, chemin))| {
-                    let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
-                    let etat = &etat;
-                    portee.spawn(move || {
+        // **En parallèle, mais borné.** Mesuré sur un morceau de 272 s : 92,0 s
+        // en file contre 23,5 s en parallèle, du temps de `wsola` ; Signalsmith
+        // en réglage juste (E6) coûte 8,4 s par stem de 224 s, et rien n'est
+        // partagé entre deux stems. Les fils sont bornés aux cœurs de
+        // performance moins un (V28) : six stems RoFormer ne prennent pas
+        // toute la machine pendant que la lecture et l'interface tournent.
+        // Chaque fil prend le stem suivant dans la file commune.
+        let fils = fils_de_calcul(stems.len());
+        let suivant = std::sync::atomic::AtomicUsize::new(0);
+        let issues: Mutex<Vec<Option<Result<String, String>>>> =
+            Mutex::new(vec![None; stems.len()]);
+        std::thread::scope(|portee| {
+            for _ in 0..fils {
+                portee.spawn(|| {
+                    priorite_de_calcul();
+                    loop {
+                        let i = suivant.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some((_, chemin)) = stems.get(i) else {
+                            break;
+                        };
+                        let demi_ton = demi_tons.get(i).copied().unwrap_or(0.0);
                         // Le compteur n'avance que sur les stems réellement
                         // calculés : un stem déjà en cache passe en quelques
                         // microsecondes, et le voir sauter ne dirait rien de
@@ -280,20 +284,19 @@ pub(crate) fn start_etirer(
                             cible_transposee(chemin, demi_ton).is_some_and(|c| !c.exists());
                         let issue = transposer_un(chemin, demi_ton);
                         if travail && issue.is_ok() {
-                            {
-                                let mut t = verrou(&etat.transpose);
-                                t.faits += 1;
-                            }
+                            verrou(&etat.transpose).faits += 1;
                         }
-                        issue
-                    })
-                })
-                .collect();
-            taches
-                .into_iter()
-                .map(|t| t.join().unwrap_or_else(|_| Err("fil interrompu".into())))
-                .collect()
+                        verrou(&issues)[i] = Some(issue);
+                    }
+                });
+            }
         });
+        let resultats: Vec<Result<String, String>> = issues
+            .into_inner()
+            .unwrap_or_else(|e| e.into_inner())
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|| Err("fil interrompu".into())))
+            .collect();
 
         let mut sortie = Vec::with_capacity(stems.len());
         let mut erreur = None;
@@ -317,6 +320,54 @@ pub(crate) fn start_etirer(
 #[tauri::command(async)]
 pub(crate) fn etirer_state(etat: State<Etat>) -> Result<EtatTranspose, String> {
     Ok(verrou(&etat.transpose).clone())
+}
+
+/// Combien de fils pour `n` calculs indépendants : les cœurs de performance
+/// moins un (le fil audio et l'interface gardent le leur), au moins un, au
+/// plus `n`. Hors macOS, ou si le système ne dit rien, tous les cœurs moins
+/// un.
+pub(crate) fn fils_de_calcul(n: usize) -> usize {
+    let coeurs = coeurs_de_performance()
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |c| c.get()));
+    coeurs.saturating_sub(1).max(1).min(n.max(1))
+}
+
+/// Les cœurs de performance (`hw.perflevel0.physicalcpu`) : sur Apple
+/// Silicon, les cœurs d'efficacité compteraient pour un calcul qu'ils font
+/// trois fois plus lentement.
+#[cfg(target_os = "macos")]
+fn coeurs_de_performance() -> Option<usize> {
+    let mut valeur: libc::c_int = 0;
+    let mut taille = std::mem::size_of::<libc::c_int>();
+    // SAFETY: nom terminé par zéro ; `valeur` et `taille` décrivent un
+    // entier de la taille annoncée, que le noyau remplit ou laisse.
+    let r = unsafe {
+        libc::sysctlbyname(
+            c"hw.perflevel0.physicalcpu".as_ptr(),
+            (&mut valeur as *mut libc::c_int).cast(),
+            &mut taille,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (r == 0 && valeur > 0).then_some(valeur as usize)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn coeurs_de_performance() -> Option<usize> {
+    None
+}
+
+/// Classe « initiée par l'utilisateur » pour le fil courant : l'utilisateur
+/// attend ce calcul, mais l'interface (« interactive ») et le fil audio
+/// (temps réel) passent devant. Plus bas (« utility ») enverrait le calcul
+/// sur les cœurs d'efficacité.
+fn priorite_de_calcul() {
+    #[cfg(target_os = "macos")]
+    // SAFETY: change seulement la classe du fil appelant.
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
+    }
 }
 
 /// La racine surveillée qui contient `dossier`, s'il y en a une.
@@ -1199,6 +1250,20 @@ pub(crate) fn stems_existants(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Les fils de transposition : au moins un, jamais plus que de stems,
+    /// et un cœur de performance laissé à la lecture et à l'interface.
+    #[test]
+    fn les_fils_de_calcul_sont_bornes() {
+        assert_eq!(fils_de_calcul(0), 1);
+        assert_eq!(fils_de_calcul(1), 1);
+        let max = fils_de_calcul(usize::MAX);
+        assert!(max >= 1);
+        if let Some(c) = coeurs_de_performance() {
+            assert_eq!(max, c.saturating_sub(1).max(1));
+        }
+        assert!(fils_de_calcul(4) <= 4);
+    }
 
     use std::path::Path;
 

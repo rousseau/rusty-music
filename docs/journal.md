@@ -5394,3 +5394,33 @@ Parliament (0,19).
 guide qui ne s'éloigne pas du style (« plus sobre » depuis un morceau
 sobre) ; Morcheeba est compté « soul » par ses genres MusicBrainz, il serait
 plutôt trip hop à l'écoute.
+
+## Pratiquer, V28 : transposer les stems en parallèle, borné — 9 nov. 2026
+
+Constat d'abord : `start_etirer` n'était pas séquentiel. Il lançait déjà un
+fil par stem depuis le correctif du temps de `wsola` (92 s contre 23,5 s).
+Ce qui manquait, c'était une borne : six stems RoFormer, c'étaient six fils
+de calcul à pleine charge pendant que la lecture et l'interface tournent.
+Les fils sont désormais `fils_de_calcul(n)` : les cœurs de performance
+(`hw.perflevel0.physicalcpu`, 8 sur ce Mac) moins un, au moins un, au plus
+le nombre de stems. Chacun prend le stem suivant dans une file commune.
+Ils passent en classe QoS « initiée par l'utilisateur » : l'interface et le
+fil audio passent devant. La classe « utility » les aurait envoyés sur les
+cœurs d'efficacité. `libc` y sert, déjà dans le graphe, nouvel usage.
+La progression (`faits` sur `total`, stem par stem) est inchangée. Il n'y a
+pas d'annulation à garder.
+
+**Mesuré** (exemple `transposer_lot`, même chemin que l'établi : décoder,
+`etirement::transposer`, écrire ; copies de stems réels, +2 demi-tons,
+`--release`, aucun son) :
+
+| jeu | en file | en parallèle | par stem |
+|---|---|---|---|
+| 4 stems htdemucs, 224 s | 35,8 s | 9,5 s (4 fils) | 8,5 à 9,5 s |
+| 6 stems, 192 s | 43,1 s | 7,9 s (6 fils) ; 15,7 s (3 fils) | 6,8 à 7,9 s |
+
+L'attente devient celle du stem le plus lent. Les fichiers produits en
+file, à 3 et à 6 fils sont identiques octet pour octet (`diff -r`).
+
+**Non vérifié** : la lecture pendant une transposition de six stems
+(craquements) ; le temps dans l'app installée plutôt que par l'exemple.

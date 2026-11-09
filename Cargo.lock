@@ -8277,6 +8277,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "global-hotkey",
+ "libc",
  "pmtiles",
  "rusty-music-analysis",
  "rusty-music-carto",
