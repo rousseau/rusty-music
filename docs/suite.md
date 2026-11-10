@@ -112,12 +112,15 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     régularité de vélocité et accents contre l'activation d'ADTOF, conseils
     par motifs dans la ligne du coach, muets sous les seuils ; E5,
     tranche 2 le 10 nov. : analyse de la basse en DI (attaque par flux
-    spectral, hauteur par pYIN causal ≈ 70 ms après, fausses notes et
+    spectral, hauteur par pYIN causal ≈ 70 ms après, puis ≈ 60, fausses notes et
     octaves contrôlées par l'énergie, référence vérifiée sur le stem par le
-    même analyseur), testée sur des prises synthétiques ; restent l'entrée
-    audio par cpal et la permission micro, le branchement dans l'app, l'édition du profil à
-    l'écran et les coups en trop sur la partition,
-    puis l'essai réel avec la batterie de François) ;
+    même analyseur), testée sur des prises synthétiques ; tranche 3 le
+    10 nov. : hauteur ≈ 60 ms après l'attaque dès le mi grave (trame
+    courte), entrée audio par cpal datée sur l'horloge commune, permission
+    micro, « jouer avec ma basse » dans la barre du coach (fausses notes et
+    octaves entourées, calibration sur une corde étouffée) ; restent
+    l'édition du profil MIDI à l'écran et les coups en trop sur la
+    partition, puis l'essai réel avec la batterie et la basse de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie

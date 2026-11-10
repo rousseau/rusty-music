@@ -256,15 +256,15 @@ pub(crate) fn coach_garder_profil(etat: State<Etat>, profil: Profil) -> Result<(
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct VueCalibration {
-    latence_ms: f64,
-    dispersion_ms: f64,
-    retenues: u32,
-    ecartees: u32,
+    pub(crate) latence_ms: f64,
+    pub(crate) dispersion_ms: f64,
+    pub(crate) retenues: u32,
+    pub(crate) ecartees: u32,
 }
 
 /// Les clics d'un décompte, en secondes du morceau, ramenés à l'horloge par
 /// l'ancre du moteur (à vitesse r, un clic du morceau tombe 1/r plus loin).
-fn clics_a_l_horloge(ancre: &Ancre, clics: &[f64]) -> Vec<f64> {
+pub(crate) fn clics_a_l_horloge(ancre: &Ancre, clics: &[f64]) -> Vec<f64> {
     let r = ancre.vitesse.max(1e-3);
     clics
         .iter()
@@ -288,12 +288,18 @@ fn calibrer_sur(coach: &EtatCoach, ancre: &Ancre, clics: &[f64]) -> Result<VueCa
         .map(|f| f.t_s)
         .collect();
     let c = calibrer(&t, &frappes)?;
-    Ok(VueCalibration {
-        latence_ms: c.latence_ms,
-        dispersion_ms: c.dispersion_ms,
-        retenues: c.retenues as u32,
-        ecartees: c.ecartees as u32,
-    })
+    Ok(VueCalibration::de(&c))
+}
+
+impl VueCalibration {
+    pub(crate) fn de(c: &rusty_music_editor::coach::Calibration) -> Self {
+        VueCalibration {
+            latence_ms: c.latence_ms,
+            dispersion_ms: c.dispersion_ms,
+            retenues: c.retenues as u32,
+            ecartees: c.ecartees as u32,
+        }
+    }
 }
 
 /// Calibre la latence de la batterie écoutée sur les clics d'un décompte

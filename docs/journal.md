@@ -5989,3 +5989,62 @@ courte resterait à essayer sur de vraies notes graves) ; le legato
 sur des synthèses. Reste d'E5 : l'entrée audio par cpal (horodatages de
 capture), la permission micro de Tauri sous macOS, le branchement dans
 l'app (commandes, fixtures, fumée), puis l'essai réel.
+
+## Pratiquer, E5, tranche 3 : la basse en DI dans l'app — 10 nov. 2026
+
+L'analyse de la tranche 2 branchée sur une vraie entrée audio et dans la
+barre du coach de Pratiquer.
+
+- **Hauteur plus tôt** (`editor::coach::basse`) : une trame courte d'abord,
+  qui cherche à partir de 40 Hz (une période de 25 ms au lieu de 33) ; elle
+  suffit si pYIN est sûr (≥ 0,3) et, pour une note à 60 Hz ou plus, si la
+  fondamentale une octave plus bas n'a pas d'énergie (E(f0/2)/E(f0) < 0,02 :
+  ce serait le si grave d'une cinq cordes, vu à l'octave). Sinon, la trame
+  entière comme avant. Mesuré par blocs de 64 à 44,1 kHz : hauteur rendue
+  **58,5 à 61,4 ms** après l'attaque du mi grave (E1) au sol (G3), au lieu
+  de 71,5 ; le si grave (B0) reste à 71,5 ms. Les 8 tests de la tranche 2
+  passent sans changement de seuil (corde attaquée près du chevalet
+  comprise : son harmonique 2 renvoie à la trame entière).
+- **Entrée audio** (`apps/desktop/src/coach_basse.rs`) : `cpal` (déjà dans
+  le graphe, même version), l'entrée choisie par son nom, son premier canal
+  (l'entrée 1 de l'interface), formats f32, i16, i32, f64. Un fil possède le
+  flux (`cpal::Stream` ne se partage pas sous macOS) et le lâche quand
+  l'écoute se ferme. **Horodatage** : le premier échantillon d'un bloc est
+  à `maintenant_s()` au rappel moins l'écart rappel − capture que donne
+  CoreAudio (le tampon de l'appareil) ; l'analyseur compte ensuite les
+  échantillons et repart de la date d'un bloc quand le compte s'en écarte
+  de plus de 10 ms (dérive des horloges, bloc perdu).
+- **Commandes** : `coach_basse_entrees`, `coach_basse_ecouter`,
+  `coach_basse_armer` (les notes de la transcription, chacune vérifiée sur
+  le stem de basse du morceau ; sans stem, aucune n'est notée),
+  `coach_basse_juger` (même fenêtre glissante que la batterie, recul de
+  0,4 s), `coach_basse_calibrer` (une corde à vide étouffée sur les clics
+  du décompte ; latence gardée par entrée, chemin « audio » de la table
+  `latence`, sans migration).
+- **Permission micro** : `apps/desktop/Info.plist` (fusionné par Tauri) porte
+  `NSMicrophoneUsageDescription`, une phrase en français.
+- **Interface** (`coach.js`) : la barre du coach se montre aussi sur la basse
+  transcrite, sous la barre de correction : « jouer avec ma basse », la
+  liste des entrées s'il y en a plusieurs, « calibrer ». Une note attrapée
+  mais fausse ou à l'octave est entourée comme une faute (« fausse note
+  (+1 demi-ton) », « mauvaise octave (trop haut) ») ; la ligne compte
+  attrapées, écart moyen, fausses et octaves. L'armement annonce combien de
+  notes le stem confirme. Ni table par mesure, ni escalier, ni groove pour
+  la basse.
+- **Mesuré** : 5 tests de l'app sur des prises enregistrées simulées
+  (corde pincée à 48 kHz, blocs de 256 datés avec ±1 ms de gigue) : les
+  6 notes à moins de 10 ms de leur instant sur l'horloge commune, aucune
+  reprise d'origine sous la gigue ; 50 ms de blocs perdus → une reprise,
+  notes suivantes à leur place (< 10 ms) ; une prise jugée en deux fenêtres
+  → 3 justes, 1 fausse (+1), 1 octave, la note que le stem ne confirme pas
+  muette ; calibration sur seize cordes étouffées 30 ms après les clics
+  → 30 ± 8 ms, ≥ 14 retenues. Test de fumée E5 (basse) ; `verifier.sh`
+  vert, 69 fumées.
+
+Non vérifié : aucune vraie basse ni vraie interface (la capture n'a été
+ouverte que par les tests, sur des blocs simulés) ; la demande d'accès au
+micro de macOS dans l'app installée ; l'écart rappel − capture de CoreAudio
+sur une vraie interface (la calibration l'absorbe s'il est faux, tant qu'il
+est stable) ; le premier canal seulement (une basse sur l'entrée 2 n'est
+pas entendue) ; audit d'interface reporté (écran visible), écran touché :
+`pratiquer`. Reste d'E5 : l'essai réel avec François (porte).

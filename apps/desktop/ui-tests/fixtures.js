@@ -457,6 +457,16 @@ const fixtures = {
   coach_table: { mesures: [], boucle_proposee: null },
   // E5 : le groove ; rien à dire tant qu'un test ne pose pas ses conseils.
   coach_groove: { pieces: [], swing: null, conseils: [] },
+  // E5 : la basse en DI. Aucune entrée audio ; le test qui en simule une
+  // pose les siennes.
+  coach_basse_entrees: [],
+  coach_basse_ecouter: null,
+  coach_basse_armer: { notes: 0, sures: 0, stem: false },
+  coach_basse_juger: (a) => ({
+    jusqua_s: a.depuisS ?? 0, jugements: [], notes: [], bilan: { justes: 0, fausses: 0, octaves: 0, inconnues: 0 },
+    erreur: null,
+  }),
+  coach_basse_calibrer: { latence_ms: 24, dispersion_ms: 4, retenues: 15, ecartees: 1 },
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

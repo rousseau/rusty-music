@@ -35,6 +35,7 @@ const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 mod a_propos;
 mod bibliotheque;
 mod coach;
+mod coach_basse;
 mod creer;
 mod decouvrir;
 mod ecouter;
@@ -189,6 +190,10 @@ struct Etat {
     /// référence armée (`coach.rs`). Ordre des verrous : `stems` avant
     /// `coach`, `coach` avant `lib`.
     coach: Mutex<coach::EtatCoach>,
+    /// Le coach de basse en DI (E5) : l'entrée audio écoutée et la
+    /// référence armée (`coach_basse.rs`). Ordre des verrous : `stems`
+    /// avant `coach_basse`, `coach_basse` avant `lib`.
+    coach_basse: Mutex<coach_basse::EtatCoachBasse>,
     /// Le pisteur de pulsation (Beat This!), chargé au premier usage puis
     /// gardé — 83 Mo de poids, 30 ms à charger : le garder évite surtout de
     /// relire le disque à chaque morceau ouvert.
@@ -611,6 +616,7 @@ fn main() {
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 coach: Mutex::new(coach::EtatCoach::default()),
+                coach_basse: Mutex::new(coach_basse::EtatCoachBasse::default()),
                 pisteur: Mutex::new(None),
                 #[cfg(feature = "lama-local")]
                 lama_local: Mutex::new(Cache::default()),
@@ -1083,6 +1089,11 @@ fn main() {
             coach::coach_juger,
             coach::coach_table,
             coach::coach_groove,
+            coach_basse::coach_basse_entrees,
+            coach_basse::coach_basse_ecouter,
+            coach_basse::coach_basse_armer,
+            coach_basse::coach_basse_juger,
+            coach_basse::coach_basse_calibrer,
             pratique_memoire,
             pratique_garder,
             pratique_playlist,

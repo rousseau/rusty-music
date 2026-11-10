@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- E5 : le coach de Pratiquer écoute la basse branchée sur l'interface
+	     audio. Tauri fusionne ce fichier dans l'Info.plist du paquet. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Rusty Music écoute la basse branchée sur votre interface audio pour comparer votre jeu à la partition ; rien n'est enregistré.</string>
+</dict>
+</plist>

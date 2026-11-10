@@ -4,7 +4,7 @@ import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
 import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
 import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
-import { batterieAffichee, partition } from "./pratiquer.js";
+import { basseAffichee, batterieAffichee, partition } from "./pratiquer.js";
 
 /* ------------------------------------------- pratiquer : le coach de batterie */
 
@@ -30,9 +30,19 @@ import { batterieAffichee, partition } from "./pratiquer.js";
 // barre offre sans jamais les appliquer d'elle-même : boucler les pires
 // mesures à 70 %, et, en boucle, l'escalier de tempo (un cran de plus après
 // deux passages propres, un de moins après un raté).
+//
+// E5 : la même barre sert à la basse en DI (`coach_basse.rs`) quand
+// Pratiquer montre la basse transcrite. L'entrée audio (l'entrée 1 de
+// l'interface) remplace la batterie MIDI ; chaque note jouée est jugée en
+// temps et en hauteur (juste, fausse, mauvaise octave), seulement si le
+// stem de basse confirme la note de la transcription. La calibration : une
+// corde étouffée pincée sur les clics du décompte. Ni table par mesure, ni
+// escalier, ni groove pour la basse : ils restent à la batterie.
 
 const coach = {
   actif: false,
+  // L'instrument que la barre écoute : « drums » (MIDI) ou « bass » (DI).
+  instrument: null,
   peripherique: null,
   latenceMs: null,
   // La transcription armée (sa révision), pour ne pas réarmer à chaque
@@ -69,7 +79,36 @@ const coach = {
 /// Mesures relevées entre deux demandes du groove hors boucle.
 const RELEVES_PAR_CONSEIL = 4;
 
-const ARRETE = "jouer avec ma batterie";
+const ARRETE = { drums: "jouer avec ma batterie", bass: "jouer avec ma basse" };
+
+const TITRES = {
+  drums:
+    "Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.",
+  bass:
+    "Écouter la basse branchée sur l'entrée 1 de l'interface audio pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée, fausse ou à la mauvaise octave. Rien n'est dit des notes que le stem de basse ne confirme pas.",
+};
+
+const CALIBRER = {
+  drums: "Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.",
+  bass: "Mesurer la latence de l'interface, de l'ordinateur et du casque : ▶, puis pincer une corde à vide, étouffée, sur les seize clics du décompte. Gardée pour cette entrée.",
+};
+
+/// Les commandes du moteur, par instrument.
+const COMMANDES = {
+  drums: { lister: "coach_peripheriques", ecouter: "coach_ecouter", juger: "coach_juger", calibrer: "coach_calibrer" },
+  bass: { lister: "coach_basse_entrees", ecouter: "coach_basse_ecouter", juger: "coach_basse_juger", calibrer: "coach_basse_calibrer" },
+};
+
+/// L'argument qui nomme l'entrée écoutée, par instrument.
+const ecouterArgs = (instrument, nom) => (instrument === "bass" ? { entree: nom } : { peripherique: nom });
+
+/// La transcription affichée que le coach sait écouter, et son instrument.
+function affichee() {
+  const b = batterieAffichee();
+  if (b) return { tr: b, instrument: "drums" };
+  const s = basseAffichee();
+  return s ? { tr: s, instrument: "bass" } : { tr: null, instrument: null };
+}
 
 const VERDICTS = {
   parfait: { classe: "juste", dit: "juste" },
@@ -83,20 +122,29 @@ const VERDICTS = {
 const ATTRAPEES = new Set(["parfait", "bon", "avance", "retard"]);
 
 function bilanVide() {
-  return { attendues: 0, attrapees: 0, en_trop: 0, ecarts: [] };
+  return { attendues: 0, attrapees: 0, en_trop: 0, ecarts: [], fausses: 0, octaves: 0 };
 }
 
 /// La barre du coach : là seulement quand Pratiquer montre la batterie
 /// transcrite. L'appelle `montrerPartition` (et `cacherPartition`).
 function majCoach() {
-  const tr = batterieAffichee();
+  const { tr, instrument } = affichee();
   const barre = $("partition-coach");
   barre.hidden = !tr;
+  if (coach.actif && instrument !== coach.instrument) {
+    // Autre instrument affiché : l'écoute de l'ancien se ferme.
+    arreter();
+  }
   if (!tr) {
     arreterSondage();
     effacerMarques();
     return;
   }
+  if (!coach.actif) coach.instrument = instrument;
+  barre.setAttribute("aria-label", instrument === "bass" ? "Coach de basse" : "Coach de batterie");
+  $("coach-basculer").title = TITRES[instrument];
+  $("coach-calibrer").title = CALIBRER[instrument];
+  $("coach-peripherique").setAttribute("aria-label", instrument === "bass" ? "Entrée audio" : "Batterie MIDI");
   if (coach.actif) armer(tr);
   dire();
 }
@@ -112,7 +160,7 @@ function direTexte() {
   const etat = $("coach-etat");
   const bascule = $("coach-basculer");
   bascule.setAttribute("aria-pressed", String(coach.actif));
-  bascule.textContent = coach.actif ? "arrêter" : ARRETE;
+  bascule.textContent = coach.actif ? "arrêter" : ARRETE[coach.instrument ?? "drums"];
   $("coach-calibrer").hidden = !coach.actif || !coach.peripherique;
   $("coach-calibrer").setAttribute("aria-pressed", String(coach.calibrage));
   direPropositions();
@@ -125,11 +173,14 @@ function direTexte() {
     return;
   }
   if (!coach.peripherique) {
-    etat.textContent = coach.message ?? "Aucune batterie MIDI branchée.";
+    etat.textContent = coach.message ?? (coach.instrument === "bass" ? "Aucune entrée audio." : "Aucune batterie MIDI branchée.");
     return;
   }
   if (coach.calibrage) {
-    etat.textContent = "Calibrer : ▶, puis taper la caisse claire sur les seize clics du décompte.";
+    etat.textContent =
+      coach.instrument === "bass"
+        ? "Calibrer : ▶, puis pincer une corde à vide, étouffée, sur les seize clics du décompte."
+        : "Calibrer : ▶, puis taper la caisse claire sur les seize clics du décompte.";
     return;
   }
   const latence = coach.latenceMs === null ? "latence non calibrée" : `latence ${Math.round(coach.latenceMs)} ms`;
@@ -141,8 +192,10 @@ function direTexte() {
   const moyenne = b.ecarts.length ? b.ecarts.reduce((x, y) => x + y, 0) / b.ecarts.length : 0;
   const signe = moyenne > 0.5 ? "+" : moyenne < -0.5 ? "−" : "±";
   const passage = coach.passage > 0 ? `passage ${coach.passage + 1} : ` : "";
+  const hauteurs = b.fausses || b.octaves ? ` · ${[b.fausses ? `${b.fausses} fausse${b.fausses > 1 ? "s" : ""}` : "", b.octaves ? `${b.octaves} à l'octave` : ""].filter(Boolean).join(", ")}` : "";
   etat.textContent =
     `${passage}${b.attrapees} / ${b.attendues} attrapées · écart moyen ${signe}${Math.abs(Math.round(moyenne))} ms` +
+    hauteurs +
     (b.en_trop ? ` · ${b.en_trop} en trop` : "") +
     ` · ${latence}`;
 }
@@ -160,6 +213,7 @@ async function armer(tr) {
   coach.armee = cle;
   coach.articulations = null;
   effacerMarques();
+  if (coach.instrument === "bass") return armerBasse(tr);
   try {
     await invoke("coach_armer", {
       chemin: edition.source?.path ?? null,
@@ -185,6 +239,27 @@ async function armer(tr) {
     journal("coach", `table : ${e}`, "warn");
   }
   dire();
+}
+
+/// La basse : chaque note de la transcription, vérifiée par le moteur sur
+/// le stem de basse.
+async function armerBasse(tr) {
+  coach.vitesseProposee = null;
+  coach.boucleProposee = null;
+  try {
+    const v = await invoke("coach_basse_armer", {
+      id: edition.source?.id ?? 0,
+      notes: (tr.pret.notes ?? []).map((n) => ({ debut_s: n.debut_s, hauteur: n.hauteur })),
+    });
+    annoncer(
+      v.stem
+        ? `${v.sures} notes sur ${v.notes} confirmées par le stem : les autres ne sont pas notées.`
+        : "Pas de stem de basse : aucune note n'est notée.",
+    );
+  } catch (e) {
+    coach.armee = null;
+    journal("coach", `armer la basse : ${e}`, "warn");
+  }
 }
 
 const memesBornes = (b, p) => !!b && Math.abs(b.debut - p.debut_s) < 1e-3 && Math.abs(b.fin - p.fin_s) < 1e-3;
@@ -234,37 +309,40 @@ async function demarrer() {
   dire();
   let liste = [];
   try {
-    liste = await invoke("coach_peripheriques");
+    liste = await invoke(COMMANDES[coach.instrument].lister);
   } catch (e) {
-    annoncer(`MIDI indisponible : ${e}`);
+    annoncer(`${coach.instrument === "bass" ? "Audio" : "MIDI"} indisponible : ${e}`);
   }
   const choix = $("coach-peripherique");
   choix.replaceChildren(...liste.map((n) => new Option(n, n)));
   choix.hidden = liste.length < 2;
   let garde = null;
   try {
-    garde = localStorage.getItem("coach-peripherique");
+    garde = localStorage.getItem(cleGardee());
   } catch {}
   await ecouter(liste.includes(garde) ? garde : (liste[0] ?? null));
 }
+
+/// Le dernier périphérique choisi, gardé par instrument.
+const cleGardee = () => (coach.instrument === "bass" ? "coach-entree" : "coach-peripherique");
 
 async function ecouter(nom) {
   coach.peripherique = null;
   coach.latenceMs = null;
   if (nom) {
     try {
-      const vue = await invoke("coach_ecouter", { peripherique: nom });
-      coach.peripherique = vue?.peripherique ?? null;
+      const vue = await invoke(COMMANDES[coach.instrument].ecouter, ecouterArgs(coach.instrument, nom));
+      coach.peripherique = vue?.peripherique ?? vue?.entree ?? null;
       coach.latenceMs = vue?.latence_ms ?? null;
       $("coach-peripherique").value = nom;
       try {
-        localStorage.setItem("coach-peripherique", nom);
+        localStorage.setItem(cleGardee(), nom);
       } catch {}
     } catch (e) {
-      annoncer(`Batterie injoignable : ${e}`);
+      annoncer(`${coach.instrument === "bass" ? "Entrée audio" : "Batterie"} injoignable : ${e}`);
     }
   }
-  const tr = batterieAffichee();
+  const { tr } = affichee();
   if (coach.actif && tr) {
     coach.armee = null;
     await armer(tr);
@@ -281,7 +359,7 @@ async function arreter() {
   effacerMarques();
   dire();
   try {
-    await invoke("coach_ecouter", { peripherique: null });
+    await invoke(COMMANDES[coach.instrument ?? "drums"].ecouter, ecouterArgs(coach.instrument, null));
   } catch (e) {
     journal("coach", `fermer : ${e}`, "warn");
   }
@@ -303,9 +381,10 @@ async function sonder() {
   if (coach.occupe || !coach.actif || coach.calibrage || performance.now() < coach.pauseJusqua) return;
   coach.occupe = true;
   try {
-    const v = await invoke("coach_juger", { depuisS: coach.depuis });
+    const v = await invoke(COMMANDES[coach.instrument].juger, { depuisS: coach.depuis });
     coach.depuis = v.jusqua_s;
-    recevoir(v);
+    if (coach.instrument === "bass") recevoirBasse(v);
+    else recevoir(v);
   } catch (e) {
     journal("coach", `juger : ${e}`, "warn");
   } finally {
@@ -393,6 +472,69 @@ function recevoir(v) {
   dessinerMarques();
 }
 
+/// Les notes de basse jugées : le bilan de la barre (timing et hauteur) et
+/// un cercle par note notée.
+function recevoirBasse(v) {
+  if (v.erreur && v.erreur !== coach.erreurDite) {
+    coach.erreurDite = v.erreur;
+    annoncer(`Entrée audio : ${v.erreur}`);
+  }
+  // Une annonce échue laisse la place au bilan, même sans note nouvelle.
+  if (coach.message && performance.now() >= coach.messageJusqua) {
+    coach.message = null;
+    dire();
+  }
+  if (!v.jugements.length) return;
+  for (const j of v.jugements) {
+    if (j.reference !== null && j.passage !== coach.passage) {
+      coach.passage = j.passage;
+      coach.bilan = bilanVide();
+    }
+    coach.bilan ??= bilanVide();
+    const b = coach.bilan;
+    if (j.verdict === "en_trop") b.en_trop++;
+    else if (j.verdict !== "non_notee") {
+      b.attendues++;
+      if (ATTRAPEES.has(j.verdict)) {
+        b.attrapees++;
+        if (j.ecart_musical_ms !== null) b.ecarts.push(j.ecart_musical_ms);
+        if (j.hauteur?.type === "fausse") b.fausses++;
+        if (j.hauteur?.type === "octave") b.octaves++;
+      }
+    }
+    if (j.reference !== null && VERDICTS[j.verdict]) coach.marques.set(j.reference, j);
+    else if (j.reference !== null) coach.marques.delete(j.reference);
+  }
+  dire();
+  dessinerMarques();
+}
+
+/// Le verdict d'une note jugée, hauteur comprise (basse) : une note attrapée
+/// mais fausse ou à l'octave est une faute.
+function verdictDe(j) {
+  const v = VERDICTS[j.verdict];
+  const h = j.hauteur;
+  if (!ATTRAPEES.has(j.verdict) || !h) return v;
+  if (h.type === "fausse") {
+    const d = h.demi_tons;
+    return { classe: "faute", dit: `fausse note (${d > 0 ? "+" : "−"}${Math.abs(d)} demi-ton${Math.abs(d) > 1 ? "s" : ""})` };
+  }
+  if (h.type === "octave") return { classe: "faute", dit: `mauvaise octave (${h.octaves > 0 ? "trop haut" : "trop bas"})` };
+  return v;
+}
+
+/// Où est la note `rang` de la basse sur la partition : son premier temps
+/// (une note liée s'étend sur plusieurs).
+function tempsBasseDe(rang) {
+  const cartes = partition.temps;
+  if (!cartes) return null;
+  for (let m = 0; m < cartes.length; m++) {
+    const i = cartes[m].findIndex((t) => t.note === rang);
+    if (i >= 0) return { mesure: m, voix: 0, temps: i };
+  }
+  return null;
+}
+
 /// L'identifiant d'articulation de chaque pièce, lu sur la partition : sur
 /// un temps qui ne porte qu'une pièce, sa seule note.
 function articulations() {
@@ -417,20 +559,23 @@ function dessinerMarques() {
   const surface = rendu.querySelector(".at-surface");
   const table = partition.api?.boundsLookup ?? partition.api?.renderer?.boundsLookup;
   const score = partition.api?.score;
-  const tr = batterieAffichee();
+  const { tr, instrument } = affichee();
+  const basse = instrument === "bass";
   let n = 0;
-  if (surface && table && score && tr && partition.batterie) {
+  if (surface && table && score && tr && instrument === coach.instrument && (basse ? partition.temps : partition.batterie)) {
     const s = surface.getBoundingClientRect();
     const r = rendu.getBoundingClientRect();
-    const arts = articulations();
+    const arts = basse ? new Map() : articulations();
     for (const [rang, j] of coach.marques) {
-      const ou = partition.batterie.get(rang);
+      const ou = basse ? tempsBasseDe(rang) : partition.batterie.get(rang);
       const beat = ou && score.tracks[0]?.staves[0]?.bars[ou.mesure]?.voices[ou.voix]?.beats[ou.temps];
       const b = beat ? table.findBeat(beat) : null;
       if (!b) continue;
-      const art = arts.get(tr.pret.coups[rang]?.piece);
       const notes = b.notes ?? [];
-      const nb = notes.find((x) => x.note?.percussionArticulation === art) ?? (notes.length === 1 ? notes[0] : null);
+      const art = basse ? null : arts.get(tr.pret.coups[rang]?.piece);
+      const nb = basse
+        ? (notes[0] ?? null)
+        : (notes.find((x) => x.note?.percussionArticulation === art) ?? (notes.length === 1 ? notes[0] : null));
       const t = nb?.noteHeadBounds ?? b.visualBounds;
       let c = coach.cercles[n];
       if (!c?.isConnected) {
@@ -438,7 +583,7 @@ function dessinerMarques() {
         rendu.append(c);
       }
       n++;
-      const v = VERDICTS[j.verdict];
+      const v = verdictDe(j);
       c.className = `coach__marque coach__marque--${v.classe}`;
       c.title =
         v.dit + (j.ecart_musical_ms !== null && v.classe !== "faute" ? ` (${j.ecart_musical_ms > 0 ? "+" : ""}${Math.round(j.ecart_musical_ms)} ms)` : "");
@@ -484,9 +629,10 @@ function apresDecompte(plan, attenteMs) {
   if (!calibrageDemande()) return;
   setTimeout(async () => {
     try {
-      const v = await invoke("coach_calibrer", { clics: plan.clics.map((c) => c[0]) });
+      const v = await invoke(COMMANDES[coach.instrument].calibrer, { clics: plan.clics.map((c) => c[0]) });
       coach.latenceMs = v.latence_ms;
-      annoncer(`Calibrée : ${Math.round(v.latence_ms)} ms (± ${Math.round(v.dispersion_ms)}), ${v.retenues} frappes retenues.`);
+      const quoi = coach.instrument === "bass" ? "notes" : "frappes";
+      annoncer(`Calibrée : ${Math.round(v.latence_ms)} ms (± ${Math.round(v.dispersion_ms)}), ${v.retenues} ${quoi} retenues.`);
     } catch (e) {
       annoncer(`Calibration manquée : ${e}`);
     } finally {

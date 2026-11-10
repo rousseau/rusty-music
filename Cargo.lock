@@ -8373,6 +8373,7 @@ name = "rusty-music-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cpal",
  "global-hotkey",
  "libc",
  "midir",

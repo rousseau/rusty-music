@@ -37,6 +37,10 @@ serde_json.workspace = true
 # Le coach de Pratiquer (E4) : la batterie électronique en MIDI. MIT ;
 # CoreMIDI sur macOS, ALSA sous Linux. `docs/recherche-coach-pratique.md`.
 midir = "0.11"
+# E5 : la basse en DI, écoutée sur l'entrée audio (`src/coach_basse.rs`).
+# Déjà dans le graphe par rodio et rusty-music-player, même version
+# (Apache-2.0) : un nouvel usage.
+cpal.workspace = true
 
 # Lecture des archives de tuiles, servies à la webview par un protocole
 # personnalisé. `mmap-async-tokio` seul : le fichier est local, il n'y a ni S3

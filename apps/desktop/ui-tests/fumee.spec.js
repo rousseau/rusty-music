@@ -1722,9 +1722,81 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   await page.click("#coach-basculer");
   await expect.poll(() => appels(page, "coach_ecouter").then((a) => a.at(-1)?.peripherique)).toBe(null);
   await expect(marques).toHaveCount(0);
-  // La basse n'a pas de coach.
+  // Sans basse transcrite, pas de coach de basse (E5 : voir plus bas).
   await page.click('#instruments [data-instrument="bass"]');
   await expect(barre).toBeHidden();
+});
+
+test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en hauteur", async ({ page }) => {
+  await basseTranscrite(page);
+  await page.evaluate(() => {
+    // Une interface audio branchée, déjà calibrée.
+    window.__FIXTURES__.coach_basse_entrees = ["Interface USB", "Micro intégré"];
+    window.__FIXTURES__.coach_basse_ecouter = (a) =>
+      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 2, latence_ms: 24 } : null;
+    // Le stem confirme six notes sur sept.
+    window.__FIXTURES__.coach_basse_armer = (a) => ({ notes: a.notes.length, sures: a.notes.length - 1, stem: true });
+    // Le moteur juge la première mesure : la 1ʳᵉ juste, la 2ᵉ fausse d'un
+    // demi-ton, la 3ᵉ à l'octave, la 4ᵉ non notée (le stem ne la confirme
+    // pas) ; puis la 1ʳᵉ de la 2ᵉ mesure manquée.
+    const j = (reference, verdict, ecart, hauteur) => ({
+      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: ecart, ecart_musical_ms: ecart, verdict, hauteur,
+    });
+    window.__FIXTURES__.coach_basse_juger = (a, e) => {
+      e.juges = (e.juges ?? 0) + 1;
+      return {
+        jusqua_s: 10 + e.juges,
+        jugements: e.juges === 2
+          ? [j(0, "parfait", 3, { type: "juste" }), j(1, "bon", 12, { type: "fausse", demi_tons: 1 }),
+             j(2, "retard", 48, { type: "octave", octaves: 1 }), j(3, "non_notee", null, null), j(4, "manquee", null, null)]
+          : [],
+        notes: [],
+        bilan: { justes: 1, fausses: 1, octaves: 1, inconnues: 0 },
+        erreur: null,
+      };
+    };
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  const barre = page.locator("#partition-coach");
+  await expect(barre).toBeVisible();
+  await expect(barre).toHaveAttribute("aria-label", "Coach de basse");
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  // La barre de correction reste là : la basse se corrige et se joue.
+  await expect(page.locator("#partition-correction")).toBeVisible();
+  expect(await appels(page, "coach_basse_ecouter")).toEqual([]);
+
+  await page.click("#coach-basculer");
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe("Interface USB");
+  // Deux entrées : la liste se montre ; rien de la batterie n'est ouvert.
+  await expect(page.locator("#coach-peripherique")).toBeVisible();
+  expect(await appels(page, "coach_ecouter")).toEqual([]);
+  const armer = (await appels(page, "coach_basse_armer")).at(-1);
+  expect(armer.notes).toHaveLength(7);
+  expect(armer.notes[1]).toEqual({ debut_s: 1, hauteur: 36 });
+
+  const marques = page.locator("#partition-rendu .coach__marque:visible");
+  await expect(marques).toHaveCount(4);
+  const classes = await marques.evaluateAll((els) => els.map((e) => e.className.replace("coach__marque coach__marque--", "")));
+  expect(classes.sort()).toEqual(["faute", "faute", "juste", "manquee"]);
+  const titres = await marques.evaluateAll((els) => els.map((e) => e.title));
+  expect(titres).toContain("fausse note (+1 demi-ton)");
+  expect(titres).toContain("mauvaise octave (trop haut)");
+  // Après l'annonce de l'armement (six notes confirmées sur sept).
+  await expect(page.locator("#coach-etat")).toContainText("3 / 4 attrapées", { timeout: 10_000 });
+  await expect(page.locator("#coach-etat")).toContainText("1 fausse, 1 à l'octave");
+  await expect(page.locator("#coach-etat")).toContainText("latence 24 ms");
+  // Ni boucle proposée ni escalier pour la basse.
+  await expect(page.locator("#coach-boucler")).toBeHidden();
+  await expect(page.locator("#coach-vitesse")).toBeHidden();
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e5-coach-basse.png" });
+
+  // Calibrer : la consigne de la basse ; arrêter ferme l'entrée.
+  await page.click("#coach-calibrer");
+  await expect(page.locator("#coach-etat")).toContainText("corde à vide, étouffée");
+  await page.click("#coach-basculer");
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
+  await expect(marques).toHaveCount(0);
 });
 
 /// Les lignes qu'occupent les enfants visibles de la barre de correction.

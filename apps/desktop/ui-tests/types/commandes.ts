@@ -183,6 +183,35 @@ export const commands = {
 	 *  conseils par motifs. Rien sous les seuils de `editor::coach::groove`.
 	 */
 	coach_groove: () => __TAURI_INVOKE<Groove_Serialize>("coach_groove"),
+	/**
+	 *  Les entrées audio que le système voit, par nom (l'entrée par défaut
+	 *  d'abord).
+	 */
+	coach_basse_entrees: () => __TAURI_INVOKE<string[]>("coach_basse_entrees"),
+	/**
+	 *  Écoute l'entrée audio `entree` (son nom, tel que [`coach_basse_entrees`]
+	 *  le donne) ; `None` ferme l'écoute. macOS demande l'accès au micro à la
+	 *  première ouverture.
+	 */
+	coach_basse_ecouter: (entree: string | null) => __TAURI_INVOKE<VueEcouteBasse_Serialize | null>("coach_basse_ecouter", { entree }),
+	/**
+	 *  Arme le coach sur la transcription de la basse du morceau `id` (`notes`
+	 *  au rang de la transcription, celui des jugements) : chaque note est
+	 *  vérifiée sur le stem de basse démixé. Une liste vide désarme.
+	 */
+	coach_basse_armer: (id: number, notes: NoteArmee[]) => __TAURI_INVOKE<VueArmementBasse>("coach_basse_armer", { id, notes }),
+	/**
+	 *  Juge les notes de basse entre `depuis_s` (le `jusqua_s` du dernier appel)
+	 *  et un peu avant maintenant ; `None` ne juge rien et rend seulement le
+	 *  point de départ (après un décompte).
+	 */
+	coach_basse_juger: (depuisS: number | null) => __TAURI_INVOKE<VueJugementsBasse_Serialize>("coach_basse_juger", { depuisS }),
+	/**
+	 *  Calibre la latence de l'entrée écoutée sur les clics d'un décompte
+	 *  (`clics`, en secondes du morceau) : on pince une corde à vide, étouffée,
+	 *  sur chaque clic. La garde pour cette entrée.
+	 */
+	coach_basse_calibrer: (clics: (number | null)[]) => __TAURI_INVOKE<VueCalibration>("coach_basse_calibrer", { clics }),
 	/**  La playlist que Pratiquer enchaîne, ou `None`. */
 	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
 	/**
@@ -416,6 +445,14 @@ export type BaladeVue_Serialize = {
 	/**  Un carrefour passé où revenir, avec au moins une voie non prise. */
 	revenir: boolean,
 	mesure: MesureCarrefours,
+};
+
+/**  Les hauteurs d'un ensemble de jugements. */
+export type BilanHauteur = {
+	justes: number,
+	fausses: number,
+	octaves: number,
+	inconnues: number,
 };
 
 /**  Une boucle, bornes en secondes du morceau d'origine. */
@@ -732,6 +769,18 @@ export type Groove_Serialize = {
 	conseils: Conseil_Serialize[],
 };
 
+/**  La hauteur jouée face à celle de la référence. */
+export type Hauteur = { type: "juste" } | 
+/**
+ *  Mauvaise note, à `demi_tons` de la référence (positif : trop haut),
+ *  hors octaves.
+ */
+{ type: "fausse"; demi_tons: number } | 
+/**  La bonne note à une ou plusieurs octaves (positif : trop haut). */
+{ type: "octave"; octaves: number } | 
+/**  pYIN n'est pas sûr de la hauteur jouée : rien n'est dit. */
+{ type: "inconnue" };
+
 /**
  *  Répartition d'une valeur continue en tranches régulières (mode
  *  Bibliothèque). `comptes[i]` couvre `[min + i*pas, min + (i+1)*pas)` ; ce
@@ -761,6 +810,28 @@ export type Intervention =
 
 /**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
 export type Jugement = Jugement_Serialize | Jugement_Deserialize;
+
+/**
+ *  Le jugement d'une note de basse : celui de l'apparieur (timing), plus la
+ *  hauteur quand la note est attrapée et la référence sûre.
+ */
+export type JugementBasse = JugementBasse_Serialize | JugementBasse_Deserialize;
+
+/**
+ *  Le jugement d'une note de basse : celui de l'apparieur (timing), plus la
+ *  hauteur quand la note est attrapée et la référence sûre.
+ */
+export type JugementBasse_Deserialize = {
+	hauteur?: Hauteur | null,
+} & Jugement_Deserialize;
+
+/**
+ *  Le jugement d'une note de basse : celui de l'apparieur (timing), plus la
+ *  hauteur quand la note est attrapée et la référence sûre.
+ */
+export type JugementBasse_Serialize = {
+	hauteur: Hauteur | null,
+} & Jugement_Serialize;
 
 /**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
 export type Jugement_Deserialize = {
@@ -955,6 +1026,43 @@ export type Motif =
 "derriere" | 
 /**  Le disque pose la pièce hors de la grille, le jeu non (ou l'inverse). */
 "grille" | "swing" | "velocite" | "accents";
+
+/**  Une note de la transcription, telle que l'interface l'arme. */
+export type NoteArmee = {
+	debut_s: number | null,
+	hauteur: number,
+};
+
+/**  Une note de la DI : l'attaque, puis la hauteur. */
+export type NoteDI = NoteDI_Serialize | NoteDI_Deserialize;
+
+/**  Une note de la DI : l'attaque, puis la hauteur. */
+export type NoteDI_Deserialize = {
+	/**  Instant de l'attaque, en secondes de l'horloge commune. */
+	t_s: number | null,
+	/**  Fondamentale, si pYIN en a trouvé une. */
+	f0_hz?: number | null,
+	/**  Probabilité de voisement de pYIN (0 à 1). */
+	confiance: number | null,
+	/**  E(f0/2)/E(f0) : la fondamentale une octave plus bas est-elle là ? */
+	sous_octave: number | null,
+	/**  Niveau RMS de la trame d'attaque, en dBFS. */
+	niveau_db: number | null,
+};
+
+/**  Une note de la DI : l'attaque, puis la hauteur. */
+export type NoteDI_Serialize = {
+	/**  Instant de l'attaque, en secondes de l'horloge commune. */
+	t_s: number | null,
+	/**  Fondamentale, si pYIN en a trouvé une. */
+	f0_hz: number | null,
+	/**  Probabilité de voisement de pYIN (0 à 1). */
+	confiance: number | null,
+	/**  E(f0/2)/E(f0) : la fondamentale une octave plus bas est-elle là ? */
+	sous_octave: number | null,
+	/**  Niveau RMS de la trame d'attaque, en dBFS. */
+	niveau_db: number | null,
+};
 
 /**
  *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
@@ -1399,6 +1507,14 @@ export type VoixAura = {
 	pan: number | null,
 };
 
+/**  Ce que l'armement a trouvé : combien de notes le stem confirme. */
+export type VueArmementBasse = {
+	notes: number,
+	sures: number,
+	/**  Faux quand le stem de basse manque : aucune note n'est alors sûre. */
+	stem: boolean,
+};
+
 /**  Ce que l'interface sonde du démixage d'avance. */
 export type VueAvance = VueAvance_Serialize | VueAvance_Deserialize;
 
@@ -1436,6 +1552,27 @@ export type VueCalibration = {
 
 /**  Ce que l'interface sait de l'écoute. */
 export type VueEcoute = VueEcoute_Serialize | VueEcoute_Deserialize;
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcouteBasse = VueEcouteBasse_Serialize | VueEcouteBasse_Deserialize;
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcouteBasse_Deserialize = {
+	entree: string,
+	frequence_hz: number,
+	canaux: number,
+	/**  La latence calibrée de cette entrée, si elle l'a été. */
+	latence_ms?: number | null,
+};
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcouteBasse_Serialize = {
+	entree: string,
+	frequence_hz: number,
+	canaux: number,
+	/**  La latence calibrée de cette entrée, si elle l'a été. */
+	latence_ms: number | null,
+};
 
 /**  Ce que l'interface sait de l'écoute. */
 export type VueEcoute_Deserialize = {
@@ -1482,6 +1619,39 @@ export type VueGreffons_Serialize = {
 
 /**  Le jugement d'une fenêtre de temps. */
 export type VueJugements = VueJugements_Serialize | VueJugements_Deserialize;
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugementsBasse = VueJugementsBasse_Serialize | VueJugementsBasse_Deserialize;
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugementsBasse_Deserialize = {
+	/**
+	 *  Fin de la fenêtre jugée, à l'horloge : le `depuis_s` de l'appel
+	 *  suivant.
+	 */
+	jusqua_s: number | null,
+	jugements: JugementBasse_Deserialize[],
+	/**  Les notes jouées dans la fenêtre (le rang `frappe` des jugements). */
+	notes: NoteDI_Deserialize[],
+	bilan: BilanHauteur,
+	/**  Une erreur du flux audio (entrée débranchée…), s'il y en a eu une. */
+	erreur?: string | null,
+};
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugementsBasse_Serialize = {
+	/**
+	 *  Fin de la fenêtre jugée, à l'horloge : le `depuis_s` de l'appel
+	 *  suivant.
+	 */
+	jusqua_s: number | null,
+	jugements: JugementBasse_Serialize[],
+	/**  Les notes jouées dans la fenêtre (le rang `frappe` des jugements). */
+	notes: NoteDI_Serialize[],
+	bilan: BilanHauteur,
+	/**  Une erreur du flux audio (entrée débranchée…), s'il y en a eu une. */
+	erreur: string | null,
+};
 
 /**  Le jugement d'une fenêtre de temps. */
 export type VueJugements_Deserialize = {

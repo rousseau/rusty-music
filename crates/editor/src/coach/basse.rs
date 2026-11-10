@@ -11,7 +11,9 @@
 //!    qui suit la médiane du passé et un pic local d'une trame d'avance.
 //! 2. **La hauteur**, différée : pYIN sur une trame qui commence 12 ms après
 //!    l'attaque (le transitoire passé) et couvre 24 ms d'intégration plus une
-//!    période de 30 Hz ; elle arrive ≈ 70 ms après l'attaque. C'est la
+//!    période de 40 Hz ; elle arrive ≈ 62 ms après l'attaque. Une note plus
+//!    grave que le mi (le si d'une cinq cordes), ou dont la fondamentale une
+//!    octave plus bas a de l'énergie, attend une période de 30 Hz (≈ 70 ms). C'est la
 //!    première étape de pYIN (Mauch & Dixon 2014 : distribution bêta des
 //!    seuils, probabilité de chaque creux), sans le HMM qui lisserait vers
 //!    le futur : causale, trame par trame.
@@ -61,6 +63,14 @@ pub const CONFIANCE_SURE: f32 = 0.5;
 /// Rapport d'énergie E(f0/2)/E(f0) au-dessus duquel la fondamentale une
 /// octave plus bas est présente.
 pub const SOUS_OCTAVE_PRESENTE: f32 = 0.1;
+/// Sous ce rapport, la fondamentale une octave plus bas est absente : la
+/// trame courte suffit.
+pub const SOUS_OCTAVE_ABSENTE: f32 = 0.02;
+/// La trame courte cherche à partir de 40 Hz (le mi grave, E1, 41,2 Hz) :
+/// une période de 25 ms au lieu de 33, la hauteur ≈ 62 ms après l'attaque
+/// au lieu de 70. Les notes plus graves (cinq cordes) attendent la trame
+/// entière.
+pub const F_MIN_COURTE_HZ: f32 = 40.0;
 
 /// Le nombre de MIDI d'une fréquence (69 = la 440).
 pub fn midi(f_hz: f32) -> f32 {
@@ -105,8 +115,14 @@ pub enum Evenement {
 /// la probabilité de voisement. `x` doit couvrir la fenêtre d'intégration
 /// plus la plus longue période.
 pub fn pyin_trame(x: &[f32], sr: f32) -> Option<(f32, f32)> {
+    pyin_trame_des(x, sr, F_MIN_HZ)
+}
+
+/// [`pyin_trame`], en cherchant à partir de `f_min_hz` : la trame en est
+/// raccourcie d'autant.
+fn pyin_trame_des(x: &[f32], sr: f32, f_min_hz: f32) -> Option<(f32, f32)> {
     let w = (sr * FENETRE_HAUTEUR_S) as usize;
-    let tau_max = (sr / F_MIN_HZ).ceil() as usize;
+    let tau_max = (sr / f_min_hz).ceil() as usize;
     let tau_min = ((sr / F_MAX_HZ).floor() as usize).max(2);
     if x.len() < w + tau_max + 1 {
         return None;
@@ -204,7 +220,11 @@ fn periodes_entieres(sr: f32, f: f32, dispo: usize) -> Option<usize> {
 /// puis les contrôles d'octave par l'énergie. Rend (f0, voisement,
 /// sous-octave).
 pub fn hauteur(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
-    let (mut f0, conf) = pyin_trame(x, sr)?;
+    hauteur_des(x, sr, F_MIN_HZ)
+}
+
+fn hauteur_des(x: &[f32], sr: f32, f_min_hz: f32) -> Option<(f32, f32, f32)> {
+    let (mut f0, conf) = pyin_trame_des(x, sr, f_min_hz)?;
     // Sous-octave de l'estimateur : à f0, aucune énergie, tout est à 2·f0.
     while 2.0 * f0 <= F_MAX_HZ {
         let n = periodes_entieres(sr, f0, x.len())?;
@@ -232,10 +252,25 @@ pub fn hauteur(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
 
 /// Échantillons qu'il faut après l'attaque pour mesurer la hauteur.
 fn besoin_hauteur(sr: f32) -> usize {
+    besoin_hauteur_des(sr, F_MIN_HZ)
+}
+
+fn besoin_hauteur_des(sr: f32, f_min_hz: f32) -> usize {
     (sr * DECALAGE_HAUTEUR_S) as usize
         + (sr * FENETRE_HAUTEUR_S) as usize
-        + (sr / F_MIN_HZ).ceil() as usize
+        + (sr / f_min_hz).ceil() as usize
         + 1
+}
+
+/// La hauteur sur la trame courte (à partir de [`F_MIN_COURTE_HZ`]), si
+/// elle suffit : pYIN sûr, et aucune fondamentale une octave plus bas qui
+/// serait une note des cordes graves (sous 40 Hz, que la trame courte ne
+/// voit pas). Sinon on attend la trame entière.
+fn hauteur_courte(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
+    let (f0, conf, sous) = hauteur_des(x, sr, F_MIN_COURTE_HZ)?;
+    let grave_possible = f0 / 2.0 >= F_MIN_HZ;
+    (conf >= CONFIANCE_JEU && (!grave_possible || sous < SOUS_OCTAVE_ABSENTE))
+        .then_some((f0, conf, sous))
 }
 
 /// L'analyseur de la DI, par blocs : ce que rend la capture (cpal) s'y
@@ -258,8 +293,9 @@ pub struct AnalyseurDI {
     /// Les deux dernières trames : (début, flux, niveau dB).
     prec: [(u64, f32, f32); 2],
     derniere_attaque: Option<u64>,
-    /// Attaques dont la hauteur attend ses échantillons : (indice, niveau).
-    attente: VecDeque<(u64, f32)>,
+    /// Attaques dont la hauteur attend ses échantillons : (indice, niveau,
+    /// trame courte déjà essayée).
+    attente: VecDeque<(u64, f32, bool)>,
 }
 
 impl AnalyseurDI {
@@ -347,7 +383,7 @@ impl AnalyseurDI {
                     t_s: self.t(a),
                     niveau_db: niveau,
                 });
-                self.attente.push_back((a, niveau));
+                self.attente.push_back((a, niveau, false));
             }
             self.passe.push_back(f1);
             if self.passe.len() > historique {
@@ -356,16 +392,30 @@ impl AnalyseurDI {
             self.prec = [self.prec[1], (i, f, db)];
             self.trame += self.pas as u64;
         }
-        // Les hauteurs dont les échantillons sont là.
+        // Les hauteurs dont les échantillons sont là : la trame courte
+        // d'abord, la trame entière si elle ne suffit pas.
         let besoin = besoin_hauteur(self.sr) as u64;
+        let besoin_court = besoin_hauteur_des(self.sr, F_MIN_COURTE_HZ) as u64;
         let decalage = (self.sr * DECALAGE_HAUTEUR_S) as u64;
-        while let Some(&(a, niveau)) = self.attente.front() {
-            if a + besoin > self.fin() {
-                break;
+        while let Some(&(a, niveau, essayee)) = self.attente.front() {
+            let mut mesure = None;
+            if !essayee {
+                if a + besoin_court > self.fin() {
+                    break;
+                }
+                self.attente[0].2 = true;
+                let x = self.morceau(a + decalage, (besoin_court - decalage) as usize);
+                mesure = hauteur_courte(&x, self.sr).map(Some);
+            }
+            if mesure.is_none() {
+                if a + besoin > self.fin() {
+                    break;
+                }
+                let x = self.morceau(a + decalage, (besoin - decalage) as usize);
+                mesure = Some(hauteur(&x, self.sr));
             }
             self.attente.pop_front();
-            let x = self.morceau(a + decalage, (besoin - decalage) as usize);
-            let (f0_hz, confiance, sous_octave) = match hauteur(&x, self.sr) {
+            let (f0_hz, confiance, sous_octave) = match mesure.flatten() {
                 Some((f, c, s)) => (Some(f), c, s),
                 None => (None, 0.0, 0.0),
             };
@@ -382,7 +432,7 @@ impl AnalyseurDI {
         let garder_depuis = self
             .attente
             .front()
-            .map(|&(a, _)| a)
+            .map(|&(a, _, _)| a)
             .unwrap_or(u64::MAX)
             .min(self.trame);
         while self.debut < garder_depuis && !self.tampon.is_empty() {
@@ -698,9 +748,31 @@ mod tests {
     }
 
     #[test]
-    fn la_hauteur_arrive_moins_de_75_ms_apres_l_attaque() {
-        // Par blocs de 64 : on note le premier bloc qui rend la note.
-        let notes = [(0.30f32, 0.6f32, 23.0f32)];
+    fn la_hauteur_arrive_moins_de_65_ms_apres_l_attaque() {
+        // Par blocs de 64 : on note le premier bloc qui rend la note. Du mi
+        // grave (E1) au sol aigu, la trame courte ; le si grave d'une cinq
+        // cordes (B0) attend la trame entière.
+        for (m, max_ms) in [
+            (28.0f32, 65.0),
+            (33.0, 65.0),
+            (43.0, 65.0),
+            (55.0, 65.0),
+            (23.0, 75.0),
+        ] {
+            let (attaque_ms, note_ms) = delais(m);
+            assert!(
+                attaque_ms < 20.0,
+                "{m} : attaque rendue {attaque_ms:.1} ms après"
+            );
+            assert!(
+                note_ms < max_ms,
+                "{m} : hauteur rendue {note_ms:.1} ms après"
+            );
+        }
+    }
+
+    fn delais(m: f32) -> (f64, f64) {
+        let notes = [(0.30f32, 0.6f32, m)];
         let x = prise(&notes, 1.0);
         let mut a = AnalyseurDI::new(SR, 0.0);
         let (mut t_attaque, mut t_note) = (None, None);
@@ -716,8 +788,8 @@ mod tests {
         }
         let attaque_ms = (t_attaque.unwrap() - 0.30) * 1000.0;
         let note_ms = (t_note.unwrap() - 0.30) * 1000.0;
-        assert!(attaque_ms < 20.0, "attaque rendue {attaque_ms:.1} ms après");
-        assert!(note_ms < 75.0, "hauteur rendue {note_ms:.1} ms après");
+        eprintln!("MIDI {m} : attaque {attaque_ms:.1} ms, hauteur {note_ms:.1} ms");
+        (attaque_ms, note_ms)
     }
 
     #[test]

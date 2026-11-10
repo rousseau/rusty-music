@@ -68,6 +68,12 @@ fn exporter_les_types_des_commandes() {
             coach::coach_juger,
             coach::coach_table,
             coach::coach_groove,
+            // E5 : la basse en DI.
+            coach_basse::coach_basse_entrees,
+            coach_basse::coach_basse_ecouter,
+            coach_basse::coach_basse_armer,
+            coach_basse::coach_basse_juger,
+            coach_basse::coach_basse_calibrer,
             // P2 : Pratiquer enchaîne une playlist.
             pratique_playlist,
             pratique_playlist_poser,
