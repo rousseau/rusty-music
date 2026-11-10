@@ -6159,3 +6159,19 @@ Non vérifié : à l'oreille et à la basse (essai réel de François) ; audit
 d'interface reporté (écran visible), écran touché : `pratiquer` ; la
 lisibilité des signes sur une partition dense (notes rapprochées : un signe
 peut chevaucher la note voisine).
+
+## Interface, A2 : audit complet de nuit — 10 nov. 2026
+
+Audit complet (`scripts/audit-interface.sh`, copie de la base), écran caché
+(`ecran-visible.sh` : 1), après V35 : **288 cellules, 0 violation**
+(gabarit, tailles, écritures), contraste et typographie sans violation ;
+même chiffre qu'A1 (0 sur 288). Avertissement seul, déjà connu : G8, rail
+d'`explorer:anneau` plein à 1 400 × 900 (803 / 804 px, 6 cellules). V35
+avait reporté son audit (écran visible) sur `pratiquer` : rien à y redire,
+rail à 511 / 804 px.
+
+Non vérifié : le second audit de suite (critère de V33, même rapport
+attendu) — l'écran est redevenu visible à la fin du premier, il n'a pas été
+lancé ; relief et carte (18 cellules `carte+relief`, carte non dessinée) ;
+le bandeau du coach pendant l'écoute (l'audit parcourt Pratiquer sans
+coach ouvert).
