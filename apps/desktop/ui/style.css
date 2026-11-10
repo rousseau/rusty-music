@@ -799,6 +799,31 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .fil__candidat:hover { color: var(--txt); border-color: var(--accent); }
 
+/* P2 : la playlist que Pratiquer enchaîne, une ligne sous l'en-tête du
+   centre — le rang, le morceau suivant, son démixage d'avance. */
+.enchainement {
+  display: flex; align-items: center; gap: 4px 10px; flex: none; min-width: 0;
+  padding: 6px var(--gouttiere); border-bottom: 1px solid var(--line);
+  font-size: var(--t-second); color: var(--mut);
+}
+.enchainement[hidden] { display: none; }
+.enchainement__pas, .enchainement__fermer {
+  font: inherit; background: none; border: 1px solid var(--line); color: var(--txt);
+  cursor: pointer; padding: 2px 9px; line-height: 1.2;
+}
+.enchainement__fermer { border-color: transparent; color: var(--mut); margin-left: auto; }
+.enchainement__pas:hover:not(:disabled), .enchainement__fermer:hover { color: var(--accent); border-color: var(--accent); }
+.enchainement__pas:disabled { color: var(--mut); cursor: default; opacity: .5; }
+.enchainement__rang { font-family: var(--mono); font-size: var(--t-legende); color: var(--txt); white-space: nowrap; }
+.enchainement__nom, .enchainement__suivant {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.enchainement__nom { flex: 0 1 auto; max-width: 30%; }
+.enchainement__suivant { flex: 1 1 auto; color: var(--txt); }
+.enchainement__avance { font-size: var(--t-legende); white-space: nowrap; }
+.enchainement__avance[data-etat="pret"] { color: var(--accent); }
+.enchainement__avance:empty { display: none; }
+
 /* Ordre de la grille d'albums : posé à droite de l'en-tête, après le compte. */
 .tri { display: flex; align-self: center; border: 1px solid var(--line); flex: none; margin-left: auto; }
 .tri__opt {

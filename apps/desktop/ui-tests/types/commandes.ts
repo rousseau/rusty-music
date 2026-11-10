@@ -178,6 +178,24 @@ export const commands = {
 	coach_juger: (depuisS: number | null) => __TAURI_INVOKE<VueJugements_Serialize>("coach_juger", { depuisS }),
 	/**  La table par mesure gardée pour le morceau `chemin` (la batterie). */
 	coach_table: (chemin: string) => __TAURI_INVOKE<VueTable_Serialize>("coach_table", { chemin }),
+	/**  La playlist que Pratiquer enchaîne, ou `None`. */
+	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
+	/**
+	 *  Pratiquer enchaîne la playlist `id` et en est au morceau `path` (`None` :
+	 *  le premier). Rend la playlist telle que le bandeau la montre, ou `None`
+	 *  si elle n'existe plus.
+	 */
+	pratique_playlist_poser: (id: number, path: string | null) => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist_poser", { id, path }),
+	/**  Pratiquer n'enchaîne plus de playlist. */
+	pratique_playlist_fermer: () => __TAURI_INVOKE<null>("pratique_playlist_fermer"),
+	/**
+	 *  Démixe d'avance le morceau `path` avec la variante `variant`, en tâche de
+	 *  fond. Remplace la cible qui attendait ; celle en cours de calcul va au
+	 *  bout.
+	 */
+	pratique_preparer: (path: string, variant: string) => __TAURI_INVOKE<Avance>("pratique_preparer", { path, variant }),
+	/**  Avancement du démixage d'avance. L'interface sonde. */
+	pratique_preparation: () => __TAURI_INVOKE<VueAvance_Serialize>("pratique_preparation"),
 };
 
 /* Types */
@@ -287,6 +305,18 @@ export type ArtistRow_Serialize = {
 	tracks: number,
 	albums: number,
 };
+
+/**  Ce que [`pratique_preparer`] a fait de la demande. */
+export type Avance = 
+/**  Les stems sont déjà là. */
+"pret" | 
+/**  En préparation, ou en attente de son tour. */
+"prepare" | 
+/**
+ *  Les poids de la variante ne sont pas sur la machine : rien ne se
+ *  télécharge en tâche de fond.
+ */
+"poids_absents";
 
 /**
  *  Une balade passée à redessiner : ses morceaux dans l'ordre et, dans la
@@ -866,6 +896,35 @@ export type PlacePerdue = {
 	decalage: number,
 };
 
+/**  La playlist que Pratiquer enchaîne (P2), telle que le bandeau la montre. */
+export type PlaylistPratique = PlaylistPratique_Serialize | PlaylistPratique_Deserialize;
+
+/**  La playlist que Pratiquer enchaîne (P2), telle que le bandeau la montre. */
+export type PlaylistPratique_Deserialize = {
+	playlist_id: number,
+	nom: string,
+	/**  Les pistes présentes, dans l'ordre enregistré (`pistes_de_playlist`). */
+	pistes: TrackRow_Deserialize[],
+	/**
+	 *  Rang du morceau en cours dans `pistes`. Un morceau retiré de la liste
+	 *  (ou disparu de la bibliothèque) depuis : on reprend au premier.
+	 */
+	rang: number,
+};
+
+/**  La playlist que Pratiquer enchaîne (P2), telle que le bandeau la montre. */
+export type PlaylistPratique_Serialize = {
+	playlist_id: number,
+	nom: string,
+	/**  Les pistes présentes, dans l'ordre enregistré (`pistes_de_playlist`). */
+	pistes: TrackRow_Serialize[],
+	/**
+	 *  Rang du morceau en cours dans `pistes`. Un morceau retiré de la liste
+	 *  (ou disparu de la bibliothèque) depuis : on reprend au premier.
+	 */
+	rang: number,
+};
+
 /**  Une playlist telle que la liste l'affiche. */
 export type PlaylistRow = PlaylistRow_Serialize | PlaylistRow_Deserialize;
 
@@ -1226,6 +1285,29 @@ export type VoixAura = {
 	id: number,
 	gain: number | null,
 	pan: number | null,
+};
+
+/**  Ce que l'interface sonde du démixage d'avance. */
+export type VueAvance = VueAvance_Serialize | VueAvance_Deserialize;
+
+/**  Ce que l'interface sonde du démixage d'avance. */
+export type VueAvance_Deserialize = {
+	en_cours: boolean,
+	/**  Le morceau en cours de démixage : ses stems ne sont pas encore lisibles. */
+	courant?: string | null,
+	/**  Le morceau qui attend son tour. */
+	attente?: string | null,
+	echecs: string[],
+};
+
+/**  Ce que l'interface sonde du démixage d'avance. */
+export type VueAvance_Serialize = {
+	en_cours: boolean,
+	/**  Le morceau en cours de démixage : ses stems ne sont pas encore lisibles. */
+	courant: string | null,
+	/**  Le morceau qui attend son tour. */
+	attente: string | null,
+	echecs: string[],
 };
 
 /**  Ce qu'une calibration a mesuré. */

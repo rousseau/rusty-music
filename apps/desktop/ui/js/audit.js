@@ -13,6 +13,7 @@ import {
 import {
   carte,
 } from "./carte.js";
+import { bandeauAudit } from "./pratiquer-playlist.js";
 import { journalCarte } from "./explorer/carte-gl.js";
 import {
   basculerMode,
@@ -388,7 +389,13 @@ async function auditerInterface() {
     ["ecoute", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="albums"]')?.click(); await attendre(700); }],
     // P1 : la vue Playlists, son « ＋ nouvelle playlist » dans l'en-tête.
     ["ecoute:playlists", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="playlists"]')?.click(); await attendre(700); }],
-    ["pratiquer", async () => { await basculerMode("pratiquer"); await attendre(500); }],
+    ["pratiquer", async () => { bandeauAudit(null); await basculerMode("pratiquer"); await attendre(500); }],
+    // P2 : le bandeau de la playlist enchaînée, au-dessus du centre.
+    ["pratiquer:playlist", async () => {
+      await basculerMode("pratiquer");
+      bandeauAudit(carte.points.slice(0, 5).map((p) => ({ ...p, duration_ms: p.duration_ms ?? 200000 })));
+      await attendre(500);
+    }],
     ["creer", async () => { await basculerMode("creer"); await attendre(500); }],
     ["decouvrir", async () => { await sansPasseDecouvrir(() => basculerMode("decouvrir")); await attendre(900); }],
     ["valise", async () => { await basculerMode("valise"); await attendre(900); }],

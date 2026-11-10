@@ -15,6 +15,7 @@ import { indexAlphaUtile, indexAnneesUtile } from "./ecouter-familles.js";
 import { demander } from "./ecrans.js";
 import { zoneGreffe } from "./creer.js";
 import { quitterMemoirePratique, rendreMemoirePratique } from "./memoire-pratique.js";
+import { majEnchainement } from "./pratiquer-playlist.js";
 import {
   edition, majPulsation, majSections, majTempoSource, marquerSectionCourante, positionnerBande,
   reposerBoucle,
@@ -139,6 +140,8 @@ function majEtatEditer() {
   }
 
   majUsage();
+  // Le bandeau de la playlist enchaînée et son sélecteur (P2).
+  majEnchainement(choisir);
   if (etat === 3) positionnerPlayhead();
 }
 
@@ -387,9 +390,14 @@ function majAvancementDemix(d) {
 }
 
 let sondageDemix = null;
-$("lancer-demix").addEventListener("click", async () => {
+$("lancer-demix").addEventListener("click", () => lancerDemix());
+
+/// Sépare le morceau ouvert avec la variante choisie : le bouton « Séparer »,
+/// et Pratiquer quand il enchaîne une playlist (P2, `pratiquer-playlist.js`).
+/// Rend la main une fois le calcul lancé, pas fini : vrai s'il l'est.
+async function lancerDemix() {
   const t = edition.source;
-  if (!t) return;
+  if (!t) return false;
   // Le morceau **séparé** : la sélection est libre (aucune lecture à lancer
   // pour la changer), elle peut donc bouger pendant les ~30 s de calcul.
   const cible = t.path;
@@ -398,7 +406,7 @@ $("lancer-demix").addEventListener("click", async () => {
     await invoke("start_demix", { path: t.path, variant: variante });
   } catch (e) {
     $("demix-etat").textContent = String(e);
-    return;
+    return false;
   }
   $("lancer-demix").disabled = true;
   const aTelecharger = variantesAAcquerir.get(edition.variante);
@@ -450,7 +458,8 @@ $("lancer-demix").addEventListener("click", async () => {
     await prendreLaMain();
     await rendreMemoirePratique();
   }, 800); // assez serré pour que la barre avance visiblement segment par segment
-});
+  return true;
+}
 
 function dessinerStems() {
   const hote = $("dock-pistes");
@@ -1060,7 +1069,7 @@ $("dock-fermer").addEventListener("click", async () => {
 
 export {
   appliquerNiveaux, arreterStems, choisirVariante, deplacerLecture, dessinerStems, enSerie,
-  majEtatEditer, majVariantes, niveaux, oublierStems, poserSourceEdition, poserTete,
+  lancerDemix, majEtatEditer, majVariantes, niveaux, oublierStems, poserSourceEdition, poserTete,
   positionnerPlayhead, prendreLaMain, rampeRGB, rattacherStems, reconcilierStems, resumeStem,
   transposerStems, varianteParDefaut, verifierNoms,
 };

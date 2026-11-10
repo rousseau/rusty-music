@@ -382,6 +382,10 @@
                 title="Ajouter les pistes de l'album à une playlist">＋ playlist</button>
         <button id="playlist-nouvelle" class="fil__candidat" hidden aria-haspopup="dialog" aria-expanded="false"
                 title="Créer une playlist vide">＋ nouvelle playlist</button>
+        <!-- P2 : Pratiquer, état « choisir » — enchaîner les morceaux d'une
+             playlist (`js/pratiquer-playlist.js`). -->
+        <button id="pratique-playlist-choisir" class="fil__candidat" hidden aria-haspopup="dialog" aria-expanded="false"
+                title="Enchaîner à la main les morceaux d'une playlist">♩ playlist à travailler</button>
         <!-- Ordre des grilles d'albums et d'artistes (mode Écoute). L'ordre alphabétique
              vient déjà trié du moteur ; « année », « aléatoire » et « ajoutés »
              retrient côté interface. -->
@@ -396,6 +400,20 @@
                   title="Les albums ajoutés le plus récemment à la bibliothèque, d'après la date de leurs fichiers.">Ajoutés</button>
         </div>
       </header>
+      <!-- P2 : la playlist que Pratiquer enchaîne, à la main : rang, morceau
+           suivant et son démixage d'avance (`js/pratiquer-playlist.js`). -->
+      <div id="pratique-playlist" class="enchainement" role="group" aria-label="Playlist à travailler" hidden>
+        <button id="enchainement-precedent" class="enchainement__pas" type="button"
+                title="Morceau précédent (⇧←)" aria-label="Morceau précédent">←</button>
+        <span id="enchainement-rang" class="enchainement__rang"></span>
+        <button id="enchainement-suivant-bouton" class="enchainement__pas" type="button"
+                title="Morceau suivant (⇧→)" aria-label="Morceau suivant">→</button>
+        <span id="enchainement-nom" class="enchainement__nom"></span>
+        <span id="enchainement-suivant" class="enchainement__suivant"></span>
+        <span id="enchainement-avance" class="enchainement__avance" aria-live="polite"></span>
+        <button id="enchainement-fermer" class="enchainement__fermer" type="button"
+                title="Ne plus enchaîner cette playlist" aria-label="Ne plus enchaîner cette playlist">×</button>
+      </div>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
         <div id="grille" class="grille" tabindex="0"></div>

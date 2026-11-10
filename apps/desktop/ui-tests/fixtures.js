@@ -248,6 +248,31 @@ const fixtures = {
     p.chemins.splice(a.a, 0, a.path);
     return null;
   },
+  // P2 : la playlist que Pratiquer enchaîne — une au plus, et le morceau où
+  // l'on en est, par chemin (`Library::pratique_playlist`).
+  __pratique_playlist: (e) => {
+    const c = e.pratiquePlaylist;
+    if (!c) return null;
+    const p = window.__FIXTURES__.__etat_playlists(e).find((x) => x.id === c.id);
+    if (!p) return null;
+    const ps = window.__DONNEES__.PISTES;
+    const pistes = p.chemins.map((x) => ps.find((t) => t.path === x)).filter(Boolean);
+    return { playlist_id: p.id, nom: p.nom, pistes, rang: Math.max(0, pistes.findIndex((t) => t.path === c.path)) };
+  },
+  pratique_playlist: (_, e) => window.__FIXTURES__.__pratique_playlist(e),
+  pratique_playlist_poser: (a, e) => {
+    if (!window.__FIXTURES__.__etat_playlists(e).some((x) => x.id === a.id)) return null;
+    e.pratiquePlaylist = { id: a.id, path: a.path };
+    return window.__FIXTURES__.__pratique_playlist(e);
+  },
+  pratique_playlist_fermer: (_, e) => {
+    e.pratiquePlaylist = null;
+    return null;
+  },
+  // Le démixage d'avance : demandé, puis fini au premier sondage (les stems
+  // de la bibliothèque fictive sont tous là).
+  pratique_preparer: () => /** @type {const} */ ("prepare"),
+  pratique_preparation: { en_cours: false, courant: null, attente: null, echecs: [] },
   chaines: (_, e) => e.chaines ?? [],
   garder_chaine: (a, e) => {
     e.chaines = e.chaines ?? [];

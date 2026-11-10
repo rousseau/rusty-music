@@ -39,6 +39,7 @@ mod creer;
 mod decouvrir;
 mod ecouter;
 mod editions;
+mod enchainer;
 mod etabli;
 mod explorer;
 mod greffon;
@@ -63,6 +64,7 @@ use creer::*;
 use decouvrir::*;
 use ecouter::*;
 use editions::*;
+use enchainer::*;
 use etabli::*;
 use explorer::*;
 use greffon::*;
@@ -174,6 +176,9 @@ struct Etat {
     demix: Mutex<EtatDemix>,
     /// La préparation des greffons en tâche de fond (Créer, `greffon.rs`).
     greffons: Mutex<EtatGreffons>,
+    /// Le démixage d'avance du morceau suivant de la playlist que Pratiquer
+    /// enchaîne (P2, `enchainer.rs`).
+    avance: Mutex<EtatAvance>,
     /// Où en est la transposition des stems. Elle tourne dans son fil : c'est
     /// une vingtaine de secondes par stem, et l'interface doit rester servie.
     transpose: Mutex<EtatTranspose>,
@@ -602,6 +607,7 @@ fn main() {
                 wifi: Mutex::new(wifi::EtatWifi::default()),
                 demix: Mutex::new(EtatDemix::default()),
                 greffons: Mutex::new(EtatGreffons::default()),
+                avance: Mutex::new(EtatAvance::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
                 coach: Mutex::new(coach::EtatCoach::default()),
@@ -1064,6 +1070,11 @@ fn main() {
             coach::coach_table,
             pratique_memoire,
             pratique_garder,
+            pratique_playlist,
+            pratique_playlist_poser,
+            pratique_playlist_fermer,
+            pratique_preparer,
+            pratique_preparation,
             pulsation,
             transcrire,
             corriger_transcription,

@@ -1898,3 +1898,122 @@ test("P1 : une playlist vide se crée ; dans une playlist ouverte, retirer, annu
   expect(await page.evaluate(() => window.__ETAT_FAUX__.playlists.find((p) => p.id === 1).chemins))
     .toEqual([PISTES[2].path, PISTES[0].path]);
 });
+
+/* ------------------------------- P2 : Pratiquer enchaîne une playlist */
+
+/// Une playlist de trois morceaux à travailler (id 1), posée dans l'état du
+/// faux moteur.
+const A_TRAVAILLER = [PISTES[0], PISTES[2], PISTES[4]];
+async function poserPlaylistATravailler(page) {
+  await page.evaluate((chemins) => {
+    window.__ETAT_FAUX__.playlists = [{ id: 1, nom: "À travailler", origine: null, modifiee_le: 1_700_000_000, chemins }];
+  }, A_TRAVAILLER.map((t) => t.path));
+}
+
+test("P2 : choisir une playlist en Pratiquer, suivant et précédent rendent la séance de chaque morceau", async ({ page }) => {
+  await poserPlaylistATravailler(page);
+  // La séance déjà gardée du deuxième morceau : batterie, deux mesures.
+  await page.evaluate((path) => {
+    window.__ETAT_FAUX__.pratique = { [path]: { instrument: "drums", decompte: 2, boucles: [], accel_boucle: false } };
+  }, A_TRAVAILLER[1].path);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  // Sans playlist en cours : pas de bandeau ; le sélecteur dans l'état « choisir ».
+  await expect(page.locator("#pratique-playlist")).toBeHidden();
+  await expect(page.locator("#pratique-playlist-choisir")).toBeVisible();
+
+  await page.click("#pratique-playlist-choisir");
+  const menu = page.locator("#menu-pratique-playlist");
+  await expect(menu).toBeVisible();
+  await menu.locator(".menu-playlist__item", { hasText: "À travailler" }).click();
+  await expect(menu).toBeHidden();
+  const bandeau = page.locator("#pratique-playlist");
+  await expect(bandeau).toBeVisible();
+  await expect(page.locator("#enchainement-rang")).toHaveText("1 / 3");
+  await expect(page.locator("#enchainement-suivant")).toHaveText(`suivant : ${A_TRAVAILLER[1].title} — ${A_TRAVAILLER[1].artist}`);
+  await expect(page.locator("#demix-source")).toContainText(A_TRAVAILLER[0].title);
+  await expect(page.locator("#editer-etabli")).toBeVisible();
+  await expect(page.locator("#enchainement-precedent")).toBeDisabled();
+  // Le suivant se démixe d'avance, avec la variante par défaut de Pratiquer
+  // (il n'a pas de variante gardée), puis se dit prêt.
+  expect((await appels(page, "pratique_preparer")).at(-1)).toEqual({ path: A_TRAVAILLER[1].path, variant: "bsrofo_sw" });
+  await expect(page.locator("#enchainement-avance")).toHaveText("prêt", { timeout: 6000 });
+  // Le bouton du sélecteur ne vit que dans l'état « choisir ».
+  await expect(page.locator("#pratique-playlist-choisir")).toBeHidden();
+
+  // Une séance sur le premier : basse, sans décompte.
+  await page.click('#instruments [data-instrument="bass"]');
+  await page.click('#decomptes [data-decompte="0"]');
+  const gardee = async (path) =>
+    (await appels(page, "pratique_garder")).filter((a) => a.path === path).at(-1)?.memoire ?? null;
+  await expect.poll(() => gardee(A_TRAVAILLER[0].path).then((m) => m?.decompte), { timeout: 6000 }).toBe(0);
+
+  // → : le deuxième, et sa séance revient.
+  await page.click("#enchainement-suivant-bouton");
+  await expect(page.locator("#enchainement-rang")).toHaveText("2 / 3");
+  await expect(page.locator("#demix-source")).toContainText(A_TRAVAILLER[1].title);
+  await expect(page.locator('#instruments [data-instrument="drums"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator('#decomptes [data-decompte="2"]')).toHaveClass(/segment--actif/);
+  expect((await appels(page, "pratique_playlist_poser")).at(-1)).toEqual({ id: 1, path: A_TRAVAILLER[1].path });
+
+  // ⇧← : retour au premier, sa séance rendue ; la file de lecture n'a pas bougé.
+  const sauts = (await appels(page, "next")).length + (await appels(page, "previous")).length;
+  await page.locator("body").press("Shift+ArrowLeft");
+  await expect(page.locator("#enchainement-rang")).toHaveText("1 / 3");
+  await expect(page.locator("#demix-source")).toContainText(A_TRAVAILLER[0].title);
+  await expect(page.locator('#instruments [data-instrument="bass"]')).toHaveClass(/segment--actif/);
+  await expect(page.locator('#decomptes [data-decompte="0"]')).toHaveClass(/segment--actif/);
+  expect((await appels(page, "next")).length + (await appels(page, "previous")).length).toBe(sauts);
+
+  // Le dernier n'a pas de stems : il se sépare dès qu'on y arrive, avec la
+  // variante de sa séance.
+  await page.evaluate(({ path, stems }) => {
+    const f = window.__FIXTURES__;
+    const avant = f.stems_existants;
+    f.stems_existants = (a, e) => (a.path === path && !e.separe ? [] : avant(a, e));
+    f.start_demix = (_, e) => { e.separe = true; return null; };
+    f.demix_state = { en_cours: false, faits: 0, total: 0, resultat: "4 stems écrits", stems };
+    window.__ETAT_FAUX__.pratique[path] = { variante: "htdemucs", boucles: [], accel_boucle: false };
+  }, { path: A_TRAVAILLER[2].path, stems: ["drums", "bass", "other", "vocals"].map((n) => [n, `/stems/x/${n}.wav`]) });
+  await page.locator("body").press("Shift+ArrowRight");
+  await page.locator("body").press("Shift+ArrowRight");
+  await expect(page.locator("#enchainement-rang")).toHaveText("3 / 3");
+  await expect(page.locator("#enchainement-suivant")).toHaveText("dernier morceau");
+  await expect(page.locator("#enchainement-suivant-bouton")).toBeDisabled();
+  await expect.poll(() => appels(page, "start_demix").then((a) => a.at(-1))).toEqual({ path: A_TRAVAILLER[2].path, variant: "htdemucs" });
+  await expect(page.locator("#editer-etabli")).toBeVisible();
+
+  // × : plus de playlist en cours, plus de bandeau.
+  await page.click("#enchainement-fermer");
+  await expect(bandeau).toBeHidden();
+  expect(await appels(page, "pratique_playlist_fermer")).toHaveLength(1);
+});
+
+test("P2 : « Pratiquer cette playlist » depuis Écouter, et la reprise d'une session à l'autre", async ({ page }) => {
+  await poserPlaylistATravailler(page);
+  await page.click('[data-vuelib="playlists"]');
+  const ligne = page.locator("#liste .ligne--playlist", { hasText: "À travailler" });
+  await ligne.hover();
+  await ligne.locator(".ligne__action", { hasText: "♩" }).click();
+  await expect(page.locator('button.mode[data-mode="pratiquer"]')).toHaveClass(/mode--actif/);
+  await expect(page.locator("#enchainement-rang")).toHaveText("1 / 3");
+  await page.click("#enchainement-suivant-bouton");
+  await expect(page.locator("#enchainement-rang")).toHaveText("2 / 3");
+  // Le bandeau est à Pratiquer : Créer et Écouter ne le montrent pas.
+  await page.click('button.mode[data-mode="creer"]');
+  await expect(page.locator("#pratique-playlist")).toBeHidden();
+  await page.click('button.mode[data-mode="ecoute"]');
+  await expect(page.locator("#pratique-playlist")).toBeHidden();
+
+  // Une nouvelle session : la base a gardé la playlist et le morceau.
+  const garde = await page.evaluate(() => window.__ETAT_FAUX__.pratiquePlaylist);
+  expect(garde).toEqual({ id: 1, path: A_TRAVAILLER[1].path });
+  await page.addInitScript(({ garde, chemins }) => {
+    window.__ETAT_FAUX__.pratiquePlaylist = garde;
+    window.__ETAT_FAUX__.playlists = [{ id: 1, nom: "À travailler", origine: null, modifiee_le: 1_700_000_000, chemins }];
+  }, { garde, chemins: A_TRAVAILLER.map((t) => t.path) });
+  await page.reload();
+  await expect(page.locator("#grille .album")).toHaveCount(3);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await expect(page.locator("#enchainement-rang")).toHaveText("2 / 3");
+  await expect(page.locator("#demix-source")).toContainText(A_TRAVAILLER[1].title);
+});

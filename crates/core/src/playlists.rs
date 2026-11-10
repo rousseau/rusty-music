@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::db::{track_from_row, Library, TrackRow, TRACK_COLS};
 use crate::error::Result;
+use rusqlite::OptionalExtension;
 
 /// Longueur maximale d'un nom, en caractères.
 const NOM_MAX: usize = 120;
@@ -364,6 +365,79 @@ impl Library {
         tx.commit()?;
         Ok(n > 0)
     }
+
+    /// La playlist que Pratiquer enchaîne (P2), avec ses pistes présentes et
+    /// le rang du morceau où l'on en est ; `None` s'il n'y en a pas (jamais
+    /// posée, fermée, ou supprimée depuis).
+    pub fn pratique_playlist(&self) -> Result<Option<PlaylistPratique>> {
+        let ligne: Option<(i64, String, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT pp.playlist_id, p.nom, pp.chemin
+                   FROM pratique_playlist pp JOIN playlist p ON p.id = pp.playlist_id",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((playlist_id, nom, chemin)) = ligne else {
+            return Ok(None);
+        };
+        let pistes = self.pistes_de_playlist(playlist_id)?;
+        let rang = rang_de(&pistes, chemin.as_deref());
+        Ok(Some(PlaylistPratique {
+            playlist_id,
+            nom,
+            pistes,
+            rang,
+        }))
+    }
+
+    /// Pratiquer enchaîne la playlist `id`, et en est au morceau `chemin`
+    /// (`None` : le premier). Remplace la précédente. `false` si la playlist
+    /// n'existe pas.
+    pub fn pratiquer_playlist(&self, id: i64, chemin: Option<&str>) -> Result<bool> {
+        let existe: Option<i64> = self
+            .conn
+            .query_row("SELECT id FROM playlist WHERE id = ?1", [id], |r| r.get(0))
+            .optional()?;
+        if existe.is_none() {
+            return Ok(false);
+        }
+        self.conn.execute(
+            "INSERT INTO pratique_playlist (un, playlist_id, chemin, maj)
+             VALUES (1, ?1, ?2, strftime('%s','now'))
+             ON CONFLICT (un) DO UPDATE SET
+                playlist_id = excluded.playlist_id, chemin = excluded.chemin, maj = excluded.maj",
+            rusqlite::params![id, chemin],
+        )?;
+        Ok(true)
+    }
+
+    /// Pratiquer n'enchaîne plus de playlist (la playlist elle-même reste).
+    pub fn fermer_pratique_playlist(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM pratique_playlist", [])?;
+        Ok(())
+    }
+}
+
+/// La playlist que Pratiquer enchaîne (P2), telle que le bandeau la montre.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct PlaylistPratique {
+    pub playlist_id: i64,
+    pub nom: String,
+    /// Les pistes présentes, dans l'ordre enregistré (`pistes_de_playlist`).
+    pub pistes: Vec<TrackRow>,
+    /// Rang du morceau en cours dans `pistes`. Un morceau retiré de la liste
+    /// (ou disparu de la bibliothèque) depuis : on reprend au premier.
+    pub rang: u32,
+}
+
+/// Le rang de `chemin` dans `pistes`, ou 0.
+fn rang_de(pistes: &[TrackRow], chemin: Option<&str>) -> u32 {
+    chemin
+        .and_then(|c| pistes.iter().position(|t| t.path == c))
+        .unwrap_or(0) as u32
 }
 
 #[cfg(test)]
@@ -730,5 +804,60 @@ mod tests {
             lib.deplacer_dans_playlist(id, 7, 0, "/m/a.mp3").unwrap(),
             EditionPlaylist::Perimee
         );
+    }
+
+    #[test]
+    fn pratiquer_une_playlist_garde_le_rang_d_une_session_a_l_autre() {
+        let lib = bibliotheque(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"]);
+        assert!(lib.pratique_playlist().unwrap().is_none());
+        let id = lib
+            .creer_playlist(
+                "À travailler",
+                None,
+                &v(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"]),
+            )
+            .unwrap();
+        assert!(!lib.pratiquer_playlist(id + 1, None).unwrap());
+        assert!(lib.pratique_playlist().unwrap().is_none());
+
+        // Posée sans morceau : le premier.
+        assert!(lib.pratiquer_playlist(id, None).unwrap());
+        let p = lib.pratique_playlist().unwrap().unwrap();
+        assert_eq!(
+            (p.playlist_id, p.nom.as_str(), p.rang, p.pistes.len()),
+            (id, "À travailler", 0, 3)
+        );
+
+        // Suivant, puis la reprise (une autre ouverture de la base rend la
+        // même ligne : c'est la table qui la garde).
+        assert!(lib.pratiquer_playlist(id, Some("/m/c.mp3")).unwrap());
+        assert_eq!(lib.pratique_playlist().unwrap().unwrap().rang, 2);
+
+        // La liste retouchée ailleurs : le rang suit le morceau, pas sa place.
+        lib.deplacer_dans_playlist(id, 2, 0, "/m/c.mp3").unwrap();
+        assert_eq!(lib.pratique_playlist().unwrap().unwrap().rang, 0);
+        // Le morceau retiré de la liste : on reprend au premier.
+        lib.retirer_de_playlist(id, 0, "/m/c.mp3").unwrap();
+        let p = lib.pratique_playlist().unwrap().unwrap();
+        assert_eq!((p.rang, p.pistes.len()), (0, 2));
+
+        // Une seule playlist à la fois : la nouvelle remplace l'ancienne.
+        let autre = lib
+            .creer_playlist("Autre", None, &v(&["/m/b.mp3"]))
+            .unwrap();
+        assert!(lib.pratiquer_playlist(autre, Some("/m/b.mp3")).unwrap());
+        let n: i64 = lib
+            .conn
+            .query_row("SELECT COUNT(*) FROM pratique_playlist", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(lib.pratique_playlist().unwrap().unwrap().playlist_id, autre);
+
+        // Fermer, puis supprimer la playlist en cours : plus rien à reprendre.
+        lib.fermer_pratique_playlist().unwrap();
+        assert!(lib.pratique_playlist().unwrap().is_none());
+        assert!(lib.pratiquer_playlist(id, None).unwrap());
+        assert!(lib.supprimer_playlist(id).unwrap());
+        assert!(lib.pratique_playlist().unwrap().is_none());
     }
 }

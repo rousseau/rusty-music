@@ -79,6 +79,11 @@ pub(super) fn migrations() -> Migrations<'static> {
         // mesure du coach (E4, tranche 3 : `pratique_mesure.pente_ms`,
         // `db/pratique.rs`).
         M::up(include_str!("../../sql/migration-012-pente.sql")),
+        // N° 13 (10 nov. 2026) : la playlist que Pratiquer enchaîne, et le
+        // morceau où l'on en est (P2 : `pratique_playlist`, `crate::playlists`).
+        M::up(include_str!(
+            "../../sql/migration-013-pratique-playlist.sql"
+        )),
     ])
 }
 

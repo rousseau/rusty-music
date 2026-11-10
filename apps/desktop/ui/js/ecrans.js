@@ -48,7 +48,12 @@ const ECRANS = {
     "bloc-chercher": TOUJOURS, "bloc-vue-lib": TOUJOURS, "bloc-familles-ecoute": SELON,
     "choisir-edition": SELON, "album-playlist": SELON, "playlist-nouvelle": SELON, "tri-albums": SELON,
   },
-  pratiquer: { ...ETABLI, "bloc-usage": SELON, "bloc-partitions": SELON },
+  pratiquer: {
+    ...ETABLI, "bloc-usage": SELON, "bloc-partitions": SELON,
+    // P2 : la playlist enchaînée (son bandeau au centre) et son sélecteur
+    // dans l'en-tête de l'état « choisir ».
+    "pratique-playlist": SELON, "pratique-playlist-choisir": SELON,
+  },
   creer: ETABLI,
   explorer: {
     "bloc-chercher": SELON, "bloc-colorer": TOUJOURS, "bloc-familles": SELON,

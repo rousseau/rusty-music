@@ -5679,3 +5679,60 @@ déjà sous le seuil : un seul fichier à découper, un commit.
 
 Non vérifié : rien à l'écran au-delà de l'audit (aucun changement visible
 attendu).
+
+## Pratiquer, P2 : enchaîner une playlist de morceaux à travailler — 10 nov. 2026
+
+Décision de François (9 nov.) : à la main, ← précédent et → suivant, « 3 / 7 ·
+suivant : … » affiché, le suivant démixé d'avance, jamais de passage
+automatique.
+
+- **Base** : migration n° 13, table `pratique_playlist` (une ligne au plus :
+  la playlist, le morceau en cours **par son chemin**, `ON DELETE CASCADE`).
+  Le rang se déduit de la liste à la reprise : une playlist retouchée
+  ailleurs garde le bon morceau ; un morceau retiré, on reprend au premier.
+  `Library::pratique_playlist`, `pratiquer_playlist`,
+  `fermer_pratique_playlist` (`core::playlists`), un test de plus (rang,
+  reprise, retouche, remplacement, fermeture, suppression).
+- **Commandes** (`apps/desktop/src/enchainer.rs`) : `pratique_playlist`,
+  `pratique_playlist_poser`, `pratique_playlist_fermer`, et le démixage
+  d'avance `pratique_preparer` / `pratique_preparation`, contrôlées par leurs
+  types. Une cible à la fois (la dernière demandée remplace celle qui
+  attend), dans le cache ordinaire ; il attend la fin d'un démixage lancé à
+  la main avant de commencer, ne télécharge jamais de poids (« modèle à
+  télécharger ») ; `start_demix` refuse un morceau en cours de démixage
+  d'avance. La charge de la batterie du Mac n'est pas lue : rien dans la
+  pile ne la donne sans processus externe ni liaison IOKit.
+- **Interface** (`ui/js/pratiquer-playlist.js`, nouveau, 382 lignes ; fin de
+  la chaîne de `main.js`) : « ♩ playlist à travailler » dans l'en-tête de
+  l'état « choisir » (le petit menu des playlists, récentes d'abord) et ♩ en
+  bout de ligne de la vue Playlists d'Écouter. Le bandeau `#pratique-playlist`
+  au centre de Pratiquer, sous l'en-tête : ←, rang, →, nom, « suivant : titre
+  — artiste », état du démixage d'avance (prêt, démixage d'avance…, en
+  attente, modèle à télécharger, impossible), × pour ne plus enchaîner.
+  Changer de morceau = le sélectionner : la mémoire du morceau quitté est
+  gardée, celle du nouveau rendue (E1) ; sans stems, il se sépare aussitôt
+  avec la variante de sa mémoire, sinon celle par défaut, ou attend son
+  démixage d'avance s'il est en cours. Choisir dans la liste un morceau de la
+  playlist y suit le rang. À la session suivante, le morceau gardé s'ouvre
+  de lui-même en entrant dans Pratiquer, si rien d'autre n'est choisi.
+  Raccourcis ⇧← et ⇧→, en capture (← et → seuls restent ceux de la file,
+  ⌥↑ ⌥↓ ceux d'une playlist ouverte). `lancerDemix` sort du gestionnaire de
+  « Séparer » (`etabli-stems.js`, 1 075 lignes ; `ecouter.js` 1 421).
+- **Panneaux** : bandeau au centre (Règle 12, comme celui de la balade),
+  sélecteur dans l'en-tête, déclarés `SELON` dans `ecrans.js` ; rail et
+  inspecteur inchangés (Règle 1 : le morceau ouvert reste dans `#insp`).
+- **Vérifié** : deux tests de fumée « P2 » (sélecteur, rang et suivant,
+  démixage d'avance demandé en `bsrofo_sw` puis « prêt », séance rendue à →
+  et ⇧←, la file de lecture intacte, séparation du dernier avec la variante
+  de sa mémoire, × ; ♩ depuis Écouter, bandeau absent de Créer et d'Écouter,
+  reprise après rechargement), 65 en tout, `verifier.sh` vert. Audit complet :
+  288 cellules (nouvel état `pratiquer:playlist`, bandeau sur une playlist
+  fictive), 2 violations, toutes deux sur `explorer:points` à 960 px
+  (G3, inspecteur 306 > 299) et **déjà présentes sans P2** (même audit sur
+  HEAD, arbre mis de côté) ; Pratiquer : 0.
+
+Non vérifié : l'app réelle (écran en veille, rien regardé) ; un vrai
+démixage d'avance (les tests simulent le moteur) ; deux démixages à la fois
+si l'on saute à un morceau sans stems pendant que le suivant se prépare (le
+moteur ne l'empêche pas) ; la violation G3 d'Explorer, à part.
+

@@ -66,7 +66,13 @@ fn exporter_les_types_des_commandes() {
             coach::coach_garder_profil,
             coach::coach_calibrer,
             coach::coach_juger,
-            coach::coach_table
+            coach::coach_table,
+            // P2 : Pratiquer enchaîne une playlist.
+            pratique_playlist,
+            pratique_playlist_poser,
+            pratique_playlist_fermer,
+            pratique_preparer,
+            pratique_preparation
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

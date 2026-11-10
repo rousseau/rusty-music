@@ -563,6 +563,11 @@ pub(crate) fn start_demix(
     }
     let variante = rusty_music_editor::Variante::analyser(&variant)
         .ok_or_else(|| format!("variante inconnue : {variant}"))?;
+    // Le démixage d'avance de Pratiquer (P2) écrit déjà dans ce dossier : on
+    // ne lance pas un second calcul sur les mêmes fichiers.
+    if verrou(&etat.avance).en_cours_sur(&path) {
+        return Err("ce morceau est déjà en cours de démixage d'avance".into());
+    }
     let sortie = dossier_stems(&etat, &source);
     let depart = AvancementDemix {
         source: path.clone(),

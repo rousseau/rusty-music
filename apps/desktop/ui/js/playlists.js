@@ -14,6 +14,7 @@ import {
 import { demarrerLecture } from "./lecteur.js";
 import { tracerRouteSurCarte } from "./explorer/chemins.js";
 import { dureeLongue } from "./bibliotheque.js";
+import { pratiquerPlaylist } from "./pratiquer-playlist.js";
 
 /* ------------------------------------------------- playlists enregistrées
  *
@@ -143,6 +144,8 @@ function lignePlaylist(el, item) {
   if (item.intelligente) {
     nom.title = `${item.nom} — calculée à partir de vos écoutes`;
   } else {
+    el.appendChild(boutonAction("♩", "Pratiquer cette playlist", () =>
+      pratiquerPlaylist(item.id).catch((e) => remonter(e, "playlist à travailler"))));
     el.appendChild(boutonAction("⇩", "Exporter en .m3u8", () => exporterPlaylist(item).catch((e) => remonter(e, "exporter_playlist"))));
     el.appendChild(boutonAction("✎", "Renommer", () => renommerPlaylistEnLigne(el, item)));
     el.appendChild(boutonAction("✕", "Supprimer", (b) => supprimerPlaylistEnDeuxTemps(b, item)));
