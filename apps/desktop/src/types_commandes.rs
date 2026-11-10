@@ -59,7 +59,13 @@ fn exporter_les_types_des_commandes() {
             ajouter_a_playlist,
             retirer_de_playlist,
             remettre_dans_playlist,
-            deplacer_dans_playlist
+            deplacer_dans_playlist,
+            // E4 : le coach de Pratiquer, batterie MIDI.
+            coach::coach_peripheriques,
+            coach::coach_ecouter,
+            coach::coach_garder_profil,
+            coach::coach_calibrer,
+            coach::coach_juger
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

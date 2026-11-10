@@ -8,6 +8,7 @@ import {
   edition, majBoucleUI, NOMS_SECTIONS, positionnerPlayhead, varianteParDefaut,
 } from "./etabli.js";
 import { brancherCorrection, majCorrection, marquerCorrigees } from "./corriger.js";
+import { apresDecompte, brancherCoach, calibrageDemande, majCoach } from "./coach.js";
 
 /* ------------------------------------------------------- pratiquer */
 
@@ -53,6 +54,11 @@ const partition = {
   // La correction (E2, `corriger.js`) s'en sert pour retrouver une note
   // cliquée ; `null` quand ce n'est pas une basse transcrite.
   temps: null,
+  // La batterie transcrite affichée : pour chaque coup de la transcription
+  // (son rang), le temps alphaTab qui le porte — mesure, voix (0 mains,
+  // 1 pieds), rang du temps dans la voix (`texBatterie`). Le coach (E4,
+  // `coach.js`) s'en sert pour colorer la note qu'il juge ; `null` sinon.
+  batterie: null,
 };
 
 /// Charge un script une seule fois, même appelé plusieurs fois. Le
@@ -272,7 +278,7 @@ const ARTICULATIONS = {
 /// coupée aux temps pour que chaque temps se lise d'un bloc (essai du 15 oct.
 /// contre une partition publiée).
 const PIEDS = new Set(["grosse_caisse"]);
-function texBatterie(mesures, titre, p) {
+function texBatterie(mesures, titre, p, coups = []) {
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (ADTOF) — à vérifier à l'oreille"` +
@@ -281,6 +287,9 @@ function texBatterie(mesures, titre, p) {
   const haut = [];
   const bas = [];
   let precedente = 0;
+  const parRang = new Map();
+  const garderMains = (x) => !PIEDS.has(x);
+  const garderPieds = (x) => PIEDS.has(x);
   mesures.forEach((m, i) => {
     // La métrique, les sections et la synchro sont des réglages de mesure :
     // la première voix les porte.
@@ -289,21 +298,26 @@ function texBatterie(mesures, titre, p) {
     precedente = m.temps;
     const fin = mesures[i + 1]?.debut_s ?? Infinity;
     t += syncTemps(i, m.debut_s, fin, p.temps);
-    haut.push(t + voixBatterie(m, (x) => !PIEDS.has(x)));
-    bas.push(voixBatterie(m, (x) => PIEDS.has(x)));
+    const poser = (voix) => (rang, k) => parRang.set(rang, { mesure: i, voix, temps: k });
+    haut.push(t + voixBatterie(m, garderMains, coups, poser(0)));
+    bas.push(voixBatterie(m, garderPieds, coups, poser(1)));
   });
+  partition.batterie = parRang;
   return tete + "\\voice\n" + haut.join(" |\n") + " |\n\\voice\n" + bas.join(" |\n") + " |";
 }
 
 /// Une voix d'une mesure de batterie : les frappes des pièces retenues, puis
 /// des silences ; une note dure jusqu'à la frappe suivante de sa voix.
-function voixBatterie(m, garder) {
+function voixBatterie(m, garder, coups = [], marquer = () => {}) {
   const total = m.temps * 4;
   const frappes = [];
   let pos = 0;
   for (const f of m.frappes) {
     const pieces = f.pieces.filter(garder);
-    if (pieces.length) frappes.push({ pos, pieces });
+    // Les coups de cette case que porte cette voix (E4 : le coach les
+    // retrouve sur la partition).
+    const rangs = (f.coups ?? []).filter((r) => coups[r] && garder(coups[r].piece));
+    if (pieces.length) frappes.push({ pos, pieces, rangs });
     pos += f.seiziemes;
   }
   const out = [];
@@ -318,6 +332,8 @@ function voixBatterie(m, garder) {
   if (!frappes.length || frappes[0].pos > 0) poser(0, frappes[0]?.pos ?? total, null);
   frappes.forEach((f, k) => {
     const acc = f.pieces.map((x) => ARTICULATIONS[x]).join(" ");
+    // Le temps alphaTab de la tête est le prochain posé.
+    for (const r of f.rangs) marquer(r, out.length);
     poser(f.pos, Math.min(total, frappes[k + 1]?.pos ?? total), f.pieces.length > 1 ? `(${acc})` : acc);
   });
   return out.join(" ");
@@ -582,7 +598,8 @@ async function creerPartition() {
     // trompe quand c'est nous qui faisons défiler le conteneur — d'où des
     // pans de partition blancs (le « panneau blanc » de l'essai du 9 oct.,
     // reproduit avec la batterie de « Love Foolosophy »).
-    core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false, enableLazyLoading: false },
+    // Les cadres des têtes de notes : le coach (E4) entoure celle qu'il juge.
+    core: { fontDirectory: "vendor/alphatab/font/", useWorkers: false, enableLazyLoading: false, includeNoteBounds: true },
     // La seconde voix (les pieds, en batterie) en noir comme la première :
     // alphaTab la grise par défaut. Pas de nuance « f » par défaut.
     // Mise en page « du modèle » : chaque mesure prend la même largeur
@@ -650,6 +667,7 @@ async function creerPartition() {
   }, { passive: true });
   partition.api = api;
   brancherCorrection(api);
+  brancherCoach(api);
   return api;
 }
 
@@ -769,10 +787,11 @@ async function montrerPartition() {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
       partition.temps = null;
+      partition.batterie = null;
       const tex = !tr?.pret
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
-          ? texBatterie(tr.pret.mesures, titre, p)
+          ? texBatterie(tr.pret.mesures, titre, p, tr.pret.coups)
           : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
       await partition.chargement;
       // Un appel plus récent a pris la main pendant l'attente : c'est lui
@@ -789,6 +808,7 @@ async function montrerPartition() {
     journal("partition", e?.stack ?? e, "warn");
   }
   majCorrection();
+  majCoach();
   cancelAnimationFrame(partition.image);
   partition.image = requestAnimationFrame(placerCurseur);
   // 50 ms : la cadence que recommande alphaTab pour un lecteur externe.
@@ -865,6 +885,7 @@ function silencesInvisibles(score) {
 
 function cacherPartition() {
   majCorrection();
+  majCoach();
   clearInterval(partition.minuteur);
   partition.minuteur = null;
   cancelAnimationFrame(partition.image);
@@ -960,9 +981,9 @@ edition.decompte = (() => {
 /// avant. Avant le premier temps du morceau (une levée), on part de `posS`
 /// et les clics comptent vers ce premier temps : ceux qui tombent dans la
 /// levée sonnent par-dessus la musique. `null` sans pulsation.
-function planDecompte(posS) {
+function planDecompte(posS, mesures = edition.decompte) {
   const p = edition.pulsation;
-  if (!p || !edition.decompte) return null;
+  if (!p || !mesures) return null;
   const P = p.premiers_temps;
   const T = p.temps ?? [];
   let debut = posS;
@@ -974,7 +995,7 @@ function planDecompte(posS) {
   const ecarts = j < 0 ? [] : T.slice(j, j + 5).slice(1).map((t, k) => t - T[j + k]).sort((a, b) => a - b);
   const periode = ecarts.length ? ecarts[ecarts.length >> 1] : 60 / tempoDe(p);
   const m = p.metrique || 4;
-  const n = edition.decompte * m;
+  const n = mesures * m;
   const clics = [];
   for (let k = n; k >= 1; k--) clics.push([cible - k * periode, (n - k) % m === 0]);
   return { debut, clics };
@@ -983,7 +1004,10 @@ function planDecompte(posS) {
 /// ▶ en Pratiquer : décompte, puis la musique. Rend vrai si le moteur l'a pris.
 async function lancerDecompte() {
   if (edition.usage !== "pratiquer" || $("partition").hidden) return false;
-  const plan = planDecompte(lecture.stems.positionMs / 1000);
+  // Une calibration du coach demandée (E4) : quatre mesures de clics, sur
+  // lesquels on tape, quel que soit le décompte réglé.
+  const calibrage = calibrageDemande();
+  const plan = planDecompte(lecture.stems.positionMs / 1000, calibrage ? 4 : edition.decompte);
   if (!plan) return false;
   const attente = Math.max(0, plan.debut - plan.clics[0][0]) / (edition.vitesse || 1);
   try {
@@ -996,6 +1020,7 @@ async function lancerDecompte() {
   lecture.stems.ancreMs = lecture.stems.positionMs;
   lecture.stems.lueA = performance.now();
   edition.decompteJusqua = performance.now() + attente * 1000;
+  apresDecompte(plan, attente * 1000);
   return true;
 }
 
@@ -1110,6 +1135,13 @@ $("muscriptor-annuler").addEventListener("click", () => {
 
 /// La transcription affichée au centre, si c'est une basse prête (E2) :
 /// l'entrée de `transcriptions` (`pret`, `qualite`, `revision`).
+/// La batterie transcrite, si c'est elle que Pratiquer affiche.
+function batterieAffichee() {
+  if (edition.usage !== "pratiquer" || instrumentPratique() !== "drums" || $("partition").hidden) return null;
+  const tr = transcription("drums");
+  return tr?.pret ? tr : null;
+}
+
 function basseAffichee() {
   if (edition.usage !== "pratiquer" || instrumentPratique() !== "bass" || $("partition").hidden) return null;
   const tr = transcription("bass");
@@ -1125,6 +1157,6 @@ function remplacerBasse(entree, vue) {
 }
 
 export {
-  basseAffichee, bassesJouees, cacherPartition, lancerDecompte, majUsage, montrerPartition,
+  basseAffichee, bassesJouees, batterieAffichee, cacherPartition, lancerDecompte, majUsage, montrerPartition,
   oublierPartitions, partition, positionMoteur, remplacerBasse,
 };

@@ -34,6 +34,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 serde_json.workspace = true
+# Le coach de Pratiquer (E4) : la batterie électronique en MIDI. MIT ;
+# CoreMIDI sur macOS, ALSA sous Linux. `docs/recherche-coach-pratique.md`.
+midir = "0.11"
 
 # Lecture des archives de tuiles, servies à la webview par un protocole
 # personnalisé. `mmap-async-tokio` seul : le fichier est local, il n'y a ni S3
@@ -70,6 +73,7 @@ lama-local = ["rusty-music-lama/lama-local"]
 rusty-music-core = { path = "../../crates/core", features = ["specta"] }
 rusty-music-carto = { path = "../../crates/carto", features = ["specta"] }
 rusty-music-player = { path = "../../crates/player", features = ["specta"] }
+rusty-music-editor = { path = "../../crates/editor", features = ["specta"] }
 specta = { version = "=2.0.0-rc.26", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }

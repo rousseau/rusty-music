@@ -509,6 +509,17 @@
                       title="La partie corrigée, en Guitar Pro 7 (.gp)">GP</button>
             </span>
           </div>
+          <!-- Pratiquer, batterie transcrite : la jouer sur sa batterie
+               électronique (MIDI), chaque note jugée sur la partition (E4 ;
+               js/coach.js). Au centre, avec la partition qu'il marque (Règle 12). -->
+          <div id="partition-coach" class="correction coach" role="toolbar" aria-label="Coach de batterie" hidden>
+            <button id="coach-basculer" class="bouton bouton--mince" aria-pressed="false"
+                    title="Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.">jouer avec ma batterie</button>
+            <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
+            <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
+                    title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
+            <span id="coach-etat" class="coach__etat" aria-live="polite"></span>
+          </div>
           <!-- Pratiquer : la partition au centre (décision 11), rendue par
                alphaTab, qui suit le lecteur de stems. -->
           <div id="partition" class="partition" hidden>

@@ -418,6 +418,14 @@ const fixtures = {
     (e.pratique ??= {})[a.path] = structuredClone(a.memoire);
     return null;
   },
+  // E4 : le coach de batterie. Aucune batterie MIDI branchée ; le test qui
+  // en simule une pose les siennes.
+  coach_peripheriques: [],
+  coach_ecouter: null,
+  coach_garder_profil: null,
+  coach_armer: null,
+  coach_calibrer: { latence_ms: 38, dispersion_ms: 6, retenues: 14, ecartees: 2 },
+  coach_juger: (a) => ({ jusqua_s: a.depuisS ?? 0, jugements: [], frappes: [], places_perdues: [] }),
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

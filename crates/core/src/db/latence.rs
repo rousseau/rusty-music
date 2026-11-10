@@ -7,6 +7,8 @@
 //!
 //! La mesure elle-même (médiane des écarts frappe − clic) est
 //! `rusty_music_editor::coach::calibrer` ; ici, seulement ce qui en reste.
+//! Avec elle, le profil de correspondance d'une batterie électronique
+//! (migration n° 11), gardé en JSON par périphérique.
 
 use super::*;
 
@@ -93,6 +95,30 @@ impl Library {
                 l.dispersion_ms,
                 l.frappes
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Le profil MIDI gardé pour `peripherique`, en JSON (le coach le lit).
+    pub fn profil_midi(&self, peripherique: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT profil FROM profil_midi WHERE peripherique = ?1",
+                params![peripherique],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Garde le profil MIDI de `peripherique` (JSON), à la place du précédent.
+    pub fn garder_profil_midi(&self, peripherique: &str, json: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO profil_midi (peripherique, profil, maj)
+             VALUES (?1, ?2, strftime('%s','now'))
+             ON CONFLICT (peripherique) DO UPDATE SET
+                profil = excluded.profil, maj = excluded.maj",
+            params![peripherique, json],
         )?;
         Ok(())
     }

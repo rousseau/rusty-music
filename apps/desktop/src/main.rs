@@ -34,6 +34,7 @@ const _UI_HASH: &str = env!("RUSTY_UI_HASH");
 
 mod a_propos;
 mod bibliotheque;
+mod coach;
 mod creer;
 mod decouvrir;
 mod ecouter;
@@ -179,6 +180,10 @@ struct Etat {
     /// Le jeu de stems en écoute, s'il y en a un. Il tient sa propre sortie
     /// audio : le lecteur du module 1 se tait pendant ce temps.
     stems: Mutex<Option<rusty_music_player::Multipiste>>,
+    /// Le coach de Pratiquer (E4) : la batterie MIDI écoutée et la
+    /// référence armée (`coach.rs`). Ordre des verrous : `stems` avant
+    /// `coach`, `coach` avant `lib`.
+    coach: Mutex<coach::EtatCoach>,
     /// Le pisteur de pulsation (Beat This!), chargé au premier usage puis
     /// gardé — 83 Mo de poids, 30 ms à charger : le garder évite surtout de
     /// relire le disque à chaque morceau ouvert.
@@ -599,6 +604,7 @@ fn main() {
                 greffons: Mutex::new(EtatGreffons::default()),
                 transpose: Mutex::new(EtatTranspose::default()),
                 stems: Mutex::new(None),
+                coach: Mutex::new(coach::EtatCoach::default()),
                 pisteur: Mutex::new(None),
                 #[cfg(feature = "lama-local")]
                 lama_local: Mutex::new(Cache::default()),
@@ -1049,6 +1055,12 @@ fn main() {
             stems_transport,
             stems_boucle,
             stems_decompter,
+            coach::coach_peripheriques,
+            coach::coach_ecouter,
+            coach::coach_garder_profil,
+            coach::coach_calibrer,
+            coach::coach_armer,
+            coach::coach_juger,
             pratique_memoire,
             pratique_garder,
             pulsation,

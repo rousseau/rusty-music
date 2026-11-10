@@ -5475,3 +5475,83 @@ est la copie de V23.
 Non vérifié : COCOLA (rien n'a tourné) ; l'écoute, donc la corrélation
 avec le jugement ; le niveau des batteries greffées (les extraits seront
 ramenés au RMS de la batterie d'origine).
+
+## Pratiquer, E4, tranche 2 : la batterie MIDI jugée note à note — 10 nov. 2026
+
+Deuxième tranche du coach (`recherche-coach-pratique.md`, étape 2) : une
+batterie électronique branchée, chaque coup jugé contre la transcription
+ADTOF, et la note entourée sur la partition. Testé sans matériel.
+
+- **Profils et classes** (`crates/editor/src/coach/batterie.rs`). Les cinq
+  classes d'ADTOF, sous les mêmes noms sérialisés ; un profil de
+  correspondance par périphérique (General MIDI complété des notes de zone
+  Roland : bords de charleston 22/26, cercle de tom 58 ; CC4 d'ouverture du
+  charleston ; vélocité minimale contre la diaphonie), gardé en JSON par la
+  migration n° 11 (`profil_midi`, `db/latence.rs`). Un `Decodeur` lit les
+  messages bruts tels que `midir` les rend (tous canaux, note-on de
+  vélocité nulle = note-off, CC4 retenu jusqu'au coup de charleston).
+- **Apparieur** (`coach/appariement.rs`). Par classe, les paires les plus
+  proches d'abord ; fenêtres en temps du morceau, divisées par r à
+  l'horloge : « bon » 40 ms, attrapée 150 ms, bornée à la demi-distance à
+  la note voisine de même classe ; « parfait » sous max(10 ms, 2,5 % de
+  l'intervalle), plancher absolu de l'oreille. Écarts signés à l'horloge et
+  en temps musical (× r). Un coup seul près d'une note manquée d'une autre
+  classe : « mauvaise pièce ». **Note incertaine** (cymbales toujours,
+  activation ADTOF sous 0,5 : notes fantômes) : elle garde son coup pour
+  qu'il ne compte pas en trop, mais rien n'est dit, ni d'elle ni d'un coup
+  isolé tout près. Une note appartient à la fenêtre où elle est attendue :
+  des fenêtres consécutives (le sondage de l'interface) jugent chaque note
+  une fois. « Place perdue » : si les coups d'une mesure, décalés d'une
+  mesure entière, attrapent au moins 75 % des notes et le double d'à leur
+  place (moins de 50 %), le coach dit « la mesure d'avant / d'après » au
+  lieu d'une cascade de fautes.
+- **Application** (`apps/desktop/src/coach.rs`, `midir` 0.11, MIT, CoreMIDI
+  sur macOS ; `cargo deny` vert). Commandes `coach_peripheriques`,
+  `coach_ecouter` (profil gardé, General MIDI à défaut), `coach_garder_profil`,
+  `coach_calibrer` (les clics du décompte ramenés à l'horloge par l'ancre du
+  moteur, la latence gardée pour le périphérique, chemin `midi`),
+  `coach_armer` (les coups de la transcription et la grille des mesures),
+  `coach_juger` (une fenêtre de l'horloge, 0,4 s de recul pour les coups en
+  retard ; `None` ne juge rien et pose le départ). Les coups sont horodatés
+  à leur réception sur l'horloge commune.
+- **Partition**. La quantification de la batterie dit désormais les rangs
+  des coups de chaque case (`quantification::Frappe::coups`,
+  `VERSION_MESURES` 4 : requantification sans retranscrire) ; `texBatterie`
+  en tire, pour chaque coup, son temps alphaTab (mesure, voix, rang). alphaTab
+  rend les cadres des têtes de notes (`includeNoteBounds`) ; l'articulation
+  de chaque pièce s'apprend sur les temps à une seule note.
+- **Interface** (`js/coach.js`, `#partition-coach`, au centre au-dessus de
+  la partition, comme la barre de correction de la basse : Règle 12, rien
+  dans le rail). « jouer avec ma batterie » ouvre l'écoute ; une liste
+  seulement s'il y a plusieurs périphériques ; « calibrer » arme le prochain
+  ▶ : quatre mesures de clics, on tape la caisse claire dessus, la médiane
+  est gardée. Pendant le jeu, un cercle autour de chaque note jugée, la
+  forme doublant la couleur (plein juste, ouvert à gauche en avance, à
+  droite en retard, pointillé manquée, épais sur la mauvaise pièce) ; une
+  ligne d'état : attrapées sur attendues du passage, écart moyen, coups en
+  trop, latence. Trois jetons sur le papier, mêmes valeurs dans les deux
+  thèmes (`--feuille-juste`, `--feuille-ecart`, `--feuille-faute`, 5,1 à
+  5,5:1, contrôlés par `contraste-interface.py`).
+- **Mesuré** (tests, sans matériel). Éditeur : 12 tests nouveaux, dont un
+  rythme rock joué à ± 3 ms (24 parfaits, la crash non notée), un retard de
+  60 ms « bon » à vitesse 0,5 mais 250 ms hors fenêtre à vitesse 1,
+  manquée + mauvaise pièce + en trop retrouvées, rien de signalé autour
+  d'un fantôme omis et d'une crash jouée en retard de 120 ms, croche de
+  charleston à mi-chemin ni volée ni volante, trois passages de boucle à
+  0,8 jugés chacun, mêmes jugements en une fenêtre ou en fenêtres de 0,25 s,
+  place perdue retrouvée d'une mesure en retard comme en avance et pas
+  inventée sur du bruit. Application, source MIDI simulée (messages bruts
+  injectés) : calibration sur un décompte à vitesse 0,8 retrouvée à moins de
+  3 ms de 42 ms (14 frappes, un parasite et deux absentes écartés) ;
+  fenêtres de 0,3 s successives : 7 justes, 1 manquée, 2 non notées, écart
+  compté au-delà de la latence calibrée (12 ms). Test de fumée E4 :
+  barre au centre, rien n'écoute avant le geste, armement sur 33 coups et
+  8 mesures, quatre cercles sur les têtes de la première mesure (la crash
+  sans cercle), ligne d'état, arrêt qui ferme l'écoute et efface les
+  cercles, rien en basse.
+
+Non vérifié : rien avec une vraie batterie (latence de CoreMIDI, notes de
+zone réelles d'un module, CC4) ; l'écran n'édite pas encore le profil (la
+commande existe) ; les coups en trop ne sont pas montrés sur la partition,
+seulement comptés ; la table par mesure (`pratique_mesure`), la boucle sur
+les pires mesures et l'escalier de tempo restent la tranche 3.

@@ -14,6 +14,14 @@
 //! où l'ancre est publiée par le moteur (`rusty_music_player::horloge`), k le
 //! passage de boucle [a, b) et L la latence mesurée par [`calibrer`]. Aucun
 //! DTW : le seul inconnu est L.
+//!
+//! Étape 2 : la batterie MIDI ([`batterie`] : profils de correspondance,
+//! cinq classes d'ADTOF) et l'apparieur ([`appariement`] : fenêtres en
+//! temps musical, écarts signés, silence sur les notes incertaines, place
+//! perdue).
+
+pub mod appariement;
+pub mod batterie;
 
 /// L'horloge de pratique : l'ancre du moteur, la boucle et la latence.
 #[derive(Debug, Clone, Copy, PartialEq)]

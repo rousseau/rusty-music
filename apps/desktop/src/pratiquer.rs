@@ -92,8 +92,10 @@ pub(crate) fn doigter(
 /// elle change, les notes et coups en cache sont requantifiés sans
 /// retranscrire. 1 : premiers temps parasites retirés (26 oct.) ; 2 :
 /// anticipations coupées au premier temps recousues (29 oct.) ; 3 : chaque
-/// évènement dit le rang de sa note, pour la corriger (E2, 9 nov.).
-pub(crate) const VERSION_MESURES: u32 = 3;
+/// évènement dit le rang de sa note, pour la corriger (E2, 9 nov.) ; 4 :
+/// chaque frappe de batterie dit les rangs de ses coups, pour que le coach
+/// colore la note qu'il juge (E4, 10 nov.).
+pub(crate) const VERSION_MESURES: u32 = 4;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]

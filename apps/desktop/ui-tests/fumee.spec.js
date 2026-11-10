@@ -1572,6 +1572,127 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   await expect(barre).toBeHidden();
 });
 
+/// Une batterie transcrite (ADTOF simulé) : huit mesures de rock à 120,
+/// grosse caisse 1 et 3, caisse claire 2 et 4 ; une crash incertaine au
+/// premier temps.
+async function batterieTranscrite(page) {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 32 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 8 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+    window.__FIXTURES__.transcriptions_en_cache = ["drums"];
+    const coups = [];
+    const mesures = [];
+    for (let m = 0; m < 8; m++) {
+      const frappes = [];
+      for (let k = 0; k < 4; k++) {
+        const piece = k % 2 === 0 ? "grosse_caisse" : "caisse_claire";
+        const rangs = [coups.length];
+        coups.push({ instant_s: 0.5 + 2 * m + k / 2, piece, force: 0.9 });
+        const pieces = [piece];
+        if (m === 0 && k === 0) {
+          rangs.push(coups.length);
+          coups.push({ instant_s: 0.5, piece: "cymbales", force: 0.9 });
+          pieces.push("cymbales");
+        }
+        frappes.push({ seiziemes: 4, pieces, coups: rangs });
+      }
+      mesures.push({ debut_s: 0.5 + 2 * m, temps: 4, frappes });
+    }
+    window.__FIXTURES__.transcrire = () => ({
+      version: 5, instrument: "drums", modele: "adtof", notes: [], coups, mesures, accordage: [],
+      doigtes: 5, basses: "quatre", hauteurs: [], grille: 4, sans_effet: 0,
+    });
+    // Une batterie MIDI branchée, déjà calibrée.
+    window.__FIXTURES__.coach_peripheriques = ["TD-17"];
+    window.__FIXTURES__.coach_ecouter = (a) =>
+      a.peripherique ? { peripherique: a.peripherique, profil: { nom: "General MIDI", notes: {}, cc_charleston: 4, velocite_min: 1 }, latence_ms: 38 } : null;
+    // Le moteur juge la première mesure : grosse caisse juste, caisse claire
+    // en retard, grosse caisse manquée, caisse claire sur la mauvaise pièce ;
+    // la crash n'est pas notée ; un coup en trop.
+    const j = (reference, verdict, ecart) => ({
+      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: ecart, ecart_musical_ms: ecart, verdict,
+    });
+    window.__FIXTURES__.coach_juger = (a, e) => {
+      e.juges = (e.juges ?? 0) + 1;
+      return {
+        jusqua_s: 10 + e.juges,
+        jugements: e.juges === 2
+          ? [j(0, "parfait", 4), j(1, "non_notee", null), j(2, "retard", 62), j(3, "manquee", null),
+             j(4, "mauvaise_piece", 12), { ...j(null, "en_trop", null), attendu_s: null }]
+          : [],
+        frappes: [],
+        places_perdues: [],
+      };
+    };
+  });
+}
+
+test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée sur la partition", async ({ page }) => {
+  await batterieTranscrite(page);
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="drums"]');
+  const barre = page.locator("#partition-coach");
+  await expect(barre).toBeVisible();
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  // Au centre, pas dans le rail ; ni la barre de correction de la basse.
+  expect(await barre.evaluate((el) => !!el.closest("#editer-etabli") && !el.closest(".rail"))).toBe(true);
+  await expect(page.locator("#partition-correction")).toBeHidden();
+  // Rien n'écoute avant le geste.
+  expect(await appels(page, "coach_ecouter")).toEqual([]);
+  await expect(page.locator("#coach-calibrer")).toBeHidden();
+
+  await page.click("#coach-basculer");
+  await expect(page.locator("#coach-basculer")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => appels(page, "coach_ecouter").then((a) => a.at(-1)?.peripherique)).toBe("TD-17");
+  // Un seul périphérique : pas de liste à choisir.
+  await expect(page.locator("#coach-peripherique")).toBeHidden();
+  await expect(page.locator("#coach-calibrer")).toBeVisible();
+  // Armé sur les coups de la transcription et la grille des mesures.
+  const armer = (await appels(page, "coach_armer")).at(-1);
+  expect(armer.coups).toHaveLength(33);
+  expect(armer.premiersTemps).toHaveLength(8);
+
+  // Les jugements reçus : un cercle par note jugée et notée, la crash
+  // incertaine sans cercle.
+  const marques = page.locator("#partition-rendu .coach__marque:visible");
+  await expect(marques).toHaveCount(4);
+  const classes = await marques.evaluateAll((els) => els.map((e) => e.className.replace("coach__marque coach__marque--", "")));
+  expect(classes.sort()).toEqual(["faute", "juste", "manquee", "retard"]);
+  await expect(page.locator("#coach-etat")).toContainText("2 / 4 attrapées");
+  await expect(page.locator("#coach-etat")).toContainText("1 en trop");
+  await expect(page.locator("#coach-etat")).toContainText("latence 38 ms");
+  // Chaque cercle entoure une tête de note de la première mesure.
+  const dedans = await page.evaluate(async () => {
+    const { partition } = await import("./js/pratiquer.js");
+    const table = partition.api.boundsLookup;
+    const m = table.findMasterBarByIndex(0).realBounds;
+    const s = document.querySelector("#partition-rendu .at-surface").getBoundingClientRect();
+    return [...document.querySelectorAll("#partition-rendu .coach__marque")]
+      .filter((c) => !c.hidden)
+      .every((c) => {
+        const r = c.getBoundingClientRect();
+        const x = r.left + r.width / 2 - s.left;
+        return x >= m.x && x <= m.x + m.w;
+      });
+  });
+  expect(dedans).toBe(true);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e4-coach.png" });
+
+  // Calibrer : le geste attend ▶ ; arrêter ferme l'écoute et efface tout.
+  await page.click("#coach-calibrer");
+  await expect(page.locator("#coach-etat")).toContainText("seize clics");
+  await page.click("#coach-basculer");
+  await expect.poll(() => appels(page, "coach_ecouter").then((a) => a.at(-1)?.peripherique)).toBe(null);
+  await expect(marques).toHaveCount(0);
+  // La basse n'a pas de coach.
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(barre).toBeHidden();
+});
+
 /// Les lignes qu'occupent les enfants visibles de la barre de correction.
 const lignesBarre = (barre) =>
   barre.evaluate((el) => {

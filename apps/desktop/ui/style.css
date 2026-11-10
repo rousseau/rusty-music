@@ -16,6 +16,9 @@
   /* La feuille de partition (alphaTab) reste du papier dans les deux thèmes :
      une partition se lit noir sur blanc. Mêmes valeurs dans le bloc clair. */
   --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
+  /* E4 : les verdicts du coach, des traits sur le papier (3:1 au moins) :
+     juste, décalé (en avance, en retard), faute (manquée, mauvaise pièce). */
+  --feuille-juste: #2E7342; --feuille-ecart: #9A5A0C; --feuille-faute: #A8322A;
   /* Initiales d'un artiste sans pochette, sur un aplat teinté par son nom
      (`--teinte`) : saturation et clarté du fond, puis de l'encre. Vérifié
      sur les 360 teintes par `scripts/contraste-interface.py`. */
@@ -105,6 +108,9 @@
   --accent: #9A5426;
   --alerte: #A63B27;
   --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
+  /* E4 : les verdicts du coach, des traits sur le papier (3:1 au moins) :
+     juste, décalé (en avance, en retard), faute (manquée, mauvaise pièce). */
+  --feuille-juste: #2E7342; --feuille-ecart: #9A5A0C; --feuille-faute: #A8322A;
   /* Aplat clair, encre sombre : pas l'aplat sombre du thème sombre posé sur
      du papier. */
   --initiales-fond: 30% 86%; --initiales-encre: 35% 28%;
@@ -349,6 +355,21 @@ html, body {
   background: var(--accent); pointer-events: none; will-change: transform;
 }
 .partition .at-highlight * { fill: var(--accent); stroke: var(--accent); }
+/* E4 : le coach de batterie, une barre au-dessus de la partition, et un
+   cercle autour de chaque note jugée. La forme double la couleur : plein
+   pour juste, ouvert à gauche en avance, à droite en retard, pointillé
+   manquée, épais sur la mauvaise pièce. */
+.coach__etat { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.coach__peripherique { font: inherit; max-width: 220px; }
+.coach__marque {
+  position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none;
+  border-radius: 50%; border: 2px solid var(--feuille-juste); box-sizing: border-box;
+}
+.coach__marque[hidden] { display: none; }
+.coach__marque--avance { border-color: var(--feuille-ecart); border-left-color: transparent; }
+.coach__marque--retard { border-color: var(--feuille-ecart); border-right-color: transparent; }
+.coach__marque--manquee { border: 2px dashed var(--feuille-faute); }
+.coach__marque--faute { border: 3px solid var(--feuille-faute); }
 /* E2 : la barre de correction, au-dessus de la partition (sur le fond de
    l'application, pas sur le papier), et le temps choisi dans la partition. */
 .correction {

@@ -72,6 +72,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 10 (9 nov. 2026) : la latence calibrée du coach, par
         // périphérique et par chemin (E4 : `db/latence.rs`).
         M::up(include_str!("../../sql/migration-010-latence.sql")),
+        // N° 11 (10 nov. 2026) : le profil MIDI d'une batterie électronique,
+        // par périphérique (E4 : `db/latence.rs`).
+        M::up(include_str!("../../sql/migration-011-profil-midi.sql")),
     ])
 }
 

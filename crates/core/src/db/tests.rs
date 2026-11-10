@@ -3012,3 +3012,22 @@ fn la_latence_se_garde_par_peripherique_et_par_chemin() {
         })
         .is_err());
 }
+
+#[test]
+fn le_profil_midi_se_garde_par_peripherique() {
+    let lib = Library::open_in_memory().unwrap();
+    assert_eq!(lib.profil_midi("TD-17").unwrap(), None);
+    lib.garder_profil_midi("TD-17", r#"{"nom":"a"}"#).unwrap();
+    lib.garder_profil_midi("Nitro", r#"{"nom":"b"}"#).unwrap();
+    lib.garder_profil_midi("TD-17", r#"{"nom":"c"}"#).unwrap();
+    assert_eq!(
+        lib.profil_midi("TD-17").unwrap().as_deref(),
+        Some(r#"{"nom":"c"}"#)
+    );
+    assert_eq!(
+        lib.profil_midi("Nitro").unwrap().as_deref(),
+        Some(r#"{"nom":"b"}"#)
+    );
+    // Ce qui n'est pas du JSON est refusé par la base.
+    assert!(lib.garder_profil_midi("TD-17", "pas du json").is_err());
+}

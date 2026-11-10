@@ -47,6 +47,8 @@ COUPLES = (
     + [("bg", "txt", GRAND, "glyphe sur bouton"), ("bg", "accent", GRAND, "glyphe sur bouton survolé")]
     # La feuille de partition reste du papier dans les deux thèmes (alphaTab).
     + [("feuille-encre", "feuille", TEXTE, "partition"), ("feuille-mut", "feuille", TEXTE, "partition")]
+    # Les cercles du coach (E4) sur la partition : des traits, pas du texte.
+    + [(t, "feuille", GRAND, "verdict du coach") for t in ("feuille-juste", "feuille-ecart", "feuille-faute")]
 )
 
 

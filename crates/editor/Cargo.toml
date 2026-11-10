@@ -14,6 +14,9 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 default = ["gpu"]
 gpu = ["demucs-core/wgpu", "demucs-core/fusion", "demucs-core/autotune"]
 cpu = ["demucs-core/ndarray"]
+# Les types du coach qu'échangent les commandes Tauri, exportés en
+# TypeScript par les seuls tests du bureau (`types_commandes.rs`).
+specta = ["dep:specta"]
 
 [dependencies]
 # Fork porté en Burn 0.21 : l'amont est figé en 0.20.1 et n'a pas bougé depuis
@@ -42,3 +45,4 @@ serde_json.workspace = true
 rusty-music-core = { path = "../core" }
 thiserror.workspace  = true
 tracing.workspace    = true
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }

@@ -149,6 +149,33 @@ export const commands = {
 	remettre_dans_playlist: (id: number, rang: number, path: string) => __TAURI_INVOKE<null>("remettre_dans_playlist", { id, rang, path }),
 	/**  Déplace la piste affichée du rang `de` au rang `a` (qui doit être `path`). */
 	deplacer_dans_playlist: (id: number, de: number, a: number, path: string) => __TAURI_INVOKE<null>("deplacer_dans_playlist", { id, de, a, path }),
+	/**  Les entrées MIDI que le système voit, par nom. */
+	coach_peripheriques: () => __TAURI_INVOKE<string[]>("coach_peripheriques"),
+	/**
+	 *  Écoute la batterie `peripherique` (son nom, tel que
+	 *  [`coach_peripheriques`] le donne), avec son profil gardé (General MIDI à
+	 *  défaut) ; `None` ferme l'écoute.
+	 */
+	coach_ecouter: (peripherique: string | null) => __TAURI_INVOKE<VueEcoute_Serialize | null>("coach_ecouter", { peripherique }),
+	/**
+	 *  Garde le profil de correspondance de la batterie écoutée ; il s'applique
+	 *  aux coups suivants.
+	 */
+	coach_garder_profil: (profil: Profil_Deserialize) => __TAURI_INVOKE<null>("coach_garder_profil", { profil }),
+	/**
+	 *  Calibre la latence de la batterie écoutée sur les clics d'un décompte
+	 *  qu'on vient de jouer (`clics`, ceux passés à `stems_decompter`, en
+	 *  secondes du morceau), en tapant dessus ; la garde pour ce périphérique.
+	 *  Les stems doivent jouer encore : c'est leur ancre qui situe les clics.
+	 */
+	coach_calibrer: (clics: (number | null)[]) => __TAURI_INVOKE<VueCalibration>("coach_calibrer", { clics }),
+	/**
+	 *  Juge ce qui a été joué depuis `depuis_s` (l'horloge) jusqu'à maintenant,
+	 *  moins le temps qu'un coup en retard arrive. L'interface sonde, et repasse
+	 *  le `jusqua_s` rendu ; `None` ne juge rien et rend seulement le point de
+	 *  départ (après un décompte : rien n'est attendu des clics).
+	 */
+	coach_juger: (depuisS: number | null) => __TAURI_INVOKE<VueJugements_Serialize>("coach_juger", { depuisS }),
 };
 
 /* Types */
@@ -457,6 +484,12 @@ export type Chaine = {
 	nb_pistes: number,
 };
 
+/**
+ *  Les cinq classes de la transcription ADTOF, dans son ordre et sous ses
+ *  noms sérialisés (`rusty_music_transcription::batterie::Piece`).
+ */
+export type Classe = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
+
 export type CourbeVue = {
 	ligne: number,
 	niveau: number,
@@ -487,6 +520,43 @@ export type Epingle_Serialize = {
 	emoji: string | null,
 	lon: number | null,
 	lat: number | null,
+};
+
+/**  Un coup reçu de la batterie. */
+export type Frappe = Frappe_Serialize | Frappe_Deserialize;
+
+/**  Un coup reçu de la batterie. */
+export type Frappe_Deserialize = {
+	/**
+	 *  Instant de réception, en secondes de l'horloge commune
+	 *  (`rusty_music_player::horloge::maintenant_s`).
+	 */
+	t_s: number | null,
+	classe: Classe,
+	note: number,
+	velocite: number,
+	/**
+	 *  Ouverture du charleston au moment du coup (0 fermé, 127 ouvert),
+	 *  pour un coup de charleston dont le module a envoyé le CC.
+	 */
+	ouverture?: number | null,
+};
+
+/**  Un coup reçu de la batterie. */
+export type Frappe_Serialize = {
+	/**
+	 *  Instant de réception, en secondes de l'horloge commune
+	 *  (`rusty_music_player::horloge::maintenant_s`).
+	 */
+	t_s: number | null,
+	classe: Classe,
+	note: number,
+	velocite: number,
+	/**
+	 *  Ouverture du charleston au moment du coup (0 fermé, 127 ouvert),
+	 *  pour un coup de charleston dont le module a envoyé le CC.
+	 */
+	ouverture: number | null,
 };
 
 /**  La grandeur qui fait l'altitude. */
@@ -549,6 +619,55 @@ export type Intervention =
 "proposer" | 
 /**  La balade attend le choix au carrefour. */
 "demander";
+
+/**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
+export type Jugement = Jugement_Serialize | Jugement_Deserialize;
+
+/**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
+export type Jugement_Deserialize = {
+	/**  Rang de la note dans les références, s'il y en a une. */
+	reference?: number | null,
+	/**  Passage de boucle de la note attendue (0 hors boucle). */
+	passage: number,
+	/**  Rang du coup dans les frappes, s'il y en a un. */
+	frappe?: number | null,
+	/**  Instant attendu à l'horloge, latence comprise. */
+	attendu_s?: number | null,
+	/**
+	 *  Écart signé t_joué − t̂, en millisecondes d'horloge ; négatif en
+	 *  avance.
+	 */
+	ecart_ms?: number | null,
+	/**
+	 *  Le même écart en temps du morceau d'origine (× r) : comparable d'une
+	 *  vitesse à l'autre.
+	 */
+	ecart_musical_ms?: number | null,
+	verdict: Verdict,
+};
+
+/**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
+export type Jugement_Serialize = {
+	/**  Rang de la note dans les références, s'il y en a une. */
+	reference: number | null,
+	/**  Passage de boucle de la note attendue (0 hors boucle). */
+	passage: number,
+	/**  Rang du coup dans les frappes, s'il y en a un. */
+	frappe: number | null,
+	/**  Instant attendu à l'horloge, latence comprise. */
+	attendu_s: number | null,
+	/**
+	 *  Écart signé t_joué − t̂, en millisecondes d'horloge ; négatif en
+	 *  avance.
+	 */
+	ecart_ms: number | null,
+	/**
+	 *  Le même écart en temps du morceau d'origine (× r) : comparable d'une
+	 *  vitesse à l'autre.
+	 */
+	ecart_musical_ms: number | null,
+	verdict: Verdict,
+};
 
 /**
  *  Ce que Pratiquer retient d'un morceau. `None` : rien de retenu, le défaut
@@ -615,6 +734,15 @@ export type MesureCarrefours = {
 	retours: number,
 };
 
+/**  Une mesure où le musicien a perdu sa place. */
+export type PlacePerdue = {
+	/**  Rang de la mesure dans les premiers temps armés. */
+	mesure: number,
+	passage: number,
+	/**  −1 : il joue la mesure d'avant ; +1 : celle d'après. */
+	decalage: number,
+};
+
 /**  Une playlist telle que la liste l'affiche. */
 export type PlaylistRow = PlaylistRow_Serialize | PlaylistRow_Deserialize;
 
@@ -646,6 +774,49 @@ export type PlaylistRow_Serialize = {
 	/**  Durée des pistes présentes. */
 	duree_ms: number,
 	modifiee_le: number,
+};
+
+/**  Une correspondance notes → classes, pour un périphérique. */
+export type Profil = Profil_Serialize | Profil_Deserialize;
+
+/**  Une correspondance notes → classes, pour un périphérique. */
+export type Profil_Deserialize = {
+	nom: string,
+	/**
+	 *  Note MIDI → classe ; une note absente est ignorée (pad d'effet,
+	 *  déclencheur auxiliaire).
+	 */
+	notes: { [key in number]: Classe },
+	/**
+	 *  Le CC qui porte l'ouverture du charleston (4 sur presque tous les
+	 *  modules), `None` pour l'ignorer.
+	 */
+	cc_charleston?: number | null,
+	/**
+	 *  Vélocité sous laquelle un coup est tenu pour un faux déclenchement
+	 *  (diaphonie entre pads, rebond). 1 : tout compte.
+	 */
+	velocite_min?: number,
+};
+
+/**  Une correspondance notes → classes, pour un périphérique. */
+export type Profil_Serialize = {
+	nom: string,
+	/**
+	 *  Note MIDI → classe ; une note absente est ignorée (pad d'effet,
+	 *  déclencheur auxiliaire).
+	 */
+	notes: { [key in number]: Classe },
+	/**
+	 *  Le CC qui porte l'ouverture du charleston (4 sur presque tous les
+	 *  modules), `None` pour l'ignorer.
+	 */
+	cc_charleston: number | null,
+	/**
+	 *  Vélocité sous laquelle un coup est tenu pour un faux déclenchement
+	 *  (diaphonie entre pads, rebond). 1 : tout compte.
+	 */
+	velocite_min: number,
 };
 
 /**
@@ -846,6 +1017,19 @@ export type VarianteDispo = {
 	megaoctets: number,
 };
 
+export type Verdict = "parfait" | "bon" | "avance" | "retard" | 
+/**  La note attendue n'a pas été jouée. */
+"manquee" | 
+/**  Un coup qu'aucune note n'attendait. */
+"en_trop" | 
+/**
+ *  Un coup au bon moment, sur la mauvaise pièce : la note attendue à cet
+ *  instant n'a pas été jouée, une autre l'a été.
+ */
+"mauvaise_piece" | 
+/**  Note de référence incertaine : rien n'est dit. */
+"non_notee";
+
 /**  Ce que l'interface reçoit d'une voie du carrefour. */
 export type VoieVue = {
 	morceau: number,
@@ -867,6 +1051,33 @@ export type VoixAura = {
 	id: number,
 	gain: number | null,
 	pan: number | null,
+};
+
+/**  Ce qu'une calibration a mesuré. */
+export type VueCalibration = {
+	latence_ms: number | null,
+	dispersion_ms: number | null,
+	retenues: number,
+	ecartees: number,
+};
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcoute = VueEcoute_Serialize | VueEcoute_Deserialize;
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcoute_Deserialize = {
+	peripherique: string,
+	profil: Profil_Deserialize,
+	/**  La latence calibrée de ce périphérique, si elle l'a été. */
+	latence_ms?: number | null,
+};
+
+/**  Ce que l'interface sait de l'écoute. */
+export type VueEcoute_Serialize = {
+	peripherique: string,
+	profil: Profil_Serialize,
+	/**  La latence calibrée de ce périphérique, si elle l'a été. */
+	latence_ms: number | null,
 };
 
 /**  Ce que l'interface sonde de la préparation. */
@@ -894,5 +1105,34 @@ export type VueGreffons_Serialize = {
 	/**  Ceux qui n'ont pas pu l'être (fichier illisible, pas de batterie…). */
 	echecs: number[],
 	restants: number,
+};
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugements = VueJugements_Serialize | VueJugements_Deserialize;
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugements_Deserialize = {
+	/**
+	 *  Fin de la fenêtre jugée, à l'horloge : le `depuis_s` de l'appel
+	 *  suivant.
+	 */
+	jusqua_s: number | null,
+	jugements: Jugement_Deserialize[],
+	/**  Les coups reçus dans la fenêtre (le rang `frappe` des jugements). */
+	frappes: Frappe_Deserialize[],
+	places_perdues: PlacePerdue[],
+};
+
+/**  Le jugement d'une fenêtre de temps. */
+export type VueJugements_Serialize = {
+	/**
+	 *  Fin de la fenêtre jugée, à l'horloge : le `depuis_s` de l'appel
+	 *  suivant.
+	 */
+	jusqua_s: number | null,
+	jugements: Jugement_Serialize[],
+	/**  Les coups reçus dans la fenêtre (le rang `frappe` des jugements). */
+	frappes: Frappe_Serialize[],
+	places_perdues: PlacePerdue[],
 };
 

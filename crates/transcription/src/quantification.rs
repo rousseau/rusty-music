@@ -251,6 +251,11 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
 pub struct Frappe {
     pub seiziemes: u32,
     pub pieces: Vec<crate::batterie::Piece>,
+    /// Rangs, dans la liste des coups, de ceux que cette case réunit : le
+    /// coach de Pratiquer (E4) retrouve ainsi sur la partition la note qu'il
+    /// juge.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub coups: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -282,15 +287,16 @@ pub fn quantifier_coups(
         .collect();
     let fin_morceau = bornes.last().copied().unwrap_or(0) + (metrique.max(1) * DIVISIONS) as i64;
 
-    let mut cases: std::collections::BTreeMap<i64, Vec<crate::batterie::Piece>> =
+    let mut cases: std::collections::BTreeMap<i64, (Vec<crate::batterie::Piece>, Vec<u32>)> =
         Default::default();
-    for c in coups {
+    for (rang, c) in coups.iter().enumerate() {
         let k = case(c.instant_s);
         if k >= bornes[0] && k < fin_morceau {
-            let v = cases.entry(k).or_default();
+            let (v, rangs) = cases.entry(k).or_default();
             if !v.contains(&c.piece) {
                 v.push(c.piece);
             }
+            rangs.push(rang as u32);
         }
     }
     let mut mesures = Vec::with_capacity(premiers.len());
@@ -299,14 +305,12 @@ pub fn quantifier_coups(
         if fin <= debut {
             continue;
         }
-        let dans: Vec<(i64, Vec<crate::batterie::Piece>)> = cases
+        let dans: Vec<(i64, Vec<crate::batterie::Piece>, Vec<u32>)> = cases
             .range(debut..fin)
-            .map(|(k, v)| {
-                (*k, {
-                    let mut v = v.clone();
-                    v.sort();
-                    v
-                })
+            .map(|(k, (v, rangs))| {
+                let mut v = v.clone();
+                v.sort();
+                (*k, v, rangs.clone())
             })
             .collect();
         let mut frappes = Vec::new();
@@ -315,13 +319,15 @@ pub fn quantifier_coups(
             frappes.push(Frappe {
                 seiziemes: (premier - debut) as u32,
                 pieces: Vec::new(),
+                coups: Vec::new(),
             });
         }
-        for (i, (k, pieces)) in dans.iter().enumerate() {
+        for (i, (k, pieces, rangs)) in dans.iter().enumerate() {
             let suivante = dans.get(i + 1).map_or(fin, |x| x.0);
             frappes.push(Frappe {
                 seiziemes: (suivante - k) as u32,
                 pieces: pieces.clone(),
+                coups: rangs.clone(),
             });
         }
         let temps_mesure = ((fin - debut) as f32 / DIVISIONS as f32).round().max(1.0) as u32;
@@ -468,6 +474,17 @@ mod tests {
         assert_eq!(f[0].pieces, vec![Piece::GrosseCaisse, Piece::Charleston]);
         assert_eq!(f[2].pieces, vec![Piece::CaisseClaire, Piece::Charleston]);
         assert_eq!(f[1].pieces, vec![Piece::Charleston]);
+        // Chaque coup est dans une case, une seule, et la case de la grosse
+        // caisse du premier temps tient ses deux coups (rangs 0 et 8).
+        let mut rangs: Vec<u32> = f.iter().flat_map(|x| x.coups.clone()).collect();
+        rangs.sort();
+        assert_eq!(rangs, (0..coups.len() as u32).collect::<Vec<_>>());
+        for x in f {
+            for &r in &x.coups {
+                assert!(x.pieces.contains(&coups[r as usize].piece));
+            }
+        }
+        assert_eq!(f[0].coups.len(), 2);
     }
 
     #[test]
