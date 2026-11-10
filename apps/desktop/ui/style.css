@@ -1665,6 +1665,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    mention Discogs ci-dessus : ici c'est une obligation de licence. */
 .critique-attribution { margin-top: 6px !important; font-size: var(--t-legende); color: var(--mut); }
 .critique-attribution a { color: var(--accent); }
+.critique p a { color: var(--accent); }
 
 /* ---------- transport ---------- */
 .transport {

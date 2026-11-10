@@ -1,7 +1,7 @@
 import "./lama.js"; // l'ordre d'exécution : voir main.js
 import {
   $, duree, ecoute, enStems, estListePistes, fileAttente, invoke, isoler, LIGNE, navigation, ouvrirLien,
-  pochette, remonter, signalerErreur, txt, vue, vueEnGrille,
+  pochette, remonter, signalerErreur, texteAvecLiens, txt, vue, vueEnGrille,
 } from "./socle.js";
 import {
   ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopularites, colonnesGrille, composerAlchimie,
@@ -1388,7 +1388,7 @@ async function montrerCritiques(t) {
     const el = document.createElement("article");
     el.className = "critique";
     const texte = document.createElement("p");
-    texte.textContent = c.texte;
+    texte.append(texteAvecLiens(c.texte));
     const attribution = document.createElement("p");
     attribution.className = "critique-attribution";
     attribution.append(`${txt(c.auteur, "auteur inconnu")} · `);

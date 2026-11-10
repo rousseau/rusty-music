@@ -9,6 +9,38 @@ const { invoke } = window.__TAURI__.core;
 const ouvrirLien = (url) =>
   window.__TAURI__.opener?.openUrl(url)?.catch((e) => remonter(e, "lien externe"));
 
+// Un texte dont seuls les liens Markdown `[libellé](url)` sont interprétés
+// (les critiques de CritiqueBrainz, V33) : rendu en nœuds de texte, jamais en
+// HTML ; un lien http(s) devient un lien ouvert dans le navigateur du
+// système, tout autre lien garde son seul libellé. Le reste du Markdown reste
+// tel quel.
+// Un niveau de parenthèses dans l'URL (Wikipédia : « …_(album) ») ; un titre
+// facultatif (`[x](url "titre")`), ignoré.
+const LIEN_MARKDOWN = /\[([^\]\n]+)\]\(((?:[^\s()]|\([^\s()]*\))*)(?:\s+"[^"\n]*")?\)/g;
+function texteAvecLiens(texte) {
+  const f = document.createDocumentFragment();
+  let i = 0;
+  for (const m of texte.matchAll(LIEN_MARKDOWN)) {
+    f.append(texte.slice(i, m.index));
+    const [, libelle, url] = m;
+    if (/^https?:\/\//i.test(url)) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.textContent = libelle;
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        ouvrirLien(url);
+      });
+      f.append(a);
+    } else {
+      f.append(libelle);
+    }
+    i = m.index + m[0].length;
+  }
+  f.append(texte.slice(i));
+  return f;
+}
+
 // Une exception ici resterait dans la console de la vue web, invisible depuis
 // le terminal : on la renvoie au journal du processus.
 const remonter = (message, source) =>
@@ -211,6 +243,6 @@ document.addEventListener("click", (e) => {
 
 export {
   $, duree, ecoute, enStems, estListePistes, fileAttente, horloge, invoke, isoler, journal, LIGNE,
-  navigation, ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, txt, viderPochettes, vue,
-  vueEnGrille,
+  navigation, ouvrirLien, plier, pochette, remonter, repondAuFiltre, signalerErreur, texteAvecLiens, txt,
+  viderPochettes, vue, vueEnGrille,
 };

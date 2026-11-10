@@ -2041,3 +2041,27 @@ test("V31 : le bandeau dit « en attente » quand le démixage d'avance cède la
   await page.evaluate(() => { Object.assign(window.__ETAT_FAUX__.avance, { en_cours: false, courant: null }); });
   await expect(avance).toHaveText("prêt", { timeout: 6000 });
 });
+
+/* ---------------- V33 : les liens Markdown des critiques, rendus en liens */
+
+test("V33 : une critique montre ses liens Markdown comme des liens, sans HTML ni syntaxe brute", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.critiques_piste = [{
+      texte: "Avec [Rage Against the Machine](http://www.bbc.co.uk/music/artists/3798b104 \"titre\") et <b>rien de gras</b>, [un faux lien](javascript:alert(1)) et [ceci] (pas un lien).",
+      auteur: "BBC", url_originale: "https://critiquebrainz.org/review/1", licence_id: "CC BY-NC-SA 3.0", licence_nom: "CC BY-NC-SA 3.0",
+    }];
+    window.__LIENS__ = [];
+    window.__TAURI__.opener.openUrl = async (url) => { window.__LIENS__.push(url); };
+  });
+  await lireUnAlbum(page);
+  const critique = page.locator("#insp-critiques .critique").first();
+  const texte = critique.locator("p").first();
+  await expect(texte).toHaveText("Avec Rage Against the Machine et <b>rien de gras</b>, un faux lien et [ceci] (pas un lien).");
+  // Un seul lien, le http(s) ; le HTML reste du texte.
+  await expect(texte.locator("a")).toHaveCount(1);
+  await expect(texte.locator("b")).toHaveCount(0);
+  await texte.locator("a").click();
+  expect(await page.evaluate(() => window.__LIENS__)).toEqual(["http://www.bbc.co.uk/music/artists/3798b104"]);
+  // L'attribution CritiqueBrainz reste là, sous la critique.
+  await expect(critique.locator(".critique-attribution")).toContainText("BBC · CritiqueBrainz · CC BY-NC-SA 3.0");
+});

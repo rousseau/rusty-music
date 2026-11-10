@@ -5847,3 +5847,31 @@ Non vérifié : un vrai démixage (les tests simulent le moteur) ; la mémoire
 d'un modèle d'avance gardé en pause pendant le démixage manuel (deux modèles
 chargés, un seul calcule) ; le message de l'établi pendant la courte attente
 du démixage manuel (aucun état « attend l'avance » affiché).
+
+## Interface, V33 : liens des critiques, audit qui part d'un morceau connu — 10 nov. 2026
+
+Suites de V30.
+
+- **Critiques** (`texteAvecLiens`, `socle.js`) : les liens Markdown
+  `[libellé](url)` d'une critique CritiqueBrainz deviennent des liens ouverts
+  dans le navigateur du système (`ouvrirLien`) ; une URL qui n'est pas
+  http(s) laisse son seul libellé. Un niveau de parenthèses dans l'URL et un
+  titre facultatif (`[x](url "titre")`) sont reconnus. Rien d'autre du
+  Markdown n'est interprété ; le texte passe en nœuds de texte, jamais en
+  HTML. L'attribution (auteur · CritiqueBrainz · licence) inchangée.
+- **Mesuré** sur une copie de la base : **195 critiques sur 602** portent des
+  liens, **861 liens**, tous http(s) ; après rendu, **0** critique garde de
+  la syntaxe `](` brute (une seule en gardait avec la première expression,
+  le lien à titre d'Urban Dictionary). Test de fumée « V33 » (lien rendu et
+  ouvert, `<b>` resté texte, `javascript:` réduit au libellé, crochets sans
+  lien intacts, attribution). `verifier.sh` vert, 67 tests de fumée.
+- **Audit** (`audit.js`) : avant la première cellule, l'audit sélectionne
+  `carte.points[0]` au lieu d'hériter du morceau de la session de la base
+  copiée, et la file ouverte est toujours les 30 premiers points de la carte
+  (elle reprenait la file de la session).
+
+Non vérifié : **audit reporté (écran visible)** — tous les écrans
+(`audit.js` change la première cellule de chacun ; les critiques se montrent
+dans l'inspecteur d'`ecoute` et d'`explorer:*`) ; « deux audits de suite
+donnent le même rapport » attend donc l'audit de nuit (A1). Le lien à
+l'écran, vu par personne.

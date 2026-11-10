@@ -434,7 +434,11 @@ async function auditerInterface() {
   }
   const FENETRES = reglages.rapide ? [[1400, 900]] : [[960, 620], [1400, 900], [1920, 1080]];
   const THEMES = ["sombre", "clair"];
+  // Un morceau connu, pas celui de la session de la base copiée (ce que
+  // François écoutait) : sinon l'inspecteur de la première cellule, et la
+  // file d'attente, changeaient d'un audit à l'autre (V30, V33).
   const piste = carte.points[0];
+  if (piste) await selectionner(piste);
 
   let cellules = 0, total = 0;
   for (const [w, h] of FENETRES) {
@@ -451,7 +455,8 @@ async function auditerInterface() {
         for (const etat of ["base", "file ouverte", "morceau sélectionné"]) {
           if (etat === "file ouverte") {
             if (ecran !== "explorer:lama+playlist") {
-              fileAttente.pistes = fileAttente.pistes.length ? fileAttente.pistes : [piste];
+              // Une file connue et assez longue pour défiler.
+              fileAttente.pistes = carte.points.slice(0, 30);
             }
             basculerFile(true);
           } else {
