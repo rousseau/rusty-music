@@ -5649,3 +5649,33 @@ SI-SDR, plus un dossier d'écoute à l'aveugle.
 Non vérifié : Apollo (ni mesure, ni coût, ni écoute) ; le dossier d'écoute
 n'a donc que deux versions par extrait (MP3 d'origine, AERO) ; aucune
 écoute faite ; LSD sensible au plancher de −100 dB dans les bandes vides.
+
+## Code, V4 : etabli.js en trois modules — 10 nov. 2026
+
+Suite de C1, sans changement de comportement. Mesuré d'abord : `etabli.js`
+2 032 lignes (E1 à E6 et V17 l'avaient regonflé), `ecouter.js` 1 422,
+déjà sous le seuil : un seul fichier à découper, un commit.
+
+- **Découpage**, par responsabilité et en tranches contiguës, pour que
+  l'ordre d'exécution reste celui de l'ancien fichier : `etabli.js` (603 :
+  l'état `edition`, le tempo, la pulsation, les sections, les boucles et
+  les boucles nommées), `etabli-reglages.js` (416 : les réglages du dock,
+  vitesse, hauteur et le reste de `REGLAGES`, la dérive),
+  `etabli-stems.js` (1 067 : le parcours, les variantes et le démixage, la
+  pile de stems, le playhead, les spectres, les niveaux, la lecture des
+  stems). Chaîne : bibliotheque, etabli, etabli-reglages, etabli-stems,
+  pratiquer (`main.js`).
+- **Méthode** (celle de C1, script hors dépôt) : coupe aux éléments de
+  premier niveau, code passé tel quel, imports et exports recalculés par
+  module, dix importeurs réécrits (et l'import dynamique d'un test de
+  fumée). Contrôles : toute ligne non vide de l'ancien fichier se retrouve
+  dans les nouveaux, aux listes d'imports et d'exports près ; chaque nom
+  importé dans `ui/js/` est exporté par son module (0 manque) ; aucun `let`
+  réaffecté depuis un autre module.
+- **Vérifié** : `verifier.sh` vert (63 tests de fumée) ; `audit-interface.sh`
+  complet : 270 cellules, 0 violation (G8 d'Anneau à 1 px, avertissement
+  déjà connu). Plus aucun fichier de `ui/js/` au-delà de 1 500 lignes hors
+  `lama.js` et `bibliotheque.js` (1 803).
+
+Non vérifié : rien à l'écran au-delà de l'audit (aucun changement visible
+attendu).

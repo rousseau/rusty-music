@@ -14,7 +14,7 @@
 //   socle, vues, lama, ecouter, lecteur, carte, explorer/carte-gl,
 //   explorer/nuage, explorer/temps, explorer/anneau, explorer/chemins,
 //   familles, ecouter-familles, fond-de-plan, modes, valise, decouvrir,
-//   bibliotheque, etabli, pratiquer, memoire-pratique, corriger, coach, creer, demarrage,
+//   bibliotheque, etabli, etabli-reglages, etabli-stems, pratiquer, memoire-pratique, corriger, coach, creer, demarrage,
 //   itineraires, balade, aura, traces, relief, lieux, autotest-carte, palette, en-cours, editions,
 //   playlists.
 //

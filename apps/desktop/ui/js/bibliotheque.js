@@ -22,10 +22,9 @@ import {
 import {
   contactMb, depuisTexte,
 } from "./decouvrir.js";
-import {
-  accelererAuPassage, arreterStems, dessinerStems, edition, majDerive, niveaux, poserTete,
-  reconcilierStems, resumeStem, stemEcarte, tonaliteDe, vitesseDe,
-} from "./etabli.js";
+import { accelererAuPassage, edition } from "./etabli.js";
+import { majDerive, stemEcarte, tonaliteDe, vitesseDe } from "./etabli-reglages.js";
+import { arreterStems, dessinerStems, niveaux, poserTete, reconcilierStems, resumeStem } from "./etabli-stems.js";
 import { positionMoteur } from "./pratiquer.js";
 import {
   charger, rechargerEcoute,

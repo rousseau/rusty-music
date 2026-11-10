@@ -21,7 +21,7 @@ import {
 import {
   attendreFin,
 } from "./bibliotheque.js";
-import { positionnerPlayhead } from "./etabli.js";
+import { positionnerPlayhead } from "./etabli-stems.js";
 
 /* ------------------------------------------------ Lama : l'interprète (Explorer) */
 

@@ -26,9 +26,8 @@ import {
 import {
   battementStems,
 } from "./bibliotheque.js";
-import {
-  deplacerLecture, edition, oublierStems, poserTete, rampeRGB, rattacherStems,
-} from "./etabli.js";
+import { edition } from "./etabli.js";
+import { deplacerLecture, oublierStems, poserTete, rampeRGB, rattacherStems } from "./etabli-stems.js";
 import { lancerDecompte } from "./pratiquer.js";
 import {
   majBalade,

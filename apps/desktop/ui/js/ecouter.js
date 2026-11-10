@@ -31,9 +31,8 @@ import {
   artistesDecouvrables, boutonLien, chargerArtistesDecouvrir, contactMb,
 } from "./decouvrir.js";
 import { chargerPlaylists } from "./playlists.js";
-import {
-  edition, majEtatEditer, poserSourceEdition,
-} from "./etabli.js";
+import { edition } from "./etabli.js";
+import { majEtatEditer, poserSourceEdition } from "./etabli-stems.js";
 import {
   charger,
 } from "./demarrage.js";

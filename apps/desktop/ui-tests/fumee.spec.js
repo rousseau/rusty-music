@@ -221,7 +221,7 @@ test("V17 : une boucle se nomme, se rappelle par son nom et revient avec sa vite
   await page.click('.dock__tete [data-r="vitesse"][data-d="1"]');
   await page.evaluate(() => (window.__ETAT_FAUX__.passages = 0));
   await page.evaluate(async () => {
-    const { deplacerLecture } = await import("./js/etabli.js");
+    const { deplacerLecture } = await import("./js/etabli-stems.js");
     await deplacerLecture(0.15);
   });
   await page.click("#boucle");

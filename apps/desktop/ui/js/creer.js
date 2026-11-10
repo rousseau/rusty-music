@@ -5,9 +5,9 @@ import {
   $, invoke, remonter, txt,
 } from "./socle.js";
 import { oublierPartitions } from "./pratiquer.js";
-import {
-  appliquerReglages, dessinerStems, edition,
-} from "./etabli.js";
+import { edition } from "./etabli.js";
+import { appliquerReglages } from "./etabli-reglages.js";
+import { dessinerStems } from "./etabli-stems.js";
 
 /// La partie « remplacer » du panneau : le bouton, la greffe posée, ou la
 /// liste des morceaux d'où tirer le stem.

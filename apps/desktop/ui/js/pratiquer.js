@@ -1,19 +1,19 @@
-import "./etabli.js"; // l'ordre d'exécution : voir main.js
+import "./etabli-stems.js"; // l'ordre d'exécution : voir main.js
 import {
   $, enStems, invoke, journal, ouvrirLien, txt, vue,
 } from "./socle.js";
 import { lecture } from "./etat-lecture.js";
 import { demander } from "./ecrans.js";
-import {
-  edition, majBoucleUI, NOMS_SECTIONS, positionnerPlayhead, varianteParDefaut,
-} from "./etabli.js";
+import { edition, majBoucleUI, NOMS_SECTIONS } from "./etabli.js";
+import { positionnerPlayhead, varianteParDefaut } from "./etabli-stems.js";
 import { brancherCorrection, majCorrection, marquerCorrigees } from "./corriger.js";
 import { apresDecompte, brancherCoach, calibrageDemande, majCoach } from "./coach.js";
 
 /* ------------------------------------------------------- pratiquer */
 
 // Le propre de Pratiquer : la partition, la partie jouée, le décompte, la
-// transcription (MuScriptor compris). Le commun de l'établi : `etabli.js`.
+// transcription (MuScriptor compris). Le commun de l'établi : `etabli.js`,
+// `etabli-reglages.js` et `etabli-stems.js`.
 
 // La partition au centre (décision 11 de `ui-spec-editeur.md`), rendue par
 // alphaTab (MPL-2.0, `vendor/alphatab/`), chargé seulement quand on pratique.

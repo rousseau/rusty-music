@@ -36,9 +36,8 @@ import {
   chargerVerifications, chargerVocabulaireFamilles, dessinerRacines, majCache,
   majStockageLogiciel, reprendreActualisationEnCours,
 } from "./bibliotheque.js";
-import {
-  arreterStems, edition, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut,
-} from "./etabli.js";
+import { edition } from "./etabli.js";
+import { arreterStems, majVariantes, poserSourceEdition, prendreLaMain, varianteParDefaut } from "./etabli-stems.js";
 import { cacherPartition } from "./pratiquer.js";
 import { rendreMemoirePratique } from "./memoire-pratique.js";
 import { lecture } from "./etat-lecture.js";

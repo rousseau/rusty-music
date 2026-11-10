@@ -1,6 +1,8 @@
 import "./corriger.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, journal } from "./socle.js";
-import { appliquerVitesses, deplacerLecture, dessinerReglages, edition, majBoucleUI, reposerBoucle } from "./etabli.js";
+import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
+import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
+import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
 import { batterieAffichee, partition } from "./pratiquer.js";
 

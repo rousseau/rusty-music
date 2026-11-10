@@ -38,7 +38,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   `editer.js` et `pratiquer.js` découpés (`explorer/`, `etabli.js`,
   `pratiquer.js`, `creer.js`), `editer.rs` et `bibliotheque.rs` aussi ;
   `core` en quatre crates ; types générés pour 5 commandes, adoptés par
-  étapes (28 depuis V5, le 8 nov.).
+  étapes (28 depuis V5, le 8 nov.) ; V4 (10 nov.) : `etabli.js` (2 032
+  lignes) en trois modules, `etabli.js`, `etabli-reglages.js`,
+  `etabli-stems.js` ; plus aucun fichier de `ui/js/` au-delà de 1 500
+  lignes hors Lama et Bibliothèque (`ecouter.js` : 1 421).
 - D, finir la balade — fait (7-8 nov.) : D2 (P8), D4 (P6, relief regardé
   dans l'application le 8 nov.), D5 (nuage stable). **En attente d'usage** :
   D1 (relever `balade-mesure.json` ; le 8 nov., 3 balades et 0 carrefour

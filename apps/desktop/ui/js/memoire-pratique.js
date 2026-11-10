@@ -1,10 +1,9 @@
 import "./pratiquer.js"; // l'ordre d'exécution : voir main.js
 import { invoke, remonter } from "./socle.js";
 import { lecture } from "./etat-lecture.js";
-import {
-  appliquerVitesses, choisirVariante, deplacerLecture, dessinerReglages, edition, majBoucleUI,
-  reposerBoucle,
-} from "./etabli.js";
+import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
+import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
+import { choisirVariante, deplacerLecture } from "./etabli-stems.js";
 import { majUsage } from "./pratiquer.js";
 
 /* ------------------------------------------- la mémoire de Pratiquer */
