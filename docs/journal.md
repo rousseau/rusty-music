@@ -5816,3 +5816,34 @@ son audit (P2 et V30 en ont fait un complet, V32 un rapide).
 Non vérifié : relief et carte (18 cellules `carte+relief`, affichage
 suspendu, carte non dessinée) ; l'aléa G5 sur `ecoute:playlists` vu par V30
 ne s'est pas montré ici.
+
+## Pratiquer, V31 : un seul démixage à la fois — 10 nov. 2026
+
+Depuis P2, sauter à un morceau sans stems pendant que le suivant se démixait
+d'avance lançait une seconde séparation en parallèle (mémoire et calcul
+doublés) : l'avance attendait un démixage manuel, pas l'inverse.
+
+- **Pause plutôt qu'annulation** (`enchainer.rs`) : le démixage d'avance
+  cède la place (`ceder`) avant le chargement du modèle, avant la chauffe,
+  avant le décodage et à chaque segment (rappel de progression de
+  `separer_fichier_suivi`) ; il garde son modèle et ses segments faits et
+  reprend où il en était. Rien n'est effacé.
+- **Le démixage prioritaire** (`start_demix`, manuel ou celui du morceau
+  ouvert) attend que l'avance qui calcule se soit dite en pause
+  (`attendre_que_l_avance_cede`, au plus un segment) ; il ne garde rien si
+  la passe d'avance est finie, panique comprise. Deux verrous jamais tenus
+  ensemble ; l'ordre écriture puis relecture des deux côtés exclut que
+  chacun manque l'autre.
+- **Bandeau** : `pratique_preparation` rend `en_pause` ; le suivant en pause
+  s'affiche « en attente ».
+- **Mesuré** : test Rust à moteur simulé (400 segments d'avance, trois
+  démixages manuels pendant), compteur de calculs simultanés à **1** au
+  plus, l'avance va au bout et s'est dite en pause ; 30 passages sur 30 ;
+  sans l'attente du côté manuel, le même test échoue (« deux séparations ont
+  calculé ensemble »). Test de fumée « V31 » (démixage d'avance…, en
+  attente, reprise, prêt). `verifier.sh` vert, 66 tests de fumée.
+
+Non vérifié : un vrai démixage (les tests simulent le moteur) ; la mémoire
+d'un modèle d'avance gardé en pause pendant le démixage manuel (deux modèles
+chargés, un seul calcule) ; le message de l'établi pendant la courte attente
+du démixage manuel (aucun état « attend l'avance » affiché).

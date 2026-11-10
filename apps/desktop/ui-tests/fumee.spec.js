@@ -2017,3 +2017,27 @@ test("P2 : « Pratiquer cette playlist » depuis Écouter, et la reprise d'une s
   await expect(page.locator("#enchainement-rang")).toHaveText("2 / 3");
   await expect(page.locator("#demix-source")).toContainText(A_TRAVAILLER[1].title);
 });
+
+/* ---------- V31 : le démixage d'avance cède la place à un démixage manuel */
+
+test("V31 : le bandeau dit « en attente » quand le démixage d'avance cède la place", async ({ page }) => {
+  await poserPlaylistATravailler(page);
+  // Le faux moteur : le suivant se démixe d'avance, l'état se règle de la page.
+  await page.evaluate((path) => {
+    window.__ETAT_FAUX__.avance = { en_cours: true, courant: path, en_pause: false, attente: null, echecs: [] };
+    window.__FIXTURES__.pratique_preparation = (_, e) => e.avance;
+  }, A_TRAVAILLER[1].path);
+  await page.click('button.mode[data-mode="pratiquer"]');
+  await page.click("#pratique-playlist-choisir");
+  await page.locator("#menu-pratique-playlist .menu-playlist__item", { hasText: "À travailler" }).click();
+  const avance = page.locator("#enchainement-avance");
+  await expect(avance).toHaveText("démixage d'avance…", { timeout: 6000 });
+  // Un démixage lancé à la main passe d'abord : l'avance se met en pause.
+  await page.evaluate(() => { window.__ETAT_FAUX__.avance.en_pause = true; });
+  await expect(avance).toHaveText("en attente", { timeout: 6000 });
+  // Il a fini : l'avance reprend, puis va au bout.
+  await page.evaluate(() => { window.__ETAT_FAUX__.avance.en_pause = false; });
+  await expect(avance).toHaveText("démixage d'avance…", { timeout: 6000 });
+  await page.evaluate(() => { Object.assign(window.__ETAT_FAUX__.avance, { en_cours: false, courant: null }); });
+  await expect(avance).toHaveText("prêt", { timeout: 6000 });
+});

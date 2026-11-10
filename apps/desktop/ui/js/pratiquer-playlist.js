@@ -211,7 +211,8 @@ function sonder() {
     const L = enchainement.liste;
     const s = L?.pistes[L.rang + 1];
     if (s && enchainement.avance !== "pret" && enchainement.avance !== "poids_absents") {
-      if (p.courant === s.path) enchainement.avance = "prepare";
+      // En pause, il cède la place à un démixage lancé à la main (V31).
+      if (p.courant === s.path) enchainement.avance = p.en_pause ? "attente" : "prepare";
       else if (p.attente === s.path) enchainement.avance = "attente";
       else if (p.echecs.includes(s.path)) enchainement.avance = "echec";
       else {

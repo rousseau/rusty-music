@@ -579,6 +579,10 @@ pub(crate) fn start_demix(
         "un démixage est déjà en cours",
         depart,
         move |etat| {
+            // Le démixage d'avance de Pratiquer (P2) cède la place : on attend
+            // qu'il se soit mis en pause (au plus un segment) avant de
+            // calculer ; il reprendra après (V31, `enchainer::ceder`).
+            enchainer::attendre_que_l_avance_cede(&etat.avance);
             // Les poids de la variante manquent (la première fois, typiquement pour
             // la variante affinée, 336 Mo) : on les télécharge, plutôt que de
             // renvoyer l'utilisateur à un script. La phase et la progression sont

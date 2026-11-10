@@ -272,7 +272,7 @@ const fixtures = {
   // Le démixage d'avance : demandé, puis fini au premier sondage (les stems
   // de la bibliothèque fictive sont tous là).
   pratique_preparer: () => /** @type {const} */ ("prepare"),
-  pratique_preparation: { en_cours: false, courant: null, attente: null, echecs: [] },
+  pratique_preparation: { en_cours: false, courant: null, en_pause: false, attente: null, echecs: [] },
   chaines: (_, e) => e.chaines ?? [],
   garder_chaine: (a, e) => {
     e.chaines = e.chaines ?? [];

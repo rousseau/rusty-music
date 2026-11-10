@@ -1295,6 +1295,8 @@ export type VueAvance_Deserialize = {
 	en_cours: boolean,
 	/**  Le morceau en cours de démixage : ses stems ne sont pas encore lisibles. */
 	courant?: string | null,
+	/**  En pause : un démixage lancé à la main passe d'abord. */
+	en_pause: boolean,
 	/**  Le morceau qui attend son tour. */
 	attente?: string | null,
 	echecs: string[],
@@ -1305,6 +1307,8 @@ export type VueAvance_Serialize = {
 	en_cours: boolean,
 	/**  Le morceau en cours de démixage : ses stems ne sont pas encore lisibles. */
 	courant: string | null,
+	/**  En pause : un démixage lancé à la main passe d'abord. */
+	en_pause: boolean,
 	/**  Le morceau qui attend son tour. */
 	attente: string | null,
 	echecs: string[],
