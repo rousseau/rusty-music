@@ -25,7 +25,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use rusty_music_editor::coach::appariement::{Fenetres, Verdict};
+use rusty_music_editor::coach::appariement::Fenetres;
 use rusty_music_editor::coach::basse::{
     confiance_reference, juger, references, AnalyseurDI, BilanHauteur, Evenement, JugementBasse,
     NoteDI, NoteRef,
@@ -504,6 +504,7 @@ fn calibrer_sur(
 /// Les notes jugées attrapées.
 #[cfg(test)]
 fn attrapees(js: &[JugementBasse]) -> usize {
+    use rusty_music_editor::coach::appariement::Verdict;
     js.iter()
         .filter(|j| {
             matches!(
@@ -517,6 +518,7 @@ fn attrapees(js: &[JugementBasse]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusty_music_editor::coach::appariement::Verdict;
     use rusty_music_editor::coach::basse::{synthetiser_note, Hauteur};
 
     const SR: f32 = 48_000.0;
