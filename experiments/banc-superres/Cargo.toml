@@ -1,0 +1,13 @@
+[package]
+name = "banc-superres"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Banc G2 : AERO tel que l'application le lance (`regenerer`, ONNX Runtime sur
+# le CPU), pour le comparer à Apollo (`banc.py`). Hors du workspace.
+[dependencies]
+rusty-music-superres = { path = "../../crates/superres" }
+
+[workspace]

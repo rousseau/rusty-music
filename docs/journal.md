@@ -5555,3 +5555,34 @@ zone réelles d'un module, CC4) ; l'écran n'édite pas encore le profil (la
 commande existe) ; les coups en trop ne sont pas montrés sur la partition,
 seulement comptés ; la table par mesure (`pratique_mesure`), la boucle sur
 les pires mesures et l'escalier de tempo restent la tranche 3.
+
+## Super-résolution, G2 : AERO mesuré, Apollo en attente — 10 nov. 2026
+
+Banc `experiments/banc-superres/` (README), fichiers sur `RUSTY_DEV`.
+ViSQOL absent : coupure, énergie au-dessus de 16 kHz, LSD par bandes et
+SI-SDR, plus un dossier d'écoute à l'aveugle.
+
+- **Références.** Aucun couple MP3/FLAC du même morceau dans la
+  bibliothèque : 6 des 22 FLAC encodés par LAME à 128 et 192 kbit/s, la
+  source sert de référence. 20 MP3 de la bibliothèque (7 × 128, 6 × 160,
+  7 × 192) sans référence.
+- **AERO** (le code de l'app, binaire du banc) : LSD au-dessus de 16 kHz
+  38,0 → 15,8 dB à 128, 33,8 → 20,3 à 192 (meilleur sur 11 extraits sur
+  12) ; sous 16 kHz inchangé (7,17 → 7,10 ; 3,69 → 3,69) ; SI-SDR à 0,1 dB.
+  AERO étend la bande, il ne répare pas les artefacts du codeur.
+  Bibliothèque : coupure 17,1 → 19,7 kHz à 128.
+- **Coût** (M4 Pro) : 24 s par minute de son sur CPU. Réseau seul : CPU
+  0,62 s par segment, CoreML/Metal 0,73 s (13 partitions), ANE ne compile
+  pas : Metal n'apporte rien.
+- **Apollo** : poids déclarés CC BY-SA 4.0 sur Hugging Face (la synthèse
+  disait « licence non dite »). Venv et script prêts ; son exécution (code
+  cloné, poids pickle) refusée dans la session automatique, à lancer avec
+  l'accord de François. Avis : port Burn faisable (briques du
+  BS-RoFormer), utile seulement s'il gagne nettement à 128 kbit/s sous
+  16 kHz, là où AERO ne fait rien.
+- Piège : libsndfile n'ouvre pas les MP3 sur l'exFAT du LaCie (« bad data
+  offset ») ; décodage en mémoire.
+
+Non vérifié : Apollo (ni mesure, ni coût, ni écoute) ; le dossier d'écoute
+n'a donc que deux versions par extrait (MP3 d'origine, AERO) ; aucune
+écoute faite ; LSD sensible au plancher de −100 dB dans les bandes vides.
