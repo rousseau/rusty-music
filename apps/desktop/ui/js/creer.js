@@ -1,4 +1,4 @@
-import "./coach.js"; // l'ordre d'exécution : voir main.js
+import "./accordeur.js"; // l'ordre d'exécution : voir main.js
 // Le propre de Créer : la greffe d'un stem pris dans un autre morceau, ses
 // candidats et son application. Le commun de l'établi : `etabli.js`.
 import {

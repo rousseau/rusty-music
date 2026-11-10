@@ -4,6 +4,7 @@ import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
 import { appliquerVitesses, dessinerReglages, REGLAGES, transpositionDe } from "./etabli-reglages.js";
 import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
+import { accordeur, fermerAccordeur, majBoutonAccordeur } from "./accordeur.js";
 import {
   basseAffichee, batterieAffichee, calculerPartition, montrerPartition, partition, partitionAttendue,
 } from "./pratiquer.js";
@@ -191,6 +192,7 @@ function majCoach() {
   coach.attente = tr ? null : partitionAttendue();
   const barre = $("partition-coach");
   barre.hidden = !tr && !coach.attente;
+  if (barre.hidden) majBoutonAccordeur(false);
   if (coach.actif && instrument !== coach.instrument) {
     // Autre instrument affiché (ou plus de partition) : l'écoute se ferme.
     arreter();
@@ -273,6 +275,8 @@ function direTransposition() {
 
 function dire() {
   $("partition-coach").classList.toggle("coach--ecoute", coach.actif && !coach.attente);
+  // V36 : le diapason, dès que le bandeau montre la basse (partition ou non).
+  majBoutonAccordeur((coach.attente?.instrument ?? affichee().instrument) === "bass");
   dessinerLegende();
   direTransposition();
   direTexte();
@@ -460,6 +464,8 @@ async function poserVitesse(v) {
 }
 
 async function demarrer() {
+  const accordeurFerme = accordeur.ouvert;
+  if (accordeurFerme) await fermerAccordeur();
   coach.actif = true;
   coach.message = null;
   dire();
@@ -477,6 +483,12 @@ async function demarrer() {
     garde = localStorage.getItem(cleGardee());
   } catch {}
   await ecouter(liste.includes(garde) ? garde : (liste[0] ?? null));
+  // V36 : l'accordeur a cédé l'entrée ; le dire, avant ce que l'armement a
+  // annoncé.
+  if (accordeurFerme) {
+    const suite = coach.message && performance.now() < coach.messageJusqua ? ` ${coach.message}` : "";
+    annoncer(`L'accordeur se ferme : le coach prend l'entrée.${suite}`);
+  }
 }
 
 /// Le dernier périphérique choisi, gardé par instrument.
@@ -927,4 +939,4 @@ $("coach-vitesse").addEventListener("click", async () => {
   dire();
 });
 
-export { apresDecompte, brancherCoach, calibrageDemande, coach, majCoach };
+export { annoncer, apresDecompte, arreter, brancherCoach, calibrageDemande, coach, majCoach };

@@ -209,6 +209,16 @@ export const commands = {
 	 */
 	coach_basse_transposer: (demiTons: number) => __TAURI_INVOKE<null>("coach_basse_transposer", { demiTons }),
 	/**
+	 *  L'accordeur (V36) : la hauteur des dernières 250 ms de l'entrée écoutée
+	 *  (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque).
+	 */
+	coach_basse_accorder: (laHz: number | null) => __TAURI_INVOKE<VueAccordeur_Serialize>("coach_basse_accorder", { laHz }),
+	/**
+	 *  Mesure l'accord du disque sur le stem de basse du morceau `id` (une fois
+	 *  par morceau, gardé pour la séance).
+	 */
+	coach_basse_accord_disque: (id: number) => __TAURI_INVOKE<VueAccordDisque_Serialize>("coach_basse_accord_disque", { id }),
+	/**
 	 *  Juge les notes de basse entre `depuis_s` (le `jusqua_s` du dernier appel)
 	 *  et un peu avant maintenant ; `None` ne juge rien et rend seulement le
 	 *  point de départ (après un décompte).
@@ -247,6 +257,22 @@ export const commands = {
 };
 
 /* Types */
+/**  Ce que l'accordeur entend. */
+export type Accord = {
+	/**  Fondamentale affinée. */
+	f0_hz: number | null,
+	/**  La note la plus proche (MIDI), contre la référence. */
+	note: number,
+	/**  Écart à cette note, en cents (positif : trop haut). */
+	cents: number | null,
+	/**  La corde à vide la plus proche (MIDI, [`CORDES`]). */
+	corde: number,
+	/**  Écart à la corde à vide, en cents. */
+	cents_corde: number | null,
+	/**  Probabilité de voisement de pYIN. */
+	confiance: number | null,
+};
+
 /**  Ce qu'un ajout à une playlist a fait. */
 export type AjoutPlaylist = {
 	/**  Pistes ajoutées à la fin. */
@@ -1519,6 +1545,64 @@ export type VoixAura = {
 	id: number,
 	gain: number | null,
 	pan: number | null,
+};
+
+/**
+ *  L'accord du disque (V36, « sur le morceau ») : l'écart au La 440 mesuré
+ *  sur le stem de basse.
+ */
+export type VueAccordDisque = VueAccordDisque_Serialize | VueAccordDisque_Deserialize;
+
+/**
+ *  L'accord du disque (V36, « sur le morceau ») : l'écart au La 440 mesuré
+ *  sur le stem de basse.
+ */
+export type VueAccordDisque_Deserialize = {
+	/**  Écart en cents, si assez de notes sûres. */
+	ecart_cents?: number | null,
+	notes: number,
+	/**  Faux quand le morceau n'a pas de stem de basse. */
+	stem: boolean,
+};
+
+/**
+ *  L'accord du disque (V36, « sur le morceau ») : l'écart au La 440 mesuré
+ *  sur le stem de basse.
+ */
+export type VueAccordDisque_Serialize = {
+	/**  Écart en cents, si assez de notes sûres. */
+	ecart_cents: number | null,
+	notes: number,
+	/**  Faux quand le morceau n'a pas de stem de basse. */
+	stem: boolean,
+};
+
+/**
+ *  Ce que l'accordeur entend sur le canal jugé (V36), contre la `la_hz` de
+ *  référence ; `accord` vide : rien ne joue (« jouez une corde »).
+ */
+export type VueAccordeur = VueAccordeur_Serialize | VueAccordeur_Deserialize;
+
+/**
+ *  Ce que l'accordeur entend sur le canal jugé (V36), contre la `la_hz` de
+ *  référence ; `accord` vide : rien ne joue (« jouez une corde »).
+ */
+export type VueAccordeur_Deserialize = {
+	accord?: Accord | null,
+	/**  Le canal écouté, compté depuis 0. */
+	canal: number,
+	erreur?: string | null,
+};
+
+/**
+ *  Ce que l'accordeur entend sur le canal jugé (V36), contre la `la_hz` de
+ *  référence ; `accord` vide : rien ne joue (« jouez une corde »).
+ */
+export type VueAccordeur_Serialize = {
+	accord: Accord | null,
+	/**  Le canal écouté, compté depuis 0. */
+	canal: number,
+	erreur: string | null,
 };
 
 /**  Ce que l'armement a trouvé : combien de notes le stem confirme. */

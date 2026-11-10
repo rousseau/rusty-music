@@ -1657,6 +1657,7 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   // Rien n'écoute avant le geste.
   expect(await appels(page, "coach_ecouter")).toEqual([]);
   await expect(page.locator("#coach-calibrer")).toBeHidden();
+  await expect(page.locator("#coach-accordeur")).toBeHidden();
 
   await page.click("#coach-basculer");
   await expect(page.locator("#coach-basculer")).toHaveAttribute("aria-pressed", "true");
@@ -1738,6 +1739,9 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   await expect(barre).toBeVisible();
   await expect(barre).toHaveAttribute("aria-label", "Coach de basse");
   await expect(page.locator("#coach-basculer")).toBeHidden();
+  // V36 : le diapason est là dès la basse choisie, partition ou non ; pas
+  // pour la batterie.
+  await expect(page.locator("#coach-accordeur")).toBeVisible();
   const transcrire = page.locator("#coach-transcrire");
   await expect(transcrire).toHaveText("transcrire la basse pour jouer avec");
   await transcrire.click();
@@ -1942,6 +1946,82 @@ test("V35 : la basse transposée — tablature, coach et code des erreurs suiven
   expect((await tablature()).textes).toEqual(["hors manche : D#1"]);
   // Les marques posées sur l'ancienne hauteur sont effacées.
   await expect(marques).toHaveCount(0);
+});
+
+test("V36 : l'accordeur de basse — diapason du bandeau, note, cents, corde, référence du disque", async ({ page }) => {
+  await basseTranscrite(page);
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_basse_entrees = ["Interface USB"];
+    window.__FIXTURES__.coach_basse_ecouter = (a) =>
+      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 1, canal: 0, manuel: false, latence_ms: 24 } : null;
+    // La corde de la, 6 cents trop haut ; le test change ce qu'entend le moteur.
+    window.__ACCORD__ = { f0_hz: 55.2, note: 33, cents: 6.3, corde: 33, cents_corde: 6.3, confiance: 0.9 };
+    window.__FIXTURES__.coach_basse_accorder = () => ({ accord: window.__ACCORD__, canal: 0, erreur: null });
+    window.__FIXTURES__.coach_basse_accord_disque = { ecart_cents: -12.4, notes: 41, stem: true };
+    try {
+      localStorage.removeItem("accordeur-morceau");
+    } catch {}
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const diapason = page.locator("#coach-accordeur");
+  await expect(diapason).toBeVisible();
+  await expect(diapason).toHaveAttribute("aria-label", "Accordeur");
+  await expect(diapason.locator("svg")).toHaveCount(1);
+  const panneau = page.locator("#accordeur");
+  await expect(panneau).toBeHidden();
+
+  // Ouvert : l'entrée du coach écoutée, la note et ses cents, la corde visée.
+  await diapason.click();
+  await expect(panneau).toBeVisible();
+  await expect(diapason).toHaveAttribute("aria-pressed", "true");
+  expect(await panneau.evaluate((el) => !!el.closest("#editer-etabli") && !el.closest(".rail"))).toBe(true);
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe("Interface USB");
+  await expect(page.locator("#accordeur-note")).toHaveText("la1");
+  await expect(page.locator("#accordeur-cents")).toHaveText("+6 cents");
+  await expect(page.locator("#accordeur-corde")).toHaveText("corde de la (la1) : +6 cents, trop haut : détendre");
+  await expect(page.locator("#accordeur-juste")).toBeHidden();
+  await expect(page.locator("#accordeur-disque")).toHaveText("La 440");
+  expect((await appels(page, "coach_basse_accorder")).at(-1).laHz).toBe(440);
+  // L'aiguille à droite du milieu.
+  const gauche = await page.locator("#accordeur-aiguille").evaluate((el) => parseFloat(el.style.left));
+  expect(gauche).toBeGreaterThan(55);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/v36-accordeur.png" });
+
+  // Accordée : l'aiguille lissée rejoint le milieu, « ✓ juste » s'affiche.
+  await page.evaluate(() => (window.__ACCORD__ = { ...window.__ACCORD__, f0_hz: 55.01, cents: 0.4, cents_corde: 0.4 }));
+  await expect(page.locator("#accordeur-juste")).toBeVisible();
+  await expect(page.locator("#accordeur-juste")).toHaveText("✓ juste");
+  await expect(page.locator("#accordeur-corde")).toContainText(", juste");
+
+  // Sur le morceau : l'accord du disque devient la référence, gardé.
+  await page.check("#accordeur-morceau");
+  await expect(page.locator("#accordeur-disque")).toHaveText("le disque est à −12 cents (La 436,9)");
+  expect((await appels(page, "coach_basse_accord_disque")).at(-1).id).toBeTruthy();
+  await expect.poll(() => appels(page, "coach_basse_accorder").then((a) => Math.round(a.at(-1).laHz * 10))).toBe(4369);
+  expect(await page.evaluate(() => localStorage.getItem("accordeur-morceau"))).toBe("1");
+
+  // Rien ne joue : le dire.
+  await page.evaluate(() => (window.__ACCORD__ = null));
+  await expect(page.locator("#accordeur-corde")).toHaveText("Jouez une corde.");
+  await expect(page.locator("#accordeur-note")).toHaveText("–");
+
+  // Le coach prend l'entrée : l'accordeur se ferme et le dit.
+  await page.click("#coach-basculer");
+  await expect(panneau).toBeHidden();
+  await expect(page.locator("#coach-basculer")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#coach-etat")).toContainText("L'accordeur se ferme");
+  // Et l'inverse : rouvrir l'accordeur arrête le coach.
+  await diapason.click();
+  await expect(panneau).toBeVisible();
+  await expect(page.locator("#coach-basculer")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#accordeur-morceau")).toBeChecked();
+  // Fermer : l'entrée n'est plus écoutée.
+  await page.click("#accordeur-fermer");
+  await expect(panneau).toBeHidden();
+  await expect(diapason).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
 });
 
 /// Les lignes qu'occupent les enfants visibles de la barre de correction.

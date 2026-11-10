@@ -535,6 +535,16 @@
           <div id="partition-coach" class="correction coach" role="toolbar" aria-label="Coach de batterie" hidden>
             <button id="coach-basculer" class="bouton bouton--mince" aria-pressed="false"
                     title="Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.">jouer avec ma batterie</button>
+            <!-- V36 : l'accordeur de basse (js/accordeur.js), même entrée et même
+                 hauteur que le coach. Un diapason dessiné ici. -->
+            <button id="coach-accordeur" class="bouton bouton--mince coach__accordeur" hidden aria-pressed="false"
+                    aria-label="Accordeur" title="Accordeur : la note jouée et son écart en cents, sur l'entrée de la basse (La 440, ou l'accord du disque)">
+              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                <path d="M6.5 2v6.5a3.5 3.5 0 0 0 7 0V2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M10 12v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <circle cx="10" cy="18" r="1.4" fill="currentColor"/>
+              </svg>
+            </button>
             <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
             <!-- Basse (V34) : le canal de l'interface où elle joue, « auto » par
                  défaut (trouvé à la calibration, ou là où la basse se fait
@@ -555,6 +565,30 @@
                     title="Boucler les mesures les plus difficiles d'après les passages joués (table par mesure, gardée pour ce morceau), en repartant à 70 %. Proposé, jamais imposé.">boucler</button>
             <button id="coach-vitesse" class="bouton bouton--mince" hidden
                     title="L'escalier de tempo : un cran de plus après deux passages propres (95 % des notes, écart-type sous 25 ms), un de moins après un passage raté. Proposé, jamais imposé.">vitesse</button>
+          </div>
+          <!-- V36 : l'accordeur, au centre sous le bandeau du coach, sans fenêtre
+               modale ; il ne joue aucun son. -->
+          <div id="accordeur" class="accordeur" role="region" aria-label="Accordeur" hidden>
+            <div class="accordeur__lecture" aria-live="polite">
+              <span id="accordeur-note" class="accordeur__note">–</span>
+              <span id="accordeur-cents" class="accordeur__cents"></span>
+              <span id="accordeur-juste" class="accordeur__juste" hidden>✓ juste</span>
+            </div>
+            <div class="accordeur__jauge" aria-hidden="true">
+              <span class="accordeur__zone"></span>
+              <span class="accordeur__milieu"></span>
+              <span id="accordeur-aiguille" class="accordeur__aiguille" hidden></span>
+            </div>
+            <div class="accordeur__echelle" aria-hidden="true"><span>−50</span><span>0</span><span>+50</span></div>
+            <p id="accordeur-corde" class="accordeur__corde"></p>
+            <div class="accordeur__pied">
+              <label class="accordeur__ref"
+                     title="Accorder sur l'enregistrement tel qu'il est joué : l'accord réel du disque, mesuré sur le stem de basse, plutôt que La 440">
+                <input type="checkbox" id="accordeur-morceau"> sur le morceau</label>
+              <span id="accordeur-disque" class="accordeur__disque"></span>
+              <button id="accordeur-fermer" class="bouton bouton--mince" aria-label="Fermer l'accordeur"
+                      title="Fermer l'accordeur (l'entrée audio cesse d'être écoutée)">fermer</button>
+            </div>
           </div>
           <!-- Pratiquer : la partition au centre (décision 11), rendue par
                alphaTab, qui suit le lecteur de stems. -->

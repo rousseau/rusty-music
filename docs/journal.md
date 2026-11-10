@@ -6175,3 +6175,51 @@ attendu) — l'écran est redevenu visible à la fin du premier, il n'a pas ét�
 lancé ; relief et carte (18 cellules `carte+relief`, carte non dessinée) ;
 le bandeau du coach pendant l'écoute (l'audit parcourt Pratiquer sans
 coach ouvert).
+
+## Pratiquer, V36 : un accordeur de basse dans le bandeau du coach — 10 nov. 2026
+
+François veut vérifier l'accord de sa basse sans quitter Pratiquer.
+
+- **Le bouton** : un diapason dessiné (SVG, « Accordeur ») dans le bandeau
+  du coach, dès que la basse est choisie, partition transcrite ou non ;
+  jamais pour la batterie.
+- **L'accordeur** (`apps/desktop/ui/js/accordeur.js`), au centre sous le
+  bandeau, sans fenêtre modale ni son : la note la plus proche, l'écart en
+  cents (lissé, jauge de −50 à +50 avec sa zone de ±3), « ✓ juste » à
+  ±3 cents (signe, zone et aiguille épaissie, pas la couleur seule), la
+  corde visée (si grave, mi, la, ré, sol) avec « trop haut : détendre » ou
+  « trop bas : tendre ». « Jouez une corde. » quand rien ne joue.
+- **Le moteur** (`crates/editor/src/coach/accordeur.rs`) : la même hauteur
+  que le coach (`basse::hauteur`, pYIN et contrôles d'octave), affinée en
+  cherchant le creux de la différence de YIN à `k` périodes (≈ 25 ms) puis
+  en parabole ; l'entrée est celle du coach (`coach_basse_ecouter`, canal
+  retenu par V34), chaque voie gardant ses 250 dernières ms. Commandes
+  `coach_basse_accorder` (référence en Hz) et `coach_basse_accord_disque`.
+  L'accordeur et l'écoute du coach se coupent l'un l'autre, en le disant.
+- **La référence** (décision de François) : La 440, ou « sur le morceau » :
+  l'accord du disque mesuré sur le stem de basse (médiane des écarts au
+  demi-ton des notes que l'analyseur de la DI y trouve sûres, affinées sur
+  150 ms ; 12 notes au moins), gardé par morceau pour la séance, plus la
+  transposition en cours. Celle-ci se fait par demi-tons entiers : ramenée
+  au demi-ton, elle laisse l'écart du disque tel quel. « le disque est à
+  −12 cents (La 436,9) » ; sans stem ou sans assez de notes, il le dit et
+  reste à La 440. Le choix se garde dans le navigateur.
+- **Mesuré** : sinusoïdes de 41 à 400 Hz (49 fréquences, pas de 3,7 %) :
+  note juste, pire écart 0,000 cent (critère ≤ 1) ; une corde de la
+  synthétique (harmoniques, déclin) 8 cents trop bas → la, −8 ± 1 ; le si
+  grave d'une cinq cordes → corde de si ; La 435 → un la à 110 Hz à
+  +19,8 cents ; signal à −60 dBFS, bruit, trame vide → rien ; une ligne de
+  20 notes jouée 12 cents trop bas → disque à −12 ± 1,5 cents ; une note
+  seule → pas de mesure ; l'accordeur sur une interface simulée à deux
+  canaux (souffle sur l'entrée 1, corde de la +6 cents sur la 2) → rien sur
+  la 1, la +6 ± 1 sur la 2. Fumées : V36 (diapason, ouverture, « la1 »
+  « +6 cents », corde et sens, aiguille à droite, « ✓ juste » une fois
+  accordée, « sur le morceau » → « le disque est à −12 cents (La 436,9) »
+  et référence 436,9 Hz envoyée, choix gardé, « Jouez une corde. », le
+  coach ferme l'accordeur et le dit, l'accordeur arrête le coach, fermer
+  libère l'entrée) ; E4 (pas de diapason pour la batterie), V34 (diapason
+  sans partition). `verifier.sh` vert, 72 fumées.
+
+Non vérifié : avec la vraie basse et la Scarlett (stabilité de l'aiguille,
+cordes à vide réelles, inharmonicité) ; l'accord de disques réels ;
+audit d'interface reporté (écran visible), écran touché : `pratiquer`.

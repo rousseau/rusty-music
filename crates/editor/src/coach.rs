@@ -30,6 +30,7 @@
 //! différée par pYIN causal, fausses notes et octaves, référence vérifiée
 //! sur le stem).
 
+pub mod accordeur;
 pub mod appariement;
 pub mod basse;
 pub mod batterie;

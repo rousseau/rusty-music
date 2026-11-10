@@ -464,6 +464,10 @@ const fixtures = {
   coach_basse_armer: { notes: 0, sures: 0, stem: false },
   // V35 : la transposition en cours, que le coach de basse juge.
   coach_basse_transposer: null,
+  // V36 : l'accordeur ; rien ne joue, pas de stem mesuré, sauf dans le test
+  // qui les pose.
+  coach_basse_accorder: { accord: null, canal: 0, erreur: null },
+  coach_basse_accord_disque: { ecart_cents: null, notes: 0, stem: false },
   coach_basse_juger: (a) => ({
     jusqua_s: a.depuisS ?? 0, jugements: [], notes: [], bilan: { justes: 0, fausses: 0, octaves: 0, inconnues: 0 },
     erreur: null, canal: 0, ailleurs: null,

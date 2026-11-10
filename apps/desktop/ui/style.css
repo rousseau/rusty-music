@@ -377,6 +377,7 @@ html, body {
   background: var(--accent); color: var(--sur-accent);
   border: 2px solid var(--accent); border-radius: 3px; padding: 6px 10px;
   --txt: var(--sur-accent); --mut: var(--sur-accent); --line: var(--sur-accent);
+  --bandeau-fond: var(--accent);
 }
 .coach #coach-basculer, .coach #coach-transcrire {
   background: var(--sur-accent); color: var(--accent); border-color: var(--sur-accent);
@@ -389,10 +390,45 @@ html, body {
   background: var(--feuille); color: var(--feuille-encre); border-color: var(--accent);
   --txt: var(--feuille-encre); --mut: var(--feuille-mut); --line: var(--feuille-mut);
   --panel2: var(--feuille); --accent: var(--feuille-accent); --sur-accent: var(--feuille);
+  --bandeau-fond: var(--feuille);
 }
 .coach.coach--ecoute #coach-basculer { background: var(--feuille-encre); color: var(--feuille); border-color: var(--feuille-encre); }
 .coach.coach--ecoute #coach-basculer:hover:not(:disabled) { color: var(--feuille); border-color: var(--feuille-encre); }
 .coach select { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); }
+/* Les autres boutons du bandeau (diapason, calibrer…) : sans aplat, à
+   l'encre du bandeau ; le survol souligne plutôt que de virer à l'accent. */
+.coach .bouton:not(#coach-basculer):not(#coach-transcrire) { background: transparent; }
+.coach .bouton:not(#coach-basculer):not(#coach-transcrire):hover:not(:disabled) { color: var(--txt); border-color: var(--txt); text-decoration: underline; }
+.coach .bouton[aria-pressed="true"]:not(#coach-basculer) { background: var(--txt); color: var(--bandeau-fond); }
+.coach .bouton[aria-pressed="true"]:not(#coach-basculer):hover:not(:disabled) { color: var(--bandeau-fond); }
+.coach__accordeur { display: inline-flex; align-items: center; padding-block: 1px; }
+/* V36 : l'accordeur, au centre sous le bandeau. « Juste » se dit par un signe
+   (✓ juste) et par la zone centrale de la jauge, pas par la couleur seule. */
+.accordeur {
+  display: grid; gap: 6px; flex: none; padding: 10px 14px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  max-width: var(--colonne-lecture);
+}
+.accordeur[hidden], .etabli:not(.etabli--pratiquer) .accordeur { display: none; }
+.accordeur__lecture { display: flex; align-items: baseline; gap: 14px; }
+.accordeur__note { font: 600 var(--t-titre) var(--serif); color: var(--txt); min-width: 3ch; }
+.accordeur__cents { font-family: var(--mono); font-size: var(--t-intertitre); color: var(--txt); }
+.accordeur__juste { font-weight: 600; color: var(--accent); }
+.accordeur__jauge { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
+.accordeur__zone { position: absolute; top: 0; bottom: 0; left: 47%; width: 6%; background: var(--line); }
+.accordeur__milieu { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--mut); }
+.accordeur__aiguille {
+  position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px;
+  background: var(--txt); transition: left 90ms linear;
+}
+.accordeur__aiguille[hidden] { display: none; }
+.accordeur--juste .accordeur__aiguille { background: var(--accent); width: 5px; margin-left: -2px; }
+.accordeur__echelle { display: flex; justify-content: space-between; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); }
+.accordeur__corde { margin: 0; font-size: var(--t-second); color: var(--txt); }
+.accordeur__pied { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: var(--t-second); }
+.accordeur__ref { display: inline-flex; align-items: center; gap: 6px; color: var(--txt); cursor: pointer; }
+.accordeur__disque { color: var(--mut); flex: 1; min-width: 0; }
+.accordeur__pied .bouton--mince { margin-left: auto; }
 .coach__etat { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .coach__peripherique { font: inherit; max-width: 220px; }
 .coach__transpose { font-weight: 600; white-space: nowrap; }

@@ -73,6 +73,8 @@ fn exporter_les_types_des_commandes() {
             coach_basse::coach_basse_ecouter,
             coach_basse::coach_basse_armer,
             coach_basse::coach_basse_transposer,
+            coach_basse::coach_basse_accorder,
+            coach_basse::coach_basse_accord_disque,
             coach_basse::coach_basse_juger,
             coach_basse::coach_basse_calibrer,
             coach_basse::coach_basse_canal,

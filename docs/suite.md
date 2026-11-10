@@ -127,6 +127,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     transposée (« hors manche » sous le mi grave), code des erreurs en
     couleur et en signe (← → la note jouée, 8, ×, pointillé, + pour les
     coups en trop), bandeau du coach sur aplat d'accent avec sa légende ;
+    V36 le 10 nov. : accordeur de basse au diapason dans le bandeau
+    (même entrée et même pYIN que le coach, affiné au cent, La 440 ou
+    l'accord du disque mesuré sur le stem) ;
     restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;

@@ -36,6 +36,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use rusty_music_editor::coach::accordeur::{accorder, ecart_disque, Accord};
 use rusty_music_editor::coach::appariement::Fenetres;
 use rusty_music_editor::coach::basse::{
     confiance_reference, juger, references, transposer, AnalyseurDI, BilanHauteur, Evenement,
@@ -67,6 +68,9 @@ const FENETRE_AILLEURS_S: f64 = 3.0;
 /// que la basse y semble (le souffle d'un micro n'en donne pas).
 const NOTES_AILLEURS: usize = 3;
 
+/// Ce que l'accordeur écoute : les dernières millisecondes de l'entrée.
+const RECENT_S: f32 = 0.25;
+
 /// Recul du jugement sur le présent : la hauteur d'une note arrive 60 à
 /// 75 ms après son attaque, et un rappel de capture tarde d'un tampon.
 const RECUL_S: f64 = 0.4;
@@ -81,6 +85,9 @@ pub(crate) struct Voie {
     notes: VecDeque<NoteDI>,
     /// Origines reprises (dérive ou bloc perdu) depuis l'ouverture.
     reprises: u32,
+    /// Les derniers échantillons, pour l'accordeur (V36) : [`RECENT_S`].
+    recent: VecDeque<f32>,
+    sr: f32,
 }
 
 impl Voie {
@@ -109,6 +116,11 @@ impl Voie {
             }
         }
         self.pousses += bloc.len() as u64;
+        self.sr = sr;
+        let garde = (RECENT_S * sr) as usize;
+        self.recent.extend(bloc.iter().copied());
+        let trop = self.recent.len().saturating_sub(garde);
+        self.recent.drain(..trop);
     }
 
     fn entre(&self, t0_s: f64, t1_s: f64) -> Vec<NoteDI> {
@@ -198,6 +210,8 @@ pub(crate) struct EtatCoachBasse {
     /// Le réglage de hauteur des stems (V35), en demi-tons : la référence
     /// jugée est `refs` décalée d'autant, ce que l'on entend et joue.
     demi_tons: i32,
+    /// L'accord du disque mesuré sur le stem de basse (V36), par morceau.
+    disques: std::collections::HashMap<i64, VueAccordDisque>,
 }
 
 /// Ce que l'interface sait de l'écoute.
@@ -545,6 +559,104 @@ pub(crate) fn coach_basse_transposer(etat: State<Etat>, demi_tons: i32) -> Resul
     Ok(())
 }
 
+/// Ce que l'accordeur entend sur le canal jugé (V36), contre la `la_hz` de
+/// référence ; `accord` vide : rien ne joue (« jouez une corde »).
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub(crate) struct VueAccordeur {
+    accord: Option<Accord>,
+    /// Le canal écouté, compté depuis 0.
+    canal: u32,
+    erreur: Option<String>,
+}
+
+fn accorder_sur(coach: &EtatCoachBasse, la_hz: f32) -> Result<VueAccordeur, String> {
+    let ecoute = coach
+        .ecoute
+        .as_ref()
+        .ok_or("aucune entrée audio n'est écoutée")?;
+    let capture = verrou(&ecoute.capture);
+    let accord = capture.voies.get(ecoute.canal).and_then(|v| {
+        let x: Vec<f32> = v.recent.iter().copied().collect();
+        accorder(&x, v.sr, la_hz)
+    });
+    Ok(VueAccordeur {
+        accord,
+        canal: ecoute.canal as u32,
+        erreur: capture.erreur.clone(),
+    })
+}
+
+/// L'accordeur (V36) : la hauteur des dernières 250 ms de l'entrée écoutée
+/// (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_basse_accorder(etat: State<Etat>, la_hz: f32) -> Result<VueAccordeur, String> {
+    if !(400.0..=480.0).contains(&la_hz) {
+        return Err(format!("référence hors bornes : {la_hz} Hz"));
+    }
+    accorder_sur(&verrou(&etat.coach_basse), la_hz)
+}
+
+/// L'accord du disque (V36, « sur le morceau ») : l'écart au La 440 mesuré
+/// sur le stem de basse.
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub(crate) struct VueAccordDisque {
+    /// Écart en cents, si assez de notes sûres.
+    ecart_cents: Option<f32>,
+    notes: u32,
+    /// Faux quand le morceau n'a pas de stem de basse.
+    stem: bool,
+}
+
+/// Mesure l'accord du disque sur le stem de basse du morceau `id` (une fois
+/// par morceau, gardé pour la séance).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_basse_accord_disque(
+    etat: State<Etat>,
+    id: i64,
+) -> Result<VueAccordDisque, String> {
+    if let Some(v) = verrou(&etat.coach_basse).disques.get(&id) {
+        return Ok(v.clone());
+    }
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let dossier = dossier_stems(&etat, &PathBuf::from(&chemin));
+    let stem = stems_du_dossier(&dossier)
+        .into_iter()
+        .find(|(n, _)| n == "bass")
+        .map(|(_, p)| p);
+    let vue = match &stem {
+        None => VueAccordDisque {
+            ecart_cents: None,
+            notes: 0,
+            stem: false,
+        },
+        Some(p) => {
+            let s = rusty_music_editor::decode::stereo(p).map_err(echec)?;
+            let mono: Vec<f32> = s
+                .gauche
+                .iter()
+                .zip(&s.droite)
+                .map(|(g, d)| 0.5 * (g + d))
+                .collect();
+            let mesure = ecart_disque(&mono, rusty_music_editor::decode::SR as f32);
+            VueAccordDisque {
+                ecart_cents: mesure.map(|m| m.0),
+                notes: mesure.map_or(0, |m| m.1 as u32),
+                stem: true,
+            }
+        }
+    };
+    verrou(&etat.coach_basse).disques.insert(id, vue.clone());
+    Ok(vue)
+}
+
 /// Le jugement d'une fenêtre de temps.
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(specta::Type))]
@@ -887,6 +999,7 @@ mod tests {
             latence_s: 0.0,
             refs,
             demi_tons: 0,
+            disques: Default::default(),
         }
     }
 
@@ -1092,6 +1205,43 @@ mod tests {
             "{:?}",
             r(0.7)
         );
+    }
+
+    #[test]
+    fn l_accordeur_ecoute_le_canal_retenu() {
+        // Une corde de la 6 cents trop haut sur l'entrée 2, du souffle sur
+        // la 1 : l'accordeur écoute la 2 une fois retenue.
+        let corde = rusty_music_editor::coach::accordeur::corde_synthetique(
+            SR,
+            55.0 * 2f32.powf(6.0 / 1200.0),
+            1.0,
+        );
+        // Par blocs de 256, sans le silence final de `capturer_canaux` : la
+        // corde tient encore quand on l'écoute (0,5 s sur 1 s).
+        let souffle = bruit(1.0);
+        let mut c = Capture::default();
+        for debut in (0..(0.5 * SR) as usize).step_by(256) {
+            let blocs = [
+                souffle[debut..debut + 256].to_vec(),
+                corde[debut..debut + 256].to_vec(),
+            ];
+            c.recevoir(100.0 + debut as f64 / SR as f64, SR, &blocs);
+        }
+        let mut coach = coach_simule(c, Vec::new());
+        assert!(accorder_sur(&coach, 440.0).unwrap().accord.is_none());
+        coach.ecoute.as_mut().unwrap().canal = 1;
+        let v = accorder_sur(&coach, 440.0).unwrap();
+        let a = v.accord.expect("la corde");
+        assert_eq!((a.note, a.corde, v.canal), (33, 33, 1), "{a:?}");
+        assert!((a.cents - 6.0).abs() <= 1.0, "{a:?}");
+        // Le tampon ne garde que les 250 dernières ms.
+        let capture = coach.ecoute.as_ref().unwrap().capture.clone();
+        assert_eq!(
+            capture.lock().unwrap().voies[1].recent.len(),
+            (0.25 * SR) as usize
+        );
+        // Sans écoute : une erreur dite.
+        assert!(accorder_sur(&EtatCoachBasse::default(), 440.0).is_err());
     }
 
     /// Seize clics à 120.
