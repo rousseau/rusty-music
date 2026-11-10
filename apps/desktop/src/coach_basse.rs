@@ -38,8 +38,8 @@ use std::sync::Arc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rusty_music_editor::coach::appariement::Fenetres;
 use rusty_music_editor::coach::basse::{
-    confiance_reference, juger, references, AnalyseurDI, BilanHauteur, Evenement, JugementBasse,
-    NoteDI, NoteRef,
+    confiance_reference, juger, references, transposer, AnalyseurDI, BilanHauteur, Evenement,
+    JugementBasse, NoteDI, NoteRef,
 };
 use rusty_music_editor::coach::{calibrer, Calibration, Horloge};
 use rusty_music_player::horloge::{maintenant_s, Ancre};
@@ -193,7 +193,11 @@ struct EcouteDI {
 pub(crate) struct EtatCoachBasse {
     ecoute: Option<EcouteDI>,
     latence_s: f64,
+    /// La référence telle que transcrite, à la hauteur d'origine.
     refs: Vec<NoteRef>,
+    /// Le réglage de hauteur des stems (V35), en demi-tons : la référence
+    /// jugée est `refs` décalée d'autant, ce que l'on entend et joue.
+    demi_tons: i32,
 }
 
 /// Ce que l'interface sait de l'écoute.
@@ -471,13 +475,16 @@ pub(crate) struct VueArmementBasse {
 
 /// Arme le coach sur la transcription de la basse du morceau `id` (`notes`
 /// au rang de la transcription, celui des jugements) : chaque note est
-/// vérifiée sur le stem de basse démixé. Une liste vide désarme.
+/// vérifiée sur le stem de basse démixé, à la hauteur d'origine (le stem
+/// d'origine confirme la note d'origine) ; `demi_tons` est le réglage de
+/// hauteur en cours, que le jugement ajoute (V35). Une liste vide désarme.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn coach_basse_armer(
     etat: State<Etat>,
     id: i64,
     notes: Vec<NoteArmee>,
+    demi_tons: i32,
 ) -> Result<VueArmementBasse, String> {
     let notes: Vec<(f64, u8)> = notes
         .iter()
@@ -513,12 +520,29 @@ pub(crate) fn coach_basse_armer(
     };
     let refs = references(&notes, &confiances);
     let sures = refs.iter().filter(|r| r.sure).count() as u32;
-    verrou(&etat.coach_basse).refs = refs;
+    {
+        let mut coach = verrou(&etat.coach_basse);
+        coach.refs = refs;
+        coach.demi_tons = demi_tons;
+    }
     Ok(VueArmementBasse {
         notes: notes.len() as u32,
         sures,
         stem: stem.is_some(),
     })
+}
+
+/// Le réglage de hauteur des stems a changé (V35) : le coach juge contre
+/// la référence décalée de `demi_tons`, sans réarmer (la confiance du stem
+/// ne dépend pas du décalage).
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_basse_transposer(etat: State<Etat>, demi_tons: i32) -> Result<(), String> {
+    if !(-24..=24).contains(&demi_tons) {
+        return Err(format!("transposition hors bornes : {demi_tons}"));
+    }
+    verrou(&etat.coach_basse).demi_tons = demi_tons;
+    Ok(())
 }
 
 /// Le jugement d'une fenêtre de temps.
@@ -600,7 +624,8 @@ fn juger_sur(
     let marge = 2.0 * fenetres.attrape_s / ancre.vitesse.max(1e-3);
     let notes = capture.entre(ecoute.canal, depuis_s - marge, jusqua_s + marge);
     drop(capture);
-    let jugements = juger(&horloge, &coach.refs, &notes, depuis_s, jusqua_s, &fenetres);
+    let refs = transposer(&coach.refs, coach.demi_tons);
+    let jugements = juger(&horloge, &refs, &notes, depuis_s, jusqua_s, &fenetres);
     vue.bilan = BilanHauteur::de(&jugements);
     vue.jugements = jugements;
     vue.notes = notes;
@@ -861,6 +886,7 @@ mod tests {
             }),
             latence_s: 0.0,
             refs,
+            demi_tons: 0,
         }
     }
 
@@ -948,6 +974,124 @@ mod tests {
         assert_eq!(incertaine.hauteur, None);
         let fausse = js.iter().find(|j| j.jugement.reference == Some(1)).unwrap();
         assert_eq!(fausse.hauteur, Some(Hauteur::Fausse { demi_tons: 1 }));
+    }
+
+    /// La référence de la ligne, confirmée par son « stem » (la ligne même).
+    fn refs_de_la_ligne() -> Vec<NoteRef> {
+        let stem = prise(&ligne(), 4.0);
+        let notes: Vec<(f64, u8)> = ligne().iter().map(|n| (n.0 as f64, n.2 as u8)).collect();
+        references(&notes, &confiance_reference(&stem, SR, &notes))
+    }
+
+    const ANCRE_1000: Ancre = Ancre {
+        t_s: 1000.0,
+        morceau_s: 0.0,
+        vitesse: 1.0,
+    };
+
+    #[test]
+    fn la_reference_suit_la_transposition() {
+        // V35 : le morceau transposé d'un demi-ton vers le haut, la ligne
+        // jouée un demi-ton plus haut, comme on l'entend.
+        let refs = refs_de_la_ligne();
+        assert_eq!(refs.iter().filter(|r| r.sure).count(), 6);
+        let jeu: Vec<(f32, f32, f32)> = ligne().iter().map(|&(t, d, m)| (t, d, m + 1.0)).collect();
+        let mut coach = coach_simule(capturer(&prise(&jeu, 4.0), 1000.0), refs);
+        // Avec la transposition : justes.
+        coach.demi_tons = 1;
+        let v = juger_sur(&coach, &ANCRE_1000, None, 1000.0, 1004.0);
+        let b = BilanHauteur::de(&v.jugements);
+        assert_eq!((b.justes, b.fausses, b.octaves), (6, 0, 0), "{v:#?}");
+        // Sans : toutes fausses, d'un demi-ton trop haut.
+        coach.demi_tons = 0;
+        let v = juger_sur(&coach, &ANCRE_1000, None, 1000.0, 1004.0);
+        let b = BilanHauteur::de(&v.jugements);
+        assert_eq!((b.justes, b.fausses), (0, 6), "{v:#?}");
+        assert!(v
+            .jugements
+            .iter()
+            .all(|j| j.hauteur == Some(Hauteur::Fausse { demi_tons: 1 })));
+        // Transposé vers le bas, joué à l'origine : fausses d'un demi-ton
+        // trop haut aussi.
+        let mut coach = coach_simule(capturer(&prise(&ligne(), 4.0), 1000.0), refs_de_la_ligne());
+        coach.demi_tons = -1;
+        let v = juger_sur(&coach, &ANCRE_1000, None, 1000.0, 1004.0);
+        assert_eq!(BilanHauteur::de(&v.jugements).fausses, 6, "{v:#?}");
+    }
+
+    /// La ligne jouée à `vitesse`, la 1ʳᵉ note `avance_s` trop tôt et la
+    /// 2ᵉ autant trop tard (horloge), les autres 10 ms en retard.
+    fn juger_a_la_vitesse(vitesse: f64, ecart_s: f32) -> Vec<JugementBasse> {
+        let r = vitesse as f32;
+        let jeu: Vec<(f32, f32, f32)> = ligne()
+            .iter()
+            .enumerate()
+            .map(|(k, &(t, d, m))| {
+                let decal = match k {
+                    0 => -ecart_s,
+                    1 => ecart_s,
+                    _ => 0.010,
+                };
+                (t / r + decal, d, m)
+            })
+            .collect();
+        let coach = coach_simule(
+            capturer(&prise(&jeu, 4.0 / r + 0.5), 1000.0),
+            refs_de_la_ligne(),
+        );
+        let ancre = Ancre {
+            vitesse,
+            ..ANCRE_1000
+        };
+        juger_sur(&coach, &ancre, None, 1000.0, 1000.0 + 4.0 / vitesse).jugements
+    }
+
+    #[test]
+    fn le_temps_se_juge_a_la_vitesse_en_cours() {
+        // À 70 % comme à 100 % : la 1ʳᵉ note en avance, la 2ᵉ en retard, les
+        // autres justes ; l'écart musical est l'écart d'horloge × la vitesse.
+        for vitesse in [0.7, 1.0] {
+            let js = juger_a_la_vitesse(vitesse, 0.100);
+            let par_ref = |k: usize| js.iter().find(|j| j.jugement.reference == Some(k)).unwrap();
+            assert_eq!(
+                par_ref(0).jugement.verdict,
+                Verdict::Avance,
+                "{vitesse} : {js:#?}"
+            );
+            assert_eq!(
+                par_ref(1).jugement.verdict,
+                Verdict::Retard,
+                "{vitesse} : {js:#?}"
+            );
+            let musical = par_ref(1).jugement.ecart_musical_ms.unwrap();
+            assert!(
+                (musical - 100.0 * vitesse).abs() < 12.0,
+                "{vitesse} : {musical}"
+            );
+            for k in 2..6 {
+                assert!(
+                    matches!(par_ref(k).jugement.verdict, Verdict::Parfait | Verdict::Bon),
+                    "{vitesse}, note {k} : {js:#?}"
+                );
+            }
+            assert_eq!(BilanHauteur::de(&js).justes, 6, "{vitesse}");
+        }
+        // Un retard de 48 ms d'horloge : en retard à 100 %, juste à 70 %
+        // (34 ms de musique, sous la fenêtre « bon »).
+        let r = |v| {
+            juger_a_la_vitesse(v, 0.048)
+                .into_iter()
+                .find(|j| j.jugement.reference == Some(1))
+                .unwrap()
+                .jugement
+                .verdict
+        };
+        assert_eq!(r(1.0), Verdict::Retard);
+        assert!(
+            matches!(r(0.7), Verdict::Bon | Verdict::Parfait),
+            "{:?}",
+            r(0.7)
+        );
     }
 
     /// Seize clics à 120.

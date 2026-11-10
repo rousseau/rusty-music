@@ -1674,7 +1674,16 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   const marques = page.locator("#partition-rendu .coach__marque:visible");
   await expect(marques).toHaveCount(4);
   const classes = await marques.evaluateAll((els) => els.map((e) => e.className.replace("coach__marque coach__marque--", "")));
-  expect(classes.sort()).toEqual(["faute", "juste", "manquee", "retard"]);
+  expect(classes.sort()).toEqual(["juste", "manquee", "piece", "retard"]);
+  // V35 : un signe double chaque couleur — → en retard, × sur la mauvaise
+  // pièce, + après la note qui précède le coup en trop.
+  const signes = await marques.evaluateAll((els) =>
+    els.map((e) => [e.className.replace("coach__marque coach__marque--", ""), e.querySelector(".coach__signe--verdict")?.textContent ?? ""]));
+  expect(Object.fromEntries(signes)).toEqual({ juste: "", retard: "→", manquee: "", piece: "×" });
+  await expect(page.locator("#partition-rendu .coach__signe--trop:visible")).toHaveCount(1);
+  await expect(page.locator("#coach-legende")).toBeVisible();
+  await expect(page.locator("#coach-legende .coach__cle")).toHaveText(
+    ["juste", "←en avance", "→en retard", "×mauvaise pièce", "manquée", "+en trop"]);
   await expect(page.locator("#coach-etat")).toContainText("2 / 4 attrapées");
   await expect(page.locator("#coach-etat")).toContainText("1 en trop");
   await expect(page.locator("#coach-etat")).toContainText("latence 38 ms");
@@ -1810,9 +1819,12 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
   const marques = page.locator("#partition-rendu .coach__marque:visible");
   await expect(marques).toHaveCount(4);
   const classes = await marques.evaluateAll((els) => els.map((e) => e.className.replace("coach__marque coach__marque--", "")));
-  expect(classes.sort()).toEqual(["faute", "faute", "juste", "manquee"]);
+  expect(classes.sort()).toEqual(["fausse", "juste", "manquee", "octave"]);
   const titres = await marques.evaluateAll((els) => els.map((e) => e.title));
-  expect(titres).toContain("fausse note (+1 demi-ton)");
+  // V35 : la note jouée (do attendu, un demi-ton trop haut) écrite à côté.
+  expect(titres).toContain("fausse note : do♯ joué (+1 demi-ton)");
+  const signes = await marques.evaluateAll((els) => els.map((e) => e.querySelector(".coach__signe--verdict")?.textContent ?? ""));
+  expect(signes.sort()).toEqual(["", "", "8", "do♯"]);
   expect(titres).toContain("mauvaise octave (trop haut)");
   // Après l'annonce de l'armement (six notes confirmées sur sept).
   await expect(page.locator("#coach-etat")).toContainText("3 / 4 attrapées", { timeout: 10_000 });
@@ -1841,6 +1853,94 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
   await expect(page.locator("#coach-etat")).toContainText("corde à vide, étouffée");
   await page.click("#coach-basculer");
   await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
+  await expect(marques).toHaveCount(0);
+});
+
+test("V35 : la basse transposée — tablature, coach et code des erreurs suivent la hauteur", async ({ page }) => {
+  await basseTranscrite(page);
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_basse_entrees = ["Interface USB"];
+    window.__FIXTURES__.coach_basse_ecouter = (a) =>
+      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 1, canal: 0, manuel: false, latence_ms: 24 } : null;
+    window.__FIXTURES__.coach_basse_armer = (a) => ({ notes: a.notes.length, sures: a.notes.length, stem: true });
+    const j = (reference, verdict, ecart, hauteur) => ({
+      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: ecart, ecart_musical_ms: ecart, verdict, hauteur,
+    });
+    // Une fois la transposition reçue : la 1ʳᵉ en avance, la 2ᵉ fausse d'un
+    // demi-ton, la 3ᵉ en retard, puis une note en trop.
+    window.__FIXTURES__.coach_basse_juger = (a, e) => {
+      const transpose = window.__APPELS__.some((x) => x.cmd === "coach_basse_transposer");
+      const jugements = transpose && !e.rendu
+        ? [j(0, "avance", -60, { type: "juste" }), j(1, "bon", 5, { type: "fausse", demi_tons: 1 }),
+           j(2, "retard", 70, { type: "juste" }), { ...j(null, "en_trop", null, null), attendu_s: null }]
+        : [];
+      if (jugements.length) e.rendu = true;
+      return {
+        jusqua_s: 10, jugements, notes: [], bilan: { justes: 2, fausses: 1, octaves: 0, inconnues: 0 },
+        erreur: null, canal: 0, ailleurs: null,
+      };
+    };
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const barre = page.locator("#partition-coach");
+  // Au repos : le bandeau d'accent, sans légende ni transposition.
+  await expect(barre).not.toHaveClass(/coach--ecoute/);
+  await expect(page.locator("#coach-legende")).toBeHidden();
+  await expect(page.locator("#coach-transpose")).toBeHidden();
+  const fond = await barre.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(fond).not.toBe("rgba(0, 0, 0, 0)");
+
+  await page.click("#coach-basculer");
+  await expect(barre).toHaveClass(/coach--ecoute/);
+  await expect(page.locator("#coach-basculer")).toHaveText("■ arrêter l'écoute");
+  await expect.poll(() => appels(page, "coach_basse_armer").then((a) => a.at(-1)?.demiTons)).toBe(0);
+  await expect(page.locator("#coach-legende .coach__cle")).toHaveText(
+    ["juste", "←en avance", "→en retard", "fafausse (note jouée)", "8octave", "manquée", "+en trop"]);
+
+  /// Les frettes de la première mesure, et les textes posés sur les temps.
+  const tablature = () =>
+    page.evaluate(async () => {
+      const { partition } = await import("./js/pratiquer.js");
+      const bars = partition.api.score.tracks[0].staves[0].bars;
+      return {
+        frettes: bars[0].voices[0].beats.map((b) => b.notes[0]?.fret ?? null),
+        textes: bars.flatMap((b) => b.voices[0].beats.map((x) => x.text).filter(Boolean)),
+      };
+    });
+  expect((await tablature()).frettes).toEqual([0, 3, 0, 2]);
+
+  // Un demi-ton plus haut, par le champ du dock : la tablature se décale,
+  // le coach juge contre la référence transposée, le bandeau le dit.
+  const champ = page.locator("#val-tonalite");
+  await champ.fill("½");
+  await champ.press("Enter");
+  await expect.poll(() => appels(page, "coach_basse_transposer").then((a) => a.at(-1)?.demiTons)).toBe(1);
+  await expect(page.locator("#coach-transpose")).toHaveText("transposé de +½ ton");
+  await expect.poll(async () => (await tablature()).frettes).toEqual([1, 4, 1, 3]);
+
+  // Le code des erreurs : ← en avance, la note jouée (ré : do transposé en
+  // do♯, joué un demi-ton plus haut), → en retard, + après la 3ᵉ.
+  const marques = page.locator("#partition-rendu .coach__marque:visible");
+  await expect(marques).toHaveCount(3, { timeout: 10_000 });
+  const vus = await marques.evaluateAll((els) =>
+    els.map((e) => [e.className.replace("coach__marque coach__marque--", ""), e.querySelector(".coach__signe--verdict")?.textContent ?? "", e.title]));
+  expect(vus.map((v) => v.slice(0, 2)).sort()).toEqual([["avance", "←"], ["fausse", "ré"], ["retard", "→"]]);
+  expect(vus.find((v) => v[0] === "fausse")[2]).toBe("fausse note : ré joué (+1 demi-ton)");
+  expect(vus.find((v) => v[0] === "retard")[2]).toContain("puis 1 note en trop");
+  await expect(page.locator("#partition-rendu .coach__signe--trop:visible")).toHaveText("+");
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/v35-coach-transpose.png" });
+
+  // Un demi-ton plus bas : le la à vide passe sur la corde de mi ; le mi
+  // grave sort du manche d'une quatre cordes et la note le dit.
+  await champ.fill("-½");
+  await champ.press("Enter");
+  await expect.poll(() => appels(page, "coach_basse_transposer").then((a) => a.at(-1)?.demiTons)).toBe(-1);
+  await expect(page.locator("#coach-transpose")).toHaveText("transposé de −½ ton");
+  await expect.poll(async () => (await tablature()).frettes).toEqual([4, 2, 4, 1]);
+  expect((await tablature()).textes).toEqual(["hors manche : D#1"]);
+  // Les marques posées sur l'ancienne hauteur sont effacées.
   await expect(marques).toHaveCount(0);
 });
 

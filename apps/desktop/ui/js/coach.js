@@ -1,7 +1,7 @@
 import "./corriger.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, journal } from "./socle.js";
 import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
-import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
+import { appliquerVitesses, dessinerReglages, REGLAGES, transpositionDe } from "./etabli-reglages.js";
 import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
 import {
@@ -45,6 +45,16 @@ import {
 //
 // V34 : la barre se montre dès que Pratiquer affiche la basse ou la batterie,
 // même sans partition prête ; elle offre alors de la calculer.
+//
+// V35 : la barre devient un bandeau de couleur d'accent au repos (le geste
+// principal en bouton plein), sur papier pendant l'écoute, avec la légende
+// du code des erreurs. Chaque verdict a sa couleur **et** son signe (jamais
+// la couleur seule) : juste (cercle plein), ← en avance, → en retard, la note
+// jouée à côté d'une fausse note, « 8 » à la mauvaise octave, × sur la
+// mauvaise pièce, contour pointillé pour une note manquée, + pour une note en
+// trop (posé après la note attendue qui la précède). La basse se juge à la
+// hauteur qu'on entend : la transcription décalée du réglage de hauteur
+// (`transpositionDe("bass")`), comme la tablature affichée.
 
 const coach = {
   actif: false,
@@ -89,6 +99,12 @@ const coach = {
   // la dernière demande.
   conseil: null,
   relevesDepuis: 0,
+  // Basse (V35) : la transposition que le moteur juge, en demi-tons.
+  demiTons: 0,
+  // Les notes en trop, par rang de la note attendue qui les précède.
+  enTrop: new Map(),
+  // La dernière note attendue jugée (son rang), d'un sondage à l'autre.
+  derniere: null,
 };
 
 /// Mesures relevées entre deux demandes du groove hors boucle.
@@ -125,14 +141,41 @@ function affichee() {
   return s ? { tr: s, instrument: "bass" } : { tr: null, instrument: null };
 }
 
+/// Le code des erreurs (V35) : une classe (sa couleur, sa forme) et un signe
+/// posé à côté de la note, pour ne jamais dire par la couleur seule.
 const VERDICTS = {
-  parfait: { classe: "juste", dit: "juste" },
-  bon: { classe: "juste", dit: "juste" },
-  avance: { classe: "avance", dit: "en avance" },
-  retard: { classe: "retard", dit: "en retard" },
-  manquee: { classe: "manquee", dit: "manquée" },
-  mauvaise_piece: { classe: "faute", dit: "mauvaise pièce" },
+  parfait: { classe: "juste", dit: "juste", signe: "" },
+  bon: { classe: "juste", dit: "juste", signe: "" },
+  avance: { classe: "avance", dit: "en avance", signe: "←" },
+  retard: { classe: "retard", dit: "en retard", signe: "→" },
+  manquee: { classe: "manquee", dit: "manquée", signe: "" },
+  mauvaise_piece: { classe: "piece", dit: "mauvaise pièce", signe: "×" },
 };
+
+/// La légende du bandeau, par instrument : la marque, son signe, son nom.
+const LEGENDE = {
+  bass: [
+    ["juste", "", "juste"],
+    ["avance", "←", "en avance"],
+    ["retard", "→", "en retard"],
+    ["fausse", "fa", "fausse (note jouée)"],
+    ["octave", "8", "octave"],
+    ["manquee", "", "manquée"],
+    ["trop", "+", "en trop"],
+  ],
+  drums: [
+    ["juste", "", "juste"],
+    ["avance", "←", "en avance"],
+    ["retard", "→", "en retard"],
+    ["piece", "×", "mauvaise pièce"],
+    ["manquee", "", "manquée"],
+    ["trop", "+", "en trop"],
+  ],
+};
+
+/// Nom d'une hauteur MIDI, comme la correction l'écrit (« fa♯ »).
+const NOMS_NOTES = ["do", "do♯", "ré", "ré♯", "mi", "fa", "fa♯", "sol", "sol♯", "la", "la♯", "si"];
+const nomNote = (h) => NOMS_NOTES[((h % 12) + 12) % 12];
 
 const ATTRAPEES = new Set(["parfait", "bon", "avance", "retard"]);
 
@@ -163,6 +206,7 @@ function majCoach() {
   }
   if (!coach.actif) coach.instrument = instrument;
   barre.setAttribute("aria-label", instrument === "bass" ? "Coach de basse" : "Coach de batterie");
+  if (coach.actif && instrument === "bass") suivreTransposition();
   $("coach-basculer").title = TITRES[instrument];
   $("coach-calibrer").title = CALIBRER[instrument];
   $("coach-peripherique").setAttribute("aria-label", instrument === "bass" ? "Entrée audio" : "Batterie MIDI");
@@ -170,7 +214,67 @@ function majCoach() {
   dire();
 }
 
+/// La transposition a changé (V35) : le moteur juge contre la nouvelle
+/// référence ; les marques posées sur l'ancienne s'effacent.
+async function suivreTransposition() {
+  const d = transpositionDe("bass");
+  if (d === coach.demiTons || coach.armee === null) return;
+  coach.demiTons = d;
+  effacerMarques();
+  try {
+    await invoke("coach_basse_transposer", { demiTons: d });
+    annoncer(d ? `Transposé de ${REGLAGES.tonalite.ecrire(d)} : le coach juge ce que vous jouez, comme la tablature le montre.` : "Hauteur d'origine : le coach juge la partition telle quelle.");
+  } catch (e) {
+    journal("coach", `transposer : ${e}`, "warn");
+  }
+}
+
+/// La légende du code des erreurs, dans le bandeau pendant l'écoute.
+function dessinerLegende() {
+  const legende = $("coach-legende");
+  const instrument = coach.instrument ?? "drums";
+  legende.hidden = !coach.actif || !!coach.attente;
+  if (legende.hidden || legende.dataset.instrument === instrument) return;
+  legende.dataset.instrument = instrument;
+  legende.replaceChildren(
+    ...LEGENDE[instrument].map(([classe, signe, nom]) => {
+      const item = document.createElement("span");
+      item.className = `coach__cle coach__cle--${classe}`;
+      item.setAttribute("role", "listitem");
+      const rond = document.createElement("span");
+      rond.className = "coach__rond";
+      rond.setAttribute("aria-hidden", "true");
+      item.append(rond);
+      if (signe) {
+        const sg = document.createElement("b");
+        sg.className = "coach__cle-signe";
+        sg.setAttribute("aria-hidden", "true");
+        sg.textContent = signe;
+        item.append(sg);
+      }
+      item.append(nom);
+      return item;
+    }),
+  );
+}
+
+/// « Transposé de +½ ton » dans le bandeau : la tablature montre ce que l'on
+/// joue, pas la transcription d'origine.
+function direTransposition() {
+  const t = $("coach-transpose");
+  const { instrument } = affichee();
+  const d = instrument === "bass" ? transpositionDe("bass") : 0;
+  t.hidden = !d || !!coach.attente;
+  t.textContent = d ? `transposé de ${REGLAGES.tonalite.ecrire(d)}` : "";
+  t.title = d
+    ? "La hauteur des stems est changée : partition et tablature montrent ce que vous jouez (la transcription décalée d'autant), et le coach juge contre elles."
+    : "";
+}
+
 function dire() {
+  $("partition-coach").classList.toggle("coach--ecoute", coach.actif && !coach.attente);
+  dessinerLegende();
+  direTransposition();
   direTexte();
   // La ligne coupe ce qui dépasse : le texte entier au survol.
   const etat = $("coach-etat");
@@ -204,7 +308,7 @@ function direTexte() {
   bascule.hidden = false;
   $("coach-canal").hidden = !coach.actif || coach.instrument !== "bass" || coach.canaux < 2;
   bascule.setAttribute("aria-pressed", String(coach.actif));
-  bascule.textContent = coach.actif ? "arrêter" : ARRETE[coach.instrument ?? "drums"];
+  bascule.textContent = coach.actif ? "■ arrêter l'écoute" : ARRETE[coach.instrument ?? "drums"];
   $("coach-calibrer").hidden = !coach.actif || !coach.peripherique;
   $("coach-calibrer").setAttribute("aria-pressed", String(coach.calibrage));
   direPropositions();
@@ -297,9 +401,11 @@ async function armerBasse(tr) {
   coach.vitesseProposee = null;
   coach.boucleProposee = null;
   try {
+    coach.demiTons = transpositionDe("bass");
     const v = await invoke("coach_basse_armer", {
       id: edition.source?.id ?? 0,
       notes: (tr.pret.notes ?? []).map((n) => ({ debut_s: n.debut_s, hauteur: n.hauteur })),
+      demiTons: coach.demiTons,
     });
     annoncer(
       v.stem
@@ -520,6 +626,8 @@ function recevoir(v) {
     if (v.releves?.length) dire();
     return;
   }
+  // La note attendue juste avant une note en trop : le + se pose après elle.
+  let precedente = coach.derniere;
   for (const j of v.jugements) {
     if (j.reference !== null && j.passage !== coach.passage) {
       // Un nouveau passage de boucle : son propre compte, les marques de
@@ -539,7 +647,15 @@ function recevoir(v) {
     }
     if (j.reference !== null && VERDICTS[j.verdict]) coach.marques.set(j.reference, j);
     else if (j.reference !== null) coach.marques.delete(j.reference);
+    if (j.reference !== null) {
+      // Rejouée : ses notes en trop d'avant ne comptent plus.
+      if (j.passage === coach.passage) coach.enTrop.delete(j.reference);
+      precedente = j.reference;
+    } else if (j.verdict === "en_trop" && precedente !== null) {
+      coach.enTrop.set(precedente, (coach.enTrop.get(precedente) ?? 0) + 1);
+    }
   }
+  coach.derniere = precedente;
   const perdue = v.places_perdues.at(-1);
   if (perdue) {
     annoncer(
@@ -571,6 +687,8 @@ function recevoirBasse(v) {
     dire();
   }
   if (!v.jugements.length) return;
+  // La note attendue juste avant une note en trop : le + se pose après elle.
+  let precedente = coach.derniere;
   for (const j of v.jugements) {
     if (j.reference !== null && j.passage !== coach.passage) {
       coach.passage = j.passage;
@@ -590,22 +708,42 @@ function recevoirBasse(v) {
     }
     if (j.reference !== null && VERDICTS[j.verdict]) coach.marques.set(j.reference, j);
     else if (j.reference !== null) coach.marques.delete(j.reference);
+    if (j.reference !== null) {
+      // Rejouée : ses notes en trop d'avant ne comptent plus.
+      if (j.passage === coach.passage) coach.enTrop.delete(j.reference);
+      precedente = j.reference;
+    } else if (j.verdict === "en_trop" && precedente !== null) {
+      coach.enTrop.set(precedente, (coach.enTrop.get(precedente) ?? 0) + 1);
+    }
   }
+  coach.derniere = precedente;
   dire();
   dessinerMarques();
 }
 
 /// Le verdict d'une note jugée, hauteur comprise (basse) : une note attrapée
 /// mais fausse ou à l'octave est une faute.
-function verdictDe(j) {
+///
+/// V35 : la fausse note porte la note jouée (la référence transposée plus
+/// l'écart), la mauvaise octave un « 8 ».
+function verdictDe(j, rang) {
   const v = VERDICTS[j.verdict];
   const h = j.hauteur;
   if (!ATTRAPEES.has(j.verdict) || !h) return v;
   if (h.type === "fausse") {
     const d = h.demi_tons;
-    return { classe: "faute", dit: `fausse note (${d > 0 ? "+" : "−"}${Math.abs(d)} demi-ton${Math.abs(d) > 1 ? "s" : ""})` };
+    const attendue = basseAffichee()?.pret?.notes?.[rang]?.hauteur;
+    const jouee = attendue === undefined ? null : attendue + coach.demiTons + d;
+    const ecart = `${d > 0 ? "+" : "−"}${Math.abs(d)} demi-ton${Math.abs(d) > 1 ? "s" : ""}`;
+    return {
+      classe: "fausse",
+      dit: jouee === null ? `fausse note (${ecart})` : `fausse note : ${nomNote(jouee)} joué (${ecart})`,
+      signe: jouee === null ? (d > 0 ? "♯" : "♭") : nomNote(jouee),
+    };
   }
-  if (h.type === "octave") return { classe: "faute", dit: `mauvaise octave (${h.octaves > 0 ? "trop haut" : "trop bas"})` };
+  if (h.type === "octave") {
+    return { classe: "octave", dit: `mauvaise octave (${h.octaves > 0 ? "trop haut" : "trop bas"})`, signe: "8" };
+  }
   return v;
 }
 
@@ -669,10 +807,16 @@ function dessinerMarques() {
         rendu.append(c);
       }
       n++;
-      const v = verdictDe(j);
+      const v = verdictDe(j, rang);
+      const trop = coach.enTrop.get(rang) ?? 0;
       c.className = `coach__marque coach__marque--${v.classe}`;
+      const temps = ["avance", "retard", "juste"].includes(v.classe);
       c.title =
-        v.dit + (j.ecart_musical_ms !== null && v.classe !== "faute" ? ` (${j.ecart_musical_ms > 0 ? "+" : ""}${Math.round(j.ecart_musical_ms)} ms)` : "");
+        v.dit +
+        (j.ecart_musical_ms !== null && temps ? ` (${j.ecart_musical_ms > 0 ? "+" : ""}${Math.round(j.ecart_musical_ms)} ms)` : "") +
+        (trop ? ` · puis ${trop} note${trop > 1 ? "s" : ""} en trop` : "");
+      poserSigne(c, "coach__signe coach__signe--verdict", v.signe);
+      poserSigne(c, "coach__signe coach__signe--trop", trop ? (trop > 1 ? `+${trop}` : "+") : "");
       const cote = Math.max(t.w, t.h) + 12;
       c.style.width = c.style.height = `${cote}px`;
       c.style.transform =
@@ -683,8 +827,28 @@ function dessinerMarques() {
   for (const c of coach.cercles.slice(n)) c.hidden = true;
 }
 
+/// Le signe d'une marque (← → 8 × la note jouée +), réutilisé d'un dessin à
+/// l'autre ; vide, il disparaît.
+function poserSigne(marque, classe, texte) {
+  const sel = `.${classe.split(" ").at(-1)}`;
+  let e = marque.querySelector(sel);
+  if (!texte) {
+    e?.remove();
+    return;
+  }
+  if (!e) {
+    e = document.createElement("span");
+    e.className = classe;
+    e.setAttribute("aria-hidden", "true");
+    marque.append(e);
+  }
+  e.textContent = texte;
+}
+
 function effacerMarques() {
   coach.marques.clear();
+  coach.enTrop.clear();
+  coach.derniere = null;
   coach.passage = null;
   coach.bilan = null;
   for (const c of coach.cercles) c.remove();

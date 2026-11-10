@@ -496,6 +496,33 @@ mod tests {
         assert_eq!((b.attendues, b.attrapees, b.en_trop), (24, 24, 0));
     }
 
+    /// V35 : la batterie à 70 % comme à 100 % — un coup 48 ms en retard à
+    /// l'horloge est « en retard » à 100 % (48 ms du morceau), « bon » à 70 %
+    /// (34 ms) ; 100 ms d'avance restent « en avance » aux deux vitesses.
+    #[test]
+    fn le_temps_suit_la_vitesse_a_70_et_100() {
+        let refs: Vec<Reference> = [1.0, 2.0]
+            .iter()
+            .map(|&tau_s| Reference {
+                tau_s,
+                classe: Classe::CaisseClaire,
+                sure: true,
+            })
+            .collect();
+        let ecarts = [0.048, -0.100];
+        for (vitesse, attendu) in [
+            (1.0, [Verdict::Retard, Verdict::Avance]),
+            (0.7, [Verdict::Bon, Verdict::Avance]),
+        ] {
+            let h = horloge(vitesse, None);
+            let f = jouer(&h, &refs, |i| Some(ecarts[i]));
+            let js = apparier(&h, &refs, &f, 90.0, 120.0, &Fenetres::default());
+            let v: Vec<_> = js.iter().map(|j| j.verdict).collect();
+            assert_eq!(v, attendu, "à {vitesse}");
+            assert!((js[1].ecart_musical_ms.unwrap() + 100.0 * vitesse).abs() < 1e-6);
+        }
+    }
+
     #[test]
     fn ecarts_signes_et_fenetres_en_temps_musical() {
         // À vitesse 0,5, un retard de 60 ms à l'horloge vaut 30 ms du

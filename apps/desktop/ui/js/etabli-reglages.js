@@ -162,6 +162,13 @@ function vitesseDe(s) {
 function tonaliteDe(s) {
   return s.tonalite ?? edition.tonalite;
 }
+/// La transposition qu'on entend sur le stem `nom` (« bass »…), en
+/// demi-tons : la sienne, sinon celle du dock (V35 : la partition et le coach
+/// de basse la suivent).
+function transpositionDe(nom) {
+  const s = edition.stems.find((x) => x.nom === nom);
+  return s ? tonaliteDe(s) : edition.tonalite;
+}
 /// Ce stem s'écarte-t-il de l'ensemble, d'une façon ou d'une autre ?
 function stemEcarte(s) {
   return s.vitesse !== null || s.tonalite !== null || !!s.greffe;
@@ -277,6 +284,8 @@ async function appliquerReglages() {
       }
       if (!avant?.en_pause) await invoke("stems_transport", { action: "reprendre", position: null });
       $("dock-aide").textContent = "clic sur un spectrogramme : se déplacer";
+      // V35 : la partition et le coach suivent la hauteur qu'on entend.
+      document.dispatchEvent(new CustomEvent("hauteur-appliquee"));
     } catch (e) {
       $("dock-aide").textContent = "";
       remonter(e, "vitesse et hauteur");
@@ -411,5 +420,5 @@ $("realigner").addEventListener("click", async () => {
 
 export {
   appliquerReglages, appliquerUn, appliquerVitesses, cablerChamp, calerReglage, dessinerReglages,
-  libelleStem, majDerive, REGLAGES, stemEcarte, tonaliteDe, vitesseDe,
+  libelleStem, majDerive, REGLAGES, stemEcarte, tonaliteDe, transpositionDe, vitesseDe,
 };

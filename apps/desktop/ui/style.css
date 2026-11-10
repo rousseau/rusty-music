@@ -10,15 +10,20 @@
   --txt:     #EDE8DC;
   --mut:     #9A9284;
   --accent:  #C07C4A;
+  /* V35 : l'encre posée sur un aplat d'accent (bandeau du coach). */
+  --sur-accent: #14120E;
   /* Erreurs et gestes destructeurs : un rouge brique, éclairci pour tenir
      4,5:1 sur les trois fonds sombres (l'ancien var(--alerte) n'y tenait que 3,5). */
   --alerte:  #DE6A50;
   /* La feuille de partition (alphaTab) reste du papier dans les deux thèmes :
      une partition se lit noir sur blanc. Mêmes valeurs dans le bloc clair. */
   --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
-  /* E4 : les verdicts du coach, des traits sur le papier (3:1 au moins) :
-     juste, décalé (en avance, en retard), faute (manquée, mauvaise pièce). */
-  --feuille-juste: #2E7342; --feuille-ecart: #9A5A0C; --feuille-faute: #A8322A;
+  /* V35 : le code des erreurs du coach, une couleur par verdict, sur le
+     papier (4,5:1 au moins : leurs signes ← → 8 × + sont du texte) ; mêmes
+     valeurs dans les deux thèmes, la feuille restant du papier. */
+  --feuille-juste: #2E7342; --feuille-avance: #1F5A9E; --feuille-retard: #8F520A;
+  --feuille-fausse: #A8322A; --feuille-octave: #7A3B8C; --feuille-manquee: #5E564A;
+  --feuille-trop: #0F6B6B; --feuille-accent: #9A5426;
   /* Initiales d'un artiste sans pochette, sur un aplat teinté par son nom
      (`--teinte`) : saturation et clarté du fond, puis de l'encre. Vérifié
      sur les 360 teintes par `scripts/contraste-interface.py`. */
@@ -106,11 +111,15 @@
   /* Assombri le 1ᵉʳ novembre 2026 : #A85F2C ne tenait que 4,0:1 sur
      `--panel2` (contrôle de `scripts/contraste-interface.py`). */
   --accent: #9A5426;
+  --sur-accent: #FBF8F1;
   --alerte: #A63B27;
   --feuille: #EFE9DC; --feuille-encre: #2A251D; --feuille-mut: #6B6255;
-  /* E4 : les verdicts du coach, des traits sur le papier (3:1 au moins) :
-     juste, décalé (en avance, en retard), faute (manquée, mauvaise pièce). */
-  --feuille-juste: #2E7342; --feuille-ecart: #9A5A0C; --feuille-faute: #A8322A;
+  /* V35 : le code des erreurs du coach, une couleur par verdict, sur le
+     papier (4,5:1 au moins : leurs signes ← → 8 × + sont du texte) ; mêmes
+     valeurs dans les deux thèmes, la feuille restant du papier. */
+  --feuille-juste: #2E7342; --feuille-avance: #1F5A9E; --feuille-retard: #8F520A;
+  --feuille-fausse: #A8322A; --feuille-octave: #7A3B8C; --feuille-manquee: #5E564A;
+  --feuille-trop: #0F6B6B; --feuille-accent: #9A5426;
   /* Aplat clair, encre sombre : pas l'aplat sombre du thème sombre posé sur
      du papier. */
   --initiales-fond: 30% 86%; --initiales-encre: 35% 28%;
@@ -359,17 +368,73 @@ html, body {
    cercle autour de chaque note jugée. La forme double la couleur : plein
    pour juste, ouvert à gauche en avance, à droite en retard, pointillé
    manquée, épais sur la mauvaise pièce. */
+/* V35 : un bandeau qui attire l'œil. Au repos, un aplat d'accent et le geste
+   principal en bouton plein ; pendant l'écoute, du papier bordé d'accent (la
+   légende y est dans les couleurs de la partition) et « ■ arrêter l'écoute »
+   en bouton plein. Les jetons sont redéfinis dans le bandeau : boutons et
+   menus de l'application y gardent leurs règles. */
+.coach {
+  background: var(--accent); color: var(--sur-accent);
+  border: 2px solid var(--accent); border-radius: 3px; padding: 6px 10px;
+  --txt: var(--sur-accent); --mut: var(--sur-accent); --line: var(--sur-accent);
+}
+.coach #coach-basculer, .coach #coach-transcrire {
+  background: var(--sur-accent); color: var(--accent); border-color: var(--sur-accent);
+  font-size: var(--t-second); font-weight: 600; padding: 5px 14px;
+}
+.coach #coach-basculer:hover:not(:disabled), .coach #coach-transcrire:hover:not(:disabled) {
+  color: var(--accent); border-color: var(--sur-accent); text-decoration: underline;
+}
+.coach.coach--ecoute {
+  background: var(--feuille); color: var(--feuille-encre); border-color: var(--accent);
+  --txt: var(--feuille-encre); --mut: var(--feuille-mut); --line: var(--feuille-mut);
+  --panel2: var(--feuille); --accent: var(--feuille-accent); --sur-accent: var(--feuille);
+}
+.coach.coach--ecoute #coach-basculer { background: var(--feuille-encre); color: var(--feuille); border-color: var(--feuille-encre); }
+.coach.coach--ecoute #coach-basculer:hover:not(:disabled) { color: var(--feuille); border-color: var(--feuille-encre); }
+.coach select { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); }
 .coach__etat { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .coach__peripherique { font: inherit; max-width: 220px; }
+.coach__transpose { font-weight: 600; white-space: nowrap; }
+/* La légende : une marque en réduction, son signe, son nom. */
+.coach__legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; flex-basis: 100%; font-size: var(--t-legende); }
+.coach__legende[hidden] { display: none; }
+.coach__cle { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--feuille-encre); }
+.coach__rond { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; box-sizing: border-box; }
+.coach__cle-signe { font-weight: 600; }
+.coach__cle--juste .coach__rond, .coach__cle--juste .coach__cle-signe { color: var(--feuille-juste); }
+.coach__cle--avance .coach__rond, .coach__cle--avance .coach__cle-signe { color: var(--feuille-avance); }
+.coach__cle--retard .coach__rond, .coach__cle--retard .coach__cle-signe { color: var(--feuille-retard); }
+.coach__cle--fausse .coach__rond, .coach__cle--fausse .coach__cle-signe,
+.coach__cle--piece .coach__rond, .coach__cle--piece .coach__cle-signe { color: var(--feuille-fausse); }
+.coach__cle--octave .coach__rond, .coach__cle--octave .coach__cle-signe { color: var(--feuille-octave); }
+.coach__cle--manquee .coach__rond { color: var(--feuille-manquee); border-style: dashed; }
+.coach__cle--trop .coach__rond { display: none; }
+.coach__cle--trop .coach__cle-signe { color: var(--feuille-trop); }
+.coach__cle--avance .coach__rond { border-left-color: transparent; }
+.coach__cle--retard .coach__rond { border-right-color: transparent; }
+/* Les marques sur la partition : la forme et le signe doublent la couleur —
+   plein pour juste, ouvert à gauche et ← en avance, ouvert à droite et → en
+   retard, épais et la note jouée pour une fausse note, « 8 » à l'octave,
+   × sur la mauvaise pièce, pointillé manquée, + après une note en trop. */
 .coach__marque {
   position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none;
   border-radius: 50%; border: 2px solid var(--feuille-juste); box-sizing: border-box;
+  color: var(--feuille-juste);
 }
 .coach__marque[hidden] { display: none; }
-.coach__marque--avance { border-color: var(--feuille-ecart); border-left-color: transparent; }
-.coach__marque--retard { border-color: var(--feuille-ecart); border-right-color: transparent; }
-.coach__marque--manquee { border: 2px dashed var(--feuille-faute); }
-.coach__marque--faute { border: 3px solid var(--feuille-faute); }
+.coach__marque--avance { border-color: var(--feuille-avance); border-left-color: transparent; color: var(--feuille-avance); }
+.coach__marque--retard { border-color: var(--feuille-retard); border-right-color: transparent; color: var(--feuille-retard); }
+.coach__marque--manquee { border: 2px dashed var(--feuille-manquee); color: var(--feuille-manquee); }
+.coach__marque--fausse, .coach__marque--piece { border: 3px solid var(--feuille-fausse); color: var(--feuille-fausse); }
+.coach__marque--octave { border: 3px solid var(--feuille-octave); color: var(--feuille-octave); }
+.coach__signe {
+  position: absolute; top: 50%; left: 100%; transform: translate(2px, -50%);
+  font: 600 var(--t-legende)/1 var(--sans); white-space: nowrap;
+  background: var(--feuille); padding: 1px 2px; border-radius: 2px;
+}
+.coach__marque--avance .coach__signe--verdict { left: auto; right: 100%; transform: translate(-2px, -50%); }
+.coach__signe--trop { top: 0; transform: translate(2px, -60%); color: var(--feuille-trop); }
 /* E2 : la barre de correction, au-dessus de la partition (sur le fond de
    l'application, pas sur le papier), et le temps choisi dans la partition. */
 .correction {

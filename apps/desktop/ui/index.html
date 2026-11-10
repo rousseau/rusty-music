@@ -546,7 +546,11 @@
             <button id="coach-transcrire" class="bouton bouton--mince" hidden>transcrire la basse pour jouer avec</button>
             <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
                     title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
+            <!-- V35 : la hauteur changée (la tablature montre ce que l'on joue),
+                 puis la légende du code des erreurs, pendant l'écoute. -->
+            <span id="coach-transpose" class="coach__transpose" hidden></span>
             <span id="coach-etat" class="coach__etat" aria-live="polite"></span>
+            <span id="coach-legende" class="coach__legende" role="list" aria-label="Code des erreurs" hidden></span>
             <button id="coach-boucler" class="bouton bouton--mince" hidden
                     title="Boucler les mesures les plus difficiles d'après les passages joués (table par mesure, gardée pour ce morceau), en repartant à 70 %. Proposé, jamais imposé.">boucler</button>
             <button id="coach-vitesse" class="bouton bouton--mince" hidden

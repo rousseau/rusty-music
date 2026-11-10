@@ -197,9 +197,17 @@ export const commands = {
 	/**
 	 *  Arme le coach sur la transcription de la basse du morceau `id` (`notes`
 	 *  au rang de la transcription, celui des jugements) : chaque note est
-	 *  vérifiée sur le stem de basse démixé. Une liste vide désarme.
+	 *  vérifiée sur le stem de basse démixé, à la hauteur d'origine (le stem
+	 *  d'origine confirme la note d'origine) ; `demi_tons` est le réglage de
+	 *  hauteur en cours, que le jugement ajoute (V35). Une liste vide désarme.
 	 */
-	coach_basse_armer: (id: number, notes: NoteArmee[]) => __TAURI_INVOKE<VueArmementBasse>("coach_basse_armer", { id, notes }),
+	coach_basse_armer: (id: number, notes: NoteArmee[], demiTons: number) => __TAURI_INVOKE<VueArmementBasse>("coach_basse_armer", { id, notes, demiTons }),
+	/**
+	 *  Le réglage de hauteur des stems a changé (V35) : le coach juge contre
+	 *  la référence décalée de `demi_tons`, sans réarmer (la confiance du stem
+	 *  ne dépend pas du décalage).
+	 */
+	coach_basse_transposer: (demiTons: number) => __TAURI_INVOKE<null>("coach_basse_transposer", { demiTons }),
 	/**
 	 *  Juge les notes de basse entre `depuis_s` (le `jusqua_s` du dernier appel)
 	 *  et un peu avant maintenant ; `None` ne juge rien et rend seulement le

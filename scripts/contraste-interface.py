@@ -47,8 +47,14 @@ COUPLES = (
     + [("bg", "txt", GRAND, "glyphe sur bouton"), ("bg", "accent", GRAND, "glyphe sur bouton survolé")]
     # La feuille de partition reste du papier dans les deux thèmes (alphaTab).
     + [("feuille-encre", "feuille", TEXTE, "partition"), ("feuille-mut", "feuille", TEXTE, "partition")]
-    # Les cercles du coach (E4) sur la partition : des traits, pas du texte.
-    + [(t, "feuille", GRAND, "verdict du coach") for t in ("feuille-juste", "feuille-ecart", "feuille-faute")]
+    # Le code des erreurs du coach (V35) sur la partition : cercles et signes
+    # (← → 8 × +, la note jouée) — du texte, donc 4,5:1.
+    + [(t, "feuille", TEXTE, "verdict du coach") for t in (
+        "feuille-juste", "feuille-avance", "feuille-retard", "feuille-fausse",
+        "feuille-octave", "feuille-manquee", "feuille-trop", "feuille-accent")]
+    # Le bandeau du coach (V35) : son encre sur l'aplat d'accent, et l'accent
+    # du bouton plein sur cette encre.
+    + [("sur-accent", "accent", TEXTE, "bandeau du coach"), ("accent", "sur-accent", TEXTE, "bouton du bandeau")]
 )
 
 

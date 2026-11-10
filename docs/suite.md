@@ -122,9 +122,14 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     10 nov. : tous les canaux de l'interface écoutés, celui de la basse
     trouvé à la calibration ou dès qu'elle joue (Scarlett Solo : entrée 2),
     choix à la main gardé par interface, barre du coach visible sans
-    partition avec « transcrire la basse pour jouer avec » ; restent
-    l'édition du profil MIDI à l'écran et les coups en trop sur la
-    partition, puis l'essai réel avec la batterie et la basse de François) ;
+    partition avec « transcrire la basse pour jouer avec » ; V35 le
+    10 nov. : la basse jugée et sa tablature affichée à la hauteur
+    transposée (« hors manche » sous le mi grave), code des erreurs en
+    couleur et en signe (← → la note jouée, 8, ×, pointillé, + pour les
+    coups en trop), bandeau du coach sur aplat d'accent avec sa légende ;
+    restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
+    (reporté, écran visible), puis l'essai réel avec la batterie et la
+    basse de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie

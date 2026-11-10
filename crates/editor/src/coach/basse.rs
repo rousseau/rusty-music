@@ -572,6 +572,20 @@ pub fn references(notes: &[(f64, u8)], confiances: &[f32]) -> Vec<NoteRef> {
         .collect()
 }
 
+/// La référence transposée de `demi_tons` (le réglage de hauteur de
+/// l'établi, ce que l'on entend et joue) : même instant, même certitude —
+/// le stem confirme la note d'origine, il confirme donc aussi la note
+/// décalée, puisque le stem transposé est l'original décalé d'autant. Les
+/// hauteurs restent dans 0..=127.
+pub fn transposer(refs: &[NoteRef], demi_tons: i32) -> Vec<NoteRef> {
+    refs.iter()
+        .map(|r| NoteRef {
+            hauteur: (r.hauteur as i32 + demi_tons).clamp(0, 127) as u8,
+            ..*r
+        })
+        .collect()
+}
+
 /// Le jugement d'une note de basse : celui de l'apparieur (timing), plus la
 /// hauteur quand la note est attrapée et la référence sûre.
 #[cfg_attr(feature = "specta", derive(specta::Type))]

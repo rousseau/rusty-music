@@ -6102,3 +6102,60 @@ Non vérifié : aucune vraie Scarlett (canaux, ordre, format de cpal sur
 l'appareil) ; la charge de huit analyseurs pYIN en même temps sur une
 grosse interface ; audit d'interface reporté (écran visible), écran
 touché : `pratiquer`.
+
+## Pratiquer, V35 : le coach suit la transposition ; un code des erreurs — 10 nov. 2026
+
+François joue *About Damn Time* sur sa basse 4 cordes, le morceau transposé
+d'un demi-ton : le coach le disait faux sur toutes les notes, et ses cercles
+n'avaient que deux couleurs — en avance, en retard ou autre note, on ne
+savait pas.
+
+- **Hauteur** (`crates/editor/src/coach/basse.rs`, `transposer` ;
+  `apps/desktop/src/coach_basse.rs`) : la référence reste armée à la hauteur
+  d'origine (le stem d'origine confirme la note d'origine, la confiance ne
+  dépend donc pas du décalage) ; le coach garde le réglage de hauteur en
+  demi-tons et juge contre la référence décalée d'autant.
+  `coach_basse_armer` prend `demi_tons` ; nouvelle commande
+  `coach_basse_transposer`, appelée quand la hauteur appliquée change
+  (événement `hauteur-appliquee` de `appliquerReglages`, la hauteur du stem
+  de basse ou, à défaut, celle du dock : `transpositionDe`).
+- **Partition et tablature transposées** (décision de François) :
+  `texTablature` décale chaque note, sur la même corde quand la frette y
+  tient, sinon sur la plus proche qui la porte (`jeuTranspose`) ; une note
+  sous le mi grave d'une 4 cordes s'écrit à vide sur la corde grave avec
+  « hors manche : D#1 » sur la note. La clé de la partition porte la
+  hauteur : elle se redessine. Le bandeau dit « transposé de +½ ton ».
+- **Vitesse** : déjà suivie par l'horloge commune (fenêtres en temps
+  musical) ; vérifiée à 70 % et 100 % pour la basse et pour la batterie.
+- **Code des erreurs** (`coach.js`, `style.css`) : une couleur **et** un
+  signe par verdict — juste (cercle plein, vert), en avance (ouvert à
+  gauche, ←, bleu), en retard (ouvert à droite, →, ocre), fausse note
+  (épais, la note jouée écrite à côté, « ré », rouge), mauvaise octave
+  (« 8 », violet), mauvaise pièce de batterie (×, rouge), manquée (pointillé,
+  gris), en trop (+ posé après la note attendue qui précède, sarcelle). Sept
+  jetons `--feuille-*`, mêmes valeurs dans les deux thèmes (la feuille reste
+  du papier).
+- **Bandeau du coach** : au repos un aplat d'accent, le geste principal
+  (« jouer avec ma basse ») en bouton plein ; pendant l'écoute, du papier
+  bordé d'accent, « ■ arrêter l'écoute » en bouton plein et la légende du
+  code (7 entrées pour la basse, 6 pour la batterie) dans les couleurs de la
+  partition. Les jetons de l'application sont redéfinis dans le bandeau.
+- **Mesuré** : contraste, 32 couples × 2 thèmes sans violation (signes des
+  verdicts de 4,73 à 6,13:1 sur la feuille, encre du bandeau sur l'accent
+  5,39:1 en clair, 5,54:1 en sombre). Tests : la ligne jouée un demi-ton
+  plus haut, transposition +1 → 6 justes sur 6 ; sans transposition → 6
+  fausses (+1 demi-ton) ; transposée −1 et jouée à l'origine → 6 fausses ;
+  basse à 70 % et 100 % : 100 ms d'avance et de retard → en avance, en
+  retard (écart musical 70 ms à 70 %), les autres justes ; 48 ms de retard
+  d'horloge → en retard à 100 %, « bon » à 70 % (34 ms du morceau) ; la
+  même chose pour la batterie (apparieur). Fumées : E4 (signes →, ×, + et
+  légende de la batterie), E5 (« do♯ » à côté de la fausse note, « 8 »),
+  V35 (bandeau au repos puis à l'écoute, légende, armement à 0, « ½ » dans
+  le champ de hauteur → `coach_basse_transposer` 1, frettes 0 3 0 2 → 1 4 1
+  3, « transposé de +½ ton », ← « ré » → et + sur la partition ; « −½ » →
+  frettes 4 2 4 1, le mi grave « hors manche : D#1 », marques effacées)). `verifier.sh` vert, 71 fumées.
+
+Non vérifié : à l'oreille et à la basse (essai réel de François) ; audit
+d'interface reporté (écran visible), écran touché : `pratiquer` ; la
+lisibilité des signes sur une partition dense (notes rapprochées : un signe
+peut chevaucher la note voisine).
