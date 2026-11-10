@@ -25,8 +25,13 @@
 //!
 //! Étape 4 : dynamique et groove ([`groove`] : micro-timing contre le stem,
 //! rapport de swing, vélocité et accents, conseils par motifs).
+//!
+//! Étape 5 : la basse en DI ([`basse`] : attaque par flux spectral, hauteur
+//! différée par pYIN causal, fausses notes et octaves, référence vérifiée
+//! sur le stem).
 
 pub mod appariement;
+pub mod basse;
 pub mod batterie;
 pub mod groove;
 pub mod mesures;

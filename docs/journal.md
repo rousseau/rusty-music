@@ -5935,3 +5935,57 @@ le chemin hors boucle (toutes les 4 mesures) n'est pas couvert par un test
 de fumée ; pas d'audit (aucune mise en page changée, la ligne d'état existe
 déjà). Reste d'E5 : la basse en DI (cpal, permission micro, flux spectral,
 pYIN causal, confiance de la référence par le stem), puis l'essai réel.
+
+## Pratiquer, E5, tranche 2 : la basse en DI, analyse — 10 nov. 2026
+
+Étape 5 du coach (`docs/recherche-coach-pratique.md`, « La basse en DI ») :
+l'analyse de la DI et le jugement, sans l'entrée audio de l'app (tranche
+suivante).
+
+- **Attaque** (`editor::coach::basse::AnalyseurDI`, par blocs, ce que rendra
+  cpal s'y pousse tel quel) : flux spectral log (fenêtre de Hann de 512 à
+  44,1 kHz, ≈ 11,6 ms, pas de 128), seuil 1,5 × médiane des 250 ms passées
+  + 0,05, pic local d'une trame d'avance, deux attaques à moins de 60 ms
+  fusionnées, rien sous −55 dBFS. L'instant est le milieu de la trame du
+  pic.
+- **Hauteur différée** : pYIN, première étape (seuils de 0,01 à 1 sous une
+  bêta de moyenne 0,15, probabilité de chaque creux de la différence
+  normalisée, p_a = 0,01 pour le repli), sans le HMM qui regarderait le
+  futur : une trame qui commence 12 ms après l'attaque, 24 ms
+  d'intégration plus une période de 30 Hz. La probabilité de voisement
+  sert de confiance.
+- **Octaves**, par l'énergie sur une fenêtre rectangulaire d'un nombre
+  entier de périodes (les harmoniques de f0 y sont orthogonales à f0/2) :
+  une fondamentale sans énergie (< 2 % de 2·f0) est un sous-octave de
+  l'estimateur, corrigé ; une note lue une octave au-dessus de la référence
+  n'est « mauvaise octave » que si E(f0/2)/E(f0) < 0,1.
+- **Référence vérifiée sur le stem** (`confiance_reference`) : le même pYIN
+  sur le stem, quatre trames de 12 à 47 ms après la note ; confiance = la
+  meilleure probabilité de voisement dont la hauteur confirme la
+  transcription, 0 sinon ; sûre à 0,5.
+- **Jugement** (`juger`) : l'apparieur de la batterie sur une seule voix
+  (fenêtres en temps musical, glouton, référence incertaine muette), puis
+  la hauteur de chaque note attrapée : juste, fausse (± demi-tons), octave,
+  ou inconnue sous 0,3 de confiance du jeu. `BilanHauteur` les compte.
+- **Mesuré** (8 tests, prises synthétiques de corde pincée à 44,1 kHz, de
+  B0 30,9 Hz à G3, souffle de fond) : 8 attaques sur 8, écart −1,2 à
+  −3,7 ms ; hauteurs à 0,08 demi-ton au pire (B0), confiance ≥ 0,99 ;
+  hauteur rendue 71,5 ms après l'attaque, attaque 10,6 ms après (blocs de
+  64) ; par blocs = d'un seul tenant ; note tenue 1,5 s → une attaque,
+  souffle seul → aucune ; demi-ton, ton et octaves (± 1) reconnus ; corde
+  attaquée près du chevalet (fondamentale à 15 %) jugée juste ; sur le
+  stem, une note mal transcrite, une note inventée dans un silence et une
+  note vue une octave trop haut sont toutes trois incertaines, les six
+  autres sûres ; une prise (demi-ton faux, note oubliée, octave, note
+  incertaine fausse, 20 ms de retard) → 4 justes, 1 fausse, 1 octave,
+  1 manquée, rien sur l'incertaine, retard lu à 18 ± 2 ms.
+
+Non vérifié : aucune vraie basse ni vrai stem démixé (le disque LaCie
+n'était pas branché ; les prises sont synthétiques, pas des fichiers
+enregistrés) ; la hauteur rendue à 71,5 ms, au-dessus des 50 à 65 ms de la
+recherche (une période de 30 Hz plus 24 ms d'intégration ; une fenêtre plus
+courte resterait à essayer sur de vraies notes graves) ; le legato
+(hammer-on, glissé) ne fait pas d'attaque ; le seuil du flux est réglé
+sur des synthèses. Reste d'E5 : l'entrée audio par cpal (horodatages de
+capture), la permission micro de Tauri sous macOS, le branchement dans
+l'app (commandes, fixtures, fumée), puis l'essai réel.

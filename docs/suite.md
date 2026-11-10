@@ -110,8 +110,12 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     tranche 1 le 10 nov. : groove de la batterie MIDI — écart au stem par
     pièce, décalage du disque à la grille, swing du disque et du jeu,
     régularité de vélocité et accents contre l'activation d'ADTOF, conseils
-    par motifs dans la ligne du coach, muets sous les seuils ; restent la
-    basse en DI (cpal, flux spectral, pYIN causal), l'édition du profil à
+    par motifs dans la ligne du coach, muets sous les seuils ; E5,
+    tranche 2 le 10 nov. : analyse de la basse en DI (attaque par flux
+    spectral, hauteur par pYIN causal ≈ 70 ms après, fausses notes et
+    octaves contrôlées par l'énergie, référence vérifiée sur le stem par le
+    même analyseur), testée sur des prises synthétiques ; restent l'entrée
+    audio par cpal et la permission micro, le branchement dans l'app, l'édition du profil à
     l'écran et les coups en trop sur la partition,
     puis l'essai réel avec la batterie de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
