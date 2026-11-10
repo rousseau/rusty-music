@@ -837,17 +837,29 @@ fn main() {
             // les assets sont en mémoire, rien à gagner à les mettre en cache.
             // `RUSTY_MUSIC_INCOGNITO` : mode d'essai — webview sans persistance
             // (jamais de cache périmé, jamais de `localStorage` partagé avec
-            // l'app installée) et fenêtre au premier plan pour la capture
-            // d'écran. Sans effet en usage normal.
+            // l'app installée). Sans effet en usage normal.
+            //
+            // Une fenêtre d'essai est **discrète** (V32) : ni au-dessus des
+            // autres, ni focus, et sous macOS une application « accessoire »
+            // (pas d'icône au Dock, pas de barre de menus) qui ne prend pas le
+            // premier plan — un audit de quatre minutes ne doit pas déranger
+            // qui travaille à côté. `RUSTY_MUSIC_ESSAI_VISIBLE` rend l'ancienne
+            // fenêtre au premier plan, pour qui doit la voir (les poses de la
+            // carte, `RUSTY_AUDIT_CAPTURES`).
             let essai = std::env::var("RUSTY_MUSIC_INCOGNITO").is_ok();
+            let discret = essai && std::env::var("RUSTY_MUSIC_ESSAI_VISIBLE").is_err();
+            #[cfg(target_os = "macos")]
+            if discret {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
             let fenetre =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Rusty Music")
                     .inner_size(1400.0, 900.0)
                     .min_inner_size(960.0, 620.0)
                     .incognito(essai)
-                    .always_on_top(essai)
-                    .focused(true)
+                    .always_on_top(essai && !discret)
+                    .focused(!discret)
                     // Sans ça, la webview capte le glisser-déposer au niveau
                     // natif (macOS/Windows) pour son propre dépôt de fichiers
                     // — jamais utilisé ici — et les évènements DOM
@@ -900,8 +912,10 @@ fn main() {
             // clavier : les raccourcis (espace, flèches) n'arrivent alors
             // jamais au JS tant qu'on n'a pas cliqué une première fois dans
             // la fenêtre.
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.set_focus();
+            if !discret {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.set_focus();
+                }
             }
 
             // Commandes à distance du système (macOS) ; ailleurs, ou si le système

@@ -5773,3 +5773,32 @@ affiché hors de l'Écoute » sur `ecoute:playlists` (3 cellules, 1 920 px,
 clair), sans rapport trouvé avec ce changement et non reproduit au passage
 suivant ; cause non cherchée plus avant. Les liens Markdown des critiques
 restent affichés bruts (rendus en liens, ils se liraient mieux).
+
+## Interface, V32 : fenêtres d'essai discrètes — 10 nov. 2026
+
+François (10 nov.) : les fenêtres d'audit passaient devant tout pendant les
+quatre minutes d'un audit complet (`always_on_top`, focus, `set_focus`).
+
+- **Mode d'essai** (`RUSTY_MUSIC_INCOGNITO`, `main.rs`) : plus
+  d'`always_on_top`, pas de focus au lancement ni de `set_focus`, et sous
+  macOS la politique d'activation « accessoire » (pas d'icône au Dock, pas de
+  barre de menus). L'app ordinaire inchangée (focus, raccourcis).
+  `RUSTY_MUSIC_ESSAI_VISIBLE` rend l'ancienne fenêtre au premier plan ;
+  `audit-interface.sh` la pose d'office avec `RUSTY_AUDIT_CAPTURES` (les
+  poses de la carte doivent être vues), par `env` (une affectation issue
+  d'une expansion n'en est pas une pour bash).
+- **Mesuré**, écran visible, Aperçu au premier plan : `RUSTY_AUDIT_RAPIDE=1`
+  relevé toutes les 0,5 s par `osascript` (System Events, processus au
+  premier plan) avant, pendant et après, **131 relevés, tous « Preview »** ;
+  96 cellules mesurées, 0 violation, relief vu dans 6 cellules sur 6 (la
+  fenêtre derrière les autres reçoit ses images). Type d'application
+  (`lsappinfo`) pendant un audit d'Explorer : « UIElement » 14 relevés sur
+  15, le premier « Foreground » (le processus, avant que la mise en place ne
+  pose la politique : une icône peut paraître au Dock une fraction de
+  seconde). `verifier.sh` vert.
+
+Non vérifié : le chemin `RUSTY_MUSIC_ESSAI_VISIBLE` (aucune autre fenêtre
+ouverte que l'essai rapide, comme demandé ; l'expansion seule est
+contrôlée) ; si la fenêtre d'essai, sans prendre le premier plan, se pose
+tout de même au-dessus des autres au lancement (tao l'ordonne devant, l'app
+restant inactive) ; un audit complet avec la fenêtre discrète.

@@ -32,6 +32,9 @@
 # donne plus aucune image : la carte n'est pas dessinée. Le rapport le dit en
 # une ligne ; avec RUSTY_AUDIT_CAPTURES, l'audit est reporté d'emblée (code 3,
 # `scripts/ecran-visible.sh`), et une pose qui n'est pas lue en 8 s le dit.
+# La fenêtre d'audit est discrète (V32) : ni premier plan, ni focus, ni icône
+# au Dock ; elle se mesure derrière les autres. RUSTY_MUSIC_ESSAI_VISIBLE=1 la
+# remet au premier plan (posé d'office avec RUSTY_AUDIT_CAPTURES).
 # Codes de sortie : 0 rien à redire, 1 violations, 2 erreur, 3 reporté.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -81,7 +84,14 @@ fi
 echo "compilation…"
 cargo build -q -p rusty-music-desktop
 
-RUSTY_MUSIC_DONNEES="$TMP" RUSTY_MUSIC_INCOGNITO=1 RUSTY_MUSIC_AUDIT=1 \
+# Fenêtre discrète (V32) : derrière les autres, sans focus ni icône au Dock,
+# l'app au premier plan ne change pas. Les poses de la carte doivent être vues :
+# avec RUSTY_AUDIT_CAPTURES, ou RUSTY_MUSIC_ESSAI_VISIBLE=1 posé à la main, la
+# fenêtre repasse au premier plan.
+VISIBLE="${RUSTY_MUSIC_ESSAI_VISIBLE:-}"
+[ -n "${RUSTY_AUDIT_CAPTURES:-}" ] && VISIBLE=1
+env RUSTY_MUSIC_DONNEES="$TMP" RUSTY_MUSIC_INCOGNITO=1 RUSTY_MUSIC_AUDIT=1 \
+  ${VISIBLE:+RUSTY_MUSIC_ESSAI_VISIBLE=1} \
   ./target/debug/rusty-music-desktop >"$LOG" 2>&1 &
 PID=$!
 disown "$PID" 2>/dev/null || true   # pas de message « Terminated » à l'arrêt
