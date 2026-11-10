@@ -5802,3 +5802,17 @@ ouverte que l'essai rapide, comme demandé ; l'expansion seule est
 contrôlée) ; si la fenêtre d'essai, sans prendre le premier plan, se pose
 tout de même au-dessus des autres au lancement (tao l'ordonne devant, l'app
 restant inactive) ; un audit complet avec la fenêtre discrète.
+
+## Interface, A1 : audit complet de nuit — 10 nov. 2026
+
+Audit complet (`scripts/audit-interface.sh`, copie de la base), écran caché
+(`ecran-visible.sh` : 1), fenêtre d'essai discrète de V32 : **288 cellules,
+0 violation** (gabarit, tailles, écritures), contraste et typographie sans
+violation ; même chiffre que le dernier audit complet (V30, 0 sur 288).
+Avertissement seul : G8, rail d'`explorer:anneau` plein à 1 400 × 900
+(803 / 804 px, 6 cellules), déjà connu. Aucune étape du jour n'avait reporté
+son audit (P2 et V30 en ont fait un complet, V32 un rapide).
+
+Non vérifié : relief et carte (18 cellules `carte+relief`, affichage
+suspendu, carte non dessinée) ; l'aléa G5 sur `ecoute:playlists` vu par V30
+ne s'est pas montré ici.
