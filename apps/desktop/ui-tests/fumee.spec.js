@@ -1722,9 +1722,38 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   await page.click("#coach-basculer");
   await expect.poll(() => appels(page, "coach_ecouter").then((a) => a.at(-1)?.peripherique)).toBe(null);
   await expect(marques).toHaveCount(0);
-  // Sans basse transcrite, pas de coach de basse (E5 : voir plus bas).
+  // Sans basse transcrite, la barre reste et offre de la calculer (V34),
+  // par le même chemin que le bloc Partitions (ici : les conditions de
+  // MuScriptor, pas encore acceptées).
   await page.click('#instruments [data-instrument="bass"]');
-  await expect(barre).toBeHidden();
+  await expect(barre).toBeVisible();
+  await expect(barre).toHaveAttribute("aria-label", "Coach de basse");
+  await expect(page.locator("#coach-basculer")).toBeHidden();
+  const transcrire = page.locator("#coach-transcrire");
+  await expect(transcrire).toHaveText("transcrire la basse pour jouer avec");
+  await transcrire.click();
+  await expect(page.locator("#muscriptor-conditions")).toBeVisible();
+});
+
+test("V34 : la batterie sans partition, la barre du coach offre de la transcrire", async ({ page }) => {
+  await batterieTranscrite(page);
+  // Les mesures sont là, la partition pas encore calculée.
+  await page.evaluate(() => {
+    window.__FIXTURES__.transcriptions_en_cache = [];
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="drums"]');
+  const barre = page.locator("#partition-coach");
+  await expect(barre).toBeVisible();
+  await expect(barre).toHaveAttribute("aria-label", "Coach de batterie");
+  await expect(page.locator("#coach-basculer")).toBeHidden();
+  await expect(page.locator("#coach-calibrer")).toBeHidden();
+  const transcrire = page.locator("#coach-transcrire");
+  await expect(transcrire).toHaveText("transcrire la batterie pour jouer avec");
+  await transcrire.click();
+  await expect.poll(() => appels(page, "transcrire").then((a) => a.at(-1)?.instrument)).toBe("drums");
+  // Rien n'écoute avant que la partition soit là.
+  expect(await appels(page, "coach_ecouter")).toEqual([]);
 });
 
 test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en hauteur", async ({ page }) => {
@@ -1733,7 +1762,7 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
     // Une interface audio branchée, déjà calibrée.
     window.__FIXTURES__.coach_basse_entrees = ["Interface USB", "Micro intégré"];
     window.__FIXTURES__.coach_basse_ecouter = (a) =>
-      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 2, latence_ms: 24 } : null;
+      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 2, canal: 0, manuel: false, latence_ms: 24 } : null;
     // Le stem confirme six notes sur sept.
     window.__FIXTURES__.coach_basse_armer = (a) => ({ notes: a.notes.length, sures: a.notes.length - 1, stem: true });
     // Le moteur juge la première mesure : la 1ʳᵉ juste, la 2ᵉ fausse d'un
@@ -1753,6 +1782,9 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
         notes: [],
         bilan: { justes: 1, fausses: 1, octaves: 1, inconnues: 0 },
         erreur: null,
+        canal: 0,
+        // V34 : une fois l'entrée 1 choisie à la main, la basse joue sur la 2.
+        ailleurs: window.__APPELS__.some((x) => x.cmd === "coach_basse_canal" && x.args?.canal === 0) ? 1 : null,
       };
     };
   });
@@ -1785,11 +1817,24 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
   // Après l'annonce de l'armement (six notes confirmées sur sept).
   await expect(page.locator("#coach-etat")).toContainText("3 / 4 attrapées", { timeout: 10_000 });
   await expect(page.locator("#coach-etat")).toContainText("1 fausse, 1 à l'octave");
-  await expect(page.locator("#coach-etat")).toContainText("latence 24 ms");
+  await expect(page.locator("#coach-etat")).toContainText("entrée 1 · latence 24 ms");
+  // V34 : l'interface a deux canaux ; « auto » par défaut.
+  const canal = page.locator("#coach-canal");
+  await expect(canal).toBeVisible();
+  await expect(canal).toHaveValue("auto");
+  expect(await canal.locator("option").allTextContents()).toEqual(["auto", "entrée 1", "entrée 2"]);
   // Ni boucle proposée ni escalier pour la basse.
   await expect(page.locator("#coach-boucler")).toBeHidden();
   await expect(page.locator("#coach-vitesse")).toBeHidden();
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e5-coach-basse.png" });
+
+  // V34 : l'entrée 1 choisie à la main ; le moteur entend la basse sur la 2
+  // et la ligne le dit.
+  await canal.selectOption("0");
+  await expect.poll(() => appels(page, "coach_basse_canal").then((a) => a.at(-1)?.canal)).toBe(0);
+  await expect(page.locator("#coach-etat")).toContainText("la basse semble sur l'entrée 2", { timeout: 10_000 });
+  await canal.selectOption("auto");
+  await expect.poll(() => appels(page, "coach_basse_canal").then((a) => a.at(-1)?.canal)).toBe(null);
 
   // Calibrer : la consigne de la basse ; arrêter ferme l'entrée.
   await page.click("#coach-calibrer");

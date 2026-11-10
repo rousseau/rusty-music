@@ -6048,3 +6048,57 @@ sur une vraie interface (la calibration l'absorbe s'il est faux, tant qu'il
 est stable) ; le premier canal seulement (une basse sur l'entrée 2 n'est
 pas entendue) ; audit d'interface reporté (écran visible), écran touché :
 `pratiquer`. Reste d'E5 : l'essai réel avec François (porte).
+
+## Pratiquer, V34 : le coach trouve l'entrée où joue la basse — 10 nov. 2026
+
+François branche sa basse sur une Focusrite Scarlett Solo : l'entrée 1 est
+le micro (XLR), l'instrument (Hi-Z) la 2. E5 n'écoutait que le premier
+canal, et la barre du coach n'apparaissait qu'une fois la basse transcrite :
+il ne l'a pas trouvée.
+
+- **Tous les canaux** (`apps/desktop/src/coach_basse.rs`) : le flux cpal est
+  désentrelacé en une tranche par canal (8 au plus : une 18i20 en a 18),
+  chacune poussée dans sa voie, son analyseur DI, ses notes. Le coach juge
+  le canal retenu.
+- **Auto** : la calibration (corde à vide étouffée sur les clics) calibre
+  chaque canal ; parmi ceux qui retiennent au moins les trois quarts des
+  notes du meilleur (une 2i2 en mono sur les deux), le plus fort (niveau
+  médian des attaques) est retenu. Hors calibration, si un autre canal porte
+  au moins 3 notes avec une hauteur en 3 s, trois fois plus que le retenu,
+  le jugement y passe de lui-même (« basse entendue sur l'entrée 2 ») ; le
+  souffle d'une entrée micro n'en donne pas.
+- **À la main** : une liste « auto, entrée 1, entrée 2… » à côté de
+  l'interface ; un canal choisi ne bouge plus (la calibration ne cherche que
+  sur lui), et la ligne dit « la basse semble sur l'entrée 2 » quand il
+  reste muet. Nouvelle commande `coach_basse_canal`.
+- **Gardé par interface** : table `canal_entree` (migration n° 14 :
+  interface, canal, manuel), écrite au choix, à la calibration et au
+  changement trouvé seul ; relue à l'ouverture de l'entrée. La ligne du
+  coach commence par « entrée 2 · latence 24 ms ».
+- **Trouver le coach** (`coach.js`, `pratiquer.js`) : la barre se montre dès
+  que Pratiquer affiche la basse ou la batterie, partition prête ou non.
+  Sans partition : « transcrire la basse pour jouer avec » (ou la batterie),
+  par le chemin du bouton « Calculer » du bloc Partitions (conditions de
+  MuScriptor comprises), puis « Transcription … en cours : le coach
+  suivra. » ; « retranscrire » après un échec.
+- **Mesuré** : 10 tests du coach de basse (5 nouveaux), sur une interface
+  simulée à 2 canaux (blocs de 256 datés, ±1 ms de gigue) : basse sur
+  l'entrée 2 et souffle (bruit blanc ±0,05) sur la 1 → entrée 2 retenue,
+  latence 30 ± 8 ms ; basse sur la 1, souffle sur la 2 → entrée 1 ; la même
+  basse sur les deux, l'une à 0,25 → la plus forte, dans les deux sens ;
+  entrée 1 choisie à la main → calibration refusée sur le souffle, canal
+  inchangé, « ailleurs » = entrée 2, puis retour à « auto » → le jugement
+  passe sur la 2 et y reste ; une ligne jouée sur la 2 sans calibration →
+  le souffle donne moins de 2 notes avec hauteur, le jugement passe sur la 2
+  et compte 6 justes sur 6. Test de base pour `canal_entree`. Tests de fumée :
+  E4 (la basse sans partition offre de la transcrire, ouvre les conditions
+  de MuScriptor), V34 (la batterie sans partition : « transcrire la
+  batterie pour jouer avec » appelle `transcrire`), E5 (liste « auto,
+  entrée 1, entrée 2 », ligne « entrée 1 · latence 24 ms », entrée 1 choisie
+  → « la basse semble sur l'entrée 2 », retour à « auto »). `verifier.sh`
+  vert, 70 fumées.
+
+Non vérifié : aucune vraie Scarlett (canaux, ordre, format de cpal sur
+l'appareil) ; la charge de huit analyseurs pYIN en même temps sur une
+grosse interface ; audit d'interface reporté (écran visible), écran
+touché : `pratiquer`.

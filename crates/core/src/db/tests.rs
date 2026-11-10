@@ -2948,6 +2948,31 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
 }
 
 #[test]
+fn le_canal_de_la_basse_se_garde_par_interface() {
+    let lib = Library::open_in_memory().unwrap();
+    assert_eq!(lib.canal_entree("Scarlett Solo USB").unwrap(), None);
+    let auto = CanalEntree {
+        peripherique: "Scarlett Solo USB".into(),
+        canal: 1,
+        manuel: false,
+    };
+    lib.garder_canal_entree(&auto).unwrap();
+    assert_eq!(
+        lib.canal_entree("Scarlett Solo USB").unwrap(),
+        Some(auto.clone())
+    );
+    // Un choix à la main remplace ce que le coach avait trouvé.
+    let main = CanalEntree {
+        canal: 0,
+        manuel: true,
+        ..auto
+    };
+    lib.garder_canal_entree(&main).unwrap();
+    assert_eq!(lib.canal_entree("Scarlett Solo USB").unwrap(), Some(main));
+    assert_eq!(lib.canal_entree("Scarlett 2i2 USB").unwrap(), None);
+}
+
+#[test]
 fn la_latence_se_garde_par_peripherique_et_par_chemin() {
     let lib = Library::open_in_memory().unwrap();
     assert_eq!(lib.latence("TD-17", "midi").unwrap(), None);

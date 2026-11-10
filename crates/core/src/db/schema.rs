@@ -84,6 +84,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../sql/migration-013-pratique-playlist.sql"
         )),
+        // N° 14 (10 nov. 2026) : le canal d'une interface audio où joue la
+        // basse, par interface (V34 : `canal_entree`, `db/latence.rs`).
+        M::up(include_str!("../../sql/migration-014-canal-entree.sql")),
     ])
 }
 

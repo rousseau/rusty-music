@@ -118,7 +118,11 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     10 nov. : hauteur ≈ 60 ms après l'attaque dès le mi grave (trame
     courte), entrée audio par cpal datée sur l'horloge commune, permission
     micro, « jouer avec ma basse » dans la barre du coach (fausses notes et
-    octaves entourées, calibration sur une corde étouffée) ; restent
+    octaves entourées, calibration sur une corde étouffée) ; V34 le
+    10 nov. : tous les canaux de l'interface écoutés, celui de la basse
+    trouvé à la calibration ou dès qu'elle joue (Scarlett Solo : entrée 2),
+    choix à la main gardé par interface, barre du coach visible sans
+    partition avec « transcrire la basse pour jouer avec » ; restent
     l'édition du profil MIDI à l'écran et les coups en trop sur la
     partition, puis l'essai réel avec la batterie et la basse de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP

@@ -383,6 +383,8 @@ function transcription(instrument, lancer = false) {
       });
     transcriptions.set(cle, entree);
     majBlocPartitions();
+    // La barre du coach dit le calcul en cours (V34).
+    if (edition.usage === "pratiquer") majCoach();
   }
   return transcriptions.get(cle);
 }
@@ -481,8 +483,7 @@ function majBlocPartitions() {
 for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]")) {
   ligne.querySelector(".partition-ligne__action").addEventListener("click", async () => {
     const instrument = ligne.dataset.partition;
-    const tr = transcription(instrument);
-    if (tr?.pret) {
+    if (transcription(instrument)?.pret) {
       // Afficher : la partition se lit en Pratiquer.
       edition.usage = "pratiquer";
       edition.instrument = instrument;
@@ -490,12 +491,20 @@ for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]
       majUsage();
       return;
     }
-    // La basse passe par MuScriptor : conditions acceptées et poids présents,
-    // sinon le panneau qui les règle — il lance le calcul une fois prêt.
-    if (instrument === "bass" && !(await muscriptorPret())) return;
-    if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument === "bass"));
-    transcription(instrument, true);
+    await calculerPartition(instrument);
   });
+}
+
+/// Calcule la partition d'un instrument (ou la recalcule après un échec) :
+/// le bouton « Calculer » du bloc Partitions, et celui de la barre du coach
+/// (V34).
+async function calculerPartition(instrument) {
+  const tr = transcription(instrument);
+  // La basse passe par MuScriptor : conditions acceptées et poids présents,
+  // sinon le panneau qui les règle — il lance le calcul une fois prêt.
+  if (instrument === "bass" && !(await muscriptorPret())) return;
+  if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument === "bass"));
+  transcription(instrument, true);
 }
 
 /// La basse de celui qui joue (`tablature::Basses`) : « quatre » ou
@@ -1148,6 +1157,17 @@ function basseAffichee() {
   return tr?.pret ? tr : null;
 }
 
+/// La basse ou la batterie que Pratiquer montre sans partition prête (pas
+/// calculée, en calcul, ou en échec) : la barre du coach offre de la
+/// calculer (V34). `tr` est l'entrée de `transcriptions`, ou null.
+function partitionAttendue() {
+  if (edition.usage !== "pratiquer" || $("partition").hidden || !edition.pulsation) return null;
+  const instrument = instrumentPratique();
+  if (instrument !== "bass" && instrument !== "drums") return null;
+  const tr = transcription(instrument);
+  return tr?.pret ? null : { instrument, tr };
+}
+
 /// Remplace la basse transcrite par sa version corrigée (rendue par
 /// `corriger_transcription`) et redessine la partie.
 function remplacerBasse(entree, vue) {
@@ -1157,6 +1177,6 @@ function remplacerBasse(entree, vue) {
 }
 
 export {
-  basseAffichee, bassesJouees, batterieAffichee, cacherPartition, lancerDecompte, majUsage, montrerPartition,
-  oublierPartitions, partition, positionMoteur, remplacerBasse,
+  basseAffichee, bassesJouees, batterieAffichee, cacherPartition, calculerPartition, lancerDecompte, majUsage,
+  montrerPartition, oublierPartitions, partition, partitionAttendue, positionMoteur, remplacerBasse,
 };

@@ -74,6 +74,7 @@ fn exporter_les_types_des_commandes() {
             coach_basse::coach_basse_armer,
             coach_basse::coach_basse_juger,
             coach_basse::coach_basse_calibrer,
+            coach_basse::coach_basse_canal,
             // P2 : Pratiquer enchaîne une playlist.
             pratique_playlist,
             pratique_playlist_poser,

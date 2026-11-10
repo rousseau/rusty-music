@@ -464,9 +464,13 @@ const fixtures = {
   coach_basse_armer: { notes: 0, sures: 0, stem: false },
   coach_basse_juger: (a) => ({
     jusqua_s: a.depuisS ?? 0, jugements: [], notes: [], bilan: { justes: 0, fausses: 0, octaves: 0, inconnues: 0 },
-    erreur: null,
+    erreur: null, canal: 0, ailleurs: null,
   }),
-  coach_basse_calibrer: { latence_ms: 24, dispersion_ms: 4, retenues: 15, ecartees: 1 },
+  coach_basse_calibrer: { latence_ms: 24, dispersion_ms: 4, retenues: 15, ecartees: 1, canal: 0 },
+  // V34 : le canal de l'interface choisi à la main (un nombre) ou « auto » (null).
+  coach_basse_canal: (a) => ({
+    entree: "Interface USB", frequence_hz: 48000, canaux: 2, canal: a.canal ?? 0, manuel: a.canal != null, latence_ms: 24,
+  }),
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

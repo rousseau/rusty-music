@@ -4,7 +4,9 @@ import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
 import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
 import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
-import { basseAffichee, batterieAffichee, partition } from "./pratiquer.js";
+import {
+  basseAffichee, batterieAffichee, calculerPartition, montrerPartition, partition, partitionAttendue,
+} from "./pratiquer.js";
 
 /* ------------------------------------------- pratiquer : le coach de batterie */
 
@@ -32,12 +34,17 @@ import { basseAffichee, batterieAffichee, partition } from "./pratiquer.js";
 // deux passages propres, un de moins après un raté).
 //
 // E5 : la même barre sert à la basse en DI (`coach_basse.rs`) quand
-// Pratiquer montre la basse transcrite. L'entrée audio (l'entrée 1 de
-// l'interface) remplace la batterie MIDI ; chaque note jouée est jugée en
+// Pratiquer montre la basse transcrite. L'entrée audio remplace la batterie
+// MIDI ; le moteur écoute tous les canaux de l'interface et juge celui où
+// joue la basse (V34 : « auto », trouvé à la calibration ou dès qu'elle
+// joue ; ou choisi à côté de l'interface). Chaque note jouée est jugée en
 // temps et en hauteur (juste, fausse, mauvaise octave), seulement si le
 // stem de basse confirme la note de la transcription. La calibration : une
 // corde étouffée pincée sur les clics du décompte. Ni table par mesure, ni
 // escalier, ni groove pour la basse : ils restent à la batterie.
+//
+// V34 : la barre se montre dès que Pratiquer affiche la basse ou la batterie,
+// même sans partition prête ; elle offre alors de la calculer.
 
 const coach = {
   actif: false,
@@ -45,6 +52,14 @@ const coach = {
   instrument: null,
   peripherique: null,
   latenceMs: null,
+  // Basse (V34) : canaux écoutés, canal jugé (depuis 0), choisi à la main,
+  // et le canal où la basse semble jouer quand le choisi reste muet.
+  canaux: 0,
+  canal: 0,
+  manuel: false,
+  ailleurs: null,
+  // La partition attendue (instrument affiché sans partition prête), ou null.
+  attente: null,
   // La transcription armée (sa révision), pour ne pas réarmer à chaque
   // redessin.
   armee: null,
@@ -85,7 +100,7 @@ const TITRES = {
   drums:
     "Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.",
   bass:
-    "Écouter la basse branchée sur l'entrée 1 de l'interface audio pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée, fausse ou à la mauvaise octave. Rien n'est dit des notes que le stem de basse ne confirme pas.",
+    "Écouter la basse branchée sur l'interface audio pendant la lecture (l'entrée où elle joue se trouve seule, ou se choisit à côté) : chaque note de la partition est entourée — juste, en avance, en retard, manquée, fausse ou à la mauvaise octave. Rien n'est dit des notes que le stem de basse ne confirme pas.",
 };
 
 const CALIBRER = {
@@ -125,19 +140,25 @@ function bilanVide() {
   return { attendues: 0, attrapees: 0, en_trop: 0, ecarts: [], fausses: 0, octaves: 0 };
 }
 
-/// La barre du coach : là seulement quand Pratiquer montre la batterie
-/// transcrite. L'appelle `montrerPartition` (et `cacherPartition`).
+/// La barre du coach : là quand Pratiquer montre la batterie ou la basse —
+/// transcrite, on la joue ; pas encore, on la calcule (V34). L'appelle
+/// `montrerPartition` (et `cacherPartition`).
 function majCoach() {
   const { tr, instrument } = affichee();
+  coach.attente = tr ? null : partitionAttendue();
   const barre = $("partition-coach");
-  barre.hidden = !tr;
+  barre.hidden = !tr && !coach.attente;
   if (coach.actif && instrument !== coach.instrument) {
-    // Autre instrument affiché : l'écoute de l'ancien se ferme.
+    // Autre instrument affiché (ou plus de partition) : l'écoute se ferme.
     arreter();
   }
   if (!tr) {
     arreterSondage();
     effacerMarques();
+    if (coach.attente) {
+      barre.setAttribute("aria-label", coach.attente.instrument === "bass" ? "Coach de basse" : "Coach de batterie");
+      dire();
+    }
     return;
   }
   if (!coach.actif) coach.instrument = instrument;
@@ -156,9 +177,32 @@ function dire() {
   etat.title = etat.textContent;
 }
 
+/// Sans partition prête : le geste qui la calcule, ou l'état du calcul.
+function direAttente() {
+  const { instrument, tr } = coach.attente;
+  const nom = instrument === "bass" ? "la basse" : "la batterie";
+  for (const id of ["coach-basculer", "coach-calibrer", "coach-peripherique", "coach-canal", "coach-boucler", "coach-vitesse"]) {
+    $(id).hidden = true;
+  }
+  const transcrire = $("coach-transcrire");
+  const enCours = !!tr && !tr.erreur;
+  transcrire.hidden = enCours;
+  transcrire.textContent = `${tr?.erreur ? "retranscrire" : "transcrire"} ${nom} pour jouer avec`;
+  transcrire.title = `Calculer la partition de ${nom} (comme « Calculer » du bloc Partitions) : le coach la suivra.`;
+  $("coach-etat").textContent = enCours
+    ? `Transcription de ${nom} en cours : le coach suivra.`
+    : tr?.erreur
+      ? `Transcription impossible : ${tr.erreur}`
+      : "";
+}
+
 function direTexte() {
   const etat = $("coach-etat");
   const bascule = $("coach-basculer");
+  if (coach.attente) return direAttente();
+  $("coach-transcrire").hidden = true;
+  bascule.hidden = false;
+  $("coach-canal").hidden = !coach.actif || coach.instrument !== "bass" || coach.canaux < 2;
   bascule.setAttribute("aria-pressed", String(coach.actif));
   bascule.textContent = coach.actif ? "arrêter" : ARRETE[coach.instrument ?? "drums"];
   $("coach-calibrer").hidden = !coach.actif || !coach.peripherique;
@@ -183,7 +227,13 @@ function direTexte() {
         : "Calibrer : ▶, puis taper la caisse claire sur les seize clics du décompte.";
     return;
   }
-  const latence = coach.latenceMs === null ? "latence non calibrée" : `latence ${Math.round(coach.latenceMs)} ms`;
+  const calibree = coach.latenceMs === null ? "latence non calibrée" : `latence ${Math.round(coach.latenceMs)} ms`;
+  // La basse : l'entrée jugée, et celle où la basse semble jouer (V34).
+  const basse = coach.instrument === "bass" && coach.canaux > 1;
+  const latence =
+    (basse ? `entrée ${coach.canal + 1} · ` : "") +
+    calibree +
+    (basse && coach.ailleurs !== null ? ` · la basse semble sur l'entrée ${coach.ailleurs + 1}` : "");
   const b = coach.bilan;
   if (!b || !b.attendues) {
     etat.textContent = `${latence} · ▶ et jouer`;
@@ -329,11 +379,14 @@ const cleGardee = () => (coach.instrument === "bass" ? "coach-entree" : "coach-p
 async function ecouter(nom) {
   coach.peripherique = null;
   coach.latenceMs = null;
+  coach.canaux = 0;
+  coach.ailleurs = null;
   if (nom) {
     try {
       const vue = await invoke(COMMANDES[coach.instrument].ecouter, ecouterArgs(coach.instrument, nom));
       coach.peripherique = vue?.peripherique ?? vue?.entree ?? null;
       coach.latenceMs = vue?.latence_ms ?? null;
+      if (coach.instrument === "bass" && vue) poserCanaux(vue);
       $("coach-peripherique").value = nom;
       try {
         localStorage.setItem(cleGardee(), nom);
@@ -349,6 +402,30 @@ async function ecouter(nom) {
   }
   if (coach.peripherique) demarrerSondage();
   dire();
+}
+
+/// Les canaux de l'interface écoutée (basse) : « auto », puis une entrée
+/// par canal.
+function poserCanaux(vue) {
+  coach.canaux = vue.canaux;
+  coach.canal = vue.canal;
+  coach.manuel = vue.manuel;
+  const choix = $("coach-canal");
+  const options = [new Option("auto", "auto")];
+  for (let k = 0; k < vue.canaux; k++) options.push(new Option(`entrée ${k + 1}`, String(k)));
+  choix.replaceChildren(...options);
+  choix.value = vue.manuel ? String(vue.canal) : "auto";
+}
+
+async function choisirCanal(valeur) {
+  try {
+    const vue = await invoke("coach_basse_canal", { canal: valeur === "auto" ? null : Number(valeur) });
+    poserCanaux(vue);
+    coach.ailleurs = null;
+    annoncer(vue.manuel ? `Entrée ${vue.canal + 1} écoutée.` : `Entrée trouvée seule (pour l'instant : entrée ${vue.canal + 1}).`);
+  } catch (e) {
+    annoncer(`Entrée non choisie : ${e}`);
+  }
 }
 
 async function arreter() {
@@ -478,6 +555,15 @@ function recevoirBasse(v) {
   if (v.erreur && v.erreur !== coach.erreurDite) {
     coach.erreurDite = v.erreur;
     annoncer(`Entrée audio : ${v.erreur}`);
+  }
+  // « Auto » : le moteur a entendu la basse sur un autre canal et l'y suit.
+  if (v.canal !== coach.canal) {
+    coach.canal = v.canal;
+    annoncer(`Basse entendue sur l'entrée ${v.canal + 1} : c'est elle qui est écoutée.`);
+  }
+  if (v.ailleurs !== coach.ailleurs) {
+    coach.ailleurs = v.ailleurs;
+    dire();
   }
   // Une annonce échue laisse la place au bilan, même sans note nouvelle.
   if (coach.message && performance.now() >= coach.messageJusqua) {
@@ -632,7 +718,13 @@ function apresDecompte(plan, attenteMs) {
       const v = await invoke(COMMANDES[coach.instrument].calibrer, { clics: plan.clics.map((c) => c[0]) });
       coach.latenceMs = v.latence_ms;
       const quoi = coach.instrument === "bass" ? "notes" : "frappes";
-      annoncer(`Calibrée : ${Math.round(v.latence_ms)} ms (± ${Math.round(v.dispersion_ms)}), ${v.retenues} ${quoi} retenues.`);
+      // La basse : le canal où sont arrivées les attaques (V34).
+      const ou = coach.instrument === "bass" && coach.canaux > 1 ? ` sur l'entrée ${v.canal + 1}` : "";
+      if (coach.instrument === "bass") {
+        coach.canal = v.canal;
+        coach.ailleurs = null;
+      }
+      annoncer(`Calibrée${ou} : ${Math.round(v.latence_ms)} ms (± ${Math.round(v.dispersion_ms)}), ${v.retenues} ${quoi} retenues.`);
     } catch (e) {
       annoncer(`Calibration manquée : ${e}`);
     } finally {
@@ -645,6 +737,14 @@ function apresDecompte(plan, attenteMs) {
 
 $("coach-basculer").addEventListener("click", () => (coach.actif ? arreter() : demarrer()));
 $("coach-peripherique").addEventListener("change", (e) => ecouter(e.target.value));
+$("coach-canal").addEventListener("change", (e) => choisirCanal(e.target.value));
+$("coach-transcrire").addEventListener("click", async () => {
+  const instrument = coach.attente?.instrument;
+  if (!instrument) return;
+  await calculerPartition(instrument);
+  // L'aide de la partition et la barre disent le calcul en cours.
+  montrerPartition();
+});
 $("coach-calibrer").addEventListener("click", () => {
   coach.calibrage = !coach.calibrage;
   coach.message = null;

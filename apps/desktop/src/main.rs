@@ -1094,6 +1094,7 @@ fn main() {
             coach_basse::coach_basse_armer,
             coach_basse::coach_basse_juger,
             coach_basse::coach_basse_calibrer,
+            coach_basse::coach_basse_canal,
             pratique_memoire,
             pratique_garder,
             pratique_playlist,

@@ -8,7 +8,8 @@
 //! La mesure elle-même (médiane des écarts frappe − clic) est
 //! `rusty_music_editor::coach::calibrer` ; ici, seulement ce qui en reste.
 //! Avec elle, le profil de correspondance d'une batterie électronique
-//! (migration n° 11), gardé en JSON par périphérique.
+//! (migration n° 11), gardé en JSON par périphérique, et le canal d'une
+//! interface audio où joue la basse (migration n° 14, V34).
 
 use super::*;
 
@@ -119,6 +120,50 @@ impl Library {
              ON CONFLICT (peripherique) DO UPDATE SET
                 profil = excluded.profil, maj = excluded.maj",
             params![peripherique, json],
+        )?;
+        Ok(())
+    }
+}
+
+/// Le canal d'une interface audio où joue la basse : choisi à la main, ou
+/// trouvé par le coach.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CanalEntree {
+    pub peripherique: String,
+    /// Compté depuis 0 : l'entrée 1 de l'interface.
+    pub canal: u32,
+    /// Choisi à la main (sinon : trouvé par le coach, « auto »).
+    pub manuel: bool,
+}
+
+impl Library {
+    /// Le canal gardé pour l'interface `peripherique`, s'il l'a été.
+    pub fn canal_entree(&self, peripherique: &str) -> Result<Option<CanalEntree>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT peripherique, canal, manuel FROM canal_entree WHERE peripherique = ?1",
+                params![peripherique],
+                |r| {
+                    Ok(CanalEntree {
+                        peripherique: r.get(0)?,
+                        canal: r.get(1)?,
+                        manuel: r.get(2)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Garde le canal d'une interface, à la place du précédent.
+    pub fn garder_canal_entree(&self, c: &CanalEntree) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO canal_entree (peripherique, canal, manuel, maj)
+             VALUES (?1, ?2, ?3, strftime('%s','now'))
+             ON CONFLICT (peripherique) DO UPDATE SET
+                canal = excluded.canal, manuel = excluded.manuel, maj = excluded.maj",
+            params![c.peripherique, c.canal, c.manuel],
         )?;
         Ok(())
     }

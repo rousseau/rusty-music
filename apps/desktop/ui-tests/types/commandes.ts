@@ -211,7 +211,13 @@ export const commands = {
 	 *  (`clics`, en secondes du morceau) : on pince une corde à vide, étouffée,
 	 *  sur chaque clic. La garde pour cette entrée.
 	 */
-	coach_basse_calibrer: (clics: (number | null)[]) => __TAURI_INVOKE<VueCalibration>("coach_basse_calibrer", { clics }),
+	coach_basse_calibrer: (clics: (number | null)[]) => __TAURI_INVOKE<VueCalibrationBasse>("coach_basse_calibrer", { clics }),
+	/**
+	 *  Choisit le canal jugé de l'entrée écoutée : `Some(c)` le fixe (compté
+	 *  depuis 0), `None` revient à « auto » (le canal trouvé jusqu'ici reste
+	 *  jusqu'à la prochaine calibration). Gardé pour cette interface.
+	 */
+	coach_basse_canal: (canal: number | null) => __TAURI_INVOKE<VueEcouteBasse_Serialize>("coach_basse_canal", { canal }),
 	/**  La playlist que Pratiquer enchaîne, ou `None`. */
 	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
 	/**
@@ -1550,6 +1556,16 @@ export type VueCalibration = {
 	ecartees: number,
 };
 
+/**  Ce qu'une calibration de la basse a mesuré, et le canal retenu. */
+export type VueCalibrationBasse = {
+	latence_ms: number | null,
+	dispersion_ms: number | null,
+	retenues: number,
+	ecartees: number,
+	/**  Le canal où sont arrivées les attaques, compté depuis 0. */
+	canal: number,
+};
+
 /**  Ce que l'interface sait de l'écoute. */
 export type VueEcoute = VueEcoute_Serialize | VueEcoute_Deserialize;
 
@@ -1560,7 +1576,12 @@ export type VueEcouteBasse = VueEcouteBasse_Serialize | VueEcouteBasse_Deseriali
 export type VueEcouteBasse_Deserialize = {
 	entree: string,
 	frequence_hz: number,
+	/**  Canaux écoutés (l'interface en a peut-être plus : [`CANAUX_MAX`]). */
 	canaux: number,
+	/**  Le canal jugé, compté depuis 0 (l'entrée 1 de l'interface). */
+	canal: number,
+	/**  Choisi à la main (sinon « auto »). */
+	manuel: boolean,
 	/**  La latence calibrée de cette entrée, si elle l'a été. */
 	latence_ms?: number | null,
 };
@@ -1569,7 +1590,12 @@ export type VueEcouteBasse_Deserialize = {
 export type VueEcouteBasse_Serialize = {
 	entree: string,
 	frequence_hz: number,
+	/**  Canaux écoutés (l'interface en a peut-être plus : [`CANAUX_MAX`]). */
 	canaux: number,
+	/**  Le canal jugé, compté depuis 0 (l'entrée 1 de l'interface). */
+	canal: number,
+	/**  Choisi à la main (sinon « auto »). */
+	manuel: boolean,
 	/**  La latence calibrée de cette entrée, si elle l'a été. */
 	latence_ms: number | null,
 };
@@ -1636,6 +1662,10 @@ export type VueJugementsBasse_Deserialize = {
 	bilan: BilanHauteur,
 	/**  Une erreur du flux audio (entrée débranchée…), s'il y en a eu une. */
 	erreur?: string | null,
+	/**  Le canal jugé, compté depuis 0 : en « auto », il suit la basse. */
+	canal: number,
+	/**  Canal choisi à la main resté muet : celui où la basse semble jouer. */
+	ailleurs?: number | null,
 };
 
 /**  Le jugement d'une fenêtre de temps. */
@@ -1651,6 +1681,10 @@ export type VueJugementsBasse_Serialize = {
 	bilan: BilanHauteur,
 	/**  Une erreur du flux audio (entrée débranchée…), s'il y en a eu une. */
 	erreur: string | null,
+	/**  Le canal jugé, compté depuis 0 : en « auto », il suit la basse. */
+	canal: number,
+	/**  Canal choisi à la main resté muet : celui où la basse semble jouer. */
+	ailleurs: number | null,
 };
 
 /**  Le jugement d'une fenêtre de temps. */
