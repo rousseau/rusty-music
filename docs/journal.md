@@ -5736,3 +5736,40 @@ démixage d'avance (les tests simulent le moteur) ; deux démixages à la fois
 si l'on saute à un morceau sans stems pendant que le suivant se prépare (le
 moteur ne l'empêche pas) ; la violation G3 d'Explorer, à part.
 
+
+## Interface, V30 : l'inspecteur qui débordait à 960 px — 10 nov. 2026
+
+Depuis E4, l'audit complet relevait parfois deux violations G3 sur
+`explorer:points` à 960 px : « `.inspecteur` défile horizontalement (306 >
+299) », la première cellule (base, sombre) et la suivante, jamais
+isolément.
+
+- **Cause** : la première cellule montre dans l'inspecteur le morceau repris
+  de la session de la base copiée (ensuite, l'audit sélectionne
+  `carte.points[0]`), donc ce que François écoutait. Les critiques
+  CritiqueBrainz y sont rendues en texte brut ; **195 des 602** de la base
+  portent des liens Markdown (`[Artiste](http://www.bbc.co.uk/music/artists/…)`,
+  les critiques de la BBC), mots d'un seul tenant plus larges que les 263 px
+  du panneau. Le 10 nov. au matin, la session était sur Rage Against the
+  Machine ; à l'heure de ce lancement, sur Meat Beat Manifesto, d'où une
+  violation tantôt là, tantôt non. Reproduite à coup sûr par une copie de la
+  base dont la session pointe sur « Know Your Enemy » (`RUSTY_DONNEES_SOURCE`).
+- **Correction** : `overflow-wrap: break-word` sur `.inspecteur` (hérité :
+  critiques, crédits, labels) ; seuil de G3 inchangé.
+- **Audit** : le message G3 d'un conteneur qui défile nomme maintenant ce
+  qui dépasse — éléments, positionnés en absolu et cachés compris, et à
+  défaut le nœud de texte (« Originally released in November 1992, [R… » dans
+  `p`) : un mot insécable déborde sans élargir sa boîte, la seconde passe de
+  G3 ne pouvait pas le voir.
+- **Mesuré** : `explorer:points` seul sur la copie RATM, 2 violations avant,
+  0 après. Audits complets : copie RATM 3 violations (G5 sur
+  `ecoute:playlists`, voir plus bas), puis base ordinaire **0 sur 288**, puis
+  copie RATM **0 sur 288** : deux fois de suite à 0. `verifier.sh` vert (65
+  tests de fumée).
+
+Non vérifié : à l'écran (rien regardé ; l'audit a eu des images ce matin).
+Un autre aléa, vu une fois sur trois audits complets : G5 « repère A–Z
+affiché hors de l'Écoute » sur `ecoute:playlists` (3 cellules, 1 920 px,
+clair), sans rapport trouvé avec ce changement et non reproduit au passage
+suivant ; cause non cherchée plus avant. Les liens Markdown des critiques
+restent affichés bruts (rendus en liens, ils se liraient mieux).

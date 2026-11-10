@@ -198,8 +198,27 @@ function auditerGabarit(ecran, { hauteurRail = false } = {}) {
   for (const sel of DEFILEMENTS_AUDIT) {
     const el = q(sel);
     if (!visibleAudit(el)) continue;
-    if (el.scrollWidth > el.clientWidth + tol)
-      viol.push({ regle: "G3", detail: `${sel} défile horizontalement (${el.scrollWidth} > ${el.clientWidth})` });
+    if (el.scrollWidth > el.clientWidth + tol) {
+      // Nommer ce qui dépasse, positionné en absolu compris (la seconde
+      // passe, plus bas, l'ignore) et caché compris (il compte dans
+      // `scrollWidth`) : sans cela, la cause ne se lit pas.
+      const bord = el.getBoundingClientRect().left + el.clientLeft + el.clientWidth + 0.5;
+      const fautifs = [...el.querySelectorAll("*")]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > bord; })
+        .slice(0, 3).map(nomAudit);
+      // Un mot insécable déborde de sa boîte sans l'élargir : le texte seul le dit.
+      if (!fautifs.length) {
+        const parcours = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const plage = document.createRange();
+        for (let t = parcours.nextNode(); t && fautifs.length < 3; t = parcours.nextNode()) {
+          plage.selectNodeContents(t);
+          const r = plage.getBoundingClientRect();
+          if (r.width > 0 && r.right > bord)
+            fautifs.push(`« ${t.textContent.trim().slice(0, 40)} » dans ${nomAudit(t.parentElement)}`);
+        }
+      }
+      viol.push({ regle: "G3", detail: `${sel} défile horizontalement (${el.scrollWidth} > ${el.clientWidth})${fautifs.length ? ` : ${fautifs.join(", ")}` : ""}` });
+    }
   }
   const zones = [".lama__haut", ".lama__section", ".inspecteur", ".rail"];
   for (const sel of zones) {

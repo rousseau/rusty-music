@@ -1533,6 +1533,11 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   border-left: 1px solid var(--line);
   padding: 18px var(--gouttiere-panneau) 22px;
   overflow: auto;
+  /* Un mot plus large que le panneau se coupe au lieu de le faire défiler :
+     les critiques CritiqueBrainz portent des liens Markdown bruts
+     (`[Artiste](http://www.bbc.co.uk/music/artists/…)`, un tiers d'entre
+     elles), d'un seul tenant (V30, G3 à 960 px). */
+  overflow-wrap: break-word;
 }
 .pochette {
   position: relative;
