@@ -5657,11 +5657,11 @@ Suite de C1, sans changement de comportement. Mesuré d'abord : `etabli.js`
 déjà sous le seuil : un seul fichier à découper, un commit.
 
 - **Découpage**, par responsabilité et en tranches contiguës, pour que
-  l'ordre d'exécution reste celui de l'ancien fichier : `etabli.js` (603 :
+  l'ordre d'exécution reste celui de l'ancien fichier : `etabli.js` (595 :
   l'état `edition`, le tempo, la pulsation, les sections, les boucles et
-  les boucles nommées), `etabli-reglages.js` (416 : les réglages du dock,
+  les boucles nommées), `etabli-reglages.js` (415 : les réglages du dock,
   vitesse, hauteur et le reste de `REGLAGES`, la dérive),
-  `etabli-stems.js` (1 067 : le parcours, les variantes et le démixage, la
+  `etabli-stems.js` (1 066 : le parcours, les variantes et le démixage, la
   pile de stems, le playhead, les spectres, les niveaux, la lecture des
   stems). Chaîne : bibliotheque, etabli, etabli-reglages, etabli-stems,
   pratiquer (`main.js`).
