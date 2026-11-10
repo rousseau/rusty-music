@@ -5556,6 +5556,69 @@ commande existe) ; les coups en trop ne sont pas montrés sur la partition,
 seulement comptés ; la table par mesure (`pratique_mesure`), la boucle sur
 les pires mesures et l'escalier de tempo restent la tranche 3.
 
+## Pratiquer, E4, tranche 3 : la table par mesure, les pires mesures, l'escalier — 10 nov. 2026
+
+Du relevé au conseil (`docs/recherche-coach-pratique.md`, « Du relevé
+d'erreurs au conseil »). Tout se calcule en Rust ; la barre du coach ne
+fait que proposer.
+
+- **Relevé et cumul** (`editor::coach::mesures`). Chaque mesure jouée, à
+  chaque passage, donne un relevé : notes sûres attendues, attrapées,
+  manquées, sur la mauvaise pièce, coups en trop ; moyenne, écart-type et
+  pente des écarts (régression de l'écart sur la position dans la mesure,
+  en ms par mesure, au moins trois points étalés sur un quart de mesure ;
+  négative, on presse), en temps du morceau d'origine. Score d'erreur :
+  part des notes ratées (un coup en trop pour moitié), plus au plus ½ pour
+  le timing au-delà de 15 ms (plein à 50 ms). Le cumul additionne les
+  comptes et lisse écarts et score (moyenne mobile, poids 0,35 au dernier
+  passage), d'une séance à l'autre. Les notes incertaines ne comptent
+  nulle part.
+- **Base** : migration n° 12 (`pratique_mesure.pente_ms`) ;
+  `Library::mesures_pratique`, `garder_mesures_pratique` (crée la ligne du
+  morceau si la mémoire n'en a pas encore), `oublier_mesures_pratique`.
+- **Application** (`coach.rs`). Les jugements de chaque fenêtre sont rangés
+  dans leur mesure et leur passage, identifiés par l'instant d'horloge
+  attendu de leur fin (l'ancre du moteur est republiée à chaque paquet : le
+  rang de passage qu'elle donne ne tient pas d'une fenêtre à l'autre) ; une
+  mesure est relevée quand sa fin est jugée, cumulée dans la table du
+  morceau armé (`coach_armer` reçoit le chemin), et la vue rend les relevés,
+  le passage de boucle fini et la boucle proposée. Un passage ne nourrit
+  l'escalier que s'il a été joué en entier. Commande `coach_table` (la table
+  et la boucle proposée à l'ouverture).
+- **Propositions**. Boucle : la pire mesure (score lissé ≥ 0,15), étendue à
+  ses voisines difficiles, jusqu'à 4 mesures, à 70 %. Escalier : un passage
+  est propre à ≥ 95 % des notes et un écart-type ≤ 25 ms ; deux propres de
+  suite proposent +3 % (jusqu'au tempo d'origine), un raté (< 80 %) −3 %
+  (plancher 0,4) ; changer de vitesse à la main remet le compte à zéro.
+  Dans la barre : « boucler mes. 2–3 à 70 % » et « ↑ 73 % », deux boutons
+  qui n'apparaissent que s'il y a quelque chose à proposer ; la ligne d'état
+  dit « Passage propre : 8 / 8 · ± 9 ms — passer à 73 % ? ».
+- **Mesuré** (tests, sans matériel). Éditeur, 6 tests : mesure juste à
+  ± 3 ms au score 0, pente de −45,7 ms retrouvée sur un jeu pressé (pas de
+  pente sur deux points ou des positions serrées), score 2,5/4 pour une
+  manquée, une mauvaise pièce et un coup en trop, lissage (7 passages
+  propres ramènent 0,5 sous 0,15), boucle proposée sur la pire et ses
+  voisines difficiles, escalier (montée, remise à zéro, descente, cible,
+  plancher). Application, source MIDI simulée, boucle de 2 mesures à 0,8 sur
+  3 passages : 6 relevés (crash non comptée), la caisse claire oubliée au
+  2ᵉ passage → score 0,25, pente de −80 ms retrouvée à 1 ms près au 3ᵉ ;
+  3 passages finis, propres/raté/propre, aucune proposition ; à 0,7, deux
+  passages propres proposent 0,73 ; un passage sans la première mesure, raté,
+  propose 0,67 ; table en base cumulée sur 2 passages (score 0,5 sur la
+  mesure qui perd deux notes) et boucle proposée sur elle seule. Base : un
+  test d'aller-retour. Test de fumée E4 étendu : table lue à l'armement,
+  « boucler » qui pose la boucle et 70 %, « ↑ 73 % » qui pose 0,73.
+  `verifier.sh` vert (63 tests de fumée). Audit complet : 270 cellules, une
+  G3 sur l'inspecteur d'Explorer (points, 960 × 588) qui ne se reproduit pas
+  en relançant cet écran seul (2 fois 0 violation), déjà vue à la
+  tranche 2 : aléa, sans lien avec Pratiquer.
+
+Non vérifié : rien avec une vraie batterie ; les propositions n'ont été vues
+que dans le test de fumée (Chrome), pas dans l'app ; le profil ne s'édite
+toujours pas à l'écran (un coup sur une note non affectée n'atteint pas
+l'interface) ; les coups en trop restent comptés, pas dessinés ; pas de
+carte de chaleur des mesures.
+
 ## Super-résolution, G2 : AERO mesuré, Apollo en attente — 10 nov. 2026
 
 Banc `experiments/banc-superres/` (README), fichiers sur `RUSTY_DEV`.

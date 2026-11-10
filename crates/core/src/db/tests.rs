@@ -3031,3 +3031,85 @@ fn le_profil_midi_se_garde_par_peripherique() {
     // Ce qui n'est pas du JSON est refusé par la base.
     assert!(lib.garder_profil_midi("TD-17", "pas du json").is_err());
 }
+
+#[test]
+fn la_table_par_mesure_du_coach_se_garde() {
+    let lib = Library::open_in_memory().unwrap();
+    let chemin = "/Musique/coach.flac";
+    assert!(lib.mesures_pratique(chemin, "drums").unwrap().is_empty());
+    let m3 = MesurePratique {
+        mesure: 3,
+        passages: 2,
+        attendues: 16,
+        attrapees: 13,
+        manquees: 2,
+        en_trop: 1,
+        fausses: 1,
+        ecart_moy_ms: Some(-12.5),
+        ecart_et_ms: Some(18.0),
+        pente_ms: Some(-9.0),
+        score: 0.31,
+    };
+    let m0 = MesurePratique {
+        mesure: 0,
+        passages: 1,
+        attendues: 8,
+        attrapees: 8,
+        score: 0.0,
+        ..Default::default()
+    };
+    m3.verifier().unwrap();
+    // Sans ligne de mémoire : la ligne du morceau est créée (clé étrangère),
+    // vide.
+    lib.garder_mesures_pratique(chemin, "drums", &[m3.clone(), m0.clone()])
+        .unwrap();
+    assert_eq!(
+        lib.mesures_pratique(chemin, "drums").unwrap(),
+        vec![m0.clone(), m3.clone()]
+    );
+    assert_eq!(
+        lib.memoire_pratique(chemin).unwrap(),
+        Some(MemoirePratique::default())
+    );
+    // La mémoire gardée ensuite ne touche pas la table.
+    lib.garder_pratique(
+        chemin,
+        &MemoirePratique {
+            vitesse: Some(0.7),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let m3b = MesurePratique {
+        passages: 3,
+        score: 0.2,
+        ..m3.clone()
+    };
+    lib.garder_mesures_pratique(chemin, "drums", std::slice::from_ref(&m3b))
+        .unwrap();
+    assert_eq!(
+        lib.mesures_pratique(chemin, "drums").unwrap(),
+        vec![m0, m3b]
+    );
+    assert!(lib.mesures_pratique(chemin, "bass").unwrap().is_empty());
+    lib.oublier_mesures_pratique(chemin, "drums").unwrap();
+    assert!(lib.mesures_pratique(chemin, "drums").unwrap().is_empty());
+
+    for faux in [
+        MesurePratique {
+            score: f64::NAN,
+            ..Default::default()
+        },
+        MesurePratique {
+            pente_ms: Some(f64::INFINITY),
+            ..Default::default()
+        },
+        MesurePratique {
+            attendues: 1,
+            attrapees: 2,
+            ..Default::default()
+        },
+    ] {
+        assert!(faux.verifier().is_err(), "{faux:?}");
+    }
+}

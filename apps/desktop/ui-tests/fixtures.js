@@ -425,7 +425,11 @@ const fixtures = {
   coach_garder_profil: null,
   coach_armer: null,
   coach_calibrer: { latence_ms: 38, dispersion_ms: 6, retenues: 14, ecartees: 2 },
-  coach_juger: (a) => ({ jusqua_s: a.depuisS ?? 0, jugements: [], frappes: [], places_perdues: [] }),
+  coach_juger: (a) => ({
+    jusqua_s: a.depuisS ?? 0, jugements: [], frappes: [], places_perdues: [], releves: [], passage_fini: null,
+    boucle_proposee: null,
+  }),
+  coach_table: { mesures: [], boucle_proposee: null },
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

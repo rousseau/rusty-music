@@ -75,6 +75,10 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 11 (10 nov. 2026) : le profil MIDI d'une batterie électronique,
         // par périphérique (E4 : `db/latence.rs`).
         M::up(include_str!("../../sql/migration-011-profil-midi.sql")),
+        // N° 12 (10 nov. 2026) : la pente des écarts dans la table par
+        // mesure du coach (E4, tranche 3 : `pratique_mesure.pente_ms`,
+        // `db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-012-pente.sql")),
     ])
 }
 

@@ -100,9 +100,12 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     `midir`, profils par périphérique (migration n° 11), apparieur en temps
     musical muet sur les notes incertaines, place perdue, geste
     « calibrer » sur le décompte et notes entourées sur la partition,
-    testés sans matériel ; restent l'édition du profil à l'écran, les coups
-    en trop sur la partition, la table par mesure et l'escalier de tempo
-    (tranche 3), puis l'essai réel avec la batterie de François) ;
+    testés sans matériel ; tranche 3 le 10 nov. : table par mesure et par
+    passage gardée dans `pratique_mesure` (migration n° 12, pente des
+    écarts), score lissé, « boucler » les pires mesures à 70 % et escalier
+    de tempo proposés dans la barre du coach, jamais imposés ; restent
+    l'édition du profil à l'écran et les coups en trop sur la partition,
+    puis l'essai réel avec la batterie de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie

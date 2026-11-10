@@ -19,9 +19,13 @@
 //! cinq classes d'ADTOF) et l'apparieur ([`appariement`] : fenêtres en
 //! temps musical, écarts signés, silence sur les notes incertaines, place
 //! perdue).
+//!
+//! Étape 3 : du relevé au conseil ([`mesures`] : la table par mesure,
+//! la boucle proposée sur les pires mesures, l'escalier de tempo).
 
 pub mod appariement;
 pub mod batterie;
+pub mod mesures;
 
 /// L'horloge de pratique : l'ancre du moteur, la boucle et la latence.
 #[derive(Debug, Clone, Copy, PartialEq)]

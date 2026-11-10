@@ -6,8 +6,10 @@
 //! Une ligne de `pratique` par chemin de fichier, ses boucles dans
 //! `pratique_boucle`. Les corrections de transcription (E2) ont leur table,
 //! `pratique_correction`, et leurs méthodes ([`Library::corriger_pratique`]) :
-//! la mémoire ne les touche pas. La table par mesure du coach (E4) existe,
-//! vide.
+//! la mémoire ne les touche pas. La table par mesure du coach (E4) a les
+//! siennes ([`Library::mesures_pratique`]) : le cumul d'un passage
+//! (`rusty_music_editor::coach::mesures::cumuler`) est l'affaire du coach,
+//! la base garde la ligne telle quelle.
 
 use super::*;
 
@@ -367,6 +369,138 @@ impl Library {
             )?;
         }
         tx.commit()?;
+        Ok(())
+    }
+}
+
+/// Une ligne de la table par mesure du coach (E4, tranche 3) : ce que les
+/// passages ont donné sur une mesure de la grille, cumulé ; les écarts et le
+/// score, lissés d'un passage à l'autre (moyenne mobile exponentielle).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MesurePratique {
+    /// Rang de la mesure dans la grille des premiers temps.
+    pub mesure: u32,
+    pub passages: u32,
+    pub attendues: u32,
+    pub attrapees: u32,
+    pub manquees: u32,
+    pub en_trop: u32,
+    /// Coups sur la mauvaise pièce.
+    pub fausses: u32,
+    /// Écart signé moyen, en millisecondes du morceau d'origine ; négatif en
+    /// avance.
+    pub ecart_moy_ms: Option<f64>,
+    /// Écart-type des écarts : la régularité.
+    pub ecart_et_ms: Option<f64>,
+    /// Pente des écarts sur la mesure, en millisecondes par mesure ; négative,
+    /// le musicien presse.
+    pub pente_ms: Option<f64>,
+    /// Score d'erreur lissé : 0 sans faute, vers 1 (et au-delà) quand tout
+    /// manque.
+    pub score: f64,
+}
+
+impl MesurePratique {
+    /// Refuse ce qu'aucun cumul ne produit.
+    pub fn verifier(&self) -> std::result::Result<(), String> {
+        let fini = |v: Option<f64>| v.is_none_or(f64::is_finite);
+        if !(self.score.is_finite() && self.score >= 0.0) {
+            return Err(format!("score invalide : {}", self.score));
+        }
+        if !(fini(self.ecart_moy_ms) && fini(self.ecart_et_ms) && fini(self.pente_ms)) {
+            return Err("écart non fini".into());
+        }
+        if self.attrapees > self.attendues {
+            return Err("plus de notes attrapées qu'attendues".into());
+        }
+        Ok(())
+    }
+}
+
+impl Library {
+    /// La table par mesure du coach pour le morceau `path` et `instrument`,
+    /// par mesure.
+    pub fn mesures_pratique(&self, path: &str, instrument: &str) -> Result<Vec<MesurePratique>> {
+        let mut req = self.conn.prepare(
+            "SELECT mesure, passages, attendues, attrapees, manquees, en_trop, fausses,
+                    ecart_moy_ms, ecart_et_ms, pente_ms, score
+             FROM pratique_mesure WHERE path = ?1 AND instrument = ?2 ORDER BY mesure",
+        )?;
+        let v = req
+            .query_map(params![path, instrument], |r| {
+                Ok(MesurePratique {
+                    mesure: r.get(0)?,
+                    passages: r.get(1)?,
+                    attendues: r.get(2)?,
+                    attrapees: r.get(3)?,
+                    manquees: r.get(4)?,
+                    en_trop: r.get(5)?,
+                    fausses: r.get(6)?,
+                    ecart_moy_ms: r.get(7)?,
+                    ecart_et_ms: r.get(8)?,
+                    pente_ms: r.get(9)?,
+                    score: r.get::<_, Option<f64>>(10)?.unwrap_or(0.0),
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(v)
+    }
+
+    /// Garde des lignes de la table par mesure (elles remplacent celles des
+    /// mêmes mesures). À vérifier d'abord ([`MesurePratique::verifier`]).
+    pub fn garder_mesures_pratique(
+        &self,
+        path: &str,
+        instrument: &str,
+        mesures: &[MesurePratique],
+    ) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        // La table pend à la ligne du morceau (clé étrangère).
+        tx.execute(
+            "INSERT INTO pratique (path) VALUES (?1) ON CONFLICT (path) DO NOTHING",
+            [path],
+        )?;
+        for m in mesures {
+            tx.execute(
+                "INSERT INTO pratique_mesure
+                    (path, instrument, mesure, passages, attendues, attrapees, manquees,
+                     en_trop, fausses, ecart_moy_ms, ecart_et_ms, pente_ms, score, maj)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                         strftime('%s','now'))
+                 ON CONFLICT (path, instrument, mesure) DO UPDATE SET
+                    passages = excluded.passages, attendues = excluded.attendues,
+                    attrapees = excluded.attrapees, manquees = excluded.manquees,
+                    en_trop = excluded.en_trop, fausses = excluded.fausses,
+                    ecart_moy_ms = excluded.ecart_moy_ms, ecart_et_ms = excluded.ecart_et_ms,
+                    pente_ms = excluded.pente_ms, score = excluded.score, maj = excluded.maj",
+                params![
+                    path,
+                    instrument,
+                    m.mesure,
+                    m.passages,
+                    m.attendues,
+                    m.attrapees,
+                    m.manquees,
+                    m.en_trop,
+                    m.fausses,
+                    m.ecart_moy_ms,
+                    m.ecart_et_ms,
+                    m.pente_ms,
+                    m.score
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Oublie la table par mesure du morceau (« repartir de zéro »).
+    pub fn oublier_mesures_pratique(&self, path: &str, instrument: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM pratique_mesure WHERE path = ?1 AND instrument = ?2",
+            params![path, instrument],
+        )?;
         Ok(())
     }
 }

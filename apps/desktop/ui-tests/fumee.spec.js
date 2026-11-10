@@ -1626,6 +1626,19 @@ async function batterieTranscrite(page) {
           : [],
         frappes: [],
         places_perdues: [],
+        // Puis la mesure 2 relevée, la table qui propose de boucler les
+        // mesures 2 et 3 ; et, une fois la boucle posée, des passages
+        // propres : l'escalier propose un cran de plus.
+        releves: e.juges === 3
+          ? [{ mesure: 1, attendues: 4, attrapees: 2, manquees: 1, en_trop: 1, fausses: 1, ecart_moy_ms: 30,
+               ecart_et_ms: 20, pente_ms: null, erreur: 0.75 }]
+          : [],
+        passage_fini: window.__APPELS__.some((x) => x.cmd === "stems_boucle")
+          ? { attendues: 8, attrapees: 8, ecart_et_ms: 9, propre: true, proposition: { vitesse: 0.73, monter: true } }
+          : null,
+        boucle_proposee: e.juges === 3
+          ? { premiere: 1, derniere: 2, debut_s: 2.5, fin_s: 6.5, score: 0.75, vitesse: 0.7 }
+          : null,
       };
     };
   });
@@ -1681,6 +1694,25 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   });
   expect(dedans).toBe(true);
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e4-coach.png" });
+
+  // Armé avec le morceau : sa table par mesure est lue.
+  expect(armer.chemin).toBeTruthy();
+  expect((await appels(page, "coach_table")).at(-1).chemin).toBe(armer.chemin);
+  // La table propose de boucler les pires mesures : rien ne bouge sans le
+  // geste ; le geste pose la boucle et repart à 70 %.
+  const boucler = page.locator("#coach-boucler");
+  await expect(boucler).toHaveText("boucler mes. 2–3 à 70 %");
+  expect(await appels(page, "stems_boucle")).toEqual([]);
+  await boucler.click();
+  await expect.poll(() => appels(page, "stems_boucle").then((a) => a.at(-1))).toEqual({ debut: 2.5, fin: 6.5 });
+  await expect.poll(() => appels(page, "stems_vitesse").then((a) => a.at(-1)?.vitesse)).toBe(0.7);
+  await expect(boucler).toBeHidden();
+  // En boucle, deux passages propres : l'escalier propose 73 %.
+  const vitesse = page.locator("#coach-vitesse");
+  await expect(vitesse).toHaveText("↑ 73 %");
+  await vitesse.click();
+  await expect.poll(() => appels(page, "stems_vitesse").then((a) => a.at(-1)?.vitesse)).toBe(0.73);
+  await expect(vitesse).toBeHidden();
 
   // Calibrer : le geste attend ▶ ; arrêter ferme l'écoute et efface tout.
   await page.click("#coach-calibrer");

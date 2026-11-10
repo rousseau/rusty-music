@@ -1,6 +1,7 @@
 import "./corriger.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, journal } from "./socle.js";
-import { edition } from "./etabli.js";
+import { appliquerVitesses, deplacerLecture, dessinerReglages, edition, majBoucleUI, reposerBoucle } from "./etabli.js";
+import { lecture } from "./etat-lecture.js";
 import { batterieAffichee, partition } from "./pratiquer.js";
 
 /* ------------------------------------------- pratiquer : le coach de batterie */
@@ -20,6 +21,13 @@ import { batterieAffichee, partition } from "./pratiquer.js";
 // la caisse claire sur les seize clics, le moteur prend la médiane des
 // écarts (la latence de la batterie, de l'ordinateur et du casque) et la
 // garde pour ce périphérique.
+//
+// Mesure après mesure, le moteur relève chaque passage (attrapées, manquées,
+// en trop, écarts) et le cumule dans la table du morceau (`pratique_mesure`,
+// score lissé d'une séance à l'autre). Il en tire deux propositions, que la
+// barre offre sans jamais les appliquer d'elle-même : boucler les pires
+// mesures à 70 %, et, en boucle, l'escalier de tempo (un cran de plus après
+// deux passages propres, un de moins après un raté).
 
 const coach = {
   actif: false,
@@ -45,6 +53,9 @@ const coach = {
   // Le passage en cours et ce qu'il a donné.
   passage: null,
   bilan: null,
+  // Ce que le moteur propose : une boucle sur les pires mesures, une vitesse.
+  boucleProposee: null,
+  vitesseProposee: null,
   message: null,
   messageJusqua: 0,
 };
@@ -88,6 +99,7 @@ function dire() {
   bascule.textContent = coach.actif ? "arrêter" : ARRETE;
   $("coach-calibrer").hidden = !coach.actif || !coach.peripherique;
   $("coach-calibrer").setAttribute("aria-pressed", String(coach.calibrage));
+  direPropositions();
   if (!coach.actif) {
     etat.textContent = "";
     return;
@@ -134,13 +146,67 @@ async function armer(tr) {
   effacerMarques();
   try {
     await invoke("coach_armer", {
+      chemin: edition.source?.path ?? null,
       coups: tr.pret.coups ?? [],
       premiersTemps: edition.pulsation?.premiers_temps ?? [],
     });
   } catch (e) {
     coach.armee = null;
     journal("coach", `armer : ${e}`, "warn");
+    return;
   }
+  // Les passages des séances d'avant : la boucle à proposer dès l'ouverture.
+  coach.vitesseProposee = null;
+  coach.boucleProposee = null;
+  if (!edition.source?.path) return dire();
+  try {
+    const t = await invoke("coach_table", { chemin: edition.source.path });
+    coach.boucleProposee = t.boucle_proposee;
+  } catch (e) {
+    journal("coach", `table : ${e}`, "warn");
+  }
+  dire();
+}
+
+const memesBornes = (b, p) => !!b && Math.abs(b.debut - p.debut_s) < 1e-3 && Math.abs(b.fin - p.fin_s) < 1e-3;
+
+/// Les deux propositions du moteur, chacune un bouton : rien ne s'applique
+/// sans le geste.
+function direPropositions() {
+  const boucler = $("coach-boucler");
+  const p = coach.boucleProposee;
+  boucler.hidden = !coach.actif || !p || memesBornes(edition.boucle, p);
+  if (!boucler.hidden) {
+    const mesures = p.premiere === p.derniere ? `mes. ${p.premiere + 1}` : `mes. ${p.premiere + 1}–${p.derniere + 1}`;
+    boucler.textContent = `boucler ${mesures} à ${Math.round(p.vitesse * 100)} %`;
+  }
+  const vitesse = $("coach-vitesse");
+  const v = coach.vitesseProposee;
+  vitesse.hidden = !coach.actif || !v || !edition.boucle || Math.abs(v.vitesse - edition.vitesse) < 1e-3;
+  if (!vitesse.hidden) vitesse.textContent = `${v.monter ? "↑" : "↓"} ${Math.round(v.vitesse * 100)} %`;
+}
+
+/// Boucle les mesures proposées et repart à la vitesse de départ de
+/// l'escalier (sans accélérer si l'on jouait déjà plus lentement).
+async function bouclerProposee() {
+  const p = coach.boucleProposee;
+  if (!p) return;
+  const n = p.derniere - p.premiere + 1;
+  edition.mesuresBoucle = n;
+  edition.boucle = { debut: p.debut_s, fin: p.fin_s, mesures: n };
+  const duree = lecture.stems.dureeMs / 1000;
+  if (duree > 0) await deplacerLecture(p.debut_s / duree);
+  await reposerBoucle();
+  majBoucleUI();
+  coach.vitesseProposee = null;
+  if (edition.vitesse > p.vitesse + 1e-3) await poserVitesse(p.vitesse);
+  annoncer(`Boucle sur ${n > 1 ? `les mesures ${p.premiere + 1} à ${p.derniere + 1}` : `la mesure ${p.premiere + 1}`}, à ${Math.round(edition.vitesse * 100)} %.`);
+}
+
+async function poserVitesse(v) {
+  edition.vitesse = v;
+  await appliquerVitesses();
+  dessinerReglages();
 }
 
 async function demarrer() {
@@ -229,7 +295,24 @@ async function sonder() {
 }
 
 function recevoir(v) {
-  if (!v.jugements.length && !v.places_perdues.length) return;
+  if (v.boucle_proposee !== undefined && v.releves?.length) coach.boucleProposee = v.boucle_proposee;
+  const fini = v.passage_fini;
+  if (fini) {
+    if (fini.proposition) coach.vitesseProposee = fini.proposition;
+    const et = fini.ecart_et_ms === null ? "" : ` · ± ${Math.round(fini.ecart_et_ms)} ms`;
+    const suite = fini.proposition
+      ? fini.proposition.monter
+        ? ` — passer à ${Math.round(fini.proposition.vitesse * 100)} % ?`
+        : ` — redescendre à ${Math.round(fini.proposition.vitesse * 100)} % ?`
+      : "";
+    annoncer(`Passage ${fini.propre ? "propre" : "à reprendre"} : ${fini.attrapees} / ${fini.attendues}${et}${suite}`);
+    // Le compte de la barre repart avec le passage suivant.
+    coach.bilan = null;
+  }
+  if (!v.jugements.length && !v.places_perdues.length) {
+    if (v.releves?.length) dire();
+    return;
+  }
   for (const j of v.jugements) {
     if (j.reference !== null && j.passage !== coach.passage) {
       // Un nouveau passage de boucle : son propre compte, les marques de
@@ -367,6 +450,19 @@ $("coach-basculer").addEventListener("click", () => (coach.actif ? arreter() : d
 $("coach-peripherique").addEventListener("change", (e) => ecouter(e.target.value));
 $("coach-calibrer").addEventListener("click", () => {
   coach.calibrage = !coach.calibrage;
+  coach.message = null;
+  dire();
+});
+$("coach-boucler").addEventListener("click", () => bouclerProposee().catch((e) => annoncer(`Boucle non posée : ${e}`)));
+$("coach-vitesse").addEventListener("click", async () => {
+  const v = coach.vitesseProposee;
+  if (!v) return;
+  coach.vitesseProposee = null;
+  try {
+    await poserVitesse(v.vitesse);
+  } catch (e) {
+    annoncer(`Vitesse non appliquée : ${e}`);
+  }
   dire();
 });
 

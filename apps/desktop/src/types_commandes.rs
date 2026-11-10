@@ -65,7 +65,8 @@ fn exporter_les_types_des_commandes() {
             coach::coach_ecouter,
             coach::coach_garder_profil,
             coach::coach_calibrer,
-            coach::coach_juger
+            coach::coach_juger,
+            coach::coach_table
         ])
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une

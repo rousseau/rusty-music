@@ -1061,6 +1061,7 @@ fn main() {
             coach::coach_calibrer,
             coach::coach_armer,
             coach::coach_juger,
+            coach::coach_table,
             pratique_memoire,
             pratique_garder,
             pulsation,

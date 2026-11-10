@@ -176,6 +176,8 @@ export const commands = {
 	 *  départ (après un décompte : rien n'est attendu des clics).
 	 */
 	coach_juger: (depuisS: number | null) => __TAURI_INVOKE<VueJugements_Serialize>("coach_juger", { depuisS }),
+	/**  La table par mesure gardée pour le morceau `chemin` (la batterie). */
+	coach_table: (chemin: string) => __TAURI_INVOKE<VueTable_Serialize>("coach_table", { chemin }),
 };
 
 /* Types */
@@ -404,6 +406,20 @@ export type BouclePratique_Serialize = {
 	/**  Nombre de mesures ; `None` pour une boucle posée sur une section. */
 	mesures: number | null,
 	vitesse_atteinte: number | null,
+};
+
+/**  La boucle proposée sur les pires mesures. */
+export type BoucleProposee = {
+	/**  Rangs de la première et de la dernière mesure. */
+	premiere: number,
+	derniere: number,
+	/**  Bornes, en secondes du morceau. */
+	debut_s: number | null,
+	fin_s: number | null,
+	/**  Score lissé de la pire. */
+	score: number | null,
+	/**  Vitesse de départ de l'escalier. */
+	vitesse: number | null,
 };
 
 /**  Un morceau d'où tirer le stem, et pourquoi il est classé là. */
@@ -734,6 +750,113 @@ export type MesureCarrefours = {
 	retours: number,
 };
 
+/**
+ *  Une ligne de la table par mesure du coach (E4, tranche 3) : ce que les
+ *  passages ont donné sur une mesure de la grille, cumulé ; les écarts et le
+ *  score, lissés d'un passage à l'autre (moyenne mobile exponentielle).
+ */
+export type MesurePratique = MesurePratique_Serialize | MesurePratique_Deserialize;
+
+/**
+ *  Une ligne de la table par mesure du coach (E4, tranche 3) : ce que les
+ *  passages ont donné sur une mesure de la grille, cumulé ; les écarts et le
+ *  score, lissés d'un passage à l'autre (moyenne mobile exponentielle).
+ */
+export type MesurePratique_Deserialize = {
+	/**  Rang de la mesure dans la grille des premiers temps. */
+	mesure: number,
+	passages: number,
+	attendues: number,
+	attrapees: number,
+	manquees: number,
+	en_trop: number,
+	/**  Coups sur la mauvaise pièce. */
+	fausses: number,
+	/**
+	 *  Écart signé moyen, en millisecondes du morceau d'origine ; négatif en
+	 *  avance.
+	 */
+	ecart_moy_ms?: number | null,
+	/**  Écart-type des écarts : la régularité. */
+	ecart_et_ms?: number | null,
+	/**
+	 *  Pente des écarts sur la mesure, en millisecondes par mesure ; négative,
+	 *  le musicien presse.
+	 */
+	pente_ms?: number | null,
+	/**
+	 *  Score d'erreur lissé : 0 sans faute, vers 1 (et au-delà) quand tout
+	 *  manque.
+	 */
+	score: number | null,
+};
+
+/**
+ *  Une ligne de la table par mesure du coach (E4, tranche 3) : ce que les
+ *  passages ont donné sur une mesure de la grille, cumulé ; les écarts et le
+ *  score, lissés d'un passage à l'autre (moyenne mobile exponentielle).
+ */
+export type MesurePratique_Serialize = {
+	/**  Rang de la mesure dans la grille des premiers temps. */
+	mesure: number,
+	passages: number,
+	attendues: number,
+	attrapees: number,
+	manquees: number,
+	en_trop: number,
+	/**  Coups sur la mauvaise pièce. */
+	fausses: number,
+	/**
+	 *  Écart signé moyen, en millisecondes du morceau d'origine ; négatif en
+	 *  avance.
+	 */
+	ecart_moy_ms: number | null,
+	/**  Écart-type des écarts : la régularité. */
+	ecart_et_ms: number | null,
+	/**
+	 *  Pente des écarts sur la mesure, en millisecondes par mesure ; négative,
+	 *  le musicien presse.
+	 */
+	pente_ms: number | null,
+	/**
+	 *  Score d'erreur lissé : 0 sans faute, vers 1 (et au-delà) quand tout
+	 *  manque.
+	 */
+	score: number | null,
+};
+
+/**
+ *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
+ *  tire.
+ */
+export type PassageFini = PassageFini_Serialize | PassageFini_Deserialize;
+
+/**
+ *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
+ *  tire.
+ */
+export type PassageFini_Deserialize = {
+	attendues: number,
+	attrapees: number,
+	ecart_et_ms?: number | null,
+	propre: boolean,
+	/**  La vitesse que l'escalier propose (proposée, jamais imposée). */
+	proposition?: Proposition | null,
+};
+
+/**
+ *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
+ *  tire.
+ */
+export type PassageFini_Serialize = {
+	attendues: number,
+	attrapees: number,
+	ecart_et_ms: number | null,
+	propre: boolean,
+	/**  La vitesse que l'escalier propose (proposée, jamais imposée). */
+	proposition: Proposition | null,
+};
+
 /**  Une mesure où le musicien a perdu sa place. */
 export type PlacePerdue = {
 	/**  Rang de la mesure dans les premiers temps armés. */
@@ -819,6 +942,13 @@ export type Profil_Serialize = {
 	velocite_min: number,
 };
 
+/**  Ce que l'escalier propose après un passage. */
+export type Proposition = {
+	vitesse: number | null,
+	/**  Vrai pour un cran de plus, faux pour un cran de moins. */
+	monter: boolean,
+};
+
 /**
  *  `passe::Rapport` ne dérive pas `Serialize` — `rusty-music-analysis` ne
  *  dépend pas de `serde`, et ce n'est pas ce seul retour de commande qui
@@ -880,6 +1010,51 @@ export type RechercheGreffon_Serialize = {
 	ecartes_tonalite: number,
 	ecartes_metrique: number,
 	sans_tempo: number,
+};
+
+/**  Ce qu'une mesure a donné à un passage. */
+export type Releve = Releve_Serialize | Releve_Deserialize;
+
+/**  Ce qu'une mesure a donné à un passage. */
+export type Releve_Deserialize = {
+	/**  Rang de la mesure dans la grille des premiers temps. */
+	mesure: number,
+	attendues: number,
+	attrapees: number,
+	manquees: number,
+	en_trop: number,
+	fausses: number,
+	/**  Écart signé moyen des notes attrapées, en ms du morceau d'origine. */
+	ecart_moy_ms?: number | null,
+	ecart_et_ms?: number | null,
+	/**
+	 *  Pente de l'écart sur la position dans la mesure (0 au premier temps,
+	 *  1 au suivant), en ms par mesure ; négative, le musicien presse.
+	 */
+	pente_ms?: number | null,
+	/**  Score d'erreur du passage ([`erreur`]). */
+	erreur: number | null,
+};
+
+/**  Ce qu'une mesure a donné à un passage. */
+export type Releve_Serialize = {
+	/**  Rang de la mesure dans la grille des premiers temps. */
+	mesure: number,
+	attendues: number,
+	attrapees: number,
+	manquees: number,
+	en_trop: number,
+	fausses: number,
+	/**  Écart signé moyen des notes attrapées, en ms du morceau d'origine. */
+	ecart_moy_ms: number | null,
+	ecart_et_ms: number | null,
+	/**
+	 *  Pente de l'écart sur la position dans la mesure (0 au premier temps,
+	 *  1 au suivant), en ms par mesure ; négative, le musicien presse.
+	 */
+	pente_ms: number | null,
+	/**  Score d'erreur du passage ([`erreur`]). */
+	erreur: number | null,
 };
 
 /**  Ce que l'interface reçoit après [`relief_musical`]. */
@@ -1121,6 +1296,18 @@ export type VueJugements_Deserialize = {
 	/**  Les coups reçus dans la fenêtre (le rang `frappe` des jugements). */
 	frappes: Frappe_Deserialize[],
 	places_perdues: PlacePerdue[],
+	/**
+	 *  Les mesures finies dans la fenêtre, chacune relevée (et cumulée dans
+	 *  la table du morceau, s'il est connu).
+	 */
+	releves: Releve_Deserialize[],
+	/**  Un passage de boucle entier vient de finir. */
+	passage_fini?: PassageFini_Deserialize | null,
+	/**
+	 *  La boucle à proposer sur les pires mesures, d'après la table du
+	 *  morceau mise à jour ; seulement quand des mesures ont été relevées.
+	 */
+	boucle_proposee?: BoucleProposee | null,
 };
 
 /**  Le jugement d'une fenêtre de temps. */
@@ -1134,5 +1321,40 @@ export type VueJugements_Serialize = {
 	/**  Les coups reçus dans la fenêtre (le rang `frappe` des jugements). */
 	frappes: Frappe_Serialize[],
 	places_perdues: PlacePerdue[],
+	/**
+	 *  Les mesures finies dans la fenêtre, chacune relevée (et cumulée dans
+	 *  la table du morceau, s'il est connu).
+	 */
+	releves: Releve_Serialize[],
+	/**  Un passage de boucle entier vient de finir. */
+	passage_fini: PassageFini_Serialize | null,
+	/**
+	 *  La boucle à proposer sur les pires mesures, d'après la table du
+	 *  morceau mise à jour ; seulement quand des mesures ont été relevées.
+	 */
+	boucle_proposee: BoucleProposee | null,
+};
+
+/**  La table par mesure du coach pour un morceau. */
+export type VueTable = VueTable_Serialize | VueTable_Deserialize;
+
+/**  La table par mesure du coach pour un morceau. */
+export type VueTable_Deserialize = {
+	mesures: MesurePratique_Deserialize[],
+	/**
+	 *  La boucle à proposer sur les pires mesures, si le coach est armé sur
+	 *  ce morceau (il faut sa grille de mesures).
+	 */
+	boucle_proposee?: BoucleProposee | null,
+};
+
+/**  La table par mesure du coach pour un morceau. */
+export type VueTable_Serialize = {
+	mesures: MesurePratique_Serialize[],
+	/**
+	 *  La boucle à proposer sur les pires mesures, si le coach est armé sur
+	 *  ce morceau (il faut sa grille de mesures).
+	 */
+	boucle_proposee: BoucleProposee | null,
 };
 
