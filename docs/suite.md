@@ -107,8 +107,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     réduites avant le mélange, part du texte 0,85, quatre funk ou soul dans
     les dix premiers au lieu de deux faux positifs, une seule édition par
     titre ; reste la vérité terrain de la syncope), bancs de
-    compatibilité (COCOLA contre Stem-JEPA ; F2 du 9 nov. : Stem-JEPA n'a
-    publié aucun poids, banc à redéfinir) et de fûts, génération ;
+    compatibilité (F2, sans Stem-JEPA faute de poids : 20 sources ×
+    10 batteries démixées et greffées, CLAP et groove classés le 10 nov.,
+    même premier choix 10 fois sur 20 ; COCOLA prêt mais pas lancé, son
+    exécution attend l'accord de François, puis l'écoute à l'aveugle) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : super-résolution
     (Apollo), Chromaprint ; G4 (`opus-pure`) fait le 8 nov. Empreinte (G1)
     close le 9 nov. : **CLAP gardé**. MuQ-MuLan gagne 17 % de pureté de

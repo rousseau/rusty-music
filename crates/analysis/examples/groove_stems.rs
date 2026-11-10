@@ -18,9 +18,19 @@ fn main() -> anyhow::Result<()> {
     let mut lignes = Vec::new();
     for morceau in std::fs::read_dir(&racine)?.flatten() {
         let dossier = morceau.path();
+        // Un disque non APFS sème des fichiers cachés `._…` à côté de chaque
+        // entrée (journal, V23) : ni dossiers, ni stems.
+        let cache = |p: &Path| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        };
+        if !dossier.is_dir() || cache(&dossier) {
+            continue;
+        }
         let Some(drums) = std::fs::read_dir(&dossier)?
             .flatten()
             .map(|e| e.path())
+            .filter(|p| !cache(p))
             .find(|p| p.to_string_lossy().ends_with("drums.wav"))
         else {
             continue;

@@ -5424,3 +5424,54 @@ file, à 3 et à 6 fils sont identiques octet pour octet (`diff -r`).
 
 **Non vérifié** : la lecture pendant une transposition de six stems
 (craquements) ; le temps dans l'app installée plutôt que par l'exemple.
+
+## Créer, F2 : banc de compatibilité de batteries, CLAP et groove mesurés, COCOLA en attente — 10 nov. 2026
+
+Décision du 9 nov. : sans poids pour Stem-JEPA, le banc compare COCOLA, CLAP
+seul et le groove de F1. Procédure et scripts : `experiments/compat-stems/`
+(README) ; tout ce qui pèse est sur le LaCie (`essais/F2/`), la base lue
+est la copie de V23.
+
+- **Sources.** 28 candidates, une par famille CLAP et par tour (les plus
+  populaires, un artiste chacune), démixées d'abord (1 230 s). Sont
+  écartées celles dont la batterie démixée porte moins de 20 % du RMS :
+  Johnny Cash *Hurt* (0,01), Nine Inch Nails *A Warm Place* (0,01), Carla
+  Bruni (0,03), Tool *Lost Keys* (0,10), Buena Vista Social Club et Nina
+  Simone *Feeling Good* (0,19). Restent 20 sources, de *Smells Like Teen
+  Spirit* à *Bohemian Rhapsody*.
+- **Candidats.** 10 par source, voisins CLAP du morceau entier, tempo
+  replié à ±10 %, autre artiste, une édition par titre : 200 paires,
+  219 morceaux. Démixage HTDemucs (variante de Créer) et pulsation : 7 697 s
+  pour les 199 nouveaux (39 s chacun), 37 Gio de stems.
+- **Greffes.** Les 200 batteries posées mesure par mesure sur la source
+  (`greffer_par_mesures`, sans sections ; exemple `banc_compat` de
+  `rusty-music-editor`) : aucune erreur, 11 d'un bloc (métrique de Beat
+  This! différente), 19 s chacune (médiane ; 69 min en tout), 9,4 Gio.
+  Facteur d'étirement médian 1,00 ; 21 paires au-delà de ±10 % et 6
+  au-delà de ±25 %, alors que les tempos de la base étaient à ±10 % : la
+  grille de Beat This! et le tempo de la base ne se replient pas toujours
+  pareil.
+- **Groove.** Mesuré sur les 227 batteries démixées, aucune illisible.
+  L'exemple `groove_stems` sautait les fichiers AppleDouble d'un disque
+  exFAT en échouant : il les ignore désormais.
+- **CLAP seul contre groove de F1** (note sans intention ajoutée au rang
+  sonore, comme l'application) : même premier choix pour 10 sources sur
+  20, tau de Kendall moyen +0,61 (de +0,20 pour Daft Punk et Sublime à
+  +0,91 pour System of a Down). Le groove fait surtout remonter un voisin
+  proche (Ann Peebles reste Ann Peebles chez Al Green), parfois un autre
+  monde (Senser pour Nirvana, Morcheeba pour Californication).
+- **COCOLA : pas mesuré.** Code (MIT) cloné et poids `COCOLA_HP_v1`
+  téléchargés à la source (59,6 Mo, sha256 `951b70bc…`, archivés dans
+  `ext/cocola-poids/` sur le LaCie, jamais redistribués), environnement
+  Python dans une image APFS posée sur le LaCie (`ext/cocola-env.sparsebundle` :
+  sur l'exFAT du disque, le même environnement gonflait à 12 Gio et
+  l'installation n'avançait plus). Mais l'exécution du code du dépôt et du
+  checkpoint (un pickle PyTorch) a été refusée par le garde-fou de la
+  session automatique, qui y voit du code externe. Le score, le témoin (la
+  batterie d'origine classée parmi les 10) et les extraits à l'aveugle
+  attendent l'accord de François ; `cocola.py` et `classer.py` sont
+  prêts, les greffes aussi.
+
+Non vérifié : COCOLA (rien n'a tourné) ; l'écoute, donc la corrélation
+avec le jugement ; le niveau des batteries greffées (les extraits seront
+ramenés au RMS de la batterie d'origine).
