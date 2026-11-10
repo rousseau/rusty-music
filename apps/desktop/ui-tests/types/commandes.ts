@@ -178,6 +178,11 @@ export const commands = {
 	coach_juger: (depuisS: number | null) => __TAURI_INVOKE<VueJugements_Serialize>("coach_juger", { depuisS }),
 	/**  La table par mesure gardée pour le morceau `chemin` (la batterie). */
 	coach_table: (chemin: string) => __TAURI_INVOKE<VueTable_Serialize>("coach_table", { chemin }),
+	/**
+	 *  Le groove du jeu depuis l'armement (E5) : par pièce, le swing, et les
+	 *  conseils par motifs. Rien sous les seuils de `editor::coach::groove`.
+	 */
+	coach_groove: () => __TAURI_INVOKE<Groove_Serialize>("coach_groove"),
 	/**  La playlist que Pratiquer enchaîne, ou `None`. */
 	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
 	/**
@@ -536,6 +541,23 @@ export type Chaine = {
  */
 export type Classe = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
+/**  Un conseil tiré d'un motif. */
+export type Conseil = Conseil_Serialize | Conseil_Deserialize;
+
+/**  Un conseil tiré d'un motif. */
+export type Conseil_Deserialize = {
+	motif: Motif,
+	classe?: Classe | null,
+	texte: string,
+};
+
+/**  Un conseil tiré d'un motif. */
+export type Conseil_Serialize = {
+	motif: Motif,
+	classe: Classe | null,
+	texte: string,
+};
+
 export type CourbeVue = {
 	ligne: number,
 	niveau: number,
@@ -610,6 +632,63 @@ export type Grandeur = "energie" | "tempo" | "popularite" |
 /**  Les écoutes de la table `ecoute` : ce que l'on connaît. */
 "familiarite";
 
+export type Groove = Groove_Serialize | Groove_Deserialize;
+
+/**  Ce que l'on mesure d'une pièce. */
+export type GroovePiece = GroovePiece_Serialize | GroovePiece_Deserialize;
+
+/**  Ce que l'on mesure d'une pièce. */
+export type GroovePiece_Deserialize = {
+	classe: Classe,
+	notes: number,
+	/**  Écart moyen du jeu au disque, en ms du morceau (négatif : devant). */
+	ecart_moyen_ms: number | null,
+	/**
+	 *  Décalage moyen du disque aux temps de la grille, sur les notes
+	 *  posées sur un temps (négatif : devant le temps).
+	 */
+	disque_grille_ms?: number | null,
+	/**  Le même pour le jeu, sur les mêmes notes. */
+	jeu_grille_ms?: number | null,
+	velocite_moyenne: number | null,
+	/**
+	 *  Écart type de la vélocité des coups identiques (même force sur le
+	 *  disque), s'il y en a assez.
+	 */
+	velocite_ecart?: number | null,
+	/**
+	 *  Corrélation entre la force du disque et la vélocité, si le disque a
+	 *  des accents et qu'il y a assez de notes.
+	 */
+	accents?: number | null,
+};
+
+/**  Ce que l'on mesure d'une pièce. */
+export type GroovePiece_Serialize = {
+	classe: Classe,
+	notes: number,
+	/**  Écart moyen du jeu au disque, en ms du morceau (négatif : devant). */
+	ecart_moyen_ms: number | null,
+	/**
+	 *  Décalage moyen du disque aux temps de la grille, sur les notes
+	 *  posées sur un temps (négatif : devant le temps).
+	 */
+	disque_grille_ms: number | null,
+	/**  Le même pour le jeu, sur les mêmes notes. */
+	jeu_grille_ms: number | null,
+	velocite_moyenne: number | null,
+	/**
+	 *  Écart type de la vélocité des coups identiques (même force sur le
+	 *  disque), s'il y en a assez.
+	 */
+	velocite_ecart: number | null,
+	/**
+	 *  Corrélation entre la force du disque et la vélocité, si le disque a
+	 *  des accents et qu'il y a assez de notes.
+	 */
+	accents: number | null,
+};
+
 /**  Ce que l'interface reçoit du groove d'une batterie. */
 export type GrooveVu = GrooveVu_Serialize | GrooveVu_Deserialize;
 
@@ -637,6 +716,20 @@ export type GrooveVu_Serialize = {
 	swing: number | null,
 	/**  Temps par mesure (Beat This!), s'il se lit. */
 	metrique: number | null,
+};
+
+export type Groove_Deserialize = {
+	pieces: GroovePiece_Deserialize[],
+	swing?: Swing | null,
+	/**  Dans l'ordre : timing, swing, accents, vélocité. */
+	conseils: Conseil_Deserialize[],
+};
+
+export type Groove_Serialize = {
+	pieces: GroovePiece_Serialize[],
+	swing: Swing | null,
+	/**  Dans l'ordre : timing, swing, accents, vélocité. */
+	conseils: Conseil_Serialize[],
 };
 
 /**
@@ -854,6 +947,14 @@ export type MesurePratique_Serialize = {
 	 */
 	score: number | null,
 };
+
+export type Motif = 
+/**  Le jeu est devant le disque. */
+"devant" | 
+/**  Le jeu est derrière le disque. */
+"derriere" | 
+/**  Le disque pose la pièce hors de la grille, le jeu non (ou l'inverse). */
+"grille" | "swing" | "velocite" | "accents";
 
 /**
  *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
@@ -1169,6 +1270,17 @@ export type StatsBibliotheque = {
 	sans_bio: number,
 	sans_critique: number,
 	sans_discogs: number,
+};
+
+/**
+ *  Le rapport de swing, durée de la première croche sur la seconde (1 :
+ *  droit, 2 : ternaire).
+ */
+export type Swing = {
+	disque: number | null,
+	jeu: number | null,
+	/**  Temps à croches mesurés. */
+	temps: number,
 };
 
 /**

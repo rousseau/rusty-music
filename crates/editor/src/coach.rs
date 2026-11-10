@@ -22,9 +22,13 @@
 //!
 //! Étape 3 : du relevé au conseil ([`mesures`] : la table par mesure,
 //! la boucle proposée sur les pires mesures, l'escalier de tempo).
+//!
+//! Étape 4 : dynamique et groove ([`groove`] : micro-timing contre le stem,
+//! rapport de swing, vélocité et accents, conseils par motifs).
 
 pub mod appariement;
 pub mod batterie;
+pub mod groove;
 pub mod mesures;
 
 /// L'horloge de pratique : l'ancre du moteur, la boucle et la latence.

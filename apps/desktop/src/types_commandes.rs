@@ -67,6 +67,7 @@ fn exporter_les_types_des_commandes() {
             coach::coach_calibrer,
             coach::coach_juger,
             coach::coach_table,
+            coach::coach_groove,
             // P2 : Pratiquer enchaîne une playlist.
             pratique_playlist,
             pratique_playlist_poser,

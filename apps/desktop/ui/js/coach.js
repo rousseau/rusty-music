@@ -60,7 +60,14 @@ const coach = {
   vitesseProposee: null,
   message: null,
   messageJusqua: 0,
+  // Le groove (E5) : le dernier conseil dit, et les mesures relevées depuis
+  // la dernière demande.
+  conseil: null,
+  relevesDepuis: 0,
 };
+
+/// Mesures relevées entre deux demandes du groove hors boucle.
+const RELEVES_PAR_CONSEIL = 4;
 
 const ARRETE = "jouer avec ma batterie";
 
@@ -95,6 +102,13 @@ function majCoach() {
 }
 
 function dire() {
+  direTexte();
+  // La ligne coupe ce qui dépasse : le texte entier au survol.
+  const etat = $("coach-etat");
+  etat.title = etat.textContent;
+}
+
+function direTexte() {
   const etat = $("coach-etat");
   const bascule = $("coach-basculer");
   bascule.setAttribute("aria-pressed", String(coach.actif));
@@ -151,7 +165,10 @@ async function armer(tr) {
       chemin: edition.source?.path ?? null,
       coups: tr.pret.coups ?? [],
       premiersTemps: edition.pulsation?.premiers_temps ?? [],
+      temps: edition.pulsation?.temps ?? [],
     });
+    coach.conseil = null;
+    coach.relevesDepuis = 0;
   } catch (e) {
     coach.armee = null;
     journal("coach", `armer : ${e}`, "warn");
@@ -296,6 +313,26 @@ async function sonder() {
   }
 }
 
+/// Le premier conseil du groove (`coach_groove`, E5), ou `null` : rien sous
+/// les seuils du moteur.
+async function conseilGroove() {
+  try {
+    const g = await invoke("coach_groove");
+    return g.conseils[0]?.texte ?? null;
+  } catch (e) {
+    journal("coach", `groove : ${e}`, "warn");
+    return null;
+  }
+}
+
+/// La fin d'un passage de boucle, et le conseil du groove s'il y en a un.
+async function annoncerPassage(message) {
+  coach.relevesDepuis = 0;
+  const c = await conseilGroove();
+  if (c) coach.conseil = c;
+  annoncer(c ? `${message} · ${c}` : message, c ? 9000 : 6000);
+}
+
 function recevoir(v) {
   if (v.boucle_proposee !== undefined && v.releves?.length) coach.boucleProposee = v.boucle_proposee;
   const fini = v.passage_fini;
@@ -307,9 +344,21 @@ function recevoir(v) {
         ? ` — passer à ${Math.round(fini.proposition.vitesse * 100)} % ?`
         : ` — redescendre à ${Math.round(fini.proposition.vitesse * 100)} % ?`
       : "";
-    annoncer(`Passage ${fini.propre ? "propre" : "à reprendre"} : ${fini.attrapees} / ${fini.attendues}${et}${suite}`);
+    annoncerPassage(`Passage ${fini.propre ? "propre" : "à reprendre"} : ${fini.attrapees} / ${fini.attendues}${et}${suite}`);
     // Le compte de la barre repart avec le passage suivant.
     coach.bilan = null;
+  }
+  if (v.releves?.length && !fini) {
+    coach.relevesDepuis += v.releves.length;
+    if (coach.relevesDepuis >= RELEVES_PAR_CONSEIL) {
+      coach.relevesDepuis = 0;
+      conseilGroove().then((c) => {
+        if (c && c !== coach.conseil) {
+          coach.conseil = c;
+          annoncer(c, 9000);
+        }
+      });
+    }
   }
   if (!v.jugements.length && !v.places_perdues.length) {
     if (v.releves?.length) dire();

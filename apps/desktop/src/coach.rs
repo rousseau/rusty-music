@@ -19,6 +19,7 @@ use rusty_music_editor::coach::appariement::{
     apparier, place_perdue, reference_sure, Fenetres, Jugement, Reference, Verdict,
 };
 use rusty_music_editor::coach::batterie::{Classe, Decodeur, Frappe, Profil};
+use rusty_music_editor::coach::groove::{self, Echantillon, Groove};
 use rusty_music_editor::coach::mesures::{
     cumuler, pires_mesures, relever, Escalier, Proposition, Releve,
 };
@@ -117,7 +118,17 @@ pub(crate) struct EtatCoach {
     ouvertes: Vec<MesureOuverte>,
     passages: Vec<PassageOuvert>,
     escalier: Escalier,
+    /// L'activation d'ADTOF de chaque référence (la force sur le stem).
+    forces: Vec<f32>,
+    /// La grille des battements, en secondes du morceau (swing, décalage du
+    /// disque au temps).
+    temps: Vec<f64>,
+    /// Les notes sûres attrapées depuis l'armement : la matière du groove.
+    echantillons: VecDeque<Echantillon>,
 }
+
+/// Notes gardées pour le groove : une dizaine de minutes de jeu dense.
+const ECHANTILLONS_MAX: usize = 6000;
 
 /// Ce que l'interface sait de l'écoute.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -326,10 +337,33 @@ pub(crate) fn coach_armer(
     chemin: Option<String>,
     coups: Vec<Coup>,
     premiers_temps: Vec<f64>,
+    temps: Option<Vec<f64>>,
 ) -> Result<(), String> {
     let mut coach = verrou(&etat.coach);
     armer(&mut coach, chemin, &coups, premiers_temps);
+    poser_temps(&mut coach, temps.unwrap_or_default());
     Ok(())
+}
+
+/// La grille des battements (Beat This!), triée, sans doublon.
+fn poser_temps(coach: &mut EtatCoach, mut temps: Vec<f64>) {
+    temps.retain(|t| t.is_finite());
+    temps.sort_by(f64::total_cmp);
+    temps.dedup();
+    coach.temps = temps;
+}
+
+/// Le groove du jeu depuis l'armement (E5) : par pièce, le swing, et les
+/// conseils par motifs. Rien sous les seuils de `editor::coach::groove`.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_groove(etat: State<Etat>) -> Groove {
+    groove_de(&verrou(&etat.coach))
+}
+
+fn groove_de(coach: &EtatCoach) -> Groove {
+    let e: Vec<Echantillon> = coach.echantillons.iter().copied().collect();
+    groove::analyser(&e, &coach.temps)
 }
 
 fn armer(
@@ -363,6 +397,9 @@ fn armer(
     coach.ouvertes.clear();
     coach.passages.clear();
     coach.escalier = Escalier::default();
+    coach.forces = coups.iter().map(|c| c.force).collect();
+    coach.temps.clear();
+    coach.echantillons.clear();
 }
 
 /// Le rang de la mesure qui contient `tau` (secondes du morceau), et ses
@@ -494,6 +531,13 @@ fn juger_sur(
         jusqua_s,
         &fenetres,
     );
+    let neufs = groove::echantillons(&coach.refs, &coach.forces, &frappes, &jugements);
+    for e in neufs {
+        if coach.echantillons.len() == ECHANTILLONS_MAX {
+            coach.echantillons.pop_front();
+        }
+        coach.echantillons.push_back(e);
+    }
 
     // Les mesures qui finissent dans la fenêtre : la place perdue se juge
     // sur une mesure entière.
@@ -1001,6 +1045,41 @@ mod tests {
             vues.push(v);
         }
         vues
+    }
+
+    #[test]
+    fn le_groove_se_nourrit_des_fenetres_jugees() {
+        let mut coach = coach_simule(Profil::general_midi());
+        armer(&mut coach, None, &rythme(), vec![0.0, 2.0, 4.0]);
+        poser_temps(&mut coach, (0..=8).map(|i| i as f64 * 0.5).rev().collect());
+        assert_eq!(coach.temps.len(), 9);
+        // Trois passages à 0,8, la caisse claire 25 ms (du morceau) devant.
+        jouer_boucle(
+            &mut coach,
+            0.8,
+            3,
+            |_, _| false,
+            |_, i| if i % 2 == 1 { -0.025 } else { 0.0 },
+        );
+        // 24 notes sûres attrapées : 12 grosses caisses, 12 caisses claires ;
+        // la crash n'entre pas.
+        assert_eq!(coach.echantillons.len(), 24);
+        let g = groove_de(&coach);
+        assert_eq!(g.conseils.len(), 1, "{:?}", g.conseils);
+        assert_eq!(g.conseils[0].classe, Some(Classe::CaisseClaire));
+        assert_eq!(
+            g.conseils[0].texte,
+            "Tu joues la caisse claire 25 ms devant le disque."
+        );
+        let cc = g
+            .pieces
+            .iter()
+            .find(|p| p.classe == Classe::CaisseClaire)
+            .unwrap();
+        assert!((cc.jeu_grille_ms.unwrap() + 25.0).abs() < 1.0, "{cc:?}");
+        // Réarmer repart de zéro.
+        armer(&mut coach, None, &rythme(), vec![0.0, 2.0, 4.0]);
+        assert!(coach.echantillons.is_empty() && coach.temps.is_empty());
     }
 
     #[test]

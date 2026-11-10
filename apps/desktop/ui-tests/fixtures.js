@@ -455,6 +455,8 @@ const fixtures = {
     boucle_proposee: null,
   }),
   coach_table: { mesures: [], boucle_proposee: null },
+  // E5 : le groove ; rien à dire tant qu'un test ne pose pas ses conseils.
+  coach_groove: { pieces: [], swing: null, conseils: [] },
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

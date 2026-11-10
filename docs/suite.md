@@ -106,8 +106,13 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     testés sans matériel ; tranche 3 le 10 nov. : table par mesure et par
     passage gardée dans `pratique_mesure` (migration n° 12, pente des
     écarts), score lissé, « boucler » les pires mesures à 70 % et escalier
-    de tempo proposés dans la barre du coach, jamais imposés ; restent
-    l'édition du profil à l'écran et les coups en trop sur la partition,
+    de tempo proposés dans la barre du coach, jamais imposés ; E5,
+    tranche 1 le 10 nov. : groove de la batterie MIDI — écart au stem par
+    pièce, décalage du disque à la grille, swing du disque et du jeu,
+    régularité de vélocité et accents contre l'activation d'ADTOF, conseils
+    par motifs dans la ligne du coach, muets sous les seuils ; restent la
+    basse en DI (cpal, flux spectral, pYIN causal), l'édition du profil à
+    l'écran et les coups en trop sur la partition,
     puis l'essai réel avec la batterie de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,

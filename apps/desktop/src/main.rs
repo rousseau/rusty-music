@@ -1082,6 +1082,7 @@ fn main() {
             coach::coach_armer,
             coach::coach_juger,
             coach::coach_table,
+            coach::coach_groove,
             pratique_memoire,
             pratique_garder,
             pratique_playlist,

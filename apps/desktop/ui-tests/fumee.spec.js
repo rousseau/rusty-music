@@ -1710,6 +1710,8 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   // En boucle, deux passages propres : l'escalier propose 73 %.
   const vitesse = page.locator("#coach-vitesse");
   await expect(vitesse).toHaveText("↑ 73 %");
+  // Rien sous les seuils du groove : le passage seul, sans conseil (E5).
+  await expect(page.locator("#coach-etat")).toHaveText("Passage propre : 8 / 8 · ± 9 ms — passer à 73 % ?");
   await vitesse.click();
   await expect.poll(() => appels(page, "stems_vitesse").then((a) => a.at(-1)?.vitesse)).toBe(0.73);
   await expect(vitesse).toBeHidden();
@@ -2064,4 +2066,32 @@ test("V33 : une critique montre ses liens Markdown comme des liens, sans HTML ni
   expect(await page.evaluate(() => window.__LIENS__)).toEqual(["http://www.bbc.co.uk/music/artists/3798b104"]);
   // L'attribution CritiqueBrainz reste là, sous la critique.
   await expect(critique.locator(".critique-attribution")).toContainText("BBC · CritiqueBrainz · CC BY-NC-SA 3.0");
+});
+
+/* ------------------------- E5 : le groove de la batterie MIDI, en conseils */
+
+test("E5 : un conseil du groove suit la fin d'un passage de boucle", async ({ page }) => {
+  await batterieTranscrite(page);
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_groove = (_, e) => ({
+      pieces: [], swing: null,
+      conseils: [{ motif: "devant", classe: "caisse_claire", texte: e.conseil ?? "Tu joues la caisse claire 22 ms devant le disque." }],
+    });
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="drums"]');
+  await page.click("#coach-basculer");
+  // Armé avec la grille des battements (swing, décalage du disque au temps).
+  await expect.poll(() => appels(page, "coach_armer").then((a) => a.at(-1)?.temps?.length)).toBe(32);
+  // Hors boucle : une mesure relevée ne suffit pas à demander le groove.
+  await expect(page.locator("#coach-boucler")).toHaveText("boucler mes. 2–3 à 70 %");
+  expect(await appels(page, "coach_groove")).toEqual([]);
+  // En boucle, la fin d'un passage dit son compte et le conseil.
+  await page.locator("#coach-boucler").click();
+  const etat = page.locator("#coach-etat");
+  await expect(etat).toHaveText(
+    "Passage propre : 8 / 8 · ± 9 ms — passer à 73 % ? · Tu joues la caisse claire 22 ms devant le disque.",
+  );
+  // Le texte entier au survol, si la ligne le coupe.
+  await expect(etat).toHaveAttribute("title", /devant le disque/);
 });

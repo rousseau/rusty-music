@@ -5875,3 +5875,63 @@ Non vérifié : **audit reporté (écran visible)** — tous les écrans
 dans l'inspecteur d'`ecoute` et d'`explorer:*`) ; « deux audits de suite
 donnent le même rapport » attend donc l'audit de nuit (A1). Le lien à
 l'écran, vu par personne.
+
+## Pratiquer, E5, tranche 1 : le groove de la batterie MIDI — 10 nov. 2026
+
+Étape 4 du coach (`docs/recherche-coach-pratique.md`, « Timing, dynamique
+et groove ») : des tendances, jamais une note isolée, et rien sous les
+seuils.
+
+- **Matière** (`editor::coach::groove`). Chaque fenêtre jugée donne ses
+  échantillons : une note **sûre** attrapée (parfait, bon, en avance, en
+  retard) et le coup qui l'a prise — instant sur le disque, instant joué
+  ramené au temps du morceau (latence ôtée), activation d'ADTOF au pic
+  (la force de la note sur le stem), vélocité. Cymbales et notes fantômes
+  restent dehors (références incertaines). L'app les cumule depuis
+  l'armement (6 000 au plus) ; `coach_armer` reçoit aussi la grille des
+  battements (`temps`, Beat This!), commande `coach_groove`.
+- **Mesures par pièce** : écart moyen au disque (le micro-timing du stem,
+  pas la grille) ; sur les notes posées sur un temps (à 12 % du battement),
+  décalage du disque et du jeu à la grille ; vélocité moyenne ; écart type
+  des coups identiques (force du disque à ± 15 % de sa médiane) ;
+  corrélation force du disque / vélocité, seulement si le disque a des
+  accents (coefficient de variation des forces ≥ 0,15).
+- **Swing** : rapport première / seconde croche, médiane sur les temps qui
+  ont une croche entre 0,4 et 0,8 du battement et rien entre 0,15 et 0,4 (un
+  seize-temps droit ne passe pas pour du swing), mesuré sur le disque et sur
+  le jeu, mêmes notes.
+- **Conseils par motifs**, dans l'ordre timing, swing, accents, vélocité :
+  « Tu joues la caisse claire 22 ms devant le disque. » (au moins 8 notes,
+  ≥ 15 ms et plus de deux erreurs types) ; « Le disque pose la caisse claire
+  20 ms derrière le temps ; toi, à 0 ms, tu joues sur la grille. » ; « Tes
+  croches sont plus droites que le disque (1,00 contre 1,78). » (écart
+  ≥ 0,2) ; accents qui ne suivent pas (corrélation < 0,2, 12 notes) ;
+  « Tes coups de charleston varient (± 30 de vélocité) là où le disque les
+  joue égaux. » (> 16).
+- **Interface** : pas d'élément nouveau. Le premier conseil suit le compte
+  de fin de passage de boucle dans la ligne du coach, ou s'annonce seul
+  toutes les 4 mesures relevées hors boucle, s'il a changé ; la ligne coupe
+  ce qui dépasse, le texte entier au survol (`title`).
+- **Mesuré** (tests, sans matériel). Éditeur, 6 tests : jeu fidèle à ± 3 ms
+  et vélocités qui suivent les forces → aucun conseil, accents corrélés à
+  > 0,9, swing 1,00 ; caisse claire pressée de 22 ms → un conseil, rien sur
+  5 notes ni à 9 ms ; disque 20 ms derrière le temps et jeu sur la grille ;
+  swing 1,78 contre 1,00 sur 32 temps, pas de swing sur des doubles croches
+  droites ni sans grille ; accents inversés repérés, aucun accent jugé sur
+  un disque égal, vélocité irrégulière ± 30 ; seules les notes sûres
+  attrapées font un échantillon. App, source MIDI simulée : trois passages
+  de boucle à 0,8, caisse claire 25 ms devant → 24 échantillons (crash
+  exclue), un seul conseil, décalage du jeu à la grille −25 ms ; réarmer
+  vide tout. Test de fumée E5 (grille de 32 battements passée à
+  l'armement, conseil après le compte du passage, `title`) et E4 étendu
+  (aucun conseil sous les seuils). `verifier.sh` vert, 68 tests de fumée.
+
+Non vérifié : rien avec une vraie batterie ; l'activation d'ADTOF comme
+mesure des accents du disque (choisie parce qu'elle est propre à chaque
+pièce, quand le niveau de crête du stem mêle grosse caisse et charleston)
+n'est pas confrontée à une écoute ; la pente « tu presses les breaks » reste
+celle de la table par mesure (tranche 3 d'E4), pas un conseil de groove ;
+le chemin hors boucle (toutes les 4 mesures) n'est pas couvert par un test
+de fumée ; pas d'audit (aucune mise en page changée, la ligne d'état existe
+déjà). Reste d'E5 : la basse en DI (cpal, permission micro, flux spectral,
+pYIN causal, confiance de la référence par le stem), puis l'essai réel.
