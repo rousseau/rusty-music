@@ -44,8 +44,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   lignes hors Lama et Bibliothèque (`ecouter.js` : 1 421).
 - D, finir la balade — fait (7-8 nov.) : D2 (P8), D4 (P6, relief regardé
   dans l'application le 8 nov.), D5 (nuage stable). **En attente d'usage** :
-  D1 (relever `balade-mesure.json` ; le 8 nov., 3 balades et 0 carrefour
-  quitté, rien à relever) et D3 (apprendre la pente des choix aux
+  D1 (relever `balade-mesure.json` ; les 8 et 12 nov., 3 balades et
+  0 carrefour montré, aucune balade depuis le 6 nov. ; à relever après une
+  dizaine de balades d'une heure, ~40 carrefours) et D3 (apprendre la pente des choix aux
   carrefours, s'il y en a au moins 50).
 - Le plan suit le nuage — V16 fait (9 nov.) : une projection refaite
   (« Recalculer la carte » après un changement de réglage, ou les

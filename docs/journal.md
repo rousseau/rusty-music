@@ -6223,3 +6223,31 @@ François veut vérifier l'accord de sa basse sans quitter Pratiquer.
 Non vérifié : avec la vraie basse et la Scarlett (stabilité de l'aiguille,
 cordes à vide réelles, inharmonicité) ; l'accord de disques réels ;
 audit d'interface reporté (écran visible), écran touché : `pratiquer`.
+
+## Balade, D1 relevé une deuxième fois : toujours rien — 12 nov. 2026
+
+Étape V7, relevé de l'usage du carrefour (P2) prévu au 12 nov.
+
+- **Chiffres.** `balade-mesure.json` n'existe toujours pas ; `balade` et
+  `balade_pas` sont vides (copie de la base du 12 nov.). Les journaux de
+  l'app du 7 au 12 nov. ne contiennent aucune ligne de balade : la dernière
+  date du 6 nov. (22 h 36, arrêtée au bout de 3 min). Bilan depuis P2 :
+  3 balades (5 et 6 nov.), au plus 3 pas chacune, 0 carrefour montré,
+  0 choix d'un geste, 0 « ailleurs », 0 retour.
+- **Pas de panne du compteur.** Aucune balade n'a dépassé quatre morceaux,
+  et le carrefour vient tous les quatre morceaux environ : le compteur
+  n'avait rien à écrire. Le code l'écrit bien au début de chaque morceau
+  suivant et à chaque retour (`explorer/balade.rs`, `balade_battement`,
+  `balade_revenir`) ; l'arrêt ne l'écrit pas, mais un arrêt ne compte rien
+  de neuf. Les pas des 5 et 6 nov. manquent en base parce que P5 (tables
+  `balade`, migration n° 5) date du 7 nov.
+- **Décisions.** Aucune : ni sur P9 (seuil d'un carrefour sur cinq avec
+  un choix), ni sur D3 (au moins 50 choix). Il faudrait, pour P9, une
+  quarantaine de carrefours montrés (environ 160 morceaux, une dizaine de
+  balades d'une heure) : le taux de choix s'y estime à ± 12 points, assez
+  pour le placer de part et d'autre de 20 %. Pour D3, 50 choix demandent
+  170 à 250 carrefours si l'on choisit une fois sur quatre ou cinq, soit
+  700 à 1 000 morceaux en balade.
+
+Non vérifié : rien, la balade n'ayant pas servi ; à relever de nouveau
+après au moins dix balades d'une heure.
