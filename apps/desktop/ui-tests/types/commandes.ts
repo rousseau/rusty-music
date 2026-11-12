@@ -210,9 +210,11 @@ export const commands = {
 	coach_basse_transposer: (demiTons: number) => __TAURI_INVOKE<null>("coach_basse_transposer", { demiTons }),
 	/**
 	 *  L'accordeur (V36) : la hauteur des dernières 250 ms de l'entrée écoutée
-	 *  (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque).
+	 *  (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque), vers
+	 *  les cordes à vide `cordes` (V37 : l'accordage à utiliser avec la hauteur
+	 *  en cours, MIDI de la grave à l'aiguë ; sans elles, si mi la ré sol).
 	 */
-	coach_basse_accorder: (laHz: number | null) => __TAURI_INVOKE<VueAccordeur_Serialize>("coach_basse_accorder", { laHz }),
+	coach_basse_accorder: (laHz: number | null, cordes: number[] | null) => __TAURI_INVOKE<VueAccordeur_Serialize>("coach_basse_accorder", { laHz, cordes }),
 	/**
 	 *  Mesure l'accord du disque sur le stem de basse du morceau `id` (une fois
 	 *  par morceau, gardé pour la séance).

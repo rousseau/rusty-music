@@ -43,6 +43,56 @@ pub enum Basses {
     Cinq,
 }
 
+/// Les accordages qu'une tablature de basse propose (V37) : le moteur n'en
+/// choisit pas d'autre, et Pratiquer en impose un à la main, gardé par
+/// morceau.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Accord {
+    /// mi la ré sol.
+    Standard,
+    /// mi♭ la♭ ré♭ sol♭.
+    DemiTon,
+    /// ré sol do fa.
+    Ton,
+    /// ré la ré sol.
+    DropD,
+    /// si mi la ré sol.
+    Cinq,
+}
+
+impl Accord {
+    /// Ceux d'une 4 cordes, standard d'abord.
+    pub const QUATRE: [Accord; 4] = [
+        Accord::Standard,
+        Accord::DemiTon,
+        Accord::Ton,
+        Accord::DropD,
+    ];
+
+    /// Ses cordes à vide, de la grave à l'aiguë.
+    pub fn accordage(self) -> Accordage {
+        match self {
+            Accord::Standard => Accordage::basse4(),
+            Accord::DemiTon => Accordage {
+                cordes: vec![27, 32, 37, 42],
+                frettes: 20,
+            },
+            Accord::Ton => Accordage {
+                cordes: vec![26, 31, 36, 41],
+                frettes: 20,
+            },
+            Accord::DropD => Accordage::drop_d(),
+            Accord::Cinq => Accordage::basse5(),
+        }
+    }
+}
+
+/// Part des notes sous le ré grave à partir de laquelle une 4 cordes ne
+/// suffit plus et la tablature passe en 5 cordes (V37) : en dessous, ce sont
+/// des erreurs d'octave de la transcription.
+pub const GRAVES_NETS: f32 = 0.05;
+
 /// Un accordage, de la corde la plus grave à la plus aiguë, en hauteurs MIDI.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Accordage {
@@ -74,91 +124,73 @@ impl Accordage {
         }
     }
 
-    /// Les accordages essayés par [`Accordage::choisir`] : standard, abaissés
-    /// d'un demi-ton, d'un ton, de deux tons (le grunge : Nirvana), drop D
-    /// et ses variantes, cinq cordes.
+    /// Les accordages essayés pour une 4 cordes ([`Accordage::choisir`]) :
+    /// standard d'abord, puis abaissé d'un demi-ton, d'un ton, et drop D
+    /// ([`Accord`]). Ni deux tons dessous ni drop C : la transcription
+    /// d'*Andy* (Les Rita Mitsouko) y tombait (« FCGC ») alors que le
+    /// bassiste joue une 4 cordes standard (V37, 11 nov.).
     pub fn candidats() -> Vec<Self> {
-        Self::de([
-            vec![28, 33, 38, 43],
-            vec![27, 32, 37, 42],
-            vec![26, 31, 36, 41],
-            vec![24, 29, 34, 39],
-            vec![26, 33, 38, 43],
-            vec![25, 32, 37, 42],
-            vec![24, 31, 36, 41],
-            vec![23, 28, 33, 38, 43],
-        ])
+        Accord::QUATRE.iter().map(|a| a.accordage()).collect()
     }
 
-    /// Les accordages d'une 5 cordes : standard, abaissés d'un demi-ton et
-    /// d'un ton.
+    /// L'accordage d'une 5 cordes : si mi la ré sol.
     pub fn candidats5() -> Vec<Self> {
-        Self::de([
-            vec![23, 28, 33, 38, 43],
-            vec![22, 27, 32, 37, 42],
-            vec![21, 26, 31, 36, 41],
-        ])
+        vec![Self::basse5()]
     }
 
-    fn de<const N: usize>(cordes: [Vec<u8>; N]) -> Vec<Self> {
-        cordes
-            .into_iter()
-            .map(|cordes| Self {
-                cordes,
-                frettes: 20,
-            })
-            .collect()
-    }
-
-    /// L'accordage que les notes réclament. Une note sous la corde grave est
-    /// impossible ; la corde grave à vide, elle, se joue (le rock accordé
-    /// plus bas tourne autour d'elle). Parmi les accordages compatibles —
-    /// presque aucune note dessous, la corde grave à vide jouée —, celui qui
-    /// donne le doigté le moins coûteux : un morceau écrit pour un accordage
-    /// y trouve ses cordes à vide. Sans corde grave jouée, le standard si les
-    /// notes y tiennent.
+    /// L'accordage que les notes réclament, pour une 4 cordes. **Le standard
+    /// dès que les notes y tiennent** ; sinon, parmi les accordages abaissés
+    /// et le drop D qui les contiennent, celui dont la corde grave à vide est
+    /// jouée et qui donne le doigté le moins coûteux — un morceau écrit pour
+    /// un accordage y trouve ses cordes à vide. Rien ne les contient : la
+    /// 5 cordes s'il y a de vraies notes graves (au moins [`GRAVES_NETS`]
+    /// des notes sous le ré), sinon le standard — quelques do graves sont des
+    /// erreurs d'octave, que le doigté remonte (*Andy* en live : 23 do0 sur
+    /// 1 103 notes, 2 % ; le bassiste joue une 4 cordes standard).
     ///
     /// Banc du 10 oct. (`experiments/partitions/`, 17 morceaux de Nirvana dont
     /// 11 accordés plus bas) : avec le seul standard, les frettes de la
     /// tablature ne correspondaient à aucune des nôtres.
     pub fn choisir(notes: &[Note]) -> Self {
-        Self::choisir_parmi(notes, &Self::candidats())
+        Self::choisir_parmi(notes, &Self::candidats()).unwrap_or_else(|| {
+            let graves = notes.iter().filter(|n| n.hauteur < 26).count();
+            if graves as f32 >= GRAVES_NETS * notes.len() as f32 {
+                Self::basse5()
+            } else {
+                Self::basse4()
+            }
+        })
     }
 
     /// [`Accordage::choisir`] parmi des candidats donnés, le standard en
-    /// premier.
-    pub fn choisir_parmi(notes: &[Note], candidats: &[Self]) -> Self {
+    /// premier ; `None` quand aucun ne contient les notes (une note
+    /// transcrite sur cent peut tomber dessous : une erreur d'octave,
+    /// ramenée par le doigté).
+    pub fn choisir_parmi(notes: &[Note], candidats: &[Self]) -> Option<Self> {
         let tolere = (notes.len() / 100).max(1);
         let sous = |l: u8| notes.iter().filter(|n| n.hauteur < l).count();
         let a_vide = |l: u8| notes.iter().filter(|n| n.hauteur == l).count();
-        let standard = candidats.first().cloned().unwrap_or_else(Self::basse4);
-        let mut valides: Vec<&Self> = candidats
+        let standard = candidats.first()?;
+        if sous(standard.cordes[0]) <= tolere {
+            return Some(standard.clone());
+        }
+        let contiennent: Vec<&Self> = candidats
             .iter()
-            .filter(|a| sous(a.cordes[0]) <= tolere && a_vide(a.cordes[0]) >= tolere.max(2))
+            .filter(|a| sous(a.cordes[0]) <= tolere)
+            .collect();
+        let mut valides: Vec<&Self> = contiennent
+            .iter()
+            .copied()
+            .filter(|a| a_vide(a.cordes[0]) >= tolere.max(2))
             .collect();
         if valides.is_empty() {
-            if sous(standard.cordes[0]) <= tolere {
-                return standard;
-            }
             // Des notes sous le mi sans corde grave nette : l'accordage le plus
             // haut qui les contient toutes.
-            let haut = candidats
-                .iter()
-                .filter(|a| sous(a.cordes[0]) <= tolere)
-                .map(|a| a.cordes[0])
-                .max();
-            valides = candidats
-                .iter()
-                .filter(|a| Some(a.cordes[0]) == haut)
+            let haut = contiennent.iter().map(|a| a.cordes[0]).max()?;
+            valides = contiennent
+                .into_iter()
+                .filter(|a| a.cordes[0] == haut)
                 .collect();
-            if valides.is_empty() {
-                // Rien ne contient tout : le plus grave.
-                return candidats
-                    .iter()
-                    .min_by_key(|a| a.cordes[0])
-                    .cloned()
-                    .unwrap_or(standard);
-            }
         }
         let cout = |a: &Self| {
             let mut x = notes.to_vec();
@@ -169,21 +201,18 @@ impl Accordage {
             .map(|a| (cout(a), a))
             .min_by(|x, y| x.0.total_cmp(&y.0))
             .map(|(_, a)| a.clone())
-            .unwrap_or(standard)
     }
 
-    /// L'accordage du disque sur la basse de l'utilisateur : parmi ceux d'une
-    /// 4 cordes (standard, abaissés, drop D…) ou d'une 5 cordes.
-    pub fn pour(notes: &[Note], basses: Basses) -> Self {
+    /// L'accordage de la tablature : celui choisi à la main pour le morceau
+    /// (`choix`), sinon celui que les notes réclament sur la basse de
+    /// l'utilisateur — 4 cordes ([`Accordage::choisir`]) ou 5 cordes.
+    pub fn pour(notes: &[Note], basses: Basses, choix: Option<Accord>) -> Self {
+        if let Some(a) = choix {
+            return a.accordage();
+        }
         match basses {
-            Basses::Quatre => {
-                let quatre: Vec<Self> = Self::candidats()
-                    .into_iter()
-                    .filter(|a| a.cordes.len() == 4)
-                    .collect();
-                Self::choisir_parmi(notes, &quatre)
-            }
-            Basses::Cinq => Self::choisir_parmi(notes, &Self::candidats5()),
+            Basses::Quatre => Self::choisir(notes),
+            Basses::Cinq => Self::basse5(),
         }
     }
 
@@ -711,16 +740,88 @@ mod tests {
             .map(|i| note(i as f32 * 0.3, [27u8, 27, 32, 37, 34, 27][i % 6]))
             .collect();
         assert_eq!(
-            Accordage::pour(&grave, Basses::Quatre).cordes,
+            Accordage::pour(&grave, Basses::Quatre, None).cordes,
             vec![27, 32, 37, 42]
         );
         // La 5 cordes standard le contient (corde de si, 4ᵉ case).
-        assert_eq!(Accordage::pour(&grave, Basses::Cinq), Accordage::basse5());
+        assert_eq!(
+            Accordage::pour(&grave, Basses::Cinq, None),
+            Accordage::basse5()
+        );
         let mi: Vec<Note> = (0..40)
             .map(|i| note(i as f32 * 0.3, [28u8, 40, 43][i % 3]))
             .collect();
-        assert_eq!(Accordage::pour(&mi, Basses::Quatre), Accordage::basse4());
-        assert_eq!(Accordage::pour(&mi, Basses::Cinq), Accordage::basse5());
+        assert_eq!(
+            Accordage::pour(&mi, Basses::Quatre, None),
+            Accordage::basse4()
+        );
+        assert_eq!(
+            Accordage::pour(&mi, Basses::Cinq, None),
+            Accordage::basse5()
+        );
+    }
+
+    #[test]
+    fn le_standard_d_abord_et_seulement_les_accordages_de_basse() {
+        // Une ligne en fa, do, sol (le cas d'« Andy », V37) : le do grave
+        // à vide d'un drop C la contiendrait, mais tout tient en standard.
+        let n: Vec<Note> = (0..60)
+            .map(|i| note(i as f32 * 0.3, [29u8, 36, 41, 31, 29, 36][i % 6]))
+            .collect();
+        assert_eq!(Accordage::choisir(&n), Accordage::basse4());
+        // Beaucoup de do graves : aucun accordage de 4 cordes ne les contient
+        // (ni deux tons dessous ni drop C) ; la 5 cordes.
+        let c: Vec<Note> = (0..60)
+            .map(|i| note(i as f32 * 0.3, [24u8, 31, 36, 24][i % 4]))
+            .collect();
+        assert_eq!(Accordage::choisir(&c), Accordage::basse5());
+        // Quelques do graves (2 %, *Andy* en live : 23 sur 1 103) : des
+        // erreurs d'octave, le standard reste.
+        let andy: Vec<Note> = (0..1103)
+            .map(|i| {
+                let h = if i % 48 == 0 {
+                    24u8
+                } else {
+                    [29u8, 36, 41, 31, 28][i % 5]
+                };
+                note(i as f32 * 0.2, h)
+            })
+            .collect();
+        assert_eq!(andy.iter().filter(|n| n.hauteur == 24).count(), 23);
+        assert_eq!(Accordage::choisir(&andy), Accordage::basse4());
+        // Des ré graves sans corde grave nette ailleurs : un ton dessous ou
+        // drop D, jamais autre chose.
+        let d: Vec<Note> = (0..60)
+            .map(|i| note(i as f32 * 0.3, [26u8, 31, 36, 41][i % 4]))
+            .collect();
+        let a = Accordage::choisir(&d);
+        assert!(
+            a == Accord::Ton.accordage() || a == Accordage::drop_d(),
+            "{a:?}"
+        );
+    }
+
+    #[test]
+    fn l_accordage_choisi_a_la_main_l_emporte() {
+        let mi: Vec<Note> = (0..40)
+            .map(|i| note(i as f32 * 0.3, [28u8, 40, 43][i % 3]))
+            .collect();
+        assert_eq!(
+            Accordage::pour(&mi, Basses::Quatre, Some(Accord::DemiTon)).cordes,
+            vec![27, 32, 37, 42]
+        );
+        assert_eq!(
+            Accordage::pour(&mi, Basses::Quatre, Some(Accord::Cinq)),
+            Accordage::basse5()
+        );
+        assert_eq!(
+            serde_json::to_string(&Accord::DemiTon).unwrap(),
+            "\"demi-ton\""
+        );
+        assert_eq!(
+            serde_json::from_str::<Accord>("\"drop-d\"").unwrap(),
+            Accord::DropD
+        );
     }
 
     #[test]

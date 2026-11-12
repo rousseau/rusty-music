@@ -1424,16 +1424,25 @@ async function basseTranscrite(page) {
       metrique: 4,
     };
     window.__FIXTURES__.transcriptions_en_cache = ["bass", "bass-muscriptor"];
-    const accordage = [28, 33, 38, 43];
+    // L'accordage de la tablature (V37) : `__ACCORDAGE__` le change, le
+    // choix à la main (`pratique_accordage`) l'impose.
+    const ACCORDS = { standard: [28, 33, 38, 43], "demi-ton": [27, 32, 37, 42], ton: [26, 31, 36, 41], "drop-d": [26, 33, 38, 43], cinq: [23, 28, 33, 38, 43] };
+    const accordageDe = (e) => (e.choix ? ACCORDS[e.choix] : window.__ACCORDAGE__ ?? ACCORDS.standard);
+    window.__FIXTURES__.pratique_accordage = (a, e) => {
+      e.choix = a.accordage;
+      return null;
+    };
+    let accordage = ACCORDS.standard;
     // La frette la plus basse, comme une main qui reste en bas du manche.
     const placer = (h) => {
-      for (let c = 3; c >= 0; c--) if (h - accordage[c] >= 0 && h - accordage[c] <= 20) return [c, h - accordage[c]];
+      for (let c = accordage.length - 1; c >= 0; c--) if (h - accordage[c] >= 0 && h - accordage[c] <= 20) return [c, h - accordage[c]];
       return [null, null];
     };
     // Deux mesures jouées (la deuxième avec un silence au troisième temps).
     const debuts = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0];
     const hauteurs = [33, 36, 38, 40, 33, 31, 28];
-    const vue = (corrections) => {
+    const vue = (corrections, e = {}) => {
+      accordage = accordageDe(e);
       let lignes = debuts.map((d, i) => ({ d, h: hauteurs[i], o: 0, s: 0, ajoutee: false }));
       for (const c of corrections) {
         const i = lignes.findIndex((l) => l.h === c.hauteur && Math.abs(l.d - c.debut_s) < 0.03);
@@ -1462,21 +1471,21 @@ async function basseTranscrite(page) {
       }));
       return {
         version: 5, instrument: "bass", modele: "muscriptor-medium", notes, coups: [], mesures, accordage,
-        doigtes: 5, basses: "quatre", hauteurs: lignes.map((l) => l.h), grille: 3,
+        choix: e.choix ?? null, doigtes: 6, basses: "quatre", hauteurs: lignes.map((l) => l.h), grille: 3,
         identites: lignes.map((l) => ({
           debut_s: l.d, hauteur: l.h, ajoutee: l.ajoutee, octaves: l.o, demitons: l.s, corde_imposee: false,
         })),
         sans_effet: 0,
       };
     };
-    window.__FIXTURES__.transcrire = (a, e) => vue(e.corrections ?? []);
+    window.__FIXTURES__.transcrire = (a, e) => vue(e.corrections ?? [], e);
     window.__FIXTURES__.corriger_transcription = (a, e) => {
       const c = a.correction;
       // Une correction par genre et par note, comme `Library::corriger_pratique`.
       const memeNote = (x) => x.hauteur === c.hauteur && Math.abs(x.debut_s - c.debut_s) < 1e-3;
       e.corrections = (e.corrections ?? []).filter((x) => !(memeNote(x) && (c.genre === "retablir" || x.genre === c.genre)));
       if (c.genre !== "retablir") e.corrections.push(c);
-      return vue(e.corrections);
+      return vue(e.corrections, e);
     };
   });
 }
@@ -1860,7 +1869,7 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
   await expect(marques).toHaveCount(0);
 });
 
-test("V35 : la basse transposée — tablature, coach et code des erreurs suivent la hauteur", async ({ page }) => {
+test("V35, V37 : la basse transposée — le coach et le code des erreurs suivent la hauteur, la tablature non", async ({ page }) => {
   await basseTranscrite(page);
   await page.evaluate(() => {
     window.__FIXTURES__.coach_basse_entrees = ["Interface USB"];
@@ -1915,14 +1924,16 @@ test("V35 : la basse transposée — tablature, coach et code des erreurs suiven
     });
   expect((await tablature()).frettes).toEqual([0, 3, 0, 2]);
 
-  // Un demi-ton plus haut, par le champ du dock : la tablature se décale,
-  // le coach juge contre la référence transposée, le bandeau le dit.
+  // Un demi-ton plus haut, par le champ du dock : le coach juge contre la
+  // référence transposée ; la tablature garde ses frettes (V37) et le
+  // bandeau dit l'accordage à utiliser.
   const champ = page.locator("#val-tonalite");
   await champ.fill("½");
   await champ.press("Enter");
   await expect.poll(() => appels(page, "coach_basse_transposer").then((a) => a.at(-1)?.demiTons)).toBe(1);
-  await expect(page.locator("#coach-transpose")).toHaveText("transposé de +½ ton");
-  await expect.poll(async () => (await tablature()).frettes).toEqual([1, 4, 1, 3]);
+  await expect(page.locator("#coach-transpose")).toHaveText(
+    "disque : standard (E A D G) · avec +½ ton : ½ ton au-dessus (F B♭ E♭ A♭)");
+  expect((await tablature()).frettes).toEqual([0, 3, 0, 2]);
 
   // Le code des erreurs : ← en avance, la note jouée (ré : do transposé en
   // do♯, joué un demi-ton plus haut), → en retard, + après la 3ᵉ.
@@ -1936,16 +1947,61 @@ test("V35 : la basse transposée — tablature, coach et code des erreurs suiven
   await expect(page.locator("#partition-rendu .coach__signe--trop:visible")).toHaveText("+");
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/v35-coach-transpose.png" });
 
-  // Un demi-ton plus bas : le la à vide passe sur la corde de mi ; le mi
-  // grave sort du manche d'une quatre cordes et la note le dit.
+  // Un demi-ton plus bas : toujours les mêmes frettes, jamais « hors
+  // manche » ; l'accordage à utiliser descend d'autant.
   await champ.fill("-½");
   await champ.press("Enter");
   await expect.poll(() => appels(page, "coach_basse_transposer").then((a) => a.at(-1)?.demiTons)).toBe(-1);
-  await expect(page.locator("#coach-transpose")).toHaveText("transposé de −½ ton");
-  await expect.poll(async () => (await tablature()).frettes).toEqual([4, 2, 4, 1]);
-  expect((await tablature()).textes).toEqual(["hors manche : D#1"]);
+  await expect(page.locator("#coach-transpose")).toHaveText(
+    "disque : standard (E A D G) · avec −½ ton : ½ ton dessous (E♭ A♭ D♭ G♭)");
+  expect((await tablature()).frettes).toEqual([0, 3, 0, 2]);
+  expect((await tablature()).textes).toEqual([]);
   // Les marques posées sur l'ancienne hauteur sont effacées.
   await expect(marques).toHaveCount(0);
+});
+
+test("V37 : la tablature dans l'accordage du disque — mêmes frettes à toute hauteur, accordage dit et choisi à la main", async ({ page }) => {
+  await basseTranscrite(page);
+  // Un disque en ½ ton dessous (About Damn Time).
+  await page.evaluate(() => (window.__ACCORDAGE__ = [27, 32, 37, 42]));
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const tablature = () =>
+    page.evaluate(async () => {
+      const { partition } = await import("./js/pratiquer.js");
+      const bars = partition.api.score.tracks[0].staves[0].bars;
+      return {
+        frettes: bars[0].voices[0].beats.map((b) => b.notes[0]?.fret ?? null),
+        accord: partition.api.score.tracks[0].staves[0].tuning,
+      };
+    });
+  const avant = await tablature();
+  expect(avant.frettes).toEqual([1, 4, 1, 3]);
+  // Le rail dit l'accordage déduit ; le bandeau, celui du disque.
+  await expect(page.locator("#accordage-ligne")).toBeVisible();
+  await expect(page.locator("#accordage-basse option:checked")).toHaveText("déduit : ½ ton dessous");
+  await expect(page.locator("#coach-transpose")).toHaveText("accordage : ½ ton dessous (E♭ A♭ D♭ G♭)");
+
+  // +½ ton : mêmes frettes, à jouer en standard.
+  const champ = page.locator("#val-tonalite");
+  await champ.fill("½");
+  await champ.press("Enter");
+  await expect(page.locator("#coach-transpose")).toHaveText(
+    "disque : ½ ton dessous (E♭ A♭ D♭ G♭) · avec +½ ton : standard (E A D G)");
+  expect(await tablature()).toEqual(avant);
+
+  // Le choix à la main : gardé par le moteur, la tablature reposée.
+  await page.selectOption("#accordage-basse", "drop-d");
+  await expect.poll(() => appels(page, "pratique_accordage").then((a) => a.at(-1)?.accordage)).toBe("drop-d");
+  await expect(page.locator("#accordage-basse")).toHaveValue("drop-d");
+  await expect(page.locator("#coach-transpose")).toHaveText(
+    "disque : drop D (D A D G) · avec +½ ton : drop E♭ (E♭ B♭ E♭ A♭)");
+  await expect.poll(async () => (await tablature()).frettes).toEqual([0, 3, 0, 2]);
+  // Retour aux notes.
+  await page.selectOption("#accordage-basse", "");
+  await expect.poll(() => appels(page, "pratique_accordage").then((a) => a.at(-1)?.accordage)).toBe(null);
+  await expect.poll(async () => (await tablature()).frettes).toEqual([1, 4, 1, 3]);
 });
 
 test("V36 : l'accordeur de basse — diapason du bandeau, note, cents, corde, référence du disque", async ({ page }) => {
@@ -1984,6 +2040,8 @@ test("V36 : l'accordeur de basse — diapason du bandeau, note, cents, corde, r�
   await expect(page.locator("#accordeur-juste")).toBeHidden();
   await expect(page.locator("#accordeur-disque")).toHaveText("La 440");
   expect((await appels(page, "coach_basse_accorder")).at(-1).laHz).toBe(440);
+  // V37 : les cordes visées sont celles de la tablature, ici standard.
+  expect((await appels(page, "coach_basse_accorder")).at(-1).cordes).toEqual([28, 33, 38, 43]);
   // L'aiguille à droite du milieu.
   const gauche = await page.locator("#accordeur-aiguille").evaluate((el) => parseFloat(el.style.left));
   expect(gauche).toBeGreaterThan(55);

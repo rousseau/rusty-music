@@ -130,7 +130,14 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     coups en trop), bandeau du coach sur aplat d'accent avec sa légende ;
     V36 le 10 nov. : accordeur de basse au diapason dans le bandeau
     (même entrée et même pYIN que le coach, affiné au cent, La 440 ou
-    l'accord du disque mesuré sur le stem) ;
+    l'accord du disque mesuré sur le stem) ; V37 le 12 nov. : la
+    tablature écrite pour l'accordage du disque ne bouge plus avec la
+    hauteur (V35 défait pour l'affichage, le coach juge toujours à la
+    hauteur transposée), accordages limités à standard, ½ ton et 1 ton
+    dessous, drop D, 5 cordes, standard d'abord, choix à la main gardé
+    par morceau (migration n° 15), accordage du disque et accordage à
+    utiliser dans le bandeau, visés par l'accordeur — à regarder par
+    François sur About Damn Time (porte) ;
     restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;

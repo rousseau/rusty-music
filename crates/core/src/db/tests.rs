@@ -2703,6 +2703,36 @@ fn la_fenetre_representative_se_retient_et_se_complete() {
     assert_eq!(lib.fenetre_representative(ids[0], "autre").unwrap(), None);
 }
 
+/// V37 : l'accordage choisi à la main se garde par morceau, et la mémoire de
+/// Pratiquer ne l'efface pas.
+#[test]
+fn l_accordage_choisi_se_garde_a_cote_de_la_memoire() {
+    let lib = Library::open_in_memory().unwrap();
+    let chemin = "/Musique/about-damn-time.flac";
+    assert_eq!(lib.accordage_pratique(chemin).unwrap(), None);
+    lib.garder_accordage_pratique(chemin, Some("demi-ton"))
+        .unwrap();
+    assert_eq!(
+        lib.accordage_pratique(chemin).unwrap().as_deref(),
+        Some("demi-ton")
+    );
+    // La mémoire écrite ensuite (une ligne qui existe déjà) le garde ; elle
+    // ne voit pas la colonne.
+    lib.garder_pratique(chemin, &MemoirePratique::default())
+        .unwrap();
+    assert_eq!(
+        lib.accordage_pratique(chemin).unwrap().as_deref(),
+        Some("demi-ton")
+    );
+    assert_eq!(
+        lib.memoire_pratique(chemin).unwrap(),
+        Some(MemoirePratique::default())
+    );
+    lib.garder_accordage_pratique(chemin, None).unwrap();
+    assert_eq!(lib.accordage_pratique(chemin).unwrap(), None);
+    assert_eq!(lib.accordage_pratique("/ailleurs.flac").unwrap(), None);
+}
+
 /// E1 : la mémoire de Pratiquer se garde par chemin, ses boucles sont
 /// remplacées en bloc, et les tables vides d'E2 et d'E4 sont là.
 #[test]

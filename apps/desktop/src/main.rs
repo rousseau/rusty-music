@@ -1108,6 +1108,7 @@ fn main() {
             pulsation,
             transcrire,
             corriger_transcription,
+            pratique_accordage,
             exporter_partie,
             etat_transcription,
             muscriptor_disponible,

@@ -438,6 +438,7 @@ const fixtures = {
   tempo_cible: { bpm: 120, nettete: 3 },
   transcriptions_en_cache: [],
   // La mémoire de Pratiquer (E1) : une base par chemin, dans l'état partagé.
+  pratique_accordage: null,
   pratique_memoire: (a, e) => (e.pratique ?? {})[a.path] ?? null,
   pratique_garder: (a, e) => {
     (e.pratique ??= {})[a.path] = structuredClone(a.memoire);

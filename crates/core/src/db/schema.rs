@@ -87,6 +87,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 14 (10 nov. 2026) : le canal d'une interface audio où joue la
         // basse, par interface (V34 : `canal_entree`, `db/latence.rs`).
         M::up(include_str!("../../sql/migration-014-canal-entree.sql")),
+        // N° 15 (12 nov. 2026) : l'accordage de la tablature de basse choisi
+        // à la main, par morceau (V37 : `pratique.accordage`, `db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-015-accordage.sql")),
     ])
 }
 

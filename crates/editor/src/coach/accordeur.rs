@@ -108,6 +108,18 @@ pub fn affiner(x: &[f32], sr: f32, f0: f32) -> f32 {
 /// l'entrée), contre la `la_hz` de référence. `None` : rien ne joue, ou pYIN
 /// n'est pas sûr (« joue une corde »).
 pub fn accorder(x: &[f32], sr: f32, la_hz: f32) -> Option<Accord> {
+    accorder_vers(x, sr, la_hz, &CORDES)
+}
+
+/// [`accorder`] vers les cordes à vide `cordes` (MIDI) : l'accordage à
+/// utiliser avec la hauteur en cours (V37 : ½ ton dessous, drop D…). Sans
+/// corde, celles de [`CORDES`].
+pub fn accorder_vers(x: &[f32], sr: f32, la_hz: f32, cordes: &[u8]) -> Option<Accord> {
+    let cordes = if cordes.is_empty() {
+        &CORDES[..]
+    } else {
+        cordes
+    };
     if x.is_empty() || niveau_db(x) < SILENCE_DBFS {
         return None;
     }
@@ -118,10 +130,10 @@ pub fn accorder(x: &[f32], sr: f32, la_hz: f32) -> Option<Accord> {
     let f0 = affiner(x, sr, f0);
     let m = midi(f0) - 12.0 * (la_hz / 440.0).log2();
     let note = m.round().clamp(0.0, 127.0);
-    let corde = *CORDES
+    let corde = *cordes
         .iter()
         .min_by(|&&a, &&b| (m - a as f32).abs().total_cmp(&(m - b as f32).abs()))
-        .expect("cinq cordes");
+        .expect("au moins une corde");
     Some(Accord {
         f0_hz: f0,
         note: note as u8,
@@ -231,6 +243,20 @@ mod tests {
         let a = accorder(&sinus(43.0, 0.3), SR, 440.0).unwrap();
         assert_eq!(a.corde, 28);
         assert!(a.cents_corde > 60.0, "{a:?}");
+    }
+
+    #[test]
+    fn l_accordage_a_utiliser_change_la_corde_visee() {
+        // V37 : un la♭ (51,9 Hz) vise la corde de la♭ d'une basse en ½ ton
+        // dessous, juste ; en standard, il serait la corde de la, trop bas.
+        let x = corde_synthetique(SR, 51.91, 0.4);
+        let x = &x[(0.05 * SR) as usize..];
+        let a = accorder_vers(x, SR, 440.0, &[27, 32, 37, 42]).unwrap();
+        assert_eq!(a.corde, 32, "{a:?}");
+        assert!(a.cents_corde.abs() < 5.0, "{a:?}");
+        let b = accorder(x, SR, 440.0).unwrap();
+        assert_eq!(b.corde, 33, "{b:?}");
+        assert!(b.cents_corde < -90.0, "{b:?}");
     }
 
     #[test]

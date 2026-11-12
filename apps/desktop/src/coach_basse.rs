@@ -36,7 +36,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use rusty_music_editor::coach::accordeur::{accorder, ecart_disque, Accord};
+use rusty_music_editor::coach::accordeur::{accorder_vers, ecart_disque, Accord};
 use rusty_music_editor::coach::appariement::Fenetres;
 use rusty_music_editor::coach::basse::{
     confiance_reference, juger, references, transposer, AnalyseurDI, BilanHauteur, Evenement,
@@ -570,7 +570,7 @@ pub(crate) struct VueAccordeur {
     erreur: Option<String>,
 }
 
-fn accorder_sur(coach: &EtatCoachBasse, la_hz: f32) -> Result<VueAccordeur, String> {
+fn accorder_sur(coach: &EtatCoachBasse, la_hz: f32, cordes: &[u8]) -> Result<VueAccordeur, String> {
     let ecoute = coach
         .ecoute
         .as_ref()
@@ -578,7 +578,7 @@ fn accorder_sur(coach: &EtatCoachBasse, la_hz: f32) -> Result<VueAccordeur, Stri
     let capture = verrou(&ecoute.capture);
     let accord = capture.voies.get(ecoute.canal).and_then(|v| {
         let x: Vec<f32> = v.recent.iter().copied().collect();
-        accorder(&x, v.sr, la_hz)
+        accorder_vers(&x, v.sr, la_hz, cordes)
     });
     Ok(VueAccordeur {
         accord,
@@ -588,14 +588,24 @@ fn accorder_sur(coach: &EtatCoachBasse, la_hz: f32) -> Result<VueAccordeur, Stri
 }
 
 /// L'accordeur (V36) : la hauteur des dernières 250 ms de l'entrée écoutée
-/// (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque).
+/// (canal retenu par V34), contre `la_hz` (440, ou l'accord du disque), vers
+/// les cordes à vide `cordes` (V37 : l'accordage à utiliser avec la hauteur
+/// en cours, MIDI de la grave à l'aiguë ; sans elles, si mi la ré sol).
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
-pub(crate) fn coach_basse_accorder(etat: State<Etat>, la_hz: f32) -> Result<VueAccordeur, String> {
+pub(crate) fn coach_basse_accorder(
+    etat: State<Etat>,
+    la_hz: f32,
+    cordes: Option<Vec<u8>>,
+) -> Result<VueAccordeur, String> {
     if !(400.0..=480.0).contains(&la_hz) {
         return Err(format!("référence hors bornes : {la_hz} Hz"));
     }
-    accorder_sur(&verrou(&etat.coach_basse), la_hz)
+    let cordes = cordes.unwrap_or_default();
+    if cordes.len() > 6 || cordes.iter().any(|c| !(12..=60).contains(c)) {
+        return Err(format!("cordes invalides : {cordes:?}"));
+    }
+    accorder_sur(&verrou(&etat.coach_basse), la_hz, &cordes)
 }
 
 /// L'accord du disque (V36, « sur le morceau ») : l'écart au La 440 mesuré
@@ -1228,9 +1238,9 @@ mod tests {
             c.recevoir(100.0 + debut as f64 / SR as f64, SR, &blocs);
         }
         let mut coach = coach_simule(c, Vec::new());
-        assert!(accorder_sur(&coach, 440.0).unwrap().accord.is_none());
+        assert!(accorder_sur(&coach, 440.0, &[]).unwrap().accord.is_none());
         coach.ecoute.as_mut().unwrap().canal = 1;
-        let v = accorder_sur(&coach, 440.0).unwrap();
+        let v = accorder_sur(&coach, 440.0, &[]).unwrap();
         let a = v.accord.expect("la corde");
         assert_eq!((a.note, a.corde, v.canal), (33, 33, 1), "{a:?}");
         assert!((a.cents - 6.0).abs() <= 1.0, "{a:?}");
@@ -1241,7 +1251,7 @@ mod tests {
             (0.25 * SR) as usize
         );
         // Sans écoute : une erreur dite.
-        assert!(accorder_sur(&EtatCoachBasse::default(), 440.0).is_err());
+        assert!(accorder_sur(&EtatCoachBasse::default(), 440.0, &[]).is_err());
     }
 
     /// Seize clics à 120.

@@ -3,6 +3,8 @@ import { $, invoke, journal } from "./socle.js";
 import { edition } from "./etabli.js";
 import { transpositionDe } from "./etabli-reglages.js";
 import { annoncer, arreter as arreterCoach, coach } from "./coach.js";
+import { basseAffichee } from "./pratiquer.js";
+import { aJouer, nomCorde } from "./accordage.js";
 
 /* ------------------------------------------- pratiquer : l'accordeur de basse */
 
@@ -36,7 +38,15 @@ const accordeur = {
 
 const NOMS = ["do", "do♯", "ré", "ré♯", "mi", "fa", "fa♯", "sol", "sol♯", "la", "la♯", "si"];
 const nomNote = (h) => `${NOMS[h % 12]}${Math.floor(h / 12) - 1}`;
-const CORDES = { 23: "si grave", 28: "mi", 33: "la", 38: "ré", 43: "sol" };
+const CORDES = [23, 28, 33, 38, 43];
+
+/// Les cordes visées (V37) : l'accordage à utiliser avec la hauteur en
+/// cours — celui de la tablature, décalé de la transposition ; sans
+/// tablature, si mi la ré sol.
+function cordesVisees() {
+  const cordes = basseAffichee()?.pret?.accordage;
+  return cordes?.length ? aJouer(cordes, transpositionDe("bass")) : CORDES;
+}
 
 /// Lissage de l'aiguille : la part de la nouvelle mesure (toutes les 100 ms).
 const LISSAGE = 0.35;
@@ -158,7 +168,7 @@ async function sonder() {
   if (accordeur.occupe || !accordeur.ouvert) return;
   accordeur.occupe = true;
   try {
-    const v = await invoke("coach_basse_accorder", { laHz: accordeur.laHz });
+    const v = await invoke("coach_basse_accorder", { laHz: accordeur.laHz, cordes: cordesVisees() });
     if (!accordeur.ouvert) return;
     if (v.erreur) afficher(null, `Entrée audio : ${v.erreur}`);
     else afficher(v.accord, "Jouez une corde.");
@@ -197,7 +207,7 @@ function afficher(a, message) {
   $("accordeur").classList.toggle("accordeur--juste", ok);
   aiguille.hidden = false;
   aiguille.style.left = `${50 + Math.max(-50, Math.min(50, c))}%`;
-  const corde = CORDES[a.corde];
+  const corde = nomCorde(a.corde, cordesVisees());
   const ec = Math.round(a.cents_corde);
   const sens = Math.abs(a.cents_corde) <= JUSTE_CENTS ? "juste" : a.cents_corde > 0 ? "trop haut : détendre" : "trop bas : tendre";
   $("accordeur-corde").textContent =

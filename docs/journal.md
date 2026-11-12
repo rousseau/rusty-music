@@ -6251,3 +6251,52 @@ audit d'interface reporté (écran visible), écran touché : `pratiquer`.
 
 Non vérifié : rien, la balade n'ayant pas servi ; à relever de nouveau
 après au moins dix balades d'une heure.
+
+## V37 : la tablature ne suit plus la hauteur ; l'accordage s'affiche — 12 nov. 2026
+
+Retour de François sur V35 : un morceau en ½ ton dessous (*About Damn
+Time*) se joue sur une 4 cordes standard en montant la hauteur d'½ ton ;
+la tablature ne change pas, seul l'accordage à utiliser change. V35
+recalculait les frettes sur les notes transposées (et écrivait « hors
+manche » sous le mi grave).
+
+- **Accordages permis** (`tablature::Accord`) : standard, ½ ton dessous,
+  1 ton dessous, drop D, 5 cordes (si mi la ré sol). Plus de deux tons
+  dessous ni de drop C/C♯ : la transcription d'*Andy* (live) donnait
+  « FCGC ». **Standard d'abord** dès que les notes y tiennent (1 % de
+  tolérance, comme avant) ; sinon l'accordage abaissé ou le drop D qui les
+  contient, au doigté le moins coûteux ; aucun ne les contient : la
+  5 cordes seulement si au moins 5 % des notes sont sous le ré
+  (`GRAVES_NETS`), sinon le standard, le doigté remontant d'une octave
+  les erreurs. Mesuré sur la transcription MuScriptor d'*Andy* en cache
+  (copie) : 1 103 notes, 23 do0 (2,1 %), aucune autre sous le mi →
+  **standard** (test reproduisant cette répartition). Les trois autres
+  caches (*Donne moi ça*, *Love Foolosophy*, *Know Your Enemy*) n'ont
+  aucune note sous le mi : standard, inchangé. `VERSION_DOIGTES` = 6 : les
+  caches sont redoigtés sans retranscrire.
+- **Choix à la main**, gardé par morceau en base (`pratique.accordage`,
+  migration n° 15 ; `garder_pratique` ne le touche pas) : menu
+  « accordage » du bloc Partitions (« déduit : ½ ton dessous » par défaut),
+  commande `pratique_accordage` ; le doigté est reposé sans retranscrire.
+- **Tablature et partition** écrites pour cet accordage, sur les notes du
+  morceau : plus de transposition à l'affichage (`jeuTranspose` retiré).
+- **Bandeau du coach** : « accordage : ½ ton dessous (E♭ A♭ D♭ G♭) » à la
+  hauteur d'origine (rien en standard), « disque : ½ ton dessous
+  (E♭ A♭ D♭ G♭) · avec +½ ton : standard (E A D G) » transposé
+  (`js/accordage.js`). L'accordeur (V36) vise ces cordes-là
+  (`coach_basse_accorder` prend `cordes`, `accordeur::accorder_vers`).
+- **Coach** inchangé : il juge à la hauteur transposée.
+- Tests : moteur (standard d'abord, cas *Andy*, choix imposé), base
+  (accordage gardé à côté de la mémoire), accordeur (corde de la♭ visée en
+  ½ ton dessous) ; fumées V35 revue (mêmes frettes à +½ et −½, plus de
+  « hors manche ») et V37 neuve (disque en ½ ton dessous : frettes
+  [1, 4, 1, 3] à 0 et à +½ ton, bandeau, choix drop D puis retour aux
+  notes). `verifier.sh` vert, 73 fumées. Audit de `pratiquer` et
+  `pratiquer:playlist` (écran caché) : 36 cellules, 0 violation, rail
+  511 / 804 px.
+
+Non vérifié : *About Damn Time* n'a pas de transcription en cache, son
+accordage déduit (½ ton dessous attendu) n'est pas mesuré ; la qualité de
+la transcription d'*Andy* une fois en standard (non écoutée) ; le menu
+d'accordage dans l'audit (la copie de base n'a pas de basse transcrite
+ouverte) et dans la webview native ; l'accordeur avec la vraie basse.

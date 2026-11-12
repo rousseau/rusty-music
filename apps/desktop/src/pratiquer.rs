@@ -37,9 +37,15 @@ pub(crate) struct VueTranscription {
     coups: Vec<rusty_music_transcription::batterie::Coup>,
     mesures: serde_json::Value,
     /// Accordage de la basse, de la corde grave à l'aiguë, en hauteurs MIDI
-    /// (standard, drop D ou cinq cordes : `Accordage::pour`).
+    /// (`Accordage::pour`) : celui du morceau, pour lequel la tablature est
+    /// écrite. La hauteur des stems ne le change pas (V37) ; l'interface dit
+    /// celui à utiliser avec elle.
     #[serde(default)]
     accordage: Vec<u8>,
+    /// L'accordage choisi à la main pour ce morceau (V37, `pratique.accordage`),
+    /// sur lequel le doigté a été posé ; `None` : déduit des notes.
+    #[serde(default)]
+    choix: Option<tablature::Accord>,
     /// Version du doigté de la basse ([`VERSION_DOIGTES`]).
     #[serde(default)]
     doigtes: u32,
@@ -72,17 +78,20 @@ pub(crate) const VERSION_TRANSCRIPTION: u32 = 5;
 /// minutes). 1 : avant l'a priori appris ; 2 : a priori de position et coûts
 /// réglés sur 89 tablatures (17 oct.) ; 3 : table apprise sur 331 tablatures ;
 /// 4 : un motif, un doigté (`tablature::uniformiser`, 29 oct.) ; 5 : 4 ou
-/// 5 cordes, toujours dans l'accordage du disque.
-pub(crate) const VERSION_DOIGTES: u32 = 5;
+/// 5 cordes, toujours dans l'accordage du disque ; 6 : accordages de basse
+/// seulement, standard d'abord, choix à la main (V37, 12 nov.).
+pub(crate) const VERSION_DOIGTES: u32 = 6;
 
-/// Pose corde et frette sur les notes, pour les basses du réglage, puis donne
-/// un seul doigté à chaque motif répété.
+/// Pose corde et frette sur les notes, pour les basses du réglage et
+/// l'accordage choisi à la main (`choix`), puis donne un seul doigté à chaque
+/// motif répété.
 pub(crate) fn doigter(
     notes: &mut [rusty_music_transcription::Note],
     basses: tablature::Basses,
+    choix: Option<tablature::Accord>,
     premiers: &[f32],
 ) -> tablature::Accordage {
-    let accordage = tablature::Accordage::pour(notes, basses);
+    let accordage = tablature::Accordage::pour(notes, basses, choix);
     tablature::poser(notes, &accordage);
     tablature::uniformiser(notes, &accordage, &tablature::Couts::default(), premiers);
     accordage
@@ -227,6 +236,7 @@ fn transcrire_brut(
         .map_err(echec)?
         .map(|t| t.path)
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let choix = accordage_choisi(etat, &chemin);
     let source = PathBuf::from(&chemin);
     let dossier = dossier_stems(etat, &source);
     let cache = dossier.join(if qualite {
@@ -239,8 +249,8 @@ fn transcrire_brut(
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
         .filter(|t| t.version == VERSION_TRANSCRIPTION)
     {
-        let doigtes_a_jour =
-            instrument != "bass" || (t.doigtes == VERSION_DOIGTES && t.basses == basses);
+        let doigtes_a_jour = instrument != "bass"
+            || (t.doigtes == VERSION_DOIGTES && t.basses == basses && t.choix == choix);
         if doigtes_a_jour && t.grille == VERSION_MESURES {
             return Ok(t);
         }
@@ -263,10 +273,11 @@ fn transcrire_brut(
                 for (n, &h) in t.notes.iter_mut().zip(&t.hauteurs) {
                     n.hauteur = h;
                 }
-                let accordage = doigter(&mut t.notes, basses, &pulsation.premiers_temps);
+                let accordage = doigter(&mut t.notes, basses, choix, &pulsation.premiers_temps);
                 t.accordage = accordage.cordes;
                 t.doigtes = VERSION_DOIGTES;
                 t.basses = basses;
+                t.choix = choix;
             }
             let mesures = quantification::quantifier(
                 &t.notes,
@@ -348,6 +359,7 @@ fn transcrire_brut(
             coups,
             mesures: serde_json::to_value(&mesures).map_err(echec)?,
             accordage: Vec::new(),
+            choix: None,
             doigtes: 0,
             basses: tablature::Basses::default(),
             hauteurs: Vec::new(),
@@ -430,7 +442,7 @@ fn transcrire_brut(
     let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
     let mut notes = monophonie::monophonique(brutes);
     let hauteurs = notes.iter().map(|n| n.hauteur).collect();
-    let accordage = doigter(&mut notes, basses, &pulsation.premiers_temps);
+    let accordage = doigter(&mut notes, basses, choix, &pulsation.premiers_temps);
     let mesures = quantification::quantifier(
         &notes,
         &pulsation.temps,
@@ -456,6 +468,7 @@ fn transcrire_brut(
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
         accordage: accordage.cordes,
+        choix,
         doigtes: VERSION_DOIGTES,
         basses,
         hauteurs,
@@ -531,6 +544,34 @@ fn appliquer_corrections(
     );
     vue.mesures = serde_json::to_value(&mesures).map_err(echec)?;
     Ok(vue)
+}
+
+/// L'accordage choisi à la main pour le morceau `chemin` (V37), s'il y en a
+/// un qu'on sait lire.
+fn accordage_choisi(etat: &State<Etat>, chemin: &str) -> Option<tablature::Accord> {
+    let texte = verrou(&etat.lib).accordage_pratique(chemin).ok()??;
+    serde_json::from_value(serde_json::Value::String(texte)).ok()
+}
+
+/// Impose l'accordage de la tablature de basse du morceau `id` (V37), ou
+/// rend la main aux notes (`None`) ; gardé par morceau. L'interface redemande
+/// ensuite la transcription : le doigté est reposé sans retranscrire.
+#[tauri::command(async)]
+pub(crate) fn pratique_accordage(
+    etat: State<Etat>,
+    id: i64,
+    accordage: Option<tablature::Accord>,
+) -> Result<(), String> {
+    let chemin = chemin_du_morceau(&etat, id)?;
+    let texte = accordage
+        .map(|a| serde_json::to_value(a).map_err(echec))
+        .transpose()?
+        .and_then(|v| v.as_str().map(str::to_owned));
+    verrou(&etat.lib)
+        .garder_accordage_pratique(&chemin, texte.as_deref())
+        .map_err(echec)?;
+    tracing::info!(id, ?accordage, "accordage de la tablature");
+    Ok(())
 }
 
 fn chemin_du_morceau(etat: &State<Etat>, id: i64) -> Result<String, String> {
@@ -648,7 +689,7 @@ mod tests {
             })
             .collect();
         let hauteurs = notes.iter().map(|n| n.hauteur).collect();
-        let accordage = doigter(&mut notes, tablature::Basses::Quatre, &grille.1);
+        let accordage = doigter(&mut notes, tablature::Basses::Quatre, None, &grille.1);
         let mesures = quantification::quantifier(&notes, &grille.0, &grille.1, grille.2);
         VueTranscription {
             version: VERSION_TRANSCRIPTION,
@@ -658,6 +699,7 @@ mod tests {
             coups: Vec::new(),
             mesures: serde_json::to_value(&mesures).unwrap(),
             accordage: accordage.cordes,
+            choix: None,
             doigtes: VERSION_DOIGTES,
             basses: tablature::Basses::Quatre,
             hauteurs,

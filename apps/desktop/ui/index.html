@@ -300,6 +300,16 @@
           <button class="segment" data-basses="cinq"
                   title="Doigtés pour une 5 cordes, dans l'accordage du disque">5 cordes</button>
         </div>
+        <!-- V37 : l'accordage pour lequel la tablature est écrite, gardé par
+             morceau (`pratique.accordage`). La hauteur des stems ne le change
+             pas : le bandeau du coach dit l'accordage à utiliser avec elle. -->
+        <label class="reglette" id="accordage-ligne" hidden>
+          <span>accordage</span>
+          <select id="accordage-basse"
+                  title="Accordage de la tablature : celui du disque, déduit des notes transcrites, ou choisi à la main pour ce morceau">
+            <option value="">déduit des notes</option>
+          </select>
+        </label>
         <!-- Basse : toujours MuScriptor (29 oct. : la qualité prime). Ses
              conditions d'usage et ses poids se règlent ici, au premier
              « Calculer ». -->

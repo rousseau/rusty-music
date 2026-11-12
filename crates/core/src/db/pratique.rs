@@ -186,6 +186,32 @@ impl Library {
         tx.commit()?;
         Ok(())
     }
+
+    /// L'accordage de la tablature de basse choisi à la main pour le morceau
+    /// `path` (V37), s'il y en a un : `"standard"`, `"demi-ton"`, `"ton"`,
+    /// `"drop-d"` ou `"cinq"`.
+    pub fn accordage_pratique(&self, path: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT accordage FROM pratique WHERE path = ?1",
+                [path],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
+    /// Garde (ou oublie, `None`) l'accordage choisi à la main pour le
+    /// morceau `path`, sans toucher au reste de sa mémoire.
+    pub fn garder_accordage_pratique(&self, path: &str, accordage: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO pratique (path, accordage) VALUES (?1, ?2)
+             ON CONFLICT (path) DO UPDATE SET accordage = excluded.accordage",
+            params![path, accordage],
+        )?;
+        Ok(())
+    }
 }
 
 /// Une correction de transcription (E2) : la note visée se retrouve par son

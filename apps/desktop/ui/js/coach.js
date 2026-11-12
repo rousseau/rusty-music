@@ -5,6 +5,7 @@ import { appliquerVitesses, dessinerReglages, REGLAGES, transpositionDe } from "
 import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
 import { accordeur, fermerAccordeur, majBoutonAccordeur } from "./accordeur.js";
+import { aJouer, dire as direAccordage, nommer } from "./accordage.js";
 import {
   basseAffichee, batterieAffichee, calculerPartition, montrerPartition, partition, partitionAttendue,
 } from "./pratiquer.js";
@@ -225,7 +226,7 @@ async function suivreTransposition() {
   effacerMarques();
   try {
     await invoke("coach_basse_transposer", { demiTons: d });
-    annoncer(d ? `Transposé de ${REGLAGES.tonalite.ecrire(d)} : le coach juge ce que vous jouez, comme la tablature le montre.` : "Hauteur d'origine : le coach juge la partition telle quelle.");
+    annoncer(d ? `Transposé de ${REGLAGES.tonalite.ecrire(d)} : le coach juge ce que vous jouez ; la tablature garde ses frettes, à jouer dans l'accordage indiqué.` : "Hauteur d'origine : le coach juge la partition telle quelle.");
   } catch (e) {
     journal("coach", `transposer : ${e}`, "warn");
   }
@@ -260,16 +261,28 @@ function dessinerLegende() {
   );
 }
 
-/// « Transposé de +½ ton » dans le bandeau : la tablature montre ce que l'on
-/// joue, pas la transcription d'origine.
+/// L'accordage dans le bandeau (V37) : celui du disque, pour lequel la
+/// tablature est écrite, et celui à utiliser avec la hauteur en cours — « disque :
+/// ½ ton dessous (E♭ A♭ D♭ G♭) · avec +½ ton : standard (E A D G) ». Rien en
+/// standard à la hauteur d'origine.
 function direTransposition() {
   const t = $("coach-transpose");
-  const { instrument } = affichee();
+  const { instrument, tr } = affichee();
+  const cordes = instrument === "bass" ? tr?.pret?.accordage : null;
   const d = instrument === "bass" ? transpositionDe("bass") : 0;
-  t.hidden = !d || !!coach.attente;
-  t.textContent = d ? `transposé de ${REGLAGES.tonalite.ecrire(d)}` : "";
-  t.title = d
-    ? "La hauteur des stems est changée : partition et tablature montrent ce que vous jouez (la transcription décalée d'autant), et le coach juge contre elles."
+  const texte = !cordes?.length
+    ? d
+      ? `transposé de ${REGLAGES.tonalite.ecrire(d)}`
+      : ""
+    : d
+      ? `disque : ${direAccordage(cordes)} · avec ${REGLAGES.tonalite.ecrire(d)} : ${direAccordage(aJouer(cordes, d))}`
+      : nommer(cordes) === "standard"
+        ? ""
+        : `accordage : ${direAccordage(cordes)}`;
+  t.hidden = !texte || !!coach.attente;
+  t.textContent = texte;
+  t.title = texte
+    ? "La tablature est écrite pour l'accordage du disque et ne change pas avec la hauteur des stems : accordez la basse comme indiqué et jouez les mêmes frettes. Le coach juge ce que vous jouez, à la hauteur entendue."
     : "";
 }
 

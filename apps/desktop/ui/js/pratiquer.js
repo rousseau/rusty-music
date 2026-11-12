@@ -6,7 +6,7 @@ import { lecture } from "./etat-lecture.js";
 import { demander } from "./ecrans.js";
 import { edition, majBoucleUI, NOMS_SECTIONS } from "./etabli.js";
 import { positionnerPlayhead, varianteParDefaut } from "./etabli-stems.js";
-import { transpositionDe } from "./etabli-reglages.js";
+import { CHOIX, nommer } from "./accordage.js";
 import { brancherCorrection, majCorrection, marquerCorrigees } from "./corriger.js";
 import { apresDecompte, brancherCoach, calibrageDemande, majCoach } from "./coach.js";
 
@@ -181,18 +181,17 @@ function decouperDuree(seiziemes) {
 /// liaisons (`-.corde.durée`) quand une durée se découpe ou franchit une barre.
 /// Corde 0 du moteur = la plus grave = corde 4 de l'alphaTex.
 ///
-/// V35 : transposée de `demi` demi-tons (le réglage de hauteur qu'on
-/// entend), la tablature montre ce que l'on joue — même corde quand la
-/// frette décalée y tient, sinon la corde voisine (`jeuTranspose`) ; une note
-/// qui sort du manche le dit sur la note.
-function texTablature(mesures, titre, p, accordage, modele, demi = 0) {
+/// V37 : écrite pour l'accordage du morceau (`accordage`), elle ne suit pas
+/// la hauteur des stems — les mêmes frettes à toute transposition ; le
+/// bandeau du coach dit l'accordage à utiliser avec elle (`accordage.js`).
+/// La partition en notes montre de même les notes du morceau.
+function texTablature(mesures, titre, p, accordage, modele) {
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
   // Pas de silences multimesures : regrouper huit mesures de silence en une
   // casserait la largeur égale des mesures, et le curseur y filerait.
   // L'accordage vient du moteur (standard, drop D, cinq cordes), de la corde
   // aiguë à la grave.
   const cordes = accordage?.length ? [...accordage].reverse() : [43, 38, 33, 28];
-  const graveAigu = [...cordes].reverse();
   const portee = edition.notation === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
@@ -223,12 +222,8 @@ function texTablature(mesures, titre, p, accordage, modele, demi = 0) {
         for (const d of durees) poser(`r.${d}`, d, null);
         continue;
       }
-      const j = jeuTranspose(jeu, demi, graveAigu);
-      const corde = cordes.length - j.corde;
-      const hors = j.hors ? ` {txt "hors manche : ${nomMidi(j.hauteur)}"}` : "";
-      durees.forEach((d, k) =>
-        poser(e.lie || k > 0 ? `-.${corde}.${d}` : `${j.frette}.${corde}.${d}${hors}`, d, e.note),
-      );
+      const corde = cordes.length - jeu.corde;
+      durees.forEach((d, k) => poser(e.lie || k > 0 ? `-.${corde}.${d}` : `${jeu.frette}.${corde}.${d}`, d, e.note));
     }
     if (!temps.length) poser(`r.${m.temps === 4 ? "1" : "4"}`, m.temps === 4 ? "1" : "4", null);
     partition.temps.push(carte);
@@ -264,32 +259,6 @@ function legato(evenements) {
     } else out.push(e);
   }
   return out;
-}
-
-/// Frette la plus haute qu'une tablature écrit.
-const FRETTE_MAX = 24;
-
-/// La position d'une note de la transcription (`jeu` : corde depuis la plus
-/// grave, frette) transposée de `demi` demi-tons, sur `cordes` (hauteurs MIDI
-/// à vide, de la grave à l'aiguë). La même corde si la frette décalée y tient,
-/// sinon la plus proche qui la porte ; aucune (sous le mi grave d'une
-/// 4 cordes transposée vers le bas) : la note sur la corde grave à vide,
-/// `hors` levé — la tablature le dit sur la note.
-function jeuTranspose(jeu, demi, cordes) {
-  const hauteur = cordes[jeu.corde] + jeu.frette + demi;
-  const tient = (c) => c >= 0 && c < cordes.length && hauteur - cordes[c] >= 0 && hauteur - cordes[c] <= FRETTE_MAX;
-  if (!demi || tient(jeu.corde)) return { corde: jeu.corde, frette: jeu.frette + demi, hauteur, hors: false };
-  // Plus bas : les cordes plus graves d'abord ; plus haut, les plus aiguës.
-  const pas = demi < 0 ? -1 : 1;
-  for (let c = jeu.corde + pas; c >= 0 && c < cordes.length; c += pas) {
-    if (tient(c)) return { corde: c, frette: hauteur - cordes[c], hauteur, hors: false };
-  }
-  for (let c = jeu.corde - pas; c >= 0 && c < cordes.length; c -= pas) {
-    if (tient(c)) return { corde: c, frette: hauteur - cordes[c], hauteur, hors: false };
-  }
-  return demi < 0
-    ? { corde: 0, frette: 0, hauteur, hors: true }
-    : { corde: cordes.length - 1, frette: FRETTE_MAX, hauteur, hors: true };
 }
 
 /// Nom alphaTex d'une hauteur MIDI : 28 → « E1 », 43 → « G2 ».
@@ -483,6 +452,7 @@ function majBlocPartitions() {
       for (const b of document.querySelectorAll("#basses [data-basses]")) {
         b.classList.toggle("segment--actif", b.dataset.basses === bassesJouees);
       }
+      majAccordage(present);
       if (!present) $("muscriptor-conditions").hidden = true;
     }
     if (!present) continue;
@@ -542,6 +512,22 @@ async function calculerPartition(instrument) {
   if (instrument === "bass" && !(await muscriptorPret())) return;
   if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument === "bass"));
   transcription(instrument, true);
+}
+
+/// Le menu de l'accordage de la tablature (V37) : l'accordage choisi à la
+/// main, sinon « déduit des notes », qui dit celui que le moteur a trouvé.
+function majAccordage(present) {
+  const ligne = $("accordage-ligne");
+  const tr = present ? transcription("bass") : null;
+  ligne.hidden = !present || !tr?.pret;
+  if (ligne.hidden) return;
+  const menu = $("accordage-basse");
+  const deduit = tr.pret.choix ? "déduit des notes" : `déduit : ${nommer(tr.pret.accordage)}`;
+  const options = [["", deduit], ...CHOIX];
+  if (menu.options.length !== options.length || menu.options[0].textContent !== deduit) {
+    menu.replaceChildren(...options.map(([v, t]) => new Option(t, v)));
+  }
+  menu.value = tr.pret.choix ?? "";
 }
 
 /// La basse de celui qui joue (`tablature::Basses`) : « quatre » ou
@@ -828,9 +814,9 @@ async function montrerPartition() {
     // elles, la clé ne changeait pas et la tablature restait l'ancienne.
     const basses = instrument === "bass" ? bassesJouees : "";
     // La révision change à chaque correction (E2) : la partie se redessine.
-    // V35 : la basse transcrite se transpose avec le réglage de hauteur.
-    const demi = instrument === "bass" ? transpositionDe("bass") : 0;
-    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? `transcrit${tr.revision ?? 0}` : "grille"}:${edition.notation}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}:${demi}`;
+    // V37 : l'accordage en fait partie ; la hauteur des stems, non.
+    const accord = instrument === "bass" ? (tr?.pret?.accordage ?? []).join(",") : "";
+    const cle = `${edition.source?.id ?? ""}:${instrument}:${tr?.pret ? `transcrit${tr.revision ?? 0}` : "grille"}:${edition.notation}:${tr?.qualite ? "qualite" : "rapide"}:${basses}:${edition.sections?.length ?? 0}:${accord}`;
     if (partition.source !== cle) {
       partition.source = cle;
       const titre = txt(edition.source?.title, "?");
@@ -840,7 +826,7 @@ async function montrerPartition() {
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
           ? texBatterie(tr.pret.mesures, titre, p, tr.pret.coups)
-          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele, demi);
+          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
       await partition.chargement;
       // Un appel plus récent a pris la main pendant l'attente : c'est lui
       // qui charge.
@@ -943,8 +929,8 @@ function cacherPartition() {
 /// La recherche Songsterr du morceau ouvert, dans le navigateur. Câblée une
 /// fois : posée dans `majUsage`, elle s'ajoutait à chaque appel et un clic
 /// ouvrait autant d'onglets.
-// V35 : une transposition appliquée redessine la tablature (sa clé porte la
-// hauteur) et rend la nouvelle au coach de basse (`majCoach`).
+// Une transposition appliquée rend la nouvelle hauteur au coach de basse
+// (`majCoach`, V35) et au bandeau ; la tablature, elle, ne bouge pas (V37).
 document.addEventListener("hauteur-appliquee", () => {
   if (edition.usage === "pratiquer" && enStems()) montrerPartition();
 });
@@ -1176,6 +1162,21 @@ for (const b of document.querySelectorAll("#basses [data-basses]")) {
     majUsage();
   });
 }
+$("accordage-basse").addEventListener("change", async (e) => {
+  const id = edition.source?.id;
+  if (id === undefined) return;
+  const valeur = e.target.value || null;
+  try {
+    await invoke("pratique_accordage", { id, accordage: valeur });
+  } catch (err) {
+    journal("partition", `accordage : ${err}`, "warn");
+    return;
+  }
+  // Le moteur repose le doigté sans retranscrire : la basse de ce morceau
+  // est redemandée.
+  for (const cle of [...transcriptions.keys()]) if (cle.startsWith(`${id}:bass:`)) transcriptions.delete(cle);
+  majUsage();
+});
 $("muscriptor-accepter").addEventListener("click", () => {
   try {
     localStorage.setItem("muscriptor-conditions", "1");
