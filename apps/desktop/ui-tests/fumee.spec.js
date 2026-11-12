@@ -127,6 +127,43 @@ test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiq
   expect((await appels(page, "stems_play")).length).toBe(avant);
 });
 
+/// V39 : chaque spectrogramme de la pile a la taille d'écran de son canevas
+/// (largeur affichée × densité), à toute densité, après Pratiquer (où ils sont
+/// cachés) et après un redimensionnement.
+async function spectresNets(page) {
+  await expect
+    .poll(() =>
+      page.locator("#editer-etabli .stem__spectre").evaluateAll((l) => {
+        const d = Math.min(2, window.devicePixelRatio || 1);
+        return l.length > 0 && l.every((c) => {
+          const r = c.getBoundingClientRect();
+          return c.width === Math.round(r.width * d) && c.height === Math.round(64 * d) && r.width > 300;
+        });
+      }),
+    )
+    .toBe(true);
+}
+for (const densite of [1, 2]) {
+  test.describe(`à ${densite}×`, () => {
+    test.use({ deviceScaleFactor: densite });
+    test(`V39 : la pile des stems reste nette à ${densite}× — Pratiquer puis Créer, puis fenêtre agrandie`, async ({ page }) => {
+      expect(await page.evaluate(() => window.devicePixelRatio)).toBe(densite);
+      await lireUnAlbum(page);
+      await page.click('button.mode[data-mode="pratiquer"]');
+      await expect(page.locator("#editer-etabli")).toHaveClass(/etabli--pratiquer/);
+      await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
+      await page.click('button.mode[data-mode="creer"]');
+      await expect(page.locator("#editer-etabli .stem__spectre").first()).toBeVisible();
+      await spectresNets(page);
+      // Aucun spectrogramme demandé au plancher d'un canevas caché.
+      expect((await appels(page, "stem_spectre")).every((a) => a.width !== 240)).toBe(true);
+      const taille = page.viewportSize();
+      await page.setViewportSize({ width: taille.width + 300, height: taille.height });
+      await spectresNets(page);
+    });
+  });
+}
+
 /// Ouvre en Pratiquer le morceau lu depuis l'album `rang` de la grille.
 async function pratiquerAlbum(page, rang) {
   await page.click('button.mode[data-mode="ecoute"]');

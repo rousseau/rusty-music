@@ -798,25 +798,95 @@ async function transposerStems(stems, demiTons) {
 /// greffes).
 const HAUT_STEM_SPECTRE = 64;
 
+/// La densité de l'écran, plafonnée à 2 (au-delà, le calcul double sans gain
+/// visible).
+function densite() {
+  return Math.min(2, window.devicePixelRatio || 1);
+}
+
+/// La taille en pixels d'écran qu'un spectrogramme de stem doit avoir : la
+/// largeur affichée × la densité. `null` tant que le canevas n'est pas mis en
+/// page — caché (Pratiquer masque les spectrogrammes), ou pas encore dans le
+/// document.
+function tailleEcran(cnv) {
+  const largeur = cnv.getBoundingClientRect().width;
+  if (!cnv.isConnected || largeur < 1) return null;
+  const d = densite();
+  return { largeur: Math.round(largeur * d), hauteur: Math.round(HAUT_STEM_SPECTRE * d) };
+}
+
+/// V39 : la pile « parfois floue ». Le spectrogramme était calculé une fois,
+/// à la taille du canevas au premier dessin, puis gardé. Ouvert en Pratiquer,
+/// où les spectrogrammes sont cachés (largeur 0), il l'était au plancher de
+/// 240 px, puis étiré sur toute la largeur en Créer ; de même après un
+/// agrandissement de la fenêtre ou un passage de l'écran Retina à un écran
+/// externe. Désormais chaque canevas est suivi (`ResizeObserver`, et la
+/// densité par `matchMedia`) et son spectrogramme recalculé dès que la
+/// taille d'écran voulue change ; caché, il attend d'être affiché.
+const suivis = new WeakMap();
+const observateur = new ResizeObserver((entrees) => {
+  for (const e of entrees) {
+    const stem = suivis.get(e.target);
+    if (stem) redessinerPlusTard(e.target, stem);
+  }
+});
+/// Un redimensionnement à la souris envoie des dizaines de tailles : on
+/// attend qu'il se pose (le calcul relit le fichier du stem).
+function redessinerPlusTard(cnv, stem) {
+  clearTimeout(stem.attenteTaille);
+  stem.attenteTaille = setTimeout(() => {
+    if (cnv.isConnected) dessinerSpectre(cnv, stem);
+  }, 150);
+}
+function suivreDensite() {
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener(
+    "change",
+    () => {
+      for (const s of edition.stems) if (s.canvas?.isConnected) dessinerSpectre(s.canvas, s);
+      suivreDensite();
+    },
+    { once: true },
+  );
+}
+suivreDensite();
+
 async function dessinerSpectre(cnv, stem) {
   // Rendu à la densité de l'écran : sur un écran Retina, un canevas calculé à
   // la taille CSS est étiré ×2 et devient flou. On calcule donc à
-  // `devicePixelRatio` près et on laisse le CSS le réduire.
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const largeur = Math.max(240, Math.round(cnv.getBoundingClientRect().width * dpr));
-  const hauteur = Math.round(HAUT_STEM_SPECTRE * dpr);
-
-  if (!stem.spectre) {
+  // `devicePixelRatio` près, à la largeur affichée exacte.
+  if (suivis.get(cnv) !== stem) {
+    // La pile redessinée crée de nouveaux canevas : l'ancien n'est plus suivi.
+    if (stem.canvas && stem.canvas !== cnv) observateur.unobserve(stem.canvas);
+    suivis.set(cnv, stem);
+    observateur.observe(cnv);
+  }
+  stem.canvas = cnv;
+  const taille = tailleEcran(cnv);
+  if (!taille) return;
+  const voulu = `${taille.largeur}×${taille.hauteur}`;
+  if (!stem.spectre || stem.spectreTaille !== voulu) {
+    // L'ancienne image, étirée, en attendant la nouvelle.
+    if (stem.img) peindreSpectre(stem);
+    if (stem.demandeTaille === voulu) return;
+    stem.demandeTaille = voulu;
+    let spectre;
     try {
-      stem.spectre = await invoke("stem_spectre", {
+      spectre = await invoke("stem_spectre", {
         path: stem.chemin,
-        width: largeur,
-        height: hauteur,
+        width: taille.largeur,
+        height: taille.hauteur,
       });
     } catch (e) {
+      stem.demandeTaille = null;
       remonter(e, "spectrogramme");
       return;
     }
+    // Une autre taille a été demandée entre-temps : elle l'emporte.
+    if (stem.demandeTaille !== voulu) return;
+    stem.demandeTaille = null;
+    stem.spectre = spectre;
+    stem.spectreTaille = voulu;
+    stem.img = null;
   }
   // Le dock a pu être redessiné pendant le calcul : on ne peint que si ce
   // canevas est encore à l'écran.
@@ -826,19 +896,21 @@ async function dessinerSpectre(cnv, stem) {
   // L'image est composée une fois (gardée côté CPU, voir `poserImage`) ; à
   // chaque battement on la repose et on trace la tête de lecture par-dessus.
   // Recalculer le spectrogramme cinq fois par seconde serait absurde.
-  const img = new ImageData(w, h);
-  const table = rampeRGB();
-  for (let i = 0; i < pixels.length; i++) {
-    const c = table[pixels[i]];
-    img.data[i * 4] = c[0];
-    img.data[i * 4 + 1] = c[1];
-    img.data[i * 4 + 2] = c[2];
-    img.data[i * 4 + 3] = 255;
+  if (!stem.img || stem.img.width !== w || stem.img.height !== h) {
+    const img = new ImageData(w, h);
+    const table = rampeRGB();
+    for (let i = 0; i < pixels.length; i++) {
+      const c = table[pixels[i]];
+      img.data[i * 4] = c[0];
+      img.data[i * 4 + 1] = c[1];
+      img.data[i * 4 + 2] = c[2];
+      img.data[i * 4 + 3] = 255;
+    }
+    stem.img = img;
   }
 
-  cnv.width = w;
-  cnv.height = h;
-  stem.img = img;
+  if (cnv.width !== w) cnv.width = w;
+  if (cnv.height !== h) cnv.height = h;
   stem.canvas = cnv;
   peindreSpectre(stem);
   // Le canevas vient d'être dimensionné : le playhead unique peut se caler.
@@ -889,6 +961,12 @@ let tableRampe = null;
 // La rampe change avec le thème : la table se refait au prochain spectrogramme.
 document.addEventListener("theme", () => {
   tableRampe = null;
+  // Les images gardées sont recolorées (V39 : elles ne se refont plus à
+  // chaque dessin de la pile).
+  for (const st of edition.stems) {
+    st.img = null;
+    if (st.canvas?.isConnected) dessinerSpectre(st.canvas, st);
+  }
 });
 function rampeRGB() {
   if (tableRampe) return tableRampe;

@@ -6350,3 +6350,33 @@ Non vérifié : les 7 extraits ne couvrent que 90 s (un clavier qui n'entre
 qu'au pont serait sous-estimé, pas masqué à tort tant qu'il dépasse
 −30 dB sur l'ensemble) ; la ligne sous la pile dans la webview native et
 avec de vrais stems (l'audit ouvre une copie sans stem presque vide).
+
+## V39 : la pile des stems n'est plus floue — 12 nov. 2026
+
+François voyait « parfois » la pile des stems floue.
+
+- **Cause.** Le spectrogramme d'un stem était calculé une fois, à la
+  taille du canevas au premier dessin, puis gardé (`stem.spectre`). En
+  Pratiquer, les spectrogrammes sont cachés (`display: none`) : largeur 0,
+  donc calcul au plancher de 240 px. En passant en Créer, cette image était
+  étirée sur toute la largeur de la pile (×4 à ×6 sur un grand écran).
+  « Parfois » : seulement quand les stems avaient été ouverts d'abord en
+  Pratiquer. Même effet, moindre, après un agrandissement de la fenêtre ou
+  un passage de l'écran Retina à un écran externe (densité lue une fois).
+- **Correction** (`etabli-stems.js`) : la taille voulue est la largeur
+  affichée × `devicePixelRatio` (plafonné à 2) ; un canevas caché attend
+  d'être affiché. Chaque canevas est suivi par un `ResizeObserver`, avec
+  150 ms d'attente pendant qu'on tire la fenêtre, et la densité par
+  `matchMedia('(resolution: …dppx)')`. Le spectrogramme est recalculé dès
+  que la taille voulue change ; l'ancienne image, étirée, sert en
+  attendant. L'image colorée est gardée tant que la taille ne change pas,
+  et refaite au changement de thème.
+- **Test** de fumée à 1× et 2× (`deviceScaleFactor`) : Pratiquer puis
+  Créer, puis fenêtre agrandie de 300 px. Taille de chaque canevas =
+  taille affichée × densité, et aucun calcul demandé à 240 px. Il échoue
+  sur l'ancien code (deux cas sur deux) et passe sur le nouveau.
+  `verifier.sh` (fmt, fumée) vert, 76 fumées ; le Rust n'a pas changé
+  depuis le passage complet de V38.
+
+Non vérifié : sur deux écrans réels (Retina ↔ externe) dans la webview
+native ; pas d'audit (mise en page inchangée).
