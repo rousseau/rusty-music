@@ -380,6 +380,8 @@ const fixtures = {
     { nom: "htdemucs_ft", presente: false, megaoctets: 336 },
     { nom: "bsrofo_sw", presente: false, megaoctets: 699 },
   ],
+  // V38 : aucune piste presque vide, sauf si un test en pose.
+  stems_presence: [],
   stems_existants: (a) =>
     ["drums", "bass", "other", "vocals"].map((n) => [n, `/stems/${a.path.split("/").pop()}/${n}.wav`]),
   stems_state: (_, e) => ({

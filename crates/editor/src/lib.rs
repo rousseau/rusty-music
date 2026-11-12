@@ -12,6 +12,7 @@ pub mod coach;
 pub mod decode;
 pub mod etirement;
 pub mod greffe;
+pub mod presence;
 pub mod pulsation;
 pub mod roformer;
 pub mod wav;

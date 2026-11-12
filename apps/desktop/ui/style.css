@@ -308,6 +308,14 @@ html, body {
 .stem__b:hover { color: var(--txt); }
 .stem__b--actif { color: var(--accent); border-color: var(--accent); }
 
+/* V38 : sous la pile, les pistes presque vides masquées — une ligne discrète,
+   un geste pour les montrer. */
+.pile__vides {
+  font: inherit; font-size: var(--t-legende); color: var(--mut); cursor: pointer;
+  background: none; border: none; padding: 4px 8px; text-align: left;
+}
+.pile__vides:hover { color: var(--txt); }
+
 /* Le niveau : discret, sur toute la largeur de l'étroite colonne — un réglage
    d'appoint, pas le geste principal. */
 .stem__jauge {

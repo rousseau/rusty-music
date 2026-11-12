@@ -136,6 +136,36 @@ async function pratiquerAlbum(page, rang) {
   await expect(page.locator("#boucle-reglage")).toBeVisible();
 }
 
+test("V38 : une piste presque vide est masquée dans la pile, et se montre d'un geste", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.stems_presence = [
+      { nom: "drums", part_db: -4.1, presque_vide: false },
+      { nom: "bass", part_db: -5.2, presque_vide: false },
+      { nom: "other", part_db: -98.2, presque_vide: true },
+      { nom: "vocals", part_db: -6.6, presque_vide: false },
+    ];
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 48 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 12 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+  });
+  await pratiquerAlbum(page, 0);
+  const noms = page.locator("#editer-etabli .stem__nom");
+  await expect(noms).toHaveText(["Batterie", "Basse", "Voix"]);
+  expect((await appels(page, "stems_presence")).at(-1).path).toBe(PISTES[0].path);
+  const geste = page.locator("#dock-pistes .pile__vides");
+  await expect(geste).toHaveText("1 piste presque vide masquée : Autres · montrer");
+  await geste.click();
+  await expect(noms).toHaveText(["Batterie", "Basse", "Autres", "Voix"]);
+  await expect(geste).toHaveText("masquer la piste presque vide : Autres");
+  await geste.click();
+  await expect(noms).toHaveCount(3);
+  // Masquée, elle n'est ni coupée ni en solo : la somme reste le morceau.
+  expect(await page.evaluate(async () => (await import("./js/etabli.js")).edition.muets.has("other"))).toBe(false);
+});
+
 test("E1 : rouvrir un morceau en Pratiquer rend la séance comme on l'a laissée", async ({ page }) => {
   // Une grille de mesures assez longue pour poser une boucle de 4 mesures.
   await page.evaluate(() => {

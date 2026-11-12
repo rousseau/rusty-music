@@ -1256,6 +1256,112 @@ pub(crate) fn stems_existants(
         .collect())
 }
 
+/// La présence d'un stem dans le mélange (V38) : sa part d'énergie, et s'il
+/// est presque vide — l'établi le masque alors dans la pile, sans l'effacer
+/// ni le couper.
+#[cfg_attr(test, derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PresenceStem {
+    nom: String,
+    /// Part d'énergie dans la somme des stems, en dB, là où elle sonne.
+    part_db: f32,
+    presque_vide: bool,
+}
+
+/// Le cache de [`stems_presence`], à côté des stems : valable tant que les
+/// fichiers n'ont pas changé (taille et date).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachePresence {
+    version: u32,
+    fichiers: Vec<(String, u64, u64)>,
+    stems: Vec<PresenceStem>,
+}
+
+const VERSION_PRESENCE: u32 = 1;
+
+fn empreinte_stems(stems: &[(String, PathBuf)]) -> Vec<(String, u64, u64)> {
+    stems
+        .iter()
+        .map(|(nom, p)| {
+            let m = std::fs::metadata(p).ok();
+            let date = m
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|d| d.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_secs());
+            (nom.clone(), m.map_or(0, |m| m.len()), date)
+        })
+        .collect()
+}
+
+/// La présence de chaque stem d'un morceau (V38) : mesurée une fois après le
+/// démixage ou à la première ouverture des stems en cache, gardée dans
+/// `presence.json`. Une seconde environ pour six stems de quatre minutes.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn stems_presence(etat: State<Etat>, path: String) -> Result<Vec<PresenceStem>, String> {
+    let dossier = dossier_stems(&etat, Path::new(&path));
+    presence_du_dossier(&dossier)
+}
+
+pub(crate) fn presence_du_dossier(dossier: &Path) -> Result<Vec<PresenceStem>, String> {
+    use rusty_music_editor::presence;
+    let stems = stems_du_dossier(dossier);
+    if stems.is_empty() {
+        return Ok(Vec::new());
+    }
+    let fichiers = empreinte_stems(&stems);
+    let cache = dossier.join("presence.json");
+    if let Some(c) = std::fs::read(&cache)
+        .ok()
+        .and_then(|o| serde_json::from_slice::<CachePresence>(&o).ok())
+        .filter(|c| c.version == VERSION_PRESENCE && c.fichiers == fichiers)
+    {
+        return Ok(c.stems);
+    }
+    let debut = std::time::Instant::now();
+    // Un canal mono par stem (la moyenne des deux) : la part d'énergie ne
+    // dépend pas de la place dans l'image stéréo.
+    let mut monos = Vec::with_capacity(stems.len());
+    for (_, p) in &stems {
+        let s = rusty_music_editor::decode::stereo(p).map_err(echec)?;
+        monos.push(
+            s.gauche
+                .iter()
+                .zip(&s.droite)
+                .map(|(g, d)| 0.5 * (g + d))
+                .collect::<Vec<f32>>(),
+        );
+    }
+    let vues: Vec<&[f32]> = monos.iter().map(|m| m.as_slice()).collect();
+    let parts = presence::parts_db(&vues, rusty_music_editor::SR as f32);
+    let resultat: Vec<PresenceStem> = stems
+        .iter()
+        .zip(parts)
+        .map(|((nom, _), part_db)| PresenceStem {
+            nom: nom.clone(),
+            part_db,
+            presque_vide: presence::presque_vide(part_db),
+        })
+        .collect();
+    tracing::info!(
+        ms = debut.elapsed().as_millis() as u64,
+        vides = resultat.iter().filter(|p| p.presque_vide).count(),
+        "présence des stems"
+    );
+    let c = CachePresence {
+        version: VERSION_PRESENCE,
+        fichiers,
+        stems: resultat.clone(),
+    };
+    if let Ok(o) = serde_json::to_vec(&c) {
+        if let Err(e) = std::fs::write(&cache, o) {
+            tracing::warn!("présence : cache non écrit ({}) : {e}", cache.display());
+        }
+    }
+    Ok(resultat)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1275,6 +1381,35 @@ mod tests {
     }
 
     use std::path::Path;
+
+    /// V38 : un stem muet est presque vide, la mesure se garde et se refait
+    /// quand un stem change.
+    #[test]
+    fn la_presence_des_stems_se_mesure_et_se_garde() {
+        let d = std::env::temp_dir().join(format!("stems-presence-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let sr = rusty_music_editor::SR;
+        let n = sr as usize * 4;
+        let son: Vec<f32> = (0..n)
+            .map(|i| 0.3 * (std::f32::consts::TAU * 110.0 * i as f32 / sr as f32).sin())
+            .collect();
+        let ecrire = |nom: &str, x: &[f32]| {
+            rusty_music_editor::wav::ecrire(&d.join(format!("A — {nom}.wav")), x, x, sr).unwrap()
+        };
+        ecrire("bass", &son);
+        ecrire("piano", &vec![0.0; n]);
+        let p = presence_du_dossier(&d).unwrap();
+        assert_eq!(p.len(), 2);
+        assert_eq!((p[0].nom.as_str(), p[0].presque_vide), ("bass", false));
+        assert_eq!((p[1].nom.as_str(), p[1].presque_vide), ("piano", true));
+        assert!(d.join("presence.json").is_file());
+        assert_eq!(presence_du_dossier(&d).unwrap(), p);
+        // Le piano joue maintenant : le cache ne vaut plus.
+        ecrire("piano", &son[..n - 1000]);
+        let q = presence_du_dossier(&d).unwrap();
+        std::fs::remove_dir_all(&d).ok();
+        assert!(!q[1].presque_vide, "{q:?}");
+    }
 
     /// Un `._… — drums.wav` d'AppleDouble n'est pas la batterie (V23).
     #[test]

@@ -1,6 +1,6 @@
 import "./etabli-reglages.js"; // l'ordre d'exécution : voir main.js
 import {
-  $, ecoute, enStems, fileAttente, invoke, remonter, signalerErreur, txt, vue, vueEnGrille,
+  $, ecoute, enStems, fileAttente, invoke, journal, remonter, signalerErreur, txt, vue, vueEnGrille,
 } from "./socle.js";
 import { majUsage, oublierPartitions } from "./pratiquer.js";
 import { lecture, poserStemsCharges } from "./etat-lecture.js";
@@ -268,6 +268,7 @@ async function chargerStemsExistants(t) {
   if (trouves.length) {
     edition.stems = trouves.map(stemNeuf);
     dessinerStems();
+    mesurerPresence();
     $("demix-etat").textContent = `${trouves.length} stems déjà calculés`;
     majTempoSource();
     majPulsation();
@@ -447,6 +448,7 @@ async function lancerDemix() {
     edition.solo = null;
     edition.muets.clear();
     dessinerStems();
+    mesurerPresence();
     majTempoSource();
     majPulsation();
     majSections();
@@ -459,6 +461,55 @@ async function lancerDemix() {
     await rendreMemoirePratique();
   }, 800); // assez serré pour que la barre avance visiblement segment par segment
   return true;
+}
+
+/// V38 : la part de chaque stem dans le mélange (`stems_presence`, mesurée
+/// une fois par démixage). Un stem presque vide — le piano d'un trio rock —
+/// est masqué dans la pile, sans être coupé ni effacé : il joue toujours à
+/// son niveau, la somme reste le morceau entier (le fondre dans « autres »
+/// demanderait de réécrire les fichiers pour un gain inaudible). Un geste
+/// sous la pile le montre.
+async function mesurerPresence() {
+  const src = edition.source;
+  if (!src?.path || !edition.stems.length) return;
+  edition.montrerVides = false;
+  let parts;
+  try {
+    parts = await invoke("stems_presence", { path: src.path });
+  } catch (e) {
+    journal("stems", `présence : ${e}`, "warn");
+    return;
+  }
+  // Un autre morceau a été ouvert pendant la mesure.
+  if (edition.source?.path !== src.path) return;
+  const vides = new Set(parts.filter((p) => p.presque_vide).map((p) => p.nom));
+  for (const s of edition.stems) s.presqueVide = vides.has(s.nom);
+  if (vides.size) dessinerStems();
+}
+
+/// Masqué dans la pile : presque vide, ni greffé ni écouté seul.
+function masque(s) {
+  return !!s.presqueVide && !edition.montrerVides && !s.greffe && edition.solo !== s.nom;
+}
+
+/// La ligne sous la pile qui dit les pistes presque vides et les montre ou
+/// les masque.
+function ligneVides(hote) {
+  const vides = edition.stems.filter((s) => s.presqueVide && !s.greffe);
+  if (!vides.length) return;
+  const noms = vides.map((s) => libelleStem(s.nom)).join(", ");
+  const b = document.createElement("button");
+  b.className = "pile__vides";
+  b.dataset.a = "vides";
+  b.textContent = edition.montrerVides
+    ? `masquer ${vides.length > 1 ? "les pistes presque vides" : "la piste presque vide"} : ${noms}`
+    : `${vides.length} piste${vides.length > 1 ? "s" : ""} presque vide${vides.length > 1 ? "s" : ""} masquée${vides.length > 1 ? "s" : ""} : ${noms} · montrer`;
+  b.title = "Ces stems ne reçoivent presque rien du morceau (moins de −30 dB du mélange). Masqués, ils jouent toujours : rien n'est coupé ni effacé.";
+  b.addEventListener("click", () => {
+    edition.montrerVides = !edition.montrerVides;
+    dessinerStems();
+  });
+  hote.appendChild(b);
 }
 
 function dessinerStems() {
@@ -476,6 +527,7 @@ function dessinerStems() {
   majEtatEditer();
 
   for (const s of edition.stems) {
+    if (masque(s)) continue;
     // La ligne du stem. Ce qui ne concerne que lui — vitesse, hauteur,
     // remplacement — n'est plus déplié dessous : il va dans l'inspecteur
     // (`majInspecteurStem`), un seul inspecteur (`interface-guidelines.md`).
@@ -569,6 +621,7 @@ function dessinerStems() {
     hote.appendChild(piste);
     dessinerSpectre(cnv, s);
   }
+  ligneVides(hote);
 
   majInspecteurStem();
   majEtatEditer();

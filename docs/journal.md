@@ -6300,3 +6300,53 @@ accordage déduit (½ ton dessous attendu) n'est pas mesuré ; la qualité de
 la transcription d'*Andy* une fois en standard (non écoutée) ; le menu
 d'accordage dans l'audit (la copie de base n'a pas de basse transcrite
 ouverte) et dans la webview native ; l'accordeur avec la vraie basse.
+
+## V38 : les stems presque vides se masquent dans la pile — 12 nov. 2026
+
+BS-RoFormer SW reste la variante par défaut (décision du 11 nov.) ; sur un
+groupe sans clavier, « piano » (et souvent « autres ») ne reçoit presque
+rien et encombre la pile de l'établi.
+
+- **Mesure** (`editor::presence`) : part d'énergie de chaque stem dans la
+  somme des stems (elle reconstitue le mélange à 26-34 dB près), sur les
+  trames de 0,5 s où la somme sonne (à moins de 40 dB de la plus forte).
+  Commande `stems_presence`, en cache dans `presence.json` à côté des
+  stems (valable tant que taille et date des fichiers ne changent pas),
+  mesurée à l'ouverture des stems, donc aussi après chaque démixage.
+- **Banc** (copies des stems de la bibliothèque, 7 morceaux dont 2 en
+  6 stems, plus 7 extraits de 90 s démixés en RoFormer SW par la CLI dans
+  un dossier temporaire, base de copie) — part d'énergie en dB :
+
+  | morceau | basse | batterie | guitare | autres | piano | voix |
+  |---|---|---|---|---|---|---|
+  | Nirvana, *Breed* | −5,2 | −5,3 | −7,2 | −36,7 | −108,2 | −9,8 |
+  | Nirvana, *Lithium* | −5,1 | −6,5 | −7,9 | −98,2 | −111,1 | −6,6 |
+  | Green Day, *Basket Case* | −8,0 | −7,8 | −7,3 | −99,1 | −107,7 | −4,6 |
+  | White Stripes, *Seven Nation Army* | −5,1 | −3,0 | −10,1 | −106,2 | −119,1 | −13,3 |
+  | Muse, *Uno* | −4,3 | −4,9 | −7,3 | −23,0 | −98,9 | −13,2 |
+  | Deep Purple, *Highway Star* | −9,9 | −6,9 | −3,7 | −26,6 | −68,2 | −8,6 |
+  | The Doors, *Light My Fire* | −8,7 | −7,4 | −10,6 | −9,1 | −10,2 | −5,3 |
+  | *About Damn Time* | −6,1 | −3,3 | −15,5 | −17,6 | −17,7 | −7,2 |
+  | *Andy* (live) | −6,6 | −3,1 | −10,9 | −15,8 | −17,3 | −9,9 |
+
+  Les 5 morceaux en 4 stems vont de −2,7 à −12,0 dB pour chaque stem.
+  Les stems vides tombent sous −36 dB (presque tous sous −68 dB) ; le plus
+  faible des stems qui jouent est à −26,6 dB (*Highway Star*, « autres »,
+  actif 8 % du temps). **Seuil : −30 dB**, dans l'écart (3,4 dB au-dessus
+  du plus faible gardé, 6,7 dB sous le plus fort masqué).
+- **Masqué, pas fondu** : le stem disparaît de la pile (Pratiquer et
+  Créer) mais joue toujours à son niveau, rien n'est coupé ni effacé ; la
+  somme reste le morceau. Le fondre dans « autres » demanderait de
+  réécrire les fichiers (et de défaire les transcriptions et
+  transpositions qui en dépendent) pour un apport inaudible à −30 dB.
+  Jamais masqué s'il est greffé ou écouté en solo. Sous la pile : « 1 piste
+  presque vide masquée : Piano · montrer », et l'inverse.
+- Tests : `presence` (résidu à −50 dB masqué, orgue à −27 dB sur la
+  moitié gardé, silences ignorés), cache de `presence_du_dossier` (refait
+  quand un stem change), fumée V38. `verifier.sh` vert (74 fumées). Audit
+  `pratiquer` et `creer` (écran caché) : 36 cellules, 0 violation.
+
+Non vérifié : les 7 extraits ne couvrent que 90 s (un clavier qui n'entre
+qu'au pont serait sous-estimé, pas masqué à tort tant qu'il dépasse
+−30 dB sur l'ensemble) ; la ligne sous la pile dans la webview native et
+avec de vrais stems (l'audit ouvre une copie sans stem presque vide).

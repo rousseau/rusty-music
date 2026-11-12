@@ -19,6 +19,8 @@ fn exporter_les_types_des_commandes() {
             albums,
             library_stats,
             demix_variantes,
+            // V38 : les stems presque vides.
+            stems_presence,
             // V5 : Explorer, ce qui a le plus changé depuis octobre.
             balade_demarrer,
             balade_etat,

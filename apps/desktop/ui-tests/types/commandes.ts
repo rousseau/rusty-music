@@ -13,6 +13,12 @@ export const commands = {
 	 *  téléchargement **avant** le clic, comme l'analyse annonce son coût.
 	 */
 	demix_variantes: () => __TAURI_INVOKE<VarianteDispo[]>("demix_variantes"),
+	/**
+	 *  La présence de chaque stem d'un morceau (V38) : mesurée une fois après le
+	 *  démixage ou à la première ouverture des stems en cache, gardée dans
+	 *  `presence.json`. Une seconde environ pour six stems de quatre minutes.
+	 */
+	stems_presence: (path: string) => __TAURI_INVOKE<PresenceStem[]>("stems_presence", { path }),
 	/**  « Flâner d'ici » : lance la lecture de `depart` et la balade qui en part. */
 	balade_demarrer: (depart: number, intervention: Intervention | null, allure: Allure | null, grandeur: Grandeur | null) => __TAURI_INVOKE<BaladeVue_Serialize>("balade_demarrer", { depart, intervention, allure, grandeur }),
 	/**  La balade en cours, `None` s'il n'y en a pas. */
@@ -1207,6 +1213,18 @@ export type PlaylistRow_Serialize = {
 	/**  Durée des pistes présentes. */
 	duree_ms: number,
 	modifiee_le: number,
+};
+
+/**
+ *  La présence d'un stem dans le mélange (V38) : sa part d'énergie, et s'il
+ *  est presque vide — l'établi le masque alors dans la pile, sans l'effacer
+ *  ni le couper.
+ */
+export type PresenceStem = {
+	nom: string,
+	/**  Part d'énergie dans la somme des stems, en dB, là où elle sonne. */
+	part_db: number | null,
+	presque_vide: boolean,
 };
 
 /**  Une correspondance notes → classes, pour un périphérique. */

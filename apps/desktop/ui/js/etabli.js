@@ -36,6 +36,8 @@ const edition = {
   // `null` tant que le stem suit les réglages d'ensemble.
   stems: [],
   muets: new Set(),
+  // V38 : montrer les stems presque vides, masqués sinon (`etabli-stems.js`).
+  montrerVides: false,
   solo: null,
   // Le stem dont le détail est ouvert dans l'inspecteur (`#bloc-stem`), par nom.
   stemSel: null,

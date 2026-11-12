@@ -1068,6 +1068,7 @@ fn main() {
             start_demix,
             demix_state,
             stems_existants,
+            stems_presence,
             stems_vitesse,
             stems_vitesse_stem,
             stems_exporter,
