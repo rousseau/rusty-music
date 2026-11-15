@@ -143,6 +143,11 @@ rubato = "5"
 # biquads RBJ, sans allocation. Licence MIT OR Apache-2.0.
 biquad = "0.6"
 
+# Retour de l'instrument (E7, `player::retour`) : anneau sans verrou entre le
+# rappel d'entrée et celui de sortie, sans allocation. Licence MIT OR
+# Apache-2.0. **Vérifié avant d'écrire le nôtre.**
+rtrb = "0.4"
+
 # Temps et premiers temps de mesure (module 3 — pratiquer, greffer à la mesure).
 # Portage Rust de « Beat This! » (CPJKU, ISMIR 2024), MIT, runtime `rten` pur
 # Rust. Sans les options par défaut : ni CLI, ni décodage — l'éditeur décode.

@@ -6459,3 +6459,44 @@ Non vérifié (tranches suivantes) : le retour lui-même (entrée du coach
 mêlée à la sortie, tampon et rééchantillonnage entre horloges, latence),
 les réglages en base, l'interface, l'avertissement micro ; aucun son
 écouté.
+
+## E7, tranche 2 : le retour de l'instrument entre deux horloges — 15 nov. 2026
+
+- **`player::retour`** : le rappel d'entrée pousse le canal retenu dans un
+  anneau sans verrou (crate `rtrb`, MIT/Apache, ajoutée au workspace plutôt
+  que d'en écrire un) ; le rappel de sortie le lit par un rééchantillonneur
+  polynomial cubique à rapport réglable (`rubato::Async`, déjà là), passe la
+  chaîne de son (tranche 1) et applique le volume par une rampe de 10 ms.
+  Le rapport suit le remplissage lissé de l'anneau (correcteur
+  proportionnel, ±1 % au plus, constante de temps ≈ 1 s) : l'écart des deux
+  quartz est rattrapé sans trou ni saut.
+- **La cible** de remplissage couvre le bloc qu'un rappel de sortie prend
+  d'un coup (en trames d'entrée), le plus grand bloc d'entrée vu et un bloc
+  de rééchantillonnage, 128 trames au moins : une cible fixe de 128 trames
+  donnait 37 trous en 10 min à −80 ppm et 1 884 en une minute de 44,1 vers
+  48 kHz avec des rappels de sortie de 256 trames.
+- **Sécurité** : un retour naît coupé, volume à moitié ; volume borné à
+  `0..=1`, NaN ramené à 0. Une nouvelle chaîne (préréglage changé) passe au
+  rappel par un second anneau ; le moteur reconstruit sa sortie
+  (`Moteur::preparer`) hors du rappel quand l'appareil change. La sortie est
+  un flux cpal à part, tampon demandé de 128 trames ; CoreAudio le mêle au
+  lecteur, le morceau n'est pas touché.
+- **Mesuré** (source simulée, entrée par blocs de 64 trames, sortie par
+  128) : 10 min à 48 kHz avec l'entrée à +80 ppm puis −80 ppm,
+  28 800 128 échantillons rendus, 0 trou, 0 recalage, 0 échantillon jeté,
+  remplissage final 224,7 et 223,3 trames pour une cible de 224, plus grand
+  saut d'un échantillon au suivant 0,0072 (la pente de la sinusoïde de
+  110 Hz, crête 0,5, est 0,0072) ; 44,1 → 48 kHz à +30 ppm sur 1 min,
+  sorties de 256 trames : 0 trou. Latence du moteur, d'une impulsion entrée
+  dans l'anneau à sa sortie : 3,44 ms (annoncée, majorante : 5,35 ms).
+  Rampe de volume : pas maximal < 0,5 % de la consigne. Rappels d'entrée et
+  de sortie sans allocation (allocateur compteur, trois couples de
+  fréquences, changement de chaîne compris). `verifier.sh` vert.
+- **Budget estimé**, entrée Scarlett → sortie du Mac à 48 kHz : tampon
+  d'entrée 2,7 ms + moteur 3,4 ms + tampon de sortie 2,7 ms + latences des
+  convertisseurs, soit ≈ 9 à 12 ms si les appareils acceptent 128 trames.
+
+Non vérifié : la latence réelle de bout en bout (il faudrait un câble de
+la sortie vers l'entrée), le flux de sortie ouvert sur un vrai appareil, le
+branchement sur l'entrée du coach (tranche 3, avec les commandes, les
+réglages en base et le panneau) ; aucun son joué.

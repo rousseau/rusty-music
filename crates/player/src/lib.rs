@@ -24,6 +24,7 @@ pub mod horloge;
 pub mod instrument;
 pub mod latence;
 pub mod multipiste;
+pub mod retour;
 pub mod spectre;
 pub use amelioration::{amelioration, enregistrer_taux_sortie, Amelioration};
 pub use latence::latence_sortie;

@@ -8092,6 +8092,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtrb"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5974e397833d890f2f74963408e0d4a6cd8eda2f6a445ae06750291b5d7a997e"
+
+[[package]]
 name = "rubato"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8505,6 +8511,7 @@ dependencies = [
  "cpal",
  "objc2-core-audio",
  "rodio",
+ "rtrb",
  "rubato 5.0.0",
  "rustfft",
  "rusty-music-core",
