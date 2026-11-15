@@ -21,6 +21,7 @@ pub mod amelioration;
 pub mod aura;
 pub mod gapless;
 pub mod horloge;
+pub mod instrument;
 pub mod latence;
 pub mod multipiste;
 pub mod spectre;

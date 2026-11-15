@@ -14,6 +14,7 @@ rusty-music-core = { path = "../core" }
 wsola.workspace      = true
 rustfft.workspace   = true
 rubato.workspace    = true
+biquad.workspace    = true
 rodio.workspace   = true
 cpal.workspace    = true
 thiserror.workspace = true

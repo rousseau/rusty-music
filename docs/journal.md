@@ -6422,3 +6422,40 @@ plusieurs minutes.
 Non vérifié : dans l'app installée (une séparation réelle à l'écran) ;
 `htdemucs` et `htdemucs_6s` sans mesure ; mise en page inchangée (un
 texte), pas d'audit.
+
+## E7, tranche 1 : la chaîne de son de la basse — 15 nov. 2026
+
+Pour entendre sa basse pendant la pratique (retour Scarlett → enceintes du
+Mac), d'abord le traitement, sans le branchement temps réel.
+
+- **`player::instrument`** : huit préréglages de basse (brut, rond, funky,
+  slap, crunch, overdrive, vintage, « comme le disque »), chacun un réglage
+  de jusqu'à 5 filtres (biquads de la crate `biquad`, MIT/Apache, plutôt
+  que d'en écrire), un compresseur à détection de crête, une saturation
+  `tanh` décalée (harmoniques paires pour le vintage), un filtre de baffle
+  après saturation, un gain qui compense le volume, puis un limiteur doux
+  (linéaire jusqu'à 0,8, jamais 1). `Instrument` prévoit d'autres
+  instruments ; seule la basse a ses préréglages.
+- **Compensation du volume** : à la construction, la chaîne passe un signal
+  de basse directe synthétique (notes pincées de 41 à 98 Hz, fortes et
+  douces, ≈ −18 dBFS) et règle son gain de sortie pour garder le niveau
+  efficace du brut.
+- **« Comme le disque »** : cinq cloches (60 à 2 500 Hz) dont les gains,
+  bornés à ±9 dB, rapprochent le profil de bandes du signal de référence de
+  celui du stem de basse.
+- **Mesuré** (tests sur signaux synthétiques, 48 kHz) : brut identique à
+  l'entrée (écart < 10⁻⁶) ; chaque préréglage à moins de 1 dB du brut en
+  niveau efficace ; crête < 1 sur un accord pleine échelle, entrée NaN ou
+  infinie neutralisée ; silence rendu silence ; rond et vintage perdent plus
+  de 8 dB à 3 kHz relativement à 80 Hz, slap creuse 500 Hz de plus de 6 dB
+  sous 80 Hz et 5 kHz ; distorsion croissante brut < crunch < overdrive
+  (overdrive plus du double du crunch) ; funky resserre de plus de 2 dB
+  l'écart entre notes fortes et douces ; « comme le disque » relève le grave
+  d'un stem aux graves relevés et reste à plat (±0,1 dB) sur la référence.
+  `Chaine::traiter` n'alloue rien (allocateur compteur, 8 préréglages × 100
+  tampons de 512). `verifier.sh` vert.
+
+Non vérifié (tranches suivantes) : le retour lui-même (entrée du coach
+mêlée à la sortie, tampon et rééchantillonnage entre horloges, latence),
+les réglages en base, l'interface, l'avertissement micro ; aucun son
+écouté.

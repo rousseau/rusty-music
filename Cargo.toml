@@ -139,6 +139,10 @@ wsola = "0.1"
 # **Vérifié avant d'écrire le nôtre.** Licence MIT.
 rubato = "5"
 
+# Égaliseur du son de l'instrument joué en pratique (E7, `player::instrument`) :
+# biquads RBJ, sans allocation. Licence MIT OR Apache-2.0.
+biquad = "0.6"
+
 # Temps et premiers temps de mesure (module 3 — pratiquer, greffer à la mesure).
 # Portage Rust de « Beat This! » (CPJKU, ISMIR 2024), MIT, runtime `rten` pur
 # Rust. Sans les options par défaut : ni CLI, ni décodage — l'éditeur décode.
