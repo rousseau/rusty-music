@@ -164,6 +164,30 @@ for (const densite of [1, 2]) {
   });
 }
 
+test("V40 : le temps restant du démixage part de l'estimation et suit la progression", async ({ page }) => {
+  const restes = await page.evaluate(async () => {
+    const { texteRestant } = await import("./js/etabli-stems.js");
+    const t0 = 1_000_000;
+    const d = (faits, total) => ({ estimation_s: 360, debut_ms: t0, segments_faits: faits, segments_total: total });
+    return [
+      texteRestant(d(0, 0), t0), // au lancement : l'estimation, 6 min
+      texteRestant(d(0, 0), t0 + 60_000), // décodage et chauffe : 5 min
+      texteRestant(d(50, 100), t0 + 120_000), // plus vite que prévu : 50 % en 2 min
+      texteRestant(d(90, 100), t0 + 540_000), // plus lent : 90 % en 9 min
+      texteRestant(d(0, 0), t0 + 400_000), // estimation dépassée, rien ne tombe
+      texteRestant({ estimation_s: null, debut_ms: t0 }, t0), // durée du morceau inconnue
+    ];
+  });
+  expect(restes).toEqual([
+    "environ 6 min restantes",
+    "environ 5 min restantes",
+    "environ 3 min restantes",
+    "environ 1 min restante",
+    "moins d'une minute",
+    "",
+  ]);
+});
+
 /// Ouvre en Pratiquer le morceau lu depuis l'album `rang` de la grille.
 async function pratiquerAlbum(page, rang) {
   await page.click('button.mode[data-mode="ecoute"]');

@@ -2703,6 +2703,31 @@ fn la_fenetre_representative_se_retient_et_se_complete() {
     assert_eq!(lib.fenetre_representative(ids[0], "autre").unwrap(), None);
 }
 
+/// V40 : le temps de démixage s'apprend par variante — moyenne des premiers,
+/// puis glissante ; les valeurs aberrantes sont ignorées.
+#[test]
+fn le_temps_de_demixage_s_apprend_par_variante() {
+    let lib = Library::open_in_memory().unwrap();
+    assert_eq!(lib.duree_demix("bsrofo_sw").unwrap(), None);
+    lib.noter_duree_demix("bsrofo_sw", 1.5).unwrap();
+    lib.noter_duree_demix("bsrofo_sw", 1.7).unwrap();
+    lib.noter_duree_demix("bsrofo_sw", f64::NAN).unwrap();
+    lib.noter_duree_demix("bsrofo_sw", 0.0).unwrap();
+    let (f, n) = lib.duree_demix("bsrofo_sw").unwrap().unwrap();
+    assert_eq!(n, 2);
+    assert!((f - 1.6).abs() < 1e-9, "{f}");
+    // Au-delà de la fenêtre, une mesure pèse 1/5.
+    for _ in 0..10 {
+        lib.noter_duree_demix("bsrofo_sw", 1.6).unwrap();
+    }
+    lib.noter_duree_demix("bsrofo_sw", 2.6).unwrap();
+    let (f, n) = lib.duree_demix("bsrofo_sw").unwrap().unwrap();
+    assert_eq!(n, 13);
+    assert!((f - 1.8).abs() < 1e-9, "{f}");
+    assert_eq!(lib.duree_demix("htdemucs").unwrap(), None);
+    assert_eq!(lib.duree_par_chemin("/inconnu.flac").unwrap(), None);
+}
+
 /// V37 : l'accordage choisi à la main se garde par morceau, et la mémoire de
 /// Pratiquer ne l'efface pas.
 #[test]

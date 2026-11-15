@@ -9,7 +9,8 @@
 //! `rusty_music_editor::coach::calibrer` ; ici, seulement ce qui en reste.
 //! Avec elle, le profil de correspondance d'une batterie électronique
 //! (migration n° 11), gardé en JSON par périphérique, et le canal d'une
-//! interface audio où joue la basse (migration n° 14, V34).
+//! interface audio où joue la basse (migration n° 14, V34), et le temps de
+//! démixage par variante (migration n° 16, V40).
 
 use super::*;
 
@@ -177,4 +178,64 @@ fn ligne_latence(r: &rusqlite::Row) -> rusqlite::Result<LatenceCalibree> {
         dispersion_ms: r.get(3)?,
         frappes: r.get(4)?,
     })
+}
+
+/// Démixages au-delà desquels la moyenne devient glissante : les plus
+/// récents pèsent alors 1/[`FENETRE_DUREE_DEMIX`] chacun (une machine change :
+/// pilote, `burn/metal`, autre Mac).
+pub const FENETRE_DUREE_DEMIX: u32 = 5;
+
+impl Library {
+    /// Secondes de calcul par seconde de morceau pour la variante de démixage
+    /// `variante`, apprises sur cette machine, et le nombre de démixages
+    /// comptés.
+    pub fn duree_demix(&self, variante: &str) -> Result<Option<(f64, u32)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT facteur, mesures FROM duree_demix WHERE variante = ?1",
+                [variante],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    /// Compte un démixage de `variante` qui a pris `facteur` secondes par
+    /// seconde de morceau : moyenne des [`FENETRE_DUREE_DEMIX`] premiers, puis
+    /// moyenne glissante. Une valeur aberrante (≤ 0, infinie) est ignorée.
+    pub fn noter_duree_demix(&self, variante: &str, facteur: f64) -> Result<()> {
+        if !(facteur.is_finite() && facteur > 0.0) {
+            return Ok(());
+        }
+        let (nouveau, mesures) = match self.duree_demix(variante)? {
+            Some((ancien, n)) => {
+                let poids = (n + 1).min(FENETRE_DUREE_DEMIX) as f64;
+                (ancien + (facteur - ancien) / poids, n.saturating_add(1))
+            }
+            None => (facteur, 1),
+        };
+        self.conn.execute(
+            "INSERT INTO duree_demix (variante, facteur, mesures, maj)
+             VALUES (?1, ?2, ?3, strftime('%s','now'))
+             ON CONFLICT (variante) DO UPDATE SET
+                facteur = excluded.facteur, mesures = excluded.mesures, maj = excluded.maj",
+            params![variante, nouveau, mesures],
+        )?;
+        Ok(())
+    }
+
+    /// La durée d'un morceau en base, en millisecondes, par son chemin.
+    pub fn duree_par_chemin(&self, path: &str) -> Result<Option<u64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT duration_ms FROM tracks WHERE path = ?1",
+                [path],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .optional()?
+            .flatten()
+            .and_then(|d| u64::try_from(d).ok())
+            .filter(|&d| d > 0))
+    }
 }

@@ -28,6 +28,54 @@ pub(crate) struct AvancementDemix {
     pub(crate) stem: Option<String>,
     /// Stems produits : nom et chemin du WAV.
     pub(crate) stems: Vec<(String, String)>,
+    /// Durée attendue de la séparation, en secondes, estimée au lancement
+    /// d'après les démixages déjà faits sur cette machine (V40,
+    /// [`estimer_demix`]) ; `None` si la durée du morceau est inconnue.
+    pub(crate) estimation_s: Option<f64>,
+    /// Début de la séparation (après un éventuel téléchargement), en
+    /// millisecondes Unix : l'interface en tire le temps écoulé.
+    pub(crate) debut_ms: u64,
+}
+
+/// Secondes de calcul par seconde de morceau, avant tout démixage sur la
+/// machine (V40) : mesurées le 15 nov. 2026 sur ce Mac, backend `wgpu`, par
+/// la CLI (chargement, chauffe, séparation et écriture comprises ; moyenne
+/// de trois morceaux de 1 min 45 à 7 min 35 pour RoFormer, un de 4 min pour
+/// `htdemucs_ft` ; `docs/journal.md`, « V40 »).
+fn facteur_de_depart(v: rusty_music_editor::Variante) -> f64 {
+    use rusty_music_editor::Variante;
+    match v {
+        Variante::RoformerSw => FACTEUR_ROFORMER,
+        Variante::Affinee => FACTEUR_FT,
+        // Non mesurés ici (poids absents de cette machine) : une passe
+        // htdemucs fait un quart du calcul d'`htdemucs_ft`, qui en enchaîne
+        // quatre ; 6 stems, un peu plus.
+        Variante::Standard => FACTEUR_FT / 4.0,
+        Variante::SixStems => FACTEUR_FT / 3.0,
+    }
+}
+const FACTEUR_ROFORMER: f64 = 1.65;
+const FACTEUR_FT: f64 = 0.65;
+
+/// L'estimation de la durée d'un démixage de `duree_s` secondes de morceau :
+/// le facteur appris sur cette machine, sinon celui de départ.
+pub(crate) fn estimer_demix(
+    lib: &rusty_music_core::Library,
+    v: rusty_music_editor::Variante,
+    duree_s: f64,
+) -> f64 {
+    let facteur = lib
+        .duree_demix(v.nom())
+        .ok()
+        .flatten()
+        .map_or_else(|| facteur_de_depart(v), |(f, _)| f);
+    facteur * duree_s
+}
+
+fn maintenant_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 pub(crate) type EtatDemix = Passe<AvancementDemix>;
 
@@ -573,6 +621,11 @@ pub(crate) fn start_demix(
         source: path.clone(),
         ..Default::default()
     };
+    let duree_s = verrou(&etat.lib)
+        .duree_par_chemin(&path)
+        .ok()
+        .flatten()
+        .map(|ms| ms as f64 / 1000.0);
     passe::lancer(
         app,
         |e| &e.demix,
@@ -600,11 +653,15 @@ pub(crate) fn start_demix(
                 e.avancement.octets_faits = vus;
                 e.avancement.octets_total = total.unwrap_or_else(|| variante.octets());
             });
+            let estimation = duree_s.map(|d| estimer_demix(&verrou(&etat.lib), variante, d));
+            let debut = std::time::Instant::now();
             {
                 let mut e = verrou(&etat.demix);
                 e.avancement.phase = "separation".into();
                 e.avancement.octets_faits = 0;
                 e.avancement.octets_total = 0;
+                e.avancement.estimation_s = estimation;
+                e.avancement.debut_ms = maintenant_ms();
             }
 
             let issue = poids
@@ -621,6 +678,21 @@ pub(crate) fn start_demix(
 
             let (stems, bilan) = match issue {
                 Ok(fichiers) => {
+                    // V40 : ce démixage affine l'estimation des suivants.
+                    if let Some(d) = duree_s.filter(|&d| d > 1.0) {
+                        let pris = debut.elapsed().as_secs_f64();
+                        tracing::info!(
+                            variante = variante.nom(),
+                            estime_s = estimation.unwrap_or(0.0),
+                            reel_s = pris,
+                            "durée du démixage"
+                        );
+                        if let Err(e) =
+                            verrou(&etat.lib).noter_duree_demix(variante.nom(), pris / d)
+                        {
+                            tracing::warn!("durée du démixage non gardée : {e}");
+                        }
+                    }
                     oublier_derives_des_stems(&sortie, &fichiers);
                     let noms: Vec<(String, String)> = fichiers
                         .iter()

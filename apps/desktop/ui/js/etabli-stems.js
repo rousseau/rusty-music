@@ -378,16 +378,35 @@ function majAvancementDemix(d) {
       `téléchargement du modèle : ${Math.round(d.octets_faits / 1e6)} / ${Math.round(total / 1e6)} Mo (${pct} %) — une seule fois, puis la séparation`;
     return;
   }
+  const restant = texteRestant(d, Date.now());
   if (!d.segments_total) {
     jauge.removeAttribute("value");
-    $("demix-etat").textContent = "séparation en cours… (compter ~30 s par morceau)";
+    $("demix-etat").textContent = `séparation en cours…${restant ? ` (${restant})` : ""}`;
     return;
   }
   jauge.max = d.segments_total;
   jauge.value = d.segments_faits;
   const pct = Math.round((100 * d.segments_faits) / d.segments_total);
   const stem = d.stem ? ` — ${d.stem} en cours` : "";
-  $("demix-etat").textContent = `séparation : ${pct} %${stem}`;
+  $("demix-etat").textContent = `séparation : ${pct} %${stem}${restant ? ` · ${restant}` : ""}`;
+}
+
+/// V40 : le temps restant d'une séparation. Au départ, l'estimation du
+/// moteur (`estimation_s`, apprise sur les démixages faits sur cette machine,
+/// par variante) ; à mesure que les segments avancent, le total projeté
+/// d'après la progression prend le relais, pondéré par cette progression —
+/// pas de saut quand le premier segment tombe. `maintenant` en ms Unix.
+function texteRestant(d, maintenant) {
+  if (!d.estimation_s || !d.debut_ms) return "";
+  const ecoule = Math.max(0, (maintenant - d.debut_ms) / 1000);
+  const p = d.segments_total ? Math.min(1, d.segments_faits / d.segments_total) : 0;
+  // L'estimation dépassée ne promet pas un temps négatif : elle se recule.
+  const initial = Math.max(d.estimation_s, ecoule * 1.05);
+  const projete = p > 0 ? ecoule / p : initial;
+  const reste = Math.max(0, p * projete + (1 - p) * initial - ecoule);
+  if (reste < 45) return "moins d'une minute";
+  const min = Math.round(reste / 60);
+  return `environ ${min} min restante${min > 1 ? "s" : ""}`;
 }
 
 let sondageDemix = null;
@@ -400,7 +419,7 @@ async function lancerDemix() {
   const t = edition.source;
   if (!t) return false;
   // Le morceau **séparé** : la sélection est libre (aucune lecture à lancer
-  // pour la changer), elle peut donc bouger pendant les ~30 s de calcul.
+  // pour la changer), elle peut donc bouger pendant les minutes de calcul.
   const cible = t.path;
   const variante = edition.variante;
   try {
@@ -418,7 +437,7 @@ async function lancerDemix() {
   majEtatEditer();
   $("demix-etat").textContent = aTelecharger
     ? `téléchargement du modèle (${aTelecharger} Mo)…`
-    : "séparation en cours… (compter ~30 s par morceau)";
+    : "séparation en cours…";
   $("demix-jauge").hidden = false;
   $("demix-jauge").removeAttribute("value"); // indéterminée le temps du décodage et de la chauffe
 
@@ -1201,6 +1220,6 @@ $("dock-fermer").addEventListener("click", async () => {
 export {
   appliquerNiveaux, arreterStems, choisirVariante, deplacerLecture, dessinerStems, enSerie,
   lancerDemix, majEtatEditer, majVariantes, niveaux, oublierStems, poserSourceEdition, poserTete,
-  positionnerPlayhead, prendreLaMain, rampeRGB, rattacherStems, reconcilierStems, resumeStem,
+  positionnerPlayhead, prendreLaMain, rampeRGB, rattacherStems, reconcilierStems, resumeStem, texteRestant,
   transposerStems, varianteParDefaut, verifierNoms,
 };

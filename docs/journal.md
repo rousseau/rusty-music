@@ -6380,3 +6380,45 @@ François voyait « parfois » la pile des stems floue.
 
 Non vérifié : sur deux écrans réels (Retina ↔ externe) dans la webview
 native ; pas d'audit (mise en page inchangée).
+
+## V40 : le temps estimé du démixage dépend de la variante — 15 nov. 2026
+
+François voyait toujours « compter ~30 s par morceau » au lancement d'une
+séparation, alors que BS-RoFormer SW, la variante par défaut, prend
+plusieurs minutes.
+
+- **Apprise par machine.** Nouvelle table `duree_demix` (migration n° 16) :
+  par variante, les secondes de calcul par seconde de morceau, moyenne des
+  5 premiers démixages puis moyenne glissante (poids 1/5), valeurs
+  aberrantes ignorées (`db/latence.rs`). Chaque démixage réussi dans l'app
+  y ajoute sa mesure (temps total de la passe, téléchargement exclu).
+- **Valeur de départ mesurée** (CLI, `wgpu`, chargement, chauffe,
+  séparation et écriture comprises, ce Mac) :
+
+  | morceau | durée | RoFormer réel | s/s |
+  |---|---|---|---|
+  | court | 1 min 45 | 192,9 s | 1,84 |
+  | moyen | 4 min 06 | 417,9 s | 1,70 |
+  | long | 7 min 35 | 651,4 s | 1,43 |
+
+  `htdemucs_ft` sur le morceau moyen : 159,1 s, soit 0,65 s/s. Départ
+  retenu : 1,65 pour RoFormer, 0,65 pour `htdemucs_ft`, ¼ et ⅓ de ce
+  dernier pour `htdemucs` et `htdemucs_6s` (poids absents ici, non mesurés).
+- **Estimation initiale contre temps réel** (facteur de départ 1,65) :
+  173 s contre 193 (−10 %), 406 contre 418 (−3 %), 751 contre 651
+  (+15 %) ; l'ancienne constante de 30 s se trompait de −84 à −95 %. Le
+  coût par seconde baisse avec la longueur (chargement de 7 s et chauffe
+  amortis) : un modèle affine ferait mieux, une moyenne suffit ici. En
+  apprenant au fil des trois morceaux, le troisième aurait été annoncé à
+  805 s (+24 %) ; la progression corrige.
+- **Pendant le calcul** (`etabli-stems.js`, `texteRestant`) : l'estimation
+  du moteur au départ, puis le total projeté d'après les segments faits,
+  pondéré par la progression, donc sans saut au premier segment ; une
+  estimation dépassée se recule au lieu de promettre un temps négatif.
+  Affiché « séparation : 40 % — basse en cours · environ 3 min restantes ».
+- **Tests** : apprentissage par variante (`db/tests.rs`), six cas de temps
+  restant en fumée. `verifier.sh` vert.
+
+Non vérifié : dans l'app installée (une séparation réelle à l'écran) ;
+`htdemucs` et `htdemucs_6s` sans mesure ; mise en page inchangée (un
+texte), pas d'audit.

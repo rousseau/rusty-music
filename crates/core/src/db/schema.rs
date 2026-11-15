@@ -90,6 +90,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 15 (12 nov. 2026) : l'accordage de la tablature de basse choisi
         // à la main, par morceau (V37 : `pratique.accordage`, `db/pratique.rs`).
         M::up(include_str!("../../sql/migration-015-accordage.sql")),
+        // N° 16 (12 nov. 2026) : le temps de démixage par variante sur cette
+        // machine (V40 : `duree_demix`, `db/latence.rs`).
+        M::up(include_str!("../../sql/migration-016-duree-demix.sql")),
     ])
 }
 
