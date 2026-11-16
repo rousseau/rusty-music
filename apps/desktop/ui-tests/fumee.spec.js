@@ -2095,6 +2095,89 @@ test("V37 : la tablature dans l'accordage du disque — mêmes frettes à toute 
   await expect.poll(async () => (await tablature()).frettes).toEqual([1, 4, 1, 3]);
 });
 
+test("E7 : entendre sa basse — haut-parleur du bandeau, son, volume, balance, micro signalé", async ({ page }) => {
+  await basseTranscrite(page);
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_basse_entrees = ["Scarlett Solo USB"];
+    const base = window.__FIXTURES__.retour_basse_etat;
+    // Le moteur simulé : l'écoute s'ouvre, l'entrée retenue est un micro
+    // (entrée 1 d'une Scarlett Solo) tant que le test ne dit pas le contraire.
+    window.__RETOUR__ = { ...base, ecoute: false, disponible: true, micro: false };
+    window.__FIXTURES__.coach_basse_ecouter = (a) => {
+      window.__RETOUR__.ecoute = !!a.entree;
+      window.__RETOUR__.micro = !!a.entree;
+      return a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 2, canal: 0, manuel: false, latence_ms: 24 } : null;
+    };
+    window.__FIXTURES__.retour_basse_etat = () => ({ ...window.__RETOUR__ });
+    window.__FIXTURES__.retour_basse_regler = (a) => {
+      Object.assign(window.__RETOUR__, {
+        actif: a.actif && window.__RETOUR__.ecoute, prereglage: a.prereglage, volume: a.volume, balance: a.balance,
+        latence_ms: a.actif ? 9.6 : null, stem_disque: a.prereglage === "comme-le-disque" ? false : null,
+      });
+      return { ...window.__RETOUR__ };
+    };
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const hautParleur = page.locator("#coach-retour");
+  await expect(hautParleur).toBeVisible();
+  await expect(hautParleur).toHaveAttribute("aria-label", "Entendre ma basse");
+  const panneau = page.locator("#retour-basse");
+  await expect(panneau).toBeHidden();
+
+  // Ouvert : huit sons, coupé, mi-volume, balance au milieu.
+  await hautParleur.click();
+  await expect(panneau).toBeVisible();
+  expect(await panneau.evaluate((el) => !!el.closest("#editer-etabli") && !el.closest(".rail"))).toBe(true);
+  await expect(page.locator("#retour-prereglage option")).toHaveCount(8);
+  await expect(page.locator("#retour-prereglage")).toHaveValue("brut");
+  await expect(page.locator("#retour-volume")).toHaveValue("50");
+  await expect(page.locator("#retour-balance")).toHaveValue("0");
+  await expect(page.locator("#retour-actif")).not.toBeChecked();
+
+  // Cochée sur un micro : l'entrée s'ouvre, rien ne sort, l'avertissement
+  // (la case se décoche d'elle-même).
+  await page.click("#retour-actif");
+  await expect(page.locator("#retour-avertissement")).toBeVisible();
+  await expect(page.locator("#retour-avertissement")).toContainText("larsen");
+  await expect(page.locator("#retour-actif")).not.toBeChecked();
+  expect((await appels(page, "coach_basse_ecouter")).at(-1).entree).toBe("Scarlett Solo USB");
+  expect((await appels(page, "retour_basse_regler")).filter((a) => a.actif)).toHaveLength(0);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e7-retour-micro.png" });
+
+  // Cochée à nouveau : entendue quand même.
+  await page.check("#retour-actif");
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1)?.actif)).toBe(true);
+  await expect(page.locator("#retour-actif")).toBeChecked();
+  await expect(hautParleur).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#retour-etat")).toHaveText("latence ≈ 10 ms");
+
+  // Le son, le volume, la balance partent au moteur.
+  await page.selectOption("#retour-prereglage", "funky");
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1)?.prereglage)).toBe("funky");
+  await page.locator("#retour-volume").fill("80");
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1)?.volume)).toBe(0.8);
+  await page.locator("#retour-balance").fill("-50");
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1)?.balance)).toBe(-0.5);
+  // « Comme le disque » sans stem : le dire.
+  await page.selectOption("#retour-prereglage", "comme-le-disque");
+  await expect(page.locator("#retour-etat")).toContainText("pas de stem de basse");
+  expect((await appels(page, "retour_basse_regler")).at(-1).id).toBeTruthy();
+
+  // L'écoute fermée par ailleurs (le coach, l'accordeur) : rouverte, le son rallumé.
+  await page.evaluate(() => Object.assign(window.__RETOUR__, { ecoute: false, actif: false }));
+  await expect.poll(() => page.evaluate(() => window.__RETOUR__.actif), { timeout: 5000 }).toBe(true);
+
+  // Fermer le panneau garde le son ; décocher l'éteint.
+  await page.click("#retour-fermer");
+  await expect(panneau).toBeHidden();
+  await hautParleur.click();
+  await page.uncheck("#retour-actif");
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1)?.actif)).toBe(false);
+  await expect(hautParleur).toHaveAttribute("aria-pressed", "false");
+});
+
 test("V36 : l'accordeur de basse — diapason du bandeau, note, cents, corde, référence du disque", async ({ page }) => {
   await basseTranscrite(page);
   await page.evaluate(() => {

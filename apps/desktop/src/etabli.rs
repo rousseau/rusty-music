@@ -852,6 +852,8 @@ pub(crate) fn stems_play(
         multi.set_volume(p.volume());
         p.pause();
     }
+    // La balance avec la basse jouée en retour (E7) survit au rechargement.
+    multi.regler_part(crate::retour_basse::part_morceau());
     *verrou(&etat.stems) = Some(multi);
     tracing::info!(n = noms.len(), "stems chargés");
     Ok(noms)

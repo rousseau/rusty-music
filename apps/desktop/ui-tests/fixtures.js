@@ -480,6 +480,20 @@ const fixtures = {
   coach_basse_canal: (a) => ({
     entree: "Interface USB", frequence_hz: 48000, canaux: 2, canal: a.canal ?? 0, manuel: a.canal != null, latence_ms: 24,
   }),
+  // E7 : entendre sa basse. Sans entrée écoutée, rien n'est prêt ; le test
+  // qui en simule une pose les siennes.
+  retour_basse_etat: {
+    ecoute: false, disponible: false, actif: false, prereglage: "brut", volume: 0.5, balance: 0, micro: false,
+    latence_ms: null, stem_disque: null, trous: 0,
+    prereglages: [
+      ["brut", "Brut"], ["rond", "Rond"], ["funky", "Funky"], ["slap", "Slap"], ["crunch", "Crunch"],
+      ["overdrive", "Overdrive"], ["vintage", "Vintage"], ["comme-le-disque", "Comme le disque"],
+    ].map(([nom, libelle]) => ({ nom, libelle })),
+  },
+  retour_basse_regler: (a) => ({
+    ecoute: false, disponible: false, actif: false, prereglage: a.prereglage, volume: a.volume, balance: a.balance,
+    micro: false, latence_ms: null, stem_disque: null, trous: 0, prereglages: [],
+  }),
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.
   exporter_partie: null,

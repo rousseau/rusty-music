@@ -437,6 +437,12 @@ html, body {
 .accordeur__ref { display: inline-flex; align-items: center; gap: 6px; color: var(--txt); cursor: pointer; }
 .accordeur__disque { color: var(--mut); flex: 1; min-width: 0; }
 .accordeur__pied .bouton--mince { margin-left: auto; }
+/* E7 : le retour de la basse, dans la boîte de l'accordeur. */
+.retour[hidden], .etabli:not(.etabli--pratiquer) .retour { display: none; }
+.retour__avertissement { margin: 0; font-size: var(--t-second); color: var(--txt); font-weight: 600; }
+.retour__reglages { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: var(--t-second); color: var(--mut); }
+.retour__champ { display: inline-flex; align-items: center; gap: 6px; }
+.retour__champ input[type="range"] { width: 120px; }
 .coach__etat { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .coach__peripherique { font: inherit; max-width: 220px; }
 .coach__transpose { font-weight: 600; white-space: nowrap; }

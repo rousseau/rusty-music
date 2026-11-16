@@ -6500,3 +6500,47 @@ Non vérifié : la latence réelle de bout en bout (il faudrait un câble de
 la sortie vers l'entrée), le flux de sortie ouvert sur un vrai appareil, le
 branchement sur l'entrée du coach (tranche 3, avec les commandes, les
 réglages en base et le panneau) ; aucun son joué.
+
+## E7, tranche 3 : la basse branchée sur l'écoute du coach, le panneau — 16 nov. 2026
+
+- **Branchement** (`apps/desktop/src/retour_basse.rs`, `coach_basse.rs`) :
+  le retour naît avec l'écoute de l'entrée du coach (coach ou accordeur),
+  muet, à mi-volume ou aux volumes gardés. Le rappel d'entrée pousse le
+  canal retenu dans l'anneau **avant** l'analyse, tel quel : le coach et
+  l'accordeur lisent toujours le brut, le son traité n'existe que dans le
+  rappel de sortie. Le canal suit chaque changement (choix à la main,
+  « auto », calibration). Le tampon de l'entrée est demandé à 128 trames
+  (`tampon_pour`, ramené à ce que l'appareil accepte).
+- **Balance** morceau / basse, de −1 à 1 : seul un côté baisse, au milieu
+  les deux à leur volume. Côté morceau, une « part » nouvelle du multipiste
+  (`Multipiste::regler_part`), distincte du volume de la barre du bas et
+  gardée quand les stems se rechargent (transposition, greffe) ; remise à 1
+  quand le retour s'éteint ou que l'écoute se ferme.
+- **Réglages gardés** par instrument (migration n° 17, `retour_instrument` :
+  préréglage, volume, balance ; bornes ramenées, jamais refusées).
+  « Comme le disque » mesure le stem de basse du morceau ouvert (décodé
+  hors des verrous du coach, gardé par morceau) ; sans stem, son brut, et
+  l'interface le dit.
+- **Sécurité** : départ coupé ; une entrée qui semble être un micro (micro
+  intégré, AirPods, entrée 1 d'une Scarlett Solo) est signalée — il faut
+  cocher une seconde fois pour l'entendre ; arrêt par la rampe de volume
+  (30 ms) avant la fermeture du flux, sans clic.
+- **Interface** : un haut-parleur à côté du diapason dans le bandeau du
+  coach (là quand il montre la basse) ouvre, au centre sous le bandeau, la
+  boîte de l'accordeur : « entendre ma basse avec le morceau », son (8
+  préréglages), volume, balance, latence estimée et trous. Fermer le
+  panneau garde le son ; quitter la basse l'éteint. Si le coach ou
+  l'accordeur ferme ou rouvre l'écoute, le panneau la rouvre et rallume le
+  son tant qu'il est voulu.
+- **Mesuré** : tests Rust (balance, micro, « comme le disque » sans stem =
+  brut, départ muet, part du multipiste ×0,25 exacte et bornée à 1, réglages
+  gardés et bornés en base) ; fumée E7 (huit sons, coupé à mi-volume, micro
+  → rien ne sort et avertissement, seconde coche → son, son/volume/balance
+  envoyés, écoute fermée ailleurs → rouverte et son rallumé, décocher
+  l'éteint). `verifier.sh` vert.
+
+Non vérifié : aucun son joué, aucun appareil réel ouvert par l'exécutant ;
+la latence de bout en bout (estimée ≈ 10 ms, à mesurer avec un câble) ;
+l'absence de craquement sur la vraie Scarlett (seulement la source simulée
+de la tranche 2) ; audit d'interface reporté (voir le compte rendu de
+l'étape).

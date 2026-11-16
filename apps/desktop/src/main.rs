@@ -50,6 +50,7 @@ mod minuteur;
 mod paquet;
 mod passe;
 mod pratiquer;
+mod retour_basse;
 mod systeme;
 mod systeme_media;
 mod tuiles;
@@ -1099,6 +1100,8 @@ fn main() {
             coach_basse::coach_basse_juger,
             coach_basse::coach_basse_calibrer,
             coach_basse::coach_basse_canal,
+            retour_basse::retour_basse_etat,
+            retour_basse::retour_basse_regler,
             pratique_memoire,
             pratique_garder,
             pratique_playlist,

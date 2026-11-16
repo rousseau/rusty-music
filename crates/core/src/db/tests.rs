@@ -3003,6 +3003,34 @@ fn les_corrections_de_transcription_se_gardent_par_note() {
 }
 
 #[test]
+fn le_retour_de_l_instrument_se_garde_par_instrument() {
+    let lib = Library::open_in_memory().unwrap();
+    assert_eq!(lib.retour_instrument("basse").unwrap(), None);
+    let r = RetourInstrument {
+        instrument: "basse".into(),
+        prereglage: "funky".into(),
+        volume: 0.75,
+        balance: -0.25,
+    };
+    lib.garder_retour_instrument(&r).unwrap();
+    assert_eq!(lib.retour_instrument("basse").unwrap(), Some(r.clone()));
+    // Hors bornes : ramené, jamais refusé par la contrainte.
+    lib.garder_retour_instrument(&RetourInstrument {
+        prereglage: "rond".into(),
+        volume: 3.0,
+        balance: f32::NAN,
+        ..r
+    })
+    .unwrap();
+    let g = lib.retour_instrument("basse").unwrap().unwrap();
+    assert_eq!(
+        (g.prereglage.as_str(), g.volume, g.balance),
+        ("rond", 1.0, 0.0)
+    );
+    assert_eq!(lib.retour_instrument("guitare").unwrap(), None);
+}
+
+#[test]
 fn le_canal_de_la_basse_se_garde_par_interface() {
     let lib = Library::open_in_memory().unwrap();
     assert_eq!(lib.canal_entree("Scarlett Solo USB").unwrap(), None);

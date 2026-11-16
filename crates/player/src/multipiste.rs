@@ -358,6 +358,8 @@ struct Melange {
     rampe: u64,
     /// Gain de la trame courante, le même pour ses deux canaux.
     gain: f32,
+    /// La part du morceau dans la balance avec l'instrument (E7).
+    part: Niveau,
     decompte: Decompte,
     depot: Arc<Depot>,
     /// Clic de la trame courante, et stems à l'arrêt pendant le décompte.
@@ -472,7 +474,7 @@ impl Iterator for Melange {
         // La somme des stems reconstitue le mélange d'origine, qui pouvait
         // déjà frôler la pleine échelle : sans écrêtage, un solo à plein
         // niveau saturerait.
-        Some((somme * self.gain + self.clic).clamp(-1.0, 1.0))
+        Some((somme * self.gain * self.part.lire() + self.clic).clamp(-1.0, 1.0))
     }
 }
 
@@ -509,6 +511,7 @@ pub struct Multipiste {
     boucle: Boucle,
     depot: Arc<Depot>,
     ancre: Arc<AncrePartagee>,
+    part: Niveau,
 }
 
 impl Multipiste {
@@ -588,6 +591,7 @@ impl Multipiste {
         let depot = Arc::new(Depot::default());
         let chrono = Chronometre::nouveau(SR);
         let ancre = Arc::clone(&chrono.ancre);
+        let part = Niveau::nouveau(1.0);
         lecteur.append(Melange {
             voix,
             maitre: Arc::clone(&maitre),
@@ -598,6 +602,7 @@ impl Multipiste {
             precedente: 0,
             rampe: 0,
             gain: 1.0,
+            part: part.clone(),
             decompte: Decompte::default(),
             depot: Arc::clone(&depot),
             clic: 0.0,
@@ -619,6 +624,7 @@ impl Multipiste {
             boucle,
             depot,
             ancre,
+            part,
         })
     }
 
@@ -664,6 +670,17 @@ impl Multipiste {
 
     pub fn set_volume(&self, volume: f32) {
         self.inner.set_volume(volume);
+    }
+
+    /// La part du morceau dans la balance avec l'instrument joué en retour
+    /// (E7), de 0 à 1. Distincte du volume maître : la balance ne touche pas
+    /// au curseur de la barre du bas. Le clic du décompte n'en dépend pas.
+    pub fn regler_part(&self, part: f32) {
+        self.part.ecrire(if part.is_finite() { part } else { 1.0 });
+    }
+
+    pub fn part(&self) -> f32 {
+        self.part.lire()
     }
 
     /// Position de lecture, celle de référence.
@@ -1023,6 +1040,7 @@ mod tests {
                 precedente: 0,
                 rampe: 0,
                 gain: 1.0,
+                part: Niveau::nouveau(1.0),
                 decompte: Decompte::default(),
                 depot: Arc::new(Depot::default()),
                 clic: 0.0,
@@ -1063,6 +1081,23 @@ mod tests {
             c.store(4 << FRAC, Ordering::Relaxed);
         }
         assert_eq!(b.melange.next(), Some(0.0));
+    }
+
+    /// La balance avec l'instrument (E7) baisse le morceau sans toucher aux
+    /// niveaux des stems.
+    #[test]
+    fn la_part_du_morceau_suit_la_balance() {
+        let mut b = banc(vec![vec![2000i16; 8]], vec![Niveau::nouveau(1.0)]);
+        b.melange.part.ecrire(0.25);
+        let attendu = 0.25 * 2000.0 / i16::MAX as f32;
+        assert!((b.melange.next().unwrap() - attendu).abs() < 1e-5);
+        b.melange.part.ecrire(f32::NAN.max(2.0));
+        let plein = 2000.0 / i16::MAX as f32;
+        b.melange.next();
+        assert!(
+            (b.melange.next().unwrap() - plein).abs() < 1e-5,
+            "borné à 1"
+        );
     }
 
     /// Une piste plus courte se tait ; elle n'arrête pas les autres. C'est la

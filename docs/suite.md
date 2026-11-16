@@ -137,7 +137,13 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     dessous, drop D, 5 cordes, standard d'abord, choix à la main gardé
     par morceau (migration n° 15), accordage du disque et accordage à
     utiliser dans le bandeau, visés par l'accordeur — à regarder par
-    François sur About Damn Time (porte) ;
+    François sur About Damn Time (porte) ; E7 (15-16 nov.) : entendre sa
+    basse avec le morceau — huit préréglages en Rust, retour entre deux
+    horloges (anneau sans verrou, rééchantillonnage adaptatif, 0 trou sur
+    10 min simulées), branché sur l'écoute du coach (brut pour l'analyse),
+    haut-parleur dans le bandeau, volume, balance, réglages gardés
+    (migration n° 17), micro signalé ; restent l'installation et l'essai
+    de François sur ses enceintes (porte) ;
     restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;

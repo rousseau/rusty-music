@@ -170,6 +170,67 @@ impl Library {
     }
 }
 
+/// Le son et les volumes du retour d'un instrument (E7).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RetourInstrument {
+    /// « basse » pour l'instant.
+    pub instrument: String,
+    /// Nom du préréglage (`brut`, `rond`…).
+    pub prereglage: String,
+    /// Volume de l'instrument, 0 à 1.
+    pub volume: f32,
+    /// Balance morceau / instrument, −1 (morceau seul) à 1 (instrument seul).
+    pub balance: f32,
+}
+
+impl Library {
+    /// Le retour gardé pour `instrument`, s'il l'a été.
+    pub fn retour_instrument(&self, instrument: &str) -> Result<Option<RetourInstrument>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT instrument, prereglage, volume, balance FROM retour_instrument
+                 WHERE instrument = ?1",
+                params![instrument],
+                |r| {
+                    Ok(RetourInstrument {
+                        instrument: r.get(0)?,
+                        prereglage: r.get(1)?,
+                        volume: r.get::<_, f64>(2)? as f32,
+                        balance: r.get::<_, f64>(3)? as f32,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Garde le retour d'un instrument (volumes ramenés dans leurs bornes).
+    pub fn garder_retour_instrument(&self, r: &RetourInstrument) -> Result<()> {
+        let borne = |v: f32, bas: f32| {
+            if v.is_finite() {
+                v.clamp(bas, 1.0)
+            } else {
+                0.0
+            }
+        };
+        self.conn.execute(
+            "INSERT INTO retour_instrument (instrument, prereglage, volume, balance, maj)
+             VALUES (?1, ?2, ?3, ?4, strftime('%s','now'))
+             ON CONFLICT (instrument) DO UPDATE SET
+                prereglage = excluded.prereglage, volume = excluded.volume,
+                balance = excluded.balance, maj = excluded.maj",
+            params![
+                r.instrument,
+                r.prereglage,
+                f64::from(borne(r.volume, 0.0)),
+                f64::from(borne(r.balance, -1.0))
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 fn ligne_latence(r: &rusqlite::Row) -> rusqlite::Result<LatenceCalibree> {
     Ok(LatenceCalibree {
         peripherique: r.get(0)?,

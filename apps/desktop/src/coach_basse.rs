@@ -138,6 +138,9 @@ impl Voie {
 pub(crate) struct Capture {
     voies: Vec<Voie>,
     erreur: Option<String>,
+    /// Le bout d'entrée du retour de l'instrument (E7) : le canal retenu y
+    /// part, brut, avant l'analyse (qui ne voit jamais le son traité).
+    pub(crate) retour: Option<rusty_music_player::retour::Entree>,
 }
 
 impl Capture {
@@ -195,6 +198,9 @@ struct EcouteDI {
     /// La latence calibrée de cette entrée, si elle l'a été.
     latence_ms: Option<f64>,
     capture: Arc<Mutex<Capture>>,
+    /// Le retour de l'instrument (E7), créé avec l'écoute, muet tant qu'il
+    /// n'est pas activé. `None` si la sortie n'a pas pu être préparée.
+    retour: Option<crate::retour_basse::Retour>,
     /// Le lâcher arrête le fil de capture (et ferme le flux). `None` pour
     /// une source simulée (tests).
     _arret: Option<mpsc::Sender<()>>,
@@ -212,6 +218,17 @@ pub(crate) struct EtatCoachBasse {
     demi_tons: i32,
     /// L'accord du disque mesuré sur le stem de basse (V36), par morceau.
     disques: std::collections::HashMap<i64, VueAccordDisque>,
+}
+
+impl EtatCoachBasse {
+    pub(crate) fn ecoute_ouverte(&self) -> bool {
+        self.ecoute.is_some()
+    }
+
+    /// L'entrée écoutée et son retour, s'il y en a un.
+    pub(crate) fn retour_mut(&mut self) -> Option<&mut crate::retour_basse::Retour> {
+        self.ecoute.as_mut().and_then(|e| e.retour.as_mut())
+    }
 }
 
 /// Ce que l'interface sait de l'écoute.
@@ -273,11 +290,18 @@ fn ouvrir(nom: &str, capture: Arc<Mutex<Capture>>) -> Result<(mpsc::Sender<()>, 
                     .find(|d| d.description().is_ok_and(|x| x.name() == nom))
                     .ok_or_else(|| format!("entrée audio introuvable : {nom}"))?;
                 let config = appareil.default_input_config().map_err(echec)?;
+                // Tampon court : le retour de l'instrument (E7) en dépend ;
+                // l'analyse compte les échantillons, la taille du bloc ne
+                // change rien pour elle.
+                let tampon = rusty_music_player::retour::tampon_pour(config.buffer_size());
                 let canaux = config.channels().max(1) as usize;
                 let ecoutes = canaux.min(CANAUX_MAX);
                 let sr = config.sample_rate();
                 let format = config.sample_format();
-                let config: cpal::StreamConfig = config.into();
+                let mut config: cpal::StreamConfig = config.into();
+                if let Some(t) = tampon {
+                    config.buffer_size = cpal::BufferSize::Fixed(t);
+                }
                 let pour_erreur = capture.clone();
                 let mut tranches = vec![Vec::new(); ecoutes];
                 let rappel = move |donnees: &cpal::Data, info: &cpal::InputCallbackInfo| {
@@ -293,6 +317,13 @@ fn ouvrir(nom: &str, capture: Arc<Mutex<Capture>>) -> Result<(mpsc::Sender<()>, 
                     }
                     deentrelacer(donnees, canaux, &mut tranches);
                     if let Ok(mut c) = capture.lock() {
+                        // Le retour d'abord : l'analyse prend son temps.
+                        if let Some(e) = c.retour.as_mut() {
+                            let k = e.canal().min(tranches.len().saturating_sub(1));
+                            if let Some(t) = tranches.get(k) {
+                                e.pousser(t);
+                            }
+                        }
                         c.recevoir(maintenant - retard, sr as f32, &tranches);
                     }
                 };
@@ -378,14 +409,17 @@ pub(crate) fn coach_basse_ecouter(
 ) -> Result<Option<VueEcouteBasse>, String> {
     let mut coach = verrou(&etat.coach_basse);
     coach.ecoute = None; // ferme l'ancienne avant d'ouvrir la même entrée
+    crate::retour_basse::morceau_plein(&etat);
     let Some(nom) = entree else {
         return Ok(None);
     };
-    let (latence, garde) = {
+    let (latence, garde, gardes_retour) = {
         let lib = verrou(&etat.lib);
         (
             lib.latence(&nom, CHEMIN).map_err(echec)?,
             lib.canal_entree(&nom).map_err(echec)?,
+            lib.retour_instrument(crate::retour_basse::INSTRUMENT)
+                .map_err(echec)?,
         )
     };
     let capture = Arc::new(Mutex::new(Capture::default()));
@@ -395,7 +429,18 @@ pub(crate) fn coach_basse_ecouter(
     let (canal, manuel) = garde
         .filter(|g| g.canal < canaux)
         .map_or((0, false), |g| (g.canal as usize, g.manuel));
-    let ecoute = EcouteDI {
+    // Le retour de l'instrument : prêt, muet jusqu'à ce qu'on l'active.
+    let retour = match crate::retour_basse::Retour::creer(sr, gardes_retour) {
+        Ok((entree, retour)) => {
+            verrou(&capture).retour = Some(entree);
+            Some(retour)
+        }
+        Err(e) => {
+            tracing::warn!(erreur = %e, "retour de l'instrument indisponible");
+            None
+        }
+    };
+    let mut ecoute = EcouteDI {
         entree: nom,
         canaux,
         canal,
@@ -403,14 +448,23 @@ pub(crate) fn coach_basse_ecouter(
         frequence_hz: sr,
         latence_ms: latence.map(|l| l.latence_ms),
         capture,
+        retour,
         _arret: Some(arret),
     };
+    ecoute.synchroniser_retour();
     let vue = ecoute.vue();
     coach.ecoute = Some(ecoute);
     Ok(Some(vue))
 }
 
 impl EcouteDI {
+    /// Le retour joue le canal jugé.
+    fn synchroniser_retour(&mut self) {
+        if let Some(r) = self.retour.as_mut() {
+            r.suivre_canal(&self.entree, self.canal);
+        }
+    }
+
     fn vue(&self) -> VueEcouteBasse {
         VueEcouteBasse {
             entree: self.entree.clone(),
@@ -462,6 +516,7 @@ fn choisir_canal(
         }
         None => ecoute.manuel = false,
     }
+    ecoute.synchroniser_retour();
     Ok(rusty_music_core::db::CanalEntree {
         peripherique: ecoute.entree.clone(),
         canal: ecoute.canal as u32,
@@ -631,30 +686,13 @@ pub(crate) fn coach_basse_accord_disque(
     if let Some(v) = verrou(&etat.coach_basse).disques.get(&id) {
         return Ok(v.clone());
     }
-    let chemin = verrou(&etat.lib)
-        .track(id)
-        .map_err(echec)?
-        .map(|t| t.path)
-        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
-    let dossier = dossier_stems(&etat, &PathBuf::from(&chemin));
-    let stem = stems_du_dossier(&dossier)
-        .into_iter()
-        .find(|(n, _)| n == "bass")
-        .map(|(_, p)| p);
-    let vue = match &stem {
+    let vue = match stem_de_basse(&etat, id)? {
         None => VueAccordDisque {
             ecart_cents: None,
             notes: 0,
             stem: false,
         },
-        Some(p) => {
-            let s = rusty_music_editor::decode::stereo(p).map_err(echec)?;
-            let mono: Vec<f32> = s
-                .gauche
-                .iter()
-                .zip(&s.droite)
-                .map(|(g, d)| 0.5 * (g + d))
-                .collect();
+        Some(mono) => {
             let mesure = ecart_disque(&mono, rusty_music_editor::decode::SR as f32);
             VueAccordDisque {
                 ecart_cents: mesure.map(|m| m.0),
@@ -665,6 +703,32 @@ pub(crate) fn coach_basse_accord_disque(
     };
     verrou(&etat.coach_basse).disques.insert(id, vue.clone());
     Ok(vue)
+}
+
+/// Le stem de basse du morceau `id`, en mono à
+/// `rusty_music_editor::decode::SR` ; `None` s'il n'a pas été démixé.
+pub(crate) fn stem_de_basse(etat: &Etat, id: i64) -> Result<Option<Vec<f32>>, String> {
+    let chemin = verrou(&etat.lib)
+        .track(id)
+        .map_err(echec)?
+        .map(|t| t.path)
+        .ok_or_else(|| format!("morceau inconnu : {id}"))?;
+    let dossier = dossier_stems(etat, &PathBuf::from(&chemin));
+    let Some(p) = stems_du_dossier(&dossier)
+        .into_iter()
+        .find(|(n, _)| n == "bass")
+        .map(|(_, p)| p)
+    else {
+        return Ok(None);
+    };
+    let s = rusty_music_editor::decode::stereo(&p).map_err(echec)?;
+    Ok(Some(
+        s.gauche
+            .iter()
+            .zip(&s.droite)
+            .map(|(g, d)| 0.5 * (g + d))
+            .collect(),
+    ))
 }
 
 /// Le jugement d'une fenêtre de temps.
@@ -710,6 +774,7 @@ fn suivre_canal(ecoute: &mut EcouteDI, vue: &mut VueJugementsBasse) -> Option<us
     match ailleurs {
         Some(c) if !ecoute.manuel => {
             ecoute.canal = c;
+            ecoute.synchroniser_retour();
             change = Some(c);
         }
         a => vue.ailleurs = a.map(|c| c as u32),
@@ -910,6 +975,7 @@ fn calibrer_sur(
         .expect("choisi parmi eux")
         .1;
     ecoute.canal = k;
+    ecoute.synchroniser_retour();
     ecoute.latence_ms = Some(c.latence_ms);
     coach.latence_s = c.latence_ms / 1000.0;
     Ok(VueCalibrationBasse {
@@ -1004,6 +1070,7 @@ mod tests {
                 frequence_hz: SR as u32,
                 latence_ms: None,
                 capture: Arc::new(Mutex::new(capture)),
+                retour: None,
                 _arret: None,
             }),
             latence_s: 0.0,

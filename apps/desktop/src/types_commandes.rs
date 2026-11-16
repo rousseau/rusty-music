@@ -80,6 +80,9 @@ fn exporter_les_types_des_commandes() {
             coach_basse::coach_basse_juger,
             coach_basse::coach_basse_calibrer,
             coach_basse::coach_basse_canal,
+            // E7 : entendre sa basse.
+            retour_basse::retour_basse_etat,
+            retour_basse::retour_basse_regler,
             // P2 : Pratiquer enchaîne une playlist.
             pratique_playlist,
             pratique_playlist_poser,

@@ -93,6 +93,12 @@ pub(super) fn migrations() -> Migrations<'static> {
         // N° 16 (12 nov. 2026) : le temps de démixage par variante sur cette
         // machine (V40 : `duree_demix`, `db/latence.rs`).
         M::up(include_str!("../../sql/migration-016-duree-demix.sql")),
+        // N° 17 (16 nov. 2026) : le son et les volumes du retour de
+        // l'instrument, par instrument (E7 : `retour_instrument`,
+        // `db/latence.rs`).
+        M::up(include_str!(
+            "../../sql/migration-017-retour-instrument.sql"
+        )),
     ])
 }
 

@@ -244,6 +244,14 @@ export const commands = {
 	 *  jusqu'à la prochaine calibration). Gardé pour cette interface.
 	 */
 	coach_basse_canal: (canal: number | null) => __TAURI_INVOKE<VueEcouteBasse_Serialize>("coach_basse_canal", { canal }),
+	/**  L'état du retour (préréglages, réglages gardés, latence). */
+	retour_basse_etat: () => __TAURI_INVOKE<VueRetourBasse_Serialize>("retour_basse_etat"),
+	/**
+	 *  Règle le retour : sortie ouverte ou non, préréglage, volume (0 à 1),
+	 *  balance (−1 à 1). `id` est le morceau ouvert, pour « comme le disque ».
+	 *  Gardé pour l'instrument.
+	 */
+	retour_basse_regler: (actif: boolean, prereglage: string, volume: number | null, balance: number | null, id: number | null) => __TAURI_INVOKE<VueRetourBasse_Serialize>("retour_basse_regler", { actif, prereglage, volume, balance, id }),
 	/**  La playlist que Pratiquer enchaîne, ou `None`. */
 	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
 	/**
@@ -1215,6 +1223,12 @@ export type PlaylistRow_Serialize = {
 	modifiee_le: number,
 };
 
+/**  Un préréglage, tel que l'interface le montre. */
+export type PrereglageBasse = {
+	nom: string,
+	libelle: string,
+};
+
 /**
  *  La présence d'un stem dans le mélange (V38) : sa part d'énergie, et s'il
  *  est presque vide — l'établi le masque alors dans la pile, sans l'effacer
@@ -1847,6 +1861,63 @@ export type VueJugements_Serialize = {
 	 *  morceau mise à jour ; seulement quand des mesures ont été relevées.
 	 */
 	boucle_proposee: BoucleProposee | null,
+};
+
+/**  Ce que l'interface sait du retour. */
+export type VueRetourBasse = VueRetourBasse_Serialize | VueRetourBasse_Deserialize;
+
+/**  Ce que l'interface sait du retour. */
+export type VueRetourBasse_Deserialize = {
+	/**  Une entrée est écoutée par le coach. */
+	ecoute: boolean,
+	/**  Le retour a pu être préparé (une sortie audio existe). */
+	disponible: boolean,
+	/**  Le son de l'instrument sort. */
+	actif: boolean,
+	prereglage: string,
+	/**  Volume de l'instrument, 0 à 1. */
+	volume: number | null,
+	/**  −1 morceau seul, 0 les deux, 1 instrument seul. */
+	balance: number | null,
+	/**  L'entrée semble être un micro : larsen possible. */
+	micro: boolean,
+	/**  Latence estimée entrée → sortie (ms), sortie ouverte. */
+	latence_ms?: number | null,
+	/**
+	 *  « Comme le disque » : `Some(false)` si le morceau n'a pas de stem de
+	 *  basse, `None` s'il n'a pas été demandé.
+	 */
+	stem_disque?: boolean | null,
+	/**  Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement). */
+	trous: number,
+	prereglages: PrereglageBasse[],
+};
+
+/**  Ce que l'interface sait du retour. */
+export type VueRetourBasse_Serialize = {
+	/**  Une entrée est écoutée par le coach. */
+	ecoute: boolean,
+	/**  Le retour a pu être préparé (une sortie audio existe). */
+	disponible: boolean,
+	/**  Le son de l'instrument sort. */
+	actif: boolean,
+	prereglage: string,
+	/**  Volume de l'instrument, 0 à 1. */
+	volume: number | null,
+	/**  −1 morceau seul, 0 les deux, 1 instrument seul. */
+	balance: number | null,
+	/**  L'entrée semble être un micro : larsen possible. */
+	micro: boolean,
+	/**  Latence estimée entrée → sortie (ms), sortie ouverte. */
+	latence_ms: number | null,
+	/**
+	 *  « Comme le disque » : `Some(false)` si le morceau n'a pas de stem de
+	 *  basse, `None` s'il n'a pas été demandé.
+	 */
+	stem_disque: boolean | null,
+	/**  Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement). */
+	trous: number,
+	prereglages: PrereglageBasse[],
 };
 
 /**  La table par mesure du coach pour un morceau. */
