@@ -163,8 +163,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     l'aveugle, l'écoute de François reste) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : super-résolution
     (G2, 10 nov. : AERO mesuré, il étend la bande sans toucher sous 16 kHz,
-    24 s par minute ; Apollo prêt, poids CC BY-SA 4.0, son exécution attend
-    l'accord de François, puis l'écoute), Chromaprint ; G4 (`opus-pure`) fait le 8 nov. Empreinte (G1)
+    24 s par minute ; 17 nov. : Apollo par chargement sûr, meilleur en LSD
+    contre le FLAC, mais il resynthétise le signal, perd sous 16 kHz à
+    192 kbit/s et demande le GPU, 21 s par minute sur Metal ; l'écoute AERO
+    contre Apollo de François décide du port Burn), Chromaprint ; G4 (`opus-pure`) fait le 8 nov. Empreinte (G1)
     close le 9 nov. : **CLAP gardé**. MuQ-MuLan gagne 17 % de pureté de
     famille mais perd 2,5 % sur le rapport intra / inter, donc ne passe pas
     le critère ; CLaMP 3 abandonné sans mesure ; texte → audio non annoté.
