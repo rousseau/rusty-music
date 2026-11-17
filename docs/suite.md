@@ -157,8 +157,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     titre ; reste la vérité terrain de la syncope), bancs de
     compatibilité (F2, sans Stem-JEPA faute de poids : 20 sources ×
     10 batteries démixées et greffées, CLAP et groove classés le 10 nov.,
-    même premier choix 10 fois sur 20 ; COCOLA prêt mais pas lancé, son
-    exécution attend l'accord de François, puis l'écoute à l'aveugle) et de fûts, génération ;
+    même premier choix 10 fois sur 20 ; COCOLA par une réécriture à
+    chargement sûr le 17 nov. : l'origine bat le hasard 20/20, premier choix
+    commun avec CLAP 4 fois, avec le groove 1 fois ; 47 greffes rendues à
+    l'aveugle, l'écoute de François reste) et de fûts, génération ;
   - G, bancs de modèles avant tout remplacement : super-résolution
     (G2, 10 nov. : AERO mesuré, il étend la bande sans toucher sous 16 kHz,
     24 s par minute ; Apollo prêt, poids CC BY-SA 4.0, son exécution attend

@@ -6544,3 +6544,39 @@ la latence de bout en bout (estimée ≈ 10 ms, à mesurer avec un câble) ;
 l'absence de craquement sur la vraie Scarlett (seulement la source simulée
 de la tranche 2) ; audit d'interface reporté (voir le compte rendu de
 l'étape).
+
+## Créer, F2 : COCOLA par chargement sûr, extraits à l'aveugle — 17 nov. 2026
+
+La décision du 10 nov. interdit d'exécuter le dépôt cloné et de dérouler le
+pickle d'origine. `experiments/compat-stems/cocola_sur.py` réécrit le réseau
+d'après le dépôt (MIT) : EfficientNet-B0 sans tête à deux canaux (harmonique,
+percussif ; paquet PyPI `efficientnet_pytorch`), projection 1280 → 512,
+LayerNorm, tanh, similarité bilinéaire ; entrée HPSS librosa en deux mels de
+64 bandes. Le checkpoint Lightning ne passe pas `torch.load(weights_only=True)`
+tel quel : ses hyperparamètres contiennent trois énumérations du dépôt.
+`pickletools` montre qu'elles sont les seules globales hors torch ; une classe
+inerte qui garde leur valeur les remplace, et c'est toujours le chargeur
+restreint de torch qui lit le fichier. Chargement strict : 363 tenseurs,
+aucune clé manquante ni en trop. Poids convertis en safetensors (19 Mo contre
+57 pour le checkpoint, qui portait l'état de l'optimiseur), sur le LaCie.
+
+Mesuré sur les 20 sources × 10 batteries greffées de F2 (huit fenêtres de 5 s,
+score `BOTH`) :
+
+| | |
+|---|---|
+| origine contre une batterie au hasard d'une autre source | 20/20 (aussi en `PERCUSSIVE`) |
+| origine première parmi les 11 | 8/20, rang médian 2 |
+| premier choix commun CLAP·groove / CLAP·COCOLA / groove·COCOLA | 10 / 4 / 1 |
+| tau de Kendall moyen, mêmes paires | +0,61 / +0,16 / +0,20 |
+
+Le témoin tient largement (critère : 80 %). COCOLA reconnaît la batterie qui
+va avec son propre morceau, mais classe les voisines presque sans rapport avec
+CLAP et le groove : l'écoute dira lequel a raison. 47 greffes (les premiers
+choix distincts) et 20 références sont rendues à l'aveugle sur le LaCie
+(`essais/F2/ecoute/`, clé à part).
+
+Non vérifié : aucune greffe écoutée ; *Chop Suey!* place sa propre batterie
+10e sur 11 (morceau à changements de métrique, sans explication vérifiée) ;
+pas de parité avec l'original, qu'on ne lance pas — seulement le chargement
+strict et le témoin.

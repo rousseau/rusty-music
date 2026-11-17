@@ -59,7 +59,9 @@ avant l'écoute.
    métrique diffère).
 6. `groove_stems` (exemple de `rusty-music-analysis`) sur `$F/stems` :
    `$F/groove.md`.
-7. `cocola.py` : score COCOLA (`BOTH` et `PERCUSSIVE`) de chaque batterie
+7. `cocola_sur.py` (chargement sûr, décision du 10 nov. ; `cocola.py`,
+   qui importait le dépôt cloné et déroulait le pickle, n'est plus lancé) :
+   score COCOLA (`BOTH` et `PERCUSSIVE`) de chaque batterie
    posée contre le contexte, huit fenêtres de 5 s entre 20 et 80 % du
    morceau ; la batterie d'origine est notée aussi, en témoin.
 8. `classer.py` : les trois classements, leurs accords (`classement.md`),
@@ -76,3 +78,26 @@ Kendall moyen +0,61. COCOLA n'a pas tourné : l'exécution du code cloné et
 du checkpoint (pickle) attend un accord explicite. Ensuite : `cocola.py`
 (environnement `/Volumes/cocola-env/venv`, image
 `ext/cocola-env.sparsebundle` à monter), `classer.py`, écoute.
+
+## État (17 nov. 2026)
+
+COCOLA tourne par `cocola_sur.py` : réseau réécrit d'après le dépôt (MIT,
+commit b3ac948 ; EfficientNet-B0 du paquet PyPI `efficientnet_pytorch`,
+Apache-2.0), poids lus par `torch.load(weights_only=True)`, les trois
+énumérations du dépôt rencontrées dans les hyperparamètres (relevées par
+`pickletools`) remplacées par une classe inerte. Chargement strict :
+363 tenseurs, aucune clé manquante ni en trop. Poids convertis :
+`ext/cocola-poids/COCOLA_HP_v1.safetensors` (19 Mo, jamais redistribués).
+Environnement : `librosa` 0.10.1 réclame `pkg_resources` (`setuptools<80`).
+
+Témoin : la batterie d'origine démixée bat une batterie tirée au hasard dans
+une autre source 20 fois sur 20 (score `BOTH` comme `PERCUSSIVE`). Parmi les
+10 candidates et l'origine, l'origine est première 8 fois sur 20, rang médian
+2 sur 11 (10/11 pour *Chop Suey!*).
+
+Classement à trois : premier choix commun CLAP·groove 10, CLAP·COCOLA 4,
+groove·COCOLA 1 ; tau de Kendall moyen CLAP·groove +0,61, CLAP·COCOLA +0,16,
+groove·COCOLA +0,20. COCOLA classe donc presque indépendamment des deux
+autres. Extraits à l'aveugle : 47 greffes (premiers choix distincts) et
+20 références dans `essais/F2/ecoute/`, clé dans `essais/F2/cle.json`.
+Reste : l'écoute de François (`notes.tsv`), puis `correler.py`.
