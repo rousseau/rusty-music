@@ -6580,3 +6580,28 @@ Non vérifié : aucune greffe écoutée ; *Chop Suey!* place sa propre batterie
 10e sur 11 (morceau à changements de métrique, sans explication vérifiée) ;
 pas de parité avec l'original, qu'on ne lance pas — seulement le chargement
 strict et le témoin.
+
+## Interface, A3 : deux audits complets de nuit — 17 nov. 2026
+
+Deux audits complets de suite (`scripts/audit-interface.sh`, copie de la
+base), écran caché (`ecran-visible.sh` : 1 avant chacun), partis du morceau
+et de la file connus de V33 : **288 cellules, 0 violation** à chaque passe
+(gabarit, tailles, écritures), contraste (32 couples × 2 thèmes) et
+typographie sans violation ; même chiffre qu'A1 et A2. Avertissement seul,
+déjà connu : G8, rail d'`explorer:anneau` plein à 1 400 × 900 (803 / 804 px,
+6 cellules). E7 (tranche 3) avait reporté son audit sur `pratiquer` : rien à
+y redire, rail à 511 / 804 px.
+
+Comparaison des deux rapports (critère de V33) : identiques ligne à ligne,
+sauf une mesure du rail à 1 400 × 900 : `valise` 604 puis 578 px (tient
+dans les deux cas). Cause probable : l'audit mesure Valise 900 ms après
+l'entrée, alors que la recherche de l'iPhone (`valise_iphone`, `wifi_etat`,
+`lireIphone` dans `ui/js/valise.js`) est asynchrone et dépend d'un état
+extérieur ; le panneau iPhone n'a pas la même hauteur selon que la réponse
+est arrivée ou non. Le journal cellule par cellule part avec le dossier
+temporaire : la comparaison porte sur le rapport imprimé.
+
+Non vérifié : relief et carte (18 cellules `carte+relief`, carte non
+dessinée, session verrouillée) ; le panneau du retour de basse d'E7 (il
+n'apparaît qu'avec une basse transcrite, absente de la copie) ; le bandeau
+du coach pendant l'écoute.
