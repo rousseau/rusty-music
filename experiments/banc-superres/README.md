@@ -33,11 +33,20 @@ spectrales et écoute à l'aveugle à la place.
 
 ## Résultats (10 nov. 2026)
 
-**Apollo n'a pas tourné** : son exécution (code cloné, poids
-`pytorch_model.bin` en pickle) a été refusée dans la session automatique.
-Tout est prêt : `HF_HUB_DISABLE_TELEMETRY=1 PYTHONPATH=$B/apollo-src
-$B/venv/bin/python -I banc.py apollo $B mps`, puis `mesurer` et `ecoute`
-(qui prend alors trois versions par extrait).
+**Apollo, 10 nov.** : son exécution (code cloné, poids en pickle) a été
+refusée. **17 nov.** : par chargement sûr (décision du 10 nov.),
+`apollo_sur.py` — réseau réécrit d'après le dépôt (CC BY-SA 4.0, commit
+e84bcac), poids `pytorch_model.bin` lus par `torch.load(weights_only=True)`,
+les globales de configuration (`omegaconf`, `typing.Any`, `TorchVersion`,
+`defaultdict`) remplacées par une classe inerte ; chargement strict,
+654 tenseurs, 16,54 M paramètres ; convertis en
+`$RUSTY_DEV/banc-superres/poids/apollo.safetensors`.
+
+    P=$B/venv/bin/python
+    $P -I apollo_sur.py charger $B/poids/pytorch_model.bin $B/poids/apollo.safetensors
+    $P -I apollo_sur.py traiter $B $B/poids/apollo.safetensors mps
+    $P -I banc.py mesurer $B
+    $P -I apollo_sur.py ecoute $B        # AERO contre Apollo, à l'aveugle
 
 Licence des poids : la fiche Hugging Face `JusperLee/Apollo` déclare
 **CC BY-SA 4.0** (entraînés sur MUSDB18) — la synthèse disait « non dite ».
@@ -49,6 +58,24 @@ AERO contre le MP3, 6 FLAC encodés (moyennes) :
 |---|---|---|---|---|---|---|
 | 128 | 21,0 → 10,3 | 38,0 → 15,8 | 7,17 → 7,10 | 24,91 → 24,87 | −57,7 → −47,7 | 15,7 → 17,9 kHz |
 | 192 | 18,0 → 11,1 | 33,8 → 20,3 | 3,69 → 3,69 | 29,86 → 29,76 | −50,0 → −45,6 | 16,6 → 18,6 kHz |
+
+Apollo (17 nov., mêmes extraits) :
+
+| débit | LSD AERO → Apollo | LSD > 16 kHz | LSD < 16 kHz (MP3 / Apollo) | SI-SDR Apollo | énergie > 16 kHz | coupure |
+|---|---|---|---|---|---|---|
+| 128 | 10,3 → 7,9 | 15,8 → 11,1 | 7,17 / 6,12 | 10,7 | −46,5 | 17,2 kHz |
+| 192 | 11,1 → 7,5 | 20,3 → 11,8 | 3,69 / 4,79 | 13,3 | −47,6 | 17,2 kHz |
+
+Apollo bat AERO sur la LSD pleine bande (11 extraits sur 12) et au-dessus
+de 16 kHz (10 sur 12) ; sous 16 kHz il **améliore** le 128 kbit/s (6 sur 6)
+mais **dégrade** le 192 (0 sur 6). Il ne garde pas la forme d'onde : SI-SDR
+contre la source 10 à 13 dB (AERO 25 à 30), contre son entrée 10 à 15 dB,
+alors que la LSD sous 4 kHz entre entrée et sortie reste vers 2 dB : il
+resynthétise le signal plutôt qu'il ne complète la bande. Faute de lancer
+l'original, une erreur de la réécriture n'est pas exclue, mais le
+chargement est strict et la LSD contre le FLAC baisse nettement. MP3 de la
+bibliothèque : coupure 19,6 / 20,7 / 20,3 kHz, énergie au-dessus de 16 kHz
+−42,1 / −38,6 / −35,6 dB (128 / 160 / 192), du même ordre qu'AERO.
 
 LSD au-dessus de 16 kHz meilleur sur 11 des 12 extraits ; SI-SDR à
 0,1 dB près sur 10 sur 12. AERO **étend la bande** sans toucher au reste :
@@ -65,7 +92,10 @@ Coût, Apple M4 Pro :
   0,62 s ; CoreML (Metal, MLProgram, CPU + GPU) 0,73 s — 627 nœuds sur
   656 pris mais en 13 partitions, aucun gain ; CoreML « ALL » (ANE) ne
   compile pas (`generic_general_slice`). Metal n'apporte rien à AERO.
-- Apollo : non mesuré.
+- Apollo (torch 2.11, réseau seul, morceaux de 10 s) : Metal (MPS)
+  10,4 s par extrait de 30 s (9,2 à 13,5), soit **21 s par minute de
+  son** ; CPU 862 à 878 s par extrait, soit **29 min par minute de son**
+  (3 extraits) : Apollo n'est utilisable que sur le GPU.
 
 ## Avis sur un port Burn d'Apollo
 
@@ -79,3 +109,9 @@ Mais il ne vaut la peine que si l'écoute le demande : Apollo est entraîné
 qu'AERO ne touche pas). Ordre proposé : faire tourner Apollo (accord
 nécessaire), mesurer la bande basse, écouter ; porter seulement s'il gagne
 nettement à 128.
+
+Après les mesures du 17 nov. : Apollo gagne aux chiffres (bande haute, et
+sous 16 kHz à 128 kbit/s), mais il réécrit tout le signal, perd sous 16 kHz
+à 192 kbit/s et ne tourne en temps utile que sur le GPU (21 s par minute de
+son sur Metal ; un port Burn passerait par `wgpu`). Le port ne se décide
+qu'après l'écoute AERO contre Apollo (`$B/ecoute-aero-apollo/`).

@@ -6605,3 +6605,32 @@ Non vérifié : relief et carte (18 cellules `carte+relief`, carte non
 dessinée, session verrouillée) ; le panneau du retour de basse d'E7 (il
 n'apparaît qu'avec une basse transcrite, absente de la copie) ; le bandeau
 du coach pendant l'écoute.
+
+## HD, G2 : Apollo par chargement sûr, contre AERO — 17 nov. 2026
+
+`experiments/banc-superres/apollo_sur.py` réécrit le réseau d'Apollo
+d'après le dépôt (CC BY-SA 4.0, commit e84bcac) et lit les poids
+(CC BY-SA 4.0) par `torch.load(weights_only=True)`. `pickletools` relève
+comme seules globales hors torch la configuration d'entraînement
+(`omegaconf`, `typing.Any`, `TorchVersion`, `defaultdict`, et `dict`,
+`list`, `long` du protocole 2) : une classe inerte les remplace, le
+chargeur restreint de torch lit le fichier. Chargement strict : 654
+tenseurs, 16,54 M paramètres ; safetensors sur RUSTY_DEV.
+
+Mesuré sur les 32 extraits du banc (6 FLAC encodés à 128 et 192 kbit/s,
+20 MP3 de la bibliothèque) : LSD contre la source, AERO → Apollo,
+10,3 → 7,9 dB à 128 et 11,1 → 7,5 à 192 ; au-dessus de 16 kHz 15,8 → 11,1
+et 20,3 → 11,8 (Apollo meilleur sur 10 extraits sur 12). Sous 16 kHz,
+Apollo améliore le 128 kbit/s (MP3 7,17 → 6,12 dB, 6 sur 6) mais dégrade
+le 192 (3,69 → 4,79, 0 sur 6), qu'AERO ne touche pas. SI-SDR contre la
+source : 10,7 et 13,3 dB (AERO 24,9 et 29,8) : Apollo resynthétise le
+signal (SI-SDR contre son entrée 10 à 15 dB, LSD sous 4 kHz vers 2 dB).
+Coût : Metal 21 s par minute de son (AERO, CPU par `ort` : 24 s), CPU
+29 min par minute de son. Contrôle de sens de la décision du 10 nov. :
+écart au-dessus de 16 kHz en baisse, tenu ; « proche de l'entrée sous la
+coupure » : tenu en spectre, pas en forme d'onde. Écoute à l'aveugle AERO
+contre Apollo prête (10 extraits × 2, clé à part).
+
+Non vérifié : parité avec l'original, qu'on ne lance pas (une erreur de
+réécriture n'est pas exclue, seulement rendue peu probable par le
+chargement strict et la baisse de la LSD) ; ViSQOL (absent) ; l'écoute.
