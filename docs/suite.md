@@ -144,6 +144,11 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     haut-parleur dans le bandeau, volume, balance, réglages gardés
     (migration n° 17), micro signalé ; restent l'installation et l'essai
     de François sur ses enceintes (porte) ;
+    V42 (18 nov.) : tonalité d'ensemble gardée par morceau (migration
+    n° 18), vitesse et tonalité remises au neutre sur un morceau sans
+    réglage gardé, playlist comprise ; entrée de la basse qui suit le
+    défaut de macOS (choix à la main gardé tant qu'il ne bouge pas),
+    choisissable dans l'accordeur et le retour ;
     restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;

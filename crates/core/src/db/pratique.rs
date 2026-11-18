@@ -41,6 +41,9 @@ pub struct MemoirePratique {
     pub variante: Option<String>,
     pub vitesse: Option<f64>,
     pub vitesse_atteinte: Option<f64>,
+    /// Tonalité d'ensemble en demi-tons (V42) ; `None` : 0.
+    #[serde(default)]
+    pub tonalite: Option<f64>,
     pub mesures_boucle: Option<u32>,
     pub accel_boucle: bool,
     pub position_s: Option<f64>,
@@ -60,6 +63,12 @@ impl MemoirePratique {
         };
         positif(self.vitesse, "vitesse")?;
         positif(self.vitesse_atteinte, "vitesse atteinte")?;
+        if self
+            .tonalite
+            .is_some_and(|t| !(t.is_finite() && (-24.0..=24.0).contains(&t)))
+        {
+            return Err("tonalité hors de deux octaves".into());
+        }
         if let Some(i) = &self.instrument {
             if i != "bass" && i != "drums" {
                 return Err(format!("instrument inconnu : {i}"));
@@ -106,7 +115,7 @@ impl Library {
             .conn
             .query_row(
                 "SELECT instrument, notation, decompte, variante, vitesse, vitesse_atteinte,
-                        mesures_boucle, accel_boucle, position_s
+                        mesures_boucle, accel_boucle, position_s, tonalite
                  FROM pratique WHERE path = ?1",
                 [path],
                 |r| {
@@ -120,6 +129,7 @@ impl Library {
                         mesures_boucle: r.get(6)?,
                         accel_boucle: r.get::<_, i64>(7)? != 0,
                         position_s: r.get(8)?,
+                        tonalite: r.get(9)?,
                         boucles: Vec::new(),
                     })
                 },
@@ -154,14 +164,15 @@ impl Library {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO pratique (path, instrument, notation, decompte, variante, vitesse,
-                                   vitesse_atteinte, mesures_boucle, accel_boucle, position_s, maj)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%s','now'))
+                                   vitesse_atteinte, mesures_boucle, accel_boucle, position_s, tonalite, maj)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, strftime('%s','now'))
              ON CONFLICT (path) DO UPDATE SET
                 instrument = excluded.instrument, notation = excluded.notation,
                 decompte = excluded.decompte, variante = excluded.variante,
                 vitesse = excluded.vitesse, vitesse_atteinte = excluded.vitesse_atteinte,
                 mesures_boucle = excluded.mesures_boucle, accel_boucle = excluded.accel_boucle,
-                position_s = excluded.position_s, maj = excluded.maj",
+                position_s = excluded.position_s, tonalite = excluded.tonalite,
+                maj = excluded.maj",
             params![
                 path,
                 m.instrument,
@@ -173,6 +184,7 @@ impl Library {
                 m.mesures_boucle,
                 m.accel_boucle,
                 m.position_s,
+                m.tonalite,
             ],
         )?;
         tx.execute("DELETE FROM pratique_boucle WHERE path = ?1", [path])?;

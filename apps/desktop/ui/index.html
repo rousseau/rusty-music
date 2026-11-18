@@ -604,6 +604,9 @@
               <label class="accordeur__ref"
                      title="Accorder sur l'enregistrement tel qu'il est joué : l'accord réel du disque, mesuré sur le stem de basse, plutôt que La 440">
                 <input type="checkbox" id="accordeur-morceau"> sur le morceau</label>
+              <label class="retour__champ" hidden>entrée
+                <select id="accordeur-entree" class="coach__peripherique" aria-label="Entrée audio de l'accordeur"
+                        title="L'entrée audio écoutée : celle par défaut de macOS, sauf choix fait ici tant que macOS n'en change pas. La même pour le coach et le retour."></select></label>
               <span id="accordeur-disque" class="accordeur__disque"></span>
               <button id="accordeur-fermer" class="bouton bouton--mince" aria-label="Fermer l'accordeur"
                       title="Fermer l'accordeur (l'entrée audio cesse d'être écoutée)">fermer</button>
@@ -616,6 +619,9 @@
               <input type="checkbox" id="retour-actif"> entendre ma basse avec le morceau</label>
             <p id="retour-avertissement" class="retour__avertissement" role="alert" hidden></p>
             <div class="retour__reglages">
+              <label class="retour__champ" hidden>entrée
+                <select id="retour-entree" class="coach__peripherique" aria-label="Entrée audio de la basse"
+                        title="L'entrée audio où joue la basse : celle par défaut de macOS, sauf choix fait ici tant que macOS n'en change pas. La même pour le coach et l'accordeur."></select></label>
               <label class="retour__champ">son
                 <select id="retour-prereglage" aria-label="Son de la basse"></select></label>
               <label class="retour__champ">volume

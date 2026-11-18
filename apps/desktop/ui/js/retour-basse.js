@@ -1,6 +1,7 @@
 import "./accordeur.js"; // l'ordre d'exécution : voir main.js
 import { $, invoke, journal } from "./socle.js";
 import { edition } from "./etabli.js";
+import { brancherChoixEntree, entreeAOuvrir, garderEntree, listerEntrees, montrerEntrees } from "./entree-basse.js";
 
 /* ------------------------------------------ pratiquer : entendre sa basse (E7) */
 
@@ -30,22 +31,16 @@ const retour = {
   envoi: null,
 };
 
-/// L'entrée à écouter si personne ne l'a ouverte : celle du coach.
+/// L'entrée à écouter si personne ne l'a ouverte : celle du coach (V42 :
+/// `entree-basse.js`).
 async function ouvrirEntree() {
-  let liste = [];
-  try {
-    liste = await invoke("coach_basse_entrees");
-  } catch (e) {
-    journal("retour", `entrées : ${e}`, "warn");
-  }
-  let garde = null;
-  try {
-    garde = localStorage.getItem("coach-entree");
-  } catch {}
-  const nom = liste.includes(garde) ? garde : (liste[0] ?? null);
+  const liste = await listerEntrees("retour");
+  const nom = entreeAOuvrir(liste);
+  montrerEntrees(liste, nom);
   if (!nom) return false;
   try {
     await invoke("coach_basse_ecouter", { entree: nom });
+    garderEntree(nom);
     return true;
   } catch (e) {
     journal("retour", `écoute : ${e}`, "warn");
@@ -172,6 +167,9 @@ function arreterSonde() {
 async function ouvrirPanneau() {
   retour.ouvert = true;
   $("retour-basse").hidden = false;
+  // L'entrée, choisissable ici aussi (V42) ; celle qu'on ouvrirait, ou que
+  // le coach ou l'accordeur écoutent déjà.
+  listerEntrees("retour").then((liste) => montrerEntrees(liste, entreeAOuvrir(liste)));
   try {
     afficher(await invoke("retour_basse_etat"));
   } catch (e) {
@@ -188,6 +186,7 @@ function fermerPanneau() {
 
 $("coach-retour").addEventListener("click", () => (retour.ouvert ? fermerPanneau() : ouvrirPanneau()));
 $("retour-fermer").addEventListener("click", fermerPanneau);
+brancherChoixEntree($("retour-entree"));
 $("retour-actif").addEventListener("change", async (e) => {
   if (e.target.checked) {
     if (retour.vue?.micro) retour.microAccepte = !$("retour-avertissement").hidden || retour.microAccepte;

@@ -5,6 +5,7 @@ import { transpositionDe } from "./etabli-reglages.js";
 import { annoncer, arreter as arreterCoach, coach } from "./coach.js";
 import { basseAffichee } from "./pratiquer.js";
 import { aJouer, nomCorde } from "./accordage.js";
+import { brancherChoixEntree, entreeAOuvrir, garderEntree, listerEntrees, montrerEntrees } from "./entree-basse.js";
 
 /* ------------------------------------------- pratiquer : l'accordeur de basse */
 
@@ -82,17 +83,10 @@ async function ouvrirAccordeur() {
   $("coach-accordeur").setAttribute("aria-pressed", "true");
   $("accordeur-morceau").checked = surMorceau();
   afficher(null, "Ouverture de l'entrée…");
-  let liste = [];
-  try {
-    liste = await invoke("coach_basse_entrees");
-  } catch (e) {
-    journal("accordeur", `entrées : ${e}`, "warn");
-  }
-  let garde = null;
-  try {
-    garde = localStorage.getItem("coach-entree");
-  } catch {}
-  const nom = liste.includes(garde) ? garde : (liste[0] ?? null);
+  // V42 : la même entrée que le coach (`entree-basse.js`), choisissable ici.
+  const liste = await listerEntrees("accordeur");
+  const nom = entreeAOuvrir(liste);
+  montrerEntrees(liste, nom);
   if (!accordeur.ouvert) return;
   if (!nom) {
     afficher(null, "Aucune entrée audio.");
@@ -104,6 +98,9 @@ async function ouvrirAccordeur() {
     afficher(null, `Entrée audio injoignable : ${e}`);
     return;
   }
+  // Gardée avec le défaut du moment, comme au coach : un défaut suivi
+  // efface le choix fait sous l'ancien.
+  garderEntree(nom);
   await poserReference();
   clearInterval(accordeur.minuteur);
   accordeur.minuteur = setInterval(sonder, 100);
@@ -228,6 +225,22 @@ $("accordeur-morceau").addEventListener("change", async (e) => {
 // La hauteur des stems change : la référence « sur le morceau » la suit.
 document.addEventListener("hauteur-appliquee", () => {
   if (accordeur.ouvert) poserReference();
+});
+
+
+// V42 : une autre entrée choisie (ici, dans le retour, ou au coach) pendant
+// que l'accordeur écoute : il la rouvre.
+brancherChoixEntree($("accordeur-entree"));
+document.addEventListener("entree-basse", async (e) => {
+  if (!accordeur.ouvert) return;
+  e.detail.prise = true;
+  accordeur.lisse = null;
+  accordeur.note = null;
+  try {
+    await invoke("coach_basse_ecouter", { entree: e.detail.nom });
+  } catch (err) {
+    afficher(null, `Entrée audio injoignable : ${err}`);
+  }
 });
 
 export { accordeur, fermerAccordeur, majBoutonAccordeur };

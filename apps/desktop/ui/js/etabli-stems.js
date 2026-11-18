@@ -14,7 +14,7 @@ import { rampe } from "./carte.js";
 import { indexAlphaUtile, indexAnneesUtile } from "./ecouter-familles.js";
 import { demander } from "./ecrans.js";
 import { zoneGreffe } from "./creer.js";
-import { quitterMemoirePratique, rendreMemoirePratique } from "./memoire-pratique.js";
+import { preparerMemoirePratique, quitterMemoirePratique, rendreMemoirePratique } from "./memoire-pratique.js";
 import { majEnchainement } from "./pratiquer-playlist.js";
 import {
   edition, majPulsation, majSections, majTempoSource, marquerSectionCourante, positionnerBande,
@@ -273,6 +273,8 @@ async function chargerStemsExistants(t) {
     majTempoSource();
     majPulsation();
     majSections();
+    // La tonalité gardée d'abord : les stems se chargent à cette hauteur.
+    await preparerMemoirePratique(t.path);
     if (enStems()) await prendreLaMain();
     // En Pratiquer, la séance laissée sur ce morceau revient.
     await rendreMemoirePratique();
@@ -476,6 +478,7 @@ async function lancerDemix() {
     // n'agissaient sur rien tant qu'on n'avait pas relancé la lecture.
     // La variante des stems est retenue avec la séance (E1).
     edition.varianteStems = variante;
+    await preparerMemoirePratique(cible);
     await prendreLaMain();
     await rendreMemoirePratique();
   }, 800); // assez serré pour que la barre avance visiblement segment par segment

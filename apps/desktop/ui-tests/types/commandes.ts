@@ -956,6 +956,8 @@ export type MemoirePratique_Deserialize = {
 	variante?: string | null,
 	vitesse?: number | null,
 	vitesse_atteinte?: number | null,
+	/**  Tonalité d'ensemble en demi-tons (V42) ; `None` : 0. */
+	tonalite?: number | null,
 	mesures_boucle?: number | null,
 	accel_boucle: boolean,
 	position_s?: number | null,
@@ -978,6 +980,8 @@ export type MemoirePratique_Serialize = {
 	variante: string | null,
 	vitesse: number | null,
 	vitesse_atteinte: number | null,
+	/**  Tonalité d'ensemble en demi-tons (V42) ; `None` : 0. */
+	tonalite: number | null,
 	mesures_boucle: number | null,
 	accel_boucle: boolean,
 	position_s: number | null,

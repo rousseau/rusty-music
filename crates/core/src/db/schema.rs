@@ -99,6 +99,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../sql/migration-017-retour-instrument.sql"
         )),
+        // N° 18 (18 nov. 2026) : la tonalité d'ensemble de Pratiquer, par
+        // morceau (V42 : `pratique.tonalite`, `db/pratique.rs`).
+        M::up(include_str!("../../sql/migration-018-tonalite.sql")),
     ])
 }
 

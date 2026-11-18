@@ -2787,6 +2787,7 @@ fn la_memoire_de_pratiquer_se_garde_et_se_rend() {
         variante: Some("bsrofo_sw".into()),
         vitesse: Some(0.8),
         vitesse_atteinte: Some(0.84),
+        tonalite: Some(-1.0),
         mesures_boucle: Some(4),
         accel_boucle: true,
         position_s: Some(12.5),
@@ -2819,6 +2820,30 @@ fn la_memoire_de_pratiquer_se_garde_et_se_rend() {
         vec![nommee]
     );
     assert_eq!(lib.memoire_pratique("/Musique/b.flac").unwrap(), None);
+
+    // V42 : la tonalité, bornée à deux octaves ; l'accordage gardé à part ne
+    // l'efface pas, et une ligne créée par lui la rend à `None` (0).
+    assert!(MemoirePratique {
+        tonalite: Some(30.0),
+        ..Default::default()
+    }
+    .verifier()
+    .is_err());
+    lib.garder_accordage_pratique(chemin, Some("demi-ton"))
+        .unwrap();
+    assert_eq!(
+        lib.memoire_pratique(chemin).unwrap().unwrap().tonalite,
+        Some(-1.0)
+    );
+    lib.garder_accordage_pratique("/Musique/c.flac", Some("ton"))
+        .unwrap();
+    assert_eq!(
+        lib.memoire_pratique("/Musique/c.flac")
+            .unwrap()
+            .unwrap()
+            .tonalite,
+        None
+    );
 
     // Les places d'E2 et d'E4, vides.
     for table in ["pratique_correction", "pratique_mesure"] {

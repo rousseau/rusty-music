@@ -2,7 +2,7 @@ import "./pratiquer.js"; // l'ordre d'exécution : voir main.js
 import { invoke, remonter } from "./socle.js";
 import { lecture } from "./etat-lecture.js";
 import { edition, majBoucleUI, reposerBoucle } from "./etabli.js";
-import { appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
+import { appliquerReglages, appliquerVitesses, dessinerReglages } from "./etabli-reglages.js";
 import { choisirVariante, deplacerLecture } from "./etabli-stems.js";
 import { majUsage } from "./pratiquer.js";
 
@@ -11,7 +11,7 @@ import { majUsage } from "./pratiquer.js";
 // Ce que Pratiquer garde d'un morceau à l'autre, par morceau (E1 ;
 // `docs/ui-spec-editeur.md`, question tranchée le 9 nov. 2026) : instrument,
 // notation, décompte, variante de démixage, vitesse et vitesse atteinte,
-// boucle posée et boucles nommées, position. Une table SQLite par migration
+// tonalité d'ensemble (V42), boucle posée et boucles nommées, position. Une table SQLite par migration
 // (`crates/core/src/db/pratique.rs`), pas un format de projet. Créer n'y
 // écrit rien : ses stems sur le disque lui suffisent (décision 3).
 //
@@ -25,6 +25,9 @@ const memoire = {
   // Le dernier état écrit, sans la position, et la position écrite.
   cle: null,
   position: null,
+  // La mémoire lue avant le chargement des stems (`preparerMemoirePratique`),
+  // que `rendreMemoirePratique` reprend sans relire la base : { path, m }.
+  lue: null,
 };
 
 const RELEVE_MS = 2000;
@@ -48,6 +51,7 @@ function instantane() {
     variante: edition.varianteStems,
     vitesse: arrondi(edition.vitesse),
     vitesse_atteinte: edition.vitesseAtteinte,
+    tonalite: edition.tonalite || null,
     mesures_boucle: edition.mesuresBoucle,
     accel_boucle: edition.accelBoucle,
     position_s: lecture.stems.charges ? arrondi(lecture.stems.positionMs / 1000) : memoire.position,
@@ -82,14 +86,40 @@ async function garderMemoirePratique({ quitter = false } = {}) {
 
 /// Garde la mémoire du morceau qu'on quitte, puis l'oublie : le suivant
 /// rendra la sienne. Appelée par `poserSourceEdition` avant le changement.
+///
+/// Vitesse et tonalité d'ensemble reviennent au neutre (V42) : un morceau
+/// joué un demi-ton plus bas ou à 70 % ne laisse pas ce réglage au suivant,
+/// ouvert à la main ou enchaîné par une playlist. Celui qui en a gardé un le
+/// retrouve (`preparerMemoirePratique`, puis `appliquer`).
 async function quitterMemoirePratique() {
   await garderMemoirePratique({ quitter: true });
+  edition.tonalite = 0;
+  edition.vitesse = 1;
+  memoire.lue = null;
   memoire.path = null;
   edition.bouclesNommees = [];
   memoire.cle = null;
   memoire.position = null;
   edition.vitesseAtteinte = null;
   edition.varianteStems = null;
+}
+
+/// Lit la mémoire du morceau avant que ses stems se chargent, pour qu'ils se
+/// chargent à la tonalité gardée : la poser après coup les ferait transposer
+/// et recharger une seconde fois (V42). En Pratiquer seulement, comme le
+/// reste de la mémoire.
+async function preparerMemoirePratique(path) {
+  if (edition.usage !== "pratiquer" || memoire.path === path) return;
+  let m = null;
+  try {
+    m = await invoke("pratique_memoire", { path });
+  } catch (e) {
+    remonter(e, "mémoire de Pratiquer");
+    return;
+  }
+  if (edition.source?.path !== path) return;
+  memoire.lue = { path, m };
+  edition.tonalite = m?.tonalite ?? 0;
 }
 
 /// Rend la séance du morceau ouvert, une fois, quand ses stems sont chargés
@@ -99,11 +129,15 @@ async function rendreMemoirePratique() {
   const t = edition.source;
   if (!t || edition.usage !== "pratiquer" || !lecture.stems.charges || memoire.path === t.path) return;
   let m = null;
-  try {
-    m = await invoke("pratique_memoire", { path: t.path });
-  } catch (e) {
-    remonter(e, "mémoire de Pratiquer");
+  if (memoire.lue?.path === t.path) m = memoire.lue.m;
+  else {
+    try {
+      m = await invoke("pratique_memoire", { path: t.path });
+    } catch (e) {
+      remonter(e, "mémoire de Pratiquer");
+    }
   }
+  memoire.lue = null;
   // Un autre morceau a été ouvert pendant la lecture de la base.
   if (edition.source?.path !== t.path || memoire.path === t.path) return;
   memoire.path = t.path;
@@ -127,7 +161,11 @@ async function appliquer(m) {
     // à la main pour le prochain démixage.
     if (!edition.varianteChoisie) choisirVariante(m.variante);
   }
-  if (m.vitesse) edition.vitesse = m.vitesse;
+  // Rien de gardé : le neutre, pas le réglage du morceau précédent (V42).
+  edition.vitesse = m.vitesse ?? 1;
+  const tonalite = m.tonalite ?? 0;
+  const transposer = tonalite !== edition.tonalite;
+  edition.tonalite = tonalite;
   edition.vitesseAtteinte = m.vitesse_atteinte ?? null;
   if (m.mesures_boucle) edition.mesuresBoucle = m.mesures_boucle;
   edition.accelBoucle = !!m.accel_boucle;
@@ -135,7 +173,11 @@ async function appliquer(m) {
   edition.boucle = b
     ? { debut: b.debut_s, fin: b.fin_s, mesures: b.mesures ?? null, atteinte: b.vitesse_atteinte ?? null }
     : null;
-  await appliquerVitesses();
+  // Les stems se chargent d'ordinaire déjà à la bonne hauteur
+  // (`preparerMemoirePratique`) ; sinon (passage de Créer à Pratiquer), on
+  // les transpose.
+  if (transposer) await appliquerReglages();
+  else await appliquerVitesses();
   await reposerBoucle();
   // La position, seulement si rien ne joue : un morceau qu'on écoutait en
   // Écouter repart d'où il en était (`prendreLaMain`).
@@ -155,4 +197,4 @@ window.addEventListener("pagehide", () => {
   garderMemoirePratique({ quitter: true }).catch(() => {});
 });
 
-export { garderMemoirePratique, quitterMemoirePratique, rendreMemoirePratique };
+export { garderMemoirePratique, preparerMemoirePratique, quitterMemoirePratique, rendreMemoirePratique };

@@ -6,6 +6,7 @@ import { deplacerLecture } from "./etabli-stems.js";
 import { lecture } from "./etat-lecture.js";
 import { accordeur, fermerAccordeur, majBoutonAccordeur } from "./accordeur.js";
 import { aJouer, dire as direAccordage, nommer } from "./accordage.js";
+import { choisirEntree, entreeAOuvrir, garderEntree, montrerEntrees } from "./entree-basse.js";
 import {
   basseAffichee, batterieAffichee, calculerPartition, montrerPartition, partition, partitionAttendue,
 } from "./pratiquer.js";
@@ -491,11 +492,20 @@ async function demarrer() {
   const choix = $("coach-peripherique");
   choix.replaceChildren(...liste.map((n) => new Option(n, n)));
   choix.hidden = liste.length < 2;
-  let garde = null;
-  try {
-    garde = localStorage.getItem(cleGardee());
-  } catch {}
-  await ecouter(liste.includes(garde) ? garde : (liste[0] ?? null));
+  let nom;
+  if (coach.instrument === "bass") {
+    // V42 : l'entrée par défaut de macOS, sauf choix fait à la main tant
+    // qu'elle n'a pas changé (`entree-basse.js`).
+    nom = entreeAOuvrir(liste);
+    montrerEntrees(liste, nom);
+  } else {
+    let garde = null;
+    try {
+      garde = localStorage.getItem("coach-peripherique");
+    } catch {}
+    nom = liste.includes(garde) ? garde : (liste[0] ?? null);
+  }
+  await ecouter(nom);
   // V36 : l'accordeur a cédé l'entrée ; le dire, avant ce que l'armement a
   // annoncé.
   if (accordeurFerme) {
@@ -503,9 +513,6 @@ async function demarrer() {
     annoncer(`L'accordeur se ferme : le coach prend l'entrée.${suite}`);
   }
 }
-
-/// Le dernier périphérique choisi, gardé par instrument.
-const cleGardee = () => (coach.instrument === "bass" ? "coach-entree" : "coach-peripherique");
 
 async function ecouter(nom) {
   coach.peripherique = null;
@@ -519,9 +526,14 @@ async function ecouter(nom) {
       coach.latenceMs = vue?.latence_ms ?? null;
       if (coach.instrument === "bass" && vue) poserCanaux(vue);
       $("coach-peripherique").value = nom;
-      try {
-        localStorage.setItem(cleGardee(), nom);
-      } catch {}
+      // Le dernier périphérique ouvert, gardé par instrument ; pour la basse,
+      // avec le défaut de macOS du moment (V42).
+      if (coach.instrument === "bass") garderEntree(nom);
+      else {
+        try {
+          localStorage.setItem("coach-peripherique", nom);
+        } catch {}
+      }
     } catch (e) {
       annoncer(`${coach.instrument === "bass" ? "Entrée audio" : "Batterie"} injoignable : ${e}`);
     }
@@ -925,7 +937,16 @@ function apresDecompte(plan, attenteMs) {
 }
 
 $("coach-basculer").addEventListener("click", () => (coach.actif ? arreter() : demarrer()));
-$("coach-peripherique").addEventListener("change", (e) => ecouter(e.target.value));
+$("coach-peripherique").addEventListener("change", (e) =>
+  coach.instrument === "bass" ? choisirEntree(e.target.value) : ecouter(e.target.value),
+);
+// V42 : l'entrée de la basse choisie ici, dans l'accordeur ou dans le retour.
+document.addEventListener("entree-basse", (e) => {
+  if (!coach.actif || coach.instrument !== "bass") return;
+  e.detail.prise = true;
+  $("coach-peripherique").value = e.detail.nom;
+  if (coach.peripherique !== e.detail.nom) ecouter(e.detail.nom).catch((err) => journal("coach", `${err}`, "warn"));
+});
 $("coach-canal").addEventListener("change", (e) => choisirCanal(e.target.value));
 $("coach-transcrire").addEventListener("click", async () => {
   const instrument = coach.attente?.instrument;

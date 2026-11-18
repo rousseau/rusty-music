@@ -6634,3 +6634,64 @@ contre Apollo prête (10 extraits × 2, clé à part).
 Non vérifié : parité avec l'original, qu'on ne lance pas (une erreur de
 réécriture n'est pas exclue, seulement rendue peu probable par le
 chargement strict et la baisse de la LSD) ; ViSQOL (absent) ; l'écoute.
+
+## V42 : la hauteur suit le morceau, l'entrée suit macOS — 18 nov. 2026
+
+Deux retours de François en jouant avec sa Scarlett : le −½ ton mis pour
+un morceau enregistré sous le diapason restait actif sur le morceau suivant
+de la playlist, et le coach ouvrait le micro du Mac au lieu de l'entrée
+choisie dans macOS.
+
+**La hauteur.** La tonalité d'ensemble (`edition.tonalite`) était un état
+global. Elle entre dans la mémoire de Pratiquer : colonne
+`pratique.tonalite` (migration n° 18, `REAL`, NULL = 0, bornée à ±24
+demi-tons par `MemoirePratique::verifier`). Quitter un morceau remet
+tonalité **et vitesse** d'ensemble au neutre ; le morceau suivant rend les
+siennes s'il en a gardé. La vitesse suit la même règle : elle était déjà
+dans la mémoire (E1), mais un morceau sans mémoire, ou dont la ligne n'avait
+que l'accordage (V37), héritait de celle du précédent — même défaut, même
+correction. Pour ne pas charger les stems deux fois (une à la hauteur
+d'origine, puis transposés), la mémoire est lue avant le chargement
+(`preparerMemoirePratique`) ; elle n'est relue qu'en passant de Créer à
+Pratiquer sur le même morceau, où la transposition se fait après coup. Tous
+les changements de morceau passent par `poserSourceEdition` (liste, carte,
+playlist, file de lecture, fin de morceau en Écouter suivie d'un passage à
+Pratiquer) : un seul point de remise au neutre. Les tonalités **par stem**
+(`etabli-stems.js`) n'ont pas à suivre : chaque chargement de stems les
+remet à `null` (`stemNeuf`), elles ne passent donc jamais d'un morceau à
+l'autre ; elles ne sont pas gardées non plus. Créer ne garde rien
+(décision 3) mais remet aussi au neutre en changeant de morceau. Le coach
+(`coach.demiTons` au réarmement) et l'accordeur (`transpositionDe("bass")`
+lu à chaque mesure) lisent la hauteur courante : rien à changer chez eux.
+
+**L'entrée.** Nouveau module `ui/js/entree-basse.js`, commun au coach, à
+l'accordeur et au retour : ouvrir l'entrée par défaut de macOS (en tête de
+`coach_basse_entrees`), sauf choix fait à la main tant que ce défaut n'a pas
+bougé. Chaque ouverture garde l'entrée avec le défaut du moment
+(`coach-entree`, `coach-entree-defaut` dans `localStorage`) : un défaut
+suivi efface le choix fait sous l'ancien. Un nom gardé avant V42, sans
+défaut retenu, cède au défaut — le cas de François. Un sélecteur d'entrée
+dans l'accordeur et dans « Entendre ma basse » (montré dès une entrée,
+inactif sous deux) ; un choix fait dans l'un des trois rouvre l'entrée chez
+celui qui écoute (événement `entree-basse`).
+
+Mesuré : `la_memoire_de_pratiquer_se_garde_et_se_rend` étendu (tonalité
+gardée et rendue, hors bornes refusée, ligne créée par l'accordage →
+`None`) ; trois tests d'interface : V42 tonalité (−½ ton gardé, ±0 et
+100 % sur l'autre morceau, stems chargés à `[0,0,0,0]` puis directement à
+`[-1,-1,-1,-1]` au retour), P2 (la tonalité suit suivant et précédent de
+la playlist), V42 entrée (règle sur cinq cas, accordeur sur la Scarlett
+malgré le micro gardé, choix à la main gardé avec le défaut, retour qui le
+montre, défaut changé puis revenu). `verifier.sh` vert. Au passage,
+`cargo deny` refusait quatre avis zip publiés en octobre (RUSTSEC-2026-0545
+à 0548, zip 8.6 tiré par burn-store 0.21) : ignorés avec leur raison dans
+`deny.toml`, comme les quatre précédents (burn-store n'ouvre que des
+`ZipArchive`, sans `extract`, sans déchiffrer, sans `legacy-zip`).
+
+Non vérifié : avec la vraie Scarlett et un vrai changement de défaut dans
+macOS (cpal relit le défaut à chaque liste, non éprouvé ici) ; l'aspect des
+deux sélecteurs, audit reporté (écran visible) — écrans touchés : l'établi
+de Pratiquer, accordeur et retour ouverts ; un choix d'entrée fait dans le
+retour pendant que le coach écoute (le coach rouvre, chemin non couvert par
+un test).
+

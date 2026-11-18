@@ -279,6 +279,47 @@ test("E1 : rouvrir un morceau en Pratiquer rend la séance comme on l'a laissée
   });
 });
 
+test("V42 : la tonalité d'ensemble se garde par morceau, et revient à ±0 sur un morceau sans réglage", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 48 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 12 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+  });
+  const premier = PISTES[0].path;
+  const champ = page.locator("#val-tonalite");
+  const hauteurs = async () => (await appels(page, "start_etirer")).at(-1)?.demiTons ?? null;
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  await expect(champ).toHaveValue("±0");
+  // Un demi-ton plus bas (un morceau enregistré sous le diapason), et plus lent.
+  await page.click('.dock__tete [data-r="tonalite"][data-d="-1"]');
+  await expect(champ).toHaveValue("−½ ton");
+  await page.click("#vitesse-unite"); // en pour cent
+  await page.click('.dock__tete [data-r="vitesse"][data-d="-1"]');
+  const gardee = async (path) =>
+    (await appels(page, "pratique_garder")).filter((a) => a.path === path).at(-1)?.memoire ?? null;
+  await expect.poll(() => gardee(premier).then((m) => m?.tonalite), { timeout: 6000 }).toBe(-1);
+  expect((await gardee(premier)).vitesse).toBeLessThan(1);
+
+  // Un autre morceau, sans mémoire : ni la hauteur ni la vitesse ne le suivent ;
+  // ses stems se chargent à la hauteur d'origine.
+  await pratiquerAlbum(page, 1);
+  await expect(page.locator("#demix-source")).not.toContainText(PISTES[0].title);
+  await expect(champ).toHaveValue("±0");
+  await expect(page.locator("#val-vitesse")).toHaveValue("100");
+  await expect.poll(hauteurs).toEqual([0, 0, 0, 0]);
+
+  // Retour au premier : −½ ton, et ses stems chargés transposés d'emblée.
+  await pratiquerAlbum(page, 0);
+  await expect(page.locator("#demix-source")).toContainText(PISTES[0].title);
+  await expect(champ).toHaveValue("−½ ton");
+  await expect(page.locator("#val-vitesse")).not.toHaveValue("100");
+  await expect.poll(hauteurs).toEqual([-1, -1, -1, -1]);
+});
+
 test("V17 : une boucle se nomme, se rappelle par son nom et revient avec sa vitesse atteinte", async ({ page }) => {
   await page.evaluate(() => {
     window.__FIXTURES__.pulsation = {
@@ -2178,6 +2219,79 @@ test("E7 : entendre sa basse — haut-parleur du bandeau, son, volume, balance, 
   await expect(hautParleur).toHaveAttribute("aria-pressed", "false");
 });
 
+test("V42 : l'entrée de la basse suit le défaut de macOS ; elle se choisit dans l'accordeur et le retour", async ({ page }) => {
+  // La règle, seule : le choix gardé tient tant que le défaut n'a pas bougé.
+  const regle = await page.evaluate(async () => {
+    const { entreeAOuvrir } = await import("./js/entree-basse.js");
+    const l = ["Scarlett 2i2 USB", "Micro du MacBook"];
+    return [
+      entreeAOuvrir(l, "Micro du MacBook", "Scarlett 2i2 USB"), // choisi à la main, défaut inchangé
+      entreeAOuvrir(l, "Micro du MacBook", "Micro du MacBook"), // le défaut a changé : on le suit
+      entreeAOuvrir(l, "Micro du MacBook", null), // gardé avant V42 : le défaut
+      entreeAOuvrir(l, "Interface débranchée", "Scarlett 2i2 USB"),
+      entreeAOuvrir([], "Micro du MacBook", "Scarlett 2i2 USB"),
+    ];
+  });
+  expect(regle).toEqual(["Micro du MacBook", "Scarlett 2i2 USB", "Scarlett 2i2 USB", "Scarlett 2i2 USB", null]);
+
+  await basseTranscrite(page);
+  await page.evaluate(() => {
+    // Le cas de François : le micro du Mac gardé d'avant, la Scarlett par
+    // défaut dans macOS (en tête de la liste du moteur).
+    localStorage.setItem("coach-entree", "Micro du MacBook");
+    localStorage.removeItem("coach-entree-defaut");
+    window.__FIXTURES__.coach_basse_entrees = ["Scarlett 2i2 USB", "Micro du MacBook"];
+    window.__RETOUR__ = { ...window.__FIXTURES__.retour_basse_etat, ecoute: false, disponible: true };
+    window.__FIXTURES__.coach_basse_ecouter = (a) => {
+      window.__RETOUR__.ecoute = !!a.entree;
+      return a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 2, canal: 0, manuel: false, latence_ms: 24 } : null;
+    };
+    window.__FIXTURES__.retour_basse_etat = () => ({ ...window.__RETOUR__ });
+    window.__FIXTURES__.coach_basse_accorder = () => ({ accord: null, canal: 0, erreur: null });
+    window.__FIXTURES__.coach_basse_accord_disque = { ecart_cents: 0, notes: 0, stem: false };
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const ouvertes = async () => (await appels(page, "coach_basse_ecouter")).map((a) => a.entree);
+
+  // L'accordeur ouvre la Scarlett, et montre de quoi choisir.
+  await page.click("#coach-accordeur");
+  const choixAccordeur = page.locator("#accordeur-entree");
+  await expect(choixAccordeur).toBeVisible();
+  await expect(choixAccordeur.locator("option")).toHaveCount(2);
+  await expect(choixAccordeur).toHaveValue("Scarlett 2i2 USB");
+  expect((await ouvertes()).at(-1)).toBe("Scarlett 2i2 USB");
+
+  // Le micro, choisi à la main : rouvert, gardé avec le défaut du moment.
+  await choixAccordeur.selectOption("Micro du MacBook");
+  await expect.poll(async () => (await ouvertes()).at(-1)).toBe("Micro du MacBook");
+  expect(await page.evaluate(() => [localStorage.getItem("coach-entree"), localStorage.getItem("coach-entree-defaut")]))
+    .toEqual(["Micro du MacBook", "Scarlett 2i2 USB"]);
+  await page.click("#accordeur-fermer");
+
+  // Le retour montre le même choix, et l'ouvre tant que macOS n'a pas bougé.
+  await page.click("#coach-retour");
+  const choixRetour = page.locator("#retour-entree");
+  await expect(choixRetour).toBeVisible();
+  await expect(choixRetour).toHaveValue("Micro du MacBook");
+  await page.click("#retour-fermer");
+
+  // macOS passe au micro, puis revient à la Scarlett : son nouveau défaut l'emporte.
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_basse_entrees = ["Micro du MacBook", "Scarlett 2i2 USB"];
+  });
+  await page.click("#coach-accordeur");
+  await expect(choixAccordeur).toHaveValue("Micro du MacBook");
+  await page.click("#accordeur-fermer");
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_basse_entrees = ["Scarlett 2i2 USB", "Micro du MacBook"];
+  });
+  await page.click("#coach-accordeur");
+  await expect(choixAccordeur).toHaveValue("Scarlett 2i2 USB");
+  expect((await ouvertes()).at(-1)).toBe("Scarlett 2i2 USB");
+});
+
 test("V36 : l'accordeur de basse — diapason du bandeau, note, cents, corde, référence du disque", async ({ page }) => {
   await basseTranscrite(page);
   await page.evaluate(() => {
@@ -2474,6 +2588,9 @@ test("P2 : choisir une playlist en Pratiquer, suivant et précédent rendent la 
   // Une séance sur le premier : basse, sans décompte.
   await page.click('#instruments [data-instrument="bass"]');
   await page.click('#decomptes [data-decompte="0"]');
+  // … et un demi-ton plus bas (V42) : le suivant ne le reste pas.
+  await page.click('[data-r="tonalite"][data-d="-1"]');
+  await expect(page.locator("#val-tonalite")).toHaveValue("−½ ton");
   const gardee = async (path) =>
     (await appels(page, "pratique_garder")).filter((a) => a.path === path).at(-1)?.memoire ?? null;
   await expect.poll(() => gardee(A_TRAVAILLER[0].path).then((m) => m?.decompte), { timeout: 6000 }).toBe(0);
@@ -2485,6 +2602,7 @@ test("P2 : choisir une playlist en Pratiquer, suivant et précédent rendent la 
   await expect(page.locator('#instruments [data-instrument="drums"]')).toHaveClass(/segment--actif/);
   await expect(page.locator('#decomptes [data-decompte="2"]')).toHaveClass(/segment--actif/);
   expect((await appels(page, "pratique_playlist_poser")).at(-1)).toEqual({ id: 1, path: A_TRAVAILLER[1].path });
+  await expect(page.locator("#val-tonalite")).toHaveValue("±0");
 
   // ⇧← : retour au premier, sa séance rendue ; la file de lecture n'a pas bougé.
   const sauts = (await appels(page, "next")).length + (await appels(page, "previous")).length;
@@ -2494,6 +2612,7 @@ test("P2 : choisir une playlist en Pratiquer, suivant et précédent rendent la 
   await expect(page.locator('#instruments [data-instrument="bass"]')).toHaveClass(/segment--actif/);
   await expect(page.locator('#decomptes [data-decompte="0"]')).toHaveClass(/segment--actif/);
   expect((await appels(page, "next")).length + (await appels(page, "previous")).length).toBe(sauts);
+  await expect(page.locator("#val-tonalite")).toHaveValue("−½ ton");
 
   // Le dernier n'a pas de stems : il se sépare dès qu'on y arrive, avec la
   // variante de sa séance.

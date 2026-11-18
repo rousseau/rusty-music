@@ -73,6 +73,17 @@ ignore = [
     { id = "RUSTSEC-2026-0368", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0369", reason = "zip::extract non appelé (burn-store lit seulement)" },
     { id = "RUSTSEC-2026-0429", reason = "zip::extract non appelé (burn-store lit seulement)" },
+    # Quatre de plus, publiés les 17 et 22 oct., vus le 18 nov. 2026 (burn-store
+    # 0.21.0 revérifié : `ZipArchive::new`, `by_index`, `by_name`, rien
+    # d'autre) : 0545 vise les entrées AES déchiffrées (`by_name_decrypt`,
+    # jamais appelé ; sans mot de passe, une entrée chiffrée est refusée) ;
+    # 0546 `ZipArchive::extract` ; 0547 les décodeurs Shrink/Reduce/Implode,
+    # derrière la fonction `legacy-zip`, que rien n'active ; 0548
+    # `ZipStreamReader`, que rien n'appelle.
+    { id = "RUSTSEC-2026-0545", reason = "by_name_decrypt non appelé (burn-store lit sans mot de passe)" },
+    { id = "RUSTSEC-2026-0546", reason = "zip::extract non appelé (burn-store lit seulement)" },
+    { id = "RUSTSEC-2026-0547", reason = "fonction legacy-zip non activée" },
+    { id = "RUSTSEC-2026-0548", reason = "ZipStreamReader non appelé (burn-store lit par ZipArchive)" },
     # zstd 0.13 / zstd-safe 7, tirés par le même zip 8.6 (correctif en
     # zstd ≥ 0.14, que zip 8 n'accepte pas). Ils ne servent qu'aux entrées
     # compressées en zstd ; les `.pt`/`.ckpt` que lit burn-store sortent de
