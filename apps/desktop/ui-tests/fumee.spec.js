@@ -1024,6 +1024,33 @@ test("passage par le Wi-Fi : sans Xcode, la lecture attend l'iPhone appairé, pu
   await expect(page.locator("#iphone-emporter")).toBeHidden();
 });
 
+test("V41 : Valise dit quand la recherche de l'iPhone est finie (« recherche », puis « lu »)", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__IPHONE__ = null;
+    // Une lecture qui ne finit que quand le test la libère.
+    window.__FIXTURES__.valise_iphone = () => new Promise((r) => (window.__IPHONE__ = r));
+  });
+  await page.click('button.mode[data-mode="valise"]');
+  const vue = page.locator("#valise-vue");
+  await expect(vue).toHaveAttribute("data-iphone", "recherche");
+  await expect(page.locator("#iphone-nom")).toHaveText("Recherche de l'iPhone…");
+  await page.evaluate(() => window.__IPHONE__({
+    xcode: false, appareils: [], udid: null, app_installee: false, echeance: null, valises: [], renouvelable: false, erreur: null,
+  }));
+  await expect(vue).toHaveAttribute("data-iphone", "lu");
+  await expect(page.locator("#iphone-nom")).toHaveText("Xcode absent");
+  // Actualiser repasse par « recherche ».
+  await page.evaluate(() => {
+    window.__FIXTURES__.valise_iphone = () => new Promise((r) => (window.__IPHONE__ = r));
+  });
+  await page.click("#iphone-actualiser");
+  await expect(vue).toHaveAttribute("data-iphone", "recherche");
+  await page.evaluate(() => window.__IPHONE__({
+    xcode: false, appareils: [], udid: null, app_installee: false, echeance: null, valises: [], renouvelable: false, erreur: null,
+  }));
+  await expect(vue).toHaveAttribute("data-iphone", "lu");
+});
+
 test("valise par le Wi-Fi : sans câble, Envoyer prépare et la ligne dit qu'elle attend l'iPhone", async ({ page }) => {
   await page.evaluate(() => {
     const f = window.__FIXTURES__;

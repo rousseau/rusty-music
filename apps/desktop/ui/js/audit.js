@@ -357,6 +357,21 @@ function fabriquerLamaAudit() {
   fileAttente.pistes = pistes;
 }
 
+/// Entrer dans Valise lance la recherche de l'iPhone (`lireIphone`,
+/// `devicectl` et l'état du Wi-Fi), asynchrone : mesurer 900 ms après
+/// l'entrée tombait tantôt avant, tantôt après son dessin (rail de 604 puis
+/// 578 px à 1 400 × 900, A3). On attend son signal de fin,
+/// `#valise-vue[data-iphone="lu"]`, effacé avant d'entrer pour ne pas lire
+/// celui d'une entrée précédente ; au plus 30 s.
+async function entrerValiseLue() {
+  const vue = $("valise-vue");
+  delete vue.dataset.iphone;
+  await basculerMode("valise");
+  const fin = performance.now() + 30_000;
+  while (vue.dataset.iphone !== "lu" && performance.now() < fin) await AUDIT_ATTENTE(100);
+  if (vue.dataset.iphone !== "lu") console.warn("audit : recherche de l'iPhone non finie après 30 s");
+}
+
 /// Entrer dans Découvrir lance une passe MusicBrainz quand la dernière est
 /// périmée et qu'une adresse de contact est là (`entrerDecouvrir`) : un appel
 /// par seconde pendant des minutes, qui occupe le moteur — l'écran suivant
@@ -417,7 +432,7 @@ async function auditerInterface() {
     }],
     ["creer", async () => { await basculerMode("creer"); await attendre(500); }],
     ["decouvrir", async () => { await sansPasseDecouvrir(() => basculerMode("decouvrir")); await attendre(900); }],
-    ["valise", async () => { await basculerMode("valise"); await attendre(900); }],
+    ["valise", async () => { await entrerValiseLue(); await attendre(300); }],
     ["bibliotheque", async () => { await basculerMode("bibliotheque"); await attendre(900); }],
     ["en-cours", async () => { await basculerMode("ecoute"); ouvrirEnCours(); await attendre(600); }],
   ];

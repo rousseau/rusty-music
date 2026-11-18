@@ -220,8 +220,15 @@ function majBoutonEnvoyer() {
 
 /// Une seule lecture de l'iPhone à la fois : « Emporter la lecture » depuis ⌘K
 /// entre dans Valise, qui en lance une, et attend la même.
+///
+/// `#valise-vue[data-iphone]` dit où en est la lecture (« recherche », puis
+/// « lu » une fois l'iPhone dessiné, même en échec) : l'audit attend « lu »
+/// avant de mesurer Valise (V41), au lieu d'un délai fixe qui tombait tantôt
+/// avant, tantôt après le dessin.
 function lireIphone() {
   etatValise.lectureIphone ??= (async () => {
+    const vue = $("valise-vue");
+    vue.dataset.iphone = "recherche";
     $("iphone-nom").textContent = "Recherche de l'iPhone…";
     $("iphone-etat").textContent = "";
     try {
@@ -229,10 +236,11 @@ function lireIphone() {
         invoke("valise_iphone", { udid: etatValise.iphone?.udid ?? null }),
         invoke("wifi_etat"),
       ]);
+      dessinerIphone();
     } finally {
       etatValise.lectureIphone = null;
+      vue.dataset.iphone = "lu";
     }
-    dessinerIphone();
   })();
   return etatValise.lectureIphone;
 }
