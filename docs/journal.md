@@ -6695,3 +6695,22 @@ de Pratiquer, accordeur et retour ouverts ; un choix d'entrée fait dans le
 retour pendant que le coach écoute (le coach rouvre, chemin non couvert par
 un test).
 
+
+## V41, tranche 1 : Valise mesurée après la recherche de l'iPhone — 18 nov. 2026
+
+Les deux audits de nuit d'A3 ne différaient que d'une ligne : le rail de
+Valise à 1 400 × 900, 604 puis 578 px. L'audit mesurait Valise 900 ms après
+l'entrée, alors que la recherche de l'iPhone (`lireIphone` : `valise_iphone`
+et `wifi_etat`) est asynchrone et dépend de l'extérieur. Voie retenue :
+attendre un signal de fin plutôt que figer un état d'essai, pour que l'audit
+mesure le dessin réel (iPhone trouvé ou non) sans fixture à tenir à jour.
+`lireIphone` pose `#valise-vue[data-iphone]` (« recherche », puis « lu » une
+fois l'iPhone dessiné, même en échec) ; l'audit efface l'attribut, entre
+dans Valise et attend « lu », 30 s au plus, au lieu de 900 ms. Le
+comportement de l'app ne change pas.
+
+Mesuré : un test d'interface (l'attribut passe à « lu » après la
+recherche) ; `verifier.sh` vert (81 tests de fumée).
+
+Non vérifié : les deux audits complets de suite, écran caché, et leur diff
+ligne à ligne — reportés (écran visible) à un lancement écran caché.
