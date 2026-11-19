@@ -1378,6 +1378,7 @@ pub struct AlbumNoeud {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MapPoint {
     pub id: i64,
     pub path: String,

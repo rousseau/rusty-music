@@ -9,6 +9,219 @@ export const commands = {
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
 	/**
+	 *  La carte du module 2 : tous les morceaux déjà placés.
+	 * 
+	 *  Chargée d'un bloc — 27 000 points tiennent largement, et l'interface les
+	 *  redemande seulement quand l'utilisateur le veut. Tant que l'analyse tourne,
+	 *  chaque rappel en ramène davantage.
+	 */
+	map_view: () => __TAURI_INVOKE<MapPoint_Serialize[]>("map_view"),
+	/**
+	 *  Fabrique les deux archives. Quelques secondes sur 27 000 morceaux — la
+	 *  commande est `async`, donc hors du fil de l'interface.
+	 * 
+	 *  Deux chemins : si `ville-paris.db` existe à côté de la bibliothèque
+	 *  (importée via `carto ville`), la carte affiche le vrai plan de ville
+	 *  ([`rassembler_ville`]) — pas de relief à ombrer, Paris est plat. Sinon,
+	 *  repli sur le monde fictif engendré depuis la bibliothèque
+	 *  ([`rassembler`]), inchangé.
+	 */
+	engendrer_tuiles: () => __TAURI_INVOKE<string>("engendrer_tuiles"),
+	/**
+	 *  Trace un itinéraire dans le réseau de circulation.
+	 * 
+	 *  `carto-google-maps.md` §3 : un seul graphe, plusieurs fonctions de coût. La
+	 *  durée cible est la contrainte la plus utile côté utilisateur — « un
+	 *  itinéraire de 40 minutes » est une vraie demande.
+	 */
+	itineraire: (depart: number, arrivee: number | null, profil: string, minutes: number | null, familles: number[] | null) => __TAURI_INVOKE<ItineraireVu_Serialize[]>("itineraire", { depart, arrivee, profil, minutes, familles }),
+	/**
+	 *  Trace un itinéraire **sur les vraies rues** et compose la playlist des
+	 *  morceaux qui les bordent.
+	 * 
+	 *  `docs/carto-ville.md` (révisé) : sur le plan de ville, ce mode ne se
+	 *  contente plus d'habiller le trait d'un chemin musical — c'est la voirie qui
+	 *  choisit les morceaux. Le chemin musical (`itineraire`) reste le repli quand
+	 *  il n'y a pas de ville, pas d'adresse, ou dans le nuage.
+	 */
+	itineraire_voirie: (depart: number, arrivee: number | null, profil: string, minutes: number | null, familles: number[] | null, rayonM: number | null) => __TAURI_INVOKE<ReponseItineraireVoirie_Serialize>("itineraire_voirie", { depart, arrivee, profil, minutes, familles, rayonM }),
+	/**
+	 *  Faut-il lancer l'autotest de la carte ?
+	 * 
+	 *  `RUSTY_MUSIC_AUTOTEST=1`. Une webview du système ne se pilote pas de
+	 *  l'extérieur : sans ce banc, les interactions ne se vérifient qu'à la main,
+	 *  donc ne se vérifient pas.
+	 */
+	autotest_carte: () => __TAURI_INVOKE<boolean>("autotest_carte"),
+	/**
+	 *  Renvoie au journal du processus ce que la console de la webview dit.
+	 * 
+	 *  Une webview du système n'a pas d'inspecteur accessible depuis l'extérieur :
+	 *  sans ce renvoi, une carte qui ne s'affiche pas ne dit rien du tout. C'est ce
+	 *  qui a permis de trouver que MapLibre démarre dans la fenêtre principale et
+	 *  pas dans une seconde.
+	 */
+	journal_carte: (niveau: string, message: string) => __TAURI_INVOKE<void>("journal_carte", { niveau, message }),
+	/**
+	 *  Le style MapLibre, lu à côté des archives.
+	 * 
+	 *  Il est **écrit en même temps que les tuiles**, et c'est délibéré : les deux
+	 *  partagent les mêmes paliers et la même liste de familles, ils ne peuvent
+	 *  plus diverger. Le recalculer à l'ouverture coûtait 42 secondes mesurées —
+	 *  `Library::familles` refait tout l'arbitrage des genres MusicBrainz sur
+	 *  27 000 morceaux — pour un résultat identique à celui de la veille.
+	 * 
+	 *  `theme` choisit la palette de fond de plan : `engendrer_tuiles` a écrit un
+	 *  `style-<id>.json` par palette de [`rusty_music_carto::Palette`]. L'`id` est
+	 *  filtré contre `Palette::par_id` (pas de `../`, pas de nom arbitraire), et on
+	 *  retombe sur `style.json` si le fichier de thème manque — tuiles engendrées
+	 *  avant cette fonctionnalité, ou thème `osm-clair`.
+	 */
+	style_carte: (theme: string | null) => __TAURI_INVOKE<Value>("style_carte", { theme }),
+	/**
+	 *  Les positions réelles (lon/lat) des morceaux sur le plan de ville, écrites
+	 *  par `engendrer_tuiles` à côté du style. Échoue sur le chemin fictif — pas
+	 *  d'erreur applicative, `ui/js/` lit cet échec comme « pas de plan de ville
+	 *  réel actif » et retombe sur les coordonnées t-SNE de `map_view`.
+	 */
+	positions_carte: () => __TAURI_INVOKE<Value>("positions_carte"),
+	path: (from: number, to: number | null, mode: string | null, steps: number, seed: number | null, bruit: number | null, reel: boolean | null, familles: number[] | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("path", { from, to, mode, steps, seed, bruit, reel, familles }),
+	/**
+	 *  Voyage dans le temps depuis `from` : le seul mode de chemin du mode
+	 *  Explorer → Temps (voir `MODES_CHEMIN.temps` côté `ui/js/`) — une marche
+	 *  sonique qui n'avance jamais en arrière chronologiquement, voir
+	 *  [`rusty_music_analysis::chemin::Graphe::voyage`]. `bruit` et `seed`
+	 *  jouent le même rôle que pour [`path`].
+	 */
+	voyage: (from: number, steps: number, seed: number | null, bruit: number | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("voyage", { from, steps, seed, bruit }),
+	/**
+	 *  Chemin suivant un tracé dessiné à la souris sur la carte.
+	 * 
+	 *  `trace` est la suite des points parcourus, dans le repère de la carte
+	 *  (`[-1, 1]` sur les deux axes — ou en lon/lat sur le plan de ville réel,
+	 *  voir [`points_de_carte_effectifs`]) ; `radius` la distance au-delà de
+	 *  laquelle on ne cueille rien. L'interface la calcule depuis le zoom
+	 *  courant, pour que le trait attrape exactement ce qu'il touche à l'écran.
+	 */
+	path_drawn: (trace: ([number | null, number | null])[], steps: number, radius: number | null, seed: number | null, bruit: number | null, reel: boolean | null, familles: number[] | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("path_drawn", { trace, steps, radius, seed, bruit, reel, familles }),
+	/**
+	 *  Les segments de rues réelles entre chaque paire consécutive d'un
+	 *  itinéraire déjà choisi — habille le trait dessiné sur le plan de ville
+	 *  réel, sans toucher au choix des morceaux. Ce choix reste entièrement
+	 *  celui du réseau **sonique** (`itineraire` ci-dessus, ou `path`/
+	 *  `path_drawn` pour direct/dessiné) : la question ici n'est pas « quels
+	 *  morceaux » mais « quel trait dessiner entre eux ».
+	 * 
+	 *  `ids` est la liste ordonnée des morceaux d'un chemin déjà tracé ; le
+	 *  résultat a un élément de moins, un `Vec` de points `[lon, lat]` par paire
+	 *  consécutive. Un `Vec` vide en position `i` marque un segment sans chemin
+	 *  trouvé (l'une des deux adresses n'a pas de position réelle, ou les deux
+	 *  n'appartiennent pas à la même composante routable) — `ui/js/` retombe
+	 *  alors sur le trait synthétique existant pour ce segment précis, pas pour
+	 *  tout l'itinéraire.
+	 */
+	trace_rues: (ids: number[]) => __TAURI_INVOKE<(([(number | null), (number | null)])[])[]>("trace_rues", { ids }),
+	/**
+	 *  Lance l'aspiration des genres MusicBrainz.
+	 * 
+	 *  Comme l'analyse : déclenchée à la main, sur son propre fil, avec sa propre
+	 *  connexion. Elle dure environ deux heures sur une bibliothèque de
+	 *  vingt-sept mille morceaux — c'est MusicBrainz qui impose le rythme, une
+	 *  requête par seconde, et non nous qui traînons.
+	 * 
+	 *  **Reprenable et additive.** L'interrompre ne perd rien, la relancer ne
+	 *  refait rien, et ne jamais la lancer laisse les familles nommées par les
+	 *  tags des fichiers. Rien n'en dépend.
+	 */
+	start_enrichment: (contact: string) => __TAURI_INVOKE<null>("start_enrichment", { contact }),
+	/**
+	 *  Lance la passe de popularité générale (ListenBrainz + Deezer).
+	 * 
+	 *  Comme l'enrichissement : fil séparé, connexion propre, reprenable et
+	 *  additive. Mais **aucune clé ni compte** — ListenBrainz et Deezer sont des
+	 *  API publiques. `contact`, s'il est renseigné, part dans le `User-Agent` de
+	 *  ListenBrainz par courtoisie ; son absence ne saute rien.
+	 * 
+	 *  `rafraichir` : à `false`, on ne comble que les trous ; à `true`, on
+	 *  réinterroge aussi ce qui date de plus de [`POP_PEREMPTION_JOURS`].
+	 */
+	start_popularite: (contact: string, rafraichir: boolean) => __TAURI_INVOKE<null>("start_popularite", { contact, rafraichir }),
+	/**
+	 *  Fraîcheur de la popularité pour la ligne d'alerte du mode Bibliothèque :
+	 *  `(morceaux couverts, epoch de la plus ancienne interrogation, entités
+	 *  périmées, seuil de péremption en jours)`. Le seuil est renvoyé plutôt que
+	 *  recopié en dur côté JS, pour que le texte affiché ne puisse pas mentir si
+	 *  `POP_PEREMPTION_JOURS` change un jour.
+	 */
+	popularite_fraicheur: () => __TAURI_INVOKE<[number, number | null, number, number]>("popularite_fraicheur"),
+	/**
+	 *  Lance la passe de biographies (TheAudioDB).
+	 * 
+	 *  Comme la popularité : fil séparé, connexion propre, reprenable et
+	 *  additive. **Aucune clé requise** — la clé de test partagée suffit ;
+	 *  `cle`, si l'utilisateur en a une personnelle, l'accélère. Résolution
+	 *  **exclusivement par MBID** : un artiste sans `mb_artist_id` n'est jamais
+	 *  interrogé par nom (`docs/enrichissement-lecteur.md`).
+	 */
+	start_biographies: (cle: string | null) => __TAURI_INVOKE<null>("start_biographies", { cle }),
+	/**
+	 *  La biographie d'un artiste par MBID direct, chargée à l'ouverture de sa
+	 *  grille d'albums au centre (`docs/interface-guidelines.md`, Règle 1,
+	 *  exception du 15 septembre 2026) — pas de MBID, pas d'appel côté UI.
+	 */
+	bio_artiste: (mbid: string) => __TAURI_INVOKE<BioArtiste_Serialize | null>("bio_artiste", { mbid }),
+	/**
+	 *  Lance la passe de critiques (CritiqueBrainz).
+	 * 
+	 *  Aucune clé requise, interrogation par release-group MusicBrainz — jamais
+	 *  de recherche approximative. `rafraichir` : à `false`, ne comble que les
+	 *  albums jamais vérifiés ; à `true`, revérifie aussi ceux de plus de
+	 *  [`CRITIQUES_PEREMPTION_JOURS`] (une critique neuve reste rare).
+	 */
+	start_critiques: (rafraichir: boolean) => __TAURI_INVOKE<null>("start_critiques", { rafraichir }),
+	/**  Les critiques du morceau `id`, via son release-group MusicBrainz. */
+	critiques_piste: (id: number) => __TAURI_INVOKE<Critique_Serialize[]>("critiques_piste", { id }),
+	/**
+	 *  Lien de sortie vers la page CritiqueBrainz de l'album du morceau `id` —
+	 *  invite à en écrire une, même (surtout) quand `critiques_piste` est vide.
+	 */
+	lien_ecrire_critique: (id: number) => __TAURI_INVOKE<string | null>("lien_ecrire_critique", { id }),
+	/**
+	 *  Lance la passe de tags Last.fm — vote de nommage des familles
+	 *  (`docs/nommage-familles.md`), pas la popularité. Clé personnelle exigée
+	 *  (gratuite, sur last.fm/api) : contrairement aux autres sources, Last.fm
+	 *  n'a pas de clé de test partagée.
+	 */
+	start_lastfm: (cle: string, rafraichir: boolean) => __TAURI_INVOKE<null>("start_lastfm", { cle, rafraichir }),
+	/**
+	 *  Les collaborateurs d'un artiste — mode Découvrir. Sert du cache s'il y
+	 *  en a un, sinon interroge MusicBrainz et le remplit.
+	 * 
+	 *  Pas de fil séparé ni de sondage comme `start_enrichment` : ici, une
+	 *  seule requête réseau au plus (une seconde environ), pas une passe sur
+	 *  toute la bibliothèque — inutile d'habiller ça d'un état de fond.
+	 */
+	artist_links: (mbid: string, contact: string) => __TAURI_INVOKE<([string, string, string])[]>("artist_links", { mbid, contact }),
+	completer_apercu: (contact: string, cleLastfm: string) => __TAURI_INVOKE<ApercuCompleter>("completer_apercu", { contact, cleLastfm }),
+	/**
+	 *  Lance « Compléter » : les genres MusicBrainz des artistes en attente, puis
+	 *  leurs tags Last.fm si une clé est posée — ce qui existe déjà, enchaîné, sur
+	 *  une connexion dont le journal note chaque écriture
+	 *  (`Library::ouvrir_passe`). Arrêtable entre deux tranches ; annulable en
+	 *  bloc une fois finie ou arrêtée ([`completer_annuler`]).
+	 */
+	completer_lancer: (contact: string, cleLastfm: string) => __TAURI_INVOKE<null>("completer_lancer", { contact, cleLastfm }),
+	/**
+	 *  Demande l'arrêt de « Compléter » : pris en compte à la fin de la tranche
+	 *  en cours. Ce qui a été écrit reste au journal, donc annulable.
+	 */
+	completer_arreter: () => __TAURI_INVOKE<void>("completer_arreter"),
+	/**
+	 *  Annule en bloc la dernière passe « Compléter » : rend le nombre de lignes
+	 *  rétablies.
+	 */
+	completer_annuler: (id: number) => __TAURI_INVOKE<number>("completer_annuler", { id }),
+	/**
 	 *  Prépare le graphe des voisins sans rien tracer.
 	 * 
 	 *  L'interface l'appelle en entrant dans le mode Explorer : le balayage a
@@ -1064,6 +1277,13 @@ export type AnneauVue_Serialize = {
 	voisins: AnneauVoisin_Serialize[],
 };
 
+/**  Ce que « Compléter » interrogerait : la phrase d'avant le geste. */
+export type ApercuCompleter = {
+	musicbrainz: number,
+	lastfm: number,
+	secondes: number,
+};
+
 /**  Un artiste et son volume dans la bibliothèque. */
 export type ArtistRow = ArtistRow_Serialize | ArtistRow_Deserialize;
 
@@ -1246,6 +1466,23 @@ export type BilanHauteur = {
 	fausses: number,
 	octaves: number,
 	inconnues: number,
+};
+
+/**  Une biographie telle que servie à l'inspecteur. */
+export type BioArtiste = BioArtiste_Serialize | BioArtiste_Deserialize;
+
+/**  Une biographie telle que servie à l'inspecteur. */
+export type BioArtiste_Deserialize = {
+	mb_artist_id: string,
+	biographie_en?: string | null,
+	biographie_fr?: string | null,
+};
+
+/**  Une biographie telle que servie à l'inspecteur. */
+export type BioArtiste_Serialize = {
+	mb_artist_id: string,
+	biographie_en: string | null,
+	biographie_fr: string | null,
 };
 
 /**  Une boucle, bornes en secondes du morceau d'origine. */
@@ -1470,6 +1707,40 @@ export type CourbeVue = {
 	 *  molette.
 	 */
 	le_long: Riverain[],
+};
+
+/**
+ *  Une critique telle que servie à l'inspecteur — l'attribution est
+ *  obligatoire partout où `texte` apparaît (licence CC).
+ */
+export type Critique = Critique_Serialize | Critique_Deserialize;
+
+/**
+ *  Une critique telle que servie à l'inspecteur — l'attribution est
+ *  obligatoire partout où `texte` apparaît (licence CC).
+ */
+export type Critique_Deserialize = {
+	id: string,
+	auteur?: string | null,
+	licence_id: string,
+	licence_nom?: string | null,
+	langue?: string | null,
+	texte: string,
+	url_originale?: string | null,
+};
+
+/**
+ *  Une critique telle que servie à l'inspecteur — l'attribution est
+ *  obligatoire partout où `texte` apparaît (licence CC).
+ */
+export type Critique_Serialize = {
+	id: string,
+	auteur: string | null,
+	licence_id: string,
+	licence_nom: string | null,
+	langue: string | null,
+	texte: string,
+	url_originale: string | null,
 };
 
 export type DoublonProbable = DoublonProbable_Serialize | DoublonProbable_Deserialize;
@@ -2010,6 +2281,70 @@ export type Intervention =
 /**  La balade attend le choix au carrefour. */
 "demander";
 
+/**  Un itinéraire routé sur la voirie réelle, tel que l'interface le reçoit. */
+export type ItineraireVoirieVu = ItineraireVoirieVu_Serialize | ItineraireVoirieVu_Deserialize;
+
+/**  Un itinéraire routé sur la voirie réelle, tel que l'interface le reçoit. */
+export type ItineraireVoirieVu_Deserialize = {
+	/**  Les morceaux rencontrés le long des rues, dans l'ordre — la playlist. */
+	pistes: MapPoint_Deserialize[],
+	/**
+	 *  La ligne du trajet, déjà routée sur les rues : `[lon, lat]`. L'interface
+	 *  n'a plus à rappeler `trace_rues`.
+	 */
+	polyligne: ([(number | null), (number | null)])[],
+	/**  Somme des durées des `pistes`. */
+	duree_ms: number,
+	/**  Longueur de la `polyligne`, en mètres. */
+	distance_m: number | null,
+	/**  Le dénivelé : la popularité le long du trajet, un `f32` par piste. */
+	popularite: (number | null)[],
+	/**  Les classes de voie traversées, doublons consécutifs retirés. */
+	classes: string[],
+};
+
+/**  Un itinéraire routé sur la voirie réelle, tel que l'interface le reçoit. */
+export type ItineraireVoirieVu_Serialize = {
+	/**  Les morceaux rencontrés le long des rues, dans l'ordre — la playlist. */
+	pistes: MapPoint_Serialize[],
+	/**
+	 *  La ligne du trajet, déjà routée sur les rues : `[lon, lat]`. L'interface
+	 *  n'a plus à rappeler `trace_rues`.
+	 */
+	polyligne: ([(number | null), (number | null)])[],
+	/**  Somme des durées des `pistes`. */
+	duree_ms: number,
+	/**  Longueur de la `polyligne`, en mètres. */
+	distance_m: number | null,
+	/**  Le dénivelé : la popularité le long du trajet, un `f32` par piste. */
+	popularite: (number | null)[],
+	/**  Les classes de voie traversées, doublons consécutifs retirés. */
+	classes: string[],
+};
+
+/**  Un itinéraire, tel que l'interface le reçoit. */
+export type ItineraireVu = ItineraireVu_Serialize | ItineraireVu_Deserialize;
+
+/**  Un itinéraire, tel que l'interface le reçoit. */
+export type ItineraireVu_Deserialize = {
+	pistes: MapPoint_Deserialize[],
+	duree_ms: number,
+	distance_sonique: number | null,
+	/**  Le dénivelé : la popularité le long du trajet. */
+	popularite: (number | null)[],
+	classes: string[],
+};
+
+/**  Un itinéraire, tel que l'interface le reçoit. */
+export type ItineraireVu_Serialize = {
+	pistes: MapPoint_Serialize[],
+	duree_ms: number,
+	distance_sonique: number | null,
+	/**  Le dénivelé : la popularité le long du trajet. */
+	popularite: (number | null)[],
+	classes: string[],
+};
+
 /**  Le jugement d'une note attendue, d'un coup joué, ou des deux. */
 export type Jugement = Jugement_Serialize | Jugement_Deserialize;
 
@@ -2091,6 +2426,88 @@ export type ListeIntelligente = {
 	nom: string,
 	nb_pistes: number,
 	duree_ms: number,
+};
+
+export type MapPoint = MapPoint_Serialize | MapPoint_Deserialize;
+
+export type MapPoint_Deserialize = {
+	id: number,
+	path: string,
+	x: number | null,
+	y: number | null,
+	cluster: number,
+	title?: string | null,
+	artist?: string | null,
+	/**
+	 *  Artiste de regroupement (`tracks.album_artist`), distinct de `artist`
+	 *  qui peut lister un featuring entier (« X feat. Y »). C'est ce champ
+	 *  qu'il faut utiliser pour identifier *un* artiste, pas `artist` — voir
+	 *  le commentaire sur `mb_album_artist_id` dans le schéma.
+	 */
+	album_artist?: string | null,
+	album?: string | null,
+	track_no?: number | null,
+	/**
+	 *  La meilleure date connue, pas la seule colonne `tracks.year` — voir
+	 *  le repli documenté sur [`Library::map_view`]. `None` seulement quand
+	 *  aucune source ne donne de date, pas seulement le tag.
+	 */
+	year?: number | null,
+	duration_ms?: number | null,
+	/**
+	 *  Descripteurs mesurés. Absents tant que `rusty-music descripteurs` n'est
+	 *  pas passé — la carte doit savoir colorer sans eux.
+	 */
+	bpm?: number | null,
+	energy?: number | null,
+	/**
+	 *  Popularité générale, rang percentile `0..1` dans la bibliothèque
+	 *  (`track_popularite.relative`). Absente tant que les passes `enrich` +
+	 *  `popularité` ne sont pas passées, ou si l'entité est inconnue de
+	 *  ListenBrainz et Deezer. La carte s'en sert pour ancrer les artistes les
+	 *  plus connus sur les monuments (`crate::ancrage`, dans `rusty_music_carto`).
+	 */
+	popularite?: number | null,
+};
+
+export type MapPoint_Serialize = {
+	id: number,
+	path: string,
+	x: number | null,
+	y: number | null,
+	cluster: number,
+	title: string | null,
+	artist: string | null,
+	/**
+	 *  Artiste de regroupement (`tracks.album_artist`), distinct de `artist`
+	 *  qui peut lister un featuring entier (« X feat. Y »). C'est ce champ
+	 *  qu'il faut utiliser pour identifier *un* artiste, pas `artist` — voir
+	 *  le commentaire sur `mb_album_artist_id` dans le schéma.
+	 */
+	album_artist: string | null,
+	album: string | null,
+	track_no: number | null,
+	/**
+	 *  La meilleure date connue, pas la seule colonne `tracks.year` — voir
+	 *  le repli documenté sur [`Library::map_view`]. `None` seulement quand
+	 *  aucune source ne donne de date, pas seulement le tag.
+	 */
+	year: number | null,
+	duration_ms: number | null,
+	/**
+	 *  Descripteurs mesurés. Absents tant que `rusty-music descripteurs` n'est
+	 *  pas passé — la carte doit savoir colorer sans eux.
+	 */
+	bpm: number | null,
+	energy: number | null,
+	/**
+	 *  Popularité générale, rang percentile `0..1` dans la bibliothèque
+	 *  (`track_popularite.relative`). Absente tant que les passes `enrich` +
+	 *  `popularité` ne sont pas passées, ou si l'entité est inconnue de
+	 *  ListenBrainz et Deezer. La carte s'en sert pour ancrer les artistes les
+	 *  plus connus sur les monuments (`crate::ancrage`, dans `rusty_music_carto`).
+	 */
+	popularite: number | null,
 };
 
 /**
@@ -2706,6 +3123,26 @@ export type ReliefVue = {
 	grandeur: Grandeur,
 	version: number,
 	courbes: number,
+};
+
+export type ReponseItineraireVoirie = ReponseItineraireVoirie_Serialize | ReponseItineraireVoirie_Deserialize;
+
+export type ReponseItineraireVoirie_Deserialize = {
+	/**
+	 *  `Some(raison)` : l'interface affiche la raison et retombe sur
+	 *  l'itinéraire musical (`itineraire`).
+	 */
+	repli?: string | null,
+	trajets: ItineraireVoirieVu_Deserialize[],
+};
+
+export type ReponseItineraireVoirie_Serialize = {
+	/**
+	 *  `Some(raison)` : l'interface affiche la raison et retombe sur
+	 *  l'itinéraire musical (`itineraire`).
+	 */
+	repli: string | null,
+	trajets: ItineraireVoirieVu_Serialize[],
 };
 
 /**  Un morceau qui borde la courbe, à sa place le long d'elle. */

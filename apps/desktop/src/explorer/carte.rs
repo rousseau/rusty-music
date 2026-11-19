@@ -9,6 +9,7 @@ use super::*;
 /// redemande seulement quand l'utilisateur le veut. Tant que l'analyse tourne,
 /// chaque rappel en ramène davantage.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn map_view(etat: State<Etat>) -> Result<Vec<MapPoint>, String> {
     let pts = verrou(&etat.lib)
         .map_view(rusty_music_analysis::passe::MODELE)
@@ -242,6 +243,7 @@ pub(crate) fn rassembler_ville(
 /// repli sur le monde fictif engendré depuis la bibliothèque
 /// ([`rassembler`]), inchangé.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn engendrer_tuiles(app: tauri::AppHandle, etat: State<Etat>) -> Result<String, String> {
     // Deux écritures du même `carte.pmtiles` à la fois se marcheraient dessus.
     if verrou(&etat.tuiles).en_cours {
@@ -436,6 +438,7 @@ fn engendrer(
 
 /// Un itinéraire, tel que l'interface le reçoit.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ItineraireVu {
     pistes: Vec<MapPoint>,
     duree_ms: u64,
@@ -451,6 +454,7 @@ pub(crate) struct ItineraireVu {
 /// durée cible est la contrainte la plus utile côté utilisateur — « un
 /// itinéraire de 40 minutes » est une vraie demande.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn itineraire(
     etat: State<Etat>,
     depart: i64,
@@ -525,6 +529,7 @@ pub(crate) fn itineraire(
 
 /// Un itinéraire routé sur la voirie réelle, tel que l'interface le reçoit.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ItineraireVoirieVu {
     /// Les morceaux rencontrés le long des rues, dans l'ordre — la playlist.
     pistes: Vec<MapPoint>,
@@ -542,6 +547,7 @@ pub(crate) struct ItineraireVoirieVu {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ReponseItineraireVoirie {
     /// `Some(raison)` : l'interface affiche la raison et retombe sur
     /// l'itinéraire musical (`itineraire`).
@@ -575,6 +581,7 @@ pub(crate) fn distance_lonlat_m(a: [f64; 2], b: [f64; 2]) -> f64 {
 /// choisit les morceaux. Le chemin musical (`itineraire`) reste le repli quand
 /// il n'y a pas de ville, pas d'adresse, ou dans le nuage.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn itineraire_voirie(
     app: tauri::AppHandle,
@@ -831,6 +838,7 @@ pub(crate) fn construire_reseau(
 /// l'extérieur : sans ce banc, les interactions ne se vérifient qu'à la main,
 /// donc ne se vérifient pas.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn autotest_carte() -> bool {
     std::env::var("RUSTY_MUSIC_AUTOTEST").is_ok_and(|v| v != "0")
 }
@@ -842,6 +850,7 @@ pub(crate) fn autotest_carte() -> bool {
 /// qui a permis de trouver que MapLibre démarre dans la fenêtre principale et
 /// pas dans une seconde.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn journal_carte(niveau: String, message: String) {
     match niveau.as_str() {
         "error" => tracing::error!(target: "carte", "{message}"),
@@ -887,6 +896,7 @@ pub(crate) async fn tuile(
 /// retombe sur `style.json` si le fichier de thème manque — tuiles engendrées
 /// avant cette fonctionnalité, ou thème `osm-clair`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn style_carte(
     app: tauri::AppHandle,
     theme: Option<String>,
@@ -919,6 +929,7 @@ pub(crate) fn style_carte(
 /// d'erreur applicative, `ui/js/` lit cet échec comme « pas de plan de ville
 /// réel actif » et retombe sur les coordonnées t-SNE de `map_view`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn positions_carte(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let chemin = tuiles::dossier(&app).map_err(echec)?.join("positions.json");
     let texte = std::fs::read_to_string(&chemin)
@@ -1092,6 +1103,7 @@ pub(crate) fn rassembler(
 pub(crate) const BRUIT_DEFAUT: f32 = 0.3;
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 #[allow(clippy::too_many_arguments)] // interface de commande Tauri : chaque champ vient du JS
 pub(crate) fn path(
     app: tauri::AppHandle,
@@ -1209,6 +1221,7 @@ pub(crate) fn path(
 /// [`rusty_music_analysis::chemin::Graphe::voyage`]. `bruit` et `seed`
 /// jouent le même rôle que pour [`path`].
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn voyage(
     etat: State<Etat>,
     from: i64,
@@ -1255,6 +1268,7 @@ pub(crate) fn voyage(
 /// laquelle on ne cueille rien. L'interface la calcule depuis le zoom
 /// courant, pour que le trait attrape exactement ce qu'il touche à l'écran.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 #[allow(clippy::too_many_arguments)] // interface de commande Tauri : chaque champ vient du JS
 pub(crate) fn path_drawn(
     app: tauri::AppHandle,
@@ -1317,6 +1331,7 @@ pub(crate) fn path_drawn(
 /// alors sur le trait synthétique existant pour ce segment précis, pas pour
 /// tout l'itinéraire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn trace_rues(
     app: tauri::AppHandle,
     etat: State<Etat>,

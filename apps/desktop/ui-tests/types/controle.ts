@@ -20,7 +20,9 @@ type Large<T> = T extends readonly (infer U)[]
     : T;
 type Attendu<K extends keyof Commandes> = Awaited<ReturnType<Commandes[K]>>;
 type Retour<K extends keyof Commandes> = Large<Attendu<K>>;
-type Figee<K extends keyof Commandes> = Retour<K> | ((a: any, e: any) => Retour<K>);
+// Une `Error` figée : le faux moteur la lève (`faux-tauri.js`), comme une
+// commande qui échoue.
+type Figee<K extends keyof Commandes> = Retour<K> | ((a: any, e: any) => Retour<K>) | Error;
 
 // 1. Ce qui manque ou n'a pas le bon type : la réponse figée doit être
 //    assignable au type de Rust.

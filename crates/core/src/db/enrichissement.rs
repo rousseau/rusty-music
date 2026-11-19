@@ -1224,6 +1224,7 @@ pub struct BioBrute {
 
 /// Une biographie telle que servie à l'inspecteur.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BioArtiste {
     pub mb_artist_id: String,
     pub biographie_en: Option<String>,
@@ -1262,6 +1263,7 @@ pub struct CritiqueBrute {
 /// Une critique telle que servie à l'inspecteur — l'attribution est
 /// obligatoire partout où `texte` apparaît (licence CC).
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Critique {
     pub id: String,
     pub auteur: Option<String>,

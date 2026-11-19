@@ -27,6 +27,7 @@ pub(crate) type EtatPopularite = Passe<Compte>;
 /// refait rien, et ne jamais la lancer laisse les familles nommées par les
 /// tags des fichiers. Rien n'en dépend.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_enrichment(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -98,6 +99,7 @@ pub(crate) const POP_PEREMPTION_JOURS: i64 = 90;
 /// `rafraichir` : à `false`, on ne comble que les trous ; à `true`, on
 /// réinterroge aussi ce qui date de plus de [`POP_PEREMPTION_JOURS`].
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_popularite(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -168,6 +170,7 @@ pub(crate) fn popularite_state(etat: State<Etat>) -> Result<EtatPopularite, Stri
 /// recopié en dur côté JS, pour que le texte affiché ne puisse pas mentir si
 /// `POP_PEREMPTION_JOURS` change un jour.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn popularite_fraicheur(
     etat: State<Etat>,
 ) -> Result<(i64, Option<i64>, i64, i64), String> {
@@ -188,6 +191,7 @@ pub(crate) type EtatBio = Passe<Compte>;
 /// **exclusivement par MBID** : un artiste sans `mb_artist_id` n'est jamais
 /// interrogé par nom (`docs/enrichissement-lecteur.md`).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_biographies(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -240,6 +244,7 @@ pub(crate) fn biographies_state(etat: State<Etat>) -> Result<EtatBio, String> {
 /// grille d'albums au centre (`docs/interface-guidelines.md`, Règle 1,
 /// exception du 15 septembre 2026) — pas de MBID, pas d'appel côté UI.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn bio_artiste(
     etat: State<Etat>,
     mbid: String,
@@ -262,6 +267,7 @@ pub(crate) const CRITIQUES_PEREMPTION_JOURS: i64 = 180;
 /// albums jamais vérifiés ; à `true`, revérifie aussi ceux de plus de
 /// [`CRITIQUES_PEREMPTION_JOURS`] (une critique neuve reste rare).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_critiques(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -320,6 +326,7 @@ pub(crate) fn critiques_state(etat: State<Etat>) -> Result<EtatCritiques, String
 
 /// Les critiques du morceau `id`, via son release-group MusicBrainz.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn critiques_piste(
     etat: State<Etat>,
     id: i64,
@@ -330,6 +337,7 @@ pub(crate) fn critiques_piste(
 /// Lien de sortie vers la page CritiqueBrainz de l'album du morceau `id` —
 /// invite à en écrire une, même (surtout) quand `critiques_piste` est vide.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn lien_ecrire_critique(etat: State<Etat>, id: i64) -> Result<Option<String>, String> {
     let rg = verrou(&etat.lib)
         .release_group_pour_piste(id)
@@ -348,6 +356,7 @@ pub(crate) const LASTFM_PEREMPTION_JOURS: i64 = 180;
 /// (gratuite, sur last.fm/api) : contrairement aux autres sources, Last.fm
 /// n'a pas de clé de test partagée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_lastfm(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -419,6 +428,7 @@ pub(crate) fn lastfm_state(etat: State<Etat>) -> Result<EtatLastfm, String> {
 /// seule requête réseau au plus (une seconde environ), pas une passe sur
 /// toute la bibliothèque — inutile d'habiller ça d'un état de fond.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn artist_links(
     etat: State<Etat>,
     mbid: String,
@@ -463,6 +473,7 @@ const TRANCHE_COMPLETER: usize = 10;
 
 /// Ce que « Compléter » interrogerait : la phrase d'avant le geste.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ApercuCompleter {
     musicbrainz: usize,
     lastfm: usize,
@@ -470,6 +481,7 @@ pub(crate) struct ApercuCompleter {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn completer_apercu(
     etat: State<Etat>,
     contact: String,
@@ -503,6 +515,7 @@ pub(crate) fn completer_apercu(
 /// (`Library::ouvrir_passe`). Arrêtable entre deux tranches ; annulable en
 /// bloc une fois finie ou arrêtée ([`completer_annuler`]).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn completer_lancer(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -621,6 +634,7 @@ pub(crate) fn completer_lancer(
 /// Demande l'arrêt de « Compléter » : pris en compte à la fin de la tranche
 /// en cours. Ce qui a été écrit reste au journal, donc annulable.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn completer_arreter(etat: State<Etat>) {
     etat.completer_arret.store(true, Ordering::Relaxed);
 }
@@ -645,6 +659,7 @@ pub(crate) fn completer_etat(etat: State<Etat>) -> Result<EtatCompleterVue, Stri
 /// Annule en bloc la dernière passe « Compléter » : rend le nombre de lignes
 /// rétablies.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn completer_annuler(etat: State<Etat>, id: i64) -> Result<usize, String> {
     if verrou(&etat.completer).en_cours {
         return Err("arrêtez d'abord la passe en cours".into());

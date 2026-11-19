@@ -7000,3 +7000,21 @@ identifiants d'album en nombre et sans `path` ni `duree_ms`, alors que le
 moteur rend une chaîne (comme `album_ring`) ; corrigée. Douze commandes
 sans réponse figée en ont reçu une neutre (listes vides, 0, `null`).
 144 commandes contrôlées sur 263 ; `npm run types` et 82 tests de fumée verts.
+
+## V51 : la carte d'Explorer et l'enrichissement contrôlés par les types — 20 nov. 2026
+
+Vingt-six commandes de plus : la carte (`map_view`, `engendrer_tuiles`,
+`itineraire`, `itineraire_voirie`, `style_carte`, `positions_carte`,
+`path`, `voyage`, `path_drawn`, `trace_rues`, `autotest_carte`,
+`journal_carte`) et l'enrichissement hors états de passe (lancements,
+`popularite_fraicheur`, `bio_artiste`, `critiques_piste`,
+`lien_ecrire_critique`, `artist_links`, « Compléter » sauf son état).
+Types dérivés : `ItineraireVu`, `ItineraireVoirieVu`,
+`ReponseItineraireVoirie`, `ApercuCompleter`, et dans `core` `MapPoint`,
+`BioArtiste`, `Critique`, `PasseJournal`.
+
+Restent hors contrôle les états de passe (`*_state`, `completer_etat`,
+`tuiles_state`) : `Passe<A>` aplatie s'exporte mal (V47), et
+`tuile` (réponse binaire). Le contrôle (`controle.ts`) admet désormais une
+`Error` figée, que le faux moteur lève (`positions_carte` en est une).
+170 commandes contrôlées sur 263 ; 82 tests de fumée verts.

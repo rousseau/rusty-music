@@ -28,6 +28,7 @@ pub const TABLES_JOURNALISEES: &[&str] = &[
 
 /// Une passe journalisée, telle que l'interface la montre.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PasseJournal {
     pub id: i64,
     pub nom: String,
