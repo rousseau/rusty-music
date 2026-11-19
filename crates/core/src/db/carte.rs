@@ -1204,6 +1204,7 @@ impl Library {
 /// est figé au moment du build (`crates/analysis/src/encodeur.rs`), il n'y a
 /// pas de bouton à tourner de ce côté-là.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ParametresCarte {
     /// Voisinage que t-SNE cherche à préserver. Doit rester bien en dessous
     /// du nombre de morceaux — `projeter` s'en charge, ce n'est pas à
@@ -1463,6 +1464,7 @@ type PisteVote = (
 /// l'inspecteur affiche comme « nom incertain », avec les trois propositions
 /// visibles plutôt qu'un choix silencieux.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct VoteFamille {
     pub cluster: i64,
     pub effectif: i64,

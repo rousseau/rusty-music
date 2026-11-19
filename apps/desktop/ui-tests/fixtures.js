@@ -61,6 +61,19 @@ const fixtures = {
   muscriptor_disponible: false,
   muscriptor_jeton_present: false,
   telecharger_muscriptor: null,
+  // V50 : Explorer, le voisinage. Réponses neutres du moteur.
+  prepare_graph: 0,
+  set_map_parameter: null,
+  definir_vocabulaire_familles: null,
+  probable_duplicates: [],
+  isolated_points: [],
+  selection: [],
+  search_albums: [],
+  artistes_proches: [],
+  path_album: [],
+  path_artist: [],
+  shuffle_artist: [],
+  subdiviser_famille: [],
   // V49 : une transcription vide, de la forme du moteur ; les tests qui
   // jouent une partition posent la leur (`pratique-fictive.js`).
   transcrire: (a) => ({
@@ -480,7 +493,12 @@ const fixtures = {
   },
   // L'anneau et la frise : pas d'arc, les albums seuls.
   reseau_albums: {
-    albums: ALBUMS.map((a, i) => ({ id: i + 1, name: a.name, artist: a.artist, famille: i < 2 ? 0 : 1, famille_secondaire: null, annee: a.year })),
+    // V50 : de la forme du moteur (`AnneauNoeud`) : identifiant en chaîne,
+    // chemin et durée — la réponse figée donnait un nombre et omettait les deux.
+    albums: ALBUMS.map((a, i) => ({
+      id: String(i + 1), name: a.name, artist: a.artist, famille: i < 2 ? 0 : 1, famille_secondaire: null,
+      path: null, duree_ms: 600000, annee: a.year,
+    })),
     arcs: [],
   },
   // L'anneau du premier album (`AnneauVue`), quel que soit l'album demandé :

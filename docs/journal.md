@@ -6981,3 +6981,22 @@ absents ; l'étape Tests efface ses traces pour qu'il repasse. Le test de
 fumée « surveillance : un album copié… » attendait la relecture (1,5 s de
 calme, puis `albums`) dans les 5 s par défaut, trop juste sur la machine de
 CI : 10 s pour cette assertion.
+
+## V50 : Explorer (voisinage) contrôlé par les types — 20 nov. 2026
+
+Les 22 commandes de `explorer/voisinage.rs` passent aux types générés :
+familles (`families`, `album_families`, `artist_families`,
+`families_detail`, `subdiviser_famille`, `famille_piste`, vocabulaire),
+paramètres de la carte, doublons et points isolés, sélection au lasso,
+voisins, recherche d'albums, anneau (`album_ring`, `reseau_albums`,
+`artistes_proches`) et chemins (`path_album`, `path_artist`,
+`shuffle_artist`). Types dérivés : `AnneauVue`, `AnneauReseau`,
+`AnneauNoeud`, `AnneauVoisin`, `AnneauArcBase`, `AlbumHit`,
+`DoublonProbable`, `PointIsole`, et dans `core` `ParametresCarte`,
+`VoteFamille`.
+
+Le contrôle a trouvé une réponse figée fausse : `reseau_albums` donnait des
+identifiants d'album en nombre et sans `path` ni `duree_ms`, alors que le
+moteur rend une chaîne (comme `album_ring`) ; corrigée. Douze commandes
+sans réponse figée en ont reçu une neutre (listes vides, 0, `null`).
+144 commandes contrôlées sur 263 ; `npm run types` et 82 tests de fumée verts.

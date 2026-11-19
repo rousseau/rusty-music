@@ -242,6 +242,7 @@ pub(crate) fn construire_graphe(
 /// plutôt que de le faire attendre au premier chemin demandé. Rend le nombre
 /// de morceaux couverts.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn prepare_graph(etat: State<Etat>) -> Result<usize, String> {
     let vecteurs = charger_vecteurs(&etat)?;
     Ok(construire_graphe(&etat, &vecteurs)?.taille())
@@ -249,6 +250,7 @@ pub(crate) fn prepare_graph(etat: State<Etat>) -> Result<usize, String> {
 
 /// Les familles de la carte, nommées et comptées.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, String> {
     verrou(&etat.lib)
         .familles(rusty_music_analysis::passe::MODELE)
@@ -259,6 +261,7 @@ pub(crate) fn families(etat: State<Etat>) -> Result<Vec<(i64, String, i64)>, Str
 /// grille de pochettes du mode Écoute (`ui/js/`), qui réutilise la légende des
 /// familles du mode Explorer.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn album_families(
     etat: State<Etat>,
 ) -> Result<Vec<(String, Option<String>, i64)>, String> {
@@ -271,6 +274,7 @@ pub(crate) fn album_families(
 /// filtre par famille du fil du mode Découvrir (`ui/js/`), qui réutilise la
 /// légende des familles du mode Explorer.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn artist_families(etat: State<Etat>) -> Result<Vec<(String, i64)>, String> {
     verrou(&etat.lib)
         .familles_des_artistes(rusty_music_analysis::passe::MODELE)
@@ -278,6 +282,7 @@ pub(crate) fn artist_families(etat: State<Etat>) -> Result<Vec<(String, i64)>, S
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn map_parameters(
     etat: State<Etat>,
 ) -> Result<rusty_music_core::db::ParametresCarte, String> {
@@ -288,6 +293,7 @@ pub(crate) fn map_parameters(
 /// vérifié ici plutôt que laissé filer jusqu'à la base, qui accepterait
 /// n'importe quelle chaîne sans jamais la relire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_map_parameter(etat: State<Etat>, cle: String, valeur: f64) -> Result<(), String> {
     const CLES: [&str; 7] = [
         "perplexite",
@@ -308,6 +314,7 @@ pub(crate) fn set_map_parameter(etat: State<Etat>, cle: String, valeur: f64) -> 
 
 /// Le vocabulaire des familles par genre, dans l'ordre d'affichage.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn vocabulaire_familles(
     etat: State<Etat>,
 ) -> Result<Vec<(String, Vec<String>)>, String> {
@@ -321,6 +328,7 @@ pub(crate) fn vocabulaire_familles(
 /// `project` (rappelé par l'interface après coup) qui recalcule la carte
 /// avec le nouveau vocabulaire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn definir_vocabulaire_familles(
     etat: State<Etat>,
     vocabulaire: Vec<(String, Vec<String>)>,
@@ -391,6 +399,7 @@ pub(crate) const SEUIL_DOUBLON_D2: f32 = 1e-3;
 pub(crate) const TOLERANCE_DUREE_MS: i64 = 3000;
 
 #[derive(Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct DoublonProbable {
     a: TrackRow,
     b: TrackRow,
@@ -402,6 +411,7 @@ pub(crate) struct DoublonProbable {
 /// positif : un doublon manqué reste juste un doublon, un faux doublon
 /// signalé use la confiance dans le reste de la liste.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn probable_duplicates(etat: State<Etat>) -> Result<Vec<DoublonProbable>, String> {
     let vecteurs = charger_vecteurs(&etat)?;
     let graphe = construire_graphe(&etat, &vecteurs)?;
@@ -441,6 +451,7 @@ pub(crate) fn probable_duplicates(etat: State<Etat>) -> Result<Vec<DoublonProbab
 }
 
 #[derive(Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct PointIsole {
     piste: TrackRow,
     plus_proche: TrackRow,
@@ -455,6 +466,7 @@ pub(crate) struct PointIsole {
 /// propre à chaque bibliothèque, pas d'un nombre choisi une fois pour
 /// toutes.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn isolated_points(etat: State<Etat>) -> Result<Vec<PointIsole>, String> {
     let vecteurs = charger_vecteurs(&etat)?;
     let graphe = construire_graphe(&etat, &vecteurs)?;
@@ -496,6 +508,7 @@ pub(crate) fn isolated_points(etat: State<Etat>) -> Result<Vec<PointIsole>, Stri
 /// la base : une zone donne des dizaines de morceaux, et les enchaîner au
 /// hasard produirait une playlist qui saute d'un bout à l'autre.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn selection(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -556,6 +569,7 @@ pub(crate) fn dans_le_contour(contour: &[(f32, f32)], x: f32, y: f32) -> bool {
 /// voisinage se calcule sur les empreintes, jamais sur la carte : t-SNE
 /// déforme les distances qu'on cherche justement à comparer.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn neighbours(
     etat: State<Etat>,
     id: i64,
@@ -573,6 +587,7 @@ pub(crate) fn neighbours(
 /// jamais recalculé côté interface — voir la note sur `hacher` dans
 /// `crates/core/src/db.rs`.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AlbumHit {
     id: String,
     name: String,
@@ -581,6 +596,7 @@ pub(crate) struct AlbumHit {
 
 /// Recherche d'albums pour la barre `#q` en mode Explorer → Anneau.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn search_albums(
     etat: State<Etat>,
     query: String,
@@ -601,6 +617,7 @@ pub(crate) fn search_albums(
 /// Un nœud album, partagé par le mode Explorer → Anneau (focal ou voisin) et
 /// la frise des filiations du mode Explorer → Temps.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AnneauNoeud {
     id: String,
     name: String,
@@ -637,6 +654,7 @@ impl From<&AlbumNoeud> for AnneauNoeud {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AnneauVoisin {
     #[serde(flatten)]
     noeud: AnneauNoeud,
@@ -653,6 +671,7 @@ pub(crate) struct AnneauVoisin {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AnneauVue {
     focal: AnneauNoeud,
     voisins: Vec<AnneauVoisin>,
@@ -666,6 +685,7 @@ pub(crate) struct AnneauVue {
 /// construit ici) : pas de mise en cache par requête, la bibliothèque compte
 /// trop peu d'albums pour que ce soit utile.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn album_ring(
     etat: State<Etat>,
     album_id: String,
@@ -745,6 +765,7 @@ pub(crate) fn centroides_par_artiste(
 /// linéaire — une bibliothèque compte bien moins d'artistes que d'albums,
 /// inutile d'y consacrer un graphe.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn artistes_proches(
     etat: State<Etat>,
     artiste: String,
@@ -773,6 +794,7 @@ pub(crate) fn artistes_proches(
 /// sert à trier/plafonner côté moteur ; l'interface s'en sert aussi pour
 /// moduler l'opacité, à l'identique de `AnneauVoisin::distance`.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AnneauArcBase {
     a: String,
     b: String,
@@ -780,6 +802,7 @@ pub(crate) struct AnneauArcBase {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AnneauReseau {
     /// Chaque album qui a une famille connue — c'est sur cette liste que
     /// l'interface calcule une bonne fois pour toutes la position de chacun
@@ -800,6 +823,7 @@ pub(crate) struct AnneauReseau {
 /// `chargerReseauFrise` côté interface), jamais reconstruit au changement de
 /// focal ou d'album survolé.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn reseau_albums(etat: State<Etat>, limite_arcs: usize) -> Result<AnneauReseau, String> {
     let (centroides, noeuds) = charger_centroides_albums(&etat)?;
     let graphe = charger_graphe_albums(&etat, &centroides)?;
@@ -858,6 +882,7 @@ pub(crate) fn reseau_albums(etat: State<Etat>, limite_arcs: usize) -> Result<Ann
 /// est la plus proche de la moyenne de l'album — et filtre déjà les morceaux
 /// sans empreinte, donc un album partiellement analysé n'est pas un problème.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn path_album(
     etat: State<Etat>,
     album: String,
@@ -894,6 +919,7 @@ pub(crate) fn path_album(
 /// qu'un seul album : le bouton « radio » du bandeau « autour de cet artiste »
 /// (panneau central du mode Écoute), à côté de « Sonne comme ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn path_artist(
     etat: State<Etat>,
     artist: String,
@@ -939,6 +965,7 @@ pub(crate) fn path_artist(
 /// artiste non analysé. Bouton « Playlist de cet artiste » du bandeau
 /// « autour de cet artiste » (panneau central du mode Écoute).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn shuffle_artist(
     etat: State<Etat>,
     artist: String,
@@ -967,6 +994,7 @@ pub(crate) fn shuffle_artist(
 /// l'appelle donc que faute de mieux, avant de lire le nom voté dans le
 /// cache de `families_detail`. `None` sur un morceau pas encore projeté.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn famille_piste(etat: State<Etat>, id: i64) -> Result<Option<i64>, String> {
     verrou(&etat.lib)
         .cluster_de_piste(rusty_music_analysis::passe::MODELE, id)
@@ -979,6 +1007,7 @@ pub(crate) fn famille_piste(etat: State<Etat>, id: i64) -> Result<Option<i64>, S
 /// commande sert le nouveau bloc de l'inspecteur (« nom incertain »),
 /// chargée une fois et mise en cache côté JS comme `families`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn families_detail(
     etat: State<Etat>,
 ) -> Result<Vec<rusty_music_core::db::VoteFamille>, String> {
@@ -995,6 +1024,7 @@ pub(crate) fn families_detail(
 /// sens que pour cet appel, jamais réutilisés par la carte, l'anneau ou la
 /// frise.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn subdiviser_famille(
     etat: State<Etat>,
     cluster: i64,

@@ -9,6 +9,160 @@ export const commands = {
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
 	/**
+	 *  Prépare le graphe des voisins sans rien tracer.
+	 * 
+	 *  L'interface l'appelle en entrant dans le mode Explorer : le balayage a
+	 *  alors le temps de tourner pendant que l'utilisateur regarde la carte,
+	 *  plutôt que de le faire attendre au premier chemin demandé. Rend le nombre
+	 *  de morceaux couverts.
+	 */
+	prepare_graph: () => __TAURI_INVOKE<number>("prepare_graph"),
+	/**  Les familles de la carte, nommées et comptées. */
+	families: () => __TAURI_INVOKE<([number, string, number])[]>("families"),
+	/**
+	 *  La famille sonique dominante de chaque album — le filtre par famille de la
+	 *  grille de pochettes du mode Écoute (`ui/js/`), qui réutilise la légende des
+	 *  familles du mode Explorer.
+	 */
+	album_families: () => __TAURI_INVOKE<([string, string | null, number])[]>("album_families"),
+	/**
+	 *  La famille sonique dominante de chaque artiste (`mb_album_artist_id`) — le
+	 *  filtre par famille du fil du mode Découvrir (`ui/js/`), qui réutilise la
+	 *  légende des familles du mode Explorer.
+	 */
+	artist_families: () => __TAURI_INVOKE<([string, number])[]>("artist_families"),
+	map_parameters: () => __TAURI_INVOKE<ParametresCarte>("map_parameters"),
+	/**
+	 *  `cle` doit être un champ de [`rusty_music_core::db::ParametresCarte`] —
+	 *  vérifié ici plutôt que laissé filer jusqu'à la base, qui accepterait
+	 *  n'importe quelle chaîne sans jamais la relire.
+	 */
+	set_map_parameter: (cle: string, valeur: number | null) => __TAURI_INVOKE<null>("set_map_parameter", { cle, valeur }),
+	/**  Le vocabulaire des familles par genre, dans l'ordre d'affichage. */
+	vocabulaire_familles: () => __TAURI_INVOKE<([string, string[]])[]>("vocabulaire_familles"),
+	/**
+	 *  Remplace le vocabulaire en bloc. Une liste vide restaure les valeurs par
+	 *  défaut — voir `Library::definir_vocabulaire_familles`.
+	 * 
+	 *  Ne relance rien elle-même : comme pour `set_map_parameter`, c'est
+	 *  `project` (rappelé par l'interface après coup) qui recalcule la carte
+	 *  avec le nouveau vocabulaire.
+	 */
+	definir_vocabulaire_familles: (vocabulaire: ([string, string[]])[]) => __TAURI_INVOKE<null>("definir_vocabulaire_familles", { vocabulaire }),
+	/**
+	 *  Paires de morceaux dont l'empreinte sonore est quasi identique — voir
+	 *  [`SEUIL_DOUBLON_D2`]. Biaisé vers le silence plutôt que le faux
+	 *  positif : un doublon manqué reste juste un doublon, un faux doublon
+	 *  signalé use la confiance dans le reste de la liste.
+	 */
+	probable_duplicates: () => __TAURI_INVOKE<DoublonProbable_Serialize[]>("probable_duplicates"),
+	/**
+	 *  Morceaux dont même le plus proche voisin reste sonoremement lointain —
+	 *  des coins délaissés de la carte, sans repère pour y aller depuis un
+	 *  autre morceau connu. Seuil auto-calibré sur la bibliothèque du moment
+	 *  (99ᵉ centile des distances au plus proche voisin) plutôt qu'une
+	 *  constante absolue : ce qui compte comme « loin » dépend de la densité
+	 *  propre à chaque bibliothèque, pas d'un nombre choisi une fois pour
+	 *  toutes.
+	 */
+	isolated_points: () => __TAURI_INVOKE<PointIsole_Serialize[]>("isolated_points"),
+	/**
+	 *  Les morceaux d'une zone dessinée sur la carte.
+	 * 
+	 *  `trace` est le contour, en coordonnées de carte. Les morceaux retenus sont
+	 *  rendus **ordonnés en parcours de proche en proche** et non dans l'ordre de
+	 *  la base : une zone donne des dizaines de morceaux, et les enchaîner au
+	 *  hasard produirait une playlist qui saute d'un bout à l'autre.
+	 */
+	selection: (trace: ([number | null, number | null])[], reel: boolean | null, familles: number[] | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("selection", { trace, reel, familles }),
+	/**
+	 *  Les morceaux qui sonnent le plus comme celui-ci.
+	 * 
+	 *  L'inspecteur du modèle « Atelier » les liste sous le morceau courant. Le
+	 *  voisinage se calcule sur les empreintes, jamais sur la carte : t-SNE
+	 *  déforme les distances qu'on cherche justement à comparer.
+	 */
+	neighbours: (id: number, count: number) => __TAURI_INVOKE<TrackRow_Serialize[]>("neighbours", { id, count }),
+	/**  Recherche d'albums pour la barre `#q` en mode Explorer → Anneau. */
+	search_albums: (query: string, limit: number) => __TAURI_INVOKE<AlbumHit[]>("search_albums", { query, limit }),
+	/**
+	 *  Les k albums les plus proches d'un album focal par empreinte, scindés en
+	 *  antérieurs/postérieurs — mode Explorer → Anneau.
+	 * 
+	 *  Balayage linéaire sur les centroïdes d'album (voir `charger_centroides_albums`
+	 *  et la doc de `Library::album_embeddings` sur pourquoi aucun graphe n'est
+	 *  construit ici) : pas de mise en cache par requête, la bibliothèque compte
+	 *  trop peu d'albums pour que ce soit utile.
+	 */
+	album_ring: (albumId: string, k: number) => __TAURI_INVOKE<AnneauVue_Serialize>("album_ring", { albumId, k }),
+	/**
+	 *  Les k artistes les plus proches sonorement d'un artiste donné — panneau
+	 *  central du mode Écoute, sous la grille d'albums de cet artiste.
+	 * 
+	 *  Même esprit que [`album_ring`] un cran plus haut : réutilise les
+	 *  centroïdes d'album déjà en cache, agrégés par artiste, puis un balayage
+	 *  linéaire — une bibliothèque compte bien moins d'artistes que d'albums,
+	 *  inutile d'y consacrer un graphe.
+	 */
+	artistes_proches: (artiste: string, k: number) => __TAURI_INVOKE<([string, number | null])[]>("artistes_proches", { artiste, k }),
+	/**
+	 *  Le fond permanent du mode Explorer → Anneau et de la frise des filiations
+	 *  (mode Explorer → Temps) : tous les albums connus et un échantillon de
+	 *  leurs liens de plus proche voisinage — voir `AnneauReseau`. Chargé une
+	 *  fois par session par chacun des deux modes (voir `chargerReseauAnneau`/
+	 *  `chargerReseauFrise` côté interface), jamais reconstruit au changement de
+	 *  focal ou d'album survolé.
+	 */
+	reseau_albums: (limiteArcs: number) => __TAURI_INVOKE<AnneauReseau_Serialize>("reseau_albums", { limiteArcs }),
+	/**
+	 *  Playlist « dans l'esprit de l'album » : une errance ordinaire, mais partie
+	 *  du morceau le plus central de l'album plutôt que d'un seul morceau choisi
+	 *  à la main. `chemin::parcours` donne ce pivot — le morceau dont l'empreinte
+	 *  est la plus proche de la moyenne de l'album — et filtre déjà les morceaux
+	 *  sans empreinte, donc un album partiellement analysé n'est pas un problème.
+	 */
+	path_album: (album: string, artist: string | null, steps: number, seed: number, bruit: number | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("path_album", { album, artist, steps, seed, bruit }),
+	/**
+	 *  Playlist « dans l'esprit de l'artiste » — même principe que [`path_album`],
+	 *  mais le pivot est cherché sur l'ensemble des morceaux de l'artiste plutôt
+	 *  qu'un seul album : le bouton « radio » du bandeau « autour de cet artiste »
+	 *  (panneau central du mode Écoute), à côté de « Sonne comme ».
+	 */
+	path_artist: (artist: string, mbid: string | null, steps: number, seed: number, bruit: number | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("path_artist", { artist, mbid, steps, seed, bruit }),
+	/**
+	 *  Playlist mélangée de tous les morceaux d'un artiste — un vrai tirage
+	 *  aléatoire, renouvelé à chaque appel, pas une dérive sonique comme
+	 *  `path_artist` : aucun besoin de vecteurs CLAP, fonctionne même pour un
+	 *  artiste non analysé. Bouton « Playlist de cet artiste » du bandeau
+	 *  « autour de cet artiste » (panneau central du mode Écoute).
+	 */
+	shuffle_artist: (artist: string, mbid: string | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("shuffle_artist", { artist, mbid }),
+	/**
+	 *  La famille du morceau `id` — la plupart des vues de piste ne portent pas
+	 *  déjà ce numéro (seuls les points de la carte l'ont) : l'inspecteur ne
+	 *  l'appelle donc que faute de mieux, avant de lire le nom voté dans le
+	 *  cache de `families_detail`. `None` sur un morceau pas encore projeté.
+	 */
+	famille_piste: (id: number) => __TAURI_INVOKE<number | null>("famille_piste", { id }),
+	/**
+	 *  Le détail du vote de nommage des familles — trois propositions et un
+	 *  drapeau de confiance par famille (`docs/nommage-familles.md`). `families`
+	 *  reste le nom simple qu'utilisent la carte, l'anneau et la frise ; cette
+	 *  commande sert le nouveau bloc de l'inspecteur (« nom incertain »),
+	 *  chargée une fois et mise en cache côté JS comme `families`.
+	 */
+	families_detail: () => __TAURI_INVOKE<VoteFamille[]>("families_detail"),
+	/**
+	 *  Affinage local suggéré dans l'inspecteur, jamais automatique
+	 *  (`docs/nommage-familles.md`) : redécoupe les seuls morceaux de la
+	 *  famille `cluster` par un k-means restreint, puis nomme chaque
+	 *  sous-groupe par le même vote à trois sources. N'écrit rien dans
+	 *  `features.cluster` — les identifiants de sous-groupe rendus n'ont de
+	 *  sens que pour cet appel, jamais réutilisés par la carte, l'anneau ou la
+	 *  frise.
+	 */
+	subdiviser_famille: (cluster: number) => __TAURI_INVOKE<VoteFamille[]>("subdiviser_famille", { cluster }),
+	/**
 	 *  Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
 	 *  - « bass » : Basic Pitch, ou MuScriptor si `qualite` (une minute par
 	 *    morceau, plus juste — banc `experiments/partitions/`), puis une note à
@@ -664,6 +818,20 @@ export type AjoutPlaylist = {
 };
 
 /**
+ *  Un album trouvé par la recherche du mode Explorer → Anneau.
+ * 
+ *  `id` voyage en décimal : un hachage 64 bits dépasse la précision d'un
+ *  `Number` JS. Calculé une fois côté cœur ([`rusty_music_core::db::Library::search_albums`]),
+ *  jamais recalculé côté interface — voir la note sur `hacher` dans
+ *  `crates/core/src/db.rs`.
+ */
+export type AlbumHit = {
+	id: string,
+	name: string,
+	artist: string,
+};
+
+/**
  *  Un album et son volume. `artist` est l'artiste d'album quand il est
  *  renseigné, sinon celui de la piste — c'est ce qui tient les compilations.
  */
@@ -734,6 +902,167 @@ export type Allure =
 "gravir" | 
 /**  Redescendre : l'énergie baisse, d'une bande à la fois (le soir). */
 "redescendre";
+
+/**
+ *  Un lien du fond permanent de l'anneau — voir `reseau_albums`. `distance`
+ *  sert à trier/plafonner côté moteur ; l'interface s'en sert aussi pour
+ *  moduler l'opacité, à l'identique de `AnneauVoisin::distance`.
+ */
+export type AnneauArcBase = {
+	a: string,
+	b: string,
+	distance: number | null,
+};
+
+/**
+ *  Un nœud album, partagé par le mode Explorer → Anneau (focal ou voisin) et
+ *  la frise des filiations du mode Explorer → Temps.
+ */
+export type AnneauNoeud = AnneauNoeud_Serialize | AnneauNoeud_Deserialize;
+
+/**
+ *  Un nœud album, partagé par le mode Explorer → Anneau (focal ou voisin) et
+ *  la frise des filiations du mode Explorer → Temps.
+ */
+export type AnneauNoeud_Deserialize = {
+	id: string,
+	name: string,
+	artist: string,
+	famille?: number | null,
+	/**
+	 *  Famille secondaire d'un album à cheval sur deux familles, `None` sinon
+	 *  — voir [`rusty_music_core::db::Library::familles_secondaires_albums`].
+	 *  Toujours `None` pour un [`AnneauVoisin`] construit par [`album_ring`] :
+	 *  l'anneau n'a pas besoin de cette nuance, seule la frise colore un arc
+	 *  entrant par elle.
+	 */
+	famille_secondaire?: number | null,
+	path?: string | null,
+	/**
+	 *  Somme des durées de ses morceaux, en ms — épaisseur de son arc sur le
+	 *  second anneau (voir `AlbumNoeud::duree_ms`).
+	 */
+	duree_ms: number,
+	/**
+	 *  Année de sortie, `None` tant qu'aucune date fiable n'est connue (voir
+	 *  `AlbumNoeud::date`, 0 = inconnue).
+	 */
+	annee?: number | null,
+};
+
+/**
+ *  Un nœud album, partagé par le mode Explorer → Anneau (focal ou voisin) et
+ *  la frise des filiations du mode Explorer → Temps.
+ */
+export type AnneauNoeud_Serialize = {
+	id: string,
+	name: string,
+	artist: string,
+	famille: number | null,
+	/**
+	 *  Famille secondaire d'un album à cheval sur deux familles, `None` sinon
+	 *  — voir [`rusty_music_core::db::Library::familles_secondaires_albums`].
+	 *  Toujours `None` pour un [`AnneauVoisin`] construit par [`album_ring`] :
+	 *  l'anneau n'a pas besoin de cette nuance, seule la frise colore un arc
+	 *  entrant par elle.
+	 */
+	famille_secondaire: number | null,
+	path: string | null,
+	/**
+	 *  Somme des durées de ses morceaux, en ms — épaisseur de son arc sur le
+	 *  second anneau (voir `AlbumNoeud::duree_ms`).
+	 */
+	duree_ms: number,
+	/**
+	 *  Année de sortie, `None` tant qu'aucune date fiable n'est connue (voir
+	 *  `AlbumNoeud::date`, 0 = inconnue).
+	 */
+	annee: number | null,
+};
+
+export type AnneauReseau = AnneauReseau_Serialize | AnneauReseau_Deserialize;
+
+export type AnneauReseau_Deserialize = {
+	/**
+	 *  Chaque album qui a une famille connue — c'est sur cette liste que
+	 *  l'interface calcule une bonne fois pour toutes la position de chacun
+	 *  sur l'anneau (voir `docs/carto-anneau.md` § stabilité des positions) :
+	 *  jamais recalculée au changement d'album focal.
+	 */
+	albums: AnneauNoeud_Deserialize[],
+	/**
+	 *  Un sous-ensemble représentatif des liens de tout le réseau — le plus
+	 *  proche voisin de chaque album, dédoublonné — affiché en permanence et
+	 *  très estompé, pour la texture tissée que la référence Eigenfactor a
+	 *  déjà même sans sélection (voir `docs/carto-anneau.md` § état de base).
+	 */
+	arcs: AnneauArcBase[],
+};
+
+export type AnneauReseau_Serialize = {
+	/**
+	 *  Chaque album qui a une famille connue — c'est sur cette liste que
+	 *  l'interface calcule une bonne fois pour toutes la position de chacun
+	 *  sur l'anneau (voir `docs/carto-anneau.md` § stabilité des positions) :
+	 *  jamais recalculée au changement d'album focal.
+	 */
+	albums: AnneauNoeud_Serialize[],
+	/**
+	 *  Un sous-ensemble représentatif des liens de tout le réseau — le plus
+	 *  proche voisin de chaque album, dédoublonné — affiché en permanence et
+	 *  très estompé, pour la texture tissée que la référence Eigenfactor a
+	 *  déjà même sans sélection (voir `docs/carto-anneau.md` § état de base).
+	 */
+	arcs: AnneauArcBase[],
+};
+
+export type AnneauVoisin = AnneauVoisin_Serialize | AnneauVoisin_Deserialize;
+
+export type AnneauVoisin_Deserialize = {
+	/**
+	 *  Vrai si cet album précède le focal dans le temps, faux s'il le suit
+	 *  (ou à égalité — voir `Library::albums_annotes`, une date de
+	 *  résolution à la journée).
+	 */
+	avant: boolean,
+	/**
+	 *  Distance au carré entre les centroïdes d'empreinte du focal et de ce
+	 *  voisin — épaisseur du lien : plus proche, plus épais. Brute (pas de
+	 *  racine ni de normalisation, l'échelle n'a de sens que relative aux
+	 *  autres voisins du même focal) ; à l'interface de la ramener à une
+	 *  épaisseur de trait parmi les voisins affichés.
+	 */
+	distance: number | null,
+} & AnneauNoeud_Deserialize;
+
+export type AnneauVoisin_Serialize = {
+	/**
+	 *  Vrai si cet album précède le focal dans le temps, faux s'il le suit
+	 *  (ou à égalité — voir `Library::albums_annotes`, une date de
+	 *  résolution à la journée).
+	 */
+	avant: boolean,
+	/**
+	 *  Distance au carré entre les centroïdes d'empreinte du focal et de ce
+	 *  voisin — épaisseur du lien : plus proche, plus épais. Brute (pas de
+	 *  racine ni de normalisation, l'échelle n'a de sens que relative aux
+	 *  autres voisins du même focal) ; à l'interface de la ramener à une
+	 *  épaisseur de trait parmi les voisins affichés.
+	 */
+	distance: number | null,
+} & AnneauNoeud_Serialize;
+
+export type AnneauVue = AnneauVue_Serialize | AnneauVue_Deserialize;
+
+export type AnneauVue_Deserialize = {
+	focal: AnneauNoeud_Deserialize,
+	voisins: AnneauVoisin_Deserialize[],
+};
+
+export type AnneauVue_Serialize = {
+	focal: AnneauNoeud_Serialize,
+	voisins: AnneauVoisin_Serialize[],
+};
 
 /**  Un artiste et son volume dans la bibliothèque. */
 export type ArtistRow = ArtistRow_Serialize | ArtistRow_Deserialize;
@@ -1141,6 +1470,20 @@ export type CourbeVue = {
 	 *  molette.
 	 */
 	le_long: Riverain[],
+};
+
+export type DoublonProbable = DoublonProbable_Serialize | DoublonProbable_Deserialize;
+
+export type DoublonProbable_Deserialize = {
+	a: TrackRow_Deserialize,
+	b: TrackRow_Deserialize,
+	distance2: number | null,
+};
+
+export type DoublonProbable_Serialize = {
+	a: TrackRow_Serialize,
+	b: TrackRow_Serialize,
+	distance2: number | null,
 };
 
 export type Epingle = Epingle_Serialize | Epingle_Deserialize;
@@ -2018,6 +2361,46 @@ export type Note_Serialize = {
 };
 
 /**
+ *  Paramètres du calcul de la carte — projection t-SNE et clustering
+ *  k-means. Rien pour les empreintes elles-mêmes : le modèle CLAP importé
+ *  est figé au moment du build (`crates/analysis/src/encodeur.rs`), il n'y a
+ *  pas de bouton à tourner de ce côté-là.
+ */
+export type ParametresCarte = {
+	/**
+	 *  Voisinage que t-SNE cherche à préserver. Doit rester bien en dessous
+	 *  du nombre de morceaux — `projeter` s'en charge, ce n'est pas à
+	 *  l'appelant d'y penser.
+	 */
+	perplexite: number | null,
+	/**
+	 *  Passes de descente de gradient. Plus haut stabilise le dessin, plus
+	 *  lentement.
+	 */
+	epoques: number,
+	/**
+	 *  Nombre de familles (k de k-means), sur la carte comme dans le rail
+	 *  « Familles ».
+	 */
+	familles: number,
+	/**
+	 *  Passes de k-means++. Au-delà d'une poignée de dizaines, les centres
+	 *  ont déjà cessé de bouger sur une bibliothèque de cette taille.
+	 */
+	iterations_kmeans: number,
+	/**
+	 *  Écart-type du noyau gaussien de la nappe de densité — voir
+	 *  [`crate::density::ParametresDensite`], que ce champ (et les deux
+	 *  suivants) alimente directement.
+	 */
+	densite_noyau: number | null,
+	/**  Cellules par côté de la grille de densité. */
+	densite_resolution: number,
+	/**  Bandes par nappe de densité. */
+	densite_bandes: number,
+};
+
+/**
  *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
  *  tire.
  */
@@ -2126,6 +2509,20 @@ export type PlaylistRow_Serialize = {
 	/**  Durée des pistes présentes. */
 	duree_ms: number,
 	modifiee_le: number,
+};
+
+export type PointIsole = PointIsole_Serialize | PointIsole_Deserialize;
+
+export type PointIsole_Deserialize = {
+	piste: TrackRow_Deserialize,
+	plus_proche: TrackRow_Deserialize,
+	distance2: number | null,
+};
+
+export type PointIsole_Serialize = {
+	piste: TrackRow_Serialize,
+	plus_proche: TrackRow_Serialize,
+	distance2: number | null,
 };
 
 /**  Un préréglage, tel que l'interface le montre. */
@@ -2561,6 +2958,31 @@ export type VoixAura = {
 	id: number,
 	gain: number | null,
 	pan: number | null,
+};
+
+/**
+ *  Une famille nommée par vote entre trois sources indépendantes —
+ *  MusicBrainz, le vocabulaire CLAP-texte et Last.fm. Voir
+ *  `docs/nommage-familles.md`.
+ * 
+ *  `fiable` distingue un nom sur lequel au moins deux sources s'accordent
+ *  (ou qu'une critique CritiqueBrainz est venue confirmer) d'un simple repli
+ *  sur MusicBrainz seul quand les trois divergent — c'est ce dernier cas que
+ *  l'inspecteur affiche comme « nom incertain », avec les trois propositions
+ *  visibles plutôt qu'un choix silencieux.
+ */
+export type VoteFamille = {
+	cluster: number,
+	effectif: number,
+	fiable: boolean,
+	/**
+	 *  Ce que la carte, l'anneau et la frise affichent — toujours renseigné,
+	 *  même quand `fiable` est faux (repli sur le nom MusicBrainz).
+	 */
+	nom_affiche: string,
+	musicbrainz: string,
+	clap_texte: string,
+	lastfm: string,
 };
 
 /**
