@@ -45,6 +45,17 @@ const fixtures = {
   set_normalisation: null,
   set_pochettes_en_ligne: null,
   favoris: [],
+  basculer_favori: (a, e) => {
+    e.favoris ??= new Set();
+    if (e.favoris.has(a.path)) e.favoris.delete(a.path);
+    else e.favoris.add(a.path);
+    return e.favoris.has(a.path);
+  },
+  liste_intelligente: [],
+  creer_playlist: 1,
+  renommer_playlist: null,
+  supprimer_playlist: null,
+  exporter_playlist: "/Musique/Playlists/essai.m3u8",
   roots: [{ path: RACINE, added_at: 1_700_000_000, last_scan: 1_700_000_100, tracks: PISTES.length }],
   artists: [
     { name: "Les Essais", mbid: null, tracks: 3, albums: 2 },
@@ -90,6 +101,30 @@ const fixtures = {
     e.stems = null;
     return null;
   },
+  // V46 : le transport, la file et le minuteur, contrôlés par les types.
+  remplacer_file: (a, e) => {
+    e.file = a.paths;
+    e.stems = null;
+    return null;
+  },
+  toggle_pause: (_, e) => (e.pause = !e.pause),
+  skip: null,
+  previous: null,
+  jump_to: null,
+  seek: null,
+  set_volume: null,
+  set_repetition: null,
+  set_alea: (_, e) => e.file ?? [],
+  deplacer_file: (a, e) => {
+    const f = [...(e.file ?? [])];
+    const [x] = f.splice(a.de, 1);
+    if (x !== undefined) f.splice(a.a, 0, x);
+    e.file = f;
+    return f;
+  },
+  minuteur_demarrer: (a) => ({ mode: a.mode, reste_ms: a.minutes ? a.minutes * 60_000 : null }),
+  minuteur_annuler: () => {},
+  minuteur_etat: null,
   file_courante: (_, e) => window.__DONNEES__.PISTES.filter((p) => (e.file ?? []).includes(p.path)),
   // La balade (`explorer/balade.rs`, `BaladeVue`) : le départ joue, le
   // suivant est décidé mais pas encore dans la file. Un carrefour à deux

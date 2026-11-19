@@ -78,6 +78,7 @@ pub enum Action {
 
 /// Ce que l'interface en affiche.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct EtatMinuteur {
     /// « duree », « piste » ou « album ».
     pub mode: &'static str,

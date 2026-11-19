@@ -170,6 +170,7 @@ pub(crate) fn vider_cache_hd(etat: State<Etat>) -> Result<(), String> {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatLecture {
     current: Option<String>,
     paused: bool,
@@ -195,12 +196,14 @@ pub(crate) struct EtatLecture {
 
 /// Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct PisteIgnoree {
     path: String,
     raison: String,
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn play(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     couper_stems(&etat);
@@ -210,6 +213,7 @@ pub(crate) fn play(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> 
 /// Comme `play`, mais ne redémarre pas si le premier morceau ne change pas —
 /// la régénération d'un chemin sur la carte (bruit, « Autre tirage »).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_queue(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     let stems_coupes = couper_stems(&etat);
@@ -230,6 +234,7 @@ pub(crate) fn set_queue(etat: State<Etat>, paths: Vec<String>) -> Result<(), Str
 /// `set_queue` gardait le préchargement de l'ancienne file — un ou deux
 /// morceaux des résultats de recherche se glissaient avant la playlist.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<(), String> {
     let chemins: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     let stems_coupes = couper_stems(&etat);
@@ -262,6 +267,7 @@ pub(crate) fn remplacer_file(etat: State<Etat>, paths: Vec<String>) -> Result<()
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
     let stems_coupes = couper_stems(&etat);
     let player = verrou(&etat.player);
@@ -276,6 +282,7 @@ pub(crate) fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn skip(etat: State<Etat>) -> Result<(), String> {
     let stems_coupes = couper_stems(&etat);
     let player = verrou(&etat.player);
@@ -289,6 +296,7 @@ pub(crate) fn skip(etat: State<Etat>) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn previous(etat: State<Etat>) -> Result<(), String> {
     // `previous` recharge la file et relance le lecteur : sans couper les
     // stems avant, le morceau d'origine sonnait par-dessus eux.
@@ -297,6 +305,7 @@ pub(crate) fn previous(etat: State<Etat>) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn jump_to(etat: State<Etat>, index: usize) -> Result<(), String> {
     couper_stems(&etat);
     verrou(&etat.player).jump_to(index).map_err(echec)
@@ -318,6 +327,7 @@ pub(crate) fn file_en_chaines(player: &rusty_music_player::Player) -> Vec<String
 /// Bascule l'aléatoire du panneau « file d'attente ». Rend la file dans son
 /// ordre effectif : mélangée à l'activation, restaurée à la désactivation.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_alea(etat: State<Etat>, actif: bool) -> Result<Vec<String>, String> {
     let mut player = verrou(&etat.player);
     player.set_alea(actif);
@@ -327,6 +337,7 @@ pub(crate) fn set_alea(etat: State<Etat>, actif: bool) -> Result<Vec<String>, St
 /// Répétition du panneau « file d'attente » — `mode` vaut « aucune »,
 /// « toutes » ou « une ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_repetition(etat: State<Etat>, mode: String) -> Result<(), String> {
     let mode = match mode.as_str() {
         "toutes" => rusty_music_player::Repetition::Toutes,
@@ -341,6 +352,7 @@ pub(crate) fn set_repetition(etat: State<Etat>, mode: String) -> Result<(), Stri
 /// glisser-déposer du panneau. Rend la file dans son ordre effectif : voir
 /// [`file_en_chaines`].
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn deplacer_file(etat: State<Etat>, de: usize, a: usize) -> Result<Vec<String>, String> {
     let mut player = verrou(&etat.player);
     player.deplacer(de, a);
@@ -348,6 +360,7 @@ pub(crate) fn deplacer_file(etat: State<Etat>, de: usize, a: usize) -> Result<Ve
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn seek(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
     verrou(&etat.player)
         .seek(std::time::Duration::from_millis(position_ms))
@@ -355,6 +368,7 @@ pub(crate) fn seek(etat: State<Etat>, position_ms: u64) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_volume(etat: State<Etat>, volume: f32) -> Result<(), String> {
     verrou(&etat.player).set_volume(volume);
     // Le même curseur commande les stems quand ils ont la main.
@@ -479,6 +493,7 @@ pub(crate) fn precharger_suivante(etat: &Etat) -> Result<(), String> {
 
 /// Sondé par l'interface : `rodio` ne pousse pas d'évènements.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
     precharger_suivante(&etat)?;
     // Avant de tenir le verrou du lecteur : le minuteur le prend lui-même, et
@@ -602,6 +617,7 @@ pub(crate) fn album_a_venir(etat: &Etat, courant: &Path) -> Vec<PathBuf> {
 /// « album ». Remplace le minuteur précédent, en rendant son volume s'il était
 /// en plein fondu.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn minuteur_demarrer(
     etat: State<Etat>,
     mode: String,
@@ -639,6 +655,7 @@ pub(crate) fn minuteur_demarrer(
 
 /// Désarme le minuteur ; rend le volume s'il était en plein fondu.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn minuteur_annuler(etat: State<Etat>) {
     if let Some(v) = verrou(&etat.minuteur).take().and_then(|m| m.annuler()) {
         verrou(&etat.player).set_volume(v);
@@ -647,6 +664,7 @@ pub(crate) fn minuteur_annuler(etat: State<Etat>) {
 
 /// Le minuteur armé et ce qu'il reste, ou `None`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn minuteur_etat(etat: State<Etat>) -> Option<minuteur::EtatMinuteur> {
     etat_du_minuteur(&etat)
 }
@@ -656,6 +674,7 @@ pub(crate) fn minuteur_etat(etat: State<Etat>) -> Option<minuteur::EtatMinuteur>
 /// après la reprise de session, le lecteur tient une file que la webview n'a
 /// jamais vue.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn file_courante(etat: State<Etat>) -> Result<Vec<TrackRow>, String> {
     let chemins: Vec<String> = verrou(&etat.player)
         .queue()
@@ -678,6 +697,7 @@ pub(crate) fn playlists(etat: State<Etat>) -> Result<Vec<PlaylistRow>, String> {
 /// d'où elle vient quand l'interface le sait (la demande faite à Lama…).
 /// Rend l'identifiant de la playlist.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn creer_playlist(
     etat: State<Etat>,
     nom: String,
@@ -702,6 +722,7 @@ pub(crate) fn playlist_pistes(etat: State<Etat>, id: i64) -> Result<Vec<TrackRow
 
 /// Bascule le favori du morceau `path` ; rend son nouvel état.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn basculer_favori(etat: State<Etat>, path: String) -> Result<bool, String> {
     verrou(&etat.lib).basculer_favori(&path).map_err(echec)
 }
@@ -709,6 +730,7 @@ pub(crate) fn basculer_favori(etat: State<Etat>, path: String) -> Result<bool, S
 /// Les chemins des favoris : l'interface en tient l'ensemble pour marquer les
 /// lignes (un favori est un chemin, pas un identifiant — voir `memoire.rs`).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn favoris(etat: State<Etat>) -> Result<Vec<String>, String> {
     verrou(&etat.lib).chemins_favoris().map_err(echec)
 }
@@ -716,6 +738,7 @@ pub(crate) fn favoris(etat: State<Etat>) -> Result<Vec<String>, String> {
 /// Les listes calculées à partir des écoutes (récents, plus écoutés, favoris)
 /// qui ne sont pas vides, pour la tête de la vue Playlists.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn listes_intelligentes(etat: State<Etat>) -> Result<Vec<ListeIntelligente>, String> {
     verrou(&etat.lib).listes_intelligentes().map_err(echec)
 }
@@ -723,6 +746,7 @@ pub(crate) fn listes_intelligentes(etat: State<Etat>) -> Result<Vec<ListeIntelli
 /// Les pistes d'une liste calculée (`quoi` : « recents », « plus-ecoutes »,
 /// « favoris »).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn liste_intelligente(etat: State<Etat>, quoi: String) -> Result<Vec<TrackRow>, String> {
     verrou(&etat.lib)
         .liste_intelligente(&quoi)
@@ -734,6 +758,7 @@ pub(crate) fn liste_intelligente(etat: State<Etat>, quoi: String) -> Result<Vec<
 /// choisi) et rend le chemin du fichier. Les pistes que la bibliothèque ne
 /// connaît plus n'y figurent pas. N'écrase jamais un fichier existant.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn exporter_playlist(
     etat: State<Etat>,
     id: i64,
@@ -759,6 +784,7 @@ pub(crate) fn exporter_playlist(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn renommer_playlist(etat: State<Etat>, id: i64, nom: String) -> Result<(), String> {
     match verrou(&etat.lib)
         .renommer_playlist(id, &nom)
@@ -770,6 +796,7 @@ pub(crate) fn renommer_playlist(etat: State<Etat>, id: i64, nom: String) -> Resu
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn supprimer_playlist(etat: State<Etat>, id: i64) -> Result<(), String> {
     match verrou(&etat.lib).supprimer_playlist(id).map_err(echec)? {
         true => Ok(()),

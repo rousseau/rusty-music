@@ -8,6 +8,93 @@ export const commands = {
 	artists: () => __TAURI_INVOKE<ArtistRow_Serialize[]>("artists"),
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
+	play: (paths: string[]) => __TAURI_INVOKE<null>("play", { paths }),
+	/**
+	 *  Comme `play`, mais ne redémarre pas si le premier morceau ne change pas —
+	 *  la régénération d'un chemin sur la carte (bruit, « Autre tirage »).
+	 */
+	set_queue: (paths: string[]) => __TAURI_INVOKE<null>("set_queue", { paths }),
+	/**
+	 *  Remplace la file par `paths` en gardant la piste écoutée sans coupure.
+	 * 
+	 *  Le bouton ✦ « playlist dans l'esprit de ce morceau » : la nouvelle liste
+	 *  part du morceau en cours et doit vraiment enchaîner dès le suivant.
+	 *  `set_queue` gardait le préchargement de l'ancienne file — un ou deux
+	 *  morceaux des résultats de recherche se glissaient avant la playlist.
+	 */
+	remplacer_file: (paths: string[]) => __TAURI_INVOKE<null>("remplacer_file", { paths }),
+	toggle_pause: () => __TAURI_INVOKE<boolean>("toggle_pause"),
+	skip: () => __TAURI_INVOKE<null>("skip"),
+	previous: () => __TAURI_INVOKE<null>("previous"),
+	jump_to: (index: number) => __TAURI_INVOKE<null>("jump_to", { index }),
+	/**
+	 *  Bascule l'aléatoire du panneau « file d'attente ». Rend la file dans son
+	 *  ordre effectif : mélangée à l'activation, restaurée à la désactivation.
+	 */
+	set_alea: (actif: boolean) => __TAURI_INVOKE<string[]>("set_alea", { actif }),
+	/**
+	 *  Répétition du panneau « file d'attente » — `mode` vaut « aucune »,
+	 *  « toutes » ou « une ».
+	 */
+	set_repetition: (mode: string) => __TAURI_INVOKE<null>("set_repetition", { mode }),
+	/**
+	 *  Déplace une piste de la file — la ré-ordonnance manuelle par
+	 *  glisser-déposer du panneau. Rend la file dans son ordre effectif : voir
+	 *  [`file_en_chaines`].
+	 */
+	deplacer_file: (de: number, a: number) => __TAURI_INVOKE<string[]>("deplacer_file", { de, a }),
+	seek: (positionMs: number) => __TAURI_INVOKE<null>("seek", { positionMs }),
+	set_volume: (volume: number | null) => __TAURI_INVOKE<null>("set_volume", { volume }),
+	/**  Sondé par l'interface : `rodio` ne pousse pas d'évènements. */
+	playback_state: () => __TAURI_INVOKE<EtatLecture_Serialize>("playback_state"),
+	/**
+	 *  Arme le minuteur d'arrêt. `mode` : « duree » (avec `minutes`), « piste » ou
+	 *  « album ». Remplace le minuteur précédent, en rendant son volume s'il était
+	 *  en plein fondu.
+	 */
+	minuteur_demarrer: (mode: string, minutes: number | null) => __TAURI_INVOKE<EtatMinuteur_Serialize | null>("minuteur_demarrer", { mode, minutes }),
+	/**  Désarme le minuteur ; rend le volume s'il était en plein fondu. */
+	minuteur_annuler: () => __TAURI_INVOKE<void>("minuteur_annuler"),
+	/**  Le minuteur armé et ce qu'il reste, ou `None`. */
+	minuteur_etat: () => __TAURI_INVOKE<EtatMinuteur_Serialize | null>("minuteur_etat"),
+	/**
+	 *  La file du lecteur, avec les métadonnées de la bibliothèque, dans l'ordre
+	 *  du moteur. Sert à l'interface quand elle ne la connaît pas — au lancement,
+	 *  après la reprise de session, le lecteur tient une file que la webview n'a
+	 *  jamais vue.
+	 */
+	file_courante: () => __TAURI_INVOKE<TrackRow_Serialize[]>("file_courante"),
+	/**
+	 *  Enregistre `paths` (la file, dans l'ordre) sous le nom `nom`. `origine` dit
+	 *  d'où elle vient quand l'interface le sait (la demande faite à Lama…).
+	 *  Rend l'identifiant de la playlist.
+	 */
+	creer_playlist: (nom: string, origine: string | null, paths: string[]) => __TAURI_INVOKE<number>("creer_playlist", { nom, origine, paths }),
+	/**  Bascule le favori du morceau `path` ; rend son nouvel état. */
+	basculer_favori: (path: string) => __TAURI_INVOKE<boolean>("basculer_favori", { path }),
+	/**
+	 *  Les chemins des favoris : l'interface en tient l'ensemble pour marquer les
+	 *  lignes (un favori est un chemin, pas un identifiant — voir `memoire.rs`).
+	 */
+	favoris: () => __TAURI_INVOKE<string[]>("favoris"),
+	/**
+	 *  Les listes calculées à partir des écoutes (récents, plus écoutés, favoris)
+	 *  qui ne sont pas vides, pour la tête de la vue Playlists.
+	 */
+	listes_intelligentes: () => __TAURI_INVOKE<ListeIntelligente[]>("listes_intelligentes"),
+	/**
+	 *  Les pistes d'une liste calculée (`quoi` : « recents », « plus-ecoutes »,
+	 *  « favoris »).
+	 */
+	liste_intelligente: (quoi: string) => __TAURI_INVOKE<TrackRow_Serialize[]>("liste_intelligente", { quoi }),
+	/**
+	 *  Écrit la playlist `id` en `.m3u8` dans `dossier` (celui que l'utilisateur a
+	 *  choisi) et rend le chemin du fichier. Les pistes que la bibliothèque ne
+	 *  connaît plus n'y figurent pas. N'écrase jamais un fichier existant.
+	 */
+	exporter_playlist: (id: number, dossier: string) => __TAURI_INVOKE<string>("exporter_playlist", { id, dossier }),
+	renommer_playlist: (id: number, nom: string) => __TAURI_INVOKE<null>("renommer_playlist", { id, nom }),
+	supprimer_playlist: (id: number) => __TAURI_INVOKE<null>("supprimer_playlist", { id }),
 	/**  Permet ou coupe le repli en ligne des pochettes. */
 	set_pochettes_en_ligne: (actif: boolean) => __TAURI_INVOKE<null>("set_pochettes_en_ligne", { actif }),
 	/**
@@ -695,6 +782,93 @@ export type Epingle_Serialize = {
 	lat: number | null,
 };
 
+export type EtatLecture = EtatLecture_Serialize | EtatLecture_Deserialize;
+
+export type EtatLecture_Deserialize = {
+	current?: string | null,
+	paused: boolean,
+	finished: boolean,
+	position_ms: number,
+	remaining: number,
+	volume: number | null,
+	/**  « aucune », « toutes » ou « une » — reflète `set_repetition`. */
+	repetition: string,
+	alea: boolean,
+	/**
+	 *  Rang de la file à partir duquel elle peut encore être mélangée ou
+	 *  réordonnée — voir `rusty_music_player::Player::verrou`.
+	 */
+	verrou: number,
+	/**
+	 *  Pistes sautées depuis le sondage précédent parce qu'elles ne s'ouvraient
+	 *  pas — relevées une seule fois, l'interface les montre dans le transport.
+	 */
+	ignorees: PisteIgnoree[],
+	/**  Minuteur d'arrêt armé, avec ce qu'il reste — l'interface l'affiche. */
+	minuteur?: EtatMinuteur_Deserialize | null,
+	/**
+	 *  Un multipiste de stems est chargé. L'interface s'y aligne : c'est le
+	 *  moteur qui sait ce qui sonne, pas la copie qu'elle en garde.
+	 */
+	stems: boolean,
+};
+
+export type EtatLecture_Serialize = {
+	current: string | null,
+	paused: boolean,
+	finished: boolean,
+	position_ms: number,
+	remaining: number,
+	volume: number | null,
+	/**  « aucune », « toutes » ou « une » — reflète `set_repetition`. */
+	repetition: string,
+	alea: boolean,
+	/**
+	 *  Rang de la file à partir duquel elle peut encore être mélangée ou
+	 *  réordonnée — voir `rusty_music_player::Player::verrou`.
+	 */
+	verrou: number,
+	/**
+	 *  Pistes sautées depuis le sondage précédent parce qu'elles ne s'ouvraient
+	 *  pas — relevées une seule fois, l'interface les montre dans le transport.
+	 */
+	ignorees: PisteIgnoree[],
+	/**  Minuteur d'arrêt armé, avec ce qu'il reste — l'interface l'affiche. */
+	minuteur: EtatMinuteur_Serialize | null,
+	/**
+	 *  Un multipiste de stems est chargé. L'interface s'y aligne : c'est le
+	 *  moteur qui sait ce qui sonne, pas la copie qu'elle en garde.
+	 */
+	stems: boolean,
+};
+
+/**  Ce que l'interface en affiche. */
+export type EtatMinuteur = EtatMinuteur_Serialize | EtatMinuteur_Deserialize;
+
+/**  Ce que l'interface en affiche. */
+export type EtatMinuteur_Deserialize = {
+	/**  « duree », « piste » ou « album ». */
+	mode: string,
+	/**
+	 *  Temps avant l'arrêt, quand on peut le dire : pour une durée fixe, celui
+	 *  qui reste ; pour un morceau, ce qu'il en reste à jouer ; pour un album,
+	 *  le reste du morceau en cours seulement (`None` hors du dernier morceau).
+	 */
+	reste_ms?: number | null,
+};
+
+/**  Ce que l'interface en affiche. */
+export type EtatMinuteur_Serialize = {
+	/**  « duree », « piste » ou « album ». */
+	mode: string,
+	/**
+	 *  Temps avant l'arrêt, quand on peut le dire : pour une durée fixe, celui
+	 *  qui reste ; pour un morceau, ce qu'il en reste à jouer ; pour un album,
+	 *  le reste du morceau en cours seulement (`None` hors du dernier morceau).
+	 */
+	reste_ms: number | null,
+};
+
 /**  Un coup reçu de la batterie. */
 export type Frappe = Frappe_Serialize | Frappe_Deserialize;
 
@@ -945,6 +1119,18 @@ export type Jugement_Serialize = {
 	 */
 	ecart_musical_ms: number | null,
 	verdict: Verdict,
+};
+
+/**  Une liste calculée à partir des écoutes, telle que la vue Playlists l'affiche. */
+export type ListeIntelligente = {
+	/**
+	 *  « recents », « plus-ecoutes » ou « favoris » : ce qu'on redemande pour
+	 *  en obtenir les pistes ([`Library::liste_intelligente`]).
+	 */
+	quoi: string,
+	nom: string,
+	nb_pistes: number,
+	duree_ms: number,
 };
 
 /**
@@ -1209,6 +1395,12 @@ export type PassageFini_Serialize = {
 	propre: boolean,
 	/**  La vitesse que l'escalier propose (proposée, jamais imposée). */
 	proposition: Proposition | null,
+};
+
+/**  Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé. */
+export type PisteIgnoree = {
+	path: string,
+	raison: string,
 };
 
 /**  Une mesure où le musicien a perdu sa place. */

@@ -6836,3 +6836,29 @@ test de fumée V45 (résumé, case grisée, réglage posé au moteur, gardé au
 rechargement) ; commande contrôlée par les types générés (44 sur 237).
 
 Non vérifié : dans l'app réelle, une grille d'albums sans pochette locale.
+
+## V46 : Écouter contrôlé par les types générés — 19 nov. 2026
+
+Vingt-cinq commandes d'Écouter passent aux types générés (`tauri-specta`) :
+le transport (`play`, `toggle_pause`, `skip`, `previous`, `seek`,
+`jump_to`, `set_volume`, `playback_state`), la file (`set_queue`,
+`remplacer_file`, `set_alea`, `set_repetition`, `deplacer_file`,
+`file_courante`), le minuteur (`minuteur_demarrer`, `minuteur_annuler`,
+`minuteur_etat`) et le reste des playlists et de la mémoire d'écoute
+(`creer_playlist`, `renommer_playlist`, `supprimer_playlist`,
+`exporter_playlist`, `favoris`, `basculer_favori`, `listes_intelligentes`,
+`liste_intelligente`). Types dérivés : `EtatLecture`, `PisteIgnoree`,
+`EtatMinuteur`, `ListeIntelligente`.
+
+Dix-sept de ces commandes n'avaient aucune réponse figée : le faux moteur
+rendait `null`, si bien que `set_alea` et `deplacer_file` auraient levé une
+erreur dans l'interface (`resynchroniserFile(null)`) et que `toggle_pause`
+ou `basculer_favori` rendaient `null` au lieu d'un booléen. Elles ont
+maintenant des réponses de la forme du moteur (la file réordonnée, la pause
+basculée, le favori basculé dans l'état du test).
+
+Décompte corrigé : 92 commandes contrôlées sur 263 `#[tauri::command]`.
+Les décomptes précédents du README (41, puis 43 et 44) sous-comptaient :
+il y en avait 67 avant ce lot.
+
+Mesuré : types exportés, `npm run types` vert, 82 tests de fumée verts.

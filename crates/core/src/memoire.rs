@@ -18,6 +18,7 @@ pub const LONGUEUR_LISTE: usize = 100;
 
 /// Une liste calculée à partir des écoutes, telle que la vue Playlists l'affiche.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ListeIntelligente {
     /// « recents », « plus-ecoutes » ou « favoris » : ce qu'on redemande pour
     /// en obtenir les pistes ([`Library::liste_intelligente`]).
