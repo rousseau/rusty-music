@@ -7,6 +7,7 @@ import { lecture } from "./etat-lecture.js";
 import { accordeur, fermerAccordeur, majBoutonAccordeur } from "./accordeur.js";
 import { aJouer, dire as direAccordage, nommer } from "./accordage.js";
 import { choisirEntree, entreeAOuvrir, garderEntree, montrerEntrees } from "./entree-basse.js";
+import { montrerPads, poserProfil } from "./coach-profil.js";
 import {
   basseAffichee, batterieAffichee, calculerPartition, montrerPartition, partition, partitionAttendue,
 } from "./pratiquer.js";
@@ -303,7 +304,7 @@ function dire() {
 function direAttente() {
   const { instrument, tr } = coach.attente;
   const nom = instrument === "bass" ? "la basse" : "la batterie";
-  for (const id of ["coach-basculer", "coach-calibrer", "coach-peripherique", "coach-canal", "coach-boucler", "coach-vitesse"]) {
+  for (const id of ["coach-basculer", "coach-calibrer", "coach-pads", "coach-peripherique", "coach-canal", "coach-boucler", "coach-vitesse"]) {
     $(id).hidden = true;
   }
   const transcrire = $("coach-transcrire");
@@ -328,6 +329,7 @@ function direTexte() {
   bascule.setAttribute("aria-pressed", String(coach.actif));
   bascule.textContent = coach.actif ? "■ arrêter l'écoute" : ARRETE[coach.instrument ?? "drums"];
   $("coach-calibrer").hidden = !coach.actif || !coach.peripherique;
+  montrerPads(coach.actif && coach.instrument === "drums" && !!coach.peripherique);
   $("coach-calibrer").setAttribute("aria-pressed", String(coach.calibrage));
   direPropositions();
   if (!coach.actif) {
@@ -519,12 +521,14 @@ async function ecouter(nom) {
   coach.latenceMs = null;
   coach.canaux = 0;
   coach.ailleurs = null;
+  poserProfil(null);
   if (nom) {
     try {
       const vue = await invoke(COMMANDES[coach.instrument].ecouter, ecouterArgs(coach.instrument, nom));
       coach.peripherique = vue?.peripherique ?? vue?.entree ?? null;
       coach.latenceMs = vue?.latence_ms ?? null;
       if (coach.instrument === "bass" && vue) poserCanaux(vue);
+      if (coach.instrument === "drums") poserProfil(vue?.profil ?? null, coach.peripherique);
       $("coach-peripherique").value = nom;
       // Le dernier périphérique ouvert, gardé par instrument ; pour la basse,
       // avec le défaut de macOS du moment (V42).
@@ -575,6 +579,7 @@ async function arreter() {
   coach.actif = false;
   coach.calibrage = false;
   coach.peripherique = null;
+  poserProfil(null);
   arreterSondage();
   effacerMarques();
   dire();

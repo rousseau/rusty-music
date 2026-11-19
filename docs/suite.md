@@ -1,6 +1,6 @@
 # Où en est le projet, et ce qui reste
 
-État au **9 nov. 2026**. Ce document dit où en est chaque brique et ce qui
+État au **19 nov. 2026**. Ce document dit où en est chaque brique et ce qui
 reste, dans l'ordre ; le détail vit dans les documents cités. L'ancienne
 version (plan d'août, dettes D1-D4, chantiers 1 à 9, presque tous faits) est
 dans [`archives/suite-2026-08.md`](archives/suite-2026-08.md). Le plan en
@@ -151,7 +151,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     choisissable dans l'accordeur et le retour ; V43 (19 nov.) : la
     partition gagne 42 px coach démarré, 98 accordeur ouvert (stems sur
     une ligne, réglages de l'entrée repliés dans le bandeau) ;
-    restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
+    V44 (19 nov.) : les pads de la batterie MIDI se règlent à l'écran
+    (« pads » dans le repli des réglages : le pad frappé, sa pièce, General
+    MIDI) ; restent l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
@@ -179,8 +181,7 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     le critère ; CLaMP 3 abandonné sans mesure ; texte → audio non annoté.
     La carte n'est pas à régénérer ; SongFormer (G3) abandonné. Les
     fichiers du banc (31 Go avec les poids MuQ) sont mis de côté sur
-    `RUSTY_DEV` dans `_a-effacer-V27` (V27, 9 nov.) ; reste à vider ce
-    dossier.
+    `RUSTY_DEV` dans `_a-effacer-V27` (V27, 9 nov.), vidés le 19 nov.
 
 ## Chantier en cours : assainir le dépôt (ouvert le 31 oct. 2026)
 

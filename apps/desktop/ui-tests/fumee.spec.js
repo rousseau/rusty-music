@@ -1760,6 +1760,44 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
   await page.keyboard.press("Escape");
   await expect(page.locator("#coach-calibrer")).toBeHidden();
   await expect(reglages.locator("summary")).toBeFocused();
+  // Les pads (E4) : derrière « pads », la note frappée et la pièce qu'elle
+  // compte ; un pad non affecté s'affecte d'un choix, gardé aussitôt.
+  await reglages.locator("summary").click();
+  const profil = page.locator("#coach-profil");
+  await expect(profil).toBeHidden();
+  await page.click("#coach-pads");
+  await expect(profil).toBeVisible();
+  await expect(page.locator("#coach-profil-dernier")).toContainText("Frapper un pad");
+  await expect(page.locator("#coach-profil-choix")).toBeHidden();
+  // Les cinq pièces, une rangée chacune.
+  await expect(page.locator("#coach-profil-table .coach__profil-classe")).toHaveCount(5);
+  await page.evaluate(() => {
+    window.__FIXTURES__.coach_notes_recues = [{ t_s: 50, note: 81, velocite: 70, classe: null, sous_le_seuil: false }];
+  });
+  await expect(page.locator("#coach-profil-dernier")).toHaveText("Note 81 · vélocité 70 → ignorée");
+  await page.selectOption("#coach-profil-classe", "toms");
+  await expect.poll(() => appels(page, "coach_garder_profil").then((a) => a.at(-1)?.profil?.notes?.[81])).toBe("toms");
+  expect((await appels(page, "coach_garder_profil")).at(-1).profil.nom).toBe("TD-17");
+  await expect(page.locator("#coach-profil-dernier")).toHaveText("Note 81 · vélocité 70 → Toms");
+  await expect(page.locator('.coach__profil-note--frappee[data-note="81"]')).toBeVisible();
+  // Retirer une note d'un clic ; la vélocité minimale ; General MIDI.
+  await page.click('.coach__profil-note[data-note="81"]');
+  await expect.poll(() => appels(page, "coach_garder_profil").then((a) => 81 in (a.at(-1)?.profil?.notes ?? {}))).toBe(false);
+  await page.fill("#coach-profil-seuil", "12");
+  await page.locator("#coach-profil-seuil").dispatchEvent("change");
+  await expect.poll(() => appels(page, "coach_garder_profil").then((a) => a.at(-1)?.profil?.velocite_min)).toBe(12);
+  await page.click("#coach-profil-gm");
+  await expect.poll(() => appels(page, "coach_garder_profil").then((a) => a.at(-1)?.profil?.nom)).toBe("General MIDI");
+  await expect(page.locator('.coach__profil-note[data-note="38"]')).toBeVisible();
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/e4-pads.png" });
+  // Le repli refermé arrête le sondage.
+  await page.keyboard.press("Escape");
+  await expect(profil).toBeHidden();
+  const sondes = (await appels(page, "coach_notes_recues")).length;
+  await page.waitForTimeout(400);
+  expect((await appels(page, "coach_notes_recues")).length).toBe(sondes);
+  await page.evaluate(() => (window.__FIXTURES__.coach_notes_recues = []));
+
   // Armé sur les coups de la transcription et la grille des mesures.
   const armer = (await appels(page, "coach_armer")).at(-1);
   expect(armer.coups).toHaveLength(33);

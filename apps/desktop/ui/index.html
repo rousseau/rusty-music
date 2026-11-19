@@ -588,6 +588,25 @@
                         title="L'entrée de l'interface où la basse est branchée : « auto » la trouve à la calibration, ou dès qu'elle joue. Gardée pour cette interface."></select>
                 <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
                         title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
+                <!-- E4 : les pads de la batterie MIDI (js/coach-profil.js) —
+                     frapper un pad montre sa note et la pièce qu'elle compte ;
+                     gardé pour cette batterie. -->
+                <button id="coach-pads" class="bouton bouton--mince" hidden aria-pressed="false" aria-controls="coach-profil">pads</button>
+                <div id="coach-profil" class="coach__profil" role="group" aria-label="Pads de la batterie" hidden>
+                  <div class="coach__profil-tete">
+                    <p id="coach-profil-dernier" class="coach__profil-dernier" aria-live="polite"></p>
+                    <label id="coach-profil-choix" class="coach__profil-champ" hidden>compte pour
+                      <select id="coach-profil-classe" class="coach__peripherique"></select></label>
+                  </div>
+                  <ul id="coach-profil-table" class="coach__profil-table" aria-label="Notes par pièce"></ul>
+                  <div class="coach__profil-pied">
+                    <label class="coach__profil-champ" title="Un coup plus faible est tenu pour un faux déclenchement (diaphonie entre pads, rebond)">vélocité min.
+                      <input id="coach-profil-seuil" type="number" min="1" max="127" step="1" inputmode="numeric"></label>
+                    <label class="coach__profil-champ" title="Le contrôleur (CC) qui porte l'ouverture du charleston : 4 sur presque tous les modules ; vide pour l'ignorer">CC charleston
+                      <input id="coach-profil-cc" type="number" min="0" max="127" step="1" inputmode="numeric" placeholder="aucun"></label>
+                    <button id="coach-profil-gm" class="bouton bouton--mince" title="Revenir au profil de départ : General MIDI et les notes de zone courantes (Roland, Alesis, Yamaha)">General MIDI</button>
+                  </div>
+                </div>
               </div>
             </details>
             <!-- Instrument choisi sans partition prête : le geste qui la calcule

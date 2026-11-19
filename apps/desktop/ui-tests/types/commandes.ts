@@ -169,6 +169,16 @@ export const commands = {
 	 */
 	coach_garder_profil: (profil: Profil_Deserialize) => __TAURI_INVOKE<null>("coach_garder_profil", { profil }),
 	/**
+	 *  Le profil de départ (General MIDI et les notes de zone courantes) :
+	 *  « General MIDI » de l'éditeur y revient.
+	 */
+	coach_profil_general_midi: () => __TAURI_INVOKE<Profil_Serialize>("coach_profil_general_midi"),
+	/**
+	 *  Les dernières notes frappées sur la batterie écoutée, affectées ou non,
+	 *  les plus récentes à la fin ; vide sans écoute.
+	 */
+	coach_notes_recues: () => __TAURI_INVOKE<NoteRecue_Serialize[]>("coach_notes_recues"),
+	/**
 	 *  Calibre la latence de la batterie écoutée sur les clics d'un décompte
 	 *  qu'on vient de jouer (`clics`, ceux passés à `stems_decompter`, en
 	 *  secondes du morceau), en tapant dessus ; la garde pour ce périphérique.
@@ -1122,6 +1132,49 @@ export type NoteDI_Serialize = {
 	sous_octave: number | null,
 	/**  Niveau RMS de la trame d'attaque, en dBFS. */
 	niveau_db: number | null,
+};
+
+/**
+ *  Une note frappée, affectée ou non : ce que l'éditeur du profil montre pour
+ *  qu'on affecte un pad en le frappant (un coup sur une note absente du
+ *  profil n'est pas une [`Frappe`] et n'atteindrait pas l'interface).
+ */
+export type NoteRecue = NoteRecue_Serialize | NoteRecue_Deserialize;
+
+/**
+ *  Une note frappée, affectée ou non : ce que l'éditeur du profil montre pour
+ *  qu'on affecte un pad en le frappant (un coup sur une note absente du
+ *  profil n'est pas une [`Frappe`] et n'atteindrait pas l'interface).
+ */
+export type NoteRecue_Deserialize = {
+	t_s: number | null,
+	note: number,
+	velocite: number,
+	/**  La classe que le profil lui donne, `None` pour une note ignorée. */
+	classe?: Classe | null,
+	/**
+	 *  Sous la vélocité minimale du profil : tenue pour un faux
+	 *  déclenchement.
+	 */
+	sous_le_seuil: boolean,
+};
+
+/**
+ *  Une note frappée, affectée ou non : ce que l'éditeur du profil montre pour
+ *  qu'on affecte un pad en le frappant (un coup sur une note absente du
+ *  profil n'est pas une [`Frappe`] et n'atteindrait pas l'interface).
+ */
+export type NoteRecue_Serialize = {
+	t_s: number | null,
+	note: number,
+	velocite: number,
+	/**  La classe que le profil lui donne, `None` pour une note ignorée. */
+	classe: Classe | null,
+	/**
+	 *  Sous la vélocité minimale du profil : tenue pour un faux
+	 *  déclenchement.
+	 */
+	sous_le_seuil: boolean,
 };
 
 /**

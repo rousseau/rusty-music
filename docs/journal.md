@@ -6762,3 +6762,46 @@ Non vérifié : l'audit d'interface (écrans Pratiquer touchés) et les
 captures dans l'app réelle, reportés (écran visible) à l'étape d'audit de
 nuit ; la vraie largeur de la fenêtre de François (mesurée sur l'écran
 intégré seulement, fenêtre supposée agrandie).
+
+## V44 : les pads de la batterie MIDI se règlent à l'écran — 19 nov. 2026
+
+Le profil de correspondance notes → pièces (E4, tranche 2) existait et se
+gardait par batterie (`coach_garder_profil`, migration n° 11), mais rien ne
+l'éditait. Un pad sur une note absente du profil n'arrivait même pas à
+l'interface : `Decodeur::lire` l'écartait avant.
+
+**Moteur.** `Reception` garde aussi les 32 dernières notes frappées,
+affectées ou non (`NoteRecue` : note, vélocité, classe donnée par le profil
+ou aucune, sous le seuil ou non), lues par `Decodeur::note_frappee` (tout
+note-on de vélocité non nulle, tous canaux). Deux commandes :
+`coach_notes_recues` et `coach_profil_general_midi`, contrôlées par les types
+générés (43 sur 236).
+
+**Interface** (`js/coach-profil.js`). « pads », dans le repli des réglages
+de l'entrée (V43), à côté de « calibrer », seulement quand une batterie est
+écoutée. Le panneau sonde les notes reçues toutes les 150 ms tant qu'il est
+ouvert (rien d'avant l'ouverture n'est montré) : « Note 81 · vélocité 70 →
+ignorée », et un choix « compte pour » (les cinq pièces d'ADTOF, ou
+ignorée). Dessous, les notes de chaque pièce, retirées d'un clic (la note
+frappée encadrée) ; la vélocité minimale, le CC du charleston (vide :
+ignoré) ; « General MIDI » revient au profil de départ. Chaque changement
+est gardé aussitôt et vaut pour les coups suivants ; un profil changé à la
+main prend le nom de la batterie. Rien dans le rail (Règle 12), rien de
+plus dans le bandeau.
+
+**Réparé en route.** (1) Un bouton enfoncé du bandeau (« calibrer » armé,
+« pads ») avait un texte de la couleur du fond : la règle générale
+`.coach .bouton:not(#…):not(#…)` pesait plus que l'état enfoncé ; même
+chose pour l'icône du repli ouvert (V43), invisible. Passée en
+`:not(:where(…))`. (2) Le curseur de mesure d'alphaTab (`z-index: 1000`)
+passait par-dessus le repli ouvert : `#partition-rendu` isolé
+(`isolation: isolate`).
+
+Mesuré : test Rust (pad non affecté montré, note-off et CC ignorés, seuil
+signalé, file bornée) ; test de fumée E4 étendu (pad non affecté → toms,
+gardé sous le nom de la batterie, note retirée, vélocité, General MIDI,
+sondage arrêté au repli refermé) ; capture du panneau ; 81 tests de fumée et
+`verifier.sh` verts.
+
+Non vérifié : avec une vraie batterie (notes de zone d'un module, CC4) ;
+l'audit d'interface de Pratiquer, toujours reporté (écran visible).

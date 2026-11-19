@@ -66,6 +66,8 @@ fn exporter_les_types_des_commandes() {
             coach::coach_peripheriques,
             coach::coach_ecouter,
             coach::coach_garder_profil,
+            coach::coach_profil_general_midi,
+            coach::coach_notes_recues,
             coach::coach_calibrer,
             coach::coach_juger,
             coach::coach_table,

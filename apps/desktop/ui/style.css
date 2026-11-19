@@ -374,7 +374,9 @@ html, body {
 /* Le curseur de temps est `.partition__curseur` (`placerCurseur`, app.js) :
    celui d'alphaTab sautait de note en note. */
 .partition .at-cursor-beat { display: none; }
-#partition-rendu { position: relative; }
+/* isolation : le curseur d'alphaTab (z-index 1000) reste dans la partition, sous
+   le repli des réglages du coach qui s'ouvre par-dessus. */
+#partition-rendu { position: relative; isolation: isolate; }
 .partition__curseur {
   position: absolute; left: 0; top: 0; width: 2px; z-index: 2;
   background: var(--accent); pointer-events: none; will-change: transform;
@@ -413,8 +415,10 @@ html, body {
 .coach select { background: var(--panel2); color: var(--txt); border: 1px solid var(--line); }
 /* Les autres boutons du bandeau (diapason, calibrer…) : sans aplat, à
    l'encre du bandeau ; le survol souligne plutôt que de virer à l'accent. */
-.coach .bouton:not(#coach-basculer):not(#coach-transcrire) { background: transparent; }
-.coach .bouton:not(#coach-basculer):not(#coach-transcrire):hover:not(:disabled) { color: var(--txt); border-color: var(--txt); text-decoration: underline; }
+/* :where() : sans le poids des identifiants, ces règles cèdent à l'état
+   enfoncé et au repli ouvert (leur texte prenait la couleur du fond). */
+.coach .bouton:not(:where(#coach-basculer, #coach-transcrire)) { background: transparent; }
+.coach .bouton:not(:where(#coach-basculer, #coach-transcrire)):hover:not(:disabled) { color: var(--txt); border-color: var(--txt); text-decoration: underline; }
 .coach .bouton[aria-pressed="true"]:not(#coach-basculer) { background: var(--txt); color: var(--bandeau-fond); }
 .coach .bouton[aria-pressed="true"]:not(#coach-basculer):hover:not(:disabled) { color: var(--bandeau-fond); }
 .coach__accordeur { display: inline-flex; align-items: center; padding-block: 1px; }
@@ -428,13 +432,33 @@ html, body {
 .coach__reglages > summary::-webkit-details-marker { display: none; }
 .coach__reglages[open] > summary { background: var(--txt); color: var(--bandeau-fond); }
 .coach__reglages-corps {
-  position: absolute; top: calc(100% + 4px); left: 0; z-index: 3;
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 8px 10px; max-width: 100%;
   background: var(--bandeau-fond); color: var(--txt);
   border: 1px solid var(--line); border-radius: 3px;
   box-shadow: 0 4px 14px rgb(0 0 0 / .25);
 }
+/* E4 : les pads de la batterie, dans le repli des réglages. La note frappée
+   se dit en texte et par un cadre, pas par la couleur seule. */
+.coach__profil { flex-basis: 100%; display: grid; gap: 8px; min-width: min(34rem, 80vw); }
+.coach__profil[hidden] { display: none; }
+.coach__profil-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.coach__profil-dernier { margin: 0; font-family: var(--mono); }
+.coach__profil-champ { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.coach__profil-champ[hidden] { display: none; }
+.coach__profil-champ input { font: inherit; width: 6ch; }
+.coach__profil-table { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.coach__profil-classe { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.coach__profil-nom { min-width: 11ch; font-weight: 600; }
+.coach__profil-vide { color: var(--mut); }
+.coach__profil-note {
+  font: inherit; font-family: var(--mono); padding: 1px 6px; cursor: pointer;
+  background: transparent; color: var(--txt); border: 1px solid var(--line); border-radius: 3px;
+}
+.coach__profil-note:hover { border-color: var(--txt); }
+.coach__profil-note--frappee { border: 2px solid var(--txt); font-weight: 600; }
+.coach__profil-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
 /* V36 : l'accordeur, au centre sous le bandeau. « Juste » se dit par un signe
    (✓ juste) et par la zone centrale de la jauge, pas par la couleur seule. */
 .accordeur {

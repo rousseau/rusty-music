@@ -138,7 +138,7 @@ pub struct Frappe {
 
 /// Lit les messages MIDI bruts d'un périphérique, avec l'état qu'ils
 /// portent d'un message à l'autre (ouverture du charleston).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Decodeur {
     profil: Profil,
     ouverture: Option<u8>,
@@ -154,6 +154,17 @@ impl Decodeur {
 
     pub fn profil(&self) -> &Profil {
         &self.profil
+    }
+
+    /// La note et la vélocité d'un note-on frappé (vélocité non nulle, tous
+    /// canaux), affecté ou non : ce que l'éditeur du profil montre.
+    pub fn note_frappee(message: &[u8]) -> Option<(u8, u8)> {
+        match message {
+            [statut, note, velocite, ..] if statut & 0xF0 == 0x90 && velocite & 0x7F > 0 => {
+                Some((note & 0x7F, velocite & 0x7F))
+            }
+            _ => None,
+        }
     }
 
     /// Un message reçu à `t_s` : un coup s'il en est un (note-on de vélocité

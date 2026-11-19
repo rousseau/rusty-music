@@ -46,14 +46,55 @@ const BOUCLE_MAX_MESURES: u32 = 4;
 /// paquet à l'autre.
 const MEME_FIN_S: f64 = 0.1;
 
+/// Notes reçues gardées pour l'éditeur du profil : les derniers pads frappés.
+const RECUES_MAX: usize = 32;
+
+/// Une note frappée, affectée ou non : ce que l'éditeur du profil montre pour
+/// qu'on affecte un pad en le frappant (un coup sur une note absente du
+/// profil n'est pas une [`Frappe`] et n'atteindrait pas l'interface).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub(crate) struct NoteRecue {
+    t_s: f64,
+    note: u8,
+    velocite: u8,
+    /// La classe que le profil lui donne, `None` pour une note ignorée.
+    classe: Option<Classe>,
+    /// Sous la vélocité minimale du profil : tenue pour un faux
+    /// déclenchement.
+    sous_le_seuil: bool,
+}
+
 /// Ce que le fil de `midir` partage avec les commandes.
+#[derive(Default)]
 struct Reception {
     decodeur: Decodeur,
     frappes: VecDeque<Frappe>,
+    recues: VecDeque<NoteRecue>,
 }
 
 impl Reception {
+    fn nouvelle(profil: Profil) -> Self {
+        Self {
+            decodeur: Decodeur::nouveau(profil),
+            ..Default::default()
+        }
+    }
+
     fn recevoir(&mut self, t_s: f64, message: &[u8]) {
+        if let Some((note, velocite)) = Decodeur::note_frappee(message) {
+            let profil = self.decodeur.profil();
+            if self.recues.len() == RECUES_MAX {
+                self.recues.pop_front();
+            }
+            self.recues.push_back(NoteRecue {
+                t_s,
+                note,
+                velocite,
+                classe: profil.notes.get(&note).copied(),
+                sous_le_seuil: velocite < profil.velocite_min,
+            });
+        }
         if let Some(f) = self.decodeur.lire(t_s, message) {
             if self.frappes.len() == FRAPPES_MAX {
                 self.frappes.pop_front();
@@ -201,10 +242,7 @@ pub(crate) fn coach_ecouter(
         .into_iter()
         .find(|p| entree.port_name(p).ok().as_deref() == Some(nom.as_str()))
         .ok_or_else(|| format!("périphérique MIDI introuvable : {nom}"))?;
-    let reception = Arc::new(Mutex::new(Reception {
-        decodeur: Decodeur::nouveau(profil.clone()),
-        frappes: VecDeque::new(),
-    }));
+    let reception = Arc::new(Mutex::new(Reception::nouvelle(profil.clone())));
     let pour_le_fil = reception.clone();
     let connexion = entree
         .connect(
@@ -250,6 +288,27 @@ pub(crate) fn coach_garder_profil(etat: State<Etat>, profil: Profil) -> Result<(
         .map_err(echec)?;
     verrou(&ecoute.reception).decodeur = Decodeur::nouveau(profil);
     Ok(())
+}
+
+/// Le profil de départ (General MIDI et les notes de zone courantes) :
+/// « General MIDI » de l'éditeur y revient.
+#[tauri::command]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_profil_general_midi() -> Profil {
+    Profil::general_midi()
+}
+
+/// Les dernières notes frappées sur la batterie écoutée, affectées ou non,
+/// les plus récentes à la fin ; vide sans écoute.
+#[tauri::command]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn coach_notes_recues(etat: State<Etat>) -> Vec<NoteRecue> {
+    let coach = verrou(&etat.coach);
+    coach
+        .ecoute
+        .as_ref()
+        .map(|e| verrou(&e.reception).recues.iter().copied().collect())
+        .unwrap_or_default()
 }
 
 /// Ce qu'une calibration a mesuré.
@@ -846,10 +905,7 @@ mod tests {
         EtatCoach {
             ecoute: Some(Ecoute {
                 peripherique: "Simulée".into(),
-                reception: Arc::new(Mutex::new(Reception {
-                    decodeur: Decodeur::nouveau(profil),
-                    frappes: VecDeque::new(),
-                })),
+                reception: Arc::new(Mutex::new(Reception::nouvelle(profil))),
                 _connexion: None,
             }),
             ..Default::default()
@@ -865,6 +921,41 @@ mod tests {
             .lock()
             .unwrap()
             .recevoir(t_s, message);
+    }
+
+    #[test]
+    fn les_notes_recues_montrent_aussi_les_pads_non_affectes() {
+        let mut profil = Profil::general_midi();
+        profil.velocite_min = 10;
+        let coach = coach_simule(profil);
+        injecter(&coach, 1.0, &[0x99, 38, 90]); // caisse claire
+        injecter(&coach, 1.1, &[0x99, 38, 0]); // note-off : rien
+        injecter(&coach, 1.2, &[0x99, 81, 70]); // pad non affecté
+        injecter(&coach, 1.3, &[0x99, 36, 4]); // sous le seuil
+        injecter(&coach, 1.4, &[0xB9, 4, 90]); // CC : rien
+        let r = coach.ecoute.as_ref().unwrap().reception.lock().unwrap();
+        let vues: Vec<_> = r
+            .recues
+            .iter()
+            .map(|n| (n.note, n.classe, n.sous_le_seuil))
+            .collect();
+        assert_eq!(
+            vues,
+            [
+                (38, Some(Classe::CaisseClaire), false),
+                (81, None, false),
+                (36, Some(Classe::GrosseCaisse), true),
+            ]
+        );
+        // Seule la caisse claire est un coup jugeable.
+        assert_eq!(r.frappes.len(), 1);
+        drop(r);
+        // La file reste bornée.
+        for k in 0..2 * RECUES_MAX {
+            injecter(&coach, 2.0 + k as f64, &[0x99, 40, 50]);
+        }
+        let r = coach.ecoute.as_ref().unwrap().reception.lock().unwrap();
+        assert_eq!(r.recues.len(), RECUES_MAX);
     }
 
     #[test]

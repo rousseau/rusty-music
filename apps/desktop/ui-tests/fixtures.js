@@ -451,6 +451,13 @@ const fixtures = {
   coach_peripheriques: [],
   coach_ecouter: null,
   coach_garder_profil: null,
+  coach_profil_general_midi: {
+    nom: "General MIDI",
+    notes: /** @type {const} */ ({ 36: "grosse_caisse", 38: "caisse_claire", 42: "charleston", 45: "toms", 49: "cymbales" }),
+    cc_charleston: 4,
+    velocite_min: 1,
+  },
+  coach_notes_recues: [],
   coach_armer: null,
   coach_calibrer: { latence_ms: 38, dispersion_ms: 6, retenues: 14, ecartees: 2 },
   coach_juger: (a) => ({
