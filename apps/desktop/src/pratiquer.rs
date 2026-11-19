@@ -28,6 +28,7 @@ pub(crate) fn stems_decompter(
 /// Une transcription, telle que l'interface la consomme : les notes (pour
 /// les corrections à venir) et les mesures quantifiées (pour la partition).
 #[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct VueTranscription {
     version: u32,
     instrument: String,
@@ -208,6 +209,7 @@ pub(crate) fn telecharger_muscriptor(
 /// quelques secondes la première fois. Les corrections de l'utilisateur
 /// (E2) sont réappliquées par-dessus, à chaque fois.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn transcrire(
     etat: State<Etat>,
     id: i64,
@@ -564,6 +566,7 @@ fn accordage_choisi(etat: &State<Etat>, chemin: &str) -> Option<tablature::Accor
 /// rend la main aux notes (`None`) ; gardé par morceau. L'interface redemande
 /// ensuite la transcription : le doigté est reposé sans retranscrire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn pratique_accordage(
     etat: State<Etat>,
     id: i64,
@@ -598,6 +601,7 @@ fn chemin_du_morceau(etat: &State<Etat>, id: i64) -> Result<String, String> {
 /// (`quantification::decalage_de_jeu`), comme si elle avait été jouée avec
 /// les autres, pour retomber sur sa double croche.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn corriger_transcription(
     etat: State<Etat>,
     id: i64,

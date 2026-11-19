@@ -18,6 +18,10 @@ fn exporter_les_types_des_commandes() {
             artists,
             albums,
             library_stats,
+            // V49 : la transcription de Pratiquer.
+            transcrire,
+            corriger_transcription,
+            pratique_accordage,
             // V47 : l'établi, Pratiquer et Créer.
             stems_vitesse,
             stems_vitesse_stem,

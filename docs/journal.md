@@ -6957,3 +6957,18 @@ dans `tauri.conf.json` (`bundle > resources`, `serde_json` en dépendance de
 build). Vérifié en écartant un pli le temps d'un build : fichier vide posé,
 compilation aboutie, vrai fichier remis. Les échecs de V44 à V46 venaient de
 là, pas de leur contenu.
+
+## V49 : la transcription de Pratiquer contrôlée par les types — 19 nov. 2026
+
+Les trois commandes laissées hors de V47 passent aux types générés :
+`transcrire`, `corriger_transcription`, `pratique_accordage`. Types dérivés
+dans `transcription` (feature `specta`) : `Note`, `Coup`, `Piece`, `Basses`,
+`Accord`, `Identite`, et `VueTranscription` dans le bureau. L'`Accord` de la
+tablature porte le nom TypeScript `AccordTablature` (un `serde(rename)` de
+conteneur, sous la feature, sans effet sur le JSON d'une énumération de
+variantes unitaires), l'accordeur du coach ayant déjà son `Accord`.
+
+`transcrire` et `corriger_transcription` rendaient `null` dans les tests qui
+ne posent pas leur propre transcription : elles rendent maintenant une
+transcription vide de la forme du moteur. 122 commandes contrôlées sur 263 ;
+`npm run types` et 82 tests de fumée verts.

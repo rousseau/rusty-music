@@ -61,6 +61,17 @@ const fixtures = {
   muscriptor_disponible: false,
   muscriptor_jeton_present: false,
   telecharger_muscriptor: null,
+  // V49 : une transcription vide, de la forme du moteur ; les tests qui
+  // jouent une partition posent la leur (`pratique-fictive.js`).
+  transcrire: (a) => ({
+    version: 5, instrument: a.instrument, modele: a.instrument === "drums" ? "adtof" : "basic-pitch",
+    notes: [], coups: [], mesures: [], accordage: [], choix: null, doigtes: 6, basses: /** @type {const} */ ("quatre"),
+    hauteurs: [], grille: 3, identites: [], sans_effet: 0,
+  }),
+  corriger_transcription: (a) => ({
+    version: 5, instrument: "bass", modele: "basic-pitch", notes: [], coups: [], mesures: [], accordage: [],
+    choix: null, doigtes: 6, basses: a.basses ?? /** @type {const} */ ("quatre"), hauteurs: [], grille: 3, identites: [], sans_effet: 0,
+  }),
   stems_greffer: {
     chemin: "/cache/greffe.wav", origine: "/Musique/Les Essais/Second/01.mp3", facteur: 1, octaves: 0,
     retard_s: 0, boucles: 1, cale_aux_temps: true, mesures: 8, mesures_par_section: 8, repli: null,

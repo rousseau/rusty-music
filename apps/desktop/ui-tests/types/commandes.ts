@@ -9,6 +9,34 @@ export const commands = {
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
 	/**
+	 *  Transcrit le stem `instrument` d'un morceau (`crates/transcription`) :
+	 *  - « bass » : Basic Pitch, ou MuScriptor si `qualite` (une minute par
+	 *    morceau, plus juste — banc `experiments/partitions/`), puis une note à
+	 *    la fois, corde et frette ;
+	 *  - « drums » : ADTOF, cinq pièces.
+	 *  Puis quantification sur la pulsation. En cache à côté des stems ;
+	 *  quelques secondes la première fois. Les corrections de l'utilisateur
+	 *  (E2) sont réappliquées par-dessus, à chaque fois.
+	 */
+	transcrire: (id: number, instrument: string, qualite: boolean | null, basses: Basses_Deserialize | null) => __TAURI_INVOKE<VueTranscription_Serialize>("transcrire", { id, instrument, qualite, basses }),
+	/**
+	 *  Corrige une note de la basse transcrite du morceau `id` (E2) : corde
+	 *  imposée, octave, note supprimée, ajoutée, ou rétablie telle que transcrite.
+	 *  Gardée dans la mémoire de Pratiquer ; rend la transcription corrigée.
+	 * 
+	 *  Une note ajoutée est posée sur la grille par l'interface : elle est
+	 *  décalée du décalage de jeu du morceau
+	 *  (`quantification::decalage_de_jeu`), comme si elle avait été jouée avec
+	 *  les autres, pour retomber sur sa double croche.
+	 */
+	corriger_transcription: (id: number, qualite: boolean | null, basses: Basses_Deserialize | null, correction: CorrectionPratique_Deserialize) => __TAURI_INVOKE<VueTranscription_Serialize>("corriger_transcription", { id, qualite, basses, correction }),
+	/**
+	 *  Impose l'accordage de la tablature de basse du morceau `id` (V37), ou
+	 *  rend la main aux notes (`None`) ; gardé par morceau. L'interface redemande
+	 *  ensuite la transcription : le doigté est reposé sans retranscrire.
+	 */
+	pratique_accordage: (id: number, accordage: AccordTablature | null) => __TAURI_INVOKE<null>("pratique_accordage", { id, accordage }),
+	/**
 	 *  Vitesse de lecture des stems, appliquée immédiatement.
 	 * 
 	 *  **Rien n'est rechargé** : la vitesse est un flottant que la lecture relit à
@@ -610,6 +638,23 @@ export type Accord = {
 	confiance: number | null,
 };
 
+/**
+ *  Les accordages qu'une tablature de basse propose (V37) : le moteur n'en
+ *  choisit pas d'autre, et Pratiquer en impose un à la main, gardé par
+ *  morceau.
+ */
+export type AccordTablature = 
+/**  mi la ré sol. */
+"standard" | 
+/**  mi♭ la♭ ré♭ sol♭. */
+"demi-ton" | 
+/**  ré sol do fa. */
+"ton" | 
+/**  ré la ré sol. */
+"drop-d" | 
+/**  si mi la ré sol. */
+"cinq";
+
 /**  Ce qu'un ajout à une playlist a fait. */
 export type AjoutPlaylist = {
 	/**  Pistes ajoutées à la fin. */
@@ -824,6 +869,48 @@ export type BaladeVue_Serialize = {
 	mesure: MesureCarrefours,
 };
 
+/**
+ *  La basse de celui qui joue, 4 ou 5 cordes : un réglage de l'utilisateur.
+ *  L'accordage, lui, est celui du disque ([`Accordage::pour`]) — une 4 cordes
+ *  passe en mi♭ si le morceau l'est, la tablature le montre, et l'on peut
+ *  transposer le morceau plutôt que désaccorder (29 oct.).
+ */
+export type Basses = Basses_Serialize | Basses_Deserialize;
+
+/**
+ *  La basse de celui qui joue, 4 ou 5 cordes : un réglage de l'utilisateur.
+ *  L'accordage, lui, est celui du disque ([`Accordage::pour`]) — une 4 cordes
+ *  passe en mi♭ si le morceau l'est, la tablature le montre, et l'on peut
+ *  transposer le morceau plutôt que désaccorder (29 oct.).
+ */
+export type Basses_Deserialize = 
+/**
+ *  Les anciens noms du réglage (« disque », 4 cordes de préférence ;
+ *  « quatre-et-cinq ») se relisent : les caches qui les portent sont
+ *  reposés de toute façon (`VERSION_DOIGTES`).
+ */
+"quatre" | 
+/**
+ *  Les anciens noms du réglage (« disque », 4 cordes de préférence ;
+ *  « quatre-et-cinq ») se relisent : les caches qui les portent sont
+ *  reposés de toute façon (`VERSION_DOIGTES`).
+ */
+"disque" | "cinq" | "quatre-et-cinq";
+
+/**
+ *  La basse de celui qui joue, 4 ou 5 cordes : un réglage de l'utilisateur.
+ *  L'accordage, lui, est celui du disque ([`Accordage::pour`]) — une 4 cordes
+ *  passe en mi♭ si le morceau l'est, la tablature le montre, et l'on peut
+ *  transposer le morceau plutôt que désaccorder (29 oct.).
+ */
+export type Basses_Serialize = 
+/**
+ *  Les anciens noms du réglage (« disque », 4 cordes de préférence ;
+ *  « quatre-et-cinq ») se relisent : les caches qui les portent sont
+ *  reposés de toute façon (`VERSION_DOIGTES`).
+ */
+"quatre" | "cinq";
+
 /**  Les hauteurs d'un ensemble de jugements. */
 export type BilanHauteur = {
 	justes: number,
@@ -970,6 +1057,78 @@ export type Conseil_Serialize = {
 	motif: Motif,
 	classe: Classe | null,
 	texte: string,
+};
+
+/**
+ *  Une correction de transcription (E2) : la note visée se retrouve par son
+ *  instant et sa hauteur **transcrits** (`debut_s`, `hauteur`), qu'une
+ *  nouvelle transcription redonne ; une note ajoutée par les siens. Appliquée
+ *  par `rusty_music_transcription::corrections`.
+ */
+export type CorrectionPratique = CorrectionPratique_Serialize | CorrectionPratique_Deserialize;
+
+/**
+ *  Une correction de transcription (E2) : la note visée se retrouve par son
+ *  instant et sa hauteur **transcrits** (`debut_s`, `hauteur`), qu'une
+ *  nouvelle transcription redonne ; une note ajoutée par les siens. Appliquée
+ *  par `rusty_music_transcription::corrections`.
+ */
+export type CorrectionPratique_Deserialize = {
+	/**
+	 *  `"corde"`, `"octave"`, `"demiton"`, `"supprimer"`, `"ajouter"` ; `"retablir"` en
+	 *  demande seulement (oublie tout ce qui vise la note, rien n'est gardé).
+	 */
+	genre: string,
+	debut_s: number | null,
+	hauteur: number,
+	/**  Note ajoutée : sa durée. */
+	duree_s?: number | null,
+	/**  Corde imposée (0 = la plus grave), ou celle d'une note ajoutée. */
+	corde?: number | null,
+	frette?: number | null,
+	/**  Octave corrigée : de combien d'octaves la note bouge, −2 à +2. */
+	octaves?: number | null,
+	/**
+	 *  Hauteur corrigée au demi-ton (V18) : de combien de demi-tons la note
+	 *  bouge, −11 à +11, en plus de l'octave corrigée.
+	 */
+	demitons?: number | null,
+};
+
+/**
+ *  Une correction de transcription (E2) : la note visée se retrouve par son
+ *  instant et sa hauteur **transcrits** (`debut_s`, `hauteur`), qu'une
+ *  nouvelle transcription redonne ; une note ajoutée par les siens. Appliquée
+ *  par `rusty_music_transcription::corrections`.
+ */
+export type CorrectionPratique_Serialize = {
+	/**
+	 *  `"corde"`, `"octave"`, `"demiton"`, `"supprimer"`, `"ajouter"` ; `"retablir"` en
+	 *  demande seulement (oublie tout ce qui vise la note, rien n'est gardé).
+	 */
+	genre: string,
+	debut_s: number | null,
+	hauteur: number,
+	/**  Note ajoutée : sa durée. */
+	duree_s: number | null,
+	/**  Corde imposée (0 = la plus grave), ou celle d'une note ajoutée. */
+	corde: number | null,
+	frette: number | null,
+	/**  Octave corrigée : de combien d'octaves la note bouge, −2 à +2. */
+	octaves: number | null,
+	/**
+	 *  Hauteur corrigée au demi-ton (V18) : de combien de demi-tons la note
+	 *  bouge, −11 à +11, en plus de l'octave corrigée.
+	 */
+	demitons: number | null,
+};
+
+/**  Un coup détecté. */
+export type Coup = {
+	instant_s: number | null,
+	piece: Piece,
+	/**  Activation du réseau au pic, de 0 à 1. */
+	force: number | null,
 };
 
 export type CourbeVue = {
@@ -1454,6 +1613,49 @@ export type Histogramme = {
 };
 
 /**
+ *  Ce que l'interface doit savoir d'une note pour la corriger : son identité
+ *  (instant et hauteur transcrits, ceux qu'une correction vise) et ce qui y
+ *  est déjà corrigé.
+ */
+export type Identite = Identite_Serialize | Identite_Deserialize;
+
+/**
+ *  Ce que l'interface doit savoir d'une note pour la corriger : son identité
+ *  (instant et hauteur transcrits, ceux qu'une correction vise) et ce qui y
+ *  est déjà corrigé.
+ */
+export type Identite_Deserialize = {
+	debut_s: number | null,
+	hauteur: number,
+	/**  Ajoutée à la main : la supprimer l'oublie. */
+	ajoutee?: boolean,
+	/**  Octaves de la correction (0 sans correction). */
+	octaves?: number,
+	/**  Demi-tons de la correction (0 sans correction), en plus des octaves. */
+	demitons?: number,
+	/**  La corde est imposée par une correction. */
+	corde_imposee?: boolean,
+};
+
+/**
+ *  Ce que l'interface doit savoir d'une note pour la corriger : son identité
+ *  (instant et hauteur transcrits, ceux qu'une correction vise) et ce qui y
+ *  est déjà corrigé.
+ */
+export type Identite_Serialize = {
+	debut_s: number | null,
+	hauteur: number,
+	/**  Ajoutée à la main : la supprimer l'oublie. */
+	ajoutee: boolean,
+	/**  Octaves de la correction (0 sans correction). */
+	octaves: number,
+	/**  Demi-tons de la correction (0 sans correction), en plus des octaves. */
+	demitons: number,
+	/**  La corde est imposée par une correction. */
+	corde_imposee: boolean,
+};
+
+/**
  *  Le degré d'intervention (`docs/plan-balade.md`, le principe), réglé une
  *  fois dans le rail d'Explorer.
  */
@@ -1700,6 +1902,9 @@ export type Motif =
 /**  Le disque pose la pièce hors de la grille, le jeu non (ou l'inverse). */
 "grille" | "swing" | "velocite" | "accents";
 
+/**  Une note transcrite, en secondes du fichier d'origine. */
+export type Note = Note_Serialize | Note_Deserialize;
+
 /**  Une note de la transcription, telle que l'interface l'arme. */
 export type NoteArmee = {
 	debut_s: number | null,
@@ -1780,6 +1985,38 @@ export type NoteRecue_Serialize = {
 	sous_le_seuil: boolean,
 };
 
+/**  Une note transcrite, en secondes du fichier d'origine. */
+export type Note_Deserialize = {
+	debut_s: number | null,
+	fin_s: number | null,
+	/**  Hauteur MIDI (69 = la 440). */
+	hauteur: number,
+	/**
+	 *  Activation moyenne du réseau sur la durée de la note, de 0 à 1 — ce
+	 *  qui tient lieu de confiance et de vélocité.
+	 */
+	amplitude: number | null,
+	/**  Corde (0 = la plus grave) et frette, une fois la tablature posée. */
+	corde?: number | null,
+	frette?: number | null,
+};
+
+/**  Une note transcrite, en secondes du fichier d'origine. */
+export type Note_Serialize = {
+	debut_s: number | null,
+	fin_s: number | null,
+	/**  Hauteur MIDI (69 = la 440). */
+	hauteur: number,
+	/**
+	 *  Activation moyenne du réseau sur la durée de la note, de 0 à 1 — ce
+	 *  qui tient lieu de confiance et de vélocité.
+	 */
+	amplitude: number | null,
+	/**  Corde (0 = la plus grave) et frette, une fois la tablature posée. */
+	corde: number | null,
+	frette: number | null,
+};
+
 /**
  *  Ce qu'un passage de boucle entier a donné, et ce que l'escalier en
  *  tire.
@@ -1811,6 +2048,8 @@ export type PassageFini_Serialize = {
 	/**  La vitesse que l'escalier propose (proposée, jamais imposée). */
 	proposition: Proposition | null,
 };
+
+export type Piece = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
 /**  Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé. */
 export type PisteIgnoree = {
@@ -2715,5 +2954,103 @@ export type VueTable_Serialize = {
 	 *  ce morceau (il faut sa grille de mesures).
 	 */
 	boucle_proposee: BoucleProposee | null,
+};
+
+/**
+ *  Une transcription, telle que l'interface la consomme : les notes (pour
+ *  les corrections à venir) et les mesures quantifiées (pour la partition).
+ */
+export type VueTranscription = VueTranscription_Serialize | VueTranscription_Deserialize;
+
+/**
+ *  Une transcription, telle que l'interface la consomme : les notes (pour
+ *  les corrections à venir) et les mesures quantifiées (pour la partition).
+ */
+export type VueTranscription_Deserialize = {
+	version: number,
+	instrument: string,
+	modele: string,
+	notes: Note_Deserialize[],
+	/**  Les coups de batterie, pour la batterie. */
+	coups?: Coup[],
+	mesures: Value,
+	/**
+	 *  Accordage de la basse, de la corde grave à l'aiguë, en hauteurs MIDI
+	 *  (`Accordage::pour`) : celui du morceau, pour lequel la tablature est
+	 *  écrite. La hauteur des stems ne le change pas (V37) ; l'interface dit
+	 *  celui à utiliser avec elle.
+	 */
+	accordage?: number[],
+	/**
+	 *  L'accordage choisi à la main pour ce morceau (V37, `pratique.accordage`),
+	 *  sur lequel le doigté a été posé ; `None` : déduit des notes.
+	 */
+	choix?: AccordTablature | null,
+	/**  Version du doigté de la basse ([`VERSION_DOIGTES`]). */
+	doigtes?: number,
+	/**  La basse du réglage (4 ou 5 cordes) sur laquelle le doigté a été posé. */
+	basses?: Basses_Deserialize,
+	/**
+	 *  Hauteurs transcrites, avant que le doigté ne ramène à l'octave ce qui
+	 *  sort du manche : changer de basse repart d'elles (une 4 cordes
+	 *  remonte le mi♭ grave qu'une 5 cordes joue).
+	 */
+	hauteurs?: number[],
+	/**  Version de la grille des mesures ([`VERSION_MESURES`]). */
+	grille?: number,
+	/**
+	 *  Basse : une identité par note, au même rang — ce qu'une correction
+	 *  vise et ce qui y est corrigé (E2). Jamais dans le cache : les
+	 *  corrections vivent dans la mémoire de Pratiquer.
+	 */
+	identites?: Identite_Deserialize[],
+	/**  Les corrections gardées qui n'ont trouvé aucune note. */
+	sans_effet?: number,
+};
+
+/**
+ *  Une transcription, telle que l'interface la consomme : les notes (pour
+ *  les corrections à venir) et les mesures quantifiées (pour la partition).
+ */
+export type VueTranscription_Serialize = {
+	version: number,
+	instrument: string,
+	modele: string,
+	notes: Note_Serialize[],
+	/**  Les coups de batterie, pour la batterie. */
+	coups: Coup[],
+	mesures: Value,
+	/**
+	 *  Accordage de la basse, de la corde grave à l'aiguë, en hauteurs MIDI
+	 *  (`Accordage::pour`) : celui du morceau, pour lequel la tablature est
+	 *  écrite. La hauteur des stems ne le change pas (V37) ; l'interface dit
+	 *  celui à utiliser avec elle.
+	 */
+	accordage: number[],
+	/**
+	 *  L'accordage choisi à la main pour ce morceau (V37, `pratique.accordage`),
+	 *  sur lequel le doigté a été posé ; `None` : déduit des notes.
+	 */
+	choix: AccordTablature | null,
+	/**  Version du doigté de la basse ([`VERSION_DOIGTES`]). */
+	doigtes: number,
+	/**  La basse du réglage (4 ou 5 cordes) sur laquelle le doigté a été posé. */
+	basses: Basses_Serialize,
+	/**
+	 *  Hauteurs transcrites, avant que le doigté ne ramène à l'octave ce qui
+	 *  sort du manche : changer de basse repart d'elles (une 4 cordes
+	 *  remonte le mi♭ grave qu'une 5 cordes joue).
+	 */
+	hauteurs: number[],
+	/**  Version de la grille des mesures ([`VERSION_MESURES`]). */
+	grille: number,
+	/**
+	 *  Basse : une identité par note, au même rang — ce qu'une correction
+	 *  vise et ce qui y est corrigé (E2). Jamais dans le cache : les
+	 *  corrections vivent dans la mémoire de Pratiquer.
+	 */
+	identites?: Identite_Serialize[],
+	/**  Les corrections gardées qui n'ont trouvé aucune note. */
+	sans_effet: number,
 };
 

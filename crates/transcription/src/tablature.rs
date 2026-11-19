@@ -32,6 +32,7 @@ use crate::{positions, Note};
 /// transposer le morceau plutôt que désaccorder (29 oct.).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum Basses {
     /// Les anciens noms du réglage (« disque », 4 cordes de préférence ;
     /// « quatre-et-cinq ») se relisent : les caches qui les portent sont
@@ -48,6 +49,11 @@ pub enum Basses {
 /// morceau.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+// Nom TypeScript distinct de l'`Accord` de l'accordeur du coach (editor) ;
+// le nom du conteneur n'apparaît pas dans le JSON d'une énumération de
+// variantes unitaires.
+#[cfg_attr(feature = "specta", serde(rename = "AccordTablature"))]
 pub enum Accord {
     /// mi la ré sol.
     Standard,

@@ -89,6 +89,7 @@ impl Poids {
 
 /// Une note transcrite, en secondes du fichier d'origine.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Note {
     pub debut_s: f32,
     pub fin_s: f32,

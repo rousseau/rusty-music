@@ -25,6 +25,7 @@ pub const TOLERANCE_S: f32 = 0.03;
 /// (instant et hauteur transcrits, ceux qu'une correction vise) et ce qui y
 /// est déjà corrigé.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Identite {
     pub debut_s: f32,
     pub hauteur: u8,

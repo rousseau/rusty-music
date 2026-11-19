@@ -42,6 +42,7 @@ pub const FICHIER: &str = "adtof_frame_rnn.onnx";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum Piece {
     GrosseCaisse,
     CaisseClaire,
@@ -52,6 +53,7 @@ pub enum Piece {
 
 /// Un coup détecté.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Coup {
     pub instant_s: f32,
     pub piece: Piece,
