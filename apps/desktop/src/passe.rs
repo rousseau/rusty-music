@@ -12,6 +12,8 @@ use super::*;
 /// Une passe de fond telle que l'interface la sonde. L'avancement est aplati
 /// dans le JSON : `{ en_cours, faits, total, resultat }` pour un [`Compte`].
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+#[cfg_attr(test, specta(inline))]
 pub(crate) struct Passe<A> {
     pub(crate) en_cours: bool,
     #[serde(flatten)]
@@ -21,6 +23,7 @@ pub(crate) struct Passe<A> {
 
 /// L'avancement le plus courant : `faits` sur `total`.
 #[derive(Clone, Copy, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct Compte {
     pub(crate) faits: usize,
     pub(crate) total: usize,

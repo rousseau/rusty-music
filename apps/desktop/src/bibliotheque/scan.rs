@@ -133,6 +133,7 @@ pub(crate) fn start_scan(
 
 /// Avancement du scan. L'interface sonde, faute de rapport intermédiaire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn scan_state(etat: State<Etat>) -> Result<EtatScan, String> {
     let mut s = verrou(&etat.scan).clone();
     if s.en_cours {

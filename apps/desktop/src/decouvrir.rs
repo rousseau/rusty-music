@@ -6,6 +6,7 @@ use super::*;
 /// Avancement de la passe du mode Découvrir, sondé par l'interface — comme
 /// `enrichment_state`.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementDecouvrir {
     pub(crate) artistes: usize,
     pub(crate) total: usize,
@@ -26,6 +27,7 @@ pub(crate) fn decouvrir_feed(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn decouvrir_state(etat: State<Etat>) -> Result<EtatDecouvrir, String> {
     Ok(verrou(&etat.decouvrir).clone())
 }

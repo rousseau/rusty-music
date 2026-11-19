@@ -8,6 +8,86 @@ export const commands = {
 	artists: () => __TAURI_INVOKE<ArtistRow_Serialize[]>("artists"),
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
+	/**  Avancement du démixage. L'interface sonde, faute de rapport intermédiaire. */
+	demix_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementDemix_Serialize)>("demix_state"),
+	superres_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementSuperres)>("superres_state"),
+	decouvrir_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementDecouvrir)>("decouvrir_state"),
+	/**  Avancement de la régénération du plan, sondé par l'interface. */
+	tuiles_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("tuiles_state"),
+	/**  Où en est le téléchargement du modèle intégré. */
+	lama_telechargement_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("lama_telechargement_state"),
+	verif_pochettes_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("verif_pochettes_state"),
+	discogs_liaison_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementDiscogsLiaison)>("discogs_liaison_state"),
+	discogs_dump_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementDiscogsDump_Serialize)>("discogs_dump_state"),
+	discogs_import_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementDiscogsImport)>("discogs_import_state"),
+	/**  Avancement de l'analyse. L'interface sonde, comme pour le scan. */
+	analysis_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("analysis_state"),
+	descripteurs_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("descripteurs_state"),
+	loudness_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("loudness_state"),
+	/**  Où en est l'aspiration des genres. */
+	enrichment_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementEnrichissement)>("enrichment_state"),
+	/**  Où en est la passe de popularité. */
+	popularite_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("popularite_state"),
+	biographies_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("biographies_state"),
+	critiques_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("critiques_state"),
+	lastfm_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (Compte)>("lastfm_state"),
+	completer_etat: () => __TAURI_INVOKE<EtatCompleterVue_Serialize>("completer_etat"),
+	/**  Avancement du scan. L'interface sonde, faute de rapport intermédiaire. */
+	scan_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementScan)>("scan_state"),
 	/**
 	 *  La carte du module 2 : tous les morceaux déjà placés.
 	 * 
@@ -1323,6 +1403,182 @@ export type Avance =
  */
 "poids_absents";
 
+/**  Avancement de la passe « Compléter ». */
+export type AvancementCompleter = {
+	etape: string,
+	faits: number,
+	total: number,
+};
+
+/**
+ *  Avancement de la passe du mode Découvrir, sondé par l'interface — comme
+ *  `enrichment_state`.
+ */
+export type AvancementDecouvrir = {
+	artistes: number,
+	total: number,
+	sorties_neuves: number,
+	voisins_neufs: number,
+};
+
+/**  Avancement du démixage, sondé par l'interface. */
+export type AvancementDemix = AvancementDemix_Serialize | AvancementDemix_Deserialize;
+
+/**  Avancement du démixage, sondé par l'interface. */
+export type AvancementDemix_Deserialize = {
+	/**
+	 *  Le morceau en cours de traitement, pour que l'interface sache si les
+	 *  stems affichés sont bien les siens.
+	 */
+	source: string,
+	/**
+	 *  Où en est le travail : « telechargement » (poids de la variante absents,
+	 *  récupérés d'abord) puis « separation ». Vide hors traitement.
+	 */
+	phase: string,
+	/**
+	 *  Téléchargement des poids : octets reçus et attendus (taille connue
+	 *  d'avance, la barre est donc toujours graduée).
+	 */
+	octets_faits: number,
+	octets_total: number,
+	/**
+	 *  Segments audio traités et total, pour la barre de progression. `total`
+	 *  reste à zéro tant que le découpage n'est pas connu (décodage puis
+	 *  chauffe du modèle, ou morceau trop court pour être découpé) : la barre
+	 *  se montre alors indéterminée.
+	 */
+	segments_faits: number,
+	segments_total: number,
+	/**  Variante affinée : le stem dont le réseau tourne en ce moment. */
+	stem?: string | null,
+	/**  Stems produits : nom et chemin du WAV. */
+	stems: ([string, string])[],
+	/**
+	 *  Durée attendue de la séparation, en secondes, estimée au lancement
+	 *  d'après les démixages déjà faits sur cette machine (V40,
+	 *  [`estimer_demix`]) ; `None` si la durée du morceau est inconnue.
+	 */
+	estimation_s?: number | null,
+	/**
+	 *  Début de la séparation (après un éventuel téléchargement), en
+	 *  millisecondes Unix : l'interface en tire le temps écoulé.
+	 */
+	debut_ms: number,
+};
+
+/**  Avancement du démixage, sondé par l'interface. */
+export type AvancementDemix_Serialize = {
+	/**
+	 *  Le morceau en cours de traitement, pour que l'interface sache si les
+	 *  stems affichés sont bien les siens.
+	 */
+	source: string,
+	/**
+	 *  Où en est le travail : « telechargement » (poids de la variante absents,
+	 *  récupérés d'abord) puis « separation ». Vide hors traitement.
+	 */
+	phase: string,
+	/**
+	 *  Téléchargement des poids : octets reçus et attendus (taille connue
+	 *  d'avance, la barre est donc toujours graduée).
+	 */
+	octets_faits: number,
+	octets_total: number,
+	/**
+	 *  Segments audio traités et total, pour la barre de progression. `total`
+	 *  reste à zéro tant que le découpage n'est pas connu (décodage puis
+	 *  chauffe du modèle, ou morceau trop court pour être découpé) : la barre
+	 *  se montre alors indéterminée.
+	 */
+	segments_faits: number,
+	segments_total: number,
+	/**  Variante affinée : le stem dont le réseau tourne en ce moment. */
+	stem: string | null,
+	/**  Stems produits : nom et chemin du WAV. */
+	stems: ([string, string])[],
+	/**
+	 *  Durée attendue de la séparation, en secondes, estimée au lancement
+	 *  d'après les démixages déjà faits sur cette machine (V40,
+	 *  [`estimer_demix`]) ; `None` si la durée du morceau est inconnue.
+	 */
+	estimation_s: number | null,
+	/**
+	 *  Début de la séparation (après un éventuel téléchargement), en
+	 *  millisecondes Unix : l'interface en tire le temps écoulé.
+	 */
+	debut_ms: number,
+};
+
+/**  Avancement du téléchargement du dump Discogs, sondé par l'interface. */
+export type AvancementDiscogsDump = AvancementDiscogsDump_Serialize | AvancementDiscogsDump_Deserialize;
+
+/**  Avancement du téléchargement du dump Discogs, sondé par l'interface. */
+export type AvancementDiscogsDump_Deserialize = {
+	octets: number,
+	total?: number | null,
+};
+
+/**  Avancement du téléchargement du dump Discogs, sondé par l'interface. */
+export type AvancementDiscogsDump_Serialize = {
+	octets: number,
+	total: number | null,
+};
+
+/**
+ *  Avancement de l'import des crédits/labels depuis le dump Discogs déjà sur
+ *  le disque, sondé par l'interface. Pas de total connu à l'avance (combien
+ *  d'éditions du dump concernent la bibliothèque ne se sait qu'en le
+ *  parcourant) : `editions_vues` sert de seul repère de progression, comme
+ *  le fait déjà `EtatScan::morceaux` pour un scan.
+ */
+export type AvancementDiscogsImport = {
+	editions_vues: number,
+	editions_retenues: number,
+	fragments_malformes: number,
+};
+
+/**
+ *  Avancement de la passe de liaison Discogs, sondé par l'interface.
+ * 
+ *  `liees` (éditions neuves reliées, pas simplement vérifiées) sert de
+ *  déclencheur à l'import automatique qui suit une liaison utile — voir
+ *  `importerDiscogsSiUtile` côté JS : inutile de relire les ~11 Go du dump
+ *  (~10 min) si la liaison n'a rien trouvé de nouveau.
+ */
+export type AvancementDiscogsLiaison = {
+	faits: number,
+	total: number,
+	liees: number,
+};
+
+export type AvancementEnrichissement = {
+	artistes: number,
+	total: number,
+	avec_genre: number,
+};
+
+/**  Avancement du scan en cours, sondé par l'interface. */
+export type AvancementScan = {
+	racine: string,
+	/**
+	 *  Morceaux en base : seule mesure d'avancement disponible, le scan ne
+	 *  rend son rapport qu'à la fin.
+	 */
+	morceaux: number,
+};
+
+/**  Avancement d'une régénération HD (super-résolution), sondé par l'interface. */
+export type AvancementSuperres = {
+	/**  Le morceau traité, pour que l'interface sache si l'avancement est le sien. */
+	source: string,
+	faits: number,
+	total: number,
+	/**  Téléchargement des poids au premier usage, en octets (0 / 0 sinon). */
+	telecharges: number,
+	a_telecharger: number,
+};
+
 /**
  *  Une balade passée à redessiner : ses morceaux dans l'ordre et, dans la
  *  ville, le tracé de ses pas le long des rues, `[lon, lat]`.
@@ -1608,6 +1864,12 @@ export type Chaine = {
  */
 export type Classe = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
+/**  L'avancement le plus courant : `faits` sur `total`. */
+export type Compte = {
+	faits: number,
+	total: number,
+};
+
 /**  Un conseil tiré d'un motif. */
 export type Conseil = Conseil_Serialize | Conseil_Deserialize;
 
@@ -1775,6 +2037,26 @@ export type Epingle_Serialize = {
 	emoji: string | null,
 	lon: number | null,
 	lat: number | null,
+};
+
+export type EtatCompleterVue = EtatCompleterVue_Serialize | EtatCompleterVue_Deserialize;
+
+export type EtatCompleterVue_Deserialize = {
+	passe: ({
+		en_cours: boolean,
+		resultat?: string | null,
+	}) & (AvancementCompleter),
+	/**  La dernière passe journalisée, pour « Annuler cette passe ». */
+	derniere?: PasseJournal_Deserialize | null,
+};
+
+export type EtatCompleterVue_Serialize = {
+	passe: ({
+		en_cours: boolean,
+		resultat: string | null,
+	}) & (AvancementCompleter),
+	/**  La dernière passe journalisée, pour « Annuler cette passe ». */
+	derniere: PasseJournal_Serialize | null,
 };
 
 export type EtatLecture = EtatLecture_Serialize | EtatLecture_Deserialize;
@@ -2847,6 +3129,35 @@ export type PassageFini_Serialize = {
 	propre: boolean,
 	/**  La vitesse que l'escalier propose (proposée, jamais imposée). */
 	proposition: Proposition | null,
+};
+
+/**  Une passe journalisée, telle que l'interface la montre. */
+export type PasseJournal = PasseJournal_Serialize | PasseJournal_Deserialize;
+
+/**  Une passe journalisée, telle que l'interface la montre. */
+export type PasseJournal_Deserialize = {
+	id: number,
+	nom: string,
+	debut: number,
+	/**  `None` : en cours, ou coupée avant la fin (elle s'annule quand même). */
+	fin?: number | null,
+	annulee_le?: number | null,
+	bilan?: string | null,
+	/**  Lignes notées au journal. */
+	ecritures: number,
+};
+
+/**  Une passe journalisée, telle que l'interface la montre. */
+export type PasseJournal_Serialize = {
+	id: number,
+	nom: string,
+	debut: number,
+	/**  `None` : en cours, ou coupée avant la fin (elle s'annule quand même). */
+	fin: number | null,
+	annulee_le: number | null,
+	bilan: string | null,
+	/**  Lignes notées au journal. */
+	ecritures: number,
 };
 
 export type Piece = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";

@@ -24,6 +24,8 @@ pub(crate) use balade::*;
 pub(crate) use carte::*;
 pub(crate) use lama::*;
 pub(crate) use lieux::*;
+#[cfg(test)]
+pub(crate) use modele_local::__specta__fn__lama_telechargement_state;
 pub(crate) use modele_local::{
     lama_telechargement_state, lama_telecharger, EtatTelechargementLama,
 };

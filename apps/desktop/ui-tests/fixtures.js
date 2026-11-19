@@ -61,6 +61,23 @@ const fixtures = {
   muscriptor_disponible: false,
   muscriptor_jeton_present: false,
   telecharger_muscriptor: null,
+  // Les passes de fond, toutes au repos, de la forme du moteur (`Passe<A>` :
+  // `en_cours`, `resultat` et l'avancement propre à la passe, aplati). V52 :
+  // contrôlées par les types ; la boucle qui les posait après le littéral
+  // leur donnait à toutes l'avancement `{ faits, total }`.
+  demix_state: {
+    en_cours: false, resultat: null, source: "", phase: "", octets_faits: 0, octets_total: 0,
+    segments_faits: 0, segments_total: 0, stem: null, stems: [], estimation_s: null, debut_ms: 0,
+  },
+  decouvrir_state: { en_cours: false, resultat: null, artistes: 0, total: 0, sorties_neuves: 0, voisins_neufs: 0 },
+  discogs_liaison_state: { en_cours: false, resultat: null, faits: 0, total: 0, liees: 0 },
+  discogs_import_state: { en_cours: false, resultat: null, editions_vues: 0, editions_retenues: 0, fragments_malformes: 0 },
+  enrichment_state: { en_cours: false, resultat: null, artistes: 0, total: 0, avec_genre: 0 },
+  descripteurs_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
+  popularite_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
+  biographies_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
+  critiques_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
+  lastfm_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
   // V51 : la carte d'Explorer et l'enrichissement. Réponses neutres.
   engendrer_tuiles: "0 tuile",
   itineraire: [],
@@ -688,22 +705,6 @@ const fixtures = {
   },
 };
 
-// Les passes de fond, toutes au repos.
-for (const cmd of [
-  "biographies_state",
-  "critiques_state",
-  "descripteurs_state",
-  "discogs_import_state",
-  "discogs_liaison_state",
-  "enrichment_state",
-  "lastfm_state",
-  "popularite_state",
-  "decouvrir_state",
-  "demix_state",
-  "etirer_state",
-]) {
-  fixtures[cmd] ??= { en_cours: false, faits: 0, total: 0, resultat: null };
-}
 Object.assign(fixtures, {
   scan_failures: [],
 });

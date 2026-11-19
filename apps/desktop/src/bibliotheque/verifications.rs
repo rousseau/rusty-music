@@ -97,6 +97,7 @@ pub(crate) fn start_verif_pochettes(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn verif_pochettes_state(etat: State<Etat>) -> Result<EtatVerifPochettes, String> {
     Ok(verrou(&etat.verif_pochettes).clone())
 }

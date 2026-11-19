@@ -79,6 +79,7 @@ pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result
 
 /// Avancement de l'analyse. L'interface sonde, comme pour le scan.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn analysis_state(etat: State<Etat>) -> Result<EtatAnalyse, String> {
     Ok(verrou(&etat.analyse).clone())
 }
@@ -144,6 +145,7 @@ pub(crate) fn start_descripteurs(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn descripteurs_state(etat: State<Etat>) -> Result<EtatDescripteurs, String> {
     Ok(verrou(&etat.descripteurs).clone())
 }
@@ -211,6 +213,7 @@ pub(crate) fn start_loudness(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn loudness_state(etat: State<Etat>) -> Result<EtatLoudness, String> {
     Ok(verrou(&etat.loudness).clone())
 }

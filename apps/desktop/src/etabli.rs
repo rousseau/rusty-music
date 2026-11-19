@@ -805,6 +805,7 @@ pub(crate) fn demix_variantes() -> Vec<VarianteDispo> {
 
 /// Avancement du démixage. L'interface sonde, faute de rapport intermédiaire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn demix_state(etat: State<Etat>) -> Result<EtatDemix, String> {
     Ok(verrou(&etat.demix).clone())
 }

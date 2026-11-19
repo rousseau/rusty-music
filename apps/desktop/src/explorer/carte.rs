@@ -306,6 +306,7 @@ pub(crate) fn suivre_projection(
 
 /// Avancement de la régénération du plan, sondé par l'interface.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn tuiles_state(etat: State<Etat>) -> Result<EtatTuiles, String> {
     Ok(verrou(&etat.tuiles).clone())
 }

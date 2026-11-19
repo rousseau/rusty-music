@@ -413,6 +413,7 @@ fn liberer_vecteurs_si_inactif(etat: &Etat) {
 
 /// Avancement du scan en cours, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 struct AvancementScan {
     racine: String,
     /// Morceaux en base : seule mesure d'avancement disponible, le scan ne

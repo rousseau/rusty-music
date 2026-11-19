@@ -6,6 +6,7 @@ use super::*;
 
 /// Avancement d'une régénération HD (super-résolution), sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementSuperres {
     /// Le morceau traité, pour que l'interface sache si l'avancement est le sien.
     pub(crate) source: String,
@@ -101,6 +102,7 @@ pub(crate) fn start_superres(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn superres_state(etat: State<Etat>) -> Result<EtatSuperres, String> {
     Ok(verrou(&etat.superres).clone())
 }

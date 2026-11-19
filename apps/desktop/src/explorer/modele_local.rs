@@ -74,6 +74,7 @@ pub(crate) fn lama_telecharger(app: tauri::AppHandle) -> Result<(), String> {
 
 /// Où en est le téléchargement du modèle intégré.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn lama_telechargement_state(etat: State<Etat>) -> EtatTelechargementLama {
     verrou(&etat.lama_telechargement).clone()
 }

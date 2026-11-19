@@ -11,6 +11,7 @@ use super::*;
 /// `importerDiscogsSiUtile` côté JS : inutile de relire les ~11 Go du dump
 /// (~10 min) si la liaison n'a rien trouvé de nouveau.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementDiscogsLiaison {
     pub(crate) faits: usize,
     pub(crate) total: usize,
@@ -74,6 +75,7 @@ pub(crate) fn start_discogs_liaison(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn discogs_liaison_state(etat: State<Etat>) -> Result<EtatDiscogsLiaison, String> {
     Ok(verrou(&etat.discogs_liaison).clone())
 }
@@ -88,6 +90,7 @@ pub(crate) fn chemin_dump_discogs(etat: &Etat) -> PathBuf {
 
 /// Avancement du téléchargement du dump Discogs, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementDiscogsDump {
     pub(crate) octets: u64,
     pub(crate) total: Option<u64>,
@@ -157,6 +160,7 @@ pub(crate) fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Re
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn discogs_dump_state(etat: State<Etat>) -> Result<EtatDiscogsDump, String> {
     Ok(verrou(&etat.discogs_dump).clone())
 }
@@ -167,6 +171,7 @@ pub(crate) fn discogs_dump_state(etat: State<Etat>) -> Result<EtatDiscogsDump, S
 /// parcourant) : `editions_vues` sert de seul repère de progression, comme
 /// le fait déjà `EtatScan::morceaux` pour un scan.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementDiscogsImport {
     pub(crate) editions_vues: u64,
     pub(crate) editions_retenues: u64,
@@ -228,6 +233,7 @@ pub(crate) fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> 
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn discogs_import_state(etat: State<Etat>) -> Result<EtatDiscogsImport, String> {
     Ok(verrou(&etat.discogs_import).clone())
 }

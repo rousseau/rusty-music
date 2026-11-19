@@ -7018,3 +7018,21 @@ Restent hors contrôle les états de passe (`*_state`, `completer_etat`,
 `tuile` (réponse binaire). Le contrôle (`controle.ts`) admet désormais une
 `Error` figée, que le faux moteur lève (`positions_carte` en est une).
 170 commandes contrôlées sur 263 ; 82 tests de fumée verts.
+
+## V52 : les états de passe contrôlés par les types — 20 nov. 2026
+
+Le blocage de V47 levé : `Passe<A>` (`#[serde(flatten)]` sur l'avancement
+générique) s'exportait en `Passe_Serialize<A>`, `A` non défini ;
+`#[specta(inline)]` sur le conteneur l'intègre en ligne à chaque usage
+(`{ en_cours, resultat } & AvancementDemix`). Dix-neuf commandes de plus :
+`demix_state`, `superres_state`, `decouvrir_state`, `tuiles_state`,
+`lama_telechargement_state`, `verif_pochettes_state`, les trois états
+Discogs, `analysis_state`, `descripteurs_state`, `loudness_state`, les cinq
+états d'enrichissement, `scan_state` et `completer_etat`. Types dérivés : les
+`Avancement*` et `Compte`.
+
+Les réponses figées des passes au repos étaient posées par une boucle après
+le littéral, invisibles du contrôle, et donnaient à toutes l'avancement
+`{ faits, total }` : `demix_state`, `decouvrir_state`, les états Discogs et
+`enrichment_state` ont maintenant la forme de leur passe. 189 commandes
+contrôlées sur 263 ; 82 tests de fumée verts.

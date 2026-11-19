@@ -5,6 +5,7 @@
 use super::*;
 
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementEnrichissement {
     pub(crate) artistes: usize,
     pub(crate) total: usize,
@@ -81,6 +82,7 @@ pub(crate) fn start_enrichment(
 
 /// Où en est l'aspiration des genres.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn enrichment_state(etat: State<Etat>) -> Result<EtatEnrichissement, String> {
     Ok(verrou(&etat.enrichissement).clone())
 }
@@ -160,6 +162,7 @@ pub(crate) fn start_popularite(
 
 /// Où en est la passe de popularité.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn popularite_state(etat: State<Etat>) -> Result<EtatPopularite, String> {
     Ok(verrou(&etat.popularite).clone())
 }
@@ -236,6 +239,7 @@ pub(crate) fn start_biographies(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn biographies_state(etat: State<Etat>) -> Result<EtatBio, String> {
     Ok(verrou(&etat.biographies).clone())
 }
@@ -320,6 +324,7 @@ pub(crate) fn start_critiques(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn critiques_state(etat: State<Etat>) -> Result<EtatCritiques, String> {
     Ok(verrou(&etat.critiques).clone())
 }
@@ -417,6 +422,7 @@ pub(crate) fn start_lastfm(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn lastfm_state(etat: State<Etat>) -> Result<EtatLastfm, String> {
     Ok(verrou(&etat.lastfm).clone())
 }
@@ -459,6 +465,7 @@ pub(crate) fn artist_links(
 
 /// Avancement de la passe « Compléter ».
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementCompleter {
     pub(crate) etape: String,
     pub(crate) faits: usize,
@@ -640,6 +647,7 @@ pub(crate) fn completer_arreter(etat: State<Etat>) {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatCompleterVue {
     passe: EtatCompleter,
     /// La dernière passe journalisée, pour « Annuler cette passe ».
@@ -647,6 +655,7 @@ pub(crate) struct EtatCompleterVue {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn completer_etat(etat: State<Etat>) -> Result<EtatCompleterVue, String> {
     Ok(EtatCompleterVue {
         passe: verrou(&etat.completer).clone(),
