@@ -13,8 +13,12 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 default = ["gpu"]
 gpu = ["burn/wgpu", "dep:burn-cubecl", "dep:burn-fusion", "dep:burn-ir", "dep:cubecl"]
 cpu = ["burn/ndarray"]
+# Les types qu'échangent les commandes Tauri (sections, transcription),
+# exportés en TypeScript par les seuls tests du bureau (`types_commandes.rs`).
+specta = ["dep:specta"]
 
 [dependencies]
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
 # MuScriptor (`src/muscriptor/`) : Transformer porté en Burn, poids chargés
 # depuis le `model.safetensors` d'origine par `burn-store`.
 burn.workspace = true

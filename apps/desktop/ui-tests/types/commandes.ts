@@ -8,6 +8,228 @@ export const commands = {
 	artists: () => __TAURI_INVOKE<ArtistRow_Serialize[]>("artists"),
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
+	/**
+	 *  Vitesse de lecture des stems, appliquée immédiatement.
+	 * 
+	 *  **Rien n'est rechargé** : la vitesse est un flottant que la lecture relit à
+	 *  chaque trame, et la position ne bouge pas. C'est la différence avec
+	 *  [`start_etirer`], qui réécrit un fichier et coûte des dizaines de secondes.
+	 * 
+	 *  **La hauteur ne suit pas la vitesse.** L'étireur `wsola` travaille dans la
+	 *  lecture elle-même — recouvrement-addition temporel, la méthode d'`atempo`.
+	 *  Le commentaire qui figurait ici disait le contraire ; il datait d'avant que
+	 *  l'étireur soit branché, quand la vitesse n'était qu'un rééchantillonnage.
+	 */
+	stems_vitesse: (vitesse: number | null) => __TAURI_INVOKE<null>("stems_vitesse", { vitesse }),
+	/**
+	 *  Vitesse d'un seul stem — le réglage qui désynchronise.
+	 * 
+	 *  **C'est un effet, pas un réglage**, et la spec le dit depuis sa décision 4 :
+	 *  deux stems à des vitesses différentes ont deux têtes de lecture, l'écart
+	 *  grandit tant que la lecture continue, et rien ne le rattrape tout seul.
+	 *  L'interface a donc deux devoirs qu'elle n'a pas ailleurs : montrer la
+	 *  dérive mesurée (`stems_state`) et offrir de réaligner.
+	 * 
+	 *  Aussi immédiat que la vitesse globale : un flottant que la lecture relit.
+	 */
+	stems_vitesse_stem: (index: number, vitesse: number | null) => __TAURI_INVOKE<null>("stems_vitesse_stem", { index, vitesse }),
+	/**
+	 *  Lance la transposition des stems **dans son fil**.
+	 * 
+	 *  **Pourquoi un fil, alors que la commande était déjà `async`.** Une commande
+	 *  Tauri `async` tourne sur le runtime, pas sur le fil de l'interface — mais
+	 *  une boucle de calcul qui ne rend jamais la main y monopolise un ouvrier du
+	 *  runtime. Quatre stems à une vingtaine de secondes, et **toutes les autres
+	 *  commandes attendent derrière** : le sondage du transport, l'état de lecture,
+	 *  le moindre clic. L'interface ne gelait pas, elle faisait la queue — ce qui
+	 *  se voit pareil.
+	 * 
+	 *  `async` suffit pour une commande qui attend ; il ne suffit pas pour une
+	 *  commande qui calcule. Le démixage l'avait déjà réglé ainsi, la transposition
+	 *  ne l'avait pas suivi parce qu'elle était courte du temps du vocodeur de
+	 *  phase — 0,84 s par stem. `wsola` l'a portée à 17,9 s sans que ce chemin-là
+	 *  soit revu. Signalsmith en réglage juste (E6) la ramène à 8 s environ pour
+	 *  un stem de quatre minutes : toujours trop pour le fil de l'interface.
+	 * 
+	 *  **Rien à calculer = rien à attendre.** Si tous les stems sont neutres ou
+	 *  déjà en cache, l'état est rempli sur place et aucun fil n'est lancé : le
+	 *  chargement d'un jeu de stems sans réglage reste immédiat.
+	 */
+	start_etirer: (stems: ([string, string])[], demiTons: (number | null)[]) => __TAURI_INVOKE<EtatTranspose_Serialize>("start_etirer", { stems, demiTons }),
+	/**  Où en est la transposition lancée par [`start_etirer`]. */
+	etirer_state: () => __TAURI_INVOKE<EtatTranspose_Serialize>("etirer_state"),
+	/**
+	 *  Exporte ce qu'on entend : le mélange des stems audibles, avec leurs niveaux,
+	 *  leur vitesse et leur transposition.
+	 * 
+	 *  **Une seule sortie, et c'est un choix.** La spec en prévoyait trois — un
+	 *  stem, la sélection, le mélange. Mettre un stem en solo *est* la sélection :
+	 *  un menu de plus n'aurait dit que ce que le dock montre déjà.
+	 * 
+	 *  **Refuse d'écrire dans la bibliothèque surveillée.** Un fichier déposé sous
+	 *  une racine serait ingéré, analysé et placé sur la carte : ce n'est pas un
+	 *  morceau, c'est un rendu. Mieux vaut le dire tout de suite que laisser la
+	 *  surprise arriver à la prochaine surveillance.
+	 */
+	stems_exporter: (stems: ([string, string])[], niveaux: (number | null)[], vitesses: (number | null)[], demiTons: (number | null)[], destination: string, nom: string) => __TAURI_INVOKE<string>("stems_exporter", { stems, niveaux, vitesses, demiTons, destination, nom }),
+	/**
+	 *  Taille du cache de stems et nombre de morceaux séparés.
+	 * 
+	 *  **Un jeu de quatre stems pèse 124 Mo** en WAV — quinze morceaux séparés font
+	 *  deux gigaoctets. Sans ce compte, c'est une fuite qu'on ne découvre qu'en
+	 *  cherchant pourquoi le disque se remplit (`docs/ui-spec-editeur.md`).
+	 */
+	stems_cache: () => __TAURI_INVOKE<[number, number]>("stems_cache"),
+	/**
+	 *  Vide le cache de stems.
+	 * 
+	 *  Coupe d'abord la lecture multipiste : effacer les fichiers d'un jeu en train
+	 *  de jouer laisserait la sortie audio sur des données disparues.
+	 */
+	stems_cache_vider: () => __TAURI_INVOKE<null>("stems_cache_vider"),
+	/**
+	 *  Lance le démixage d'un morceau.
+	 * 
+	 *  Tourne dans son fil : une séparation demande une trentaine de secondes pour
+	 *  un morceau de quatre minutes, et le premier lancement y ajoute la
+	 *  compilation des noyaux GPU.
+	 */
+	start_demix: (path: string, variant: string) => __TAURI_INVOKE<null>("start_demix", { path, variant }),
+	/**
+	 *  Charge un jeu de stems, **en pause**, à leurs niveaux.
+	 * 
+	 *  Remplace le multipiste précédent s'il y en avait un : deux jeux de stems à
+	 *  la fois n'auraient aucun sens, et chacun tient une sortie audio.
+	 * 
+	 *  **Né silencieux, avec ses niveaux.** Il sonnait dès le chargement, tous
+	 *  stems à pleine échelle : un muet (la batterie, en pratique) ne s'appliquait
+	 *  qu'une fois vitesses et niveaux envoyés par l'interface, et le jeu entier
+	 *  s'entendait entre-temps — à chaque chargement, donc aussi à chaque
+	 *  changement de hauteur. `niveaux` porte le solo et les coupures dès la
+	 *  première trame, et l'interface donne l'ordre de sonner (`reprendre`) quand
+	 *  tout est en place.
+	 */
+	stems_play: (stems: ([string, string])[], niveaux: (number | null)[] | null) => __TAURI_INVOKE<string[]>("stems_play", { stems, niveaux }),
+	/**
+	 *  Règle le niveau de chaque piste — c'est ce que font solo et coupure.
+	 * 
+	 *  **Refuse un compte qui ne correspond pas** au jeu chargé plutôt que
+	 *  d'appliquer ce qui tombe juste : les niveaux sont posés par rang, et un
+	 *  décalage muterait le mauvais stem sans rien dire.
+	 */
+	stems_gain: (levels: (number | null)[]) => __TAURI_INVOKE<null>("stems_gain", { levels }),
+	/**  Transport du multipiste : pause, reprise, déplacement. */
+	stems_transport: (action: string, position: number | null) => __TAURI_INVOKE<null>("stems_transport", { action, position }),
+	/**
+	 *  Pose une boucle A-B sur les stems en écoute, bornes en secondes du
+	 *  morceau d'origine. L'aimantation sur les mesures est faite par l'interface,
+	 *  qui tient la pulsation : le moteur boucle où on lui dit.
+	 */
+	stems_boucle: (debut: number | null, fin: number | null) => __TAURI_INVOKE<null>("stems_boucle", { debut, fin }),
+	/**
+	 *  Temps et premiers temps de mesure d'un morceau (Beat This!).
+	 * 
+	 *  En cache à côté de ses stems (`pulsation.json`) : quelques secondes de
+	 *  calcul la première fois, rien ensuite. Les poids (83 Mo) se téléchargent
+	 *  au premier usage, empreintes vérifiées, comme les variantes de démixage.
+	 *  Le pisteur reste chargé une fois qu'il l'a été.
+	 */
+	pulsation: (id: number) => __TAURI_INVOKE<VuePulsation_Serialize>("pulsation", { id }),
+	/**
+	 *  Vrai si les sections peuvent se calculer : les 8 plis d'all-in-one sont
+	 *  là, ou viennent d'être téléchargés (10 Mo, MIT, depuis
+	 *  huggingface.co/rousseau/allinone-harmonix). Hors ligne et sans les plis :
+	 *  faux, le bandeau ne s'affiche pas.
+	 */
+	sections_disponibles: () => __TAURI_INVOKE<boolean>("sections_disponibles"),
+	/**
+	 *  Sections d'un morceau démixé (intro, couplet, refrain…) par all-in-one,
+	 *  sur ses stems HTDemucs : six secondes environ, en cache à côté des
+	 *  stems. Avec six stems, guitare et piano rejoignent « other », comme le
+	 *  modèle à quatre stems sur lequel all-in-one a appris.
+	 */
+	sections: (id: number) => __TAURI_INVOKE<VueSections>("sections", { id }),
+	stems_state: () => __TAURI_INVOKE<EtatStems_Serialize>("stems_state"),
+	/**
+	 *  Spectrogramme d'un stem, en intensités sur un octet.
+	 * 
+	 *  La coloration appartient à l'interface : elle applique la rampe
+	 *  séquentielle déjà retenue pour la carte, plutôt qu'une palette importée.
+	 */
+	stem_spectre: (path: string, width: number, height: number) => __TAURI_INVOKE<SpectreVue>("stem_spectre", { path, width, height }),
+	/**
+	 *  Spectrogramme du **son réellement joué** pour le morceau à `path` :
+	 * 
+	 *  - version HD du cache si la lecture HD est active et qu'elle existe ;
+	 *  - sinon le fichier d'origine.
+	 * 
+	 *  Quand ce qui joue diffère de l'original (HD), rend **aussi** le
+	 *  spectrogramme de l'original (`pixels_ref`) : l'interface peut alors teinter
+	 *  ce que le HD a ajouté. Rend la coupure estimée de la source, pour tracer le
+	 *  trait « au-dessus, c'est reconstruit ».
+	 */
+	spectre_transport: (path: string, width: number, height: number) => __TAURI_INVOKE<SpectreTransport_Serialize>("spectre_transport", { path, width, height }),
+	/**
+	 *  Les stems déjà calculés pour un morceau, s'il y en a.
+	 * 
+	 *  Permet de retrouver un démixage d'une session précédente sans le refaire —
+	 *  une séparation coûte trente secondes, on ne la rejoue pas pour rien.
+	 */
+	stems_existants: (path: string) => __TAURI_INVOKE<([string, string])[]>("stems_existants", { path }),
+	/**
+	 *  Lance les stems après un décompte de métronome (Pratiquer) : la musique
+	 *  part de `debut`, en secondes du morceau, et `clics` donne chaque clic
+	 *  (instant en secondes du morceau, premier temps ou non). L'interface les
+	 *  place sur la pulsation ; le moteur les joue à l'échantillon près.
+	 */
+	stems_decompter: (debut: number | null, clics: ([number | null, boolean])[]) => __TAURI_INVOKE<null>("stems_decompter", { debut, clics }),
+	etat_transcription: () => __TAURI_INVOKE<EtatTranscription>("etat_transcription"),
+	/**
+	 *  Les partitions déjà calculées du morceau, sans rien calculer : « bass »,
+	 *  « bass-muscriptor », « drums » selon les caches présents et à jour. Le
+	 *  bloc « Partitions » du rail montre ainsi « prête » plutôt que « Calculer ».
+	 */
+	transcriptions_en_cache: (id: number) => __TAURI_INVOKE<string[]>("transcriptions_en_cache", { id }),
+	/**
+	 *  Vrai si les poids de MuScriptor sont sur la machine (dossier des modèles
+	 *  ou cache Hugging Face) : l'utilisateur doit les télécharger lui-même,
+	 *  après avoir accepté leurs conditions d'usage sur Hugging Face.
+	 */
+	muscriptor_disponible: () => __TAURI_INVOKE<boolean>("muscriptor_disponible"),
+	/**
+	 *  Vrai si un jeton Hugging Face est déjà posé sur la machine (`HF_TOKEN`
+	 *  ou `hf auth login`) : l'interface ne le demande alors pas.
+	 */
+	muscriptor_jeton_present: () => __TAURI_INVOKE<boolean>("muscriptor_jeton_present"),
+	/**
+	 *  Télécharge les poids de MuScriptor (1,2 Go) dans le dossier des modèles,
+	 *  avec le jeton saisi, sinon celui de la machine. Le jeton n'est envoyé qu'à
+	 *  Hugging Face et n'est conservé nulle part.
+	 */
+	telecharger_muscriptor: (jeton: string | null) => __TAURI_INVOKE<null>("telecharger_muscriptor", { jeton }),
+	/**
+	 *  Le tempo du morceau ouvert et la netteté de sa pulsation.
+	 * 
+	 *  Le BPM cible n'a de sens que sur une matière qui pulse : une nappe ou un
+	 *  morceau rubato n'a pas de tempo à viser, et lui en proposer un donnerait
+	 *  une précision qu'on n'a pas. L'interface s'en sert pour choisir entre le
+	 *  réglage en BPM et le réglage en pourcentage (`docs/ui-spec-editeur.md`).
+	 * 
+	 *  La netteté se mesure sur le stem `drums` — le meilleur signal de pulsation
+	 *  une fois le morceau séparé — par la même grille que la greffe
+	 *  (`grilles_des_stems`). Le tempo, lui, vient de la base : mesuré sur le
+	 *  mélange entier, il est plus robuste qu'une batterie seule.
+	 */
+	tempo_cible: (id: number) => __TAURI_INVOKE<TempoCible_Serialize>("tempo_cible", { id }),
+	/**
+	 *  Met à la place d'un stem celui d'un autre morceau.
+	 * 
+	 *  **Non destructif, comme tout le module** : la greffe est un fichier de plus
+	 *  dans le cache, sous `greffes/`, et le stem d'origine reste où il est. Rouvrir
+	 *  le morceau retrouve ses quatre stems séparés, pas la greffe — les stems sur
+	 *  le disque sont la seule persistance, et une greffe n'en est pas un.
+	 */
+	stems_greffer: (id: number, stem: string, remplace: string, voisin: number) => __TAURI_INVOKE<Greffon_Serialize>("stems_greffer", { id, stem, remplace, voisin }),
 	play: (paths: string[]) => __TAURI_INVOKE<null>("play", { paths }),
 	/**
 	 *  Comme `play`, mais ne redémarre pas si le premier morceau ne change pas —
@@ -869,6 +1091,146 @@ export type EtatMinuteur_Serialize = {
 	reste_ms: number | null,
 };
 
+/**  État du multipiste, sondé par l'interface pour animer sa barre. */
+export type EtatStems = EtatStems_Serialize | EtatStems_Deserialize;
+
+/**  État du multipiste, sondé par l'interface pour animer sa barre. */
+export type EtatStems_Deserialize = {
+	/**
+	 *  Un multipiste est chargé et n'est pas au bout. Arrivé au bout, il se
+	 *  remet en pause au début (`arreter_au_bout`) : `actif` et `en_pause`
+	 *  tous deux faux ne veulent dire que « rien de chargé ».
+	 */
+	actif: boolean,
+	en_pause: boolean,
+	position_ms: number,
+	duree_ms: number,
+	/**
+	 *  Noms des stems chargés, dans l'ordre des niveaux : de quoi vérifier que
+	 *  l'interface et le moteur parlent du même jeu.
+	 */
+	noms: string[],
+	niveaux: (number | null)[],
+	/**
+	 *  Vitesse de chaque stem. L'interface les tient déjà, mais c'est le
+	 *  moteur qui les borne : les relire évite d'afficher une valeur que la
+	 *  lecture n'applique pas.
+	 */
+	vitesses: (number | null)[],
+	/**
+	 *  De combien le stem le plus éloigné s'est écarté de la référence.
+	 *  **Mesuré, pas prédit** — « les stems ont dérivé de 1,4 s » se vérifie à
+	 *  l'oreille, « ils peuvent se désynchroniser » ne dit rien.
+	 */
+	derive_ms: number,
+	/**  Boucle A-B posée, en secondes de référence. */
+	boucle?: [number | null, number | null] | null,
+	/**
+	 *  Retours au début de boucle depuis qu'elle est posée — l'interface
+	 *  s'en sert pour accélérer d'un cran à chaque passage.
+	 */
+	passages: number,
+	/**
+	 *  Latence de la sortie audio : ce que l'on entend a ce retard sur
+	 *  `position_ms` (plus de 200 ms en Bluetooth). L'interface la retranche
+	 *  pour que le curseur de la partition suive l'oreille.
+	 */
+	latence_ms: number,
+};
+
+/**  État du multipiste, sondé par l'interface pour animer sa barre. */
+export type EtatStems_Serialize = {
+	/**
+	 *  Un multipiste est chargé et n'est pas au bout. Arrivé au bout, il se
+	 *  remet en pause au début (`arreter_au_bout`) : `actif` et `en_pause`
+	 *  tous deux faux ne veulent dire que « rien de chargé ».
+	 */
+	actif: boolean,
+	en_pause: boolean,
+	position_ms: number,
+	duree_ms: number,
+	/**
+	 *  Noms des stems chargés, dans l'ordre des niveaux : de quoi vérifier que
+	 *  l'interface et le moteur parlent du même jeu.
+	 */
+	noms: string[],
+	niveaux: (number | null)[],
+	/**
+	 *  Vitesse de chaque stem. L'interface les tient déjà, mais c'est le
+	 *  moteur qui les borne : les relire évite d'afficher une valeur que la
+	 *  lecture n'applique pas.
+	 */
+	vitesses: (number | null)[],
+	/**
+	 *  De combien le stem le plus éloigné s'est écarté de la référence.
+	 *  **Mesuré, pas prédit** — « les stems ont dérivé de 1,4 s » se vérifie à
+	 *  l'oreille, « ils peuvent se désynchroniser » ne dit rien.
+	 */
+	derive_ms: number,
+	/**  Boucle A-B posée, en secondes de référence. */
+	boucle: [number | null, number | null] | null,
+	/**
+	 *  Retours au début de boucle depuis qu'elle est posée — l'interface
+	 *  s'en sert pour accélérer d'un cran à chaque passage.
+	 */
+	passages: number,
+	/**
+	 *  Latence de la sortie audio : ce que l'on entend a ce retard sur
+	 *  `position_ms` (plus de 200 ms en Bluetooth). L'interface la retranche
+	 *  pour que le curseur de la partition suive l'oreille.
+	 */
+	latence_ms: number,
+};
+
+/**  Avancement d'une transcription MuScriptor, sondé par l'interface. */
+export type EtatTranscription = {
+	en_cours: boolean,
+	/**
+	 *  Le morceau transcrit, pour que l'interface sache si l'avancement est
+	 *  le sien.
+	 */
+	id: number,
+	faits: number,
+	total: number,
+	/**  Téléchargement des poids de MuScriptor en cours, et son avancement. */
+	telechargement: boolean,
+	octets_faits: number,
+	octets_total: number,
+};
+
+/**  Où en est la transposition. Sondé par l'interface, comme le démixage. */
+export type EtatTranspose = EtatTranspose_Serialize | EtatTranspose_Deserialize;
+
+/**  Où en est la transposition. Sondé par l'interface, comme le démixage. */
+export type EtatTranspose_Deserialize = {
+	en_cours: boolean,
+	/**
+	 *  Stems déjà traités, et combien il y en a en tout. Un stem de quatre
+	 *  minutes demande une vingtaine de secondes : un pourcentage global
+	 *  laisserait croire à un blocage entre deux.
+	 */
+	faits: number,
+	total: number,
+	/**  Les chemins à jouer, une fois tout fini. */
+	stems: ([string, string])[],
+	erreur?: string | null,
+};
+
+/**  Où en est la transposition. Sondé par l'interface, comme le démixage. */
+export type EtatTranspose_Serialize = {
+	en_cours: boolean,
+	/**
+	 *  Stems déjà traités, et combien il y en a en tout. Un stem de quatre
+	 *  minutes demande une vingtaine de secondes : un pourcentage global
+	 *  laisserait croire à un blocage entre deux.
+	 */
+	faits: number,
+	total: number,
+	/**  Les chemins à jouer, une fois tout fini. */
+	stems: ([string, string])[],
+	erreur: string | null,
+};
+
 /**  Un coup reçu de la batterie. */
 export type Frappe = Frappe_Serialize | Frappe_Deserialize;
 
@@ -910,6 +1272,59 @@ export type Frappe_Serialize = {
 export type Grandeur = "energie" | "tempo" | "popularite" | 
 /**  Les écoutes de la table `ecoute` : ce que l'on connaît. */
 "familiarite";
+
+/**  Un stem greffé, et ce qu'il a fallu lui faire. */
+export type Greffon = Greffon_Serialize | Greffon_Deserialize;
+
+/**  Un stem greffé, et ce qu'il a fallu lui faire. */
+export type Greffon_Deserialize = {
+	/**  Le WAV écrit, à mettre à la place du stem remplacé. */
+	chemin: string,
+	/**  Le morceau d'où il vient, tel qu'on l'affiche. */
+	origine: string,
+	facteur: number | null,
+	octaves: number,
+	retard_s: number | null,
+	boucles: number,
+	/**
+	 *  Le greffon est-il entré sur un battement ? L'interface le dit plutôt
+	 *  que de laisser l'oreille le découvrir.
+	 */
+	cale_aux_temps: boolean,
+	/**
+	 *  Greffe mesure par mesure : mesures posées, dont appariées par section
+	 *  (refrain sur refrain). 0 pour la greffe d'un bloc.
+	 */
+	mesures: number,
+	mesures_par_section: number,
+	/**  Pourquoi on s'est rabattu sur la greffe d'un bloc, s'il y a lieu. */
+	repli?: string | null,
+};
+
+/**  Un stem greffé, et ce qu'il a fallu lui faire. */
+export type Greffon_Serialize = {
+	/**  Le WAV écrit, à mettre à la place du stem remplacé. */
+	chemin: string,
+	/**  Le morceau d'où il vient, tel qu'on l'affiche. */
+	origine: string,
+	facteur: number | null,
+	octaves: number,
+	retard_s: number | null,
+	boucles: number,
+	/**
+	 *  Le greffon est-il entré sur un battement ? L'interface le dit plutôt
+	 *  que de laisser l'oreille le découvrir.
+	 */
+	cale_aux_temps: boolean,
+	/**
+	 *  Greffe mesure par mesure : mesures posées, dont appariées par section
+	 *  (refrain sur refrain). 0 pour la greffe d'un bloc.
+	 */
+	mesures: number,
+	mesures_par_section: number,
+	/**  Pourquoi on s'est rabattu sur la greffe d'un bloc, s'il y a lieu. */
+	repli: string | null,
+};
 
 export type Groove = Groove_Serialize | Groove_Deserialize;
 
@@ -1685,6 +2100,37 @@ export type RootRow_Serialize = {
 	tracks: number,
 };
 
+/**  Une section. */
+export type Section = {
+	debut_s: number | null,
+	fin_s: number | null,
+	etiquette: string,
+};
+
+export type SpectreTransport = SpectreTransport_Serialize | SpectreTransport_Deserialize;
+
+export type SpectreTransport_Deserialize = {
+	largeur: number,
+	hauteur: number,
+	pixels: number[],
+	pixels_ref?: number[] | null,
+	hd: boolean,
+};
+
+export type SpectreTransport_Serialize = {
+	largeur: number,
+	hauteur: number,
+	pixels: number[],
+	pixels_ref: number[] | null,
+	hd: boolean,
+};
+
+export type SpectreVue = {
+	largeur: number,
+	hauteur: number,
+	pixels: number[],
+};
+
 /**
  *  Statistiques d'ensemble du mode Bibliothèque — un aperçu, pas une passe :
  *  trois requêtes d'agrégation sur la base déjà là, rien à mesurer ni à
@@ -1714,6 +2160,52 @@ export type Swing = {
 	jeu: number | null,
 	/**  Temps à croches mesurés. */
 	temps: number,
+};
+
+/**
+ *  Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
+ *  qu'un pourcentage de vitesse.
+ */
+export type TempoCible = TempoCible_Serialize | TempoCible_Deserialize;
+
+/**
+ *  Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
+ *  qu'un pourcentage de vitesse.
+ */
+export type TempoCible_Deserialize = {
+	/**
+	 *  Tempo du morceau entier, tel que la passe de descripteurs l'a mesuré.
+	 *  C'est plus sûr qu'une mesure sur un seul stem, et c'est le nombre que
+	 *  l'utilisateur reconnaît. `None` : morceau non mesuré.
+	 */
+	bpm?: number | null,
+	/**
+	 *  Netteté de la pulsation, mesurée sur le stem `drums` de l'établi
+	 *  (`battements::Grille`). **Au-delà de 2, la pulsation est franche** ;
+	 *  l'interface ne propose le BPM cible qu'à cette condition. `None` : pas
+	 *  de stem `drums`, ou il ne se décode pas.
+	 */
+	nettete?: number | null,
+};
+
+/**
+ *  Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
+ *  qu'un pourcentage de vitesse.
+ */
+export type TempoCible_Serialize = {
+	/**
+	 *  Tempo du morceau entier, tel que la passe de descripteurs l'a mesuré.
+	 *  C'est plus sûr qu'une mesure sur un seul stem, et c'est le nombre que
+	 *  l'utilisateur reconnaît. `None` : morceau non mesuré.
+	 */
+	bpm: number | null,
+	/**
+	 *  Netteté de la pulsation, mesurée sur le stem `drums` de l'établi
+	 *  (`battements::Grille`). **Au-delà de 2, la pulsation est franche** ;
+	 *  l'interface ne propose le BPM cible qu'à cette condition. `None` : pas
+	 *  de stem `drums`, ou il ne se décode pas.
+	 */
+	nettete: number | null,
 };
 
 /**
@@ -2114,6 +2606,31 @@ export type VueJugements_Serialize = {
 	boucle_proposee: BoucleProposee | null,
 };
 
+/**  La pulsation d'un morceau, telle que l'interface la consomme. */
+export type VuePulsation = VuePulsation_Serialize | VuePulsation_Deserialize;
+
+/**  La pulsation d'un morceau, telle que l'interface la consomme. */
+export type VuePulsation_Deserialize = {
+	/**  Chaque temps, en secondes du fichier d'origine. */
+	temps: (number | null)[],
+	/**  Les premiers temps de mesure, en secondes. */
+	premiers_temps: (number | null)[],
+	bpm?: number | null,
+	/**  Temps par mesure. */
+	metrique?: number | null,
+};
+
+/**  La pulsation d'un morceau, telle que l'interface la consomme. */
+export type VuePulsation_Serialize = {
+	/**  Chaque temps, en secondes du fichier d'origine. */
+	temps: (number | null)[],
+	/**  Les premiers temps de mesure, en secondes. */
+	premiers_temps: (number | null)[],
+	bpm: number | null,
+	/**  Temps par mesure. */
+	metrique: number | null,
+};
+
 /**  Ce que l'interface sait du retour. */
 export type VueRetourBasse = VueRetourBasse_Serialize | VueRetourBasse_Deserialize;
 
@@ -2169,6 +2686,12 @@ export type VueRetourBasse_Serialize = {
 	/**  Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement). */
 	trous: number,
 	prereglages: PrereglageBasse[],
+};
+
+/**  Sections d'un morceau, telles que l'interface les consomme. */
+export type VueSections = {
+	version: number,
+	sections: Section[],
 };
 
 /**  La table par mesure du coach pour un morceau. */

@@ -6862,3 +6862,33 @@ Les décomptes précédents du README (41, puis 43 et 44) sous-comptaient :
 il y en avait 67 avant ce lot.
 
 Mesuré : types exportés, `npm run types` vert, 82 tests de fumée verts.
+
+## V47 : l'établi contrôlé par les types générés — 19 nov. 2026
+
+Vingt-sept commandes de l'établi (Pratiquer, Créer) passent aux types
+générés : les stems (`stems_play`, `stems_gain`, `stems_transport`,
+`stems_boucle`, `stems_vitesse`, `stems_vitesse_stem`, `stems_state`,
+`stems_existants`, `stems_decompter`, `stems_exporter`, `stems_cache`,
+`stems_cache_vider`, `start_demix`), l'étirement (`start_etirer`,
+`etirer_state`), les spectres (`stem_spectre`, `spectre_transport`), la
+pulsation et les sections (`pulsation`, `sections_disponibles`,
+`sections`), la transcription hors corrections (`etat_transcription`,
+`transcriptions_en_cache`, `muscriptor_disponible`,
+`muscriptor_jeton_present`, `telecharger_muscriptor`) et Créer
+(`tempo_cible`, `stems_greffer`).
+
+Le crate `transcription` gagne une feature `specta` (comme `editor`),
+activée par les seuls tests du bureau ; `Section` en dérive. Restent hors
+du lot : `transcrire`, `corriger_transcription` et `pratique_accordage`
+(leurs types, `Basses`, `Accord`, la vue de transcription, sont dans
+`transcription` et appellent un lot à part), et `demix_state` : specta
+exporte mal un générique aplati (`Passe<A>` avec `#[serde(flatten)]` sort
+en `Passe_Serialize<A>`, `A` non défini).
+
+Quatorze commandes n'avaient pas de réponse figée ; elles ont maintenant des
+réponses neutres de la forme du moteur (rien en cours, rien de calculé).
+`stems_gain` était posée hors du littéral (`Object.assign`) et échappait au
+contrôle : rentrée dedans.
+
+Mesuré : `npm run types` vert, 82 tests de fumée verts ; 119 commandes
+contrôlées sur 263.

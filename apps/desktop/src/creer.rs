@@ -22,6 +22,7 @@ pub(crate) const VOISINS_EXAMINES: usize = 400;
 /// Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
 /// qu'un pourcentage de vitesse.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct TempoCible {
     /// Tempo du morceau entier, tel que la passe de descripteurs l'a mesuré.
     /// C'est plus sûr qu'une mesure sur un seul stem, et c'est le nombre que
@@ -46,6 +47,7 @@ pub(crate) struct TempoCible {
 /// (`grilles_des_stems`). Le tempo, lui, vient de la base : mesuré sur le
 /// mélange entier, il est plus robuste qu'une batterie seule.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn tempo_cible(etat: State<Etat>, id: i64) -> Result<TempoCible, String> {
     let (bpm, chemin) = {
         let lib = verrou(&etat.lib);
@@ -80,6 +82,7 @@ pub(crate) fn tempo_cible(etat: State<Etat>, id: i64) -> Result<TempoCible, Stri
 
 /// Un stem greffé, et ce qu'il a fallu lui faire.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct Greffon {
     /// Le WAV écrit, à mettre à la place du stem remplacé.
     chemin: String,
@@ -139,6 +142,7 @@ pub(crate) fn grilles_des_stems(
 /// le morceau retrouve ses quatre stems séparés, pas la greffe — les stems sur
 /// le disque sont la seule persistance, et une greffe n'en est pas un.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_greffer(
     etat: State<Etat>,
     id: i64,

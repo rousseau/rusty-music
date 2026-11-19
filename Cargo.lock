@@ -8553,6 +8553,7 @@ dependencies = [
  "rusty-music-core",
  "serde",
  "serde_json",
+ "specta",
  "thiserror 2.0.20",
  "tracing",
 ]

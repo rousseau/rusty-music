@@ -44,6 +44,27 @@ const fixtures = {
   js_error: null,
   set_normalisation: null,
   set_pochettes_en_ligne: null,
+  // V47 : l'établi (Pratiquer, Créer), contrôlé par les types. Réponses
+  // neutres, de la forme du moteur : rien en cours, rien de calculé.
+  stems_vitesse_stem: null,
+  stems_gain: null,
+  stems_decompter: null,
+  stems_cache_vider: null,
+  start_demix: null,
+  stems_boucle: null,
+  etirer_state: { en_cours: false, faits: 0, total: 0, stems: [], erreur: null },
+  stems_exporter: "/Musique/Exports/essai.wav",
+  sections: { version: 1, sections: [] },
+  etat_transcription: {
+    en_cours: false, id: 0, faits: 0, total: 0, telechargement: false, octets_faits: 0, octets_total: 0,
+  },
+  muscriptor_disponible: false,
+  muscriptor_jeton_present: false,
+  telecharger_muscriptor: null,
+  stems_greffer: {
+    chemin: "/cache/greffe.wav", origine: "/Musique/Les Essais/Second/01.mp3", facteur: 1, octaves: 0,
+    retard_s: 0, boucles: 1, cale_aux_temps: true, mesures: 8, mesures_par_section: 8, repli: null,
+  },
   favoris: [],
   basculer_favori: (a, e) => {
     e.favoris ??= new Set();
@@ -636,7 +657,6 @@ for (const cmd of [
 }
 Object.assign(fixtures, {
   scan_failures: [],
-  stems_gain: null,
 });
 
 module.exports = { fixtures, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };

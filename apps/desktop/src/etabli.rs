@@ -7,6 +7,7 @@ use super::*;
 
 /// Avancement du démixage, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementDemix {
     /// Le morceau en cours de traitement, pour que l'interface sache si les
     /// stems affichés sont bien les siens.
@@ -108,6 +109,7 @@ pub(crate) fn racine_stems(etat: &Etat) -> PathBuf {
 /// Le commentaire qui figurait ici disait le contraire ; il datait d'avant que
 /// l'étireur soit branché, quand la vitesse n'était qu'un rééchantillonnage.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_vitesse(etat: State<Etat>, vitesse: f32) -> Result<(), String> {
     if let Some(m) = verrou(&etat.stems).as_ref() {
         m.vitesse(vitesse);
@@ -125,6 +127,7 @@ pub(crate) fn stems_vitesse(etat: State<Etat>, vitesse: f32) -> Result<(), Strin
 ///
 /// Aussi immédiat que la vitesse globale : un flottant que la lecture relit.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_vitesse_stem(
     etat: State<Etat>,
     index: usize,
@@ -207,6 +210,7 @@ pub(crate) fn transposer_un(chemin: &str, demi_ton: f32) -> Result<String, Strin
 
 /// Où en est la transposition. Sondé par l'interface, comme le démixage.
 #[derive(Default, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatTranspose {
     pub(crate) en_cours: bool,
     /// Stems déjà traités, et combien il y en a en tout. Un stem de quatre
@@ -252,6 +256,7 @@ impl EtatPasse for EtatTranspose {
 /// déjà en cache, l'état est rempli sur place et aucun fil n'est lancé : le
 /// chargement d'un jeu de stems sans réglage reste immédiat.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_etirer(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -366,6 +371,7 @@ pub(crate) fn start_etirer(
 
 /// Où en est la transposition lancée par [`start_etirer`].
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn etirer_state(etat: State<Etat>) -> Result<EtatTranspose, String> {
     Ok(verrou(&etat.transpose).clone())
 }
@@ -441,6 +447,7 @@ pub(crate) fn sous_une_racine(dossier: &Path, racines: &[String]) -> Option<Stri
 /// morceau, c'est un rendu. Mieux vaut le dire tout de suite que laisser la
 /// surprise arriver à la prochaine surveillance.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_exporter(
     etat: State<Etat>,
     stems: Vec<(String, String)>,
@@ -561,6 +568,7 @@ pub(crate) fn poids(dossier: &Path) -> u64 {
 /// deux gigaoctets. Sans ce compte, c'est une fuite qu'on ne découvre qu'en
 /// cherchant pourquoi le disque se remplit (`docs/ui-spec-editeur.md`).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_cache(etat: State<Etat>) -> Result<(u64, usize), String> {
     let racine = racine_stems(&etat);
     let Ok(entrees) = std::fs::read_dir(&racine) else {
@@ -583,6 +591,7 @@ pub(crate) fn stems_cache(etat: State<Etat>) -> Result<(u64, usize), String> {
 /// Coupe d'abord la lecture multipiste : effacer les fichiers d'un jeu en train
 /// de jouer laisserait la sortie audio sur des données disparues.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_cache_vider(etat: State<Etat>) -> Result<(), String> {
     *verrou(&etat.stems) = None;
     let racine = racine_stems(&etat);
@@ -599,6 +608,7 @@ pub(crate) fn stems_cache_vider(etat: State<Etat>) -> Result<(), String> {
 /// un morceau de quatre minutes, et le premier lancement y ajoute la
 /// compilation des noyaux GPU.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_demix(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -830,6 +840,7 @@ pub(crate) fn couper_stems(etat: &Etat) -> bool {
 /// première trame, et l'interface donne l'ordre de sonner (`reprendre`) quand
 /// tout est en place.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_play(
     etat: State<Etat>,
     stems: Vec<(String, String)>,
@@ -865,6 +876,7 @@ pub(crate) fn stems_play(
 /// d'appliquer ce qui tombe juste : les niveaux sont posés par rang, et un
 /// décalage muterait le mauvais stem sans rien dire.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_gain(etat: State<Etat>, levels: Vec<f32>) -> Result<(), String> {
     let garde = verrou(&etat.stems);
     if let Some(m) = garde.as_ref() {
@@ -884,6 +896,7 @@ pub(crate) fn stems_gain(etat: State<Etat>, levels: Vec<f32>) -> Result<(), Stri
 
 /// Transport du multipiste : pause, reprise, déplacement.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_transport(
     etat: State<Etat>,
     action: String,
@@ -917,6 +930,7 @@ pub(crate) fn stems_transport(
 /// morceau d'origine. L'aimantation sur les mesures est faite par l'interface,
 /// qui tient la pulsation : le moteur boucle où on lui dit.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_boucle(etat: State<Etat>, debut: f64, fin: f64) -> Result<(), String> {
     if !(debut.is_finite() && fin.is_finite() && fin > debut && debut >= 0.0) {
         return Err(format!("bornes de boucle invalides : {debut} – {fin}"));
@@ -932,6 +946,7 @@ pub(crate) fn stems_boucle(etat: State<Etat>, debut: f64, fin: f64) -> Result<()
 
 /// La pulsation d'un morceau, telle que l'interface la consomme.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct VuePulsation {
     /// Chaque temps, en secondes du fichier d'origine.
     temps: Vec<f32>,
@@ -949,6 +964,7 @@ pub(crate) struct VuePulsation {
 /// au premier usage, empreintes vérifiées, comme les variantes de démixage.
 /// Le pisteur reste chargé une fois qu'il l'a été.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn pulsation(etat: State<Etat>, id: i64) -> Result<VuePulsation, String> {
     use rusty_music_editor::pulsation::{Modele, FICHIER_CACHE};
 
@@ -1010,6 +1026,7 @@ pub(crate) fn pulsation_de(
 
 /// Sections d'un morceau, telles que l'interface les consomme.
 #[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct VueSections {
     version: u32,
     pub(crate) sections: Vec<rusty_music_transcription::sections::Section>,
@@ -1023,6 +1040,7 @@ pub(crate) const VERSION_SECTIONS: u32 = 1;
 /// huggingface.co/rousseau/allinone-harmonix). Hors ligne et sans les plis :
 /// faux, le bandeau ne s'affiche pas.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn sections_disponibles() -> bool {
     use rusty_music_transcription::sections;
     sections::installes().is_some()
@@ -1036,6 +1054,7 @@ pub(crate) fn sections_disponibles() -> bool {
 /// stems. Avec six stems, guitare et piano rejoignent « other », comme le
 /// modèle à quatre stems sur lequel all-in-one a appris.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn sections(etat: State<Etat>, id: i64) -> Result<VueSections, String> {
     sections_de(&etat, id)
 }
@@ -1117,6 +1136,7 @@ pub(crate) fn sections_de(etat: &State<Etat>, id: i64) -> Result<VueSections, St
 
 /// État du multipiste, sondé par l'interface pour animer sa barre.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatStems {
     /// Un multipiste est chargé et n'est pas au bout. Arrivé au bout, il se
     /// remet en pause au début (`arreter_au_bout`) : `actif` et `en_pause`
@@ -1149,6 +1169,7 @@ pub(crate) struct EtatStems {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
     let etat_stems = {
         let garde = verrou(&etat.stems);
@@ -1195,6 +1216,7 @@ pub(crate) fn stems_state(etat: State<Etat>) -> Result<EtatStems, String> {
 /// La coloration appartient à l'interface : elle applique la rampe
 /// séquentielle déjà retenue pour la carte, plutôt qu'une palette importée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stem_spectre(
     path: String,
     width: usize,
@@ -1210,6 +1232,7 @@ pub(crate) fn stem_spectre(
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct SpectreVue {
     largeur: usize,
     hauteur: usize,
@@ -1226,6 +1249,7 @@ pub(crate) struct SpectreVue {
 /// ce que le HD a ajouté. Rend la coupure estimée de la source, pour tracer le
 /// trait « au-dessus, c'est reconstruit ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn spectre_transport(
     etat: State<Etat>,
     path: String,
@@ -1265,6 +1289,7 @@ pub(crate) fn spectre_transport(
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct SpectreTransport {
     largeur: usize,
     hauteur: usize,
@@ -1319,6 +1344,7 @@ pub(crate) fn stems_du_dossier(dossier: &Path) -> Vec<(String, PathBuf)> {
 /// Permet de retrouver un démixage d'une session précédente sans le refaire —
 /// une séparation coûte trente secondes, on ne la rejoue pas pour rien.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_existants(
     etat: State<Etat>,
     path: String,

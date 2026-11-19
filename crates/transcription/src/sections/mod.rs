@@ -138,6 +138,7 @@ pub fn telecharger(mut avancer: impl FnMut(usize, usize)) -> Result<()> {
 
 /// Une section.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Section {
     pub debut_s: f32,
     pub fin_s: f32,

@@ -10,6 +10,7 @@ use rusty_music_transcription::corrections;
 /// (instant en secondes du morceau, premier temps ou non). L'interface les
 /// place sur la pulsation ; le moteur les joue à l'échantillon près.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stems_decompter(
     etat: State<Etat>,
     debut: f64,
@@ -108,6 +109,7 @@ pub(crate) const VERSION_MESURES: u32 = 4;
 
 /// Avancement d'une transcription MuScriptor, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatTranscription {
     pub(crate) en_cours: bool,
     /// Le morceau transcrit, pour que l'interface sache si l'avancement est
@@ -122,6 +124,7 @@ pub(crate) struct EtatTranscription {
 }
 
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
     verrou(&etat.transcription).clone()
 }
@@ -130,6 +133,7 @@ pub(crate) fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
 /// « bass-muscriptor », « drums » selon les caches présents et à jour. Le
 /// bloc « Partitions » du rail montre ainsi « prête » plutôt que « Calculer ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn transcriptions_en_cache(etat: State<Etat>, id: i64) -> Result<Vec<String>, String> {
     let chemin = verrou(&etat.lib)
         .track(id)
@@ -153,6 +157,7 @@ pub(crate) fn transcriptions_en_cache(etat: State<Etat>, id: i64) -> Result<Vec<
 /// ou cache Hugging Face) : l'utilisateur doit les télécharger lui-même,
 /// après avoir accepté leurs conditions d'usage sur Hugging Face.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn muscriptor_disponible() -> bool {
     rusty_music_transcription::muscriptor::poids().is_some()
 }
@@ -160,6 +165,7 @@ pub(crate) fn muscriptor_disponible() -> bool {
 /// Vrai si un jeton Hugging Face est déjà posé sur la machine (`HF_TOKEN`
 /// ou `hf auth login`) : l'interface ne le demande alors pas.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn muscriptor_jeton_present() -> bool {
     rusty_music_transcription::muscriptor::jeton_hugging_face().is_some()
 }
@@ -168,6 +174,7 @@ pub(crate) fn muscriptor_jeton_present() -> bool {
 /// avec le jeton saisi, sinon celui de la machine. Le jeton n'est envoyé qu'à
 /// Hugging Face et n'est conservé nulle part.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn telecharger_muscriptor(
     etat: State<Etat>,
     jeton: Option<String>,
