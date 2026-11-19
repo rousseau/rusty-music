@@ -8450,6 +8450,7 @@ dependencies = [
  "rusty-music-core",
  "serde",
  "serde_json",
+ "specta",
  "thiserror 2.0.20",
  "tracing",
  "ureq 3.4.0",
@@ -8467,6 +8468,7 @@ dependencies = [
  "rusty-music-core",
  "serde",
  "serde_json",
+ "specta",
  "tracing",
  "ureq 3.4.0",
 ]
@@ -8567,6 +8569,7 @@ dependencies = [
  "rusty-music-core",
  "serde",
  "serde_json",
+ "specta",
  "ureq 3.4.0",
 ]
 
