@@ -31,22 +31,28 @@ fn main() {
 /// `tauri.conf.json` manque — même pour un simple `cargo build`/`clippy`, où
 /// l'on n'empaquette rien.
 ///
-/// Aucune n'est dans le dépôt : `htdemucs.safetensors` et
-/// `ville-paris.db` (téléchargées par `scripts/telecharger-modeles.sh` /
-/// `telecharger-ville.sh`), `clap-audio-encoder-b5.bpk` et
-/// `clap-text-encoder.bpk` (produites par
-/// `crates/analysis/build.rs`, mais seulement en profil `release`, et sans
-/// garantie d'ordre entre scripts de build). Pour que la compilation aboutisse
-/// quand même, on pose un fichier vide en dernier recours. Un build `release`
-/// écrit le vrai `.bpk` par-dessus (`analysis/build.rs`) ; côté exécution, un
-/// fichier vide est traité comme absent (`main.rs`, `completer_ressources`).
+/// Aucune n'est dans le dépôt : modèles et `ville-paris.db` téléchargés par
+/// les scripts `telecharger-*.sh`, `.bpk` de CLAP produits par
+/// `crates/analysis/build.rs` (en profil `release` seulement, sans garantie
+/// d'ordre entre scripts de build). Pour que la compilation aboutisse quand
+/// même, on pose un fichier vide en dernier recours. Un build `release` écrit
+/// le vrai `.bpk` par-dessus ; côté exécution, un fichier vide est traité
+/// comme absent (`main.rs`, `completer_ressources`).
+///
+/// La liste est lue dans `tauri.conf.json` (`bundle > resources`) : recopiée
+/// ici, elle avait oublié les plis d'all-in-one ajoutés au paquet (V25), et
+/// la CI ne compilait plus depuis.
 fn completer_ressources_de_paquet() {
-    for rel in [
-        "../../models/clap-audio-encoder-b5.bpk",
-        "../../models/clap-text-encoder.bpk",
-        "../../models/htdemucs.safetensors",
-        "../../ville-paris.db",
-    ] {
+    println!("cargo:rerun-if-changed=tauri.conf.json");
+    let conf: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("tauri.conf.json").expect("tauri.conf.json lisible"),
+    )
+    .expect("tauri.conf.json valide");
+    let ressources: Vec<String> = conf["bundle"]["resources"]
+        .as_object()
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    for rel in &ressources {
         let chemin = Path::new(rel);
         if chemin.exists() {
             continue;

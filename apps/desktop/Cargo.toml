@@ -9,6 +9,8 @@ publish = false        # composant de l'application, jamais publié seul sur cra
 
 [build-dependencies]
 tauri-build.workspace = true
+# Lire les ressources déclarées dans `tauri.conf.json` (`build.rs`).
+serde_json.workspace = true
 
 [dependencies]
 rusty-music-core = { path = "../../crates/core" }

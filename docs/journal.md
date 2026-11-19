@@ -6946,3 +6946,14 @@ prendre, point 2) ; le signalement en amont, rédigé mais pas envoyé
 (`experiments/burn-metal/signalement-cubecl.md`) ; un troisième défaut WGSL
 vu au reproducteur (`poids·V` à 1 000 positions et têtes de 48, 27 %) que
 HTDemucs ne rencontre plus (têtes complétées à 64). Pas écouté.
+
+## CI : de nouveau compilable — 19 nov. 2026
+
+La CI GitHub échouait depuis le 9 nov. (V25, plis d'all-in-one embarqués) :
+`tauri_build` refuse une ressource déclarée absente, et `build.rs` ne posait
+de fichier vide que pour quatre ressources recopiées à la main
+(`allinone-harmonix-fold2.safetensors` manquait). La liste est maintenant lue
+dans `tauri.conf.json` (`bundle > resources`, `serde_json` en dépendance de
+build). Vérifié en écartant un pli le temps d'un build : fichier vide posé,
+compilation aboutie, vrai fichier remis. Les échecs de V44 à V46 venaient de
+là, pas de leur contenu.
