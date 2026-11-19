@@ -6892,3 +6892,57 @@ contrôle : rentrée dedans.
 
 Mesuré : `npm run types` vert, 82 tests de fumée verts ; 119 commandes
 contrôlées sur 263.
+
+## V48 : HTDemucs exact en WGSL et en MSL — deux noyaux de cubecl contournés — 19 nov. 2026
+
+Le point 1 de `experiments/burn-metal/README.md` (« localiser le défaut MSL
+de htdemucs_6s ») a mené à deux noyaux de produit matriciel faux dans cubecl,
+l'un en MSL, l'autre en WGSL — le backend livré.
+
+**Méthode.** `crates/editor/examples/couches_demucs.rs` relève chaque étage
+de HTDemucs (le `DebugListener` de demucs-core) sur un segment de 7 s, puis
+une trace temporaire dans le fork (`transformer.rs`, `conv.rs`, compilée par
+`--config patch`) descend dans l'étage fautif ; processeur contre GPU. Deux
+reproducteurs hors du modèle, référence en f64 écrite à la main :
+`formes_attention.rs` et `formes_conv.rs`.
+
+- **MSL, htdemucs_6s** : la première auto-attention de la branche
+  temporelle. Q et K justes à 10⁻⁵, `Q·Kᵀ` faux (jusqu'à 70 % du maximum)
+  avec des têtes de 48 (d_model 384 sur 8 têtes, propre au 6 stems) et
+  1 280 à 1 536 positions ; juste à 32 ou 64. Même défaut aux quatre
+  niveaux d'autotune, cache coupé, et sans fusion.
+- **WGSL, les trois variantes** : la convolution 1×1 (`conv2`) de la
+  première DConv du 2ᵉ encodeur temporel, 24 → 384 canaux sur 5 375
+  échantillons (jusqu'à 69 %) ; juste avec 32 canaux d'entrée. Le chiffre
+  WGSL dépend du cache d'autotune : même binaire, 34,8 / 38,3 / 25,3 /
+  26,2 dB le 31 oct., 26,6 / 31,9 / 25,4 / 39,1 dB ce soir.
+
+**Contournement** (fork `rousseau/demucs-rs`, branche
+`attention-tetes-completees`, `d851b07`, poussée) : l'attention et les
+convolutions 1×1 écrites avec les mêmes poids, dimension intérieure
+complétée de zéros jusqu'au multiple de 32 (48 → 64, 24 → 32). Mathématiquement
+identique ; 62 tests de demucs-core verts. `crates/editor/Cargo.toml`
+épingle cette révision.
+
+Mesuré (120 s de `TheKitchenettes_Alive`, contre PyTorch, `comparer.py`) :
+
+| dB | WGSL avant | WGSL après | MSL avant | MSL après |
+|---|---|---|---|---|
+| htdemucs | 25-38 | 69,3-70,0 | 69,3-70,0 | 69,3-70,0 |
+| htdemucs_ft | 25-39 | 69,3-70,2 | 69,3-70,2 | 69,3-70,2 |
+| htdemucs_6s | 16-40 | 69,4-71,4 | 18-32 | 69,4-71,4 |
+
+Temps inchangé (WGSL htdemucs, 120 s : 15,7 et 16,5 s avant, 15,7 et
+16,9 s après ; MSL htdemucs_6s : 8,6 et 10,1 s avant, 8,3 et 8,4 après).
+`verifier.sh` vert.
+
+Ce qui change pour l'application : les stems de HTDemucs démixés à partir
+de maintenant sont ceux du réseau d'origine ; ceux déjà en cache restent
+tels quels. Rien d'autre ne passe par ces deux chemins (BS-RoFormer, CLAP,
+MuScriptor et all-in-one étaient déjà exacts).
+
+Non fait : la bascule de toute l'application en `burn/metal` (décision à
+prendre, point 2) ; le signalement en amont, rédigé mais pas envoyé
+(`experiments/burn-metal/signalement-cubecl.md`) ; un troisième défaut WGSL
+vu au reproducteur (`poids·V` à 1 000 positions et têtes de 48, 27 %) que
+HTDemucs ne rencontre plus (têtes complétées à 64). Pas écouté.

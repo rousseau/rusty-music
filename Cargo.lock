@@ -3054,7 +3054,7 @@ dependencies = [
 [[package]]
 name = "demucs-core"
 version = "0.1.0"
-source = "git+https://github.com/rousseau/demucs-rs?rev=effc95836cd848c17215a1b0af6e683aa6ee1421#effc95836cd848c17215a1b0af6e683aa6ee1421"
+source = "git+https://github.com/rousseau/demucs-rs?rev=d851b07660903a8e3aeadd50fb318334ea1033e3#d851b07660903a8e3aeadd50fb318334ea1033e3"
 dependencies = [
  "burn",
  "dirs 5.0.1",

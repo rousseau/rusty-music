@@ -55,6 +55,86 @@ Lecture :
   `TheKitchenettes_Alive`, même le processeur paraît s'écarter si l'on
   rapporte l'erreur au stem plutôt qu'au mélange.
 
+## htdemucs_6s faux en MSL : localisé (19 nov. 2026)
+
+**Le défaut est un noyau de produit matriciel de cubecl en MSL**, pas le
+port. Méthode : `crates/editor/examples/couches_demucs.rs` relève min, max,
+moyenne et écart-type de chaque étage (le `DebugListener` de demucs-core)
+sur `extrait60.wav`, un segment ; processeur contre MSL.
+
+- Les encodeurs sont justes (≈ 10⁻⁵, comme pour le 4 stems).
+- L'écart naît dans la **première auto-attention de la branche temporelle**
+  du transformeur : entrée normalisée, Q, K et V justes à 10⁻⁵, mais
+  `Q·Kᵀ` faux (maximum 17,83 au lieu de 17,01), puis softmax, contexte et
+  tout ce qui suit. La branche fréquentielle (2 688 positions) est juste.
+- Ce qui ne dépend que du 6 stems : pas de sur-échantillonnage des canaux
+  avant le transformeur, donc d_model 384 sur 8 têtes, **têtes de 48**
+  (le 4 stems passe à 512 : têtes de 64).
+
+Reproducteur hors du modèle : `crates/editor/examples/formes_attention.rs`
+(entrées aléatoires, référence en f64 écrite à la main).
+
+- MSL : `Q·Kᵀ` faux (écart jusqu'à 70 % du maximum) avec des têtes de 48 et
+  1 280 à 1 536 positions, Q vue (`reshape` puis `swap_dims`) ou non ;
+  juste à 672, 1 000, 1 024, 2 688 positions, et avec des têtes de 32 ou 64.
+  Même résultat aux quatre niveaux d'autotune (`CUBECL_AUTOTUNE_LEVEL`,
+  cache coupé) et **sans fusion** (pire : le cas contigu casse aussi) :
+  c'est un noyau faux, pas un choix de l'autotune ni la fusion.
+- WGSL : un autre défaut, `poids·V` contigu faux (27 %) à 1 000 positions
+  et têtes de 48 ; le reste juste sur ces formes.
+- Le processeur est juste partout.
+
+**Contournement** (fork `rousseau/demucs-rs`, `model/transformer.rs`,
+`attention`) : l'attention écrite avec les poids de `MultiHeadAttention`,
+têtes complétées de zéros jusqu'au multiple de 32 supérieur (48 → 64), le
+contexte recoupé ensuite. Mathématiquement identique ; dans le
+reproducteur, juste à toutes les formes (3·10⁻⁷).
+
+Mesuré avec le contournement (fork local, `--config patch`, protocole de
+« Refaire » : 120 s de `TheKitchenettes_Alive`, contre PyTorch) :
+
+| MSL | bass | drums | guitar | other | piano | vocals |
+|---|---|---|---|---|---|---|
+| htdemucs_6s avant | 22,4 | 31,6 | 18,5 | 21,7 | 22,9 | 22,4 |
+| htdemucs_6s après | **70,2** | **70,6** | **70,1** | **71,4** | **69,4** | **70,3** |
+| htdemucs avant / après | 70,0 / 70,0 | 70,0 / 70,0 | | 69,3 / 69,3 | | 70,0 / 70,0 |
+
+htdemucs_6s devient exact en MSL ; htdemucs ne bouge pas ; temps inchangé
+(8,3 à 8,4 s contre 8,6 à 10,1 s pour 120 s).
+
+## WGSL faux sur les trois HTDemucs : localisé et contourné (19 nov. 2026)
+
+Même méthode (`couches_demucs` et une trace dans `conv.rs`) : en WGSL,
+l'écart naît au **2ᵉ encodeur temporel** ([1, 192, 5375]), dans la
+première couche DConv : `conv1` et `norm1` justes, **`conv2` faux** — une
+convolution 1×1 de 24 vers 384 canaux. Reproducteur :
+`crates/editor/examples/formes_conv.rs` : en WGSL, 24 canaux d'entrée sur
+5 375 ou 5 376 échantillons donnent jusqu'à 69 % d'écart (4 096 : juste) ; 32 canaux,
+ou la même convolution en lot de 32 sur 336 positions (branche
+fréquentielle), sont justes. MSL est juste à ces formes.
+
+Le chiffre WGSL bouge d'une exécution à l'autre selon l'état du cache
+d'autotune (`~/.cache/cubecl`) : htdemucs donnait 34,8 / 38,3 / 25,3 / 26,2 dB
+le 31 oct., 26,6 / 31,9 / 25,4 / 39,1 le 19 nov. avec le même binaire.
+
+**Contournement** (fork, `model/conv.rs`, `conv1x1`) : les convolutions 1×1
+(`conv2` des DConv, `rewrite` des encodeurs temporels) en produit matriciel,
+canaux d'entrée complétés de zéros jusqu'au multiple de 32.
+
+**Résultat, les deux contournements ensemble** (fork `d851b07`, branche
+`attention-tetes-completees`, épinglée par `crates/editor/Cargo.toml`) :
+
+| contre PyTorch, dB | WGSL avant | WGSL après | MSL avant | MSL après |
+|---|---|---|---|---|
+| htdemucs | 25-38 | **69,3-70,0** | 69,3-70,0 | 69,3-70,0 |
+| htdemucs_ft | 25-39 | **69,3-70,2** | 69,3-70,2 | 69,3-70,2 |
+| htdemucs_6s | 16-40 | **69,4-71,4** | 18-32 | **69,4-71,4** |
+
+Temps inchangé (WGSL, htdemucs, 120 s : 15,7 / 16,5 s avant, 15,7 / 16,9 s
+après). **Les points 1 et 3 de « Reprendre » sont levés** ; reste la
+décision de bascule (point 2), et le signalement en amont
+(`signalement-cubecl.md`, brouillon non envoyé).
+
 ## Refaire
 
 ```

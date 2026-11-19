@@ -182,6 +182,13 @@ propre test exige 20.
 > celui du modèle importé d'ONNX, sans effet visible sur le SDR contre les
 > vrais stems. Compilé en `burn/metal` (MSL), htdemucs et htdemucs_ft
 > deviennent exacts ; htdemucs_6s reste faux (18-32 dB).
+>
+> **Corrigé le 19 nov. 2026** : deux noyaux de produit matriciel de cubecl
+> sont faux à certaines formes — l'attention à têtes de 48 en MSL (le
+> 6 stems), la convolution 1×1 à 24 canaux d'entrée en WGSL (les trois).
+> Le fork les contourne en complétant de zéros jusqu'au multiple de 32
+> (révision `d851b07`) : les trois HTDemucs sont à 69-71 dB contre PyTorch
+> en WGSL comme en MSL, à vitesse égale (`experiments/burn-metal/README.md`).
 
 ### La vitesse
 

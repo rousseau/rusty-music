@@ -26,7 +26,11 @@ specta = ["dep:specta"]
 # Révision épinglée, jamais une branche : une branche se déplace, et le jour où
 # elle bouge le build ne compilerait plus la même chose sans que rien ne le
 # dise. Pour suivre le fork, on change ce `rev` sciemment.
-demucs-core = { git = "https://github.com/rousseau/demucs-rs", rev = "effc95836cd848c17215a1b0af6e683aa6ee1421" }
+# d851b07 (branche `attention-tetes-completees`, 19 nov. 2026) : deux noyaux
+# faux de cubecl contournés — attention à têtes de 48 en MSL, convolution
+# 1×1 à 24 canaux en WGSL ; les trois HTDemucs passent de 16-40 dB à
+# 69-71 dB contre PyTorch (`experiments/burn-metal/README.md`).
+demucs-core = { git = "https://github.com/rousseau/demucs-rs", rev = "d851b07660903a8e3aeadd50fb318334ea1033e3" }
 burn.workspace       = true
 # BS-RoFormer (`src/roformer/`) : le `.ckpt` PyTorch d'origine lu tel quel.
 burn-store.workspace = true
