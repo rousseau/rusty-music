@@ -960,6 +960,18 @@ $("coach-calibrer").addEventListener("click", () => {
   coach.message = null;
   dire();
 });
+// V43 : le repli des réglages de l'entrée se ferme par Échap (le focus revient
+// à son bouton) ou par un clic ailleurs, comme un menu.
+const reglages = $("coach-reglages");
+reglages.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !reglages.open) return;
+  e.stopPropagation();
+  reglages.open = false;
+  reglages.querySelector("summary").focus();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (reglages.open && !reglages.contains(e.target)) reglages.open = false;
+});
 $("coach-boucler").addEventListener("click", () => bouclerProposee().catch((e) => annoncer(`Boucle non posée : ${e}`)));
 $("coach-vitesse").addEventListener("click", async () => {
   const v = coach.vitesseProposee;

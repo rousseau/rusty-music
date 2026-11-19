@@ -148,7 +148,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     n° 18), vitesse et tonalité remises au neutre sur un morceau sans
     réglage gardé, playlist comprise ; entrée de la basse qui suit le
     défaut de macOS (choix à la main gardé tant qu'il ne bouge pas),
-    choisissable dans l'accordeur et le retour ;
+    choisissable dans l'accordeur et le retour ; V43 (19 nov.) : la
+    partition gagne 42 px coach démarré, 98 accordeur ouvert (stems sur
+    une ligne, réglages de l'entrée repliés dans le bandeau) ;
     restent l'édition du profil MIDI à l'écran, l'audit de Pratiquer
     (reporté, écran visible), puis l'essai réel avec la batterie et la
     basse de François) ;

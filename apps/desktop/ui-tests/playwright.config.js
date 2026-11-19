@@ -5,7 +5,7 @@ module.exports = defineConfig({
   testDir: ".",
   // Les captures (`captures.spec.js`, `rails.spec.js`) ne sont pas des tests :
   // seulement sur demande.
-  testIgnore: [process.env.CAPTURES ? null : "captures.spec.js", process.env.RAILS ? null : "rails.spec.js"].filter(Boolean),
+  testIgnore: [process.env.CAPTURES ? null : "captures.spec.js", process.env.RAILS ? null : "rails.spec.js", process.env.HAUTEUR ? null : "pratiquer-hauteur.spec.js"].filter(Boolean),
   timeout: 60_000,
   retries: 0,
   reporter: [["list"]],

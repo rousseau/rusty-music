@@ -6714,3 +6714,51 @@ recherche) ; `verifier.sh` vert (81 tests de fumée).
 
 Non vérifié : les deux audits complets de suite, écran caché, et leur diff
 ligne à ligne — reportés (écran visible) à un lancement écran caché.
+
+## V43 : Pratiquer, la partition gagne de la hauteur quand on joue — 19 nov. 2026
+
+Retour de François, en jouant avec sa basse sur l'écran du portable : dès
+l'instrument choisi, le centre de Pratiquer s'encombre et la partition
+rapetisse.
+
+**Mesure** (`apps/desktop/ui-tests/pratiquer-hauteur.spec.js`, pas un test,
+comme `rails.spec.js` : `HAUTEUR=avant npx playwright test
+pratiquer-hauteur`). Chrome headless, bibliothèque fictive, basse
+transcrite, coach démarré sur deux entrées ; deux fenêtres : le portable
+(écran intégré « 1 512 × 982 », fenêtre agrandie, 912 px de page) et
+1 400 × 900 (868 px). Hauteur de la partition, en px :
+
+| | portable avant | après | 1 400 avant | après |
+|---|---|---|---|---|
+| coach seul | 538 | 580 | 494 | 536 |
+| accordeur ouvert | 406 | 504 | 362 | 460 |
+| retour ouvert | 427 | 524 | 383 | 454 |
+
+Où partait la hauteur : la rangée des stems (63 px : nom, puis S M, puis le
+niveau, sur trois lignes), le bandeau du coach (65 px, deux lignes plus le
+padding, parce que la liste des entrées, le canal et « calibrer » poussaient
+la légende), l'accordeur (143 px, cinq rangées) et le retour (122 px).
+
+**Rangement.** Les stems sur une ligne (27 px). La liste des entrées (ou des
+batteries), le canal et « calibrer » dans un repli du bandeau
+(`#coach-reglages`, `<details>` ouvert par-dessus la partition, Échap ou un
+clic ailleurs le ferment, le focus revient au bouton ; absent quand rien
+n'est à régler, par `:has`). Pas dans le panneau de gauche : réglages
+d'appareil, pas de vue (Règle 12), et le rail de Pratiquer est déjà serré
+(Règle 13). Le bandeau perd 2 px de padding et le bouton principal 2 px
+(59 px avec la légende, 38 sans). L'accordeur en trois rangées (87 px), le
+retour en rangées qui se remplissent (67 px sur le portable, 93 à 1 400).
+Les boutons de « Votre partie » (instrument, notation, décompte) passent de
+5 à 3 px de marge verticale. Rien n'est retiré : l'entrée se choisit
+aussi dans l'accordeur et le retour (V42). Les tests E4 et E5 ouvrent le
+repli avant de toucher la liste, le canal ou « calibrer » ; E4 vérifie
+Échap et le focus. Les aides de Pratiquer (`basseTranscrite`,
+`pratiquerAlbum`) sortent de `fumee.spec.js` vers `pratique-fictive.js`,
+partagé avec la mesure.
+
+Mesuré : le tableau ci-dessus ; 81 tests de fumée verts ; `verifier.sh`.
+
+Non vérifié : l'audit d'interface (écrans Pratiquer touchés) et les
+captures dans l'app réelle, reportés (écran visible) à l'étape d'audit de
+nuit ; la vraie largeur de la fenêtre de François (mesurée sur l'écran
+intégré seulement, fenêtre supposée agrandie).

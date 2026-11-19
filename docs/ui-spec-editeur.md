@@ -437,6 +437,22 @@ réglage.
    sous une étiquette, supprimer et rétablir en icônes (infobulle, nom
    accessible), pour que la barre tienne sur une ligne à 1 400 px ; le
    demi-ton vaut aussi pour une note transcrite (gardé à part de l'octave).
+   **En jouant, la hauteur va à la partition (V43, 19 nov. 2026)** : au
+   centre, ce qu'on regarde en jouant (la partition, le bandeau du coach,
+   son état, sa légende, boucler, vitesse) ; ce qu'on règle avant de jouer
+   — la liste des entrées ou des batteries, le canal, « calibrer » — est
+   replié derrière un bouton du bandeau (`#coach-reglages`, un `<details>`
+   ouvert par-dessus la partition, fermé par Échap ou un clic ailleurs ; le
+   bouton n'existe que si l'un de ces réglages est offert). Pas dans le
+   rail : ce sont des réglages d'appareil, pas de vue (Règle 12 de
+   `interface-guidelines.md`), et le rail de Pratiquer tient au plus juste
+   (Règle 13). Chaque stem tient sur une ligne (nom, S, M, niveau) ;
+   l'accordeur passe à trois rangées (lecture et corde à gauche, jauge à
+   droite) et le retour de la basse se range en rangées qui se remplissent.
+   Mesuré par `apps/desktop/ui-tests/pratiquer-hauteur.spec.js` (coach de
+   basse démarré) : la partition passe de 538 à 580 px sur le portable
+   (1 512 × 982, 912 px de page) et de 494 à 536 px à 1 400 × 900 ;
+   accordeur ouvert, de 406 à 504 et de 362 à 460 px.
 12. ~~**L'usage se choisit dans le rail.**~~ *Remplacée le 5 novembre 2026
    par la décision 13.* Décidé le 9 octobre 2026 : un sélecteur
    Pratiquer / Créer dans le panneau de gauche, sous les modes, comme une vue.

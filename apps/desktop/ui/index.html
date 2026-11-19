@@ -564,17 +564,35 @@
                 <path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.5 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
             </button>
-            <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
-            <!-- Basse (V34) : le canal de l'interface où elle joue, « auto » par
-                 défaut (trouvé à la calibration, ou là où la basse se fait
-                 entendre). -->
-            <select id="coach-canal" class="coach__peripherique" hidden aria-label="Entrée de la basse"
-                    title="L'entrée de l'interface où la basse est branchée : « auto » la trouve à la calibration, ou dès qu'elle joue. Gardée pour cette interface."></select>
+            <!-- V43 : ce qu'on règle avant de jouer (l'entrée ou la batterie, le
+                 canal, la calibration) replié derrière un bouton du bandeau,
+                 ouvert par-dessus la partition : le bandeau tient sur une
+                 ligne et la partition garde sa hauteur. Le bouton n'est là que
+                 si l'un de ces réglages l'est. -->
+            <details id="coach-reglages" class="coach__reglages">
+              <summary class="bouton bouton--mince coach__accordeur" aria-label="Réglages de l'entrée"
+                       title="Réglages de l'entrée : l'entrée ou la batterie écoutée, le canal, la calibration">
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                  <path d="M3 5.5h14M3 10h14M3 14.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <circle cx="7" cy="5.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="13" cy="10" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="8.5" cy="14.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                </svg>
+              </summary>
+              <div class="coach__reglages-corps" role="group" aria-label="Réglages de l'entrée">
+                <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
+                <!-- Basse (V34) : le canal de l'interface où elle joue, « auto » par
+                     défaut (trouvé à la calibration, ou là où la basse se fait
+                     entendre). -->
+                <select id="coach-canal" class="coach__peripherique" hidden aria-label="Entrée de la basse"
+                        title="L'entrée de l'interface où la basse est branchée : « auto » la trouve à la calibration, ou dès qu'elle joue. Gardée pour cette interface."></select>
+                <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
+                        title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
+              </div>
+            </details>
             <!-- Instrument choisi sans partition prête : le geste qui la calcule
                  (même chemin que le bloc Partitions). -->
             <button id="coach-transcrire" class="bouton bouton--mince" hidden>transcrire la basse pour jouer avec</button>
-            <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
-                    title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
             <!-- V35 : la hauteur changée (la tablature montre ce que l'on joue),
                  puis la légende du code des erreurs, pendant l'écoute. -->
             <span id="coach-transpose" class="coach__transpose" hidden></span>

@@ -347,6 +347,14 @@ html, body {
 .etabli--pratiquer .stem { grid-template-columns: minmax(0, 1fr); height: auto; }
 .etabli--pratiquer .stem__ctrl { border-right: 0; }
 .etabli--pratiquer .stem__spectre { display: none; }
+/* V43 : en Pratiquer, chaque stem tient sur une ligne — nom, S, M, niveau —
+   pour laisser la hauteur à la partition. */
+.etabli--pratiquer .stem__ctrl { flex-direction: row; align-items: center; gap: 8px; padding: 3px 8px; }
+.etabli--pratiquer .stem__tete { flex-direction: row; align-items: baseline; gap: 6px; width: auto; min-width: 0; flex: 0 1 auto; padding: 0; }
+.etabli--pratiquer .stem__etat { width: auto; }
+.etabli--pratiquer .stem__actions { flex: none; }
+.etabli--pratiquer .stem__b { padding: 0 5px; }
+.etabli--pratiquer .stem__jauge { flex: 1; min-width: 24px; margin-top: 0; height: 4px; }
 .partition {
   flex: 1; min-height: 0; overflow-y: auto; position: relative;
   background: var(--feuille); color: var(--feuille-encre); border: 1px solid var(--line);
@@ -383,13 +391,13 @@ html, body {
    menus de l'application y gardent leurs règles. */
 .coach {
   background: var(--accent); color: var(--sur-accent);
-  border: 2px solid var(--accent); border-radius: 3px; padding: 6px 10px;
+  border: 2px solid var(--accent); border-radius: 3px; padding: 4px 8px;
   --txt: var(--sur-accent); --mut: var(--sur-accent); --line: var(--sur-accent);
   --bandeau-fond: var(--accent);
 }
 .coach #coach-basculer, .coach #coach-transcrire {
   background: var(--sur-accent); color: var(--accent); border-color: var(--sur-accent);
-  font-size: var(--t-second); font-weight: 600; padding: 5px 14px;
+  font-size: var(--t-second); font-weight: 600; padding: 3px 12px;
 }
 .coach #coach-basculer:hover:not(:disabled), .coach #coach-transcrire:hover:not(:disabled) {
   color: var(--accent); border-color: var(--sur-accent); text-decoration: underline;
@@ -410,6 +418,23 @@ html, body {
 .coach .bouton[aria-pressed="true"]:not(#coach-basculer) { background: var(--txt); color: var(--bandeau-fond); }
 .coach .bouton[aria-pressed="true"]:not(#coach-basculer):hover:not(:disabled) { color: var(--bandeau-fond); }
 .coach__accordeur { display: inline-flex; align-items: center; padding-block: 1px; }
+/* V43 : les réglages de l'entrée (liste, canal, calibrer), repliés derrière
+   un bouton du bandeau et ouverts par-dessus la partition, sans la pousser.
+   Le bouton disparaît quand aucun réglage n'est offert. */
+.coach { position: relative; }
+.coach__reglages { display: inline-flex; }
+.coach__reglages:not(:has(.coach__reglages-corps > :not([hidden]))) { display: none; }
+.coach__reglages > summary { list-style: none; cursor: pointer; }
+.coach__reglages > summary::-webkit-details-marker { display: none; }
+.coach__reglages[open] > summary { background: var(--txt); color: var(--bandeau-fond); }
+.coach__reglages-corps {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 3;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 10px; max-width: 100%;
+  background: var(--bandeau-fond); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 3px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .25);
+}
 /* V36 : l'accordeur, au centre sous le bandeau. « Juste » se dit par un signe
    (✓ juste) et par la zone centrale de la jauge, pas par la couleur seule. */
 .accordeur {
@@ -418,6 +443,14 @@ html, body {
   max-width: var(--colonne-lecture);
 }
 .accordeur[hidden], .etabli:not(.etabli--pratiquer) .accordeur { display: none; }
+/* V43 : la lecture et la corde à gauche, la jauge et son échelle à droite,
+   le pied dessous : trois rangées au lieu de cinq. */
+.accordeur:not(.retour) { grid-template-columns: minmax(10ch, auto) minmax(0, 1fr); gap: 4px 18px; padding: 8px 12px; }
+.accordeur:not(.retour) .accordeur__lecture { grid-column: 1; grid-row: 1; }
+.accordeur:not(.retour) .accordeur__corde { grid-column: 1; grid-row: 2; }
+.accordeur:not(.retour) .accordeur__jauge { grid-column: 2; grid-row: 1; align-self: end; }
+.accordeur:not(.retour) .accordeur__echelle { grid-column: 2; grid-row: 2; }
+.accordeur:not(.retour) .accordeur__pied { grid-column: 1 / -1; }
 .accordeur__lecture { display: flex; align-items: baseline; gap: 14px; }
 .accordeur__note { font: 600 var(--t-titre) var(--serif); color: var(--txt); min-width: 3ch; }
 .accordeur__cents { font-family: var(--mono); font-size: var(--t-intertitre); color: var(--txt); }
@@ -439,6 +472,13 @@ html, body {
 .accordeur__pied .bouton--mince { margin-left: auto; }
 /* E7 : le retour de la basse, dans la boîte de l'accordeur. */
 .retour[hidden], .etabli:not(.etabli--pratiquer) .retour { display: none; }
+/* V43 : le retour en rangées qui se remplissent (case, réglages, état,
+   fermer) plutôt qu'en blocs empilés ; toute la largeur du centre. */
+.retour { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 8px 12px; max-width: none; }
+.retour .retour__avertissement { flex-basis: 100%; }
+.retour .accordeur__pied { flex: 1 1 auto; }
+.retour .retour__reglages { display: contents; }
+.retour .retour__champ { font-size: var(--t-second); color: var(--mut); }
 .retour__avertissement { margin: 0; font-size: var(--t-second); color: var(--txt); font-weight: 600; }
 .retour__reglages { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: var(--t-second); color: var(--mut); }
 .retour__champ { display: inline-flex; align-items: center; gap: 6px; }
@@ -1470,6 +1510,8 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .segment + .segment { border-left: 1px solid var(--line); }
 .segment:hover:not(:disabled) { color: var(--txt); }
 .segment--actif { background: var(--panel2); color: var(--accent); }
+/* V43 : Votre partie, plus serrée (instrument, notation, décompte). */
+#bloc-usage .segment { padding: 3px 0; }
 /* Un bâtiment ne sait se colorer que par famille sur le plan de ville
    réel (`majSegmentsCouleur`, app.js) — même dégradé que `.bouton:disabled`. */
 .segment:disabled { opacity: .4; cursor: default; }
