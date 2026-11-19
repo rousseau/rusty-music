@@ -18,6 +18,8 @@ fn exporter_les_types_des_commandes() {
             artists,
             albums,
             library_stats,
+            // V45 : le repli en ligne des pochettes, coupable.
+            set_pochettes_en_ligne,
             demix_variantes,
             // V38 : les stems presque vides.
             stems_presence,

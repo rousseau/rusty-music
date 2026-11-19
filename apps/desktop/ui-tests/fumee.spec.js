@@ -882,6 +882,31 @@ test("Bibliothèque : l'état en tête, une ligne déplie sa liste, les réglage
   await expect(page.locator("#recalculer-carte")).toBeVisible();
 });
 
+test("V45 : popularité et pochettes en ligne se coupent dans les options de la chaîne, gardées au rechargement", async ({ page }) => {
+  // Au lancement, le moteur reçoit le réglage (permis par défaut).
+  await expect.poll(() => appels(page, "set_pochettes_en_ligne").then((a) => a.at(-1)?.actif)).toBe(true);
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Options de la chaîne')");
+  const resume = page.locator("#resume-chaine");
+  await expect(resume).toContainText("popularité");
+  await page.uncheck("#pop-active");
+  await expect(resume).not.toContainText("popularité");
+  await expect(page.locator("#pop-rafraichir")).toBeDisabled();
+  await page.uncheck("#pochettes-en-ligne");
+  await expect.poll(() => appels(page, "set_pochettes_en_ligne").then((a) => a.at(-1)?.actif)).toBe(false);
+  // Gardés : au rechargement, coupés d'emblée, et le moteur le sait.
+  await page.reload();
+  await expect.poll(() => appels(page, "set_pochettes_en_ligne").then((a) => a.at(-1)?.actif)).toBe(false);
+  await page.click('button.mode[data-mode="bibliotheque"]');
+  await page.click("summary:has-text('Options de la chaîne')");
+  await expect(page.locator("#pop-active")).not.toBeChecked();
+  await expect(page.locator("#pochettes-en-ligne")).not.toBeChecked();
+  await expect(page.locator("#resume-chaine")).not.toContainText("popularité");
+  await page.check("#pop-active");
+  await expect(page.locator("#pop-rafraichir")).toBeEnabled();
+  await expect(page.locator("#resume-chaine")).toContainText("popularité");
+});
+
 test("Recalculer la carte : nuage refait, le plan suit en tâche de fond (V16)", async ({ page }) => {
   await page.evaluate(() => {
     const f = window.__FIXTURES__;

@@ -208,6 +208,16 @@ laisse l'artiste pour un prochain passage (`Bilan.echecs`) sans interrompre.
 
 ## Interface
 
+V45 (19 nov. 2026) : deux cases de plus dans « Options de la chaîne »,
+cochées par défaut et gardées d'un lancement à l'autre (`localStorage`) :
+« Popularité (ListenBrainz, Deezer) », qui retire la passe de popularité des
+deux chaînes (et la ligne d'alerte de péremption), et « Pochettes manquantes
+cherchées en ligne (Cover Art Archive, Deezer) », posée au moteur par
+`set_pochettes_en_ligne` : coupée, `cover` ne fait plus de repli réseau et
+n'écrit rien en cache, si bien qu'une pochette se redemande une fois le
+repli permis. Ce qui a déjà été trouvé reste affiché. Découvrir garde ses
+propres pochettes en ligne (ses albums ne sont pas dans la bibliothèque).
+
 Rail d'analyse (mode Bibliothèque, près de « Rafraîchir aussi la
 popularité… ») : trois cases indépendantes — « Biographies (TheAudioDB) »,
 « Critiques (CritiqueBrainz) », « Discogs (crédits et labels par édition) »

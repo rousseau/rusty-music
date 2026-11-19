@@ -6805,3 +6805,34 @@ sondage arrêté au repli refermé) ; capture du panneau ; 81 tests de fumée et
 
 Non vérifié : avec une vraie batterie (notes de zone d'un module, CC4) ;
 l'audit d'interface de Pratiquer, toujours reporté (écran visible).
+
+## V45 : la popularité et les pochettes en ligne se coupent — 19 nov. 2026
+
+Un reste de `suite.md` (enrichissement) : deux sources en ligne n'avaient
+aucune case pour les couper.
+
+- **Popularité** : case « Popularité (ListenBrainz, Deezer) » dans
+  « Options de la chaîne », cochée par défaut. Décochée, les deux chaînes
+  (« Analyser » d'une racine, « Tout rafraîchir ») sautent la passe (la
+  seconde le dit à l'étape 7/7), le résumé de la chaîne ne la cite plus,
+  « Rafraîchir aussi… » est grisée et la ligne d'alerte de péremption se
+  tait. Le bouton « Rafraîchir » de cette ligne reste un geste explicite.
+- **Pochettes de repli** : case « Pochettes manquantes cherchées en ligne
+  (Cover Art Archive, Deezer) ». Le moteur garde le réglage
+  (`set_pochettes_en_ligne`, un `AtomicBool`, posé par l'interface au
+  lancement) ; coupé, `cover` s'arrête aux tags, au dossier et aux pistes
+  sœurs, sans requête et sans rien écrire en cache : la pochette se
+  redemande dès que le repli est permis (le cache mémoire de l'interface est
+  vidé à ce moment). Ce qui a déjà été trouvé en ligne reste affiché.
+  Découvrir garde ses pochettes en ligne : ses albums ne sont pas dans la
+  bibliothèque.
+- Les deux choix sont gardés d'un lancement à l'autre (`localStorage`,
+  comme la normalisation). Les autres cases des sources (biographies,
+  critiques, Discogs, Last.fm) ne le sont toujours pas : elles reviennent
+  cochées (ou décochée pour Last.fm) à chaque lancement.
+
+Mesuré : test Rust (repli coupé : `Ok(None)`, aucun fichier dans le cache) ;
+test de fumée V45 (résumé, case grisée, réglage posé au moteur, gardé au
+rechargement) ; commande contrôlée par les types générés (44 sur 237).
+
+Non vérifié : dans l'app réelle, une grille d'albums sans pochette locale.

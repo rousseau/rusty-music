@@ -4,6 +4,25 @@
 
 use super::*;
 
+/// Le repli en ligne (Cover Art Archive, Deezer) est-il permis ? Réglage de
+/// la Bibliothèque (« Pochettes manquantes cherchées en ligne », gardé par
+/// l'interface, posé au lancement par [`set_pochettes_en_ligne`]). Coupé, une
+/// pochette absente des tags et du dossier reste absente, sans requête ; ce
+/// qui a déjà été trouvé en ligne reste en cache et s'affiche.
+static POCHETTES_EN_LIGNE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub(crate) fn pochettes_en_ligne() -> bool {
+    POCHETTES_EN_LIGNE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Permet ou coupe le repli en ligne des pochettes.
+#[tauri::command]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn set_pochettes_en_ligne(actif: bool) -> Result<(), String> {
+    POCHETTES_EN_LIGNE.store(actif, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
 /// Pochette d'un morceau, en `data:` URI directement consommable par `<img>`.
 ///
 /// **Mise en cache sur disque**, sous `<données app>/pochettes/` — voir
@@ -58,6 +77,8 @@ pub(crate) fn cover_extraire(
                 true,
             )
         }
+        // Repli en ligne coupé : rien d'écrit, il reprendra une fois permis.
+        None if !pochettes_en_ligne() => (None, false),
         None => match cover_depuis_reseau(dossier_cache, db_path, chemin) {
             Repli::Trouvee(v) => (Some(v), true),
             Repli::Absente => (None, true),
@@ -435,6 +456,25 @@ mod tests {
         ));
         std::fs::remove_dir_all(&d).ok();
         d
+    }
+
+    /// Seul test à appeler `cover_extraire` : il peut basculer le réglage
+    /// global sans gêner les autres.
+    #[test]
+    fn repli_en_ligne_coupe_ni_requete_ni_cache() {
+        let dossier = dossier_de_test("coupe");
+        std::fs::create_dir_all(&dossier).unwrap();
+        let piste = dossier.join("sans-pochette.mp3");
+        std::fs::write(&piste, b"pas un fichier audio").unwrap();
+        let cache = dossier.join("pochettes");
+        set_pochettes_en_ligne(false).unwrap();
+        let r = cover_extraire(&cache, &dossier.join("base.db"), piste.to_str().unwrap());
+        set_pochettes_en_ligne(true).unwrap();
+        assert_eq!(r, Ok(None));
+        // Rien d'écrit : la pochette sera redemandée une fois le repli permis.
+        let ecrits = std::fs::read_dir(&cache).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(ecrits, 0);
+        std::fs::remove_dir_all(&dossier).ok();
     }
 
     #[test]

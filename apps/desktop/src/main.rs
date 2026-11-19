@@ -949,6 +949,7 @@ fn main() {
             start_scan,
             scan_state,
             cover,
+            set_pochettes_en_ligne,
             descripteurs,
             map_view,
             engendrer_tuiles,

@@ -43,6 +43,7 @@ const fixtures = {
   essai_lama: { affichage: null, prompt: null, theme: null, audit: false },
   js_error: null,
   set_normalisation: null,
+  set_pochettes_en_ligne: null,
   favoris: [],
   roots: [{ path: RACINE, added_at: 1_700_000_000, last_scan: 1_700_000_100, tracks: PISTES.length }],
   artists: [

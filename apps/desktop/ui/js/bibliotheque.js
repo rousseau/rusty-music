@@ -869,7 +869,8 @@ function resumeChaine() {
   if (!cible) return;
   const contact = contactMb();
   const total = dernierTotalBiblio;
-  const rafraichirPop = $("pop-rafraichir").checked;
+  const popActive = $("pop-active").checked;
+  const rafraichirPop = popActive && $("pop-rafraichir").checked;
 
   const etapes = ["scan", "pochettes", "loudness", "empreintes", "mesures"];
   // Les trois décodent le fichier (empreintes en fenêtres, loudness en
@@ -878,7 +879,7 @@ function resumeChaine() {
   let secondes = total * SECONDES_PAR_MORCEAU * 3;
 
   if (contact.includes("@")) etapes.push("genres");
-  etapes.push(rafraichirPop ? "popularité (rafraîchie)" : "popularité");
+  if (popActive) etapes.push(rafraichirPop ? "popularité (rafraîchie)" : "popularité");
   if (rafraichirPop) secondes += total / 7;
 
   const extras = [];
@@ -898,11 +899,51 @@ function resumeChaine() {
 }
 resumeChaine();
 for (const id of [
-  "analyse-force", "pop-rafraichir", "bio-active", "critiques-active",
+  "analyse-force", "pop-active", "pop-rafraichir", "bio-active", "critiques-active",
   "discogs-lier-active", "lastfm-active",
 ]) {
   $(id).addEventListener("change", resumeChaine);
 }
+
+/// V45 : deux sources en ligne qui se coupent, gardées d'un lancement à
+/// l'autre — la popularité (passe de la chaîne) et le repli des pochettes
+/// (à l'affichage, côté moteur : `set_pochettes_en_ligne`).
+function lireCase(cle, defaut) {
+  try {
+    const v = localStorage.getItem(cle);
+    return v === null ? defaut : v === "1";
+  } catch {
+    return defaut;
+  }
+}
+function garderCase(cle, valeur) {
+  try {
+    localStorage.setItem(cle, valeur ? "1" : "0");
+  } catch {}
+}
+function refletPopularite() {
+  $("pop-rafraichir").disabled = !$("pop-active").checked;
+}
+$("pop-active").checked = lireCase("popularite-active", true);
+$("pochettes-en-ligne").checked = lireCase("pochettes-en-ligne", true);
+refletPopularite();
+resumeChaine();
+$("pop-active").addEventListener("change", (e) => {
+  garderCase("popularite-active", e.target.checked);
+  refletPopularite();
+  chargerPopulariteFraicheur().catch((err) => remonter(err, "popularité"));
+});
+function poserPochettesEnLigne() {
+  invoke("set_pochettes_en_ligne", { actif: $("pochettes-en-ligne").checked }).catch((e) => remonter(e, "pochettes"));
+}
+poserPochettesEnLigne();
+$("pochettes-en-ligne").addEventListener("change", (e) => {
+  garderCase("pochettes-en-ligne", e.target.checked);
+  poserPochettesEnLigne();
+  // Les pochettes absentes de la grille se redemandent (le cache mémoire de
+  // l'interface les tient pour absentes).
+  if (e.target.checked) viderPochettes();
+});
 $("lastfm-cle").addEventListener("input", resumeChaine);
 $("analyse-contact").addEventListener("change", resumeChaine);
 
@@ -1039,18 +1080,20 @@ async function analyserRacine(chemin) {
 
     // Popularité générale (ListenBrainz + Deezer). Sans condition d'adresse :
     // les deux API sont publiques ; le contact ne sert qu'au User-Agent.
-    etat.textContent = `${chemin} — popularité…`;
-    await invoke("start_popularite", { contact, rafraichir: $("pop-rafraichir").checked });
-    await attendreFin("popularite_state", 3000, (p) => {
-      majJauge("scan-jauge", p.en_cours, p.faits, p.total);
-      if (p.en_cours) {
-        etat.textContent = p.total
-          ? `${chemin} — popularité : ${p.faits.toLocaleString("fr-FR")} / ${p.total.toLocaleString("fr-FR")}`
-          : `${chemin} — popularité…`;
-      }
-    });
-    popARecalculee();
-    await chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
+    if ($("pop-active").checked) {
+      etat.textContent = `${chemin} — popularité…`;
+      await invoke("start_popularite", { contact, rafraichir: $("pop-rafraichir").checked });
+      await attendreFin("popularite_state", 3000, (p) => {
+        majJauge("scan-jauge", p.en_cours, p.faits, p.total);
+        if (p.en_cours) {
+          etat.textContent = p.total
+            ? `${chemin} — popularité : ${p.faits.toLocaleString("fr-FR")} / ${p.total.toLocaleString("fr-FR")}`
+            : `${chemin} — popularité…`;
+        }
+      });
+      popARecalculee();
+      await chargerPopulariteFraicheur().catch((e) => remonter(e, "popularité"));
+    }
 
     if ($("bio-active").checked) {
       etat.textContent = `${chemin} — biographies…`;
@@ -1404,7 +1447,8 @@ async function lancerChaineComplete() {
     await passeDescripteurs(force, "Étape 5/7 — ");
     if (contact.includes("@")) await passeGenres(contact, "Étape 6/7 — ");
     else etat.textContent = "Étape 6/7 — genres sautés (pas d'adresse de contact MusicBrainz)";
-    await passePopularite(contact, "Étape 7/7 — ", $("pop-rafraichir").checked);
+    if ($("pop-active").checked) await passePopularite(contact, "Étape 7/7 — ", $("pop-rafraichir").checked);
+    else etat.textContent = "Étape 7/7 — popularité coupée (Options de la chaîne)";
     if ($("bio-active").checked) await passeBiographies("Biographies — ");
     if ($("critiques-active").checked) await passeCritiques("Critiques — ");
     if ($("discogs-lier-active").checked && contact.includes("@")) {

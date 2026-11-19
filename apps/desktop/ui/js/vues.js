@@ -310,6 +310,11 @@ function popARecalculee() {
 /// pour rien. Le bouton « Rafraîchir » coche la case et relance la passe.
 async function chargerPopulariteFraicheur() {
   const ligne = $("popularite-fraicheur");
+  // V45 : popularité coupée dans les options de la chaîne, rien à rappeler.
+  if (!$("pop-active").checked) {
+    ligne.hidden = true;
+    return;
+  }
   let couverts;
   let plusAncienne;
   let perimes;

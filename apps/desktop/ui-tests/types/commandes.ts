@@ -8,6 +8,8 @@ export const commands = {
 	artists: () => __TAURI_INVOKE<ArtistRow_Serialize[]>("artists"),
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
+	/**  Permet ou coupe le repli en ligne des pochettes. */
+	set_pochettes_en_ligne: (actif: boolean) => __TAURI_INVOKE<null>("set_pochettes_en_ligne", { actif }),
 	/**
 	 *  Les variantes de séparation et leur disponibilité locale — pour annoncer le
 	 *  téléchargement **avant** le clic, comme l'analyse annonce son coût.
