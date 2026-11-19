@@ -78,6 +78,7 @@ pub struct Bilan {
 
 /// Un signalement, tel que l'interface l'affiche.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PochetteSuspecte {
     pub dossier: String,
     pub artiste: String,

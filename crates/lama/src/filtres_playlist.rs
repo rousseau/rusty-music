@@ -25,6 +25,7 @@ pub const DUREE_DEFAUT_MS: i64 = 210_000;
 /// collection de métal n'est pas « calme » dans une collection d'ambient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum NiveauEnergie {
     Calme,
     Moyenne,
@@ -55,6 +56,7 @@ impl NiveauEnergie {
 /// percentile `track_popularite.relative` (voir `docs/popularite.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum NiveauPopularite {
     PeuConnu,
     Connu,
@@ -87,6 +89,7 @@ pub const OUBLIE_APRES_JOURS: u32 = 180;
 /// générale : « oubliés » parle de *cet* utilisateur, pas du monde.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum NiveauEcoute {
     Oublie,
     Jamais,
@@ -120,6 +123,7 @@ impl NiveauEcoute {
 /// l'être, en le disant ([`selectionner`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct FiltresPlaylist {
     pub genres: Vec<String>,
     pub exclure_genres: Vec<String>,

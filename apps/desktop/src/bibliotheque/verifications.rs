@@ -7,6 +7,7 @@ use super::*;
 /// Morceaux dont le genre résolu ne figure pas parmi les dominants de leur
 /// famille sonique — voir [`rusty_music_core::db::Library::genres_suspects`].
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn suspect_genres(
     etat: State<Etat>,
 ) -> Result<Vec<(i64, String, String, String)>, String> {
@@ -17,6 +18,7 @@ pub(crate) fn suspect_genres(
 
 /// Albums présents sous plusieurs éditions chez le même artiste.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn multiple_editions(
     etat: State<Etat>,
 ) -> Result<Vec<rusty_music_core::db::EditionsAlbum>, String> {
@@ -25,6 +27,7 @@ pub(crate) fn multiple_editions(
 
 /// Fichiers en échec de scan, du plus récent au plus ancien.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn scan_failures(etat: State<Etat>) -> Result<Vec<(String, String, i64)>, String> {
     verrou(&etat.lib).echecs_scan().map_err(echec)
 }
@@ -33,6 +36,7 @@ pub(crate) fn scan_failures(etat: State<Etat>) -> Result<Vec<(String, String, i6
 /// pour un fichier qu'on sait perdu et qu'on ne veut plus voir revenir à
 /// chaque scan.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn dismiss_scan_failure(etat: State<Etat>, path: String) -> Result<(), String> {
     verrou(&etat.lib)
         .effacer_echec_scan(Path::new(&path))
@@ -48,6 +52,7 @@ pub(crate) type EtatVerifPochettes = Passe<Compte>;
 /// l'utilisateur : les signalements se lisent par [`pochettes_suspectes`].
 /// Enchaînée juste après le scan, qui est ce qui amène les fichiers neufs.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_verif_pochettes(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -104,6 +109,7 @@ pub(crate) fn verif_pochettes_state(etat: State<Etat>) -> Result<EtatVerifPochet
 
 /// Les pochettes à examiner (panneau « Vérifications » du mode Bibliothèque).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn pochettes_suspectes(
     etat: State<Etat>,
 ) -> Result<Vec<rusty_music_core::pochettes_verif::PochetteSuspecte>, String> {
@@ -114,6 +120,7 @@ pub(crate) fn pochettes_suspectes(
 /// Écarte le signalement d'un dossier (« Ignorer »). Revient tout seul si les
 /// fichiers du dossier changent.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn ignore_pochette_suspecte(etat: State<Etat>, dossier: String) -> Result<(), String> {
     let lib = verrou(&etat.lib);
     lib.ignorer_pochette_suspecte(&dossier).map_err(echec)
@@ -124,6 +131,7 @@ pub(crate) fn ignore_pochette_suspecte(etat: State<Etat>, dossier: String) -> Re
 /// base, pas dans les fichiers, pour survivre à une recopie des MP3. Les
 /// pochettes déjà mises en cache pour ses pistes sont effacées.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn pochette_du_dossier(etat: State<Etat>, dossier: String) -> Result<(), String> {
     let pistes = {
         let lib = verrou(&etat.lib);

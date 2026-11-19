@@ -397,6 +397,7 @@ pub(crate) fn coach_calibrer(etat: State<Etat>, clics: Vec<f64>) -> Result<VueCa
 /// jugements), `premiers_temps` la grille des mesures, en secondes du
 /// morceau. Une liste vide désarme.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn coach_armer(
     etat: State<Etat>,
     chemin: Option<String>,

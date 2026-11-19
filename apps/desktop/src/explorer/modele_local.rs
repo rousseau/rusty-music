@@ -37,6 +37,7 @@ pub(crate) fn disponibilite() -> &'static str {
 
 /// Télécharge le modèle intégré (4,6 Go), en passe de fond.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn lama_telecharger(app: tauri::AppHandle) -> Result<(), String> {
     if !cfg!(feature = "lama-local") {
         return Err("cette version de Rusty Music n'intègre pas de modèle de langue".into());

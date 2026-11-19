@@ -32,6 +32,7 @@ fn pistes_locales(etat: &Etat, album: &str, artist: Option<&str>) -> Result<Vec<
 /// Les éditions de l'album chez MusicBrainz, classées par concordance du
 /// nombre de pistes avec l'album local.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn editions_proposees(
     etat: State<Etat>,
     contact: String,
@@ -47,6 +48,7 @@ pub(crate) fn editions_proposees(
 /// Une édition face à l'album local : ses pistes, celles de l'album, et leur
 /// alignement rang à rang.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct Comparaison {
     edition: EditionDetaillee,
     locales: Vec<TrackRow>,
@@ -81,6 +83,7 @@ fn comparer(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn edition_comparee(
     etat: State<Etat>,
     contact: String,
@@ -95,6 +98,7 @@ pub(crate) fn edition_comparee(
 /// identifiants de la sienne. La comparaison est refaite ici plutôt que reçue
 /// de l'interface : ce qui s'écrit est ce que MusicBrainz dit à cet instant.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn retenir_edition(
     etat: State<Etat>,
     contact: String,
@@ -120,6 +124,7 @@ pub(crate) fn retenir_edition(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn edition_retenue(
     etat: State<Etat>,
     album: String,
@@ -133,6 +138,7 @@ pub(crate) fn edition_retenue(
 /// Oublie le choix : les pistes reprennent les identifiants de leurs tags,
 /// relus ici. Rend le nombre de pistes relues.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn oublier_edition(
     etat: State<Etat>,
     album: String,

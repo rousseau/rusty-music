@@ -41,7 +41,7 @@ const fixtures = {
   mode_initial: null,
   autotest_carte: false,
   essai_lama: { affichage: null, prompt: null, theme: null, audit: false },
-  js_error: null,
+  js_error: () => {},
   set_normalisation: null,
   set_pochettes_en_ligne: null,
   // V47 : l'établi (Pratiquer, Créer), contrôlé par les types. Réponses
@@ -78,6 +78,58 @@ const fixtures = {
   biographies_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
   critiques_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
   lastfm_state: { en_cours: false, resultat: null, faits: 0, total: 0 },
+  // V53 : le reste des commandes, contrôlé par les types. Réponses neutres :
+  // lancements sans effet, rien à proposer, rien de retenu.
+  start_analysis: null,
+  start_descripteurs: null,
+  start_loudness: null,
+  start_discogs_liaison: null,
+  start_discogs_dump: null,
+  start_discogs_import: null,
+  discogs_import_utile: false,
+  artist_covers: [],
+  forget_root: 0,
+  start_scan: null,
+  scan_failures: [],
+  dismiss_scan_failure: null,
+  start_verif_pochettes: null,
+  ignore_pochette_suspecte: null,
+  pochette_du_dossier: null,
+  decouvrir_pochette: null,
+  decouvrir_photo_artiste: null,
+  decouvrir_lien_deezer: null,
+  start_decouvrir: null,
+  start_superres: null,
+  set_lecture_hd: null,
+  vider_cache_hd: null,
+  set_amelioration: null,
+  editions_proposees: [],
+  edition_comparee: {
+    edition: { id: "", titre: "", artiste: "", artiste_mbid: null, release_group: null, pistes: [] },
+    locales: [],
+    paires: [],
+  },
+  retenir_edition: null,
+  edition_retenue: null,
+  oublier_edition: 0,
+  path_texte_interpreter: {
+    depart: null, arrivee: null, arrivee_demandee: null, etapes: [], n: 0, duree_minutes: null,
+    plafond_par_artiste: null,
+    filtres: {
+      genres: [], exclure_genres: [], exclure_artistes: [], annee_min: null, annee_max: null,
+      bpm_min: null, bpm_max: null, energie: null, popularite: null, ecoute: null,
+    },
+    reformulation: null, parties: [], brut: "",
+  },
+  ollama_modeles: [],
+  path_texte: { pistes: [], relaches: [], duree_ms: 0, parties: [] },
+  graphe_progress: [0, 0],
+  essai_fenetre: null,
+  essai_audit: { rapide: false, ecrans: [], captures: false },
+  essai_capture: null,
+  journal_ui: () => {},
+  valise_envoyer: null,
+  valise_renouveler: null,
   // V51 : la carte d'Explorer et l'enrichissement. Réponses neutres.
   engendrer_tuiles: "0 tuile",
   itineraire: [],
@@ -682,14 +734,14 @@ const fixtures = {
   // --- Découvrir, Valise
   decouvrir_feed: { derniere_passe: null, sorties: [], collaborations: [], voisins: [] },
   valise_reglages: {
-    parts: [{ regle: "recents", albums: 2, famille: null }],
+    parts: [{ regle: /** @type {const} */ ("recents"), albums: 2, famille: null }],
     budget_octets: 8_000_000_000,
     pistes_min: 4,
     par_artiste: 2,
     graine: 1,
     epingles: [],
     exclus: [],
-    modele: "",
+    // V53 : plus de `modele`, que le moteur n'envoie pas (`#[serde(skip)]`).
   },
   valise_apercu: { albums: [], octets: 0, budget_octets: 8_000_000_000 },
   // « Compléter » : rien en attente, aucune passe passée.
@@ -705,8 +757,5 @@ const fixtures = {
   },
 };
 
-Object.assign(fixtures, {
-  scan_failures: [],
-});
 
 module.exports = { fixtures, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };

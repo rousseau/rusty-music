@@ -40,6 +40,7 @@ pub(crate) fn set_pochettes_en_ligne(actif: bool) -> Result<(), String> {
 /// pochettes. Le pool dédié aux tâches bloquantes n'entre pas en concurrence
 /// avec les commandes courtes.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) async fn cover(etat: State<'_, Etat>, path: String) -> Result<Option<String>, String> {
     let dossier_cache = etat.db.with_file_name("pochettes");
     let db_path = etat.db.clone();
@@ -274,6 +275,7 @@ pub(crate) fn cover_depuis_reseau(dossier_cache: &Path, db_path: &Path, chemin: 
 /// cache disque au passage et permet d'écarter les albums sans pochette (d'où
 /// un résultat parfois plus court que `max`).
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) async fn artist_covers(
     etat: State<'_, Etat>,
     name: String,

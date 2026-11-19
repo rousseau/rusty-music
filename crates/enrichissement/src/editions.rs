@@ -29,6 +29,7 @@ pub const ECART_MARQUE_MS: i64 = 3_000;
 /// La recherche ne donne pas les durées : elles viennent avec
 /// [`EditionDetaillee`], une requête de plus, à la sélection.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct EditionProposee {
     pub id: String,
     pub titre: String,
@@ -55,6 +56,7 @@ pub struct PisteLocale {
 /// deux. `ecart_ms` : durée de l'édition moins durée locale, quand les deux
 /// sont connues ; `titre_differe` : les titres normalisés ne se ressemblent pas.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Paire {
     pub locale: Option<usize>,
     pub edition: Option<usize>,

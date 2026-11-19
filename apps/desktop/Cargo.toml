@@ -81,6 +81,9 @@ rusty-music-carto = { path = "../../crates/carto", features = ["specta"] }
 rusty-music-player = { path = "../../crates/player", features = ["specta"] }
 rusty-music-editor = { path = "../../crates/editor", features = ["specta"] }
 rusty-music-transcription = { path = "../../crates/transcription", features = ["specta"] }
+rusty-music-valise = { path = "../../crates/valise", features = ["specta"] }
+rusty-music-lama = { path = "../../crates/lama", features = ["specta"] }
+rusty-music-enrichissement = { path = "../../crates/enrichissement", features = ["specta"] }
 specta = { version = "=2.0.0-rc.26", features = ["derive", "function", "serde_json"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }

@@ -559,6 +559,7 @@ impl Cote for CoteMac<'_> {
 
 /// Ce que le bloc iPhone de Valise montre du Wi-Fi.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatWifiVue {
     appaire: bool,
     ecoute: bool,
@@ -572,6 +573,7 @@ pub(crate) struct EtatWifiVue {
 }
 
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn wifi_etat(etat: State<Etat>) -> EtatWifiVue {
     let w = verrou(&etat.wifi);
     EtatWifiVue {
@@ -596,6 +598,7 @@ pub(crate) fn wifi_etat(etat: State<Etat>) -> EtatWifiVue {
 /// Efface le jeton et arrête le serveur : l'iPhone ne sera plus servi tant
 /// qu'il n'aura pas été rebranché.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn oublier_iphone(etat: State<Etat>) -> Result<(), String> {
     match std::fs::remove_file(fichier(&etat)) {
         Ok(()) => {}

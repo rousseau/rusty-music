@@ -35,8 +35,8 @@ types` confronte `fixtures.js` à ces types : champ renommé ou de mauvais type,
 réponse absente, et champ en trop (que Rust a retiré mais que `fixtures.js`
 garde : l'erreur nomme son chemin, `"courbe.le_long[].rang"`). Une réponse
 calculée qui rend l'état partagé (`e.balade`) est `any` et échappe au
-contrôle : rendre plutôt le littéral (voir `balade_demarrer`). 189 commandes
-contrôlées sur 263 `#[tauri::command]` (V52 ; avant V46, les décomptes
+contrôle : rendre plutôt le littéral (voir `balade_demarrer`). 262 commandes
+contrôlées sur 263 `#[tauri::command]` (V53 : toutes sauf `tuile`, réponse binaire ; avant V46, les décomptes
 sous-comptaient : 67 au lieu de 44). Un générique aplati (`Passe<A>`,
 `#[serde(flatten)]`) ne s'exporte qu'intégré en ligne
 (`#[specta(inline)]` sur le conteneur) : sinon `A` reste non défini. Pour contrôler une commande de plus :

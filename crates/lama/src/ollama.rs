@@ -622,6 +622,7 @@ const REFUS_GENRE: &[&str] = &[
 /// tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
 /// la partie priment sur ceux de la playlist.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PartieLlm {
     /// Phrase anglaise décrivant ce moment — la cible CLAP-texte de la partie.
     #[serde(default)]

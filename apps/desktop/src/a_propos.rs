@@ -11,12 +11,14 @@ use serde::Serialize;
 const MODELES: &str = include_str!("../../../MODELES.md");
 
 #[derive(Serialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct Lien {
     pub texte: String,
     pub url: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct Modele {
     pub nom: String,
     pub role: String,
@@ -28,6 +30,7 @@ pub struct Modele {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct APropos {
     pub version: &'static str,
     pub modeles: Vec<Modele>,
@@ -112,6 +115,7 @@ fn modeles(texte: &str) -> Vec<Modele> {
 }
 
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub fn a_propos() -> APropos {
     APropos {
         version: env!("CARGO_PKG_VERSION"),

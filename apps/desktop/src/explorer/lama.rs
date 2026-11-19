@@ -10,6 +10,7 @@ use super::*;
 /// force le thème, `RUSTY_MUSIC_AUDIT=1` lance l'audit de gabarit de l'interface
 /// — pour les essais seulement, sans effet en usage normal.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EssaiLama {
     affichage: Option<String>,
     prompt: Option<String>,
@@ -18,6 +19,7 @@ pub(crate) struct EssaiLama {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn essai_lama() -> EssaiLama {
     let lire = |cle: &str| std::env::var(cle).ok().filter(|v| !v.is_empty());
     EssaiLama {
@@ -32,6 +34,7 @@ pub(crate) fn essai_lama() -> EssaiLama {
 /// d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
 /// voir `path_texte_interpreter` puis `path_texte`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct PlanTexte {
     /// `None` si le prompt ne nomme aucun morceau ni artiste identifiable :
     /// `path_texte` choisit alors un départ par similarité à la première
@@ -88,6 +91,7 @@ pub(crate) struct PlanTexte {
 
 /// Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir.
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct CompositionTexte {
     pistes: Vec<TrackRow>,
     /// Une phrase par critère abandonné ou limite rencontrée (trop peu de
@@ -106,6 +110,7 @@ pub(crate) struct CompositionTexte {
 
 /// Une partie composée : sa place dans la file et ce qui l'a produite.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct PartieResultat {
     libelle: String,
     /// Indices dans `pistes` : `debut` inclus, `fin` exclu.
@@ -142,6 +147,7 @@ pub(crate) struct PartieResultat {
 /// réutilisé — voir la documentation de [`resoudre_piste_nommee`] sur
 /// pourquoi le départ/l'arrivée d'un artiste sans titre précis en a besoin.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn path_texte_interpreter(
     etat: State<Etat>,
     prompt: String,
@@ -241,6 +247,7 @@ pub(crate) fn path_texte_interpreter(
 
 /// Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct DisponibiliteLama {
     /// Le modèle intégré : `pret`, `a_telecharger`, ou `absent` (version
     /// compilée sans) — voir [`modele_local::disponibilite`].
@@ -256,6 +263,7 @@ pub(crate) struct DisponibiliteLama {
 /// absent est un état du panneau, pas une erreur (Lama dit alors quoi faire
 /// avant qu'on écrive une demande, au lieu d'échouer après).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
     match rusty_music_lama::ollama::modeles(rusty_music_lama::ollama::HOTE_DEFAUT) {
         Ok(modeles) if modeles.is_empty() => DisponibiliteLama {
@@ -282,6 +290,7 @@ pub(crate) fn lama_disponibilite() -> DisponibiliteLama {
 /// Modèles Ollama déjà installés localement — sélecteur du champ d'intention
 /// (icône 🦙).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn ollama_modeles() -> Result<Vec<String>, String> {
     rusty_music_lama::ollama::modeles(rusty_music_lama::ollama::HOTE_DEFAUT).map_err(echec)
 }
@@ -366,6 +375,7 @@ pub(crate) fn resoudre_piste_nommee(
 /// cités. Chaque partie est plafonnée par artiste puis ramenée à **sa** durée
 /// ou à **son** nombre de morceaux.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn path_texte(
     etat: State<Etat>,
     plan: PlanTexte,

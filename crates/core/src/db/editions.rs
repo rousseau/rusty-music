@@ -13,6 +13,7 @@ use crate::error::Result;
 
 /// L'édition retenue pour un album, telle que l'interface l'affiche.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct EditionRetenue {
     pub release_id: String,
     pub titre: String,
@@ -130,6 +131,7 @@ impl Library {
 
 /// Une piste d'une édition détaillée.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PisteEdition {
     pub disque: u32,
     pub position: u32,
@@ -142,6 +144,7 @@ pub struct PisteEdition {
 
 /// Une édition et toutes ses pistes, dans l'ordre des supports.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct EditionDetaillee {
     pub id: String,
     pub titre: String,

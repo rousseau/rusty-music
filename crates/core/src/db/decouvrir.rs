@@ -305,6 +305,7 @@ pub struct SortieARanger {
 
 /// Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SortieFil {
     pub rg_mbid: String,
     pub artiste_mbid: String,
@@ -318,6 +319,7 @@ pub struct SortieFil {
 
 /// Un artiste voisin proposé, avec les artistes de la bibliothèque qui y mènent.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct VoisinFil {
     pub dst_mbid: String,
     pub dst_nom: String,
@@ -335,6 +337,7 @@ pub struct VoisinFil {
 /// Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
 /// écouter ailleurs, plus la date de la dernière passe.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct FilDecouvrir {
     pub derniere_passe: Option<i64>,
     pub sorties: Vec<SortieFil>,

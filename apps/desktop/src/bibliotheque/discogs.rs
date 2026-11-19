@@ -26,6 +26,7 @@ pub(crate) type EtatDiscogsLiaison = Passe<AvancementDiscogsLiaison>;
 /// MusicBrainz par édition) : peut tourner à chaque enrichissement, contrairement
 /// à l'import lourd du dump mensuel (CLI/cron, voir `docs/enrichissement-lecteur.md`).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_discogs_liaison(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -101,6 +102,7 @@ pub(crate) type EtatDiscogsDump = Passe<AvancementDiscogsDump>;
 /// Ce que dit le fichier déjà sur le disque, sans rien télécharger : sa
 /// taille et la date de dernière écriture (= dernier téléchargement réussi).
 #[derive(Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct DumpDiscogsInfo {
     octets: u64,
     telecharge_le: i64,
@@ -108,6 +110,7 @@ pub(crate) struct DumpDiscogsInfo {
 
 /// `None` tant qu'aucun téléchargement n'a abouti — pas de valeur inventée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn discogs_dump_info(etat: State<Etat>) -> Result<Option<DumpDiscogsInfo>, String> {
     let chemin = chemin_dump_discogs(&etat);
     let Ok(m) = std::fs::metadata(&chemin) else {
@@ -128,6 +131,7 @@ pub(crate) fn discogs_dump_info(etat: State<Etat>) -> Result<Option<DumpDiscogsI
 /// Lance le téléchargement du dernier dump Discogs (`releases.xml.gz`, ≈ 11
 /// Go) — remplace un fichier déjà là s'il y en avait un.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_discogs_dump(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
     let chemin = chemin_dump_discogs(&etat);
     passe::lancer(
@@ -190,6 +194,7 @@ pub(crate) type EtatDiscogsImport = Passe<AvancementDiscogsImport>;
 /// autres passes de fond (popularité, biographies, critiques) plutôt que
 /// réservée au CLI : ni plus ni moins risqué pour la base que celles-ci.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_discogs_import(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
     let chemin = chemin_dump_discogs(&etat);
     if !chemin.is_file() {
@@ -244,6 +249,7 @@ pub(crate) fn discogs_import_state(etat: State<Etat>) -> Result<EtatDiscogsImpor
 /// pour rattraper aussi une édition reliée avant ce correctif, ou par un
 /// import interrompu.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn discogs_import_utile(etat: State<Etat>) -> Result<bool, String> {
     verrou(&etat.lib).discogs_import_utile().map_err(echec)
 }
@@ -252,6 +258,7 @@ pub(crate) fn discogs_import_utile(etat: State<Etat>) -> Result<bool, String> {
 /// tant que la liaison et l'import mensuel n'ont pas encore couvert cette
 /// édition, jamais une valeur inventée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn credits_piste(
     etat: State<Etat>,
     id: i64,
@@ -263,6 +270,7 @@ pub(crate) fn credits_piste(
 /// édition MusicBrainz — vide tant que la liaison et l'import mensuel n'ont
 /// pas encore couvert cette édition, jamais une valeur inventée.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn labels_piste(
     etat: State<Etat>,
     id: i64,

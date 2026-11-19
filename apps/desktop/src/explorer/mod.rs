@@ -25,7 +25,9 @@ pub(crate) use carte::*;
 pub(crate) use lama::*;
 pub(crate) use lieux::*;
 #[cfg(test)]
-pub(crate) use modele_local::__specta__fn__lama_telechargement_state;
+pub(crate) use modele_local::{
+    __specta__fn__lama_telechargement_state, __specta__fn__lama_telecharger,
+};
 pub(crate) use modele_local::{
     lama_telechargement_state, lama_telecharger, EtatTelechargementLama,
 };
@@ -154,6 +156,7 @@ pub(crate) fn charger_graphe_albums(
 /// instantané. L'interface sonde ça pendant l'attente de la première playlist
 /// « dans l'esprit de » pour montrer une jauge plutôt qu'une roulette muette.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn graphe_progress(etat: State<Etat>) -> (i64, i64) {
     (
         etat.graphe_fait.load(Ordering::Relaxed) as i64,
@@ -163,6 +166,7 @@ pub(crate) fn graphe_progress(etat: State<Etat>) -> (i64, i64) {
 
 /// Combien de morceaux restent à analyser — pour dire où en est la carte.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn map_progress(etat: State<Etat>) -> Result<(i64, i64), String> {
     let lib = verrou(&etat.lib);
     let total = lib.count().map_err(echec)?;

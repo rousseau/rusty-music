@@ -1233,6 +1233,7 @@ pub struct BioArtiste {
 
 /// Un crédit Discogs à ranger — voir `credits_discogs` du schéma.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreditDiscogs {
     pub personne: String,
     pub role: String,
@@ -1242,6 +1243,7 @@ pub struct CreditDiscogs {
 
 /// Un label Discogs à ranger — voir `labels_discogs` du schéma.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct LabelDiscogs {
     pub nom: String,
     pub catno: String,

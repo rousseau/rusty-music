@@ -23,6 +23,7 @@ pub(crate) type EtatSuperres = Passe<AvancementSuperres>;
 /// chargement du modèle au premier appel, et le téléchargement des poids
 /// (156 Mo) au tout premier.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_superres(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -109,6 +110,7 @@ pub(crate) fn superres_state(etat: State<Etat>) -> Result<EtatSuperres, String> 
 
 /// Vrai si le morceau a déjà une version HD en cache.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn superres_disponible(etat: State<Etat>, path: String) -> Result<bool, String> {
     Ok(rusty_music_superres::chemin_cache(&etat.hd, Path::new(&path)).is_file())
 }
@@ -116,6 +118,7 @@ pub(crate) fn superres_disponible(etat: State<Etat>, path: String) -> Result<boo
 /// Active/coupe la lecture des versions HD (quand elles existent). Réouvre le
 /// morceau en cours en tâche de fond, comme le bouton « E ».
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_lecture_hd(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -147,6 +150,7 @@ pub(crate) fn set_lecture_hd(
 
 /// Taille du cache HD et nombre de morceaux régénérés.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn superres_cache(etat: State<Etat>) -> Result<(u64, usize), String> {
     let dossier = &etat.hd;
     let mut octets = 0;
@@ -164,6 +168,7 @@ pub(crate) fn superres_cache(etat: State<Etat>) -> Result<(u64, usize), String> 
 
 /// Vide le cache HD.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn vider_cache_hd(etat: State<Etat>) -> Result<(), String> {
     if etat.hd.is_dir() {
         std::fs::remove_dir_all(&etat.hd).map_err(echec)?;
@@ -387,6 +392,7 @@ pub(crate) fn set_volume(etat: State<Etat>, volume: f32) -> Result<(), String> {
 /// préchargement se reconstruit tout seul au sondage suivant, avec la nouvelle
 /// version.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_amelioration(
     app: tauri::AppHandle,
     etat: State<Etat>,

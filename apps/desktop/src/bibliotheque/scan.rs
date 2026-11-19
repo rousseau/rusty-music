@@ -57,6 +57,7 @@ pub(crate) fn demarrer_surveillance(app: &tauri::AppHandle, root: &Path) {
 
 /// Oublie une racine **et les morceaux qui en dépendent**.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn forget_root(etat: State<Etat>, path: String) -> Result<usize, String> {
     let n = verrou(&etat.lib)
         .remove_root(Path::new(&path))
@@ -76,6 +77,7 @@ pub(crate) fn forget_root(etat: State<Etat>, path: String) -> Result<usize, Stri
 /// ouvre donc sa **propre** connexion sur le même fichier — le mode WAL du
 /// schéma autorise un rédacteur et des lecteurs simultanés.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_scan(
     app: tauri::AppHandle,
     etat: State<Etat>,

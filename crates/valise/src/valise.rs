@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS valise_fichier (
 /// Ce qui fait entrer un album dans la valise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum Regle {
     /// Les derniers arrivés (date de modification la plus récente des fichiers,
     /// comme `AlbumRow::ajoute_le`).
@@ -109,6 +110,7 @@ impl Regle {
 
 /// Une part de la valise : une règle et ce qu'elle a le droit de prendre.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Part {
     pub regle: Regle,
     /// Albums au plus, dans la limite du budget qui reste ; `None` : une part
@@ -145,6 +147,7 @@ impl Part {
 /// ([`Library::reglages_valise`]), d'une valise à l'autre.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Reglages {
     /// Les parts, dans l'ordre : chacune prend ses albums parmi ce que les
     /// précédentes ont laissé.
@@ -190,6 +193,7 @@ impl Default for Reglages {
 
 /// Un album retenu.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AlbumValise {
     pub id: String,
     pub album: String,

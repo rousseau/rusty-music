@@ -6,6 +6,7 @@ use rusty_music_valise::valise::{JournalValise, ValiseBibliotheque};
 
 /// Avancement de l'envoi d'une valise, sondé par l'interface.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementEnvoiValise {
     /// L'étape en cours, en mots.
     pub(crate) etape: String,
@@ -17,6 +18,7 @@ pub(crate) type EtatEnvoiValise = Passe<AvancementEnvoiValise>;
 /// Avancement de la réinstallation de l'app compagnon (construction Xcode
 /// puis installation) : la dernière ligne du script, pour montrer que ça vit.
 #[derive(Clone, Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct AvancementRenouvellement {
     pub(crate) ligne: String,
 }
@@ -24,6 +26,7 @@ pub(crate) type EtatRenouvellement = Passe<AvancementRenouvellement>;
 
 /// Les réglages gardés de la dernière valise.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_reglages(
     etat: State<Etat>,
 ) -> Result<rusty_music_valise::valise::Reglages, String> {
@@ -31,6 +34,7 @@ pub(crate) fn valise_reglages(
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ApercuValise {
     albums: Vec<rusty_music_valise::valise::AlbumValise>,
     octets: u64,
@@ -40,6 +44,7 @@ pub(crate) struct ApercuValise {
 /// Ce que `reglages` mettrait dans la valise. Les réglages sont gardés au
 /// passage : l'aperçu est ce qu'on enverra.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_apercu(
     etat: State<Etat>,
     mut reglages: rusty_music_valise::valise::Reglages,
@@ -57,6 +62,7 @@ pub(crate) fn valise_apercu(
 
 /// Ce que le Mac sait de l'iPhone.
 #[derive(Default, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatIphone {
     /// Xcode est là : sans lui, ni envoi ni renouvellement.
     xcode: bool,
@@ -76,6 +82,7 @@ pub(crate) struct EtatIphone {
 /// Interroge l'iPhone : plusieurs appels à `devicectl`, une à quelques
 /// secondes en Wi-Fi.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_iphone(udid: Option<String>) -> EtatIphone {
     let mut e = EtatIphone {
         xcode: iphone::xcode_present(),
@@ -133,6 +140,7 @@ pub(crate) fn valise_iphone(udid: Option<String>) -> EtatIphone {
 ///    sont reprises ;
 /// 5. efface la copie locale.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_envoyer(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -307,6 +315,7 @@ fn valise_preparer_wifi(app: tauri::AppHandle, etat: &Etat, nom: String) -> Resu
 /// Reconstruit et réinstalle l'app compagnon (`scripts/reinstaller-valise.sh`)
 /// — quelques minutes, sur une machine qui a le dépôt et Xcode.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_renouveler(app: tauri::AppHandle, udid: String) -> Result<(), String> {
     let script = iphone::script_reinstaller()
         .ok_or("script de réinstallation introuvable (il faut le dépôt des sources)")?;
@@ -369,6 +378,7 @@ pub(crate) fn valise_renouveler(app: tauri::AppHandle, udid: String) -> Result<(
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct EtatValise {
     envoi: EtatEnvoiValise,
     renouvellement: EtatRenouvellement,
@@ -376,6 +386,7 @@ pub(crate) struct EtatValise {
 
 /// Où en sont l'envoi et la réinstallation.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn valise_etat(etat: State<Etat>) -> EtatValise {
     EtatValise {
         envoi: verrou(&etat.valise_envoi).clone(),
@@ -385,6 +396,7 @@ pub(crate) fn valise_etat(etat: State<Etat>) -> EtatValise {
 
 /// Ce que le passage a emporté, pour la phrase de l'interface.
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct LectureEmportee {
     pistes: usize,
     titre: Option<String>,
@@ -409,6 +421,7 @@ pub(crate) struct LectureEmportee {
 /// accusé. Le téléphone reprend en pause, à la position lue au départ :
 /// quelques secondes plus tôt, jamais plus tard.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn emporter_lecture(
     app: tauri::AppHandle,
     etat: State<Etat>,

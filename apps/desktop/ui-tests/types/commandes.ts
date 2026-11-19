@@ -8,6 +8,454 @@ export const commands = {
 	artists: () => __TAURI_INVOKE<ArtistRow_Serialize[]>("artists"),
 	albums: (artist: string | null, mbid: string | null) => __TAURI_INVOKE<AlbumRow_Serialize[]>("albums", { artist, mbid }),
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
+	a_propos: () => __TAURI_INVOKE<APropos>("a_propos"),
+	/**
+	 *  Lance le calcul des empreintes des morceaux en attente.
+	 * 
+	 *  Déclenché à la main, et pas enchaîné au scan : sur une bibliothèque neuve
+	 *  de cette taille la passe dure des heures, et l'engager sans que
+	 *  l'utilisateur l'ait demandé serait le prendre en otage. L'interface affiche
+	 *  le nombre en attente et le laisse choisir son moment.
+	 * 
+	 *  Ouvre sa propre connexion, comme le scan : sous le verrou de la base
+	 *  partagée, l'interface serait figée pendant toute la passe. Le mode WAL
+	 *  autorise un rédacteur et des lecteurs simultanés.
+	 */
+	start_analysis: () => __TAURI_INVOKE<null>("start_analysis"),
+	/**
+	 *  Mesure tempo/tonalité/énergie des morceaux en attente — ou de tous,
+	 *  `force` effaçant d'abord ce qui est déjà mesuré.
+	 * 
+	 *  Sépare cette passe de `start_analysis` (empreintes CLAP) : les deux
+	 *  n'ont ni le même coût ni la même fréquence de relance. Un correctif de
+	 *  l'algorithme (tempo doublé sur les rythmiques marquées, par exemple)
+	 *  justifie de remesurer une bibliothèque déjà couverte — les empreintes,
+	 *  elles, n'ont pas de raison de changer sans changer de modèle.
+	 */
+	start_descripteurs: (force: boolean | null) => __TAURI_INVOKE<null>("start_descripteurs", { force }),
+	/**
+	 *  Mesure la loudness EBU R128 (piste + album) des morceaux en attente — ou
+	 *  de tous, `force` effaçant d'abord ce qui est déjà mesuré. Même patron que
+	 *  [`start_descripteurs`] : décode le fichier entier (le seul coût de cette
+	 *  passe), reprenable, tourne sur son propre fil et sa propre connexion.
+	 */
+	start_loudness: (force: boolean | null) => __TAURI_INVOKE<null>("start_loudness", { force }),
+	/**
+	 *  Active/coupe la normalisation de volume et choisit sa référence (piste ou
+	 *  album). Réouvre le morceau en cours en tâche de fond à la même position —
+	 *  même recette que `set_amelioration`.
+	 */
+	set_normalisation: (actif: boolean, album: boolean) => __TAURI_INVOKE<null>("set_normalisation", { actif, album }),
+	/**
+	 *  Lance la passe de liaison Discogs — retrouve l'édition Discogs de chaque
+	 *  édition MusicBrainz connue (`tracks.mb_release_id`) par la relation d'URL
+	 *  que porte MusicBrainz, jamais par recherche de nom. Légère (une requête
+	 *  MusicBrainz par édition) : peut tourner à chaque enrichissement, contrairement
+	 *  à l'import lourd du dump mensuel (CLI/cron, voir `docs/enrichissement-lecteur.md`).
+	 */
+	start_discogs_liaison: (contact: string) => __TAURI_INVOKE<null>("start_discogs_liaison", { contact }),
+	/**  `None` tant qu'aucun téléchargement n'a abouti — pas de valeur inventée. */
+	discogs_dump_info: () => __TAURI_INVOKE<DumpDiscogsInfo | null>("discogs_dump_info"),
+	/**
+	 *  Lance le téléchargement du dernier dump Discogs (`releases.xml.gz`, ≈ 11
+	 *  Go) — remplace un fichier déjà là s'il y en avait un.
+	 */
+	start_discogs_dump: () => __TAURI_INVOKE<null>("start_discogs_dump"),
+	/**
+	 *  Extrait crédits et labels du dump déjà téléchargé (voir
+	 *  [`start_discogs_dump`]) vers `credits_discogs`/`labels_discogs`, pour les
+	 *  éditions déjà reliées par la liaison Discogs.
+	 * 
+	 *  **Sûr à rejouer** : `credits_poser`/`labels_poser` remplacent toujours ce
+	 *  qui existait pour une édition, jamais un ajout — un import relancé
+	 *  n'accumule rien, il rafraîchit. Exposée en commande Tauri comme les
+	 *  autres passes de fond (popularité, biographies, critiques) plutôt que
+	 *  réservée au CLI : ni plus ni moins risqué pour la base que celles-ci.
+	 */
+	start_discogs_import: () => __TAURI_INVOKE<null>("start_discogs_import"),
+	/**
+	 *  Y a-t-il une édition reliée jamais importée ? Sert à décider si relancer
+	 *  l'import vaut le coût après une liaison — voir `Library::discogs_import_utile`
+	 *  : le critère n'est jamais « cette liaison-ci a-t-elle relié du neuf »,
+	 *  pour rattraper aussi une édition reliée avant ce correctif, ou par un
+	 *  import interrompu.
+	 */
+	discogs_import_utile: () => __TAURI_INVOKE<boolean>("discogs_import_utile"),
+	/**
+	 *  Les crédits Discogs du morceau `id`, via son édition MusicBrainz — vide
+	 *  tant que la liaison et l'import mensuel n'ont pas encore couvert cette
+	 *  édition, jamais une valeur inventée.
+	 */
+	credits_piste: (id: number) => __TAURI_INVOKE<CreditDiscogs_Serialize[]>("credits_piste", { id }),
+	/**
+	 *  Les labels (nom + numéro de catalogue) Discogs du morceau `id`, via son
+	 *  édition MusicBrainz — vide tant que la liaison et l'import mensuel n'ont
+	 *  pas encore couvert cette édition, jamais une valeur inventée.
+	 */
+	labels_piste: (id: number) => __TAURI_INVOKE<LabelDiscogs_Serialize[]>("labels_piste", { id }),
+	tracks_of_album: (album: string, artist: string | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("tracks_of_album", { album, artist }),
+	search: (query: string, limit: number | null) => __TAURI_INVOKE<TrackRow_Serialize[]>("search", { query, limit }),
+	/**
+	 *  Tempo, tonalité et énergie d'un morceau — ce que la passe a mesuré.
+	 * 
+	 *  **Rend `None` plutôt qu'une valeur par défaut** quand le morceau n'est pas
+	 *  mesuré : 15 847 des 27 044 le sont à ce jour, et afficher « 120 BPM » sur
+	 *  les autres serait donner une mesure qu'on n'a pas.
+	 */
+	descripteurs: (id: number) => __TAURI_INVOKE<DescripteursVus_Serialize | null>("descripteurs", { id }),
+	/**
+	 *  La popularité générale des morceaux `ids` — `(track_id, relative 0..1,
+	 *  echelon)`. Un morceau absent de la réponse n'en a pas (jauge grisée).
+	 *  Chargée par lot pour ce qui est visible (file d'attente, liste de pistes),
+	 *  comme les pochettes — jamais dans `TrackRow`.
+	 */
+	popularites: (ids: number[]) => __TAURI_INVOKE<([number, number | null, string])[]>("popularites", { ids }),
+	/**
+	 *  Qualité d'encodage du morceau en écoute — codec, débit, échantillonnage,
+	 *  profondeur de bits. Affichée sous le compteur de temps du transport.
+	 *  Champs partiellement `None` sur un morceau scanné avant la lecture du
+	 *  format (un rescan les remplit).
+	 */
+	qualite_piste: (id: number) => __TAURI_INVOKE<QualitePiste_Serialize | null>("qualite_piste", { id }),
+	/**
+	 *  Pochette d'un morceau, en `data:` URI directement consommable par `<img>`.
+	 * 
+	 *  **Mise en cache sur disque**, sous `<données app>/pochettes/` — voir
+	 *  [`cle_pochette`]. Le cache mémoire côté interface (`ui/js/`) évite de
+	 *  repayer les 50 à 210 ms d'extraction pendant une session, mais repart à
+	 *  froid à chaque lancement ; celui-ci persiste, et une pochette déjà servie
+	 *  une fois ne relit plus jamais le fichier source tant qu'il n'a pas changé.
+	 * 
+	 *  **Corps bloquant renvoyé sur le pool `spawn_blocking`.** La lecture disque
+	 *  et le parsing des tags (`lofty`) coûtent 50 à 210 ms à froid, et la grille
+	 *  d'albums en demande des dizaines d'un coup. Exécutées telles quelles sur le
+	 *  pool du runtime, elles en occupaient tous les fils et une commande de
+	 *  transport (`play`, `toggle_pause`) attendait derrière — la lecture partait
+	 *  avec plusieurs secondes de retard pendant qu'on faisait défiler les
+	 *  pochettes. Le pool dédié aux tâches bloquantes n'entre pas en concurrence
+	 *  avec les commandes courtes.
+	 */
+	cover: (path: string) => __TAURI_INVOKE<string | null>("cover", { path }),
+	/**
+	 *  Les chemins de piste d'au plus `max` albums d'un artiste qui portent une
+	 *  pochette lisible — la matière du tuilage en mosaïque de la vue Artistes.
+	 * 
+	 *  Rend des chemins, pas des images : l'interface les repasse à `cover`, dont
+	 *  le cache mémoire (borné, partagé avec la grille d'albums et l'inspecteur)
+	 *  et le cache disque font le reste. Le tri des tags, lui, se fait ici une
+	 *  fois — chaque album candidat passe par [`cover_extraire`], qui remplit le
+	 *  cache disque au passage et permet d'écarter les albums sans pochette (d'où
+	 *  un résultat parfois plus court que `max`).
+	 */
+	artist_covers: (name: string, mbid: string | null, max: number) => __TAURI_INVOKE<string[]>("artist_covers", { name, mbid, max }),
+	/**  Oublie une racine **et les morceaux qui en dépendent**. */
+	forget_root: (path: string) => __TAURI_INVOKE<number>("forget_root", { path }),
+	/**
+	 *  Lance le scan d'une racine dans un thread dédié.
+	 * 
+	 *  Le scan tient la base pendant des dizaines de minutes sur un support lent :
+	 *  le faire sous le verrou de `Etat::lib` figerait toute l'interface. Le thread
+	 *  ouvre donc sa **propre** connexion sur le même fichier — le mode WAL du
+	 *  schéma autorise un rédacteur et des lecteurs simultanés.
+	 */
+	start_scan: (path: string, force: boolean | null) => __TAURI_INVOKE<null>("start_scan", { path, force }),
+	/**
+	 *  Morceaux dont le genre résolu ne figure pas parmi les dominants de leur
+	 *  famille sonique — voir [`rusty_music_core::db::Library::genres_suspects`].
+	 */
+	suspect_genres: () => __TAURI_INVOKE<([number, string, string, string])[]>("suspect_genres"),
+	/**  Albums présents sous plusieurs éditions chez le même artiste. */
+	multiple_editions: () => __TAURI_INVOKE<([string, string, ([string, number])[]])[]>("multiple_editions"),
+	/**  Fichiers en échec de scan, du plus récent au plus ancien. */
+	scan_failures: () => __TAURI_INVOKE<([string, string, number])[]>("scan_failures"),
+	/**
+	 *  Retire un fichier de la liste des échecs, sans y toucher sur le disque —
+	 *  pour un fichier qu'on sait perdu et qu'on ne veut plus voir revenir à
+	 *  chaque scan.
+	 */
+	dismiss_scan_failure: (path: string) => __TAURI_INVOKE<null>("dismiss_scan_failure", { path }),
+	/**
+	 *  Vérifie les pochettes des dossiers dont les fichiers ont changé — ou de
+	 *  tous, avec `force` (`rusty_music_core::pochettes_verif`). Même patron que
+	 *  [`start_loudness`] : fil et connexion propres. Ne modifie aucun fichier de
+	 *  l'utilisateur : les signalements se lisent par [`pochettes_suspectes`].
+	 *  Enchaînée juste après le scan, qui est ce qui amène les fichiers neufs.
+	 */
+	start_verif_pochettes: (force: boolean | null) => __TAURI_INVOKE<null>("start_verif_pochettes", { force }),
+	/**  Les pochettes à examiner (panneau « Vérifications » du mode Bibliothèque). */
+	pochettes_suspectes: () => __TAURI_INVOKE<PochetteSuspecte_Serialize[]>("pochettes_suspectes"),
+	/**
+	 *  Écarte le signalement d'un dossier (« Ignorer »). Revient tout seul si les
+	 *  fichiers du dossier changent.
+	 */
+	ignore_pochette_suspecte: (dossier: string) => __TAURI_INVOKE<null>("ignore_pochette_suspecte", { dossier }),
+	/**
+	 *  « Image du dossier » : l'album de `dossier` montrera `cover.jpg` (ou
+	 *  équivalent) plutôt que l'image intégrée aux tags. Le choix vit dans la
+	 *  base, pas dans les fichiers, pour survivre à une recopie des MP3. Les
+	 *  pochettes déjà mises en cache pour ses pistes sont effacées.
+	 */
+	pochette_du_dossier: (dossier: string) => __TAURI_INVOKE<null>("pochette_du_dossier", { dossier }),
+	/**
+	 *  Arme le coach sur la transcription de la batterie du morceau ouvert :
+	 *  `coups` tels que `transcrire` les a rendus (leur rang est celui des
+	 *  jugements), `premiers_temps` la grille des mesures, en secondes du
+	 *  morceau. Une liste vide désarme.
+	 */
+	coach_armer: (chemin: string | null, coups: Coup[], premiersTemps: (number | null)[], temps: (number | null)[] | null) => __TAURI_INVOKE<null>("coach_armer", { chemin, coups, premiersTemps, temps }),
+	/**
+	 *  Le fil du mode Découvrir, tel que la base le tient.
+	 * 
+	 *  Lecture seule : `start_decouvrir` fait le travail réseau. La fenêtre est
+	 *  fixée à un mois — c'est l'esprit du mode, une actualité.
+	 */
+	decouvrir_feed: () => __TAURI_INVOKE<FilDecouvrir_Serialize>("decouvrir_feed"),
+	/**  Marque tout le fil comme vu — les pastilles « nouveau » s'éteignent. */
+	decouvrir_tout_vu: () => __TAURI_INVOKE<null>("decouvrir_tout_vu"),
+	/**
+	 *  La pochette d'une sortie du fil Découvrir, en `data:` URI — comme `cover`,
+	 *  mais servie depuis Cover Art Archive plutôt que des tags d'un fichier local.
+	 * 
+	 *  Cache disque partagé avec les pochettes locales (`<données app>/pochettes/`,
+	 *  clés `caa-<mbid>` puis `dz-…`, les mêmes que le repli de `cover`) : une
+	 *  vignette déjà récupérée ne repart pas sur le réseau, et un album sans
+	 *  pochette (fréquent le mois de sa sortie) n'est pas redemandé. Le cache
+	 *  mémoire côté interface fait le reste pendant la session.
+	 * 
+	 *  Cover Art Archive d'abord ; si elle n'a rien, Deezer (recherche par
+	 *  artiste et titre) — les sorties toutes fraîches y sont souvent avant d'être
+	 *  sur CAA. `Err` = panne réseau, jamais écrite : l'interface pourra redemander.
+	 */
+	decouvrir_pochette: (rgMbid: string, artiste: string, titre: string) => __TAURI_INVOKE<string | null>("decouvrir_pochette", { rgMbid, artiste, titre }),
+	/**
+	 *  La photo d'un artiste voisin du fil Découvrir, en `data:` URI — les voisins
+	 *  n'ont qu'un nom et un MBID, aucune pochette.
+	 * 
+	 *  Deezer d'abord (par nom, avec garde-fous d'identité : voir
+	 *  `deezer::url_photo_artiste`), rapide ; puis, si Deezer n'en a pas,
+	 *  TheAudioDB par MBID (fiable, mais une requête toutes les 2 s). Deux clés de
+	 *  cache distinctes, pour qu'un « non » de Deezer n'écrase pas la seconde
+	 *  source. `Ok(None)` : aucune des deux n'a de photo — l'interface montre des
+	 *  initiales. `Err` : panne réseau, jamais écrite, à redemander.
+	 */
+	decouvrir_photo_artiste: (mbid: string, nom: string) => __TAURI_INVOKE<string | null>("decouvrir_photo_artiste", { mbid, nom }),
+	/**
+	 *  L'adresse de la page Deezer d'un album (`titre` donné) ou d'un artiste
+	 *  (`titre` absent) du fil Découvrir — le bouton « Deezer » d'une carte, qui
+	 *  l'ouvre dans le navigateur. Même recherche et mêmes règles de concordance
+	 *  que pour les pochettes et les photos.
+	 * 
+	 *  Résolue au clic, sans cache disque : une requête isolée. `Ok(None)` : Deezer
+	 *  ne connaît pas (l'interface se rabat sur sa page de recherche). `Err` :
+	 *  panne réseau.
+	 */
+	decouvrir_lien_deezer: (artiste: string, titre: string | null) => __TAURI_INVOKE<string | null>("decouvrir_lien_deezer", { artiste, titre }),
+	/**
+	 *  Lance l'actualisation du fil Découvrir : sorties récentes (ListenBrainz
+	 *  `fresh-releases`, une requête) puis artistes similaires (un appel par
+	 *  artiste de la bibliothèque, cadencé).
+	 * 
+	 *  Comme `start_enrichment` : déclenchée à la main (ou par l'interface à
+	 *  l'ouverture du mode si la dernière passe est ancienne), sur son propre fil,
+	 *  avec sa propre connexion. Additive et reprenable.
+	 */
+	start_decouvrir: (contact: string) => __TAURI_INVOKE<null>("start_decouvrir", { contact }),
+	/**
+	 *  Régénère un morceau en haute résolution (AERO) — rendu hors ligne vers le
+	 *  cache `hd/`. Tourne dans son fil : ~30 s par minute d'audio stéréo, plus le
+	 *  chargement du modèle au premier appel, et le téléchargement des poids
+	 *  (156 Mo) au tout premier.
+	 */
+	start_superres: (path: string) => __TAURI_INVOKE<null>("start_superres", { path }),
+	/**  Vrai si le morceau a déjà une version HD en cache. */
+	superres_disponible: (path: string) => __TAURI_INVOKE<boolean>("superres_disponible", { path }),
+	/**
+	 *  Active/coupe la lecture des versions HD (quand elles existent). Réouvre le
+	 *  morceau en cours en tâche de fond, comme le bouton « E ».
+	 */
+	set_lecture_hd: (actif: boolean) => __TAURI_INVOKE<null>("set_lecture_hd", { actif }),
+	/**  Taille du cache HD et nombre de morceaux régénérés. */
+	superres_cache: () => __TAURI_INVOKE<[number, number]>("superres_cache"),
+	/**  Vide le cache HD. */
+	vider_cache_hd: () => __TAURI_INVOKE<null>("vider_cache_hd"),
+	/**
+	 *  Bouton « E » : active/coupe l'amélioration du son (excitation
+	 *  psychoacoustique) et, si fourni, règle son intensité (`0.0`..=`1.0`). Si un
+	 *  morceau joue, il est réouvert **en tâche de fond** à la même position — le
+	 *  son en cours continue pendant le décodage, puis on bascule sans coupure. Le
+	 *  préchargement se reconstruit tout seul au sondage suivant, avec la nouvelle
+	 *  version.
+	 */
+	set_amelioration: (actif: boolean, intensite: number | null) => __TAURI_INVOKE<null>("set_amelioration", { actif, intensite }),
+	/**
+	 *  Les éditions de l'album chez MusicBrainz, classées par concordance du
+	 *  nombre de pistes avec l'album local.
+	 */
+	editions_proposees: (contact: string, album: string, artist: string | null) => __TAURI_INVOKE<EditionProposee_Serialize[]>("editions_proposees", { contact, album, artist }),
+	edition_comparee: (contact: string, id: string, album: string, artist: string | null) => __TAURI_INVOKE<Comparaison_Serialize>("edition_comparee", { contact, id, album, artist }),
+	/**
+	 *  Retient l'édition `id` pour l'album : chaque piste appariée reçoit les
+	 *  identifiants de la sienne. La comparaison est refaite ici plutôt que reçue
+	 *  de l'interface : ce qui s'écrit est ce que MusicBrainz dit à cet instant.
+	 */
+	retenir_edition: (contact: string, id: string, album: string, artist: string | null) => __TAURI_INVOKE<null>("retenir_edition", { contact, id, album, artist }),
+	edition_retenue: (album: string, artist: string | null) => __TAURI_INVOKE<EditionRetenue | null>("edition_retenue", { album, artist }),
+	/**
+	 *  Oublie le choix : les pistes reprennent les identifiants de leurs tags,
+	 *  relus ici. Rend le nombre de pistes relues.
+	 */
+	oublier_edition: (album: string, artist: string | null) => __TAURI_INVOKE<number>("oublier_edition", { album, artist }),
+	essai_lama: () => __TAURI_INVOKE<EssaiLama_Serialize>("essai_lama"),
+	/**
+	 *  Interprète un prompt de playlist en texte libre (modèle intégré ou Ollama),
+	 *  et résout son
+	 *  morceau ou artiste de départ dans la bibliothèque — sans encore calculer
+	 *  d'empreinte CLAP-texte ni construire de trajet, pour rester rapide :
+	 *  l'utilisateur doit pouvoir corriger l'interprétation dans l'inspecteur
+	 *  avant qu'elle ne remplace sa file d'écoute (`path_texte` fait le reste).
+	 * 
+	 *  `modele` : celui choisi par l'utilisateur via l'icône 🦙 (mémorisé côté
+	 *  interface) — [`modele_local::NOM`] pour le modèle intégré, sinon un modèle
+	 *  d'Ollama. `None` — rien choisi encore — prend le modèle intégré s'il est
+	 *  téléchargé, sinon `ollama::modele_par_defaut`, pas un nom fixe : deviner
+	 *  un modèle qui n'est pas installé rend un 404 qu'Ollama ne distingue pas
+	 *  clairement d'un serveur injoignable (observé en pratique).
+	 * 
+	 *  `seed` : un tirage frais côté interface à chaque interprétation, jamais
+	 *  réutilisé — voir la documentation de [`resoudre_piste_nommee`] sur
+	 *  pourquoi le départ/l'arrivée d'un artiste sans titre précis en a besoin.
+	 */
+	path_texte_interpreter: (prompt: string, nDefaut: number, modele: string | null, seed: number) => __TAURI_INVOKE<PlanTexte_Serialize>("path_texte_interpreter", { prompt, nDefaut, modele, seed }),
+	/**
+	 *  Ollama répond-il, et avec quels modèles ? Ne lève jamais : un serveur
+	 *  absent est un état du panneau, pas une erreur (Lama dit alors quoi faire
+	 *  avant qu'on écrive une demande, au lieu d'échouer après).
+	 */
+	lama_disponibilite: () => __TAURI_INVOKE<DisponibiliteLama_Serialize>("lama_disponibilite"),
+	/**
+	 *  Modèles Ollama déjà installés localement — sélecteur du champ d'intention
+	 *  (icône 🦙).
+	 */
+	ollama_modeles: () => __TAURI_INVOKE<string[]>("ollama_modeles"),
+	/**
+	 *  Compose la playlist : filtres, puis une marche guidée dans le graphe des
+	 *  voisins (`chemin::guidee`) **partie par partie**. Séparée de l'interprétation
+	 *  LLM (`path_texte_interpreter`) : ce calcul-ci ne se relance que si
+	 *  l'utilisateur confirme le plan affiché.
+	 * 
+	 *  Les **filtres** du plan (genres, exclusions, années, tempo, énergie,
+	 *  popularité — `filtres_playlist`) restreignent d'abord la bibliothèque ; la
+	 *  marche ne parcourt que les morceaux admissibles. Départ et arrivée nommés
+	 *  restent admis même s'ils contreviennent aux filtres : l'utilisateur les a
+	 *  cités. Chaque partie est plafonnée par artiste puis ramenée à **sa** durée
+	 *  ou à **son** nombre de morceaux.
+	 */
+	path_texte: (plan: PlanTexte_Deserialize, seed: number, bruit: number | null) => __TAURI_INVOKE<CompositionTexte_Serialize>("path_texte", { plan, seed, bruit }),
+	/**
+	 *  `(fait, total)` du balayage qui construit le graphe des voisins.
+	 * 
+	 *  `total == 0` : rien en cours — jamais construit, ou déjà en cache et donc
+	 *  instantané. L'interface sonde ça pendant l'attente de la première playlist
+	 *  « dans l'esprit de » pour montrer une jauge plutôt qu'une roulette muette.
+	 */
+	graphe_progress: () => __TAURI_INVOKE<[number, number]>("graphe_progress"),
+	/**  Combien de morceaux restent à analyser — pour dire où en est la carte. */
+	map_progress: () => __TAURI_INVOKE<[number, number]>("map_progress"),
+	/**  Télécharge le modèle intégré (4,6 Go), en passe de fond. */
+	lama_telecharger: () => __TAURI_INVOKE<null>("lama_telecharger"),
+	/**
+	 *  Le mode dans lequel ouvrir l'application, si l'environnement en impose un.
+	 * 
+	 *  `RUSTY_MUSIC_MODE=explorer` ouvre directement sur la carte. Sert aux essais
+	 *  — une webview du système ne se pilote pas de l'extérieur — et rend service
+	 *  à qui veut retrouver son mode au démarrage.
+	 */
+	mode_initial: () => __TAURI_INVOKE<string | null>("mode_initial"),
+	/**
+	 *  Redimensionne la fenêtre principale pour l'audit d'interface — refusé hors
+	 *  audit, une application ne se laisse pas redimensionner par son contenu.
+	 */
+	essai_fenetre: (largeur: number | null, hauteur: number | null) => __TAURI_INVOKE<null>("essai_fenetre", { largeur, hauteur }),
+	essai_audit: () => __TAURI_INVOKE<ReglagesAudit>("essai_audit"),
+	/**
+	 *  Écrit une capture de la carte faite par l'audit (`audit.js`, poses du relief)
+	 *  dans `RUSTY_AUDIT_CAPTURES` : la webview ne se capture pas de l'extérieur, la
+	 *  carte se lit de l'intérieur (canevas MapLibre). Refusé hors audit.
+	 */
+	essai_capture: (nom: string, png: number[]) => __TAURI_INVOKE<null>("essai_capture", { nom, png }),
+	/**
+	 *  Le même renvoi pour le reste de l'interface (partition, lecteur) : une
+	 *  version release n'a pas d'inspecteur du tout.
+	 */
+	journal_ui: (niveau: string, source: string, message: string) => __TAURI_INVOKE<void>("journal_ui", { niveau, source, message }),
+	/**
+	 *  Remonte une erreur de l'interface dans le journal du processus.
+	 * 
+	 *  Sans cela, une exception JavaScript reste dans la console de la vue web,
+	 *  invisible depuis le terminal : le symptôme se voit à l'écran, la cause
+	 *  nulle part. Plusieurs pannes de cette session sont restées obscures faute
+	 *  de ce fil.
+	 */
+	js_error: (message: string, source: string | null) => __TAURI_INVOKE<void>("js_error", { message, source }),
+	/**
+	 *  Le dossier où l'application écrit tout : la base et les empreintes, les
+	 *  journaux, les stems démixés, les rendus HD, les tuiles de la carte. Montré en
+	 *  tête du mode Bibliothèque — l'utilisateur doit pouvoir retrouver, sauvegarder
+	 *  ou purger ce que le logiciel pose sur son disque.
+	 */
+	dossier_donnees: () => __TAURI_INVOKE<string>("dossier_donnees"),
+	stockage_logiciel: () => __TAURI_INVOKE<StockageLogiciel>("stockage_logiciel"),
+	/**  Les réglages gardés de la dernière valise. */
+	valise_reglages: () => __TAURI_INVOKE<Reglages_Serialize>("valise_reglages"),
+	/**
+	 *  Ce que `reglages` mettrait dans la valise. Les réglages sont gardés au
+	 *  passage : l'aperçu est ce qu'on enverra.
+	 */
+	valise_apercu: (reglages: Reglages_Deserialize) => __TAURI_INVOKE<ApercuValise_Serialize>("valise_apercu", { reglages }),
+	/**
+	 *  Interroge l'iPhone : plusieurs appels à `devicectl`, une à quelques
+	 *  secondes en Wi-Fi.
+	 */
+	valise_iphone: (udid: string | null) => __TAURI_INVOKE<EtatIphone_Serialize>("valise_iphone", { udid }),
+	/**
+	 *  Envoie une nouvelle valise sur l'iPhone, selon les réglages gardés. Sans
+	 *  `udid`, par le Wi-Fi ([`valise_preparer_wifi`]) ; sinon par le câble :
+	 * 
+	 *  1. reprend les écoutes des valises déjà sur le téléphone (`journal.json`) ;
+	 *  2. prépare la valise dans les données de l'app ;
+	 *  3. la dépose dans les Documents de l'app compagnon, sous `nom` ;
+	 *  4. liste les anciennes valises dans `a-retirer.json` — l'app les supprime
+	 *     (devicectl ne sait pas le faire) — seulement celles dont les écoutes
+	 *     sont reprises ;
+	 *  5. efface la copie locale.
+	 */
+	valise_envoyer: (udid: string | null, nom: string) => __TAURI_INVOKE<null>("valise_envoyer", { udid, nom }),
+	/**
+	 *  Reconstruit et réinstalle l'app compagnon (`scripts/reinstaller-valise.sh`)
+	 *  — quelques minutes, sur une machine qui a le dépôt et Xcode.
+	 */
+	valise_renouveler: (udid: string) => __TAURI_INVOKE<null>("valise_renouveler", { udid }),
+	/**  Où en sont l'envoi et la réinstallation. */
+	valise_etat: () => __TAURI_INVOKE<EtatValise>("valise_etat"),
+	/**
+	 *  Emporte la lecture sur l'iPhone (`rusty_music_valise::passage`).
+	 * 
+	 *  Par le câble d'abord (option A), si `udid` est donné : la file et la
+	 *  position sont déposées dans les Documents de l'app par `devicectl`, puis
+	 *  le Mac se met en pause — **après** le dépôt confirmé, pour qu'un échec
+	 *  laisse la musique où elle était ; l'iPhone est appairé au passage pour le
+	 *  Wi-Fi. Sinon, ou si le câble échoue, par le Wi-Fi (option B) : le passage
+	 *  attend que l'iPhone vienne le prendre, et le Mac ne se tait qu'à son
+	 *  accusé. Le téléphone reprend en pause, à la position lue au départ :
+	 *  quelques secondes plus tôt, jamais plus tard.
+	 */
+	emporter_lecture: (udid: string | null) => __TAURI_INVOKE<LectureEmportee_Serialize>("emporter_lecture", { udid }),
+	wifi_etat: () => __TAURI_INVOKE<EtatWifiVue_Serialize>("wifi_etat"),
+	/**
+	 *  Efface le jeton et arrête le serveur : l'iPhone ne sera plus servi tant
+	 *  qu'il n'aura pas été rebranché.
+	 */
+	oublier_iphone: () => __TAURI_INVOKE<null>("oublier_iphone"),
 	/**  Avancement du démixage. L'interface sonde, faute de rapport intermédiaire. */
 	demix_state: () => __TAURI_INVOKE<({
 	en_cours: boolean,
@@ -1069,6 +1517,11 @@ export const commands = {
 };
 
 /* Types */
+export type APropos = {
+	version: string,
+	modeles: Modele[],
+};
+
 /**  Ce que l'accordeur entend. */
 export type Accord = {
 	/**  Fondamentale affinée. */
@@ -1170,6 +1623,41 @@ export type AlbumRow_Serialize = {
 	 *  existant le remonte. `None` si aucune piste n'a de date.
 	 */
 	ajoute_le: number | null,
+};
+
+/**  Un album retenu. */
+export type AlbumValise = AlbumValise_Serialize | AlbumValise_Deserialize;
+
+/**  Un album retenu. */
+export type AlbumValise_Deserialize = {
+	id: string,
+	album: string,
+	artiste: string,
+	annee?: number | null,
+	regle: Regle,
+	/**  Famille de la carte (cluster majoritaire), si l'album y est. */
+	famille?: number | null,
+	nb_pistes: number,
+	octets: number,
+	duree_ms: number,
+	ajoute_le?: number | null,
+	ecoutes: number,
+};
+
+/**  Un album retenu. */
+export type AlbumValise_Serialize = {
+	id: string,
+	album: string,
+	artiste: string,
+	annee: number | null,
+	regle: Regle,
+	/**  Famille de la carte (cluster majoritaire), si l'album y est. */
+	famille: number | null,
+	nb_pistes: number,
+	octets: number,
+	duree_ms: number,
+	ajoute_le: number | null,
+	ecoutes: number,
 };
 
 /**
@@ -1364,6 +1852,32 @@ export type ApercuCompleter = {
 	secondes: number,
 };
 
+export type ApercuValise = ApercuValise_Serialize | ApercuValise_Deserialize;
+
+export type ApercuValise_Deserialize = {
+	albums: AlbumValise_Deserialize[],
+	octets: number,
+	budget_octets: number,
+};
+
+export type ApercuValise_Serialize = {
+	albums: AlbumValise_Serialize[],
+	octets: number,
+	budget_octets: number,
+};
+
+/**  Un iPhone appairé avec ce Mac. */
+export type Appareil = {
+	udid: string,
+	nom: string,
+	modele: string,
+	/**
+	 *  Branché en USB (sinon joignable en Wi-Fi, s'il est sur le même réseau
+	 *  et déverrouillé).
+	 */
+	filaire: boolean,
+};
+
 /**  Un artiste et son volume dans la bibliothèque. */
 export type ArtistRow = ArtistRow_Serialize | ArtistRow_Deserialize;
 
@@ -1556,6 +2070,22 @@ export type AvancementEnrichissement = {
 	artistes: number,
 	total: number,
 	avec_genre: number,
+};
+
+/**  Avancement de l'envoi d'une valise, sondé par l'interface. */
+export type AvancementEnvoiValise = {
+	/**  L'étape en cours, en mots. */
+	etape: string,
+	faits: number,
+	total: number,
+};
+
+/**
+ *  Avancement de la réinstallation de l'app compagnon (construction Xcode
+ *  puis installation) : la dernière ligne du script, pour montrer que ça vit.
+ */
+export type AvancementRenouvellement = {
+	ligne: string,
 };
 
 /**  Avancement du scan en cours, sondé par l'interface. */
@@ -1864,6 +2394,77 @@ export type Chaine = {
  */
 export type Classe = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
+/**
+ *  Une édition face à l'album local : ses pistes, celles de l'album, et leur
+ *  alignement rang à rang.
+ */
+export type Comparaison = Comparaison_Serialize | Comparaison_Deserialize;
+
+/**
+ *  Une édition face à l'album local : ses pistes, celles de l'album, et leur
+ *  alignement rang à rang.
+ */
+export type Comparaison_Deserialize = {
+	edition: EditionDetaillee_Deserialize,
+	locales: TrackRow_Deserialize[],
+	paires: Paire_Deserialize[],
+};
+
+/**
+ *  Une édition face à l'album local : ses pistes, celles de l'album, et leur
+ *  alignement rang à rang.
+ */
+export type Comparaison_Serialize = {
+	edition: EditionDetaillee_Serialize,
+	locales: TrackRow_Serialize[],
+	paires: Paire_Serialize[],
+};
+
+/**  Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir. */
+export type CompositionTexte = CompositionTexte_Serialize | CompositionTexte_Deserialize;
+
+/**  Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir. */
+export type CompositionTexte_Deserialize = {
+	pistes: TrackRow_Deserialize[],
+	/**
+	 *  Une phrase par critère abandonné ou limite rencontrée (trop peu de
+	 *  morceaux admissibles, marche écourtée, durée non atteinte) — montrées
+	 *  à l'utilisateur, jamais tues : une playlist « calme » qui ne l'est plus
+	 *  doit le dire.
+	 */
+	relaches: string[],
+	/**  Durée cumulée des pistes rendues. */
+	duree_ms: number,
+	/**
+	 *  Ce que le moteur a fait, partie par partie : l'« entonnoir » des filtres,
+	 *  le départ choisi et pourquoi, la durée obtenue contre la durée visée.
+	 *  Toujours au moins une entrée (une playlist sans partie en a une
+	 *  implicite) ; l'interface s'en sert pour expliquer le résultat.
+	 */
+	parties: PartieResultat_Deserialize[],
+};
+
+/**  Ce que `path_texte` rend : la playlist, et ce qu'il faut en savoir. */
+export type CompositionTexte_Serialize = {
+	pistes: TrackRow_Serialize[],
+	/**
+	 *  Une phrase par critère abandonné ou limite rencontrée (trop peu de
+	 *  morceaux admissibles, marche écourtée, durée non atteinte) — montrées
+	 *  à l'utilisateur, jamais tues : une playlist « calme » qui ne l'est plus
+	 *  doit le dire.
+	 */
+	relaches: string[],
+	/**  Durée cumulée des pistes rendues. */
+	duree_ms: number,
+	/**
+	 *  Ce que le moteur a fait, partie par partie : l'« entonnoir » des filtres,
+	 *  le départ choisi et pourquoi, la durée obtenue contre la durée visée.
+	 *  Toujours au moins une entrée (une playlist sans partie en a une
+	 *  implicite) ; l'interface s'en sert pour expliquer le résultat.
+	 */
+	parties: PartieResultat_Serialize[],
+};
+
 /**  L'avancement le plus courant : `faits` sur `total`. */
 export type Compte = {
 	faits: number,
@@ -1971,6 +2572,25 @@ export type CourbeVue = {
 	le_long: Riverain[],
 };
 
+/**  Un crédit Discogs à ranger — voir `credits_discogs` du schéma. */
+export type CreditDiscogs = CreditDiscogs_Serialize | CreditDiscogs_Deserialize;
+
+/**  Un crédit Discogs à ranger — voir `credits_discogs` du schéma. */
+export type CreditDiscogs_Deserialize = {
+	personne: string,
+	role: string,
+	pistes: string,
+	discogs_artist_id?: number | null,
+};
+
+/**  Un crédit Discogs à ranger — voir `credits_discogs` du schéma. */
+export type CreditDiscogs_Serialize = {
+	personne: string,
+	role: string,
+	pistes: string,
+	discogs_artist_id: number | null,
+};
+
 /**
  *  Une critique telle que servie à l'inspecteur — l'attribution est
  *  obligatoire partout où `texte` apparaît (licence CC).
@@ -2005,6 +2625,123 @@ export type Critique_Serialize = {
 	url_originale: string | null,
 };
 
+/**
+ *  Un point de la carte.
+ * 
+ *  Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
+ *  l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
+ *  d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
+ *  minutage se retrouvent sans durée selon d'où l'on a cliqué.
+ *  Ce que la passe de descripteurs a mesuré d'un morceau.
+ * 
+ *  Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
+ *  sans tonalité lisible, et l'inverse.
+ */
+export type DescripteursVus = DescripteursVus_Serialize | DescripteursVus_Deserialize;
+
+/**
+ *  Un point de la carte.
+ * 
+ *  Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
+ *  l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
+ *  d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
+ *  minutage se retrouvent sans durée selon d'où l'on a cliqué.
+ *  Ce que la passe de descripteurs a mesuré d'un morceau.
+ * 
+ *  Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
+ *  sans tonalité lisible, et l'inverse.
+ */
+export type DescripteursVus_Deserialize = {
+	/**
+	 *  Battements par minute. **Ambiguïté d'octave connue** : un morceau à
+	 *  174 BPM peut être rendu à 87, la préférence du détecteur allant vers
+	 *  120 (`crates/analysis/src/descripteurs.rs`).
+	 */
+	bpm?: number | null,
+	/**  Notée à l'anglaise — « F min », « C maj ». */
+	tonalite?: string | null,
+	/**  Valeur efficace, entre 0 et 1. */
+	energie?: number | null,
+	/**  Taux de passage par zéro — élevé pour un son bruité/percussif. */
+	zcr?: number | null,
+	/**  Centroïde spectral (Hz), moyenne puis écart-type entre trames. */
+	centroide_moy?: number | null,
+	centroide_ecart?: number | null,
+	/**  Rolloff spectral (Hz, seuil 85 %), même paire. */
+	rolloff_moy?: number | null,
+	rolloff_ecart?: number | null,
+	/**  Aplatissement spectral (0..1, bruit vs tonal), même paire. */
+	flatness_moy?: number | null,
+	flatness_ecart?: number | null,
+};
+
+/**
+ *  Un point de la carte.
+ * 
+ *  Porte les mêmes champs qu'un [`TrackRow`], plus la position et la famille :
+ *  l'interface manipule ainsi une seule forme de « morceau », qu'il vienne
+ *  d'une liste ou de la carte. Deux formes distinctes, et l'inspecteur ou le
+ *  minutage se retrouvent sans durée selon d'où l'on a cliqué.
+ *  Ce que la passe de descripteurs a mesuré d'un morceau.
+ * 
+ *  Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
+ *  sans tonalité lisible, et l'inverse.
+ */
+export type DescripteursVus_Serialize = {
+	/**
+	 *  Battements par minute. **Ambiguïté d'octave connue** : un morceau à
+	 *  174 BPM peut être rendu à 87, la préférence du détecteur allant vers
+	 *  120 (`crates/analysis/src/descripteurs.rs`).
+	 */
+	bpm: number | null,
+	/**  Notée à l'anglaise — « F min », « C maj ». */
+	tonalite: string | null,
+	/**  Valeur efficace, entre 0 et 1. */
+	energie: number | null,
+	/**  Taux de passage par zéro — élevé pour un son bruité/percussif. */
+	zcr: number | null,
+	/**  Centroïde spectral (Hz), moyenne puis écart-type entre trames. */
+	centroide_moy: number | null,
+	centroide_ecart: number | null,
+	/**  Rolloff spectral (Hz, seuil 85 %), même paire. */
+	rolloff_moy: number | null,
+	rolloff_ecart: number | null,
+	/**  Aplatissement spectral (0..1, bruit vs tonal), même paire. */
+	flatness_moy: number | null,
+	flatness_ecart: number | null,
+};
+
+/**  Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau. */
+export type DisponibiliteLama = DisponibiliteLama_Serialize | DisponibiliteLama_Deserialize;
+
+/**  Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau. */
+export type DisponibiliteLama_Deserialize = {
+	/**
+	 *  Le modèle intégré : `pret`, `a_telecharger`, ou `absent` (version
+	 *  compilée sans) — voir [`modele_local::disponibilite`].
+	 */
+	local: string,
+	/**  Ollama : `pret`, `sans_modele` (il répond, rien d'installé) ou `absent`. */
+	etat: string,
+	modeles: string[],
+	/**  Pourquoi Ollama est tenu pour absent, tel que le client l'a vu. */
+	detail?: string | null,
+};
+
+/**  Ce que Lama peut faire sur cette machine, sondé à l'entrée du panneau. */
+export type DisponibiliteLama_Serialize = {
+	/**
+	 *  Le modèle intégré : `pret`, `a_telecharger`, ou `absent` (version
+	 *  compilée sans) — voir [`modele_local::disponibilite`].
+	 */
+	local: string,
+	/**  Ollama : `pret`, `sans_modele` (il répond, rien d'installé) ou `absent`. */
+	etat: string,
+	modeles: string[],
+	/**  Pourquoi Ollama est tenu pour absent, tel que le client l'a vu. */
+	detail: string | null,
+};
+
 export type DoublonProbable = DoublonProbable_Serialize | DoublonProbable_Deserialize;
 
 export type DoublonProbable_Deserialize = {
@@ -2017,6 +2754,94 @@ export type DoublonProbable_Serialize = {
 	a: TrackRow_Serialize,
 	b: TrackRow_Serialize,
 	distance2: number | null,
+};
+
+/**
+ *  Ce que dit le fichier déjà sur le disque, sans rien télécharger : sa
+ *  taille et la date de dernière écriture (= dernier téléchargement réussi).
+ */
+export type DumpDiscogsInfo = {
+	octets: number,
+	telecharge_le: number,
+};
+
+/**  Une édition et toutes ses pistes, dans l'ordre des supports. */
+export type EditionDetaillee = EditionDetaillee_Serialize | EditionDetaillee_Deserialize;
+
+/**  Une édition et toutes ses pistes, dans l'ordre des supports. */
+export type EditionDetaillee_Deserialize = {
+	id: string,
+	titre: string,
+	artiste: string,
+	/**  Premier artiste crédité sur l'édition — l'artiste de l'album. */
+	artiste_mbid?: string | null,
+	release_group?: string | null,
+	pistes: PisteEdition_Deserialize[],
+};
+
+/**  Une édition et toutes ses pistes, dans l'ordre des supports. */
+export type EditionDetaillee_Serialize = {
+	id: string,
+	titre: string,
+	artiste: string,
+	/**  Premier artiste crédité sur l'édition — l'artiste de l'album. */
+	artiste_mbid: string | null,
+	release_group: string | null,
+	pistes: PisteEdition_Serialize[],
+};
+
+/**
+ *  Une édition rendue par la recherche — de quoi la reconnaître dans une liste.
+ *  La recherche ne donne pas les durées : elles viennent avec
+ *  [`EditionDetaillee`], une requête de plus, à la sélection.
+ */
+export type EditionProposee = EditionProposee_Serialize | EditionProposee_Deserialize;
+
+/**
+ *  Une édition rendue par la recherche — de quoi la reconnaître dans une liste.
+ *  La recherche ne donne pas les durées : elles viennent avec
+ *  [`EditionDetaillee`], une requête de plus, à la sélection.
+ */
+export type EditionProposee_Deserialize = {
+	id: string,
+	titre: string,
+	artiste: string,
+	date?: string | null,
+	pays?: string | null,
+	label?: string | null,
+	catalogue?: string | null,
+	/**  Formats des supports, joints (« 2×CD », « Vinyl + Digital Media »). */
+	format?: string | null,
+	pistes: number,
+	/**  Même nombre de pistes que l'album local : une concordance, rien de plus. */
+	concorde: boolean,
+};
+
+/**
+ *  Une édition rendue par la recherche — de quoi la reconnaître dans une liste.
+ *  La recherche ne donne pas les durées : elles viennent avec
+ *  [`EditionDetaillee`], une requête de plus, à la sélection.
+ */
+export type EditionProposee_Serialize = {
+	id: string,
+	titre: string,
+	artiste: string,
+	date: string | null,
+	pays: string | null,
+	label: string | null,
+	catalogue: string | null,
+	/**  Formats des supports, joints (« 2×CD », « Vinyl + Digital Media »). */
+	format: string | null,
+	pistes: number,
+	/**  Même nombre de pistes que l'album local : une concordance, rien de plus. */
+	concorde: boolean,
+};
+
+/**  L'édition retenue pour un album, telle que l'interface l'affiche. */
+export type EditionRetenue = {
+	release_id: string,
+	titre: string,
+	choisie_le: number,
 };
 
 export type Epingle = Epingle_Serialize | Epingle_Deserialize;
@@ -2039,6 +2864,46 @@ export type Epingle_Serialize = {
 	lat: number | null,
 };
 
+/**
+ *  De quoi conduire le panneau Lama sans clavier ni souris : une webview du
+ *  système ne se pilote pas de l'extérieur, et macOS refuse à nos outils le
+ *  pilotage des clics. `RUSTY_MUSIC_AFFICHAGE=lama` ouvre l'affichage,
+ *  `RUSTY_MUSIC_PROMPT="…"` soumet une demande, `RUSTY_MUSIC_THEME=clair`
+ *  force le thème, `RUSTY_MUSIC_AUDIT=1` lance l'audit de gabarit de l'interface
+ *  — pour les essais seulement, sans effet en usage normal.
+ */
+export type EssaiLama = EssaiLama_Serialize | EssaiLama_Deserialize;
+
+/**
+ *  De quoi conduire le panneau Lama sans clavier ni souris : une webview du
+ *  système ne se pilote pas de l'extérieur, et macOS refuse à nos outils le
+ *  pilotage des clics. `RUSTY_MUSIC_AFFICHAGE=lama` ouvre l'affichage,
+ *  `RUSTY_MUSIC_PROMPT="…"` soumet une demande, `RUSTY_MUSIC_THEME=clair`
+ *  force le thème, `RUSTY_MUSIC_AUDIT=1` lance l'audit de gabarit de l'interface
+ *  — pour les essais seulement, sans effet en usage normal.
+ */
+export type EssaiLama_Deserialize = {
+	affichage?: string | null,
+	prompt?: string | null,
+	theme?: string | null,
+	audit: boolean,
+};
+
+/**
+ *  De quoi conduire le panneau Lama sans clavier ni souris : une webview du
+ *  système ne se pilote pas de l'extérieur, et macOS refuse à nos outils le
+ *  pilotage des clics. `RUSTY_MUSIC_AFFICHAGE=lama` ouvre l'affichage,
+ *  `RUSTY_MUSIC_PROMPT="…"` soumet une demande, `RUSTY_MUSIC_THEME=clair`
+ *  force le thème, `RUSTY_MUSIC_AUDIT=1` lance l'audit de gabarit de l'interface
+ *  — pour les essais seulement, sans effet en usage normal.
+ */
+export type EssaiLama_Serialize = {
+	affichage: string | null,
+	prompt: string | null,
+	theme: string | null,
+	audit: boolean,
+};
+
 export type EtatCompleterVue = EtatCompleterVue_Serialize | EtatCompleterVue_Deserialize;
 
 export type EtatCompleterVue_Deserialize = {
@@ -2057,6 +2922,43 @@ export type EtatCompleterVue_Serialize = {
 	}) & (AvancementCompleter),
 	/**  La dernière passe journalisée, pour « Annuler cette passe ». */
 	derniere: PasseJournal_Serialize | null,
+};
+
+/**  Ce que le Mac sait de l'iPhone. */
+export type EtatIphone = EtatIphone_Serialize | EtatIphone_Deserialize;
+
+/**  Ce que le Mac sait de l'iPhone. */
+export type EtatIphone_Deserialize = {
+	/**  Xcode est là : sans lui, ni envoi ni renouvellement. */
+	xcode: boolean,
+	appareils: Appareil[],
+	/**  L'appareil retenu (celui demandé, sinon le premier). */
+	udid?: string | null,
+	app_installee: boolean,
+	/**  Expiration du profil de signature (ISO 8601). */
+	echeance?: string | null,
+	valises: ValiseTelephone_Deserialize[],
+	/**  Le script de réinstallation est là (machine de développement). */
+	renouvelable: boolean,
+	/**  Ce qui n'a pas pu être lu, en mots. */
+	erreur?: string | null,
+};
+
+/**  Ce que le Mac sait de l'iPhone. */
+export type EtatIphone_Serialize = {
+	/**  Xcode est là : sans lui, ni envoi ni renouvellement. */
+	xcode: boolean,
+	appareils: Appareil[],
+	/**  L'appareil retenu (celui demandé, sinon le premier). */
+	udid: string | null,
+	app_installee: boolean,
+	/**  Expiration du profil de signature (ISO 8601). */
+	echeance: string | null,
+	valises: ValiseTelephone_Serialize[],
+	/**  Le script de réinstallation est là (machine de développement). */
+	renouvelable: boolean,
+	/**  Ce qui n'a pas pu être lu, en mots. */
+	erreur: string | null,
 };
 
 export type EtatLecture = EtatLecture_Serialize | EtatLecture_Deserialize;
@@ -2284,6 +3186,137 @@ export type EtatTranspose_Serialize = {
 	/**  Les chemins à jouer, une fois tout fini. */
 	stems: ([string, string])[],
 	erreur: string | null,
+};
+
+export type EtatValise = {
+	envoi: ({
+		en_cours: boolean,
+		resultat: string | null,
+	}) & (AvancementEnvoiValise),
+	renouvellement: ({
+		en_cours: boolean,
+		resultat: string | null,
+	}) & (AvancementRenouvellement),
+};
+
+/**  Ce que le bloc iPhone de Valise montre du Wi-Fi. */
+export type EtatWifiVue = EtatWifiVue_Serialize | EtatWifiVue_Deserialize;
+
+/**  Ce que le bloc iPhone de Valise montre du Wi-Fi. */
+export type EtatWifiVue_Deserialize = {
+	appaire: boolean,
+	ecoute: boolean,
+	port?: number | null,
+	adresses: string[],
+	erreur?: string | null,
+	en_attente: boolean,
+	/**  Le nom de la valise prête que l'iPhone n'a pas encore prise. */
+	valise?: string | null,
+	dernier?: string | null,
+};
+
+/**  Ce que le bloc iPhone de Valise montre du Wi-Fi. */
+export type EtatWifiVue_Serialize = {
+	appaire: boolean,
+	ecoute: boolean,
+	port: number | null,
+	adresses: string[],
+	erreur: string | null,
+	en_attente: boolean,
+	/**  Le nom de la valise prête que l'iPhone n'a pas encore prise. */
+	valise: string | null,
+	dernier: string | null,
+};
+
+/**
+ *  Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
+ *  écouter ailleurs, plus la date de la dernière passe.
+ */
+export type FilDecouvrir = FilDecouvrir_Serialize | FilDecouvrir_Deserialize;
+
+/**
+ *  Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
+ *  écouter ailleurs, plus la date de la dernière passe.
+ */
+export type FilDecouvrir_Deserialize = {
+	derniere_passe?: number | null,
+	sorties: SortieFil_Deserialize[],
+	collaborations: SortieFil_Deserialize[],
+	voisins: VoisinFil[],
+};
+
+/**
+ *  Le fil du mode Découvrir : nouveaux disques, collaborations, artistes à
+ *  écouter ailleurs, plus la date de la dernière passe.
+ */
+export type FilDecouvrir_Serialize = {
+	derniere_passe: number | null,
+	sorties: SortieFil_Serialize[],
+	collaborations: SortieFil_Serialize[],
+	voisins: VoisinFil[],
+};
+
+/**
+ *  Les contraintes d'une playlist. Tout est optionnel : un filtre vide ne
+ *  restreint rien ([`FiltresPlaylist::est_vide`]).
+ * 
+ *  Les **exclusions sont dures** : jamais relâchées, comme les « coupes SQL »
+ *  d'AudioMuse-AI — « sans rock » ne doit pas devenir « un peu de rock » faute
+ *  de morceaux. Les désirs (genres, années, BPM, énergie, popularité) peuvent
+ *  l'être, en le disant ([`selectionner`]).
+ */
+export type FiltresPlaylist = FiltresPlaylist_Serialize | FiltresPlaylist_Deserialize;
+
+/**
+ *  Les contraintes d'une playlist. Tout est optionnel : un filtre vide ne
+ *  restreint rien ([`FiltresPlaylist::est_vide`]).
+ * 
+ *  Les **exclusions sont dures** : jamais relâchées, comme les « coupes SQL »
+ *  d'AudioMuse-AI — « sans rock » ne doit pas devenir « un peu de rock » faute
+ *  de morceaux. Les désirs (genres, années, BPM, énergie, popularité) peuvent
+ *  l'être, en le disant ([`selectionner`]).
+ */
+export type FiltresPlaylist_Deserialize = {
+	genres?: string[],
+	exclure_genres?: string[],
+	exclure_artistes?: string[],
+	annee_min?: number | null,
+	annee_max?: number | null,
+	/**
+	 *  Attention à l'ambiguïté d'octave du détecteur de tempo (un 174 BPM peut
+	 *  être mesuré 87) — voir `DescripteursVus::bpm`.
+	 */
+	bpm_min?: number | null,
+	bpm_max?: number | null,
+	energie?: NiveauEnergie | null,
+	popularite?: NiveauPopularite | null,
+	ecoute?: NiveauEcoute | null,
+};
+
+/**
+ *  Les contraintes d'une playlist. Tout est optionnel : un filtre vide ne
+ *  restreint rien ([`FiltresPlaylist::est_vide`]).
+ * 
+ *  Les **exclusions sont dures** : jamais relâchées, comme les « coupes SQL »
+ *  d'AudioMuse-AI — « sans rock » ne doit pas devenir « un peu de rock » faute
+ *  de morceaux. Les désirs (genres, années, BPM, énergie, popularité) peuvent
+ *  l'être, en le disant ([`selectionner`]).
+ */
+export type FiltresPlaylist_Serialize = {
+	genres: string[],
+	exclure_genres: string[],
+	exclure_artistes: string[],
+	annee_min: number | null,
+	annee_max: number | null,
+	/**
+	 *  Attention à l'ambiguïté d'octave du détecteur de tempo (un 174 BPM peut
+	 *  être mesuré 87) — voir `DescripteursVus::bpm`.
+	 */
+	bpm_min: number | null,
+	bpm_max: number | null,
+	energie: NiveauEnergie | null,
+	popularite: NiveauPopularite | null,
+	ecoute: NiveauEcoute | null,
 };
 
 /**  Un coup reçu de la batterie. */
@@ -2698,6 +3731,63 @@ export type Jugement_Serialize = {
 	verdict: Verdict,
 };
 
+/**  Un label Discogs à ranger — voir `labels_discogs` du schéma. */
+export type LabelDiscogs = LabelDiscogs_Serialize | LabelDiscogs_Deserialize;
+
+/**  Un label Discogs à ranger — voir `labels_discogs` du schéma. */
+export type LabelDiscogs_Deserialize = {
+	nom: string,
+	catno: string,
+	discogs_label_id?: number | null,
+};
+
+/**  Un label Discogs à ranger — voir `labels_discogs` du schéma. */
+export type LabelDiscogs_Serialize = {
+	nom: string,
+	catno: string,
+	discogs_label_id: number | null,
+};
+
+/**  Ce que le passage a emporté, pour la phrase de l'interface. */
+export type LectureEmportee = LectureEmportee_Serialize | LectureEmportee_Deserialize;
+
+/**  Ce que le passage a emporté, pour la phrase de l'interface. */
+export type LectureEmportee_Deserialize = {
+	pistes: number,
+	titre?: string | null,
+	position_ms: number,
+	/**
+	 *  Le Mac s'est mis en pause. `false` quand la lecture a changé pendant
+	 *  le dépôt, ou par le Wi-Fi tant que l'iPhone ne l'a pas prise.
+	 */
+	mac_en_pause: boolean,
+	/**  Par le Wi-Fi (`wifi.rs`) : la lecture attend que l'iPhone la prenne. */
+	par_wifi: boolean,
+	/**  Pourquoi le câble n'a pas servi, quand il a été essayé. */
+	cable_echec?: string | null,
+};
+
+/**  Ce que le passage a emporté, pour la phrase de l'interface. */
+export type LectureEmportee_Serialize = {
+	pistes: number,
+	titre: string | null,
+	position_ms: number,
+	/**
+	 *  Le Mac s'est mis en pause. `false` quand la lecture a changé pendant
+	 *  le dépôt, ou par le Wi-Fi tant que l'iPhone ne l'a pas prise.
+	 */
+	mac_en_pause: boolean,
+	/**  Par le Wi-Fi (`wifi.rs`) : la lecture attend que l'iPhone la prenne. */
+	par_wifi: boolean,
+	/**  Pourquoi le câble n'a pas servi, quand il a été essayé. */
+	cable_echec: string | null,
+};
+
+export type Lien = {
+	texte: string,
+	url: string,
+};
+
 /**  Une liste calculée à partir des écoutes, telle que la vue Playlists l'affiche. */
 export type ListeIntelligente = {
 	/**
@@ -2936,6 +4026,16 @@ export type MesurePratique_Serialize = {
 	score: number | null,
 };
 
+export type Modele = {
+	nom: string,
+	role: string,
+	article: string,
+	licence_code: string,
+	licence_poids: string,
+	/**  Tous les liens de la ligne (code, poids, conditions), sans doublon. */
+	liens: Lien[],
+};
+
 export type Motif = 
 /**  Le jeu est devant le disque. */
 "devant" | 
@@ -2943,6 +4043,28 @@ export type Motif =
 "derriere" | 
 /**  Le disque pose la pièce hors de la grille, le jeu non (ou l'inverse). */
 "grille" | "swing" | "velocite" | "accents";
+
+/**
+ *  Ce que la playlist demande de l'historique d'écoute (table `ecoute`, voir
+ *  `memoire.rs`). Un morceau **oublié** a été écouté au moins une fois, mais pas
+ *  depuis [`OUBLIE_APRES_JOURS`] ; un morceau **jamais** écouté n'a aucune ligne
+ *  dans l'historique. Deux demandes distinctes, et distinctes de la popularité
+ *  générale : « oubliés » parle de *cet* utilisateur, pas du monde.
+ */
+export type NiveauEcoute = "oublie" | "jamais";
+
+/**
+ *  Niveau d'énergie demandé. Relatif à **la bibliothèque** (tiers de la
+ *  distribution des énergies mesurées), pas un seuil fixe : « calme » dans une
+ *  collection de métal n'est pas « calme » dans une collection d'ambient.
+ */
+export type NiveauEnergie = "calme" | "moyenne" | "intense";
+
+/**
+ *  Popularité demandée : un tiers de la bibliothèque, d'après le rang
+ *  percentile `track_popularite.relative` (voir `docs/popularite.md`).
+ */
+export type NiveauPopularite = "peu_connu" | "connu";
 
 /**  Une note transcrite, en secondes du fichier d'origine. */
 export type Note = Note_Serialize | Note_Deserialize;
@@ -3060,6 +4182,37 @@ export type Note_Serialize = {
 };
 
 /**
+ *  Une ligne de l'alignement : une piste locale, une piste de l'édition, ou les
+ *  deux. `ecart_ms` : durée de l'édition moins durée locale, quand les deux
+ *  sont connues ; `titre_differe` : les titres normalisés ne se ressemblent pas.
+ */
+export type Paire = Paire_Serialize | Paire_Deserialize;
+
+/**
+ *  Une ligne de l'alignement : une piste locale, une piste de l'édition, ou les
+ *  deux. `ecart_ms` : durée de l'édition moins durée locale, quand les deux
+ *  sont connues ; `titre_differe` : les titres normalisés ne se ressemblent pas.
+ */
+export type Paire_Deserialize = {
+	locale?: number | null,
+	edition?: number | null,
+	ecart_ms?: number | null,
+	titre_differe: boolean,
+};
+
+/**
+ *  Une ligne de l'alignement : une piste locale, une piste de l'édition, ou les
+ *  deux. `ecart_ms` : durée de l'édition moins durée locale, quand les deux
+ *  sont connues ; `titre_differe` : les titres normalisés ne se ressemblent pas.
+ */
+export type Paire_Serialize = {
+	locale: number | null,
+	edition: number | null,
+	ecart_ms: number | null,
+	titre_differe: boolean,
+};
+
+/**
  *  Paramètres du calcul de la carte — projection t-SNE et clustering
  *  k-means. Rien pour les empreintes elles-mêmes : le modèle CLAP importé
  *  est figé au moment du build (`crates/analysis/src/encodeur.rs`), il n'y a
@@ -3097,6 +4250,115 @@ export type ParametresCarte = {
 	densite_resolution: number,
 	/**  Bandes par nappe de densité. */
 	densite_bandes: number,
+};
+
+/**  Une part de la valise : une règle et ce qu'elle a le droit de prendre. */
+export type Part = Part_Serialize | Part_Deserialize;
+
+/**  Une part de la valise : une règle et ce qu'elle a le droit de prendre. */
+export type Part_Deserialize = {
+	regle: Regle,
+	/**
+	 *  Albums au plus, dans la limite du budget qui reste ; `None` : une part
+	 *  égale du budget restant entre les parts restantes (la ligne de
+	 *  commande).
+	 */
+	albums?: number | null,
+	/**  La famille, pour [`Regle::Famille`]. */
+	famille?: number | null,
+};
+
+/**  Une part de la valise : une règle et ce qu'elle a le droit de prendre. */
+export type Part_Serialize = {
+	regle: Regle,
+	/**
+	 *  Albums au plus, dans la limite du budget qui reste ; `None` : une part
+	 *  égale du budget restant entre les parts restantes (la ligne de
+	 *  commande).
+	 */
+	albums: number | null,
+	/**  La famille, pour [`Regle::Famille`]. */
+	famille: number | null,
+};
+
+/**
+ *  Un moment d'une playlist en plusieurs parties. Les exclusions, années,
+ *  tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
+ *  la partie priment sur ceux de la playlist.
+ */
+export type PartieLlm = PartieLlm_Serialize | PartieLlm_Deserialize;
+
+/**
+ *  Un moment d'une playlist en plusieurs parties. Les exclusions, années,
+ *  tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
+ *  la partie priment sur ceux de la playlist.
+ */
+export type PartieLlm_Deserialize = {
+	/**  Phrase anglaise décrivant ce moment — la cible CLAP-texte de la partie. */
+	description?: string,
+	genres?: string[],
+	energie?: string | null,
+	duree_minutes?: number | null,
+	n?: number | null,
+};
+
+/**
+ *  Un moment d'une playlist en plusieurs parties. Les exclusions, années,
+ *  tempo, popularité et plafond restent **globaux** ; `genres` et `energie` de
+ *  la partie priment sur ceux de la playlist.
+ */
+export type PartieLlm_Serialize = {
+	/**  Phrase anglaise décrivant ce moment — la cible CLAP-texte de la partie. */
+	description: string,
+	genres: string[],
+	energie: string | null,
+	duree_minutes: number | null,
+	n: number | null,
+};
+
+/**  Une partie composée : sa place dans la file et ce qui l'a produite. */
+export type PartieResultat = PartieResultat_Serialize | PartieResultat_Deserialize;
+
+/**  Une partie composée : sa place dans la file et ce qui l'a produite. */
+export type PartieResultat_Deserialize = {
+	libelle: string,
+	/**  Indices dans `pistes` : `debut` inclus, `fin` exclu. */
+	debut: number,
+	fin: number,
+	duree_ms: number,
+	cible_ms?: number | null,
+	/**  Morceaux admissibles avant la marche (hors ceux d'une partie précédente). */
+	n_admissibles: number,
+	/**  `(critère, morceaux restants)` — voir `filtres_playlist::entonnoir`. */
+	entonnoir: ([string, number])[],
+	depart_pourquoi: string,
+	relaches: string[],
+	/**
+	 *  Les admissibles, pour estomper le reste sur le mini-nuage. Vide : aucun
+	 *  filtre, tout est admissible.
+	 */
+	ids_admissibles: number[],
+};
+
+/**  Une partie composée : sa place dans la file et ce qui l'a produite. */
+export type PartieResultat_Serialize = {
+	libelle: string,
+	/**  Indices dans `pistes` : `debut` inclus, `fin` exclu. */
+	debut: number,
+	fin: number,
+	duree_ms: number,
+	cible_ms: number | null,
+	/**  Morceaux admissibles avant la marche (hors ceux d'une partie précédente). */
+	n_admissibles: number,
+	/**  `(critère, morceaux restants)` — voir `filtres_playlist::entonnoir`. */
+	entonnoir: ([string, number])[],
+	depart_pourquoi: string,
+	relaches: string[],
+	/**
+	 *  Les admissibles, pour estomper le reste sur le mini-nuage. Vide : aucun
+	 *  filtre, tout est admissible.
+	 */
+	ids_admissibles: number[],
 };
 
 /**
@@ -3162,6 +4424,31 @@ export type PasseJournal_Serialize = {
 
 export type Piece = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
+/**  Une piste d'une édition détaillée. */
+export type PisteEdition = PisteEdition_Serialize | PisteEdition_Deserialize;
+
+/**  Une piste d'une édition détaillée. */
+export type PisteEdition_Deserialize = {
+	disque: number,
+	position: number,
+	titre: string,
+	duree_ms?: number | null,
+	recording_id: string,
+	/**  Premier artiste crédité sur la piste (une compilation en a plusieurs). */
+	artiste_mbid?: string | null,
+};
+
+/**  Une piste d'une édition détaillée. */
+export type PisteEdition_Serialize = {
+	disque: number,
+	position: number,
+	titre: string,
+	duree_ms: number | null,
+	recording_id: string,
+	/**  Premier artiste crédité sur la piste (une compilation en a plusieurs). */
+	artiste_mbid: string | null,
+};
+
 /**  Une piste que le lecteur a sautée : fichier disparu, corrompu ou non décodé. */
 export type PisteIgnoree = {
 	path: string,
@@ -3175,6 +4462,155 @@ export type PlacePerdue = {
 	passage: number,
 	/**  −1 : il joue la mesure d'avant ; +1 : celle d'après. */
 	decalage: number,
+};
+
+/**
+ *  Interprétation d'un prompt de playlist en texte libre (champ d'intention
+ *  d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
+ *  voir `path_texte_interpreter` puis `path_texte`.
+ */
+export type PlanTexte = PlanTexte_Serialize | PlanTexte_Deserialize;
+
+/**
+ *  Interprétation d'un prompt de playlist en texte libre (champ d'intention
+ *  d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
+ *  voir `path_texte_interpreter` puis `path_texte`.
+ */
+export type PlanTexte_Deserialize = {
+	/**
+	 *  `None` si le prompt ne nomme aucun morceau ni artiste identifiable :
+	 *  `path_texte` choisit alors un départ par similarité à la première
+	 *  étape plutôt qu'un morceau arbitraire.
+	 */
+	depart?: TrackRow_Deserialize | null,
+	/**
+	 *  `None` si le prompt ne demande pas d'arrivée précise (cas le plus
+	 *  courant : une simple dérive depuis `depart`) — `path_texte` dérive
+	 *  alors sans viser de point d'arrivée, comme avant l'ajout de ce champ.
+	 *  Présent, `path_texte` termine la marche guidée par un raccordement
+	 *  exact vers ce morceau (`Graphe::sonique`), pour qu'un « arriver à X »
+	 *  explicite dans le prompt tienne sa promesse plutôt que de rester une
+	 *  simple étape textuelle diluée parmi d'autres.
+	 */
+	arrivee?: TrackRow_Deserialize | null,
+	/**
+	 *  Le nom que le LLM a cru reconnaître comme arrivée, **que la recherche
+	 *  l'ait trouvé ou non** — `None` seulement si le prompt ne demandait
+	 *  aucune arrivée. Sert à distinguer, dans l'inspecteur, « pas d'arrivée
+	 *  demandée » de « arrivée demandée mais introuvable » : régression du 14
+	 *  septembre (« RATM » cherché tel quel, jamais trouvé, la playlist
+	 *  dérivait quand même sans arrivée sans que rien ne le montre) —
+	 *  `arrivee` seul à `None` ne disait pas lequel des deux cas s'était
+	 *  produit.
+	 */
+	arrivee_demandee?: string | null,
+	/**  Toujours au moins une étape — `ollama::interpreter` le garantit déjà. */
+	etapes: string[],
+	n: number,
+	/**
+	 *  Durée totale voulue : prime sur `n`, la playlist s'arrête à cette
+	 *  durée plutôt qu'à un nombre de morceaux.
+	 */
+	duree_minutes?: number | null,
+	/**
+	 *  Plafond de morceaux par artiste **demandé** par l'utilisateur — jamais
+	 *  relâché. Absent : un plafond par défaut, lui relâché au besoin
+	 *  (`filtres_playlist::plafonner_par_artiste`).
+	 */
+	plafond_par_artiste?: number | null,
+	/**
+	 *  Les contraintes typées appliquées à la bibliothèque avant la marche
+	 *  (`filtres_playlist`). `#[serde(default)]` : un plan sans ce champ ne
+	 *  restreint rien.
+	 */
+	filtres?: FiltresPlaylist_Deserialize,
+	/**
+	 *  Une phrase où Ollama reformule la demande — affichée telle quelle, sous
+	 *  « Ollama a compris » : de quoi vérifier d'un coup d'œil qu'il a bien lu.
+	 */
+	reformulation?: string | null,
+	/**
+	 *  Les parties d'une playlist « X puis Y » (genre, énergie, durée chacune).
+	 *  Vide : une seule partie implicite — `etapes` et `filtres`. Éditables
+	 *  dans l'interface avant « Recomposer ».
+	 */
+	parties?: PartieLlm_Deserialize[],
+	/**
+	 *  La réponse du modèle, telle qu'il l'a écrite — pour le dépliant « réponse
+	 *  brute d'Ollama ».
+	 */
+	brut?: string,
+};
+
+/**
+ *  Interprétation d'un prompt de playlist en texte libre (champ d'intention
+ *  d'Explorer), affichée puis éditable dans l'inspecteur avant composition —
+ *  voir `path_texte_interpreter` puis `path_texte`.
+ */
+export type PlanTexte_Serialize = {
+	/**
+	 *  `None` si le prompt ne nomme aucun morceau ni artiste identifiable :
+	 *  `path_texte` choisit alors un départ par similarité à la première
+	 *  étape plutôt qu'un morceau arbitraire.
+	 */
+	depart: TrackRow_Serialize | null,
+	/**
+	 *  `None` si le prompt ne demande pas d'arrivée précise (cas le plus
+	 *  courant : une simple dérive depuis `depart`) — `path_texte` dérive
+	 *  alors sans viser de point d'arrivée, comme avant l'ajout de ce champ.
+	 *  Présent, `path_texte` termine la marche guidée par un raccordement
+	 *  exact vers ce morceau (`Graphe::sonique`), pour qu'un « arriver à X »
+	 *  explicite dans le prompt tienne sa promesse plutôt que de rester une
+	 *  simple étape textuelle diluée parmi d'autres.
+	 */
+	arrivee: TrackRow_Serialize | null,
+	/**
+	 *  Le nom que le LLM a cru reconnaître comme arrivée, **que la recherche
+	 *  l'ait trouvé ou non** — `None` seulement si le prompt ne demandait
+	 *  aucune arrivée. Sert à distinguer, dans l'inspecteur, « pas d'arrivée
+	 *  demandée » de « arrivée demandée mais introuvable » : régression du 14
+	 *  septembre (« RATM » cherché tel quel, jamais trouvé, la playlist
+	 *  dérivait quand même sans arrivée sans que rien ne le montre) —
+	 *  `arrivee` seul à `None` ne disait pas lequel des deux cas s'était
+	 *  produit.
+	 */
+	arrivee_demandee: string | null,
+	/**  Toujours au moins une étape — `ollama::interpreter` le garantit déjà. */
+	etapes: string[],
+	n: number,
+	/**
+	 *  Durée totale voulue : prime sur `n`, la playlist s'arrête à cette
+	 *  durée plutôt qu'à un nombre de morceaux.
+	 */
+	duree_minutes: number | null,
+	/**
+	 *  Plafond de morceaux par artiste **demandé** par l'utilisateur — jamais
+	 *  relâché. Absent : un plafond par défaut, lui relâché au besoin
+	 *  (`filtres_playlist::plafonner_par_artiste`).
+	 */
+	plafond_par_artiste: number | null,
+	/**
+	 *  Les contraintes typées appliquées à la bibliothèque avant la marche
+	 *  (`filtres_playlist`). `#[serde(default)]` : un plan sans ce champ ne
+	 *  restreint rien.
+	 */
+	filtres: FiltresPlaylist_Serialize,
+	/**
+	 *  Une phrase où Ollama reformule la demande — affichée telle quelle, sous
+	 *  « Ollama a compris » : de quoi vérifier d'un coup d'œil qu'il a bien lu.
+	 */
+	reformulation: string | null,
+	/**
+	 *  Les parties d'une playlist « X puis Y » (genre, énergie, durée chacune).
+	 *  Vide : une seule partie implicite — `etapes` et `filtres`. Éditables
+	 *  dans l'interface avant « Recomposer ».
+	 */
+	parties: PartieLlm_Serialize[],
+	/**
+	 *  La réponse du modèle, telle qu'il l'a écrite — pour le dépliant « réponse
+	 *  brute d'Ollama ».
+	 */
+	brut: string,
 };
 
 /**  La playlist que Pratiquer enchaîne (P2), telle que le bandeau la montre. */
@@ -3237,6 +4673,31 @@ export type PlaylistRow_Serialize = {
 	/**  Durée des pistes présentes. */
 	duree_ms: number,
 	modifiee_le: number,
+};
+
+/**  Un signalement, tel que l'interface l'affiche. */
+export type PochetteSuspecte = PochetteSuspecte_Serialize | PochetteSuspecte_Deserialize;
+
+/**  Un signalement, tel que l'interface l'affiche. */
+export type PochetteSuspecte_Deserialize = {
+	dossier: string,
+	artiste: string,
+	album: string,
+	/**  [`ILLISIBLE`], [`DIVERGENTE`] ou [`PARTAGEE`]. */
+	anomalie: string,
+	detail: string,
+	mesure?: number | null,
+};
+
+/**  Un signalement, tel que l'interface l'affiche. */
+export type PochetteSuspecte_Serialize = {
+	dossier: string,
+	artiste: string,
+	album: string,
+	/**  [`ILLISIBLE`], [`DIVERGENTE`] ou [`PARTAGEE`]. */
+	anomalie: string,
+	detail: string,
+	mesure: number | null,
 };
 
 export type PointIsole = PointIsole_Serialize | PointIsole_Deserialize;
@@ -3322,6 +4783,48 @@ export type Proposition = {
 };
 
 /**
+ *  Qualité d'encodage d'un morceau, telle que `tags::read` l'a lue sur le
+ *  disque. Chaque champ est facultatif **séparément** : un morceau scanné avant
+ *  que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
+ *  sens que pour les conteneurs sans perte.
+ */
+export type QualitePiste = QualitePiste_Serialize | QualitePiste_Deserialize;
+
+/**
+ *  Qualité d'encodage d'un morceau, telle que `tags::read` l'a lue sur le
+ *  disque. Chaque champ est facultatif **séparément** : un morceau scanné avant
+ *  que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
+ *  sens que pour les conteneurs sans perte.
+ */
+export type QualitePiste_Deserialize = {
+	codec?: string | null,
+	/**  kb/s. */
+	bitrate?: number | null,
+	/**  Hz. */
+	sample_rate?: number | null,
+	channels?: number | null,
+	/**  Bits — renseigné pour les formats sans perte seulement. */
+	bit_depth?: number | null,
+};
+
+/**
+ *  Qualité d'encodage d'un morceau, telle que `tags::read` l'a lue sur le
+ *  disque. Chaque champ est facultatif **séparément** : un morceau scanné avant
+ *  que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
+ *  sens que pour les conteneurs sans perte.
+ */
+export type QualitePiste_Serialize = {
+	codec: string | null,
+	/**  kb/s. */
+	bitrate: number | null,
+	/**  Hz. */
+	sample_rate: number | null,
+	channels: number | null,
+	/**  Bits — renseigné pour les formats sans perte seulement. */
+	bit_depth: number | null,
+};
+
+/**
  *  `passe::Rapport` ne dérive pas `Serialize` — `rusty-music-analysis` ne
  *  dépend pas de `serde`, et ce n'est pas ce seul retour de commande qui
  *  justifie de le lui ajouter.
@@ -3383,6 +4886,108 @@ export type RechercheGreffon_Serialize = {
 	ecartes_metrique: number,
 	sans_tempo: number,
 };
+
+/**
+ *  Réglages d'une sélection. Le bureau les garde dans la base
+ *  ([`Library::reglages_valise`]), d'une valise à l'autre.
+ */
+export type Reglages = Reglages_Serialize | Reglages_Deserialize;
+
+/**
+ *  Ce que l'audit parcourt, lu dans l'environnement (`audit-interface.sh`) :
+ *  `RUSTY_AUDIT_RAPIDE` (une seule fenêtre, 1 400 × 900), `RUSTY_AUDIT_ECRANS`
+ *  (écrans retenus, séparés par des virgules), `RUSTY_AUDIT_CAPTURES` (poses
+ *  de la carte sous le relief, seulement s'il est posé).
+ */
+export type ReglagesAudit = {
+	rapide: boolean,
+	ecrans: string[],
+	captures: boolean,
+};
+
+/**
+ *  Réglages d'une sélection. Le bureau les garde dans la base
+ *  ([`Library::reglages_valise`]), d'une valise à l'autre.
+ */
+export type Reglages_Deserialize = {
+	/**
+	 *  Les parts, dans l'ordre : chacune prend ses albums parmi ce que les
+	 *  précédentes ont laissé.
+	 */
+	parts?: Part_Deserialize[],
+	/**  Taille totale de l'audio, en octets. */
+	budget_octets?: number,
+	/**  Albums de moins de pistes écartés (pistes isolées, extraits). */
+	pistes_min?: number,
+	/**  Albums d'un même artiste, au plus, dans toute la valise. */
+	par_artiste?: number,
+	/**
+	 *  Graine des tirages (« peu écoutés » à égalité, famille, hasard) : deux
+	 *  valises préparées à des moments différents ne proposent pas les mêmes
+	 *  albums.
+	 */
+	graine?: number,
+	/**
+	 *  Albums gardés à la main (identifiants d'[`AlbumValise`]), pris avant
+	 *  toute règle, sans plafond par artiste.
+	 */
+	epingles?: string[],
+	/**  Albums écartés à la main : aucune règle ne les reprend. */
+	exclus?: string[],
+};
+
+/**
+ *  Réglages d'une sélection. Le bureau les garde dans la base
+ *  ([`Library::reglages_valise`]), d'une valise à l'autre.
+ */
+export type Reglages_Serialize = {
+	/**
+	 *  Les parts, dans l'ordre : chacune prend ses albums parmi ce que les
+	 *  précédentes ont laissé.
+	 */
+	parts: Part_Serialize[],
+	/**  Taille totale de l'audio, en octets. */
+	budget_octets: number,
+	/**  Albums de moins de pistes écartés (pistes isolées, extraits). */
+	pistes_min: number,
+	/**  Albums d'un même artiste, au plus, dans toute la valise. */
+	par_artiste: number,
+	/**
+	 *  Graine des tirages (« peu écoutés » à égalité, famille, hasard) : deux
+	 *  valises préparées à des moments différents ne proposent pas les mêmes
+	 *  albums.
+	 */
+	graine: number,
+	/**
+	 *  Albums gardés à la main (identifiants d'[`AlbumValise`]), pris avant
+	 *  toute règle, sans plafond par artiste.
+	 */
+	epingles: string[],
+	/**  Albums écartés à la main : aucune règle ne les reprend. */
+	exclus: string[],
+};
+
+/**  Ce qui fait entrer un album dans la valise. */
+export type Regle = 
+/**
+ *  Les derniers arrivés (date de modification la plus récente des fichiers,
+ *  comme `AlbumRow::ajoute_le`).
+ */
+"recents" | 
+/**
+ *  Jamais ou peu écoutés, puis écoutés il y a longtemps ; à égalité, un
+ *  tirage qui change d'une valise à l'autre.
+ */
+"peu-ecoutes" | 
+/**
+ *  Les albums d'une famille de la carte (cluster majoritaire de l'album,
+ *  [`Library::familles_des_albums`]), tirés au sort.
+ */
+"famille" | 
+/**  Tirés au sort dans toute la bibliothèque. */
+"hasard" | 
+/**  Épinglé à la main ([`Reglages::epingles`]) : passe avant les règles. */
+"choisi";
 
 /**  Ce qu'une mesure a donné à un passage. */
 export type Releve = Releve_Serialize | Releve_Deserialize;
@@ -3491,6 +5096,33 @@ export type Section = {
 	etiquette: string,
 };
 
+/**  Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir. */
+export type SortieFil = SortieFil_Serialize | SortieFil_Deserialize;
+
+/**  Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir. */
+export type SortieFil_Deserialize = {
+	rg_mbid: string,
+	artiste_mbid: string,
+	artiste_nom: string,
+	titre: string,
+	date_sortie?: string | null,
+	type_primaire?: string | null,
+	collaborateurs?: string | null,
+	vu: boolean,
+};
+
+/**  Une sortie récente, telle qu'elle paraît dans le fil du mode Découvrir. */
+export type SortieFil_Serialize = {
+	rg_mbid: string,
+	artiste_mbid: string,
+	artiste_nom: string,
+	titre: string,
+	date_sortie: string | null,
+	type_primaire: string | null,
+	collaborateurs: string | null,
+	vu: boolean,
+};
+
 export type SpectreTransport = SpectreTransport_Serialize | SpectreTransport_Deserialize;
 
 export type SpectreTransport_Deserialize = {
@@ -3533,6 +5165,20 @@ export type StatsBibliotheque = {
 	sans_bio: number,
 	sans_critique: number,
 	sans_discogs: number,
+};
+
+/**
+ *  Poids du logiciel lui-même — pas ce qu'il produit (stems, HD), mais ce
+ *  qu'il faut avoir sur le disque pour qu'il tourne : l'exécutable, les
+ *  modèles ML qu'il charge, la base locale et le plan de ville s'il est
+ *  importé. Complète `stems_cache`/`superres_cache` pour une trace complète
+ *  de l'empreinte disque du logiciel.
+ */
+export type StockageLogiciel = {
+	executable: number,
+	modeles: number,
+	base: number,
+	ville: number,
 };
 
 /**
@@ -3662,6 +5308,27 @@ export type TrackRow_Serialize = {
 	artist_mbid: string | null,
 };
 
+/**  Une valise présente sur l'iPhone. */
+export type ValiseTelephone = ValiseTelephone_Serialize | ValiseTelephone_Deserialize;
+
+/**  Une valise présente sur l'iPhone. */
+export type ValiseTelephone_Deserialize = {
+	nom: string,
+	/**  Date de modification du dossier (ISO 8601, UTC). */
+	le?: string | null,
+	/**  Le téléphone y a noté des écoutes (`journal.json`). */
+	journal: boolean,
+};
+
+/**  Une valise présente sur l'iPhone. */
+export type ValiseTelephone_Serialize = {
+	nom: string,
+	/**  Date de modification du dossier (ISO 8601, UTC). */
+	le: string | null,
+	/**  Le téléphone y a noté des écoutes (`journal.json`). */
+	journal: boolean,
+};
+
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
 
 /**  Ce que l'interface doit savoir d'une variante avant d'en proposer le bouton. */
@@ -3696,6 +5363,23 @@ export type VoieVue = {
 	lue: boolean,
 	/**  Le tracé de la voie depuis le carrefour, `[lon, lat]` (ville). */
 	rue: ([(number | null), (number | null)])[],
+};
+
+/**  Un artiste voisin proposé, avec les artistes de la bibliothèque qui y mènent. */
+export type VoisinFil = {
+	dst_mbid: string,
+	dst_nom: string,
+	score: number | null,
+	source: string,
+	/**  Noms des artistes-ancre — « proche de X, Y que vous écoutez ». */
+	portes: string[],
+	/**
+	 *  `mb_album_artist_id` des artistes-ancre — pour filtrer le fil par famille
+	 *  sonique côté interface (un voisin passe si l'une de ses ancres est dans
+	 *  une famille cochée).
+	 */
+	src_mbids: string[],
+	vu: boolean,
 };
 
 /**

@@ -602,6 +602,7 @@ pub struct PisteLoudness {
 /// Chaque champ est facultatif **séparément** : un morceau peut avoir un tempo
 /// sans tonalité lisible, et l'inverse.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DescripteursVus {
     /// Battements par minute. **Ambiguïté d'octave connue** : un morceau à
     /// 174 BPM peut être rendu à 87, la préférence du détecteur allant vers
@@ -629,6 +630,7 @@ pub struct DescripteursVus {
 /// que le format ne soit lu n'a ni `codec` ni `bitrate`, et `bit_depth` n'a de
 /// sens que pour les conteneurs sans perte.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct QualitePiste {
     pub codec: Option<String>,
     /// kb/s.

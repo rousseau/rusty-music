@@ -8,6 +8,7 @@ license.workspace = true
 publish = false        # composant de l'application, jamais publié seul sur crates.io
 
 [dependencies]
+specta = { version = "=2.0.0-rc.26", optional = true, features = ["derive"] }
 rusty-music-core = { path = "../core" }
 tracing.workspace    = true
 serde.workspace      = true
@@ -23,6 +24,9 @@ minijinja = { version = "3.0.5", optional = true, features = ["loop_controls", "
 minijinja-contrib = { version = "3.0.5", optional = true, default-features = false, features = ["pycompat"] }
 
 [features]
+# Les types qu'échangent les commandes Tauri, exportés en TypeScript par les
+# seuls tests du bureau (`types_commandes.rs`).
+specta = ["dep:specta"]
 # Lama sans Ollama : un modèle de langue exécuté dans le processus
 # (`llm_local`, llama.cpp par `llama-cpp-2`). Compile llama.cpp en C++ : il
 # faut cmake. Désactivée par défaut, donc absente de la CI.

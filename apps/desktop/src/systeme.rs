@@ -10,6 +10,7 @@ use super::*;
 /// — une webview du système ne se pilote pas de l'extérieur — et rend service
 /// à qui veut retrouver son mode au démarrage.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn mode_initial() -> Option<String> {
     std::env::var("RUSTY_MUSIC_MODE")
         .ok()
@@ -26,6 +27,7 @@ pub(crate) fn audit_actif() -> bool {
 /// Redimensionne la fenêtre principale pour l'audit d'interface — refusé hors
 /// audit, une application ne se laisse pas redimensionner par son contenu.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn essai_fenetre(
     app: tauri::AppHandle,
     largeur: f64,
@@ -47,6 +49,7 @@ pub(crate) fn essai_fenetre(
 /// (écrans retenus, séparés par des virgules), `RUSTY_AUDIT_CAPTURES` (poses
 /// de la carte sous le relief, seulement s'il est posé).
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct ReglagesAudit {
     rapide: bool,
     ecrans: Vec<String>,
@@ -54,6 +57,7 @@ pub(crate) struct ReglagesAudit {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn essai_audit() -> Result<ReglagesAudit, String> {
     if !audit_actif() {
         return Err("essai_audit n'existe que sous RUSTY_MUSIC_AUDIT".into());
@@ -77,6 +81,7 @@ pub(crate) fn essai_audit() -> Result<ReglagesAudit, String> {
 /// dans `RUSTY_AUDIT_CAPTURES` : la webview ne se capture pas de l'extérieur, la
 /// carte se lit de l'intérieur (canevas MapLibre). Refusé hors audit.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn essai_capture(nom: String, png: Vec<u8>) -> Result<(), String> {
     if !audit_actif() {
         return Err("essai_capture n'existe que sous RUSTY_MUSIC_AUDIT".into());
@@ -95,6 +100,7 @@ pub(crate) fn essai_capture(nom: String, png: Vec<u8>) -> Result<(), String> {
 /// Le même renvoi pour le reste de l'interface (partition, lecteur) : une
 /// version release n'a pas d'inspecteur du tout.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn journal_ui(niveau: String, source: String, message: String) {
     match niveau.as_str() {
         "error" => tracing::error!(target: "ui", "{source} : {message}"),
@@ -110,6 +116,7 @@ pub(crate) fn journal_ui(niveau: String, source: String, message: String) {
 /// nulle part. Plusieurs pannes de cette session sont restées obscures faute
 /// de ce fil.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn js_error(message: String, source: Option<String>) {
     tracing::error!(source = source.unwrap_or_default(), "interface : {message}");
 }
@@ -132,6 +139,7 @@ pub(crate) fn dossier_des_donnees<R: tauri::Runtime>(
 /// tête du mode Bibliothèque — l'utilisateur doit pouvoir retrouver, sauvegarder
 /// ou purger ce que le logiciel pose sur son disque.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn dossier_donnees(etat: State<Etat>) -> Result<String, String> {
     let d = etat
         .db
@@ -146,6 +154,7 @@ pub(crate) fn dossier_donnees(etat: State<Etat>) -> Result<String, String> {
 /// importé. Complète `stems_cache`/`superres_cache` pour une trace complète
 /// de l'empreinte disque du logiciel.
 #[derive(Clone, serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub(crate) struct StockageLogiciel {
     executable: u64,
     modeles: u64,
@@ -154,6 +163,7 @@ pub(crate) struct StockageLogiciel {
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn stockage_logiciel(etat: State<Etat>) -> Result<StockageLogiciel, String> {
     let executable = std::env::current_exe()
         .and_then(std::fs::metadata)

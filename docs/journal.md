@@ -7036,3 +7036,32 @@ le littéral, invisibles du contrôle, et donnaient à toutes l'avancement
 `{ faits, total }` : `demix_state`, `decouvrir_state`, les états Discogs et
 `enrichment_state` ont maintenant la forme de leur passe. 189 commandes
 contrôlées sur 263 ; 82 tests de fumée verts.
+
+## V53 : toutes les commandes contrôlées par les types, sauf une — 20 nov. 2026
+
+Les 72 commandes restantes passent aux types générés : Bibliothèque
+(analyse, scan, vérifications, Discogs, pochettes, pistes et recherche),
+Découvrir, Valise et le Wi-Fi, Lama, les éditions MusicBrainz, « HD » et
+« E », « À propos », le système et l'audit. Seule `tuile` reste hors contrôle
+(une réponse binaire, `tauri::ipc::Response`). Les crates `valise`, `lama`
+et `enrichissement` gagnent la feature `specta` (dépendance optionnelle,
+activée par les seuls tests du bureau), comme `transcription` (V47).
+
+Le contrôle a trouvé une réponse figée fausse de plus : `valise_reglages`
+portait un champ `modele` que le moteur n'envoie jamais (`#[serde(skip)]`).
+Trente-sept commandes sans réponse figée en ont reçu une neutre ; les
+commandes qui ne rendent rien (`js_error`, `journal_ui`…) ont une fonction
+vide, le faux moteur notant l'appel comme avant ; `scan_failures` rentre
+dans le littéral contrôlé. 262 commandes contrôlées sur 263 ; `npm run
+types` et 82 tests de fumée verts.
+
+Bilan des types générés ce soir (V46 à V53) : de 67 à 262 commandes
+contrôlées ; quatre réponses figées corrigées (`reseau_albums`,
+`valise_reglages`, les états de passe qui partageaient tous `{ faits, total }`,
+`stems_gain` hors contrôle) et une cinquantaine ajoutées là où le faux
+moteur rendait `null`.
+
+Décompte : la dernière commande de `collect_commands!` n'a pas de virgule
+et mon comptage l'omettait ; les chiffres donnés de V46 à V52 (92, 119,
+122, 144, 170, 189) sont tous à augmenter d'une unité, celui d'avant V46
+aussi (68, pas 67).

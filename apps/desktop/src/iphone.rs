@@ -26,6 +26,7 @@ pub const A_RETIRER: &str = "a-retirer.json";
 
 /// Un iPhone appairé avec ce Mac.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct Appareil {
     pub udid: String,
     pub nom: String,
@@ -37,6 +38,7 @@ pub struct Appareil {
 
 /// Une valise présente sur l'iPhone.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
 pub struct ValiseTelephone {
     pub nom: String,
     /// Date de modification du dossier (ISO 8601, UTC).

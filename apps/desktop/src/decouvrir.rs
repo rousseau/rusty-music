@@ -20,6 +20,7 @@ pub(crate) type EtatDecouvrir = Passe<AvancementDecouvrir>;
 /// Lecture seule : `start_decouvrir` fait le travail réseau. La fenêtre est
 /// fixée à un mois — c'est l'esprit du mode, une actualité.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn decouvrir_feed(
     etat: State<Etat>,
 ) -> Result<rusty_music_core::db::FilDecouvrir, String> {
@@ -34,6 +35,7 @@ pub(crate) fn decouvrir_state(etat: State<Etat>) -> Result<EtatDecouvrir, String
 
 /// Marque tout le fil comme vu — les pastilles « nouveau » s'éteignent.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn decouvrir_tout_vu(etat: State<Etat>) -> Result<(), String> {
     verrou(&etat.lib).decouvrir_tout_vu().map_err(echec)
 }
@@ -55,6 +57,7 @@ pub(crate) fn decouvrir_tout_vu(etat: State<Etat>) -> Result<(), String> {
 /// artiste et titre) — les sorties toutes fraîches y sont souvent avant d'être
 /// sur CAA. `Err` = panne réseau, jamais écrite : l'interface pourra redemander.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) async fn decouvrir_pochette(
     etat: State<'_, Etat>,
     rg_mbid: String,
@@ -104,6 +107,7 @@ pub(crate) async fn decouvrir_pochette(
 /// source. `Ok(None)` : aucune des deux n'a de photo — l'interface montre des
 /// initiales. `Err` : panne réseau, jamais écrite, à redemander.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) async fn decouvrir_photo_artiste(
     etat: State<'_, Etat>,
     mbid: String,
@@ -145,6 +149,7 @@ pub(crate) async fn decouvrir_photo_artiste(
 /// ne connaît pas (l'interface se rabat sur sa page de recherche). `Err` :
 /// panne réseau.
 #[tauri::command]
+#[cfg_attr(test, specta::specta)]
 pub(crate) async fn decouvrir_lien_deezer(
     artiste: String,
     titre: Option<String>,
@@ -166,6 +171,7 @@ pub(crate) async fn decouvrir_lien_deezer(
 /// l'ouverture du mode si la dernière passe est ancienne), sur son propre fil,
 /// avec sa propre connexion. Additive et reprenable.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_decouvrir(
     app: tauri::AppHandle,
     etat: State<Etat>,

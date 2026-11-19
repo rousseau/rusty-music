@@ -18,6 +18,7 @@ pub(crate) type EtatAnalyse = Passe<Compte>;
 /// partagée, l'interface serait figée pendant toute la passe. Le mode WAL
 /// autorise un rédacteur et des lecteurs simultanés.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
     let db = etat.db.clone();
     let pour_le_plan = app.clone();
@@ -96,6 +97,7 @@ pub(crate) type EtatDescripteurs = Passe<Compte>;
 /// justifie de remesurer une bibliothèque déjà couverte — les empreintes,
 /// elles, n'ont pas de raison de changer sans changer de modèle.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_descripteurs(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -169,6 +171,7 @@ pub(crate) type EtatLoudness = Passe<Compte>;
 /// [`start_descripteurs`] : décode le fichier entier (le seul coût de cette
 /// passe), reprenable, tourne sur son propre fil et sa propre connexion.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn start_loudness(
     app: tauri::AppHandle,
     etat: State<Etat>,
@@ -241,6 +244,7 @@ pub(crate) fn gain_pour(etat: &Etat, chemin: &Path) -> f32 {
 /// album). Réouvre le morceau en cours en tâche de fond à la même position —
 /// même recette que `set_amelioration`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn set_normalisation(
     app: tauri::AppHandle,
     etat: State<Etat>,

@@ -48,6 +48,7 @@ pub(crate) fn albums(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn tracks_of_album(
     etat: State<Etat>,
     album: String,
@@ -60,6 +61,7 @@ pub(crate) fn tracks_of_album(
 }
 
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn search(
     etat: State<Etat>,
     query: String,
@@ -121,6 +123,7 @@ pub(crate) fn library_stats(etat: State<Etat>) -> Result<StatsBibliotheque, Stri
 /// mesuré : 15 847 des 27 044 le sont à ce jour, et afficher « 120 BPM » sur
 /// les autres serait donner une mesure qu'on n'a pas.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn descripteurs(
     etat: State<Etat>,
     id: i64,
@@ -133,6 +136,7 @@ pub(crate) fn descripteurs(
 /// Chargée par lot pour ce qui est visible (file d'attente, liste de pistes),
 /// comme les pochettes — jamais dans `TrackRow`.
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn popularites(
     etat: State<Etat>,
     ids: Vec<i64>,
@@ -145,6 +149,7 @@ pub(crate) fn popularites(
 /// Champs partiellement `None` sur un morceau scanné avant la lecture du
 /// format (un rescan les remplit).
 #[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
 pub(crate) fn qualite_piste(
     etat: State<Etat>,
     id: i64,
