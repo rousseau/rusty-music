@@ -153,9 +153,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     une ligne, réglages de l'entrée repliés dans le bandeau) ;
     V44 (19 nov.) : les pads de la batterie MIDI se règlent à l'écran
     (« pads » dans le repli des réglages : le pad frappé, sa pièce, General
-    MIDI) ; restent l'audit de Pratiquer
-    (reporté, écran visible), puis l'essai réel avec la batterie et la
-    basse de François) ;
+    MIDI) ; audit d'interface complet le 19 nov. après V44 (288 cellules,
+    0 violation, Pratiquer compris) ; reste l'essai réel avec la batterie et
+    la basse de François) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie
