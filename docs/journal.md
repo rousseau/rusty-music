@@ -6972,3 +6972,12 @@ variantes unitaires), l'accordeur du coach ayant déjà son `Accord`.
 ne posent pas leur propre transcription : elles rendent maintenant une
 transcription vide de la forme du moteur. 122 commandes contrôlées sur 263 ;
 `npm run types` et 82 tests de fumée verts.
+
+CI, suite (même soir) : la compilation passée, deux échecs restaient. Les
+tests Rust ne liaient plus `ort-sys` (« could not find native static library
+`onnxruntime` ») : le cache de la CI restaure un script de build déjà passé
+qui pointe vers des binaires ONNX Runtime téléchargés hors de `target/`,
+absents ; l'étape Tests efface ses traces pour qu'il repasse. Le test de
+fumée « surveillance : un album copié… » attendait la relecture (1,5 s de
+calme, puis `albums`) dans les 5 s par défaut, trop juste sur la machine de
+CI : 10 s pour cette assertion.

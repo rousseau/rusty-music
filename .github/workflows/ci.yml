@@ -42,7 +42,12 @@ jobs:
         run: cargo clippy --workspace --all-targets --features rusty-music-analysis/sans-modeles -- -D warnings
       - name: Tests
         # Sans les exemples, comme `scripts/verifier.sh` : Clippy les compile déjà.
+        # `ort-sys` télécharge ONNX Runtime hors de `target/` : le cache restaure
+        # son script de build déjà passé, qui pointe vers des binaires absents
+        # (« could not find native static library `onnxruntime` »). On le fait
+        # repasser.
         run: |
+          rm -rf target/debug/build/ort-sys-* target/debug/.fingerprint/ort-sys-*
           cargo test --workspace --lib --bins --tests --features rusty-music-analysis/sans-modeles
           cargo test --workspace --doc --features rusty-music-analysis/sans-modeles
       # Le test `types_commandes` réécrit les types des commandes contrôlées ;

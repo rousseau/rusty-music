@@ -68,7 +68,9 @@ test("surveillance : un album copié apparaît dans Écouter, la lecture continu
   await lireUnAlbum(page);
   const avant = (await appels(page, "albums")).length;
   await surveillanceAjouteUnAlbum(page);
-  await expect(page.locator("#grille .album")).toHaveCount(4);
+  // La relecture attend 1,5 s de calme (`CALME_BIBLIOTHEQUE_MS`) : 10 s, pour
+  // une machine de CI chargée (5 s par défaut n'y suffisaient pas toujours).
+  await expect(page.locator("#grille .album")).toHaveCount(4, { timeout: 10_000 });
   await expect(page.locator("#grille .album__nom", { hasText: "Nouveau banc" })).toHaveCount(1);
   // La rafale regroupée : une seule relecture des albums.
   expect((await appels(page, "albums")).length - avant).toBe(1);
