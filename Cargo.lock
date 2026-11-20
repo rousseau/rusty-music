@@ -8146,7 +8146,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite_migration"
-version = "2.6.0"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb11df4f58eb4c6d5506643d678899d7258b40ba85ac5eee2ec9b4a7868b9787"
 dependencies = [
  "log",
  "rusqlite",

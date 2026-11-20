@@ -68,10 +68,9 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
   le délai ; reste un cas imprévisible : la fenêtre d'audit ouverte
   derrière ne reçoit aucune image (`journal.md`, « V19 »).
 - Sécurité : RUSTSEC-2026-0459 (SQLite < 3.54) levé par V20 (9 nov.) :
-  `rusqlite` 0.41 (SQLite 3.54.1), `rusqlite_migration` 2.6 pris dans
-  `vendor/` avec sa seule exigence `rusqlite` relevée, en attendant sa
-  version > 2.6.0 (à retirer alors, `[patch.crates-io]`) ; Rust 1.95
-  minimum (`journal.md`, « V20 »). À installer (prochain I<n>).
+  `rusqlite` 0.41 (SQLite 3.54.1) ; `rusqlite_migration` repris de
+  crates.io en 2.7.0 le 20 nov. (la copie de `vendor/` retirée) ; Rust 1.95
+  minimum (`journal.md`, « V20 »). Installé (I11, 20 nov.).
 - Modèles de l'app installée — V22 fait (9 nov.) : ADTOF (batterie de
   Pratiquer) embarqué dans le paquet, seul modèle que rien ne téléchargeait ;
   inventaire et test dans `apps/desktop/src/paquet.rs`, `release.sh` refuse

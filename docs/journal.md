@@ -7075,3 +7075,16 @@ de la CI, et ne dit rien quand la bibliothèque manque ensuite : cause non
 s'il revient souvent : mettre ce dossier en cache (`cache-directories` de
 `rust-cache`) ou afficher `target/debug/build/ort-sys-*/output` en cas
 d'échec.
+
+## I11 : paquet installé ; rusqlite_migration repris de crates.io — 20 nov. 2026
+
+- **Installé** : `release.sh` (commit `ba5b55b`, V44 à V53 et HTDemucs
+  exact, fork `d851b07`), `.app` copiée dans `/Applications`, 15 modèles
+  embarqués. L'app précédente (19 nov., 14 h 03) est gardée sur le LaCie,
+  `app-precedente-2026-11-19/`, pour revenir en arrière. Lancée en arrière-plan
+  puis refermée : elle démarre. Rien d'autre d'essayé dedans.
+- **`rusqlite_migration` 2.7.0** est publiée et demande `rusqlite` 0.41 : la
+  copie de `vendor/` (2.6.0 à exigence relevée, V20) et son
+  `[patch.crates-io]` sont retirés. `verifier.sh` vert (migrations
+  comprises). L'app installée ci-dessus a encore été construite avec la
+  copie : même code, sans effet.
