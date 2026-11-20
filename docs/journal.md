@@ -7065,3 +7065,13 @@ Décompte : la dernière commande de `collect_commands!` n'a pas de virgule
 et mon comptage l'omettait ; les chiffres donnés de V46 à V52 (92, 119,
 122, 144, 170, 189) sont tous à augmenter d'une unité, celui d'avant V46
 aussi (68, pas 67).
+
+CI, suite (nuit du 19 au 20 nov.) : l'échec de liaison d'`ort-sys` est
+**intermittent**. Après l'effacement de ses traces, deux passes vertes sur
+trois ; la troisième, relancée telle quelle, est verte. Son script de build
+télécharge ONNX Runtime dans `~/Library/Caches/ort.pyke.io`, hors du cache
+de la CI, et ne dit rien quand la bibliothèque manque ensuite : cause non
+établie (téléchargement interrompu sur une machine chargée ?). À reprendre
+s'il revient souvent : mettre ce dossier en cache (`cache-directories` de
+`rust-cache`) ou afficher `target/debug/build/ort-sys-*/output` en cas
+d'échec.
