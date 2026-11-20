@@ -36,6 +36,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          # ONNX Runtime, que `ort-sys` télécharge hors de `target/` (chemin
+          # fixe sur macOS) : gardé, il n'est plus retéléchargé à chaque passe.
+          cache-directories: ~/Library/Caches/ort.pyke.io
       - name: Forme
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -46,9 +49,15 @@ jobs:
         # son script de build déjà passé, qui pointe vers des binaires absents
         # (« could not find native static library `onnxruntime` »). On le fait
         # repasser.
+        # En cas d'échec, ce que le script d'`ort-sys` a vu (échec intermittent
+        # de liaison, `journal.md`, nuit du 19 au 20 nov.).
         run: |
           rm -rf target/debug/build/ort-sys-* target/debug/.fingerprint/ort-sys-*
-          cargo test --workspace --lib --bins --tests --features rusty-music-analysis/sans-modeles
+          cargo test --workspace --lib --bins --tests --features rusty-music-analysis/sans-modeles || {
+            cat target/debug/build/ort-sys-*/output 2>/dev/null
+            ls -lR ~/Library/Caches/ort.pyke.io 2>/dev/null | head -40
+            exit 1
+          }
           cargo test --workspace --doc --features rusty-music-analysis/sans-modeles
       # Le test `types_commandes` réécrit les types des commandes contrôlées ;
       # ils doivent être commités tels quels pour que le job `interface` y
