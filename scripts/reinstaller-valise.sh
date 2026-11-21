@@ -41,6 +41,25 @@ for p in "$profils"/*.mobileprovision; do
   fi
 done
 
+# Le profil neuf ne se crée que pour un iPhone *connecté* (pas seulement
+# appairé : `devicectl device info` réveille la liaison) et visé par son UDID ;
+# `cargo tauri ios build` vise une destination générique, d'où « Your team has
+# no devices » (21 nov. 2026). On le fait donc créer ici. Ce xcodebuild échoue
+# à la phase « Build Rust Code » (elle attend la CLI Tauri) : attendu, seul le
+# profil compte.
+echo "── profil de signature pour $udid"
+xcrun devicectl device info details --device "$udid" >/dev/null 2>&1 || true
+xcodebuild -project gen/apple/rusty-music-mobile.xcodeproj \
+  -scheme rusty-music-mobile_iOS -configuration debug \
+  -destination "id=$udid" -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+  build >/dev/null 2>&1 || true
+trouve=0
+for p in "$profils"/*.mobileprovision; do
+  [ -f "$p" ] || continue
+  security cms -D -i "$p" 2>/dev/null | grep -q '\.fr\.rousseau\.rustyvalise<' && trouve=1
+done
+[ $trouve -eq 1 ] || { echo "Aucun profil créé : iPhone déverrouillé et connecté ? (Xcode → Devices)" >&2; exit 1; }
+
 echo "── construction (--debug : la version optimisée plante au lancement, piège 5)"
 cargo tauri ios build --debug --target aarch64 --export-method debugging
 
