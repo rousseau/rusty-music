@@ -56,6 +56,16 @@ enum Cmd {
         #[arg(long)]
         artist: Option<String>,
     },
+    /// Imprime la page d'accueil d'Écouter du jour : l'album à la une et les
+    /// rangées (`docs/plan-ecouter-accueil.md`)
+    Accueil {
+        /// Le jour, AAAA-MM-JJ. Par défaut : aujourd'hui (UTC).
+        #[arg(long)]
+        date: Option<String>,
+        /// Une rangée à retirer (« ↻ ») ; à répéter pour retirer plusieurs fois.
+        #[arg(long)]
+        retirer: Vec<String>,
+    },
     /// Liste les pistes d'un album, dans l'ordre du disque
     Tracks {
         album: String,
@@ -735,6 +745,46 @@ fn main() -> Result<()> {
                 );
             }
             println!("— {} artistes", artistes.len());
+        }
+        Cmd::Accueil { date, retirer } => {
+            let date = date.unwrap_or_else(|| {
+                let maintenant = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs() as i64);
+                let c = rusty_music_core::db::epoch_vers_cle(maintenant);
+                format!("{}-{:02}-{:02}", c / 10_000, (c / 100) % 100, c % 100)
+            });
+            let mut decalages = std::collections::HashMap::new();
+            for id in retirer {
+                *decalages.entry(id).or_insert(0u32) += 1;
+            }
+            let debut = std::time::Instant::now();
+            let page = lib.page_accueil(rusty_music_analysis::passe::MODELE, &date, &decalages)?;
+            let duree = debut.elapsed();
+            let album = |a: &rusty_music_core::accueil::AlbumAccueil| {
+                let annee = a.year.map(|y| format!(" ({y})")).unwrap_or_default();
+                let note = a
+                    .note
+                    .as_deref()
+                    .map(|n| format!(" — {n}"))
+                    .unwrap_or_default();
+                format!(
+                    "{} · {}{annee}{note}",
+                    a.artist.as_deref().unwrap_or("?"),
+                    a.name
+                )
+            };
+            println!("Accueil du {}", page.date);
+            if let Some(u) = &page.une {
+                println!("\n★ {} [{}]\n  {}", u.raison, u.rangee, album(&u.album));
+            }
+            for r in &page.rangees {
+                println!("\n{} [{}] — {}", r.titre, r.id, r.raison);
+                for a in &r.albums {
+                    println!("  {}", album(a));
+                }
+            }
+            eprintln!("\n(calculée en {} ms)", duree.as_millis());
         }
         Cmd::Albums { artist } => {
             // Emprunter le même chemin que l'interface quand elle ouvre un

@@ -743,6 +743,22 @@ pub(crate) fn favoris(etat: State<Etat>) -> Result<Vec<String>, String> {
     verrou(&etat.lib).chemins_favoris().map_err(echec)
 }
 
+/// La page d'accueil d'Écouter (`docs/plan-ecouter-accueil.md`) : l'album à
+/// la une et les rangées du jour `date` (AAAA-MM-JJ, **date locale de
+/// l'interface** : le moteur ne connaît pas le fuseau). `decalages` compte les
+/// « ↻ » de chaque rangée, par id.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn accueil(
+    etat: State<Etat>,
+    date: String,
+    decalages: HashMap<String, u32>,
+) -> Result<rusty_music_core::accueil::PageAccueil, String> {
+    verrou(&etat.lib)
+        .page_accueil(rusty_music_analysis::passe::MODELE, &date, &decalages)
+        .map_err(echec)
+}
+
 /// Les listes calculées à partir des écoutes (récents, plus écoutés, favoris)
 /// qui ne sont pas vides, pour la tête de la vue Playlists.
 #[tauri::command(async)]

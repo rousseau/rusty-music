@@ -6,6 +6,7 @@
 //! modules (lecteur, exploration, éditeur). Aucun module ne relit le disque
 //! directement.
 
+pub mod accueil;
 pub mod db;
 pub mod decode;
 pub mod density;

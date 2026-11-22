@@ -1234,6 +1234,13 @@ export const commands = {
 	 */
 	liste_intelligente: (quoi: string) => __TAURI_INVOKE<TrackRow_Serialize[]>("liste_intelligente", { quoi }),
 	/**
+	 *  La page d'accueil d'Écouter (`docs/plan-ecouter-accueil.md`) : l'album à
+	 *  la une et les rangées du jour `date` (AAAA-MM-JJ, **date locale de
+	 *  l'interface** : le moteur ne connaît pas le fuseau). `decalages` compte les
+	 *  « ↻ » de chaque rangée, par id.
+	 */
+	accueil: (date: string, decalages: { [key in string]: number }) => __TAURI_INVOKE<PageAccueil_Serialize>("accueil", { date, decalages }),
+	/**
 	 *  Écrit la playlist `id` en `.m3u8` dans `dossier` (celui que l'utilisateur a
 	 *  choisi) et rend le chemin du fichier. Les pistes que la bibliothèque ne
 	 *  connaît plus n'y figurent pas. N'écrase jamais un fichier existant.
@@ -1562,6 +1569,60 @@ export type AjoutPlaylist = {
 	ajoutes: number,
 	/**  Pistes laissées de côté parce qu'elles y étaient déjà. */
 	deja_presents: number,
+};
+
+export type AlaUne = AlaUne_Serialize | AlaUne_Deserialize;
+
+export type AlaUne_Deserialize = {
+	/**  La rangée d'où il vient. */
+	rangee: string,
+	/**  Le surtitre (« Sorti il y a 30 ans cette semaine »). */
+	raison: string,
+	album: AlbumAccueil_Deserialize,
+};
+
+export type AlaUne_Serialize = {
+	/**  La rangée d'où il vient. */
+	rangee: string,
+	/**  Le surtitre (« Sorti il y a 30 ans cette semaine »). */
+	raison: string,
+	album: AlbumAccueil_Serialize,
+};
+
+/**
+ *  Un album tel que la page le montre ; `name` et `artist` font la clé
+ *  d'album de l'interface (`cleAlbum`), comme pour [`AlbumRow`].
+ */
+export type AlbumAccueil = AlbumAccueil_Serialize | AlbumAccueil_Deserialize;
+
+/**
+ *  Un album tel que la page le montre ; `name` et `artist` font la clé
+ *  d'album de l'interface (`cleAlbum`), comme pour [`AlbumRow`].
+ */
+export type AlbumAccueil_Deserialize = {
+	name: string,
+	artist?: string | null,
+	year?: number | null,
+	tracks: number,
+	/**  Une piste de l'album, pour sa pochette. */
+	path: string,
+	/**  Ce qui distingue l'album dans sa rangée (« il y a 30 ans »), s'il y a lieu. */
+	note?: string | null,
+};
+
+/**
+ *  Un album tel que la page le montre ; `name` et `artist` font la clé
+ *  d'album de l'interface (`cleAlbum`), comme pour [`AlbumRow`].
+ */
+export type AlbumAccueil_Serialize = {
+	name: string,
+	artist: string | null,
+	year: number | null,
+	tracks: number,
+	/**  Une piste de l'album, pour sa pochette. */
+	path: string,
+	/**  Ce qui distingue l'album dans sa rangée (« il y a 30 ans »), s'il y a lieu. */
+	note: string | null,
 };
 
 /**
@@ -4182,6 +4243,22 @@ export type Note_Serialize = {
 	frette: number | null,
 };
 
+export type PageAccueil = PageAccueil_Serialize | PageAccueil_Deserialize;
+
+export type PageAccueil_Deserialize = {
+	/**  La date locale qui a servi de graine, AAAA-MM-JJ. */
+	date: string,
+	une?: AlaUne_Deserialize | null,
+	rangees: RangeeAccueil_Deserialize[],
+};
+
+export type PageAccueil_Serialize = {
+	/**  La date locale qui a servi de graine, AAAA-MM-JJ. */
+	date: string,
+	une: AlaUne_Serialize | null,
+	rangees: RangeeAccueil_Serialize[],
+};
+
 /**
  *  Une ligne de l'alignement : une piste locale, une piste de l'édition, ou les
  *  deux. `ecart_ms` : durée de l'édition moins durée locale, quand les deux
@@ -4823,6 +4900,30 @@ export type QualitePiste_Serialize = {
 	channels: number | null,
 	/**  Bits — renseigné pour les formats sans perte seulement. */
 	bit_depth: number | null,
+};
+
+export type RangeeAccueil = RangeeAccueil_Serialize | RangeeAccueil_Deserialize;
+
+export type RangeeAccueil_Deserialize = {
+	/**
+	 *  `oublies`, `anniversaire`, `epoque-1` à `epoque-3`, `jamais`,
+	 *  `parce-que`, `hasard`, `nouveaux` : la clé de son décalage.
+	 */
+	id: string,
+	titre: string,
+	raison: string,
+	albums: AlbumAccueil_Deserialize[],
+};
+
+export type RangeeAccueil_Serialize = {
+	/**
+	 *  `oublies`, `anniversaire`, `epoque-1` à `epoque-3`, `jamais`,
+	 *  `parce-que`, `hasard`, `nouveaux` : la clé de son décalage.
+	 */
+	id: string,
+	titre: string,
+	raison: string,
+	albums: AlbumAccueil_Serialize[],
 };
 
 /**

@@ -362,6 +362,23 @@ const fixtures = {
       chemins: [window.__DONNEES__.PISTES[3].path],
     }]),
   listes_intelligentes: [],
+  // A1 : la page d'accueil d'Écouter, une rangée par sorte (pas de vue encore).
+  accueil: (a) => {
+    const vers = (x, note = null) => ({
+      name: x.name, artist: x.artist, year: x.year, tracks: x.tracks, path: x.path, note,
+    });
+    return {
+      date: a?.date ?? "2026-11-22",
+      une: { rangee: "anniversaire", raison: "Sorti il y a 30 ans cette semaine", album: vers(ALBUMS[0]) },
+      rangees: [
+        {
+          id: "jamais", titre: "Jamais écoutés",
+          raison: "Dans la bibliothèque depuis plus d'un mois, jamais écoutés",
+          albums: ALBUMS.slice(1).map((x) => vers(x)),
+        },
+      ],
+    };
+  },
   playlists: (_, e) => {
     const ps = window.__DONNEES__.PISTES;
     return [...window.__FIXTURES__.__etat_playlists(e)]

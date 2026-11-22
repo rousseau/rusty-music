@@ -7161,3 +7161,44 @@ effleure sans qu'on les ait écoutés ; la moitié écarte les longs albums
   deuxième « Au hasard ».
 - *R2*, *R5*, *R7* : pleines, rien à régler ; *R6* : 7 albums, au-dessus du
   plancher de 4, mais dépend des arrivées du mois.
+
+## Écouter, accueil A1 : le moteur des rangées — 22 nov. 2026
+
+`crates/core/src/accueil.rs` : `Library::page_accueil(modèle, date_locale,
+décalages)` rend l'album à la une et les rangées R1 à R7
+(`docs/plan-ecouter-accueil.md`), avec les seuils d'A0. Commande Tauri
+`accueil { date, decalages }` (la date vient de l'interface : le moteur ne
+connaît pas le fuseau, d'où ce paramètre en plus de ce que disait le plan) et
+`rusty-music accueil [--date] [--retirer <rangée>]` pour lire la page en
+texte. Rien n'est écrit en base ; 16 tests sur bases fabriquées (cas plein et
+vide de chaque rangée, dédoublonnage, stabilité, « ↻ », Nouvel An, cache).
+
+Choix faits en route :
+- **Graine** : `hacher(date, id de rangée + décalage)` puis splitmix64 ;
+  tirages pondérés sans remise (Efraimidis–Spirakis), les albums toujours
+  parcourus par clé pour que l'ordre d'une `HashMap` n'entre pas dans le
+  tirage. Les rangées triées (R1, R3, R6, R7) avancent d'une page de 20 par
+  « ↻ ». L'album à la une est tiré sans décalage : un « ↻ » ne le change pas.
+- **R3** : un titre unique (« Sortis cette semaine ») et l'ancienneté en note
+  par album (« il y a 30 ans ») : les *N* d'une même semaine diffèrent.
+- **R4** : autant de rangées que la page en laisse (7 moins les autres
+  rangées pleines, entre 1 et 3), ids `epoque-1` à `epoque-3`.
+- **R5** ne prend pas les arrivées du mois : sans cela, placée avant R6, elle
+  les lui volait (vu sur base fabriquée).
+- **Priorité de dédoublonnage** = ordre de la page ; une rangée qui tombe
+  sous 4 albums rend les siens aux suivantes.
+
+**Sur la bibliothèque** (22 nov.) : à la une, un album de 1996 « sorti il y a
+30 ans cette semaine » ; sept rangées : oubliés depuis un mois (20), sortis
+cette semaine (20), une case Jazz · 2005–2009 (16), jamais écoutés (20),
+parce que (voisins de l'album le plus écouté des 14 jours), au hasard,
+nouveaux (6).
+
+**Coût.** La partie qui ne dépend pas du journal (albums, dates, familles et
+leurs noms votés, centroïdes CLAP, popularité) est mise en cache en mémoire,
+clé faite de l'état des tables `tracks`, `features`, `track_popularite` et
+`mb_release_groups` ; le journal est relu à chaque appel. À chaud : **50 ms**
+par page. À froid : 2,3 s, et jusqu'à 12,9 s mesurés pendant que la machine
+était très chargée (charge moyenne 18 à 38) ; `familles_des_albums` et
+`familles` (le vote des noms) en font l'essentiel. Le verrou de la base est
+tenu pendant ce premier calcul : à préchauffer à l'ouverture d'Écouter (A2).
