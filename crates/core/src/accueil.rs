@@ -352,32 +352,42 @@ impl Library {
 
         // R4 — familles × décennies : autant de rangées que la page en laisse
         // la place, entre une et trois.
+        // R8 — l'actualité : ce que la passe Découvrir a déjà rangé, rien de
+        // plus (aucune requête réseau ici).
+        let r8 = self.vivier_actualite(&ordre, decal("actualite"))?;
+
         let autres = [&v_r1, &v_r3, &v_r2, &v_r5, &v_r6]
             .iter()
             .filter(|v| v.albums.len() >= MIN_RANGEE)
             .count()
-            + r7.as_ref().is_some_and(|v| v.albums.len() >= MIN_RANGEE) as usize;
+            + [&r7, &r8]
+                .iter()
+                .filter(|v| v.as_ref().is_some_and(|v| v.albums.len() >= MIN_RANGEE))
+                .count();
         let places = RANGEES_MAX.saturating_sub(autres).clamp(1, 3);
         let r4 = rangees_epoque(&fixe.noms, &ordre, places, date_locale, &decal);
 
-        // L'ordre de la page : à la une, R1, R3, R4, R2, R7, (R8), R5, R6.
+        // L'ordre de la page : à la une, R1, R3, R4, R2, R7, R8, R5, R6.
         let mut viviers: Vec<Vivier> = vec![v_r1, v_r3];
         viviers.extend(r4);
         viviers.push(v_r2);
         viviers.extend(r7);
+        viviers.extend(r8);
         viviers.push(v_r5);
         viviers.push(v_r6);
 
-        // L'album à la une : R3, puis R1, puis R5 (R8 viendra en tête, A4).
-        let une = ["anniversaire", "oublies", "hasard"].iter().find_map(|id| {
-            let v = viviers.iter().find(|v| v.id == *id)?;
-            let (cle, raison) = v.une.clone()?;
-            Some(AlaUne {
-                rangee: v.id.clone(),
-                raison,
-                album: infos[&cle].vers(None),
-            })
-        });
+        // L'album à la une : R8, puis R3, puis R1, puis R5.
+        let une = ["actualite", "anniversaire", "oublies", "hasard"]
+            .iter()
+            .find_map(|id| {
+                let v = viviers.iter().find(|v| v.id == *id)?;
+                let (cle, raison) = v.une.clone()?;
+                Some(AlaUne {
+                    rangee: v.id.clone(),
+                    raison,
+                    album: infos[&cle].vers(None),
+                })
+            });
         let mut pris: HashSet<u64> = HashSet::new();
         if let Some(u) = &une {
             pris.insert(hacher(
@@ -386,11 +396,26 @@ impl Library {
             ));
         }
 
-        let mut rangees = Vec::new();
-        for v in viviers {
-            if rangees.len() >= RANGEES_MAX {
-                break;
-            }
+        // Qui se sert le premier : les rangées ciblées (actualité,
+        // anniversaires, oubliés, voisins, époques, arrivées), puis les deux
+        // réservoirs tirés au hasard (jamais écoutés, au hasard). Dans l'ordre
+        // de la page, « Jamais écoutés » passait avant l'actualité et lui
+        // prenait les disques de l'artiste (vu en A4, comme R5 avec R6 en A1).
+        // L'affichage, lui, garde l'ordre de la page.
+        let priorite = |id: &str| match id {
+            "actualite" => 0,
+            "anniversaire" => 1,
+            "oublies" => 2,
+            "parce-que" => 3,
+            id if id.starts_with("epoque") => 4,
+            "nouveaux" => 5,
+            "jamais" => 6,
+            _ => 7, // hasard
+        };
+        let mut par_priorite: Vec<(usize, Vivier)> = viviers.into_iter().enumerate().collect();
+        par_priorite.sort_by_key(|(rang, v)| (priorite(&v.id), *rang));
+        let mut retenues: Vec<(usize, RangeeAccueil)> = Vec::new();
+        for (rang, v) in par_priorite {
             let albums: Vec<(u64, Option<String>)> = v
                 .albums
                 .into_iter()
@@ -401,16 +426,25 @@ impl Library {
                 continue;
             }
             pris.extend(albums.iter().map(|(c, _)| *c));
-            rangees.push(RangeeAccueil {
-                id: v.id,
-                titre: v.titre,
-                raison: v.raison,
-                albums: albums
-                    .into_iter()
-                    .map(|(c, note)| infos[&c].vers(note))
-                    .collect(),
-            });
+            retenues.push((
+                rang,
+                RangeeAccueil {
+                    id: v.id,
+                    titre: v.titre,
+                    raison: v.raison,
+                    albums: albums
+                        .into_iter()
+                        .map(|(c, note)| infos[&c].vers(note))
+                        .collect(),
+                },
+            ));
         }
+        retenues.sort_by_key(|(rang, _)| *rang);
+        let rangees: Vec<RangeeAccueil> = retenues
+            .into_iter()
+            .map(|(_, r)| r)
+            .take(RANGEES_MAX)
+            .collect();
 
         Ok(PageAccueil {
             date: date_locale.to_string(),
@@ -508,6 +542,112 @@ fn rangees_epoque(
 }
 
 impl Library {
+    /// R8 : les artistes de la bibliothèque qui ont sorti un album ou un EP ces
+    /// 30 derniers jours, d'après le fil Découvrir (`decouvrir_fil`), et
+    /// leurs disques qu'on possède. Un artiste qui en a au moins
+    /// [`MIN_RANGEE`] a sa rangée (« Nouvel album de X ») ; le « ↻ » passe au
+    /// suivant. Sinon, une rangée commune, la sortie en note sous chaque
+    /// album. `None` si la passe Découvrir n'a rien rangé.
+    fn vivier_actualite(&self, ordre: &[&Info], decalage: u32) -> Result<Option<Vivier>> {
+        let fil = self.decouvrir_fil(30)?;
+        // Albums et EP seulement (« nouvel album »), le plus récent d'abord.
+        let mut sorties: Vec<&crate::db::SortieFil> = fil
+            .sorties
+            .iter()
+            .chain(&fil.collaborations)
+            .filter(|s| matches!(s.type_primaire.as_deref(), Some("Album") | Some("EP")))
+            .collect();
+        sorties.sort_by(|a, b| {
+            b.date_sortie
+                .cmp(&a.date_sortie)
+                .then(a.artiste_mbid.cmp(&b.artiste_mbid))
+        });
+
+        // Les disques possédés de chaque artiste, les plus écoutés d'abord.
+        let mut artistes: Vec<(&crate::db::SortieFil, Vec<&Info>)> = Vec::new();
+        for s in sorties {
+            if artistes
+                .iter()
+                .any(|(a, _)| a.artiste_mbid == s.artiste_mbid)
+            {
+                continue;
+            }
+            let mut siens: Vec<&Info> = ordre
+                .iter()
+                .copied()
+                .filter(|i| i.artist_mbid.as_deref() == Some(s.artiste_mbid.as_str()))
+                .collect();
+            if siens.is_empty() {
+                continue;
+            }
+            siens.sort_by_key(|i| {
+                (
+                    std::cmp::Reverse(i.jours.len()),
+                    std::cmp::Reverse(i.row.year),
+                    i.cle,
+                )
+            });
+            artistes.push((s, siens));
+        }
+        let Some((premier, siens)) = artistes.first() else {
+            return Ok(None);
+        };
+        let nature = |s: &crate::db::SortieFil| {
+            if s.type_primaire.as_deref() == Some("EP") {
+                "Nouvel EP"
+            } else {
+                "Nouvel album"
+            }
+        };
+        let une = Some((
+            siens[0].cle,
+            format!(
+                "{} de {}\u{a0}: «\u{a0}{}\u{a0}»",
+                nature(premier),
+                premier.artiste_nom,
+                premier.titre
+            ),
+        ));
+
+        let pleins: Vec<&(&crate::db::SortieFil, Vec<&Info>)> = artistes
+            .iter()
+            .filter(|(_, l)| l.len() >= MIN_RANGEE)
+            .collect();
+        if !pleins.is_empty() {
+            let (s, siens) = pleins[decalage as usize % pleins.len()];
+            let date = date_en_francais(s.date_sortie.as_deref());
+            return Ok(Some(Vivier {
+                id: "actualite".into(),
+                titre: format!("{} de {} · ses disques chez vous", nature(s), s.artiste_nom),
+                raison: format!("«\u{a0}{}\u{a0}», sorti {date} (fil Découvrir)", s.titre),
+                albums: siens.iter().map(|i| (i.cle, None)).collect(),
+                une,
+            }));
+        }
+        // Personne n'a assez de disques pour sa rangée : une rangée commune,
+        // trois disques par artiste au plus.
+        let mut albums: Vec<(u64, Option<String>)> = artistes
+            .iter()
+            .flat_map(|(s, l)| {
+                l.iter().take(3).map(move |i| {
+                    (
+                        i.cle,
+                        Some(format!("nouveau\u{a0}: «\u{a0}{}\u{a0}»", s.titre)),
+                    )
+                })
+            })
+            .collect();
+        tourner(&mut albums, decalage);
+        Ok(Some(Vivier {
+            id: "actualite".into(),
+            titre: "Ils viennent de sortir un disque".into(),
+            raison: "Des artistes de vos albums, d'après le fil Découvrir (30 derniers jours)"
+                .into(),
+            albums,
+            une,
+        }))
+    }
+
     /// Ce qui ne change pas d'une écoute à l'autre, mis en cache tant que la
     /// base n'a pas bougé (voir [`Self::empreinte_accueil`]) : c'est le plus
     /// cher de la page (familles, centroïdes CLAP). Le journal, lui, est relu
@@ -701,6 +841,52 @@ struct InfoFixe {
     date_jour: Option<u32>,
     famille: Option<i64>,
     popularite: Option<f64>,
+}
+
+/// Une date MusicBrainz, brute (« 2026-11-06 », « 2026-11 », « 2026 »), en
+/// français : « le 6 novembre 2026 », « en novembre 2026 », « en 2026 » ;
+/// rien de connu : « ce mois-ci » (la fenêtre du fil).
+fn date_en_francais(date: Option<&str>) -> String {
+    const MOIS: [&str; 12] = [
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
+    ];
+    let mut p = date.unwrap_or("").split('-');
+    let annee = p
+        .next()
+        .filter(|a| a.len() == 4 && a.bytes().all(|b| b.is_ascii_digit()));
+    let mois = p
+        .next()
+        .and_then(|m| m.parse::<usize>().ok())
+        .filter(|m| (1..=12).contains(m));
+    let jour = p
+        .next()
+        .and_then(|j| j.parse::<u32>().ok())
+        .filter(|j| (1..=31).contains(j));
+    match (annee, mois, jour) {
+        (Some(a), Some(m), Some(j)) => format!(
+            "le {} {} {a}",
+            if j == 1 {
+                "1er".to_string()
+            } else {
+                j.to_string()
+            },
+            MOIS[m - 1]
+        ),
+        (Some(a), Some(m), None) => format!("en {} {a}", MOIS[m - 1]),
+        (Some(a), None, _) => format!("en {a}"),
+        _ => "ce mois-ci".into(),
+    }
 }
 
 /// 10, 20, 25, 30, 40… : les anniversaires qu'on fête.

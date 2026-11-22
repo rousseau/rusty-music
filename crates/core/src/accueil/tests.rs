@@ -87,6 +87,26 @@ impl Base {
         }
     }
 
+    /// Une sortie récente de l'artiste, telle que la passe Découvrir la range.
+    fn sortie(&self, artiste: &str, titre: &str, il_y_a: i64, type_primaire: &str) {
+        self.lib
+            .conn
+            .execute(
+                "INSERT INTO decouvrir_sorties
+                   (rg_mbid, artiste_mbid, artiste_nom, titre, date_sortie, date_sortie_norm, type_primaire)
+                 VALUES (?1, ?2, ?3, ?4, date('now', ?5), date('now', ?5), ?6)",
+                rusqlite::params![
+                    format!("rg-neuf-{artiste}-{titre}"),
+                    format!("mb-{artiste}"),
+                    artiste,
+                    titre,
+                    format!("-{il_y_a} days"),
+                    type_primaire
+                ],
+            )
+            .unwrap();
+    }
+
     fn page(&self) -> PageAccueil {
         self.page_du(DATE, &HashMap::new())
     }
@@ -514,4 +534,109 @@ fn le_cache_suit_le_journal_et_les_arrivees() {
     assert!(tous.contains(&"N6"), "{tous:?}");
     drop(b);
     let _ = std::fs::remove_file(&chemin);
+}
+
+#[test]
+fn l_actualite_est_absente_sans_passe_decouvrir() {
+    let mut b = Base::new();
+    for k in 0..5 {
+        b.album("Fidèle", &format!("F{k}"), 4, 2000 + k, 400, None);
+    }
+    let p = b.page();
+    assert!(rangee(&p, "actualite").is_none());
+    assert_ne!(p.une.unwrap().rangee, "actualite");
+}
+
+#[test]
+fn un_nouvel_album_met_les_anciens_a_la_une_et_en_rangee() {
+    let mut b = Base::new();
+    for k in 0..6 {
+        b.album("Fidèle", &format!("F{k}"), 4, 2000 + k, 400, None);
+    }
+    b.album("Autre", "A0", 4, 2000, 400, None);
+    b.ecouter("Fidèle", "F2", 60, 4); // le plus écouté : à la une
+    b.sortie("Fidèle", "Le Neuf", 5, "Album");
+    b.sortie("Inconnu", "Hors bibliothèque", 3, "Album"); // aucun disque chez nous
+    b.sortie("Autre", "Un single", 1, "Single"); // pas un album
+    let p = b.page();
+    sans_doublon(&p);
+    let une = p.une.as_ref().unwrap();
+    assert_eq!(une.rangee, "actualite");
+    assert_eq!(
+        une.raison,
+        "Nouvel album de Fidèle\u{a0}: «\u{a0}Le Neuf\u{a0}»"
+    );
+    assert_eq!(une.album.name, "F2");
+    let r8 = rangee(&p, "actualite").expect("R8");
+    assert_eq!(r8.titre, "Nouvel album de Fidèle · ses disques chez vous");
+    assert!(
+        r8.raison.starts_with("«\u{a0}Le Neuf\u{a0}», sorti le "),
+        "{}",
+        r8.raison
+    );
+    // Le reste de ses disques, du plus récent au plus ancien (aucun autre écouté).
+    assert_eq!(noms(r8), vec!["F5", "F4", "F3", "F1", "F0"]);
+    // Et la rangée vient après R7 et avant R5 dans la page.
+    let ids: Vec<&str> = p.rangees.iter().map(|r| r.id.as_str()).collect();
+    let i8 = ids.iter().position(|i| *i == "actualite").unwrap();
+    if let Some(i5) = ids.iter().position(|i| *i == "hasard") {
+        assert!(i8 < i5, "{ids:?}");
+    }
+}
+
+#[test]
+fn sans_artiste_assez_fourni_l_actualite_est_une_rangee_commune() {
+    let mut b = Base::new();
+    for (artiste, n) in [("Un", 2), ("Deux", 2), ("Trois", 1)] {
+        for k in 0..n {
+            b.album(artiste, &format!("{artiste}{k}"), 4, 2000 + k, 400, None);
+        }
+    }
+    for k in 0..6 {
+        b.album("Remplissage", &format!("R{k}"), 4, 1990, 400, None);
+    }
+    b.sortie("Un", "Premier", 2, "Album");
+    b.sortie("Deux", "Second", 4, "EP");
+    b.sortie("Trois", "Troisième", 6, "Album");
+    let p = b.page();
+    let une = p.une.as_ref().unwrap();
+    assert_eq!(
+        une.raison,
+        "Nouvel album de Un\u{a0}: «\u{a0}Premier\u{a0}»"
+    );
+    let r8 = rangee(&p, "actualite").expect("R8");
+    assert_eq!(r8.titre, "Ils viennent de sortir un disque");
+    // La une a pris le premier disque de Un ; restent les autres, sortie en note.
+    assert_eq!(noms(r8), vec!["Un0", "Deux1", "Deux0", "Trois0"]);
+    assert_eq!(
+        r8.albums[1].note.as_deref(),
+        Some("nouveau\u{a0}: «\u{a0}Second\u{a0}»")
+    );
+}
+
+#[test]
+fn le_retirer_de_l_actualite_passe_a_l_artiste_suivant() {
+    let mut b = Base::new();
+    for artiste in ["Aa", "Bb"] {
+        for k in 0..5 {
+            b.album(artiste, &format!("{artiste}{k}"), 4, 2000 + k, 400, None);
+        }
+    }
+    b.sortie("Aa", "Neuf A", 2, "Album");
+    b.sortie("Bb", "Neuf B", 4, "Album");
+    let p = b.page();
+    assert!(rangee(&p, "actualite").unwrap().titre.contains("Aa"));
+    let q = b.page_du(DATE, &HashMap::from([("actualite".to_string(), 1)]));
+    assert!(rangee(&q, "actualite").unwrap().titre.contains("Bb"));
+    assert_eq!(p.une, q.une, "la une ne bouge pas");
+}
+
+#[test]
+fn la_date_d_une_sortie_se_dit_en_francais() {
+    assert_eq!(date_en_francais(Some("2026-11-06")), "le 6 novembre 2026");
+    assert_eq!(date_en_francais(Some("2026-03-01")), "le 1er mars 2026");
+    assert_eq!(date_en_francais(Some("2026-11")), "en novembre 2026");
+    assert_eq!(date_en_francais(Some("2026")), "en 2026");
+    assert_eq!(date_en_francais(None), "ce mois-ci");
+    assert_eq!(date_en_francais(Some("bientôt")), "ce mois-ci");
 }

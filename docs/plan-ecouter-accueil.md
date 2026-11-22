@@ -138,8 +138,11 @@ Rangées locales seulement (R1 à R7) ; R8 est ajoutée en A4.
 **Points de conception.**
 - Graine = date locale (AAAA-MM-JJ) + id de rangée ; le « ↻ » d'une rangée
   passe un décalage de graine, sans toucher aux autres.
-- Un album n'apparaît que dans une rangée par page (priorité dans l'ordre
-  des rangées), et jamais l'album à la une dans une rangée.
+- Un album n'apparaît que dans une rangée par page, et jamais l'album à la
+  une dans une rangée. *Révisé en A4* : la priorité n'est pas l'ordre
+  d'affichage mais du plus ciblé au plus large (R8, R3, R1, R7, R4, R6, puis
+  les réservoirs R2 et R5) ; dans l'ordre de la page, « Jamais écoutés »
+  vidait l'actualité.
 - R7 : centroïde CLAP par album, calculé à la demande et mis en cache en
   mémoire ; rien de neuf en base si `crates/analysis` le donne déjà.
 - R4 : titre par défaut `Famille · années 2000` ; un nom Lama est un bonus
@@ -283,4 +286,4 @@ message si elle n'a pas tourné. Tests sur une base fabriquée, mise à jour de 
 | A1 moteur | fait | 22 nov. 2026 | `crates/core/src/accueil.rs`, commande `accueil { date, decalages }` (date locale passée par l'interface), CLI `rusty-music accueil` ; 16 tests ; cache mémoire de la partie fixe : 50 ms à chaud, 2 à 13 s à froid (à préchauffer en A2) |
 | A2 vue | fait | 22 nov. 2026 | `js/accueil.js`, vue d'ouverture d'Écouter ; Parcourir en 2 × 2 ; commande sur sa propre connexion (le premier calcul ne bloque plus le reste) ; jeton de navigation ; 4 tests de fumée ; audit rapide 0 violation ; capture sur la bibliothèque rendue par Playwright (pas d'autorisation d'enregistrement d'écran) |
 | A3 fond à la une | fait | 22 nov. 2026 | `fond_par_mbid` (fanart 1 à 4, puis vignette large), commande `accueil_fond` (cache disque, réglage « en ligne »), `artist_mbid` dans la page, voile aux couleurs de la pochette (contraste mesuré 5,4:1 et 5,9:1), mention « photo : TheAudioDB » ; conditions du palier gratuit ambiguës, à trancher (`docs/data-sources.md`) |
-| A4 actualité | à faire | | |
+| A4 actualité | fait | 22 nov. 2026 | R8 depuis `decouvrir_fil(30)` (albums et EP), une rangée par artiste qui a ≥ 4 disques (« ↻ » : le suivant), sinon une rangée commune ; en tête du choix de la une ; dédoublonnage par priorité ciblée ; sur la bibliothèque : une = Queen (EP du 20 nov.), rangée = Prong (4 disques) |

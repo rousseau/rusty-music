@@ -371,7 +371,7 @@ const fixtures = {
   // Une valeur, pas une fonction : elle se sérialise avec `ALBUMS` déjà lus.
   accueil: {
     date: "2026-11-22",
-    une: { rangee: "anniversaire", raison: "Sorti il y a 30 ans cette semaine", album: albumAccueil(ALBUMS[0]) },
+    une: { rangee: "actualite", raison: "Nouvel album de Les Essais : « Troisième banc »", album: albumAccueil(ALBUMS[0]) },
     rangees: [
       {
         id: "jamais", titre: "Jamais écoutés",

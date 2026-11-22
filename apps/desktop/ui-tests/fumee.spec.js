@@ -56,7 +56,7 @@ async function versAccueil(page) {
 
 test("A2 : l'Accueil, l'album à la une et ses rangées, demandés pour le jour local", async ({ page }) => {
   await versAccueil(page);
-  await expect(page.locator("#accueil-une-raison")).toHaveText("Sorti il y a 30 ans cette semaine");
+  await expect(page.locator("#accueil-une-raison")).toHaveText("Nouvel album de Les Essais : « Troisième banc »");
   await expect(page.locator("#accueil-une-titre")).toHaveText("Premier banc");
   await expect(page.locator("#accueil-rangees .rangee__titre")).toHaveText(["Jamais écoutés"]);
   await expect(page.locator("#accueil-rangees .album")).toHaveCount(2);

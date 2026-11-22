@@ -7274,3 +7274,39 @@ diffusion large.
 Tests : `fond_par_mbid` (ordre des champs, MBID vérifié), `artist_mbid` dans
 la page, un test de fumée (sans image : dégradé seul ; avec : photo et
 mention).
+
+## Écouter, accueil A4 : l'actualité — 22 nov. 2026
+
+La rangée R8 `actualite` lit le fil Découvrir (`decouvrir_fil(30)`) et rien
+d'autre : aucune requête réseau, et si la passe Découvrir n'a jamais tourné,
+la rangée n'existe pas, sans message.
+
+- Les **albums et EP** du fil (singles écartés : « nouvel album » serait
+  faux), sorties et collaborations, le plus récent d'abord ; pour chaque
+  artiste-ancre, ses disques possédés (par `mb_album_artist_id`), les plus
+  écoutés puis les plus récents d'abord.
+- Un artiste qui a au moins 4 disques chez nous a **sa** rangée : « Nouvel
+  album de X · ses disques chez vous », la sortie et sa date en raison
+  (« le 6 novembre 2026 », date MusicBrainz partielle respectée : « en
+  novembre 2026 ») ; le « ↻ » passe à l'artiste suivant. Sinon, une rangée
+  commune, « Ils viennent de sortir un disque », trois disques par artiste
+  au plus, la sortie en note sous chaque pochette.
+- **À la une en premier** : le disque le plus écouté de l'artiste à la sortie
+  la plus récente, « Nouvel EP de Queen : « Thank God It's Christmas…
+  Again! » ». Espaces insécables dans les guillemets et avant les
+  deux-points : le « » » ne part plus seul à la ligne.
+- **Dédoublonnage par priorité ciblée** (révise A1) : dans l'ordre de la page,
+  R2 « Jamais écoutés » passait avant R8 et lui prenait tous les disques de
+  l'artiste (vu sur base fabriquée). Les rangées se servent désormais de la
+  plus ciblée à la plus large — R8, R3, R1, R7, R4, R6, puis les réservoirs R2
+  et R5 — et s'affichent dans l'ordre de la page. Les 16 tests d'A1 passent
+  inchangés.
+
+**Sur la bibliothèque** (22 nov., 59 sorties de moins de 30 jours dans le
+fil) : à la une, Queen ; la rangée R8 est celle de Prong (album du 6 nov. ;
+quatre disques, dont le nouveau, déjà là). Avec R8, la page a sept rangées
+sans « Ajoutés récemment », la dernière dans l'ordre (plafond de sept).
+
+Tests : 5 de plus (absente sans passe Découvrir, une et rangée d'un artiste,
+rangée commune, « ↻ » vers l'artiste suivant, dates en français) ; fixture
+d'interface mise à jour (la une vient de l'actualité).
