@@ -1024,7 +1024,7 @@ async function analyserRacine(chemin) {
     });
 
     etat.textContent = `${chemin} — empreintes…`;
-    await invoke("start_analysis");
+    await invoke("start_analysis", { force });
     await attendreFin("analysis_state", 2000, (a) => {
       majJauge("scan-jauge", a.en_cours, a.faits, a.total);
       if (a.en_cours) {
@@ -1178,9 +1178,9 @@ async function passeScan(force, phase) {
   await rechargerEcoute();
 }
 
-async function passeEmpreintes(phase) {
+async function passeEmpreintes(force, phase) {
   avancementActu(phase, "empreintes : démarrage…", 0, 0);
-  await invoke("start_analysis");
+  await invoke("start_analysis", { force });
   // Même cadence que `analyserRacine` pour ce même sondage — les deux
   // chemins ne doivent pas diverger sans raison.
   await attendreFin("analysis_state", 2000, (a) => {
@@ -1443,7 +1443,7 @@ async function lancerChaineComplete() {
     await passeScan(force, "Étape 1/7 — ");
     await passePochettes(force, "Étape 2/7 — ");
     await passeLoudness(force, "Étape 3/7 — ");
-    await passeEmpreintes("Étape 4/7 — ");
+    await passeEmpreintes(force, "Étape 4/7 — ");
     await passeDescripteurs(force, "Étape 5/7 — ");
     if (contact.includes("@")) await passeGenres(contact, "Étape 6/7 — ");
     else etat.textContent = "Étape 6/7 — genres sautés (pas d'adresse de contact MusicBrainz)";

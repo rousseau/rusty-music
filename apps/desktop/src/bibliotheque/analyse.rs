@@ -7,7 +7,8 @@ use super::*;
 /// Avancement de l'analyse en cours, sondé par l'interface.
 pub(crate) type EtatAnalyse = Passe<Compte>;
 
-/// Lance le calcul des empreintes des morceaux en attente.
+/// Lance le calcul des empreintes des morceaux en attente — de tous avec
+/// `force` (« Refaire aussi ce qui est déjà mesuré »).
 ///
 /// Déclenché à la main, et pas enchaîné au scan : sur une bibliothèque neuve
 /// de cette taille la passe dure des heures, et l'engager sans que
@@ -19,7 +20,11 @@ pub(crate) type EtatAnalyse = Passe<Compte>;
 /// autorise un rédacteur et des lecteurs simultanés.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
-pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result<(), String> {
+pub(crate) fn start_analysis(
+    app: tauri::AppHandle,
+    etat: State<Etat>,
+    force: bool,
+) -> Result<(), String> {
     let db = etat.db.clone();
     let pour_le_plan = app.clone();
     passe::lancer(
@@ -36,6 +41,7 @@ pub(crate) fn start_analysis(app: tauri::AppHandle, etat: State<Etat>) -> Result
                         &lib,
                         None,
                         i64::MAX,
+                        force,
                         fils,
                         |faits, total| {
                             let mut a = verrou(&etat.analyse);

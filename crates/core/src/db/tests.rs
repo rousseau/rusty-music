@@ -1041,6 +1041,37 @@ fn pending_analysis_exclut_un_fichier_deja_en_echec() {
 }
 
 #[test]
+fn all_for_analysis_reprend_les_morceaux_deja_analyses() {
+    let lib = Library::open_in_memory().unwrap();
+    for (chemin, titre) in [
+        ("/musique/a.mp3", "A"),
+        ("/musique/b.mp3", "B"),
+        ("/musique/c.mp3", "C"),
+    ] {
+        lib.upsert(&TrackMeta {
+            path: chemin.into(),
+            title: Some(titre.into()),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let a = lib.all_for_analysis(i64::MAX).unwrap()[0].id;
+    lib.save_embedding(a, "clap", &[0.5, 0.5]).unwrap();
+    lib.enregistrer_echec_scan(Path::new("/musique/c.mp3"), "décodage impossible")
+        .unwrap();
+
+    // Hors passe forcée, seul B attend ; forcée, A revient, C reste écarté.
+    assert_eq!(lib.pending_analysis("clap", i64::MAX).unwrap().len(), 1);
+    let tous: Vec<_> = lib
+        .all_for_analysis(i64::MAX)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.path)
+        .collect();
+    assert_eq!(tous, ["/musique/a.mp3", "/musique/b.mp3"]);
+}
+
+#[test]
 fn qualite_piste_rend_ce_que_le_scan_a_lu() {
     let lib = Library::open_in_memory().unwrap();
     let id = lib

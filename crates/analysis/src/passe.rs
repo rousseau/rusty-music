@@ -78,7 +78,7 @@ pub enum Projection {
     Gardee,
 }
 
-/// Calcule les empreintes des morceaux en attente.
+/// Calcule les empreintes des morceaux en attente — de tous avec `force`.
 ///
 /// Chaque empreinte est écrite dès qu'elle est prête : la passe complète dure
 /// des heures sur un support lent, et une interruption ne doit rien coûter de
@@ -89,14 +89,23 @@ pub enum Projection {
 /// n'a qu'un fil : le modèle vit sur le GPU, et en charger douze copies y
 /// occuperait 1,4 Go pour rien. Le décodage occupe donc les cœurs, l'encodeur
 /// occupe l'accélérateur, et les deux avancent de front.
+///
+/// Avec `force`, les empreintes en place sont recalculées et réécrites ;
+/// leur position sur la carte et leur famille restent (`save_embedding` ne
+/// touche qu'au vecteur). Une passe forcée interrompue repart du début.
 pub fn empreintes(
     lib: &Library,
     modele: Option<&Path>,
     limite: i64,
+    force: bool,
     travailleurs: usize,
     avancement: impl FnMut(usize, usize) + Send,
 ) -> Result<Rapport, Error> {
-    let pistes = lib.pending_analysis(MODELE, limite)?;
+    let pistes = if force {
+        lib.all_for_analysis(limite)?
+    } else {
+        lib.pending_analysis(MODELE, limite)?
+    };
     passe_clap(lib, pistes, false, modele, travailleurs, avancement)
 }
 

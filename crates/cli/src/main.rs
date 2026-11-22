@@ -88,6 +88,9 @@ enum Cmd {
         /// seuls qui aillent avec son code généré.
         #[arg(long)]
         model: Option<PathBuf>,
+        /// Recalcule aussi les empreintes déjà en base (non reprenable)
+        #[arg(long)]
+        force: bool,
         /// Enchaîne la projection à la fin
         #[arg(long)]
         project: bool,
@@ -828,6 +831,7 @@ fn main() -> Result<()> {
         Cmd::Analyze {
             limit,
             model,
+            force,
             project,
             familles,
         } => {
@@ -838,6 +842,7 @@ fn main() -> Result<()> {
                 &lib,
                 model.as_deref(),
                 limit,
+                force,
                 jobs,
                 |fait, total| {
                     let par = t.elapsed().as_secs_f64() / fait as f64;

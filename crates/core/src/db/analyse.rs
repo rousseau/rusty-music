@@ -579,6 +579,23 @@ impl Library {
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+
+    /// Tous les morceaux, empreinte ou non : la passe forcée (« Refaire aussi
+    /// ce qui est déjà mesuré »). Les fichiers en échec restent exclus, pour la
+    /// même raison que dans [`Self::pending_analysis`].
+    pub fn all_for_analysis(&self, limit: i64) -> Result<Vec<TrackRow>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM tracks
+              WHERE NOT EXISTS (
+                    SELECT 1 FROM scan_failures sf WHERE sf.path = tracks.path)
+              ORDER BY added_at LIMIT ?1"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![limit], track_from_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
 }
 
 /// Une piste en attente de mesure de loudness — chemin et clé d'album

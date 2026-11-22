@@ -10,7 +10,8 @@ export const commands = {
 	library_stats: () => __TAURI_INVOKE<StatsBibliotheque>("library_stats"),
 	a_propos: () => __TAURI_INVOKE<APropos>("a_propos"),
 	/**
-	 *  Lance le calcul des empreintes des morceaux en attente.
+	 *  Lance le calcul des empreintes des morceaux en attente — de tous avec
+	 *  `force` (« Refaire aussi ce qui est déjà mesuré »).
 	 * 
 	 *  Déclenché à la main, et pas enchaîné au scan : sur une bibliothèque neuve
 	 *  de cette taille la passe dure des heures, et l'engager sans que
@@ -21,7 +22,7 @@ export const commands = {
 	 *  partagée, l'interface serait figée pendant toute la passe. Le mode WAL
 	 *  autorise un rédacteur et des lecteurs simultanés.
 	 */
-	start_analysis: () => __TAURI_INVOKE<null>("start_analysis"),
+	start_analysis: (force: boolean) => __TAURI_INVOKE<null>("start_analysis", { force }),
 	/**
 	 *  Mesure tempo/tonalité/énergie des morceaux en attente — ou de tous,
 	 *  `force` effaçant d'abord ce qui est déjà mesuré.
