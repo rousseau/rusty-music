@@ -113,6 +113,7 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   `RUSTY_AUDIT_ECRANS=…` ; en tête du script).
 - **Écouter** : `docs/ui-spec-lecteur.md`, `docs/plan-ecouter-v0.2.md`,
   `docs/plan-ecouter-v0.3.md` (idées reprises de Disc Player),
+  `docs/plan-ecouter-accueil.md` (page d'accueil en rangées, à la Netflix),
   `docs/amelioration-audio.md` (« E »), `docs/module3-superresolution.md` (« HD »).
 - **Explorer** : `docs/ui-spec.md`, `docs/carto-ville.md`,
   `docs/carto-etat-de-lart.md` (aspect, palettes), `docs/carto-direction.md`,
