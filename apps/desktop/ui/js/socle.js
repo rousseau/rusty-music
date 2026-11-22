@@ -171,6 +171,11 @@ function enStems(mode = navigation.mode) {
 
 // Ce qu'Écouter garde en dehors de la vue courante (`vue`).
 const ecoute = {
+  // Numéro de la dernière vue de premier niveau demandée (Accueil, Artistes,
+  // Albums, Playlists) : une réponse arrivée après qu'on en a demandé une autre
+  // ne la remplace pas — le premier Accueil d'une session met quelques
+  // secondes à venir.
+  jetonVue: 0,
   // Dernière vue de premier niveau posée (Artistes ou Albums, `retour === null`).
   // Sert de cible de retour à la recherche, qui ne connaît pas d'où l'on vient,
   // et de vue par défaut de `charger()` quand elle est appelée sans argument.

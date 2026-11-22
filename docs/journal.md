@@ -7202,3 +7202,39 @@ par page. À froid : 2,3 s, et jusqu'à 12,9 s mesurés pendant que la machine
 était très chargée (charge moyenne 18 à 38) ; `familles_des_albums` et
 `familles` (le vote des noms) en font l'essentiel. Le verrou de la base est
 tenu pendant ce premier calcul : à préchauffer à l'ouverture d'Écouter (A2).
+
+## Écouter, accueil A2 : la vue Accueil — 22 nov. 2026
+
+Écouter s'ouvre sur **Accueil** (`apps/desktop/ui/js/accueil.js`) : l'album à
+la une (pochette, raison en surtitre, titre, artiste · année, « ▶ Lecture »,
+« Ouvrir l'album ») sur un fond aux deux couleurs de sa pochette
+(`couleurs-album.js` ; troisième exception de la Règle 3, bornée à ce fond,
+texte en `--txt`), puis les rangées : titre (la raison en infobulle), « ↻ »,
+une bande horizontale des cases de la grille (`carteAlbum`, désormais
+paramétrable : clic, note sous le nom, chargement de la pochette différé).
+Pochettes chargées quand la case devient visible (`IntersectionObserver`),
+flèches ← → dans une bande focalisée, retour à l'Accueil par `snapVue`, filtre
+du rail qui estompe. « Parcourir » passe à deux rangées (Accueil · Artistes /
+Albums · Playlists) : côte à côte, « Playlists » touchait les bords.
+
+Deux défauts trouvés par l'audit, corrigés :
+- **Le premier calcul bloquait tout.** La commande tenait le verrou de la
+  base pendant les secondes du premier calcul ; la grille d'Albums, demandée
+  pendant ce temps, arrivait après coup et **remplaçait l'Accueil à l'écran**
+  (G5 : repère A–Z visible sur l'Accueil). La commande `accueil` ouvre
+  maintenant sa propre connexion (comme le scan), et un **jeton de
+  navigation** (`ecoute.jetonVue`) fait qu'une vue de premier niveau arrivée
+  après qu'on en a demandé une autre ne la remplace plus (Albums, Artistes,
+  Playlists, Accueil).
+- Audit rapide (Écouter, Accueil, Playlists, Pratiquer) : 24 cellules, 0
+  violation ; rail 405 px sur 804.
+
+Tests : 4 tests de fumée (la page et sa demande, « ↻ » avec le seul décalage
+de sa rangée, ouvrir puis revenir, lire l'album à la une) ; les tests qui
+partaient de la grille au démarrage y vont d'un clic (`versAlbums`).
+
+**Capture** : la webview ne se capture pas sans l'autorisation
+d'enregistrement d'écran, absente de cette session. La page réelle du
+22 nov. (7 rangées, 123 pochettes sur 124) a été exportée de la base puis
+rendue par l'interface réelle sous Playwright, Tauri simulé : ce qu'on y voit
+est la vraie page, pas l'app lancée.

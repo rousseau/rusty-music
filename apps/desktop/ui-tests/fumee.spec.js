@@ -4,7 +4,7 @@
 // s'ouvre, qu'un morceau se lit et qu'Éditer monte ses stems, sans la moindre
 // erreur JavaScript.
 const { test, expect } = require("@playwright/test");
-const { ouvrir, appelsInconnus } = require("./outils");
+const { ouvrir, appelsInconnus, versAlbums } = require("./outils");
 const { fixtures, donnees, PISTES } = require("./fixtures");
 const { pratiquerAlbum, basseTranscrite } = require("./pratique-fictive");
 
@@ -28,6 +28,9 @@ async function lireUnAlbum(page) {
 let erreurs;
 test.beforeEach(async ({ page }) => {
   erreurs = await ouvrir(page, fixtures, donnees);
+  // L'Accueil d'abord (A2), puis la grille d'albums d'où partent les tests.
+  await expect(page.locator("#accueil-vue .rangee")).toHaveCount(1);
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(3);
 });
 
@@ -41,6 +44,53 @@ test.afterEach(async ({ page }, info) => {
 test("démarrage : Écouter et la grille d'albums", async ({ page }) => {
   await expect(page.locator('button.mode[data-mode="ecoute"]')).toHaveClass(/mode--actif/);
   await expect(page.locator("#np-titre")).toHaveText("Rien en lecture");
+});
+
+/* ------------------------------------------------------------ Accueil (A2) */
+
+async function versAccueil(page) {
+  await page.locator('[data-vuelib="accueil"]').click();
+  await expect(page.locator("#accueil-vue")).toBeVisible();
+  await expect(page.locator("#fil-titre")).toHaveText("Accueil");
+}
+
+test("A2 : l'Accueil, l'album à la une et ses rangées, demandés pour le jour local", async ({ page }) => {
+  await versAccueil(page);
+  await expect(page.locator("#accueil-une-raison")).toHaveText("Sorti il y a 30 ans cette semaine");
+  await expect(page.locator("#accueil-une-titre")).toHaveText("Premier banc");
+  await expect(page.locator("#accueil-rangees .rangee__titre")).toHaveText(["Jamais écoutés"]);
+  await expect(page.locator("#accueil-rangees .album")).toHaveCount(2);
+  // Ni tri, ni repère, ni filtre par famille sur l'Accueil.
+  for (const id of ["grille", "liste", "tri-albums", "index-alpha", "bloc-familles-ecoute"]) {
+    await expect(page.locator(`#${id}`)).toBeHidden();
+  }
+  const demande = (await appels(page, "accueil")).at(-1);
+  expect(demande.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(demande.decalages).toEqual({});
+});
+
+test("A2 : ↻ redemande la page avec le décalage de sa seule rangée", async ({ page }) => {
+  await versAccueil(page);
+  await page.locator(".rangee__autre").click();
+  await expect.poll(async () => (await appels(page, "accueil")).at(-1).decalages).toEqual({ jamais: 1 });
+});
+
+test("A2 : une pochette ouvre l'album, ← revient à l'Accueil", async ({ page }) => {
+  await versAccueil(page);
+  await page.locator("#accueil-rangees .album", { hasText: "Second banc" }).click();
+  await expect(page.locator("#fil-titre")).toHaveText("Second banc");
+  await expect(page.locator("#accueil-vue")).toBeHidden();
+  await page.locator("#retour").click();
+  await expect(page.locator("#fil-titre")).toHaveText("Accueil");
+  await expect(page.locator("#accueil-rangees .album")).toHaveCount(2);
+});
+
+test("A2 : ▶ Lecture lit l'album à la une", async ({ page }) => {
+  await versAccueil(page);
+  await page.locator("#accueil-une-lire").click();
+  await expect(page.locator("#np-titre")).toHaveText(PISTES[0].title);
+  const lus = await appels(page, "play");
+  expect(lus.at(-1).paths).toEqual(PISTES.filter((p) => p.album === "Premier banc").map((p) => p.path));
 });
 
 test("lire un morceau", async ({ page }) => {
@@ -802,6 +852,7 @@ test("thème : Bibliothèque choisit Clair, gardé au rechargement, posé avant 
     }).observe(document, { childList: true, subtree: true });
   });
   await page.reload();
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(3);
   expect(await page.evaluate(() => window.__THEME_AU_BODY__)).toBe("clair");
 });
@@ -837,6 +888,7 @@ test("vue « En cours » : le morceau joué, des fonds aux couleurs de la pochet
     window.__FIXTURES__.cover = `data:image/svg+xml;base64,${btoa(svg)}`;
   });
   await page.reload();
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(3);
   await lireUnAlbum(page);
   await page.click("#transport-art");
@@ -2685,6 +2737,7 @@ test("P2 : « Pratiquer cette playlist » depuis Écouter, et la reprise d'une s
     window.__ETAT_FAUX__.playlists = [{ id: 1, nom: "À travailler", origine: null, modifiee_le: 1_700_000_000, chemins }];
   }, { garde, chemins: A_TRAVAILLER.map((t) => t.path) });
   await page.reload();
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(3);
   await page.click('button.mode[data-mode="pratiquer"]');
   await expect(page.locator("#enchainement-rang")).toHaveText("2 / 3");

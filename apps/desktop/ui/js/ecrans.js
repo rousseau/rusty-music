@@ -27,7 +27,7 @@ const SELON = "selon";
 /// et Créer reprennent dans leur état « choisir ».
 const NAVIGATEUR = {
   retour: SELON, liste: SELON, grille: SELON, "index-alpha": SELON, "index-annees": SELON,
-  "autour-artiste": SELON,
+  "autour-artiste": SELON, "accueil-vue": SELON,
 };
 
 /// Pratiquer et Créer : les mêmes stems, le même parcours (choisir, séparer,

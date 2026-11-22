@@ -281,6 +281,6 @@ message si elle n'a pas tourné. Tests sur une base fabriquée, mise à jour de 
 |---|---|---|---|
 | A0 mesurer | fait | 22 nov. 2026 | `crates/core/examples/accueil_mesure.rs` ; journal de 49 j → R1 vide (0, même à 3 mois) : R1 à ≥ 1 journée et > 1 mois (22 albums) tant que le journal a moins de 6 mois ; écouté = 3 pistes ou la moitié (56 albums) ; R2 2 099, R3 25 (351 j/365 ≥ 4), R4 42 cases ≥ 8, R6 7, R7 2 129 ; 2 albums sans famille, 60,6 % datés au jour près (`docs/journal.md`) |
 | A1 moteur | fait | 22 nov. 2026 | `crates/core/src/accueil.rs`, commande `accueil { date, decalages }` (date locale passée par l'interface), CLI `rusty-music accueil` ; 16 tests ; cache mémoire de la partie fixe : 50 ms à chaud, 2 à 13 s à froid (à préchauffer en A2) |
-| A2 vue | à faire | | |
+| A2 vue | fait | 22 nov. 2026 | `js/accueil.js`, vue d'ouverture d'Écouter ; Parcourir en 2 × 2 ; commande sur sa propre connexion (le premier calcul ne bloque plus le reste) ; jeton de navigation ; 4 tests de fumée ; audit rapide 0 violation ; capture sur la bibliothèque rendue par Playwright (pas d'autorisation d'enregistrement d'écran) |
 | A3 fond à la une | à faire | | |
 | A4 actualité | à faire | | |

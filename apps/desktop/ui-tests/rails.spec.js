@@ -20,7 +20,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
-const { ouvrir } = require("./outils");
+const { ouvrir, versAlbums } = require("./outils");
 const { fixtures, donnees, PISTES, ALBUMS } = require("./fixtures");
 
 const NOMS = [
@@ -93,6 +93,7 @@ test("le rail de chaque écran, mesuré et capturé", async ({ page }) => {
   fs.mkdirSync(DOSSIER, { recursive: true });
   await page.setViewportSize({ width: 1400, height: 868 });
   await ouvrir(page, DOUZE, donnees);
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(3);
   // Des stems chargés : l'établi de Pratiquer et de Créer.
   await page.evaluate(() => localStorage.setItem("mb-contact", "essai@example.org"));

@@ -46,4 +46,10 @@ async function appelsInconnus(page) {
   return page.evaluate(() => [...new Set(window.__APPELS__.filter((a) => !a.connu).map((a) => a.cmd))]);
 }
 
-module.exports = { ouvrir, appelsInconnus, ORIGINE };
+/// Écouter s'ouvre sur l'Accueil (A2) : la plupart des tests partent de la
+/// grille d'albums, à un clic.
+async function versAlbums(page) {
+  await page.locator('[data-vuelib="albums"]').click();
+}
+
+module.exports = { ouvrir, appelsInconnus, versAlbums, ORIGINE };

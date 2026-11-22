@@ -44,12 +44,16 @@
                aria-label="Filtrer ce qui est affiché" title="Estompe ce qui ne répond pas · Entrée : chercher partout">
       </div>
 
-      <!-- Mode Écoute : deux entrées de premier niveau dans la bibliothèque. -->
+      <!-- Mode Écoute : les entrées de premier niveau dans la bibliothèque.
+           Accueil (`js/accueil.js`) est la vue d'ouverture. -->
       <div class="bloc" id="bloc-vue-lib">
         <p class="rail__titre">Parcourir</p>
-        <div class="segments">
+        <!-- Quatre vues : côte à côte, « Playlists » touchait les bords du
+             segment ; deux sur deux rangées (Règle 13 : le rail tient). -->
+        <div class="segments segments--grille segments--deux">
+          <button class="segment segment--actif" data-vuelib="accueil">Accueil</button>
           <button class="segment" data-vuelib="artistes">Artistes</button>
-          <button class="segment segment--actif" data-vuelib="albums">Albums</button>
+          <button class="segment" data-vuelib="albums">Albums</button>
           <button class="segment" data-vuelib="playlists">Playlists</button>
         </div>
       </div>
@@ -426,7 +430,28 @@
       </div>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
-        <div id="grille" class="grille" tabindex="0"></div>
+        <div id="grille" class="grille" tabindex="0" hidden></div>
+
+        <!-- Accueil d'Écouter (`docs/plan-ecouter-accueil.md`, `js/accueil.js`) :
+             un album à la une, puis des rangées de pochettes titrées par leur
+             raison. Le fond de l'album à la une prend les couleurs de sa
+             pochette (Règle 3, troisième exception). -->
+        <div id="accueil-vue" class="accueil" hidden>
+          <section id="accueil-une" class="une" hidden>
+            <div class="une__pochette album__pochette"></div>
+            <div class="une__texte">
+              <p id="accueil-une-raison" class="une__raison"></p>
+              <h2 id="accueil-une-titre" class="une__titre"></h2>
+              <p id="accueil-une-artiste" class="une__artiste"></p>
+              <div class="une__actions">
+                <button id="accueil-une-lire" class="bouton" type="button">▶ Lecture</button>
+                <button id="accueil-une-ouvrir" class="bouton" type="button">Ouvrir l'album</button>
+              </div>
+            </div>
+          </section>
+          <div id="accueil-rangees" class="rangees"></div>
+          <p id="accueil-etat" class="aide accueil__etat" aria-live="polite"></p>
+        </div>
 
         <!-- Repère alphabétique : Artistes et Albums seulement, la liste
              d'un album ou une recherche n'a pas d'ordre à indexer. -->

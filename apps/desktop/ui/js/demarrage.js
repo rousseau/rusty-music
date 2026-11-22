@@ -15,22 +15,37 @@ import {
 import {
   basculerMode,
 } from "./modes.js";
+import { chargerAccueil } from "./accueil.js";
 
 /* ---------------------------------------------------------- démarrage */
 
-/// Recharge une vue de premier niveau — Albums par défaut à l'ouverture, ou
+/// Recharge une vue de premier niveau — l'Accueil à l'ouverture, ou
 /// Artistes/Albums depuis le commutateur du rail. Aussi le point de retour
 /// après un scan, l'oubli d'une racine, ou l'effacement de la recherche : dans
 /// ces trois cas `quoi` est omis, et c'est la vue déjà affichée qui revient.
 async function charger(quoi = ecoute.sommet.quoi) {
+  if (quoi === "accueil") {
+    // Au lancement, `charger` part pendant l'exécution de ce module, avant
+    // celle d'`accueil.js` (plus loin dans la chaîne, `main.js`) : attendre
+    // un tour laisse la chaîne finir, et l'état de l'Accueil exister.
+    await null;
+    // La page s'affiche sans attendre le sommaire du rail.
+    const [, [artistes, racines]] = await Promise.all([
+      chargerAccueil(),
+      Promise.all([invoke("artists"), invoke("roots")]),
+    ]);
+    majSommaire(artistes, racines);
+    return;
+  }
+  const jeton = ++ecoute.jetonVue;
   const [artistes, racines] = await Promise.all([invoke("artists"), invoke("roots")]);
+  majSommaire(artistes, racines);
   if (quoi === "albums") {
-    poser("albums", "Albums", await invoke("albums", { artist: null, mbid: null }));
-  } else {
+    const albums = await invoke("albums", { artist: null, mbid: null });
+    if (jeton === ecoute.jetonVue) poser("albums", "Albums", albums);
+  } else if (jeton === ecoute.jetonVue) {
     poser("artistes", "Artistes", artistes);
   }
-
-  majSommaire(artistes, racines);
 }
 
 /// Le compte de la bibliothèque, dans le bouton qui y mène ; le détail au survol.
@@ -53,6 +68,12 @@ async function rechargerEcoute() {
   const sommet = ecoute.sommet;
   const [artistes, racines] = await Promise.all([invoke("artists"), invoke("roots")]);
   majSommaire(artistes, racines);
+  // L'Accueil affiché se recompose (le moteur sait que la bibliothèque a
+  // changé) ; ailleurs, il le sera à son prochain affichage.
+  if (sommet.quoi === "accueil") {
+    if (vue.quoi === "accueil") await chargerAccueil();
+    return;
+  }
   if (sommet.quoi !== "albums" && sommet.quoi !== "artistes") return;
   sommet.lignes =
     sommet.quoi === "albums" ? await invoke("albums", { artist: null, mbid: null }) : artistes;
@@ -91,7 +112,7 @@ document.addEventListener("mode-change", () => {
   if (bibliothequePerimee) relireSiAffichee();
 });
 
-charger("albums")
+charger("accueil")
   .then(() => chargerFamillesParAlbum())
   .then(() => {
     dessinerFamillesEcoute();

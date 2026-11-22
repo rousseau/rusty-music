@@ -2,6 +2,7 @@ import "./familles.js"; // l'ordre d'exécution : voir main.js
 import {
   $, ecoute, enStems, invoke, navigation, plier, remonter, repondAuFiltre, vue, vueEnGrille,
 } from "./socle.js";
+import { appliquerFiltreAccueil } from "./accueil.js";
 import {
   cleCarteGrille, dessiner, dessinerGrille,
 } from "./vues.js";
@@ -212,6 +213,10 @@ function rafraichirGrille() {
 function filtrerEcoute(q) {
   ecoute.filtre = plier(q.trim());
   if (navigation.mode !== "ecoute" && !enStems()) return;
+  if (vue.quoi === "accueil") {
+    appliquerFiltreAccueil();
+    return;
+  }
   if (vueEnGrille()) {
     rafraichirGrille();
     return;

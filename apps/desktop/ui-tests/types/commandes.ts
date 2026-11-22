@@ -1238,6 +1238,12 @@ export const commands = {
 	 *  la une et les rangées du jour `date` (AAAA-MM-JJ, **date locale de
 	 *  l'interface** : le moteur ne connaît pas le fuseau). `decalages` compte les
 	 *  « ↻ » de chaque rangée, par id.
+	 * 
+	 *  Sur sa propre connexion, comme le scan : le premier calcul d'une session
+	 *  prend quelques secondes (`docs/journal.md`, A1), pendant lesquelles le
+	 *  verrou de `etat.lib` aurait fait attendre tout le reste (grille, pochettes,
+	 *  lecture). La partie lourde reste en cache d'un appel à l'autre
+	 *  (`accueil.rs`, clé par chemin de base).
 	 */
 	accueil: (date: string, decalages: { [key in string]: number }) => __TAURI_INVOKE<PageAccueil_Serialize>("accueil", { date, decalages }),
 	/**

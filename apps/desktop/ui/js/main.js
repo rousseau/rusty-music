@@ -16,10 +16,10 @@
 //   familles, ecouter-familles, fond-de-plan, modes, valise, decouvrir,
 //   bibliotheque, etabli, etabli-reglages, etabli-stems, pratiquer, memoire-pratique, corriger, coach, accordeur, retour-basse, creer, demarrage,
 //   itineraires, balade, aura, traces, relief, lieux, autotest-carte, palette, en-cours, editions,
-//   playlists, pratiquer-playlist.
+//   playlists, pratiquer-playlist, accueil.
 //
 // Ajouter un module : l'insérer dans la chaîne (son `import` de tête, celui
 // du suivant) ; le dernier reste celui qu'importe ce fichier. Un module qui
 // ne fait que déclarer (`etat-lecture.js`) n'a pas d'ordre à tenir : il reste
 // hors de la chaîne.
-import "./pratiquer-playlist.js";
+import "./accueil.js";

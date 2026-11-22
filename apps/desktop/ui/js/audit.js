@@ -421,6 +421,14 @@ async function auditerInterface() {
     ["explorer:lama", async () => { await basculerMode("explorer"); clic("lama"); $("lama-haut").hidden = true; $("lama-accueil").hidden = false; ["lama-compris", "lama-cherche", "lama-resultat"].forEach((i) => ($(i).hidden = true)); }],
     ["explorer:lama+playlist", async () => { await basculerMode("explorer"); clic("lama"); fabriquerLamaAudit(); await attendre(300); dessinerMiniNuage(); }],
     ["ecoute", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="albums"]')?.click(); await attendre(700); }],
+    // A2 : l'Accueil — l'album à la une et les rangées. Le premier calcul de
+    // la page peut prendre quelques secondes : on attend ses rangées.
+    ["ecoute:accueil", async () => {
+      await basculerMode("ecoute");
+      document.querySelector('[data-vuelib="accueil"]')?.click();
+      for (let i = 0; i < 60 && !document.querySelector("#accueil-rangees .rangee"); i++) await attendre(250);
+      await attendre(500);
+    }],
     // P1 : la vue Playlists, son « ＋ nouvelle playlist » dans l'en-tête.
     ["ecoute:playlists", async () => { await basculerMode("ecoute"); document.querySelector('[data-vuelib="playlists"]')?.click(); await attendre(700); }],
     ["pratiquer", async () => { bandeauAudit(null); await basculerMode("pratiquer"); await attendre(500); }],

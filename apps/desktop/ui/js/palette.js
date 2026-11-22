@@ -68,7 +68,7 @@ const AFFICHAGES = [
   ["points", "Nuage"], ["carte", "Carte"], ["temps", "Temps"], ["anneau", "Anneau"],
   ["lama", "Lama", "playlist en mots intention"],
 ];
-const PARCOURIR = [["artistes", "Artistes"], ["albums", "Albums"], ["playlists", "Playlists"]];
+const PARCOURIR = [["accueil", "Accueil"], ["artistes", "Artistes"], ["albums", "Albums"], ["playlists", "Playlists"]];
 
 /// Les légendes des familles, par écran : celle de l'écran courant reçoit le
 /// geste ; ailleurs, la Carte d'Explorer.

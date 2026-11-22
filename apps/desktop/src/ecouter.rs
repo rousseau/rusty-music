@@ -747,6 +747,12 @@ pub(crate) fn favoris(etat: State<Etat>) -> Result<Vec<String>, String> {
 /// la une et les rangées du jour `date` (AAAA-MM-JJ, **date locale de
 /// l'interface** : le moteur ne connaît pas le fuseau). `decalages` compte les
 /// « ↻ » de chaque rangée, par id.
+///
+/// Sur sa propre connexion, comme le scan : le premier calcul d'une session
+/// prend quelques secondes (`docs/journal.md`, A1), pendant lesquelles le
+/// verrou de `etat.lib` aurait fait attendre tout le reste (grille, pochettes,
+/// lecture). La partie lourde reste en cache d'un appel à l'autre
+/// (`accueil.rs`, clé par chemin de base).
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn accueil(
@@ -754,8 +760,8 @@ pub(crate) fn accueil(
     date: String,
     decalages: HashMap<String, u32>,
 ) -> Result<rusty_music_core::accueil::PageAccueil, String> {
-    verrou(&etat.lib)
-        .page_accueil(rusty_music_analysis::passe::MODELE, &date, &decalages)
+    Library::open(&etat.db)
+        .and_then(|lib| lib.page_accueil(rusty_music_analysis::passe::MODELE, &date, &decalages))
         .map_err(echec)
 }
 

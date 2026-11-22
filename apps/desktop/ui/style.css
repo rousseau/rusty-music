@@ -1551,6 +1551,8 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .segments--grille .segment--actif { background: var(--panel2); }
 .segments--grille .segment + .segment { border-left: none; }
 .segments--grille .segment:last-child:nth-child(3n + 2) { grid-column: span 2; }
+/* Parcourir (Écouter) : quatre vues, deux sur deux. */
+.segments--grille.segments--deux { grid-template-columns: repeat(2, 1fr); }
 .segments--colonne .segment + .segment {
   border-left: none; border-top: 1px solid var(--line);
 }
@@ -2796,3 +2798,56 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .file__total:empty { display: none; }
 .file__etat:empty { display: none; }
+
+/* ---------- Écouter : l'Accueil (`js/accueil.js`, `docs/plan-ecouter-accueil.md`) ---------- */
+/* Une colonne qui défile verticalement ; chaque rangée défile en largeur. */
+.accueil {
+  flex: 1; overflow-y: auto; outline: none;
+  padding: 6px var(--gouttiere) var(--gouttiere);
+}
+/* L'album à la une. Son fond prend les deux couleurs de la pochette, recalées
+   pour le thème (Règle 3, troisième exception, bornée à ce fond) ; tout le
+   texte y est en `--txt`, le seul que le recalage garantit à 4,5:1. */
+.une {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px;
+  padding: 24px; margin-bottom: 30px; border-radius: 3px;
+  background: linear-gradient(160deg, var(--album-haut, var(--panel)), var(--album-bas, var(--bg)));
+  border: 1px solid var(--line);
+}
+.une__pochette {
+  width: clamp(160px, 34%, 320px); flex: none; margin-bottom: 0;
+  box-shadow: 0 8px 30px rgb(0 0 0 / .25);
+}
+.une__texte { flex: 1 1 220px; min-width: 0; color: var(--txt); }
+.une__raison {
+  margin: 0 0 8px; font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.une__titre {
+  margin: 0; font-family: var(--serif); font-size: var(--t-fil); font-weight: 600; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.une__artiste { margin: 6px 0 0; font-size: var(--t-corps); }
+.une__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+.rangee { margin-bottom: 26px; }
+.rangee__tete { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.rangee__titre {
+  margin: 0; font-size: var(--t-intertitre); font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rangee__autre {
+  margin-left: auto; flex: none; cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 2px;
+  color: var(--mut); font: inherit; font-size: var(--t-second); padding: 1px 8px;
+}
+.rangee__autre:hover { color: var(--accent); border-color: var(--accent); }
+/* La bande : les cases de la grille (`carteAlbum`), à la même largeur. */
+.rangee__bande {
+  display: flex; gap: 14px; overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 8px; outline: none; scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.rangee__bande:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+.rangee__bande > .album { flex: 0 0 var(--album-larg, 140px); min-width: 0; scroll-snap-align: start; }
+.accueil__etat { margin-top: 12px; }

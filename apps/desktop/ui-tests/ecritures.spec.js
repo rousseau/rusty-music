@@ -3,7 +3,7 @@
 // bibliothèque à part (un album arabe, un album japonais) : `fumee.spec.js`
 // compte trois albums.
 const { test, expect } = require("@playwright/test");
-const { ouvrir } = require("./outils");
+const { ouvrir, versAlbums } = require("./outils");
 const { fixtures, donnees } = require("./fixtures");
 
 const ALBUMS = [
@@ -13,6 +13,7 @@ const ALBUMS = [
 
 test("écritures : kana balisés lang=ja, nom arabe isolé dans une chaîne jointe", async ({ page }) => {
   await ouvrir(page, { ...fixtures, albums: ALBUMS, album_families: [] }, donnees);
+  await versAlbums(page);
   await expect(page.locator("#grille .album")).toHaveCount(2);
   // Le nom japonais reçoit sa langue ; l'artiste aussi (kana).
   const japonais = page.locator("#grille .album", { hasText: "風街ろまん" });

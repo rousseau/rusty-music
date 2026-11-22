@@ -96,6 +96,13 @@ Les volumes réels de la bibliothèque de test les contraignent fortement :
   mémoire indispensables, sinon la grille se traîne.
 - **Pistes d'un album — 8 à 34 entrées.** Liste simple : numéro, titre, durée.
   Déjà triée par le moteur.
+- **Accueil** (22 nov. 2026, `docs/plan-ecouter-accueil.md`). Vue d'ouverture
+  d'Écouter, en tête de « Parcourir » (Accueil · Artistes · Albums ·
+  Playlists, deux sur deux rangées) : un album à la une, puis jusqu'à sept
+  rangées horizontales de pochettes titrées par leur raison, stables sur la
+  journée, chacune avec son « ↻ ». Un clic ouvre l'album, « ← Accueil » y
+  ramène ; ni tri, ni repère A–Z, ni filtre par famille ; « Filtrer » estompe.
+  `js/accueil.js`, commande `accueil`.
 
 ## Pochettes
 

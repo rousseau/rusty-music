@@ -5,7 +5,7 @@ import "./editions.js"; // l'ordre d'exécution : voir main.js
 // morceau ou un album se désigne, retirer et réordonner dans une playlist
 // ouverte, en créer une vide. Sorti d'`ecouter.js`, qui ne doit plus grossir.
 import {
-  $, fileAttente, invoke, isoler, LIGNE, navigation, remonter, signalerErreur, txt, vue,
+  $, ecoute, fileAttente, invoke, isoler, LIGNE, navigation, remonter, signalerErreur, txt, vue,
 } from "./socle.js";
 import { dessiner } from "./vues.js";
 import {
@@ -88,10 +88,12 @@ $("file-enregistrer-form").addEventListener("submit", async (e) => {
 /// (récents, plus écoutés, favoris — seulement celles qui ont du contenu), puis
 /// les playlists enregistrées.
 async function chargerPlaylists() {
+  const jeton = ++ecoute.jetonVue;
   const [intelligentes, playlists] = await Promise.all([
     invoke("listes_intelligentes"),
     invoke("playlists"),
   ]);
+  if (jeton !== ecoute.jetonVue) return;
   poser("playlists", "Playlists", [
     ...intelligentes.map((l) => ({ ...l, intelligente: true, id: l.quoi })),
     ...playlists,

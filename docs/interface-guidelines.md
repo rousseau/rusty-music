@@ -186,6 +186,13 @@ les bornes du recalage sont des jetons de chaque thème (`--album-clarte`,
 pire cas, toutes teintes : 8,1:1 en sombre, 8,3:1 en clair. Le texte de la vue
 est entièrement en `--txt` : `--mut` n'y tiendrait pas.
 
+**Troisième exception, tranchée le 22 novembre 2026 : le fond de l'album à la
+une de l'Accueil d'Écouter** (`docs/plan-ecouter-accueil.md`, A2). Mêmes deux
+couleurs, même recalage (`couleursPochette`), sur **ce seul fond** : la
+pochette, le titre, l'artiste et la raison posés dessus sont en `--txt`, que le
+recalage garantit déjà ; les rangées dessous gardent les fonds du thème. Rien
+n'y lit la couleur comme une famille : l'Accueil n'en affiche aucune.
+
 ### 4. Stabilité des positions et de la mise en page
 Sélectionner un élément ne réorganise jamais ce qui l'entoure. Une liste ne
 saute pas au clic, l'anneau et la frise ne redistribuent pas leurs positions

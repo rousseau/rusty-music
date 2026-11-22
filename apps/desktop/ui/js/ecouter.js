@@ -38,6 +38,7 @@ import {
 } from "./demarrage.js";
 import { lecture } from "./etat-lecture.js";
 import { demander } from "./ecrans.js";
+import { chargerAccueil, reafficherAccueil, vueAccueil } from "./accueil.js";
 
 /* --------------------------------------------------- minuteur d'arrêt
  *
@@ -160,6 +161,7 @@ $("insp-favori").addEventListener("click", async () => {
 // descendre dans un artiste ou un album, pour que « ← » retrouve la ligne
 // quittée plutôt que de remonter en haut de la liste.
 function scrollActuel() {
+  if (vue.quoi === "accueil") return vueAccueil.scrollTop;
   return (vueEnGrille() ? grille : liste).scrollTop;
 }
 
@@ -167,6 +169,14 @@ function scrollActuel() {
 /// (rail, famille) en estompe une partie — le total reste celui de ce qui est
 /// affiché.
 function texteCompte(quoi, lignes) {
+  // L'Accueil : la date du jour, qui fait la page ; « 3 sur 141 albums »
+  // quand le filtre du rail en estompe.
+  if (quoi === "accueil") {
+    const retenus = lignes.filter(estRetenu).length;
+    return retenus === lignes.length
+      ? new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+      : `${retenus} sur ${lignes.length} albums`;
+  }
   const unite = { artistes: "artistes", albums: "albums", playlists: "listes" }[quoi] ?? "morceaux";
   const retenus = lignes.filter(estRetenu).length;
   return retenus === lignes.length ? `${lignes.length} ${unite}` : `${retenus} sur ${lignes.length} ${unite}`;
@@ -203,7 +213,7 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // Artistes et albums partagent le même geste de premier niveau ; le
   // commutateur du rail suit celui qui a produit la vue affichée, y compris
   // en descendant depuis un artiste vers ses albums.
-  if (quoi === "artistes" || quoi === "albums" || quoi === "playlists") {
+  if (quoi === "accueil" || quoi === "artistes" || quoi === "albums" || quoi === "playlists") {
     document.querySelectorAll("[data-vuelib]").forEach((b) =>
       b.classList.toggle("segment--actif", b.dataset.vuelib === quoi),
     );
@@ -213,11 +223,15 @@ function poser(quoi, titre, lignes, retour = null, scroll = 0) {
   // `charger("albums")` court en fond au démarrage et se termine parfois après
   // `basculerMode` (mode imposé par `RUSTY_MUSIC_MODE`, ou clic rapide) : la
   // table des écrans (`ecrans.js`) garde alors grille et liste masquées.
-  demander("liste", !enGrille);
+  const enAccueil = quoi === "accueil";
+  demander("liste", !enGrille && !enAccueil);
   demander("grille", enGrille);
+  demander("accueil-vue", enAccueil);
   // Le choix d'ordre ne concerne que les grilles (albums, artistes) de l'Écoute.
   majBarreTri();
-  if (enGrille) {
+  if (enAccueil) {
+    reafficherAccueil(scroll);
+  } else if (enGrille) {
     // Pas de `preparerGraphe()` ici : la grille est la vue par défaut de
     // l'Écoute, donc ce qu'on construirait à *chaque* lancement de l'appli,
     // même pour qui n'ouvre jamais Explorer ni le bouton ✦. Signalé
@@ -406,7 +420,7 @@ function majIndexAnneesActif() {
 
 document.querySelectorAll("[data-vuelib]").forEach((b) =>
   b.addEventListener("click", () =>
-    (b.dataset.vuelib === "playlists" ? chargerPlaylists() : charger(b.dataset.vuelib)).catch((e) =>
+    ({ playlists: chargerPlaylists, accueil: chargerAccueil }[b.dataset.vuelib]?.() ?? charger(b.dataset.vuelib)).catch((e) =>
       remonter(e, "parcourir"),
     ),
   ),

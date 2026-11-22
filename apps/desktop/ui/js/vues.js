@@ -464,7 +464,11 @@ function dessinerGrille() {
   majIndexActif();
 }
 
-function carteAlbum(item) {
+/// Une case d'album. Par défaut, celle de la grille d'Écouter ; l'Accueil
+/// (`accueil.js`) la reprend avec trois réglages : `ouvrir` (le clic sur la
+/// case), `note` (remplace l'année sous le nom) et `differer` (reçoit de quoi
+/// charger la pochette plus tard, quand la case devient visible).
+function carteAlbum(item, { ouvrir = activer, note = null, differer = null } = {}) {
   const el = document.createElement("div");
   el.className = "album";
   el.innerHTML = `<div class="album__pochette">
@@ -480,7 +484,10 @@ function carteAlbum(item) {
   artiste.textContent = txt(item.artist, "(sans artiste)");
   // Sous l'ordre « Ajoutés », la date d'arrivée remplace l'année : sans elle,
   // on ne comprendrait pas l'ordre. L'année reste dans l'infobulle.
-  if (ecoute.triAlbums === "ajoutes" && item.ajoute_le) {
+  if (note) {
+    el.children[2].children[1].textContent = note;
+    el.children[2].children[1].title = item.year ? `sorti en ${item.year}` : "";
+  } else if (ouvrir === activer && ecoute.triAlbums === "ajoutes" && item.ajoute_le) {
     const date = new Date(item.ajoute_le * 1000).toLocaleDateString("fr-FR", {
       day: "numeric", month: "short", year: "numeric",
     });
@@ -489,7 +496,9 @@ function carteAlbum(item) {
   } else {
     el.children[2].children[1].textContent = item.year ?? "————";
   }
-  el.addEventListener("click", () => activer(item));
+  el.addEventListener("click", () => {
+    Promise.resolve(ouvrir(item)).catch((err) => remonter(err, "ouvrir l'album"));
+  });
 
   // Le nom de l'artiste ouvre tous ses albums ; `stopPropagation` évite que
   // le clic remonte à la case et ouvre la liste de pistes de cet album.
@@ -520,11 +529,14 @@ function carteAlbum(item) {
   // Chargement paresseux, cache partagé avec l'inspecteur et le transport :
   // la pochette n'est demandée qu'à l'affichage de la case, et ne sera pas
   // relue si elle l'a déjà été ailleurs.
-  pochette(item.path).then((img) => {
-    if (!img) return;
-    image.style.backgroundImage = `url("${img}")`;
-    image.classList.add("album__pochette--pleine");
-  });
+  const charger = () =>
+    pochette(item.path).then((img) => {
+      if (!img) return;
+      image.style.backgroundImage = `url("${img}")`;
+      image.classList.add("album__pochette--pleine");
+    });
+  if (differer) differer(el, charger);
+  else charger();
 
   return el;
 }
@@ -829,7 +841,7 @@ async function composerAlchimie({ bouton, chemin, demarrer, cible = ALCHIMIE_PIS
 }
 
 export {
-  ALBUM_HAUT, ALCHIMIE_PISTES, centreCorps, chargerPopulariteFraicheur, chargerPopularites,
+  ALBUM_HAUT, ALCHIMIE_PISTES, carteAlbum, centreCorps, chargerPopulariteFraicheur, chargerPopularites,
   cleCarteGrille, colonnesGrille, composerAlchimie, dessiner, dessinerGrille, fenetre, grille,
   initiales, jaugePop, lireAlbum, liste, ouvrirAlbumDePiste, popARecalculee, popParPiste, snapVue,
   teinteNom,

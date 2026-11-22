@@ -13,6 +13,7 @@ import {
 import { rampe } from "./carte.js";
 import { indexAlphaUtile, indexAnneesUtile } from "./ecouter-familles.js";
 import { demander } from "./ecrans.js";
+import { reafficherAccueil } from "./accueil.js";
 import { zoneGreffe } from "./creer.js";
 import { preparerMemoirePratique, quitterMemoirePratique, rendreMemoirePratique } from "./memoire-pratique.js";
 import { majEnchainement } from "./pratiquer-playlist.js";
@@ -109,9 +110,13 @@ function majEtatEditer() {
     // État 1 = le navigateur d'Écoute, tel quel : on montre grille ou liste
     // et on les redessine ici, une fois visibles.
     const enGrille = vueEnGrille();
-    demander("liste", !enGrille);
+    const enAccueil = vue.quoi === "accueil";
+    demander("liste", !enGrille && !enAccueil);
     demander("grille", enGrille);
-    if (enGrille) {
+    demander("accueil-vue", enAccueil);
+    if (enAccueil) {
+      reafficherAccueil();
+    } else if (enGrille) {
       ecoute.grilleDernierRang = -1;
       dessinerGrille();
     } else {
@@ -130,7 +135,7 @@ function majEtatEditer() {
     demander("editer-candidat", !!cand);
     if (cand) $("editer-candidat").textContent = `Séparer « ${txt(cand.title, "?")} »`;
   } else {
-    for (const id of ["liste", "grille", "index-alpha", "index-annees", "editer-candidat"]) demander(id, false);
+    for (const id of ["liste", "grille", "accueil-vue", "index-alpha", "index-annees", "editer-candidat"]) demander(id, false);
     const t = edition.source;
     $("fil-titre").textContent =
       `${etat === 2 ? "Séparer" : "Établi"} — ${txt(t?.title, "?")}`;

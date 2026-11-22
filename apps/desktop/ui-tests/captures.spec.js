@@ -7,7 +7,7 @@
 //   CAPTURES=1 npx playwright test captures      (ou npm run captures)
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
-const { ouvrir } = require("./outils");
+const { ouvrir, versAlbums } = require("./outils");
 const { fixturesCollection, donneesCollection, ALBUMS } = require("./collection-fictive");
 
 const DOSSIER = path.resolve(__dirname, "../../../docs/images");
@@ -19,6 +19,7 @@ for (const theme of ["sombre", "clair"]) {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.addInitScript((t) => localStorage.setItem("rusty-music.theme", t), theme);
     await ouvrir(page, fixturesCollection, donneesCollection);
+    await versAlbums(page);
     await expect(page.locator("#grille .album")).toHaveCount(ALBUMS.length);
     await page.locator("#grille .album__pochette--pleine").first().waitFor();
     await page.waitForTimeout(600);
