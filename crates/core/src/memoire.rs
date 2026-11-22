@@ -117,6 +117,22 @@ impl Library {
         Ok(lignes)
     }
 
+    /// Le journal brut, une ligne par écoute d'un morceau connu de la
+    /// bibliothèque : `(id, le)` en secondes Unix, dans l'ordre du temps. Ce
+    /// qu'il faut pour raisonner par album et par journée (la page d'accueil,
+    /// `docs/plan-ecouter-accueil.md`), là où [`Self::dernieres_ecoutes`] et
+    /// [`Self::nombre_ecoutes`] résument déjà par morceau.
+    pub fn journal_ecoutes(&self) -> Result<Vec<(i64, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, e.le FROM ecoute e JOIN tracks t ON t.path = e.chemin
+              ORDER BY e.le, e.rowid",
+        )?;
+        let lignes = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(lignes)
+    }
+
     /// Le nombre d'écoutes de chaque morceau écouté au moins une fois
     /// (`id → n`) : la familiarité du relief de la carte
     /// (`docs/plan-balade.md`, P6).
@@ -386,6 +402,11 @@ mod tests {
         assert_eq!(d[&id("/m/a")], 300);
         assert_eq!(d[&id("/m/b")], 200);
         assert!(!d.contains_key(&id("/m/c")));
+        assert_eq!(
+            lib.journal_ecoutes().unwrap(),
+            vec![(id("/m/a"), 100), (id("/m/b"), 200), (id("/m/a"), 300)],
+            "le journal, dans l'ordre du temps, sans le morceau inconnu"
+        );
         let n = lib.nombre_ecoutes().unwrap();
         assert_eq!(n[&id("/m/a")], 2);
         assert_eq!(n[&id("/m/b")], 1);

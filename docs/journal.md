@@ -7088,3 +7088,76 @@ d'échec.
   `[patch.crates-io]` sont retirés. `verifier.sh` vert (migrations
   comprises). L'app installée ci-dessus a encore été construite avec la
   copie : même code, sans effet.
+
+## Écouter, accueil A0 : les rangées mesurées avant d'être construites — 22 nov. 2026
+
+`crates/core/examples/accueil_mesure.rs` (`docs/plan-ecouter-accueil.md`, A0)
+compte les candidats des rangées R1 à R7 sur la base de la bibliothèque
+(copie), sans rien recalculer : albums et année par `Library::albums`, date au
+jour près et piste → album par `ordre_darrivee` (source `musicbrainz`),
+familles par `familles_des_albums`, écoutes par `journal_ecoutes` (nouvelle,
+`memoire.rs` : le journal brut, qu'A1 réutilisera). Rien à déplacer depuis
+`apps/desktop` : tout était déjà dans le cœur ; seul `epoch_vers_cle` devient
+public. Journées UTC.
+
+```bash
+cargo run --release -p rusty-music-core --example accueil_mesure -- <copie.db> accueil-mesure.md
+```
+
+**Bibliothèque et journal.** 2 162 albums (et non 1 986 : le plan citait un
+compte plus ancien). Journal `ecoute` : première écoute le **4 oct. 2026**,
+soit **49 jours** ; 1 304 écoutes, 46 journées, 631 morceaux, 136 albums
+touchés par au moins une piste.
+
+**Seuil « album écouté »** (pistes distinctes le même jour) :
+
+| règle | écoutés | ≥ 3 journées | < 30 j | R1 ≥ 1 j, > 1 mois | R2 | R6 |
+|---|---|---|---|---|---|---|
+| 1 piste | 136 | 18 | 73 | 60 | 2 021 | 5 |
+| 3 pistes | 56 | 13 | 31 | 22 | 2 099 | 7 |
+| la moitié | 39 | 7 | 21 | 15 | 2 114 | 9 |
+| 3 ou la moitié (plan) | 56 | 13 | 31 | 22 | 2 099 | 7 |
+
+Une piste suffit à compter 80 albums de plus, que la lecture aléatoire
+effleure sans qu'on les ait écoutés ; la moitié écarte les longs albums
+écoutés en partie. La règle du plan se confond ici avec « 3 pistes ».
+
+**Rangées** (règle du plan) :
+
+| rangée | candidats |
+|---|---|
+| R1 `oublies` (≥ 3 journées, > 12 mois) | **0** — à 3 mois aussi 0 |
+| R2 `jamais` | 2 099 |
+| R3 `anniversaire` (± 3 j du 22 nov.) | 25, dont 4 à *N* rond |
+| R4 `epoque` | 42 cases ≥ 8 albums (1 988 albums couverts) |
+| R5 `hasard` | 2 162 (2 106 jamais écoutés, 25 entre 1 et 12 mois, 31 < 30 j) |
+| R6 `nouveaux` | 7 |
+| R7 `parce-que` | 2 129 voisins possibles ; *X* écouté 6 journées sur 14 |
+
+- **R3.** 1 310 albums (60,6 %) ont une date d'œuvre au jour près ; 96,2 %
+  ont une année. Sur les 365 jours, la fenêtre de ± 3 jours compte 0 / 25 / 56
+  albums (min / médiane / max) et tient (≥ 4) **351 jours** ; avec *N* rond
+  seulement, médiane 3 et **143 jours**. Décembre est creux (25 albums
+  datés contre 182 en octobre) ; 12 dates au 1er janvier seulement : pas de
+  date d'année déguisée à craindre.
+- **R4.** 12 familles ; **2 albums sans famille** (0,1 %), 82 avec famille
+  mais sans année. 65 cases non vides, 42 ≥ 8, 30 ≥ 16 ; en demi-décennies,
+  64 cases ≥ 8. Les grosses cases sont les années 1990-2000 de Rock · Grunge
+  (201, 186) et Electronic · Trip Hop (105, 107).
+
+**Seuils retenus.**
+- *Écouté* : **3 pistes distinctes le même jour, ou la moitié** (règle du
+  plan, inchangée).
+- *R1* : l'historique a 49 jours, même le repli à 3 mois prévu par le plan est
+  vide. Tant que le journal a moins de six mois, R1 prend **≥ 1 journée,
+  dernière écoute il y a plus d'un mois** (22 albums), titre « Pas écoutés
+  depuis un mois » ; à partir de six mois de journal, ≥ 3 journées et plus de
+  3 mois ; à partir de deux ans, plus de 12 mois. Le palier se lit sur la
+  première écoute du journal, pas sur une date figée.
+- *R3* : tous les *N* ≥ 1 dans ± 3 jours, *N* rond en tête de rangée ; *N*
+  rond seul la viderait six mois sur douze.
+- *R4* : cases **décennie ≥ 8 albums** ; demi-décennie quand la case dépasse
+  16 albums (30 cases), pour que « Rock · années 1990 » ne soit pas un
+  deuxième « Au hasard ».
+- *R2*, *R5*, *R7* : pleines, rien à régler ; *R6* : 7 albums, au-dessus du
+  plancher de 4, mais dépend des arrivées du mois.

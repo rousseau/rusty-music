@@ -1425,8 +1425,8 @@ pub struct ArriveeBrute {
 
 /// Un instant epoch vers la même clé AAAAMMJJ, sans dépendance de date : on
 /// n'a besoin que d'un ordre, et l'arithmétique civile grégorienne tient en
-/// quinze lignes (algorithme de Howard Hinnant).
-fn epoch_vers_cle(secondes: i64) -> u32 {
+/// quinze lignes (algorithme de Howard Hinnant). Jour UTC.
+pub fn epoch_vers_cle(secondes: i64) -> u32 {
     let jours = secondes.div_euclid(86_400) + 719_468;
     let ere = jours.div_euclid(146_097);
     let doe = jours - ere * 146_097;
