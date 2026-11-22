@@ -38,6 +38,7 @@ const ALBUMS = [
 
 const albumAccueil = (x, note = null) => ({
   name: x.name, artist: x.artist, year: x.year, tracks: x.tracks, path: x.path, note,
+  artist_mbid: "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
 });
 
 const fixtures = {
@@ -379,6 +380,8 @@ const fixtures = {
       },
     ],
   },
+  // A3 : pas d'image large par défaut ; le dégradé de la pochette reste.
+  accueil_fond: null,
   playlists: (_, e) => {
     const ps = window.__DONNEES__.PISTES;
     return [...window.__FIXTURES__.__etat_playlists(e)]

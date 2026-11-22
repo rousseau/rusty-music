@@ -216,8 +216,9 @@ fn exporter_les_types_des_commandes() {
             favoris,
             listes_intelligentes,
             liste_intelligente,
-            // A1 : la page d'accueil d'Écouter.
+            // A1 : la page d'accueil d'Écouter ; A3 : son fond.
             accueil,
+            accueil_fond,
             exporter_playlist,
             renommer_playlist,
             supprimer_playlist,

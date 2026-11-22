@@ -765,6 +765,41 @@ pub(crate) fn accueil(
         .map_err(echec)
 }
 
+/// L'image large de l'artiste de l'album à la une (A3), en `data:` URI : un
+/// fond TheAudioDB (`fond_par_mbid`), résolu par MBID d'artiste, jamais par
+/// nom. Même cache disque que les photos de Découvrir (`<données>/pochettes`,
+/// clé `tadb-fond-<mbid>`) : une image trouvée y reste, un « pas d'image »
+/// périme après 30 jours, une panne n'est jamais écrite. Le réglage « pochettes
+/// cherchées en ligne » coupé, seul le cache répond.
+///
+/// `Ok(None)` : pas d'image, l'interface garde le dégradé de la pochette.
+/// `Err` : panne réseau, à redemander plus tard.
+#[tauri::command]
+#[cfg_attr(test, specta::specta)]
+pub(crate) async fn accueil_fond(
+    etat: State<'_, Etat>,
+    mbid: String,
+) -> Result<Option<String>, String> {
+    // Il sert de nom de fichier de cache et part dans une URL.
+    if mbid.len() != 36 || !mbid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+        return Err("identifiant d'artiste invalide".into());
+    }
+    let dossier_cache = etat.db.with_file_name("pochettes");
+    tauri::async_runtime::spawn_blocking(move || {
+        let cle = format!("tadb-fond-{mbid}");
+        if !pochettes_en_ligne() {
+            return Ok(lire_cache_pochette(&dossier_cache, &cle).flatten());
+        }
+        match source_de_pochette(&dossier_cache, &cle, || theaudiodb().fond_par_mbid(&mbid)) {
+            Reponse::Image(v) => Ok(Some(v)),
+            Reponse::Non => Ok(None),
+            Reponse::Panne => Err("image de l'artiste indisponible (panne réseau)".to_string()),
+        }
+    })
+    .await
+    .map_err(echec)?
+}
+
 /// Les listes calculées à partir des écoutes (récents, plus écoutés, favoris)
 /// qui ne sont pas vides, pour la tête de la vue Playlists.
 #[tauri::command(async)]

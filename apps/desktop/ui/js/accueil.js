@@ -161,12 +161,17 @@ function rendreUne(une) {
   section.hidden = !une;
   if (!une) return;
   const a = une.album;
+  accueil.cases.push([section, a]);
+  // Le même album qu'au rendu précédent (un « ↻ » ne change pas la une) :
+  // pochette, couleurs et photo sont déjà posées.
+  const cle = `${a.name}\n${a.artist ?? ""}`;
+  if (section.dataset.album === cle) return;
+  section.dataset.album = cle;
   $("accueil-une-raison").textContent = une.raison;
   $("accueil-une-titre").textContent = a.name;
   $("accueil-une-artiste").textContent = [txt(a.artist, "(sans artiste)"), a.year].filter(Boolean).join(" · ");
   $("accueil-une-lire").onclick = () => lireAlbum(a).catch((e) => remonter(e, "lireAlbum"));
   $("accueil-une-ouvrir").onclick = () => ouvrir(a).catch((e) => remonter(e, "ouvrir l'album"));
-  accueil.cases.push([section, a]);
 
   // Le fond : les deux couleurs de la pochette, recalées pour le thème
   // (`couleurs-album.js`) ; à défaut, les fonds du thème.
@@ -175,6 +180,7 @@ function rendreUne(une) {
   section.style.removeProperty("--album-haut");
   section.style.removeProperty("--album-bas");
   const jeton = accueil.jeton;
+  poserPhoto(section, a, jeton);
   pochette(a.path)
     .then(async (img) => {
       if (!img || jeton !== accueil.jeton) return;
@@ -185,6 +191,26 @@ function rendreUne(une) {
       section.style.setProperty("--album-bas", c.bas);
     })
     .catch((e) => remonter(e, "couleurs d'album"));
+}
+
+/// A3 : l'image large de l'artiste (TheAudioDB, par MBID) derrière l'album à
+/// la une, sous un voile aux couleurs de la pochette (`style.css`, `.une__fond`).
+/// Sans MBID, sans image ou sans réseau : le dégradé seul, sans message.
+function poserPhoto(section, a, jeton) {
+  const fond = section.querySelector(".une__fond");
+  fond.style.backgroundImage = "";
+  section.classList.remove("une--photo");
+  $("accueil-une-credit").hidden = true;
+  if (!a.artist_mbid) return;
+  invoke("accueil_fond", { mbid: a.artist_mbid })
+    .then((img) => {
+      if (!img || jeton !== accueil.jeton) return;
+      fond.style.backgroundImage = `url("${img}")`;
+      section.classList.add("une--photo");
+      $("accueil-une-credit").hidden = false;
+    })
+    // Une panne réseau n'a rien à dire à l'écran : le dégradé suffit.
+    .catch(() => {});
 }
 
 function rendreRangee(r) {

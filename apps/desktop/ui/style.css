@@ -2814,6 +2814,28 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   background: linear-gradient(160deg, var(--album-haut, var(--panel)), var(--album-bas, var(--bg)));
   border: 1px solid var(--line);
 }
+/* A3 : la photo de l'artiste, sous un voile tiré des deux couleurs de la
+   pochette — léger côté pochette, presque opaque côté texte, pour que `--txt`
+   garde son contraste (Règle 6) quelle que soit la photo. */
+.une { position: relative; overflow: hidden; isolation: isolate; }
+.une__fond {
+  position: absolute; inset: 0; z-index: -1;
+  background-size: cover; background-position: center 30%;
+}
+.une__fond::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--album-haut, var(--panel)) 45%, transparent) 0%,
+    color-mix(in srgb, var(--album-bas, var(--bg)) 82%, transparent) 38%,
+    color-mix(in srgb, var(--album-bas, var(--bg)) 90%, transparent) 100%);
+}
+.une:not(.une--photo) .une__fond { display: none; }
+/* La mention de la photo a sa ligne sous les boutons, même à 960 px. */
+.une--photo { padding-bottom: 34px; }
+.une__credit {
+  position: absolute; right: 12px; bottom: 8px; margin: 0;
+  font-size: var(--t-legende); color: var(--txt);
+}
 .une__pochette {
   width: clamp(160px, 34%, 320px); flex: none; margin-bottom: 0;
   box-shadow: 0 8px 30px rgb(0 0 0 / .25);

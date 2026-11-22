@@ -85,6 +85,24 @@ test("A2 : une pochette ouvre l'album, ← revient à l'Accueil", async ({ page 
   await expect(page.locator("#accueil-rangees .album")).toHaveCount(2);
 });
 
+test("A3 : l'image large de l'artiste derrière l'album à la une, demandée par MBID", async ({ page }) => {
+  // Sans image (réponse par défaut) : le dégradé seul, pas de mention.
+  await versAccueil(page);
+  await expect(page.locator("#accueil-une")).not.toHaveClass(/une--photo/);
+  await expect(page.locator("#accueil-une-credit")).toBeHidden();
+  expect((await appels(page, "accueil_fond")).at(-1)).toEqual({ mbid: "0383dadf-2a4e-4d10-a46a-e9e041da8eb3" });
+
+  // Avec une image, au rechargement : la photo et sa source.
+  await page.addInitScript(() => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#406080"/></svg>';
+    window.__FIXTURES__.accueil_fond = `data:image/svg+xml;base64,${btoa(svg)}`;
+  });
+  await page.reload();
+  await expect(page.locator("#accueil-une")).toHaveClass(/une--photo/);
+  await expect(page.locator("#accueil-une-credit")).toHaveText("photo : TheAudioDB");
+  await expect(page.locator("#accueil-une .une__fond")).toHaveCSS("background-image", /^url\(/);
+});
+
 test("A2 : ▶ Lecture lit l'album à la une", async ({ page }) => {
   await versAccueil(page);
   await page.locator("#accueil-une-lire").click();

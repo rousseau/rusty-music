@@ -109,7 +109,37 @@ impl Client {
             None => Ok(None),
         }
     }
+
+    /// L'image large d'un artiste (`mbid`), pour le fond de l'album à la une
+    /// d'Écouter (`docs/plan-ecouter-accueil.md`, A3) : le premier des fonds
+    /// (`strArtistFanart` à `strArtistFanart4`, 1 920 × 1 080 en général),
+    /// sinon la vignette large (`strArtistWideThumb`). Champs vérifiés sur une
+    /// réponse réelle le 22 nov. 2026 (`docs/data-sources.md`). Mêmes règles
+    /// que [`Client::vignette_par_mbid`] : résolution par MBID vérifié,
+    /// `Ok(None)` définitif, `Err` à redemander.
+    pub fn fond_par_mbid(&self, mbid: &str) -> Result<Option<Vec<u8>>> {
+        let url = format!(
+            "https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={mbid}",
+            self.cle
+        );
+        let Some(v) = self.json(&url)? else {
+            return Ok(None);
+        };
+        match image_de(&v, mbid, &CHAMPS_FOND) {
+            Some(image) => crate::pochette::telecharger(&image),
+            None => Ok(None),
+        }
+    }
 }
+
+/// Les champs d'image large d'`artist-mb.php`, dans l'ordre de préférence.
+const CHAMPS_FOND: [&str; 5] = [
+    "strArtistFanart",
+    "strArtistFanart2",
+    "strArtistFanart3",
+    "strArtistFanart4",
+    "strArtistWideThumb",
+];
 
 /// Extrait le premier artiste d'une réponse `artist-mb.php`, en vérifiant que
 /// son `strMusicBrainzID` correspond bien au MBID demandé.
@@ -134,13 +164,19 @@ fn artiste_de(v: &Value, mbid_demande: &str) -> Option<Artiste> {
 /// L'URL de `strArtistThumb` d'une réponse `artist-mb.php`, sous la même
 /// condition que [`artiste_de`] : le `strMusicBrainzID` doit être celui demandé.
 fn vignette_de(v: &Value, mbid_demande: &str) -> Option<String> {
+    image_de(v, mbid_demande, &["strArtistThumb"])
+}
+
+/// La première URL non vide parmi `champs`, sous la même condition que
+/// [`artiste_de`] : le `strMusicBrainzID` doit être celui demandé.
+fn image_de(v: &Value, mbid_demande: &str, champs: &[&str]) -> Option<String> {
     let a = v["artists"].as_array()?.first()?;
     if a["strMusicBrainzID"].as_str() != Some(mbid_demande) {
         return None;
     }
-    a["strArtistThumb"]
-        .as_str()
-        .filter(|s| !s.is_empty())
+    champs
+        .iter()
+        .find_map(|c| a[*c].as_str().filter(|s| !s.is_empty()))
         .map(str::to_string)
 }
 
@@ -208,5 +244,33 @@ mod tests {
         assert_eq!(vignette_de(&vide, "m"), None);
         let nul: Value = serde_json::from_str(r#"{"artists":null}"#).expect("JSON de test");
         assert_eq!(vignette_de(&nul, "m"), None);
+    }
+
+    #[test]
+    fn le_fond_prend_le_premier_fanart_puis_la_vignette_large() {
+        let v: Value = serde_json::from_str(
+            r#"{"artists":[{"strMusicBrainzID":"m","strArtistFanart":"",
+                "strArtistFanart2":"https://r2.theaudiodb.com/f2.jpg",
+                "strArtistWideThumb":"https://r2.theaudiodb.com/w.jpg"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            image_de(&v, "m", &CHAMPS_FOND).as_deref(),
+            Some("https://r2.theaudiodb.com/f2.jpg")
+        );
+        let v: Value = serde_json::from_str(
+            r#"{"artists":[{"strMusicBrainzID":"m","strArtistFanart":null,
+                "strArtistWideThumb":"https://r2.theaudiodb.com/w.jpg"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            image_de(&v, "m", &CHAMPS_FOND).as_deref(),
+            Some("https://r2.theaudiodb.com/w.jpg")
+        );
+        assert_eq!(
+            image_de(&v, "autre", &CHAMPS_FOND),
+            None,
+            "jamais un homonyme"
+        );
     }
 }

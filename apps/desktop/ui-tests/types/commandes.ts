@@ -1247,6 +1247,18 @@ export const commands = {
 	 */
 	accueil: (date: string, decalages: { [key in string]: number }) => __TAURI_INVOKE<PageAccueil_Serialize>("accueil", { date, decalages }),
 	/**
+	 *  L'image large de l'artiste de l'album à la une (A3), en `data:` URI : un
+	 *  fond TheAudioDB (`fond_par_mbid`), résolu par MBID d'artiste, jamais par
+	 *  nom. Même cache disque que les photos de Découvrir (`<données>/pochettes`,
+	 *  clé `tadb-fond-<mbid>`) : une image trouvée y reste, un « pas d'image »
+	 *  périme après 30 jours, une panne n'est jamais écrite. Le réglage « pochettes
+	 *  cherchées en ligne » coupé, seul le cache répond.
+	 * 
+	 *  `Ok(None)` : pas d'image, l'interface garde le dégradé de la pochette.
+	 *  `Err` : panne réseau, à redemander plus tard.
+	 */
+	accueil_fond: (mbid: string) => __TAURI_INVOKE<string | null>("accueil_fond", { mbid }),
+	/**
 	 *  Écrit la playlist `id` en `.m3u8` dans `dossier` (celui que l'utilisateur a
 	 *  choisi) et rend le chemin du fichier. Les pistes que la bibliothèque ne
 	 *  connaît plus n'y figurent pas. N'écrase jamais un fichier existant.
@@ -1612,6 +1624,12 @@ export type AlbumAccueil_Deserialize = {
 	tracks: number,
 	/**  Une piste de l'album, pour sa pochette. */
 	path: string,
+	/**
+	 *  L'artiste d'album chez MusicBrainz (`mb_album_artist_id`), quand les
+	 *  tags le portent : l'image large de l'album à la une (A3) se résout par
+	 *  lui, jamais par le nom.
+	 */
+	artist_mbid?: string | null,
 	/**  Ce qui distingue l'album dans sa rangée (« il y a 30 ans »), s'il y a lieu. */
 	note?: string | null,
 };
@@ -1627,6 +1645,12 @@ export type AlbumAccueil_Serialize = {
 	tracks: number,
 	/**  Une piste de l'album, pour sa pochette. */
 	path: string,
+	/**
+	 *  L'artiste d'album chez MusicBrainz (`mb_album_artist_id`), quand les
+	 *  tags le portent : l'image large de l'album à la une (A3) se résout par
+	 *  lui, jamais par le nom.
+	 */
+	artist_mbid: string | null,
 	/**  Ce qui distingue l'album dans sa rangée (« il y a 30 ans »), s'il y a lieu. */
 	note: string | null,
 };

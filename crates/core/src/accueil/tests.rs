@@ -249,6 +249,11 @@ fn les_anniversaires_a_trois_jours_pres_annees_rondes_en_tete() {
     assert_eq!(une.rangee, "anniversaire");
     assert_eq!(une.raison, "Sorti il y a 30 ans cette semaine");
     assert_eq!(une.album.name, "A");
+    assert_eq!(
+        une.album.artist_mbid.as_deref(),
+        Some("mb-Dates"),
+        "pour l'image large (A3)"
+    );
     // Restent C (10 ans) et B (23 ans, le jour même) ; D est à 4 jours, hors
     // fenêtre : deux albums, la rangée tombe.
     assert!(rangee(&p, "anniversaire").is_none());

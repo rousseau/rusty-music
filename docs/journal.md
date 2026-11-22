@@ -7238,3 +7238,39 @@ d'enregistrement d'écran, absente de cette session. La page réelle du
 22 nov. (7 rangées, 123 pochettes sur 124) a été exportée de la base puis
 rendue par l'interface réelle sous Playwright, Tauri simulé : ce qu'on y voit
 est la vraie page, pas l'app lancée.
+
+## Écouter, accueil A3 : la photo de l'artiste derrière l'album à la une — 22 nov. 2026
+
+**Champs vérifiés sur une réponse réelle** d'`artist-mb.php` (Radiohead, puis
+DJ Cam) : `strArtistFanart` à `strArtistFanart4` (fonds, 1 280 × 720 pour DJ
+Cam, 1 920 × 1 080 courant), `strArtistWideThumb`, `strArtistBanner`,
+`strArtistLogo`, `strArtistCutout`, `strArtistClearart`, sur
+`r2.theaudiodb.com`. Les noms supposés par le plan étaient les bons.
+
+- `theaudiodb::Client::fond_par_mbid` : le premier fanart non vide, sinon la
+  vignette large ; même vérification du MBID que la vignette (jamais un
+  homonyme) ; `image_de` factorise la lecture des champs.
+- `AlbumAccueil.artist_mbid` (`mb_album_artist_id` de l'album) ; commande
+  `accueil_fond { mbid }` sur le cache disque des pochettes (« pas d'image »
+  30 jours, panne jamais écrite), réduite au cache quand « pochettes cherchées
+  en ligne » est coupé.
+- Interface : la photo sous un voile fait des deux couleurs de la pochette,
+  45 % côté pochette, 82 puis 90 % côté texte ; « photo : TheAudioDB » en bas
+  à droite ; sans MBID, sans image ou en panne, le dégradé seul, sans message.
+  « À propos » : « Biographies, photos d'artistes — TheAudioDB ».
+- **Contraste mesuré** sur la capture (DJ Cam, photo très colorée), fond de la
+  zone de texte : luminance 0,031 à 0,108 en sombre → 5,4:1 au pire avec
+  `--txt` ; 0,330 à 0,559 en clair → 5,9:1. Pire cas calculé (zone blanche ou
+  noire sous le voile à 90 %) : au moins 4,9:1.
+
+**Conditions d'usage** (relues sur `theaudiodb.com/docs_terms_of_use.php`) :
+aucune licence ouverte pour les images ; l'API permet de copier ce qu'elle
+rend, un lien vers le site est demandé, et l'usage des illustrations dans un
+projet publié est réservé aux abonnés, avec mention. Les vignettes de
+Découvrir étaient déjà dans ce cas. Laissé ouvert dans `data-sources.md` :
+demander une autorisation écrite ou passer à une clé personnelle avant une
+diffusion large.
+
+Tests : `fond_par_mbid` (ordre des champs, MBID vérifié), `artist_mbid` dans
+la page, un test de fumée (sans image : dégradé seul ; avec : photo et
+mention).

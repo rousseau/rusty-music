@@ -1197,6 +1197,7 @@ fn main() {
             listes_intelligentes,
             liste_intelligente,
             accueil,
+            accueil_fond,
             renommer_playlist,
             supprimer_playlist,
             nouvelle_playlist,

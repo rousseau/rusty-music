@@ -41,6 +41,10 @@ pub struct AlbumAccueil {
     pub tracks: i64,
     /// Une piste de l'album, pour sa pochette.
     pub path: String,
+    /// L'artiste d'album chez MusicBrainz (`mb_album_artist_id`), quand les
+    /// tags le portent : l'image large de l'album à la une (A3) se résout par
+    /// lui, jamais par le nom.
+    pub artist_mbid: Option<String>,
     /// Ce qui distingue l'album dans sa rangée (« il y a 30 ans »), s'il y a lieu.
     pub note: Option<String>,
 }
@@ -105,6 +109,7 @@ struct Info {
     date_jour: Option<u32>,
     famille: Option<i64>,
     popularite: Option<f64>,
+    artist_mbid: Option<String>,
 }
 
 impl Info {
@@ -118,6 +123,7 @@ impl Info {
             year: self.row.year,
             tracks: self.row.tracks,
             path: self.row.path.clone(),
+            artist_mbid: self.artist_mbid.clone(),
             note,
         }
     }
@@ -559,6 +565,7 @@ impl Library {
                         date_jour: None,
                         famille: None,
                         popularite: None,
+                        artist_mbid: None,
                     },
                 )
             })
@@ -579,6 +586,26 @@ impl Library {
         for (album, artiste, cluster) in self.familles_des_albums(model)? {
             if let Some(i) = albums.get_mut(&hacher(artiste.as_deref().unwrap_or(""), &album)) {
                 i.famille = Some(cluster);
+            }
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT album, COALESCE(album_artist, artist), MIN(mb_album_artist_id)
+               FROM tracks
+              WHERE album IS NOT NULL AND mb_album_artist_id IS NOT NULL
+              GROUP BY album, COALESCE(album_artist, artist)",
+        )?;
+        let mbids = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        for m in mbids {
+            let (album, artiste, mbid) = m?;
+            if let Some(i) = albums.get_mut(&hacher(artiste.as_deref().unwrap_or(""), &album)) {
+                i.artist_mbid = Some(mbid);
             }
         }
 
@@ -650,6 +677,7 @@ impl Library {
                         date_jour: f.date_jour,
                         famille: f.famille,
                         popularite: f.popularite,
+                        artist_mbid: f.artist_mbid.clone(),
                     },
                 )
             })
@@ -668,6 +696,7 @@ struct Fixe {
 }
 
 struct InfoFixe {
+    artist_mbid: Option<String>,
     row: AlbumRow,
     date_jour: Option<u32>,
     famille: Option<i64>,
