@@ -152,8 +152,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     horloges (anneau sans verrou, rééchantillonnage adaptatif, 0 trou sur
     10 min simulées), branché sur l'écoute du coach (brut pour l'analyse),
     haut-parleur dans le bandeau, volume, balance, réglages gardés
-    (migration n° 17), micro signalé ; restent l'installation et l'essai
-    de François sur ses enceintes (porte) ;
+    (migration n° 17), micro signalé ; essayé le 23 nov. : 57 ms dès que
+    les stems se rechargent pendant le retour (tampon rodio de 2048 trames
+    imposé à l'appareil), corrigé à 22 ms au pire (sortie des stems à 512
+    trames) ; reste l'essai de François sur la version corrigée (porte) ;
     V42 (18 nov.) : tonalité d'ensemble gardée par morceau (migration
     n° 18), vitesse et tonalité remises au neutre sur un morceau sans
     réglage gardé, playlist comprise ; entrée de la basse qui suit le

@@ -579,7 +579,7 @@ impl Multipiste {
             });
         }
 
-        let mut sortie = DeviceSinkBuilder::open_default_sink()?;
+        let mut sortie = ouvrir_sortie_stems()?;
         // Même raison que dans `Player` : le message de fermeture de `rodio`
         // n'apprend rien et pollue la sortie.
         sortie.log_on_drop(false);
@@ -907,6 +907,38 @@ fn lire_entrelace(chemin: &Path) -> Result<Vec<i16>> {
     Ok(uniforme
         .map(|v: f32| (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
         .collect())
+}
+
+/// Tampon demandé à la sortie des stems, en trames : 11,6 ms à 44,1 kHz,
+/// assez pour la pire salve de l'étireur ([`BLOC`], `examples/cout_bloc.rs`).
+///
+/// **Pas le défaut de rodio** (50 ms, 2048 trames à 44,1 kHz) : sous macOS,
+/// le tampon d'un appareil est commun à tous ses flux, et le dernier ouvert
+/// l'impose. Des stems rechargés (hauteur changée) pendant que le retour de
+/// la basse joue (E7) faisaient passer celui-ci de 13 à 57 ms — injouable.
+/// Avec 512 : 22 ms dans ce pire ordre (mesuré le 23 nov., Scarlett Solo et
+/// prise casque).
+pub const TAMPON_STEMS: u32 = 512;
+
+/// La sortie par défaut avec [`TAMPON_STEMS`] ramené dans ce que l'appareil
+/// accepte ; à défaut, le repli de rodio.
+fn ouvrir_sortie_stems() -> std::result::Result<MixerDeviceSink, rodio::DeviceSinkError> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let tampon = cpal::default_host()
+        .default_output_device()
+        .and_then(|d| d.default_output_config().ok())
+        .map(|c| match c.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                cpal::BufferSize::Fixed(TAMPON_STEMS.clamp(*min, (*max).max(*min)))
+            }
+            cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Fixed(TAMPON_STEMS),
+        });
+    DeviceSinkBuilder::from_default_device()
+        .and_then(|b| match tampon {
+            Some(t) => b.with_buffer_size(t).open_stream(),
+            None => b.open_stream(),
+        })
+        .or_else(|_| DeviceSinkBuilder::open_default_sink())
 }
 
 #[cfg(test)]

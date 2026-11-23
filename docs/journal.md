@@ -7310,3 +7310,36 @@ sans « Ajoutés récemment », la dernière dans l'ordre (plafond de sept).
 Tests : 5 de plus (absente sans passe Découvrir, une et rangée d'un artiste,
 rangée commune, « ↻ » vers l'artiste suivant, dates en français) ; fixture
 d'interface mise à jour (la une vient de l'actualité).
+
+## Pratiquer, E7 : le retour de la basse à 57 ms — 23 nov. 2026
+
+**Essai de François** (Scarlett Solo, enceintes sur la prise jack) :
+« injouable », le panneau du retour indiquait 57 ms ; les séances
+précédentes n'avaient pas cette latence. Direct Monitor n'y change rien.
+
+**Cause, reproduite.** Sous macOS, le tampon d'un appareil est commun à tous
+ses flux et le dernier ouvert l'impose. Le lecteur des stems ouvrait la
+sortie au défaut de rodio, 50 ms arrondis à 2048 trames à 44,1 kHz. Ouvert
+**avant** le retour, il cède au tampon de 128 du retour ; rouvert **après**
+— des stems rechargés, ici la hauteur passée à +½ ton —, il impose 2048
+trames au retour, dont l'anneau vise alors un rappel entier. Sonde (son
+coupé, vrai moteur, Scarlett et prise casque) :
+
+| ordre d'ouverture | moteur | estimée (panneau) |
+|---|---|---|
+| retour seul, ou stems avant | 7,3 ms | 13 ms |
+| stems après, tampon rodio par défaut | 50,8 ms | 56,6 ms |
+| stems après, 512 trames | 16,0 ms | 21,8 ms |
+| stems après, 256 trames | 10,2 ms | 16,0 ms |
+
+**Corrigé** : la sortie des stems demande 512 trames (`TAMPON_STEMS`,
+`multipiste.rs`), ramenées dans ce que l'appareil accepte, repli rodio
+sinon. 256 serait plus court, mais la pire salve de l'étireur (6,1 ms pour
+quatre stems au repos, `cout_bloc.rs`, environ 9 ms pour six) dépasse ses
+5,8 ms ; 512 en laisse 11,6.
+
+Non vérifié : le banc des salves n'a pas pu être refait au repos (Mac chargé,
+charge moyenne 21 à 29, une machine virtuelle à 190 %) ; pas de craquement
+entendu ni écarté à 512 trames avec six stems — essai de François. Le
+lecteur d'Écouter garde le défaut de rodio (ouvert au démarrage, avant tout
+retour).
