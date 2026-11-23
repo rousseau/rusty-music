@@ -126,7 +126,8 @@ migration (`db::schema::migrations`, `PRAGMA user_version`). Pièges : README.
   `docs/module3-roformer.md` ; coach de pratique (jeu comparé à la
   référence) : `docs/recherche-coach-pratique.md`.
 - **enrichissement** : `docs/data-sources.md`, `docs/enrichissement-lecteur.md`,
-  `docs/popularite.md`.
+  `docs/popularite.md` ; croiser tags, sources en ligne et empreintes :
+  `docs/recherche-enrichissement-croise.md`.
 - **compagnon iOS, Valise** : `docs/plan-ios-compagnon.md`.
 - **dépendances, licences** : `docs/rust-audio-stack.md`, `MODELES.md`.
 - **plan en cours** : `docs/synthese-novembre-2026.md` (point du 7 nov.,
