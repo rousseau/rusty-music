@@ -10,14 +10,18 @@ import {
 } from "./carte.js";
 import { couleursPochette } from "./couleurs-album.js";
 import { lecture, transport } from "./etat-lecture.js";
+import { deplacerLecture } from "./etabli-stems.js";
 
 /* ------------------------------------------------- vue plein écran « En cours »
  *
- * Le morceau qui joue, en grand : la pochette sur un disque qui tourne, le
- * spectre autour, titre, artiste et album dessous (`docs/plan-ecouter-v0.3.md`,
+ * Le morceau qui joue, en grand : un vinyle qui tourne, la pochette en
+ * macaron, la progression en anneau cliquable, le spectre en couronne ; titre,
+ * artiste, album, temps et la suite de la file à côté (refonte du 23 nov. 2026) (`docs/plan-ecouter-v0.3.md`,
  * point 1 ; idée de Disc Player, `src/layout/VisualizerMode.vue`, licence MIT).
  * Un écran au-dessus des autres, comme la palette : le transport et la file
- * restent utilisables, Échap ferme. Pas un sixième mode du rail.
+ * restent utilisables, Échap ferme. Pas un sixième mode du rail. On l'ouvre
+ * par le bouton « en cours » du transport, la touche F, un clic sur la
+ * pochette du transport ou ⌘K « en cours ».
  *
  * Le spectre ne prélève pas le son : il lit, à la tête de lecture, la colonne
  * du spectrogramme que le transport a déjà calculé (`spectreCourant`, rangée 0
@@ -31,6 +35,9 @@ const vue = $("en-cours");
 const cnv = $("en-cours-spectre");
 const ctx = cnv.getContext("2d");
 const disque = $("en-cours-disque");
+const anneau = $("en-cours-anneau");
+const avance = $("en-cours-avance");
+const bouton = $("bascule-en-cours");
 const reduit = matchMedia("(prefers-reduced-motion: reduce)");
 
 const etat = {
@@ -39,6 +46,7 @@ const etat = {
   image: 0, // requestAnimationFrame
   focusAvant: null,
   jeton: 0,
+  suite: -1, // longueur de la file à la dernière pose de « À suivre »
 };
 
 const morceauEnCours = () => fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
@@ -53,9 +61,12 @@ async function poserMorceau(t) {
     ? [isoler(txt(t.album)), t.year].filter(Boolean).join(" · ")
     : "";
   etat.bandes = [];
+  poserSuite();
   const img = t ? await pochette(t.path) : null;
   if (jeton !== etat.jeton) return;
-  disque.style.backgroundImage = img ? `url("${img}")` : "";
+  const url = img ? `url("${img}")` : "";
+  $("en-cours-macaron").style.backgroundImage = url;
+  $("en-cours-fond").style.backgroundImage = url;
   await poserCouleurs(img, jeton);
 }
 
@@ -101,16 +112,19 @@ function dessinerSpectre() {
     const cible = s.pixels[(n - 1 - k) * s.largeur + col] / 255;
     etat.bandes[k] = (etat.bandes[k] ?? 0) * 0.72 + cible * 0.28;
   }
+  // Une couronne fine au-delà de l'anneau de progression : des traits courts,
+  // un peu transparents, pour accompagner le disque sans le couvrir.
   const centre = taille / 2;
-  const rayon = disque.clientWidth / 2 + 6;
-  const long = centre - rayon - 4;
+  const rayon = disque.clientWidth / 2 + 24;
+  const long = centre - rayon - 2;
   const pas = Math.PI / n;
   ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(2, (rayon * pas) * 0.55);
+  ctx.lineWidth = Math.max(1.5, Math.min(3, rayon * pas * 0.35));
+  ctx.globalAlpha = 0.8;
   for (let k = 0; k < n; k++) {
     const v = etat.bandes[k];
     ctx.strokeStyle = couleurDe(v);
-    const l = 3 + long * v ** 1.4;
+    const l = 2 + long * v ** 1.6;
     for (const sens of [1, -1]) {
       const a = -Math.PI / 2 + sens * (k + 0.5) * pas;
       ctx.beginPath();
@@ -121,10 +135,40 @@ function dessinerSpectre() {
   }
 }
 
+const mmss = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/// Les deux morceaux suivants de la file, pour savoir où va l'écoute.
+function poserSuite() {
+  const i = fileAttente.pistes.findIndex((t) => t.path === lecture.courant);
+  const suite = i < 0 ? [] : fileAttente.pistes.slice(i + 1, i + 3);
+  const liste = $("en-cours-suite-liste");
+  liste.replaceChildren(...suite.map((t) => {
+    const li = document.createElement("li");
+    li.textContent = [txt(t.title, "(sans titre)"), txt(t.artist)].filter(Boolean).join(" · ");
+    return li;
+  }));
+  $("en-cours-suite").hidden = suite.length === 0;
+  etat.suite = fileAttente.pistes.length;
+}
+
+/// L'anneau et le temps, à la tête de lecture du transport.
+function poserProgression(t) {
+  const frac = t ? teteCourante : 0;
+  avance.style.strokeDashoffset = String(1000 * (1 - frac));
+  anneau.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
+  const duree = t?.duration_ms ?? 0;
+  $("en-cours-temps").textContent = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
+}
+
 function boucle() {
   if (vue.hidden) return;
   const t = morceauEnCours();
   if ((t?.path ?? null) !== etat.chemin) poserMorceau(t).catch((e) => remonter(e, "en cours"));
+  else if (etat.suite !== fileAttente.pistes.length) poserSuite();
+  poserProgression(t);
   vue.classList.toggle("en-cours--joue", transport.veutJouer);
   if (!reduit.matches) dessinerSpectre();
   etat.image = requestAnimationFrame(boucle);
@@ -134,6 +178,7 @@ function ouvrirEnCours() {
   if (!vue.hidden) return;
   etat.focusAvant = document.activeElement;
   vue.hidden = false;
+  bouton.setAttribute("aria-pressed", "true");
   etat.chemin = undefined; // force la pose du morceau
   $("en-cours-fermer").focus();
   boucle();
@@ -142,6 +187,7 @@ function ouvrirEnCours() {
 function fermerEnCours() {
   if (vue.hidden) return;
   vue.hidden = true;
+  bouton.setAttribute("aria-pressed", "false");
   cancelAnimationFrame(etat.image);
   etat.focusAvant?.focus?.();
   etat.focusAvant = null;
@@ -157,6 +203,42 @@ art.addEventListener("keydown", (e) => {
   e.preventDefault();
   basculerEnCours();
 });
+bouton.addEventListener("click", basculerEnCours);
+
+// L'anneau : un clic y déplace la lecture, à l'angle cliqué (midi = début).
+anneau.addEventListener("click", (e) => {
+  const r = anneau.getBoundingClientRect();
+  const x = e.clientX - (r.left + r.width / 2);
+  const y = e.clientY - (r.top + r.height / 2);
+  // Seulement près du trait : l'anneau couvre aussi le disque, qui reste inerte.
+  if (Math.hypot(x, y) < r.width / 2 - 26) return;
+  const angle = Math.atan2(x, -y); // 0 à midi, dans le sens des aiguilles
+  const frac = (angle < 0 ? angle + 2 * Math.PI : angle) / (2 * Math.PI);
+  deplacerLecture(frac).catch((err) => remonter(err, "en cours"));
+});
+// Au clavier : ← et → reculent ou avancent de 5 s — sur l'anneau seulement ;
+// ailleurs, ces touches changent de piste (`lecteur.js`).
+anneau.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const duree = morceauEnCours()?.duration_ms;
+  if (!duree) return;
+  const pas = (e.key === "ArrowRight" ? 5000 : -5000) / duree;
+  deplacerLecture(teteCourante + pas).catch((err) => remonter(err, "en cours"));
+});
+
+// F ouvre ou ferme la vue, hors d'un champ de saisie et sans modificateur.
+const dansUnChamp = (el) =>
+  el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ||
+  el instanceof HTMLSelectElement || el?.isContentEditable;
+document.addEventListener("keydown", (e) => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== "f") return;
+  if (dansUnChamp(e.target) || !$("palette").hidden) return;
+  e.preventDefault();
+  basculerEnCours();
+});
+
 // Échap ferme la vue, et rien d'autre : la file d'attente, ouverte par-dessus,
 // garde son propre Échap pour un second appui.
 window.addEventListener("keydown", (e) => {

@@ -36,11 +36,11 @@ Notes sur le développement de ce logiciel et les réflexions associées : [http
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/palette-sombre.jpg">
-  <img src="docs/images/palette-clair.jpg" alt="La palette de recherche (⌘K) au-dessus de l'écran" width="640">
+  <img src="docs/images/palette-clair.jpg" alt="La palette de recherche (⌘K ou /) au-dessus de l'écran" width="640">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/en-cours-sombre.jpg">
-  <img src="docs/images/en-cours-clair.jpg" alt="La vue « En cours » : la pochette sur un disque, le spectre autour" width="640">
+  <img src="docs/images/en-cours-clair.jpg" alt="La vue « En cours » (bouton du transport ou touche F) : un vinyle, la pochette en macaron, la progression en anneau, le spectre autour" width="640">
 </picture>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/explorer-nuage-sombre.jpg">

@@ -72,15 +72,20 @@ tient en quatre zones, présentes et identiques dans tous les écrans du rail :
   `#q` du rail redevient un **filtre** de ce qui est affiché, dans tous les
   écrans où il apparaît (voir l'audit d'Écouter, Règle 2).
 
-- **Vue plein écran « En cours »** (1ᵉʳ novembre 2026, idée de Disc Player).
-  Un clic sur la pochette du transport (ou ⌘K « en cours ») ouvre, par-dessus
-  rail, centre et inspecteur, le morceau qui joue : sa pochette sur un disque
-  qui tourne pendant la lecture, le spectre autour (la colonne du spectrogramme
-  du transport à la tête de lecture, aux couleurs de `--rampe`), titre,
-  artiste, album. Le transport et la file restent utilisables ; Échap ferme
-  (`#en-cours`, `js/en-cours.js`). Les fonds prennent les deux couleurs de la
-  pochette : la seule exception à la Règle 3 (voir là). Avec
-  `prefers-reduced-motion`, ni rotation ni spectre.
+- **Vue plein écran « En cours »** (1ᵉʳ novembre 2026, idée de Disc Player ;
+  refaite le 23 novembre). Le bouton « en cours » du transport (à côté de
+  « file »), la touche **F**, un clic sur la pochette du transport ou ⌘K
+  « en cours » ouvrent, par-dessus rail, centre et inspecteur, le morceau qui
+  joue : un vinyle qui tourne pendant la lecture, la pochette en macaron, la
+  progression en anneau autour (un clic y déplace la lecture ; ← → de 5 s
+  quand il a le focus), le spectre en couronne fine au-delà (la colonne du
+  spectrogramme du transport à la tête de lecture, aux couleurs de `--rampe`) ;
+  à droite titre, artiste, album, temps et les deux morceaux suivants de la
+  file (dessous, centrés, quand la fenêtre est haute). Le transport et la file
+  restent utilisables ; Échap ou F ferme (`#en-cours`, `js/en-cours.js`). Les
+  fonds prennent les deux couleurs de la pochette, plus la pochette floutée
+  autour du disque, sous un voile `--album-bas` côté texte : la seule exception
+  à la Règle 3 (voir là). Avec `prefers-reduced-motion`, ni rotation ni spectre.
 
 - **Choisir l'édition, face à face** (1ᵉʳ novembre 2026, idée de Disc
   Player). Sur les pistes d'un album ouvert, « Choisir l'édition… » ouvre une
@@ -298,7 +303,8 @@ coréen balisé.
   `--t-corps` 14 (racine, titres en liste, champs, navigation),
   `--t-intertitre` 16 (titre de l'inspecteur, champ de la palette),
   `--t-titre` 20 (titres de panneau), `--t-fil` 26 (titre du fil, serif) ;
-  plus `--t-decor` 34, les initiales d'un artiste sur leur aplat (un décor).
+  plus `--t-decor` 34, les décors : les initiales d'un artiste sur leur aplat,
+  le titre du morceau dans la vue « En cours » (depuis le 23 nov.).
 - **Trois graisses** : 400 courant, 500 noms et navigation, 600 titres et
   boutons forts (700 fondu dans 600).
 - **Aucun texte sous 12 px, sans exception** : étiquettes en capitales (leur
@@ -596,18 +602,22 @@ rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 | 2 | Estomper, jamais masquer | — | Pas de filtre. |
 | 3 | Palette unique | ✅ | Exception écrite et bornée (Règle 3) : couleurs d'album sur les fonds seulement, dans cette vue seulement ; le spectre suit `--rampe`, aucune famille n'est affichée. |
 | 4 | Stabilité des positions | ✅ | Rien ne se réorganise : le disque tourne sur place, les barres du spectre ne bougent qu'en longueur. |
-| 5 | Sobriété stricte | ✅ | Un seul contrôle propre (×) ; le transport en dessous garde les siens. |
+| 5 | Sobriété stricte | ✅ | Deux contrôles propres (×, l'anneau de progression) ; le transport en dessous garde les siens. |
 | 6 | Deux thèmes sérieux | ✅ | Bornes de recalage dessinées pour chaque thème, contraste vérifié sur leur pire cas ; captures dans les deux thèmes (`docs/images/en-cours-*.jpg`). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom. |
-| 8 | Révélation par échelle | ✅ | La vue attend un geste (pochette du transport, ⌘K) ; elle n'est jamais affichée d'office. |
+| 8 | Révélation par échelle | ✅ | La vue attend un geste (bouton « en cours », F, pochette du transport, ⌘K) ; elle n'est jamais affichée d'office. |
 | 9 | Langage de force unique | — | Le spectre est une rampe d'énergie, pas une relation entre morceaux. |
-| 11 | Typographie | ✅ | Titre `--t-fil` (serif), artiste `--t-intertitre`, album `--t-second`. |
+| 11 | Typographie | ✅ | Titre `--t-decor` (serif), artiste `--t-titre`, album et « À suivre » `--t-second`, temps `--t-legende` (mono) — refonte du 23 nov. |
 
 L'audit la parcourt comme un douzième écran (`en-cours`), la vue recouvrant
 par construction ce qu'elle recouvre (exception G4 ; G5 ne compte plus un
 repère recouvert). Le premier passage a relevé un vrai défaut : la file,
 ouverte par-dessus, cachait le × de la vue ; la vue s'arrête désormais au bord
 de la file (Règle 10). Ensuite : **216 cellules, 0 violation**.
+Refonte du 23 novembre : l'audit a relevé le fond flouté qui débordait (G3)
+et l'anneau de progression recouvert par le disque (G4) ; l'anneau est posé
+au-dessus et ignore les clics à l'intérieur du disque. Ensuite : **36 cellules
+(`en-cours`, `ecoute`), 0 violation**.
 
 ### Surimpressions de la carte (balade, 7 novembre 2026)
 

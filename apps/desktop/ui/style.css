@@ -60,7 +60,7 @@
   --t-intertitre: 16px;  /* titre de l'inspecteur, champ de la palette, glyphes forts */
   --t-titre:      20px;  /* titres de panneau */
   --t-fil:        26px;  /* titre du fil (serif) */
-  --t-decor:      34px;  /* initiales d'artiste sur l'aplat : un décor, pas un rôle */
+  --t-decor:      34px;  /* les décors : initiales d'artiste sur l'aplat, titre de « En cours » */
 
   /* Rampe séquentielle pour les variables continues (année, tempo, énergie).
      Deux essais plus sobres (teinte unique, puis un balayage de 33° dans les
@@ -786,49 +786,120 @@ html, body {
 /* ---------- vue plein écran « En cours » ---------- */
 /* Couvre rail, centre et inspecteur ; s'arrête au transport, qui reste
    utilisable. Sous la file (z 10) et la palette (z 50). Les fonds seuls
-   prennent les couleurs de la pochette ; le texte reste `--txt`. */
+   prennent les couleurs de la pochette ; le texte reste `--txt`.
+   Trois couches de fond : le dégradé des deux couleurs, la pochette floutée
+   (de la matière autour du disque), puis un voile `--album-bas` sous le texte,
+   qui garde le contraste vérifié des bornes (`couleurs-album.js`). */
 .en-cours {
   position: fixed; inset: 0 0 var(--hauteur-transport) 0; z-index: 8;
   display: grid; place-items: center; overflow: hidden;
   background: linear-gradient(160deg, var(--album-haut, var(--panel)), var(--album-bas, var(--bg)));
   color: var(--txt);
+  --disque: min(62vh, 40vw);
+}
+.en-cours__fond {
+  position: absolute; inset: 0;
+  background: center / 140% auto no-repeat;
+  filter: blur(64px) saturate(1.25); opacity: .55;
+}
+.en-cours::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 18%, var(--album-bas, var(--bg)) 52%);
 }
 /* La file ouverte par-dessus : la vue s'arrête à son bord, comme toute
    surimpression (Règle 10), et son × reste atteignable. */
 body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
-.en-cours__fermer { position: absolute; top: var(--gouttiere-panneau); right: var(--gouttiere-panneau); color: var(--txt); }
+.en-cours__fermer { position: absolute; z-index: 1; top: var(--gouttiere-panneau); right: var(--gouttiere-panneau); color: var(--txt); }
 .en-cours__scene {
-  --disque: min(46vh, 40vw);
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  max-width: calc(100% - 2 * var(--gouttiere)); text-align: center;
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: auto minmax(0, 30rem); align-items: center;
+  gap: clamp(28px, 5vw, 88px);
+  max-width: calc(100% - 2 * var(--gouttiere));
 }
-.en-cours__platine { position: relative; width: calc(var(--disque) * 1.5); height: calc(var(--disque) * 1.5); margin-bottom: 8px; }
+/* La platine : le disque, l'anneau de progression juste autour, le spectre
+   en couronne au-delà. */
+.en-cours__platine { position: relative; width: calc(var(--disque) * 1.3); height: calc(var(--disque) * 1.3); }
 .en-cours__spectre { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* Un vinyle : noir dans les deux thèmes (c'est un objet), sillons fins, une
+   plage plus lisse vers le macaron. */
 .en-cours__disque {
-  position: absolute; inset: calc(var(--disque) * .25); border-radius: 50%;
-  background: var(--panel2) center / cover no-repeat;
-  box-shadow: 0 18px 50px rgb(0 0 0 / .3);
-  animation: en-cours-tourner 14s linear infinite; animation-play-state: paused;
+  position: absolute; inset: calc(var(--disque) * .15); border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle, rgb(255 255 255 / .045) 0 .5px, transparent 1px 2.6px),
+    radial-gradient(circle, #121212 0 33%, #0b0b0b 34% 36%, #141414 37% 66%, #0e0e0e 67% 69%, #151515 70% 97%, #0a0a0a 98%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / .06), 0 28px 70px rgb(0 0 0 / .45);
+  animation: en-cours-tourner 1.8s linear infinite; animation-play-state: paused;
 }
-/* L'axe du disque : un trou au centre, couleur du fond. */
-.en-cours__disque::after {
-  content: ""; position: absolute; inset: 46%; border-radius: 50%;
-  background: var(--album-haut, var(--bg)); box-shadow: inset 0 0 0 2px rgb(0 0 0 / .25);
+/* La pochette en macaron, et l'axe. */
+.en-cours__macaron {
+  position: absolute; inset: 31%; border-radius: 50%;
+  background: var(--panel2) center / cover no-repeat;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / .5), inset 0 0 0 1px rgb(255 255 255 / .08);
+}
+.en-cours__macaron::after {
+  content: ""; position: absolute; inset: 45.5%; border-radius: 50%;
+  background: #0b0b0b; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .35);
+}
+/* Le reflet ne tourne pas : c'est la lumière de la pièce, le disque passe dessous. */
+.en-cours__reflet {
+  position: absolute; inset: calc(var(--disque) * .15); border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 20deg, transparent 0 6%, rgb(255 255 255 / .09) 11%, transparent 17% 50%, rgb(255 255 255 / .07) 61%, transparent 67%);
+  -webkit-mask: radial-gradient(circle, transparent 30%, #000 31.5%);
+          mask: radial-gradient(circle, transparent 30%, #000 31.5%);
 }
 .en-cours--joue .en-cours__disque { animation-play-state: running; }
 @keyframes en-cours-tourner { to { transform: rotate(1turn); } }
+/* L'anneau de progression, posé au-dessus du disque : un clic près du trait
+   déplace la lecture ; à l'intérieur du disque, rien (`en-cours.js`). */
+.en-cours__anneau {
+  position: absolute; inset: calc(var(--disque) * .15 - 14px);
+  width: calc(var(--disque) + 28px); height: calc(var(--disque) + 28px);
+  transform: rotate(-90deg); overflow: visible;
+}
+.en-cours__anneau circle { fill: none; pointer-events: stroke; cursor: pointer; }
+.en-cours__piste { stroke: color-mix(in srgb, var(--txt) 22%, transparent); stroke-width: .7; }
+.en-cours__avance {
+  stroke: var(--accent); stroke-width: 1.1; stroke-linecap: round;
+  stroke-dasharray: 1000; stroke-dashoffset: 1000;
+}
+.en-cours__anneau:focus-visible { outline: none; }
+.en-cours__anneau:focus-visible .en-cours__piste { stroke: var(--accent); stroke-opacity: .5; }
 @media (prefers-reduced-motion: reduce) {
   .en-cours__disque { animation: none; }
   .en-cours__spectre { display: none; }
 }
-.en-cours__titre { margin: 0; font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; }
-.en-cours__artiste { margin: 0; font-size: var(--t-intertitre); font-weight: 500; }
+.en-cours__texte { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.en-cours__titre {
+  margin: 0; font-family: var(--serif); font-weight: 500; line-height: 1.1;
+  font-size: var(--t-decor);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.en-cours__artiste { margin: 6px 0 0; font-size: var(--t-titre); font-weight: 500; }
 .en-cours__album { margin: 0; font-size: var(--t-second); }
-.en-cours__titre, .en-cours__artiste, .en-cours__album {
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.en-cours__artiste, .en-cours__album { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-cours__temps {
+  margin: 10px 0 0; font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .08em; font-variant-numeric: tabular-nums;
+}
+.en-cours__suite { margin-top: 28px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--txt) 22%, transparent); }
+.en-cours__suite[hidden] { display: none; }
+.en-cours__suite-titre {
+  margin: 0 0 8px; font-family: var(--mono); font-size: var(--t-legende);
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.en-cours__suite-liste { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: var(--t-second); }
+.en-cours__suite-liste li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Fenêtre haute ou étroite : le disque au-dessus, le texte centré dessous. */
+@media (max-aspect-ratio: 5/4) {
+  .en-cours { --disque: min(42vh, 62vw); }
+  .en-cours::before { background: linear-gradient(180deg, transparent 22%, var(--album-bas, var(--bg)) 62%); }
+  .en-cours__scene { grid-template-columns: minmax(0, 34rem); justify-items: center; gap: 18px; text-align: center; }
+  .en-cours__texte { align-items: center; }
+  .en-cours__suite { display: none; }
 }
 .transport__art { cursor: pointer; }
 .transport__art:hover, .transport__art:focus-visible { border-color: var(--accent); outline: none; }
+.transport__file[aria-pressed="true"] { color: var(--txt); border-color: var(--accent); }
 
 /* ---------- palette de recherche (⌘K) ---------- */
 /* Au-dessus de tout, mais l'écran reste lisible derrière : un voile du fond à

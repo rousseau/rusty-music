@@ -7366,3 +7366,29 @@ d'ouverture depuis A2, les estompait dans ses rangées.
 
 Tests : le test de fumée du filtre attend désormais 2 cases et aucune
 estompée ; un test de plus pour l'Accueil (résultats, puis retour de la page).
+
+## Écouter : la vue « En cours » refaite — 23 nov. 2026
+
+**Essai de François** : la vue « n'est pas très belle » et ne s'ouvrait
+(croyait-il) que par ⌘K — le clic sur la pochette du transport ne se devinait
+pas.
+
+- **Accès** : un bouton « en cours » dans le transport, à côté de « file »
+  (`aria-pressed` tant que la vue est ouverte), et la touche **F** (hors d'un
+  champ, sans modificateur), qui ouvre et ferme ; Échap ferme toujours.
+- **Le disque devient un vinyle** : noir dans les deux thèmes, sillons fins
+  (`repeating-radial-gradient`), la pochette en macaron au centre, un reflet
+  fixe par-dessus (le disque tourne dessous), 33 tours/min.
+- **Progression en anneau** autour du disque, à l'accent ; un clic déplace la
+  lecture à l'angle cliqué (`deplacerLecture`, même chemin que la barre du
+  bas) ; ← → de 5 s quand l'anneau a le focus.
+- **Spectre** : une couronne fine au-delà de l'anneau au lieu des longs rayons.
+- **Texte** à droite du disque, titre en `--t-decor`, puis le temps et
+  « À suivre » (les deux morceaux suivants de la file) ; fenêtre haute :
+  dessous, centré, sans « À suivre ».
+- **Fond** : la pochette floutée autour du disque, sur le dégradé de ses deux
+  couleurs ; un voile `--album-bas` couvre le côté du texte, qui reste ainsi
+  sur la couleur dont le contraste est vérifié.
+
+Tests : un test de fumée pour le bouton et la touche F (F tapé dans le champ
+du rail s'y écrit sans ouvrir la vue) ; captures refaites (`docs/images/`).

@@ -1824,6 +1824,8 @@
         <span>vol</span>
         <input id="volume" type="range" min="0" max="100" value="100">
       </label>
+      <button id="bascule-en-cours" class="transport__file" aria-pressed="false"
+              aria-label="Vue « En cours »" title="Vue « En cours », en plein écran (F)">en cours</button>
       <button id="bascule-file" class="transport__file" aria-label="File d'attente">file</button>
     </footer>
 
@@ -1883,20 +1885,39 @@
 
   </div>
 
-  <!-- Vue plein écran « En cours » : pochette sur un disque, spectre autour.
-       Au-dessus des panneaux, sous la file et la palette ; le transport reste
-       en bas. `js/en-cours.js`. -->
+  <!-- Vue plein écran « En cours » : un vinyle, la pochette en macaron, la
+       progression en anneau, le spectre en couronne ; titre, artiste, album et
+       la suite de la file à côté. Au-dessus des panneaux, sous la file et la
+       palette ; le transport reste en bas. `js/en-cours.js`. -->
   <div id="en-cours" class="en-cours" hidden role="dialog" aria-label="En cours">
-    <button id="en-cours-fermer" class="file__fermer en-cours__fermer" aria-label="Fermer la vue « En cours »">×</button>
+    <div id="en-cours-fond" class="en-cours__fond" aria-hidden="true"></div>
+    <button id="en-cours-fermer" class="file__fermer en-cours__fermer" aria-label="Fermer la vue « En cours »" title="Fermer (Échap ou F)">×</button>
     <div class="en-cours__scene">
       <div class="en-cours__platine">
         <canvas id="en-cours-spectre" class="en-cours__spectre" aria-hidden="true"></canvas>
-        <div id="en-cours-disque" class="en-cours__disque"></div>
+        <div id="en-cours-disque" class="en-cours__disque">
+          <div id="en-cours-macaron" class="en-cours__macaron"></div>
+        </div>
+        <div class="en-cours__reflet" aria-hidden="true"></div>
+        <svg id="en-cours-anneau" class="en-cours__anneau" viewBox="0 0 100 100"
+             role="slider" tabindex="0" aria-label="Position dans la piste"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <circle class="en-cours__piste" cx="50" cy="50" r="48"></circle>
+          <circle id="en-cours-avance" class="en-cours__avance" cx="50" cy="50" r="48" pathLength="1000"></circle>
+        </svg>
       </div>
-      <h2 id="en-cours-titre" class="en-cours__titre"></h2>
-      <p id="en-cours-artiste" class="en-cours__artiste"></p>
-      <p id="en-cours-album" class="en-cours__album"></p>
+      <div class="en-cours__texte">
+        <h2 id="en-cours-titre" class="en-cours__titre"></h2>
+        <p id="en-cours-artiste" class="en-cours__artiste"></p>
+        <p id="en-cours-album" class="en-cours__album"></p>
+        <p id="en-cours-temps" class="en-cours__temps"></p>
+        <div id="en-cours-suite" class="en-cours__suite" hidden>
+          <p class="en-cours__suite-titre">À suivre</p>
+          <ol id="en-cours-suite-liste" class="en-cours__suite-liste"></ol>
+        </div>
+      </div>
     </div>
+  </div>
   </div>
 
   <!-- Choisir l'édition MusicBrainz d'un album, face à face (`js/editions.js`).

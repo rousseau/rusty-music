@@ -937,6 +937,26 @@ test("vue « En cours » : le morceau joué, des fonds aux couleurs de la pochet
   await expect(page.locator("#en-cours")).toBeHidden();
 });
 
+test("vue « En cours » : le bouton du transport et la touche F l'ouvrent et la ferment", async ({ page }) => {
+  await lireUnAlbum(page);
+  const bouton = page.locator("#bascule-en-cours");
+  await bouton.click();
+  await expect(page.locator("#en-cours")).toBeVisible();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#en-cours-temps")).toHaveText(/^\d\d:\d\d \/ \d\d:\d\d$/);
+  await page.keyboard.press("f");
+  await expect(page.locator("#en-cours")).toBeHidden();
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  await page.locator("body").press("f");
+  await expect(page.locator("#en-cours")).toBeVisible();
+  // Dans un champ, F s'écrit : la vue ne bouge pas.
+  await page.keyboard.press("Escape");
+  await page.fill("#q", "");
+  await page.locator("#q").press("f");
+  await expect(page.locator("#en-cours")).toBeHidden();
+  await expect(page.locator("#q")).toHaveValue("f");
+});
+
 test("vue « En cours » : sans mouvement si le système le demande", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await lireUnAlbum(page);
