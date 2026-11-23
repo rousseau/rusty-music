@@ -289,7 +289,8 @@ impl Library {
     /* --------------------------------------------- popularité générale */
 
     /// Les enregistrements dont la popularité reste à récupérer sur au moins
-    /// une source (ListenBrainz ou Deezer). `depuis` est l'instant à partir
+    /// une source (ListenBrainz ou Deezer), ou dont le tempo Deezer n'a
+    /// jamais été demandé. `depuis` est l'instant à partir
     /// duquel un enregistrement déjà interrogé compte comme « frais » :
     /// `depuis = 0` ne rafraîchit rien, `now − 90 j` réinterroge le périmé.
     /// Les plus représentés d'abord, comme [`Self::mb_artistes_en_attente`].
@@ -307,9 +308,11 @@ impl Library {
             "SELECT t.mb_recording_id, MIN(t.artist), MIN(t.title), COUNT(*) n
                FROM tracks t
               WHERE t.mb_recording_id IS NOT NULL AND t.mb_recording_id <> ''
-                AND (SELECT COUNT(*) FROM popularite_fetched f
+                AND ((SELECT COUNT(*) FROM popularite_fetched f
                       WHERE f.mbid = t.mb_recording_id AND f.kind = 'recording'
                         AND f.source IN ('listenbrainz', 'deezer') AND f.at >= ?1) < 2
+                 -- ou dont le tempo Deezer n'a jamais été demandé (`bpm_deezer`).
+                 OR NOT EXISTS (SELECT 1 FROM bpm_deezer b WHERE b.mbid = t.mb_recording_id))
               GROUP BY t.mb_recording_id
               ORDER BY n DESC
               LIMIT ?2",
@@ -406,6 +409,50 @@ impl Library {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Les enregistrements dont le tempo Deezer a déjà été demandé, trouvé
+    /// ou non (`bpm_deezer` : jamais redemandé, un tempo ne change pas).
+    pub fn bpm_deezer_faits(&self) -> Result<HashSet<String>> {
+        let mut stmt = self.conn.prepare("SELECT mbid FROM bpm_deezer")?;
+        let s = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(s)
+    }
+
+    /// Range le tempo Deezer d'un enregistrement, et le marque demandé.
+    /// `bpm` à 0 ou négatif (Deezer rend 0 quand il ne sait pas) est rangé
+    /// NULL ; `deezer_id` NULL : aucune piste n'a concordé.
+    pub fn bpm_deezer_poser(
+        &self,
+        mbid: &str,
+        deezer_id: Option<i64>,
+        bpm: Option<f64>,
+    ) -> Result<()> {
+        let bpm = bpm.filter(|b| *b > 0.0);
+        self.conn.execute(
+            "INSERT INTO bpm_deezer (mbid, deezer_id, bpm, at)
+             VALUES (?1, ?2, ?3, strftime('%s','now'))
+             ON CONFLICT(mbid) DO UPDATE SET deezer_id = excluded.deezer_id,
+                                             bpm = excluded.bpm,
+                                             at = excluded.at",
+            params![mbid, deezer_id, bpm],
+        )?;
+        Ok(())
+    }
+
+    /// Le tempo Deezer d'un enregistrement, s'il est connu.
+    pub fn bpm_deezer(&self, mbid: &str) -> Result<Option<f64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT bpm FROM bpm_deezer WHERE mbid = ?1",
+                params![mbid],
+                |r| r.get::<_, Option<f64>>(0),
+            )
+            .optional()?
+            .flatten())
     }
 
     /// État de fraîcheur de la popularité, pour la ligne d'alerte du mode

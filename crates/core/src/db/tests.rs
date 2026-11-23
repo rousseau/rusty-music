@@ -1949,9 +1949,13 @@ fn pop_candidats_excluent_ce_qui_est_deja_fait() {
         .unwrap();
     assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
 
-    // Fait sur les deux : plus candidat.
+    // Fait sur les deux, mais le tempo Deezer jamais demandé : encore candidat.
     lib.pop_poser("deezer", "recording", &["rec-1".into()], &[])
         .unwrap();
+    assert_eq!(lib.pop_recordings_candidats(0, 100).unwrap().len(), 1);
+
+    // Le tempo demandé aussi : plus candidat.
+    lib.bpm_deezer_poser("rec-1", None, None).unwrap();
     assert!(lib.pop_recordings_candidats(0, 100).unwrap().is_empty());
 
     // `depuis` très grand : tout fetch compte comme périmé, l'entité revient.
@@ -3276,4 +3280,23 @@ fn la_table_par_mesure_du_coach_se_garde() {
     ] {
         assert!(faux.verifier().is_err(), "{faux:?}");
     }
+}
+
+/// Le tempo Deezer : 0 rangé NULL, une demande sans réponse marquée quand même,
+/// et une seconde pose remplace la première.
+#[test]
+fn le_tempo_deezer_range_zero_en_inconnu_et_marque_chaque_demande() {
+    let lib = Library::open_in_memory().unwrap();
+    lib.bpm_deezer_poser("rec-a", Some(42), Some(150.89))
+        .unwrap();
+    lib.bpm_deezer_poser("rec-b", Some(43), Some(0.0)).unwrap();
+    lib.bpm_deezer_poser("rec-c", None, None).unwrap();
+    assert_eq!(lib.bpm_deezer("rec-a").unwrap(), Some(150.89));
+    assert_eq!(lib.bpm_deezer("rec-b").unwrap(), None);
+    assert_eq!(lib.bpm_deezer("inconnu").unwrap(), None);
+    let faits = lib.bpm_deezer_faits().unwrap();
+    assert_eq!(faits.len(), 3);
+    assert!(faits.contains("rec-c"));
+    lib.bpm_deezer_poser("rec-a", Some(42), Some(75.4)).unwrap();
+    assert_eq!(lib.bpm_deezer("rec-a").unwrap(), Some(75.4));
 }

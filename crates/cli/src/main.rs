@@ -2123,11 +2123,12 @@ fn main() -> Result<()> {
             )?;
             println!(
                 "\n{} enregistrements + {} albums (ListenBrainz), \
-                 {} / {} pistes retrouvées (Deezer), {} morceaux couverts — {:.0} min",
+                 {} / {} pistes retrouvées (Deezer, {} tempos), {} morceaux couverts — {:.0} min",
                 bilan.lb_enregistrements,
                 bilan.lb_albums,
                 bilan.deezer_trouves,
                 bilan.deezer,
+                bilan.deezer_bpm,
                 bilan.couverts,
                 t.elapsed().as_secs_f64() / 60.0
             );

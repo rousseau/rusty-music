@@ -148,8 +148,13 @@ pub(crate) fn start_popularite(
             let bilan = match issue {
                 Ok(b) => format!(
                     "{} enregistrements + {} albums (ListenBrainz), \
-                 {} / {} pistes retrouvées (Deezer), {} morceaux couverts",
-                    b.lb_enregistrements, b.lb_albums, b.deezer_trouves, b.deezer, b.couverts
+                 {} / {} pistes retrouvées (Deezer, {} tempos), {} morceaux couverts",
+                    b.lb_enregistrements,
+                    b.lb_albums,
+                    b.deezer_trouves,
+                    b.deezer,
+                    b.deezer_bpm,
+                    b.couverts
                 ),
                 Err(e) => format!("échec : {e}"),
             };

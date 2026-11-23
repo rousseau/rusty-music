@@ -33,6 +33,8 @@ pub struct Bilan {
     pub deezer: usize,
     /// Pistes retrouvées sur Deezer (artiste + titre concordants).
     pub deezer_trouves: usize,
+    /// Pistes Deezer dont le tempo est connu (non nul), sur cette passe.
+    pub deezer_bpm: usize,
     /// Morceaux ayant une popularité après le recalcul final.
     pub couverts: usize,
     /// Étapes réseau faites / à faire — pour la jauge d'avancement.
@@ -64,6 +66,10 @@ pub fn actualiser(
     let rgs = lib.pop_rg_candidats(depuis, limite)?;
     let lb_faits = lib.pop_deja_fait("listenbrainz", "recording", depuis)?;
     let dz_faits = lib.pop_deja_fait("deezer", "recording", depuis)?;
+    // Le tempo Deezer (`bpm_deezer`) vient de la même piste : un
+    // enregistrement dont la popularité est fraîche mais le tempo jamais
+    // demandé repasse aussi, pour la bibliothèque déjà interrogée.
+    let bpm_faits = lib.bpm_deezer_faits()?;
 
     let lb_a_faire: Vec<String> = recs
         .iter()
@@ -72,7 +78,7 @@ pub fn actualiser(
         .collect();
     let dz_a_faire: Vec<&rusty_music_core::db::PisteAPopulariser> = recs
         .iter()
-        .filter(|p| !dz_faits.contains(&p.recording_mbid))
+        .filter(|p| !dz_faits.contains(&p.recording_mbid) || !bpm_faits.contains(&p.recording_mbid))
         .collect();
 
     bilan.total = lb_a_faire.len() + rgs.len() + dz_a_faire.len();
@@ -120,21 +126,37 @@ pub fn actualiser(
         avancer(&bilan);
     }
 
-    // --- Deezer : une recherche par piste -----------------------------------
+    // --- Deezer : une recherche par piste, puis sa fiche pour le tempo ------
     for p in dz_a_faire {
         let un = std::slice::from_ref(&p.recording_mbid);
+        let mbid = p.recording_mbid.as_str();
         match (p.artiste.as_deref(), p.titre.as_deref()) {
-            (Some(artiste), Some(titre)) => match dz.rang_piste(artiste, titre) {
-                Ok(Some(rank)) => {
+            (Some(artiste), Some(titre)) => match dz.piste(artiste, titre) {
+                Ok(Some(piste)) => {
                     let brute = [PopulariteBrute {
-                        mbid: &p.recording_mbid,
-                        ecoutes: rank,
+                        mbid,
+                        ecoutes: piste.rank,
                         auditeurs: None,
                     }];
                     lib.pop_poser("deezer", "recording", un, &brute)?;
                     bilan.deezer_trouves += 1;
+                    if !bpm_faits.contains(mbid) {
+                        match dz.bpm(piste.id) {
+                            Ok(bpm) => {
+                                lib.bpm_deezer_poser(mbid, Some(piste.id), bpm)?;
+                                bilan.deezer_bpm += usize::from(bpm.is_some());
+                            }
+                            // Pas marqué : le tempo sera redemandé au prochain passage.
+                            Err(e) => {
+                                tracing::warn!(erreur = %e, artiste, titre, "tempo Deezer non lu")
+                            }
+                        }
+                    }
                 }
-                Ok(None) => lib.pop_poser("deezer", "recording", un, &[])?,
+                Ok(None) => {
+                    lib.pop_poser("deezer", "recording", un, &[])?;
+                    lib.bpm_deezer_poser(mbid, None, None)?;
+                }
                 Err(e) => {
                     // Pas marquée : l'entité reviendra au prochain passage.
                     tracing::warn!(erreur = %e, artiste, titre, "piste Deezer non cherchée");
@@ -146,7 +168,10 @@ pub fn actualiser(
             },
             // Sans artiste ni titre, rien à chercher — mais on marque, pour ne
             // pas repasser dessus à chaque fois.
-            _ => lib.pop_poser("deezer", "recording", un, &[])?,
+            _ => {
+                lib.pop_poser("deezer", "recording", un, &[])?;
+                lib.bpm_deezer_poser(mbid, None, None)?;
+            }
         }
         bilan.deezer += 1;
         bilan.faits += 1;

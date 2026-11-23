@@ -7,10 +7,12 @@
 //!
 //! **API publique, sans compte ni clé.** Deezer sert le second signal de
 //! popularité du chantier `docs/popularite.md` : le `rank` d'une piste, entre
-//! ~10 000 et ~1 000 000.
+//! ~10 000 et ~1 000 000 ; et, depuis le 23 nov. 2026, son tempo (`bpm`,
+//! [`Client::bpm`]).
 //!
 //! **Deezer n'indexe pas par MBID.** On retrouve une piste par recherche
-//! `artist:"…" track:"…"`, et on ne retient un résultat que si **l'artiste et
+//! (`track:"…"` et l'artiste en texte libre, voir [`requetes_piste`]), et on
+//! ne retient un résultat que si **l'artiste et
 //! le titre** concordent tous les deux. Sans cette double vérification, la
 //! sonde de phase 0 a mesuré ~1 rapprochement sur 40 tombant sur un autre
 //! morceau du même artiste.
@@ -57,29 +59,32 @@ impl Client {
             .get_json_requete(&url, &[("q", q), ("limit", "5")], kind)
     }
 
-    /// Le `rank` Deezer de la piste `titre` de `artiste`, si la recherche rend
-    /// un résultat dont **l'artiste et le titre** concordent avec la demande.
-    /// `None` si rien ne concorde — l'appelant marque quand même l'entité
-    /// comme « demandée », pour ne pas y revenir.
-    pub fn rang_piste(&self, artiste: &str, titre: &str) -> Result<Option<i64>> {
-        let q = format!(
-            "artist:\"{}\" track:\"{}\"",
-            echapper(artiste),
-            echapper(titre)
-        );
-        let Some(v) = self.chercher("track", &q)? else {
-            return Ok(None);
-        };
-        let art_attendu = cle_artiste(artiste);
-        let tit_attendu = normaliser_titre(titre);
-        for d in v["data"].as_array().into_iter().flatten() {
-            let art = cle_artiste(d["artist"]["name"].as_str().unwrap_or(""));
-            let tit = normaliser_titre(d["title"].as_str().unwrap_or(""));
-            if concorde(&art, &art_attendu) && concorde(&tit, &tit_attendu) {
-                return Ok(Some(d["rank"].as_i64().unwrap_or(0)));
+    /// La piste Deezer `titre` de `artiste` (son identifiant et son
+    /// `rank`), si la recherche rend un résultat dont **l'artiste et le
+    /// titre** concordent avec la demande. `None` si rien ne concorde —
+    /// l'appelant marque quand même l'entité comme « demandée », pour ne pas
+    /// y revenir.
+    pub fn piste(&self, artiste: &str, titre: &str) -> Result<Option<PisteDeezer>> {
+        for q in requetes_piste(artiste, titre) {
+            if let Some(v) = self.chercher("track", &q)? {
+                if let Some(p) = piste_concordante(&v, artiste, titre) {
+                    return Ok(Some(p));
+                }
             }
         }
         Ok(None)
+    }
+
+    /// Le tempo que Deezer donne de la piste `id` (`/track/{id}`, champ
+    /// `bpm`). `None` quand il vaut 0 — Deezer ne sait pas — ou manque. Le
+    /// chiffre est souvent doublé (une ballade à 75 rendue à 150) : à
+    /// comparer à notre mesure, jamais à substituer.
+    pub fn bpm(&self, id: i64) -> Result<Option<f64>> {
+        let url = format!("https://api.deezer.com/track/{id}");
+        let Some(v) = self.http.get_json_requete(&url, &[], "track")? else {
+            return Ok(None);
+        };
+        Ok(bpm_de(&v))
     }
 
     /// La pochette (500 px, JPEG) de l'album `album` de `artiste`, si la
@@ -144,6 +149,54 @@ impl Client {
             None => Ok(None),
         }
     }
+}
+
+/// Une piste retrouvée sur Deezer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PisteDeezer {
+    pub id: i64,
+    pub rank: i64,
+}
+
+/// Les recherches d'une piste, dans l'ordre. Le filtre `artist:"…"` de
+/// `/search/track` ne rend plus rien (constaté le 23 nov. 2026, alors que
+/// `track:"…"` et le `artist:` de `/search/album` marchent) : d'abord le titre
+/// filtré et l'artiste en texte libre, l'ancienne forme en repli au cas où
+/// Deezer la rétablirait. La concordance de l'artiste reste vérifiée sur le
+/// résultat ([`piste_concordante`]) : le texte libre n'élargit pas ce qu'on
+/// accepte.
+fn requetes_piste(artiste: &str, titre: &str) -> [String; 2] {
+    [
+        format!(
+            "track:\"{}\" {}",
+            echapper(titre),
+            artiste.replace('"', " ")
+        ),
+        format!(
+            "artist:\"{}\" track:\"{}\"",
+            echapper(artiste),
+            echapper(titre)
+        ),
+    ]
+}
+
+fn piste_concordante(v: &Value, artiste: &str, titre: &str) -> Option<PisteDeezer> {
+    let art_attendu = cle_artiste(artiste);
+    let tit_attendu = normaliser_titre(titre);
+    v["data"].as_array().into_iter().flatten().find_map(|d| {
+        let art = cle_artiste(d["artist"]["name"].as_str().unwrap_or(""));
+        let tit = normaliser_titre(d["title"].as_str().unwrap_or(""));
+        (concorde(&art, &art_attendu) && concorde(&tit, &tit_attendu)).then(|| PisteDeezer {
+            id: d["id"].as_i64().unwrap_or(0),
+            rank: d["rank"].as_i64().unwrap_or(0),
+        })
+    })
+}
+
+/// Le `bpm` d'une fiche `/track/{id}` ; 0, absent ou une erreur Deezer
+/// (`{"error": …}`, rendue avec un statut 200) donnent `None`.
+fn bpm_de(v: &Value) -> Option<f64> {
+    v["bpm"].as_f64().filter(|b| *b > 0.0)
 }
 
 /// L'URL de la photo (`picture_big`, 500 px) de l'artiste `nom` dans une
@@ -311,6 +364,39 @@ fn echapper(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn piste_concordante_rend_l_identifiant_et_le_rang() {
+        let v = json!({"data": [
+            {"id": 1, "rank": 10, "title": "Autre", "artist": {"name": "Radiohead"}},
+            {"id": 2, "rank": 20, "title": "Karma Police", "artist": {"name": "Radiohead"}}
+        ]});
+        assert_eq!(
+            piste_concordante(&v, "Radiohead", "Karma Police"),
+            Some(PisteDeezer { id: 2, rank: 20 })
+        );
+        assert_eq!(piste_concordante(&v, "Muse", "Karma Police"), None);
+    }
+
+    #[test]
+    fn requetes_piste_filtre_le_titre_d_abord_puis_l_ancienne_forme() {
+        let [a, b] = requetes_piste("Bob Marley & The Wailers", "Crazy Baldhead");
+        assert_eq!(a, "track:\"Crazy Baldhead\" Bob Marley & The Wailers");
+        assert_eq!(
+            b,
+            "artist:\"Bob Marley & The Wailers\" track:\"Crazy Baldhead\""
+        );
+    }
+
+    #[test]
+    fn bpm_de_ecarte_zero_l_absence_et_les_erreurs() {
+        assert_eq!(bpm_de(&json!({"bpm": 150.89})), Some(150.89));
+        assert_eq!(bpm_de(&json!({"bpm": 136})), Some(136.0));
+        assert_eq!(bpm_de(&json!({"bpm": 0})), None);
+        assert_eq!(bpm_de(&json!({"title": "x"})), None);
+        assert_eq!(bpm_de(&json!({"error": {"code": 800}})), None);
+    }
 
     #[test]
     fn concorde_egalite_et_inclusion() {

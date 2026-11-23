@@ -22,9 +22,12 @@ ne corrige jamais un tag, et un tag ne contrôle jamais le son. Les erreurs
 connues le montrent : Steve Coleman and Metrics rangé en Reggae·Dub, Soul
 Coughing en Rock·Grunge — le clustering s'est trompé, rien ne l'a signalé.
 
-Manques relevés en passant : le BPM de Deezer n'est pas conservé ; la date de
-première sortie d'un release-group (MusicBrainz `first-release-date`) non
-plus ; les tags Last.fm sont par artiste, pas par morceau.
+Manques relevés en passant : le BPM de Deezer n'était pas conservé (fait le
+23 nov., table `bpm_deezer` : il n'est pas dans la recherche, il faut la
+fiche `/track/{id}`, un appel de plus par piste) ; les tags Last.fm sont par
+artiste, pas par morceau. La date de première sortie d'un release-group, elle,
+est déjà gardée (`mb_release_groups.first_release_date`, lue par la
+croissance de la carte) — la première version de cette note se trompait.
 
 ## Principe : une fiche à plusieurs voix
 
@@ -62,7 +65,7 @@ Le plus utile tout de suite : peu de calcul, des erreurs réelles, une liste
 |---|---|---|
 | **Genre contre voisinage** | pour chaque morceau, la distribution des genres (tags + `mb_genres`) de ses k = 20 voisins CLAP ; signaler si le sien y pèse moins de 10 % | tags faux, *ou* morceaux que CLAP place mal (les deux erreurs connues) — l'écran dit lequel des deux est suspect, l'utilisateur tranche |
 | **Famille contre voisinage** | même calcul sur la famille affectée | familles mal nommées, clusters hétérogènes |
-| **Tempo mesuré contre Deezer** | conserver `bpm` de Deezer (déjà dans la réponse de l'API track) ; écart > 4 % hors rapports 2, 3/2, 1/2 | erreurs de mesure ; les rapports d'octave nourrissent le banc de tempo (`banc-tempo-gtzan`) |
+| **Tempo mesuré contre Deezer** | `bpm_deezer` contre `descriptors.bpm` ; écart > 4 % hors rapports 2, 3/2, 1/2 (Deezer double souvent : Karma Police à 151) | erreurs de mesure ; les rapports d'octave nourrissent le banc de tempo (`banc-tempo-gtzan`) |
 | **Doublons** | cosinus CLAP > 0,98 et durée à ± 2 s sous des chemins différents | doublons, compilations, remasters — `editions` et MusicBrainz disent lequel est l'original |
 | **Live ou studio** | score zéro-shot CLAP « enregistré en public, applaudissements » contre titre/édition (« Live », type de release MusicBrainz) | lives non marqués, studio mal tagués |
 | **Année** | voir § 3, l'âge du son ; signaler seulement un écart > 15 ans | années de réédition à la place de l'originale |
@@ -116,8 +119,9 @@ sans nouvel appel réseau.
 
 ## Ordre proposé
 
-1. **Conserver ce qui manque** : BPM Deezer, `first-release-date`. Petit,
-   aucune décision d'interface.
+1. **Conserver ce qui manque** : le BPM Deezer — **fait le 23 nov.**
+   (`bpm_deezer`, passe de popularité ; `journal.md`). La date de première
+   sortie l'était déjà.
 2. **Vérifier** : table `attribut`, contrôles « genre contre voisinage » et
    « doublons », liste « À vérifier » dans la Bibliothèque. Mesure de
    précision sur 50 cas avant d'afficher.

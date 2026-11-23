@@ -7415,3 +7415,32 @@ panneau de droite en vinyle qui tourne, avec une animation douce.
 Tests : deux tests de fumée (disque puis retour au carré en changeant de
 morceau inspecté ; pas de disque avec le mouvement réduit). Audit
 `en-cours,ecoute` : 36 cellules, 0 violation.
+
+## Enrichissement croisé, étape 1 : le tempo de Deezer — 23 nov. 2026
+
+Première étape de `recherche-enrichissement-croise.md` : garder ce que les
+sources donnent et qu'on jetait.
+
+- **Date de première sortie** : déjà gardée (`mb_release_groups.
+  first_release_date`, remplie avec les albums d'un artiste, lue par la
+  croissance de la carte) ; la note se trompait, corrigée.
+- **Tempo Deezer** : il n'est pas dans la recherche, seulement dans la fiche
+  `/track/{id}` — un appel de plus par piste retrouvée. Migration n° 19,
+  table `bpm_deezer` (MBID d'enregistrement, identifiant Deezer, tempo ; 0
+  rangé NULL ; une ligne = déjà demandé, jamais redemandé). Rempli par la
+  passe de popularité, qui reprend aussi les enregistrements dont la
+  popularité est fraîche mais le tempo jamais demandé.
+- **Sondage** (10 morceaux connus, à la main) : 8 tempos sur 10 ; Deezer
+  double souvent (Karma Police 151, Halo 160).
+
+**Panne trouvée en route** : la recherche de pistes Deezer ne rendait plus
+rien. Le filtre `artist:"…"` de `/search/track` donne `{"data":[]}` même pour
+Radiohead, alors que `track:"…"` seul et le `artist:` de `/search/album`
+marchent. La dernière passe Deezer de la base de dev date du 6 septembre :
+la panne est postérieure, sans date plus précise. Réparé : `track:"titre"`
+et l'artiste en texte libre d'abord, l'ancienne forme en repli ; la
+concordance artiste + titre reste vérifiée sur le résultat.
+
+Essai sur une copie de la base de dev, 60 enregistrements : 46 retrouvés,
+33 tempos. La comparaison avec notre mesure (étape 2) attend : `descriptors`
+est vide dans cette base, à faire sur celle de l'app.
