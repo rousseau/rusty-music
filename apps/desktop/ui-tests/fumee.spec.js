@@ -69,6 +69,19 @@ test("A2 : l'Accueil, l'album à la une et ses rangées, demandés pour le jour 
   expect(demande.decalages).toEqual({});
 });
 
+test("filtre du rail sur l'Accueil : les albums trouvés dans toute la bibliothèque, à la place de la page", async ({ page }) => {
+  await versAccueil(page);
+  await page.fill("#q", "essais");
+  await expect(page.locator("#accueil-resultats .album")).toHaveCount(2);
+  await expect(page.locator("#accueil-rangees")).toBeHidden();
+  await expect(page.locator("#accueil-une")).toBeHidden();
+  await expect(page.locator("#fil-compte")).toHaveText("2 albums trouvés");
+  await page.fill("#q", "");
+  await expect(page.locator("#accueil-resultats")).toBeHidden();
+  await expect(page.locator("#accueil-rangees .album")).toHaveCount(2);
+  await expect(page.locator("#accueil-une")).toBeVisible();
+});
+
 test("A2 : ↻ redemande la page avec le décalage de sa seule rangée", async ({ page }) => {
   await versAccueil(page);
   await page.locator(".rangee__autre").click();
@@ -845,10 +858,10 @@ test("palette : une commande change de mode, une autre de thème", async ({ page
   await expect(page.locator("html")).toHaveAttribute("data-theme", "clair");
 });
 
-test("filtre du rail : estompe la grille sans rien retirer, Entrée ouvre la palette", async ({ page }) => {
+test("filtre du rail : masque dans la grille ce qui n'y répond pas, Entrée ouvre la palette", async ({ page }) => {
   await page.fill("#q", "essais");
-  await expect(page.locator("#grille .album--estompe")).toHaveCount(1);
-  await expect(page.locator("#grille .album")).toHaveCount(3);
+  await expect(page.locator("#grille .album")).toHaveCount(2);
+  await expect(page.locator("#grille .album--estompe")).toHaveCount(0);
   await expect(page.locator("#fil-compte")).toHaveText("2 sur 3 albums");
   await page.press("#q", "Enter");
   await expect(page.locator("#palette")).toBeVisible();

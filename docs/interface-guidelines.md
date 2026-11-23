@@ -160,6 +160,17 @@ Un filtre ou une recherche laisse le contexte visible, atténué — il ne
 retire jamais des éléments du rendu. Vaut pour un filtre sur la carte comme
 pour une recherche dans les listes ou un critère dans Découvrir.
 
+**Exception, tranchée le 23 novembre 2026 : le filtre texte du rail dans les
+grilles d'Écouter.** Dans Albums et Artistes, `#q` **masque** ce qui ne lui
+répond pas, et la grille remonte en haut ; sur l'Accueil, la page s'efface
+devant une grille des albums de toute la bibliothèque qui répondent (120 au
+plus), et revient quand le champ se vide. Raison (essai de François) :
+estompés, les albums d'un artiste restaient dispersés parmi plus de deux mille
+cases, et sur l'Accueil parmi des rangées qui défilent en largeur —
+« pas pratique ». Bornée là : le filtre par famille estompe toujours, comme
+les listes (pistes d'un album, playlists), Pratiquer, Créer, la carte et
+Découvrir.
+
 ### 3. Couleur = famille, palette unique
 Une seule source de vérité pour les douze teintes de familles :
 `--familles` dans `style.css`, lue via `getComputedStyle` partout où

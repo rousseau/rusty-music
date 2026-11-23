@@ -8,11 +8,10 @@ import "./pratiquer-playlist.js"; // l'ordre d'exécution : voir main.js
 // `poser("accueil", …)`, un clic sur une pochette ouvre l'album avec retour à
 // l'Accueil (`ouvrirAlbumDePiste`, qui prend l'instantané de `snapVue`).
 import {
-  $, ecoute, invoke, navigation, pochette, remonter, txt, vue,
+  $, ecoute, invoke, navigation, pochette, remonter, repondAuFiltre, txt, vue,
 } from "./socle.js";
 import { carteAlbum, lireAlbum, ouvrirAlbumDePiste } from "./vues.js";
 import { poser, texteCompte } from "./ecouter.js";
-import { estRetenu } from "./ecouter-familles.js";
 import { couleursPochette } from "./couleurs-album.js";
 
 const vueAccueil = $("accueil-vue");
@@ -33,7 +32,16 @@ const accueil = {
   /// Cases affichées, avec l'album qu'elles portent : le filtre du rail les
   /// estompe sans les reconstruire.
   cases: [],
+  /// Tous les albums de la bibliothèque, chargés au premier filtre : le filtre
+  /// du rail cherche dans toute la bibliothèque, pas dans la seule page.
+  tous: null,
+  /// Le texte cherché au dernier rendu des résultats, et le numéro du rendu.
+  cherche: null,
+  jetonRecherche: 0,
 };
+
+/// Résultats montrés au plus : au-delà, un mot invite à préciser.
+const RESULTATS_MAX = 120;
 
 /// Le jour local, AAAA-MM-JJ : le moteur ne connaît pas le fuseau.
 function dateLocale(d = new Date()) {
@@ -58,6 +66,8 @@ async function chargerAccueil() {
     accueil.decalages = {};
   }
   accueil.demandee = true;
+  accueil.tous = null; // la bibliothèque a pu changer (rechargement, scan)
+  accueil.cherche = null;
   ++ecoute.jetonVue;
   poser("accueil", "Accueil", albumsDe(accueil.page));
   await demanderPage();
@@ -256,12 +266,47 @@ function rendreRangee(r) {
   return section;
 }
 
-/// Le filtre du rail estompe ce qui n'y répond pas (Règle 2), et le compte du
-/// fil le dit.
+/// Le filtre du rail sur l'Accueil (décision du 23 nov. 2026) : la page
+/// s'efface devant les albums de toute la bibliothèque qui y répondent ;
+/// filtre vide, la page revient telle qu'elle était.
 function appliquerFiltreAccueil() {
-  for (const [el, a] of accueil.cases) el.classList.toggle("album--estompe", !estRetenu(a));
+  const q = ecoute.filtre;
+  vueAccueil.classList.toggle("accueil--recherche", !!q);
+  $("accueil-resultats").hidden = !q;
+  if (!q) {
+    accueil.cherche = null;
+    if (navigation.mode === "ecoute" && vue.quoi === "accueil") {
+      $("fil-compte").textContent = texteCompte("accueil", vue.lignes);
+    }
+    return;
+  }
+  rendreResultats(q).catch((e) => remonter(e, "accueil"));
+}
+
+async function rendreResultats(q) {
+  if (q === accueil.cherche) return;
+  const jeton = ++accueil.jetonRecherche;
+  if (!accueil.tous) {
+    $("accueil-resultats-etat").textContent = "Recherche…";
+    const tous = await invoke("albums", { artist: null, mbid: null });
+    if (jeton !== accueil.jetonRecherche) return;
+    accueil.tous = tous;
+  }
+  accueil.cherche = q;
+  const trouves = accueil.tous.filter(repondAuFiltre);
+  const montres = trouves.slice(0, RESULTATS_MAX);
+  $("accueil-resultats-grille").replaceChildren(
+    ...montres.map((a) => carteAlbum(a, { ouvrir, differer })),
+  );
+  const n = trouves.length;
+  $("accueil-resultats-etat").textContent = !n
+    ? "Aucun album ne répond à ce filtre."
+    : n > RESULTATS_MAX
+      ? `Les ${RESULTATS_MAX} premiers des ${n} albums trouvés : précisez le filtre.`
+      : "";
+  vueAccueil.scrollTop = 0;
   if (navigation.mode === "ecoute" && vue.quoi === "accueil") {
-    $("fil-compte").textContent = texteCompte("accueil", vue.lignes);
+    $("fil-compte").textContent = `${n} album${n > 1 ? "s" : ""} trouvé${n > 1 ? "s" : ""}`;
   }
 }
 

@@ -2873,3 +2873,12 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .rangee__bande:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
 .rangee__bande > .album { flex: 0 0 var(--album-larg, 140px); min-width: 0; scroll-snap-align: start; }
 .accueil__etat { margin-top: 12px; }
+/* Le filtre du rail sur l'Accueil : la page s'efface devant une grille des
+   albums trouvés dans toute la bibliothèque (masquer, pas estomper). */
+.accueil--recherche .une,
+.accueil--recherche .rangees,
+.accueil--recherche .accueil__etat { display: none; }
+.accueil__resultats-grille {
+  display: grid; gap: 14px; margin-top: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--album-larg, 140px), 1fr));
+}

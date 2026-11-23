@@ -7343,3 +7343,26 @@ charge moyenne 21 à 29, une machine virtuelle à 190 %) ; pas de craquement
 entendu ni écarté à 512 trames avec six stems — essai de François. Le
 lecteur d'Écouter garde le défaut de rodio (ouvert au démarrage, avant tout
 retour).
+
+## Écouter : le filtre du rail masque dans les grilles — 23 nov. 2026
+
+**Essai de François** : « le filtre pour trouver un artiste ne semble plus
+fonctionner. Il grise des albums mais ne montre pas clairement la
+sélection ». Depuis le 1ᵉʳ nov. (Règle 2), `#q` estompait sans rien retirer ;
+avec 2 162 albums, ceux d'un artiste restaient éparpillés, et l'Accueil, vue
+d'ouverture depuis A2, les estompait dans ses rangées.
+
+**Décision de François : masquer** (exception écrite à la Règle 2,
+`interface-guidelines.md`).
+- Grilles Albums et Artistes : `lignesCourantes` ne garde que ce qui répond au
+  filtre ; repères alphabétique et d'années reconstruits sur ce qui reste ;
+  retour en haut à chaque frappe ; le fil dit toujours « 2 sur 3 albums ».
+- Accueil : la page s'efface devant une grille des albums de **toute** la
+  bibliothèque qui répondent (`invoke("albums")` au premier filtre, 120 au
+  plus, puis « précisez le filtre ») ; le fil dit « n albums trouvés » ;
+  champ vidé, la page revient telle quelle, rangées et « ↻ » compris.
+- Inchangé : le filtre par famille estompe ; listes de pistes et playlists
+  estompent (courtes, et leurs lignes sont repérées par leur rang).
+
+Tests : le test de fumée du filtre attend désormais 2 cases et aucune
+estompée ; un test de plus pour l'Accueil (résultats, puis retour de la page).

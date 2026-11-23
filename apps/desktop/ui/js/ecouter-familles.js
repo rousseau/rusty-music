@@ -163,9 +163,16 @@ function trierAlbums(lignes) {
 /// Les lignes de la vue courante — les grilles d'albums et d'artistes peuvent
 /// être retriées ; tout le reste (pistes d'un album, playlists) passe tel quel.
 /// Rien n'est retiré : un filtre estompe (`estRetenu`).
+///
+/// Dans les grilles (Albums, Artistes), le filtre texte du rail **masque** ce
+/// qui ne lui répond pas (décision du 23 nov. 2026, exception à la Règle 2 :
+/// estompés, les albums trouvés restaient dispersés parmi deux mille). Le
+/// filtre par famille, lui, estompe toujours (`estRetenu`).
 function lignesCourantes() {
-  if (vue.quoi === "albums") return trierAlbums(vue.lignes);
-  if (vue.quoi === "artistes") return trierAlbums(vue.lignes);
+  if (vue.quoi === "albums" || vue.quoi === "artistes") {
+    const triees = trierAlbums(vue.lignes);
+    return ecoute.filtre ? triees.filter(repondAuFiltre) : triees;
+  }
   return vue.lignes;
 }
 
@@ -200,7 +207,7 @@ function majBlocFamillesEcoute() {
 function rafraichirGrille() {
   majBlocFamillesEcoute();
   if ($("grille").hidden) return;
-  $("fil-compte").textContent = texteCompte(vue.quoi, lignesCourantes());
+  $("fil-compte").textContent = texteCompte(vue.quoi, vue.lignes);
   construireIndexAlpha();
   if (indexAnneesUtile()) construireIndexAnnees();
   ecoute.grilleDernierRang = -1;
@@ -218,6 +225,8 @@ function filtrerEcoute(q) {
     return;
   }
   if (vueEnGrille()) {
+    // Masqués, les albums laissent les trouvés en haut de la grille.
+    $("grille").scrollTop = 0;
     rafraichirGrille();
     return;
   }
