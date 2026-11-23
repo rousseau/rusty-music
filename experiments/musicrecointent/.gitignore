@@ -1,1 +1,2 @@
-data/
+# Les données vivent sur $RUSTY_DEV (disque externe) ; ici, un lien.
+/data
