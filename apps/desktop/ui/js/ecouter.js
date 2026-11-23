@@ -596,9 +596,7 @@ async function inspecter(t) {
   // L'inspecteur a pu changer de morceau pendant la résolution (cache ou
   // lecture disque) — même garde que `montrerDescripteurs` et consorts.
   if ($("insp-titre").dataset.path !== viseePochette) return;
-  const el = $("pochette");
-  el.style.backgroundImage = img ? `url("${img}")` : "";
-  el.classList.toggle("pochette--pleine", Boolean(img));
+  poserPochetteInspecteur(img);
 
   montrerDescripteurs(t);
   montrerVoisins(t);
@@ -606,6 +604,13 @@ async function inspecter(t) {
   montrerCredits(t);
   montrerLabel(t);
   montrerCritiques(t);
+}
+
+/// La pochette de l'inspecteur : posée sur son carré, qui devient le macaron
+/// du vinyle quand le morceau inspecté est celui qui joue (`en-cours.js`).
+function poserPochetteInspecteur(img) {
+  $("pochette-carre").style.backgroundImage = img ? `url("${img}")` : "";
+  $("pochette").classList.toggle("pochette--pleine", Boolean(img));
 }
 
 /// Peuple l'inspecteur pour un album de l'anneau — le même composant que
@@ -655,9 +660,7 @@ async function inspecterAlbum(noeud) {
   const img = noeud.path ? await pochette(noeud.path) : null;
   // L'inspecteur a pu changer d'album pendant la résolution de la pochette.
   if (inspectionAlbum !== noeud) return;
-  const el = $("pochette");
-  el.style.backgroundImage = img ? `url("${img}")` : "";
-  el.classList.toggle("pochette--pleine", Boolean(img));
+  poserPochetteInspecteur(img);
 
   montrerVoisinsAlbum();
 }

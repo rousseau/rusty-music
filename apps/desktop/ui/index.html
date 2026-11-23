@@ -1595,6 +1595,14 @@
     <aside class="inspecteur">
       <div class="pochette" id="pochette">
         <span>pochette</span>
+        <!-- Le morceau inspecté est celui qui joue : la pochette se change en
+             vinyle (elle rétrécit en macaron, le disque grandit autour) qui
+             tourne, prend sa vitesse et ralentit comme une platine.
+             `js/en-cours.js`. -->
+        <div id="pochette-platine" class="pochette__platine" aria-hidden="true">
+          <div class="pochette__vinyle vinyle"></div>
+          <div id="pochette-carre" class="pochette__carre"></div>
+        </div>
         <button class="insp__lecture" id="insp-lecture" aria-label="Lire" title="Lire">▶</button>
         <button class="insp__alchimie" id="insp-alchimie" aria-label="Playlist dans l'esprit de ce morceau" title="Playlist dans l'esprit de ce morceau">✦</button>
         <!-- Favori : bascule le morceau inspecté (il suit la lecture). Caché
@@ -1895,7 +1903,7 @@
     <div class="en-cours__scene">
       <div class="en-cours__platine">
         <canvas id="en-cours-spectre" class="en-cours__spectre" aria-hidden="true"></canvas>
-        <div id="en-cours-disque" class="en-cours__disque">
+        <div id="en-cours-disque" class="en-cours__disque vinyle">
           <div id="en-cours-macaron" class="en-cours__macaron"></div>
         </div>
         <div class="en-cours__reflet" aria-hidden="true"></div>

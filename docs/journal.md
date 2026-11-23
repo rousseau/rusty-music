@@ -7392,3 +7392,26 @@ pas.
 
 Tests : un test de fumée pour le bouton et la touche F (F tapé dans le champ
 du rail s'y écrit sans ouvrir la vue) ; captures refaites (`docs/images/`).
+
+## Écouter : la pochette de l'inspecteur devient un vinyle — 23 nov. 2026
+
+**Idée de François** : à la lecture d'un disque, transformer la pochette du
+panneau de droite en vinyle qui tourne, avec une animation douce.
+
+- **Métamorphose** (CSS, 0,6 s) : la pochette posée sur un carré
+  (`#pochette-carre`) rétrécit en macaron et s'arrondit, le vinyle
+  (`.vinyle`, le dessin partagé avec « En cours ») grandit autour de lui.
+- **Vitesse de platine** : la rotation est une animation Web Animations dont
+  `playbackRate` suit l'intention du transport, lissé d'une image à l'autre —
+  environ une seconde pour démarrer, autant pour s'arrêter. Une animation CSS
+  ne sait que s'arrêter net.
+- **Retour en carré** : le disque finit son tour jusqu'à l'endroit avant de se
+  redresser, pour qu'un carré ne réapparaisse jamais de travers.
+- **Quand** : le morceau inspecté est `lecture.courant` (lecture ou pause),
+  relevé quatre fois par seconde — l'inspecteur, la lecture et l'intention
+  changent par trop de chemins pour que chacun prévienne.
+- `prefers-reduced-motion` : pas de vinyle, la pochette reste carrée.
+
+Tests : deux tests de fumée (disque puis retour au carré en changeant de
+morceau inspecté ; pas de disque avec le mouvement réduit). Audit
+`en-cours,ecoute` : 36 cellules, 0 violation.

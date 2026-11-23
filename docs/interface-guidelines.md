@@ -87,6 +87,16 @@ tient en quatre zones, présentes et identiques dans tous les écrans du rail :
   autour du disque, sous un voile `--album-bas` côté texte : la seule exception
   à la Règle 3 (voir là). Avec `prefers-reduced-motion`, ni rotation ni spectre.
 
+- **La pochette de l'inspecteur en vinyle** (23 novembre 2026). Quand le
+  morceau inspecté est celui qui joue ou attend en pause, sa pochette rétrécit
+  en macaron et un vinyle grandit autour (0,6 s), puis tourne : il prend sa
+  vitesse en une seconde environ à la lecture et ralentit jusqu'à l'arrêt à la
+  pause, comme une platine. Un autre morceau inspecté, ou la fin de la file :
+  le disque finit son tour jusqu'à l'endroit et redevient un carré. Les
+  boutons ▶ ✦ ♡ ＋ restent posés dessus. Le dessin du vinyle (`.vinyle`) est
+  celui de la vue « En cours ». Avec `prefers-reduced-motion`, la pochette
+  reste un carré immobile (`#pochette-platine`, `js/en-cours.js`).
+
 - **Choisir l'édition, face à face** (1ᵉʳ novembre 2026, idée de Disc
   Player). Sur les pistes d'un album ouvert, « Choisir l'édition… » ouvre une
   boîte au même voile que la palette (`#editions`, `js/editions.js`) : une

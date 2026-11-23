@@ -957,6 +957,30 @@ test("vue « En cours » : le bouton du transport et la touche F l'ouvrent et la
   await expect(page.locator("#q")).toHaveValue("f");
 });
 
+test("inspecteur : la pochette du morceau qui joue devient un vinyle, et redevient carrée", async ({ page }) => {
+  await lireUnAlbum(page);
+  const pochette = page.locator("#pochette");
+  // Le morceau qui joue, ouvert dans l'inspecteur : un disque.
+  await page.locator("#grille .album").first().click();
+  await page.locator("#liste .ligne").first().click();
+  await expect(page.locator("#insp-titre")).toHaveText(PISTES[0].title);
+  await expect(pochette).toHaveClass(/pochette--disque/);
+  // Un autre morceau inspecté : la pochette redevient un carré.
+  await page.locator("#liste .ligne").nth(1).click();
+  await expect(page.locator("#insp-titre")).toHaveText(PISTES[1].title);
+  await expect(pochette).not.toHaveClass(/pochette--disque/, { timeout: 3000 });
+});
+
+test("inspecteur : pas de vinyle si le système demande moins de mouvement", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await lireUnAlbum(page);
+  await page.locator("#grille .album").first().click();
+  await page.locator("#liste .ligne").first().click();
+  await expect(page.locator("#insp-titre")).toHaveText(PISTES[0].title);
+  await page.waitForTimeout(400);
+  await expect(page.locator("#pochette")).not.toHaveClass(/pochette--disque/);
+});
+
 test("vue « En cours » : sans mouvement si le système le demande", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await lireUnAlbum(page);

@@ -253,6 +253,98 @@ document.addEventListener("theme", () => {
   pochette(etat.chemin).then((img) => poserCouleurs(img)).catch(() => {});
 });
 
+/* ------------------------------------------ la pochette de l'inspecteur
+ *
+ * Quand le morceau inspecté est celui qui joue (ou attend en pause), sa
+ * pochette se change en vinyle : `.pochette--disque` lance la métamorphose
+ * (CSS, 0,6 s), puis la platine tourne. Sa vitesse n'est pas un interrupteur :
+ * elle monte en une seconde environ à la lecture et redescend à la pause,
+ * comme une platine (Web Animations, `playbackRate` lissé). Au retour en
+ * carré, le disque finit son tour jusqu'à l'endroit avant de se redresser.
+ * Avec `prefers-reduced-motion`, la pochette reste un carré immobile.
+ */
+const platine = {
+  el: $("pochette-platine"),
+  hote: $("pochette"),
+  tour: null, // l'animation de rotation (Web Animations)
+  vitesse: 0, // playbackRate courant, 0..1
+  image: 0, // requestAnimationFrame de la rampe
+  sortie: null, // l'animation qui ramène le disque à l'endroit
+};
+const TOUR_MS = 1800; // 33 ⅓ tours/min
+
+function disqueVoulu() {
+  if (reduit.matches || !lecture.courant || lecture.fini) return false;
+  return $("insp-titre").dataset.path === lecture.courant && !$("insp").hidden;
+}
+
+function rampeVitesse() {
+  const cible = transport.veutJouer ? 1 : 0;
+  platine.vitesse += (cible - platine.vitesse) * 0.06;
+  if (Math.abs(cible - platine.vitesse) < 0.003) platine.vitesse = cible;
+  if (platine.tour) {
+    platine.tour.playbackRate = platine.vitesse;
+    if (platine.vitesse === 0) platine.tour.pause();
+    else if (platine.tour.playState !== "running") platine.tour.play();
+  }
+  platine.image = platine.vitesse === cible ? 0 : requestAnimationFrame(rampeVitesse);
+}
+
+function entrerDisque() {
+  platine.sortie?.cancel();
+  platine.sortie = null;
+  platine.hote.classList.add("pochette--disque");
+  if (!platine.tour) {
+    platine.tour = platine.el.animate(
+      [{ transform: "rotate(0turn)" }, { transform: "rotate(1turn)" }],
+      { duration: TOUR_MS, iterations: Infinity },
+    );
+    platine.tour.pause();
+    platine.vitesse = 0;
+  }
+}
+
+function sortirDisque() {
+  cancelAnimationFrame(platine.image);
+  platine.image = 0;
+  const tour = platine.tour;
+  platine.tour = null;
+  platine.vitesse = 0;
+  if (!tour) {
+    platine.hote.classList.remove("pochette--disque");
+    return;
+  }
+  // L'angle atteint, puis un dernier bout de tour jusqu'à l'endroit : le
+  // carré ne se redresse jamais de travers.
+  const angle = ((tour.currentTime ?? 0) % TOUR_MS) / TOUR_MS;
+  tour.cancel();
+  if (angle < 0.001 || reduit.matches) {
+    platine.hote.classList.remove("pochette--disque");
+    return;
+  }
+  platine.sortie = platine.el.animate(
+    [{ transform: `rotate(${angle}turn)` }, { transform: "rotate(1turn)" }],
+    { duration: 500 + 500 * (1 - angle), easing: "cubic-bezier(.2, .7, .3, 1)" },
+  );
+  platine.sortie.onfinish = () => {
+    platine.sortie = null;
+    platine.hote.classList.remove("pochette--disque");
+  };
+}
+
+/// Un relevé léger, quatre fois par seconde : l'inspecteur, la lecture et
+/// l'intention changent par bien des chemins, aucun n'a à prévenir ici.
+function suivrePlatine() {
+  const voulu = disqueVoulu();
+  const actif = platine.hote.classList.contains("pochette--disque") && !platine.sortie;
+  if (voulu && !actif) entrerDisque();
+  else if (!voulu && actif) sortirDisque();
+  if (voulu && !platine.image && platine.vitesse !== (transport.veutJouer ? 1 : 0)) {
+    platine.image = requestAnimationFrame(rampeVitesse);
+  }
+}
+setInterval(suivrePlatine, 250);
+
 export {
   basculerEnCours, fermerEnCours, ouvrirEnCours,
 };
