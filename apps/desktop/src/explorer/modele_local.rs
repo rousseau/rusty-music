@@ -10,11 +10,11 @@ use super::*;
 
 /// Le fichier, sa source à une révision épinglée, son empreinte et sa taille
 /// (`docs/recherche-lama-sans-ollama.md`).
-const FICHIER: &str = "gemma-4-E4B-it-Q4_0.gguf";
-const URL: &str = "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/\
+pub(crate) const FICHIER: &str = "gemma-4-E4B-it-Q4_0.gguf";
+pub(crate) const URL: &str = "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/\
                    a69f018d7678a2b9f5e705f8903d6fb29b9b25dc/gemma-4-E4B-it-Q4_0.gguf";
-const SHA256: &str = "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2";
-const OCTETS: u64 = 4_590_807_392;
+pub(crate) const SHA256: &str = "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2";
+pub(crate) const OCTETS: u64 = 4_590_807_392;
 
 /// Le nom du modèle intégré dans le sélecteur de Lama (icône 🦙), à côté
 /// des modèles d'Ollama.

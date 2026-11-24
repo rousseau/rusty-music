@@ -14,8 +14,9 @@
 //! premier candidat qui existe. Il ne devine jamais : si rien n'est trouvé,
 //! l'appelant reçoit `None` et peut dire précisément ce qui manque.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use crate::error::{Error, Result};
 
@@ -171,6 +172,24 @@ fn telecharger_dans_avec_jeton(
 ) -> Result<PathBuf> {
     std::fs::create_dir_all(dossier)?;
     let destination = dossier.join(nom);
+
+    // Le même fichier déjà en route (le téléchargement du premier lancement,
+    // et l'utilisateur qui le demande aussi depuis les réglages, ou une passe
+    // qui en a besoin) : on attend celui-là plutôt que d'écrire à deux dans le
+    // même `.partiel`.
+    let _vol = match Vol::prendre(&destination) {
+        Ok(vol) => vol,
+        Err(autre) => {
+            autre.attendre();
+            return if destination.is_file() {
+                Ok(destination)
+            } else {
+                Err(Error::Reseau(format!(
+                    "le téléchargement de {nom} déjà en cours a échoué"
+                )))
+            };
+        }
+    };
     let partiel = dossier.join(format!("{nom}.partiel"));
 
     let (mut recus, mut attendus) = (0u64, None);
@@ -213,6 +232,135 @@ fn telecharger_dans_avec_jeton(
     }
     std::fs::rename(&partiel, &destination)?;
     Ok(destination)
+}
+
+/// Les téléchargements en cours, par chemin de destination.
+static EN_VOL: OnceLock<Mutex<HashMap<PathBuf, Arc<Signal>>>> = OnceLock::new();
+
+fn en_vol() -> std::sync::MutexGuard<'static, HashMap<PathBuf, Arc<Signal>>> {
+    EN_VOL
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Levé quand un téléchargement se termine, réussi ou non.
+#[derive(Default)]
+struct Signal {
+    fini: Mutex<bool>,
+    cv: Condvar,
+}
+
+impl Signal {
+    fn attendre(&self) {
+        let mut fini = self.fini.lock().unwrap_or_else(|e| e.into_inner());
+        while !*fini {
+            fini = self.cv.wait(fini).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+}
+
+/// Un téléchargement inscrit dans [`EN_VOL`] : retiré et signalé à sa
+/// destruction, panique comprise.
+struct Vol {
+    destination: PathBuf,
+    signal: Arc<Signal>,
+}
+
+impl Vol {
+    /// Inscrit le téléchargement, ou rend celui qui est déjà en cours.
+    fn prendre(destination: &Path) -> std::result::Result<Vol, Arc<Signal>> {
+        let mut carte = en_vol();
+        if let Some(autre) = carte.get(destination) {
+            return Err(autre.clone());
+        }
+        let signal = Arc::new(Signal::default());
+        carte.insert(destination.to_path_buf(), signal.clone());
+        Ok(Vol {
+            destination: destination.to_path_buf(),
+            signal,
+        })
+    }
+}
+
+impl Drop for Vol {
+    fn drop(&mut self) {
+        en_vol().remove(&self.destination);
+        *self.signal.fini.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.signal.cv.notify_all();
+    }
+}
+
+/// Vrai si `nom` est en train d'arriver.
+pub fn en_cours(nom: &str) -> bool {
+    en_vol()
+        .keys()
+        .any(|d| d.file_name().is_some_and(|n| n == nom))
+}
+
+/// [`trouver`], en attendant d'abord la fin d'un téléchargement de `nom` en
+/// cours : une passe lancée pendant le premier téléchargement des poids
+/// (l'analyse d'une bibliothèque toute neuve) les attend au lieu d'échouer.
+pub fn trouver_ou_attendre(nom: &str) -> Option<PathBuf> {
+    let signaux: Vec<Arc<Signal>> = en_vol()
+        .iter()
+        .filter(|(d, _)| d.file_name().is_some_and(|n| n == nom))
+        .map(|(_, s)| s.clone())
+        .collect();
+    for s in signaux {
+        s.attendre();
+    }
+    trouver(nom)
+}
+
+/// Où se trouve `chemin` par rapport à l'application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provenance {
+    /// Dans le dossier de l'application : téléchargé, peut être supprimé.
+    Telecharge,
+    /// Livré dans le paquet (`Resources/models`), en lecture seule.
+    Paquet,
+    /// Ailleurs : `models/` du dépôt, ou le dossier de [`VARIABLE`].
+    Autre,
+}
+
+/// La provenance d'un poids trouvé par [`trouver`].
+pub fn provenance(chemin: &Path) -> Provenance {
+    if DOSSIER_UTILISATEUR
+        .get()
+        .is_some_and(|d| chemin.parent() == Some(d.as_path()))
+    {
+        Provenance::Telecharge
+    } else if chemin
+        .parent()
+        .is_some_and(|d| d.ends_with("Resources/models"))
+    {
+        Provenance::Paquet
+    } else {
+        Provenance::Autre
+    }
+}
+
+/// Supprime un poids téléchargé par l'application. Refuse ce qui est livré
+/// dans le paquet ou rangé ailleurs (le dépôt) : ce n'est pas à l'application
+/// d'y toucher. Rend le nombre d'octets libérés.
+pub fn supprimer(nom: &str) -> Result<u64> {
+    if en_cours(nom) {
+        return Err(Error::Reseau(format!(
+            "{nom} est en cours de téléchargement"
+        )));
+    }
+    let Some(dossier) = DOSSIER_UTILISATEUR.get() else {
+        return Ok(0);
+    };
+    let chemin = dossier.join(nom);
+    match std::fs::metadata(&chemin) {
+        Ok(m) => {
+            std::fs::remove_file(&chemin)?;
+            Ok(m.len())
+        }
+        Err(_) => Ok(0),
+    }
 }
 
 /// Empreinte SHA-256 de `chemin`, en flux (jamais tout le fichier en
@@ -388,6 +536,33 @@ mod tests {
             telecharger_dans(&dossier, "petit.safetensors", &url, 1000, None, |_, _| {}).is_err()
         );
         assert!(!dossier.join("petit.safetensors").exists());
+    }
+
+    /// Deux demandes du même poids en même temps : une seule requête part,
+    /// la seconde attend la première et rend le même fichier.
+    #[test]
+    fn un_meme_poids_demande_deux_fois_ne_part_quune_fois() {
+        let dossier = std::env::temp_dir().join("rusty-music-test-modeles-vol");
+        let _ = std::fs::remove_dir_all(&dossier);
+        // Serveur d'une seule réponse : une seconde requête resterait sans
+        // réponse et échouerait.
+        let url = serveur(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        );
+        let (d, u) = (dossier.clone(), url.clone());
+        let premier = std::thread::spawn(move || {
+            telecharger_dans(&d, "vol.safetensors", &u, 10, None, |_, _| {
+                std::thread::sleep(std::time::Duration::from_millis(50))
+            })
+        });
+        // Laisse le premier s'inscrire.
+        while !en_cours("vol.safetensors") && !dossier.join("vol.safetensors").exists() {
+            std::thread::yield_now();
+        }
+        let second = telecharger_dans(&dossier, "vol.safetensors", &url, 10, None, |_, _| {});
+        assert_eq!(second.expect("second"), dossier.join("vol.safetensors"));
+        assert!(premier.join().unwrap().is_ok());
+        assert!(!en_cours("vol.safetensors"));
     }
 
     /// SHA-256 de `0123456789` (10 octets), calculé indépendamment pour ne

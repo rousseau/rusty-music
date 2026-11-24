@@ -2342,6 +2342,12 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .racine__cpt { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); flex: none; }
 
+/* Bibliothèque → Modèles : une ligne par modèle, son rôle en dessous de son
+   nom, sa taille et son état à droite, puis son action. */
+.modele__nom { flex: 1; min-width: 0; }
+.modele__usage { display: block; font-size: var(--t-legende); color: var(--mut); }
+.replie__compte { font-family: var(--mono); font-size: var(--t-legende); color: var(--mut); font-weight: 400; margin-left: 6px; }
+
 .bouton {
   font: inherit; font-size: var(--t-second); cursor: pointer; flex: none;
   background: var(--panel2); color: var(--txt);

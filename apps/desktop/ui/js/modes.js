@@ -33,7 +33,7 @@ import {
 } from "./decouvrir.js";
 import {
   chargerDossierDonnees, chargerDumpDiscogs, chargerParametresCarte, chargerStatsBibliotheque,
-  chargerVerifications, chargerVocabulaireFamilles, dessinerRacines, majCache,
+  chargerVerifications, chargerVocabulaireFamilles, dessinerRacines, majCache, majModeles,
   majStockageLogiciel, reprendreActualisationEnCours,
 } from "./bibliotheque.js";
 import { edition } from "./etabli.js";
@@ -124,6 +124,7 @@ async function basculerMode(mode) {
     $("fil-compte").textContent = "";
     await dessinerRacines();
     majCache().catch((e) => remonter(e, "cache"));
+    majModeles().catch((e) => remonter(e, "modèles"));
     chargerDossierDonnees().catch((e) => remonter(e, "dossier de données"));
     majStockageLogiciel().catch((e) => remonter(e, "stockage du logiciel"));
     chargerDumpDiscogs().catch((e) => remonter(e, "dump Discogs"));

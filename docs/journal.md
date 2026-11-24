@@ -21,6 +21,18 @@ cd apps/desktop && cargo tauri build        # produit le .app et le .dmg
 Le paquet fait **277 Mo** (208 en `.dmg`) : les poids voyagent avec lui, sans
 quoi ni carte ni démixage.
 
+*24 nov. 2026.* Il avait atteint 945 Mo (712 en `.dmg`) : la tour texte de
+CLAP (478 Mo, RoBERTa-base en f32), la tour audio (112 Mo), HTDemucs (80 Mo),
+et 70 Mo de symboles dans le binaire. CLAP et HTDemucs sortent du paquet : les
+`.bpk` de CLAP sont publiés sur Hugging Face (`rousseau/clap-htsat-unfused-burn`,
+Apache-2.0) et téléchargés **au premier lancement** (`apps/desktop/src/modeles.rs`),
+HTDemucs au premier démixage ; `release.sh` retire les symboles. Bibliothèque →
+Modèles liste tous les modèles, d'où ils viennent, et permet de les télécharger
+ou de les supprimer. Piège mesuré : deux builds du même ONNX donnent des `.bpk`
+différents, mais seule l'en-tête change (des `param_id` tirés au hasard) ; la
+section des données est identique octet pour octet, c'est elle que `release.sh`
+compare aux poids publiés. Après : dmg de 101 Mo, app de 212 Mo.
+
 **Où les modèles sont cherchés**, dans cet ordre — `crates/core/src/modeles.rs` :
 
 1. la variable `RUSTY_MUSIC_MODELS`, pour désigner un autre dossier sans

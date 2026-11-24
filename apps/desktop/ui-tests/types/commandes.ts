@@ -480,6 +480,22 @@ export const commands = {
 	en_cours: boolean,
 	resultat: string | null,
 }) & (Compte)>("lama_telechargement_state"),
+	/**  La liste des modèles et leur état. */
+	modeles_lister: () => __TAURI_INVOKE<ModeleEtat_Serialize[]>("modeles_lister"),
+	/**
+	 *  Télécharge les modèles demandés, l'un après l'autre, ce qui manque
+	 *  seulement.
+	 */
+	modeles_telecharger: (ids: string[]) => __TAURI_INVOKE<null>("modeles_telecharger", { ids }),
+	modeles_telechargement_state: () => __TAURI_INVOKE<({
+	en_cours: boolean,
+	resultat: string | null,
+}) & (AvancementModeles_Serialize)>("modeles_telechargement_state"),
+	/**
+	 *  Supprime les fichiers d'un modèle téléchargés dans le dossier de
+	 *  l'application (jamais ceux du paquet). Rend les octets libérés.
+	 */
+	modeles_supprimer: (id: string) => __TAURI_INVOKE<number>("modeles_supprimer", { id }),
 	verif_pochettes_state: () => __TAURI_INVOKE<({
 	en_cours: boolean,
 	resultat: string | null,
@@ -2170,6 +2186,31 @@ export type AvancementEnvoiValise = {
 	etape: string,
 	faits: number,
 	total: number,
+};
+
+/**  Où en est le téléchargement : le modèle en cours, ses octets. */
+export type AvancementModeles = AvancementModeles_Serialize | AvancementModeles_Deserialize;
+
+/**  Où en est le téléchargement : le modèle en cours, ses octets. */
+export type AvancementModeles_Deserialize = {
+	/**  Identifiant du modèle en cours. */
+	id?: string | null,
+	libelle?: string | null,
+	recus: number,
+	total: number,
+	/**  Modèles restants dans la file, celui en cours compris. */
+	restants: number,
+};
+
+/**  Où en est le téléchargement : le modèle en cours, ses octets. */
+export type AvancementModeles_Serialize = {
+	/**  Identifiant du modèle en cours. */
+	id: string | null,
+	libelle: string | null,
+	recus: number,
+	total: number,
+	/**  Modèles restants dans la file, celui en cours compris. */
+	restants: number,
 };
 
 /**
@@ -4126,6 +4167,53 @@ export type Modele = {
 	licence_poids: string,
 	/**  Tous les liens de la ligne (code, poids, conditions), sans doublon. */
 	liens: Lien[],
+};
+
+/**  Un modèle, vu de l'interface. */
+export type ModeleEtat = ModeleEtat_Serialize | ModeleEtat_Deserialize;
+
+/**  Un modèle, vu de l'interface. */
+export type ModeleEtat_Deserialize = {
+	id: string,
+	libelle: string,
+	usage: string,
+	/**  Taille de tous ses fichiers, en octets. */
+	octets: number,
+	/**
+	 *  `telecharge`, `paquet` (livré avec l'application), `autre` (dossier du
+	 *  dépôt ou de `RUSTY_MUSIC_MODELS`), `partiel` ou `absent`.
+	 */
+	etat: string,
+	/**
+	 *  Octets occupés dans le dossier de l'application, ceux que
+	 *  « Supprimer » libère.
+	 */
+	octets_supprimables: number,
+	telechargeable: boolean,
+	au_demarrage: boolean,
+	remarque?: string | null,
+};
+
+/**  Un modèle, vu de l'interface. */
+export type ModeleEtat_Serialize = {
+	id: string,
+	libelle: string,
+	usage: string,
+	/**  Taille de tous ses fichiers, en octets. */
+	octets: number,
+	/**
+	 *  `telecharge`, `paquet` (livré avec l'application), `autre` (dossier du
+	 *  dépôt ou de `RUSTY_MUSIC_MODELS`), `partiel` ou `absent`.
+	 */
+	etat: string,
+	/**
+	 *  Octets occupés dans le dossier de l'application, ceux que
+	 *  « Supprimer » libère.
+	 */
+	octets_supprimables: number,
+	telechargeable: boolean,
+	au_demarrage: boolean,
+	remarque: string | null,
 };
 
 export type Motif = 

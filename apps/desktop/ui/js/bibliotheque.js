@@ -1713,6 +1713,120 @@ $("vider-cache").addEventListener("click", async () => {
   await majCache();
 });
 
+/// Bibliothèque → Modèles : chaque modèle, sa taille, d'où il vient, et de
+/// quoi le télécharger ou le supprimer. Les deux tours de CLAP arrivent
+/// seules au premier lancement (`modeles::demarrer`) ; l'avancement s'écrit
+/// aussi dans le titre de la section, lisible sans la déplier.
+const ETAT_MODELE = {
+  telecharge: "téléchargé",
+  paquet: "livré avec l'application",
+  autre: "dossier du dépôt",
+  partiel: "incomplet",
+  absent: "absent",
+};
+
+function taille(octets) {
+  return octets >= 1e9
+    ? `${(octets / 1e9).toFixed(1).replace(".", ",")} Go`
+    : `${Math.max(1, Math.round(octets / 1e6))} Mo`;
+}
+
+let suiviModeles = null;
+
+async function majModeles() {
+  const [modeles, passe] = await Promise.all([
+    invoke("modeles_lister"),
+    invoke("modeles_telechargement_state"),
+  ]);
+  const liste = $("modeles-liste");
+  liste.replaceChildren();
+  for (const m of modeles) {
+    const el = document.createElement("div");
+    el.className = "racine";
+    const nom = document.createElement("span");
+    nom.className = "modele__nom";
+    nom.textContent = m.libelle;
+    const usage = document.createElement("span");
+    usage.className = "modele__usage";
+    usage.textContent = m.remarque ? `${m.usage} — ${m.remarque}` : m.usage;
+    nom.append(usage);
+    const cpt = document.createElement("span");
+    cpt.className = "racine__cpt";
+    cpt.textContent = `${taille(m.octets)} · ${ETAT_MODELE[m.etat] ?? m.etat}`;
+    el.append(nom, cpt);
+    const enCours = passe.en_cours && passe.id === m.id;
+    if (m.octets_supprimables > 0) {
+      const b = document.createElement("button");
+      b.className = "bouton bouton--mince";
+      b.textContent = "Supprimer";
+      b.disabled = enCours;
+      b.addEventListener("click", () => supprimerModele(m));
+      el.append(b);
+    } else if (m.telechargeable && (m.etat === "absent" || m.etat === "partiel")) {
+      const b = document.createElement("button");
+      b.className = "bouton bouton--mince";
+      b.textContent = enCours ? "En cours…" : "Télécharger";
+      b.disabled = passe.en_cours;
+      b.addEventListener("click", () => telechargerModele(m.id));
+      el.append(b);
+    }
+    liste.append(el);
+  }
+  peindreAvancementModeles(passe);
+  if (passe.en_cours) suivreModeles();
+}
+
+function peindreAvancementModeles(passe) {
+  const jauge = $("modeles-jauge");
+  if (passe.en_cours && passe.libelle) {
+    const part = passe.total ? passe.recus / passe.total : 0;
+    const reste = passe.restants > 1 ? ` (${passe.restants - 1} autre${passe.restants > 2 ? "s" : ""} ensuite)` : "";
+    $("modeles-avancement").textContent =
+      `Téléchargement de ${passe.libelle} : ${taille(passe.recus)} sur ${taille(passe.total)}${reste}.`;
+    $("modeles-resume").textContent = `· ${Math.floor(part * 100)} %`;
+    jauge.hidden = false;
+    jauge.value = part;
+  } else {
+    $("modeles-avancement").textContent = passe.resultat?.startsWith("échec") ? passe.resultat : "";
+    $("modeles-resume").textContent = "";
+    jauge.hidden = true;
+  }
+}
+
+function suivreModeles() {
+  if (suiviModeles) return;
+  suiviModeles = attendreFin("modeles_telechargement_state", 500, peindreAvancementModeles)
+    .catch((e) => remonter(e, "téléchargement des modèles"))
+    .finally(() => {
+      suiviModeles = null;
+      majModeles().catch((e) => remonter(e, "modèles"));
+    });
+}
+
+async function telechargerModele(id) {
+  try {
+    await invoke("modeles_telecharger", { ids: [id] });
+  } catch (e) {
+    remonter(e, "téléchargement d'un modèle");
+    return;
+  }
+  await majModeles();
+}
+
+async function supprimerModele(m) {
+  const ok = confirm(
+    `Supprimer ${m.libelle} (${taille(m.octets_supprimables)}) ?\n\n` +
+      "Il sera retéléchargé la prochaine fois qu'il servira.",
+  );
+  if (!ok) return;
+  try {
+    await invoke("modeles_supprimer", { id: m.id });
+  } catch (e) {
+    remonter(e, "suppression d'un modèle");
+  }
+  await majModeles();
+}
+
 /// Écrit ce qu'on entend dans un dossier choisi.
 ///
 /// **Une seule sortie, et c'est un choix.** La spec en prévoyait trois — un
@@ -1842,6 +1956,6 @@ async function battementStems() {
 export {
   attendreFin, battementStems, chargerDossierDonnees, chargerDumpDiscogs, chargerParametresCarte,
   chargerStatsBibliotheque, chargerVerifications, chargerVocabulaireFamilles, dessinerListeVerif,
-  dessinerRacines, dureeLongue, majCache, majStockageLogiciel, passePopularite,
+  dessinerRacines, dureeLongue, majCache, majModeles, majStockageLogiciel, passePopularite,
   reprendreActualisationEnCours, SECONDES_PAR_ARTISTE, verrouillerActualisation,
 };

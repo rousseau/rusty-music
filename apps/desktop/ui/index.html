@@ -1331,6 +1331,23 @@
           </div>
           </details>
 
+          <!-- Les modèles : lesquels sont là, d'où ils viennent (paquet ou
+               téléchargés), et les télécharger ou les supprimer. Les deux
+               tours de CLAP arrivent seules au premier lancement ; le titre
+               dit l'avancement même replié (`js/bibliotheque.js`, majModeles). -->
+          <details class="replie" id="bloc-modeles">
+          <summary class="rail__titre replie__titre">Modèles <span id="modeles-resume" class="replie__compte"></span></summary>
+          <div class="ajout">
+            <p class="aide">Les réseaux de neurones de l'application. Les plus
+              gros arrivent du réseau : CLAP au premier lancement, les autres au
+              premier usage ou d'ici. « Supprimer » libère la place ; le modèle
+              sera retéléchargé quand il resservira.</p>
+            <p id="modeles-avancement" class="aide" aria-live="polite"></p>
+            <progress id="modeles-jauge" class="jauge" max="1" value="0" hidden></progress>
+            <div id="modeles-liste" class="racines"></div>
+          </div>
+          </details>
+
           <details class="replie">
           <summary class="rail__titre replie__titre">Apparence</summary>
           <div class="segments" id="theme-choix" role="group" aria-label="Thème">

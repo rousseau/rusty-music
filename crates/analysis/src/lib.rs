@@ -22,6 +22,7 @@ pub mod encodeur_texte;
 pub mod groove;
 pub mod mel;
 pub mod passe;
+pub mod poids;
 pub mod projection;
 pub mod reseau;
 pub mod vocabulaire_texte;

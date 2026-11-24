@@ -10,7 +10,7 @@ mod balade;
 mod carte;
 mod lama;
 mod lieux;
-mod modele_local;
+pub(crate) mod modele_local;
 mod relief;
 mod traces;
 mod voisinage;

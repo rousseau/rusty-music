@@ -117,7 +117,7 @@ impl EmbedderTexte {
                 trouve = if du_build.is_file() {
                     du_build
                 } else {
-                    rusty_music_core::modeles::trouver(Self::POIDS).unwrap_or_default()
+                    rusty_music_core::modeles::trouver_ou_attendre(Self::POIDS).unwrap_or_default()
                 };
                 &trouve
             }

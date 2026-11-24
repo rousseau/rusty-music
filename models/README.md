@@ -40,9 +40,11 @@ pour la ligne de commande.
 
 Autres fichiers possibles ici, non requis :
 
-- `clap-audio-encoder-b5.bpk` — poids de CLAP au format Burn, **régénérés** par
-  `crates/analysis/build.rs` dans `OUT_DIR` puis recopiés ici **à chaque
-  build** (c'est cette copie qu'empaquette `cargo tauri build`, et que
-  `tauri-build` exige de trouver ici même pour un simple `cargo build`).
+- `clap-audio-encoder-b5.bpk`, `clap-text-encoder.bpk` — poids de CLAP au
+  format Burn, **régénérés** par `crates/analysis/build.rs` dans `OUT_DIR` puis
+  recopiés ici à chaque build `release`. Ils ne sont plus empaquetés :
+  l'application les télécharge au premier lancement depuis
+  `rousseau/clap-htsat-unfused-burn` (`crates/analysis/src/poids.rs`) ; ce sont
+  ces copies-ci que `scripts/publier-clap.sh` y publie.
 - `htdemucs_6s.safetensors`, `htdemucs_ft.safetensors` — variantes de démixage
   (`scripts/preparer-demucs.sh htdemucs_6s`).

@@ -227,6 +227,30 @@ const fixtures = {
   lama_disponibilite: { local: "absent", etat: "pret", modeles: ["gemma4:e4b"], detail: null },
   lama_telecharger: null,
   lama_telechargement_state: { en_cours: false, faits: 0, total: 0, resultat: null },
+  // Bibliothèque → Modèles : CLAP téléchargé, HTDemucs absent, ADTOF livré.
+  modeles_lister: [
+    {
+      id: "clap-audio", libelle: "CLAP, écoute", usage: "Empreintes des morceaux",
+      octets: 117145344, etat: "telecharge", octets_supprimables: 117145344,
+      telechargeable: true, au_demarrage: true, remarque: null,
+    },
+    {
+      id: "htdemucs", libelle: "HTDemucs", usage: "Démixage en 4 stems",
+      octets: 84030696, etat: "absent", octets_supprimables: 0,
+      telechargeable: true, au_demarrage: false, remarque: null,
+    },
+    {
+      id: "adtof", libelle: "ADTOF", usage: "Transcription de la batterie",
+      octets: 1811789, etat: "paquet", octets_supprimables: 0,
+      telechargeable: false, au_demarrage: false,
+      remarque: "livré avec l'application, sans source en ligne",
+    },
+  ],
+  modeles_telechargement_state: {
+    en_cours: false, id: null, libelle: null, recus: 0, total: 0, restants: 0, resultat: null,
+  },
+  modeles_telecharger: null,
+  modeles_supprimer: 0,
   tracks_of_album: (a) => window.__DONNEES__.PISTES.filter((p) => p.album === a.album),
   cover: null,
   // Comme le moteur, toute commande de lecture coupe les stems.

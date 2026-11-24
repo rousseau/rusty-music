@@ -46,6 +46,7 @@ mod explorer;
 mod greffon;
 mod iphone;
 mod minuteur;
+mod modeles;
 #[cfg(test)]
 mod paquet;
 mod passe;
@@ -205,6 +206,9 @@ struct Etat {
     lama_local: Mutex<Cache<Arc<rusty_music_lama::llm_local::ModeleLocal>>>,
     /// Avancement du téléchargement de ce modèle.
     lama_telechargement: Mutex<EtatTelechargementLama>,
+    /// Téléchargement des modèles depuis Bibliothèque → Modèles, et celui
+    /// du premier lancement (`modeles::demarrer`).
+    modeles: Mutex<modeles::EtatModeles>,
     /// Basic Pitch (transcription), chargé au premier usage puis gardé —
     /// 230 Ko de poids, une session ONNX Runtime.
     transcripteur: Mutex<Option<rusty_music_transcription::basic_pitch::Transcripteur>>,
@@ -623,6 +627,7 @@ fn main() {
                 #[cfg(feature = "lama-local")]
                 lama_local: Mutex::new(Cache::default()),
                 lama_telechargement: Mutex::new(EtatTelechargementLama::default()),
+                modeles: Mutex::new(modeles::EtatModeles::default()),
                 transcripteur: Mutex::new(None),
                 batteur: Mutex::new(None),
                 muscriptor: Mutex::new(Cache::default()),
@@ -656,6 +661,10 @@ fn main() {
 
             // Le serveur Wi-Fi du compagnon iOS, si un iPhone a été appairé.
             wifi::demarrer(app.handle());
+
+            // Premier lancement : les poids de CLAP ne sont plus dans le
+            // paquet, ils arrivent du réseau (`modeles.rs`).
+            modeles::demarrer(app.handle().clone());
 
             explorer::essai_balade(app.handle());
             greffon::essai_greffon(app.handle());
@@ -1143,6 +1152,10 @@ fn main() {
             lama_disponibilite,
             lama_telecharger,
             lama_telechargement_state,
+            modeles::modeles_lister,
+            modeles::modeles_telecharger,
+            modeles::modeles_telechargement_state,
+            modeles::modeles_supprimer,
             essai_lama,
             essai_fenetre,
             essai_capture,

@@ -37,8 +37,12 @@ command -v cargo-tauri >/dev/null 2>&1 || {
   cargo install --locked tauri-cli --version "^2"
 }
 
+# CLAP (ONNX) pour le build, qui en tire le code et les `.bpk` ; les petits
+# modèles de Pratiquer pour le paquet. Les autres (HTDemucs, AERO…) ne sont
+# pas livrés : l'application les télécharge (Bibliothèque → Modèles).
 echo "→ modèles et plan de ville"
-./scripts/telecharger-modeles.sh
+./scripts/telecharger-modeles.sh clap
+./scripts/telecharger-modeles.sh pratiquer
 ./scripts/telecharger-ville.sh
 
 # Chaque ressource du paquet (`bundle > resources` de tauri.conf.json) doit
@@ -70,12 +74,38 @@ if [ "${1:-}" = "--universal" ]; then
   CIBLE="universal-apple-darwin"
 fi
 
+# Sans les symboles : 70 Mo de moins pour le binaire. Les traces de panique
+# gardent les noms de fonctions (tables de déroulement), pas les lignes.
+export CARGO_PROFILE_RELEASE_STRIP=symbols
+
 if [ -n "$CIBLE" ]; then
   echo "→ cargo tauri build --target $CIBLE --features lama-local"
   cargo tauri build --target "$CIBLE" --features lama-local
 else
   echo "→ cargo tauri build --features lama-local"
   cargo tauri build --features lama-local
+fi
+
+# Les poids de CLAP ne sont plus dans le paquet : l'application les
+# télécharge de Hugging Face (`crates/analysis/src/poids.rs`). Ils doivent
+# aller avec le code qu'on vient de compiler. Le build vient de régénérer
+# `models/*.bpk` ; seule leur en-tête change d'un build à l'autre (des
+# identifiants tirés au hasard), on compare donc la section des données.
+donnees_sha() {
+  local meta debut
+  meta=$(od -An -tu4 -j6 -N4 "$1" | tr -d ' ')
+  debut=$(( (10 + meta + 255) / 256 * 256 ))
+  tail -c +$((debut + 1)) "$1" | shasum -a 256 | cut -d' ' -f1
+}
+DESACCORD=""
+for bpk in clap-audio-encoder-b5.bpk clap-text-encoder.bpk; do
+  attendu=$(grep -A6 "\"https://[^\"]*/$bpk\"" crates/analysis/src/poids.rs | sed -n 's/.*sha256_donnees: "\([0-9a-f]*\)".*/\1/p')
+  [ "$(donnees_sha "models/$bpk")" = "$attendu" ] || DESACCORD="$DESACCORD $bpk"
+done
+if [ -n "$DESACCORD" ]; then
+  echo "Les poids publiés ne vont plus avec ce code :$DESACCORD" >&2
+  echo "  Les republier : ./scripts/publier-clap.sh, puis mettre à jour crates/analysis/src/poids.rs" >&2
+  exit 1
 fi
 
 echo
