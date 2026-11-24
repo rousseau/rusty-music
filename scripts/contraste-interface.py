@@ -15,6 +15,9 @@ Lit `apps/desktop/ui/style.css` : le bloc `:root` (thème sombre) et le bloc
 - `--txt` tient 4,5:1 sur les fonds de la vue « En cours » : les couleurs
   d'album recalées en OKLCH dans `--album-clarte` (clarté min et max) et sous
   `--album-chroma`, sur toutes les teintes (`js/couleurs-album.js`) ;
+- le trait de cette vue (anneau de progression, spectre), recalé dans
+  `--album-trait-clarte` et sous `--album-trait-chroma`, tient 3:1 sur ces
+  fonds, au pire cas de toutes les paires de teintes ;
 - aucune déclaration `color:` hors de `:root` ne code une couleur en dur : le
   texte passe par les jetons, sans quoi ce contrôle ne le verrait pas.
 
@@ -37,6 +40,7 @@ from pathlib import Path
 FEUILLE = Path(__file__).resolve().parent.parent / "apps/desktop/ui/style.css"
 
 TEXTE, GRAND = 4.5, 3.0
+GRAPHIQUE = 3.0  # un trait ou une forme qui porte une information (WCAG 1.4.11)
 
 # (texte, fond, seuil, rôle) — les couples que l'interface pose réellement.
 FONDS = ("bg", "panel", "panel2")
@@ -98,12 +102,13 @@ def oklch_vers_hex(L, C, h):
     return "#%02x%02x%02x" % rgb
 
 
-def plage_album(css, selecteur):
-    """`--album-clarte: min max` et `--album-chroma: c` d'un bloc, ou None."""
+def plage_album(css, selecteur, prefixe="album"):
+    """`--album-clarte: min max` et `--album-chroma: c` d'un bloc (ou celles
+    de `--album-trait-…`), ou None."""
     debut = css.find(f"{selecteur} {{")
     corps = css[debut : css.index("\n}", debut)]
-    clarte = re.search(r"--album-clarte:\s*([\d.]+)\s+([\d.]+)", corps)
-    chroma = re.search(r"--album-chroma:\s*([\d.]+)", corps)
+    clarte = re.search(rf"--{prefixe}-clarte:\s*([\d.]+)\s+([\d.]+)", corps)
+    chroma = re.search(rf"--{prefixe}-chroma:\s*([\d.]+)", corps)
     if not clarte or not chroma:
         return None
     return float(clarte.group(1)), float(clarte.group(2)), float(chroma.group(1))
@@ -173,6 +178,30 @@ def main():
             print(f"   {marque:5} {r:5.2f}:1 ≥ {TEXTE}  --txt sur les fonds d'album  (pire : {fond})")
             if r < TEXTE:
                 violations.append(f"{theme:8} --txt sur un fond d'album {fond} : {r:.2f}:1 < {TEXTE}:1")
+
+            # Le trait (anneau, spectre) sur ces fonds : un graphique, 3:1 (WCAG
+            # 1.4.11), au pire cas — le trait au bout de sa plage le plus proche
+            # des fonds, toutes teintes, contre chaque fond, toutes teintes.
+            trait = plage_album(css, ":root" if theme == "sombre" else ':root[data-theme="clair"]', "album-trait")
+            if trait is None:
+                violations.append(f"{theme:8} --album-trait-clarte / --album-trait-chroma : jeton absent")
+            else:
+                tmin, tmax, tc = trait
+                lt = tmin if theme == "sombre" else tmax
+                lf = lmax if theme == "sombre" else lmin
+                r, paire = min(
+                    (rapport(a, b), (a, b))
+                    for ta in range(0, 360, 10)
+                    for Ct in (0, tc / 2, tc)
+                    for a in [oklch_vers_hex(lt, Ct, math.radians(ta))]
+                    for tb in range(0, 360, 10)
+                    for Cf in (0, cmax)
+                    for b in [oklch_vers_hex(lf, Cf, math.radians(tb))]
+                )
+                marque = "ok" if r >= GRAPHIQUE else "ÉCHEC"
+                print(f"   {marque:5} {r:5.2f}:1 ≥ {GRAPHIQUE}  trait d'album sur les fonds d'album  (pire : {paire[0]} sur {paire[1]})")
+                if r < GRAPHIQUE:
+                    violations.append(f"{theme:8} trait d'album {paire[0]} sur {paire[1]} : {r:.2f}:1 < {GRAPHIQUE}:1")
 
     # Hors des deux blocs de jetons, une couleur de texte en dur échappe au contrôle.
     sans_jetons = re.sub(r":root(\[data-theme=\"clair\"\])? \{.*?\n\}", "", css, flags=re.S)

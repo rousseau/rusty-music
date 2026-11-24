@@ -1,7 +1,8 @@
-// Deux couleurs d'une pochette, pour les fonds de la vue « En cours » — la
-// seule exception à la Règle 3 (`docs/interface-guidelines.md` : couleur =
-// famille), tranchée le 1ᵉʳ novembre 2026 : fonds seulement, jamais un
-// contrôle, un trait ni un point, jamais ailleurs.
+// Deux couleurs d'une pochette, pour les fonds de la vue « En cours », et une
+// troisième pour ses traits (anneau de progression, spectre) — l'exception à
+// la Règle 3 (`docs/interface-guidelines.md` : couleur = famille), tranchée le
+// 1ᵉʳ novembre 2026 pour les fonds, étendue le 24 novembre à ces deux traits :
+// jamais un autre contrôle ni un point, jamais ailleurs.
 //
 // Méthode de Disc Player (https://github.com/eudj1n/snowsky-disc-player,
 // `src/domain/coverColours.ts`, licence MIT, © eudj1n), réécrite ici. La
@@ -83,11 +84,12 @@ function couleursDePixels(pixels) {
   return { premiere, seconde };
 }
 
-/// Les bornes du thème affiché : clarté [min, max] et chroma maximal (OKLCH).
-function bornesDuTheme() {
+/// Les bornes du thème affiché : clarté [min, max] et chroma maximal (OKLCH),
+/// celles des fonds (`--album-…`) ou celles du trait (`--album-trait-…`).
+function bornesDuTheme(prefixe = "--album") {
   const css = getComputedStyle(document.documentElement);
-  const [min, max] = css.getPropertyValue("--album-clarte").trim().split(/\s+/).map(Number);
-  const chroma = Number(css.getPropertyValue("--album-chroma").trim());
+  const [min, max] = css.getPropertyValue(`${prefixe}-clarte`).trim().split(/\s+/).map(Number);
+  const chroma = Number(css.getPropertyValue(`${prefixe}-chroma`).trim());
   return { min, max, chroma };
 }
 
@@ -99,7 +101,10 @@ function recaler(c, { min, max, chroma }) {
 }
 
 /// Les deux couleurs de fond d'une pochette (`data:` URI), recalées pour le
-/// thème affiché : `{ haut, bas }` en `rgb(…)`, ou `null` sans image lisible.
+/// thème affiché, et la couleur du trait (l'anneau de progression, le spectre :
+/// la teinte dominante, plus vive et assez claire — ou sombre — pour se
+/// détacher des deux fonds) : `{ haut, bas, trait }` en `rgb(…)`, ou `null`
+/// sans image lisible.
 async function couleursPochette(src) {
   if (!src) return null;
   const img = new Image();
@@ -115,7 +120,10 @@ async function couleursPochette(src) {
   ctx.drawImage(img, 0, 0, 48, 48);
   const { premiere, seconde } = couleursDePixels(ctx.getImageData(0, 0, 48, 48).data);
   const bornes = bornesDuTheme();
-  return { haut: recaler(premiere, bornes), bas: recaler(seconde, bornes) };
+  // Le trait reprend la teinte de la couleur dominante et pousse son chroma :
+  // une pochette grise donne un trait gris, pas l'accent de l'application.
+  const trait = recaler({ ...premiere, C: premiere.C * 1.4 }, bornesDuTheme("--album-trait"));
+  return { haut: recaler(premiere, bornes), bas: recaler(seconde, bornes), trait };
 }
 
 export {

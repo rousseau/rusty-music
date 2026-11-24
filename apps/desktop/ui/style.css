@@ -33,6 +33,10 @@
      Calculées pour que `--txt` y tienne ≥ 7,5:1 sur toutes les teintes ;
      `--mut` n'y sert pas. Vérifié par `scripts/contraste-interface.py`. */
   --album-clarte: 0.22 0.36; --album-chroma: 0.09;
+  /* Le trait de la vue « En cours » (anneau de progression, spectre) : la
+     teinte dominante de la pochette, recalée assez claire pour tenir ≥ 3:1
+     (un graphique, pas du texte) sur les deux fonds, toutes teintes. */
+  --album-trait-clarte: 0.80 0.90; --album-trait-chroma: 0.16;
   /* Le gabarit : une seule source pour les largeurs, les marges et les hauteurs
      que plusieurs règles doivent partager. La file d'attente, en surimpression,
      **recouvre exactement** l'inspecteur (`--largeur-droite`) : plus large, elle
@@ -119,6 +123,7 @@
   /* Fonds de la vue « En cours » (couleurs d'album, Règle 3) : clairs et doux
      en thème clair. `--txt` y tient ≥ 8:1 sur toutes les teintes. */
   --album-clarte: 0.80 0.93; --album-chroma: 0.11;
+  --album-trait-clarte: 0.34 0.42; --album-trait-chroma: 0.15;
   --bg:     #F3EFE6;
   --panel:  #FBF8F1;
   --panel2: #EFEADF;
@@ -882,13 +887,26 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   transform: rotate(-90deg); overflow: visible;
 }
 .en-cours__anneau circle { fill: none; pointer-events: stroke; cursor: pointer; }
-.en-cours__piste { stroke: color-mix(in srgb, var(--txt) 22%, transparent); stroke-width: .7; }
+/* Le trait suit la pochette (`--album-trait`, posé par `en-cours.js`) ; la
+   piste est le même trait, très atténué. Une tête lumineuse marque l'endroit. */
+.en-cours__piste { stroke: color-mix(in srgb, var(--album-trait, var(--txt)) 24%, transparent); stroke-width: .8; }
 .en-cours__avance {
-  stroke: var(--accent); stroke-width: 1.1; stroke-linecap: round;
+  stroke: var(--album-trait, var(--accent)); stroke-width: 1.5; stroke-linecap: round;
   stroke-dasharray: 1000; stroke-dashoffset: 1000;
+  filter: drop-shadow(0 0 1.2px var(--album-trait, var(--accent)));
+}
+.en-cours__tete {
+  fill: var(--album-trait, var(--accent)); pointer-events: none;
+  filter: drop-shadow(0 0 2px var(--album-trait, var(--accent)));
 }
 .en-cours__anneau:focus-visible { outline: none; }
-.en-cours__anneau:focus-visible .en-cours__piste { stroke: var(--accent); stroke-opacity: .5; }
+.en-cours__anneau:focus-visible .en-cours__piste { stroke: var(--album-trait, var(--accent)); stroke-opacity: .6; }
+/* Les graves font battre une lueur sous le disque (`--pouls`, 0..1). */
+.en-cours__platine::before {
+  content: ""; position: absolute; inset: calc(var(--disque) * .15); border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 calc(var(--disque) * (.08 + .14 * var(--pouls, 0))) calc(var(--disque) * .02 * var(--pouls, 0))
+    color-mix(in srgb, var(--album-trait, var(--accent)) calc(18% + 32% * var(--pouls, 0)), transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   .en-cours__disque { animation: none; }
   .en-cours__spectre { display: none; }
