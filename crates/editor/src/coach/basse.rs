@@ -558,6 +558,148 @@ pub fn confiance_reference(stem: &[f32], sr: f32, notes: &[(f64, u8)]) -> Vec<f3
         .collect()
 }
 
+/// Les notes du stem de basse, attaque et hauteur, hors temps réel.
+/// L'analyseur de la DI n'y convient pas : réglé sur un signal propre, il
+/// ne voit qu'une attaque sur cinq d'un stem démixé ; le flux spectral non
+/// plus, que les battements d'harmoniques d'une note tenue font bosseler.
+/// Ici le niveau RMS sur 50 ms (deux périodes du mi grave : plus court, le
+/// niveau ondule avec la forme d'onde), tous les 5 ms : une attaque est une
+/// montée d'au moins [`MONTEE_DB`] en 30 ms, datée là où le bord avant de la
+/// fenêtre du pied l'atteint ; une au plus toutes les [`ECART_MIN_S`]. La hauteur comme pour la DI, juste après.
+pub fn notes_du_stem(stem: &[f32], sr: f32) -> Vec<NoteDI> {
+    let w = (sr * 0.050) as usize;
+    let pas = (sr * 0.005) as usize;
+    if stem.len() < w + pas {
+        return Vec::new();
+    }
+    let trames = (stem.len() - w) / pas;
+    let db: Vec<f32> = (0..trames)
+        .map(|t| {
+            let x = &stem[t * pas..t * pas + w];
+            let rms = (x.iter().map(|v| v * v).sum::<f32>() / w as f32).sqrt();
+            20.0 * rms.max(1e-9).log10()
+        })
+        .collect();
+    let ecart = (ECART_MIN_S * sr / pas as f32) as usize;
+    let decal = (sr * DECALAGE_HAUTEUR_S) as usize;
+    let besoin = besoin_hauteur(sr) - decal;
+    let mut notes = Vec::new();
+    let mut t = 6;
+    while t < trames {
+        // Le pied : la dernière trame des 30 ms d'avant à 1 dB du plus bas
+        // (dans un silence plat, la première daterait l'attaque trop tôt).
+        let bas = db[t - 6..t].iter().copied().fold(f32::INFINITY, f32::min);
+        if db[t] - bas < MONTEE_DB || db[t] < SILENCE_DBFS {
+            t += 1;
+            continue;
+        }
+        let pied = (t - 6..t)
+            .rev()
+            .find(|&k| db[k] <= bas + 1.0)
+            .expect("le plus bas y est");
+        // La fenêtre du pied finit juste avant l'attaque.
+        let a = pied * pas + w;
+        // Comme `confiance_reference` : le stem démixé étale l'attaque, la
+        // hauteur se mesure à plusieurs instants après elle ; la plus sûre.
+        let (f0_hz, confiance, sous_octave) = [0.0f32, 0.010, 0.020, 0.035, 0.050]
+            .iter()
+            .filter_map(|&d| {
+                let i = a + decal + (d * sr) as usize;
+                stem.get(i..i + besoin).and_then(|x| hauteur(x, sr))
+            })
+            .max_by(|x, y| x.1.total_cmp(&y.1))
+            .map_or((None, 0.0, 0.0), |(f, c, s)| (Some(f), c, s));
+        notes.push(NoteDI {
+            t_s: a as f64 / sr as f64,
+            f0_hz,
+            confiance,
+            sous_octave,
+            niveau_db: db[t],
+        });
+        t = pied + ecart.max(1);
+    }
+    notes
+}
+
+/// La montée de niveau qui fait une attaque du stem.
+pub const MONTEE_DB: f32 = 9.0;
+
+/// Écart sous lequel une note de la transcription est déjà sur une attaque
+/// du stem : on n'y touche pas. Une demi-double croche à 130 : un écart
+/// plus petit ne change pas la case où la note s'aimante, et l'attaque
+/// datée sur le niveau peut avoir 30 ms d'avance.
+pub const RECALAGE_JUSTE_S: f64 = 0.060;
+/// Écart le plus grand qu'un recalage rattrape : les retards vus vont
+/// jusqu'à 150 ms, plus qu'une double croche ; la hauteur, l'attaque libre
+/// et l'ordre des notes empêchent de sauter sur la note voisine.
+pub const RECALAGE_MAX_S: f64 = 0.160;
+
+/// La note du stem est-elle `h`, à l'octave près, sûrement ?
+fn meme_classe(h: u8, n: &NoteDI) -> bool {
+    n.confiance >= CONFIANCE_JEU
+        && n.hauteur().is_some_and(|m| {
+            let e = (m - h as f32).rem_euclid(12.0);
+            e < 0.5 || e > 11.5
+        })
+}
+
+/// Recale les attaques d'une transcription sur celles du stem (24 nov. :
+/// MuScriptor plaçait certaines attaques de « Love Foolosophy » 110 à
+/// 150 ms trop tard, et une croche d'anticipation devenait une double croche
+/// une fois aimantée sur la grille). `notes` : (instant, hauteur MIDI), dans
+/// l'ordre. Une note qu'une attaque du stem confirme à [`RECALAGE_JUSTE_S`]
+/// près reste où elle est ; une autre va sur l'attaque libre la plus proche,
+/// à [`RECALAGE_MAX_S`] près, **de la même note** à l'octave près (sur un
+/// stem, pYIN prend souvent l'harmonique 2 d'un mi grave) et sans passer la note d'avant
+/// ni celle d'après. Rend le nouvel instant de chaque note recalée.
+pub fn recaler(notes: &[(f64, u8)], stem: &[NoteDI]) -> Vec<Option<f64>> {
+    let mut prise = vec![false; stem.len()];
+    // Les attaques du stem dans une fenêtre autour de `t` (le stem est trié).
+    let pres = |t: f64, w: f64| {
+        let a = stem.partition_point(|n| n.t_s < t - w);
+        let b = stem.partition_point(|n| n.t_s <= t + w);
+        a..b
+    };
+    let mut garde = vec![false; notes.len()];
+    for (i, &(t, _)) in notes.iter().enumerate() {
+        // Confirmée : une attaque toute proche, de la même note ou d'une
+        // hauteur que pYIN ne sait pas dire.
+        let r = pres(t, RECALAGE_JUSTE_S)
+            .filter(|&k| stem[k].confiance < CONFIANCE_JEU || meme_classe(notes[i].1, &stem[k]));
+        if let Some(k) =
+            r.min_by(|&a, &b| (stem[a].t_s - t).abs().total_cmp(&(stem[b].t_s - t).abs()))
+        {
+            prise[k] = true;
+            garde[i] = true;
+        }
+    }
+    let mut nouveaux: Vec<f64> = notes.iter().map(|n| n.0).collect();
+    let mut sortie = vec![None; notes.len()];
+    for (i, &(t, h)) in notes.iter().enumerate() {
+        if garde[i] {
+            continue;
+        }
+        let avant = if i > 0 {
+            nouveaux[i - 1] + RECALAGE_JUSTE_S
+        } else {
+            f64::MIN
+        };
+        let apres = notes
+            .get(i + 1)
+            .map_or(f64::MAX, |n| n.0 - RECALAGE_JUSTE_S);
+        let choix = pres(t, RECALAGE_MAX_S)
+            .filter(|&k| !prise[k] && stem[k].t_s > avant && stem[k].t_s < apres)
+            .filter(|&k| meme_classe(h, &stem[k]))
+            .min_by(|&a, &b| (stem[a].t_s - t).abs().total_cmp(&(stem[b].t_s - t).abs()));
+        if let Some(k) = choix {
+            prise[k] = true;
+            nouveaux[i] = stem[k].t_s;
+            sortie[i] = Some(stem[k].t_s);
+        }
+    }
+    sortie
+}
+
 /// Les notes de la référence, chacune sûre si le stem la confirme
 /// ([`CONFIANCE_SURE`]).
 pub fn references(notes: &[(f64, u8)], confiances: &[f32]) -> Vec<NoteRef> {
@@ -839,6 +981,35 @@ mod tests {
         let v = AnalyseurDI::analyser(&x, SR, 0.0);
         assert_eq!(v.len(), 1);
         v[0]
+    }
+
+    /// Le stem d'une ligne de basse synthétique : chaque attaque est trouvée
+    /// à 30 ms près, avec sa note.
+    #[test]
+    fn les_attaques_du_stem_sont_trouvees() {
+        let l = ligne();
+        let x = prise(&l, 1.0);
+        let st = notes_du_stem(&x, SR);
+        for &(d, _, m) in &l {
+            let trouve = st
+                .iter()
+                .any(|n| (n.t_s - d as f64).abs() < 0.030 && meme_classe(m as u8, n));
+            assert!(trouve, "attaque à {d} s ({m}) : {st:?}");
+        }
+    }
+
+    /// Une note datée 140 ms trop tard revient sur l'attaque du stem ; une
+    /// note juste ne bouge pas ; une note sans attaque de sa hauteur non plus.
+    #[test]
+    fn recaler_ramene_une_attaque_en_retard() {
+        let x = prise(&ligne(), 1.0);
+        let st = notes_du_stem(&x, SR);
+        let notes = [(0.33, 28u8), (0.70, 23), (1.20, 40)];
+        let r = recaler(&notes, &st);
+        let t = r[0].unwrap_or_else(|| panic!("pas recalée : {st:?}"));
+        assert!((t - 0.20).abs() < 0.030, "{t}");
+        assert_eq!(r[1], None);
+        assert_eq!(r[2], None, "pas de mi dans le stem à 1,2 s");
     }
 
     #[test]

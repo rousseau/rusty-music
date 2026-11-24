@@ -73,7 +73,8 @@ pub(crate) struct VueTranscription {
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
-pub(crate) const VERSION_TRANSCRIPTION: u32 = 5;
+/// 6 : attaques recalées sur le stem de basse (`recaler_sur_stem`, 24 nov.).
+pub(crate) const VERSION_TRANSCRIPTION: u32 = 6;
 
 /// Version du doigté (`tablature::Couts`) : quand seul le doigté change, les
 /// notes en cache sont reposées sans retranscrire (MuScriptor prend des
@@ -450,6 +451,7 @@ fn transcrire_brut(
     // instruments, 60 dB sous la basse) avant de choisir les notes.
     let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
     let mut notes = monophonie::monophonique(brutes);
+    recaler_sur_stem(&mut notes, &mono);
     let hauteurs = notes.iter().map(|n| n.hauteur).collect();
     let accordage = doigter(&mut notes, basses, choix, &pulsation.premiers_temps);
     let mesures = quantification::quantifier(
@@ -494,6 +496,33 @@ fn transcrire_brut(
         }
     }
     Ok(vue)
+}
+
+/// Recale les attaques de la transcription sur celles du stem de basse
+/// (`coach::basse::recaler`, 24 nov.) : une note que le modèle a datée 60 à
+/// 160 ms loin d'une attaque de la même note dans le stem y revient, avant
+/// d'être aimantée sur la grille. Sa fin ne bouge pas, sauf pour lui laisser
+/// 50 ms.
+fn recaler_sur_stem(notes: &mut [rusty_music_transcription::Note], mono: &[f32]) {
+    use rusty_music_editor::coach::basse;
+    let du_stem = basse::notes_du_stem(mono, rusty_music_editor::SR as f32);
+    let cles: Vec<(f64, u8)> = notes
+        .iter()
+        .map(|n| (n.debut_s as f64, n.hauteur))
+        .collect();
+    let mut recalees = 0;
+    for (n, x) in notes.iter_mut().zip(basse::recaler(&cles, &du_stem)) {
+        if let Some(x) = x {
+            n.debut_s = x as f32;
+            n.fin_s = n.fin_s.max(n.debut_s + 0.05);
+            recalees += 1;
+        }
+    }
+    tracing::info!(
+        recalees,
+        attaques = du_stem.len(),
+        "transcription : attaques recalées sur le stem"
+    );
 }
 
 /// Les corrections de la basse du morceau `id`, réappliquées sur sa

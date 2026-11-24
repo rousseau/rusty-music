@@ -483,6 +483,29 @@ pub(crate) fn reechantillonner(x: &[f32], de: u32, vers: u32) -> Result<Vec<f32>
 mod tests {
     use super::*;
 
+    /// Le rééchantillonnage ne décale pas le signal dans le temps : une
+    /// impulsion à 2 s y reste (24 nov. : la basse de MuScriptor tombait
+    /// ~100 ms trop tôt dans l'application).
+    #[test]
+    fn le_reechantillonnage_ne_decale_pas() {
+        for (de, vers) in [(44_100u32, 16_000u32), (44_100, 22_050), (48_000, 16_000)] {
+            let mut x = vec![0.0f32; de as usize * 4];
+            x[2 * de as usize] = 1.0;
+            let y = reechantillonner(&x, de, vers).unwrap();
+            let pic = y
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+                .unwrap()
+                .0;
+            let ecart_ms = (pic as f32 / vers as f32 - 2.0) * 1000.0;
+            assert!(
+                ecart_ms.abs() < 1.0,
+                "{de} -> {vers} : décalage {ecart_ms} ms"
+            );
+        }
+    }
+
     fn activations_vides(trames: usize) -> Activations {
         Activations {
             trames,

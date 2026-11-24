@@ -7456,3 +7456,123 @@ concordance artiste + titre reste vérifiée sur le résultat.
 Essai sur une copie de la base de dev, 60 enregistrements : 46 retrouvés,
 33 tempos. La comparaison avec notre mesure (étape 2) attend : `descriptors`
 est vide dans cette base, à faire sur celle de l'app.
+
+## Pratiquer, E4 : premier essai réel avec une batterie — 24 nov. 2026
+
+Une Roland TD-11 en USB, sur le Mac.
+
+- **Pilote** : l'USB de la TD-11 est propre à Roland (0x0582:0x0151, classe
+  d'interface 255) ; sans le pilote « TD-11 Driver »
+  (`/Library/Audio/MIDI Drivers/RDUSB0151Midi.plugin`, redémarrage requis),
+  le module est sur le bus mais CoreMIDI ne compte aucune source et
+  `coach_peripheriques` ne le liste pas. Les modules récents (TD-17…) n'en
+  demandent pas. Autre voie : MIDI OUT 5 broches et interface USB-MIDI
+  sans pilote.
+- **Relevé des pads** (écoute CoreMIDI de 60 s, tous les pads frappés) :
+  118 coups, canal 10. Notes vues : 36 grosse caisse ; 38 et 40 caisse
+  claire (centre, cercle) ; 43 45 48 toms (47 et 50 rares) ; 42 46 et 22 26
+  charleston (centre, bord) ; 44 pied du charleston, toujours en vélocité
+  127, avec l'ouverture en continu par CC4 ; 51 ride ; 55 crash. Toutes
+  sont dans le profil General MIDI : aucune note ignorée. Jamais vues : 49,
+  53, 59, 37.
+- **Dans l'app** (version installée du 24 nov.) : calibration et jeu sur un
+  morceau ; « ça a l'air de fonctionner ». Latence mesurée et justesse du
+  jugement pas encore relevées.
+
+À surveiller : le pied du charleston (44) compte comme un coup de
+charleston, donc en trop si la transcription ne le note pas (le retirer
+dans « pads ») ; deux coups de vélocité 8 et 9 (diaphonie ?) passent le
+seuil de 1 ; à la connexion, sept notes datées dans les mêmes 14 ms (le
+pilote vide sans doute un tampon), une seule fois.
+
+## Pratiquer : la partition d'abord, sur le 14 pouces — 24 nov. 2026
+
+Demande de François après le premier essai de la batterie : sur le portable,
+la partition est petite, trop de choses au-dessus. Mesuré par
+`ui-tests/pratiquer-hauteur.spec.js` (nouveau cas : batterie transcrite,
+coach démarré, playlist à travailler en cours), fenêtre 1 512 × 912 :
+
+| Au-dessus de la partition | Avant | Après |
+|---|---|---|
+| en-tête (titre) | 65 | 43 |
+| bandeau de la playlist | 35 | dans l'en-tête |
+| niveaux des stems | 27 + marges | dans le rail |
+| bandeau du coach | 59 (deux lignes) | 38 (une ligne) |
+| **haut de la partition** | **217** | **103** |
+| hauteur de la partition | 579 | 693 |
+
+Plus, dans la feuille, les ~85 px du titre et du sous-titre qu'alphaTab
+dessinait (`scoreTitle`, `scoreSubTitle` à `false`). Basse, coach démarré :
+660 px de partition sur le portable.
+
+- **En-tête** : le bandeau de la playlist (`#pratique-playlist`) vit dans
+  `header.fil`, sur la ligne du titre, dans tous les états. L'établi de
+  Pratiquer ouvert, `main.centre` prend `.centre--partition` : marges de
+  10 px, titre en `--t-titre`, nom du morceau ouvert pas répété dans le
+  bandeau.
+- **Niveaux** : `majUsage` déplace `#dock-pistes` dans `#niveaux`, sous
+  « Votre partie » dans le rail, et le remet dans l'établi pour Créer. Une
+  ligne serrée par stem ; d'abord un bloc « Niveaux » à part, mais le rail
+  de l'établi passait à 753 / 764 px à 1 400 × 900 (G8, « plein ») avec
+  quatre stems et aurait débordé avec six : dans « Votre partie », 703 / 764.
+- **Coach** : la légende du code des erreurs derrière « ? » (`#coach-cle`),
+  même repli que les réglages (Échap, clic ailleurs ; ouvrir l'un ferme
+  l'autre).
+- `ui-tests/pratiquer-hauteur.spec.js` ne passait plus depuis l'Accueil
+  (A2) : il attendait la grille d'albums ; `versAlbums` d'abord.
+  `batterieTranscrite` passe de `fumee.spec.js` à `pratique-fictive.js`.
+
+## Pratiquer : la basse de « Love Foolosophy » contre Songsterr — 24 nov. 2026
+
+François : notre tablature (MuScriptor medium) « ne colle pas bien à la
+musique ». Comparée à l'œil à la tab Songsterr (consultée, rien
+téléchargé) et au stem de basse, mesures 8 à 18 :
+
+- **Hauteurs et doigtés** : la plupart concordent (mi 7, ré 9, mi à vide,
+  la 7), anticipations liées par-dessus la barre comprises.
+- **Pas de décalage global** : le rééchantillonnage ne décale pas (test
+  `le_reechantillonnage_ne_decale_pas`) ; la plupart des notes tombent sur
+  l'attaque du stem à ±10 ms (15,29 / 20,72 / 24,44 / 30,69 s), la batterie
+  ADTOF sur la grille Beat This! (+20 à +30 ms).
+- **Erreurs locales du modèle**, qui suffisent à décaler le groove : à la
+  mesure 10, trois attaques notées 110 à 150 ms trop tard (17,00 → 17,14 ;
+  17,45 → 17,60 ; 17,94 → 18,05), une manquée (17,72, sur le temps 2).
+  Une croche d'anticipation devient une double-croche une fois aimantée :
+  la mesure entière s'écrit sur les « a » au lieu des croches.
+- **Les notes étouffées** (X) de la tab, qui font le groove de Stuart Zender,
+  ne sortent pas de MuScriptor.
+
+Les mesures automatiques d'écart (flux du stem, fenêtres) sont trop
+bruitées sur un stem de basse dense : ne pas s'y fier, regarder l'attaque
+à la main ou ne garder que les attaques après un silence.
+
+**Recalage des attaques sur le stem** (même jour, `VERSION_TRANSCRIPTION`
+6) : `coach::basse::notes_du_stem` trouve les attaques du stem et leur
+note ; `coach::basse::recaler` y ramène une note de la transcription datée
+60 à 160 ms loin d'une attaque de la même note (à l'octave près), libre, sans
+passer ses voisines ; `recaler_sur_stem` (`pratiquer.rs`) l'applique avant
+le doigté et la grille, Basic Pitch comme MuScriptor (≈ 2,5 s par morceau).
+
+- Détecteur essayé dans l'ordre : l'analyseur de la DI (145 attaques pour
+  724 notes : réglé pour un signal propre) ; le flux spectral (fausses
+  bosses toutes les 50-70 ms dans une note tenue, recalages surtout vers
+  plus tard, à l'inverse du constat) ; le niveau RMS sur 10 ms (ondule avec
+  la période du mi grave, 24 ms). Retenu : RMS sur 50 ms, montée de 9 dB en
+  30 ms, datée à la dernière trame basse ; la hauteur mesurée à cinq
+  instants après l'attaque, la plus sûre (le stem étale l'attaque).
+- Seuil de 60 ms : à 30 ms, la plupart des recalages (30-40 ms, vers plus
+  tôt) venaient du biais de datation, et pouvaient faire basculer une note
+  d'une case. À 60 ms : 1 à 9 notes par morceau sur les 7 transcrits.
+- « Love Foolosophy », mesures 9-10 : la 1ʳᵉ note de la mesure 9 sur le
+  temps, le mi à vide de la dernière croche lié à la mesure 10, les mi à
+  vide de la mesure 10 sur les croches, comme la tab ; la 7 du premier temps
+  reste une double croche trop tard (le stem n'y montre pas d'attaque
+  nette), la note manquée du temps 2 reste manquée.
+- Pas validé sur le banc de basse (livres et Songsterr sur le LaCie, pas
+  branché) : à faire avant de toucher aux seuils.
+- `VERSION_TRANSCRIPTION` est commune à la basse et à la batterie : la
+  batterie se recalcule aussi au prochain affichage. Une correction de la
+  basse (E2) faite sur une note que le recalage déplace de plus de 30 ms ne
+  la retrouve plus.
+- Outils : `crates/editor/examples/recaler_basse.rs` (sur un cache de
+  l'app), `crates/transcription/examples/mesures.rs` (les mesures en texte).
