@@ -78,15 +78,16 @@ tient en quatre zones, présentes et identiques dans tous les écrans du rail :
   « en cours » ouvrent, par-dessus rail, centre et inspecteur, le morceau qui
   joue : un vinyle qui tourne pendant la lecture, la pochette en macaron, la
   progression en anneau autour (un clic y déplace la lecture ; ← → de 5 s
-  quand il a le focus), le spectre en halo au-delà (la colonne du
-  spectrogramme du transport à la tête de lecture, lissée, en un contour
-  continu ; une lueur sous le disque bat avec les graves — refait le 24 nov.) ;
+  quand il a le focus), une lueur fine au bord du disque qui suit l'intensité
+  du morceau (l'énergie moyenne de la colonne du spectrogramme du transport à
+  la tête de lecture, lissée sur près d'une seconde ; elle remplace le 24 nov.
+  le spectre en couronne, trop saccadé et trop marqué) ;
   à droite titre, artiste, album, temps et les deux morceaux suivants de la
   file (dessous, centrés, quand la fenêtre est haute). Le transport et la file
   restent utilisables ; Échap ou F ferme (`#en-cours`, `js/en-cours.js`). Les
   fonds prennent les deux couleurs de la pochette, plus la pochette floutée
   autour du disque, sous un voile `--album-bas` côté texte : la seule exception
-  à la Règle 3 (voir là). Avec `prefers-reduced-motion`, ni rotation ni spectre.
+  à la Règle 3 (voir là). Avec `prefers-reduced-motion`, ni rotation ni lueur qui bouge.
 
 - **La pochette de l'inspecteur en vinyle** (23 novembre 2026). Quand le
   morceau inspecté est celui qui joue ou attend en pause, sa pochette rétrécit
@@ -214,7 +215,7 @@ pire cas, toutes teintes : 8,1:1 en sombre, 8,3:1 en clair. Le texte de la vue
 est entièrement en `--txt` : `--mut` n'y tiendrait pas.
 
 **Élargie le 24 novembre 2026 aux deux traits de cette vue** : l'anneau de
-progression et le spectre (et la lueur sous le disque) prennent une troisième
+progression et la lueur au bord du disque prennent une troisième
 couleur, la teinte dominante de la pochette plus saturée, recalée dans
 `--album-trait-clarte` et sous `--album-trait-chroma` ; l'orange de l'accent
 et la rampe bleu → jaune juraient avec les fonds. Toujours rien d'autre dans
@@ -644,13 +645,13 @@ rangée de niveaux sans spectrogramme (`majUsage`, `js/pratiquer.js`).
 |---|---|---|---|
 | 1 | Inspecteur unique | ✅ | La vue montre ce que montre le transport (pochette, titre, artiste) et l'album, en grand ; rien du détail de l'inspecteur (crédits, critiques, famille, voisins), qui reste le seul à les porter. |
 | 2 | Estomper, jamais masquer | — | Pas de filtre. |
-| 3 | Palette unique | ✅ | Exception écrite et bornée (Règle 3) : couleurs d'album sur les fonds, l'anneau et le spectre, dans cette vue seulement ; aucune famille n'est affichée. |
-| 4 | Stabilité des positions | ✅ | Rien ne se réorganise : le disque tourne sur place, les barres du spectre ne bougent qu'en longueur. |
+| 3 | Palette unique | ✅ | Exception écrite et bornée (Règle 3) : couleurs d'album sur les fonds, l'anneau et la lueur, dans cette vue seulement ; aucune famille n'est affichée. |
+| 4 | Stabilité des positions | ✅ | Rien ne se réorganise : le disque tourne sur place, la lueur ne change que d'intensité. |
 | 5 | Sobriété stricte | ✅ | Deux contrôles propres (×, l'anneau de progression) ; le transport en dessous garde les siens. |
 | 6 | Deux thèmes sérieux | ✅ | Bornes de recalage dessinées pour chaque thème, contraste vérifié sur leur pire cas ; captures dans les deux thèmes (`docs/images/en-cours-*.jpg`). |
 | 7 | Zoom/pan cohérents | — | Pas de zoom. |
 | 8 | Révélation par échelle | ✅ | La vue attend un geste (bouton « en cours », F, pochette du transport, ⌘K) ; elle n'est jamais affichée d'office. |
-| 9 | Langage de force unique | — | Le spectre est une rampe d'énergie, pas une relation entre morceaux. |
+| 9 | Langage de force unique | — | La lueur suit une énergie, pas une relation entre morceaux. |
 | 11 | Typographie | ✅ | Titre `--t-decor` (serif), artiste `--t-titre`, album et « À suivre » `--t-second`, temps `--t-legende` (mono) — refonte du 23 nov. |
 
 L'audit la parcourt comme un douzième écran (`en-cours`), la vue recouvrant

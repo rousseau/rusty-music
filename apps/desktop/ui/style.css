@@ -842,10 +842,8 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   gap: clamp(28px, 5vw, 88px);
   max-width: calc(100% - 2 * var(--gouttiere));
 }
-/* La platine : le disque, l'anneau de progression juste autour, le spectre
-   en couronne au-delà. */
+/* La platine : le disque, sa lueur, l'anneau de progression juste autour. */
 .en-cours__platine { position: relative; width: calc(var(--disque) * 1.3); height: calc(var(--disque) * 1.3); }
-.en-cours__spectre { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* Un vinyle : noir dans les deux thèmes (c'est un objet), sillons fins, une
    plage plus lisse vers le macaron. Le même dessin dans la vue « En cours »
    et dans la pochette de l'inspecteur. */
@@ -901,15 +899,16 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .en-cours__anneau:focus-visible { outline: none; }
 .en-cours__anneau:focus-visible .en-cours__piste { stroke: var(--album-trait, var(--accent)); stroke-opacity: .6; }
-/* Les graves font battre une lueur sous le disque (`--pouls`, 0..1). */
+/* Une lueur fine au bord du disque, qui suit l'intensité du morceau
+   (`--intensite`, 0..1, lissée par `en-cours.js`) : à peine visible au repos,
+   jamais plus large qu'un vingtième du disque. */
 .en-cours__platine::before {
   content: ""; position: absolute; inset: calc(var(--disque) * .15); border-radius: 50%; pointer-events: none;
-  box-shadow: 0 0 calc(var(--disque) * (.08 + .14 * var(--pouls, 0))) calc(var(--disque) * .02 * var(--pouls, 0))
-    color-mix(in srgb, var(--album-trait, var(--accent)) calc(18% + 32% * var(--pouls, 0)), transparent);
+  box-shadow: 0 0 calc(var(--disque) * (.025 + .03 * var(--intensite, 0))) calc(var(--disque) * .004 * var(--intensite, 0))
+    color-mix(in srgb, var(--album-trait, var(--accent)) calc(20% + 35% * var(--intensite, 0)), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .en-cours__disque { animation: none; }
-  .en-cours__spectre { display: none; }
 }
 .en-cours__texte { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .en-cours__titre {

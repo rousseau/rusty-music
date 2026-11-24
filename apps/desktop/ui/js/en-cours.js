@@ -12,7 +12,7 @@ import { deplacerLecture } from "./etabli-stems.js";
 /* ------------------------------------------------- vue plein écran « En cours »
  *
  * Le morceau qui joue, en grand : un vinyle qui tourne, la pochette en
- * macaron, la progression en anneau cliquable, le spectre en couronne ; titre,
+ * macaron, la progression en anneau cliquable, une lueur au bord ; titre,
  * artiste, album, temps et la suite de la file à côté (refonte du 23 nov. 2026) (`docs/plan-ecouter-v0.3.md`,
  * point 1 ; idée de Disc Player, `src/layout/VisualizerMode.vue`, licence MIT).
  * Un écran au-dessus des autres, comme la palette : le transport et la file
@@ -20,19 +20,18 @@ import { deplacerLecture } from "./etabli-stems.js";
  * par le bouton « en cours » du transport, la touche F, un clic sur la
  * pochette du transport ou ⌘K « en cours ».
  *
- * Le spectre ne prélève pas le son : il lit, à la tête de lecture, la colonne
- * du spectrogramme que le transport a déjà calculé (`spectreCourant`, rangée 0
- * = aigus), lissée d'une image à l'autre et entre bandes voisines, dessinée en
- * halo continu autour du disque ; les graves font battre une lueur dessous.
- * Les fonds prennent les deux couleurs de la pochette, l'anneau et le spectre
+ * Une lueur fine au bord du disque suit l'intensité du morceau. Elle ne
+ * prélève pas le son : elle lit, à la tête de lecture, la colonne du
+ * spectrogramme que le transport a déjà calculé (`spectreCourant`), et en
+ * lisse l'énergie moyenne dans le temps (24 nov. 2026 : un halo qui suivait
+ * chaque bande, trop saccadé et trop marqué, l'a précédée).
+ * Les fonds prennent les deux couleurs de la pochette, l'anneau et la lueur
  * une troisième, plus vive (`couleurs-album.js`) — l'exception de la Règle 3,
  * bornée à cette vue.
- * Avec `prefers-reduced-motion`, ni rotation ni spectre (`style.css`).
+ * Avec `prefers-reduced-motion`, ni rotation ni lueur qui bouge (`style.css`, `boucle`).
  */
 
 const vue = $("en-cours");
-const cnv = $("en-cours-spectre");
-const ctx = cnv.getContext("2d");
 const disque = $("en-cours-disque");
 const anneau = $("en-cours-anneau");
 const avance = $("en-cours-avance");
@@ -43,13 +42,12 @@ const reduit = matchMedia("(prefers-reduced-motion: reduce)");
 
 const etat = {
   chemin: undefined, // le morceau affiché
-  bandes: [], // énergie lissée de chaque bande, 0..1
   image: 0, // requestAnimationFrame
   focusAvant: null,
   jeton: 0,
   suite: -1, // longueur de la file à la dernière pose de « À suivre »
-  trait: "", // couleur du trait (`--album-trait` calculée), pour le canevas
-  pouls: 0, // énergie lissée des graves, 0..1
+  intensite: 0, // énergie lissée du morceau, 0..1 (la lueur du disque)
+  instant: 0, // horodatage de la dernière image
 };
 
 const morceauEnCours = () => fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
@@ -63,7 +61,6 @@ async function poserMorceau(t) {
   $("en-cours-album").textContent = t
     ? [isoler(txt(t.album)), t.year].filter(Boolean).join(" · ")
     : "";
-  etat.bandes = [];
   poserSuite();
   const img = t ? await pochette(t.path) : null;
   if (jeton !== etat.jeton) return;
@@ -84,101 +81,32 @@ async function poserCouleurs(img, jeton = etat.jeton) {
   if (jeton !== etat.jeton) return;
   vue.style.setProperty("--album-haut", c?.haut ?? "var(--panel)");
   vue.style.setProperty("--album-bas", c?.bas ?? "var(--bg)");
-  // Sans pochette, l'accent de l'application ; le canevas lit la valeur
-  // calculée (une `var()` ne s'y résout pas).
+  // Sans pochette, l'accent de l'application (repli de `style.css`).
   if (c?.trait) vue.style.setProperty("--album-trait", c.trait);
   else vue.style.removeProperty("--album-trait");
-  etat.trait = getComputedStyle(vue).getPropertyValue("--album-trait").trim()
-    || getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
 }
 
-/// Une couleur `rgb(r g b)` (celles de `couleurs-album.js`) ou `#rrggbb`
-/// (l'accent), avec une opacité.
-function avecAlpha(c, a) {
-  const m = c.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
-  if (m) return `rgb(${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)} / ${a})`;
-  return c.replace(/\)$/, ` / ${a})`);
-}
-
-/// Le spectre en halo : les graves en haut, les aigus en bas, symétrique de
-/// part et d'autre du disque. Un contour continu (une courbe lissée par les
-/// milieux des points), rempli d'un dégradé qui s'efface vers l'extérieur, au
-/// lieu d'un trait par bande : le mouvement d'ensemble se lit mieux que le
-/// détail de chaque bande, qui n'a pas de sens à cette taille.
-function dessinerSpectre() {
-  const dpr = devicePixelRatio || 1;
-  const taille = cnv.clientWidth;
-  if (cnv.width !== Math.round(taille * dpr)) {
-    cnv.width = cnv.height = Math.round(taille * dpr);
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, taille, taille);
+/// L'intensité du morceau, pour la lueur au bord du disque : l'énergie
+/// moyenne de la colonne du spectrogramme à la tête de lecture, lissée dans le
+/// temps (montée en un quart de seconde, retombée en près d'une seconde), et
+/// mesurée en temps écoulé plutôt qu'en images : même douceur à 60 ou 120 Hz.
+/// Pas de bande par bande : une lueur qui suit chaque bande clignote.
+function suivreIntensite(maintenant) {
+  const dt = Math.min(0.1, Math.max(0, (maintenant - (etat.instant || maintenant)) / 1000));
+  etat.instant = maintenant;
+  let cible = 0;
   const s = spectreCourant;
-  if (!s || !s.pixels || lecture.courant !== etat.chemin) {
-    poserPouls(0);
-    return;
+  if (s?.pixels && lecture.courant === etat.chemin && transport.veutJouer) {
+    const col = Math.min(s.largeur - 1, Math.floor(teteCourante * s.largeur));
+    let somme = 0;
+    for (let k = 0; k < s.hauteur; k++) somme += s.pixels[k * s.largeur + col];
+    // Une énergie moyenne de spectrogramme dépasse rarement la moitié de
+    // l'échelle : on l'étire, puis on adoucit le haut.
+    cible = Math.min(1, (somme / (s.hauteur * 255)) * 1.8) ** 0.8;
   }
-  const col = Math.min(s.largeur - 1, Math.floor(teteCourante * s.largeur));
-  const n = s.hauteur;
-  for (let k = 0; k < n; k++) {
-    // Rangée n-1 = graves : en haut de l'anneau.
-    const cible = s.pixels[(n - 1 - k) * s.largeur + col] / 255;
-    etat.bandes[k] = (etat.bandes[k] ?? 0) * 0.72 + cible * 0.28;
-  }
-  // Lissage entre bandes voisines : un contour souple, pas une scie.
-  const v = etat.bandes.map((x, k, b) => 0.25 * (b[k - 1] ?? x) + 0.5 * x + 0.25 * (b[k + 1] ?? x));
-  const graves = Math.max(1, Math.round(n * 0.15));
-  poserPouls(v.slice(0, graves).reduce((a, x) => a + x, 0) / graves);
-
-  const centre = taille / 2;
-  const rayon = disque.clientWidth / 2 + 22;
-  const long = (centre - rayon - 4) * 0.85;
-  const pas = Math.PI / n;
-  // Les points, dans le sens des aiguilles : côté droit de haut en bas, puis
-  // côté gauche de bas en haut.
-  const points = [];
-  const point = (k, sens) => {
-    const a = -Math.PI / 2 + sens * (k + 0.5) * pas;
-    const r = rayon + 2 + long * v[k] ** 1.5;
-    return [centre + r * Math.cos(a), centre + r * Math.sin(a)];
-  };
-  for (let k = 0; k < n; k++) points.push(point(k, 1));
-  for (let k = n - 1; k >= 0; k--) points.push(point(k, -1));
-  const contour = new Path2D();
-  const milieu = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-  let m = milieu(points[points.length - 1], points[0]);
-  contour.moveTo(m[0], m[1]);
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    m = milieu(p, points[(i + 1) % points.length]);
-    contour.quadraticCurveTo(p[0], p[1], m[0], m[1]);
-  }
-  // Le disque et l'anneau restent nets : on ne remplit que la couronne.
-  const couronne = new Path2D(contour);
-  couronne.arc(centre, centre, rayon, 0, 2 * Math.PI, true);
-
-  const trait = etat.trait || "rgb(192 124 74)";
-  const degrade = ctx.createRadialGradient(centre, centre, rayon, centre, centre, rayon + long);
-  degrade.addColorStop(0, avecAlpha(trait, 0.42));
-  degrade.addColorStop(0.55, avecAlpha(trait, 0.14));
-  degrade.addColorStop(1, avecAlpha(trait, 0));
-  ctx.fillStyle = degrade;
-  ctx.fill(couronne, "evenodd");
-  ctx.save();
-  ctx.shadowColor = avecAlpha(trait, 0.8);
-  ctx.shadowBlur = 10;
-  ctx.strokeStyle = avecAlpha(trait, 0.9);
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = "round";
-  ctx.stroke(contour);
-  ctx.restore();
-}
-
-/// La lueur sous le disque suit les graves, attaque vive, retombée lente.
-function poserPouls(cible) {
-  const k = cible > etat.pouls ? 0.35 : 0.06;
-  etat.pouls += (cible - etat.pouls) * k;
-  platineVue.style.setProperty("--pouls", etat.pouls.toFixed(3));
+  const tau = cible > etat.intensite ? 0.25 : 0.9;
+  etat.intensite += (cible - etat.intensite) * (1 - Math.exp(-dt / tau));
+  platineVue.style.setProperty("--intensite", etat.intensite.toFixed(3));
 }
 
 const mmss = (ms) => {
@@ -211,14 +139,14 @@ function poserProgression(t) {
   $("en-cours-temps").textContent = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
 }
 
-function boucle() {
+function boucle(maintenant = performance.now()) {
   if (vue.hidden) return;
   const t = morceauEnCours();
   if ((t?.path ?? null) !== etat.chemin) poserMorceau(t).catch((e) => remonter(e, "en cours"));
   else if (etat.suite !== fileAttente.pistes.length) poserSuite();
   poserProgression(t);
   vue.classList.toggle("en-cours--joue", transport.veutJouer);
-  if (!reduit.matches) dessinerSpectre();
+  if (!reduit.matches) suivreIntensite(maintenant);
   etat.image = requestAnimationFrame(boucle);
 }
 

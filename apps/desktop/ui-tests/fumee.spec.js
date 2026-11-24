@@ -1031,7 +1031,9 @@ test("vue « En cours » : sans mouvement si le système le demande", async ({ p
   await page.keyboard.type("en cours");
   await page.keyboard.press("Enter");
   await expect(page.locator("#en-cours")).toBeVisible();
-  await expect(page.locator("#en-cours-spectre")).toBeHidden();
+  // La lueur du disque ne suit pas le morceau : `--intensite` n'est jamais posée.
+  await page.waitForTimeout(300);
+  expect(await page.locator(".en-cours__platine").evaluate((el) => el.style.getPropertyValue("--intensite"))).toBe("");
   expect(await page.locator("#en-cours-disque").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
 });
 
