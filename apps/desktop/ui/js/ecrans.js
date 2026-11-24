@@ -50,8 +50,8 @@ const ECRANS = {
   },
   pratiquer: {
     ...ETABLI, "bloc-usage": SELON, "bloc-partitions": SELON,
-    // P2 : la playlist enchaînée (son bandeau au centre) et son sélecteur
-    // dans l'en-tête de l'état « choisir ».
+    // P2 : la playlist enchaînée (son bandeau dans l'en-tête, sur la ligne du
+    // titre) et son sélecteur dans l'en-tête de l'état « choisir ».
     "pratique-playlist": SELON, "pratique-playlist-choisir": SELON,
   },
   creer: ETABLI,

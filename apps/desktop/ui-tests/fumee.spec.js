@@ -6,7 +6,7 @@
 const { test, expect } = require("@playwright/test");
 const { ouvrir, appelsInconnus, versAlbums } = require("./outils");
 const { fixtures, donnees, PISTES } = require("./fixtures");
-const { pratiquerAlbum, basseTranscrite } = require("./pratique-fictive");
+const { pratiquerAlbum, basseTranscrite, batterieTranscrite } = require("./pratique-fictive");
 
 /// Erreurs de la page, plus celles que `ui/js/` remonte lui-même au moteur.
 async function erreursJs(page, erreurs) {
@@ -233,7 +233,7 @@ test("Créer : les stems du morceau en lecture prennent la main", async ({ page 
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="creer"]');
   await expect(page.locator("#editer-etabli")).toBeVisible();
-  await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
+  await expect(page.locator("#dock-pistes .stem")).toHaveCount(4);
   await expect.poll(() => appels(page, "stems_play").then((a) => a.length)).toBeGreaterThan(0);
   const charges = (await appels(page, "stems_play")).at(-1).stems;
   expect(charges.length).toBe(4);
@@ -249,7 +249,7 @@ test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiq
   await page.click('button.mode[data-mode="creer"]');
   await expect(page.locator("#bloc-usage")).toBeHidden();
   await expect(page.locator("#editer-etabli")).not.toHaveClass(/etabli--pratiquer/);
-  await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
+  await expect(page.locator("#dock-pistes .stem")).toHaveCount(4);
   // Les stems restent chargés d'un mode à l'autre : rien n'est relancé.
   expect((await appels(page, "stems_play")).length).toBe(avant);
 });
@@ -260,7 +260,7 @@ test("Pratiquer puis Créer : les mêmes stems, la partition seulement en Pratiq
 async function spectresNets(page) {
   await expect
     .poll(() =>
-      page.locator("#editer-etabli .stem__spectre").evaluateAll((l) => {
+      page.locator("#dock-pistes .stem__spectre").evaluateAll((l) => {
         const d = Math.min(2, window.devicePixelRatio || 1);
         return l.length > 0 && l.every((c) => {
           const r = c.getBoundingClientRect();
@@ -278,9 +278,9 @@ for (const densite of [1, 2]) {
       await lireUnAlbum(page);
       await page.click('button.mode[data-mode="pratiquer"]');
       await expect(page.locator("#editer-etabli")).toHaveClass(/etabli--pratiquer/);
-      await expect(page.locator("#editer-etabli .stem")).toHaveCount(4);
+      await expect(page.locator("#dock-pistes .stem")).toHaveCount(4);
       await page.click('button.mode[data-mode="creer"]');
-      await expect(page.locator("#editer-etabli .stem__spectre").first()).toBeVisible();
+      await expect(page.locator("#dock-pistes .stem__spectre").first()).toBeVisible();
       await spectresNets(page);
       // Aucun spectrogramme demandé au plancher d'un canevas caché.
       expect((await appels(page, "stem_spectre")).every((a) => a.width !== 240)).toBe(true);
@@ -332,7 +332,7 @@ test("V38 : une piste presque vide est masquée dans la pile, et se montre d'un 
     };
   });
   await pratiquerAlbum(page, 0);
-  const noms = page.locator("#editer-etabli .stem__nom");
+  const noms = page.locator("#dock-pistes .stem__nom");
   await expect(noms).toHaveText(["Batterie", "Basse", "Voix"]);
   expect((await appels(page, "stems_presence")).at(-1).path).toBe(PISTES[0].path);
   const geste = page.locator("#dock-pistes .pile__vides");
@@ -581,17 +581,17 @@ test("I4 : « Filtrer » seulement dans l'état « choisir » de Pratiquer et de
 test("I5 : les stems portent des noms français, le nom du moteur reste la clé", async ({ page }) => {
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="creer"]');
-  await expect(page.locator("#editer-etabli .stem__nom")).toHaveText(["Batterie", "Basse", "Autres", "Voix"]);
-  expect(await page.locator("#editer-etabli .piste").evaluateAll((l) => l.map((e) => e.dataset.stem)))
+  await expect(page.locator("#dock-pistes .stem__nom")).toHaveText(["Batterie", "Basse", "Autres", "Voix"]);
+  expect(await page.locator("#dock-pistes .piste").evaluateAll((l) => l.map((e) => e.dataset.stem)))
     .toEqual(["drums", "bass", "other", "vocals"]);
-  await page.locator("#editer-etabli .stem__nom", { hasText: "Basse" }).click();
+  await page.locator("#dock-pistes .stem__nom", { hasText: "Basse" }).click();
   await expect(page.locator("#insp-stem-nom")).toHaveText("Basse");
 });
 
 test("F1 : chercher le greffon dit pourquoi chaque candidat est classé là", async ({ page }) => {
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="creer"]');
-  await page.locator("#editer-etabli .stem__nom", { hasText: "Batterie" }).click();
+  await page.locator("#dock-pistes .stem__nom", { hasText: "Batterie" }).click();
   await page.locator(".greffe__champ").fill("une batterie plus funk");
   await page.locator(".stem__b", { hasText: "remplacer par…" }).click();
   await expect(page.locator(".candidat")).toHaveCount(2);
@@ -1855,78 +1855,6 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   await expect(barre).toBeHidden();
 });
 
-/// Une batterie transcrite (ADTOF simulé) : huit mesures de rock à 120,
-/// grosse caisse 1 et 3, caisse claire 2 et 4 ; une crash incertaine au
-/// premier temps.
-async function batterieTranscrite(page) {
-  await page.evaluate(() => {
-    window.__FIXTURES__.pulsation = {
-      temps: Array.from({ length: 32 }, (_, i) => 0.5 + i / 2),
-      premiers_temps: Array.from({ length: 8 }, (_, i) => 0.5 + 2 * i),
-      bpm: 120,
-      metrique: 4,
-    };
-    window.__FIXTURES__.transcriptions_en_cache = ["drums"];
-    const coups = [];
-    const mesures = [];
-    for (let m = 0; m < 8; m++) {
-      const frappes = [];
-      for (let k = 0; k < 4; k++) {
-        const piece = k % 2 === 0 ? "grosse_caisse" : "caisse_claire";
-        const rangs = [coups.length];
-        coups.push({ instant_s: 0.5 + 2 * m + k / 2, piece, force: 0.9 });
-        const pieces = [piece];
-        if (m === 0 && k === 0) {
-          rangs.push(coups.length);
-          coups.push({ instant_s: 0.5, piece: "cymbales", force: 0.9 });
-          pieces.push("cymbales");
-        }
-        frappes.push({ seiziemes: 4, pieces, coups: rangs });
-      }
-      mesures.push({ debut_s: 0.5 + 2 * m, temps: 4, frappes });
-    }
-    window.__FIXTURES__.transcrire = () => ({
-      version: 5, instrument: "drums", modele: "adtof", notes: [], coups, mesures, accordage: [],
-      doigtes: 5, basses: "quatre", hauteurs: [], grille: 4, sans_effet: 0,
-    });
-    // Une batterie MIDI branchée, déjà calibrée.
-    window.__FIXTURES__.coach_peripheriques = ["TD-17"];
-    window.__FIXTURES__.coach_ecouter = (a) =>
-      a.peripherique ? { peripherique: a.peripherique, profil: { nom: "General MIDI", notes: {}, cc_charleston: 4, velocite_min: 1 }, latence_ms: 38 } : null;
-    // Le moteur juge la première mesure : grosse caisse juste, caisse claire
-    // en retard, grosse caisse manquée, caisse claire sur la mauvaise pièce ;
-    // la crash n'est pas notée ; un coup en trop.
-    const j = (reference, verdict, ecart) => ({
-      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: ecart, ecart_musical_ms: ecart, verdict,
-    });
-    window.__FIXTURES__.coach_juger = (a, e) => {
-      e.juges = (e.juges ?? 0) + 1;
-      return {
-        jusqua_s: 10 + e.juges,
-        jugements: e.juges === 2
-          ? [j(0, "parfait", 4), j(1, "non_notee", null), j(2, "retard", 62), j(3, "manquee", null),
-             j(4, "mauvaise_piece", 12), { ...j(null, "en_trop", null), attendu_s: null }]
-          : [],
-        frappes: [],
-        places_perdues: [],
-        // Puis la mesure 2 relevée, la table qui propose de boucler les
-        // mesures 2 et 3 ; et, une fois la boucle posée, des passages
-        // propres : l'escalier propose un cran de plus.
-        releves: e.juges === 3
-          ? [{ mesure: 1, attendues: 4, attrapees: 2, manquees: 1, en_trop: 1, fausses: 1, ecart_moy_ms: 30,
-               ecart_et_ms: 20, pente_ms: null, erreur: 0.75 }]
-          : [],
-        passage_fini: window.__APPELS__.some((x) => x.cmd === "stems_boucle")
-          ? { attendues: 8, attrapees: 8, ecart_et_ms: 9, propre: true, proposition: { vitesse: 0.73, monter: true } }
-          : null,
-        boucle_proposee: e.juges === 3
-          ? { premiere: 1, derniere: 2, debut_s: 2.5, fin_s: 6.5, score: 0.75, vitesse: 0.7 }
-          : null,
-      };
-    };
-  });
-}
-
 test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée sur la partition", async ({ page }) => {
   await batterieTranscrite(page);
   await pratiquerAlbum(page, 0);
@@ -2014,6 +1942,10 @@ test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée
     els.map((e) => [e.className.replace("coach__marque coach__marque--", ""), e.querySelector(".coach__signe--verdict")?.textContent ?? ""]));
   expect(Object.fromEntries(signes)).toEqual({ juste: "", retard: "→", manquee: "", piece: "×" });
   await expect(page.locator("#partition-rendu .coach__signe--trop:visible")).toHaveCount(1);
+  // La légende derrière « ? » (24 nov.) : le bandeau tient sur une ligne.
+  await expect(page.locator("#coach-cle")).toBeVisible();
+  await expect(page.locator("#coach-legende")).toBeHidden();
+  await page.click("#coach-cle > summary");
   await expect(page.locator("#coach-legende")).toBeVisible();
   await expect(page.locator("#coach-legende .coach__cle")).toHaveText(
     ["juste", "←en avance", "→en retard", "×mauvaise pièce", "manquée", "+en trop"]);
@@ -2227,7 +2159,7 @@ test("V35, V37 : la basse transposée — le coach et le code des erreurs suiven
   const barre = page.locator("#partition-coach");
   // Au repos : le bandeau d'accent, sans légende ni transposition.
   await expect(barre).not.toHaveClass(/coach--ecoute/);
-  await expect(page.locator("#coach-legende")).toBeHidden();
+  await expect(page.locator("#coach-cle")).toBeHidden();
   await expect(page.locator("#coach-transpose")).toBeHidden();
   const fond = await barre.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(fond).not.toBe("rgba(0, 0, 0, 0)");

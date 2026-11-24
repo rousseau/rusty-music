@@ -15,7 +15,8 @@ Ce qui a été fait et mesuré, au jour le jour : `journal.md`.
   l'essai réel de Pratiquer (basse, batterie).
 - Les deux noyaux faux de cubecl (V48) ne sont pas signalés en amont.
 - Lecture progressive (V8, V15) : laissée telle quelle.
-- Prochains essais de François : basse et batterie (V37, E7, E4, E5), écoute
+- Prochains essais de François : basse et batterie (V37, E7, E4, E5 ;
+  batterie TD-11 branchée le 24 nov., premier essai fait), écoute
   AERO contre Apollo (G2), greffes à l'aveugle (F2, V29), balades (D1, D3).
 
 ## Les briques
@@ -166,8 +167,10 @@ Le point du 7 nov. sur tous les chantiers, et son plan en sept phases
     V44 (19 nov.) : les pads de la batterie MIDI se règlent à l'écran
     (« pads » dans le repli des réglages : le pad frappé, sa pièce, General
     MIDI) ; audit d'interface complet le 19 nov. après V44 (288 cellules,
-    0 violation, Pratiquer compris) ; reste l'essai réel avec la batterie et
-    la basse de François) ;
+    0 violation, Pratiquer compris) ; essai réel avec la batterie fait le
+    24 nov. (Roland TD-11, pilote Roland requis, `journal.md`) : la
+    batterie est lue, le coach répond ; latence et justesse du jugement à
+    relever ; reste l'essai réel avec la basse) ;
   - F, Créer : chercher le greffon (F1 fait le 9 nov. : préfiltre CLAP
     guidé par le texte, tempo, tonalité, métrique, groove de la batterie,
     raisons par candidat ; tourné de bout en bout sur une copie de la vraie

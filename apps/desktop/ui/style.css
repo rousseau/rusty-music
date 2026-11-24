@@ -368,19 +368,21 @@ html, body {
    reste. Papier clair dans les deux thèmes : une partition se lit en encre
    sur papier, et alphaTab dessine en noir. */
 .etabli--pratiquer { display: flex; flex-direction: column; gap: 10px; }
-.etabli--pratiquer .dock__pistes { flex-direction: row; order: -1; flex: none; }
-.etabli--pratiquer .piste { flex: 1; min-width: 0; }
-.etabli--pratiquer .stem { grid-template-columns: minmax(0, 1fr); height: auto; }
-.etabli--pratiquer .stem__ctrl { border-right: 0; }
-.etabli--pratiquer .stem__spectre { display: none; }
-/* V43 : en Pratiquer, chaque stem tient sur une ligne — nom, S, M, niveau —
-   pour laisser la hauteur à la partition. */
-.etabli--pratiquer .stem__ctrl { flex-direction: row; align-items: center; gap: 8px; padding: 3px 8px; }
-.etabli--pratiquer .stem__tete { flex-direction: row; align-items: baseline; gap: 6px; width: auto; min-width: 0; flex: 0 1 auto; padding: 0; }
-.etabli--pratiquer .stem__etat { width: auto; }
-.etabli--pratiquer .stem__actions { flex: none; }
-.etabli--pratiquer .stem__b { padding: 0 5px; }
-.etabli--pratiquer .stem__jauge { flex: 1; min-width: 24px; margin-top: 0; height: 4px; }
+/* 24 nov. : en Pratiquer, les niveaux des stems quittent le centre pour le
+   rail, sous « Votre partie » (`#niveaux`, déplacés par `majUsage`) : une
+   ligne serrée par stem — nom, S, M, niveau —, la hauteur du centre va à la
+   partition. Le rail d'un morceau à six stems tient à 1 400 × 900 (G8). */
+.niveaux { margin-top: 8px; }
+.niveaux[hidden] { display: none; }
+.niveaux .dock__pistes { flex-direction: column; gap: 2px; }
+.niveaux .stem { grid-template-columns: minmax(0, 1fr); height: auto; }
+.niveaux .stem__ctrl { border-right: 0; flex-direction: row; align-items: center; gap: 8px; padding: 1px 6px; }
+.niveaux .stem__spectre { display: none; }
+.niveaux .stem__tete { flex-direction: row; align-items: baseline; gap: 6px; width: 64px; min-width: 0; flex: none; padding: 0; }
+.niveaux .stem__etat { display: none; }
+.niveaux .stem__actions { flex: none; }
+.niveaux .stem__b { padding: 0 5px; line-height: 18px; }
+.niveaux .stem__jauge { flex: 1; min-width: 24px; margin-top: 0; height: 4px; }
 .partition {
   flex: 1; min-height: 0; overflow-y: auto; position: relative;
   background: var(--feuille); color: var(--feuille-encre); border: 1px solid var(--line);
@@ -537,7 +539,11 @@ html, body {
 .coach__peripherique { font: inherit; max-width: 220px; }
 .coach__transpose { font-weight: 600; white-space: nowrap; }
 /* La légende : une marque en réduction, son signe, son nom. */
-.coach__legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; flex-basis: 100%; font-size: var(--t-legende); }
+.coach__legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: var(--t-legende); }
+/* 24 nov. : la légende derrière « ? », une clé par ligne. */
+.coach__cles .coach__legende { flex-direction: column; align-items: flex-start; }
+.coach__cles > summary { min-width: 26px; justify-content: center; font-weight: 600; }
+.coach__cles .coach__reglages-corps { left: auto; right: 0; }
 .coach__legende[hidden] { display: none; }
 .coach__cle { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--feuille-encre); }
 .coach__rond { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; box-sizing: border-box; }
@@ -1099,6 +1105,15 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   font-size: var(--t-second); color: var(--mut);
 }
 .enchainement[hidden] { display: none; }
+/* Dans l'en-tête, sur la ligne du titre (24 nov.) : ni marge ni filet
+   propres, le reste de la ligne. */
+.fil .enchainement { padding: 0; border-bottom: 0; flex: 1 1 360px; align-self: center; }
+/* La partition à l'écran (Pratiquer, établi) : l'en-tête tient sur une ligne
+   resserrée, le titre à la taille d'un titre de panneau ; le nom du morceau
+   ouvert n'est pas répété dans le bandeau de la playlist. */
+.centre--partition .fil { padding: 10px var(--gouttiere); align-items: center; }
+.centre--partition .fil h1 { font-size: var(--t-titre); }
+.centre--partition .enchainement__nom { display: none; }
 .enchainement__pas, .enchainement__fermer {
   font: inherit; background: none; border: 1px solid var(--line); color: var(--txt);
   cursor: pointer; padding: 2px 9px; line-height: 1.2;

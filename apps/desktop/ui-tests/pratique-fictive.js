@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Pratiquer sur la bibliothèque fictive : ouvrir un morceau, lui donner une
-// basse transcrite. Partagé par les tests de fumée (`fumee.spec.js`) et la
+// basse ou une batterie transcrite. Partagé par les tests de fumée (`fumee.spec.js`) et la
 // mesure de la partition (`pratiquer-hauteur.spec.js`).
 const { expect } = require("@playwright/test");
 
@@ -91,4 +91,76 @@ async function basseTranscrite(page) {
   });
 }
 
-module.exports = { pratiquerAlbum, basseTranscrite };
+/// Une batterie transcrite (ADTOF simulé) : huit mesures de rock à 120,
+/// grosse caisse 1 et 3, caisse claire 2 et 4 ; une crash incertaine au
+/// premier temps.
+async function batterieTranscrite(page) {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 32 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 8 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+    window.__FIXTURES__.transcriptions_en_cache = ["drums"];
+    const coups = [];
+    const mesures = [];
+    for (let m = 0; m < 8; m++) {
+      const frappes = [];
+      for (let k = 0; k < 4; k++) {
+        const piece = k % 2 === 0 ? "grosse_caisse" : "caisse_claire";
+        const rangs = [coups.length];
+        coups.push({ instant_s: 0.5 + 2 * m + k / 2, piece, force: 0.9 });
+        const pieces = [piece];
+        if (m === 0 && k === 0) {
+          rangs.push(coups.length);
+          coups.push({ instant_s: 0.5, piece: "cymbales", force: 0.9 });
+          pieces.push("cymbales");
+        }
+        frappes.push({ seiziemes: 4, pieces, coups: rangs });
+      }
+      mesures.push({ debut_s: 0.5 + 2 * m, temps: 4, frappes });
+    }
+    window.__FIXTURES__.transcrire = () => ({
+      version: 5, instrument: "drums", modele: "adtof", notes: [], coups, mesures, accordage: [],
+      doigtes: 5, basses: "quatre", hauteurs: [], grille: 4, sans_effet: 0,
+    });
+    // Une batterie MIDI branchée, déjà calibrée.
+    window.__FIXTURES__.coach_peripheriques = ["TD-17"];
+    window.__FIXTURES__.coach_ecouter = (a) =>
+      a.peripherique ? { peripherique: a.peripherique, profil: { nom: "General MIDI", notes: {}, cc_charleston: 4, velocite_min: 1 }, latence_ms: 38 } : null;
+    // Le moteur juge la première mesure : grosse caisse juste, caisse claire
+    // en retard, grosse caisse manquée, caisse claire sur la mauvaise pièce ;
+    // la crash n'est pas notée ; un coup en trop.
+    const j = (reference, verdict, ecart) => ({
+      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: ecart, ecart_musical_ms: ecart, verdict,
+    });
+    window.__FIXTURES__.coach_juger = (a, e) => {
+      e.juges = (e.juges ?? 0) + 1;
+      return {
+        jusqua_s: 10 + e.juges,
+        jugements: e.juges === 2
+          ? [j(0, "parfait", 4), j(1, "non_notee", null), j(2, "retard", 62), j(3, "manquee", null),
+             j(4, "mauvaise_piece", 12), { ...j(null, "en_trop", null), attendu_s: null }]
+          : [],
+        frappes: [],
+        places_perdues: [],
+        // Puis la mesure 2 relevée, la table qui propose de boucler les
+        // mesures 2 et 3 ; et, une fois la boucle posée, des passages
+        // propres : l'escalier propose un cran de plus.
+        releves: e.juges === 3
+          ? [{ mesure: 1, attendues: 4, attrapees: 2, manquees: 1, en_trop: 1, fausses: 1, ecart_moy_ms: 30,
+               ecart_et_ms: 20, pente_ms: null, erreur: 0.75 }]
+          : [],
+        passage_fini: window.__APPELS__.some((x) => x.cmd === "stems_boucle")
+          ? { attendues: 8, attrapees: 8, ecart_et_ms: 9, propre: true, proposition: { vitesse: 0.73, monter: true } }
+          : null,
+        boucle_proposee: e.juges === 3
+          ? { premiere: 1, derniere: 2, debut_s: 2.5, fin_s: 6.5, score: 0.75, vitesse: 0.7 }
+          : null,
+      };
+    };
+  });
+}
+
+module.exports = { pratiquerAlbum, basseTranscrite, batterieTranscrite };

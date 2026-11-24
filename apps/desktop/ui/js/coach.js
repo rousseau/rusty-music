@@ -966,16 +966,22 @@ $("coach-calibrer").addEventListener("click", () => {
   dire();
 });
 // V43 : le repli des réglages de l'entrée se ferme par Échap (le focus revient
-// à son bouton) ou par un clic ailleurs, comme un menu.
-const reglages = $("coach-reglages");
-reglages.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !reglages.open) return;
-  e.stopPropagation();
-  reglages.open = false;
-  reglages.querySelector("summary").focus();
-});
+// à son bouton) ou par un clic ailleurs, comme un menu ; de même la légende
+// derrière « ? » (24 nov.). Ouvrir l'un ferme l'autre.
+const replis = [$("coach-reglages"), $("coach-cle")];
+for (const repli of replis) {
+  repli.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !repli.open) return;
+    e.stopPropagation();
+    repli.open = false;
+    repli.querySelector("summary").focus();
+  });
+  repli.addEventListener("toggle", () => {
+    if (repli.open) for (const autre of replis) if (autre !== repli) autre.open = false;
+  });
+}
 document.addEventListener("pointerdown", (e) => {
-  if (reglages.open && !reglages.contains(e.target)) reglages.open = false;
+  for (const repli of replis) if (repli.open && !repli.contains(e.target)) repli.open = false;
 });
 $("coach-boucler").addEventListener("click", () => bouclerProposee().catch((e) => annoncer(`Boucle non posée : ${e}`)));
 $("coach-vitesse").addEventListener("click", async () => {

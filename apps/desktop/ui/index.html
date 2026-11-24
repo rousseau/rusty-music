@@ -274,6 +274,12 @@
                   title="Décompte d'une mesure de clics au tempo du morceau avant que la musique parte">1 mesure</button>
           <button class="segment" data-decompte="2" title="Décompte de deux mesures de clics avant que la musique parte">2 mesures</button>
         </div>
+        <!-- Pratiquer : les niveaux des stems (nom, solo, muet, niveau), une
+             ligne chacun ; `#dock-pistes` est déplacé ici depuis l'établi
+             (`majUsage`, js/pratiquer.js) pour laisser la hauteur du centre à
+             la partition (24 nov.). Ce qu'on entend de sa partie et du reste :
+             un réglage de la vue, à sa place dans le rail (Règle 12). -->
+        <div id="niveaux" class="niveaux" role="group" aria-label="Niveaux des stems" hidden></div>
         <!-- Les tablatures publiées du morceau, à comparer à l'œil : la
              recherche s'ouvre dans le navigateur (consulter est permis par
              les conditions du site ; rien n'est lu par l'application). -->
@@ -413,21 +419,23 @@
           <button class="tri__opt" data-tri="ajoutes"
                   title="Les albums ajoutés le plus récemment à la bibliothèque, d'après la date de leurs fichiers.">Ajoutés</button>
         </div>
+        <!-- P2 : la playlist que Pratiquer enchaîne, à la main : rang, morceau
+             suivant et son démixage d'avance (`js/pratiquer-playlist.js`).
+             Dans l'en-tête, sur la ligne du titre (24 nov. : la partition
+             gagne la hauteur d'un bandeau). -->
+        <div id="pratique-playlist" class="enchainement" role="group" aria-label="Playlist à travailler" hidden>
+          <button id="enchainement-precedent" class="enchainement__pas" type="button"
+                  title="Morceau précédent (⇧←)" aria-label="Morceau précédent">←</button>
+          <span id="enchainement-rang" class="enchainement__rang"></span>
+          <button id="enchainement-suivant-bouton" class="enchainement__pas" type="button"
+                  title="Morceau suivant (⇧→)" aria-label="Morceau suivant">→</button>
+          <span id="enchainement-nom" class="enchainement__nom"></span>
+          <span id="enchainement-suivant" class="enchainement__suivant"></span>
+          <span id="enchainement-avance" class="enchainement__avance" aria-live="polite"></span>
+          <button id="enchainement-fermer" class="enchainement__fermer" type="button"
+                  title="Ne plus enchaîner cette playlist" aria-label="Ne plus enchaîner cette playlist">×</button>
+        </div>
       </header>
-      <!-- P2 : la playlist que Pratiquer enchaîne, à la main : rang, morceau
-           suivant et son démixage d'avance (`js/pratiquer-playlist.js`). -->
-      <div id="pratique-playlist" class="enchainement" role="group" aria-label="Playlist à travailler" hidden>
-        <button id="enchainement-precedent" class="enchainement__pas" type="button"
-                title="Morceau précédent (⇧←)" aria-label="Morceau précédent">←</button>
-        <span id="enchainement-rang" class="enchainement__rang"></span>
-        <button id="enchainement-suivant-bouton" class="enchainement__pas" type="button"
-                title="Morceau suivant (⇧→)" aria-label="Morceau suivant">→</button>
-        <span id="enchainement-nom" class="enchainement__nom"></span>
-        <span id="enchainement-suivant" class="enchainement__suivant"></span>
-        <span id="enchainement-avance" class="enchainement__avance" aria-live="polite"></span>
-        <button id="enchainement-fermer" class="enchainement__fermer" type="button"
-                title="Ne plus enchaîner cette playlist" aria-label="Ne plus enchaîner cette playlist">×</button>
-      </div>
       <div class="centre__corps">
         <div id="liste" class="liste" tabindex="0" hidden></div>
         <div id="grille" class="grille" tabindex="0" hidden></div>
@@ -650,7 +658,15 @@
                  puis la légende du code des erreurs, pendant l'écoute. -->
             <span id="coach-transpose" class="coach__transpose" hidden></span>
             <span id="coach-etat" class="coach__etat" aria-live="polite"></span>
-            <span id="coach-legende" class="coach__legende" role="list" aria-label="Code des erreurs" hidden></span>
+            <!-- 24 nov. : la légende derrière un « ? », ouverte par-dessus la
+                 partition comme les réglages : le bandeau tient sur une ligne. -->
+            <details id="coach-cle" class="coach__reglages coach__cles">
+              <summary class="bouton bouton--mince coach__accordeur" aria-label="Code des erreurs"
+                       title="Code des erreurs : ce que disent les cercles de la partition">?</summary>
+              <div class="coach__reglages-corps">
+                <span id="coach-legende" class="coach__legende" role="list" aria-label="Code des erreurs" hidden></span>
+              </div>
+            </details>
             <button id="coach-boucler" class="bouton bouton--mince" hidden
                     title="Boucler les mesures les plus difficiles d'après les passages joués (table par mesure, gardée pour ce morceau), en repartant à 70 %. Proposé, jamais imposé.">boucler</button>
             <button id="coach-vitesse" class="bouton bouton--mince" hidden

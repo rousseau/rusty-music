@@ -465,6 +465,8 @@ function majBlocPartitions() {
     etat.title = "";
     if (tr?.pret) {
       etat.textContent = affichee ? "affichée" : "prête";
+      // Le sous-titre que la feuille ne porte plus (24 nov.).
+      etat.title = "Transcription automatique — à vérifier à l'oreille";
       action.textContent = "Afficher";
       action.hidden = affichee;
     } else if (tr?.erreur) {
@@ -643,7 +645,10 @@ async function creerPartition() {
       scale: 0.9,
       resources: { secondaryGlyphColor: "#000000" },
     },
-    notation: { elements: { effectDynamics: false } },
+    // Ni titre ni sous-titre sur la feuille (24 nov.) : le titre est dans
+    // l'en-tête et l'inspecteur, l'avertissement de la transcription au survol
+    // de sa ligne du bloc Partitions ; la feuille commence à la première portée.
+    notation: { elements: { effectDynamics: false, scoreTitle: false, scoreSubTitle: false } },
     player: {
       playerMode: "enabledExternalMedia",
       enableCursor: true,
@@ -974,6 +979,18 @@ function majUsage() {
     b.classList.toggle("segment--actif", b.dataset.notation === edition.notation);
   }
   etabli.classList.toggle("etabli--pratiquer", pratiquer);
+  // 24 nov. : en Pratiquer, la hauteur du centre va à la partition — les
+  // niveaux des stems passent dans le rail, sous « Votre partie » (`#niveaux`),
+  // l'en-tête se resserre sur une ligne (`.centre--partition`). En Créer, la
+  // pile revient dans l'établi, au-dessus de la tête de lecture.
+  $("niveaux").hidden = !pratiquer;
+  const pistes = $("dock-pistes");
+  const hote = pratiquer ? $("niveaux") : etabli;
+  if (pistes.parentElement !== hote) {
+    if (pratiquer) hote.append(pistes);
+    else etabli.insertBefore(pistes, $("playhead"));
+  }
+  document.querySelector("main.centre").classList.toggle("centre--partition", pratiquer);
   $("partition").hidden = !pratiquer;
   if (pratiquer) montrerPartition();
   else cacherPartition();
