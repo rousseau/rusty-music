@@ -279,6 +279,30 @@ central), `--gouttiere-panneau` (18, marge intérieure des panneaux),
 - **Deux colonnes seulement si chacune a la place** : `auto-fit` plutôt qu'un
   rapport fixe (le Lama s'empile dans une fenêtre étroite au lieu de déborder).
 
+**Les largeurs du rail et du panneau droit se règlent** (24 novembre 2026 :
+un écran de 14 pouces et un de 27 n'appellent pas les mêmes). Une poignée à
+cheval sur chaque filet (`.poignee`, `js/panneaux.js`) : glisser, ← → au
+clavier (Maj : un grand pas), double-clic ou Entrée pour la largeur d'origine.
+Le rail va de 200 à 420 px, le panneau droit de 260 à 560 ; le centre garde
+au moins 440 px, et quand la fenêtre manque de place c'est le panneau droit
+qui cède d'abord. On ne change que la **valeur** des jetons `--largeur-rail`
+et `--largeur-droite`, posée sur `<html>` : la file, le panneau d'un outil de
+la carte et la vue « En cours » continuent de s'y aligner sans rien savoir des
+poignées, et G1 lit le jeton en vigueur. Mémorisées par appareil
+(`localStorage`, `rusty-music.panneaux`), reposées avant la première peinture
+(`theme-avant.js`). 232 et 300 restent les valeurs d'origine, celles de
+l'audit.
+
+**Les formes** (même jour) : quatre rayons — `--rayon-xs` 4, `--rayon-s` 7
+(contrôles : boutons, champs, segments), `--rayon` 10 (cartes, pochettes),
+`--rayon-l` 14 (boîtes flottantes) ; une jauge est arrondie de bout en bout —,
+deux ombres (`--ombre-1` posé, `--ombre-2` flottant), `--accent-doux` pour le
+fond d'un choix actif et le halo d'un champ, `--survol` pour un survol. Les
+sélecteurs segmentés sont une piste creusée où le choix actif est posé ; les
+modes du rail, des pastilles. La passe ne touche ni aux hauteurs que le JS
+calcule (`.ligne`, `.album`) ni à celle du rail (Règle 13 : 3 px de marge
+regagnés dans Explorer).
+
 Cette règle se **vérifie par `scripts/audit-interface.sh`** (`apps/desktop/ui/js/audit.js`) :
 l'application, lancée en mode d'essai sur une copie de la base, parcourt écrans
 × états (de base, file ouverte, morceau sélectionné) × thèmes × tailles de

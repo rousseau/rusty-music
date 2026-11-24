@@ -19,3 +19,17 @@
     (choix === "systeme" && matchMedia("(prefers-color-scheme: light)").matches);
   if (clair) document.documentElement.dataset.theme = "clair";
 })();
+
+// Les largeurs du rail et du panneau droit, mémorisées par `js/panneaux.js`,
+// posées elles aussi avant la première peinture (bornées là-bas à la fenêtre).
+(function () {
+  var l;
+  try {
+    l = JSON.parse(localStorage.getItem("rusty-music.panneaux") || "{}") || {};
+  } catch (e) {
+    l = {};
+  }
+  var s = document.documentElement.style;
+  if (l.rail > 0) s.setProperty("--largeur-rail", Math.min(420, Math.max(200, l.rail)) + "px");
+  if (l.droite > 0) s.setProperty("--largeur-droite", Math.min(560, Math.max(260, l.droite)) + "px");
+})();

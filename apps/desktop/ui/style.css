@@ -45,6 +45,23 @@
   --gouttiere:           26px;  /* marge du contenu du panneau central */
   --gouttiere-panneau:   18px;  /* marge intérieure des panneaux (rail, inspecteur, file, transport) */
   --colonne-lecture:    760px;  /* largeur d'une colonne de lecture, centrée dans le panneau */
+  /* `--largeur-rail` et `--largeur-droite` sont des valeurs d'origine : les
+     poignées entre les panneaux les réécrivent sur `<html>` (`js/panneaux.js`). */
+
+  /* Les formes (24 novembre 2026) : quatre rayons, deux ombres, une courbe.
+     Un contrôle (bouton, champ, segment) prend `--rayon-s`, une carte ou une
+     pochette `--rayon`, une boîte flottante `--rayon-l` ; une jauge est
+     arrondie de bout en bout (999px). */
+  --rayon-xs:  4px;
+  --rayon-s:   7px;
+  --rayon:    10px;
+  --rayon-l:  14px;
+  --ombre-1: 0 1px 2px rgb(0 0 0 / .22), 0 4px 14px rgb(0 0 0 / .18);
+  --ombre-2: 0 2px 6px rgb(0 0 0 / .25), 0 18px 48px rgb(0 0 0 / .32);
+  --courbe: cubic-bezier(.2, .7, .2, 1);
+  /* L'accent en aplat léger : fond d'un choix actif, halo d'un champ. */
+  --accent-doux: color-mix(in srgb, var(--accent) 15%, transparent);
+  --survol: color-mix(in srgb, var(--txt) 6%, transparent);
   --serif:   Newsreader, Georgia, "Times New Roman", serif;
   --mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
@@ -136,6 +153,10 @@
   --partie-1: #3472BE; --partie-2: #B05323; --partie-3: #007A53;
   --partie-4: #8F56A7; --partie-5: #9E6300; --partie-6: #A74D83;
   --partie-texte: #FBF8F1;
+  --ombre-1: 0 1px 2px rgb(60 40 20 / .08), 0 4px 14px rgb(60 40 20 / .08);
+  --ombre-2: 0 2px 6px rgb(60 40 20 / .10), 0 18px 48px rgb(60 40 20 / .16);
+  --accent-doux: color-mix(in srgb, var(--accent) 11%, transparent);
+  --survol: color-mix(in srgb, var(--txt) 5%, transparent);
 }
 
 * { box-sizing: border-box; }
@@ -393,7 +414,7 @@ html, body {
    menus de l'application y gardent leurs règles. */
 .coach {
   background: var(--accent); color: var(--sur-accent);
-  border: 2px solid var(--accent); border-radius: 3px; padding: 4px 8px;
+  border: 2px solid var(--accent); border-radius: var(--rayon-s); padding: 4px 8px;
   --txt: var(--sur-accent); --mut: var(--sur-accent); --line: var(--sur-accent);
   --bandeau-fond: var(--accent);
 }
@@ -436,7 +457,7 @@ html, body {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 8px 10px; max-width: 100%;
   background: var(--bandeau-fond); color: var(--txt);
-  border: 1px solid var(--line); border-radius: 3px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   box-shadow: 0 4px 14px rgb(0 0 0 / .25);
 }
 /* E4 : les pads de la batterie, dans le repli des réglages. La note frappée
@@ -454,7 +475,7 @@ html, body {
 .coach__profil-vide { color: var(--mut); }
 .coach__profil-note {
   font: inherit; font-family: var(--mono); padding: 1px 6px; cursor: pointer;
-  background: transparent; color: var(--txt); border: 1px solid var(--line); border-radius: 3px;
+  background: transparent; color: var(--txt); border: 1px solid var(--line); border-radius: var(--rayon-s);
 }
 .coach__profil-note:hover { border-color: var(--txt); }
 .coach__profil-note--frappee { border: 2px solid var(--txt); font-weight: 600; }
@@ -463,7 +484,7 @@ html, body {
    (✓ juste) et par la zone centrale de la jauge, pas par la couleur seule. */
 .accordeur {
   display: grid; gap: 6px; flex: none; padding: 10px 14px;
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--rayon-s);
   max-width: var(--colonne-lecture);
 }
 .accordeur[hidden], .etabli:not(.etabli--pratiquer) .accordeur { display: none; }
@@ -545,7 +566,7 @@ html, body {
 .coach__signe {
   position: absolute; top: 50%; left: 100%; transform: translate(2px, -50%);
   font: 600 var(--t-legende)/1 var(--sans); white-space: nowrap;
-  background: var(--feuille); padding: 1px 2px; border-radius: 2px;
+  background: var(--feuille); padding: 1px 2px; border-radius: var(--rayon-xs);
 }
 .coach__marque--avance .coach__signe--verdict { left: auto; right: 100%; transform: translate(-2px, -50%); }
 .coach__signe--trop { top: 0; transform: translate(2px, -60%); color: var(--feuille-trop); }
@@ -602,7 +623,7 @@ html, body {
 /* La direction de la recherche : « plus funk », ou une phrase pour CLAP. */
 .greffe__champ {
   flex: 1; min-width: 0; font: inherit; font-size: var(--t-legende); color: var(--txt);
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 5px 8px;
 }
 .greffe__champ:focus { outline: none; border-color: var(--accent); }
@@ -663,7 +684,7 @@ html, body {
    de mode plutôt que dedans (`docs/interface-guidelines.md`). */
 .bibliotheque-entree {
   display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
-  font-weight: 600; border: 1px solid var(--line); border-radius: 2px;
+  font-weight: 600; border: 1px solid var(--line); border-radius: var(--rayon-s);
   background: var(--panel2); padding: 8px 11px; margin-bottom: 26px;
 }
 .bibliotheque-entree:hover:not(:disabled) { border-color: var(--accent); color: var(--txt); }
@@ -678,7 +699,7 @@ html, body {
 .chercher {
   width: 100%; font: inherit; font-size: var(--t-second);
   background: var(--panel2); color: var(--txt);
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 7px 9px;
 }
 .chercher:focus { outline: none; border-color: var(--accent); }
@@ -694,7 +715,7 @@ html, body {
 .aide-q:hover, .aide-q[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
 .rail__raccourci kbd, .palette kbd {
   font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
-  border: 1px solid var(--line); border-radius: 2px; padding: 0 4px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s); padding: 0 4px;
 }
 
 /* ---------- Bibliothèque : sections repliées, état ---------- */
@@ -757,7 +778,7 @@ html, body {
 .editions__liste { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
 .editions__option {
   position: relative; text-align: left; font: inherit; color: var(--txt);
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 8px 30px 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
 }
 .editions__option:hover { border-color: var(--mut); }
@@ -917,7 +938,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .palette__boite {
   width: min(620px, 100%); max-height: 72vh;
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--rayon-l);
   box-shadow: 0 24px 80px rgb(0 0 0 / .35);
 }
 .palette__tete {
@@ -938,11 +959,11 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .palette__option {
   display: flex; align-items: center; gap: 12px;
-  padding: 6px 12px; border-radius: 3px; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--rayon-s); cursor: pointer;
 }
 .palette__option[aria-selected="true"] { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
 .palette__vignette {
-  width: 36px; height: 36px; flex: none; border-radius: 2px;
+  width: 36px; height: 36px; flex: none; border-radius: var(--rayon-s);
   background: var(--panel2) center / cover no-repeat;
   display: grid; place-items: center;
   font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
@@ -1014,7 +1035,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .intention__ollama {
   flex: none; width: 34px;
   font-size: var(--t-intertitre); line-height: 1;
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--rayon-s);
   cursor: pointer; overflow: visible;
 }
 .intention__ollama:hover { border-color: var(--accent); }
@@ -1265,7 +1286,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   font: inherit; color: var(--txt); cursor: pointer;
 }
 .proche-pochette__image {
-  width: 76px; height: 76px; border-radius: 6px; overflow: hidden;
+  width: 76px; height: 76px; border-radius: var(--rayon); overflow: hidden;
   background: var(--panel2) center/cover; border: 1px solid var(--line);
   display: grid; place-items: center; transition: border-color .15s ease;
 }
@@ -1310,7 +1331,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .album__pochette {
   position: relative;
   aspect-ratio: 1; width: 100%;
-  border: 1px solid var(--line); border-radius: 3px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   background: repeating-linear-gradient(135deg, var(--panel2) 0 9px, var(--panel) 9px 18px);
   background-size: cover; background-position: center;
   margin-bottom: 8px;
@@ -1767,7 +1788,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   content: attr(data-nom); position: absolute; top: calc(100% + 2px); left: 0; z-index: 5;
   width: max-content; max-width: 180px; white-space: normal;
   padding: 3px 6px; background: var(--panel2); color: var(--txt);
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   font-size: var(--t-second); font-weight: 400; pointer-events: none;
 }
 .famille-ligne:nth-child(even) .famille:focus-visible::after { left: auto; right: 0; }
@@ -1779,7 +1800,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   flex: none; align-self: center; cursor: pointer;
   width: 17px; height: 17px; line-height: 15px; text-align: center; padding: 0;
   font: inherit; font-size: var(--t-legende); background: none;
-  border: 1px solid var(--line); border-radius: 2px; color: var(--mut);
+  border: 1px solid var(--line); border-radius: var(--rayon-s); color: var(--mut);
 }
 .famille__etendre:hover { color: var(--txt); border-color: var(--accent); }
 .famille__etendre--actif { color: var(--accent); border-color: var(--accent); }
@@ -1977,7 +1998,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .transport__nav:hover { color: var(--txt); }
 .transport__art {
-  width: 38px; height: 38px; border-radius: 6px; flex: none;
+  width: 38px; height: 38px; border-radius: var(--rayon); flex: none;
   border: 1px solid var(--line);
   background: repeating-linear-gradient(135deg, var(--panel2) 0 5px, var(--panel) 5px 10px);
   background-size: cover; background-position: center;
@@ -2009,7 +2030,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .wave { flex: 1; height: 42px; min-width: 40px; cursor: pointer; position: relative; }
 #wave-cnv {
   display: block; width: 100%; height: 100%;
-  border-radius: 2px; background: var(--panel2);
+  border-radius: var(--rayon-s); background: var(--panel2);
   image-rendering: pixelated;
 }
 
@@ -2019,7 +2040,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    du dock des stems. */
 .transport__e {
   width: 22px; height: 22px; flex: none;
-  border: 1px solid var(--line); border-radius: 5px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   background: transparent; color: var(--mut);
   font: 600 var(--t-legende) var(--mono); line-height: 1; cursor: pointer;
 }
@@ -2043,7 +2064,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   font-family: var(--mono); font-size: var(--t-legende);
   letter-spacing: .1em; text-transform: uppercase;
   background: none; color: var(--mut); cursor: pointer;
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 5px 9px; flex: none;
 }
 .transport__file:hover, .transport__file[aria-expanded="true"] { color: var(--txt); border-color: var(--accent); }
@@ -2089,7 +2110,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .barres-genres { display: flex; flex-direction: column; gap: 7px; max-height: 260px; overflow-y: auto; }
 .barre-genre { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 8px; font-size: var(--t-legende); }
 .barre-genre__nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barre-genre__piste { background: var(--panel2); border-radius: 2px; height: 8px; overflow: hidden; }
+.barre-genre__piste { background: var(--panel2); border-radius: 999px; height: 8px; overflow: hidden; }
 .barre-genre__remplissage { background: var(--accent); height: 100%; }
 /* Distingue « sans genre identifié » d'un vrai genre minoritaire — la
    couleur du texte, pas seulement celle de la barre, sinon les deux se
@@ -2149,7 +2170,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .valise-tete > div { flex: 1; min-width: 0; }
 .valise-tete .lien { margin-top: 0; }
-.valise-remplissage { height: 4px; margin-top: 10px; background: var(--panel2); border-radius: 2px; overflow: hidden; }
+.valise-remplissage { height: 4px; margin-top: 10px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
 .valise-remplissage i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
 .valise-albums { max-height: none; overflow: visible; }
 .valise-albums .famille__pastille { flex: none; }
@@ -2181,7 +2202,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 #decouvrir-nom { font-family: var(--serif); font-size: var(--t-fil); font-weight: 500; margin: 0 0 4px; }
 #decouvrir-liens { max-height: none; }
 .verif__albums {
-  flex: none; background: none; border: 1px solid var(--line); border-radius: 2px;
+  flex: none; background: none; border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 3px 8px; font: inherit; font-size: var(--t-legende); color: var(--mut); cursor: pointer;
 }
 .verif__albums:hover { border-color: var(--accent); color: var(--accent); }
@@ -2261,7 +2282,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .album__type {
   position: absolute; top: 7px; left: 7px; z-index: 1;
   font-family: var(--mono); font-size: var(--t-legende); letter-spacing: .06em; text-transform: uppercase;
-  background: var(--bg); color: var(--txt); padding: 2px 6px; border-radius: 2px;
+  background: var(--bg); color: var(--txt); padding: 2px 6px; border-radius: var(--rayon-xs);
 }
 /* Liens sortants, étiquetés en toutes lettres, révélés au survol ou au clavier
    comme les boutons ▶ / ✦ de la grille d'Écouter (60 cartes = 120 cibles). */
@@ -2307,7 +2328,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .bouton {
   font: inherit; font-size: var(--t-second); cursor: pointer; flex: none;
   background: var(--panel2); color: var(--txt);
-  border: 1px solid var(--line); border-radius: 2px; padding: 7px 13px;
+  border: 1px solid var(--line); border-radius: var(--rayon-s); padding: 7px 13px;
 }
 .bouton:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .bouton:disabled { opacity: .4; cursor: default; }
@@ -2330,12 +2351,12 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 
 .jauge {
   appearance: none; -webkit-appearance: none;
-  width: 100%; height: 4px; margin-top: 12px; border: none; border-radius: 2px;
+  width: 100%; height: 4px; margin-top: 12px; border: none; border-radius: 999px;
   overflow: hidden; /* Safari : la piste déborde du rayon sans ça. */
 }
-.jauge::-webkit-progress-bar { background: var(--panel2); border-radius: 2px; }
-.jauge::-webkit-progress-value { background: var(--accent); border-radius: 2px; transition: width .3s ease; }
-.jauge::-moz-progress-bar { background: var(--accent); border-radius: 2px; }
+.jauge::-webkit-progress-bar { background: var(--panel2); border-radius: 999px; }
+.jauge::-webkit-progress-value { background: var(--accent); border-radius: 999px; transition: width .3s ease; }
+.jauge::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 
 /* Phase indéterminée (décodage + chauffe du modèle, avant le premier segment) :
    une lueur qui balaie la piste, pour que « ça travaille » se voie. */
@@ -2390,7 +2411,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   padding: 10px var(--gouttiere-panneau); border-bottom: 1px solid var(--line); flex: none;
 }
 .file__bouton {
-  flex: 1; padding: 5px 0; border: 1px solid var(--line); border-radius: 5px;
+  flex: 1; padding: 5px 0; border: 1px solid var(--line); border-radius: var(--rayon-s);
   background: transparent; color: var(--mut);
   font: 500 var(--t-legende) var(--sans); cursor: pointer;
 }
@@ -2440,9 +2461,9 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   display: block; font-family: var(--mono); font-size: var(--t-legende); color: var(--mut);
   letter-spacing: .03em; margin-bottom: 9px;
 }
-.file__compo-jauge { height: 3px; background: var(--panel2); border-radius: 2px; overflow: hidden; }
+.file__compo-jauge { height: 3px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
 .file__compo-jauge i {
-  display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px;
+  display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px;
   transition: width .3s ease;
 }
 /* Phase sans total connu (graphe déjà en cache, ou composition en cours) :
@@ -2459,7 +2480,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .file__ligne--squelette:hover { background: none; }
 .file__ligne--squelette .file__txt b,
 .file__ligne--squelette .file__txt span {
-  background: var(--panel2); border-radius: 3px; color: transparent;
+  background: var(--panel2); border-radius: var(--rayon-s); color: transparent;
 }
 .file__ligne--squelette .file__txt b { width: 62%; height: 11px; }
 .file__ligne--squelette .file__txt span { width: 40%; height: 9px; margin-top: 5px; }
@@ -2512,7 +2533,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   width: 22px;
   height: 22px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--rayon-s);
   background: transparent;
   color: var(--mut);
   cursor: pointer;
@@ -2558,7 +2579,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   font-variant-numeric: tabular-nums;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--rayon-s);
   padding: 2px 0;
 }
 /* Le nom d'une boucle (V17) : un champ comme les valeurs, plus large, aligné
@@ -2756,7 +2777,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .lama__partie .lama__partie-duree { flex: 0 0 64px; }
 .lama__chip {
   font: inherit; font-size: var(--t-legende); padding: 1px 7px; cursor: pointer;
-  background: var(--bg); border: 1px solid var(--line); border-radius: 2px; color: var(--txt);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--rayon-s); color: var(--txt);
 }
 .lama__chip:hover { border-color: var(--accent); }
 .lama__recomposer { width: 100%; margin-top: 12px; }
@@ -2799,7 +2820,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .ligne--playlist .ligne__nom:hover { color: var(--accent); }
 .ligne__action {
   flex: none; font: inherit; font-size: var(--t-legende); color: var(--mut);
-  background: none; border: 1px solid transparent; border-radius: 4px;
+  background: none; border: 1px solid transparent; border-radius: var(--rayon-s);
   padding: 2px 7px; cursor: pointer;
 }
 .ligne__action:hover, .ligne__action:focus-visible { color: var(--txt); border-color: var(--line); }
@@ -2807,7 +2828,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .ligne__action--danger { color: var(--alerte); border-color: var(--alerte); }
 .ligne__champ {
   flex: 1; min-width: 0; font: inherit; color: var(--txt);
-  background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px;
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: var(--rayon-s);
   padding: 3px 7px;
 }
 .ligne__champ:focus { outline: none; }
@@ -2844,7 +2865,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .menu-playlist {
   position: fixed; z-index: 40; width: 260px;
   display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--rayon);
   box-shadow: 0 12px 40px rgb(0 0 0 / .3);
   padding: 6px 0;
 }
@@ -2865,7 +2886,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .menu-playlist__nouvelle { display: flex; gap: 6px; padding: 6px 12px 2px; }
 .menu-playlist__nouvelle input {
   flex: 1; min-width: 0; font: inherit; font-size: var(--t-second); color: var(--txt);
-  background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px; padding: 3px 7px;
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: var(--rayon-s); padding: 3px 7px;
 }
 .menu-playlist__nouvelle input:focus { outline: none; }
 .menu-playlist__etat { margin: 0; padding: 4px 12px 0; color: var(--accent); }
@@ -2881,7 +2902,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .file__enregistrer[hidden] { display: none; }
 .file__enregistrer input {
   flex: 1; min-width: 0; font: inherit; font-size: var(--t-legende); color: var(--txt);
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--rayon-s);
   padding: 5px 8px;
 }
 .file__enregistrer input:focus { outline: none; border-color: var(--accent); }
@@ -2918,7 +2939,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
    texte y est en `--txt`, le seul que le recalage garantit à 4,5:1. */
 .une {
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px;
-  padding: 24px; margin-bottom: 30px; border-radius: 3px;
+  padding: 24px; margin-bottom: 30px; border-radius: var(--rayon);
   background: linear-gradient(160deg, var(--album-haut, var(--panel)), var(--album-bas, var(--bg)));
   border: 1px solid var(--line);
 }
@@ -2968,7 +2989,7 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 }
 .rangee__autre {
   margin-left: auto; flex: none; cursor: pointer;
-  background: none; border: 1px solid var(--line); border-radius: 2px;
+  background: none; border: 1px solid var(--line); border-radius: var(--rayon-s);
   color: var(--mut); font: inherit; font-size: var(--t-second); padding: 1px 8px;
 }
 .rangee__autre:hover { color: var(--accent); border-color: var(--accent); }
@@ -2990,3 +3011,145 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   display: grid; gap: 14px; margin-top: 10px;
   grid-template-columns: repeat(auto-fill, minmax(var(--album-larg, 140px), 1fr));
 }
+
+/* ---------- poignées des panneaux ---------- */
+/* Une bande de 9 px à cheval sur le filet entre un panneau et le centre,
+   posée dans la case du panneau (deux éléments peuvent partager une case de
+   la grille) : rien ne bouge dans la mise en page. Au-dessus de la file
+   (z 10), qui recouvre l'inspecteur et suit sa largeur. `js/panneaux.js`. */
+.poignee {
+  position: relative; z-index: 11; align-self: stretch;
+  width: 9px; cursor: col-resize; touch-action: none; outline: none;
+}
+.poignee--rail { grid-area: rail; justify-self: end; margin-right: -5px; }
+.poignee--droite { grid-area: inspecteur; justify-self: start; margin-left: -5px; }
+.poignee::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px;
+  border-radius: 999px; background: var(--accent); opacity: 0;
+  transition: opacity .15s ease .1s;
+}
+.poignee:hover::after, .poignee:focus-visible::after, .poignee--active::after { opacity: .85; }
+.poignee--active::after { transition-delay: 0s; }
+body.panneaux--glisse, body.panneaux--glisse * { cursor: col-resize !important; user-select: none; }
+/* La vue « En cours » recouvre les panneaux : leurs poignées n'y ont rien à faire. */
+body:has(#en-cours:not([hidden])) .poignee { display: none; }
+
+/* ---------- finitions (24 novembre 2026) ---------- */
+/* Une passe sur les formes, pas sur la mise en page : contrôles arrondis,
+   sélecteurs en pastilles, survols adoucis, un anneau de focus commun. Les
+   hauteurs que le JS calcule (`.ligne`, `.album`) ne changent pas. */
+
+/* Focus clavier : un anneau d'accent partout où un élément n'en dessine pas
+   déjà un à lui. */
+:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: 2px; }
+input:focus-visible, textarea:focus-visible { outline: none; }
+
+/* Barres de défilement fines, le pouce arrondi, le rail invisible. */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--mut) 40%, transparent) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--mut) 32%, transparent);
+  border: 3px solid transparent; background-clip: padding-box; border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--mut) 55%, transparent); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Rail : les modes en pastilles, l'actif sur un aplat d'accent. */
+.modes { row-gap: 2px; column-gap: 4px; }
+.mode {
+  border-left: none; border-radius: var(--rayon-s); padding: 5px 10px;
+  transition: color .15s ease, background-color .15s ease;
+}
+.mode:hover:not(:disabled) { background: var(--survol); }
+.mode--actif, .mode--actif:hover:not(:disabled) { background: var(--accent-doux); color: var(--txt); font-weight: 500; }
+.bibliotheque-entree {
+  border-radius: var(--rayon); padding: 8px 12px;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.bibliotheque-entree.mode--actif { background: var(--accent-doux); }
+
+/* Champs : un halo plutôt qu'un simple changement de filet. */
+.chercher { border-radius: var(--rayon-s); padding: 7px 10px; transition: border-color .15s ease, box-shadow .15s ease; }
+.chercher:focus, .greffe__champ:focus, .file__enregistrer input:focus, .palette__champ:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-doux);
+}
+
+/* Sélecteurs segmentés : une piste creusée, le choix actif posé dessus. La
+   piste (2 px de marge intérieure) est reprise sur le padding des segments :
+   le rail garde sa hauteur (Règle 13, l'Anneau tient au pixel près). */
+.segments {
+  border: 1px solid var(--line); border-radius: var(--rayon-s);
+  background: var(--bg); padding: 2px; gap: 2px;
+}
+.segment {
+  border-radius: calc(var(--rayon-s) - 2px);
+  transition: color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.segment + .segment, .segments--colonne .segment + .segment { border-left: none; border-top: none; }
+.segment:hover:not(:disabled):not(.segment--actif) { background: var(--survol); }
+.segment--actif { background: var(--panel2); color: var(--accent); box-shadow: var(--ombre-1); }
+.segments--grille { gap: 2px; background: var(--bg); }
+.segments--grille .segment { background: transparent; padding: 4px 0; }
+.segments:not(.segments--grille):not(.segments--colonne) > .segment { padding: 3px 0; }
+.segments--colonne .segment { padding: 4px 9px; }
+#bloc-usage .segment { padding: 1px 0; }
+.segments--grille .segment--actif { background: var(--panel2); }
+/* L'ordre de la grille (en-tête d'Écouter) : le même sélecteur. */
+.tri { border-radius: var(--rayon-s); background: var(--bg); padding: 2px; gap: 2px; }
+.tri__opt { padding: 2px 8px; border-radius: calc(var(--rayon-s) - 2px); transition: color .15s ease, background-color .15s ease; }
+.tri__opt + .tri__opt { border-left: none; }
+.tri__opt:hover:not(.tri__opt--actif) { background: var(--survol); }
+.tri__opt--actif { box-shadow: var(--ombre-1); }
+
+/* Boutons secondaires : arrondis, un aplat au survol. */
+.fil__candidat, .zoom button, .carte__outil, .carte__aura, .transport__file, .borne {
+  border-radius: var(--rayon-s);
+}
+.fil__candidat, .zoom button, .carte__outil, .carte__aura {
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.fil__candidat:hover, .zoom button:hover, .carte__outil:hover, .carte__aura:hover { background: var(--survol); }
+.carte__outil, .carte__aura, .carte__outils .zoom { box-shadow: var(--ombre-1); }
+.carte__outils .zoom { border-radius: var(--rayon-s); padding: 2px; border: 1px solid var(--line); }
+.carte__outils .zoom button { border-color: transparent; }
+.carte__panneau { border-radius: var(--rayon); box-shadow: var(--ombre-2); }
+
+/* Listes : des filets plus discrets ; la ligne choisie garde son filet
+   d'accent, arrondi. */
+.ligne { border-bottom-color: color-mix(in srgb, var(--line) 65%, transparent); transition: background-color .12s ease; }
+.ligne:hover { background: var(--survol); }
+.ligne--select { background: var(--accent-doux); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Pochettes : arrondies, elles se lèvent au survol (sans changer de place
+   dans la grille virtualisée). */
+.album__pochette {
+  border-radius: var(--rayon); overflow: hidden;
+  transition: transform .22s var(--courbe), box-shadow .22s var(--courbe), border-color .15s ease;
+}
+.album:hover .album__pochette { transform: translateY(-3px); box-shadow: var(--ombre-2); }
+
+/* Transport : le bouton de lecture un peu plus présent, le spectre arrondi,
+   les bascules en pilules. */
+.transport { gap: 14px; }
+.transport__play {
+  width: 38px; height: 38px; box-shadow: var(--ombre-1);
+  transition: transform .15s var(--courbe), background-color .15s ease;
+}
+.transport__play:hover { transform: scale(1.06); }
+.transport__play:active { transform: scale(.96); }
+.transport__art { border-radius: var(--rayon-s); }
+#wave-cnv { border-radius: var(--rayon-s); }
+.transport__file { border-radius: 999px; padding: 5px 12px; transition: color .15s ease, border-color .15s ease, background-color .15s ease; }
+.transport__file:hover, .transport__file[aria-expanded="true"], .transport__file[aria-pressed="true"] { background: var(--accent-doux); }
+.transport__e { border-radius: var(--rayon-xs); }
+
+/* Boîtes flottantes : plus rondes, une ombre portée commune. */
+.palette__boite { border-radius: var(--rayon-l); box-shadow: var(--ombre-2); }
+.palette__option { border-radius: var(--rayon-s); }
+
+@media (prefers-reduced-motion: reduce) {
+  .album__pochette, .transport__play { transition: none; }
+  .album:hover .album__pochette { transform: none; }
+}
+

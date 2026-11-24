@@ -23,3 +23,5 @@
 // ne fait que déclarer (`etat-lecture.js`) n'a pas d'ordre à tenir : il reste
 // hors de la chaîne.
 import "./accueil.js";
+// Hors de la chaîne : les poignées qui règlent la largeur des panneaux.
+import "./panneaux.js";

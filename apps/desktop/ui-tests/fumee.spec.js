@@ -46,6 +46,49 @@ test("démarrage : Écouter et la grille d'albums", async ({ page }) => {
   await expect(page.locator("#np-titre")).toHaveText("Rien en lecture");
 });
 
+/* ------------------------------------------------- largeur des panneaux */
+
+test("panneaux : les poignées règlent le rail et l'inspecteur, mémorisés, double-clic pour l'origine", async ({ page }) => {
+  const largeur = (s) => page.locator(s).evaluate((e) => Math.round(e.getBoundingClientRect().width));
+  expect(await largeur(".rail")).toBe(232);
+  expect(await largeur(".inspecteur")).toBe(300);
+
+  const glisser = async (sel, dx) => {
+    const b = await page.locator(sel).boundingBox();
+    const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y);
+    await page.mouse.move(x + dx, y);
+    await page.mouse.up();
+  };
+  await glisser(".poignee--rail", 80);
+  await glisser(".poignee--droite", -100);
+  expect(await largeur(".rail")).toBe(312);
+  expect(await largeur(".inspecteur")).toBe(400);
+  // La file recouvre toujours exactement l'inspecteur (Règle 10).
+  await page.click("#bascule-file");
+  expect(await largeur("#file")).toBe(400);
+  await page.click("#bascule-file");
+
+  // Bornes : le rail ne descend pas sous 200 px.
+  await glisser(".poignee--rail", -400);
+  expect(await largeur(".rail")).toBe(200);
+  // Clavier : → élargit le rail d'un pas.
+  await page.locator(".poignee--rail").focus();
+  await page.keyboard.press("ArrowRight");
+  expect(await largeur(".rail")).toBe(216);
+
+  // Mémorisé : un rechargement garde les largeurs.
+  await page.reload();
+  await expect(page.locator(".poignee--rail")).toBeAttached();
+  expect(await largeur(".rail")).toBe(216);
+  expect(await largeur(".inspecteur")).toBe(400);
+
+  await page.locator(".poignee--droite").dblclick();
+  expect(await largeur(".inspecteur")).toBe(300);
+});
+
 /* ------------------------------------------------------------ Accueil (A2) */
 
 async function versAccueil(page) {
