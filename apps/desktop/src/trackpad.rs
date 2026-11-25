@@ -34,6 +34,8 @@ pub(crate) enum PhaseDoigts {
     Poses,
     /// Le geste commence (`Began`).
     Debut,
+    /// Les doigts bougent (`Changed`) : l'événement porte leur déplacement.
+    Change,
     /// Levés (`Ended`).
     Fin,
     /// Le système a repris le geste (`Cancelled`) : comme levés.
@@ -46,6 +48,7 @@ pub(crate) enum PhaseDoigts {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PhaseInertie {
     Debut,
+    Change,
     Fin,
 }
 
@@ -55,6 +58,15 @@ pub(crate) enum PhaseInertie {
 pub(crate) struct PhaseTrackpad {
     pub(crate) doigts: Option<PhaseDoigts>,
     pub(crate) inertie: Option<PhaseInertie>,
+    /// Déplacement de l'événement, en points (`scrollingDeltaX/Y`). Il passe
+    /// par ici et non par l'événement `wheel` de la page : les deux chemins
+    /// ne sont pas ordonnés entre eux, et un delta d'inertie arrivé avant
+    /// l'annonce de l'inertie reprenait le disque (« il repart deux fois »).
+    pub(crate) dx: f64,
+    pub(crate) dy: f64,
+    /// Défilement naturel de macOS (`isDirectionInvertedFromDevice`) : les
+    /// deltas suivent alors les doigts ; sinon, ils vont à l'opposé.
+    pub(crate) naturel: bool,
     /// L'instant de l'événement, en millisecondes depuis l'époque Unix :
     /// l'interface le compare à `performance.timeOrigin + performance.now()`
     /// pour compter le trajet jusqu'à elle.
@@ -69,12 +81,14 @@ fn traduire(phase: usize, inertie: usize) -> Option<(Option<PhaseDoigts>, Option
     let doigts = match phase {
         0x20 => Some(PhaseDoigts::Poses),
         0x1 => Some(PhaseDoigts::Debut),
+        0x4 => Some(PhaseDoigts::Change),
         0x8 => Some(PhaseDoigts::Fin),
         0x10 => Some(PhaseDoigts::Annule),
         _ => None,
     };
     let inertie = match inertie {
         0x1 => Some(PhaseInertie::Debut),
+        0x4 => Some(PhaseInertie::Change),
         0x8 | 0x10 => Some(PhaseInertie::Fin),
         _ => None,
     };
@@ -119,6 +133,9 @@ mod macos {
                         PhaseTrackpad {
                             doigts,
                             inertie,
+                            dx: e.scrollingDeltaX(),
+                            dy: e.scrollingDeltaY(),
+                            naturel: e.isDirectionInvertedFromDevice(),
                             t_ms,
                         },
                     );
@@ -160,8 +177,9 @@ mod tests {
         assert_eq!(traduire(0x8, 0), Some((Some(PhaseDoigts::Fin), None)));
         assert_eq!(traduire(0, 0x1), Some((None, Some(PhaseInertie::Debut))));
         // Un delta au milieu du geste, une molette de souris : rien.
-        assert_eq!(traduire(0x4, 0), None);
-        assert_eq!(traduire(0, 0x4), None);
+        assert_eq!(traduire(0x4, 0), Some((Some(PhaseDoigts::Change), None)));
+        assert_eq!(traduire(0, 0x4), Some((None, Some(PhaseInertie::Change))));
+        assert_eq!(traduire(0x2, 0), None); // Stationary
         assert_eq!(traduire(0, 0), None);
     }
 }

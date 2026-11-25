@@ -824,11 +824,14 @@ const fixtures = {
 // `t_ms` : l'instant de l'événement, posé par le test au moment d'émettre.
 const evenements = {
   scratch_phase: {
-    poses: { doigts: /** @type {const} */ ("poses"), inertie: null, t_ms: 0 },
-    debut: { doigts: /** @type {const} */ ("debut"), inertie: null, t_ms: 0 },
-    fin: { doigts: /** @type {const} */ ("fin"), inertie: null, t_ms: 0 },
-    inertie: { doigts: null, inertie: /** @type {const} */ ("debut"), t_ms: 0 },
-    inertieFin: { doigts: null, inertie: /** @type {const} */ ("fin"), t_ms: 0 },
+    poses: { doigts: /** @type {const} */ ("poses"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    debut: { doigts: /** @type {const} */ ("debut"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    // Les doigts vers la gauche, en haut du disque : il recule.
+    change: { doigts: /** @type {const} */ ("change"), inertie: null, dx: -12, dy: 0, naturel: true, t_ms: 0 },
+    fin: { doigts: /** @type {const} */ ("fin"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    inertie: { doigts: null, inertie: /** @type {const} */ ("debut"), dx: -9, dy: 0, naturel: true, t_ms: 0 },
+    inertieSuite: { doigts: null, inertie: /** @type {const} */ ("change"), dx: -6, dy: 0, naturel: true, t_ms: 0 },
+    inertieFin: { doigts: null, inertie: /** @type {const} */ ("fin"), dx: 0, dy: 0, naturel: true, t_ms: 0 },
   },
 };
 
