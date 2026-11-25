@@ -818,4 +818,18 @@ const fixtures = {
 };
 
 
-module.exports = { fixtures, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };
+// Les événements que le moteur émet, figés de même (`types/controle.ts`
+// les confronte aux types de Rust). `scratch-phase` (`trackpad.rs`) : les
+// phases d'un geste au trackpad sur le disque armé.
+// `t_ms` : l'instant de l'événement, posé par le test au moment d'émettre.
+const evenements = {
+  scratch_phase: {
+    poses: { doigts: /** @type {const} */ ("poses"), inertie: null, t_ms: 0 },
+    debut: { doigts: /** @type {const} */ ("debut"), inertie: null, t_ms: 0 },
+    fin: { doigts: /** @type {const} */ ("fin"), inertie: null, t_ms: 0 },
+    inertie: { doigts: null, inertie: /** @type {const} */ ("debut"), t_ms: 0 },
+    inertieFin: { doigts: null, inertie: /** @type {const} */ ("fin"), t_ms: 0 },
+  },
+};
+
+module.exports = { fixtures, evenements, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };

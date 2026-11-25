@@ -4652,6 +4652,47 @@ export type PasseJournal_Serialize = {
 	ecritures: number,
 };
 
+/**  Les doigts sur le trackpad (`NSEvent.phase`). */
+export type PhaseDoigts = 
+/**  Posés sans bouger (`MayBegin`). */
+"poses" | 
+/**  Le geste commence (`Began`). */
+"debut" | 
+/**  Levés (`Ended`). */
+"fin" | 
+/**  Le système a repris le geste (`Cancelled`) : comme levés. */
+"annule";
+
+/**  L'inertie de macOS après le geste (`NSEvent.momentumPhase`). */
+export type PhaseInertie = "debut" | "fin";
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad = PhaseTrackpad_Serialize | PhaseTrackpad_Deserialize;
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad_Deserialize = {
+	doigts?: PhaseDoigts | null,
+	inertie?: PhaseInertie | null,
+	/**
+	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
+	 *  l'interface le compare à `performance.timeOrigin + performance.now()`
+	 *  pour compter le trajet jusqu'à elle.
+	 */
+	t_ms: number | null,
+};
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad_Serialize = {
+	doigts: PhaseDoigts | null,
+	inertie: PhaseInertie | null,
+	/**
+	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
+	 *  l'interface le compare à `performance.timeOrigin + performance.now()`
+	 *  pour compter le trajet jusqu'à elle.
+	 */
+	t_ms: number | null,
+};
+
 export type Piece = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
 
 /**  Une piste d'une édition détaillée. */

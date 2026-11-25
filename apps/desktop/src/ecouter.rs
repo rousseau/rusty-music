@@ -488,7 +488,9 @@ pub(crate) fn scratch_entrer(etat: State<Etat>) -> Result<EtatScratch, String> {
         rusty_music_player::scratch::Disque::decoder(&ouvert, gain).map_err(|e| e.to_string())?;
     let mut player = verrou(&etat.player);
     player.entrer_scratch(&courant, disque);
-    Ok(etat_scratch(player.main_scratch(None)))
+    let rendu = etat_scratch(player.main_scratch(None));
+    crate::trackpad::armer(rendu.actif);
+    Ok(rendu)
 }
 
 /// La main sur le disque : `vitesse` (1 = nominale, négative = arrière), ou
@@ -498,13 +500,18 @@ pub(crate) fn scratch_entrer(etat: State<Etat>) -> Result<EtatScratch, String> {
 pub(crate) fn scratch_main(etat: State<Etat>, vitesse: Option<f32>) -> EtatScratch {
     let mut player = verrou(&etat.player);
     player.entretenir_scratch();
-    etat_scratch(player.main_scratch(vitesse))
+    let rendu = etat_scratch(player.main_scratch(vitesse));
+    if !rendu.actif {
+        crate::trackpad::armer(false);
+    }
+    rendu
 }
 
 /// Quitte le mode scratch : la lecture reprend là où le disque s'est arrêté.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn scratch_sortir(etat: State<Etat>) -> Result<(), String> {
+    crate::trackpad::armer(false);
     verrou(&etat.player)
         .sortir_scratch()
         .map_err(|e| e.to_string())

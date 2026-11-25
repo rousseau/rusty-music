@@ -7671,3 +7671,34 @@ Le plein écran (bouton vert) ne marchait pas dans la fenêtre d'essai :
 `RUSTY_MUSIC_ESSAI_VISIBLE` la tient au-dessus des autres, et macOS refuse le
 plein écran à une fenêtre flottante (elle s'agrandit seulement). Lancée
 normalement (`cargo run -p rusty-music-desktop`), il marche.
+
+## Scratch : les phases du trackpad lues par AppKit — 25 nov. 2026
+
+WebKit ne donne à la webview que les deltas de la molette : `scratch.js`
+devinait la main levée (60 ms sans delta) et l'inertie de macOS (cinq deltas
+en suite géométrique). AppKit le dit sur chaque `scrollWheel` :
+`NSEvent.phase` (doigts posés sans bouger, début, fin, annulation) et
+`momentumPhase` (l'inertie).
+
+- **Côté Rust** (`apps/desktop/src/trackpad.rs`) : un moniteur local
+  d'AppKit (`addLocalMonitorForEventsMatchingMask:handler:`, par
+  `objc2-app-kit`, déjà dans le graphe par tao et wry) voit chaque
+  `scrollWheel` avant la fenêtre et le lui rend tel quel : la webview défile
+  comme avant. Tant que le scratch est armé, il émet `scratch-phase` à chaque
+  changement de phase seulement (quelques événements par geste, pas un par
+  delta), avec l'instant de l'événement ramené à l'époque Unix.
+- **Côté interface** : doigts posés (ou geste commencé) sur le disque = main
+  posée, le disque tenu même immobile ; levés = main lâchée à la vitesse du
+  moment, le moteur reprend ; deltas écartés pendant l'inertie annoncée (et
+  100 ms après la levée, le temps que l'annonce arrive). Sans phases (souris,
+  hors macOS), l'heuristique reste.
+- **Mesure** : l'interface écrit au journal « latence du lâcher » par source,
+  de la main levée au son relâché (trajet de l'annonce compris). Pour
+  l'heuristique, la levée est comptée depuis le dernier delta, qui la précède :
+  une borne basse, qui contient au moins les 60 ms d'attente. Chiffres sur le
+  trackpad de François : à relever.
+
+Tests : traduction des phases (Rust), un test de fumée qui simule les phases
+(disque tenu 300 ms sans delta, lâcher, deltas d'inertie écartés, latence au
+journal). L'événement et sa charge sont exportés en TypeScript et contrôlés
+contre `fixtures.js` (`evenements`).
