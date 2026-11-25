@@ -918,23 +918,13 @@ fn lire_entrelace(chemin: &Path) -> Result<Vec<i16>> {
 /// la basse joue (E7) faisaient passer celui-ci de 13 à 57 ms — injouable.
 /// Avec 512 : 22 ms dans ce pire ordre (mesuré le 23 nov., Scarlett Solo et
 /// prise casque).
-pub const TAMPON_STEMS: u32 = 512;
+pub const TAMPON_STEMS: u32 = crate::TAMPON_SORTIE;
 
 /// La sortie par défaut avec [`TAMPON_STEMS`] ramené dans ce que l'appareil
 /// accepte ; à défaut, le repli de rodio.
 fn ouvrir_sortie_stems() -> std::result::Result<MixerDeviceSink, rodio::DeviceSinkError> {
-    use cpal::traits::{DeviceTrait, HostTrait};
-    let tampon = cpal::default_host()
-        .default_output_device()
-        .and_then(|d| d.default_output_config().ok())
-        .map(|c| match c.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, max } => {
-                cpal::BufferSize::Fixed(TAMPON_STEMS.clamp(*min, (*max).max(*min)))
-            }
-            cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Fixed(TAMPON_STEMS),
-        });
     DeviceSinkBuilder::from_default_device()
-        .and_then(|b| match tampon {
+        .and_then(|b| match crate::tampon_borne(TAMPON_STEMS) {
             Some(t) => b.with_buffer_size(t).open_stream(),
             None => b.open_stream(),
         })

@@ -28,7 +28,7 @@ pub mod retour;
 pub mod scratch;
 pub mod spectre;
 pub use amelioration::{amelioration, enregistrer_taux_sortie, Amelioration};
-pub use latence::latence_sortie;
+pub use latence::{detail_latence_sortie, latence_sortie, DetailLatence};
 pub use multipiste::Multipiste;
 pub use spectre::Spectre;
 
@@ -539,19 +539,53 @@ pub struct Player {
 
 /// Ouvre la sortie audio par défaut du système et retient sa fréquence. Rend
 /// aussi le drapeau que cpal lève si le flux meurt ensuite.
+/// Tampon demandé à la sortie de la lecture, en trames : 11,6 ms à 44,1 kHz.
+///
+/// **Pas le défaut de rodio** (≈ 50 ms, 2048 trames à 44,1 kHz) : sur les
+/// haut-parleurs du MacBook Pro, il portait la latence de sortie à 63 ms, dont
+/// 46 de tampon ; avec 512, 28,5 ms. Le rappel de la lecture (morceau déjà
+/// décodé, « E » compris, aura) y prend au plus 0,5 ms, tous cœurs occupés
+/// (`examples/rappels_sortie.rs`, 25 nov. 2026). Égal à
+/// [`multipiste::TAMPON_STEMS`] : le tampon d'un appareil est commun à ses
+/// flux et le dernier ouvert l'impose.
+pub const TAMPON_SORTIE: u32 = 512;
+
+/// `trames` ramené dans ce que la sortie par défaut accepte ; `None` si elle
+/// ne répond pas.
+pub(crate) fn tampon_borne(trames: u32) -> Option<cpal::BufferSize> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    cpal::default_host()
+        .default_output_device()
+        .and_then(|d| d.default_output_config().ok())
+        .map(|c| match c.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                cpal::BufferSize::Fixed(trames.clamp(*min, (*max).max(*min)))
+            }
+            cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Fixed(trames),
+        })
+}
+
 fn ouvrir_sortie() -> Result<(MixerDeviceSink, Arc<AtomicBool>)> {
     let perdue = Arc::new(AtomicBool::new(false));
-    let signal = Arc::clone(&perdue);
-    // Le repli de `open_default_sink` (autre périphérique, autre config) n'a
-    // pas de callback : sur ce chemin rare le drapeau ne se lève jamais.
-    let mut output = DeviceSinkBuilder::from_default_device()
-        .and_then(|b| {
-            b.with_error_callback(move |e| {
+    let essai = |tampon: Option<cpal::BufferSize>| {
+        let signal = Arc::clone(&perdue);
+        DeviceSinkBuilder::from_default_device().and_then(|b| {
+            let b = b.with_error_callback(move |e| {
                 tracing::warn!(erreur = %e, "flux audio en erreur");
                 signal.store(true, Ordering::Release);
-            })
+            });
+            match tampon {
+                Some(t) => b.with_buffer_size(t),
+                None => b,
+            }
             .open_stream()
         })
+    };
+    // Le tampon court d'abord, puis celui de rodio. Le repli de
+    // `open_default_sink` (autre périphérique, autre config) n'a pas de
+    // callback : sur ce chemin rare le drapeau ne se lève jamais.
+    let mut output = tampon_borne(TAMPON_SORTIE)
+        .map_or_else(|| essai(None), |t| essai(Some(t)).or_else(|_| essai(None)))
         .or_else(|_| DeviceSinkBuilder::open_default_sink())?;
     // On ferme la sortie sciemment en fin de processus : le message que
     // `rodio` émet alors sur stderr n'apprend rien et pollue la CLI.
@@ -1386,7 +1420,26 @@ mod tests {
     #[test]
     #[ignore]
     fn ouvre_la_sortie_par_defaut() {
+        // Un autre flux a grossi le tampon de l'appareil : la lecture le
+        // ramène au sien en s'ouvrant.
+        let gros = DeviceSinkBuilder::from_default_device()
+            .and_then(|b| {
+                b.with_buffer_size(cpal::BufferSize::Fixed(2048))
+                    .open_stream()
+            })
+            .ok()
+            .map(|mut s| {
+                s.log_on_drop(false);
+                s
+            });
         let player = Player::new().expect("sortie audio indisponible");
+        drop(gros);
+        if let (Some(d), Some(cpal::BufferSize::Fixed(t))) =
+            (detail_latence_sortie(), tampon_borne(TAMPON_SORTIE))
+        {
+            eprintln!("{d:?} : {:?}", d.totale());
+            assert_eq!(d.tampon, t);
+        }
         assert!(player.is_finished());
         assert!(player.current().is_none());
         assert_eq!(player.remaining(), 0);
