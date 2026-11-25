@@ -7576,3 +7576,59 @@ le doigté et la grille, Basic Pitch comme MuScriptor (≈ 2,5 s par morceau).
   la retrouve plus.
 - Outils : `crates/editor/examples/recaler_basse.rs` (sur un cache de
   l'app), `crates/transcription/examples/mesures.rs` (les mesures en texte).
+
+## Écouter : la latence de sortie passe de 63 à 28,5 ms — 25 nov. 2026
+
+Le mode scratch (branche `claude/clever-elion-435207`) mesurait 73 ms entre
+le geste et le son, dont 63 déclarées par CoreAudio pour la sortie. Le
+commentaire de `latence.rs` annonçait « de l'ordre de 10 ms » sur les
+haut-parleurs du Mac : ce n'était que le tampon de 512 trames, pas la somme.
+
+**Décomposition** (`crates/player/examples/latence_sortie.rs`, haut-parleurs
+du MacBook Pro, 44,1 kHz, `detail_latence_sortie()`) :
+
+| tampon de l'appareil | appareil | marge | tampon | flux | total |
+|---|---:|---:|---:|---:|---:|
+| défaut de rodio (2048) | 1,3 | 1,1 | **46,4** | 14,5 | **63,3 ms** |
+| 1024 | 1,3 | 1,1 | 23,2 | 14,5 | 40,1 ms |
+| **512 (retenu)** | 1,3 | 1,1 | **11,6** | 14,5 | **28,5 ms** |
+| 256 | 1,3 | 1,1 | 5,8 | 14,5 | 22,7 ms |
+| 128 | 1,3 | 1,1 | 2,9 | 14,5 | 19,8 ms |
+
+- Le coupable est `rodio` 0.22 : sans taille demandée, `DeviceSinkBuilder`
+  vise 50 ms (`nearest_multiple_of_two(taux / 20)`, 2048 trames à 44,1 ou
+  48 kHz). Aucun autre client : le tampon reste à la dernière valeur
+  demandée même après la fermeture du flux, et le dernier ouvert l'impose
+  à tous (déjà vu pour les stems, `TAMPON_STEMS`).
+- Le plancher, 17 ms (latence de l'appareil, marge, flux), est celui du
+  matériel : rien à gagner côté logiciel.
+
+**Coupures, avant et après** (`examples/rappels_sortie.rs` : la chaîne de
+`Player` — morceau FLAC ouvert par `ouvrir`, aura — plus une sonde qui date
+chaque salve du mélangeur ; 15 s au repos puis 15 s tous cœurs occupés à
+décoder) :
+
+| tampon | « E » | durée max d'un rappel | écart max entre rappels | en retard |
+|---|---|---:|---:|---:|
+| 2048 | non / oui | 0,79 / 0,80 ms | 46,5 / 47,9 ms (période 46,4) | 0 |
+| 512 | non / oui | 0,21 / 0,47 ms | 11,7 / 11,8 ms (période 11,6) | 0 |
+| 256 | non | 0,06 ms | 5,9 ms (période 5,8) | 0 |
+
+Le rappel de la lecture normale ne fait que lire un tampon déjà décodé :
+« E » et « HD » sont appliqués hors du fil audio (`amelioration::traiter`
+dans `ouvrir`, fichier HD résolu à l'avance), le gapless se joue à
+l'échantillon près et ne dépend pas du tampon. À 512, le pire rappel prend
+4 % de la période.
+
+**Retenu : 512 trames** (`TAMPON_SORTIE`, `ouvrir_sortie`), ramenées dans ce
+que l'appareil accepte (`tampon_borne`, commun avec les stems) ; repli sur
+le défaut de rodio si l'ouverture échoue. Pas 256 : le tampon est commun aux
+flux de l'appareil, et l'étireur des stems, au pire 6,1 ms par salve, ne
+tiendrait plus dans 5,8 ms. `TAMPON_STEMS` vaut désormais `TAMPON_SORTIE`.
+
+- Gain attendu sur le scratch : −35 ms, de 73 à ≈ 38 ms ; à remesurer sur
+  sa branche (`scratch_de_bout_en_bout`), qui n'est pas celle-ci.
+- En Bluetooth, la plage acceptée borne le tampon ; la latence y reste
+  dominée par l'appareil (≈ 230 ms).
+- Le test ignoré `ouvre_la_sortie_par_defaut` vérifie que la lecture ramène
+  à 512 un tampon qu'un autre flux avait grossi à 2048.
