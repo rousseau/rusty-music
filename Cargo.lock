@@ -8390,10 +8390,14 @@ name = "rusty-music-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block2",
  "cpal",
  "global-hotkey",
  "libc",
  "midir",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "pmtiles",
  "rusty-music-analysis",
  "rusty-music-carto",

@@ -54,6 +54,7 @@ mod pratiquer;
 mod retour_basse;
 mod systeme;
 mod systeme_media;
+mod trackpad;
 mod tuiles;
 #[cfg(test)]
 mod types_commandes;
@@ -942,6 +943,10 @@ fn main() {
             if !systeme_media::demarrer(app.handle()) {
                 enregistrer_touches_media(app.handle().clone());
             }
+
+            // Les phases du trackpad (doigts posés, levés, inertie) pour le
+            // scratch du vinyle : la webview ne les voit pas.
+            trackpad::installer(app.handle());
 
             // Un cache HD produit par une version antérieure du pipeline
             // (rééchantillonnage, mélange…) donnerait un son étouffé joué tel

@@ -5,7 +5,7 @@
 // erreur JavaScript.
 const { test, expect } = require("@playwright/test");
 const { ouvrir, appelsInconnus, versAlbums } = require("./outils");
-const { fixtures, donnees, PISTES } = require("./fixtures");
+const { fixtures, evenements, donnees, PISTES } = require("./fixtures");
 const { pratiquerAlbum, basseTranscrite, batterieTranscrite } = require("./pratique-fictive");
 
 /// Erreurs de la page, plus celles que `ui/js/` remonte lui-même au moteur.
@@ -1046,6 +1046,54 @@ test("vinyle : le bouton scratch arme le disque, la molette le pilote, Échap et
   await bouton.click();
   await expect(bouton).toHaveAttribute("aria-pressed", "false");
   expect(await appels(page, "scratch_sortir")).toHaveLength(2);
+});
+
+test("vinyle : les phases du trackpad tiennent le disque, le lâchent et écartent l'inertie", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.locator("#grille .album").first().click();
+  await page.locator("#liste .ligne").first().click();
+  const pochette = page.locator("#pochette");
+  await expect(pochette).toHaveClass(/pochette--disque/);
+  await pochette.hover();
+  await page.locator("#insp-scratch").click();
+  await expect(pochette).toHaveClass(/scratch--arme/);
+  const b = await pochette.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height * 0.15);
+  // Comme le moteur sous macOS (`trackpad.rs`), à l'instant présent.
+  const emettre = (phase) => page.evaluate((p) => window.__EMETTRE__("scratch-phase",
+    { ...p, t_ms: performance.timeOrigin + performance.now() }), phase);
+  const depuis = async () => (await appels(page, "scratch_main")).length;
+  const apres = async (n) => (await appels(page, "scratch_main")).slice(n).map((a) => a.vitesse);
+  // Deux doigts posés sans bouger : le disque est tenu, arrêté, et le reste
+  // bien après le délai où l'heuristique aurait levé la main.
+  await emettre(evenements.scratch_phase.poses);
+  await expect(pochette).toHaveClass(/scratch--main/);
+  let n = await depuis();
+  await page.waitForTimeout(300);
+  let v = await apres(n);
+  expect(v.length).toBeGreaterThan(3);
+  expect(v.every((x) => x !== null && Math.abs(x) < 0.05)).toBe(true);
+  // Les doigts bougent : la main fait tourner le disque, en arrière.
+  await emettre(evenements.scratch_phase.debut);
+  await page.mouse.wheel(60, 0);
+  await expect.poll(async () => (await appels(page, "scratch_main")).some((a) => a.vitesse !== null && a.vitesse < 0)).toBe(true);
+  // Levés : la main lâche le disque, le moteur reprend.
+  await emettre(evenements.scratch_phase.fin);
+  await expect(pochette).not.toHaveClass(/scratch--main/);
+  n = await depuis();
+  await expect.poll(async () => (await apres(n)).includes(null)).toBe(true);
+  // L'inertie de macOS : ses deltas ne reprennent pas le disque.
+  await emettre(evenements.scratch_phase.inertie);
+  n = await depuis();
+  for (let i = 0; i < 5; i++) await page.mouse.wheel(40 - i * 6, 0);
+  await page.waitForTimeout(150);
+  v = await apres(n);
+  expect(v.length).toBeGreaterThan(2);
+  expect(v.every((x) => x === null)).toBe(true);
+  await emettre(evenements.scratch_phase.inertieFin);
+  // Au désarmement, la latence du lâcher part au journal.
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await appels(page, "journal_ui")).some((a) => /latence du lâcher \(phases\)/.test(a.message))).toBe(true);
 });
 
 test("vue « En cours » : scratch du disque, Échap sort du mode puis ferme la vue", async ({ page }) => {

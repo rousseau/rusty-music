@@ -4,7 +4,7 @@
 // `types_commandes` du bureau) doit avoir dans `fixtures.js` une réponse
 // figée de la même forme — une valeur, ou une fonction qui en rend une.
 // `npm run types`.
-import type { commands } from "./commandes";
+import type { commands, PhaseTrackpad } from "./commandes";
 import fx = require("../fixtures.js");
 
 type Commandes = typeof commands;
@@ -67,3 +67,7 @@ type UneAUne<K> = K extends keyof ParCommande ? ParCommande[K] : never;
 type EnTrop = UneAUne<keyof ParCommande>;
 
 export const sansChampEnTrop: [EnTrop] extends [never] ? true : EnTrop = true;
+
+// 3. Les événements figés (`fixtures.js`, `evenements`) : de la forme que
+//    Rust émet.
+export const evenements: { scratch_phase: Record<string, PhaseTrackpad> } = fx.evenements;
