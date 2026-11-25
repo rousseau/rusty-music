@@ -7714,6 +7714,8 @@ commit 3a46bd3) :
 
 Environ **60 ms gagnés** sur le lâcher : il ne reste que la sortie audio et
 la relève du fil audio, comme pour le geste. Aucun avertissement au journal.
+Ressenti de François : « les deux doigts arrêtent le disque, le lâcher est
+plutôt naturel ».
 Reste à comprendre pourquoi ~18 % des lâchers passent encore par
 l'heuristique : chacun écrit désormais au journal « lâcher sans annonce »,
 avec la dernière phase reçue, son âge, le survol du disque à cet instant et
