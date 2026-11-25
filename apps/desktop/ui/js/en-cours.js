@@ -52,6 +52,8 @@ const etat = {
   suite: -1, // longueur de la file à la dernière pose de « À suivre »
   intensite: 0, // énergie lissée du morceau, 0..1 (la lueur du disque)
   instant: 0, // horodatage de la dernière image
+  intensiteEcrite: "", // dernière `--intensite` posée
+  progression: "", // derniers anneau et temps posés
 };
 
 const morceauEnCours = () => fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
@@ -110,7 +112,14 @@ function suivreIntensite(maintenant) {
   }
   const tau = cible > etat.intensite ? 0.25 : 0.9;
   etat.intensite += (cible - etat.intensite) * (1 - Math.exp(-dt / tau));
-  platineVue.style.setProperty("--intensite", etat.intensite.toFixed(3));
+  // Écrite seulement quand elle change à l'œil : la lueur est une ombre
+  // floutée à l'échelle du disque, à repeindre en entier à chaque écriture —
+  // sur un grand écran, plus que la vue n'a de temps par image.
+  const texte = etat.intensite.toFixed(2);
+  if (texte !== etat.intensiteEcrite) {
+    etat.intensiteEcrite = texte;
+    platineVue.style.setProperty("--intensite", texte);
+  }
 }
 
 const mmss = (ms) => {
@@ -132,15 +141,22 @@ function poserSuite() {
   etat.suite = fileAttente.pistes.length;
 }
 
-/// L'anneau et le temps, à la tête de lecture du transport.
+/// L'anneau et le temps, à la tête de lecture du transport. Rien n'est
+/// réécrit tant que l'anneau n'a pas bougé d'un millième de tour : ses traits
+/// portent des ombres floutées, et une écriture les fait repeindre.
 function poserProgression(t) {
   const frac = t ? teteCourante : 0;
-  avance.style.strokeDashoffset = String(1000 * (1 - frac));
-  tete.setAttribute("transform", `rotate(${(frac * 360).toFixed(2)} 50 50)`);
+  const duree = t?.duration_ms ?? 0;
+  const pas = Math.round(frac * 1000);
+  const temps = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
+  const cle = `${pas}|${temps}|${t && frac > 0 ? 1 : 0}`;
+  if (cle === etat.progression) return;
+  etat.progression = cle;
+  avance.style.strokeDashoffset = String(1000 - pas);
+  tete.setAttribute("transform", `rotate(${(pas * 0.36).toFixed(2)} 50 50)`);
   tete.style.opacity = t && frac > 0 ? "1" : "0";
   anneau.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
-  const duree = t?.duration_ms ?? 0;
-  $("en-cours-temps").textContent = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
+  $("en-cours-temps").textContent = temps;
 }
 
 function boucle(maintenant = performance.now()) {
@@ -150,7 +166,7 @@ function boucle(maintenant = performance.now()) {
   else if (etat.suite !== fileAttente.pistes.length) poserSuite();
   poserProgression(t);
   vue.classList.toggle("en-cours--joue", transport.veutJouer);
-  $("en-cours-scratch").hidden = !t;
+  if ($("en-cours-scratch").hidden !== !t) $("en-cours-scratch").hidden = !t;
   if (!reduit.matches) suivreIntensite(maintenant);
   etat.image = requestAnimationFrame(boucle);
 }
@@ -161,6 +177,8 @@ function ouvrirEnCours() {
   vue.hidden = false;
   bouton.setAttribute("aria-pressed", "true");
   etat.chemin = undefined; // force la pose du morceau
+  etat.progression = "";
+  etat.intensiteEcrite = "";
   $("en-cours-fermer").focus();
   boucle();
 }

@@ -32,8 +32,15 @@ use rodio::Source;
 
 /// Lissage de la vitesse de la main : constante de temps.
 pub const TAU_MAIN: Duration = Duration::from_millis(12);
-/// Durée du démarrage du moteur, de l'arrêt à la vitesse nominale.
+/// Durée du démarrage du moteur, de l'arrêt à la vitesse nominale, à
+/// couple plein : elle fixe l'accélération maximale. L'asservissement
+/// ([`TAU_ASSERV`], [`TAU_COUPLE`]) arrondit le départ et l'arrivée.
 pub const DEMARRAGE: Duration = Duration::from_millis(350);
+/// Asservissement de vitesse du moteur : constante de temps de la boucle.
+pub const TAU_ASSERV: Duration = Duration::from_millis(120);
+/// Le couple du moteur ne s'établit pas instantanément : pas de coude
+/// audible au lâcher ni à l'arrivée à la vitesse nominale.
+pub const TAU_COUPLE: Duration = Duration::from_millis(40);
 /// Fondu d'entrée et de sortie du mode.
 pub const FONDU: Duration = Duration::from_millis(6);
 /// Vitesse de la main, en valeur absolue, au plus (36 fois la nominale).
@@ -246,6 +253,10 @@ pub struct SourceScratch {
     arret: bool,
     k_main: f32,
     pas_moteur: f32,
+    /// Accélération du moteur, en vitesse par trame, et ses deux gains.
+    acc: f32,
+    k_asserv: f32,
+    k_couple: f32,
     r_hp: f32,
     /// État du passe-haut, par canal : entrée et sortie précédentes.
     hp_x: Vec<f32>,
@@ -273,6 +284,9 @@ impl SourceScratch {
             arret: false,
             k_main: 1.0 - (-1.0 / (TAU_MAIN.as_secs_f32() * fs)).exp(),
             pas_moteur: 1.0 / (DEMARRAGE.as_secs_f32() * fs),
+            acc: 0.0,
+            k_asserv: 1.0 / (TAU_ASSERV.as_secs_f32() * fs),
+            k_couple: 1.0 - (-1.0 / (TAU_COUPLE.as_secs_f32() * fs)).exp(),
             r_hp: 1.0 - 2.0 * std::f32::consts::PI * COUPURE_HZ / fs,
             hp_x: vec![0.0; canaux],
             hp_y: vec![0.0; canaux],
@@ -309,22 +323,34 @@ impl SourceScratch {
     }
 
     /// Avance la vitesse d'une trame vers sa cible.
+    ///
+    /// Main posée : la vitesse suit la main (lissage de [`TAU_MAIN`]). Main
+    /// levée : un moteur asservi, du second ordre — l'accélération visée est
+    /// proportionnelle à l'écart, bornée par le couple (plus fort pour
+    /// freiner : une main qui jette le disque en arrière est vite reprise),
+    /// et l'accélération réelle la rejoint en [`TAU_COUPLE`]. La vitesse
+    /// glisse ainsi sans coude, au lâcher comme à l'arrivée.
     fn vitesse_suivante(&mut self) {
         let ecart = self.cible - self.v;
         if self.main {
             self.v += ecart * self.k_main;
-        } else if ecart.abs() <= self.pas_moteur {
-            self.v = self.cible;
-        } else {
-            // Un moteur tire à couple borné ; il freine plus fort qu'il ne
-            // lance (une main qui jette le disque en arrière est vite reprise).
-            let pas = if ecart * self.v < 0.0 || self.v.abs() > 1.0 {
-                self.pas_moteur * 2.0
-            } else {
-                self.pas_moteur
-            };
-            self.v += pas * ecart.signum();
+            self.acc = 0.0;
+            return;
         }
+        if ecart.abs() < 1e-5 && self.acc.abs() < 1e-8 {
+            self.v = self.cible;
+            self.acc = 0.0;
+            return;
+        }
+        let freine = ecart * self.v < 0.0 || self.v.abs() > 1.0;
+        let borne = if freine {
+            self.pas_moteur * 2.0
+        } else {
+            self.pas_moteur
+        };
+        let visee = (ecart * self.k_asserv).clamp(-borne, borne);
+        self.acc += (visee - self.acc) * self.k_couple;
+        self.v += self.acc;
     }
 
     /// Échantillon du canal `c` à la position `x` (trames), Catmull-Rom.
@@ -462,15 +488,39 @@ mod tests {
         tirer(&mut s, 4800);
         assert!(p.etat().vitesse.abs() < 0.01);
         p.main(None);
-        tirer(
-            &mut s,
-            (DEMARRAGE.as_secs_f32() * SR as f32) as usize + BLOC * 2,
-        );
-        assert!(
-            (p.etat().vitesse - 1.0).abs() < 1e-3,
-            "{}",
-            p.etat().vitesse
-        );
+        // Toutes les 2 ms : la vitesse monte sans dépasser, et sans coude
+        // (l'accélération ne saute jamais d'une mesure à l'autre).
+        let mut vitesses = Vec::new();
+        for _ in 0..500 {
+            tirer(&mut s, 96);
+            vitesses.push(s.v);
+        }
+        let a_500ms = vitesses[249];
+        assert!(a_500ms > 0.85, "trop lent : {a_500ms} à 500 ms");
+        let max = vitesses.iter().copied().fold(0.0f32, f32::max);
+        assert!(max < 1.02, "dépassement : {max}");
+        let acc: Vec<f32> = vitesses.windows(2).map(|w| w[1] - w[0]).collect();
+        let saut = acc
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(saut < 1e-3, "coude : {saut}");
+        assert!((vitesses[499] - 1.0).abs() < 1e-3, "{}", vitesses[499]);
+    }
+
+    #[test]
+    fn lance_vite_puis_lache_ne_retombe_pas_a_zero() {
+        let (p, mut s) = Platine::new(rampe(SR as usize * 8), Duration::from_secs(1), true, 1.0);
+        p.main(Some(3.0));
+        tirer(&mut s, 4800);
+        p.main(None);
+        let mut min = f32::MAX;
+        for _ in 0..200 {
+            tirer(&mut s, 480);
+            min = min.min(s.v);
+        }
+        assert!(min > 0.98, "le disque est retombé à {min}");
+        assert!((s.v - 1.0).abs() < 1e-3);
     }
 
     #[test]

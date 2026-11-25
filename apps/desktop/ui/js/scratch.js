@@ -76,7 +76,10 @@ window.addEventListener("resize", () => { etat.centre = null; });
 function tourner(deg, t, type) {
   const dt = etat.type ? Math.min(60, Math.max(4, t - etat.dernier)) : 16;
   const inst = deg / (dt / 1000);
-  etat.vMain = etat.type ? etat.vMain + (inst - etat.vMain) * 0.5 : inst;
+  // Lissée sur ~25 ms : les deltas du trackpad arrivent entiers et
+  // irréguliers, et chaque saut de vitesse s'entendrait.
+  const k = 1 - Math.exp(-dt / 25);
+  etat.vMain = etat.type ? etat.vMain + (inst - etat.vMain) * k : inst;
   etat.dessin += deg;
   etat.dernier = t;
   etat.type = type;
