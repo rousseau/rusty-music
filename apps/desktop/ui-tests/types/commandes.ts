@@ -4658,13 +4658,15 @@ export type PhaseDoigts =
 "poses" | 
 /**  Le geste commence (`Began`). */
 "debut" | 
+/**  Les doigts bougent (`Changed`) : l'événement porte leur déplacement. */
+"change" | 
 /**  Levés (`Ended`). */
 "fin" | 
 /**  Le système a repris le geste (`Cancelled`) : comme levés. */
 "annule";
 
 /**  L'inertie de macOS après le geste (`NSEvent.momentumPhase`). */
-export type PhaseInertie = "debut" | "fin";
+export type PhaseInertie = "debut" | "change" | "fin";
 
 /**  La charge de `scratch-phase`. */
 export type PhaseTrackpad = PhaseTrackpad_Serialize | PhaseTrackpad_Deserialize;
@@ -4673,6 +4675,19 @@ export type PhaseTrackpad = PhaseTrackpad_Serialize | PhaseTrackpad_Deserialize;
 export type PhaseTrackpad_Deserialize = {
 	doigts?: PhaseDoigts | null,
 	inertie?: PhaseInertie | null,
+	/**
+	 *  Déplacement de l'événement, en points (`scrollingDeltaX/Y`). Il passe
+	 *  par ici et non par l'événement `wheel` de la page : les deux chemins
+	 *  ne sont pas ordonnés entre eux, et un delta d'inertie arrivé avant
+	 *  l'annonce de l'inertie reprenait le disque (« il repart deux fois »).
+	 */
+	dx: number | null,
+	dy: number | null,
+	/**
+	 *  Défilement naturel de macOS (`isDirectionInvertedFromDevice`) : les
+	 *  deltas suivent alors les doigts ; sinon, ils vont à l'opposé.
+	 */
+	naturel: boolean,
 	/**
 	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
 	 *  l'interface le compare à `performance.timeOrigin + performance.now()`
@@ -4685,6 +4700,19 @@ export type PhaseTrackpad_Deserialize = {
 export type PhaseTrackpad_Serialize = {
 	doigts: PhaseDoigts | null,
 	inertie: PhaseInertie | null,
+	/**
+	 *  Déplacement de l'événement, en points (`scrollingDeltaX/Y`). Il passe
+	 *  par ici et non par l'événement `wheel` de la page : les deux chemins
+	 *  ne sont pas ordonnés entre eux, et un delta d'inertie arrivé avant
+	 *  l'annonce de l'inertie reprenait le disque (« il repart deux fois »).
+	 */
+	dx: number | null,
+	dy: number | null,
+	/**
+	 *  Défilement naturel de macOS (`isDirectionInvertedFromDevice`) : les
+	 *  deltas suivent alors les doigts ; sinon, ils vont à l'opposé.
+	 */
+	naturel: boolean,
 	/**
 	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
 	 *  l'interface le compare à `performance.timeOrigin + performance.now()`

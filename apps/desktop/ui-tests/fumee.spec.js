@@ -1073,19 +1073,33 @@ test("vinyle : les phases du trackpad tiennent le disque, le lâchent et écarte
   let v = await apres(n);
   expect(v.length).toBeGreaterThan(3);
   expect(v.every((x) => x !== null && Math.abs(x) < 0.05)).toBe(true);
-  // Les doigts bougent : la main fait tourner le disque, en arrière.
+  // Les doigts bougent : la main fait tourner le disque, en arrière. Le
+  // déplacement vient avec la phase ; la molette de la page est ignorée.
   await emettre(evenements.scratch_phase.debut);
-  await page.mouse.wheel(60, 0);
+  n = await depuis();
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(-80, 0);
+  await page.waitForTimeout(80);
+  expect((await apres(n)).every((x) => x === null || Math.abs(x) < 0.05)).toBe(true);
+  for (let i = 0; i < 6; i++) {
+    await emettre(evenements.scratch_phase.change);
+    await page.waitForTimeout(16);
+  }
   await expect.poll(async () => (await appels(page, "scratch_main")).some((a) => a.vitesse !== null && a.vitesse < 0)).toBe(true);
   // Levés : la main lâche le disque, le moteur reprend.
   await emettre(evenements.scratch_phase.fin);
   await expect(pochette).not.toHaveClass(/scratch--main/);
   n = await depuis();
   await expect.poll(async () => (await apres(n)).includes(null)).toBe(true);
-  // L'inertie de macOS : ses deltas ne reprennent pas le disque.
-  await emettre(evenements.scratch_phase.inertie);
+  // L'inertie de macOS : ses deltas ne reprennent pas le disque, qu'ils
+  // viennent avec leur phase ou par la molette de la page, même arrivés
+  // avant l'annonce de l'inertie (la cause du « il repart deux fois »).
   n = await depuis();
-  for (let i = 0; i < 5; i++) await page.mouse.wheel(40 - i * 6, 0);
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(40 - i * 6, 0);
+  await emettre(evenements.scratch_phase.inertie);
+  for (let i = 0; i < 5; i++) {
+    await emettre(evenements.scratch_phase.inertieSuite);
+    await page.mouse.wheel(20, 0);
+  }
   await page.waitForTimeout(150);
   v = await apres(n);
   expect(v.length).toBeGreaterThan(2);

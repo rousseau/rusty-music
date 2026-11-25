@@ -15,12 +15,14 @@ import { invoke, journal } from "./socle.js";
  * dessin avance à la vitesse du moteur et se recale sur sa tête. Une seule
  * commande en vol à la fois, sans file d'attente qui retarderait la main.
  *
- * Les doigts sur le trackpad : sous macOS, le moteur lit les phases de
- * chaque défilement (`apps/desktop/src/trackpad.rs`) et les émet
- * (`scratch-phase`). Doigts posés, même immobiles : la main tient le disque ;
- * levés : elle le lâche à la vitesse du moment ; l'inertie de macOS est
- * écartée. Sans phases (souris, autre système), une heuristique : main levée
- * après `MAIN_LEVEE_MS` sans delta, inertie reconnue à sa décroissance.
+ * Les doigts sur le trackpad : sous macOS, le moteur lit chaque défilement
+ * avec sa phase et son déplacement (`apps/desktop/src/trackpad.rs`) et les
+ * émet (`scratch-phase`) ; les deltas de l'événement `wheel` de la page sont
+ * alors ignorés — les deux chemins ne sont pas ordonnés entre eux. Doigts
+ * posés, même immobiles : la main tient le disque ; levés : elle le lâche à
+ * la vitesse du moment ; l'inertie de macOS ne touche jamais le disque. Sans
+ * phases (souris, autre système), une heuristique : main levée après
+ * `MAIN_LEVEE_MS` sans delta, inertie reconnue à sa décroissance.
  *
  * Deux disques peuvent s'armer (la pochette de l'inspecteur, la vue « En
  * cours ») ; un seul à la fois. Avec `prefers-reduced-motion`, pas de bouton
@@ -41,9 +43,11 @@ const IMMOBILE_MS = 40;
 /// lancé garde sa vitesse et le moteur l'y ramène, il ne retombe pas à zéro
 /// en suivant l'inertie du trackpad.
 const INERTIE_SUITE = 5;
-/// Après la fin d'un geste au trackpad, les deltas écartés le temps que
-/// l'annonce de l'inertie arrive : ce sont les siens, pas une main.
-const APRES_LEVEE_MS = 100;
+/// Tant que les phases natives arrivent (sous macOS, depuis moins que ce
+/// délai), les deltas de l'événement `wheel` de la page sont ignorés : ceux
+/// du trackpad arrivent avec leur phase (`scratch-phase`). Passé ce délai
+/// sans phase, une molette de souris redevient une main.
+const PHASES_RECENTES_MS = 400;
 
 const etat = {
   cible: null, // { zone, bouton, angle(), anim(), rendre(deg) } : le disque armé
@@ -57,7 +61,8 @@ const etat = {
   type: null, // "molette" | "doigts" | "glisse" : la main posée, ou null
   // Les phases du trackpad (`scratch-phase`) : `vues` dès la première, puis
   // doigts posés, inertie en cours, instant de la dernière levée.
-  phases: { vues: false, doigts: false, inertie: false, levee: -Infinity },
+  phases: { vues: false, doigts: false, inertie: false, levee: -Infinity, recue: -Infinity },
+  pointeur: null, // dernière position du pointeur (le trackpad ne la bouge pas en défilant)
   lacher: { t: 0, source: "" }, // la main levée : quand, et qui l'a dit
   envoyeMain: false, // le dernier envoi portait une main
   lachers: [], // lâcher → son (µs) : [total, trajet natif]
@@ -161,14 +166,13 @@ function surMolette(e) {
   if (e.deltaMode === 1) { mx *= 16; my *= 16; }
   const t = performance.now();
   const ph = etat.phases;
-  if (ph.doigts) {
-    tourner(tangentiel(e.clientX, e.clientY, mx, my), t, "doigts");
+  etat.pointeur = { x: e.clientX, y: e.clientY };
+  // Les phases natives arrivent : les deltas du trackpad viennent avec elles.
+  if (t - ph.recue < PHASES_RECENTES_MS) {
+    etat.releve.ignores += 1;
     return;
   }
-  // Les phases connues, l'inertie est annoncée ; sinon, devinée.
-  const ecarte = ph.vues
-    ? ph.inertie || t - ph.levee < APRES_LEVEE_MS
-    : inertie(Math.hypot(mx, my), t);
+  const ecarte = inertie(Math.hypot(mx, my), t);
   if (ecarte) {
     etat.releve.ignores += 1;
     if (etat.type === "molette") lever(etat.dernier, "heuristique");
@@ -178,29 +182,47 @@ function surMolette(e) {
   tourner(tangentiel(e.clientX, e.clientY, mx, my), t, "molette");
 }
 
-/// Une phase du trackpad, émise par le moteur (macOS) : `doigts` posés,
-/// début, fin ou annulation du geste ; début ou fin de l'`inertie` ; `t_ms`,
-/// l'instant de l'événement (époque Unix).
-function surPhase({ doigts, inertie: elan, t_ms: tMs }) {
+/// Un événement du trackpad, émis par le moteur (macOS) avec sa phase :
+/// `doigts` posés, début, mouvement, fin ou annulation du geste ; début,
+/// suite ou fin de l'`inertie` ; le déplacement `dx`, `dy` ; `naturel`, le
+/// sens du défilement ; `t_ms`, l'instant de l'événement (époque Unix).
+/// Chaque delta arrive ainsi étiqueté : un delta d'inertie ne peut plus être
+/// pris pour une main qui reprend le disque.
+function surPhase({ doigts, inertie: elan, dx = 0, dy = 0, naturel = true, t_ms: tMs }) {
   if (!arme()) return;
   const ph = etat.phases;
   ph.vues = true;
   const t = performance.now();
+  ph.recue = t;
   const trajet = Math.max(0, performance.timeOrigin + t - tMs);
+  // L'instant de l'événement, dans l'horloge de la page : la vitesse de la
+  // main se calcule sur le rythme du trackpad, pas sur celui de l'arrivée.
+  const tEv = Math.min(t, tMs - performance.timeOrigin);
   ph.derniere = { doigts, elan, t, survol: etat.cible.zone.matches(":hover") };
-  if (elan === "debut") ph.inertie = true;
+  if (elan === "debut" || elan === "change") ph.inertie = true;
   else if (elan === "fin") ph.inertie = false;
+  if (elan) return; // l'inertie ne touche jamais le disque : il est lâché
   if (doigts === "poses" || doigts === "debut") {
     ph.inertie = false;
     // Hors du disque, les doigts défilent la page : rien à tenir.
     if (!ph.derniere.survol) return;
     ph.doigts = true;
-    // Poser la main arrête le disque — sauf si les premiers deltas du geste
-    // sont arrivés avant l'annonce : la main tourne déjà.
-    if (etat.type === null) etat.vMain = 0;
-    if (etat.type !== "glisse") etat.type = "doigts";
-    etat.dernier = t;
+    // Poser la main arrête le disque.
+    if (etat.type !== "glisse") {
+      if (etat.type !== "doigts") etat.vMain = 0;
+      etat.type = "doigts";
+    }
+    etat.dernier = tEv;
     etat.cible.zone.classList.add("scratch--main");
+  }
+  if ((doigts === "debut" || doigts === "change") && ph.doigts && (dx || dy)) {
+    // Les doigts, dans le sens où ils bougent.
+    const s = naturel ? 1 : -1;
+    const p = etat.pointeur ?? (() => {
+      const c = centre();
+      return { x: c.x, y: c.y - c.rayon * 0.7 };
+    })();
+    tourner(tangentiel(p.x, p.y, s * dx, s * dy), tEv, "doigts");
   } else if ((doigts === "fin" || doigts === "annule") && ph.doigts) {
     ph.doigts = false;
     ph.levee = t;
@@ -208,6 +230,10 @@ function surPhase({ doigts, inertie: elan, t_ms: tMs }) {
     if (etat.type === "doigts") lever(t - trajet, "phases");
   }
 }
+
+window.addEventListener("pointermove", (e) => {
+  if (arme()) etat.pointeur = { x: e.clientX, y: e.clientY };
+}, true);
 
 function surAppui(e) {
   if (!arme() || e.button !== 0 || !etat.cible.zone.contains(e.target)) return;
@@ -343,10 +369,17 @@ function dessiner(main) {
     etat.libre = true;
     return;
   }
-  // L'animation mène : l'angle dessiné est le sien, recalé s'il dérive.
+  // L'animation mène. Une dérive se rattrape en jouant un rien plus vite ou
+  // plus lentement (±10 % au plus), jamais d'un saut : recaler l'angle d'un
+  // coup se voyait comme un accroc. Au-delà de 20°, on recale.
   let ecart = ((a.currentTime ?? 0) / TOUR_MS) * 360 - modulo(etat.angle) / TOUR_MS * 360;
   ecart = ((ecart + 540) % 360) - 180;
-  if (Math.abs(ecart) > 2) a.currentTime = modulo(etat.angle);
+  if (Math.abs(ecart) > 20) {
+    a.currentTime = modulo(etat.angle);
+    return;
+  }
+  const taux = 1 - Math.max(-0.1, Math.min(0.1, ecart / 50));
+  if (Math.abs(taux - a.playbackRate) > 0.005) a.playbackRate = taux;
 }
 
 /// Toutes les deux secondes armé, si la vue passe sous 50 images/s : images
@@ -418,7 +451,7 @@ async function armer(cible) {
   etat.avant = 0;
   etat.moteur = { vitesse: r.vitesse, tete: (r.position_ms / TOUR_MS) * 360, quand: performance.now() };
   etat.inertie = { suite: 0, precedent: 0, ignore: false };
-  etat.phases = { vues: etat.phases.vues, doigts: false, inertie: false, levee: -Infinity };
+  etat.phases = { vues: etat.phases.vues, doigts: false, inertie: false, levee: -Infinity, recue: -Infinity };
   etat.lacher = { t: 0, source: "" };
   etat.envoyeMain = false;
   etat.releve = { debut: 0, images: 0, molettes: 0, ignores: 0, envois: 0 };
