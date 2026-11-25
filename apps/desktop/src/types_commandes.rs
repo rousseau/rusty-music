@@ -61,6 +61,9 @@ fn exporter_les_types_des_commandes() {
             superres_cache,
             vider_cache_hd,
             set_amelioration,
+            scratch_entrer,
+            scratch_main,
+            scratch_sortir,
             editions_proposees,
             edition_comparee,
             retenir_edition,
@@ -302,6 +305,8 @@ fn exporter_les_types_des_commandes() {
             pratique_preparer,
             pratique_preparation
         ])
+        // L'événement `scratch-phase` (`trackpad.rs`), simulé par la fumée.
+        .typ::<crate::trackpad::PhaseTrackpad>()
         .dangerously_cast_bigints_to_number()
         // Les noms d'`invoke` tels quels, et la valeur de retour nue : une
         // erreur rejette la promesse, comme pour `invoke` lui-même.

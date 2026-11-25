@@ -108,6 +108,22 @@ const fixtures = {
   set_lecture_hd: null,
   vider_cache_hd: null,
   set_amelioration: null,
+  // Le mode scratch du vinyle : un faux disque armé, qui rend sa tête et sa
+  // vitesse à chaque geste (`en-cours.js`, `scratch`).
+  scratch_entrer: (_, e) => {
+    e.scratch = { position_ms: 12_000, vitesse: 1 };
+    return { actif: true, ...e.scratch, latence_us: 300, latence_sortie_us: 10_000 };
+  },
+  scratch_main: (a, e) => {
+    if (!e.scratch) return { actif: false, position_ms: 0, vitesse: 0, latence_us: 0, latence_sortie_us: 0 };
+    e.scratch.vitesse = a.vitesse ?? 1;
+    e.scratch.position_ms += 16 * e.scratch.vitesse;
+    return { actif: true, position_ms: e.scratch.position_ms, vitesse: e.scratch.vitesse, latence_us: 300, latence_sortie_us: 10_000 };
+  },
+  scratch_sortir: (_, e) => {
+    e.scratch = null;
+    return null;
+  },
   editions_proposees: [],
   edition_comparee: {
     edition: { id: "", titre: "", artiste: "", artiste_mbid: null, release_group: null, pistes: [] },
@@ -802,4 +818,21 @@ const fixtures = {
 };
 
 
-module.exports = { fixtures, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };
+// Les événements que le moteur émet, figés de même (`types/controle.ts`
+// les confronte aux types de Rust). `scratch-phase` (`trackpad.rs`) : les
+// phases d'un geste au trackpad sur le disque armé.
+// `t_ms` : l'instant de l'événement, posé par le test au moment d'émettre.
+const evenements = {
+  scratch_phase: {
+    poses: { doigts: /** @type {const} */ ("poses"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    debut: { doigts: /** @type {const} */ ("debut"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    // Les doigts vers la gauche, en haut du disque : il recule.
+    change: { doigts: /** @type {const} */ ("change"), inertie: null, dx: -12, dy: 0, naturel: true, t_ms: 0 },
+    fin: { doigts: /** @type {const} */ ("fin"), inertie: null, dx: 0, dy: 0, naturel: true, t_ms: 0 },
+    inertie: { doigts: null, inertie: /** @type {const} */ ("debut"), dx: -9, dy: 0, naturel: true, t_ms: 0 },
+    inertieSuite: { doigts: null, inertie: /** @type {const} */ ("change"), dx: -6, dy: 0, naturel: true, t_ms: 0 },
+    inertieFin: { doigts: null, inertie: /** @type {const} */ ("fin"), dx: 0, dy: 0, naturel: true, t_ms: 0 },
+  },
+};
+
+module.exports = { fixtures, evenements, donnees: { PISTES, ALBUMS }, PISTES, ALBUMS };

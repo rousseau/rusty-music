@@ -8,6 +8,10 @@ import {
 import { couleursPochette } from "./couleurs-album.js";
 import { lecture, transport } from "./etat-lecture.js";
 import { deplacerLecture } from "./etabli-stems.js";
+// Avant les écouteurs d'Échap ci-dessous : Échap sort d'abord du scratch.
+import {
+  basculerScratch, desarmerScratch, scratchArme, TOUR_MS,
+} from "./scratch.js";
 
 /* ------------------------------------------------- vue plein écran « En cours »
  *
@@ -48,6 +52,8 @@ const etat = {
   suite: -1, // longueur de la file à la dernière pose de « À suivre »
   intensite: 0, // énergie lissée du morceau, 0..1 (la lueur du disque)
   instant: 0, // horodatage de la dernière image
+  intensiteEcrite: "", // dernière `--intensite` posée
+  progression: "", // derniers anneau et temps posés
 };
 
 const morceauEnCours = () => fileAttente.pistes.find((t) => t.path === lecture.courant) ?? null;
@@ -106,7 +112,14 @@ function suivreIntensite(maintenant) {
   }
   const tau = cible > etat.intensite ? 0.25 : 0.9;
   etat.intensite += (cible - etat.intensite) * (1 - Math.exp(-dt / tau));
-  platineVue.style.setProperty("--intensite", etat.intensite.toFixed(3));
+  // Écrite seulement quand elle change à l'œil : la lueur est une ombre
+  // floutée à l'échelle du disque, à repeindre en entier à chaque écriture —
+  // sur un grand écran, plus que la vue n'a de temps par image.
+  const texte = etat.intensite.toFixed(2);
+  if (texte !== etat.intensiteEcrite) {
+    etat.intensiteEcrite = texte;
+    platineVue.style.setProperty("--intensite", texte);
+  }
 }
 
 const mmss = (ms) => {
@@ -128,15 +141,22 @@ function poserSuite() {
   etat.suite = fileAttente.pistes.length;
 }
 
-/// L'anneau et le temps, à la tête de lecture du transport.
+/// L'anneau et le temps, à la tête de lecture du transport. Rien n'est
+/// réécrit tant que l'anneau n'a pas bougé d'un millième de tour : ses traits
+/// portent des ombres floutées, et une écriture les fait repeindre.
 function poserProgression(t) {
   const frac = t ? teteCourante : 0;
-  avance.style.strokeDashoffset = String(1000 * (1 - frac));
-  tete.setAttribute("transform", `rotate(${(frac * 360).toFixed(2)} 50 50)`);
+  const duree = t?.duration_ms ?? 0;
+  const pas = Math.round(frac * 1000);
+  const temps = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
+  const cle = `${pas}|${temps}|${t && frac > 0 ? 1 : 0}`;
+  if (cle === etat.progression) return;
+  etat.progression = cle;
+  avance.style.strokeDashoffset = String(1000 - pas);
+  tete.setAttribute("transform", `rotate(${(pas * 0.36).toFixed(2)} 50 50)`);
   tete.style.opacity = t && frac > 0 ? "1" : "0";
   anneau.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
-  const duree = t?.duration_ms ?? 0;
-  $("en-cours-temps").textContent = duree ? `${mmss(frac * duree)} / ${mmss(duree)}` : "";
+  $("en-cours-temps").textContent = temps;
 }
 
 function boucle(maintenant = performance.now()) {
@@ -146,6 +166,7 @@ function boucle(maintenant = performance.now()) {
   else if (etat.suite !== fileAttente.pistes.length) poserSuite();
   poserProgression(t);
   vue.classList.toggle("en-cours--joue", transport.veutJouer);
+  if ($("en-cours-scratch").hidden !== !t) $("en-cours-scratch").hidden = !t;
   if (!reduit.matches) suivreIntensite(maintenant);
   etat.image = requestAnimationFrame(boucle);
 }
@@ -156,12 +177,15 @@ function ouvrirEnCours() {
   vue.hidden = false;
   bouton.setAttribute("aria-pressed", "true");
   etat.chemin = undefined; // force la pose du morceau
+  etat.progression = "";
+  etat.intensiteEcrite = "";
   $("en-cours-fermer").focus();
   boucle();
 }
 
 function fermerEnCours() {
   if (vue.hidden) return;
+  if (scratchArme()) desarmerScratch();
   vue.hidden = true;
   bouton.setAttribute("aria-pressed", "false");
   cancelAnimationFrame(etat.image);
@@ -243,10 +267,10 @@ const platine = {
   hote: $("pochette"),
   tour: null, // l'animation de rotation (Web Animations)
   vitesse: 0, // playbackRate courant, 0..1
+  scratch: false, // le mode scratch tient l'angle (`scratch.js`)
   image: 0, // requestAnimationFrame de la rampe
   sortie: null, // l'animation qui ramène le disque à l'endroit
 };
-const TOUR_MS = 1800; // 33 ⅓ tours/min
 
 function disqueVoulu() {
   if (reduit.matches || !lecture.courant || lecture.fini) return false;
@@ -254,6 +278,10 @@ function disqueVoulu() {
 }
 
 function rampeVitesse() {
+  if (platine.scratch) {
+    platine.image = 0;
+    return;
+  }
   const cible = transport.veutJouer ? 1 : 0;
   platine.vitesse += (cible - platine.vitesse) * 0.06;
   if (Math.abs(cible - platine.vitesse) < 0.003) platine.vitesse = cible;
@@ -311,6 +339,7 @@ function sortirDisque() {
 /// l'intention changent par bien des chemins, aucun n'a à prévenir ici.
 function suivrePlatine() {
   const voulu = disqueVoulu();
+  if (!voulu && platine.scratch) desarmerScratch();
   const actif = platine.hote.classList.contains("pochette--disque") && !platine.sortie;
   if (voulu && !actif) entrerDisque();
   else if (!voulu && actif) sortirDisque();
@@ -319,6 +348,64 @@ function suivrePlatine() {
   }
 }
 setInterval(suivrePlatine, 250);
+
+/* ------------------------------------------------- les deux disques, en scratch */
+
+const tourner = (deg) => ((((deg / 360) % 1) + 1) % 1) * TOUR_MS;
+
+/// Le vinyle de l'inspecteur : l'animation de rotation (Web Animations), en
+/// pause, tient l'angle ; rendue, elle repart de là à la vitesse du transport.
+const scratchInspecteur = {
+  zone: platine.hote,
+  bouton: $("insp-scratch"),
+  angle: () => ((platine.tour?.currentTime ?? 0) % TOUR_MS) / TOUR_MS * 360,
+  anim() {
+    platine.scratch = true;
+    return platine.tour;
+  },
+  rendre(deg) {
+    platine.scratch = false;
+    if (!platine.tour) return;
+    platine.tour.pause();
+    platine.tour.currentTime = tourner(deg);
+    platine.vitesse = transport.veutJouer ? 1 : 0;
+    platine.tour.playbackRate = platine.vitesse || 1;
+    if (platine.vitesse) platine.tour.play();
+  },
+};
+$("insp-scratch").addEventListener("click", () => basculerScratch(scratchInspecteur));
+
+/// Le disque de la vue « En cours » : animation CSS ; armé, une animation Web
+/// Animations prend sa place ; rendu, l'animation CSS reprend à cet angle
+/// (délai négatif).
+const scratchVue = {
+  zone: platineVue,
+  bouton: $("en-cours-scratch"),
+  tour: null,
+  angle() {
+    const m = getComputedStyle(disque).transform;
+    const v = m.startsWith("matrix(") ? m.slice(7, -1).split(",").map(Number) : null;
+    return v ? Math.atan2(v[1], v[0]) * (180 / Math.PI) : 0;
+  },
+  anim() {
+    if (!this.tour) {
+      disque.style.animation = "none";
+      this.tour = disque.animate(
+        [{ transform: "rotate(0turn)" }, { transform: "rotate(1turn)" }],
+        { duration: TOUR_MS, iterations: Infinity },
+      );
+      this.tour.pause();
+    }
+    return this.tour;
+  },
+  rendre(deg) {
+    this.tour?.cancel();
+    this.tour = null;
+    disque.style.animation = "";
+    disque.style.animationDelay = `${(-tourner(deg) / 1000).toFixed(3)}s`;
+  },
+};
+$("en-cours-scratch").addEventListener("click", () => basculerScratch(scratchVue));
 
 export {
   basculerEnCours, fermerEnCours, ouvrirEnCours,

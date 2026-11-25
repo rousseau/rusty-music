@@ -537,140 +537,137 @@
              un seul playhead vertical en travers. Le détail d'un stem est
              porté par l'inspecteur (#bloc-stem), pas déplié sous la ligne. -->
         <div id="editer-etabli" class="etabli" hidden>
-          <!-- Pratiquer, basse transcrite : corriger la note choisie dans la
-               partition, exporter la partie (E2 ; js/corriger.js). Au centre,
-               avec l'objet qu'elle corrige (Règle 12). -->
-          <div id="partition-correction" class="correction" role="toolbar" aria-label="Corriger la transcription" hidden>
-            <span id="correction-note" class="correction__note" aria-live="polite"></span>
-            <!-- V18 : les gestes par paire, sous une étiquette, pour que la
-                 barre tienne sur une ligne à 1 400 px. -->
-            <span class="correction__groupe" data-groupe="corde">
-              <span class="correction__etiquette">corde</span>
-              <button class="bouton bouton--mince" data-corriger="grave" hidden
-                      aria-label="Corde plus grave" title="Jouer la même note sur la corde plus grave">−</button>
-              <button class="bouton bouton--mince" data-corriger="aigue" hidden
-                      aria-label="Corde plus aiguë" title="Jouer la même note sur la corde plus aiguë">+</button>
-            </span>
-            <span class="correction__groupe" data-groupe="octave">
-              <span class="correction__etiquette">octave</span>
-              <button class="bouton bouton--mince" data-corriger="octave-bas" hidden
-                      aria-label="Octave plus bas" title="Une octave plus bas">−</button>
-              <button class="bouton bouton--mince" data-corriger="octave-haut" hidden
-                      aria-label="Octave plus haut" title="Une octave plus haut">+</button>
-            </span>
-            <span class="correction__groupe" data-groupe="demi">
-              <span class="correction__etiquette">½ ton</span>
-              <button class="bouton bouton--mince" data-corriger="demi-bas" hidden
-                      aria-label="Demi-ton plus bas" title="Un demi-ton plus bas">−</button>
-              <button class="bouton bouton--mince" data-corriger="demi-haut" hidden
-                      aria-label="Demi-ton plus haut" title="Un demi-ton plus haut">+</button>
-            </span>
-            <button class="bouton bouton--mince" data-corriger="ajouter" hidden
-                    title="Une note sur ce silence, à la hauteur de la note d'avant">ajouter une note</button>
-            <button class="bouton bouton--mince correction__icone" data-corriger="supprimer" hidden
-                    aria-label="Supprimer" title="Supprimer la note">✕</button>
-            <button class="bouton bouton--mince correction__icone" data-corriger="retablir" hidden
-                    aria-label="Rétablir" title="Rétablir : revenir à la note transcrite">↺</button>
-            <span class="correction__export">
-              <span class="correction__etiquette">exporter</span>
-              <button class="bouton bouton--mince" data-exporter="midi"
-                      title="La partie corrigée, en fichier MIDI">MIDI</button>
-              <button class="bouton bouton--mince" data-exporter="gp" aria-label="Guitar Pro"
-                      title="La partie corrigée, en Guitar Pro 7 (.gp)">GP</button>
-            </span>
-          </div>
-          <!-- Pratiquer, batterie ou basse : la jouer sur sa batterie
-               électronique (MIDI, E4) ou sa basse en DI (E5), chaque note jugée
-               sur la partition (js/coach.js). Au centre, avec la partition
-               qu'il marque (Règle 12). Sans partition prête, le geste qui la
-               calcule (V34). -->
-          <div id="partition-coach" class="correction coach" role="toolbar" aria-label="Coach de batterie" hidden>
-            <button id="coach-basculer" class="bouton bouton--mince" aria-pressed="false"
-                    title="Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.">jouer avec ma batterie</button>
-            <!-- V36 : l'accordeur de basse (js/accordeur.js), même entrée et même
-                 hauteur que le coach. Un diapason dessiné ici. -->
-            <button id="coach-accordeur" class="bouton bouton--mince coach__accordeur" hidden aria-pressed="false"
-                    aria-label="Accordeur" title="Accordeur : la note jouée et son écart en cents, sur l'entrée de la basse (La 440, ou l'accord du disque)">
-              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-                <path d="M6.5 2v6.5a3.5 3.5 0 0 0 7 0V2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                <path d="M10 12v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                <circle cx="10" cy="18" r="1.4" fill="currentColor"/>
-              </svg>
-            </button>
-            <!-- E7 : entendre sa basse dans la sortie de l'ordinateur
-                 (js/retour-basse.js), avec un son au choix. Un haut-parleur. -->
-            <button id="coach-retour" class="bouton bouton--mince coach__accordeur" hidden aria-pressed="false"
-                    aria-label="Entendre ma basse" title="Entendre ma basse : l'entrée de la basse jouée dans la sortie de l'ordinateur, avec le morceau ; son, volume, balance">
-              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-                <path d="M3 8h3l4-3.5v11L6 12H3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                <path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.5 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-            </button>
-            <!-- V43 : ce qu'on règle avant de jouer (l'entrée ou la batterie, le
-                 canal, la calibration) replié derrière un bouton du bandeau,
-                 ouvert par-dessus la partition : le bandeau tient sur une
-                 ligne et la partition garde sa hauteur. Le bouton n'est là que
-                 si l'un de ces réglages l'est. -->
-            <details id="coach-reglages" class="coach__reglages">
-              <summary class="bouton bouton--mince coach__accordeur" aria-label="Réglages de l'entrée"
-                       title="Réglages de l'entrée : l'entrée ou la batterie écoutée, le canal, la calibration">
+          <!-- 24 nov. : le bandeau du coach et la barre de correction sur une
+               même ligne, au-dessus de la partition qu'ils marquent. -->
+          <div class="partition-barres">
+            <!-- Pratiquer, batterie ou basse : la jouer sur sa batterie
+                 électronique (MIDI, E4) ou sa basse en DI (E5), chaque note jugée
+                 sur la partition (js/coach.js). Au centre, avec la partition
+                 qu'il marque (Règle 12). Sans partition prête, le geste qui la
+                 calcule (V34). -->
+            <div id="partition-coach" class="correction coach" role="toolbar" aria-label="Coach de batterie" hidden>
+              <button id="coach-basculer" class="bouton bouton--mince" aria-pressed="false"
+                      title="Écouter la batterie électronique (MIDI) pendant la lecture : chaque note de la partition est entourée — juste, en avance, en retard, manquée. Rien n'est dit des cymbales ni des notes fantômes, que la transcription ne sait pas sûres.">jouer avec ma batterie</button>
+              <!-- V36 : l'accordeur de basse (js/accordeur.js), même entrée et même
+                   hauteur que le coach. Un diapason dessiné ici. -->
+              <button id="coach-accordeur" class="bouton bouton--mince coach__accordeur" hidden aria-pressed="false"
+                      aria-label="Accordeur" title="Accordeur : la note jouée et son écart en cents, sur l'entrée de la basse (La 440, ou l'accord du disque)">
                 <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-                  <path d="M3 5.5h14M3 10h14M3 14.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                  <circle cx="7" cy="5.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
-                  <circle cx="13" cy="10" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
-                  <circle cx="8.5" cy="14.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                  <path d="M6.5 2v6.5a3.5 3.5 0 0 0 7 0V2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <path d="M10 12v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <circle cx="10" cy="18" r="1.4" fill="currentColor"/>
                 </svg>
-              </summary>
-              <div class="coach__reglages-corps" role="group" aria-label="Réglages de l'entrée">
-                <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
-                <!-- Basse (V34) : le canal de l'interface où elle joue, « auto » par
-                     défaut (trouvé à la calibration, ou là où la basse se fait
-                     entendre). -->
-                <select id="coach-canal" class="coach__peripherique" hidden aria-label="Entrée de la basse"
-                        title="L'entrée de l'interface où la basse est branchée : « auto » la trouve à la calibration, ou dès qu'elle joue. Gardée pour cette interface."></select>
-                <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
-                        title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
-                <!-- E4 : les pads de la batterie MIDI (js/coach-profil.js) —
-                     frapper un pad montre sa note et la pièce qu'elle compte ;
-                     gardé pour cette batterie. -->
-                <button id="coach-pads" class="bouton bouton--mince" hidden aria-pressed="false" aria-controls="coach-profil">pads</button>
-                <div id="coach-profil" class="coach__profil" role="group" aria-label="Pads de la batterie" hidden>
-                  <div class="coach__profil-tete">
-                    <p id="coach-profil-dernier" class="coach__profil-dernier" aria-live="polite"></p>
-                    <label id="coach-profil-choix" class="coach__profil-champ" hidden>compte pour
-                      <select id="coach-profil-classe" class="coach__peripherique"></select></label>
-                  </div>
-                  <ul id="coach-profil-table" class="coach__profil-table" aria-label="Notes par pièce"></ul>
-                  <div class="coach__profil-pied">
-                    <label class="coach__profil-champ" title="Un coup plus faible est tenu pour un faux déclenchement (diaphonie entre pads, rebond)">vélocité min.
-                      <input id="coach-profil-seuil" type="number" min="1" max="127" step="1" inputmode="numeric"></label>
-                    <label class="coach__profil-champ" title="Le contrôleur (CC) qui porte l'ouverture du charleston : 4 sur presque tous les modules ; vide pour l'ignorer">CC charleston
-                      <input id="coach-profil-cc" type="number" min="0" max="127" step="1" inputmode="numeric" placeholder="aucun"></label>
-                    <button id="coach-profil-gm" class="bouton bouton--mince" title="Revenir au profil de départ : General MIDI et les notes de zone courantes (Roland, Alesis, Yamaha)">General MIDI</button>
+              </button>
+              <!-- E7 : entendre sa basse dans la sortie de l'ordinateur
+                   (js/retour-basse.js), avec un son au choix. Un haut-parleur. -->
+              <button id="coach-retour" class="bouton bouton--mince coach__accordeur" hidden aria-pressed="false"
+                      aria-label="Entendre ma basse" title="Entendre ma basse : l'entrée de la basse jouée dans la sortie de l'ordinateur, avec le morceau ; son, volume, balance">
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                  <path d="M3 8h3l4-3.5v11L6 12H3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M13 7.5a3.5 3.5 0 0 1 0 5M15.5 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <!-- V43 : ce qu'on règle avant de jouer (l'entrée ou la batterie, le
+                   canal, la calibration) replié derrière un bouton du bandeau,
+                   ouvert par-dessus la partition : le bandeau tient sur une
+                   ligne et la partition garde sa hauteur. Le bouton n'est là que
+                   si l'un de ces réglages l'est. -->
+              <details id="coach-reglages" class="coach__reglages">
+                <summary class="bouton bouton--mince coach__accordeur" aria-label="Réglages de l'entrée"
+                         title="Réglages de l'entrée : l'entrée ou la batterie écoutée, le canal, la calibration">
+                  <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                    <path d="M3 5.5h14M3 10h14M3 14.5h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    <circle cx="7" cy="5.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                    <circle cx="13" cy="10" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                    <circle cx="8.5" cy="14.5" r="1.9" fill="var(--bandeau-fond)" stroke="currentColor" stroke-width="1.6"/>
+                  </svg>
+                </summary>
+                <div class="coach__reglages-corps" role="group" aria-label="Réglages de l'entrée">
+                  <select id="coach-peripherique" class="coach__peripherique" hidden aria-label="Batterie MIDI"></select>
+                  <!-- Basse (V34) : le canal de l'interface où elle joue, « auto » par
+                       défaut (trouvé à la calibration, ou là où la basse se fait
+                       entendre). -->
+                  <select id="coach-canal" class="coach__peripherique" hidden aria-label="Entrée de la basse"
+                          title="L'entrée de l'interface où la basse est branchée : « auto » la trouve à la calibration, ou dès qu'elle joue. Gardée pour cette interface."></select>
+                  <button id="coach-calibrer" class="bouton bouton--mince" hidden aria-pressed="false"
+                          title="Mesurer la latence de la batterie, de l'ordinateur et du casque : ▶, puis taper la caisse claire sur les seize clics du décompte. Gardée pour cette batterie.">calibrer</button>
+                  <!-- E4 : les pads de la batterie MIDI (js/coach-profil.js) —
+                       frapper un pad montre sa note et la pièce qu'elle compte ;
+                       gardé pour cette batterie. -->
+                  <button id="coach-pads" class="bouton bouton--mince" hidden aria-pressed="false" aria-controls="coach-profil">pads</button>
+                  <div id="coach-profil" class="coach__profil" role="group" aria-label="Pads de la batterie" hidden>
+                    <div class="coach__profil-tete">
+                      <p id="coach-profil-dernier" class="coach__profil-dernier" aria-live="polite"></p>
+                      <label id="coach-profil-choix" class="coach__profil-champ" hidden>compte pour
+                        <select id="coach-profil-classe" class="coach__peripherique"></select></label>
+                    </div>
+                    <ul id="coach-profil-table" class="coach__profil-table" aria-label="Notes par pièce"></ul>
+                    <div class="coach__profil-pied">
+                      <label class="coach__profil-champ" title="Un coup plus faible est tenu pour un faux déclenchement (diaphonie entre pads, rebond)">vélocité min.
+                        <input id="coach-profil-seuil" type="number" min="1" max="127" step="1" inputmode="numeric"></label>
+                      <label class="coach__profil-champ" title="Le contrôleur (CC) qui porte l'ouverture du charleston : 4 sur presque tous les modules ; vide pour l'ignorer">CC charleston
+                        <input id="coach-profil-cc" type="number" min="0" max="127" step="1" inputmode="numeric" placeholder="aucun"></label>
+                      <button id="coach-profil-gm" class="bouton bouton--mince" title="Revenir au profil de départ : General MIDI et les notes de zone courantes (Roland, Alesis, Yamaha)">General MIDI</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </details>
-            <!-- Instrument choisi sans partition prête : le geste qui la calcule
-                 (même chemin que le bloc Partitions). -->
-            <button id="coach-transcrire" class="bouton bouton--mince" hidden>transcrire la basse pour jouer avec</button>
-            <!-- V35 : la hauteur changée (la tablature montre ce que l'on joue),
-                 puis la légende du code des erreurs, pendant l'écoute. -->
-            <span id="coach-transpose" class="coach__transpose" hidden></span>
-            <span id="coach-etat" class="coach__etat" aria-live="polite"></span>
-            <!-- 24 nov. : la légende derrière un « ? », ouverte par-dessus la
-                 partition comme les réglages : le bandeau tient sur une ligne. -->
-            <details id="coach-cle" class="coach__reglages coach__cles">
-              <summary class="bouton bouton--mince coach__accordeur" aria-label="Code des erreurs"
-                       title="Code des erreurs : ce que disent les cercles de la partition">?</summary>
-              <div class="coach__reglages-corps">
-                <span id="coach-legende" class="coach__legende" role="list" aria-label="Code des erreurs" hidden></span>
-              </div>
-            </details>
-            <button id="coach-boucler" class="bouton bouton--mince" hidden
-                    title="Boucler les mesures les plus difficiles d'après les passages joués (table par mesure, gardée pour ce morceau), en repartant à 70 %. Proposé, jamais imposé.">boucler</button>
-            <button id="coach-vitesse" class="bouton bouton--mince" hidden
-                    title="L'escalier de tempo : un cran de plus après deux passages propres (95 % des notes, écart-type sous 25 ms), un de moins après un passage raté. Proposé, jamais imposé.">vitesse</button>
+              </details>
+              <!-- Instrument choisi sans partition prête : le geste qui la calcule
+                   (même chemin que le bloc Partitions). -->
+              <button id="coach-transcrire" class="bouton bouton--mince" hidden>transcrire la basse pour jouer avec</button>
+              <!-- V35 : la hauteur changée (la tablature montre ce que l'on joue),
+                   puis la légende du code des erreurs, pendant l'écoute. -->
+              <span id="coach-transpose" class="coach__transpose" hidden></span>
+              <span id="coach-etat" class="coach__etat" aria-live="polite"></span>
+              <!-- 24 nov. : la légende derrière un « ? », ouverte par-dessus la
+                   partition comme les réglages : le bandeau tient sur une ligne. -->
+              <details id="coach-cle" class="coach__reglages coach__cles">
+                <summary class="bouton bouton--mince coach__accordeur" aria-label="Code des erreurs"
+                         title="Code des erreurs : ce que disent les cercles de la partition">?</summary>
+                <div class="coach__reglages-corps">
+                  <span id="coach-legende" class="coach__legende" role="list" aria-label="Code des erreurs" hidden></span>
+                </div>
+              </details>
+              <button id="coach-boucler" class="bouton bouton--mince" hidden
+                      title="Boucler les mesures les plus difficiles d'après les passages joués (table par mesure, gardée pour ce morceau), en repartant à 70 %. Proposé, jamais imposé.">boucler</button>
+              <button id="coach-vitesse" class="bouton bouton--mince" hidden
+                      title="L'escalier de tempo : un cran de plus après deux passages propres (95 % des notes, écart-type sous 25 ms), un de moins après un passage raté. Proposé, jamais imposé.">vitesse</button>
+            </div>
+            <!-- Pratiquer, basse transcrite : corriger la note choisie dans la
+                 partition, exporter la partie (E2 ; js/corriger.js). Au centre,
+                 avec l'objet qu'elle corrige (Règle 12). -->
+            <div id="partition-correction" class="correction" role="toolbar" aria-label="Corriger la transcription" hidden>
+              <span id="correction-note" class="correction__note" aria-live="polite"></span>
+              <!-- V18 : les gestes par paire, sous une étiquette, pour que la
+                   barre tienne sur une ligne à 1 400 px. -->
+              <span class="correction__groupe" data-groupe="corde">
+                <span class="correction__etiquette">corde</span>
+                <button class="bouton bouton--mince" data-corriger="grave" hidden
+                        aria-label="Corde plus grave" title="Jouer la même note sur la corde plus grave">−</button>
+                <button class="bouton bouton--mince" data-corriger="aigue" hidden
+                        aria-label="Corde plus aiguë" title="Jouer la même note sur la corde plus aiguë">+</button>
+              </span>
+              <span class="correction__groupe" data-groupe="octave">
+                <span class="correction__etiquette">octave</span>
+                <button class="bouton bouton--mince" data-corriger="octave-bas" hidden
+                        aria-label="Octave plus bas" title="Une octave plus bas">−</button>
+                <button class="bouton bouton--mince" data-corriger="octave-haut" hidden
+                        aria-label="Octave plus haut" title="Une octave plus haut">+</button>
+              </span>
+              <span class="correction__groupe" data-groupe="demi">
+                <span class="correction__etiquette">½ ton</span>
+                <button class="bouton bouton--mince" data-corriger="demi-bas" hidden
+                        aria-label="Demi-ton plus bas" title="Un demi-ton plus bas">−</button>
+                <button class="bouton bouton--mince" data-corriger="demi-haut" hidden
+                        aria-label="Demi-ton plus haut" title="Un demi-ton plus haut">+</button>
+              </span>
+              <button class="bouton bouton--mince" data-corriger="ajouter" hidden
+                      title="Une note sur ce silence, à la hauteur de la note d'avant">ajouter une note</button>
+              <button class="bouton bouton--mince correction__icone" data-corriger="supprimer" hidden
+                      aria-label="Supprimer" title="Supprimer la note">✕</button>
+              <button class="bouton bouton--mince correction__icone" data-corriger="retablir" hidden
+                      aria-label="Rétablir" title="Rétablir : revenir à la note transcrite">↺</button>
+            </div>
           </div>
           <!-- V36 : l'accordeur, au centre sous le bandeau du coach, sans fenêtre
                modale ; il ne joue aucun son. -->
@@ -1645,6 +1642,11 @@
         <!-- P1 : le morceau ou l'album inspecté dans une playlist (`js/playlists.js`). -->
         <button class="insp__playlist" id="insp-playlist" hidden aria-haspopup="dialog" aria-expanded="false"
                 aria-label="Ajouter à une playlist" title="Ajouter à une playlist">＋</button>
+        <!-- Le mode scratch : une main sur le disque, au trackpad ou au
+             pointeur ; Échap ou un second clic en sort (`js/scratch.js`).
+             Visible au survol ou au focus d'un disque qui tourne. -->
+        <button class="scratch-bouton insp__scratch" id="insp-scratch" aria-pressed="false"
+                aria-label="Scratcher le disque" title="Scratcher le disque (Échap pour finir)">⟲</button>
       </div>
       <div id="insp-vide" class="insp__vide">Aucun morceau sélectionné.</div>
       <div id="insp" hidden>
@@ -1802,6 +1804,17 @@
         </span>
         <button id="exporter" class="bouton bouton--mince"
                 title="Écrit ce qu'on entend : les stems audibles, à leurs niveaux, avec la vitesse et la hauteur de chacun.">Exporter…</button>
+        <!-- E2 : la partie de basse corrigée, en MIDI ou Guitar Pro
+             (js/corriger.js) ; à côté de l'export des stems, dans la barre
+             de l'établi depuis le 24 nov. (la barre de correction tient
+             sur la ligne du coach). Seulement une basse transcrite affichée. -->
+        <span id="partie-export" class="correction__export" hidden>
+          <span class="correction__etiquette">partie</span>
+          <button class="bouton bouton--mince" data-exporter="midi"
+                  title="La partie corrigée, en fichier MIDI">MIDI</button>
+          <button class="bouton bouton--mince" data-exporter="gp" aria-label="Guitar Pro"
+                  title="La partie corrigée, en Guitar Pro 7 (.gp)">GP</button>
+        </span>
         <!-- Ne paraît que pendant un calcul de transposition (`transposerStems`) :
              graduée stem par stem, comme la barre de la séparation. -->
         <progress id="transpose-jauge" class="jauge" hidden max="1" value="0"
@@ -1946,6 +1959,8 @@
           <circle id="en-cours-avance" class="en-cours__avance" cx="50" cy="50" r="48" pathLength="1000"></circle>
           <circle id="en-cours-tete" class="en-cours__tete" cx="98" cy="50" r="1.5"></circle>
         </svg>
+        <button class="scratch-bouton en-cours__scratch" id="en-cours-scratch" aria-pressed="false"
+                aria-label="Scratcher le disque" title="Scratcher le disque (Échap pour finir)">⟲</button>
       </div>
       <div class="en-cours__texte">
         <h2 id="en-cours-titre" class="en-cours__titre"></h2>

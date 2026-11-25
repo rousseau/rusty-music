@@ -25,6 +25,7 @@ pub mod instrument;
 pub mod latence;
 pub mod multipiste;
 pub mod retour;
+pub mod scratch;
 pub mod spectre;
 pub use amelioration::{amelioration, enregistrer_taux_sortie, Amelioration};
 pub use latence::{detail_latence_sortie, latence_sortie, DetailLatence};
@@ -531,6 +532,9 @@ pub struct Player {
     /// Pistes sautées faute de pouvoir être ouvertes, pas encore relevées par
     /// l'interface — voir [`Self::prendre_echecs`].
     echecs: Vec<Echec>,
+    /// Le mode scratch du vinyle, quand il est armé : le lecteur principal
+    /// est alors en pause et la source de [`scratch`] joue à sa place.
+    platine: Option<scratch::Platine>,
 }
 
 /// Ouvre la sortie audio par défaut du système et retient sa fréquence. Rend
@@ -631,6 +635,7 @@ impl Player {
             alea: false,
             avant_melange: Vec::new(),
             echecs: Vec::new(),
+            platine: None,
         })
     }
 
@@ -695,6 +700,7 @@ impl Player {
         if !joue_la_tete {
             return self.play(tracks);
         }
+        let _ = self.sortir_scratch();
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
         // Position lue avant : le lecteur neuf repart à zéro. Sans cela, le
@@ -963,6 +969,7 @@ impl Player {
         if self.queue.get(i).map(PathBuf::as_path) != Some(attendu) {
             return Ok(());
         }
+        let _ = self.sortir_scratch();
         let pos = self.inner.get_pos();
         let en_pause = self.inner.is_paused();
         // Position lue avant : le lecteur neuf repart à zéro. Sans cela, le
@@ -1003,6 +1010,7 @@ impl Player {
     /// session). Ne pas passer par `charger` puis `pause` : le son partirait
     /// l'espace d'un instant.
     fn charger_depuis(&mut self, depart: usize, demarrer: bool) -> Result<()> {
+        self.abandonner_scratch();
         self.rouvrir_sortie();
         self.epoque += 1;
         self.inner.clear();
@@ -1098,6 +1106,8 @@ impl Player {
     /// son. Si la réouverture échoue, on garde l'ancien flux plutôt que de
     /// perdre une sortie qui marche peut-être encore.
     fn rouvrir_sortie(&mut self) {
+        // La source du scratch est raccordée à l'ancienne sortie.
+        self.abandonner_scratch();
         let (output, sortie_perdue) = match ouvrir_sortie() {
             Ok(ouverte) => ouverte,
             Err(e) => {
@@ -1162,15 +1172,22 @@ impl Player {
     }
 
     pub fn pause(&self) {
+        if let Some(p) = &self.platine {
+            return p.regler_moteur(false);
+        }
         self.inner.pause();
     }
 
     pub fn resume(&self) {
+        if let Some(p) = &self.platine {
+            return p.regler_moteur(true);
+        }
         self.inner.play();
     }
 
     /// Vide la file et arrête la sortie.
     pub fn stop(&mut self) {
+        self.abandonner_scratch();
         self.epoque += 1;
         self.inner.stop();
         self.queue.clear();
@@ -1178,11 +1195,18 @@ impl Player {
     }
 
     /// Passe à la piste suivante de la file.
-    pub fn skip(&self) {
+    pub fn skip(&mut self) {
+        let en_lecture = self.abandonner_scratch();
         self.inner.skip_one();
+        if en_lecture == Some(true) {
+            self.inner.play();
+        }
     }
 
     pub fn is_paused(&self) -> bool {
+        if let Some(p) = &self.platine {
+            return !p.moteur();
+        }
         self.inner.is_paused()
     }
 
@@ -1193,6 +1217,9 @@ impl Player {
 
     /// Position dans la piste en cours.
     pub fn position(&self) -> Duration {
+        if let Some(p) = &self.platine {
+            return p.position();
+        }
         self.inner.get_pos()
     }
 
@@ -1205,6 +1232,10 @@ impl Player {
     /// lui — l'app entière bloquée. On rouvre la sortie, on recharge la piste
     /// en cours (pause conservée) et on se place à `pos` sur le flux neuf.
     pub fn seek(&mut self, pos: Duration) -> Result<()> {
+        if let Some(p) = &self.platine {
+            p.sauter(pos);
+            return Ok(());
+        }
         if self.sortie_perdue.load(Ordering::Acquire) {
             self.recharger_courante()?;
         }
@@ -1269,6 +1300,9 @@ impl Player {
     /// L'aura suit le volume : son niveau est relatif au son principal.
     pub fn set_volume(&mut self, volume: f32) {
         self.inner.set_volume(volume);
+        if let Some(p) = &self.platine {
+            p.regler_volume(volume);
+        }
         self.aura.regler_niveau(self.facteur_aura * volume);
     }
 
@@ -1279,6 +1313,93 @@ impl Player {
         self.facteur_aura = facteur.max(0.0);
         self.aura
             .regler_niveau(self.facteur_aura * self.inner.volume());
+    }
+
+    // ------------------------------------------------------------ scratch
+
+    /// Ce qu'il faut décoder pour armer le mode scratch : le chemin de la
+    /// file (à rendre à [`Self::entrer_scratch`]), le chemin réellement
+    /// ouvert (cache HD) et le gain de normalisation. `None` quand rien ne
+    /// joue. À décoder **hors du verrou** ([`scratch::Disque::decoder`]).
+    pub fn a_scratcher(&self) -> Option<(PathBuf, PathBuf, f32)> {
+        let courant = self.current()?.to_path_buf();
+        let ouvert = (self.resoudre)(&courant);
+        let gain = (self.gain)(&courant);
+        Some((courant, ouvert, gain))
+    }
+
+    /// Arme le mode scratch sur `disque`, le morceau `attendu` décodé. Le
+    /// lecteur principal se met en pause ; la source du disque reprend à sa
+    /// position, au même état de lecture. Rend `false` sans rien toucher si
+    /// le morceau a changé pendant le décodage. Déjà armé : `true`.
+    pub fn entrer_scratch(&mut self, attendu: &Path, disque: scratch::Disque) -> bool {
+        if self.platine.is_some() {
+            return true;
+        }
+        if self.current() != Some(attendu) {
+            return false;
+        }
+        let en_lecture = !self.inner.is_paused();
+        self.inner.pause();
+        let depart = self.inner.get_pos();
+        let (platine, source) =
+            scratch::Platine::new(disque, depart, en_lecture, self.inner.volume());
+        self._output.mixer().add(source);
+        self.platine = Some(platine);
+        true
+    }
+
+    /// Le mode scratch est armé.
+    pub fn en_scratch(&self) -> bool {
+        self.platine.is_some()
+    }
+
+    /// La main sur le disque à `vitesse`, ou levée (`None`). Rend l'état du
+    /// disque, `None` hors du mode.
+    pub fn main_scratch(&self, vitesse: Option<f32>) -> Option<scratch::EtatDisque> {
+        let p = self.platine.as_ref()?;
+        p.main(vitesse);
+        Some(p.etat())
+    }
+
+    /// Quitte le mode : le lecteur principal reprend **à la tête du disque**,
+    /// en lecture si le moteur tournait. Sans effet hors du mode.
+    pub fn sortir_scratch(&mut self) -> Result<()> {
+        let Some(platine) = self.platine.as_ref() else {
+            return Ok(());
+        };
+        let pos = platine.position();
+        let en_lecture = platine.moteur();
+        // Au bout du morceau, un rien avant : `try_seek` refuse la fin exacte,
+        // et le lecteur enchaîne de lui-même sur la suivante.
+        let pos = match self.duree_courante() {
+            Some(d) if pos + Duration::from_millis(5) >= d => {
+                d.saturating_sub(Duration::from_millis(5))
+            }
+            _ => pos,
+        };
+        let res = self.deplacer_borne(pos);
+        if en_lecture {
+            self.inner.play();
+        }
+        // La source se tait en fondu pendant que le lecteur repart.
+        self.platine = None;
+        res
+    }
+
+    /// Le moteur a mené le disque au bout du morceau : rend la main au
+    /// lecteur principal, qui enchaîne. À appeler au sondage.
+    pub fn entretenir_scratch(&mut self) {
+        if self.platine.as_ref().is_some_and(scratch::Platine::fini) {
+            let _ = self.sortir_scratch();
+        }
+    }
+
+    /// Fait taire la source du disque sans toucher au lecteur principal ;
+    /// rend l'état du moteur (`Some(true)` : il tournait), `None` hors du
+    /// mode. Pour ce qui vide ou change la piste de toute façon.
+    fn abandonner_scratch(&mut self) -> Option<bool> {
+        self.platine.take().map(|p| p.moteur())
     }
 
     /// L'aura de la carte, pour y charger des extraits et dire qui joue.
@@ -1367,6 +1488,67 @@ mod tests {
         v.extend_from_slice(&donnees.to_le_bytes());
         v.resize(v.len() + donnees as usize, 0);
         std::fs::write(chemin, v).expect("écriture du wav");
+    }
+
+    /// Le mode scratch sur la vraie sortie : entrée à la position du lecteur,
+    /// marche arrière, reprise du moteur, sortie à la tête du disque ; et la
+    /// latence entre une vitesse déposée et sa relève par le fil audio.
+    /// Ouvre la sortie audio : ignoré par défaut.
+    /// `cargo test -p rusty-music-player scratch_de_bout -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn scratch_de_bout_en_bout() {
+        let ms = Duration::from_millis;
+        let dossier =
+            std::env::temp_dir().join(format!("rusty-music-scratch-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).expect("dossier");
+        let wav = dossier.join("silence.wav");
+        ecrire_wav(&wav, 8000 * 20);
+        let mut player = Player::new().expect("sortie audio indisponible");
+        player.play(std::slice::from_ref(&wav)).expect("lecture");
+        std::thread::sleep(ms(1500));
+        let (courant, ouvert, gain) = player.a_scratcher().expect("un morceau joue");
+        let disque = scratch::Disque::decoder(&ouvert, gain).expect("décodage");
+        let avant = player.position();
+        assert!(player.entrer_scratch(&courant, disque));
+        assert!(player.en_scratch() && !player.is_paused());
+        let entree = player.position();
+        assert!(entree.abs_diff(avant) < ms(60), "{avant:?} → {entree:?}");
+
+        // La main fait reculer le disque, ~60 Hz comme l'interface.
+        let mut releves = Vec::new();
+        for _ in 0..30 {
+            let e = player.main_scratch(Some(-1.0)).expect("armé");
+            releves.push(e.latence_main);
+            std::thread::sleep(ms(16));
+        }
+        let recule = player.position();
+        assert!(recule + ms(200) < entree, "{entree:?} → {recule:?}");
+
+        // Main levée : le moteur ramène le disque à la vitesse nominale.
+        player.main_scratch(None);
+        std::thread::sleep(ms(1000));
+        let v = player.main_scratch(None).expect("armé").vitesse;
+        assert!((v - 1.0).abs() < 1e-3, "vitesse {v}");
+
+        let tete = player.position();
+        player.sortir_scratch().expect("sortie");
+        assert!(!player.en_scratch() && !player.is_paused());
+        let reprise = player.position();
+        assert!(reprise.abs_diff(tete) < ms(60), "{tete:?} → {reprise:?}");
+        std::thread::sleep(ms(300));
+        assert!(player.position() > reprise, "le lecteur repart");
+
+        releves.sort();
+        let med = releves[releves.len() / 2];
+        let max = releves[releves.len() - 1];
+        println!(
+            "relève par le fil audio : médiane {:.1} ms, max {:.1} ms ; sortie {:.1} ms",
+            med.as_secs_f64() * 1e3,
+            max.as_secs_f64() * 1e3,
+            latence_sortie().as_secs_f64() * 1e3
+        );
+        let _ = std::fs::remove_dir_all(&dossier);
     }
 
     /// Une file qui commence par un fichier disparu puis un fichier corrompu

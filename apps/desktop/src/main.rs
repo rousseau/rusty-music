@@ -54,6 +54,7 @@ mod pratiquer;
 mod retour_basse;
 mod systeme;
 mod systeme_media;
+mod trackpad;
 mod tuiles;
 #[cfg(test)]
 mod types_commandes;
@@ -688,6 +689,8 @@ fn main() {
                         balade_reprendre(&etat_arriere_plan, &etat);
                         balade_battement(&etat);
                         entretenir_aura(&etat);
+                        // Le disque scratché arrivé au bout : le lecteur enchaîne.
+                        verrou(&etat.player).entretenir_scratch();
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
@@ -941,6 +944,10 @@ fn main() {
                 enregistrer_touches_media(app.handle().clone());
             }
 
+            // Les phases du trackpad (doigts posés, levés, inertie) pour le
+            // scratch du vinyle : la webview ne les voit pas.
+            trackpad::installer(app.handle());
+
             // Un cache HD produit par une version antérieure du pipeline
             // (rééchantillonnage, mélange…) donnerait un son étouffé joué tel
             // quel : on l'efface au démarrage.
@@ -1174,6 +1181,9 @@ fn main() {
             js_error,
             qualite_piste,
             set_amelioration,
+            scratch_entrer,
+            scratch_main,
+            scratch_sortir,
             spectre_transport,
             start_superres,
             superres_state,
