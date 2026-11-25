@@ -369,7 +369,7 @@ const scratchVue = {
     return v ? Math.atan2(v[1], v[0]) * (180 / Math.PI) : 0;
   },
   poser(deg) {
-    disque.style.animation = "none";
+    if (disque.style.animationName !== "none") disque.style.animation = "none";
     disque.style.transform = `rotate(${deg.toFixed(2)}deg)`;
   },
   rendre(deg) {

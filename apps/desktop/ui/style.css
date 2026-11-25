@@ -2918,6 +2918,10 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
 .scratch-bouton[aria-busy="true"] { cursor: wait; }
 .scratch-bouton[hidden] { display: none; }
 .scratch--arme { cursor: grab; touch-action: none; }
+/* Armé, la rotation est posée à la main à chaque image : le disque reste un
+   calque à part, sans quoi WebKit repeint ses sillons à chaque image — sur
+   le grand disque d'« En cours », plus qu'il n'en peut. */
+.scratch--arme .en-cours__disque, .scratch--arme .pochette__platine { will-change: transform; }
 .scratch--arme.scratch--main { cursor: grabbing; }
 .pochette:not(.pochette--disque) .insp__scratch { display: none; }
 .en-cours__scratch { right: calc(var(--disque) * .15); top: calc(var(--disque) * .15); }

@@ -31,6 +31,8 @@ const etat = {
   decalage: 0, // angle dessiné − angle de la tête du moteur
   angle: 0,
   accumule: 0, // degrés de main depuis le dernier envoi
+  dessin: 0, // degrés de main pas encore dessinés
+  centre: null, // centre et rayon du disque, relevés à l'armement
   depuis: 0, // horodatage du dernier envoi
   molette: 0, // horodatage du dernier événement de molette
   glisse: null, // { id, angle } pendant un glisser au pointeur
@@ -42,17 +44,31 @@ const etat = {
 
 const arme = () => etat.cible !== null;
 
-/// Angle (degrés) du point `x, y` de l'écran autour du centre de `zone`.
-function centre(zone) {
-  const r = zone.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2, rayon: r.width / 2 };
+/// Centre et rayon du disque armé. Relevés une fois (armement,
+/// redimensionnement), pas à chaque événement : `getBoundingClientRect`
+/// après une rotation posée force un calcul de mise en page, et sur un grand
+/// disque la molette en envoie plus d'un par image.
+function centre() {
+  if (!etat.centre) {
+    const r = etat.cible.zone.getBoundingClientRect();
+    etat.centre = { x: r.left + r.width / 2, y: r.top + r.height / 2, rayon: r.width / 2 };
+  }
+  return etat.centre;
+}
+window.addEventListener("resize", () => { etat.centre = null; });
+
+/// Un geste de `deg` degrés : le dessin le suit tout de suite (la main tient
+/// le disque), le son suit la vitesse qu'il donne.
+function tourner(deg) {
+  etat.accumule += deg;
+  etat.dessin += deg;
 }
 
 /// La part tangentielle d'un déplacement `(mx, my)` au point `(x, y)`, en
 /// degrés de rotation (sens horaire positif). Près de l'axe, le bras de levier
 /// est borné : un geste au centre ne fait pas tourner le disque à toute allure.
-function tangentiel(zone, x, y, mx, my) {
-  const c = centre(zone);
+function tangentiel(x, y, mx, my) {
+  const c = centre();
   let px = x - c.x;
   let py = y - c.y;
   let r = Math.hypot(px, py);
@@ -74,7 +90,7 @@ function surMolette(e) {
   let mx = -e.deltaX;
   let my = -e.deltaY;
   if (e.deltaMode === 1) { mx *= 16; my *= 16; }
-  etat.accumule += tangentiel(etat.cible.zone, e.clientX, e.clientY, mx, my);
+  tourner(tangentiel(e.clientX, e.clientY, mx, my));
   etat.molette = performance.now();
 }
 
@@ -84,7 +100,7 @@ function surAppui(e) {
   // progression gardent leur clic.
   if (e.target.closest?.("button, circle")) return;
   e.preventDefault();
-  const c = centre(etat.cible.zone);
+  const c = centre();
   etat.glisse = { id: e.pointerId, angle: Math.atan2(e.clientY - c.y, e.clientX - c.x) };
   etat.cible.zone.setPointerCapture?.(e.pointerId);
   etat.cible.zone.classList.add("scratch--main");
@@ -92,13 +108,13 @@ function surAppui(e) {
 
 function surGlisse(e) {
   if (!etat.glisse || e.pointerId !== etat.glisse.id) return;
-  const c = centre(etat.cible.zone);
+  const c = centre();
   const a = Math.atan2(e.clientY - c.y, e.clientX - c.x);
   let d = a - etat.glisse.angle;
   if (d > Math.PI) d -= 2 * Math.PI;
   else if (d < -Math.PI) d += 2 * Math.PI;
   etat.glisse.angle = a;
-  etat.accumule += d * (180 / Math.PI);
+  tourner(d * (180 / Math.PI));
 }
 
 function surLacher(e) {
@@ -107,14 +123,21 @@ function surLacher(e) {
   etat.cible?.zone.classList.remove("scratch--main");
 }
 
-/// Une image : la main (ou son absence) part vers le moteur, l'angle revient.
+/// Une image : le disque est dessiné, la main (ou son absence) part vers le
+/// moteur. Main posée, le dessin suit le geste ; levée, il suit la tête du
+/// moteur, décalée de ce qui les séparait au dernier geste (pas de saut).
 function boucle(maintenant) {
   if (!arme()) return;
   etat.image = requestAnimationFrame(boucle);
+  const main = etat.glisse !== null || maintenant - etat.molette < MAIN_LEVEE_MS;
+  if (main) {
+    etat.angle += etat.dessin;
+    etat.cible.poser(etat.angle);
+  }
+  etat.dessin = 0;
   if (etat.enVol) return; // ce qui s'accumule partira avec la prochaine
   const dt = Math.max(1, maintenant - (etat.depuis || maintenant)) / 1000;
   etat.depuis = maintenant;
-  const main = etat.glisse !== null || maintenant - etat.molette < MAIN_LEVEE_MS;
   const vitesse = main ? etat.accumule / dt / DEG_PAR_S : null;
   etat.accumule = 0;
   etat.enVol = true;
@@ -131,8 +154,13 @@ function boucle(maintenant) {
         etat.latences.push(aller / 2 + r.latence_us + (r.latence_sortie_us ?? 0));
         if (etat.latences.length >= 240) noterLatence();
       }
-      etat.angle = (r.position_ms / TOUR_MS) * 360 + etat.decalage;
-      etat.cible?.poser(etat.angle);
+      const tete = (r.position_ms / TOUR_MS) * 360;
+      if (main) {
+        etat.decalage = etat.angle - tete;
+      } else {
+        etat.angle = tete + etat.decalage;
+        etat.cible?.poser(etat.angle);
+      }
     })
     .catch((e) => {
       etat.enVol = false;
@@ -173,6 +201,8 @@ async function armer(cible) {
   etat.decalage = cible.angle() - (r.position_ms / TOUR_MS) * 360;
   etat.angle = cible.angle();
   etat.accumule = 0;
+  etat.dessin = 0;
+  etat.centre = null;
   etat.depuis = 0;
   etat.molette = 0;
   cible.bouton.setAttribute("aria-pressed", "true");
