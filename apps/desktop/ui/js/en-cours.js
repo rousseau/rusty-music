@@ -341,16 +341,15 @@ const scratchInspecteur = {
   zone: platine.hote,
   bouton: $("insp-scratch"),
   angle: () => ((platine.tour?.currentTime ?? 0) % TOUR_MS) / TOUR_MS * 360,
-  poser(deg) {
+  anim() {
     platine.scratch = true;
+    return platine.tour;
+  },
+  rendre(deg) {
+    platine.scratch = false;
     if (!platine.tour) return;
     platine.tour.pause();
     platine.tour.currentTime = tourner(deg);
-  },
-  rendre(deg) {
-    this.poser(deg);
-    platine.scratch = false;
-    if (!platine.tour) return;
     platine.vitesse = transport.veutJouer ? 1 : 0;
     platine.tour.playbackRate = platine.vitesse || 1;
     if (platine.vitesse) platine.tour.play();
@@ -358,23 +357,33 @@ const scratchInspecteur = {
 };
 $("insp-scratch").addEventListener("click", () => basculerScratch(scratchInspecteur));
 
-/// Le disque de la vue « En cours » : animation CSS ; armé, un angle posé à
-/// la main ; rendu, l'animation reprend à cet angle (délai négatif).
+/// Le disque de la vue « En cours » : animation CSS ; armé, une animation Web
+/// Animations prend sa place ; rendu, l'animation CSS reprend à cet angle
+/// (délai négatif).
 const scratchVue = {
   zone: platineVue,
   bouton: $("en-cours-scratch"),
+  tour: null,
   angle() {
     const m = getComputedStyle(disque).transform;
     const v = m.startsWith("matrix(") ? m.slice(7, -1).split(",").map(Number) : null;
     return v ? Math.atan2(v[1], v[0]) * (180 / Math.PI) : 0;
   },
-  poser(deg) {
-    if (disque.style.animationName !== "none") disque.style.animation = "none";
-    disque.style.transform = `rotate(${deg.toFixed(2)}deg)`;
+  anim() {
+    if (!this.tour) {
+      disque.style.animation = "none";
+      this.tour = disque.animate(
+        [{ transform: "rotate(0turn)" }, { transform: "rotate(1turn)" }],
+        { duration: TOUR_MS, iterations: Infinity },
+      );
+      this.tour.pause();
+    }
+    return this.tour;
   },
   rendre(deg) {
+    this.tour?.cancel();
+    this.tour = null;
     disque.style.animation = "";
-    disque.style.transform = "";
     disque.style.animationDelay = `${(-tourner(deg) / 1000).toFixed(3)}s`;
   },
 };

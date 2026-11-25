@@ -1064,12 +1064,14 @@ test("vue « En cours » : scratch du disque, Échap sort du mode puis ferme la 
   for (let i = 1; i <= 6; i++) await page.mouse.move(cx - b.width * 0.3 + i * 20, cy - b.height * 0.35, { steps: 2 });
   await expect.poll(async () => (await appels(page, "scratch_main")).some((a) => a.vitesse > 0)).toBe(true);
   await page.mouse.up();
-  // Le disque suit l'angle du moteur : une rotation posée à la main.
-  await expect.poll(() => page.locator("#en-cours-disque").evaluate((el) => el.style.transform)).toMatch(/^rotate\(/);
+  // Armé, une animation pilotée par le moteur remplace l'animation CSS.
+  await expect.poll(() => page.locator("#en-cours-disque").evaluate((el) => el.style.animationName)).toBe("none");
   await page.keyboard.press("Escape");
   await expect(bouton).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("#en-cours")).toBeVisible();
-  expect(await page.locator("#en-cours-disque").evaluate((el) => el.style.transform)).toBe("");
+  // Rendu : l'animation CSS reprend, la pilotée a disparu.
+  expect(await page.locator("#en-cours-disque").evaluate((el) =>
+    [el.style.animationName, el.getAnimations().filter((x) => !(x instanceof CSSAnimation)).length])).toEqual(["", 0]);
   await page.keyboard.press("Escape");
   await expect(page.locator("#en-cours")).toBeHidden();
 });
