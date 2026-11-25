@@ -1645,6 +1645,11 @@
         <!-- P1 : le morceau ou l'album inspecté dans une playlist (`js/playlists.js`). -->
         <button class="insp__playlist" id="insp-playlist" hidden aria-haspopup="dialog" aria-expanded="false"
                 aria-label="Ajouter à une playlist" title="Ajouter à une playlist">＋</button>
+        <!-- Le mode scratch : une main sur le disque, au trackpad ou au
+             pointeur ; Échap ou un second clic en sort (`js/scratch.js`).
+             Visible au survol ou au focus d'un disque qui tourne. -->
+        <button class="scratch-bouton insp__scratch" id="insp-scratch" aria-pressed="false"
+                aria-label="Scratcher le disque" title="Scratcher le disque (Échap pour finir)">⟲</button>
       </div>
       <div id="insp-vide" class="insp__vide">Aucun morceau sélectionné.</div>
       <div id="insp" hidden>
@@ -1946,6 +1951,8 @@
           <circle id="en-cours-avance" class="en-cours__avance" cx="50" cy="50" r="48" pathLength="1000"></circle>
           <circle id="en-cours-tete" class="en-cours__tete" cx="98" cy="50" r="1.5"></circle>
         </svg>
+        <button class="scratch-bouton en-cours__scratch" id="en-cours-scratch" aria-pressed="false"
+                aria-label="Scratcher le disque" title="Scratcher le disque (Échap pour finir)">⟲</button>
       </div>
       <div class="en-cours__texte">
         <h2 id="en-cours-titre" class="en-cours__titre"></h2>

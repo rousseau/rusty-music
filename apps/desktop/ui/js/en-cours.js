@@ -8,6 +8,10 @@ import {
 import { couleursPochette } from "./couleurs-album.js";
 import { lecture, transport } from "./etat-lecture.js";
 import { deplacerLecture } from "./etabli-stems.js";
+// Avant les écouteurs d'Échap ci-dessous : Échap sort d'abord du scratch.
+import {
+  basculerScratch, desarmerScratch, scratchArme, TOUR_MS,
+} from "./scratch.js";
 
 /* ------------------------------------------------- vue plein écran « En cours »
  *
@@ -146,6 +150,7 @@ function boucle(maintenant = performance.now()) {
   else if (etat.suite !== fileAttente.pistes.length) poserSuite();
   poserProgression(t);
   vue.classList.toggle("en-cours--joue", transport.veutJouer);
+  $("en-cours-scratch").hidden = !t;
   if (!reduit.matches) suivreIntensite(maintenant);
   etat.image = requestAnimationFrame(boucle);
 }
@@ -162,6 +167,7 @@ function ouvrirEnCours() {
 
 function fermerEnCours() {
   if (vue.hidden) return;
+  if (scratchArme()) desarmerScratch();
   vue.hidden = true;
   bouton.setAttribute("aria-pressed", "false");
   cancelAnimationFrame(etat.image);
@@ -243,10 +249,10 @@ const platine = {
   hote: $("pochette"),
   tour: null, // l'animation de rotation (Web Animations)
   vitesse: 0, // playbackRate courant, 0..1
+  scratch: false, // le mode scratch tient l'angle (`scratch.js`)
   image: 0, // requestAnimationFrame de la rampe
   sortie: null, // l'animation qui ramène le disque à l'endroit
 };
-const TOUR_MS = 1800; // 33 ⅓ tours/min
 
 function disqueVoulu() {
   if (reduit.matches || !lecture.courant || lecture.fini) return false;
@@ -254,6 +260,10 @@ function disqueVoulu() {
 }
 
 function rampeVitesse() {
+  if (platine.scratch) {
+    platine.image = 0;
+    return;
+  }
   const cible = transport.veutJouer ? 1 : 0;
   platine.vitesse += (cible - platine.vitesse) * 0.06;
   if (Math.abs(cible - platine.vitesse) < 0.003) platine.vitesse = cible;
@@ -311,6 +321,7 @@ function sortirDisque() {
 /// l'intention changent par bien des chemins, aucun n'a à prévenir ici.
 function suivrePlatine() {
   const voulu = disqueVoulu();
+  if (!voulu && platine.scratch) desarmerScratch();
   const actif = platine.hote.classList.contains("pochette--disque") && !platine.sortie;
   if (voulu && !actif) entrerDisque();
   else if (!voulu && actif) sortirDisque();
@@ -319,6 +330,55 @@ function suivrePlatine() {
   }
 }
 setInterval(suivrePlatine, 250);
+
+/* ------------------------------------------------- les deux disques, en scratch */
+
+const tourner = (deg) => ((((deg / 360) % 1) + 1) % 1) * TOUR_MS;
+
+/// Le vinyle de l'inspecteur : l'animation de rotation (Web Animations), en
+/// pause, tient l'angle ; rendue, elle repart de là à la vitesse du transport.
+const scratchInspecteur = {
+  zone: platine.hote,
+  bouton: $("insp-scratch"),
+  angle: () => ((platine.tour?.currentTime ?? 0) % TOUR_MS) / TOUR_MS * 360,
+  poser(deg) {
+    platine.scratch = true;
+    if (!platine.tour) return;
+    platine.tour.pause();
+    platine.tour.currentTime = tourner(deg);
+  },
+  rendre(deg) {
+    this.poser(deg);
+    platine.scratch = false;
+    if (!platine.tour) return;
+    platine.vitesse = transport.veutJouer ? 1 : 0;
+    platine.tour.playbackRate = platine.vitesse || 1;
+    if (platine.vitesse) platine.tour.play();
+  },
+};
+$("insp-scratch").addEventListener("click", () => basculerScratch(scratchInspecteur));
+
+/// Le disque de la vue « En cours » : animation CSS ; armé, un angle posé à
+/// la main ; rendu, l'animation reprend à cet angle (délai négatif).
+const scratchVue = {
+  zone: platineVue,
+  bouton: $("en-cours-scratch"),
+  angle() {
+    const m = getComputedStyle(disque).transform;
+    const v = m.startsWith("matrix(") ? m.slice(7, -1).split(",").map(Number) : null;
+    return v ? Math.atan2(v[1], v[0]) * (180 / Math.PI) : 0;
+  },
+  poser(deg) {
+    disque.style.animation = "none";
+    disque.style.transform = `rotate(${deg.toFixed(2)}deg)`;
+  },
+  rendre(deg) {
+    disque.style.animation = "";
+    disque.style.transform = "";
+    disque.style.animationDelay = `${(-tourner(deg) / 1000).toFixed(3)}s`;
+  },
+};
+$("en-cours-scratch").addEventListener("click", () => basculerScratch(scratchVue));
 
 export {
   basculerEnCours, fermerEnCours, ouvrirEnCours,

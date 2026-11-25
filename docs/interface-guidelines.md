@@ -99,6 +99,15 @@ tient en quatre zones, présentes et identiques dans tous les écrans du rail :
   celui de la vue « En cours ». Avec `prefers-reduced-motion`, la pochette
   reste un carré immobile (`#pochette-platine`, `js/en-cours.js`).
 
+- **Scratcher le vinyle** (25 novembre 2026). Un bouton ⟲ posé sur le
+  disque, en haut à droite, dans l'inspecteur comme dans « En cours » :
+  invisible jusqu'au survol ou au focus (divulgation progressive : on ne
+  scratche jamais par accident), plein à l'accent tant que le mode est armé.
+  Armé, la molette du trackpad ou un glisser sur le disque le pilote, marche
+  arrière comprise ; Échap ou un second clic en sort, et Échap sort du mode
+  avant de fermer la vue. Les autres boutons du disque et l'anneau gardent
+  leur clic. Avec `prefers-reduced-motion`, pas de bouton (`js/scratch.js`).
+
 - **Choisir l'édition, face à face** (1ᵉʳ novembre 2026, idée de Disc
   Player). Sur les pistes d'un album ouvert, « Choisir l'édition… » ouvre une
   boîte au même voile que la palette (`#editions`, `js/editions.js`) : une

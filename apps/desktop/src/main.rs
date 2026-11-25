@@ -688,6 +688,8 @@ fn main() {
                         balade_reprendre(&etat_arriere_plan, &etat);
                         balade_battement(&etat);
                         entretenir_aura(&etat);
+                        // Le disque scratché arrivé au bout : le lecteur enchaîne.
+                        verrou(&etat.player).entretenir_scratch();
                         if let Err(e) = precharger_suivante(&etat) {
                             tracing::warn!(erreur = %e, "préchargement en arrière-plan impossible");
                         }
@@ -1174,6 +1176,9 @@ fn main() {
             js_error,
             qualite_piste,
             set_amelioration,
+            scratch_entrer,
+            scratch_main,
+            scratch_sortir,
             spectre_transport,
             start_superres,
             superres_state,

@@ -289,6 +289,20 @@ export const commands = {
 	 */
 	set_amelioration: (actif: boolean, intensite: number | null) => __TAURI_INVOKE<null>("set_amelioration", { actif, intensite }),
 	/**
+	 *  Arme le mode scratch du vinyle sur le morceau en cours : il est décodé en
+	 *  mémoire hors du verrou (comme `ouvrir`, « E » et HD compris), puis la
+	 *  source à vitesse signée prend la place du lecteur, à sa position. Refusé
+	 *  pendant des stems : le vinyle est celui du lecteur ordinaire.
+	 */
+	scratch_entrer: () => __TAURI_INVOKE<EtatScratch>("scratch_entrer"),
+	/**
+	 *  La main sur le disque : `vitesse` (1 = nominale, négative = arrière), ou
+	 *  `None` quand elle se lève — le moteur reprend. Rend l'état du disque.
+	 */
+	scratch_main: (vitesse: number | null) => __TAURI_INVOKE<EtatScratch>("scratch_main", { vitesse }),
+	/**  Quitte le mode scratch : la lecture reprend là où le disque s'est arrêté. */
+	scratch_sortir: () => __TAURI_INVOKE<null>("scratch_sortir"),
+	/**
 	 *  Les éditions de l'album chez MusicBrainz, classées par concordance du
 	 *  nombre de pistes avec l'album local.
 	 */
@@ -3179,6 +3193,26 @@ export type EtatMinuteur_Serialize = {
 	 *  le reste du morceau en cours seulement (`None` hors du dernier morceau).
 	 */
 	reste_ms: number | null,
+};
+
+/**  L'état du disque en mode scratch, rendu à chaque geste (~60 Hz). */
+export type EtatScratch = {
+	/**
+	 *  Le mode est armé côté moteur. `false` : il en est sorti (autre piste,
+	 *  fin du morceau, « E »…), l'interface désarme le disque.
+	 */
+	actif: boolean,
+	/**  Tête du disque, en millisecondes (fractionnaires : l'angle du dessin). */
+	position_ms: number | null,
+	/**  Vitesse lissée du disque (1 = nominale, négative = marche arrière). */
+	vitesse: number | null,
+	/**
+	 *  Délai entre la dernière vitesse déposée et sa relève par le fil audio,
+	 *  en microsecondes.
+	 */
+	latence_us: number,
+	/**  Latence de la sortie (tampon et appareil), en microsecondes. */
+	latence_sortie_us: number,
 };
 
 /**  État du multipiste, sondé par l'interface pour animer sa barre. */

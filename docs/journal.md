@@ -7576,3 +7576,60 @@ le doigté et la grille, Basic Pitch comme MuScriptor (≈ 2,5 s par morceau).
   la retrouve plus.
 - Outils : `crates/editor/examples/recaler_basse.rs` (sur un cache de
   l'app), `crates/transcription/examples/mesures.rs` (les mesures en texte).
+
+## Écouter : scratcher le vinyle au trackpad — 25 nov. 2026
+
+**Idée de François** : le disque donne envie de scratcher au trackpad, mais
+jamais par accident. D'où un mode qu'on arme exprès.
+
+- **Le geste** : un bouton ⟲ discret sur le disque (pochette de l'inspecteur
+  et vue « En cours »), visible au survol ou au focus, arme le mode ; Échap
+  ou un second clic en sort (Échap sort du scratch avant de fermer la vue).
+  Une fois armé, la molette du trackpad ou un glisser au pointeur sur le
+  disque est une main posée dessus. On ne prend que la **part tangentielle**
+  du mouvement autour de l'axe : un même geste fait avancer le disque en
+  haut et reculer en bas, comme sur une vraie platine. Le trackpad ne dit
+  pas quand les doigts se lèvent : sans molette depuis 90 ms, la main est
+  levée, et l'inertie de macOS compte comme un lancer (`ui/js/scratch.js`).
+- **Le moteur** (`crates/player/src/scratch.rs`) : pendant le mode, le
+  lecteur `rodio` est en pause et une source à vitesse signée joue à sa
+  place sur le mélangeur de la sortie, comme l'aura. Elle lit le morceau
+  décodé par `ouvrir` (gain, rééchantillonnage, « E » et cache HD compris,
+  donc le même son), entier en mémoire plutôt qu'une fenêtre de quelques
+  secondes : plus simple, et la tête ne sort jamais du tampon. La tête est
+  un réel en trames, interpolée en Catmull-Rom (quatre points). La vitesse
+  de la main, reçue à ~60 Hz par `scratch_main`, est lissée dans le fil
+  audio (τ = 12 ms) ; main levée, le moteur revient à 1 (ou à 0 en pause)
+  à accélération bornée, de l'arrêt à 33 ⅓ en 350 ms, et freine deux fois
+  plus fort qu'il ne lance. Un passe-haut à 10 Hz retire la composante
+  continue d'un disque arrêté sur un échantillon non nul ; fondus de 6 ms à
+  l'entrée et à la sortie.
+- **Sortie du mode** : le lecteur se place à la tête du disque et repart
+  (`sortir_scratch`). Toute autre commande de transport (⏭, ⏮, saut dans la
+  file, « E », HD) sort d'abord du mode ; pause et lecture règlent le moteur ;
+  un seek pose la tête. Le moteur arrivé au bout du morceau rend la main au
+  lecteur, qui enchaîne. Hors du mode, rien ne change.
+- **Le dessin** : l'angle vient de la tête du moteur (1,8 s par tour),
+  renvoyée par chaque `scratch_main`, plus le décalage relevé à l'armement ;
+  au retour, l'animation reprend à cet angle. Avec `prefers-reduced-motion`,
+  pas de bouton.
+
+**Latence entre geste et son**, mesurée sur la vraie sortie (haut-parleurs
+du MacBook Pro, test ignoré `scratch_de_bout_en_bout`) : 7,6 ms en médiane
+(24 ms au pire) entre la vitesse déposée et sa relève par le fil audio, plus
+63,3 ms que CoreAudio déclare pour la sortie (`latence_sortie`), plus le
+lissage (τ = 12 ms). Soit environ **75 ms** entre le geste arrivé au moteur
+et le son, sans compter l'aller de la commande Tauri. L'interface écrit au
+journal, après chaque rafale, la médiane qu'elle mesure (« scratch : latence
+geste → son », avec l'aller-retour de commande). La plus grosse part est la
+latence de sortie : 63 ms sur les haut-parleurs, bien plus que les ~10 ms
+notés le 29 oct. ; à revoir.
+
+Tests : huit tests du moteur (vitesse nominale, marche arrière, reprise du
+moteur, pause, fondu de sortie, fin du morceau, interpolation, composante
+continue), un test ignoré sur la vraie sortie (entrée, recul, reprise,
+sortie à la tête à moins de 60 ms près), deux tests de fumée (le bouton
+discret, l'entrée par le bouton, la molette, Échap et le second clic dans
+l'inspecteur ; le glisser et Échap dans « En cours »). `verifier.sh` passe.
+**Pas encore essayé au trackpad dans l'app** : l'essai à la main reste à
+faire.

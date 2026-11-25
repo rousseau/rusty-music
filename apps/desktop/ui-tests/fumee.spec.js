@@ -1014,6 +1014,66 @@ test("inspecteur : la pochette du morceau qui joue devient un vinyle, et redevie
   await expect(pochette).not.toHaveClass(/pochette--disque/, { timeout: 3000 });
 });
 
+test("vinyle : le bouton scratch arme le disque, la molette le pilote, Échap et un second clic en sortent", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.locator("#grille .album").first().click();
+  await page.locator("#liste .ligne").first().click();
+  const pochette = page.locator("#pochette");
+  await expect(pochette).toHaveClass(/pochette--disque/);
+  const bouton = page.locator("#insp-scratch");
+  // Discret : invisible tant que le disque n'est pas survolé.
+  await expect(bouton).toHaveCSS("opacity", "0");
+  await pochette.hover();
+  await expect(bouton).toHaveCSS("opacity", "1");
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await expect(pochette).toHaveClass(/scratch--arme/);
+  expect(await appels(page, "scratch_entrer")).toHaveLength(1);
+  // La molette sur le disque : une main qui fait tourner, en arrière ici.
+  const b = await pochette.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height * 0.15);
+  await page.mouse.wheel(60, 0);
+  await expect.poll(async () => (await appels(page, "scratch_main")).some((a) => a.vitesse !== null && a.vitesse < 0)).toBe(true);
+  // Échap sort du mode, sans rien fermer d'autre.
+  await page.keyboard.press("Escape");
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  await expect(pochette).not.toHaveClass(/scratch--arme/);
+  expect(await appels(page, "scratch_sortir")).toHaveLength(1);
+  // Un second clic sur le bouton sort aussi.
+  await pochette.hover();
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  expect(await appels(page, "scratch_sortir")).toHaveLength(2);
+});
+
+test("vue « En cours » : scratch du disque, Échap sort du mode puis ferme la vue", async ({ page }) => {
+  await lireUnAlbum(page);
+  await page.click("#bascule-en-cours");
+  await expect(page.locator("#en-cours")).toBeVisible();
+  const bouton = page.locator("#en-cours-scratch");
+  await page.locator(".en-cours__platine").hover();
+  await bouton.click();
+  await expect(bouton).toHaveAttribute("aria-pressed", "true");
+  // Glisser au pointeur sur le disque : vers l'avant (sens horaire, par le haut).
+  const b = await page.locator("#en-cours-disque").boundingBox();
+  const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+  await page.mouse.move(cx - b.width * 0.3, cy - b.height * 0.3);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(cx - b.width * 0.3 + i * 20, cy - b.height * 0.35, { steps: 2 });
+  await expect.poll(async () => (await appels(page, "scratch_main")).some((a) => a.vitesse > 0)).toBe(true);
+  await page.mouse.up();
+  // Le disque suit l'angle du moteur : une rotation posée à la main.
+  await expect.poll(() => page.locator("#en-cours-disque").evaluate((el) => el.style.transform)).toMatch(/^rotate\(/);
+  await page.keyboard.press("Escape");
+  await expect(bouton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#en-cours")).toBeVisible();
+  expect(await page.locator("#en-cours-disque").evaluate((el) => el.style.transform)).toBe("");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#en-cours")).toBeHidden();
+});
+
 test("inspecteur : pas de vinyle si le système demande moins de mouvement", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await lireUnAlbum(page);
