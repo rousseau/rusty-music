@@ -265,8 +265,9 @@ function dessiner(main) {
   if (Math.abs(ecart) > 2) a.currentTime = modulo(etat.angle);
 }
 
-/// Toutes les deux secondes armé : images par seconde, molettes reçues et
-/// écartées (inertie), envois — de quoi voir ce qui ralentit.
+/// Toutes les deux secondes armé, si la vue passe sous 50 images/s : images
+/// par seconde, molettes reçues et écartées (inertie), envois, tailles — de
+/// quoi voir ce qui ralentit.
 function diagnostic(maintenant) {
   const r = etat.releve;
   r.images += 1;
@@ -274,7 +275,7 @@ function diagnostic(maintenant) {
   const duree = (maintenant - r.debut) / 1000;
   if (duree < 2) return;
   const c = centre();
-  journal("scratch", `${(r.images / duree).toFixed(0)} images/s, ${r.molettes} molettes `
+  if (r.images / duree < 50) journal("scratch", `${(r.images / duree).toFixed(0)} images/s, ${r.molettes} molettes `
     + `(${r.ignores} d'inertie), ${(r.envois / duree).toFixed(0)} envois/s, disque `
     + `${(2 * c.rayon).toFixed(0)} px, fenêtre ${innerWidth}×${innerHeight}`);
   etat.releve = { debut: maintenant, images: 0, molettes: 0, ignores: 0, envois: 0 };

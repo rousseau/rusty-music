@@ -7631,5 +7631,43 @@ continue), un test ignoré sur la vraie sortie (entrée, recul, reprise,
 sortie à la tête à moins de 60 ms près), deux tests de fumée (le bouton
 discret, l'entrée par le bouton, la molette, Échap et le second clic dans
 l'inspecteur ; le glisser et Échap dans « En cours »). `verifier.sh` passe.
-**Pas encore essayé au trackpad dans l'app** : l'essai à la main reste à
-faire.
+
+**Essais de François au trackpad, le même jour**, et ce qu'ils ont corrigé :
+
+1. Fenêtre moyenne correcte ; en grand, latence et rotation fausses, et le
+   disque ne suivait pas exactement les doigts. Le dessin suit désormais la
+   main directement (le son suit la vitesse qu'elle donne), le disque armé
+   garde `will-change: transform`, et le centre du disque n'est plus relevé
+   à chaque molette (mise en page forcée).
+2. Lag dès l'armement, sans rien toucher ; la vitesse retombait à zéro au
+   lâcher avant de reprendre. Deux causes au lag : la tête du moteur n'est
+   publiée qu'une fois par tampon de sortie (le disque avançait par
+   à-coups), et l'écran du MacBook est à 120 Hz quand les rappels de WebKit
+   plafonnent à 60. Main levée et moteur stable, le disque tourne donc par une
+   animation Web Animations à la vitesse du moteur, recalée au-delà de 2°.
+   La retombée : une vitesse nulle partait entre deux événements, puis
+   l'inertie de macOS décroissait jusqu'à zéro. La vitesse de la main est
+   tenue entre deux événements, et l'inertie (cinq deltas en suite
+   géométrique, rapport 0,75 à 0,97) lève la main : le disque lancé garde sa
+   vitesse. Heuristique, à surveiller si un ralenti voulu est pris pour un
+   lâcher.
+3. Reprise « pas assez lisse, ça s'entend » ; lag en grand persistant. Le
+   moteur devient un asservissement du second ordre (accélération visée
+   proportionnelle à l'écart, τ = 120 ms, bornée par le couple, rejointe en
+   40 ms) : ni coude au lâcher ni à l'arrivée, dépassement < 2 %, un disque
+   lancé à ×3 ne repasse jamais sous ×0,98 (tests). Vitesse de la main
+   lissée sur 25 ms. Le relevé que l'interface écrit au journal a montré la
+   vraie cause du lag en grand : 7 à 40 images/s **sans aucun geste** à
+   3008×1629 (60 à 1400×868). La vue « En cours » réécrivait à chaque image
+   l'anneau et la lueur, des ombres floutées à l'échelle du disque ; hors
+   scratch cela ne se voyait pas, la rotation CSS ne dépendant pas du fil
+   principal. Elle ne les réécrit plus que quand ils changent.
+4. « Beaucoup mieux. » Relevé : 57,6 images/s en moyenne à 3008×1692 (disque
+   de 1364 px, 75 relevés) comme à 1512×949 ; latence geste → son médiane
+   73 ms, dont 2 ms d'aller-retour de commande — le reste est la sortie
+   audio (63 ms) et la relève du fil audio.
+
+Le plein écran (bouton vert) ne marchait pas dans la fenêtre d'essai :
+`RUSTY_MUSIC_ESSAI_VISIBLE` la tient au-dessus des autres, et macOS refuse le
+plein écran à une fenêtre flottante (elle s'agrandit seulement). Lancée
+normalement (`cargo run -p rusty-music-desktop`), il marche.
