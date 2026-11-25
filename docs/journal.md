@@ -7728,3 +7728,28 @@ Reste à comprendre pourquoi ~18 % des lâchers passent encore par
 l'heuristique : chacun écrit désormais au journal « lâcher sans annonce »,
 avec la dernière phase reçue, son âge, le survol du disque à cet instant et
 l'état de l'inertie.
+
+## Scratch : l'accroc du lâcher — 25 nov. 2026
+
+**François** : « parfois, le disque repart puis repart une deuxième fois ;
+il y a comme un accroc ». Cause : les phases du trackpad arrivaient par un
+événement Tauri (`scratch-phase`), les deltas par l'événement `wheel` de la
+page — deux chemins que rien n'ordonne. Juste après le lâcher, un delta
+d'inertie arrivé avant l'annonce de l'inertie, ou après la garde de 100 ms,
+était pris pour une main : elle reprenait le disque, puis l'heuristique le
+lâchait une seconde fois. C'étaient sans doute aussi les ~18 % de lâchers
+« devinés » du premier essai aux phases.
+
+- `trackpad.rs` émet chaque défilement avec sa phase (`Changed` compris),
+  son déplacement (`scrollingDeltaX/Y`) et le sens du défilement naturel
+  (`isDirectionInvertedFromDevice`). `scratch.js` ne prend plus les deltas
+  du trackpad que là ; la molette de la page n'agit que sans phase reçue
+  depuis 400 ms (souris, autre système). La vitesse de la main se calcule
+  à l'instant de l'événement natif, pas à son arrivée dans la page.
+- Au repos, la dérive de l'animation du disque se rattrape par sa vitesse
+  de lecture (±10 %) au lieu d'un recalage d'angle, qui se voyait.
+
+Essai de François : « ça semble ok ». Journal : 80 lâchers, tous par les
+phases, aucun deviné ; trajet natif 0,2 à 4,4 ms. La latence geste → son
+y vaut 218 ms : la sortie était un appareil Bluetooth (« Executive »), dont
+la latence domine (voir l'entrée sur la latence de sortie).
