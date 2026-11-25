@@ -7518,6 +7518,14 @@ dessinait (`scoreTitle`, `scoreSubTitle` à `false`). Basse, coach démarré :
 - **Coach** : la légende du code des erreurs derrière « ? » (`#coach-cle`),
   même repli que les réglages (Échap, clic ailleurs ; ouvrir l'un ferme
   l'autre).
+- **Puis, après l'essai dans l'app** (sections et aide de correction encore
+  au-dessus) : le bandeau du coach et la barre de correction sur une même
+  ligne (`.partition-barres`), l'export MIDI / GP de la partie dans la
+  barre de l'établi (`#partie-export`). Basse, coach au repos : 693 px de
+  partition sur le portable au lieu de 660 ; à 1 400 × 900, une note
+  choisie, la barre tient sur une ligne (le libellé de la note se coupe).
+  Piège : le bandeau du coach porte aussi la classe `correction` ; viser
+  `#partition-correction`.
 - `ui-tests/pratiquer-hauteur.spec.js` ne passait plus depuis l'Accueil
   (A2) : il attendait la grille d'albums ; `versAlbums` d'abord.
   `batterieTranscrite` passe de `fumee.spec.js` à `pratique-fictive.js`.

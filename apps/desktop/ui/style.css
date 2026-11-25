@@ -590,7 +590,19 @@ html, body {
 .correction[hidden], .correction [hidden] { display: none; }
 .correction .bouton--mince { margin-left: 0; }
 .correction__note { color: var(--txt); margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.correction__export { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.correction__export { display: flex; align-items: center; gap: 6px; }
+.correction__export[hidden] { display: none; }
+/* 24 nov. : le bandeau du coach et la barre de correction sur une ligne ;
+   la barre passe dessous seulement si la fenêtre est trop étroite. */
+.partition-barres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; flex: none; }
+.partition-barres > .coach { flex: 0 1 auto; min-width: 0; }
+.partition-barres > .coach.coach--ecoute { flex: 1 1 320px; }
+.partition-barres > #partition-correction { flex: 1 1 260px; min-width: 0; flex-wrap: nowrap; }
+/* Trop étroit : le libellé de la note choisie se coupe, pas la barre. */
+.partition-barres > #partition-correction > .correction__note { flex: 0 1 auto; min-width: 3em; }
+.partition-barres:not(:has(> :not([hidden]))) { display: none; }
+.partition-barres .coach__etat:empty { display: none; }
+.partition-barres .correction__etiquette { white-space: nowrap; }
 /* V18 : une paire de gestes sous son étiquette (corde, octave, demi-ton) ;
    masquée quand aucun de ses deux gestes n'est offert. */
 .correction__groupe { display: flex; align-items: center; gap: 4px; }

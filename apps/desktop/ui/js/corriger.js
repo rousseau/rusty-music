@@ -140,6 +140,8 @@ function majCorrection() {
   const barre = $("partition-correction");
   const tr = basseAffichee();
   barre.hidden = !tr;
+  // L'export de la partie, dans la barre de l'établi (24 nov.).
+  $("partie-export").hidden = !tr;
   const t = tr ? tempsChoisi() : null;
   if (!t) Object.assign(choix, { mesure: null, debut: null });
   const offerts = tr && t ? gestes(tr, t) : [];
@@ -311,7 +313,7 @@ async function exporter(format) {
   }
 }
 
-for (const b of document.querySelectorAll("#partition-correction [data-exporter]")) {
+for (const b of document.querySelectorAll("#partie-export [data-exporter]")) {
   b.addEventListener("click", () => exporter(b.dataset.exporter));
 }
 

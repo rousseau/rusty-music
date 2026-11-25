@@ -1837,16 +1837,20 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   await barre.locator('[data-corriger="demi-haut"]').click();
   await expect(page.locator("#correction-note")).toHaveText("sol♯1 · corde de mi, frette 4 · ajoutée");
 
-  // Exporter la partie corrigée : un vrai MIDI, un vrai Guitar Pro (zip).
+  // Exporter la partie corrigée : un vrai MIDI, un vrai Guitar Pro (zip),
+  // depuis la barre de l'établi (24 nov.).
+  const exporterPartie = page.locator("#partie-export");
+  await expect(exporterPartie).toBeVisible();
+  expect(await exporterPartie.evaluate((el) => !!el.closest("#dock"))).toBe(true);
   await page.evaluate(() => (window.__CHEMIN_EXPORT__ = "/tmp/partie.mid"));
-  await barre.locator('[data-exporter="midi"]').click();
+  await exporterPartie.locator('[data-exporter="midi"]').click();
   await expect.poll(() => appels(page, "exporter_partie").then((a) => a.length)).toBe(1);
   const midi = (await appels(page, "exporter_partie"))[0];
   expect(midi.chemin).toBe("/tmp/partie.mid");
   expect(String.fromCharCode(...midi.octets.slice(0, 4))).toBe("MThd");
   await expect(page.locator("#correction-note")).toContainText("Partie exportée (MIDI)");
   await page.evaluate(() => (window.__CHEMIN_EXPORT__ = "/tmp/partie.gp"));
-  await barre.locator('[data-exporter="gp"]').click();
+  await exporterPartie.locator('[data-exporter="gp"]').click();
   await expect.poll(() => appels(page, "exporter_partie").then((a) => a.length)).toBe(2);
   expect(String.fromCharCode(...(await appels(page, "exporter_partie"))[1].octets.slice(0, 2))).toBe("PK");
 

@@ -22,7 +22,7 @@ const FENETRES = [
   { nom: "portable", width: 1512, height: 912 },
   { nom: "1400", width: 1400, height: 868 },
 ];
-const BLOCS = [".fil", "#partition-coach", "#partition-correction", "#accordeur", "#retour-basse", "#sections-bande", "#partition"];
+const BLOCS = [".fil", "#sections-bande", ".partition-barres", "#partition-coach", "#partition-correction", "#accordeur", "#retour-basse", "#partition"];
 
 async function mesurer(page) {
   return page.evaluate((blocs) => {
