@@ -79,6 +79,14 @@ function lever(t, source) {
   etat.type = null;
   etat.lacher = { t, source, trajet: etat.lacher.trajet ?? 0 };
   etat.cible?.zone.classList.remove("scratch--main");
+  // Les phases connues, un lâcher deviné est une annonce manquée : de quoi
+  // comprendre laquelle (1er essai : ~18 % des lâchers).
+  const d = etat.phases.derniere;
+  if (source === "heuristique" && etat.phases.vues && d) {
+    journal("scratch", `lâcher sans annonce : dernière phase ${d.doigts ?? "-"}/${d.elan ?? "-"} `
+      + `il y a ${(performance.now() - d.t).toFixed(0)} ms, survol ${d.survol}, `
+      + `inertie ${etat.phases.inertie}`);
+  }
 }
 
 const arme = () => etat.cible !== null;
@@ -179,12 +187,13 @@ function surPhase({ doigts, inertie: elan, t_ms: tMs }) {
   ph.vues = true;
   const t = performance.now();
   const trajet = Math.max(0, performance.timeOrigin + t - tMs);
+  ph.derniere = { doigts, elan, t, survol: etat.cible.zone.matches(":hover") };
   if (elan === "debut") ph.inertie = true;
   else if (elan === "fin") ph.inertie = false;
   if (doigts === "poses" || doigts === "debut") {
     ph.inertie = false;
     // Hors du disque, les doigts défilent la page : rien à tenir.
-    if (!etat.cible.zone.matches(":hover")) return;
+    if (!ph.derniere.survol) return;
     ph.doigts = true;
     // Poser la main arrête le disque — sauf si les premiers deltas du geste
     // sont arrivés avant l'annonce : la main tourne déjà.
