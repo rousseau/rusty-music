@@ -2909,6 +2909,37 @@ body:has(#file:not([hidden])) .en-cours { right: var(--largeur-droite); }
   transition: background .15s ease;
 }
 .insp__playlist[hidden] { display: none; }
+
+/* Le mode scratch du vinyle (`js/scratch.js`) : un bouton discret posé sur le
+   disque, en haut à droite, révélé au survol ou au focus ; plein à l'accent
+   quand le mode est armé, et alors toujours visible. Le disque armé prend la
+   main (curseur), rien d'autre ne change. Sans mouvement, pas de scratch. */
+.scratch-bouton {
+  position: absolute; right: 8px; top: 8px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: var(--txt); color: var(--bg); font-size: var(--t-intertitre); line-height: 1;
+  opacity: 0; pointer-events: none;
+  transition: opacity .15s ease, background .15s ease;
+}
+.pochette--disque:hover .insp__scratch,
+.en-cours__platine:hover .en-cours__scratch,
+.scratch-bouton:focus-visible,
+.scratch-bouton[aria-pressed="true"] { opacity: 1; pointer-events: auto; }
+.scratch-bouton:hover, .scratch-bouton[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.scratch-bouton[aria-busy="true"] { cursor: wait; }
+.scratch-bouton[hidden] { display: none; }
+.scratch--arme { cursor: grab; touch-action: none; }
+/* Armé, la rotation est posée à la main à chaque image : le disque reste un
+   calque à part, sans quoi WebKit repeint ses sillons à chaque image — sur
+   le grand disque d'« En cours », plus qu'il n'en peut. */
+.scratch--arme .en-cours__disque, .scratch--arme .pochette__platine { will-change: transform; }
+.scratch--arme.scratch--main { cursor: grabbing; }
+.pochette:not(.pochette--disque) .insp__scratch { display: none; }
+.en-cours__scratch { right: calc(var(--disque) * .15); top: calc(var(--disque) * .15); }
+@media (prefers-reduced-motion: reduce) {
+  .scratch-bouton { display: none; }
+}
 .insp__playlist:hover, .insp__playlist[aria-expanded="true"] { background: var(--accent); color: var(--bg); }
 
 /* Le petit menu « Ajouter à une playlist », posé sous le bouton qui l'ouvre. */

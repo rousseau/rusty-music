@@ -65,6 +65,13 @@ souvlaki = { version = "0.8", default-features = false }
 # class_self_np`). Déjà dans le graphe (tokio, cpal…), mêmes version et
 # licence (MIT ou Apache-2.0) : un nouvel usage.
 libc = "0.2"
+# Les phases du trackpad pour le scratch du vinyle (`src/trackpad.rs`) : un
+# moniteur local d'AppKit. Déjà dans le graphe par tao et wry, mêmes versions
+# et licence (MIT) : un nouvel usage.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "NSEvent"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSDate"] }
+block2 = "0.6"
 
 [features]
 # Lama sans Ollama : le modèle de langue intégré (`explorer/modele_local.rs`).

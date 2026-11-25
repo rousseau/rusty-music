@@ -7584,3 +7584,147 @@ le doigté et la grille, Basic Pitch comme MuScriptor (≈ 2,5 s par morceau).
   la retrouve plus.
 - Outils : `crates/editor/examples/recaler_basse.rs` (sur un cache de
   l'app), `crates/transcription/examples/mesures.rs` (les mesures en texte).
+
+## Écouter : scratcher le vinyle au trackpad — 25 nov. 2026
+
+**Idée de François** : le disque donne envie de scratcher au trackpad, mais
+jamais par accident. D'où un mode qu'on arme exprès.
+
+- **Le geste** : un bouton ⟲ discret sur le disque (pochette de l'inspecteur
+  et vue « En cours »), visible au survol ou au focus, arme le mode ; Échap
+  ou un second clic en sort (Échap sort du scratch avant de fermer la vue).
+  Une fois armé, la molette du trackpad ou un glisser au pointeur sur le
+  disque est une main posée dessus. On ne prend que la **part tangentielle**
+  du mouvement autour de l'axe : un même geste fait avancer le disque en
+  haut et reculer en bas, comme sur une vraie platine. Le trackpad ne dit
+  pas quand les doigts se lèvent : sans molette depuis 90 ms, la main est
+  levée, et l'inertie de macOS compte comme un lancer (`ui/js/scratch.js`).
+- **Le moteur** (`crates/player/src/scratch.rs`) : pendant le mode, le
+  lecteur `rodio` est en pause et une source à vitesse signée joue à sa
+  place sur le mélangeur de la sortie, comme l'aura. Elle lit le morceau
+  décodé par `ouvrir` (gain, rééchantillonnage, « E » et cache HD compris,
+  donc le même son), entier en mémoire plutôt qu'une fenêtre de quelques
+  secondes : plus simple, et la tête ne sort jamais du tampon. La tête est
+  un réel en trames, interpolée en Catmull-Rom (quatre points). La vitesse
+  de la main, reçue à ~60 Hz par `scratch_main`, est lissée dans le fil
+  audio (τ = 12 ms) ; main levée, le moteur revient à 1 (ou à 0 en pause)
+  à accélération bornée, de l'arrêt à 33 ⅓ en 350 ms, et freine deux fois
+  plus fort qu'il ne lance. Un passe-haut à 10 Hz retire la composante
+  continue d'un disque arrêté sur un échantillon non nul ; fondus de 6 ms à
+  l'entrée et à la sortie.
+- **Sortie du mode** : le lecteur se place à la tête du disque et repart
+  (`sortir_scratch`). Toute autre commande de transport (⏭, ⏮, saut dans la
+  file, « E », HD) sort d'abord du mode ; pause et lecture règlent le moteur ;
+  un seek pose la tête. Le moteur arrivé au bout du morceau rend la main au
+  lecteur, qui enchaîne. Hors du mode, rien ne change.
+- **Le dessin** : l'angle vient de la tête du moteur (1,8 s par tour),
+  renvoyée par chaque `scratch_main`, plus le décalage relevé à l'armement ;
+  au retour, l'animation reprend à cet angle. Avec `prefers-reduced-motion`,
+  pas de bouton.
+
+**Latence entre geste et son**, mesurée sur la vraie sortie (haut-parleurs
+du MacBook Pro, test ignoré `scratch_de_bout_en_bout`) : 7,6 ms en médiane
+(24 ms au pire) entre la vitesse déposée et sa relève par le fil audio, plus
+63,3 ms que CoreAudio déclare pour la sortie (`latence_sortie`), plus le
+lissage (τ = 12 ms). Soit environ **75 ms** entre le geste arrivé au moteur
+et le son, sans compter l'aller de la commande Tauri. L'interface écrit au
+journal, après chaque rafale, la médiane qu'elle mesure (« scratch : latence
+geste → son », avec l'aller-retour de commande). La plus grosse part est la
+latence de sortie : 63 ms sur les haut-parleurs, bien plus que les ~10 ms
+notés le 29 oct. ; à revoir.
+
+Tests : huit tests du moteur (vitesse nominale, marche arrière, reprise du
+moteur, pause, fondu de sortie, fin du morceau, interpolation, composante
+continue), un test ignoré sur la vraie sortie (entrée, recul, reprise,
+sortie à la tête à moins de 60 ms près), deux tests de fumée (le bouton
+discret, l'entrée par le bouton, la molette, Échap et le second clic dans
+l'inspecteur ; le glisser et Échap dans « En cours »). `verifier.sh` passe.
+
+**Essais de François au trackpad, le même jour**, et ce qu'ils ont corrigé :
+
+1. Fenêtre moyenne correcte ; en grand, latence et rotation fausses, et le
+   disque ne suivait pas exactement les doigts. Le dessin suit désormais la
+   main directement (le son suit la vitesse qu'elle donne), le disque armé
+   garde `will-change: transform`, et le centre du disque n'est plus relevé
+   à chaque molette (mise en page forcée).
+2. Lag dès l'armement, sans rien toucher ; la vitesse retombait à zéro au
+   lâcher avant de reprendre. Deux causes au lag : la tête du moteur n'est
+   publiée qu'une fois par tampon de sortie (le disque avançait par
+   à-coups), et l'écran du MacBook est à 120 Hz quand les rappels de WebKit
+   plafonnent à 60. Main levée et moteur stable, le disque tourne donc par une
+   animation Web Animations à la vitesse du moteur, recalée au-delà de 2°.
+   La retombée : une vitesse nulle partait entre deux événements, puis
+   l'inertie de macOS décroissait jusqu'à zéro. La vitesse de la main est
+   tenue entre deux événements, et l'inertie (cinq deltas en suite
+   géométrique, rapport 0,75 à 0,97) lève la main : le disque lancé garde sa
+   vitesse. Heuristique, à surveiller si un ralenti voulu est pris pour un
+   lâcher.
+3. Reprise « pas assez lisse, ça s'entend » ; lag en grand persistant. Le
+   moteur devient un asservissement du second ordre (accélération visée
+   proportionnelle à l'écart, τ = 120 ms, bornée par le couple, rejointe en
+   40 ms) : ni coude au lâcher ni à l'arrivée, dépassement < 2 %, un disque
+   lancé à ×3 ne repasse jamais sous ×0,98 (tests). Vitesse de la main
+   lissée sur 25 ms. Le relevé que l'interface écrit au journal a montré la
+   vraie cause du lag en grand : 7 à 40 images/s **sans aucun geste** à
+   3008×1629 (60 à 1400×868). La vue « En cours » réécrivait à chaque image
+   l'anneau et la lueur, des ombres floutées à l'échelle du disque ; hors
+   scratch cela ne se voyait pas, la rotation CSS ne dépendant pas du fil
+   principal. Elle ne les réécrit plus que quand ils changent.
+4. « Beaucoup mieux. » Relevé : 57,6 images/s en moyenne à 3008×1692 (disque
+   de 1364 px, 75 relevés) comme à 1512×949 ; latence geste → son médiane
+   73 ms, dont 2 ms d'aller-retour de commande — le reste est la sortie
+   audio (63 ms) et la relève du fil audio.
+
+Le plein écran (bouton vert) ne marchait pas dans la fenêtre d'essai :
+`RUSTY_MUSIC_ESSAI_VISIBLE` la tient au-dessus des autres, et macOS refuse le
+plein écran à une fenêtre flottante (elle s'agrandit seulement). Lancée
+normalement (`cargo run -p rusty-music-desktop`), il marche.
+
+## Scratch : les phases du trackpad lues par AppKit — 25 nov. 2026
+
+WebKit ne donne à la webview que les deltas de la molette : `scratch.js`
+devinait la main levée (60 ms sans delta) et l'inertie de macOS (cinq deltas
+en suite géométrique). AppKit le dit sur chaque `scrollWheel` :
+`NSEvent.phase` (doigts posés sans bouger, début, fin, annulation) et
+`momentumPhase` (l'inertie).
+
+- **Côté Rust** (`apps/desktop/src/trackpad.rs`) : un moniteur local
+  d'AppKit (`addLocalMonitorForEventsMatchingMask:handler:`, par
+  `objc2-app-kit`, déjà dans le graphe par tao et wry) voit chaque
+  `scrollWheel` avant la fenêtre et le lui rend tel quel : la webview défile
+  comme avant. Tant que le scratch est armé, il émet `scratch-phase` à chaque
+  changement de phase seulement (quelques événements par geste, pas un par
+  delta), avec l'instant de l'événement ramené à l'époque Unix.
+- **Côté interface** : doigts posés (ou geste commencé) sur le disque = main
+  posée, le disque tenu même immobile ; levés = main lâchée à la vitesse du
+  moment, le moteur reprend ; deltas écartés pendant l'inertie annoncée (et
+  100 ms après la levée, le temps que l'annonce arrive). Sans phases (souris,
+  hors macOS), l'heuristique reste.
+- **Mesure** : l'interface écrit au journal « latence du lâcher » par source,
+  de la main levée au son relâché (trajet de l'annonce compris). Pour
+  l'heuristique, la levée est comptée depuis le dernier delta, qui la précède :
+  une borne basse, qui contient au moins les 60 ms d'attente. Chiffres
+  ci-dessous.
+
+Tests : traduction des phases (Rust), un test de fumée qui simule les phases
+(disque tenu 300 ms sans delta, lâcher, deltas d'inertie écartés, latence au
+journal). L'événement et sa charge sont exportés en TypeScript et contrôlés
+contre `fixtures.js` (`evenements`).
+
+**Essai de François au trackpad, le même jour** (app lancée normalement,
+commit 3a46bd3) :
+
+| | médiane par rafale | lâchers |
+|---|---|---|
+| lâcher par les phases | 76,6 à 79,5 ms (trajet natif 0,1 à 2,0 ms) | 49, en 6 rafales |
+| lâcher par l'heuristique (aucune annonce reçue) | 136,7 à 147,1 ms | 11 |
+| geste → son (inchangé) | 71,6 à 73,0 ms (aller-retour de commande 1 ms) | — |
+
+Environ **60 ms gagnés** sur le lâcher : il ne reste que la sortie audio et
+la relève du fil audio, comme pour le geste. Aucun avertissement au journal.
+Ressenti de François : « les deux doigts arrêtent le disque, le lâcher est
+plutôt naturel ».
+Reste à comprendre pourquoi ~18 % des lâchers passent encore par
+l'heuristique : chacun écrit désormais au journal « lâcher sans annonce »,
+avec la dernière phase reçue, son âge, le survol du disque à cet instant et
+l'état de l'inertie.

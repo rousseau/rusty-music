@@ -292,7 +292,7 @@ pub(crate) fn toggle_pause(etat: State<Etat>) -> Result<bool, String> {
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn skip(etat: State<Etat>) -> Result<(), String> {
     let stems_coupes = couper_stems(&etat);
-    let player = verrou(&etat.player);
+    let mut player = verrou(&etat.player);
     player.skip();
     // ⏭ pendant des stems : le lecteur est en pause depuis `stems_play`, et
     // passer au suivant ne le relance pas.
@@ -434,6 +434,89 @@ pub(crate) fn set_amelioration(
     Ok(())
 }
 
+/// L'état du disque en mode scratch, rendu à chaque geste (~60 Hz).
+#[derive(serde::Serialize)]
+#[cfg_attr(test, derive(specta::Type))]
+pub(crate) struct EtatScratch {
+    /// Le mode est armé côté moteur. `false` : il en est sorti (autre piste,
+    /// fin du morceau, « E »…), l'interface désarme le disque.
+    pub(crate) actif: bool,
+    /// Tête du disque, en millisecondes (fractionnaires : l'angle du dessin).
+    pub(crate) position_ms: f64,
+    /// Vitesse lissée du disque (1 = nominale, négative = marche arrière).
+    pub(crate) vitesse: f32,
+    /// Délai entre la dernière vitesse déposée et sa relève par le fil audio,
+    /// en microsecondes.
+    pub(crate) latence_us: u64,
+    /// Latence de la sortie (tampon et appareil), en microsecondes.
+    pub(crate) latence_sortie_us: u64,
+}
+
+fn etat_scratch(e: Option<rusty_music_player::scratch::EtatDisque>) -> EtatScratch {
+    match e {
+        Some(e) => EtatScratch {
+            actif: true,
+            position_ms: e.position.as_secs_f64() * 1000.0,
+            vitesse: e.vitesse,
+            latence_us: e.latence_main.as_micros() as u64,
+            latence_sortie_us: rusty_music_player::latence_sortie().as_micros() as u64,
+        },
+        None => EtatScratch {
+            actif: false,
+            position_ms: 0.0,
+            vitesse: 0.0,
+            latence_us: 0,
+            latence_sortie_us: 0,
+        },
+    }
+}
+
+/// Arme le mode scratch du vinyle sur le morceau en cours : il est décodé en
+/// mémoire hors du verrou (comme `ouvrir`, « E » et HD compris), puis la
+/// source à vitesse signée prend la place du lecteur, à sa position. Refusé
+/// pendant des stems : le vinyle est celui du lecteur ordinaire.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn scratch_entrer(etat: State<Etat>) -> Result<EtatScratch, String> {
+    if verrou(&etat.stems).is_some() {
+        return Err("le scratch ne joue pas les stems".into());
+    }
+    let Some((courant, ouvert, gain)) = verrou(&etat.player).a_scratcher() else {
+        return Ok(etat_scratch(None));
+    };
+    let disque =
+        rusty_music_player::scratch::Disque::decoder(&ouvert, gain).map_err(|e| e.to_string())?;
+    let mut player = verrou(&etat.player);
+    player.entrer_scratch(&courant, disque);
+    let rendu = etat_scratch(player.main_scratch(None));
+    crate::trackpad::armer(rendu.actif);
+    Ok(rendu)
+}
+
+/// La main sur le disque : `vitesse` (1 = nominale, négative = arrière), ou
+/// `None` quand elle se lève — le moteur reprend. Rend l'état du disque.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn scratch_main(etat: State<Etat>, vitesse: Option<f32>) -> EtatScratch {
+    let mut player = verrou(&etat.player);
+    player.entretenir_scratch();
+    let rendu = etat_scratch(player.main_scratch(vitesse));
+    if !rendu.actif {
+        crate::trackpad::armer(false);
+    }
+    rendu
+}
+
+/// Quitte le mode scratch : la lecture reprend là où le disque s'est arrêté.
+#[tauri::command(async)]
+#[cfg_attr(test, specta::specta)]
+pub(crate) fn scratch_sortir(etat: State<Etat>) -> Result<(), String> {
+    crate::trackpad::armer(false);
+    verrou(&etat.player)
+        .sortir_scratch()
+        .map_err(|e| e.to_string())
+}
+
 /// Précharge la piste suivante dans la file, si la réserve n'est pas pleine.
 ///
 /// En trois temps plutôt qu'un `player.completer()` verrou tenu : la lecture
@@ -504,6 +587,7 @@ pub(crate) fn precharger_suivante(etat: &Etat) -> Result<(), String> {
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn playback_state(etat: State<Etat>) -> Result<EtatLecture, String> {
     precharger_suivante(&etat)?;
+    verrou(&etat.player).entretenir_scratch();
     // Avant de tenir le verrou du lecteur : le minuteur le prend lui-même, et
     // aucune commande ne tient les stems et le lecteur à la fois.
     let minuteur = etat_du_minuteur(&etat);

@@ -289,6 +289,20 @@ export const commands = {
 	 */
 	set_amelioration: (actif: boolean, intensite: number | null) => __TAURI_INVOKE<null>("set_amelioration", { actif, intensite }),
 	/**
+	 *  Arme le mode scratch du vinyle sur le morceau en cours : il est décodé en
+	 *  mémoire hors du verrou (comme `ouvrir`, « E » et HD compris), puis la
+	 *  source à vitesse signée prend la place du lecteur, à sa position. Refusé
+	 *  pendant des stems : le vinyle est celui du lecteur ordinaire.
+	 */
+	scratch_entrer: () => __TAURI_INVOKE<EtatScratch>("scratch_entrer"),
+	/**
+	 *  La main sur le disque : `vitesse` (1 = nominale, négative = arrière), ou
+	 *  `None` quand elle se lève — le moteur reprend. Rend l'état du disque.
+	 */
+	scratch_main: (vitesse: number | null) => __TAURI_INVOKE<EtatScratch>("scratch_main", { vitesse }),
+	/**  Quitte le mode scratch : la lecture reprend là où le disque s'est arrêté. */
+	scratch_sortir: () => __TAURI_INVOKE<null>("scratch_sortir"),
+	/**
 	 *  Les éditions de l'album chez MusicBrainz, classées par concordance du
 	 *  nombre de pistes avec l'album local.
 	 */
@@ -3181,6 +3195,26 @@ export type EtatMinuteur_Serialize = {
 	reste_ms: number | null,
 };
 
+/**  L'état du disque en mode scratch, rendu à chaque geste (~60 Hz). */
+export type EtatScratch = {
+	/**
+	 *  Le mode est armé côté moteur. `false` : il en est sorti (autre piste,
+	 *  fin du morceau, « E »…), l'interface désarme le disque.
+	 */
+	actif: boolean,
+	/**  Tête du disque, en millisecondes (fractionnaires : l'angle du dessin). */
+	position_ms: number | null,
+	/**  Vitesse lissée du disque (1 = nominale, négative = marche arrière). */
+	vitesse: number | null,
+	/**
+	 *  Délai entre la dernière vitesse déposée et sa relève par le fil audio,
+	 *  en microsecondes.
+	 */
+	latence_us: number,
+	/**  Latence de la sortie (tampon et appareil), en microsecondes. */
+	latence_sortie_us: number,
+};
+
 /**  État du multipiste, sondé par l'interface pour animer sa barre. */
 export type EtatStems = EtatStems_Serialize | EtatStems_Deserialize;
 
@@ -4616,6 +4650,47 @@ export type PasseJournal_Serialize = {
 	bilan: string | null,
 	/**  Lignes notées au journal. */
 	ecritures: number,
+};
+
+/**  Les doigts sur le trackpad (`NSEvent.phase`). */
+export type PhaseDoigts = 
+/**  Posés sans bouger (`MayBegin`). */
+"poses" | 
+/**  Le geste commence (`Began`). */
+"debut" | 
+/**  Levés (`Ended`). */
+"fin" | 
+/**  Le système a repris le geste (`Cancelled`) : comme levés. */
+"annule";
+
+/**  L'inertie de macOS après le geste (`NSEvent.momentumPhase`). */
+export type PhaseInertie = "debut" | "fin";
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad = PhaseTrackpad_Serialize | PhaseTrackpad_Deserialize;
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad_Deserialize = {
+	doigts?: PhaseDoigts | null,
+	inertie?: PhaseInertie | null,
+	/**
+	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
+	 *  l'interface le compare à `performance.timeOrigin + performance.now()`
+	 *  pour compter le trajet jusqu'à elle.
+	 */
+	t_ms: number | null,
+};
+
+/**  La charge de `scratch-phase`. */
+export type PhaseTrackpad_Serialize = {
+	doigts: PhaseDoigts | null,
+	inertie: PhaseInertie | null,
+	/**
+	 *  L'instant de l'événement, en millisecondes depuis l'époque Unix :
+	 *  l'interface le compare à `performance.timeOrigin + performance.now()`
+	 *  pour compter le trajet jusqu'à elle.
+	 */
+	t_ms: number | null,
 };
 
 export type Piece = "grosse_caisse" | "caisse_claire" | "toms" | "charleston" | "cymbales";
