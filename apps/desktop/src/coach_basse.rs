@@ -752,6 +752,11 @@ pub(crate) fn coach_basse_accord_disque(
 /// Le stem de basse du morceau `id`, en mono à
 /// `rusty_music_editor::decode::SR` ; `None` s'il n'a pas été démixé.
 pub(crate) fn stem_de_basse(etat: &Etat, id: i64) -> Result<Option<Vec<f32>>, String> {
+    stem_mono(etat, id, "bass")
+}
+
+/// Le stem `nom` du morceau `id`, en mono ; `None` s'il n'a pas été séparé.
+pub(crate) fn stem_mono(etat: &Etat, id: i64, nom: &str) -> Result<Option<Vec<f32>>, String> {
     let chemin = verrou(&etat.lib)
         .track(id)
         .map_err(echec)?
@@ -760,7 +765,7 @@ pub(crate) fn stem_de_basse(etat: &Etat, id: i64) -> Result<Option<Vec<f32>>, St
     let dossier = dossier_stems(etat, &PathBuf::from(&chemin));
     let Some(p) = stems_du_dossier(&dossier)
         .into_iter()
-        .find(|(n, _)| n == "bass")
+        .find(|(n, _)| n == nom)
         .map(|(_, p)| p)
     else {
         return Ok(None);

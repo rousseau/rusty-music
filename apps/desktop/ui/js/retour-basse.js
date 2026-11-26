@@ -18,6 +18,10 @@ import { brancherChoixEntree, entreeAOuvrir, garderEntree, listerEntrees, montre
 // Le retour vit avec l'écoute de l'entrée : quand le coach ou l'accordeur la
 // rouvre ou la ferme, le module la rouvre et rallume le son tant qu'il est
 // voulu. Il s'éteint en quittant la basse dans Pratiquer.
+//
+// La guitare aussi (26 nov.) : le haut-parleur suit l'instrument du bandeau
+// du coach (basse ou guitare), les textes nomment celui-là, et « comme le
+// disque » prend son stem.
 
 const retour = {
   ouvert: false,
@@ -55,7 +59,36 @@ function reglages(actif) {
     volume: Number($("retour-volume").value) / 100,
     balance: Number($("retour-balance").value) / 100,
     id: edition.source?.id ?? null,
+    instrument: nomInstrument === "guitare" ? "guitar" : "bass",
   };
+}
+
+/// L'instrument entendu, tel que les textes le nomment.
+let nomInstrument = "basse";
+/// Les textes d'origine (écrits pour la basse) : attributs et nœuds texte.
+const originaux = new WeakMap();
+
+/// Renomme la basse en guitare (ou l'inverse) dans le bouton et le panneau.
+function renommer(nom) {
+  if (nom === nomInstrument) return;
+  nomInstrument = nom;
+  const changer = (orig) => orig.replaceAll("basse", nom);
+  for (const racine of [$("coach-retour"), $("retour-basse")]) {
+    for (const el of [racine, ...racine.querySelectorAll("*")]) {
+      if (!originaux.has(el)) {
+        originaux.set(el, { "aria-label": el.getAttribute("aria-label"), title: el.getAttribute("title") });
+      }
+      for (const [a, v] of Object.entries(originaux.get(el))) if (v !== null) el.setAttribute(a, changer(v));
+      for (const n of el.childNodes) {
+        if (n.nodeType !== Node.TEXT_NODE) continue;
+        if (!originaux.has(n)) originaux.set(n, n.textContent);
+        n.textContent = changer(originaux.get(n));
+      }
+    }
+  }
+  if (retour.vue) $("retour-etat").textContent = etat(retour.vue);
+  // « Comme le disque » change de stem.
+  if (retour.voulu) regler(true);
 }
 
 /// Envoie les réglages ; `actif` : le son doit sortir.
@@ -82,7 +115,7 @@ async function allumer() {
   }
   if (!v.disponible) {
     retour.voulu = false;
-    afficher(v, "Aucune sortie audio pour la basse.");
+    afficher(v, `Aucune sortie audio pour la ${nomInstrument}.`);
     return;
   }
   if (v.micro && !retour.microAccepte) {
@@ -128,10 +161,11 @@ function afficher(v, message) {
 }
 
 function etat(v) {
-  if (!v.ecoute) return "La basse s'entend dès que l'entrée est ouverte.";
-  if (!v.actif) return v.disponible ? "Coupé." : "Aucune sortie audio pour la basse.";
+  const nom = nomInstrument;
+  if (!v.ecoute) return `La ${nom} s'entend dès que l'entrée est ouverte.`;
+  if (!v.actif) return v.disponible ? "Coupé." : `Aucune sortie audio pour la ${nom}.`;
   const morceau =
-    v.prereglage === "comme-le-disque" && v.stem_disque === false ? "pas de stem de basse : son brut · " : "";
+    v.prereglage === "comme-le-disque" && v.stem_disque === false ? `pas de stem de ${nom} : son brut · ` : "";
   const latence = v.latence_ms == null ? "" : `latence ≈ ${Math.round(v.latence_ms)} ms`;
   const trous = v.trous ? ` · ${v.trous} trou${v.trous > 1 ? "s" : ""}` : "";
   return `${morceau}${latence}${trous}`;
@@ -204,15 +238,19 @@ for (const id of ["retour-volume", "retour-balance"]) {
   });
 }
 
-// Le haut-parleur suit le diapason : là quand le bandeau montre la basse.
-// Il disparaît : le son s'éteint, le panneau se ferme.
+// Le haut-parleur suit le bandeau du coach : là quand il montre la basse ou
+// la guitare (son instrument : `data-instrument`, posé par `coach.js`). Il
+// disparaît : le son s'éteint, le panneau se ferme.
+const bandeau = $("partition-coach");
 new MutationObserver(() => {
-  const basse = !$("coach-accordeur").hidden;
-  $("coach-retour").hidden = !basse;
-  if (!basse) {
+  const instrument = bandeau.hidden ? "" : bandeau.dataset.instrument;
+  const entendu = instrument === "bass" || instrument === "guitar";
+  $("coach-retour").hidden = !entendu;
+  if (entendu) renommer(instrument === "guitar" ? "guitare" : "basse");
+  else {
     if (retour.ouvert) fermerPanneau();
     if (retour.voulu) eteindre();
   }
-}).observe($("coach-accordeur"), { attributes: true, attributeFilter: ["hidden"] });
+}).observe(bandeau, { attributes: true, attributeFilter: ["hidden", "data-instrument"] });
 
 export { retour };

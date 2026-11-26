@@ -81,6 +81,11 @@ pub(crate) fn parts(b: f32) -> (f32, f32) {
 /// (l'instrument est sur la 2).
 pub(crate) fn semble_micro(nom: &str, canal: usize) -> bool {
     let n = nom.to_lowercase();
+    // Le Mustang Micro (Fender) est un préampli de guitare en USB-C, pas un
+    // microphone : son nom trompait le mot « micro » (26 nov.).
+    if n.contains("mustang micro") {
+        return false;
+    }
     let micro = [
         "micro",
         "mic ",
@@ -108,8 +113,9 @@ pub(crate) struct Retour {
     /// Sortie ouverte et son audible (sauf volume nul).
     actif: bool,
     micro: bool,
-    /// Le réglage « comme le disque » du dernier morceau mesuré.
-    disque: Option<(i64, Option<Reglage>)>,
+    /// Le réglage « comme le disque » du dernier morceau mesuré, et
+    /// l'instrument dont le stem a servi (« bass », « guitar »).
+    disque: Option<(i64, String, Option<Reglage>)>,
 }
 
 impl Retour {
@@ -182,7 +188,7 @@ impl Retour {
     }
 
     fn chaine(&self, sr: u32) -> Chaine {
-        let disque = self.disque.as_ref().and_then(|(_, r)| r.as_ref());
+        let disque = self.disque.as_ref().and_then(|(_, _, r)| r.as_ref());
         chaine_de(&self.reglage.prereglage, disque, sr)
     }
 
@@ -208,7 +214,7 @@ impl Retour {
             balance: self.reglage.balance,
             micro: self.micro,
             latence_ms: self.latence_ms(),
-            stem_disque: self.disque.as_ref().map(|(_, r)| r.is_some()),
+            stem_disque: self.disque.as_ref().map(|(_, _, r)| r.is_some()),
             trous: p.sous_alimentations(),
             prereglages: prereglages(),
         }
@@ -312,7 +318,9 @@ pub(crate) fn retour_basse_etat(etat: State<Etat>) -> Result<VueRetourBasse, Str
 }
 
 /// Règle le retour : sortie ouverte ou non, préréglage, volume (0 à 1),
-/// balance (−1 à 1). `id` est le morceau ouvert, pour « comme le disque ».
+/// balance (−1 à 1). `id` est le morceau ouvert, pour « comme le disque »,
+/// et `instrument` celui qu'on joue (« bass » par défaut, « guitar ») : son
+/// stem sert de modèle.
 /// Gardé pour l'instrument.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
@@ -323,7 +331,12 @@ pub(crate) fn retour_basse_regler(
     volume: f32,
     balance: f32,
     id: Option<i64>,
+    instrument: Option<String>,
 ) -> Result<VueRetourBasse, String> {
+    let instrument = match instrument.as_deref() {
+        Some("guitar") => "guitar",
+        _ => "bass",
+    };
     if Prereglage::analyser(&prereglage).is_none() {
         return Err(format!("préréglage inconnu : {prereglage}"));
     }
@@ -336,15 +349,22 @@ pub(crate) fn retour_basse_regler(
     // seconde.
     let disque = match (Prereglage::analyser(&prereglage), id) {
         (Some(Prereglage::CommeLeDisque), Some(id)) => {
-            let deja = verrou(&etat.coach_basse)
-                .retour_mut()
-                .and_then(|r| r.disque.as_ref().filter(|(d, _)| *d == id).cloned());
+            let deja = verrou(&etat.coach_basse).retour_mut().and_then(|r| {
+                r.disque
+                    .as_ref()
+                    .filter(|(d, i, _)| *d == id && i == instrument)
+                    .cloned()
+            });
             match deja {
                 Some(d) => Some(d),
                 None => {
-                    let stem = coach_basse::stem_de_basse(&etat, id)?;
+                    let stem = coach_basse::stem_mono(&etat, id, instrument)?;
                     let sr = rusty_music_editor::decode::SR as f32;
-                    Some((id, stem.map(|m| Reglage::comme_le_disque(&m, sr))))
+                    Some((
+                        id,
+                        instrument.to_string(),
+                        stem.map(|m| Reglage::comme_le_disque(&m, sr)),
+                    ))
                 }
             }
         }
@@ -409,6 +429,7 @@ mod tests {
         assert!(semble_micro("AirPods de François", 0));
         assert!(semble_micro("USB Mic", 0));
         assert!(!semble_micro("Focusrite USB", 0));
+        assert!(!semble_micro("Mustang Micro Plus", 0));
     }
 
     #[test]

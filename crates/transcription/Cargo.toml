@@ -42,6 +42,7 @@ rusty-music-core = { path = "../core" }
 thiserror.workspace = true
 tracing.workspace = true
 hyphenation = { version = "0.8", default-features = false, features = ["embed_all"] }
+pyin = { version = "1.2", default-features = false }
 
 [dev-dependencies]
 # Décodage des exemples seulement : le crate, lui, ne décode rien.

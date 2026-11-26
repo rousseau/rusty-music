@@ -177,7 +177,7 @@ async function guitareEtVoixTranscrites(page) {
     };
     window.__FIXTURES__.stems_existants = (a) =>
       ["drums", "bass", "other", "vocals", "guitar", "piano"].map((n) => [n, `/stems/${a.path.split("/").pop()}/${n}.wav`]);
-    window.__FIXTURES__.transcriptions_en_cache = ["guitar-muscriptor", "vocals-muscriptor"];
+    window.__FIXTURES__.transcriptions_en_cache = ["guitar-muscriptor", "vocals"];
     const jeu = (hauteur, corde, frette) => ({ hauteur, corde, frette });
     const silence = (seiziemes) => ({ seiziemes, jeu: null, lie: false, confiance: 1, note: null });
     window.__FIXTURES__.transcrire = (a) => {
@@ -205,7 +205,7 @@ async function guitareEtVoixTranscrites(page) {
           }))).flat()
         : [];
       return {
-        version: 6, instrument: a.instrument, modele: "muscriptor-medium", notes, coups: [], mesures,
+        version: 6, instrument: a.instrument, modele: guitare ? "muscriptor-medium" : "pyin", notes, coups: [], mesures,
         accordage: guitare ? [40, 45, 50, 55, 59, 64] : [], choix: null, doigtes: 6, basses: "quatre",
         hauteurs: [], grille: 4, sans_effet: 0,
         ...(guitare ? {} : { paroles: [{ note: 0, texte: "Back" }, { note: 1, texte: "in" }], source_paroles: "lrclib" }),

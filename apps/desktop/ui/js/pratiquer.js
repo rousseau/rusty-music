@@ -267,7 +267,7 @@ function texVoix(mesures, titre, p, modele, paroles = [], source = null) {
   const syllabes = new Map(paroles.map((s) => [s.note, s.texte]));
   const origine = { lrc: "fichier .lrc", tags: "tags du fichier", lrclib: "LRCLIB" }[source];
   const tete =
-    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"})${origine ? `, paroles : ${origine}` : ""} — à vérifier à l'oreille"` +
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${{ "muscriptor-medium": "MuScriptor", pyin: "pYIN" }[modele] ?? "Basic Pitch"})${origine ? `, paroles : ${origine}` : ""} — à vérifier à l'oreille"` +
     ` \\tempo ${tempoDe(p)}\n` +
     `\\track "Voix" \\staff {score} \\tuning voice \\displaytranspose 0\n`;
   return tete + corpsMelodique(mesures, p, (jeux, d, lie, note) => {
@@ -451,8 +451,9 @@ const INSTRUMENTS = ["bass", "drums", "guitar", "vocals"];
 function transcription(instrument, lancer = false) {
   const id = edition.source?.id;
   if (id === undefined || !INSTRUMENTS.includes(instrument)) return null;
-  // Tout passe par MuScriptor (29 oct. : la qualité prime), sauf la batterie.
-  const qualite = instrument !== "drums";
+  // Basse et guitare par MuScriptor (29 oct. : la qualité prime) ; la
+  // batterie par ADTOF, la voix par pYIN (26 nov.), en quelques secondes.
+  const qualite = instrument === "bass" || instrument === "guitar";
   const cle = cleTranscription(id, instrument, qualite);
   if (!transcriptions.has(cle)) {
     if (!lancer && !enCache(id, instrument, qualite)) return null;
@@ -566,8 +567,9 @@ function majBlocPartitions() {
     } else {
       // Le bouton « Calculer » dit déjà l'état : la ligne garde la durée
       // (basse) et tient sur une ligne dans le rail (V6).
-      etat.textContent = instrument !== "drums" ? "≈ 1 min" : "";
-      etat.title = instrument !== "drums" ? "À calculer : environ une minute" : "";
+      const lente = instrument === "bass" || instrument === "guitar";
+      etat.textContent = lente ? "≈ 1 min" : "";
+      etat.title = lente ? "À calculer : environ une minute" : "";
       action.textContent = "Calculer";
     }
   }
@@ -599,11 +601,12 @@ async function calculerPartition(instrument) {
   const tr = transcription(instrument);
   // La basse passe par MuScriptor : conditions acceptées et poids présents,
   // sinon le panneau qui les règle — il lance le calcul une fois prêt.
-  if (instrument !== "drums") {
+  const qualite = instrument === "bass" || instrument === "guitar";
+  if (qualite) {
     muscriptorPour = instrument;
     if (!(await muscriptorPret())) return;
   }
-  if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument !== "drums"));
+  if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, qualite));
   transcription(instrument, true);
 }
 

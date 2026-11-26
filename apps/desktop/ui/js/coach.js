@@ -207,6 +207,8 @@ function majCoach() {
   const { tr, instrument } = affichee();
   coach.attente = tr ? null : partitionAttendue();
   const barre = $("partition-coach");
+  // L'instrument du bandeau, que le retour (E7, `retour-basse.js`) suit.
+  barre.dataset.instrument = (tr ? instrument : coach.attente?.instrument) ?? "";
   barre.hidden = !tr && !coach.attente;
   if (barre.hidden) majBoutonAccordeur(false);
   if (coach.actif && instrument !== coach.instrument) {

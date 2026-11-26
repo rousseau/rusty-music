@@ -942,7 +942,9 @@ export const commands = {
 	 *  - « drums » : ADTOF, cinq pièces ;
 	 *  - « guitar » : le même transcripteur que la basse, mais les accords
 	 *    gardés, un doigté par accord sur six cordes (`guitare`) ;
-	 *  - « vocals » : le même, une note à la fois, sans tablature.
+	 *  - « vocals » : pYIN sur le stem (`transcription::voix` : MuScriptor
+	 *    laissait la moitié du chant sans note), une note à la fois, sans
+	 *    tablature.
 	 *  Puis quantification sur la pulsation. En cache à côté des stems ;
 	 *  quelques secondes la première fois. Les corrections de l'utilisateur
 	 *  (E2) sont réappliquées par-dessus, à chaque fois.
@@ -1557,10 +1559,12 @@ export const commands = {
 	retour_basse_etat: () => __TAURI_INVOKE<VueRetourBasse_Serialize>("retour_basse_etat"),
 	/**
 	 *  Règle le retour : sortie ouverte ou non, préréglage, volume (0 à 1),
-	 *  balance (−1 à 1). `id` est le morceau ouvert, pour « comme le disque ».
+	 *  balance (−1 à 1). `id` est le morceau ouvert, pour « comme le disque »,
+	 *  et `instrument` celui qu'on joue (« bass » par défaut, « guitar ») : son
+	 *  stem sert de modèle.
 	 *  Gardé pour l'instrument.
 	 */
-	retour_basse_regler: (actif: boolean, prereglage: string, volume: number | null, balance: number | null, id: number | null) => __TAURI_INVOKE<VueRetourBasse_Serialize>("retour_basse_regler", { actif, prereglage, volume, balance, id }),
+	retour_basse_regler: (actif: boolean, prereglage: string, volume: number | null, balance: number | null, id: number | null, instrument: string | null) => __TAURI_INVOKE<VueRetourBasse_Serialize>("retour_basse_regler", { actif, prereglage, volume, balance, id, instrument }),
 	/**  La playlist que Pratiquer enchaîne, ou `None`. */
 	pratique_playlist: () => __TAURI_INVOKE<PlaylistPratique_Serialize | null>("pratique_playlist"),
 	/**

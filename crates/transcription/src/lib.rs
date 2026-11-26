@@ -40,6 +40,7 @@ pub mod positions;
 pub mod quantification;
 pub mod sections;
 pub mod tablature;
+pub mod voix;
 
 use serde::{Deserialize, Serialize};
 

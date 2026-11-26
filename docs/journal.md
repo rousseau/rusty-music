@@ -7891,3 +7891,40 @@ une vraie prise de basse.
 Pas faits : l'accordeur reste celui de la basse ; ni les accords entiers
 ni les doigtés ne sont jugés.
 
+## Pratiquer : la voix par pYIN, la guitare s'entend — 26 nov. 2026
+
+Premier essai de François sur « Burnin' Alive » : des silences dans la
+partition de voix là où l'on chante, donc des paroles mal placées ; et la
+guitare (Fender Mustang Micro Plus en USB-C) ne s'entendait pas.
+
+**La voix.** Mesuré sur le stem : 115 s de chant (à 25 dB du niveau de
+pointe), dont 52 s couvertes par les notes de MuScriptor (45 %), 26 trous
+de plus d'une seconde. Restreint au groupe « voice », il rate une bonne
+part d'un chant rock, et les paroles se tassaient sur les notes restantes.
+Remplacé par un suivi de fondamentale : `transcription::voix`, pYIN (crate
+`pyin`, MIT, portage de librosa, HMM compris) à 22 050 Hz, trame 2 048,
+pas 256, de 75 à 1 100 Hz, puis découpage — un écart de plus de 0,8 demi-ton
+tenu 50 ms commence une note ; à hauteur égale, un creux de 6 dB sous le
+pic de la note suivi d'une remontée d'autant commence une syllabe (la
+montée de la consonne à la voyelle n'en est pas une : premier essai, une
+coupure de trop 80 ms après chaque attaque) ; moins de 70 ms, la note tombe.
+20 s pour le morceau en release, au lieu d'une minute.
+
+Résultat : 281 notes au lieu de 183, trous de plus d'une seconde de 26 à 11.
+Les onze qui restent sont surtout le refrain « Burnin' alive », crié en
+chœur : pYIN le juge non voisé (probabilité moyenne 0,02), Basic Pitch n'y
+trouve qu'une note — plusieurs voix, pas de période. Ces lignes restent
+sans syllabes ; les autres tombent juste, chaque ligne étant posée à son
+instant (« No / kids / to / rock, nowhere / to / run » à 77-80 s, où
+MuScriptor n'avait rien).
+
+**La guitare inaudible.** Le haut-parleur du retour (E7) ne s'affichait
+qu'avec le diapason, réservé à la basse : rien pour activer le son de la
+guitare. Il suit maintenant l'instrument du bandeau du coach (basse ou
+guitare, `data-instrument`) ; les textes du panneau nomment la guitare ;
+« comme le disque » prend le stem de guitare (`retour_basse_regler`
+reçoit `instrument`). Et « Mustang Micro Plus » passait pour un microphone
+(le mot « micro » : avertissement de larsen, double confirmation) : exclu de
+`semble_micro`. Le préréglage « Brut » convient : le Mustang envoie déjà en
+USB le son de son ampli simulé.
+

@@ -334,7 +334,9 @@ pub(crate) fn telecharger_muscriptor(
 /// - « drums » : ADTOF, cinq pièces ;
 /// - « guitar » : le même transcripteur que la basse, mais les accords
 ///   gardés, un doigté par accord sur six cordes (`guitare`) ;
-/// - « vocals » : le même, une note à la fois, sans tablature.
+/// - « vocals » : pYIN sur le stem (`transcription::voix` : MuScriptor
+///   laissait la moitié du chant sans note), une note à la fois, sans
+///   tablature.
 /// Puis quantification sur la pulsation. En cache à côté des stems ;
 /// quelques secondes la première fois. Les corrections de l'utilisateur
 /// (E2) sont réappliquées par-dessus, à chaque fois.
@@ -372,7 +374,9 @@ fn transcrire_brut(
             "transcription de « {instrument} » pas encore disponible"
         ));
     }
-    let qualite = qualite.unwrap_or(false) && instrument != "drums";
+    // La voix passe toujours par pYIN (`transcription::voix`, 26 nov.) :
+    // ni MuScriptor ni Basic Pitch.
+    let qualite = qualite.unwrap_or(false) && instrument != "drums" && instrument != "vocals";
     let chemin = verrou(&etat.lib)
         .track(id)
         .map_err(echec)?
@@ -544,7 +548,9 @@ fn transcrire_brut(
         .map(|(g, d)| 0.5 * (g + d))
         .collect();
     drop(s);
-    let brutes = if qualite {
+    let brutes = if instrument == "vocals" {
+        rusty_music_transcription::voix::notes(&mono, rusty_music_editor::SR).map_err(echec)?
+    } else if qualite {
         let poids = muscriptor::poids().ok_or_else(|| {
             "poids de MuScriptor absents : accepter leurs conditions sur huggingface.co/MuScriptor/muscriptor-medium, \
              puis les télécharger depuis le choix « Qualité »"
@@ -611,6 +617,13 @@ fn transcrire_brut(
     let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
     let metrique = pulsation.metrique().unwrap_or(4);
     let est_basse = instrument == "bass";
+    let modele = if instrument == "vocals" {
+        "pyin"
+    } else if qualite {
+        "muscriptor-medium"
+    } else {
+        "basic-pitch"
+    };
     let (notes, hauteurs, accordage, mesures) = match instrument.as_str() {
         "guitar" => {
             let accordage = guitare::STANDARD;
@@ -659,12 +672,7 @@ fn transcrire_brut(
     let vue = VueTranscription {
         version: VERSION_TRANSCRIPTION,
         instrument,
-        modele: if qualite {
-            "muscriptor-medium"
-        } else {
-            "basic-pitch"
-        }
-        .into(),
+        modele: modele.into(),
         notes,
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,

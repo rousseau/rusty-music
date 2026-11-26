@@ -2043,7 +2043,9 @@ test("Partitions de guitare et de voix : accords en tablature six cordes, voix e
   expect(v.notes).toEqual(["64", "64~", "67", "r"]);
   // Les paroles sous leurs notes, et leur source dans le sous-titre.
   expect(v.paroles).toEqual(["Back", "", "in", ""]);
-  expect(v.sousTitre).toContain("paroles : LRCLIB");
+  expect(v.sousTitre).toContain("(pYIN), paroles : LRCLIB");
+  // La voix ne passe pas par MuScriptor.
+  expect(await appels(page, "transcrire")).toContainEqual(expect.objectContaining({ instrument: "vocals", qualite: false }));
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/partition-voix.png" });
 });
 
@@ -2364,6 +2366,26 @@ test("Coach de guitare : la guitare sur l'entrée audio, la note la plus grave d
   expect(titres).toContain("fausse note : do♯ joué (+1 demi-ton)");
   await page.click("#coach-basculer");
   await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
+
+  // S'entendre jouer (E7) : le haut-parleur est là pour la guitare, le
+  // panneau la nomme, le retour se règle pour elle (son stem pour « comme
+  // le disque »).
+  const hautParleur = page.locator("#coach-retour");
+  await expect(hautParleur).toBeVisible();
+  await expect(hautParleur).toHaveAttribute("aria-label", "Entendre ma guitare");
+  await hautParleur.click();
+  await expect(page.locator("#retour-basse")).toContainText("entendre ma guitare avec le morceau");
+  await page.evaluate(() => {
+    // L'entrée écoutée, une sortie prête.
+    const etat = window.__FIXTURES__.retour_basse_etat;
+    window.__FIXTURES__.retour_basse_etat = { ...etat, ecoute: true, disponible: true };
+    window.__FIXTURES__.retour_basse_regler = (a) => ({ ...etat, ecoute: true, disponible: true, actif: a.actif, prereglage: a.prereglage });
+  });
+  await page.locator("#retour-actif").check();
+  await expect.poll(() => appels(page, "retour_basse_regler").then((a) => a.at(-1))).toMatchObject({ actif: true, instrument: "guitar" });
+  // Retour à la basse : les textes aussi.
+  await page.click('#instruments [data-instrument="bass"]');
+  await expect(hautParleur).toHaveAttribute("aria-label", "Entendre ma basse");
 });
 
 test("V35, V37 : la basse transposée — le coach et le code des erreurs suivent la hauteur, la tablature non", async ({ page }) => {
