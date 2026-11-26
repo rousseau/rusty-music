@@ -107,6 +107,26 @@ impl Reglages {
             ..Self::default()
         }
     }
+
+    /// Une guitare : de mi2 (82 Hz, ré2 en drop D) au mi6 du haut du manche.
+    /// Réglages par défaut de Basic Pitch, sans banc pour l'instant.
+    pub fn guitare() -> Self {
+        Self {
+            freq_min: Some(70.0),
+            freq_max: Some(1400.0),
+            ..Self::default()
+        }
+    }
+
+    /// Une voix chantée : du mi2 d'une basse au do6 d'une soprano.
+    pub fn voix() -> Self {
+        Self {
+            freq_min: Some(80.0),
+            freq_max: Some(1100.0),
+            harmoniques: Some(0.6),
+            ..Self::default()
+        }
+    }
 }
 
 pub struct Transcripteur {

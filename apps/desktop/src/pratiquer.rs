@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Commandes de Pratiquer : décompte, transcription (basse, batterie,
-//! MuScriptor), doigtés, corrections de la transcription et export.
+//! guitare, voix ; MuScriptor), doigtés, corrections de la transcription et export.
 
 use super::*;
 use rusty_music_transcription::corrections;
@@ -132,7 +132,8 @@ pub(crate) fn etat_transcription(etat: State<Etat>) -> EtatTranscription {
 }
 
 /// Les partitions déjà calculées du morceau, sans rien calculer : « bass »,
-/// « bass-muscriptor », « drums » selon les caches présents et à jour. Le
+/// « bass-muscriptor », « drums », « guitar-muscriptor »… selon les caches
+/// présents et à jour. Le
 /// bloc « Partitions » du rail montre ainsi « prête » plutôt que « Calculer ».
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
@@ -143,16 +144,24 @@ pub(crate) fn transcriptions_en_cache(etat: State<Etat>, id: i64) -> Result<Vec<
         .map(|t| t.path)
         .ok_or_else(|| format!("morceau inconnu : {id}"))?;
     let dossier = dossier_stems(&etat, Path::new(&chemin));
-    Ok(["bass", "bass-muscriptor", "drums"]
-        .into_iter()
-        .filter(|cle| {
-            std::fs::read(dossier.join(format!("transcription-{cle}.json")))
-                .ok()
-                .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
-                .is_some_and(|t| t.version == VERSION_TRANSCRIPTION)
-        })
-        .map(String::from)
-        .collect())
+    Ok([
+        "bass",
+        "bass-muscriptor",
+        "drums",
+        "guitar",
+        "guitar-muscriptor",
+        "vocals",
+        "vocals-muscriptor",
+    ]
+    .into_iter()
+    .filter(|cle| {
+        std::fs::read(dossier.join(format!("transcription-{cle}.json")))
+            .ok()
+            .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
+            .is_some_and(|t| t.version == VERSION_TRANSCRIPTION)
+    })
+    .map(String::from)
+    .collect())
 }
 
 /// Vrai si les poids de MuScriptor sont sur la machine (dossier des modèles
@@ -205,7 +214,10 @@ pub(crate) fn telecharger_muscriptor(
 /// - « bass » : Basic Pitch, ou MuScriptor si `qualite` (une minute par
 ///   morceau, plus juste — banc `experiments/partitions/`), puis une note à
 ///   la fois, corde et frette ;
-/// - « drums » : ADTOF, cinq pièces.
+/// - « drums » : ADTOF, cinq pièces ;
+/// - « guitar » : le même transcripteur que la basse, mais les accords
+///   gardés, un doigté par accord sur six cordes (`guitare`) ;
+/// - « vocals » : le même, une note à la fois, sans tablature.
 /// Puis quantification sur la pulsation. En cache à côté des stems ;
 /// quelques secondes la première fois. Les corrections de l'utilisateur
 /// (E2) sont réappliquées par-dessus, à chaque fois.
@@ -232,15 +244,15 @@ fn transcrire_brut(
     basses: Option<tablature::Basses>,
 ) -> Result<VueTranscription, String> {
     use rusty_music_transcription::{
-        basic_pitch, batterie, monophonie, muscriptor, porte, quantification,
+        basic_pitch, batterie, guitare, monophonie, muscriptor, porte, quantification,
     };
     let basses = basses.unwrap_or_default();
-    if instrument != "bass" && instrument != "drums" {
+    if !["bass", "drums", "guitar", "vocals"].contains(&instrument.as_str()) {
         return Err(format!(
             "transcription de « {instrument} » pas encore disponible"
         ));
     }
-    let qualite = qualite.unwrap_or(false) && instrument == "bass";
+    let qualite = qualite.unwrap_or(false) && instrument != "drums";
     let chemin = verrou(&etat.lib)
         .track(id)
         .map_err(echec)?
@@ -273,7 +285,23 @@ fn transcrire_brut(
             rusty_music_editor::pulsation::Modele::Complet,
         )?;
         let metrique = pulsation.metrique().unwrap_or(4);
-        t.mesures = if instrument == "bass" {
+        t.mesures = if instrument == "guitar" {
+            let mesures = quantification::quantifier_accords(
+                &t.notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
+            serde_json::to_value(&mesures).map_err(echec)?
+        } else if instrument == "vocals" {
+            let mesures = quantification::quantifier(
+                &t.notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
+            serde_json::to_value(&mesures).map_err(echec)?
+        } else if instrument == "bass" {
             if !doigtes_a_jour {
                 // Un cache d'avant le champ : ses hauteurs ont été ramenées
                 // sur l'accordage du disque, qui les contenait toutes.
@@ -406,7 +434,7 @@ fn transcrire_brut(
         }
         // Le bilan n'arrive qu'à la fin (une minute) : sans cette ligne, une
         // transcription interrompue ne laissait aucune trace au journal.
-        tracing::info!(id, "MuScriptor : transcription de la basse lancée");
+        tracing::info!(id, instrument = %instrument, "MuScriptor : transcription lancée");
         let issue = (|| -> Result<Vec<rusty_music_transcription::Note>, String> {
             let mut garde = verrou(&etat.muscriptor);
             if garde.valeur.is_none() {
@@ -420,7 +448,11 @@ fn transcrire_brut(
                 .transcrire(
                     &mono,
                     rusty_music_editor::SR,
-                    muscriptor::BASSES,
+                    match instrument.as_str() {
+                        "guitar" => muscriptor::GUITARES,
+                        "vocals" => muscriptor::VOIX,
+                        _ => muscriptor::BASSES,
+                    },
                     muscriptor::LOT,
                     |faits, total| {
                         let mut t = verrou(&etat.transcription);
@@ -445,21 +477,57 @@ fn transcrire_brut(
             .expect("chargé juste au-dessus")
             .activations(&mono, rusty_music_editor::SR)
             .map_err(echec)?;
-        basic_pitch::notes(&activations, &basic_pitch::Reglages::basse())
+        let reglages = match instrument.as_str() {
+            "guitar" => basic_pitch::Reglages::guitare(),
+            "vocals" => basic_pitch::Reglages::voix(),
+            _ => basic_pitch::Reglages::basse(),
+        };
+        basic_pitch::notes(&activations, &reglages)
     };
     // La porte retire ce que le stem ne joue pas vraiment (fuites d'autres
     // instruments, 60 dB sous la basse) avant de choisir les notes.
     let brutes = porte::filtrer(brutes, &mono, rusty_music_editor::SR, porte::SEUIL_DB);
-    let mut notes = monophonie::monophonique(brutes);
-    recaler_sur_stem(&mut notes, &mono);
-    let hauteurs = notes.iter().map(|n| n.hauteur).collect();
-    let accordage = doigter(&mut notes, basses, choix, &pulsation.premiers_temps);
-    let mesures = quantification::quantifier(
-        &notes,
-        &pulsation.temps,
-        &pulsation.premiers_temps,
-        pulsation.metrique().unwrap_or(4),
-    );
+    let metrique = pulsation.metrique().unwrap_or(4);
+    let est_basse = instrument == "bass";
+    let (notes, hauteurs, accordage, mesures) = match instrument.as_str() {
+        "guitar" => {
+            let accordage = guitare::STANDARD;
+            let mut notes = guitare::preparer(brutes, &accordage);
+            guitare::poser(&mut notes, &accordage);
+            let hauteurs = notes.iter().map(|n| n.hauteur).collect();
+            let mesures = quantification::quantifier_accords(
+                &notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
+            (notes, hauteurs, accordage.to_vec(), mesures)
+        }
+        "vocals" => {
+            let notes = monophonie::monophonique(brutes);
+            let hauteurs = notes.iter().map(|n| n.hauteur).collect();
+            let mesures = quantification::quantifier(
+                &notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
+            (notes, hauteurs, Vec::new(), mesures)
+        }
+        _ => {
+            let mut notes = monophonie::monophonique(brutes);
+            recaler_sur_stem(&mut notes, &mono);
+            let hauteurs = notes.iter().map(|n| n.hauteur).collect();
+            let accordage = doigter(&mut notes, basses, choix, &pulsation.premiers_temps);
+            let mesures = quantification::quantifier(
+                &notes,
+                &pulsation.temps,
+                &pulsation.premiers_temps,
+                metrique,
+            );
+            (notes, hauteurs, accordage.cordes, mesures)
+        }
+    };
     tracing::info!(
         ms = debut.elapsed().as_millis() as u64,
         notes = notes.len(),
@@ -478,8 +546,8 @@ fn transcrire_brut(
         notes,
         coups: Vec::new(),
         mesures: serde_json::to_value(&mesures).map_err(echec)?,
-        accordage: accordage.cordes,
-        choix,
+        accordage,
+        choix: choix.filter(|_| est_basse),
         doigtes: VERSION_DOIGTES,
         basses,
         hauteurs,

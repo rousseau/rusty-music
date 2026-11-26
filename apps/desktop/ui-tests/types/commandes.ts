@@ -939,7 +939,10 @@ export const commands = {
 	 *  - « bass » : Basic Pitch, ou MuScriptor si `qualite` (une minute par
 	 *    morceau, plus juste — banc `experiments/partitions/`), puis une note à
 	 *    la fois, corde et frette ;
-	 *  - « drums » : ADTOF, cinq pièces.
+	 *  - « drums » : ADTOF, cinq pièces ;
+	 *  - « guitar » : le même transcripteur que la basse, mais les accords
+	 *    gardés, un doigté par accord sur six cordes (`guitare`) ;
+	 *  - « vocals » : le même, une note à la fois, sans tablature.
 	 *  Puis quantification sur la pulsation. En cache à côté des stems ;
 	 *  quelques secondes la première fois. Les corrections de l'utilisateur
 	 *  (E2) sont réappliquées par-dessus, à chaque fois.
@@ -1140,7 +1143,8 @@ export const commands = {
 	etat_transcription: () => __TAURI_INVOKE<EtatTranscription>("etat_transcription"),
 	/**
 	 *  Les partitions déjà calculées du morceau, sans rien calculer : « bass »,
-	 *  « bass-muscriptor », « drums » selon les caches présents et à jour. Le
+	 *  « bass-muscriptor », « drums », « guitar-muscriptor »… selon les caches
+	 *  présents et à jour. Le
 	 *  bloc « Partitions » du rail montre ainsi « prête » plutôt que « Calculer ».
 	 */
 	transcriptions_en_cache: (id: number) => __TAURI_INVOKE<string[]>("transcriptions_en_cache", { id }),

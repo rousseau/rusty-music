@@ -163,4 +163,47 @@ async function batterieTranscrite(page) {
   });
 }
 
-module.exports = { pratiquerAlbum, basseTranscrite, batterieTranscrite };
+/// Une guitare et une voix transcrites (démixage à six stems) : la guitare
+/// plaque un accord de mi majeur ouvert sur chaque premier temps, puis une
+/// note seule ; la voix chante mi4 sur deux temps, liée, puis sol4.
+async function guitareEtVoixTranscrites(page) {
+  await page.evaluate(() => {
+    window.__FIXTURES__.pulsation = {
+      temps: Array.from({ length: 32 }, (_, i) => 0.5 + i / 2),
+      premiers_temps: Array.from({ length: 8 }, (_, i) => 0.5 + 2 * i),
+      bpm: 120,
+      metrique: 4,
+    };
+    window.__FIXTURES__.stems_existants = (a) =>
+      ["drums", "bass", "other", "vocals", "guitar", "piano"].map((n) => [n, `/stems/${a.path.split("/").pop()}/${n}.wav`]);
+    window.__FIXTURES__.transcriptions_en_cache = ["guitar-muscriptor", "vocals-muscriptor"];
+    const jeu = (hauteur, corde, frette) => ({ hauteur, corde, frette });
+    const silence = (seiziemes) => ({ seiziemes, jeu: null, lie: false, confiance: 1, note: null });
+    window.__FIXTURES__.transcrire = (a) => {
+      const guitare = a.instrument === "guitar";
+      const mesures = Array.from({ length: 8 }, (_, m) => ({
+        debut_s: 0.5 + 2 * m,
+        temps: 4,
+        evenements: guitare
+          ? [
+              { seiziemes: 8, jeu: jeu(40, 0, 0), accord: [jeu(47, 1, 2), jeu(52, 2, 2), jeu(56, 3, 1)], lie: false, confiance: 1, note: 0 },
+              { seiziemes: 4, jeu: jeu(48, 1, 3), lie: false, confiance: 1, note: 4 },
+              silence(4),
+            ]
+          : [
+              { seiziemes: 4, jeu: jeu(64, null, null), lie: false, confiance: 1, note: 0 },
+              { seiziemes: 4, jeu: jeu(64, null, null), lie: true, confiance: 1, note: 0 },
+              { seiziemes: 4, jeu: jeu(67, null, null), lie: false, confiance: 1, note: 1 },
+              silence(4),
+            ],
+      }));
+      return {
+        version: 6, instrument: a.instrument, modele: "muscriptor-medium", notes: [], coups: [], mesures,
+        accordage: guitare ? [40, 45, 50, 55, 59, 64] : [], choix: null, doigtes: 6, basses: "quatre",
+        hauteurs: [], grille: 4, sans_effet: 0,
+      };
+    };
+  });
+}
+
+module.exports = { pratiquerAlbum, basseTranscrite, batterieTranscrite, guitareEtVoixTranscrites };

@@ -255,9 +255,11 @@
         <div class="segments" id="instruments" hidden>
           <button class="segment segment--actif" data-instrument="bass">Basse</button>
           <button class="segment" data-instrument="drums">Batterie</button>
+          <button class="segment" data-instrument="guitar">Guitare</button>
+          <button class="segment" data-instrument="vocals">Voix</button>
         </div>
-        <!-- Basse : notation au-dessus de la tablature (comme les livres
-             publiés) ou tablature seule. -->
+        <!-- Basse et guitare : notation au-dessus de la tablature (comme les
+             livres publiés) ou tablature seule. -->
         <div class="segments" id="notations" hidden style="margin-top:8px">
           <button class="segment segment--actif" data-notation="score+tabs"
                   title="Notation en clé de fa au-dessus de la tablature, comme les livres de basse">Partition + tab</button>
@@ -357,6 +359,22 @@
         </div>
         <progress class="jauge partition-ligne__jauge" data-partition-jauge="drums" hidden max="1" value="0"
                   aria-label="Calcul de la partition de batterie"></progress>
+        <!-- Guitare (stem « guitar » du démixage à six stems) et voix : par
+             MuScriptor, comme la basse. -->
+        <div class="partition-ligne" data-partition="guitar">
+          <span class="partition-ligne__nom">Guitare</span>
+          <span class="partition-ligne__etat"></span>
+          <button class="bouton bouton--mince partition-ligne__action"></button>
+        </div>
+        <progress class="jauge partition-ligne__jauge" data-partition-jauge="guitar" hidden max="1" value="0"
+                  aria-label="Calcul de la partition de guitare"></progress>
+        <div class="partition-ligne" data-partition="vocals">
+          <span class="partition-ligne__nom">Voix</span>
+          <span class="partition-ligne__etat"></span>
+          <button class="bouton bouton--mince partition-ligne__action"></button>
+        </div>
+        <progress class="jauge partition-ligne__jauge" data-partition-jauge="vocals" hidden max="1" value="0"
+                  aria-label="Calcul de la partition de voix"></progress>
       </div>
 
       <!-- Modes Pratiquer et Créer : le démixage vit dans le rail, là où on cherche une

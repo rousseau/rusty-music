@@ -42,6 +42,10 @@ pub struct Evenement {
     /// (aussi sur sa suite liée) ; `None` pour un silence. L'interface s'en
     /// sert pour corriger une note cliquée dans la partition (E2).
     pub note: Option<u32>,
+    /// Les autres notes d'un accord, attaquées avec `jeu` (guitare,
+    /// [`quantifier_accords`]) ; vide pour une ligne monophonique.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub accord: Vec<Jeu>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -118,6 +122,52 @@ pub fn decalage_des_attaques(attaques: &[f32], temps: &[f32]) -> f32 {
 /// Les mesures d'un morceau, notes posées. `temps` et `premiers` sont ceux de
 /// la pulsation ; les notes, triées ou non.
 pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32) -> Vec<Mesure> {
+    quantifier_avec(notes, temps, premiers, metrique, false)
+}
+
+/// [`quantifier`] pour un instrument qui plaque des accords (la guitare) :
+/// les notes attaquées sur la même double croche font un accord, au lieu
+/// que la plus sûre l'emporte. L'accord dure jusqu'à la fin de sa note la
+/// plus longue, au plus jusqu'à l'attaque suivante — une partition de
+/// guitare se lit ici en une voix, comme sa tablature.
+pub fn quantifier_accords(
+    notes: &[Note],
+    temps: &[f32],
+    premiers: &[f32],
+    metrique: u32,
+) -> Vec<Mesure> {
+    quantifier_avec(notes, temps, premiers, metrique, true)
+}
+
+/// Une case de la grille : attaque et fin (en doubles croches), la note la
+/// plus grave (ou la seule), son activation et son rang, et les autres notes
+/// de l'accord.
+struct Case {
+    d: i64,
+    f: i64,
+    jeu: Jeu,
+    a: f32,
+    rang: u32,
+    accord: Vec<Jeu>,
+}
+
+impl Case {
+    fn hauteurs(&self) -> Vec<u8> {
+        let mut h: Vec<u8> = std::iter::once(self.jeu.hauteur)
+            .chain(self.accord.iter().map(|j| j.hauteur))
+            .collect();
+        h.sort_unstable();
+        h
+    }
+}
+
+fn quantifier_avec(
+    notes: &[Note],
+    temps: &[f32],
+    premiers: &[f32],
+    metrique: u32,
+    accords: bool,
+) -> Vec<Mesure> {
     if temps.len() < 2 || premiers.is_empty() {
         return Vec::new();
     }
@@ -129,7 +179,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
     let fin_morceau = bornes.last().copied().unwrap_or(0) + (metrique.max(1) * DIVISIONS) as i64;
 
     // Attaques et fins sur la grille ; deux attaques sur la même case : la plus sûre.
-    let mut grille: Vec<(i64, i64, Jeu, f32, u32)> = Vec::new();
+    let mut grille: Vec<Case> = Vec::new();
     let mut triees: Vec<(u32, &Note)> = (0..).zip(notes).collect();
     triees.sort_by(|a, b| a.1.debut_s.total_cmp(&b.1.debut_s));
     let decalage = decalage_de_jeu(notes, temps);
@@ -144,13 +194,37 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
             corde: n.corde,
             frette: n.frette,
         };
+        let case = Case {
+            d,
+            f,
+            jeu,
+            a: n.amplitude,
+            rang,
+            accord: Vec::new(),
+        };
         match grille.last_mut() {
-            Some(der) if der.0 == d => {
-                if n.amplitude > der.3 {
-                    *der = (d, f, jeu, n.amplitude, rang);
+            Some(der) if der.d == d && accords => {
+                der.f = der.f.max(f);
+                if der.hauteurs().contains(&jeu.hauteur) {
+                    continue;
+                }
+                der.a = der.a.max(n.amplitude);
+                // La note la plus grave porte l'accord.
+                if jeu.hauteur < der.jeu.hauteur {
+                    der.accord.push(der.jeu);
+                    der.jeu = jeu;
+                    der.rang = rang;
+                } else {
+                    der.accord.push(jeu);
+                }
+                der.accord.sort_by_key(|j| j.hauteur);
+            }
+            Some(der) if der.d == d => {
+                if n.amplitude > der.a {
+                    *der = case;
                 }
             }
-            _ => grille.push((d, f, jeu, n.amplitude, rang)),
+            _ => grille.push(case),
         }
     }
     // Une anticipation tenue par-dessus la barre est une seule note : le
@@ -158,23 +232,23 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
     // commence là où la première finit), ce qui la ferait rejouer.
     let mut i = 0;
     while i + 1 < grille.len() {
-        let (d, f, jeu, _, _) = grille[i];
-        let suivante = grille[i + 1];
-        let anticipation = d % DIVISIONS as i64 != 0 && suivante.0 - d < DIVISIONS as i64;
+        let (d, f) = (grille[i].d, grille[i].f);
+        let suivante = &grille[i + 1];
+        let anticipation = d % DIVISIONS as i64 != 0 && suivante.d - d < DIVISIONS as i64;
         if anticipation
-            && jeu.hauteur == suivante.2.hauteur
-            && f >= suivante.0
-            && bornes.binary_search(&suivante.0).is_ok()
+            && grille[i].hauteurs() == suivante.hauteurs()
+            && f >= suivante.d
+            && bornes.binary_search(&suivante.d).is_ok()
         {
-            grille[i].1 = suivante.1;
+            grille[i].f = suivante.f;
             grille.remove(i + 1);
         }
         i += 1;
     }
     // Une note s'arrête au plus tard à l'attaque suivante.
     for i in 0..grille.len().saturating_sub(1) {
-        let suivante = grille[i + 1].0;
-        grille[i].1 = grille[i].1.min(suivante);
+        let suivante = grille[i + 1].d;
+        grille[i].f = grille[i].f.min(suivante);
     }
 
     let mut mesures = Vec::with_capacity(premiers.len());
@@ -188,21 +262,23 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
         let mut curseur = debut;
         // Une note commencée dans une mesure précédente qui déborde ici.
         if k > 0 {
-            let (_, f, jeu, a, rang) = grille[k - 1];
-            if f > debut {
-                let fin_note = f.min(fin);
+            let c = &grille[k - 1];
+            if c.f > debut {
+                let fin_note = c.f.min(fin);
                 evenements.push(Evenement {
                     seiziemes: (fin_note - debut) as u32,
-                    jeu: Some(jeu),
+                    jeu: Some(c.jeu),
                     lie: true,
-                    confiance: a,
-                    note: Some(rang),
+                    confiance: c.a,
+                    note: Some(c.rang),
+                    accord: c.accord.clone(),
                 });
                 curseur = fin_note;
             }
         }
-        while k < grille.len() && grille[k].0 < fin {
-            let (d, f, jeu, a, rang) = grille[k];
+        while k < grille.len() && grille[k].d < fin {
+            let c = &grille[k];
+            let (d, f) = (c.d, c.f);
             if d > curseur {
                 evenements.push(Evenement {
                     seiziemes: (d - curseur) as u32,
@@ -210,6 +286,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
                     lie: false,
                     confiance: 1.0,
                     note: None,
+                    accord: Vec::new(),
                 });
             }
             let d = d.max(curseur);
@@ -217,10 +294,11 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
             if fin_note > d {
                 evenements.push(Evenement {
                     seiziemes: (fin_note - d) as u32,
-                    jeu: Some(jeu),
+                    jeu: Some(c.jeu),
                     lie: false,
-                    confiance: a,
-                    note: Some(rang),
+                    confiance: c.a,
+                    note: Some(c.rang),
+                    accord: c.accord.clone(),
                 });
                 curseur = fin_note;
             }
@@ -233,6 +311,7 @@ pub fn quantifier(notes: &[Note], temps: &[f32], premiers: &[f32], metrique: u32
                 lie: false,
                 confiance: 1.0,
                 note: None,
+                accord: Vec::new(),
             });
         }
         let temps_mesure = ((fin - debut) as f32 / DIVISIONS as f32).round().max(1.0) as u32;
@@ -361,6 +440,28 @@ mod tests {
             (0..32).map(|k| k as f32 * 0.5).collect(),
             (0..8).map(|m| m as f32 * 2.0).collect(),
         )
+    }
+
+    #[test]
+    fn des_notes_attaquees_ensemble_font_un_accord() {
+        let (t, p) = grille();
+        // Un accord de trois notes sur le premier temps, une noire ; puis une
+        // note seule. La même chose en monophonie ne garde qu'une note.
+        let n = vec![
+            note(0.0, 0.45, 40),
+            note(0.01, 0.48, 47),
+            note(0.02, 0.4, 52),
+            note(0.5, 0.95, 45),
+        ];
+        let m = quantifier_accords(&n, &t, &p, 4);
+        let e = &m[0].evenements;
+        assert_eq!(e[0].jeu.unwrap().hauteur, 40);
+        let autres: Vec<u8> = e[0].accord.iter().map(|j| j.hauteur).collect();
+        assert_eq!(autres, [47, 52]);
+        assert_eq!(e[0].seiziemes, 4);
+        assert!(e[1].accord.is_empty() && e[1].jeu.unwrap().hauteur == 45);
+        let m = quantifier(&n, &t, &p, 4);
+        assert!(m[0].evenements[0].accord.is_empty());
     }
 
     #[test]

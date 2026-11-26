@@ -7809,3 +7809,42 @@ tiendrait plus dans 5,8 ms. `TAMPON_STEMS` vaut désormais `TAMPON_SORTIE`.
   dominée par l'appareil (≈ 230 ms).
 - Le test ignoré `ouvre_la_sortie_par_defaut` vérifie que la lecture ramène
   à 512 un tampon qu'un autre flux avait grossi à 2048.
+
+## Pratiquer : partitions de guitare et de voix — 26 nov. 2026
+
+La transcription automatique s'étend du stem de basse et de batterie aux
+stems `guitar` (BS-RoFormer « SW », six stems : variante par défaut de
+Pratiquer) et `vocals`. Même chemin que la basse — MuScriptor (ou Basic
+Pitch hors interface), porte d'énergie, quantification sur la pulsation —
+avec deux écarts :
+
+- **Guitare** : MuScriptor restreint aux trois groupes de guitare
+  (`muscriptor::GUITARES`) ; les accords sont gardés.
+  `transcription::guitare` ramène chaque note sur le manche à l'octave,
+  regroupe les attaques à 40 ms près, réduit un accord impossible (plus de
+  six notes, ou sans doigté) en retirant ses notes les plus faibles, puis
+  cherche un doigté par accord (une note par corde, frettes appuyées dans
+  quatre cases) et le chemin le moins cher (Viterbi : écart de la main,
+  position haute, notes frettées ; déplacement de la main, moitié moins
+  cher après un silence ; un doigté tout à vide garde la main de son
+  prédécesseur). `quantification::quantifier_accords` pose l'accord sur la
+  grille (`Evenement::accord`, absent du JSON quand il est vide : la basse
+  n'en voit rien). Partition : tablature six cordes en accordage standard,
+  notation en clé de sol au-dessus (`\displaytranspose 12` : une octave
+  au-dessus du son), bascule « Partition + tab / Tablature » partagée avec
+  la basse.
+- **Voix** : MuScriptor restreint à `voice`, une note à la fois
+  (`monophonie`), pas de tablature : `\tuning voice` (des hauteurs, liaisons
+  `C4{t}`) et `\displaytranspose 0` — sans programme, alphaTab prend la
+  piste pour une guitare et l'écrirait une octave trop haut.
+
+Interface : deux lignes de plus dans le bloc Partitions et deux boutons
+dans « Votre partie » ; une ligne n'apparaît que si le stem existe (le
+démixage à quatre stems n'a pas de guitare). Le coach, les corrections (E2)
+et le recalage des attaques sur le stem restent propres à la basse et à la
+batterie.
+
+Pas encore de banc : premier jet des coûts du doigté guitare, à régler
+contre des tablatures publiées comme celui de la basse ; la voix n'a ni
+réglage de la porte ni lissage du vibrato.
+

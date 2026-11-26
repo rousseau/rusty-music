@@ -13,6 +13,11 @@
 //! 4. [`tablature`] — corde et frette de chaque note, par plus court chemin ;
 //! 5. [`quantification`] — sur les temps et les mesures de la pulsation.
 //!
+//! La guitare et la voix suivent le même chemin, à deux écarts près : la
+//! guitare garde ses accords ([`guitare`] : un doigté par accord sur six
+//! cordes, puis [`quantification::quantifier_accords`]), la voix n'a pas de
+//! tablature (une note à la fois, sur une portée en clé de sol).
+//!
 //! Mode qualité : [`muscriptor`] — MuScriptor (Kyutai × Mirelo) porté en Burn,
 //! à la place de Basic Pitch à l'étape 1.
 //!
@@ -25,6 +30,7 @@
 pub mod basic_pitch;
 pub mod batterie;
 pub mod corrections;
+pub mod guitare;
 pub mod madmom;
 pub mod monophonie;
 pub mod muscriptor;

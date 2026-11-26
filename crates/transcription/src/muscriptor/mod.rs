@@ -84,6 +84,15 @@ pub const LONGUEUR_MAX: usize = 1000;
 pub const LOT: usize = 16;
 /// Instruments demandés pour une ligne de basse.
 pub const BASSES: &[&str] = &["electric_bass", "acoustic_bass"];
+/// Les groupes d'une guitare : le stem `guitar` du démixage mêle souvent
+/// électrique et acoustique, saturée ou non.
+pub const GUITARES: &[&str] = &[
+    "acoustic_guitar",
+    "clean_electric_guitar",
+    "distorted_electric_guitar",
+];
+/// La voix chantée (« voice » : chœurs et voix du vocabulaire MT3).
+pub const VOIX: &[&str] = &["voice"];
 /// Jetons générés entre deux lectures (voir [`Muscriptor::segment`]).
 const LECTURE: usize = 8;
 

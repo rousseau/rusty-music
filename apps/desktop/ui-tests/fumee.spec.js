@@ -6,7 +6,7 @@
 const { test, expect } = require("@playwright/test");
 const { ouvrir, appelsInconnus, versAlbums } = require("./outils");
 const { fixtures, evenements, donnees, PISTES } = require("./fixtures");
-const { pratiquerAlbum, basseTranscrite, batterieTranscrite } = require("./pratique-fictive");
+const { pratiquerAlbum, basseTranscrite, batterieTranscrite, guitareEtVoixTranscrites } = require("./pratique-fictive");
 
 /// Erreurs de la page, plus celles que `ui/js/` remonte lui-même au moteur.
 async function erreursJs(page, erreurs) {
@@ -808,8 +808,9 @@ test("V6 : en Pratiquer, chaque ligne des Partitions tient sur une ligne à 1 40
   await lireUnAlbum(page);
   await page.click('button.mode[data-mode="pratiquer"]');
   await expect(page.locator("#bloc-partitions")).toBeVisible();
+  // Basse, batterie, voix (pas de guitare : démixage à quatre stems).
   const lignes = page.locator("#bloc-partitions .partition-ligne:visible");
-  await expect(lignes).toHaveCount(2);
+  await expect(lignes).toHaveCount(3);
   await expect(lignes.first().locator(".partition-ligne__action")).toHaveText("Calculer");
   // Une ligne : nom, état et bouton sur la même rangée, aucun ne passe à la ligne.
   const hauteurs = await lignes.evaluateAll((els) => els.map((l) => {
@@ -1981,6 +1982,64 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   // Créer n'a ni partition ni correction.
   await page.click('button.mode[data-mode="creer"]');
   await expect(barre).toBeHidden();
+});
+
+test("Partitions de guitare et de voix : accords en tablature six cordes, voix en clé de sol", async ({ page }) => {
+  await guitareEtVoixTranscrites(page);
+  await pratiquerAlbum(page, 0);
+  // Le bloc Partitions a une ligne par stem transcriptible, prête d'emblée.
+  await expect(page.locator('#bloc-partitions [data-partition="guitar"]')).toBeVisible();
+  await expect(page.locator('#bloc-partitions [data-partition="vocals"] .partition-ligne__etat')).toHaveText("prête");
+
+  // Quatre instruments dans le segment : il tient dans le rail, sans
+  // déborder ni passer à la ligne.
+  const segment = await page.locator("#instruments").evaluate((el) => ({
+    deborde: el.scrollWidth > el.clientWidth + 1,
+    rangees: new Set([...el.children].map((b) => Math.round(b.getBoundingClientRect().top))).size,
+    coupes: [...el.children].filter((b) => b.scrollWidth > b.clientWidth + 1).length,
+  }));
+  expect(segment).toEqual({ deborde: false, rangees: 1, coupes: 0 });
+  await page.click('#instruments [data-instrument="guitar"]');
+  await expect(page.locator("#notations")).toBeVisible();
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+  const guitare = () =>
+    page.evaluate(async () => {
+      const { partition } = await import("./js/pratiquer.js");
+      const staff = partition.api?.score?.tracks[0].staves[0];
+      const beats = staff?.bars[0].voices[0].beats;
+      return staff && {
+        nom: partition.api.score.tracks[0].name,
+        cordes: staff.tuning.length,
+        transposition: staff.displayTranspositionPitch,
+        accord: beats[0].notes.map((n) => `${n.fret}.${n.string}`).sort(),
+        seule: beats[1].notes.map((n) => n.realValue),
+      };
+    });
+  await expect.poll(guitare).toMatchObject({ nom: "Guitare", cordes: 6, transposition: -12, seule: [48] });
+  // Mi majeur ouvert, frette.corde ; alphaTab compte ses cordes depuis la
+  // grave (1 = mi grave), à l'inverse de l'alphaTex.
+  expect((await guitare()).accord).toEqual(["0.1", "1.4", "2.2", "2.3"]);
+  expect(await appels(page, "transcrire")).toContainEqual(expect.objectContaining({ instrument: "guitar", qualite: true }));
+
+  await page.click('#instruments [data-instrument="vocals"]');
+  await expect(page.locator("#notations")).toBeHidden();
+  const voix = () =>
+    page.evaluate(async () => {
+      const { partition } = await import("./js/pratiquer.js");
+      const staff = partition.api?.score?.tracks[0].staves[0];
+      const beats = staff?.bars[0].voices[0].beats;
+      return staff && {
+        nom: partition.api.score.tracks[0].name,
+        tablature: staff.showTablature,
+        transposition: staff.displayTranspositionPitch,
+        notes: beats.map((b) => b.notes.map((n) => `${n.realValue}${n.isTieDestination ? "~" : ""}`).join("") || "r"),
+      };
+    });
+  await expect.poll(voix).toMatchObject({ nom: "Voix", tablature: false });
+  const v = await voix();
+  expect(v.transposition === 0 || Object.is(v.transposition, -0)).toBe(true);
+  expect(v.notes).toEqual(["64", "64~", "67", "r"]);
+  if (process.env.CAPTURES) await page.screenshot({ path: "test-results/partition-voix.png" });
 });
 
 test("E4 : jouer la batterie transcrite sur sa batterie MIDI, chaque note jugée sur la partition", async ({ page }) => {

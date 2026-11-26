@@ -115,8 +115,12 @@ function texGrille(p, titre, instrument) {
   const batterie = instrument === "drums";
   const piste = batterie
     ? `\\track "Batterie" \\instrument percussion \\articulation defaults \\staff {score}`
-    : `\\track "Basse" \\staff {tabs} \\tuning (G2 D2 A1 E1)`;
-  const note = batterie ? `"Hi-Hat (closed)".4` : "0.4.4";
+    : instrument === "guitar"
+      ? `\\track "Guitare" \\staff {tabs} \\tuning (E4 B3 G3 D3 A2 E2)`
+      : instrument === "vocals"
+        ? `\\track "Voix" \\staff {score} \\tuning voice \\displaytranspose 0`
+        : `\\track "Basse" \\staff {tabs} \\tuning (G2 D2 A1 E1)`;
+  const note = batterie ? `"Hi-Hat (closed)".4` : instrument === "vocals" ? "r.4" : instrument === "guitar" ? "0.6.4" : "0.4.4";
   const tete =
     `\\title "${guillemets(titre)}" \\subtitle "Grille mesurée — prototype, sans transcription"` +
     ` \\tempo ${tempoDe(p)}\n${piste}\n`;
@@ -230,6 +234,76 @@ function texTablature(mesures, titre, p, accordage, modele) {
     return t + temps.join(" ");
   });
   return tete + corps.join(" |\n") + " |";
+}
+
+/// L'alphaTex d'une guitare transcrite (`quantification::quantifier_accords`) :
+/// accords en tablature six cordes, avec la notation au-dessus (clé de sol,
+/// une octave au-dessus du son, comme toute partition de guitare). Corde 0 du
+/// moteur = mi grave = corde 6 de l'alphaTex. Accordage standard.
+function texGuitare(mesures, titre, p, accordage, modele) {
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  const cordes = accordage?.length ? [...accordage].reverse() : [64, 59, 55, 50, 45, 40];
+  const portee = edition.notation === "tabs" ? "\\staff {tabs}" : "\\staff {score tabs}";
+  const tete =
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
+    ` \\tempo ${tempoDe(p)}\n` +
+    `\\track "Guitare" ${portee} \\tuning (${cordes.map(nomMidi).join(" ")}) \\displaytranspose 12\n`;
+  return tete + corpsMelodique(mesures, p, (jeux, d, lie) => {
+    const places = jeux.filter((j) => j.corde !== null && j.frette !== null);
+    if (!places.length) return null;
+    const note = (j) => (lie ? `-.${cordes.length - j.corde}` : `${j.frette}.${cordes.length - j.corde}`);
+    return places.length === 1 ? `${note(places[0])}.${d}` : `(${places.map(note).join(" ")}).${d}`;
+  });
+}
+
+/// L'alphaTex d'une voix transcrite : une note à la fois, sur une portée en
+/// clé de sol, sans tablature (`\\tuning voice` : des hauteurs, pas des
+/// frettes ; une liaison s'y écrit `C4{t}`). `\\displaytranspose 0` : sans
+/// programme, alphaTab prend la piste pour une guitare et l'écrirait une
+/// octave plus haut.
+function texVoix(mesures, titre, p, modele) {
+  const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  const tete =
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
+    ` \\tempo ${tempoDe(p)}\n` +
+    `\\track "Voix" \\staff {score} \\tuning voice \\displaytranspose 0\n`;
+  return tete + corpsMelodique(mesures, p, (jeux, d, lie) => `${nomMidi(jeux[0].hauteur)}${lie ? "{t}" : ""}.${d}`);
+}
+
+/// Le corps commun à la guitare et à la voix : mesures, sections, synchro,
+/// silences et liaisons ; `ecrire(jeux, durée, lie)` donne le temps alphaTex
+/// d'une note ou d'un accord (`null` : un silence). `partition.temps` est
+/// rempli comme pour la basse, pour le curseur.
+function corpsMelodique(mesures, p, ecrire) {
+  let precedente = 0;
+  const sections = marquesSections(mesures.map((m) => m.debut_s));
+  partition.temps = [];
+  const corps = mesures.map((m, i) => {
+    let t = (i === 0 ? "\\clef G2 " : "") + sections[i] + (m.temps !== precedente ? `\\ts (${m.temps} 4) ` : "");
+    precedente = m.temps;
+    const fin = mesures[i + 1]?.debut_s ?? Infinity;
+    t += syncTemps(i, m.debut_s, fin, p.temps);
+    const temps = [];
+    const carte = [];
+    let curseur = 0;
+    const poser = (tex, d, note) => {
+      temps.push(tex);
+      carte.push({ note: note ?? null, debut: curseur, seiziemes: SEIZIEMES_TEX.get(d) });
+      curseur += SEIZIEMES_TEX.get(d);
+    };
+    for (const e of legato(m.evenements)) {
+      const durees = decouperDuree(e.seiziemes);
+      const jeux = e.jeu ? [e.jeu, ...(e.accord ?? [])] : [];
+      durees.forEach((d, k) => {
+        const tex = jeux.length ? ecrire(jeux, d, e.lie || k > 0) : null;
+        poser(tex ?? `r.${d}`, d, tex ? e.note : null);
+      });
+    }
+    if (!temps.length) poser(`r.${m.temps === 4 ? "1" : "4"}`, m.temps === 4 ? "1" : "4", null);
+    partition.temps.push(carte);
+    return t + temps.join(" ");
+  });
+  return corps.join(" |\n") + " |";
 }
 
 /// Notation de la basse : « score+tabs » (défaut, décidé le 10 oct. —
@@ -365,10 +439,13 @@ function decouperAuxTemps(debut, fin) {
 /// seulement si elle est déjà en cache (`partitionsEnCache`) : le calcul ne
 /// part que du bouton « Calculer » du bloc Partitions.
 const transcriptions = new Map();
+/// Les instruments qui ont une partition, dans l'ordre du rail.
+const INSTRUMENTS = ["bass", "drums", "guitar", "vocals"];
 function transcription(instrument, lancer = false) {
   const id = edition.source?.id;
-  if (id === undefined || (instrument !== "bass" && instrument !== "drums")) return null;
-  const qualite = instrument === "bass";
+  if (id === undefined || !INSTRUMENTS.includes(instrument)) return null;
+  // Tout passe par MuScriptor (29 oct. : la qualité prime), sauf la batterie.
+  const qualite = instrument !== "drums";
   const cle = cleTranscription(id, instrument, qualite);
   if (!transcriptions.has(cle)) {
     if (!lancer && !enCache(id, instrument, qualite)) return null;
@@ -408,7 +485,7 @@ function cleTranscription(id, instrument, qualite) {
 const partitionsEnCache = { id: null, cles: new Set(), demande: null };
 function enCache(id, instrument, qualite) {
   if (partitionsEnCache.id !== id) return false;
-  return partitionsEnCache.cles.has(instrument === "bass" && qualite ? "bass-muscriptor" : instrument);
+  return partitionsEnCache.cles.has(qualite ? `${instrument}-muscriptor` : instrument);
 }
 function chargerPartitionsEnCache(id) {
   if (partitionsEnCache.demande === id) return;
@@ -482,8 +559,8 @@ function majBlocPartitions() {
     } else {
       // Le bouton « Calculer » dit déjà l'état : la ligne garde la durée
       // (basse) et tient sur une ligne dans le rail (V6).
-      etat.textContent = instrument === "bass" ? "≈ 1 min" : "";
-      etat.title = instrument === "bass" ? "À calculer : environ une minute" : "";
+      etat.textContent = instrument !== "drums" ? "≈ 1 min" : "";
+      etat.title = instrument !== "drums" ? "À calculer : environ une minute" : "";
       action.textContent = "Calculer";
     }
   }
@@ -504,6 +581,10 @@ for (const ligne of document.querySelectorAll("#bloc-partitions [data-partition]
   });
 }
 
+/// L'instrument dont la partition attend MuScriptor (conditions, poids) :
+/// celle qui se calcule une fois qu'il est prêt (`lancerSiPret`).
+let muscriptorPour = "bass";
+
 /// Calcule la partition d'un instrument (ou la recalcule après un échec) :
 /// le bouton « Calculer » du bloc Partitions, et celui de la barre du coach
 /// (V34).
@@ -511,8 +592,11 @@ async function calculerPartition(instrument) {
   const tr = transcription(instrument);
   // La basse passe par MuScriptor : conditions acceptées et poids présents,
   // sinon le panneau qui les règle — il lance le calcul une fois prêt.
-  if (instrument === "bass" && !(await muscriptorPret())) return;
-  if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument === "bass"));
+  if (instrument !== "drums") {
+    muscriptorPour = instrument;
+    if (!(await muscriptorPret())) return;
+  }
+  if (tr?.erreur) transcriptions.delete(cleTranscription(edition.source?.id, instrument, instrument !== "drums"));
   transcription(instrument, true);
 }
 
@@ -567,7 +651,7 @@ function suivreTranscription(id, entree) {
 function instrumentPratique() {
   const present = (n) => edition.stems.some((s) => s.nom === n);
   if (present(edition.instrument)) return edition.instrument;
-  return ["bass", "drums"].find(present) ?? null;
+  return INSTRUMENTS.find(present) ?? null;
 }
 
 /// La position du moteur, extrapolée depuis le dernier sondage.
@@ -785,7 +869,7 @@ async function montrerPartition() {
   const message = !p
     ? `Pulsation en cours de calcul… La partition se pose sur les mesures du morceau. ${aidePartie()}`
     : !instrument
-      ? "Ce morceau n'a ni basse ni batterie séparées."
+      ? "Ce morceau n'a ni basse, ni batterie, ni guitare, ni voix séparées."
       : null;
   // L'état vide du centre porte l'aide de la partie (Règle 12 : pas d'aide de
   // plus d'une ligne dans le rail).
@@ -831,7 +915,11 @@ async function montrerPartition() {
         ? texGrille(p, titre, instrument)
         : instrument === "drums"
           ? texBatterie(tr.pret.mesures, titre, p, tr.pret.coups)
-          : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
+          : instrument === "guitar"
+            ? texGuitare(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele)
+            : instrument === "vocals"
+              ? texVoix(tr.pret.mesures, titre, p, tr.pret.modele)
+              : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
       await partition.chargement;
       // Un appel plus récent a pris la main pendant l'attente : c'est lui
       // qui charge.
@@ -969,7 +1057,7 @@ function majUsage() {
     b.classList.toggle("segment--actif", b.dataset.instrument === instrument);
     b.disabled = !edition.stems.some((s) => s.nom === b.dataset.instrument);
   }
-  $("notations").hidden = edition.usage !== "pratiquer" || instrument !== "bass";
+  $("notations").hidden = edition.usage !== "pratiquer" || (instrument !== "bass" && instrument !== "guitar");
   $("decomptes").hidden = edition.usage !== "pratiquer";
   $("songsterr").hidden = edition.usage !== "pratiquer" || !edition.source?.title;
   for (const b of document.querySelectorAll("#decomptes [data-decompte]")) {
@@ -1132,7 +1220,7 @@ async function muscriptorPret() {
 /// Après l'acceptation ou le téléchargement : si MuScriptor est prêt, la
 /// partition de basse qu'on avait demandée se calcule.
 async function lancerSiPret() {
-  if (await muscriptorPret()) transcription("bass", true);
+  if (await muscriptorPret()) transcription(muscriptorPour, true);
 }
 
 /// Télécharge les poids, avancement dans le texte du panneau ; le jeton saisi
