@@ -165,7 +165,8 @@ async function batterieTranscrite(page) {
 
 /// Une guitare et une voix transcrites (démixage à six stems) : la guitare
 /// plaque un accord de mi majeur ouvert sur chaque premier temps, puis une
-/// note seule ; la voix chante mi4 sur deux temps, liée, puis sol4.
+/// note seule ; la voix chante mi4 sur deux temps, liée, puis sol4, avec ses
+/// paroles (« Back in »).
 async function guitareEtVoixTranscrites(page) {
   await page.evaluate(() => {
     window.__FIXTURES__.pulsation = {
@@ -186,8 +187,8 @@ async function guitareEtVoixTranscrites(page) {
         temps: 4,
         evenements: guitare
           ? [
-              { seiziemes: 8, jeu: jeu(40, 0, 0), accord: [jeu(47, 1, 2), jeu(52, 2, 2), jeu(56, 3, 1)], lie: false, confiance: 1, note: 0 },
-              { seiziemes: 4, jeu: jeu(48, 1, 3), lie: false, confiance: 1, note: 4 },
+              { seiziemes: 8, jeu: jeu(40, 0, 0), accord: [jeu(47, 1, 2), jeu(52, 2, 2), jeu(56, 3, 1)], lie: false, confiance: 1, note: 5 * m },
+              { seiziemes: 4, jeu: jeu(48, 1, 3), lie: false, confiance: 1, note: 5 * m + 4 },
               silence(4),
             ]
           : [
@@ -197,10 +198,17 @@ async function guitareEtVoixTranscrites(page) {
               silence(4),
             ],
       }));
+      // La guitare : par mesure, l'accord (quatre notes) puis la note seule.
+      const notes = guitare
+        ? Array.from({ length: 8 }, (_, m) => [40, 47, 52, 56, 48].map((h, k) => ({
+            debut_s: 0.5 + 2 * m + (k === 4 ? 1 : 0), fin_s: 0.5 + 2 * m + (k === 4 ? 1.5 : 1), hauteur: h, amplitude: 1, corde: null, frette: null,
+          }))).flat()
+        : [];
       return {
-        version: 6, instrument: a.instrument, modele: "muscriptor-medium", notes: [], coups: [], mesures,
+        version: 6, instrument: a.instrument, modele: "muscriptor-medium", notes, coups: [], mesures,
         accordage: guitare ? [40, 45, 50, 55, 59, 64] : [], choix: null, doigtes: 6, basses: "quatre",
         hauteurs: [], grille: 4, sans_effet: 0,
+        ...(guitare ? {} : { paroles: [{ note: 0, texte: "Back" }, { note: 1, texte: "in" }], source_paroles: "lrclib" }),
       };
     };
   });

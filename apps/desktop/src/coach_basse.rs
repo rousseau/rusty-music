@@ -39,8 +39,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rusty_music_editor::coach::accordeur::{accorder_vers, ecart_disque, Accord};
 use rusty_music_editor::coach::appariement::Fenetres;
 use rusty_music_editor::coach::basse::{
-    confiance_reference, juger, references, transposer, AnalyseurDI, BilanHauteur, Evenement,
-    JugementBasse, NoteDI, NoteRef,
+    confiance_reference_pour, juger, references, transposer, AnalyseurDI, BilanHauteur, Evenement,
+    JugementBasse, NoteDI, NoteRef, Registre, BASSE, GUITARE,
 };
 use rusty_music_editor::coach::{calibrer, Calibration, Horloge};
 use rusty_music_player::horloge::{maintenant_s, Ancre};
@@ -91,8 +91,9 @@ pub(crate) struct Voie {
 }
 
 impl Voie {
-    /// Un bloc mono capturé à `capture_s` (horloge commune), à `sr` Hz.
-    pub(crate) fn recevoir(&mut self, capture_s: f64, sr: f32, bloc: &[f32]) {
+    /// Un bloc mono capturé à `capture_s` (horloge commune), à `sr` Hz,
+    /// analysé dans le registre `registre`.
+    pub(crate) fn recevoir(&mut self, capture_s: f64, sr: f32, bloc: &[f32], registre: Registre) {
         let attendu = self.origine_s + self.pousses as f64 / sr as f64;
         let repartir = match self.analyseur {
             None => true,
@@ -102,7 +103,7 @@ impl Voie {
             if self.analyseur.is_some() {
                 self.reprises += 1;
             }
-            self.analyseur = Some(AnalyseurDI::new(sr, capture_s));
+            self.analyseur = Some(AnalyseurDI::pour(sr, capture_s, registre));
             self.origine_s = capture_s;
             self.pousses = 0;
         }
@@ -141,6 +142,9 @@ pub(crate) struct Capture {
     /// Le bout d'entrée du retour de l'instrument (E7) : le canal retenu y
     /// part, brut, avant l'analyse (qui ne voit jamais le son traité).
     pub(crate) retour: Option<rusty_music_player::retour::Entree>,
+    /// L'instrument écouté est une guitare (registre [`GUITARE`]) ; sinon
+    /// une basse.
+    guitare: bool,
 }
 
 impl Capture {
@@ -150,8 +154,21 @@ impl Capture {
         if self.voies.len() < canaux.len() {
             self.voies.resize_with(canaux.len(), Voie::default);
         }
+        let registre = if self.guitare { GUITARE } else { BASSE };
         for (v, bloc) in self.voies.iter_mut().zip(canaux) {
-            v.recevoir(capture_s, sr, bloc);
+            v.recevoir(capture_s, sr, bloc, registre);
+        }
+    }
+
+    /// Change d'instrument : les analyseurs repartent dans le nouveau
+    /// registre au prochain bloc, les notes d'avant sont oubliées.
+    fn instrument(&mut self, guitare: bool) {
+        if self.guitare != guitare {
+            self.guitare = guitare;
+            for v in &mut self.voies {
+                v.analyseur = None;
+                v.notes.clear();
+            }
         }
     }
 
@@ -218,6 +235,9 @@ pub(crate) struct EtatCoachBasse {
     demi_tons: i32,
     /// L'accord du disque mesuré sur le stem de basse (V36), par morceau.
     disques: std::collections::HashMap<i64, VueAccordDisque>,
+    /// La référence armée est une guitare (26 nov.) : l'entrée s'analyse
+    /// dans son registre.
+    guitare: bool,
 }
 
 impl EtatCoachBasse {
@@ -422,7 +442,10 @@ pub(crate) fn coach_basse_ecouter(
                 .map_err(echec)?,
         )
     };
-    let capture = Arc::new(Mutex::new(Capture::default()));
+    let capture = Arc::new(Mutex::new(Capture {
+        guitare: coach.guitare,
+        ..Capture::default()
+    }));
     let (arret, sr, canaux) = ouvrir(&nom, capture.clone())?;
     coach.latence_s = latence.as_ref().map_or(0.0, |l| l.latence_ms / 1000.0);
     // Le canal gardé, s'il existe encore (autre réglage de l'interface).
@@ -547,6 +570,11 @@ pub(crate) struct VueArmementBasse {
 /// vérifiée sur le stem de basse démixé, à la hauteur d'origine (le stem
 /// d'origine confirme la note d'origine) ; `demi_tons` est le réglage de
 /// hauteur en cours, que le jugement ajoute (V35). Une liste vide désarme.
+///
+/// `instrument` « guitar » (26 nov.) : la même chose pour la guitare — stem
+/// `guitar`, entrée analysée dans le registre de la guitare ; d'un accord,
+/// l'interface arme sa note la plus grave, celle que pYIN entend d'un accord
+/// gratté.
 #[tauri::command(async)]
 #[cfg_attr(test, specta::specta)]
 pub(crate) fn coach_basse_armer(
@@ -554,7 +582,14 @@ pub(crate) fn coach_basse_armer(
     id: i64,
     notes: Vec<NoteArmee>,
     demi_tons: i32,
+    instrument: Option<String>,
 ) -> Result<VueArmementBasse, String> {
+    let guitare = instrument.as_deref() == Some("guitar");
+    let (nom_stem, registre) = if guitare {
+        ("guitar", GUITARE)
+    } else {
+        ("bass", BASSE)
+    };
     let notes: Vec<(f64, u8)> = notes
         .iter()
         .filter(|n| n.debut_s.is_finite())
@@ -571,7 +606,7 @@ pub(crate) fn coach_basse_armer(
         let dossier = dossier_stems(&etat, &PathBuf::from(&chemin));
         stems_du_dossier(&dossier)
             .into_iter()
-            .find(|(n, _)| n == "bass")
+            .find(|(n, _)| n == nom_stem)
             .map(|(_, p)| p)
     };
     let confiances = match &stem {
@@ -583,7 +618,12 @@ pub(crate) fn coach_basse_armer(
                 .zip(&s.droite)
                 .map(|(g, d)| 0.5 * (g + d))
                 .collect();
-            confiance_reference(&mono, rusty_music_editor::decode::SR as f32, &notes)
+            confiance_reference_pour(
+                &mono,
+                rusty_music_editor::decode::SR as f32,
+                &notes,
+                registre,
+            )
         }
         None => Vec::new(),
     };
@@ -593,6 +633,10 @@ pub(crate) fn coach_basse_armer(
         let mut coach = verrou(&etat.coach_basse);
         coach.refs = refs;
         coach.demi_tons = demi_tons;
+        coach.guitare = guitare;
+        if let Some(e) = &coach.ecoute {
+            verrou(&e.capture).instrument(guitare);
+        }
     }
     Ok(VueArmementBasse {
         notes: notes.len() as u32,
@@ -1005,7 +1049,7 @@ fn attrapees(js: &[JugementBasse]) -> usize {
 mod tests {
     use super::*;
     use rusty_music_editor::coach::appariement::Verdict;
-    use rusty_music_editor::coach::basse::{synthetiser_note, Hauteur};
+    use rusty_music_editor::coach::basse::{confiance_reference, synthetiser_note, Hauteur};
 
     const SR: f32 = 48_000.0;
 
@@ -1077,6 +1121,7 @@ mod tests {
             refs,
             demi_tons: 0,
             disques: Default::default(),
+            guitare: false,
         }
     }
 

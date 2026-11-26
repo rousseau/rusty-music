@@ -194,6 +194,39 @@ pub(crate) const COVER_FILES: &[&str] = &[
     "front.jpg",
 ];
 
+/// Les paroles d'un fichier : un `.lrc` voisin (même nom), sinon le tag de
+/// paroles (`USLT` en ID3, `LYRICS` en Vorbis, `©lyr` en MP4). `None` : ni
+/// l'un ni l'autre. Lu à la demande (partition de voix de Pratiquer), jamais
+/// au scan : 0,7 % des fichiers en portent (mesuré le 4 oct.).
+pub fn read_lyrics(path: &Path) -> Result<Option<String>> {
+    if let Ok(lrc) = std::fs::read_to_string(path.with_extension("lrc")) {
+        if !lrc.trim().is_empty() {
+            return Ok(Some(lrc));
+        }
+    }
+    let opts = ParseOptions::new()
+        .read_properties(false)
+        .read_cover_art(false);
+    let tagged = Probe::open(path)
+        .map_err(|source| Error::Tags {
+            path: path.to_path_buf(),
+            source,
+        })?
+        .options(opts)
+        .read()
+        .map_err(|source| Error::Tags {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    Ok(tagged
+        .tags()
+        .iter()
+        .find_map(|t| t.get_string(&ItemKey::Lyrics))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from))
+}
+
 /// Cherche la pochette d'un morceau : embarquée d'abord, sinon dans le dossier.
 ///
 /// Volontairement hors du scan — celui-ci saute les pochettes, qui pèsent

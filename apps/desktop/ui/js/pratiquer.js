@@ -261,17 +261,24 @@ function texGuitare(mesures, titre, p, accordage, modele) {
 /// frettes ; une liaison s'y écrit `C4{t}`). `\\displaytranspose 0` : sans
 /// programme, alphaTab prend la piste pour une guitare et l'écrirait une
 /// octave plus haut.
-function texVoix(mesures, titre, p, modele) {
+function texVoix(mesures, titre, p, modele, paroles = [], source = null) {
   const guillemets = (x) => String(x).replace(/["\\]/g, " ");
+  // Les syllabes des paroles, par rang de note (`transcription::paroles`).
+  const syllabes = new Map(paroles.map((s) => [s.note, s.texte]));
+  const origine = { lrc: "fichier .lrc", tags: "tags du fichier", lrclib: "LRCLIB" }[source];
   const tete =
-    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"}) — à vérifier à l'oreille"` +
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"})${origine ? `, paroles : ${origine}` : ""} — à vérifier à l'oreille"` +
     ` \\tempo ${tempoDe(p)}\n` +
     `\\track "Voix" \\staff {score} \\tuning voice \\displaytranspose 0\n`;
-  return tete + corpsMelodique(mesures, p, (jeux, d, lie) => `${nomMidi(jeux[0].hauteur)}${lie ? "{t}" : ""}.${d}`);
+  return tete + corpsMelodique(mesures, p, (jeux, d, lie, note) => {
+    const texte = !lie && syllabes.get(note);
+    const effets = [lie ? "t" : "", texte ? `lyrics "${guillemets(texte)}"` : ""].filter(Boolean).join(" ");
+    return `${nomMidi(jeux[0].hauteur)}${effets ? `{${effets}}` : ""}.${d}`;
+  });
 }
 
 /// Le corps commun à la guitare et à la voix : mesures, sections, synchro,
-/// silences et liaisons ; `ecrire(jeux, durée, lie)` donne le temps alphaTex
+/// silences et liaisons ; `ecrire(jeux, durée, lie, rang de la note)` donne le temps alphaTex
 /// d'une note ou d'un accord (`null` : un silence). `partition.temps` est
 /// rempli comme pour la basse, pour le curseur.
 function corpsMelodique(mesures, p, ecrire) {
@@ -295,7 +302,7 @@ function corpsMelodique(mesures, p, ecrire) {
       const durees = decouperDuree(e.seiziemes);
       const jeux = e.jeu ? [e.jeu, ...(e.accord ?? [])] : [];
       durees.forEach((d, k) => {
-        const tex = jeux.length ? ecrire(jeux, d, e.lie || k > 0) : null;
+        const tex = jeux.length ? ecrire(jeux, d, e.lie || k > 0, e.note) : null;
         poser(tex ?? `r.${d}`, d, tex ? e.note : null);
       });
     }
@@ -918,7 +925,7 @@ async function montrerPartition() {
           : instrument === "guitar"
             ? texGuitare(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele)
             : instrument === "vocals"
-              ? texVoix(tr.pret.mesures, titre, p, tr.pret.modele)
+              ? texVoix(tr.pret.mesures, titre, p, tr.pret.modele, tr.pret.paroles, tr.pret.source_paroles)
               : texTablature(tr.pret.mesures, titre, p, tr.pret.accordage, tr.pret.modele);
       await partition.chargement;
       // Un appel plus récent a pris la main pendant l'attente : c'est lui
@@ -1308,13 +1315,21 @@ function basseAffichee() {
   return tr?.pret ? tr : null;
 }
 
-/// La basse ou la batterie que Pratiquer montre sans partition prête (pas
+/// La guitare transcrite, si c'est elle que Pratiquer affiche (le coach
+/// l'écoute sur l'entrée audio, comme la basse).
+function guitareAffichee() {
+  if (edition.usage !== "pratiquer" || instrumentPratique() !== "guitar" || $("partition").hidden) return null;
+  const tr = transcription("guitar");
+  return tr?.pret ? tr : null;
+}
+
+/// La basse, la guitare ou la batterie que Pratiquer montre sans partition prête (pas
 /// calculée, en calcul, ou en échec) : la barre du coach offre de la
 /// calculer (V34). `tr` est l'entrée de `transcriptions`, ou null.
 function partitionAttendue() {
   if (edition.usage !== "pratiquer" || $("partition").hidden || !edition.pulsation) return null;
   const instrument = instrumentPratique();
-  if (instrument !== "bass" && instrument !== "drums") return null;
+  if (instrument !== "bass" && instrument !== "drums" && instrument !== "guitar") return null;
   const tr = transcription(instrument);
   return tr?.pret ? null : { instrument, tr };
 }
@@ -1328,6 +1343,6 @@ function remplacerBasse(entree, vue) {
 }
 
 export {
-  basseAffichee, bassesJouees, batterieAffichee, cacherPartition, calculerPartition, lancerDecompte, majUsage,
+  basseAffichee, bassesJouees, batterieAffichee, cacherPartition, guitareAffichee, calculerPartition, lancerDecompte, majUsage,
   montrerPartition, oublierPartitions, partition, partitionAttendue, positionMoteur, remplacerBasse,
 };

@@ -34,6 +34,7 @@ pub mod guitare;
 pub mod madmom;
 pub mod monophonie;
 pub mod muscriptor;
+pub mod paroles;
 pub mod porte;
 pub mod positions;
 pub mod quantification;

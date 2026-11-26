@@ -52,6 +52,11 @@ pub const DECALAGE_HAUTEUR_S: f32 = 0.012;
 pub const FENETRE_HAUTEUR_S: f32 = 0.024;
 /// Deux attaques plus proches sont la même note.
 pub const ECART_MIN_S: f32 = 0.060;
+/// Une attaque après une autre veut un niveau remonté d'au moins autant
+/// au-dessus du plus bas atteint depuis (26 nov.) : une note grave isolée
+/// qui résonne (mi2, la2) faisait passer son flux sur le seuil deux ou trois
+/// fois, à 60 ms d'écart, pendant qu'elle décroissait.
+pub const REMONTEE_DB: f32 = 2.0;
 /// Sous ce niveau (dBFS, RMS de la trame), aucune attaque.
 pub const SILENCE_DBFS: f32 = -55.0;
 /// Probabilité de voisement de pYIN sous laquelle une hauteur jouée est
@@ -71,6 +76,34 @@ pub const SOUS_OCTAVE_ABSENTE: f32 = 0.02;
 /// au lieu de 70. Les notes plus graves (cinq cordes) attendent la trame
 /// entière.
 pub const F_MIN_COURTE_HZ: f32 = 40.0;
+
+/// Où chercher la hauteur : la basse (les constantes ci-dessus) ou la
+/// guitare (26 nov. : le même analyseur, sur l'entrée d'une guitare).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Registre {
+    /// Fréquence la plus grave cherchée (trame entière).
+    pub f_min_hz: f32,
+    /// La plus aiguë.
+    pub f_max_hz: f32,
+    /// Le plancher de la trame courte (voir [`F_MIN_COURTE_HZ`]).
+    pub f_min_courte_hz: f32,
+}
+
+/// La basse, quatre ou cinq cordes.
+pub const BASSE: Registre = Registre {
+    f_min_hz: F_MIN_HZ,
+    f_max_hz: F_MAX_HZ,
+    f_min_courte_hz: F_MIN_COURTE_HZ,
+};
+
+/// La guitare : du ré2 d'un drop D (73 Hz) au mi6 de la 24ᵉ case (1 319 Hz),
+/// avec marge ; la trame courte dès le mi grave (82 Hz), comme la basse dès
+/// le sien.
+pub const GUITARE: Registre = Registre {
+    f_min_hz: 70.0,
+    f_max_hz: 1400.0,
+    f_min_courte_hz: 80.0,
+};
 
 /// Le nombre de MIDI d'une fréquence (69 = la 440).
 pub fn midi(f_hz: f32) -> f32 {
@@ -115,15 +148,15 @@ pub enum Evenement {
 /// la probabilité de voisement. `x` doit couvrir la fenêtre d'intégration
 /// plus la plus longue période.
 pub fn pyin_trame(x: &[f32], sr: f32) -> Option<(f32, f32)> {
-    pyin_trame_des(x, sr, F_MIN_HZ)
+    pyin_trame_des(x, sr, F_MIN_HZ, F_MAX_HZ)
 }
 
 /// [`pyin_trame`], en cherchant à partir de `f_min_hz` : la trame en est
 /// raccourcie d'autant.
-fn pyin_trame_des(x: &[f32], sr: f32, f_min_hz: f32) -> Option<(f32, f32)> {
+fn pyin_trame_des(x: &[f32], sr: f32, f_min_hz: f32, f_max_hz: f32) -> Option<(f32, f32)> {
     let w = (sr * FENETRE_HAUTEUR_S) as usize;
     let tau_max = (sr / f_min_hz).ceil() as usize;
-    let tau_min = ((sr / F_MAX_HZ).floor() as usize).max(2);
+    let tau_min = ((sr / f_max_hz).floor() as usize).max(2);
     if x.len() < w + tau_max + 1 {
         return None;
     }
@@ -220,13 +253,13 @@ fn periodes_entieres(sr: f32, f: f32, dispo: usize) -> Option<usize> {
 /// puis les contrôles d'octave par l'énergie. Rend (f0, voisement,
 /// sous-octave).
 pub fn hauteur(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
-    hauteur_des(x, sr, F_MIN_HZ)
+    hauteur_des(x, sr, F_MIN_HZ, F_MAX_HZ)
 }
 
-fn hauteur_des(x: &[f32], sr: f32, f_min_hz: f32) -> Option<(f32, f32, f32)> {
-    let (mut f0, conf) = pyin_trame_des(x, sr, f_min_hz)?;
+fn hauteur_des(x: &[f32], sr: f32, f_min_hz: f32, f_max_hz: f32) -> Option<(f32, f32, f32)> {
+    let (mut f0, conf) = pyin_trame_des(x, sr, f_min_hz, f_max_hz)?;
     // Sous-octave de l'estimateur : à f0, aucune énergie, tout est à 2·f0.
-    while 2.0 * f0 <= F_MAX_HZ {
+    while 2.0 * f0 <= f_max_hz {
         let n = periodes_entieres(sr, f0, x.len())?;
         let (e1, e2) = (energie(x, sr, f0, n), energie(x, sr, 2.0 * f0, n));
         if e2 > 0.0 && e1 / e2 < 0.02 {
@@ -266,9 +299,9 @@ fn besoin_hauteur_des(sr: f32, f_min_hz: f32) -> usize {
 /// elle suffit : pYIN sûr, et aucune fondamentale une octave plus bas qui
 /// serait une note des cordes graves (sous 40 Hz, que la trame courte ne
 /// voit pas). Sinon on attend la trame entière.
-fn hauteur_courte(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
-    let (f0, conf, sous) = hauteur_des(x, sr, F_MIN_COURTE_HZ)?;
-    let grave_possible = f0 / 2.0 >= F_MIN_HZ;
+fn hauteur_courte(x: &[f32], sr: f32, r: Registre) -> Option<(f32, f32, f32)> {
+    let (f0, conf, sous) = hauteur_des(x, sr, r.f_min_courte_hz, r.f_max_hz)?;
+    let grave_possible = f0 / 2.0 >= r.f_min_hz;
     (conf >= CONFIANCE_JEU && (!grave_possible || sous < SOUS_OCTAVE_ABSENTE))
         .then_some((f0, conf, sous))
 }
@@ -277,6 +310,7 @@ fn hauteur_courte(x: &[f32], sr: f32) -> Option<(f32, f32, f32)> {
 /// pousse tel quel, mono.
 pub struct AnalyseurDI {
     sr: f32,
+    registre: Registre,
     /// Instant de l'horloge commune du premier échantillon.
     origine_s: f64,
     n_fft: usize,
@@ -293,6 +327,8 @@ pub struct AnalyseurDI {
     /// Les deux dernières trames : (début, flux, niveau dB).
     prec: [(u64, f32, f32); 2],
     derniere_attaque: Option<u64>,
+    /// Le niveau le plus bas depuis la dernière attaque ([`REMONTEE_DB`]).
+    plancher_db: f32,
     /// Attaques dont la hauteur attend ses échantillons : (indice, niveau,
     /// trame courte déjà essayée).
     attente: VecDeque<(u64, f32, bool)>,
@@ -300,6 +336,11 @@ pub struct AnalyseurDI {
 
 impl AnalyseurDI {
     pub fn new(sr: f32, origine_s: f64) -> Self {
+        Self::pour(sr, origine_s, BASSE)
+    }
+
+    /// L'analyseur d'un autre instrument que la basse ([`GUITARE`]).
+    pub fn pour(sr: f32, origine_s: f64, registre: Registre) -> Self {
         let n_fft = ((sr * 0.0107) as usize).next_power_of_two().max(128);
         let hann = (0..n_fft)
             .map(|i| {
@@ -309,6 +350,7 @@ impl AnalyseurDI {
             .collect();
         AnalyseurDI {
             sr,
+            registre,
             origine_s,
             n_fft,
             pas: n_fft / 4,
@@ -321,6 +363,7 @@ impl AnalyseurDI {
             passe: VecDeque::new(),
             prec: [(0, 0.0, -120.0); 2],
             derniere_attaque: None,
+            plancher_db: f32::NEG_INFINITY,
             attente: VecDeque::new(),
         }
     }
@@ -374,11 +417,15 @@ impl AnalyseurDI {
             let mediane = tri.get(tri.len() / 2).copied().unwrap_or(0.0);
             let seuil = 1.5 * mediane + 0.05;
             let loin = self.derniere_attaque.is_none_or(|a| i1 >= a + ecart_min);
-            if f1 > seuil && f1 >= f0 && f1 > f && db.max(db1) > SILENCE_DBFS && loin {
+            let remonte = db.max(db1) >= self.plancher_db + REMONTEE_DB;
+            if f1 > seuil && f1 >= f0 && f1 > f && db.max(db1) > SILENCE_DBFS && loin && remonte {
                 // L'attaque au milieu de la trame du pic.
                 let a = i1 + self.n_fft as u64 / 2;
                 self.derniere_attaque = Some(i1);
                 let niveau = db.max(db1);
+                // Le plancher repart des trames d'après : celle de
+                // l'attaque est encore dans la montée.
+                self.plancher_db = f32::INFINITY;
                 sortie.push(Evenement::Attaque {
                     t_s: self.t(a),
                     niveau_db: niveau,
@@ -389,13 +436,19 @@ impl AnalyseurDI {
             if self.passe.len() > historique {
                 self.passe.pop_front();
             }
+            if self.derniere_attaque.is_some()
+                && self.trame > self.derniere_attaque.unwrap_or(0) + self.n_fft as u64
+            {
+                self.plancher_db = self.plancher_db.min(db);
+            }
             self.prec = [self.prec[1], (i, f, db)];
             self.trame += self.pas as u64;
         }
         // Les hauteurs dont les échantillons sont là : la trame courte
         // d'abord, la trame entière si elle ne suffit pas.
-        let besoin = besoin_hauteur(self.sr) as u64;
-        let besoin_court = besoin_hauteur_des(self.sr, F_MIN_COURTE_HZ) as u64;
+        let r = self.registre;
+        let besoin = besoin_hauteur_des(self.sr, r.f_min_hz) as u64;
+        let besoin_court = besoin_hauteur_des(self.sr, r.f_min_courte_hz) as u64;
         let decalage = (self.sr * DECALAGE_HAUTEUR_S) as u64;
         while let Some(&(a, niveau, essayee)) = self.attente.front() {
             let mut mesure = None;
@@ -405,14 +458,14 @@ impl AnalyseurDI {
                 }
                 self.attente[0].2 = true;
                 let x = self.morceau(a + decalage, (besoin_court - decalage) as usize);
-                mesure = hauteur_courte(&x, self.sr).map(Some);
+                mesure = hauteur_courte(&x, self.sr, r).map(Some);
             }
             if mesure.is_none() {
                 if a + besoin > self.fin() {
                     break;
                 }
                 let x = self.morceau(a + decalage, (besoin - decalage) as usize);
-                mesure = Some(hauteur(&x, self.sr));
+                mesure = Some(hauteur_des(&x, self.sr, r.f_min_hz, r.f_max_hz));
             }
             self.attente.pop_front();
             let (f0_hz, confiance, sous_octave) = match mesure.flatten() {
@@ -444,11 +497,19 @@ impl AnalyseurDI {
 
     /// Toutes les notes d'une prise entière (un fichier).
     pub fn analyser(x: &[f32], sr: f32, origine_s: f64) -> Vec<NoteDI> {
-        let mut a = AnalyseurDI::new(sr, origine_s);
+        Self::analyser_pour(x, sr, origine_s, BASSE)
+    }
+
+    /// [`Self::analyser`] dans un autre registre.
+    pub fn analyser_pour(x: &[f32], sr: f32, origine_s: f64, registre: Registre) -> Vec<NoteDI> {
+        let mut a = AnalyseurDI::pour(sr, origine_s, registre);
         let mut v: Vec<NoteDI> = a
             .pousser(x)
             .into_iter()
-            .chain(a.pousser(&vec![0.0; besoin_hauteur(sr) + a.n_fft]))
+            .chain(a.pousser(&vec![
+                0.0;
+                besoin_hauteur_des(sr, registre.f_min_hz) + a.n_fft
+            ]))
             .filter_map(|e| match e {
                 Evenement::Note(n) => Some(n),
                 Evenement::Attaque { .. } => None,
@@ -525,7 +586,17 @@ pub fn comparer(attendue: u8, jouee: &NoteDI) -> Hauteur {
 /// l'instant de la note (le stem démixé étale les attaques) ; on garde la
 /// meilleure.
 pub fn confiance_reference(stem: &[f32], sr: f32, notes: &[(f64, u8)]) -> Vec<f32> {
-    let besoin = besoin_hauteur(sr) - (sr * DECALAGE_HAUTEUR_S) as usize;
+    confiance_reference_pour(stem, sr, notes, BASSE)
+}
+
+/// [`confiance_reference`] dans un autre registre (le stem de guitare).
+pub fn confiance_reference_pour(
+    stem: &[f32],
+    sr: f32,
+    notes: &[(f64, u8)],
+    r: Registre,
+) -> Vec<f32> {
+    let besoin = besoin_hauteur_des(sr, r.f_min_hz) - (sr * DECALAGE_HAUTEUR_S) as usize;
     notes
         .iter()
         .map(|&(tau, h)| {
@@ -539,7 +610,9 @@ pub fn confiance_reference(stem: &[f32], sr: f32, notes: &[(f64, u8)]) -> Vec<f3
                 if a + besoin > stem.len() {
                     continue;
                 }
-                let Some((f0, conf, sous)) = hauteur(&stem[a..a + besoin], sr) else {
+                let Some((f0, conf, sous)) =
+                    hauteur_des(&stem[a..a + besoin], sr, r.f_min_hz, r.f_max_hz)
+                else {
                     continue;
                 };
                 let note = NoteDI {
@@ -901,6 +974,40 @@ mod tests {
             assert!((h - m).abs() < 0.5, "note {m} lue {h:.2}");
             assert!(n.confiance > 0.7, "note {m} : confiance {}", n.confiance);
         }
+    }
+
+    #[test]
+    fn une_note_grave_qui_resonne_n_a_qu_une_attaque() {
+        for m in [28.0f32, 40.0, 45.0, 52.0] {
+            let mut x = vec![0f32; (2.0 * SR) as usize];
+            synthetiser_note(&mut x, SR, 0.5, 1.0, m, 1.0);
+            for r in [BASSE, GUITARE] {
+                let n = AnalyseurDI::analyser_pour(&x, SR, 0.0, r).len();
+                assert_eq!(n, 1, "note {m} : {n} attaques");
+            }
+        }
+    }
+
+    #[test]
+    fn une_ligne_de_guitare_dans_son_registre() {
+        // Du mi grave au la aigu : au-delà de 440 Hz, le registre de la basse
+        // ne voit rien ; celui de la guitare, tout.
+        let notes = [
+            (0.20, 0.40, 40.0), // E2
+            (0.80, 0.40, 52.0), // E3
+            (1.40, 0.40, 64.0), // E4
+            (2.00, 0.40, 71.0), // B4
+            (2.60, 0.40, 81.0), // A5
+        ];
+        let jeu = AnalyseurDI::analyser_pour(&prise(&notes, 1.0), SR, 0.0, GUITARE);
+        assert_eq!(jeu.len(), notes.len(), "{jeu:#?}");
+        for (n, &(_, _, m)) in jeu.iter().zip(&notes) {
+            let h = n.hauteur().expect("hauteur");
+            assert!((h - m).abs() < 0.5, "note {m} lue {h:.2}");
+        }
+        let basse = AnalyseurDI::analyser(&prise(&notes, 1.0), SR, 0.0);
+        let a5 = basse.last().and_then(NoteDI::hauteur);
+        assert!(a5.is_none_or(|h| (h - 81.0).abs() > 0.5), "{a5:?}");
     }
 
     #[test]

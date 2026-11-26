@@ -7848,3 +7848,46 @@ Pas encore de banc : premier jet des coûts du doigté guitare, à régler
 contre des tablatures publiées comme celui de la basse ; la voix n'a ni
 réglage de la porte ni lissage du vibrato.
 
+## Pratiquer : paroles sous la voix, coach de guitare — 26 nov. 2026
+
+**Paroles** (décision du jour : LRCLIB et tags ; la piste notée le 4 oct.,
+`plan-ecouter-v0.2.md` § 9). À la partition de voix seulement, cherchées
+dans cet ordre, du plus juste au moins juste pour les poser : un `.lrc`
+voisin ou des paroles datées dans les tags (`core::tags::read_lyrics`), les
+paroles datées de LRCLIB (`enrichissement::lrclib`, `/api/get` puis
+`/api/search` à la durée la plus proche), le texte seul des tags, celui de
+LRCLIB. Gardées dans `paroles.json` à côté des stems (une absence aussi ;
+une panne du réseau non). `transcription::paroles` lit le LRC, coupe chaque
+mot avec les dictionnaires TeX de `hyphenation` (anglais ou français, deviné
+aux mots outils ; minima des dictionnaires : à une lettre, « y-ou »), et
+répartit les syllabes d'une ligne sur les notes qui commencent pendant elle
+(300 ms d'avance tolérée) — note de trop sans texte, syllabe de trop
+recollée à sa voisine. La partition les écrit note par note
+(`{lyrics "…"}`), la source dans le sous-titre.
+
+Essai sur « Burnin' Alive » (AC/DC) : LRCLIB rend 20 enregistrements,
+52 lignes datées ; 131 syllabes posées sur les 183 notes de la voix
+(« Burnin' / alive / Set / my / soul / on / fire… » à leurs instants).
+
+**Coach de guitare.** La chaîne du coach de basse (entrée audio, canaux,
+calibration, jugement) sert telle quelle ; l'analyseur prend un
+`Registre` (`coach::basse::GUITARE` : 70 à 1 400 Hz, trame courte dès
+80 Hz ; la basse garde exactement ses constantes). `coach_basse_armer`
+reçoit `instrument` : « guitar » vérifie la référence sur le stem `guitar`
+dans ce registre et fait analyser l'entrée dedans. D'un accord, l'interface
+arme sa note la plus grave (pYIN rend la fondamentale d'un accord gratté
+sur sa basse) et ramène les jugements au rang de la partition. Le Mustang
+Micro Plus se branche en USB-C comme une interface audio : rien à faire de
+plus.
+
+Défaut trouvé en chemin, commun à la basse : une note grave isolée qui
+résonne (mi2, la2, synthétique) faisait deux ou trois attaques à 60 ms
+d'écart, son flux repassant sur le seuil pendant qu'elle décroissait.
+Une attaque après une autre veut désormais un niveau remonté de 2 dB
+(`REMONTEE_DB`) au-dessus du plus bas atteint depuis (trames d'attaque
+exclues). Les 49 tests du coach passent toujours ; pas encore remesuré sur
+une vraie prise de basse.
+
+Pas faits : l'accordeur reste celui de la basse ; ni les accords entiers
+ni les doigtés ne sont jugés.
+

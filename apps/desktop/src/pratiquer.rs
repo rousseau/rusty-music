@@ -70,6 +70,123 @@ pub(crate) struct VueTranscription {
     /// Les corrections gardées qui n'ont trouvé aucune note.
     #[serde(default)]
     sans_effet: usize,
+    /// Voix : les syllabes des paroles posées sur les notes. Jamais dans le
+    /// cache de la transcription : les paroles ont le leur ([`FICHIER_PAROLES`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    paroles: Vec<rusty_music_transcription::paroles::Syllabe>,
+    /// D'où viennent ces paroles : « lrc », « tags », « lrclib ».
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_paroles: Option<String>,
+}
+
+/// Le cache des paroles d'un morceau, dans le dossier de ses stems.
+const FICHIER_PAROLES: &str = "paroles.json";
+
+/// Les paroles gardées d'un morceau : le texte (LRC ou seul) et sa source ;
+/// `texte` vide : cherchées, pas trouvées (on ne redemande pas à chaque
+/// ouverture).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ParolesGardees {
+    source: String,
+    texte: Option<String>,
+}
+
+/// Les paroles d'un morceau, du plus juste au moins juste pour les poser sur
+/// les notes (décision du 26 nov. : LRCLIB et tags) : un `.lrc` voisin ou
+/// des paroles datées dans les tags, puis les paroles datées de LRCLIB, puis
+/// le texte seul des tags, puis celui de LRCLIB. Gardées à côté des stems ;
+/// une panne du réseau n'est pas gardée, on réessaiera.
+fn paroles_du_morceau(
+    morceau: &rusty_music_core::db::TrackRow,
+    dossier: &Path,
+) -> Option<ParolesGardees> {
+    let cache = dossier.join(FICHIER_PAROLES);
+    if let Some(p) = std::fs::read(&cache)
+        .ok()
+        .and_then(|o| serde_json::from_slice::<ParolesGardees>(&o).ok())
+    {
+        return Some(p);
+    }
+    let datees = |t: &str| {
+        rusty_music_transcription::paroles::lire(t)
+            .iter()
+            .any(|l| l.debut_s.is_some())
+    };
+    let local = rusty_music_core::tags::read_lyrics(Path::new(&morceau.path))
+        .ok()
+        .flatten();
+    let lrc_voisin = Path::new(&morceau.path).with_extension("lrc").exists();
+    let trouve = |source: &str, texte: String| ParolesGardees {
+        source: source.into(),
+        texte: Some(texte),
+    };
+    let p = match local {
+        Some(t) if datees(&t) => trouve(if lrc_voisin { "lrc" } else { "tags" }, t),
+        local => {
+            let en_ligne = match (&morceau.artist, &morceau.title) {
+                (Some(artiste), Some(titre)) => {
+                    match rusty_music_enrichissement::lrclib::Client::new().chercher(
+                        artiste,
+                        titre,
+                        morceau.album.as_deref(),
+                        morceau.duration_ms.map(|d| d as f64 / 1000.0),
+                    ) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::warn!("paroles : LRCLIB injoignable : {e}");
+                            // Pas de cache : on réessaiera.
+                            return local.map(|t| trouve("tags", t));
+                        }
+                    }
+                }
+                _ => None,
+            };
+            match (en_ligne, local) {
+                (
+                    Some(rusty_music_enrichissement::lrclib::Paroles {
+                        datees: Some(d), ..
+                    }),
+                    _,
+                ) => trouve("lrclib", d),
+                (_, Some(t)) => trouve("tags", t),
+                (
+                    Some(rusty_music_enrichissement::lrclib::Paroles { texte: Some(t), .. }),
+                    None,
+                ) => trouve("lrclib", t),
+                _ => ParolesGardees {
+                    source: "aucune".into(),
+                    texte: None,
+                },
+            }
+        }
+    };
+    if let Ok(o) = serde_json::to_vec(&p) {
+        if let Err(e) = std::fs::write(&cache, o) {
+            tracing::warn!("paroles : cache non écrit ({}) : {e}", cache.display());
+        }
+    }
+    Some(p)
+}
+
+/// Pose les paroles du morceau `id` sur les notes de sa voix transcrite.
+fn poser_paroles(etat: &State<Etat>, id: i64, vue: &mut VueTranscription) {
+    let Ok(Some(morceau)) = verrou(&etat.lib).track(id) else {
+        return;
+    };
+    let dossier = dossier_stems(etat, Path::new(&morceau.path));
+    let Some(p) = paroles_du_morceau(&morceau, &dossier) else {
+        return;
+    };
+    let Some(texte) = p.texte else { return };
+    let lignes = rusty_music_transcription::paroles::lire(&texte);
+    vue.paroles = rusty_music_transcription::paroles::poser(&lignes, &vue.notes);
+    vue.source_paroles = Some(p.source);
+    tracing::info!(
+        id,
+        syllabes = vue.paroles.len(),
+        source = vue.source_paroles.as_deref().unwrap_or(""),
+        "paroles posées"
+    );
 }
 
 /// Version du cache de transcription : à monter dès que le calcul change.
@@ -230,7 +347,10 @@ pub(crate) fn transcrire(
     qualite: Option<bool>,
     basses: Option<tablature::Basses>,
 ) -> Result<VueTranscription, String> {
-    let vue = transcrire_brut(&etat, id, instrument, qualite, basses)?;
+    let mut vue = transcrire_brut(&etat, id, instrument, qualite, basses)?;
+    if vue.instrument == "vocals" {
+        poser_paroles(&etat, id, &mut vue);
+    }
     corriger_vue(&etat, id, vue)
 }
 
@@ -404,6 +524,8 @@ fn transcrire_brut(
             grille: VERSION_MESURES,
             identites: Vec::new(),
             sans_effet: 0,
+            paroles: Vec::new(),
+            source_paroles: None,
         };
         if let Ok(o) = serde_json::to_vec(&vue) {
             if let Err(e) = std::fs::write(&cache, o) {
@@ -554,6 +676,8 @@ fn transcrire_brut(
         grille: VERSION_MESURES,
         identites: Vec::new(),
         sans_effet: 0,
+        paroles: Vec::new(),
+        source_paroles: None,
     };
     if let Ok(o) = serde_json::to_vec(&vue) {
         if let Err(e) = std::fs::write(&cache, o) {
@@ -814,6 +938,8 @@ mod tests {
             grille: VERSION_MESURES,
             identites: Vec::new(),
             sans_effet: 0,
+            paroles: Vec::new(),
+            source_paroles: None,
         }
     }
 

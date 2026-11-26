@@ -20,6 +20,7 @@ pub mod enrichir;
 pub mod lastfm;
 pub mod lastfm_pass;
 pub mod listenbrainz;
+pub mod lrclib;
 pub mod musicbrainz;
 pub mod pochette;
 pub mod popularite;

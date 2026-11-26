@@ -1984,7 +1984,7 @@ test("E2 : corriger une note de la partition, en ajouter une, exporter la partie
   await expect(barre).toBeHidden();
 });
 
-test("Partitions de guitare et de voix : accords en tablature six cordes, voix en clé de sol", async ({ page }) => {
+test("Partitions de guitare et de voix : accords en tablature six cordes, voix en clé de sol avec ses paroles", async ({ page }) => {
   await guitareEtVoixTranscrites(page);
   await pratiquerAlbum(page, 0);
   // Le bloc Partitions a une ligne par stem transcriptible, prête d'emblée.
@@ -2033,12 +2033,17 @@ test("Partitions de guitare et de voix : accords en tablature six cordes, voix e
         tablature: staff.showTablature,
         transposition: staff.displayTranspositionPitch,
         notes: beats.map((b) => b.notes.map((n) => `${n.realValue}${n.isTieDestination ? "~" : ""}`).join("") || "r"),
+        paroles: beats.map((b) => b.lyrics?.join("") ?? ""),
+        sousTitre: partition.api.score.subTitle,
       };
     });
   await expect.poll(voix).toMatchObject({ nom: "Voix", tablature: false });
   const v = await voix();
   expect(v.transposition === 0 || Object.is(v.transposition, -0)).toBe(true);
   expect(v.notes).toEqual(["64", "64~", "67", "r"]);
+  // Les paroles sous leurs notes, et leur source dans le sous-titre.
+  expect(v.paroles).toEqual(["Back", "", "in", ""]);
+  expect(v.sousTitre).toContain("paroles : LRCLIB");
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/partition-voix.png" });
 });
 
@@ -2313,6 +2318,52 @@ test("E5 : jouer la basse transcrite en DI, chaque note jugée en temps et en ha
   await page.click("#coach-basculer");
   await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
   await expect(marques).toHaveCount(0);
+});
+
+test("Coach de guitare : la guitare sur l'entrée audio, la note la plus grave de chaque accord jugée", async ({ page }) => {
+  await guitareEtVoixTranscrites(page);
+  await page.evaluate(() => {
+    // Un Mustang Micro branché en USB-C : une entrée audio stéréo.
+    window.__FIXTURES__.coach_basse_entrees = ["Mustang Micro Plus", "Micro intégré"];
+    window.__FIXTURES__.coach_basse_ecouter = (a) =>
+      a.entree ? { entree: a.entree, frequence_hz: 48000, canaux: 1, canal: 0, manuel: false, latence_ms: 18 } : null;
+    window.__FIXTURES__.coach_basse_armer = (a) => ({ notes: a.notes.length, sures: a.notes.length, stem: true });
+    const j = (reference, verdict, hauteur) => ({
+      reference, passage: 0, frappe: null, attendu_s: 1, ecart_ms: 5, ecart_musical_ms: 5, verdict, hauteur,
+    });
+    // L'accord de la 1ʳᵉ mesure juste, la note seule fausse d'un demi-ton.
+    window.__FIXTURES__.coach_basse_juger = (a, e) => {
+      e.juges = (e.juges ?? 0) + 1;
+      return {
+        jusqua_s: 10 + e.juges,
+        jugements: e.juges === 2 ? [j(0, "parfait", { type: "juste" }), j(1, "bon", { type: "fausse", demi_tons: 1 })] : [],
+        notes: [], bilan: { justes: 1, fausses: 1, octaves: 0, inconnues: 0 }, erreur: null, canal: 0, ailleurs: null,
+      };
+    };
+  });
+  await pratiquerAlbum(page, 0);
+  await page.click('#instruments [data-instrument="guitar"]');
+  const barre = page.locator("#partition-coach");
+  await expect(barre).toBeVisible();
+  await expect(barre).toHaveAttribute("aria-label", "Coach de guitare");
+  await expect(page.locator("#coach-basculer")).toHaveText("jouer avec ma guitare");
+  await expect(page.locator("#partition-rendu .at-surface")).toBeVisible();
+
+  await page.click("#coach-basculer");
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe("Mustang Micro Plus");
+  // Armée : une note par attaque (la plus grave de l'accord), registre de
+  // la guitare.
+  const armer = (await appels(page, "coach_basse_armer")).at(-1);
+  expect(armer.instrument).toBe("guitar");
+  expect(armer.notes).toHaveLength(16);
+  expect(armer.notes.slice(0, 2)).toEqual([{ debut_s: 0.5, hauteur: 40 }, { debut_s: 1.5, hauteur: 48 }]);
+  // Les jugements reviennent sur l'accord et la note de la partition.
+  const marques = page.locator("#partition-rendu .coach__marque:visible");
+  await expect(marques).toHaveCount(2);
+  const titres = await marques.evaluateAll((els) => els.map((e) => e.title));
+  expect(titres).toContain("fausse note : do♯ joué (+1 demi-ton)");
+  await page.click("#coach-basculer");
+  await expect.poll(() => appels(page, "coach_basse_ecouter").then((a) => a.at(-1)?.entree)).toBe(null);
 });
 
 test("V35, V37 : la basse transposée — le coach et le code des erreurs suivent la hauteur, la tablature non", async ({ page }) => {

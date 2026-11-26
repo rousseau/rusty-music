@@ -1510,8 +1510,13 @@ export const commands = {
 	 *  vérifiée sur le stem de basse démixé, à la hauteur d'origine (le stem
 	 *  d'origine confirme la note d'origine) ; `demi_tons` est le réglage de
 	 *  hauteur en cours, que le jugement ajoute (V35). Une liste vide désarme.
+	 * 
+	 *  `instrument` « guitar » (26 nov.) : la même chose pour la guitare — stem
+	 *  `guitar`, entrée analysée dans le registre de la guitare ; d'un accord,
+	 *  l'interface arme sa note la plus grave, celle que pYIN entend d'un accord
+	 *  gratté.
 	 */
-	coach_basse_armer: (id: number, notes: NoteArmee[], demiTons: number) => __TAURI_INVOKE<VueArmementBasse>("coach_basse_armer", { id, notes, demiTons }),
+	coach_basse_armer: (id: number, notes: NoteArmee[], demiTons: number, instrument: string | null) => __TAURI_INVOKE<VueArmementBasse>("coach_basse_armer", { id, notes, demiTons, instrument }),
 	/**
 	 *  Le réglage de hauteur des stems a changé (V35) : le coach juge contre
 	 *  la référence décalée de `demi_tons`, sans réarmer (la confiance du stem
@@ -5520,6 +5525,16 @@ export type Swing = {
 };
 
 /**
+ *  Une syllabe posée : le rang de sa note dans les notes données à
+ *  [`poser`] (celui de `quantification::Evenement::note`) et son texte, qui
+ *  finit par « - » quand le mot continue sur la note suivante.
+ */
+export type Syllabe = {
+	note: number,
+	texte: string,
+};
+
+/**
  *  Ce qu'il faut pour proposer un **BPM cible** dans la barre d'outils plutôt
  *  qu'un pourcentage de vitesse.
  */
@@ -6187,6 +6202,13 @@ export type VueTranscription_Deserialize = {
 	identites?: Identite_Deserialize[],
 	/**  Les corrections gardées qui n'ont trouvé aucune note. */
 	sans_effet?: number,
+	/**
+	 *  Voix : les syllabes des paroles posées sur les notes. Jamais dans le
+	 *  cache de la transcription : les paroles ont le leur ([`FICHIER_PAROLES`]).
+	 */
+	paroles?: Syllabe[],
+	/**  D'où viennent ces paroles : « lrc », « tags », « lrclib ». */
+	source_paroles?: string | null,
 };
 
 /**
@@ -6233,5 +6255,12 @@ export type VueTranscription_Serialize = {
 	identites?: Identite_Serialize[],
 	/**  Les corrections gardées qui n'ont trouvé aucune note. */
 	sans_effet: number,
+	/**
+	 *  Voix : les syllabes des paroles posées sur les notes. Jamais dans le
+	 *  cache de la transcription : les paroles ont le leur ([`FICHIER_PAROLES`]).
+	 */
+	paroles?: Syllabe[],
+	/**  D'où viennent ces paroles : « lrc », « tags », « lrclib ». */
+	source_paroles?: string,
 };
 
