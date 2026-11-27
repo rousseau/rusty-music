@@ -88,6 +88,9 @@ pub(crate) struct Voie {
     /// Les derniers échantillons, pour l'accordeur (V36) : [`RECENT_S`].
     recent: VecDeque<f32>,
     sr: f32,
+    /// Guitare : le profil par bandes de ce qui est joué, pour « comme le
+    /// disque » (`retour_basse.rs`).
+    profil: Option<rusty_music_player::instrument::ProfilEnCours>,
 }
 
 impl Voie {
@@ -118,6 +121,12 @@ impl Voie {
         }
         self.pousses += bloc.len() as u64;
         self.sr = sr;
+        if registre == GUITARE {
+            use rusty_music_player::instrument::{ProfilEnCours, BANDES_GUITARE_HZ};
+            self.profil
+                .get_or_insert_with(|| ProfilEnCours::new(sr, &BANDES_GUITARE_HZ))
+                .pousser(bloc);
+        }
         let garde = (RECENT_S * sr) as usize;
         self.recent.extend(bloc.iter().copied());
         let trop = self.recent.len().saturating_sub(garde);
@@ -168,6 +177,7 @@ impl Capture {
             for v in &mut self.voies {
                 v.analyseur = None;
                 v.notes.clear();
+                v.profil = None;
             }
         }
     }
@@ -243,6 +253,14 @@ pub(crate) struct EtatCoachBasse {
 impl EtatCoachBasse {
     pub(crate) fn ecoute_ouverte(&self) -> bool {
         self.ecoute.is_some()
+    }
+
+    /// Guitare : le profil par bandes du canal jugé et ses secondes jouées.
+    pub(crate) fn profil_entree(&self) -> Option<([f32; 5], f32)> {
+        let e = self.ecoute.as_ref()?;
+        let c = verrou(&e.capture);
+        let p = c.voies.get(e.canal)?.profil.as_ref()?;
+        Some((p.profil()?, p.secondes()))
     }
 
     /// L'entrée écoutée et son retour, s'il y en a un.

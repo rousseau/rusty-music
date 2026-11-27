@@ -7928,3 +7928,34 @@ reçoit `instrument`). Et « Mustang Micro Plus » passait pour un microphone
 `semble_micro`. Le préréglage « Brut » convient : le Mustang envoie déjà en
 USB le son de son ampli simulé.
 
+## Pratiquer : le chant crié, la guitare « comme le disque » — 26 nov. 2026
+
+Deuxième essai de François : la mesure 84 de « Burnin' Alive » vide alors
+qu'on y chante ; « comme le disque » loin du son d'AC/DC.
+
+**Le chant crié.** Mesure 84 = 2:55,6-2:57,7, la ligne « Burnin' alive »
+de 2:56,65 : le refrain repris en chœur, que pYIN juge non voisé (29 trames
+voisées éparses sur 173). Pas de hauteur à trouver, mais du chant à écrire :
+`voix::crier` pose des notes **criées** là où le stem reste à 18 dB de son
+niveau de pointe sans note voisée pendant 120 ms, une par syllabe (même
+découpage par creux et remontée du niveau), de confiance nulle ; hauteur
+indicative (médiane des trames voisées éparses, sinon la note chantée
+d'avant). La partition les dessine en croix (`{x}`), le sous-titre le dit.
+Sur le morceau : 440 notes dont 159 criées (la voix rauque de Brian Johnson
+en a entre les notes tenues) ; le solo (3:23-3:38) reste vide hors ses
+bords ; la mesure 84 porte « Burnin'× / alive× ». Cache de la voix
+versionné par son transcripteur (`MODELE_VOIX` = « pyin-2 »), sans toucher
+à ceux de la basse.
+
+**« Comme le disque » pour la guitare.** Il comparait le stem à une basse
+directe synthétique (41-98 Hz) sur cinq bandes de 60 à 2 500 Hz : faux
+départ et rien au-dessus de 2,5 kHz. Pour la guitare, l'égaliseur part de
+ce qui est **joué** : chaque canal écouté accumule son profil par bandes
+(`player::instrument::ProfilEnCours`, blocs joués seulement, au-dessus de
+−45 dBFS) sur `BANDES_GUITARE_HZ` (120, 400, 1 000, 2 500, 5 000 Hz ; cinq
+filtres au plus) ; le retour le mène vers le profil du stem de guitare,
+±9 dB par bande, recalculé toutes les 5 s jouées jusqu'à une minute
+(`retour_basse_etat`, sondé chaque seconde). Avant 3 s de jeu, d'une
+guitare directe synthétique. Le Mustang fait l'ampli (saturation comprise) ;
+l'égaliseur rapproche le timbre. Pas fait : estimer la saturation du disque.
+

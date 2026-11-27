@@ -266,19 +266,23 @@ function texVoix(mesures, titre, p, modele, paroles = [], source = null) {
   // Les syllabes des paroles, par rang de note (`transcription::paroles`).
   const syllabes = new Map(paroles.map((s) => [s.note, s.texte]));
   const origine = { lrc: "fichier .lrc", tags: "tags du fichier", lrclib: "LRCLIB" }[source];
+  // Le chant crié (confiance nulle, `transcription::voix`) : en croix.
+  const crie = mesures.some((m) => m.evenements.some((e) => e.jeu && e.confiance === 0));
   const tete =
-    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${{ "muscriptor-medium": "MuScriptor", pyin: "pYIN" }[modele] ?? "Basic Pitch"})${origine ? `, paroles : ${origine}` : ""} — à vérifier à l'oreille"` +
+    `\\title "${guillemets(titre)}" \\subtitle "Transcription automatique (${modele?.startsWith("pyin") ? "pYIN" : modele === "muscriptor-medium" ? "MuScriptor" : "Basic Pitch"})${origine ? `, paroles : ${origine}` : ""}${crie ? ", × : chanté crié, hauteur indicative" : ""} — à vérifier à l'oreille"` +
     ` \\tempo ${tempoDe(p)}\n` +
     `\\track "Voix" \\staff {score} \\tuning voice \\displaytranspose 0\n`;
-  return tete + corpsMelodique(mesures, p, (jeux, d, lie, note) => {
+  return tete + corpsMelodique(mesures, p, (jeux, d, lie, note, e) => {
     const texte = !lie && syllabes.get(note);
-    const effets = [lie ? "t" : "", texte ? `lyrics "${guillemets(texte)}"` : ""].filter(Boolean).join(" ");
+    const effets = [e.confiance === 0 ? "x" : "", lie ? "t" : "", texte ? `lyrics "${guillemets(texte)}"` : ""]
+      .filter(Boolean)
+      .join(" ");
     return `${nomMidi(jeux[0].hauteur)}${effets ? `{${effets}}` : ""}.${d}`;
   });
 }
 
 /// Le corps commun à la guitare et à la voix : mesures, sections, synchro,
-/// silences et liaisons ; `ecrire(jeux, durée, lie, rang de la note)` donne le temps alphaTex
+/// silences et liaisons ; `ecrire(jeux, durée, lie, rang de la note, évènement)` donne le temps alphaTex
 /// d'une note ou d'un accord (`null` : un silence). `partition.temps` est
 /// rempli comme pour la basse, pour le curseur.
 function corpsMelodique(mesures, p, ecrire) {
@@ -302,7 +306,7 @@ function corpsMelodique(mesures, p, ecrire) {
       const durees = decouperDuree(e.seiziemes);
       const jeux = e.jeu ? [e.jeu, ...(e.accord ?? [])] : [];
       durees.forEach((d, k) => {
-        const tex = jeux.length ? ecrire(jeux, d, e.lie || k > 0, e.note) : null;
+        const tex = jeux.length ? ecrire(jeux, d, e.lie || k > 0, e.note, e) : null;
         poser(tex ?? `r.${d}`, d, tex ? e.note : null);
       });
     }

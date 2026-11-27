@@ -726,7 +726,7 @@ const fixtures = {
   // qui en simule une pose les siennes.
   retour_basse_etat: {
     ecoute: false, disponible: false, actif: false, prereglage: "brut", volume: 0.5, balance: 0, micro: false,
-    latence_ms: null, stem_disque: null, trous: 0,
+    latence_ms: null, stem_disque: null, jeu_s: null, trous: 0,
     prereglages: [
       ["brut", "Brut"], ["rond", "Rond"], ["funky", "Funky"], ["slap", "Slap"], ["crunch", "Crunch"],
       ["overdrive", "Overdrive"], ["vintage", "Vintage"], ["comme-le-disque", "Comme le disque"],
@@ -734,7 +734,7 @@ const fixtures = {
   },
   retour_basse_regler: (a) => ({
     ecoute: false, disponible: false, actif: false, prereglage: a.prereglage, volume: a.volume, balance: a.balance,
-    micro: false, latence_ms: null, stem_disque: null, trous: 0, prereglages: [],
+    micro: false, latence_ms: null, stem_disque: null, jeu_s: null, trous: 0, prereglages: [],
   }),
   // E2 : la partie exportée (`exporter_partie`) ; la transcription et sa
   // correction sont simulées par le test qui s'en sert.

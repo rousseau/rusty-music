@@ -6095,6 +6095,12 @@ export type VueRetourBasse_Deserialize = {
 	 *  basse, `None` s'il n'a pas été demandé.
 	 */
 	stem_disque?: boolean | null,
+	/**
+	 *  Guitare, « comme le disque » : les secondes de votre jeu d'après
+	 *  lesquelles l'égaliseur est calculé (0 : d'après une guitare de
+	 *  référence, faute de jeu entendu).
+	 */
+	jeu_s?: number | null,
 	/**  Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement). */
 	trous: number,
 	prereglages: PrereglageBasse[],
@@ -6122,6 +6128,12 @@ export type VueRetourBasse_Serialize = {
 	 *  basse, `None` s'il n'a pas été demandé.
 	 */
 	stem_disque: boolean | null,
+	/**
+	 *  Guitare, « comme le disque » : les secondes de votre jeu d'après
+	 *  lesquelles l'égaliseur est calculé (0 : d'après une guitare de
+	 *  référence, faute de jeu entendu).
+	 */
+	jeu_s: number | null,
 	/**  Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement). */
 	trous: number,
 	prereglages: PrereglageBasse[],

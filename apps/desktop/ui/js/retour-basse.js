@@ -165,7 +165,13 @@ function etat(v) {
   if (!v.ecoute) return `La ${nom} s'entend dès que l'entrée est ouverte.`;
   if (!v.actif) return v.disponible ? "Coupé." : `Aucune sortie audio pour la ${nom}.`;
   const morceau =
-    v.prereglage === "comme-le-disque" && v.stem_disque === false ? `pas de stem de ${nom} : son brut · ` : "";
+    v.prereglage === "comme-le-disque" && v.stem_disque === false
+      ? `pas de stem de ${nom} : son brut · `
+      : v.prereglage === "comme-le-disque" && v.jeu_s != null
+        ? v.jeu_s > 0
+          ? `égalisé d'après ${Math.round(v.jeu_s)} s de votre jeu · `
+          : "jouez quelques secondes : le son s'ajuste · "
+        : "";
   const latence = v.latence_ms == null ? "" : `latence ≈ ${Math.round(v.latence_ms)} ms`;
   const trous = v.trous ? ` · ${v.trous} trou${v.trous > 1 ? "s" : ""}` : "";
   return `${morceau}${latence}${trous}`;

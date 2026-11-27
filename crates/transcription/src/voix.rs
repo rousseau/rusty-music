@@ -20,6 +20,15 @@
 //! - une note plus courte que [`DUREE_MIN_S`] tombe.
 //!
 //! Hauteur d'une note : la médiane de ses trames, arrondie au demi-ton.
+//!
+//! **Le chant crié** (26 nov., mesure 84 de « Burnin' Alive » : le refrain
+//! repris en chœur) n'a pas de période : pYIN le dit non voisé. Là où le
+//! stem reste fort (à [`CRI_DB`] du niveau de pointe du morceau) sans note
+//! voisée pendant [`CRI_MIN_S`], [`crier`] pose des notes **criées** —
+//! une par syllabe, au même découpage par le niveau —, de confiance nulle
+//! (`amplitude` 0 : hauteur inconnue ; la partition les dessine en croix).
+//! Leur hauteur est indicative : la médiane des rares trames voisées, sinon
+//! la note chantée d'avant.
 
 use crate::{Note, Result};
 
@@ -40,6 +49,13 @@ pub const ATTAQUE_DB: f32 = 6.0;
 pub const DUREE_MIN_S: f32 = 0.07;
 /// Trames non voisées tolérées au milieu d'une note (consonne brève).
 const TROU_MAX: usize = 2;
+/// Chant crié : un niveau à moins de tant de dB du niveau de pointe du
+/// stem (95ᵉ centile des trames).
+pub const CRI_DB: f32 = 18.0;
+/// Durée minimale d'une plage criée, et d'une syllabe criée.
+pub const CRI_MIN_S: f32 = 0.12;
+/// Confiance des notes voisées, au moins : 0 est réservé au chant crié.
+const CONFIANCE_MIN: f32 = 0.01;
 
 fn midi(f: f32) -> f32 {
     69.0 + 12.0 * (f / 440.0).log2()
@@ -82,7 +98,102 @@ pub fn notes(mono: &[f32], frequence: u32) -> Result<Vec<Note>> {
         .zip(&voisees)
         .map(|(&f, &v)| (v && f.is_finite() && f > 0.0).then(|| midi(f)))
         .collect();
-    Ok(decouper(&temps, &trames, &db, &probas))
+    let mut notes = decouper(&temps, &trames, &db, &probas);
+    let criees = crier(&temps, &trames, &db, &notes);
+    notes.extend(criees);
+    notes.sort_by(|a, b| a.debut_s.total_cmp(&b.debut_s));
+    Ok(notes)
+}
+
+/// Les notes criées : les plages fortes du stem que nulle note voisée ne
+/// couvre, découpées en syllabes par le niveau (un creux de [`ATTAQUE_DB`]
+/// puis une remontée d'autant).
+fn crier(temps: &[f64], trames: &[Option<f32>], db: &[f32], chantees: &[Note]) -> Vec<Note> {
+    if temps.len() < 2 {
+        return Vec::new();
+    }
+    let pas_s = (temps[1] - temps[0]) as f32;
+    let mut niveaux: Vec<f32> = db.iter().copied().filter(|&d| d > -80.0).collect();
+    if niveaux.is_empty() {
+        return Vec::new();
+    }
+    niveaux.sort_by(f32::total_cmp);
+    let seuil = niveaux[niveaux.len() * 95 / 100] - CRI_DB;
+    let couverte = |t: f32| {
+        chantees
+            .iter()
+            .any(|n| t >= n.debut_s - 0.02 && t <= n.fin_s + 0.02)
+    };
+    let libre: Vec<bool> = temps
+        .iter()
+        .zip(db)
+        .map(|(&t, &d)| d >= seuil && !couverte(t as f32))
+        .collect();
+    let min = (CRI_MIN_S / pas_s).ceil() as usize;
+    let mut sortie: Vec<Note> = Vec::new();
+    let mut i = 0;
+    while i < libre.len() {
+        if !libre[i] {
+            i += 1;
+            continue;
+        }
+        // La plage, trous de [`TROU_MAX`] trames compris.
+        let debut = i;
+        let mut fin = i;
+        let mut j = i;
+        while j < libre.len() && j <= fin + TROU_MAX + 1 {
+            if libre[j] {
+                fin = j;
+            }
+            j += 1;
+        }
+        i = fin + 1;
+        if fin + 1 - debut < min {
+            continue;
+        }
+        // Les syllabes : un creux sous le pic puis une remontée.
+        let mut coupes = vec![debut];
+        let (mut pic, mut creux) = (db[debut], db[debut]);
+        for (k, &d) in db.iter().enumerate().take(fin + 1).skip(debut + 1) {
+            let longue = k - coupes.last().expect("non vide") >= min;
+            if longue && pic - creux >= ATTAQUE_DB && d - creux >= ATTAQUE_DB {
+                coupes.push(k);
+                (pic, creux) = (d, d);
+            } else if d > pic {
+                (pic, creux) = (d, d);
+            } else {
+                creux = creux.min(d);
+            }
+        }
+        coupes.push(fin + 1);
+        let avant = chantees
+            .iter()
+            .rev()
+            .find(|n| n.debut_s < temps[debut] as f32)
+            .map(|n| n.hauteur);
+        let voisees = |a: usize, b: usize| -> Option<f32> {
+            let mut h: Vec<f32> = trames[a..b].iter().flatten().copied().collect();
+            (!h.is_empty()).then(|| mediane(&mut h))
+        };
+        let plage = voisees(debut, fin + 1);
+        for w in coupes.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let hauteur = voisees(a, b)
+                .or(plage)
+                .map(|h| h.round().clamp(0.0, 127.0) as u8)
+                .or(avant)
+                .unwrap_or(64);
+            sortie.push(Note {
+                debut_s: temps[a] as f32,
+                fin_s: temps[b - 1] as f32 + pas_s,
+                hauteur,
+                amplitude: 0.0,
+                corde: None,
+                frette: None,
+            });
+        }
+    }
+    sortie
 }
 
 /// Le découpage, séparé du suivi pour se tester : par trame, son instant,
@@ -118,7 +229,7 @@ fn decouper(temps: &[f64], trames: &[Option<f32>], db: &[f32], probas: &[f32]) -
             debut_s,
             fin_s,
             hauteur,
-            amplitude: c.probas.iter().sum::<f32>() / c.probas.len() as f32,
+            amplitude: (c.probas.iter().sum::<f32>() / c.probas.len() as f32).max(CONFIANCE_MIN),
             corde: None,
             frette: None,
         });
@@ -242,6 +353,39 @@ mod tests {
         for (n, a) in n.iter().zip(attendus) {
             assert!((n.debut_s - a).abs() < 0.07, "{} au lieu de {a}", n.debut_s);
         }
+    }
+
+    #[test]
+    fn un_cri_entre_deux_phrases_fait_des_notes_criees() {
+        // Une phrase chantée, puis trois syllabes criées (du bruit, sans
+        // période), puis une note chantée.
+        let mut x = chant(&[&[(64.0, 0.5)]]);
+        let mut graine = 7u32;
+        for k in 0..3 {
+            let n = (0.25 * SR as f32) as usize;
+            for j in 0..n {
+                graine = graine.wrapping_mul(1_103_515_245).wrapping_add(12345);
+                let bruit = (graine >> 16) as f32 / 32768.0 - 1.0;
+                // Une syllabe : monte vite, retombe ; 30 ms de quasi-silence
+                // entre deux.
+                let t = j as f32 / n as f32;
+                let env = if t < 0.12 { 0.02 } else { (1.0 - t).max(0.05) };
+                x.push(0.4 * env * bruit);
+            }
+            let _ = k;
+        }
+        x.extend(chant(&[&[(67.0, 0.5)]]));
+        let n = notes(&x, SR).unwrap();
+        let criees: Vec<&Note> = n.iter().filter(|n| n.amplitude == 0.0).collect();
+        assert!((2..=4).contains(&criees.len()), "{n:#?}");
+        // Hauteur indicative : la note chantée d'avant.
+        assert!(criees.iter().all(|n| n.hauteur == 64), "{criees:#?}");
+        let chantees: Vec<u8> = n
+            .iter()
+            .filter(|n| n.amplitude > 0.0)
+            .map(|n| n.hauteur)
+            .collect();
+        assert_eq!(chantees, [64, 67]);
     }
 
     #[test]

@@ -116,6 +116,34 @@ pub(crate) struct Retour {
     /// Le réglage « comme le disque » du dernier morceau mesuré, et
     /// l'instrument dont le stem a servi (« bass », « guitar »).
     disque: Option<(i64, String, Option<Reglage>)>,
+    /// Guitare, « comme le disque » : le profil du stem du morceau et les
+    /// secondes de jeu sur lesquelles l'égaliseur a été calculé.
+    guitare: Option<GuitareDisque>,
+}
+
+/// L'égaliseur « comme le disque » d'une guitare : du profil de ce qu'on
+/// joue à celui du stem. Recalculé au fil du jeu ([`RAFRAICHIR_S`]).
+#[derive(Clone, Copy)]
+struct GuitareDisque {
+    id: i64,
+    cible: Option<[f32; 5]>,
+    secondes: f32,
+}
+
+/// Jeu minimal avant de partir du profil joué plutôt que de la référence.
+const JEU_MIN_S: f32 = 3.0;
+/// L'égaliseur se recalcule toutes les tant de secondes jouées…
+const RAFRAICHIR_S: f32 = 5.0;
+/// … jusqu'à ce que le profil soit sûr.
+const JEU_SUR_S: f32 = 60.0;
+
+impl GuitareDisque {
+    fn reglage(&self, joue: Option<([f32; 5], f32)>) -> Option<Reglage> {
+        let depart = joue.filter(|j| j.1 >= JEU_MIN_S).map(|j| j.0);
+        let sr = rusty_music_editor::decode::SR as f32;
+        self.cible
+            .map(|c| Reglage::comme_le_disque_guitare(c, depart, sr))
+    }
 }
 
 impl Retour {
@@ -147,6 +175,7 @@ impl Retour {
             actif: false,
             micro: false,
             disque: None,
+            guitare: None,
         };
         r.appliquer_volume();
         Ok((entree, r))
@@ -187,6 +216,32 @@ impl Retour {
         Ok(())
     }
 
+    /// Guitare, « comme le disque » : l'égaliseur suit le profil de ce qui
+    /// est joué, recalculé toutes les [`RAFRAICHIR_S`] secondes jouées
+    /// jusqu'à [`JEU_SUR_S`].
+    fn rafraichir_guitare(&mut self, joue: Option<([f32; 5], f32)>) {
+        let Some(g) = self.guitare else { return };
+        let Some((_, s)) = joue else { return };
+        let comme =
+            Prereglage::analyser(&self.reglage.prereglage) == Some(Prereglage::CommeLeDisque);
+        if !comme
+            || g.cible.is_none()
+            || s < JEU_MIN_S
+            || g.secondes >= JEU_SUR_S
+            || s < g.secondes + RAFRAICHIR_S
+        {
+            return;
+        }
+        let reglage = g.reglage(joue);
+        let ancien = self.disque.replace((g.id, "guitar".into(), reglage));
+        if self.commandes.changer_chaine(self.chaine(self.sr_sortie)) {
+            self.guitare = Some(GuitareDisque { secondes: s, ..g });
+        } else {
+            // Le son d'avant n'est pas encore pris : au prochain sondage.
+            self.disque = ancien;
+        }
+    }
+
     fn chaine(&self, sr: u32) -> Chaine {
         let disque = self.disque.as_ref().and_then(|(_, _, r)| r.as_ref());
         chaine_de(&self.reglage.prereglage, disque, sr)
@@ -215,6 +270,7 @@ impl Retour {
             micro: self.micro,
             latence_ms: self.latence_ms(),
             stem_disque: self.disque.as_ref().map(|(_, _, r)| r.is_some()),
+            jeu_s: self.guitare.map(|g| g.secondes),
             trous: p.sous_alimentations(),
             prereglages: prereglages(),
         }
@@ -274,6 +330,10 @@ pub(crate) struct VueRetourBasse {
     /// « Comme le disque » : `Some(false)` si le morceau n'a pas de stem de
     /// basse, `None` s'il n'a pas été demandé.
     stem_disque: Option<bool>,
+    /// Guitare, « comme le disque » : les secondes de votre jeu d'après
+    /// lesquelles l'égaliseur est calculé (0 : d'après une guitare de
+    /// référence, faute de jeu entendu).
+    jeu_s: Option<f32>,
     /// Trous depuis l'ouverture (l'entrée n'a pas suivi : un craquement).
     trous: u64,
     prereglages: Vec<PrereglageBasse>,
@@ -296,6 +356,7 @@ fn vue_sans_retour(ecoute: bool, garde: Option<RetourInstrument>) -> VueRetourBa
         micro: false,
         latence_ms: None,
         stem_disque: None,
+        jeu_s: None,
         trous: 0,
         prereglages: prereglages(),
     }
@@ -307,7 +368,9 @@ fn vue_sans_retour(ecoute: bool, garde: Option<RetourInstrument>) -> VueRetourBa
 pub(crate) fn retour_basse_etat(etat: State<Etat>) -> Result<VueRetourBasse, String> {
     let mut coach = verrou(&etat.coach_basse);
     let ecoute = coach.ecoute_ouverte();
+    let joue = coach.profil_entree();
     if let Some(r) = coach.retour_mut() {
+        r.rafraichir_guitare(joue);
         return Ok(r.vue(true));
     }
     drop(coach);
@@ -347,7 +410,37 @@ pub(crate) fn retour_basse_regler(
     let balance = balance.clamp(-1.0, 1.0);
     // Le stem se décode hors des verrous du coach : il peut prendre une
     // seconde.
+    // La guitare : l'égaliseur part de ce qui est joué (`ProfilEnCours`),
+    // le profil du stem se garde par morceau.
+    let mut guitare = None;
     let disque = match (Prereglage::analyser(&prereglage), id) {
+        (Some(Prereglage::CommeLeDisque), Some(id)) if instrument == "guitar" => {
+            let (deja, joue) = {
+                let mut coach = verrou(&etat.coach_basse);
+                let joue = coach.profil_entree();
+                let deja = coach
+                    .retour_mut()
+                    .and_then(|r| r.guitare.filter(|g| g.id == id).map(|g| g.cible));
+                (deja, joue)
+            };
+            let cible = match deja {
+                Some(c) => c,
+                None => coach_basse::stem_mono(&etat, id, "guitar")?.map(|m| {
+                    rusty_music_player::instrument::profil_bandes_de(
+                        &m,
+                        rusty_music_editor::decode::SR as f32,
+                        &rusty_music_player::instrument::BANDES_GUITARE_HZ,
+                    )
+                }),
+            };
+            let g = GuitareDisque {
+                id,
+                cible,
+                secondes: joue.map_or(0.0, |j| if j.1 >= JEU_MIN_S { j.1 } else { 0.0 }),
+            };
+            guitare = Some(g);
+            Some((id, "guitar".to_string(), g.reglage(joue)))
+        }
         (Some(Prereglage::CommeLeDisque), Some(id)) => {
             let deja = verrou(&etat.coach_basse).retour_mut().and_then(|r| {
                 r.disque
@@ -384,6 +477,9 @@ pub(crate) fn retour_basse_regler(
                 let son_change = r.reglage.prereglage != garde.prereglage || disque.is_some();
                 if let Some(d) = disque {
                     r.disque = Some(d);
+                }
+                if guitare.is_some() {
+                    r.guitare = guitare;
                 }
                 r.reglage = garde.clone();
                 if son_change {
@@ -433,6 +529,37 @@ mod tests {
     }
 
     #[test]
+    fn la_guitare_s_egalise_d_apres_son_jeu_passe_trois_secondes() {
+        use rusty_music_player::instrument::Filtre;
+        let gains = |r: Option<Reglage>| -> Vec<f32> {
+            r.unwrap()
+                .filtres
+                .iter()
+                .map(|f| match f {
+                    Filtre::Cloche { db, .. } => *db,
+                    _ => 0.0,
+                })
+                .collect()
+        };
+        let cible = [3.0, 1.0, 0.0, -1.0, -3.0];
+        let g = GuitareDisque {
+            id: 1,
+            cible: Some(cible),
+            secondes: 0.0,
+        };
+        // Joué comme le stem : plat, mais seulement après trois secondes.
+        assert!(gains(g.reglage(Some((cible, 10.0))))
+            .iter()
+            .all(|d| d.abs() < 1e-3));
+        assert!(gains(g.reglage(Some((cible, 1.0))))
+            .iter()
+            .any(|d| d.abs() > 0.5));
+        // Sans stem de guitare, rien.
+        let sans = GuitareDisque { cible: None, ..g };
+        assert!(sans.reglage(Some((cible, 10.0))).is_none());
+    }
+
+    #[test]
     fn comme_le_disque_sans_stem_sonne_brut() {
         let mut a = chaine_de("comme-le-disque", None, 48_000);
         let mut b = chaine_de("brut", None, 48_000);
@@ -469,6 +596,7 @@ mod tests {
             actif: false,
             micro: false,
             disque: None,
+            guitare: None,
         };
         r.appliquer_volume();
         assert!(r.commandes.partage.coupe());

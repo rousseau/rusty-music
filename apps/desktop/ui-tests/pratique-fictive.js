@@ -195,7 +195,8 @@ async function guitareEtVoixTranscrites(page) {
               { seiziemes: 4, jeu: jeu(64, null, null), lie: false, confiance: 1, note: 0 },
               { seiziemes: 4, jeu: jeu(64, null, null), lie: true, confiance: 1, note: 0 },
               { seiziemes: 4, jeu: jeu(67, null, null), lie: false, confiance: 1, note: 1 },
-              silence(4),
+              // Une syllabe criée : sans hauteur sûre (confiance nulle).
+              { seiziemes: 4, jeu: jeu(67, null, null), lie: false, confiance: 0, note: 2 },
             ],
       }));
       // La guitare : par mesure, l'accord (quatre notes) puis la note seule.

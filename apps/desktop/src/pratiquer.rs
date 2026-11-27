@@ -189,6 +189,17 @@ fn poser_paroles(etat: &State<Etat>, id: i64, vue: &mut VueTranscription) {
     );
 }
 
+/// Le transcripteur de la voix, versionné : un cache de voix d'un autre nom
+/// se recalcule (quelques secondes), sans toucher aux caches de la basse
+/// (MuScriptor, une minute). 2 : chant crié en notes en croix (26 nov.).
+const MODELE_VOIX: &str = "pyin-2";
+
+/// Un cache de transcription encore bon : sa version, et pour la voix son
+/// transcripteur.
+fn a_jour(t: &VueTranscription) -> bool {
+    t.version == VERSION_TRANSCRIPTION && (t.instrument != "vocals" || t.modele == MODELE_VOIX)
+}
+
 /// Version du cache de transcription : à monter dès que le calcul change.
 /// 6 : attaques recalées sur le stem de basse (`recaler_sur_stem`, 24 nov.).
 pub(crate) const VERSION_TRANSCRIPTION: u32 = 6;
@@ -275,7 +286,7 @@ pub(crate) fn transcriptions_en_cache(etat: State<Etat>, id: i64) -> Result<Vec<
         std::fs::read(dossier.join(format!("transcription-{cle}.json")))
             .ok()
             .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
-            .is_some_and(|t| t.version == VERSION_TRANSCRIPTION)
+            .is_some_and(|t| a_jour(&t))
     })
     .map(String::from)
     .collect())
@@ -393,7 +404,7 @@ fn transcrire_brut(
     if let Some(mut t) = std::fs::read(&cache)
         .ok()
         .and_then(|o| serde_json::from_slice::<VueTranscription>(&o).ok())
-        .filter(|t| t.version == VERSION_TRANSCRIPTION)
+        .filter(a_jour)
     {
         let doigtes_a_jour = instrument != "bass"
             || (t.doigtes == VERSION_DOIGTES && t.basses == basses && t.choix == choix);
@@ -618,7 +629,7 @@ fn transcrire_brut(
     let metrique = pulsation.metrique().unwrap_or(4);
     let est_basse = instrument == "bass";
     let modele = if instrument == "vocals" {
-        "pyin"
+        MODELE_VOIX
     } else if qualite {
         "muscriptor-medium"
     } else {

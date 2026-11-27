@@ -2032,7 +2032,7 @@ test("Partitions de guitare et de voix : accords en tablature six cordes, voix e
         nom: partition.api.score.tracks[0].name,
         tablature: staff.showTablature,
         transposition: staff.displayTranspositionPitch,
-        notes: beats.map((b) => b.notes.map((n) => `${n.realValue}${n.isTieDestination ? "~" : ""}`).join("") || "r"),
+        notes: beats.map((b) => b.notes.map((n) => `${n.realValue}${n.isDead ? "x" : ""}${n.isTieDestination ? "~" : ""}`).join("") || "r"),
         paroles: beats.map((b) => b.lyrics?.join("") ?? ""),
         sousTitre: partition.api.score.subTitle,
       };
@@ -2040,10 +2040,11 @@ test("Partitions de guitare et de voix : accords en tablature six cordes, voix e
   await expect.poll(voix).toMatchObject({ nom: "Voix", tablature: false });
   const v = await voix();
   expect(v.transposition === 0 || Object.is(v.transposition, -0)).toBe(true);
-  expect(v.notes).toEqual(["64", "64~", "67", "r"]);
+  // La dernière, criée : en croix.
+  expect(v.notes).toEqual(["64", "64~", "67", "67x"]);
   // Les paroles sous leurs notes, et leur source dans le sous-titre.
   expect(v.paroles).toEqual(["Back", "", "in", ""]);
-  expect(v.sousTitre).toContain("(pYIN), paroles : LRCLIB");
+  expect(v.sousTitre).toContain("(pYIN), paroles : LRCLIB, × : chanté crié");
   // La voix ne passe pas par MuScriptor.
   expect(await appels(page, "transcrire")).toContainEqual(expect.objectContaining({ instrument: "vocals", qualite: false }));
   if (process.env.CAPTURES) await page.screenshot({ path: "test-results/partition-voix.png" });

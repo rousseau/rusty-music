@@ -297,9 +297,15 @@ impl Reglage {
     pub fn comme_le_disque(stem: &[f32], sr: f32) -> Self {
         let cible = profil_bandes(stem, sr);
         let reference = profil_bandes(&signal_reference(sr, 4.0), sr);
-        let filtres = BANDES_HZ
+        Self::egaliseur(&BANDES_HZ, cible, reference)
+    }
+
+    /// Des cloches qui mènent le profil `depart` à `cible` sur `bandes`,
+    /// gains bornés à ±9 dB.
+    pub fn egaliseur(bandes: &[f32; 5], cible: [f32; 5], depart: [f32; 5]) -> Self {
+        let filtres = bandes
             .iter()
-            .zip(cible.iter().zip(reference))
+            .zip(cible.iter().zip(depart))
             .map(|(&hz, (&c, r))| Filtre::Cloche {
                 hz,
                 db: (c - r).clamp(-9.0, 9.0),
@@ -311,29 +317,115 @@ impl Reglage {
             ..Default::default()
         }
     }
+
+    /// « Comme le disque » pour une guitare : du profil de ce qu'on joue
+    /// (`joue`, [`ProfilEnCours`]) à celui du stem de guitare (`cible`, sur
+    /// [`BANDES_GUITARE_HZ`]) ; sans jeu encore entendu, d'une guitare
+    /// directe synthétique ([`signal_reference_guitare`]).
+    pub fn comme_le_disque_guitare(cible: [f32; 5], joue: Option<[f32; 5]>, sr: f32) -> Self {
+        let depart = joue.unwrap_or_else(|| {
+            profil_bandes_de(&signal_reference_guitare(sr, 4.0), sr, &BANDES_GUITARE_HZ)
+        });
+        Self::egaliseur(&BANDES_GUITARE_HZ, cible, depart)
+    }
 }
 
 /// Centres des bandes de « comme le disque ».
 pub const BANDES_HZ: [f32; 5] = [60.0, 150.0, 400.0, 1000.0, 2500.0];
 
+/// Les bandes de « comme le disque » pour une guitare (26 nov.) : celles de
+/// la basse s'arrêtaient à 2,5 kHz, là où commence le mordant d'une guitare
+/// saturée ; elles ne sont que cinq ([`MAX_FILTRES`]).
+pub const BANDES_GUITARE_HZ: [f32; 5] = [120.0, 400.0, 1000.0, 2500.0, 5000.0];
+
+/// Le filtre passe-bande d'une bande de profil.
+fn passe_bande(hz: f32, sr: f32) -> DirectForm2Transposed<f32> {
+    let c = Coefficients::from_normalized_params(Type::BandPass, (hz / (sr / 2.0)).min(0.98), 1.4)
+        .expect("bande sous Nyquist");
+    DirectForm2Transposed::<f32>::new(c)
+}
+
+/// Des énergies par bande en dB relatifs à leur moyenne.
+fn relatifs(e: [f64; 5]) -> [f32; 5] {
+    let db = e.map(|e| 10.0 * (e.max(1e-20)).log10() as f32);
+    let moyenne = db.iter().sum::<f32>() / db.len() as f32;
+    db.map(|d| d - moyenne)
+}
+
 /// L'énergie de `signal` dans chaque bande de [`BANDES_HZ`], en dB relatifs
 /// à leur moyenne (le niveau d'ensemble ne compte pas).
 pub fn profil_bandes(signal: &[f32], sr: f32) -> [f32; BANDES_HZ.len()] {
-    let mut db = [0.0f32; BANDES_HZ.len()];
-    for (sortie, &hz) in db.iter_mut().zip(&BANDES_HZ) {
-        let c =
-            Coefficients::from_normalized_params(Type::BandPass, (hz / (sr / 2.0)).min(0.98), 1.4)
-                .expect("bande sous Nyquist");
-        let mut f = DirectForm2Transposed::<f32>::new(c);
-        let e: f64 = signal
+    profil_bandes_de(signal, sr, &BANDES_HZ)
+}
+
+/// [`profil_bandes`] sur d'autres bandes ([`BANDES_GUITARE_HZ`]).
+pub fn profil_bandes_de(signal: &[f32], sr: f32, bandes: &[f32; 5]) -> [f32; 5] {
+    let mut e = [0f64; 5];
+    for (sortie, &hz) in e.iter_mut().zip(bandes) {
+        let mut f = passe_bande(hz, sr);
+        *sortie = signal
             .iter()
             .map(|&x| f64::from(f.run(x)).powi(2))
             .sum::<f64>()
             / signal.len().max(1) as f64;
-        *sortie = 10.0 * (e.max(1e-20)).log10() as f32;
     }
-    let moyenne = db.iter().sum::<f32>() / db.len() as f32;
-    db.map(|d| d - moyenne)
+    relatifs(e)
+}
+
+/// Le profil par bandes de l'entrée **jouée**, accumulé bloc par bloc (le
+/// coach le nourrit) : seuls les blocs joués comptent, au-dessus de
+/// [`ProfilEnCours::SILENCE_DBFS`]. Sert de départ à « comme le disque » pour
+/// la guitare : l'égaliseur rapproche ce qu'on joue réellement (le son du
+/// préampli, du Mustang…) du stem, au lieu d'un signal de référence.
+#[derive(Clone)]
+pub struct ProfilEnCours {
+    filtres: [DirectForm2Transposed<f32>; 5],
+    energies: [f64; 5],
+    echantillons: u64,
+    sr: f32,
+}
+
+impl ProfilEnCours {
+    /// Un bloc sous ce niveau efficace n'est pas joué.
+    pub const SILENCE_DBFS: f32 = -45.0;
+
+    pub fn new(sr: f32, bandes: &[f32; 5]) -> Self {
+        Self {
+            filtres: bandes.map(|hz| passe_bande(hz, sr)),
+            energies: [0.0; 5],
+            echantillons: 0,
+            sr,
+        }
+    }
+
+    pub fn pousser(&mut self, bloc: &[f32]) {
+        if bloc.is_empty() {
+            return;
+        }
+        let rms = (bloc.iter().map(|v| v * v).sum::<f32>() / bloc.len() as f32).sqrt();
+        let joue = 20.0 * rms.max(1e-9).log10() > Self::SILENCE_DBFS;
+        for (f, e) in self.filtres.iter_mut().zip(&mut self.energies) {
+            for &x in bloc {
+                let y = f.run(x);
+                if joue {
+                    *e += f64::from(y).powi(2);
+                }
+            }
+        }
+        if joue {
+            self.echantillons += bloc.len() as u64;
+        }
+    }
+
+    /// Secondes jouées accumulées.
+    pub fn secondes(&self) -> f32 {
+        self.echantillons as f32 / self.sr
+    }
+
+    /// Le profil, en dB relatifs ; `None` avant toute note jouée.
+    pub fn profil(&self) -> Option<[f32; 5]> {
+        (self.echantillons > 0).then(|| relatifs(self.energies))
+    }
 }
 
 /// Un signal de basse directe synthétique, déterministe : des notes pincées
@@ -361,6 +453,30 @@ fn echantillon_reference(i: usize, sr: f32) -> f32 {
         x += a * (std::f32::consts::TAU * f0 * h as f32 * t).sin();
     }
     0.18 * force * enveloppe * x
+}
+
+/// Une guitare directe synthétique : des cordes pincées de 82 à 330 Hz,
+/// seize harmoniques plus fortes que celles de la basse.
+pub fn signal_reference_guitare(sr: f32, secondes: f32) -> Vec<f32> {
+    const NOTES: [f32; 4] = [82.4, 110.0, 196.0, 329.6];
+    let n = (sr * secondes) as usize;
+    let duree_note = (sr * 0.5) as usize;
+    (0..n)
+        .map(|i| {
+            let f0 = NOTES[(i / duree_note) % NOTES.len()];
+            let t = (i % duree_note) as f32 / sr;
+            let enveloppe = (1.0 - (-t / 0.002).exp()) * (-t / 0.4).exp();
+            let mut x = 0.0;
+            for h in 1..=16 {
+                let f = f0 * h as f32;
+                if f >= sr / 2.0 {
+                    break;
+                }
+                x += (std::f32::consts::TAU * f * t).sin() / (h as f32).powf(0.9);
+            }
+            0.1 * enveloppe * x
+        })
+        .collect()
 }
 
 /// Une chaîne prête à tourner dans le rappel audio.
@@ -672,6 +788,43 @@ mod tests {
             ecart(&y),
             ecart(&x)
         );
+    }
+
+    #[test]
+    fn le_profil_joue_mene_au_stem() {
+        // Ce qu'on joue : la guitare synthétique ; le stem : la même,
+        // éclaircie (passe-haut). L'égaliseur doit creuser le grave et
+        // relever l'aigu.
+        let joue = signal_reference_guitare(SR, 4.0);
+        let mut p = ProfilEnCours::new(SR, &BANDES_GUITARE_HZ);
+        for bloc in joue.chunks(512) {
+            p.pousser(bloc);
+        }
+        assert!(p.secondes() > 2.0, "{}", p.secondes());
+        // Le silence ne compte pas.
+        p.pousser(&vec![0.0; 48_000]);
+        assert!(p.secondes() < 4.5);
+        let c =
+            Coefficients::from_normalized_params(Type::HighPass, 800.0 / (SR / 2.0), 0.7).unwrap();
+        let mut f = DirectForm2Transposed::<f32>::new(c);
+        let stem: Vec<f32> = joue.iter().map(|&x| f.run(x)).collect();
+        let cible = profil_bandes_de(&stem, SR, &BANDES_GUITARE_HZ);
+        let r = Reglage::comme_le_disque_guitare(cible, p.profil(), SR);
+        let gains: Vec<f32> = r
+            .filtres
+            .iter()
+            .map(|f| match f {
+                Filtre::Cloche { db, .. } => *db,
+                _ => 0.0,
+            })
+            .collect();
+        assert!(gains[0] < -3.0 && gains[4] > 0.0, "{gains:?}");
+        // Le même son joué que le stem : presque plat.
+        let plat = Reglage::comme_le_disque_guitare(p.profil().unwrap(), p.profil(), SR);
+        assert!(plat
+            .filtres
+            .iter()
+            .all(|f| matches!(f, Filtre::Cloche { db, .. } if db.abs() < 0.01)));
     }
 
     #[test]
